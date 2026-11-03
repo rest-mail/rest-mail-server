@@ -21,12 +21,12 @@ func bptr(b bool) *bool { return &b }
 func (f *fakeAPI) seedFlagged(id uint, folder, raw, subject string, read, flagged, starred, draft bool, received time.Time) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.msgs[id] = &fakeMsg{
+	f.put(&fakeMsg{
 		id: id, folder: folder, raw: raw, subject: subject,
 		sender: "sender@example.com", senderNm: "Sender",
 		isRead: read, isFlagged: flagged, isStarred: starred, isDraft: draft,
 		receivedAt: received,
-	}
+	})
 }
 
 // TestCopyUID_PreservesFlagsAndInternalDate proves a COPY carries the source

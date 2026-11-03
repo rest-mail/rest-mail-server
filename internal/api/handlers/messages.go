@@ -174,6 +174,9 @@ type threadRequest struct {
 
 var (
 	errMessageNotFound = endpoint.Refuse(http.StatusNotFound, "message_not_found", "Message not found")
+	// errMessageModified refuses a change made with unchanged_since once the message's
+	// mod_seq has passed it (RFC 7162 §3.1.3).
+	errMessageModified = endpoint.Refuse(http.StatusConflict, "message_modified", "The message changed after unchanged_since; nothing was changed")
 	// Someone else's message reads as one that does not exist (#1327).
 	errMessageAccess = errMessageNotFound
 )
@@ -196,7 +199,8 @@ func (h *MessageHandler) RegisterMessages(rs endpoint.Routes) {
 		Errors:      []int{http.StatusForbidden, http.StatusNotFound}, Security: reads}, h.verifyMessageSeal)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPatch, Path: "/api/v1/messages/{id}",
 		OperationID: "updateMessage", Summary: "Update message flags or move to a folder", Tags: tags,
-		Errors: []int{http.StatusForbidden, http.StatusNotFound}, Security: writes}, h.updateMessage)
+		Description: "With unchanged_since the change is made only while the message's mod_seq is at most that value, checked and written in one statement, as IMAP's STORE (UNCHANGEDSINCE) (RFC 7162 §3.1.3); otherwise it answers 409 message_modified and changes nothing. Read the message again for its current mod_seq.",
+		Errors:      []int{http.StatusForbidden, http.StatusNotFound, http.StatusConflict}, Security: writes}, h.updateMessage)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodDelete, Path: "/api/v1/messages/{id}",
 		OperationID: "deleteMessage", Summary: "Delete a message", Tags: tags, Status: http.StatusNoContent,
 		Errors: []int{http.StatusForbidden, http.StatusNotFound}, Security: writes}, h.deleteMessage)
@@ -412,18 +416,37 @@ func (h *MessageHandler) updateMessage(r *http.Request, in updateMessageRequest)
 	// The answer, and the events, are the message as stored: read back in the
 	// change's own transaction, so a change that fails, or cannot be read
 	// back, is neither answered nor announced as made.
-	if len(updates) > 0 {
-		err = h.db.Transaction(func(tx *gorm.DB) error {
-			if err := tx.Model(&msg).Updates(updates).Error; err != nil {
-				return err
+	//
+	// unchanged_since (RFC 7162 §3.1.3) is checked by the UPDATE itself, so no other
+	// change can land between the check and the write: a row whose mod_seq has
+	// passed the value is not matched, and the change is refused with nothing
+	// written. With nothing to change the stored mod_seq is compared alone.
+	modified := false
+	err = h.db.Transaction(func(tx *gorm.DB) error {
+		if len(updates) > 0 {
+			write := tx.Model(&msg)
+			if req.UnchangedSince != nil {
+				write = write.Where("mod_seq <= ?", *req.UnchangedSince)
 			}
-			return tx.First(&msg, in.ID).Error
-		})
-	} else {
-		err = h.db.First(&msg, in.ID).Error
-	}
+			result := write.Updates(updates)
+			if result.Error != nil {
+				return result.Error
+			}
+			modified = req.UnchangedSince != nil && result.RowsAffected == 0
+		}
+		if err := tx.First(&msg, in.ID).Error; err != nil {
+			return err
+		}
+		if len(updates) == 0 && req.UnchangedSince != nil && msg.ModSeq > *req.UnchangedSince {
+			modified = true
+		}
+		return nil
+	})
 	if err != nil {
 		return Message{}, fmt.Errorf("update message: %w", err)
+	}
+	if modified {
+		return Message{}, errMessageModified
 	}
 
 	if h.broker != nil {
@@ -1358,6 +1381,12 @@ func (h *MessageHandler) RegisterFolders(rs endpoint.Routes) {
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/accounts/{id}/folders",
 		OperationID: "listFolders", Summary: "List folders for an account", Tags: tags,
 		Errors: []int{http.StatusForbidden, http.StatusNotFound}, Security: reads}, h.listFolders)
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/accounts/{id}/folders/{folder}/vanished",
+		OperationID: "listVanishedUIDs", Summary: "List the messages that left a folder since a mod-sequence", Tags: tags,
+		Description: "The UIDs (message IDs) of the messages that left the folder, by an expunge, a delete or a move out, at a mod-sequence above since, " +
+			"in ascending UID order, each with the folder's mod-sequence when it left: what IMAP QRESYNC answers as VANISHED (EARLIER) (RFC 7162 §3.2.5.1). " +
+			"A message that came back into the folder is not listed. A page is followed by the next with after_uid set to the cursor.",
+		Errors: []int{http.StatusForbidden, http.StatusNotFound}, Security: reads}, h.listVanishedUIDs)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/accounts/{id}/folders",
 		OperationID: "createFolder", Summary: "Create a new folder", Tags: tags, Status: http.StatusCreated,
 		Description: folderNameRule + " A folder that already exists is 409 already_exists, INBOX in any case, Sent, " +
@@ -1404,7 +1433,7 @@ func (h *MessageHandler) listFolders(r *http.Request, in accountPath) (endpoint.
 
 	var folders []FolderSummary
 	if err := h.db.Model(&models.Message{}).
-		Select("folder, COUNT(CASE WHEN is_deleted = false AND imap_deleted = false AND "+visibleThreads+" THEN 1 END) as total, COUNT(CASE WHEN is_deleted = false AND imap_deleted = false AND is_read = false AND "+visibleThreads+" THEN 1 END) as unread, MAX(id) as highest_id").
+		Select("folder, COUNT(CASE WHEN is_deleted = false AND imap_deleted = false AND "+visibleThreads+" THEN 1 END) as total, COUNT(CASE WHEN is_deleted = false AND imap_deleted = false AND is_read = false AND "+visibleThreads+" THEN 1 END) as unread, MAX(id) as highest_id, MAX(mod_seq) as max_mod_seq").
 		Where("mailbox_id = ?", mailboxID).
 		Group("folder").
 		Order("folder ASC").
@@ -1433,11 +1462,71 @@ func (h *MessageHandler) listFolders(r *http.Request, in accountPath) (endpoint.
 	for _, m := range marks {
 		highest[m.Folder] = m.HighestUID
 	}
+	// HIGHESTMODSEQ, likewise, outlives what left the folder (RFC 7162, go-imap#162):
+	// the folder's mod-sequence rises with every change, a message leaving it
+	// included. It is at least 1, as a folder that keeps mod-sequences reports
+	// (§3.1.2.1); 0 would say it keeps none.
+	var modSeqs []models.FolderModSeq
+	if err := h.db.Where("mailbox_id = ?", mailboxID).Find(&modSeqs).Error; err != nil {
+		return endpoint.List[FolderSummary]{}, fmt.Errorf("list folder mod-sequences: %w", err)
+	}
+	highestModSeq := make(map[string]uint64, len(modSeqs))
+	for _, m := range modSeqs {
+		highestModSeq[m.Folder] = m.HighestModSeq
+	}
 	for i := range folders {
 		folders[i].UIDNext = max(folders[i].HighestID, highest[folders[i].Folder]) + 1
+		folders[i].HighestModSeq = max(folders[i].MaxModSeq, highestModSeq[folders[i].Folder], 1)
 	}
 
 	return endpoint.List[FolderSummary]{Data: folders}, nil
+}
+
+// VanishedUID is a message that left a folder, with the folder's mod-sequence when it left.
+type VanishedUID = apitypes.VanishedUID
+
+// listVanishedUIDsRequest names a folder and the mod-sequence after which its departures
+// are listed, a page at a time.
+type listVanishedUIDsRequest struct {
+	ID       uint32  `path:"id" minimum:"1" example:"1"`
+	Folder   string  `path:"folder" example:"INBOX"`
+	Since    *uint64 `query:"since" minimum:"0" message:"must be a whole number" description:"List only what left at a mod-sequence above this; left out, everything recorded"`
+	AfterUID *uint64 `query:"after_uid" minimum:"1" message:"must be a positive whole number" description:"The cursor of the page before: list UIDs above it"`
+	Limit    *int    `query:"limit" minimum:"1" maximum:"1000" message:"must be between 1 and 1000" description:"The page size, 500 when left out"`
+}
+
+// listVanishedUIDs lists the UIDs that left a folder above a mod-sequence (RFC 7162
+// §3.2.5.1), lowest UID first, for IMAP's QRESYNC.
+func (h *MessageHandler) listVanishedUIDs(r *http.Request, in listVanishedUIDsRequest) (endpoint.List[VanishedUID], error) {
+	h = h.forRequest(r)
+	var zero endpoint.List[VanishedUID]
+	mailboxID, err := h.accountMailbox(r, in.ID, models.CapMailRead)
+	if err != nil {
+		return zero, err
+	}
+	limit := 500
+	if in.Limit != nil {
+		limit = *in.Limit
+	}
+	query := h.db.Model(&models.FolderVanishedUID{}).Select("uid, mod_seq").
+		Where("mailbox_id = ? AND folder = ?", mailboxID, rmail.CanonicalFolder(in.Folder)).
+		Order("uid ASC").Limit(limit + 1)
+	if in.Since != nil {
+		query = query.Where("mod_seq > ?", *in.Since)
+	}
+	if in.AfterUID != nil {
+		query = query.Where("uid > ?", *in.AfterUID)
+	}
+	vanished := []VanishedUID{}
+	if err := query.Scan(&vanished).Error; err != nil {
+		return zero, fmt.Errorf("list vanished UIDs: %w", err)
+	}
+	page := &respond.Pagination{HasMore: len(vanished) > limit}
+	if page.HasMore {
+		vanished = vanished[:limit]
+		page.Cursor = strconv.FormatUint(vanished[limit-1].UID, 10)
+	}
+	return endpoint.List[VanishedUID]{Data: vanished, Pagination: page}, nil
 }
 
 // createFolder creates a new mailbox folder.

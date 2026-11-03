@@ -503,7 +503,7 @@ export interface paths {
         };
         /**
          * Server-Sent Events stream for real-time updates
-         * @description A stream of the account's events, new_message, message_updated, message_deleted, message_sent or folder_update, each an id, the event's name and its JSON data. A Last-Event-ID header asks for the events after it that the server still holds. The session is checked when the stream opens, and again before every event and keepalive: once the account's sessions end, the stream ends without sending anything more. Access lookup failures return 500 before a stream opens; missing or inaccessible accounts retain 403.
+         * @description A stream of the account's events, new_message, message_updated, message_deleted, message_sent or folder_update, each an id, the event's name and its JSON data. A Last-Event-ID header asks for the events after it that the server still holds. The session is checked when the stream opens, and again before every event and keepalive: once the account's sessions end, the stream ends without sending anything more. Access lookup failures return 500 before a stream opens; a missing account, or one the caller may not know of, answers 404, and one the caller can see without mail:read answers 403.
          */
         get: operations["accountEvents"];
         put?: never;
@@ -568,6 +568,26 @@ export interface paths {
         };
         /** List messages in a folder */
         get: operations["listMessages"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounts/{id}/folders/{folder}/vanished": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the messages that left a folder since a mod-sequence
+         * @description The UIDs (message IDs) of the messages that left the folder, by an expunge, a delete or a move out, at a mod-sequence above since, in ascending UID order, each with the folder's mod-sequence when it left: what IMAP QRESYNC answers as VANISHED (EARLIER) (RFC 7162 §3.2.5.1). A message that came back into the folder is not listed. A page is followed by the next with after_uid set to the cursor.
+         */
+        get: operations["listVanishedUIDs"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2695,7 +2715,10 @@ export interface paths {
         delete: operations["deleteMessage"];
         options?: never;
         head?: never;
-        /** Update message flags or move to a folder */
+        /**
+         * Update message flags or move to a folder
+         * @description With unchanged_since the change is made only while the message's mod_seq is at most that value, checked and written in one statement, as IMAP's STORE (UNCHANGEDSINCE) (RFC 7162 §3.1.3); otherwise it answers 409 message_modified and changes nothing. Read the message again for its current mod_seq.
+         */
         patch: operations["updateMessage"];
         trace?: never;
     };
@@ -3651,6 +3674,7 @@ export interface components {
             name: string;
         };
         FolderSummary: {
+            highest_mod_seq: number;
             name: string;
             /** Format: int64 */
             total: number;
@@ -3793,6 +3817,10 @@ export interface components {
             data: components["schemas"]["TLSReport"][];
             pagination?: components["schemas"]["Pagination"] | null;
         };
+        "List-VanishedUID": {
+            data: components["schemas"]["VanishedUID"][];
+            pagination?: components["schemas"]["Pagination"] | null;
+        };
         "List-accountResponse": {
             data: components["schemas"]["accountResponse"][];
             pagination?: components["schemas"]["Pagination"] | null;
@@ -3893,6 +3921,7 @@ export interface components {
             mailbox?: components["schemas"]["Mailbox"] | null;
             mailbox_id: number;
             message_id: string;
+            mod_seq?: number;
             raw_size: number;
             /** Format: date-time */
             received_at: string;
@@ -4779,6 +4808,10 @@ export interface components {
         ValidationErrorResponse: {
             error: components["schemas"]["ValidationErrorBody"];
         };
+        VanishedUID: {
+            mod_seq: number;
+            uid: number;
+        };
         acceptInvitationRequest: {
             /** @enum {string} */
             client?: "native";
@@ -5588,6 +5621,7 @@ export interface components {
             is_read?: boolean | null;
             is_starred?: boolean | null;
             keywords?: string[] | null;
+            unchanged_since?: number | null;
         };
         updatePipelineRequestBody: {
             active?: boolean | null;
@@ -9067,6 +9101,110 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["List-Message"];
+                };
+            };
+            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After": number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listVanishedUIDs: {
+        parameters: {
+            query?: {
+                /** @description List only what left at a mod-sequence above this; left out, everything recorded */
+                since?: number;
+                /** @description The cursor of the page before: list UIDs above it */
+                after_uid?: number;
+                /** @description The page size, 500 when left out */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                id: number;
+                folder: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["List-VanishedUID"];
                 };
             };
             /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
@@ -23632,6 +23770,15 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

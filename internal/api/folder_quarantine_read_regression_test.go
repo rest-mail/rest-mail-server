@@ -37,6 +37,18 @@ func (c folderQuarantineReadConnection) QueryContext(ctx context.Context, query 
 		}
 		return r, nil
 	}
+	if strings.Contains(query, `FROM "folder_mod_seqs"`) {
+		if len(args) == 0 || !strings.Contains(query, "mailbox_id =") {
+			return nil, errors.New("folder mod-sequences lost account restriction")
+		}
+		// Messages left INBOX and Trash after their last change: their
+		// HIGHESTMODSEQ stays above what the rows still hold (go-imap#162).
+		r := &authReadSnapshotRows{columns: []string{"mailbox_id", "folder", "highest_mod_seq"}}
+		if fmt.Sprint(args[0].Value) != "2" {
+			r.rows = [][]driver.Value{{args[0].Value, "INBOX", int64(90)}, {args[0].Value, "Trash", int64(14)}, {args[0].Value, "Archive", int64(20)}}
+		}
+		return r, nil
+	}
 	if !folders && !quarantine {
 		return c.personalDataReadConnection.QueryContext(ctx, query, args)
 	}
@@ -45,7 +57,7 @@ func (c folderQuarantineReadConnection) QueryContext(ctx context.Context, query 
 	}
 	id := fmt.Sprint(args[0].Value)
 	if folders {
-		for _, part := range []string{"COUNT(CASE WHEN is_deleted = false", "is_read = false", "MAX(id) as highest_id", "GROUP BY", "ORDER BY folder ASC"} {
+		for _, part := range []string{"COUNT(CASE WHEN is_deleted = false", "is_read = false", "MAX(id) as highest_id", "MAX(mod_seq) as max_mod_seq", "GROUP BY", "ORDER BY folder ASC"} {
 			if !strings.Contains(query, part) {
 				return nil, fmt.Errorf("folder summary lost %s", part)
 			}
@@ -53,9 +65,9 @@ func (c folderQuarantineReadConnection) QueryContext(ctx context.Context, query 
 		if id == "4" {
 			return nil, errors.New("private folder aggregation detail")
 		}
-		r := &authReadSnapshotRows{columns: []string{"folder", "total", "unread", "highest_id"}}
+		r := &authReadSnapshotRows{columns: []string{"folder", "total", "unread", "highest_id", "max_mod_seq"}}
 		if id != "2" {
-			r.rows = [][]driver.Value{{"Archive", int64(2), int64(1), int64(40)}, {"INBOX", int64(5), int64(2), int64(55)}, {"Projects/2026", int64(0), int64(0), int64(12)}}
+			r.rows = [][]driver.Value{{"Archive", int64(2), int64(1), int64(40), int64(20)}, {"INBOX", int64(5), int64(2), int64(55), int64(87)}, {"Projects/2026", int64(0), int64(0), int64(12), int64(3)}}
 		}
 		return r, nil
 	}

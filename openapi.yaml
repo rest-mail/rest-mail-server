@@ -3343,6 +3343,77 @@ paths:
                   pagination:
                     $ref: "#/components/schemas/Pagination"
 
+  /api/v1/accounts/{id}/folders/{folder}/vanished:
+    parameters:
+      - $ref: "#/components/parameters/AccountId"
+      - $ref: "#/components/parameters/FolderName"
+    get:
+      operationId: listVanishedUIDs
+      tags: [Folders]
+      security:
+        - CookieAuth: [mail:read]
+        - BearerAuth: [mail:read]
+        - APIKeyAuth: [mail:read]
+        - BasicAuth: [mail:read]
+      summary: List the messages that left a folder since a mod-sequence
+      description: >-
+        The UIDs (message IDs) of the messages that left the folder, by an expunge,
+        a delete or a move out, at a mod-sequence above since, in ascending UID
+        order, each with the folder's mod-sequence when it left; what IMAP QRESYNC
+        answers as VANISHED (EARLIER) (RFC 7162 §3.2.5.1).
+      parameters:
+        - name: since
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+        - name: after_uid
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+      responses:
+        "200":
+          description: The UIDs that left the folder, a page at a time
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/VanishedUID"
+                  pagination:
+                    type: [object, "null"]
+                    required: [has_more]
+                    properties:
+                      cursor:
+                        type: string
+                        description: The after_uid of the next page
+                      has_more:
+                        type: boolean
+                      total:
+                        type: integer
+                        format: int64
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          description: Too many requests
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/v1/messages/{id}:
     parameters:
       - $ref: "#/components/parameters/MessageId"
@@ -3409,6 +3480,12 @@ paths:
                     $ref: "#/components/schemas/Message"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          description: message_modified — unchanged_since was given and the message's mod_seq is above it; nothing was changed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
     delete:
       operationId: deleteMessage
       tags: [Messages]
@@ -15826,7 +15903,7 @@ components:
     # ─────────────────────────────────────────────────────────────
     Folder:
       type: object
-      required: [name, total, unread, uid_next]
+      required: [name, total, unread, uid_next, highest_mod_seq]
       properties:
         name:
           type: string
@@ -15838,6 +15915,23 @@ components:
           type: integer
           minimum: 1
           description: The folder's IMAP UIDNEXT (RFC 3501 §2.3.1.1), one more than the highest message ID ever stored in it. Expunging a message never lowers it.
+        highest_mod_seq:
+          type: integer
+          minimum: 1
+          description: The folder's IMAP HIGHESTMODSEQ (RFC 7162 §3.1.2.1), the highest mod_seq any change in it has had, including messages that left it. It never falls.
+
+    VanishedUID:
+      type: object
+      required: [uid, mod_seq]
+      properties:
+        uid:
+          type: integer
+          minimum: 1
+          description: The message's ID, which is its IMAP UID
+        mod_seq:
+          type: integer
+          minimum: 1
+          description: The folder's mod-sequence when the message left it
 
     FolderName:
       type: object
@@ -16075,6 +16169,10 @@ components:
           type: boolean
         imap_deleted:
           type: boolean
+        mod_seq:
+          type: integer
+          minimum: 1
+          description: The message's IMAP mod-sequence (RFC 7162 §3.1). It rises whenever the message is stored or moved into its folder and whenever a flag changes, and never falls.
         keywords:
           type: array
           items:
@@ -16115,6 +16213,9 @@ components:
           # The folder rule createFolder applies: a move makes the folder if there is none.
           type: string
           minLength: 1
+        unchanged_since:
+          type: [integer, "null"]
+          description: Change the message only if its mod_seq is still at most this value (IMAP STORE UNCHANGEDSINCE, RFC 7162 §3.1.3); a higher mod_seq answers 409 message_modified and changes nothing.
 
     SendMessageRequest:
       type: object

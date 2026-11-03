@@ -45,6 +45,8 @@ type fakeMsg struct {
 	imapDeleted bool
 	keywords    []string
 	receivedAt  time.Time
+	// modSeq is the message's mod-sequence, from its folder's (RFC 7162).
+	modSeq uint64
 }
 
 type patchRecord struct {
@@ -62,6 +64,11 @@ type fakeAPI struct {
 	// marks is the highest ID each folder held before a delete removed it,
 	// so the folder listing's uid_next does not fall, as the API keeps it.
 	marks map[string]uint
+	// modSeqs is each folder's HIGHESTMODSEQ and vanished the UIDs that left
+	// each folder with the mod-sequence they left at, kept as the API's
+	// triggers keep them: every visible change raises the folder's value.
+	modSeqs  map[string]uint64
+	vanished map[string]map[uint]uint64
 	// importStatus, when non-zero, is the HTTP status the import endpoint
 	// returns instead of a normal 200; importBody is the JSON body to send with
 	// it. Together they let a test simulate a quarantined/discarded delivery
@@ -77,10 +84,47 @@ func newFakeAPI() *fakeAPI {
 func (f *fakeAPI) seed(id uint, folder, raw, subject string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.msgs[id] = &fakeMsg{
+	f.put(&fakeMsg{
 		id: id, folder: folder, raw: raw, subject: subject,
 		sender: "sender@example.com", senderNm: "Sender",
+	})
+}
+
+// put stores m in its folder with the folder's next mod-sequence. f.mu is held.
+func (f *fakeAPI) put(m *fakeMsg) {
+	f.msgs[m.id] = m
+	m.modSeq = f.bump(m.folder)
+	delete(f.vanished[m.folder], m.id)
+}
+
+// bump raises folder's mod-sequence and returns the new value. f.mu is held.
+func (f *fakeAPI) bump(folder string) uint64 {
+	if f.modSeqs == nil {
+		f.modSeqs = map[string]uint64{}
 	}
+	f.modSeqs[folder]++
+	return f.modSeqs[folder]
+}
+
+// leave records that the message id left folder, at a new mod-sequence. f.mu is held.
+func (f *fakeAPI) leave(folder string, id uint) {
+	if f.vanished == nil {
+		f.vanished = map[string]map[uint]uint64{}
+	}
+	if f.vanished[folder] == nil {
+		f.vanished[folder] = map[uint]uint64{}
+	}
+	f.vanished[folder][id] = f.bump(folder)
+}
+
+// modSeqOf is the mod-sequence of message id, 0 when there is none.
+func (f *fakeAPI) modSeqOf(id uint) uint64 {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if m := f.msgs[id]; m != nil {
+		return m.modSeq
+	}
+	return 0
 }
 
 func (f *fakeAPI) exists(id uint) bool {
@@ -132,6 +176,7 @@ func (f *fakeAPI) handler() http.Handler {
 	mux.HandleFunc("POST /api/v1/auth/protocol-sign-in", f.login)
 	mux.HandleFunc("GET /api/v1/accounts/{acct}/folders", f.listFolders)
 	mux.HandleFunc("GET /api/v1/accounts/{acct}/folders/{folder}/messages", f.listMessages)
+	mux.HandleFunc("GET /api/v1/accounts/{acct}/folders/{folder}/vanished", f.listVanished)
 	mux.HandleFunc("POST /api/v1/accounts/{acct}/messages/import", f.importMessage)
 	mux.HandleFunc("GET /api/v1/messages/{id}/raw", f.raw)
 	mux.HandleFunc("GET /api/v1/messages/{id}", f.getMessage)
@@ -179,6 +224,7 @@ func (f *fakeAPI) listMessages(w http.ResponseWriter, r *http.Request) {
 			IsFlagged:   m.isFlagged,
 			IsStarred:   m.isStarred,
 			IsDraft:     m.isDraft,
+			ModSeq:      m.modSeq,
 			ReceivedAt:  fakeReceivedAt,
 		})
 	}
@@ -223,7 +269,7 @@ func (f *fakeAPI) importMessage(w http.ResponseWriter, r *http.Request) {
 			m.keywords = append(m.keywords, flag)
 		}
 	}
-	f.msgs[id] = m
+	f.put(m)
 	f.mu.Unlock()
 	var resp apiclient.ImportResponse
 	resp.Data.ID = id
@@ -257,11 +303,20 @@ func (f *fakeAPI) getMessage(w http.ResponseWriter, r *http.Request) {
 	id := pathID(r)
 	f.mu.Lock()
 	m := f.msgs[id]
+	var dr apiclient.MessageDetailResponse
+	if m != nil {
+		dr = f.detail(m)
+	}
 	f.mu.Unlock()
 	if m == nil {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
+	writeJSON(w, dr)
+}
+
+// detail is m as the API answers it. f.mu is held.
+func (f *fakeAPI) detail(m *fakeMsg) apiclient.MessageDetailResponse {
 	received := m.receivedAt
 	if received.IsZero() {
 		received = fakeReceivedAt
@@ -281,9 +336,10 @@ func (f *fakeAPI) getMessage(w http.ResponseWriter, r *http.Request) {
 		IsFlagged:   m.isFlagged,
 		IsStarred:   m.isStarred,
 		IsDraft:     m.isDraft,
+		ModSeq:      m.modSeq,
 		ReceivedAt:  received,
 	}
-	writeJSON(w, dr)
+	return dr
 }
 
 func (f *fakeAPI) raw(w http.ResponseWriter, r *http.Request) {
@@ -304,23 +360,71 @@ func (f *fakeAPI) patch(w http.ResponseWriter, r *http.Request) {
 	var updates map[string]interface{}
 	_ = json.NewDecoder(r.Body).Decode(&updates)
 	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.patches = append(f.patches, patchRecord{id: id, updates: updates})
-	if m := f.msgs[id]; m != nil {
-		if deleted, ok := updates["imap_deleted"].(bool); ok {
-			m.imapDeleted = deleted
+	m := f.msgs[id]
+	if m == nil {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	// unchanged_since is checked against the stored mod_seq before anything is
+	// written, as the API's conditional UPDATE does (RFC 7162 §3.1.3).
+	if since, ok := updates["unchanged_since"].(float64); ok && m.modSeq > uint64(since) {
+		w.WriteHeader(http.StatusConflict)
+		writeJSON(w, map[string]any{"error": map[string]string{"code": "message_modified"}})
+		return
+	}
+	before := *m
+	setFlag := func(key string, flag *bool) {
+		if v, ok := updates[key].(bool); ok {
+			*flag = v
 		}
-		if keywords, ok := updates["keywords"].([]interface{}); ok {
-			m.keywords = nil
-			for _, keyword := range keywords {
-				m.keywords = append(m.keywords, keyword.(string))
-			}
+	}
+	setFlag("imap_deleted", &m.imapDeleted)
+	setFlag("is_read", &m.isRead)
+	setFlag("is_flagged", &m.isFlagged)
+	setFlag("is_starred", &m.isStarred)
+	setFlag("is_draft", &m.isDraft)
+	if keywords, ok := updates["keywords"].([]interface{}); ok {
+		m.keywords = nil
+		for _, keyword := range keywords {
+			m.keywords = append(m.keywords, keyword.(string))
 		}
-		if folder, ok := updates["folder"].(string); ok {
-			m.folder = folder
+	}
+	if folder, ok := updates["folder"].(string); ok && folder != m.folder {
+		f.leave(m.folder, m.id)
+		m.folder = folder
+		f.put(m)
+	} else if m.imapDeleted != before.imapDeleted || m.isRead != before.isRead || m.isFlagged != before.isFlagged ||
+		m.isStarred != before.isStarred || m.isDraft != before.isDraft || !slices.Equal(m.keywords, before.keywords) {
+		m.modSeq = f.bump(m.folder)
+	}
+	writeJSON(w, f.detail(m))
+}
+
+// listVanished answers listVanishedUIDs from the recorded departures, two at a
+// time so the client must follow the pages.
+func (f *fakeAPI) listVanished(w http.ResponseWriter, r *http.Request) {
+	since, _ := strconv.ParseUint(r.URL.Query().Get("since"), 10, 64)
+	after, _ := strconv.ParseUint(r.URL.Query().Get("after_uid"), 10, 64)
+	f.mu.Lock()
+	var out []apiclient.VanishedUID
+	for uid, modSeq := range f.vanished[r.PathValue("folder")] {
+		if modSeq > since && uint64(uid) > after {
+			out = append(out, apiclient.VanishedUID{UID: uint64(uid), ModSeq: modSeq})
 		}
 	}
 	f.mu.Unlock()
-	w.WriteHeader(http.StatusOK)
+	slices.SortFunc(out, func(a, b apiclient.VanishedUID) int { return int(a.UID) - int(b.UID) })
+	resp := struct {
+		Data       []apiclient.VanishedUID `json:"data"`
+		Pagination map[string]any          `json:"pagination"`
+	}{Data: out, Pagination: map[string]any{"has_more": false}}
+	if len(out) > 2 {
+		resp.Data = out[:2]
+		resp.Pagination = map[string]any{"has_more": true, "cursor": strconv.FormatUint(out[1].UID, 10)}
+	}
+	writeJSON(w, resp)
 }
 
 // listFolders lists the standard folders, as the API always does, and every
@@ -335,11 +439,11 @@ func (f *fakeAPI) listFolders(w http.ResponseWriter, r *http.Request) {
 	for _, m := range f.msgs {
 		highest[m.folder] = max(highest[m.folder], m.id)
 	}
-	f.mu.Unlock()
 	var resp apiclient.FolderListResponse
 	for folder, id := range highest {
-		resp.Data = append(resp.Data, apiclient.Folder{Folder: folder, UIDNext: uint64(id) + 1})
+		resp.Data = append(resp.Data, apiclient.Folder{Folder: folder, UIDNext: uint64(id) + 1, HighestModSeq: max(f.modSeqs[folder], 1)})
 	}
+	f.mu.Unlock()
 	slices.SortFunc(resp.Data, func(a, b apiclient.Folder) int { return strings.Compare(a.Folder, b.Folder) })
 	writeJSON(w, resp)
 }
@@ -353,6 +457,7 @@ func (f *fakeAPI) delete(w http.ResponseWriter, r *http.Request) {
 			f.marks = map[string]uint{}
 		}
 		f.marks[m.folder] = max(f.marks[m.folder], id)
+		f.leave(m.folder, id)
 	}
 	delete(f.msgs, id)
 	f.mu.Unlock()

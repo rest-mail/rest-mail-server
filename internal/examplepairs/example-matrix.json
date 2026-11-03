@@ -23124,37 +23124,43 @@
               "name": "Archive",
               "total": 2,
               "unread": 1,
-              "uid_next": 41
+              "uid_next": 41,
+              "highest_mod_seq": 20
             },
             {
               "name": "INBOX",
               "total": 5,
               "unread": 2,
-              "uid_next": 61
+              "uid_next": 61,
+              "highest_mod_seq": 90
             },
             {
               "name": "Projects/2026",
               "total": 0,
               "unread": 0,
-              "uid_next": 13
+              "uid_next": 13,
+              "highest_mod_seq": 3
             },
             {
               "name": "Sent",
               "total": 0,
               "unread": 0,
-              "uid_next": 1
+              "uid_next": 1,
+              "highest_mod_seq": 1
             },
             {
               "name": "Drafts",
               "total": 0,
               "unread": 0,
-              "uid_next": 1
+              "uid_next": 1,
+              "highest_mod_seq": 1
             },
             {
               "name": "Trash",
               "total": 0,
               "unread": 0,
-              "uid_next": 32
+              "uid_next": 32,
+              "highest_mod_seq": 14
             }
           ]
         },
@@ -23209,37 +23215,43 @@
               "name": "Archive",
               "total": 2,
               "unread": 1,
-              "uid_next": 41
+              "uid_next": 41,
+              "highest_mod_seq": 20
             },
             {
               "name": "INBOX",
               "total": 5,
               "unread": 2,
-              "uid_next": 61
+              "uid_next": 61,
+              "highest_mod_seq": 90
             },
             {
               "name": "Projects/2026",
               "total": 0,
               "unread": 0,
-              "uid_next": 13
+              "uid_next": 13,
+              "highest_mod_seq": 3
             },
             {
               "name": "Sent",
               "total": 0,
               "unread": 0,
-              "uid_next": 1
+              "uid_next": 1,
+              "highest_mod_seq": 1
             },
             {
               "name": "Drafts",
               "total": 0,
               "unread": 0,
-              "uid_next": 1
+              "uid_next": 1,
+              "highest_mod_seq": 1
             },
             {
               "name": "Trash",
               "total": 0,
               "unread": 0,
-              "uid_next": 32
+              "uid_next": 32,
+              "highest_mod_seq": 14
             }
           ]
         },
@@ -23260,37 +23272,43 @@
               "name": "Archive",
               "total": 2,
               "unread": 1,
-              "uid_next": 41
+              "uid_next": 41,
+              "highest_mod_seq": 20
             },
             {
               "name": "INBOX",
               "total": 5,
               "unread": 2,
-              "uid_next": 61
+              "uid_next": 61,
+              "highest_mod_seq": 90
             },
             {
               "name": "Projects/2026",
               "total": 0,
               "unread": 0,
-              "uid_next": 13
+              "uid_next": 13,
+              "highest_mod_seq": 3
             },
             {
               "name": "Sent",
               "total": 0,
               "unread": 0,
-              "uid_next": 1
+              "uid_next": 1,
+              "highest_mod_seq": 1
             },
             {
               "name": "Drafts",
               "total": 0,
               "unread": 0,
-              "uid_next": 1
+              "uid_next": 1,
+              "highest_mod_seq": 1
             },
             {
               "name": "Trash",
               "total": 0,
               "unread": 0,
-              "uid_next": 32
+              "uid_next": 32,
+              "highest_mod_seq": 14
             }
           ]
         },
@@ -23312,25 +23330,29 @@
               "name": "INBOX",
               "total": 0,
               "unread": 0,
-              "uid_next": 1
+              "uid_next": 1,
+              "highest_mod_seq": 1
             },
             {
               "name": "Sent",
               "total": 0,
               "unread": 0,
-              "uid_next": 1
+              "uid_next": 1,
+              "highest_mod_seq": 1
             },
             {
               "name": "Drafts",
               "total": 0,
               "unread": 0,
-              "uid_next": 1
+              "uid_next": 1,
+              "highest_mod_seq": 1
             },
             {
               "name": "Trash",
               "total": 0,
               "unread": 0,
-              "uid_next": 1
+              "uid_next": 1,
+              "highest_mod_seq": 1
             }
           ]
         },
@@ -23408,37 +23430,43 @@
               "name": "Archive",
               "total": 2,
               "unread": 1,
-              "uid_next": 41
+              "uid_next": 41,
+              "highest_mod_seq": 20
             },
             {
               "name": "INBOX",
               "total": 5,
               "unread": 2,
-              "uid_next": 61
+              "uid_next": 61,
+              "highest_mod_seq": 90
             },
             {
               "name": "Projects/2026",
               "total": 0,
               "unread": 0,
-              "uid_next": 13
+              "uid_next": 13,
+              "highest_mod_seq": 3
             },
             {
               "name": "Sent",
               "total": 0,
               "unread": 0,
-              "uid_next": 1
+              "uid_next": 1,
+              "highest_mod_seq": 1
             },
             {
               "name": "Drafts",
               "total": 0,
               "unread": 0,
-              "uid_next": 1
+              "uid_next": 1,
+              "highest_mod_seq": 1
             },
             {
               "name": "Trash",
               "total": 0,
               "unread": 0,
-              "uid_next": 32
+              "uid_next": 32,
+              "highest_mod_seq": 14
             }
           ]
         },
@@ -23476,37 +23504,43 @@
               "name": "Archive",
               "total": 2,
               "unread": 1,
-              "uid_next": 41
+              "uid_next": 41,
+              "highest_mod_seq": 20
             },
             {
               "name": "INBOX",
               "total": 5,
               "unread": 2,
-              "uid_next": 61
+              "uid_next": 61,
+              "highest_mod_seq": 90
             },
             {
               "name": "Projects/2026",
               "total": 0,
               "unread": 0,
-              "uid_next": 13
+              "uid_next": 13,
+              "highest_mod_seq": 3
             },
             {
               "name": "Sent",
               "total": 0,
               "unread": 0,
-              "uid_next": 1
+              "uid_next": 1,
+              "highest_mod_seq": 1
             },
             {
               "name": "Drafts",
               "total": 0,
               "unread": 0,
-              "uid_next": 1
+              "uid_next": 1,
+              "highest_mod_seq": 1
             },
             {
               "name": "Trash",
               "total": 0,
               "unread": 0,
-              "uid_next": 32
+              "uid_next": 32,
+              "highest_mod_seq": 14
             }
           ]
         },
@@ -23578,37 +23612,43 @@
               "name": "Archive",
               "total": 2,
               "unread": 1,
-              "uid_next": 41
+              "uid_next": 41,
+              "highest_mod_seq": 20
             },
             {
               "name": "INBOX",
               "total": 5,
               "unread": 2,
-              "uid_next": 61
+              "uid_next": 61,
+              "highest_mod_seq": 90
             },
             {
               "name": "Projects/2026",
               "total": 0,
               "unread": 0,
-              "uid_next": 13
+              "uid_next": 13,
+              "highest_mod_seq": 3
             },
             {
               "name": "Sent",
               "total": 0,
               "unread": 0,
-              "uid_next": 1
+              "uid_next": 1,
+              "highest_mod_seq": 1
             },
             {
               "name": "Drafts",
               "total": 0,
               "unread": 0,
-              "uid_next": 1
+              "uid_next": 1,
+              "highest_mod_seq": 1
             },
             {
               "name": "Trash",
               "total": 0,
               "unread": 0,
-              "uid_next": 32
+              "uid_next": 32,
+              "highest_mod_seq": 14
             }
           ]
         },
