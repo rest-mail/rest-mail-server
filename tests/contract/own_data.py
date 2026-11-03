@@ -1,9 +1,10 @@
 """The operations that start from a clean database, in a run of their own (#1385).
 
 MOVED resets and seeds before each exchange and makes the data that exchange
-needs (hooks.py, start_clean). A reset removes what createDomain made, so the run
-also sends everything that follows createDomain's links, which must still pass
-with that domain gone: the same operations without a reset are the comparison.
+needs (hooks.py, start_clean). A reset removes what createDomain and
+createPipeline made, so the run also sends everything that follows their links,
+which must still pass with that domain or pipeline gone: the same operations
+without a reset are the comparison.
 
 A reset also removes every principal and fixture the other phases use, and the
 primary run still has operations that depend on them, so this is sent after
@@ -23,7 +24,15 @@ import xml.etree.ElementTree as ET
 
 import yaml
 
-MOVED = ("getDomain", "setMtaStsPolicy", "getMtaStsPolicy", "deleteMtaStsPolicy")
+MOVED = (
+    "getDomain",
+    "setMtaStsPolicy",
+    "getMtaStsPolicy",
+    "deleteMtaStsPolicy",
+    "createPipeline",
+    "testPipeline",
+    "deletePipeline",
+)
 
 FOLLOWS_THE_CREATED_DOMAIN = (
     "createDomain",
@@ -46,9 +55,14 @@ FOLLOWS_THE_CREATED_DOMAIN = (
     "updateDomain",
 )
 
+# deletePipeline, the other, has moved.
+FOLLOWS_THE_CREATED_PIPELINE = ("updatePipeline",)
+
 
 def configure(config):
-    config["operation-id"] = list(MOVED + FOLLOWS_THE_CREATED_DOMAIN)
+    config["operation-id"] = list(
+        MOVED + FOLLOWS_THE_CREATED_DOMAIN + FOLLOWS_THE_CREATED_PIPELINE
+    )
     config.pop("surface", None)
     # The gate's list of what it could not send is its own.
     config["unproven"] = ".cache/contract/unproven-own-data.json"

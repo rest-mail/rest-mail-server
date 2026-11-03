@@ -12,6 +12,9 @@ import own_data
 
 ROOT = Path(__file__).resolve().parents[2]
 
+# What reads or wrote the pipeline the run kept, and what follows its link.
+PIPELINES = ("createPipeline", "testPipeline", "deletePipeline", "updatePipeline")
+
 
 def link_followers(description, start):
     """The operations reachable from start through the description's links."""
@@ -44,7 +47,11 @@ class Selection(unittest.TestCase):
         out = own_data.configure(config)
         self.assertEqual(
             out["operation-id"],
-            list(own_data.MOVED + own_data.FOLLOWS_THE_CREATED_DOMAIN),
+            list(
+                own_data.MOVED
+                + own_data.FOLLOWS_THE_CREATED_DOMAIN
+                + own_data.FOLLOWS_THE_CREATED_PIPELINE
+            ),
         )
         self.assertEqual(
             out["exclude-operation-id"], ["resetTestData", "restoreTestSnapshot"]
@@ -56,8 +63,19 @@ class Selection(unittest.TestCase):
         description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
         selected = set(own_data.MOVED + own_data.FOLLOWS_THE_CREATED_DOMAIN)
         self.assertEqual(
-            selected, link_followers(description, "createDomain") | {"createDomain"}
+            selected - set(PIPELINES),
+            link_followers(description, "createDomain") | {"createDomain"},
         )
+
+    def test_it_selects_every_pipeline_operation_and_its_links(self):
+        description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
+        self.assertEqual(
+            link_followers(description, "createPipeline"),
+            {"updatePipeline", "deletePipeline"},
+        )
+        selected = set(own_data.MOVED + own_data.FOLLOWS_THE_CREATED_PIPELINE)
+        self.assertLessEqual(set(PIPELINES), selected)
+        self.assertEqual(own_data.FOLLOWS_THE_CREATED_PIPELINE, ("updatePipeline",))
 
     def test_a_skipped_exchange_is_not_a_pass(self):
         with tempfile.TemporaryDirectory() as directory:
