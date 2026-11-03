@@ -165,7 +165,7 @@ class SendMessageProbes(unittest.TestCase):
 
 
 class SendingPolicySetup(unittest.TestCase):
-    """The policy half of the hook, which a new process starts knowing nothing about."""
+    """The policy half of the hook: an ordinary send asks nothing of the server."""
 
     def setUp(self):
         self.hooks, self.stub = load_hooks()
@@ -186,16 +186,17 @@ class SendingPolicySetup(unittest.TestCase):
 
     transaction = {"protocol": "http:", "host": "127.0.0.1", "port": "1"}
 
-    def test_a_new_process_clears_a_policy_an_earlier_one_left(self):
+    def test_a_new_process_makes_no_request_for_no_policy(self):
         self.hooks.set_the_admin_domains_policy(self.transaction, "")
-        self.assertEqual(self.patches, [("http://127.0.0.1:1/api/v1/admin/domains/1", {"sending_policy": ""})])
+        self.assertEqual(self.patches, [])
 
     def test_a_policy_this_process_set_is_not_set_again(self):
-        self.hooks.set_the_admin_domains_policy(self.transaction, "")
-        self.hooks.set_the_admin_domains_policy(self.transaction, "")
-        self.assertEqual(len(self.patches), 1)
         self.hooks.set_the_admin_domains_policy(self.transaction, "transactional")
-        self.assertEqual(len(self.patches), 2)
+        self.hooks.set_the_admin_domains_policy(self.transaction, "transactional")
+        self.assertEqual(self.patches, [("http://127.0.0.1:1/api/v1/admin/domains/1", {"sending_policy": "transactional"})])
+        self.hooks.set_the_admin_domains_policy(self.transaction, "")
+        self.hooks.set_the_admin_domains_policy(self.transaction, "")
+        self.assertEqual(self.patches[1:], [("http://127.0.0.1:1/api/v1/admin/domains/1", {"sending_policy": ""})])
 
 
 if __name__ == "__main__":

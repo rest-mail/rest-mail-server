@@ -1306,8 +1306,8 @@ to the probe, and the request is never rewritten.
 Domain probes used to leave `restmail.test` at a `bulk` sending policy, so a send
 from it needed `list_unsubscribe`. That one cause skipped `sendMessage`'s 14 probes
 and `sendDraft`'s 1, and failed `cancelScheduledMessage`'s fixture. `off_the_admin_domain`
-now moves those probes in the coverage process, and the first send of a process
-sets the policy instead of assuming it is empty.
+now moves those probes in the coverage process, so `restmail.test` keeps no policy
+and an ordinary send has no setup request to make.
 
 These probes are accepted, so they send mail. Vertrag's generator has one
 address for `format: idn-email` and does not read the description's examples, so

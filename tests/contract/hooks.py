@@ -1071,10 +1071,8 @@ def ask_for_the_created_domains_policy(transaction):
 
 def set_the_admin_domains_policy(transaction, policy):
     """Make restmail.test's sending_policy policy ("" for none), through the
-    admin API, unless this process already made it so. The stash starts empty
-    in each process, and that says nothing about the domain: an earlier process
-    may have left a policy, so the first send always sets it."""
-    if hooks.stash.get("admin_domain_policy") == policy:
+    admin API, unless it already is."""
+    if hooks.stash.get("admin_domain_policy", "") == policy:
         return
     origin = "{}//{}:{}".format(
         transaction["protocol"],
