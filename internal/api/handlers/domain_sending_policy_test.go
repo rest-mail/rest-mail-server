@@ -102,7 +102,7 @@ func TestSendMessage_DomainSendingPolicy(t *testing.T) {
 			if err := h.db.Create(&models.Domain{Name: domain, SendingPolicy: tc.policy}).Error; err != nil {
 				t.Fatalf("seed the domain: %v", err)
 			}
-			sender := seedSendingMailbox(t, h.db, domain, "news")
+			sender := seedSenderWithOwnData(t, h.db, domain, "news")
 			claims := &auth.Claims{AccountID: sender.ID, CredentialKind: "app_password"}
 			withDomain := func(s string) string {
 				if s == "" {

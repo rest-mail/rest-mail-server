@@ -78,7 +78,7 @@ func TestDelivery_KeepsTheREQUIRETLSTag(t *testing.T) {
 // delivers it only as RFC 8689 §4.2.1 allows; without it the queued copy is untagged (#724).
 func TestSendMessage_RequireTLSTagsTheQueuedCopy(t *testing.T) {
 	h, domain, _ := seedSigningDomain(t, "requiretls-send")
-	sender := seedSendingMailbox(t, h.db, domain, "dana")
+	sender := seedSenderWithOwnData(t, h.db, domain, "dana")
 	claims := &auth.Claims{AccountID: sender.ID, CredentialKind: "app_password"}
 	for _, tagged := range []bool{true, false} {
 		body := fmt.Sprintf(`{"from":%q,"to":["bob@example.net"],"subject":"Hi","body_text":"hello","require_tls":%t}`, sender.Address, tagged)
