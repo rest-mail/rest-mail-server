@@ -143,6 +143,9 @@ class OwnDataHooks(unittest.TestCase):
             "updateCustomFilter": "on_a_custom_filter_of_its_own",
             "testCustomFilter": "on_a_custom_filter_of_its_own",
             "deleteCustomFilter": "on_a_custom_filter_of_its_own",
+            "createFolder": "remove_a_previous_folder_probe",
+            "renameFolder": "give_each_rename_probe_a_folder",
+            "deleteFolder": "a_folder_to_delete_of_its_own",
         }
         self.assertEqual(set(hooks), set(own_data.MOVED))
         for operation, hook in hooks.items():
