@@ -9,6 +9,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -36,7 +38,7 @@ func (connection *gapPairConnection) Connect(context.Context) (driver.Conn, erro
 }
 
 func (connection *gapPairConnection) Begin() (driver.Tx, error) {
-	if (connection.operation == "updateServerCapabilities" || connection.operation == "requestRecoveryEmail") && connection.faults == 0 {
+	if (connection.operation == "updateServerCapabilities" || connection.operation == "updateServerLimits" || connection.operation == "requestRecoveryEmail") && connection.faults == 0 {
 		connection.faults++
 		return nil, errors.New("injected transaction failure")
 	}
@@ -113,7 +115,7 @@ func TestGapDatabaseExamplePairsThroughProductionRouter(t *testing.T) {
 		t.Fatal(err)
 	}
 	routes := requirementRoutes(t)
-	for _, operation := range []string{"listClientSecrets", "createClientSecret", "revokeClientSecret", "updateServerCapabilities", "protocolSignIn", "issueClientCredentialsToken"} {
+	for _, operation := range []string{"listClientSecrets", "createClientSecret", "revokeClientSecret", "updateServerCapabilities", "updateServerLimits", "protocolSignIn", "issueClientCredentialsToken"} {
 		t.Run(operation, func(t *testing.T) {
 			pair := pairs[operation]["storage_unavailable"]
 			examplepairs.Proven(t, operation, "storage_unavailable")
@@ -138,6 +140,9 @@ func TestGapDatabaseExamplePairsThroughProductionRouter(t *testing.T) {
 			recorder := httptest.NewRecorder()
 			routers.Public.ServeHTTP(recorder, request)
 			assertRequirementResponse(t, pair, recorder)
+			if strings.Contains(recorder.Body.String(), "injected transaction failure") {
+				t.Fatal("private storage detail escaped in the response")
+			}
 			if connection.faults != 1 {
 				t.Fatalf("intended storage fault reached %d times, want 1", connection.faults)
 			}
@@ -181,13 +186,41 @@ func TestRecoveryEmailStorageFailureRemainsPrivate(t *testing.T) {
 		t.Fatal(err)
 	}
 	routers, _, connection := newGapPairRouter(t, "requestRecoveryEmail")
-	pair := pairs["requestRecoveryEmail"]["success"]
+	examplepairs.Proven(t, "requestRecoveryEmail", "database_unavailable")
+	pair := pairs["requestRecoveryEmail"]["database_unavailable"]
 	request := requirementRequest(requirementRoutes(t)["requestRecoveryEmail"], pair)
 	recorder := httptest.NewRecorder()
 	routers.Public.ServeHTTP(recorder, request)
 	assertRequirementResponse(t, pair, recorder)
 	if connection.faults != 1 {
 		t.Fatalf("storage failure reached %d times, want 1", connection.faults)
+	}
+	if strings.Contains(recorder.Body.String(), "injected transaction failure") {
+		t.Fatal("private storage detail escaped in the recovery response")
+	}
+}
+
+func TestServerLimitsFailureExamplesWithVertrag(t *testing.T) {
+	binary := os.Getenv("RESTMAIL_VERTRAG_BINARY")
+	if binary == "" {
+		t.Skip("set RESTMAIL_VERTRAG_BINARY for server limits exchanges")
+	}
+	binary, err := filepath.Abs(binary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pairs, err := examplepairs.Read()
+	if err != nil {
+		t.Fatal(err)
+	}
+	routers, jwt, connection := newGapPairRouter(t, "updateServerLimits")
+	session, err := jwt.GenerateSession(testAdminHolding([]string{"*"}), "admin@restmail.test", 0, []string{auth.AMRPassword, auth.AMROTP}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkQueueMutationPairWithVertrag(t, binary, bulkQueueExampleScenario{accountReadScenario: accountReadScenario{handler: routers.Public, token: session.AccessToken}}, http.MethodPut, "/api/v1/admin/server-limits", "storage_unavailable", pairs["updateServerLimits"]["storage_unavailable"])
+	if connection.faults != 1 {
+		t.Fatalf("transaction failures = %d, want 1", connection.faults)
 	}
 }
 

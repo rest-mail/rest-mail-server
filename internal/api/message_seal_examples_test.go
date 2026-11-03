@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -34,7 +36,10 @@ func assertExampleReceipt(t *testing.T, data map[string]any, source string, stor
 	}
 }
 
-type messageSealConnection struct{ personalDataReadConnection }
+type messageSealConnection struct {
+	personalDataReadConnection
+	faults *int
+}
 
 func (connection messageSealConnection) Connect(context.Context) (driver.Conn, error) {
 	return connection, nil
@@ -51,6 +56,10 @@ func (connection messageSealConnection) QueryContext(ctx context.Context, query 
 	}
 	rows := &authReadSnapshotRows{columns: []string{"id", "mailbox_id", "sender", "subject", "body_text", "raw_message", "message_id", "sealed_hash"}}
 	id := fmt.Sprint(args[0].Value)
+	if id == "5" {
+		*connection.faults++
+		return nil, errors.New("private seal storage detail")
+	}
 	if id == "2147483647" {
 		return rows, nil
 	}
@@ -71,25 +80,36 @@ func (connection messageSealConnection) QueryContext(ctx context.Context, query 
 	return rows, nil
 }
 
-func TestMessageSealNamedExamples(t *testing.T) {
+func messageSealScenarios(t *testing.T) (map[string]accountReadScenario, *int) {
+	t.Helper()
+	faults := new(int)
 	scenarios := accountListScenarios(t, func(mode string, keys map[string]accountListKey) driver.Connector {
-		return messageSealConnection{personalDataReadConnection{accountCredentialListConnection{mode: mode, keys: keys}}}
+		return messageSealConnection{personalDataReadConnection{accountCredentialListConnection{mode: mode, keys: keys}}, faults}
 	})
+	scenarios["storage_unavailable"] = scenarios["found"]
+	return scenarios, faults
+}
+
+func TestMessageSealNamedExamples(t *testing.T) {
+	scenarios, faults := messageSealScenarios(t)
 	pairs, err := examplepairs.Read()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(pairs["verifyMessageSeal"]) != 6 {
+	if len(pairs["verifyMessageSeal"]) != 11 {
 		t.Fatal("missing named receipt examples")
 	}
 	for name, pair := range pairs["verifyMessageSeal"] {
 		t.Run(name, func(t *testing.T) {
 			examplepairs.Proven(t, "verifyMessageSeal", name)
 			scenario := scenarios["found"]
-			if name == "unauthenticated" {
-				scenario = scenarios[name]
+			if selected, ok := scenarios[name]; ok {
+				scenario = selected
 			}
 			request := httptest.NewRequest(http.MethodGet, messageCollectionReadURI("/api/v1/messages/{id}/seal", pair), nil)
+			if name == "request_too_large" {
+				request = httptest.NewRequest(http.MethodGet, request.URL.String(), strings.NewReader("oversized"))
+			}
 			if scenario.token != "" {
 				request.Header.Set("Authorization", "Bearer "+scenario.token)
 			}
@@ -99,6 +119,12 @@ func TestMessageSealNamedExamples(t *testing.T) {
 				t.Fatalf("HTTP %d %s, want %d", response.Code, response.Body.String(), pair.Response.Status)
 			}
 			assertPublicExampleBody(t, pair.Response.Body, response.Body.Bytes())
+			if strings.Contains(response.Body.String(), "private seal storage detail") {
+				t.Fatal("private storage detail escaped in the response")
+			}
+			if name == "storage_unavailable" && *faults != 1 {
+				t.Fatalf("message lookup failures = %d, want 1", *faults)
+			}
 		})
 	}
 	for _, name := range []string{"other_account", "key_wrong_scope", "key_write_only", "no_grants"} {
@@ -115,6 +141,34 @@ func TestMessageSealNamedExamples(t *testing.T) {
 			scenario.handler.ServeHTTP(response, request)
 			if response.Code != http.StatusNotFound {
 				t.Fatalf("missing mail.read right exposed receipt: %d %s", response.Code, response.Body.String())
+			}
+		})
+	}
+}
+
+func TestMessageSealExamplesWithVertrag(t *testing.T) {
+	binary := os.Getenv("RESTMAIL_VERTRAG_BINARY")
+	if binary == "" {
+		t.Skip("set RESTMAIL_VERTRAG_BINARY for message seal exchanges")
+	}
+	binary, err := filepath.Abs(binary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pairs, err := examplepairs.Read()
+	if err != nil {
+		t.Fatal(err)
+	}
+	scenarios, faults := messageSealScenarios(t)
+	for name, pair := range pairs["verifyMessageSeal"] {
+		t.Run(name, func(t *testing.T) {
+			scenario := scenarios["found"]
+			if selected, ok := scenarios[name]; ok {
+				scenario = selected
+			}
+			checkMailboxLookupWithVertrag(t, binary, scenario.handler, scenario.token, "/api/v1/messages/{id}/seal", name, pair)
+			if name == "storage_unavailable" && *faults != 1 {
+				t.Fatalf("message lookup failures = %d, want 1", *faults)
 			}
 		})
 	}
