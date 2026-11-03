@@ -372,26 +372,34 @@ func (h *ContactHandler) block(r *http.Request, in blockSenderRequest) (endpoint
 	var contact models.Contact
 	status := http.StatusCreated
 	err = h.db.WithContext(r.Context()).Transaction(func(tx *gorm.DB) error {
-		result := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("mailbox_id = ? AND email = ?", mailboxID, email).First(&contact)
-		if result.Error == nil {
-			result := tx.Model(&contact).Where("mailbox_id = ?", mailboxID).Updates(map[string]interface{}{
+		// blockExisting locks the sender's contact, if there is one, and
+		// blocks it.
+		blockExisting := func() (bool, error) {
+			result := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("mailbox_id = ? AND email = ?", mailboxID, email).First(&contact)
+			if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+				return false, nil
+			}
+			if result.Error != nil {
+				return false, fmt.Errorf("find contact to block: %w", result.Error)
+			}
+			result = tx.Model(&contact).Where("mailbox_id = ?", mailboxID).Updates(map[string]interface{}{
 				"trust_level": "blocked",
 				"source":      "manual",
 			})
 			if result.Error != nil {
-				return endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to block sender")
+				return false, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to block sender")
 			}
 			if result.RowsAffected == 0 {
-				return fmt.Errorf("contact disappeared while blocking sender")
+				return false, fmt.Errorf("contact disappeared while blocking sender")
 			}
 			if err := tx.Where("id = ? AND mailbox_id = ?", contact.ID, mailboxID).First(&contact).Error; err != nil {
-				return fmt.Errorf("reload blocked contact: %w", err)
+				return false, fmt.Errorf("reload blocked contact: %w", err)
 			}
 			status = http.StatusOK
-			return nil
+			return true, nil
 		}
-		if !errors.Is(result.Error, gorm.ErrRecordNotFound) {
-			return fmt.Errorf("find contact to block: %w", result.Error)
+		if found, err := blockExisting(); found || err != nil {
+			return err
 		}
 		contact = models.Contact{
 			MailboxID:  mailboxID,
@@ -399,10 +407,24 @@ func (h *ContactHandler) block(r *http.Request, in blockSenderRequest) (endpoint
 			TrustLevel: "blocked",
 			Source:     "manual",
 		}
-		if err := tx.Create(&contact).Error; err != nil {
+		// With no row to lock, a concurrent request can add this sender
+		// first. The insert then waits on it and, once it commits, inserts
+		// nothing; the sender's row is now there to lock and block.
+		result := tx.Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "mailbox_id"}, {Name: "email"}},
+			DoNothing: true,
+		}).Create(&contact)
+		if result.Error != nil {
 			return endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to block sender")
 		}
-		return nil
+		if result.RowsAffected == 1 {
+			return nil
+		}
+		found, err := blockExisting()
+		if err == nil && !found {
+			err = fmt.Errorf("contact disappeared while blocking sender")
+		}
+		return err
 	})
 	if err != nil {
 		return endpoint.Status[Contact]{}, err

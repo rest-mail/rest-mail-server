@@ -21,6 +21,7 @@ func TestContactPostgresRollbackAndSuccessfulReload(t *testing.T) {
 	if err := db.AutoMigrate(&models.Contact{}); err != nil {
 		t.Fatal(err)
 	}
+	ensureDefaultServerCeiling(t, db)
 	tx := db.Begin()
 	if tx.Error != nil {
 		t.Fatal(tx.Error)
