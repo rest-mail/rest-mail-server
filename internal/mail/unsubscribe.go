@@ -33,6 +33,18 @@ type UnsubscribeTargets struct {
 	Mailto   []UnsubscribeMailto
 }
 
+// WithoutOneClick returns t with its one-click target as an ordinary link, first, as the
+// field listed it first: for a message whose DKIM signature does not cover the list fields
+// (RFC 8058 §4).
+func (t UnsubscribeTargets) WithoutOneClick() UnsubscribeTargets {
+	if t.OneClick == "" {
+		return t
+	}
+	t.Links = append([]string{t.OneClick}, t.Links...)
+	t.OneClick = ""
+	return t
+}
+
 // Empty reports whether the message offers no target.
 func (t UnsubscribeTargets) Empty() bool {
 	return t.OneClick == "" && len(t.Links) == 0 && len(t.Mailto) == 0
