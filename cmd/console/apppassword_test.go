@@ -225,8 +225,8 @@ func TestAppPasswordRevoke(t *testing.T) {
 	token := sessionToken()
 
 	code, out, errOut := runAppPasswordTest(t, []string{"revoke", "--server", srv.URL, "7"}, token, "n\n")
-	if code != exitFailed || len(*seen) != 0 || !strings.Contains(errOut, "Revoke app password 7?") {
-		t.Fatalf("answered no: exit %d, %d requests, stderr %q", code, len(*seen), errOut)
+	if code != exitFailed || len(*seen) != 0 || out != "" || !strings.Contains(errOut, "Revoke app password 7?") {
+		t.Fatalf("answered no: exit %d, %d requests, stdout %q, stderr %q", code, len(*seen), out, errOut)
 	}
 
 	code, out, errOut = runAppPasswordTest(t, []string{"revoke", "7", "--server", srv.URL}, token, "y\n")
