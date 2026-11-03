@@ -817,7 +817,7 @@ tasks:
           -e E2E_REQUIRE_STACK \
           -e E2E_LIMITS \
           -e API_BASE_URL="${CONTRACT_ENDPOINT:-http://10.99.0.20:8080}" \
-          golang:1.25 \
+          golang:1.26.10 \
           go test -race -count=1 -v -timeout 8m ./tests/e2e/... {{.CLI_ARGS}}
 
   test:contract-teardown:
@@ -1600,7 +1600,7 @@ tasks:
               -v "$(go env GOMODCACHE):/go/pkg/mod:ro" \
               -v rest-mail-e2e-gocache:/root/.cache/go-build \
               -e GOFLAGS=-buildvcs=false \
-              golang:1.25 \
+              golang:1.26.10 \
               sh -ec 'go build -o /go/bin/instance ./cmd/instance && exec /go/bin/instance "$@"' _ \
                 acme-issue -out /certs -listen :80 \
                 -renew-before "{{.CERT_RENEW_BEFORE | default "0s"}}" \
@@ -1650,7 +1650,7 @@ tasks:
               -v "$(go env GOMODCACHE):/go/pkg/mod:ro" \
               -v rest-mail-e2e-gocache:/root/.cache/go-build \
               -e GOFLAGS=-buildvcs=false \
-              golang:1.25 \
+              golang:1.26.10 \
               go run ./cmd/instance mtls-issue -out /internal-mtls \
                 -server-ip 127.0.0.1,{{.RESTMAIL_API_IP}} \
                 -server-dns api,localhost,{{.RESTMAIL_HOSTNAME}}
