@@ -31,6 +31,17 @@ import (
 	"gorm.io/gorm"
 )
 
+// importRandomCases is how many random inputs a comparison below runs: a tenth of them in a routine
+// run, the same ones first, and all of them with RESTMAIL_IMPORT_LONG_PROOF=1. Under the race
+// detector and coverage the rest are more than the package can afford on every run. The tests' own
+// tables hold an input for every statement the rest reach, in the scanner and the binder.
+func importRandomCases(all int) int {
+	if os.Getenv("RESTMAIL_IMPORT_LONG_PROOF") == "1" {
+		return all
+	}
+	return all / 10
+}
+
 // The scanner has to say what json.Valid says about anything at all, because only a body that
 // passes reaches any other rule.
 func TestJSONScannerAgreesWithJSONValid(t *testing.T) {
@@ -58,7 +69,7 @@ func TestJSONScannerAgreesWithJSONValid(t *testing.T) {
 		`true`, `false`, `null`, `tru`, `nul`, `True`, `NULL`, `truee`, `nulll`, `true false`,
 		`""`, `"`, `"a`, `"\`, `"\"`, `"\\"`, `"\/"`, `"\b\f\n\r\t"`, `"\a"`, `"\u"`, `"\u12"`, `"\u123g"`, `"\u00e9"`, `"\uD83D\uDE00"`, `"\uD83D"`, "\"a\tb\"", "\"a\nb\"", "\"\x00\"", "\"\x1f\"", "\"\x7f\"", "\"\xff\"", "\"\xc3\xa9\"",
 		" \t\r\n{} \t\r\n", "\u00a0{}", "\ufeff{}", "\x0b{}", "\x0c{}",
-		`{"a":{"b":[1,2,{"c":null}]},"d":"e"}`, `[[[[]]]]`, `[[[[]]]`, `[{]}`, `{[}]`, `{"a":[}]}`,
+		`{"a":{"b":[1,2,{"c":null}]},"d":"e"}`, `[[[[]]]]`, `[[[[]]]`, `[{]}`, `{[}]`, `{"a":[}]}`, `[{"a"`, `{"a"`, `{"a":1,`, `[1,`, `{"a":{"b"`, `{"a":{"b":1,`,
 	} {
 		check([]byte(body))
 	}
@@ -69,7 +80,7 @@ func TestJSONScannerAgreesWithJSONValid(t *testing.T) {
 	random := rand.New(rand.NewSource(1437))
 	alphabet := []byte("{}[],:\"\\/ \t\r\n0123456789-+.eEtrufalsn\x00\x1f\x7f\xc3\xa9\xffbx")
 	seeds := []string{`{"a":[1,-2.5e3,true,false,null,"s\n\u00e9"],"b":{"c":{}}}`, `[0,"\"",[],{}]`, `-12.5E-3`, `"\uD83D\uDE00"`}
-	for range 50000 {
+	for range importRandomCases(50000) {
 		data := []byte(seeds[random.Intn(len(seeds))])
 		for range 1 + random.Intn(3) {
 			at := random.Intn(len(data) + 1)
@@ -97,7 +108,7 @@ func TestBase64StreamAgreesWithDecodeString(t *testing.T) {
 	alphabet := []byte("ABCDwxyz0189+/===\r\n!\x00\xff ")
 	random := rand.New(rand.NewSource(1437))
 	cases := []string{"", "\n", "\r\n", "QQ==", "QUI=", "QUJD", "Q", "QQ", "QQ=", "QQ==\n", "Q\nQ\n=\r\n=", "QQ==QQ==", "QUJDQQ==", "QQ==\nQ", "QUJDQUJD", "Q===", "====", "=", "QQ=A", "QUI=QUI=", "QUJD=", "QUJDQ", "QR==", "QUJ="}
-	for range 20000 {
+	for range importRandomCases(20000) {
 		text := make([]byte, random.Intn(40))
 		for i := range text {
 			text[i] = alphabet[random.Intn(len(alphabet))]
@@ -236,6 +247,19 @@ func TestImportStandInAnswersAsTheWholeBodyDoes(t *testing.T) {
 		`{"raw_message":"QQ==","RAW_MESSAGE":"QUI=",` + date + `}`,
 		`{"raw_message":"QQ==","x":"` + strings.Repeat("y", 100) + `",` + date + `}`,
 		`{"raw_message":"QQ==","x":{"deep":[1,2,3]},"y":null,` + date + `}`,
+		` {"raw_message":"QQ==",` + date + `}`,
+		"\r\n\t{\"raw_message\":\"QQ==\"," + date + "} \n",
+		`{ "raw_message" : "QQ==" , ` + date + ` }`,
+		`{ }`,
+		`{"raw_message":"QQ==","flags.x":1,` + date + `}`,
+		`{"raw_message":"QQ==","internal_date.x":1,` + date + `}`,
+		`{"raw_message":"QQ==","flags":["a"`,
+		`{"raw_message":"QQ==","x":[1`,
+		`{"raw_message":"QQ==","x":tru,` + date + `}`,
+		`{"raw_message":"QQ==","x":[1,],` + date + `}`,
+		`{"raw_message":"QQ==","x":01,` + date + `}`,
+		`{"raw_message":"QQ==","x":"\q",` + date + `}`,
+		`{"raw_message":"QQ==","x":,` + date + `}`,
 		`{"raw_message":"QQ==","\xff":1,` + date + `}`,
 		`{"raw_message":"QQ==","folder":1,` + date + `}`,
 		`{"raw_message":"QQ==","folder":null,` + date + `}`,
@@ -254,7 +278,7 @@ func TestImportStandInAnswersAsTheWholeBodyDoes(t *testing.T) {
 	random := rand.New(rand.NewSource(1437))
 	alphabet := []byte("{}[],:\"\\/ \n0123-.etrufalsn!=QA\xff\x00")
 	seed := []byte(`{"raw_message":"UVE9PQ==","folder":"Archive","flags":["\\Seen","$k"],` + date + `}`)
-	for range 20000 {
+	for range importRandomCases(20000) {
 		data := append([]byte(nil), seed...)
 		for range 1 + random.Intn(2) {
 			at := random.Intn(len(data))
@@ -336,8 +360,12 @@ func allocatedBy(serve func()) uint64 {
 	return after.TotalAlloc - before.TotalAlloc
 }
 
+// The limit is half the message, so one copy of it fails, and a refusal costs about 0.2 MiB whatever
+// the size, so the message need only be large beside that. The request is read
+// a byte at a time, which under the race detector and coverage takes more than a microsecond a
+// byte, so a larger message buys this test only time: 32 MiB took seven minutes.
 func TestImportRefusalsDoNotHoldTheMessage(t *testing.T) {
-	const size = 32 << 20
+	const size = 1 << 20
 	spool := spoolDirectory(t)
 	routes := importMessageRoutes(NewMessageImportHandler(nil, 2*size, nil, nil))
 	routesSmall := importMessageRoutes(NewMessageImportHandler(nil, size/2, nil, nil))
@@ -361,13 +389,14 @@ func TestImportRefusalsDoNotHoldTheMessage(t *testing.T) {
 			r.Header.Set("Content-Type", "application/json")
 			w := httptest.NewRecorder()
 			allocated := allocatedBy(func() { tc.routes.ServeHTTP(w, r) })
+			t.Logf("refusing %d bytes allocated %d", size, allocated)
 			if w.Code != tc.status {
 				t.Fatalf("answered %d %s", w.Code, w.Body)
 			}
 			if tc.status == 413 && !strings.Contains(w.Body.String(), "message_too_large") {
 				t.Fatalf("answered %s", w.Body)
 			}
-			if allocated > size/4 {
+			if allocated > size/2 {
 				t.Fatalf("allocated %d bytes refusing a %d byte message", allocated, size)
 			}
 			assertNoSpool(t, spool)

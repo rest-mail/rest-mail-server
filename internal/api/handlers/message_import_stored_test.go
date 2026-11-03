@@ -218,8 +218,13 @@ func bigImport(id string, size int) string {
 
 // A rerun of mail already here, and mail the quota refuses, read no more than they must. Neither
 // reads the source into memory; before, each held the request, the message, and its stored copy.
+// The queries behind an answer allocate about 0.9 MiB whatever the size. The limit is above that
+// and below one copy of the message, so a request that read the message into memory fails it.
 func TestMessageImportNotStoredIsNotHeld(t *testing.T) {
-	const size = 32 << 20
+	const (
+		size  = 2 << 20
+		limit = size * 3 / 4
+	)
 	db := importProofDB(t)
 	fx := seedAccountsFixture(t, db)
 	if err := db.Create(&models.QuotaUsage{MailboxID: fx.user.ID}).Error; err != nil {
@@ -252,7 +257,7 @@ func TestMessageImportNotStoredIsNotHeld(t *testing.T) {
 		t.Fatalf("rerun: %d %s", w.Code, w.Body)
 	}
 	t.Logf("a rerun of %d bytes allocated %d", size, allocated)
-	if allocated > size/4 {
+	if allocated > limit {
 		t.Fatalf("a rerun of %d bytes allocated %d", size, allocated)
 	}
 
@@ -264,7 +269,7 @@ func TestMessageImportNotStoredIsNotHeld(t *testing.T) {
 		t.Fatalf("over quota: %d %s", w.Code, w.Body)
 	}
 	t.Logf("a refusal of %d bytes at the quota allocated %d", size, allocated)
-	if allocated > size/4 {
+	if allocated > limit {
 		t.Fatalf("a refusal of %d bytes at the quota allocated %d", size, allocated)
 	}
 }
@@ -272,7 +277,7 @@ func TestMessageImportNotStoredIsNotHeld(t *testing.T) {
 // Storing still reads the source, because the row keeps it (see importSource.columns), but the
 // attachment isn't read for itself as well, and the request isn't held to get at either.
 func TestMessageImportStoredHoldsOnlyWhatTheRowKeeps(t *testing.T) {
-	const size = 32 << 20
+	const size = 1 << 20
 	db := importProofDB(t)
 	fx := seedAccountsFixture(t, db)
 	if err := db.Create(&models.QuotaUsage{MailboxID: fx.user.ID}).Error; err != nil {
@@ -299,7 +304,8 @@ func TestMessageImportStoredHoldsOnlyWhatTheRowKeeps(t *testing.T) {
 	allocated := after.TotalAlloc - before.TotalAlloc
 	t.Logf("storing %d bytes allocated %d, %.1f times over", len(message), allocated, float64(allocated)/float64(len(message)))
 	// Four copies remain: the row's, two made measuring and sealing it (Message.BeforeCreate),
-	// and the database driver's. Reading the whole request in memory came to 22.
+	// and the database driver's, plus about 2 MiB whatever the size. Reading the whole request in
+	// memory came to 22.
 	if allocated > 8*uint64(len(message)) {
 		t.Fatalf("storing %d bytes allocated %d", len(message), allocated)
 	}
