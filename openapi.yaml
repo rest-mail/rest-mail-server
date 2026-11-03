@@ -2658,6 +2658,22 @@ paths:
                 value: {password: current-password, permissions: [{capability: "mail:read", scope: "mailbox:robot@example.com"}]}
               permissions_missing:
                 value: {name: Invoice robot, password: current-password}
+              permissions_empty:
+                value: {name: Invoice robot, password: current-password, permissions: []}
+              permissions_wrong_type:
+                value: {name: Invoice robot, password: current-password, permissions: "mail:read"}
+              permission_scope_missing:
+                value: {name: Invoice robot, password: current-password, permissions: [{capability: "mail:read"}]}
+              permission_capability_wrong_type:
+                value: {name: Invoice robot, password: current-password, permissions: [{capability: 12345, scope: "mailbox:robot@example.com"}]}
+              permission_unknown_field:
+                value: {name: Invoice robot, password: current-password, permissions: [{capability: "mail:read", scope: "mailbox:robot@example.com", extra: 1}]}
+              expires_at_malformed:
+                value: {name: Invoice robot, password: current-password, permissions: [{capability: "mail:read", scope: "mailbox:robot@example.com"}], expires_at: not-a-date-time}
+              expires_at_wrong_type:
+                value: {name: Invoice robot, password: current-password, permissions: [{capability: "mail:read", scope: "mailbox:robot@example.com"}], expires_at: 12345}
+              expires_at_past:
+                value: {name: Invoice robot, password: current-password, permissions: [{capability: "mail:read", scope: "mailbox:robot@example.com"}], expires_at: "2000-01-01T00:00:00Z"}
               wildcard_capability:
                 value: {name: Invoice robot, password: current-password, permissions: [{capability: "*", scope: "*"}]}
       responses:
@@ -2739,6 +2755,22 @@ paths:
                   value: {error: {code: validation_failed, message: Request body failed validation, details: {fields: {name: required}}}}
                 permissions_missing:
                   value: {error: {code: validation_failed, message: Request body failed validation, details: {fields: {permissions: must contain between 1 and 64 scoped permissions}}}}
+                permissions_empty:
+                  value: {error: {code: validation_failed, message: Request body failed validation, details: {fields: {permissions: must contain between 1 and 64 scoped permissions}}}}
+                permissions_wrong_type:
+                  value: {error: {code: validation_failed, message: Request body failed validation, details: {fields: {permissions: must be an array}}}}
+                permission_scope_missing:
+                  value: {error: {code: validation_failed, message: Request body failed validation, details: {fields: {"permissions[0].scope": required}}}}
+                permission_capability_wrong_type:
+                  value: {error: {code: validation_failed, message: Request body failed validation, details: {fields: {"permissions[0].capability": must be a string}}}}
+                permission_unknown_field:
+                  value: {error: {code: validation_failed, message: Request body failed validation, details: {fields: {"permissions[0].extra": not allowed}}}}
+                expires_at_malformed:
+                  value: {error: {code: validation_failed, message: Request body failed validation, details: {fields: {expires_at: must be a date-time}}}}
+                expires_at_wrong_type:
+                  value: {error: {code: validation_failed, message: Request body failed validation, details: {fields: {expires_at: must be a date-time}}}}
+                expires_at_past:
+                  value: {error: {code: validation_failed, message: Request body failed validation, details: {fields: {expires_at: must be in the future}}}}
                 wildcard_capability:
                   value: {error: {code: validation_failed, message: Request body failed validation, details: {fields: {permissions: each permission needs a named capability and a valid scope}}}}
         "429":

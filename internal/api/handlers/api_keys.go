@@ -67,8 +67,10 @@ type createAPIKeyBody struct {
 }
 
 // apiKeyPermission is one permission asked for: a named capability at a scope. The handler
-// reads what those names may be.
-type apiKeyPermission struct {
+// reads what those names may be. It is an alias so that the description holds it in the body
+// that uses it: Vertrag 0.42.0 does not look through a body's nested reference, and its
+// fuzz.pin would then not engage on that body (tests/contract/probes.py).
+type apiKeyPermission = struct {
 	Capability string `json:"capability" minLength:"1" message:"each permission needs a named capability and a valid scope" missing:"each permission needs a named capability and a valid scope"`
 	Scope      string `json:"scope" minLength:"1" message:"each permission needs a named capability and a valid scope" missing:"each permission needs a named capability and a valid scope"`
 }

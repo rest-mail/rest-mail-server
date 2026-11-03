@@ -135,10 +135,14 @@ gate)
   python3 -B tests/contract/probes.py "$out/vertrag-run.yml" "$out/vertrag-probes.yml" "$out/coverage.xml"
   python3 -B tests/contract/reports.py "$out/vertrag-probes.yml" "$out/vertrag-probes.yml" "$out/coverage" "${narrowed[@]}"
   code=0
+  # Probes a hook ends are in no report: the hook worker counts them (lost_probes.py).
+  export CONTRACT_LOST_PROBES="$PWD/$out/lost-probes.txt"
+  : >"$CONTRACT_LOST_PROBES"
   CONTRACT_COVERAGE=1 "$CONTRACT_VERTRAG" run --config "$out/vertrag-probes.yml" --sequence --phases coverage "${select[@]}" \
     2>&1 | tee "$logs/contract.log" || code=$?
   if drop_unmatched_pin "$logs/contract.log" "$out/coverage"; then
     code=0
+    : >"$CONTRACT_LOST_PROBES"
     CONTRACT_COVERAGE=1 "$CONTRACT_VERTRAG" run --config "$out/vertrag-probes.yml" --sequence --phases coverage "${select[@]}" \
       2>&1 | tee "$logs/contract.log" || code=$?
   fi
@@ -147,7 +151,7 @@ gate)
   if [ ${#select[@]} -eq 0 ]; then
     # The coverage baseline only shrinks.
     python3 -B tests/contract/gate.py "$CONTRACT_SPEC" vertrag.yml "$out/coverage.xml" tests/contract/coverage-baseline.txt \
-      tests/contract/skipped-probes-baseline.txt
+      tests/contract/skipped-probes-baseline.txt tests/contract/lost-probes-baseline.txt "$CONTRACT_LOST_PROBES"
   else
     echo "a narrowed run: the coverage baseline is not applied"
     # Without the whole-API ratchet, Vertrag's selected probe verdict is final.

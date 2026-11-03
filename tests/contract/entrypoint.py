@@ -27,3 +27,6 @@ quiet = runpy.run_path(str(directory / "quiet_hours_hooks.py"))
 quiet["register_quiet_hours_hooks"](shared["admin_token"])
 contact_draft = runpy.run_path(str(directory / "contact_draft_hooks.py"))
 contact_draft["register_contact_draft_hooks"](shared["fixture_call"], shared["ADMIN"])
+# Last, so that it sees the body every hook above leaves.
+lost = runpy.run_path(str(directory / "lost_probes.py"))
+lost["register_lost_probe_count"]()

@@ -66,8 +66,26 @@ def mfa_admin_token(origin):
     return sessions[origin]["token"]
 
 
+def in_the_coverage_process():
+    """Whether this is the coverage run (run.sh sets CONTRACT_COVERAGE on it). A
+    before hook cannot tell from the transaction: Vertrag adds the "coverage: "
+    prefix only to the result it reports, so a hook sees the source name."""
+    return os.environ.get("CONTRACT_COVERAGE") == "1"
+
+
 def origin_of(transaction):
     return "{}//{}:{}".format(transaction["protocol"], transaction["host"], transaction["port"])
+
+
+def probe_admin_token(origin):
+    """The probe administrator's session, renewed like the two-factor one's."""
+    cached = hooks.stash.get("probe_admin_sessions", {}).get(origin)
+    if cached and time.time() - cached["at"] < 600:
+        return cached["token"]
+    sessions = hooks.stash.get("probe_admin_sessions", {})
+    sessions[origin] = {"token": mfa_admin.probe_session(origin), "at": time.time()}
+    hooks.stash["probe_admin_sessions"] = sessions
+    return sessions[origin]["token"]
 
 
 def session_address(transaction):
@@ -285,9 +303,45 @@ def a_fresh_second_factor_for_a_missing_grant(transaction):
     hooks.set_json(transaction, body)
 
 
+def a_later_request_of_the_coverage_process(transaction):
+    """Whether this is a request of the coverage process after a transaction's
+    first. The first is its examples phase, whose key the links give to the
+    operations after it, on the account they name, so it is made as in any other
+    process. Call this once per request."""
+    if not in_the_coverage_process():
+        return False
+    sends = hooks.stash.setdefault("coverage_sends", {})
+    name = transaction.get("name", "")
+    sends[name] = sends.get(name, 0) + 1
+    return sends[name] > 1
+
+
+def an_api_key_probe_as_the_probe_admin(transaction):
+    """Send a coverage request of an API key operation as the probe administrator
+    and say whether it was. Vertrag ends a generated probe whose body a hook
+    changes, so nothing here touches the body: its password is one the probe
+    administrator really holds, and fuzz.pin holds its permissions and expiry
+    (probes.py). The account in the path becomes the administrator's own, so the
+    key is within both grants; an id that is not one reaches the handler as sent."""
+    if not with_the_fixture_admins_session(transaction):
+        return False
+    origin = origin_of(transaction)
+    transaction["request"]["headers"]["Authorization"] = "Bearer " + probe_admin_token(origin)
+    path, _, query = transaction["fullPath"].partition("?")
+    parts = path.split("/")
+    # /api/v1/accounts/{id}/api-keys[/{credential_id}]
+    if len(parts) > 4 and positive_id(parts[4]):
+        parts[4] = str(mailbox_id(origin, mfa_admin.PROBE_ADDRESS))
+        transaction["fullPath"] = "/".join(parts) + ("?" + query if query else "")
+    return True
+
+
 @hooks.before("createAPIKey")
 def an_api_key_from_the_two_factor_admin(transaction):
     # Making a key also takes the maker's current password.
+    if a_later_request_of_the_coverage_process(transaction):
+        an_api_key_probe_as_the_probe_admin(transaction)
+        return
     if not as_the_two_factor_admin(transaction):
         return
     body = hooks.get_json(transaction)
@@ -296,11 +350,6 @@ def an_api_key_from_the_two_factor_admin(transaction):
     if not isinstance(body, dict) or not isinstance(body.get("password"), str) or not body["password"]:
         return
     body["password"] = mfa_admin.PASSWORD
-    # The schema cannot say a key must expire in the future, so the generated
-    # date goes forward a century; a probe that is not a date keeps it.
-    expires = body.get("expires_at")
-    if isinstance(expires, str) and expires.startswith("20") and expires < time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()):
-        body["expires_at"] = "2" + str(int(expires[1:4]) + 100).zfill(3) + expires[4:]
     # A key holds only what its maker and the account it is for both hold
     # (apiKeyWithinGrants). The example's account holds nothing at the
     # example's robot@example.com, but an account may read its own mailbox:
@@ -320,10 +369,39 @@ def an_api_key_from_the_two_factor_admin(transaction):
     hooks.set_json(transaction, body)
 
 
+def an_api_key_of_its_own_for_a_probe(transaction):
+    # Only the path and the session change (an_api_key_probe_as_the_probe_admin).
+    # The missing pair's id and an id that is not one keep what they name.
+    if not an_api_key_probe_as_the_probe_admin(transaction):
+        return
+    path, _, query = transaction["fullPath"].partition("?")
+    parent, _, credential = path.rstrip("/").rpartition("/")
+    if not positive_id(parent.split("/")[-2]) or not positive_id(credential) or credential == "2147483647":
+        return
+    origin = origin_of(transaction)
+    time.sleep(1.1)  # making the key spends the same budget as the edit
+    request = urllib.request.Request(
+        origin + parent,
+        data=json.dumps({
+            "name": "contract key to edit " + str(time.time_ns()),
+            "password": mfa_admin.PROBE_PASSWORD,
+            "permissions": [{"capability": "mail:read", "scope": "mailbox:" + mfa_admin.PROBE_ADDRESS}],
+        }).encode(),
+        headers={"Content-Type": "application/json", "Authorization": "Bearer " + probe_admin_token(origin)},
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        key = json.load(response)["data"]
+    transaction["fullPath"] = parent + "/" + str(key["id"]) + ("?" + query if query else "")
+
+
 @hooks.before("updateAPIKey")
 def an_api_key_of_its_own_to_edit(transaction):
     # Each edit makes the key it changes, so it needs nothing from another
     # operation's run.
+    if a_later_request_of_the_coverage_process(transaction):
+        an_api_key_of_its_own_for_a_probe(transaction)
+        return
     if not as_the_two_factor_admin(transaction):
         return
     body = hooks.get_json(transaction)
@@ -432,6 +510,7 @@ def delete_a_grant_made_for_it(transaction):
 @hooks.before("activateGrant")
 @hooks.before("makeGrantEligible")
 @hooks.before("updateAPIKey")
+@hooks.before("createAPIKey")
 def pace_auth_requests(transaction):
     # These operations share the default 1 request/second auth bucket. Coverage
     # repeats valid requests as well as refusals, so even correct credentials
@@ -600,11 +679,32 @@ def keep_the_refreshed_token(transaction):
         hooks.stash["refresh_token"] = data["refresh_token"]
 
 
+def a_well_formed_app_password_request(transaction, body):
+    """Whether a coverage request breaks no rule of the schema. A probe that does
+    must reach the handler as drawn: its refusal is what it tests, and Vertrag
+    would end it if the password were added.
+
+    One that breaks none still gets the password, and is ended, because the
+    description lets it leave the password out (required: [name]) while the
+    handler answers 403 reauth_required, which Vertrag would call a disagreement.
+    gate.py counts each of those (lost-probes-baseline.txt)."""
+    path = transaction.get("fullPath", "").partition("?")[0].split("/")
+    return (
+        len(path) > 4
+        and positive_id(path[4])
+        and isinstance(body.get("name"), str)
+        and isinstance(body.get("password", ""), str)
+        and set(body) <= {"name", "password", "expires_at"}
+    )
+
+
 @hooks.before("createAppPassword")
 def confirm_with_the_admin_password(transaction):
     body = hooks.get_json(transaction)
     # The body_array refusal sends a JSON array, which has no password to set.
     if not isinstance(body, dict):
+        return
+    if in_the_coverage_process() and not a_well_formed_app_password_request(transaction, body):
         return
     # The maker's own current password: the two-factor administrator's when
     # the request is sent as it (send_as_the_two_factor_admin runs first).
@@ -1005,7 +1105,7 @@ def off_the_admin_domain(transaction):
     # follow links to the run's own domain. updateDomain's hook calls this
     # before it certifies the domain the request names. A hook never sees a
     # "coverage: " name (README), so the coverage process says so itself.
-    if os.environ.get("CONTRACT_COVERAGE") != "1":
+    if not in_the_coverage_process():
         return
     path, _, query = transaction["fullPath"].partition("?")
     parts = path.split("/")
@@ -1087,8 +1187,7 @@ def a_certificate_before_going_live(transaction):
     # Setting active to true is refused with 409 certificate_required for a
     # domain with no valid certificate, which every created domain is when
     # the probes reach it. The domain gets a self-signed one through the
-    # admin API, once per run; the request is never rewritten, except that a
-    # coverage probe aimed at restmail.test moves first (off_the_admin_domain).
+    # admin API, once per run; the request is never rewritten.
     off_the_admin_domain(transaction)
     body = hooks.get_json(transaction)
     if not isinstance(body, dict) or body.get("active") is not True:
@@ -1510,8 +1609,7 @@ def list_has_a_message_to_show(transaction):
     # Boundary probes and the report-only authorization phase do not need a
     # fixture; an empty list is still a valid answer. Only the examples
     # transaction is given one.
-    name = transaction.get("name", "")
-    if name.startswith("coverage:") or " as " in name:
+    if in_the_coverage_process() or " as " in transaction.get("name", ""):
         return
     schedule_a_message(transaction)
 

@@ -5,6 +5,7 @@ import base64
 import importlib.util
 import io
 import json
+import os
 from pathlib import Path
 import sys
 import types
@@ -12,6 +13,8 @@ import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
+# The name a before hook receives: Vertrag 0.42.0 adds "coverage: " only to the result.
+KEY_NAME = "/api/v1/accounts/{id}/api-keys > Make a scoped API key > 201 > application/json"
 
 
 def load_hooks():
@@ -183,6 +186,115 @@ class TwoFactorAdminHookTests(unittest.TestCase):
                 self.module.a_fresh_second_factor_for_a_missing_grant(t)
                 self.assertEqual(t["request"]["body"], body)
             self.assertEqual(factor.call_count, 2)
+
+
+class CoverageOfAPIKeysTests(unittest.TestCase):
+    """Vertrag ends a generated probe whose body a hook changed, so in the coverage
+    process these hooks change only the session and the path."""
+
+    KEYS = {
+        "password": "x",
+        "permissions": [{"capability": "mail:read", "scope": "mailbox:contract-probe-admin@restmail.test"}],
+    }
+
+    def setUp(self):
+        self.module, _, self.registered = load_hooks()
+        patch.dict(os.environ, {"CONTRACT_COVERAGE": "1"}).start()
+        patch.object(self.module, "probe_admin_token", return_value="probe-token").start()
+        patch.object(self.module, "mailbox_id", return_value=77).start()
+        patch.object(self.module.time, "sleep").start()
+        self.addCleanup(patch.stopall)
+
+    def probe(self, path, body, authorization=None):
+        """A request after its transaction's first, under the name a hook receives."""
+        sent = transaction(path, authorization or session(self.module.ADMIN), body)
+        sent["name"] = KEY_NAME
+        self.module.hooks.stash["coverage_sends"] = {KEY_NAME: 1}
+        return sent
+
+    def test_the_examples_phase_of_the_coverage_process_makes_its_key_as_any_other(self):
+        # revokeAPIKey and updateAPIKey follow its link, on the account they name.
+        body = {"name": "Invoice robot", "password": "current-password",
+                "permissions": [{"capability": "mail:read", "scope": "mailbox:robot@example.com"}]}
+        first = transaction("/api/v1/accounts/1/api-keys", session(self.module.ADMIN), json.dumps(body))
+        first["name"] = KEY_NAME
+        self.module.hooks.stash.pop("coverage_sends", None)
+        with patch.object(self.module, "mfa_admin_token", return_value="two-factor-token"), \
+                patch.object(self.module, "mailbox_address", return_value="a@restmail.test"):
+            self.module.an_api_key_from_the_two_factor_admin(first)
+        self.assertEqual(first["fullPath"], "/api/v1/accounts/1/api-keys")
+        self.assertEqual(first["request"]["headers"]["Authorization"], "Bearer two-factor-token")
+        self.assertEqual(json.loads(first["request"]["body"])["password"], self.module.mfa_admin.PASSWORD)
+        second = transaction("/api/v1/accounts/1/api-keys", session(self.module.ADMIN), json.dumps(body))
+        second["name"] = KEY_NAME
+        self.module.an_api_key_from_the_two_factor_admin(second)
+        self.assertEqual(second["fullPath"], "/api/v1/accounts/77/api-keys")
+        self.assertEqual(second["request"]["body"], json.dumps(body))
+
+    def test_a_key_probe_keeps_its_body_and_goes_to_the_probe_admins_own_account(self):
+        for raw in (json.dumps(dict(self.KEYS, name="!")), json.dumps(dict(self.KEYS, name="")), "[]", '{"name":12345}'):
+            with self.subTest(raw=raw):
+                t = self.probe("/api/v1/accounts/1/api-keys", raw)
+                self.module.an_api_key_from_the_two_factor_admin(t)
+                self.assertEqual(t["request"]["body"], raw)
+                self.assertEqual(t["fullPath"], "/api/v1/accounts/77/api-keys")
+                self.assertEqual(t["request"]["headers"]["Authorization"], "Bearer probe-token")
+
+    def test_an_id_that_is_not_one_reaches_the_handler(self):
+        for account in ("0", "1.5", "vertrag-not-a-number"):
+            with self.subTest(account=account):
+                t = self.probe("/api/v1/accounts/" + account + "/api-keys", "{}")
+                self.module.an_api_key_from_the_two_factor_admin(t)
+                self.assertEqual(t["fullPath"], "/api/v1/accounts/" + account + "/api-keys")
+
+    def test_another_principal_keeps_its_session_and_account(self):
+        ordinary = session("contract-ordinary@restmail.test")
+        t = self.probe("/api/v1/accounts/1/api-keys", "{}", ordinary)
+        self.module.an_api_key_from_the_two_factor_admin(t)
+        self.assertEqual((t["fullPath"], t["request"]["headers"]["Authorization"]), ("/api/v1/accounts/1/api-keys", ordinary))
+
+    def test_a_key_edit_probe_edits_a_key_of_its_own(self):
+        raw = json.dumps(self.KEYS)
+        t = self.probe("/api/v1/accounts/1/api-keys/2", raw)
+        with patch.object(self.module.urllib.request, "urlopen") as urlopen:
+            urlopen.return_value.__enter__.return_value = io.BytesIO(json.dumps({"data": {"id": 91}}).encode())
+            self.module.an_api_key_of_its_own_to_edit(t)
+        self.assertEqual(t["request"]["body"], raw)
+        self.assertEqual(t["fullPath"], "/api/v1/accounts/77/api-keys/91")
+        made = urlopen.call_args.args[0]
+        self.assertEqual(made.full_url, "http://api:8080/api/v1/accounts/77/api-keys")
+        self.assertEqual(made.headers["Authorization"], "Bearer probe-token")
+        # The setup's password is the fixture's, and the route still checks it.
+        self.assertEqual(json.loads(made.data)["password"], self.module.mfa_admin.PROBE_PASSWORD)
+
+    def test_the_missing_key_and_a_malformed_id_make_no_key(self):
+        for credential in ("2147483647", "0", "1.5"):
+            with self.subTest(credential=credential), patch.object(self.module.urllib.request, "urlopen") as urlopen:
+                t = self.probe("/api/v1/accounts/1/api-keys/" + credential, "{}")
+                self.module.an_api_key_of_its_own_to_edit(t)
+                urlopen.assert_not_called()
+                self.assertEqual(t["fullPath"], "/api/v1/accounts/77/api-keys/" + credential)
+
+    def test_a_probe_the_schema_forbids_reaches_the_app_password_route_as_drawn(self):
+        for raw in ('{"expires_at":"2099-01-01T10:00:00Z"}', '{"name":12345}', '{"name":"x","password":12345}',
+                    '{"name":"x","vertragUnexpected":"extra"}'):
+            with self.subTest(raw=raw):
+                t = self.probe("/api/v1/accounts/1/credentials", raw, session(self.module.mfa_admin.ADDRESS))
+                self.module.confirm_with_the_admin_password(t)
+                self.assertEqual(t["request"]["body"], raw)
+
+    def test_a_malformed_account_id_reaches_the_app_password_route_as_drawn(self):
+        raw = '{"name":"iPhone Mail"}'
+        t = self.probe("/api/v1/accounts/0/credentials", raw, session(self.module.mfa_admin.ADDRESS))
+        self.module.confirm_with_the_admin_password(t)
+        self.assertEqual(t["request"]["body"], raw)
+
+    def test_a_well_formed_app_password_request_still_gets_the_password(self):
+        # The description lets it leave the password out, and the handler refuses
+        # that with 403, so the probe ends here and lost-probes-baseline.txt holds it.
+        t = self.probe("/api/v1/accounts/1/credentials", '{"name":"x"}', session(self.module.mfa_admin.ADDRESS))
+        self.module.confirm_with_the_admin_password(t)
+        self.assertEqual(json.loads(t["request"]["body"]), {"name": "x", "password": self.module.mfa_admin.PASSWORD})
 
 
 class DeleteGrantHookTests(unittest.TestCase):

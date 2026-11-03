@@ -199,6 +199,18 @@ func prepareDeliveryRecipient(database *gorm.DB, domain string) error {
 	})
 }
 
+// The administrator a coverage probe of the API key operations is sent as. Those
+// operations check the caller's current password against the password in the
+// body, and a hook cannot supply it: Vertrag ends a generated probe whose body a
+// hook changed. So the account's passwords are the ones the requests already
+// carry: "x" is what the generator draws for a required string, and
+// current-password is what the documented examples say. Both are plainly not
+// secrets, and the handler's comparison with them is the real one. They are two
+// password credentials, which the password check takes any of.
+const probeAdminAddress = "contract-probe-admin@restmail.test"
+
+var probeAdminPasswords = []string{"x", "current-password"}
+
 func prepareMFAAdmin(database *gorm.DB, domain string) error {
 	if domain != "restmail.test" {
 		return errors.New("contract fixtures require restmail.test")
@@ -212,37 +224,71 @@ func prepareMFAAdmin(database *gorm.DB, domain string) error {
 		if err := tx.Where("name = ?", domain).First(&hosted).Error; err != nil {
 			return err
 		}
-		account := models.Mailbox{DomainID: hosted.ID, LocalPart: "contract-mfa-admin", Address: mfaAdminAddress,
-			DisplayName: "Contract MFA admin", Active: true, QuotaBytes: hosted.DefaultQuotaBytes}
-		result := tx.Where("address = ?", account.Address).FirstOrCreate(&account)
-		if result.Error != nil {
-			return result.Error
+		if err := prepareSuperadmin(tx, hosted, role, mfaAdminAddress, "Contract MFA admin", []string{mfaAdminPassword}); err != nil {
+			return err
 		}
-		if result.RowsAffected > 0 {
-			if err := grants.EnsureReceive(tx, &account); err != nil {
-				return err
-			}
+		return prepareSuperadmin(tx, hosted, role, probeAdminAddress, "Contract probe admin", probeAdminPasswords)
+	})
+}
+
+// prepareSuperadmin makes the account if it is not there and gives it each
+// password it does not already hold.
+func prepareSuperadmin(tx *gorm.DB, hosted models.Domain, role models.Role, address, displayName string, passwords []string) error {
+	localPart, _, _ := strings.Cut(address, "@")
+	account := models.Mailbox{DomainID: hosted.ID, LocalPart: localPart, Address: address,
+		DisplayName: displayName, Active: true, QuotaBytes: hosted.DefaultQuotaBytes}
+	result := tx.Where("address = ?", account.Address).FirstOrCreate(&account)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected > 0 {
+		if err := grants.EnsureReceive(tx, &account); err != nil {
+			return err
 		}
-		creds := repositories.NewCredentialRepository(tx)
-		current, err := creds.MatchPassword(account.ID, mfaAdminPassword, time.Now())
+	}
+	creds := repositories.NewCredentialRepository(tx)
+	for index, password := range passwords {
+		current, err := creds.MatchPassword(account.ID, password, time.Now())
 		if err != nil {
 			return err
 		}
-		if current == nil {
-			hash, err := auth.HashPassword(mfaAdminPassword)
-			if err != nil {
-				return err
-			}
+		if current != nil {
+			continue
+		}
+		hash, err := auth.HashPassword(password)
+		if err != nil {
+			return err
+		}
+		// SetPassword replaces the account's passwords, so only the first goes
+		// through it and the others are stored beside it.
+		if index == 0 {
 			if _, err := creds.SetPassword(account.ID, hash, nil, time.Now()); err != nil {
 				return err
 			}
+			continue
 		}
-		if err := tx.Where("mailbox_id = ?", account.ID).FirstOrCreate(&models.QuotaUsage{MailboxID: account.ID}).Error; err != nil {
+		first, err := creds.Passwords(account.ID, time.Now())
+		if err != nil {
 			return err
 		}
-		_, err = grants.EnsureSystem(tx, account.ID, role.ID, grants.All, models.GrantActive)
+		if len(first) == 0 {
+			return errors.New("the account has no first password")
+		}
+		publicID, err := auth.NewPublicID()
+		if err != nil {
+			return err
+		}
+		another := models.Credential{AccountID: account.ID, Kind: models.CredentialKindPassword, PublicID: publicID,
+			Name: "Password", SecretHash: hash, Scope: first[0].Scope}
+		if err := tx.Create(&another).Error; err != nil {
+			return err
+		}
+	}
+	if err := tx.Where("mailbox_id = ?", account.ID).FirstOrCreate(&models.QuotaUsage{MailboxID: account.ID}).Error; err != nil {
 		return err
-	})
+	}
+	_, err := grants.EnsureSystem(tx, account.ID, role.ID, grants.All, models.GrantActive)
+	return err
 }
 
 // The domain tenants of the ownership phase (#657): an administrator of

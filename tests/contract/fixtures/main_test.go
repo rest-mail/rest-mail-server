@@ -344,3 +344,53 @@ func TestQueueFixturesHoldABounceEntryApartFromTheRetryEntry(t *testing.T) {
 		}
 	}
 }
+
+func TestProbeAdminHoldsWhatTheRequestsCarry(t *testing.T) {
+	db := fixtureDB(t)
+	if err := db.Create(&models.Domain{Name: "restmail.test", ServerType: "traditional", Active: true}).Error; err != nil {
+		t.Fatal(err)
+	}
+	// Twice: the E2E suite and the contract run both prepare it.
+	for range 2 {
+		if err := prepareMFAAdmin(db, "restmail.test"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var account models.Mailbox
+	if err := db.Where("address = ?", probeAdminAddress).First(&account).Error; err != nil {
+		t.Fatal(err)
+	}
+	creds := repositories.NewCredentialRepository(db)
+	for password, held := range map[string]bool{"x": true, "current-password": true, "not-the-password": false, "": false} {
+		match, err := creds.MatchPassword(account.ID, password, time.Now())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if (match != nil) != held {
+			t.Errorf("password %q: match %v, want held %v", password, match != nil, held)
+		}
+	}
+	stored, err := creds.Passwords(account.ID, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stored) != len(probeAdminPasswords) {
+		t.Fatalf("%d passwords stored after preparing twice, want %d", len(stored), len(probeAdminPasswords))
+	}
+	var two models.Mailbox
+	if err := db.Where("address = ?", mfaAdminAddress).First(&two).Error; err != nil {
+		t.Fatal(err)
+	}
+	if match, err := creds.MatchPassword(two.ID, mfaAdminPassword, time.Now()); err != nil || match == nil {
+		t.Fatalf("the two-factor administrator's password: %v, %v", match, err)
+	}
+	if match, err := creds.MatchPassword(two.ID, "x", time.Now()); err != nil || match != nil {
+		t.Fatalf("the two-factor administrator must not hold the probe password: %v, %v", match, err)
+	}
+}
+
+func TestMFAAdminFixtureRequiresTheDisposableDomain(t *testing.T) {
+	if err := prepareMFAAdmin(nil, "production.example"); err == nil {
+		t.Fatal("MFA administrator fixture accepted a different domain")
+	}
+}
