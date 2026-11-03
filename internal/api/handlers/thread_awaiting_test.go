@@ -324,9 +324,8 @@ func TestAwaitingUnicodeDomain(t *testing.T) {
 	f.wantWaiting("ascii-domain", 1)
 }
 
-// A conversation sent through the real route, between two accounts on this server. Each
-// reply takes its parent's Message-ID as its thread_id, so the turns land under different
-// thread_ids and the last turn's answer is not in its thread.
+// A conversation sent through the real route, between two accounts on this server. Every
+// turn stays under one thread_id per mailbox, so the wait follows that one thread.
 func TestAwaitingConversationThroughTheSendPath(t *testing.T) {
 	f := newAwaitingFixture(t)
 	send := func(from models.Mailbox, to models.Mailbox, inReplyTo string) {
@@ -375,8 +374,8 @@ func TestAwaitingConversationThroughTheSendPath(t *testing.T) {
 		t.Fatalf("after my second message: waiting %q", got)
 	}
 	send(f.other, f.owner, latest(f.other).MsgID)
-	if answer := latest(f.owner); answer.ThreadID == second.ThreadID {
-		t.Fatalf("the send path now keeps a conversation in one thread_id (%s): simplify this test", answer.ThreadID)
+	if answer := latest(f.owner); answer.ThreadID != first.ThreadID || second.ThreadID != first.ThreadID {
+		t.Fatalf("the conversation left its thread: first %s, second %s, answer %s", first.ThreadID, second.ThreadID, answer.ThreadID)
 	}
 	if got := waitingThreads(); len(got) != 0 {
 		t.Fatalf("their answer did not end the wait: waiting %q", got)
