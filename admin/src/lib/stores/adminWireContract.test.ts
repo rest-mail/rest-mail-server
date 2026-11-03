@@ -83,6 +83,9 @@ const session: JsonResponse<"login", 200> = {
     user: { id: 1, email: "owner@example.test", display_name: "Owner" },
     expires_in: 900,
     capabilities: ["mail:read"],
+    scoped_capabilities: [
+      { capability: "domains:read", scope: "domain:customer.test" },
+    ],
     setup_required: [],
   },
 };
@@ -357,6 +360,9 @@ describe("admin callers use the generated wire contract", () => {
     expect(useAuthStore.getState().user).toEqual({
       email: "owner@example.test",
       capabilities: ["mail:read"],
+      scopedCapabilities: [
+        { capability: "domains:read", scope: "domain:customer.test" },
+      ],
     });
     expect(useAuthStore.getState().accessToken).toBe("cookie-session");
   });
