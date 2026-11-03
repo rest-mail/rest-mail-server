@@ -575,7 +575,7 @@
             "IMAP-LISTEXT-08",
             "IMAP-LISTEXT-09"
           ],
-          "note": "CHILDINFO only on recursive selection, criteria strings, missing ancestors and redundant-parent suppression; selective subscriptions remain unsupported."
+          "note": "CHILDINFO only on recursive selection, criteria strings, missing ancestors and redundant-parent suppression, with selective and missing subscriptions."
         },
         {
           "section": "4",
@@ -599,7 +599,7 @@
             "IMAP-LISTEXT-05",
             "IMAP-LISTEXT-12"
           ],
-          "note": "All eleven examples reviewed: supported hierarchy slices have tests; selective/missing subscriptions, remote and ACL variants are not claimed verbatim."
+          "note": "All eleven examples run against their hierarchies, selective and missing subscriptions included; remote mailboxes are not claimed."
         },
         {
           "section": "6",

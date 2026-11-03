@@ -5,6 +5,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/rest-mail/go-imap/pkg/imap"
 	"github.com/rest-mail/go-imap/pkg/imap/internal/mutf7"
 	"github.com/rest-mail/go-imap/pkg/imap/internal/wire"
 )
@@ -50,12 +51,10 @@ func (s *Session) wireName(name string) string {
 }
 
 // handleSubscribe implements SUBSCRIBE (RFC 3501 §6.3.6) and handleUnsubscribe
-// implements UNSUBSCRIBE (§6.3.7) — both mandatory IMAP4rev1 commands. This
-// engine keeps no persistent per-user subscription list: folders are implicit
-// (there is no folder-management backend method) and LSUB already reports every
-// existing folder as subscribed. The commands therefore validate the request and
-// acknowledge it without maintaining separate state, rather than answering the
-// BAD "Unknown command" a client would otherwise get for a mandatory command.
+// implements UNSUBSCRIBE (§6.3.7) — both mandatory IMAP4rev1 commands. A
+// Mailbox that implements [imap.Subscriber] keeps the list; for any other, every
+// existing folder is subscribed, as LSUB reports, and the commands validate the
+// request and acknowledge it without effect.
 func (s *Session) handleSubscribe(tag, args string) {
 	s.handleSubscription(tag, args, "SUBSCRIBE")
 }
@@ -74,9 +73,22 @@ func (s *Session) handleSubscription(tag, args, cmd string) {
 		s.tagged(tag, "BAD", cmd+" requires a mailbox name")
 		return
 	}
-	if _, ok := s.mailboxName(mailbox); !ok {
+	name, ok := s.folderName(mailbox)
+	if !ok {
 		s.tagged(tag, "NO", "Invalid mailbox name")
 		return
+	}
+	if sub, ok := s.mailbox.(imap.Subscriber); ok {
+		// The name need not exist: RFC 3501 §6.3.6 lets a server refuse one that
+		// does not, and RFC 5258 example 2 keeps one deleted while subscribed.
+		update := sub.Subscribe
+		if cmd == "UNSUBSCRIBE" {
+			update = sub.Unsubscribe
+		}
+		if err := update(name); err != nil {
+			s.tagged(tag, "NO", cmd+" failed")
+			return
+		}
 	}
 	s.tagged(tag, "OK", cmd+" completed")
 }
