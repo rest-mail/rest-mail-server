@@ -5,6 +5,8 @@ from pathlib import Path
 
 directory = Path(__file__).resolve().parent
 shared = runpy.run_path(str(directory / "hooks.py"))
+targets = runpy.run_path(str(directory / "coverage_target_hooks.py"))
+targets["register_coverage_target_hooks"](shared)
 policy = runpy.run_path(str(directory / "policy_lookup_hooks.py"))
 policy["register_policy_absent_hook"](shared["admin_token"])
 own = runpy.run_path(str(directory / "own_account_hooks.py"))

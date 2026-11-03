@@ -2356,6 +2356,8 @@ def deliver_a_whole_message(transaction):
 
 @hooks.before("deleteQuarantine")
 def delete_the_fixture_quarantined_message(transaction):
+    if os.environ.get("CONTRACT_COVERAGE") == "1":
+        return
     # found names message 41 of the in-process fixture's account 1. Mail is
     # quarantined by filters a healthy run does not trip, so the contract
     # fixtures hold a message for the fixture admin (prepareHeldMail); the
@@ -2381,6 +2383,8 @@ def delete_the_fixture_quarantined_message(transaction):
 
 @hooks.before("clearSuppression")
 def clear_the_fixture_suppression(transaction):
+    if os.environ.get("CONTRACT_COVERAGE") == "1":
+        return
     # found names suppression 1 of domain 1. A recipient is suppressed only
     # when mail to it hard-bounces, which the run does not send, so the
     # contract fixtures suppress one on the fixture domain (prepareHeldMail);
