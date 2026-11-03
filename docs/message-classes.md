@@ -56,3 +56,6 @@ therefore gets its header class straight away, with no migration of its contents
 The rule part is written once at acceptance, as `sealed_hash` is. `rule_class` is
 an additive nullable column with no backfill, because a rule's answer cannot be
 reconstructed later. The seal does not cover it, as it does not cover flags.
+
+A newsletter's `List-Unsubscribe` targets can be used from the webmail: see
+[unsubscribing.md](unsubscribing.md).
