@@ -16,6 +16,8 @@ import { Mail, Paperclip, MessageSquare, Reply, Forward, Trash2, Archive, MoreHo
 import { toast } from 'sonner';
 import type { Attachment, MessageDetail, MessageSummary } from '@/types';
 import { CalendarInvite } from './CalendarInvite';
+import { DeliveryStatus } from './DeliveryStatus';
+import type { RecipientStatus } from '@/lib/deliveryStatus';
 import { HtmlMessageBody } from './HtmlMessageBody';
 import { ThreadDueControl } from './ThreadDueControl';
 import { ThreadSnoozeControl } from './ThreadSnoozeControl';
@@ -98,6 +100,22 @@ export function MessageViewer() {
       })
       .catch(() => {
         if (!cancelled) setSeal({ message, state: 'unavailable' });
+      });
+    return () => { cancelled = true; };
+  }, [selectedMessage]);
+
+  const [delivery, setDelivery] = useState<{ message: MessageDetail; recipients: RecipientStatus[] } | null>(null);
+
+  useEffect(() => {
+    if (!selectedMessage || selectedMessage.is_draft || selectedMessage.folder !== 'Sent') return;
+    let cancelled = false;
+    const message = selectedMessage;
+    api.listMessageRecipients(message.id)
+      .then(({ data }) => {
+        if (!cancelled) setDelivery({ message, recipients: data.recipients });
+      })
+      .catch(() => {
+        if (!cancelled) setDelivery(null);
       });
     return () => { cancelled = true; };
   }, [selectedMessage]);
@@ -427,6 +445,10 @@ export function MessageViewer() {
                 <p className={cn("text-xs text-muted-foreground mt-1 ml-1", TYPEFACE_CLASS[v.readerType])}>// no_other_messages</p>
               )}
             </div>
+          )}
+
+          {delivery?.message === msg && (
+            <DeliveryStatus recipients={delivery.recipients} className="mt-3" />
           )}
 
           <TrustReceipt

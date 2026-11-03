@@ -287,6 +287,13 @@ export async function verifyMessageSeal(msgId: number): Promise<MessageSealRespo
   return request(`${BASE}/messages/${msgId}/seal`);
 }
 
+export type MessageRecipientsResponse = paths['/api/v1/messages/{id}/recipients']['get']['responses'][200]['content']['application/json'];
+
+// listMessageRecipients is what happened to each recipient of a message this account sent.
+export async function listMessageRecipients(msgId: number): Promise<MessageRecipientsResponse> {
+  return request(`${BASE}/messages/${msgId}/recipients`);
+}
+
 export async function updateMessage(msgId: number, updates: Record<string, unknown>): Promise<void> {
   await request(`${BASE}/messages/${msgId}`, {
     method: 'PATCH',

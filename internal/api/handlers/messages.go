@@ -196,6 +196,10 @@ func (h *MessageHandler) RegisterMessages(rs endpoint.Routes) {
 		OperationID: "verifyMessageSeal", Summary: "Verify a message's receipt seal", Tags: tags,
 		Description: "Compares the stored receipt seal with the current source, headers and bodies, without changing the seal. intact means unchanged since this server accepted it, not who wrote it or whether it is safe. not_sealed is distinct from mismatch; historical messages are never backfilled. Uses the same mail:read authorization as reading the message. See docs/message-seals.md for the streaming restmail-seal-v1 algorithm and byte framing.",
 		Errors:      []int{http.StatusForbidden, http.StatusNotFound}, Security: reads}, h.verifyMessageSeal)
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/messages/{id}/recipients",
+		OperationID: "listMessageRecipients", Summary: "What happened to a sent message, recipient by recipient", Tags: tags,
+		Description: "For a message this account sent: each recipient's state (queued, retrying, delivered, failed, or unknown when no delivery record was kept), the reason in a sentence derived from the failure category, the attempts made and when the last one was. A remote recipient is read from its outbound queue row; a local one from the copy the send put in that mailbox. The remote server's own reply is never returned, only the category's reason. A message this account did not send has no recipients. Uses the same mail:read authorization as reading the message; another account's message is 404.",
+		Errors:      []int{http.StatusForbidden, http.StatusNotFound}, Security: reads}, h.listMessageRecipients)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPatch, Path: "/api/v1/messages/{id}",
 		OperationID: "updateMessage", Summary: "Update message flags or move to a folder", Tags: tags,
 		Errors: []int{http.StatusForbidden, http.StatusNotFound}, Security: writes}, h.updateMessage)

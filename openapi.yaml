@@ -4494,6 +4494,147 @@ paths:
       - BasicAuth:
         - mail:read
 
+  /api/v1/messages/{id}/recipients:
+    get:
+      summary: What happened to a sent message, recipient by recipient
+      description: 'For a message this account sent: each recipient''s state (queued, retrying, delivered,
+        failed, or unknown when no delivery record was kept), the reason in a sentence derived from the
+        failure category, the attempts made and when the last one was. A remote recipient is read from its
+        outbound queue row; a local one from the copy the send put in that mailbox. The remote server''s
+        own reply is never returned, only the category''s reason. A message this account did not send has
+        no recipients. Uses the same mail:read authorization as reading the message; another account''s
+        message is 404.'
+      operationId: listMessageRecipients
+      tags:
+      - Messages
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          minimum: 1
+          type: integer
+        examples:
+          invalid_id:
+            value: 0
+          missing:
+            value: 2147483647
+          partly_failed:
+            description: One recipient's server refused the message and another accepted it. The reason
+              comes from the failure category; the remote server's own reply is never returned.
+            value: 1
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              examples:
+                partly_failed:
+                  description: One recipient's server refused the message and another accepted it. The reason
+                    comes from the failure category; the remote server's own reply is never returned.
+                  value:
+                    data:
+                      message_id: 1
+                      recipients:
+                      - address: nobody@example.com
+                        attempts: 1
+                        category: bad_mailbox
+                        delivery: remote
+                        last_attempt_at: '2026-11-03T12:00:00Z'
+                        reason: The recipient's mailbox does not exist.
+                        state: failed
+                      - address: bob@example.com
+                        attempts: 1
+                        delivery: remote
+                        last_attempt_at: '2026-11-03T12:00:00Z'
+                        state: delivered
+                      - address: carol@restmail.test
+                        attempts: 0
+                        delivery: local
+                        state: delivered
+              schema:
+                $ref: '#/components/schemas/Data-MessageRecipients'
+        '401':
+          description: 'unauthorized, app_password_required or setup_required: a refused session or HTTP
+            Basic credential'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              examples:
+                missing:
+                  value:
+                    error:
+                      code: message_not_found
+                      message: Message not found
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '413':
+          description: 'request_too_large: the body is over the API''s size cap'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Unprocessable Entity
+          content:
+            application/json:
+              examples:
+                invalid_id:
+                  value:
+                    error:
+                      code: validation_failed
+                      details:
+                        fields:
+                          id: must be at least 1
+                      message: Path parameters failed validation
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '429':
+          description: 'rate_limited: refused API keys or HTTP Basic credentials, throttled at login''s
+            rate'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Retry-After:
+              description: Seconds until a request may be made again
+              required: true
+              schema:
+                type: integer
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: 'unavailable: the credential or session check could not be made'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      security:
+      - CookieAuth:
+        - mail:read
+      - BearerAuth:
+        - mail:read
+      - APIKeyAuth:
+        - mail:read
+      - BasicAuth:
+        - mail:read
+
   /api/v1/messages/{id}/raw:
     parameters:
       - $ref: "#/components/parameters/MessageId"
@@ -15886,6 +16027,14 @@ components:
       required:
       - data
       type: object
+    Data-MessageRecipients:
+      additionalProperties: false
+      properties:
+        data:
+          $ref: '#/components/schemas/MessageRecipients'
+      required:
+      - data
+      type: object
     Data-ThreadSnooze:
       additionalProperties: false
       properties:
@@ -15918,6 +16067,73 @@ components:
       type: object
       description: A receipt integrity check, not sender authentication or a safety verdict. Historical
         messages without a seal are not mismatches.
+
+    MessageRecipients:
+      additionalProperties: false
+      properties:
+        message_id:
+          type: integer
+        recipients:
+          items:
+            $ref: '#/components/schemas/RecipientStatus'
+          type: array
+      required:
+      - message_id
+      - recipients
+      type: object
+
+    RecipientStatus:
+      additionalProperties: false
+      properties:
+        address:
+          examples:
+          - bob@example.com
+          type: string
+        attempts:
+          type: integer
+        category:
+          enum:
+          - bad_mailbox
+          - bad_domain
+          - policy
+          - other_permanent
+          - mailbox_full
+          - greylisted
+          - rate_limited
+          - connection
+          - tls
+          - dns
+          - other_transient
+          type: string
+        delivery:
+          enum:
+          - remote
+          - local
+          type: string
+        last_attempt_at:
+          format: date-time
+          type:
+          - string
+          - 'null'
+        reason:
+          type: string
+        state:
+          enum:
+          - queued
+          - retrying
+          - delivered
+          - failed
+          - unknown
+          type: string
+      required:
+      - address
+      - delivery
+      - state
+      - attempts
+      type: object
+      description: 'One recipient''s copy of a sent message. The remote server''s own reply (the queue''s
+        last_error and last_error_code) is withheld: it can carry details meant for the sending server, such
+        as internal host names and addresses, so only the reason derived from its failure category is given.'
 
     ThreadSnooze:
       type: object

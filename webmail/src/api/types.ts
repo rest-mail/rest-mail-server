@@ -2779,6 +2779,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messages/{id}/recipients": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What happened to a sent message, recipient by recipient
+         * @description For a message this account sent: each recipient's state (queued, retrying, delivered, failed, or unknown when no delivery record was kept), the reason in a sentence derived from the failure category, the attempts made and when the last one was. A remote recipient is read from its outbound queue row; a local one from the copy the send put in that mailbox. The remote server's own reply is never returned, only the category's reason. A message this account did not send has no recipients. Uses the same mail:read authorization as reading the message; another account's message is 404.
+         */
+        get: operations["listMessageRecipients"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messages/{id}/seal": {
         parameters: {
             query?: never;
@@ -3358,6 +3378,9 @@ export interface components {
         "Data-Message": {
             data: components["schemas"]["Message"];
         };
+        "Data-MessageRecipients": {
+            data: components["schemas"]["MessageRecipients"];
+        };
         "Data-MessageSeal": {
             data: components["schemas"]["MessageSeal"];
         };
@@ -3927,6 +3950,10 @@ export interface components {
             /** Format: int64 */
             size_bytes: number;
         };
+        MessageRecipients: {
+            message_id: number;
+            recipients: components["schemas"]["RecipientStatus"][];
+        };
         MessageSeal: {
             /** @enum {string} */
             algorithm: "restmail-seal-v1";
@@ -4146,6 +4173,20 @@ export interface components {
             /** Format: date-time */
             timestamp: string;
             type: string;
+        };
+        RecipientStatus: {
+            /** @example bob@example.com */
+            address: string;
+            attempts: number;
+            /** @enum {string} */
+            category?: "bad_mailbox" | "bad_domain" | "policy" | "other_permanent" | "mailbox_full" | "greylisted" | "rate_limited" | "connection" | "tls" | "dns" | "other_transient";
+            /** @enum {string} */
+            delivery: "remote" | "local";
+            /** Format: date-time */
+            last_attempt_at?: string | null;
+            reason?: string;
+            /** @enum {string} */
+            state: "queued" | "retrying" | "delivered" | "failed" | "unknown";
         };
         RejectReasonCount: {
             /** Format: double */
@@ -24044,6 +24085,102 @@ export interface operations {
                 };
                 content: {
                     "message/rfc822": string;
+                };
+            };
+            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After": number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listMessageRecipients: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-MessageRecipients"];
                 };
             };
             /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
