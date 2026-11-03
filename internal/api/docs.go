@@ -13,8 +13,9 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/version"
 )
 
-// registerDocs mounts the API's description and the page that shows it: openapi.yaml as
-// written, and the description generated from the registered routes (#670).
+// registerDocs mounts the API's description and the page that shows it: the description
+// generated from the registered routes, which the page loads, and openapi.yaml as written
+// until the generated description replaces it (#670).
 func registerDocs(rs endpoint.Routes) {
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/docs/openapi.json",
 		OperationID: "openapiDocument", Summary: "This API's description, generated from its routes", Tags: []string{"System"},
@@ -41,7 +42,8 @@ type openAPIDescription struct {
 	Paths   map[string]any `json:"paths"`
 }
 
-// swaggerUI serves a Swagger UI page that loads the embedded OpenAPI spec.
+// swaggerUI serves a Swagger UI page that loads /api/docs/openapi.json, the description
+// generated from the registered routes (#670).
 func swaggerUI(*http.Request, struct{}) (endpoint.Document, error) {
 	return endpoint.Document{ContentType: "text/html; charset=utf-8", Body: []byte(swaggerHTML)}, nil
 }
@@ -125,12 +127,18 @@ func (c *capturedResponse) Write(b []byte) (int, error) {
 	return c.body.Write(b)
 }
 
+// swaggerUIVersion is the swagger-ui-dist release the page loads from unpkg. The page names
+// it exactly and checks each file against its SHA-384 (subresource integrity), so a changed
+// file is refused rather than run; a new version needs new hashes from its exact files.
+const swaggerUIVersion = "5.33.3"
+
 const swaggerHTML = `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <title>RestMail API Documentation</title>
-  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
+  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@` + swaggerUIVersion + `/swagger-ui.css"
+    integrity="sha384-Ov4/wv3j2bmct8cDc5X4ngJZohVPzEmc6uDPH8WeljUxO5vtoykvMEfbu9Vh6RaW" crossorigin="anonymous">
   <style>
     body { margin: 0; padding: 0; }
     #swagger-ui .topbar { display: none; }
@@ -138,10 +146,11 @@ const swaggerHTML = `<!DOCTYPE html>
 </head>
 <body>
   <div id="swagger-ui"></div>
-  <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+  <script src="https://unpkg.com/swagger-ui-dist@` + swaggerUIVersion + `/swagger-ui-bundle.js"
+    integrity="sha384-h00llMzD1afyNow1pDmnZKlHsUZgp9KE9HXLFXF2CvbwsBY0+WBO4f75SfGwvM4K" crossorigin="anonymous"></script>
   <script>
     SwaggerUIBundle({
-      url: '/api/docs/openapi.yaml',
+      url: '/api/docs/openapi.json',
       dom_id: '#swagger-ui',
       deepLinking: true,
       presets: [SwaggerUIBundle.presets.apis, SwaggerUIBundle.SwaggerUIStandalonePreset],

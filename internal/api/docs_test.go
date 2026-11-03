@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -79,13 +80,34 @@ func TestExposition(t *testing.T) {
 	}
 }
 
-// The documentation page is HTML that loads the served description.
+// The documentation page is HTML that loads the description generated from the registered
+// routes (#670), and loads Swagger UI from one exact release whose files it checks by hash.
 func TestDocs_ServesTheViewer(t *testing.T) {
 	router, _ := newTestRouter(t)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/docs", nil))
-	if rec.Code != http.StatusOK || rec.Header().Get("Content-Type") != "text/html; charset=utf-8" ||
-		!strings.Contains(rec.Body.String(), "/api/docs/openapi.yaml") {
+	if rec.Code != http.StatusOK || rec.Header().Get("Content-Type") != "text/html; charset=utf-8" {
 		t.Fatalf("GET /api/docs = %d %q", rec.Code, rec.Header().Get("Content-Type"))
+	}
+	page := rec.Body.String()
+	if !strings.Contains(page, "url: '/api/docs/openapi.json'") || strings.Contains(page, "openapi.yaml") {
+		t.Errorf("the page does not load the generated description /api/docs/openapi.json:\n%s", page)
+	}
+
+	if !regexp.MustCompile(`^\d+\.\d+\.\d+$`).MatchString(swaggerUIVersion) {
+		t.Fatalf("swaggerUIVersion %q is not an exact release", swaggerUIVersion)
+	}
+	external := regexp.MustCompile(`<(?:script|link)\b[^>]*\b(?:src|href)="https?://[^"]*"[^>]*>`).FindAllString(page, -1)
+	if len(external) != 2 {
+		t.Fatalf("want the stylesheet and the script as external assets, found %d: %q", len(external), external)
+	}
+	for _, tag := range external {
+		if !strings.Contains(tag, "https://unpkg.com/swagger-ui-dist@"+swaggerUIVersion+"/") {
+			t.Errorf("%s does not load swagger-ui-dist %s", tag, swaggerUIVersion)
+		}
+		if !regexp.MustCompile(`\bintegrity="sha384-[A-Za-z0-9+/]{64}"`).MatchString(tag) ||
+			!strings.Contains(tag, `crossorigin="anonymous"`) {
+			t.Errorf("%s has no SHA-384 integrity and anonymous crossorigin", tag)
+		}
 	}
 }
