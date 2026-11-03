@@ -1,5 +1,5 @@
 import { cn } from '@/lib/utils';
-import { RECIPIENT_STATE_LABELS, deliverySummary, type RecipientStatus } from '@/lib/deliveryStatus';
+import { RECIPIENT_STATE_LABELS, allDelivered, deliverySummary, type RecipientStatus } from '@/lib/deliveryStatus';
 
 function stateColor(state: RecipientStatus['state']): string {
   if (state === 'delivered') return 'var(--color-success)';
@@ -8,11 +8,19 @@ function stateColor(state: RecipientStatus['state']): string {
   return 'var(--color-primary)';
 }
 
-// DeliveryStatus shows a sent message's recipients when any copy is not
-// delivered: each one's state and, from its failure category, why (#1568).
+// DeliveryStatus shows how a sent message's copies went (#1568). When every copy
+// was delivered it says so in one line; otherwise it lists each recipient's
+// state and, from its failure category, why.
 export function DeliveryStatus({ recipients, className }: { recipients: RecipientStatus[]; className?: string }) {
   const summary = deliverySummary(recipients);
   if (!summary) return null;
+  if (allDelivered(recipients)) {
+    return (
+      <p className={cn('text-xs font-medium', className)} role="status" style={{ color: stateColor('delivered') }}>
+        {summary}
+      </p>
+    );
+  }
   return (
     <div className={cn('rounded-2xl border bg-card px-3 py-2 text-xs', className)} role="status">
       <p className="font-medium">{summary}</p>

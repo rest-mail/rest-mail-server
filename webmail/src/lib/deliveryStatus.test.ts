@@ -21,8 +21,16 @@ test('a partly failed send shows each recipient with the readable reason', () =>
   assert.ok(!/delivery failed/i.test(output), output);
 });
 
-test('a send delivered to everyone shows nothing', () => {
-  assert.equal(renderToStaticMarkup(createElement(DeliveryStatus, { recipients: [delivered] })), '');
+test('a send delivered to everyone says so, without the per-recipient list', () => {
+  const carol: RecipientStatus = { address: 'carol@example.com', delivery: 'local', state: 'delivered', attempts: 0 };
+  const output = renderToStaticMarkup(createElement(DeliveryStatus, { recipients: [delivered, carol] }));
+  assert.ok(output.includes('Delivered to all 2 recipients'), output);
+  assert.ok(!output.includes('bob@example.com'), output);
+  assert.equal(deliverySummary([delivered]), 'Delivered to its recipient');
+});
+
+test('a message with no recipients to report on shows nothing', () => {
+  assert.equal(renderToStaticMarkup(createElement(DeliveryStatus, { recipients: [] })), '');
   assert.equal(deliverySummary([]), null);
 });
 
