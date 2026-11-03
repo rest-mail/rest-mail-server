@@ -102,11 +102,13 @@ var _ goimap.Mailbox = (*mailbox)(nil)
 
 // The mailbox also satisfies the library's optional UIDPLUS (RFC 4315) and atomic
 // MOVE (RFC 6851) interfaces, so the server advertises UIDPLUS and emits
-// APPENDUID / COPYUID response codes and honours UID EXPUNGE for rest-mail.
+// APPENDUID / COPYUID response codes and honours UID EXPUNGE for rest-mail. It
+// also takes the client's APPEND date-time as the INTERNALDATE (DateAppender).
 var (
 	_ goimap.UIDPlusMailbox = (*mailbox)(nil)
 	_ goimap.Mover          = (*mailbox)(nil)
 	_ goimap.UTF8Mailbox    = (*mailbox)(nil)
+	_ goimap.DateAppender   = (*mailbox)(nil)
 )
 
 // EnableUTF8 switches this session to UTF-8 (RFC 6855 UTF8=ACCEPT). The
@@ -340,6 +342,20 @@ func (m *mailbox) Append(dest string, f goimap.FlagUpdate, raw []byte) error {
 // out-of-range UID is surfaced as an error rather than a bogus success carrying
 // UID 0.
 func (m *mailbox) AppendUID(dest string, f goimap.FlagUpdate, raw []byte) (uint32, error) {
+	return m.appendAt(dest, f, time.Now(), raw)
+}
+
+// AppendWithDate is AppendUID for an APPEND that carries a date-time (DateAppender):
+// the message keeps that instant as its INTERNALDATE, as RFC 3501 §6.3.11 and
+// RFC 9051 §6.3.12 ask. Without a date-time the server calls AppendUID, which
+// stores the current time.
+func (m *mailbox) AppendWithDate(dest string, f goimap.FlagUpdate, internalDate time.Time, raw []byte) (uint32, error) {
+	return m.appendAt(dest, f, internalDate, raw)
+}
+
+// appendAt stores raw in dest with internalDate as its INTERNALDATE and returns
+// the UID the import assigned.
+func (m *mailbox) appendAt(dest string, f goimap.FlagUpdate, internalDate time.Time, raw []byte) (uint32, error) {
 	if err := validateFolder(dest); err != nil {
 		return 0, err
 	}
@@ -354,7 +370,7 @@ func (m *mailbox) AppendUID(dest string, f goimap.FlagUpdate, raw []byte) (uint3
 		RawMessage:   raw,
 		Folder:       dest,
 		Flags:        importFlags(f),
-		InternalDate: time.Now(),
+		InternalDate: internalDate,
 	})
 	if err != nil {
 		return 0, err
