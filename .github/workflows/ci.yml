@@ -4,8 +4,11 @@ on:
   push:
     branches: [main]
   # Stack layers target parent branches; every PR must receive the same gates.
+  # No `labeled`, `unlabeled` or `edited`: each would start a run that cancels the one
+  # in progress, and a claim label set at creation did that to every new PR (#1593).
+  # The labels the contract gate reads re-run that gate from ci-labels.yml instead.
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review, edited, labeled, unlabeled]
+    types: [opened, synchronize, reopened, ready_for_review]
   # The Vertrag bump (bump-vertrag.yml) dispatches CI for its branch: a pull request it
   # opens with the workflow's own token starts no checks by itself.
   workflow_dispatch:
@@ -29,6 +32,9 @@ jobs:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - name: Checkout the exact PR head
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -69,11 +75,22 @@ jobs:
           RESTMAIL_OPENAPI_OUTPUT="$RUNNER_TEMP/contract-diff/head.json" \
             go test -mod=readonly ./internal/api/ -run '^TestTheGeneratedDescriptionIsServed$' -count=1
 
+      # The labels are read now, not from the event: ci-labels.yml re-runs this job
+      # when a deliberate-change label is added or removed, and a re-run keeps the
+      # event of the run it repeats.
       - name: Report contract changes and require deliberate labels
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
         run: |
+          set -euo pipefail
+          labels=()
+          while IFS= read -r label; do
+            [ -n "$label" ] && labels+=(--label "$label")
+          done < <(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json labels --jq '.labels[].name')
           python3 scripts/contract_diff.py \
             "$RUNNER_TEMP/contract-diff/base.json" "$RUNNER_TEMP/contract-diff/head.json" \
-            --oasdiff "$RUNNER_TEMP/bin/oasdiff" --event "$GITHUB_EVENT_PATH" \
+            --oasdiff "$RUNNER_TEMP/bin/oasdiff" "${labels[@]}" \
             --output "$RUNNER_TEMP/contract-diff"
 
       - name: Publish the comparison and generated descriptions

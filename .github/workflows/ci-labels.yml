@@ -1,0 +1,64 @@
+name: CI labels
+
+# ci.yml does not run on label events (#1593): a run started by a label cancelled the
+# run in progress, so a claim label set when a PR was opened left every new PR with a
+# cancelled CI. The contract gate (`API contract changes`, part of the required `CI`
+# verdict) still depends on two labels, so adding or removing one of them re-runs that
+# job, and the `CI` verdict after it, in the PR's newest CI run once that run is done.
+# Any other label (claimed:*, run-e2e, ...) starts no job here and cancels nothing.
+on:
+  pull_request:
+    types: [labeled, unlabeled]
+
+# A label the gate reads shares one group per PR, so the newest such change wins.
+# Every other label gets a group of its own and cancels nothing.
+concurrency:
+  group: ${{ contains(fromJSON('["contract-change", "permission-change"]'), github.event.label.name) && format('ci-labels-{0}', github.event.pull_request.number) || format('ci-labels-ignored-{0}', github.run_id) }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  rerun-contract-gate:
+    name: Re-run the contract gate for its labels
+    # Not a required check, so being skipped for other labels decides nothing.
+    if: contains(fromJSON('["contract-change", "permission-change"]'), github.event.label.name)
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    permissions:
+      actions: write
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Re-run the contract gate once the newest CI run is done
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          # Look up the head and its run on every pass: a push meanwhile starts a new
+          # run, which reads the labels itself.
+          while :; do
+            sha=$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json headRefOid --jq .headRefOid)
+            run=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml --event pull_request \
+              --commit "$sha" --limit 1 --json databaseId,status \
+              --jq '.[0] | select(.) | "\(.databaseId) \(.status)"')
+            if [ -z "$run" ]; then
+              echo "No CI run for $sha yet; when it starts, it reads the current labels."
+              exit 0
+            fi
+            read -r id status <<< "$run"
+            [ "$status" = completed ] && break
+            echo "CI run $id for $sha is $status; waiting for it to finish."
+            sleep 30
+          done
+          job=$(gh run view "$id" --repo "$GITHUB_REPOSITORY" --json jobs \
+            --jq '.jobs[] | select(.name == "API contract changes") | .databaseId' | head -n1)
+          if [ -z "$job" ]; then
+            echo "::error::CI run $id has no 'API contract changes' job to re-run"
+            exit 1
+          fi
+          # Re-running one job also re-runs the jobs that need it: the `CI` verdict.
+          gh run rerun --repo "$GITHUB_REPOSITORY" --job "$job"
+          echo "Re-ran 'API contract changes' and the CI verdict in run $id for $sha."
