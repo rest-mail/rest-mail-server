@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -189,8 +190,25 @@ func TestCleanResetEveryTable(t *testing.T) {
 			t.Fatalf("populate reset table %s: %v", table, err)
 		}
 	}
+	// The retained domain gets a key and settings of its own, as a test would
+	// give it: a re-seeded domain must not inherit them (#1385).
+	if err := db.Model(&models.Domain{}).Where("id = ?", admin.DomainID).Updates(map[string]any{
+		"dkim_selector": "before-reset", "dkim_private_key": "dkim:v1:key", "dkim_created_at": time.Now(),
+		"dkim_rotation_interval_days": 30, "sending_policy": models.SendingPolicyBulk,
+		"dmarc_policy": models.DMARCPolicyReject, "default_quota_bytes": 5,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
 	if err := db.Transaction(cleanResetData); err != nil {
 		t.Fatal(err)
+	}
+	var domain models.Domain
+	if err := db.First(&domain, admin.DomainID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if domain.DKIMSelector != "" || domain.DKIMPrivateKey != "" || domain.DKIMCreatedAt != nil || domain.DKIMRotationIntervalDays != 0 ||
+		domain.SendingPolicy != "" || domain.DMARCPolicy != models.DMARCPolicyNone || domain.DefaultQuotaBytes != 1073741824 {
+		t.Errorf("retained domain kept its settings: %+v", domain)
 	}
 	for _, table := range tables {
 		if reason, retained := resetRetainedTables[table]; retained {
@@ -216,6 +234,38 @@ func TestCleanResetEveryTable(t *testing.T) {
 		var count int64
 		if err := db.Table(table).Count(&count).Error; err != nil || count != expected {
 			t.Errorf("retained %s rows = %d, want %d: %v", table, count, expected, err)
+		}
+	}
+}
+
+// Every column of a domain the reset keeps is either set back to a new
+// domain's value or kept for a stated reason, so a setting added later cannot
+// outlive a reset unnoticed.
+func TestCleanResetEveryDomainColumn(t *testing.T) {
+	db, _, _ := cleanResetFixture(t)
+	var columns []string
+	if err := db.Raw(`SELECT column_name FROM information_schema.columns
+		WHERE table_schema = current_schema() AND table_name = 'domains'`).Scan(&columns).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(columns) == 0 {
+		t.Fatal("no domain columns")
+	}
+	for _, column := range columns {
+		_, reset := resetDomainSettings[column]
+		reason, kept := resetDomainKept[column]
+		switch {
+		case reset && kept:
+			t.Errorf("domain column %s is both reset and kept", column)
+		case kept && reason == "":
+			t.Errorf("kept domain column %s has no reason", column)
+		case !reset && !kept:
+			t.Errorf("domain column %s is neither reset nor kept", column)
+		}
+	}
+	for column := range resetDomainSettings {
+		if !slices.Contains(columns, column) {
+			t.Errorf("reset domain column %s does not exist", column)
 		}
 	}
 }

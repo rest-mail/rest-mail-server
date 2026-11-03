@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/rest-mail/rest-mail-server/internal/api/middleware"
@@ -21,6 +22,31 @@ var resetRetainedTables = map[string]string{
 	"capabilities":        "The installed capability catalog is schema/bootstrap data, not fixture data.",
 	"owner_keys":          "Installation recovery trust must not be erased by fixture cleanup.",
 	"audit_log":           "The append-only, hash-chained audit log cannot be deleted without destroying integrity.",
+}
+
+// resetDomainSettings puts each domain the reset keeps back to a new domain's
+// settings. The seed finds a kept domain by name and does not touch what is on
+// its row, so a DKIM key, rotation interval or sending policy set before the
+// reset would otherwise come back with the re-seeded domain (#1385).
+var resetDomainSettings = map[string]string{
+	"dkim_selector":               "''",
+	"dkim_private_key":            "''",
+	"dkim_created_at":             "NULL",
+	"dkim_rotation_interval_days": "DEFAULT",
+	"sending_policy":              "DEFAULT",
+	"dmarc_policy":                "DEFAULT",
+	"default_quota_bytes":         "DEFAULT",
+}
+
+// resetDomainKept are the domain columns the reset leaves as they are, and why.
+// Every other column must be in resetDomainSettings.
+var resetDomainKept = map[string]string{
+	"id":          "The retained administrators' addresses and sessions name the domain by id.",
+	"name":        "The retained administrators' addresses are on it.",
+	"active":      "The seed sets it on its own domains; a retained administrator's other domain keeps serving.",
+	"server_type": "The seed sets it on its own domains; a retained administrator's other domain keeps its kind.",
+	"created_at":  "Bookkeeping, not a setting.",
+	"updated_at":  "Bookkeeping, not a setting.",
 }
 
 func (h *TestHandler) OnReset(reset func()) {
@@ -84,6 +110,16 @@ func cleanResetData(tx *gorm.DB) error {
 		}
 		if err := tx.Exec(statement).Error; err != nil {
 			return fmt.Errorf("clear retained reset table %s: %w", table, err)
+		}
+	}
+	if containsResetTable(tables, "domains") {
+		assignments := make([]string, 0, len(resetDomainSettings))
+		for column, value := range resetDomainSettings {
+			assignments = append(assignments, resetIdentifier(column)+" = "+value)
+		}
+		sort.Strings(assignments)
+		if err := tx.Exec("UPDATE domains SET " + strings.Join(assignments, ", ")).Error; err != nil {
+			return fmt.Errorf("restart the retained domains' settings: %w", err)
 		}
 	}
 	// The retained accounts lost their messages and their usage row with them,

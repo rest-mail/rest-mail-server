@@ -552,7 +552,11 @@ func seedTestData(database *gorm.DB) error {
 		{Name: "restmail.test", ServerType: "restmail", Active: true, DefaultQuotaBytes: 1073741824},
 	}
 	for i := range domains {
-		if err := database.Where("name = ?", domains[i].Name).FirstOrCreate(&domains[i]).Error; err != nil {
+		// A domain the reset kept (the seeded administrator's) is set back to the
+		// seed's kind and state: a test may have changed either.
+		if err := database.Where("name = ?", domains[i].Name).
+			Assign(map[string]any{"server_type": domains[i].ServerType, "active": domains[i].Active}).
+			FirstOrCreate(&domains[i]).Error; err != nil {
 			return fmt.Errorf("seed domain: %w", err)
 		}
 	}
