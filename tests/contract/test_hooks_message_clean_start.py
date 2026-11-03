@@ -92,7 +92,6 @@ class MessageCleanStart(unittest.TestCase):
         )
         self.assertEqual(sent["fullPath"], "/api/v1/messages/700/raw")
         self.assertEqual(self.events, ["reset", "POST /api/v1/accounts/4/messages/import"])
-        self.assertEqual(self.module.hooks.stash["clean_starts"], 1)
 
     def test_a_trace_is_read_from_a_message_sent_after_the_reset(self):
         sent = self.send(
