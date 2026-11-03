@@ -29,6 +29,7 @@ const topUsage = `restmail — run a rest-mail server
   restmail password-hash a bcrypt hash of an admin password, for a deployment
   restmail import-account create an account with its existing password hash
   restmail import-passwd-file create a Dovecot passwd-file's accounts, keeping passwords
+  restmail import-aliases import a Postfix virtual alias map through the admin API
   restmail import-maildir import a Maildir and its folders through the public API
   restmail import-mbox    import a From-framed mbox through the public API
   restmail import-imap    copy an IMAP account read-only through the public API
@@ -116,6 +117,10 @@ func runSubcommand(args []string, stdout, stderr io.Writer) (code int, handled b
 		return runImportAccount(context.Background(), args[2:], os.Stdin, os.Getenv("RESTMAIL_API_KEY"), client, stdout, stderr), true
 	case "import-passwd-file":
 		return runImportPasswdFile(context.Background(), args[2:], os.Stdin, os.Getenv("RESTMAIL_API_KEY"), client, stdout, stderr), true
+	case "import-aliases":
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		return runImportAliases(ctx, args[2:], os.Stdin, os.Getenv("RESTMAIL_API_KEY"), client, stdout, stderr), true
 	case "import-maildir":
 		return runImportMail(context.Background(), "maildir", args[2:], os.Getenv("RESTMAIL_API_KEY"), client, stdout, stderr), true
 	case "import-imap":
