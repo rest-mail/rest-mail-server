@@ -98,6 +98,63 @@ class SkippedProbes(unittest.TestCase):
     def test_missing_report_fails(self):
         self.assertEqual(gate.gate(self.spec, self.config, self.directory / "missing.xml", self.coverage, self.baseline), 1)
 
+    def lost(self, reported, baseline):
+        report = self.write("lost.txt", reported)
+        limit = self.write("lost-baseline.txt", baseline)
+        self.report.write_text("<testsuite/>")
+        self.baseline.write_text("")
+        with contextlib.redirect_stdout(io.StringIO()) as output:
+            status = gate.gate(self.spec, self.config, self.report, self.coverage, self.baseline, limit, report)
+        return status, output.getvalue()
+
+    def test_probes_a_hook_ended_within_the_baseline_pass(self):
+        status, output = self.lost("createThing\ncreateThing\n", "createThing 2\n")
+        self.assertEqual(status, 0, output)
+        self.assertIn("2 probes ended by a hook", output)
+
+    def test_more_probes_ended_by_a_hook_fail(self):
+        status, output = self.lost("createThing\ncreateThing\n", "createThing 1\n")
+        self.assertEqual(status, 1)
+        self.assertIn("createThing: 2 > 1", output)
+
+    def test_an_operation_cannot_spend_anothers_lost_probes(self):
+        status, output = self.lost("getThings\n", "createThing 1\n")
+        self.assertEqual(status, 1)
+        self.assertIn("getThings: 1 > 0", output)
+
+    def test_fewer_probes_ended_by_a_hook_are_noted(self):
+        status, output = self.lost("", "createThing 1\n")
+        self.assertEqual(status, 0, output)
+        self.assertIn("createThing: 0 < 1", output)
+
+    def test_a_missing_count_of_lost_probes_fails(self):
+        self.report.write_text("<testsuite/>")
+        self.baseline.write_text("")
+        limit = self.write("lost-baseline.txt", "")
+        with contextlib.redirect_stdout(io.StringIO()) as output:
+            status = gate.gate(self.spec, self.config, self.report, self.coverage, self.baseline,
+                               limit, self.directory / "absent.txt")
+        self.assertEqual(status, 1)
+        self.assertIn("absent.txt is missing", output.getvalue())
+
+    def test_a_lost_probe_baseline_naming_no_operation_fails(self):
+        status, output = self.lost("", "noSuchOperation 1\n")
+        self.assertEqual(status, 1)
+        self.assertIn("noSuchOperation", output)
+
+    def test_the_real_lost_probe_baseline_is_well_formed(self):
+        lines = (Path(__file__).resolve().parent / "lost-probes-baseline.txt").read_text().splitlines()
+        entries = [line.split() for line in lines if line and not line.startswith("#")]
+        self.assertTrue(entries)
+        self.assertTrue(all(len(entry) == 2 and entry[1].isdecimal() and int(entry[1]) > 0 for entry in entries))
+        self.assertEqual(len({entry[0] for entry in entries}), len(entries))
+        self.assertNotIn("createAPIKey", {entry[0] for entry in entries})
+        self.assertNotIn("updateAPIKey", {entry[0] for entry in entries})
+
+    def test_the_run_passes_the_lost_probe_count_to_the_gate(self):
+        script = (Path(__file__).resolve().parent / "run.sh").read_text()
+        self.assertIn('tests/contract/lost-probes-baseline.txt "$CONTRACT_LOST_PROBES"', script)
+
     def test_coverage_marker_is_scoped_to_both_coverage_commands(self):
         script = (Path(__file__).resolve().parent / "run.sh").read_text()
         marked = [line for line in script.splitlines() if "CONTRACT_COVERAGE=" in line]

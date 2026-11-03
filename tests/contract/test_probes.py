@@ -27,8 +27,7 @@ class ProbeConfig(unittest.TestCase):
 
     def test_no_pin_leaves_the_pins_out(self):
         self.assertEqual(
-            self.config["fuzz"]["pin"].keys(),
-            {"private_key", "snoozed_until", "scheduled_at"},
+            self.config["fuzz"]["pin"].keys(), {"private_key", "snoozed_until", "scheduled_at", "expires_at", "permissions"}
         )
         self.assertEqual(
             probes.main(self.source, self.output, self.report, pin=False), 0
@@ -44,7 +43,7 @@ class ProbeConfig(unittest.TestCase):
             0,
         )
         config = yaml.safe_load(self.output.read_text())
-        self.assertEqual(config["fuzz"]["pin"].keys(), {"private_key", "scheduled_at"})
+        self.assertEqual(config["fuzz"]["pin"].keys(), {"private_key", "scheduled_at", "expires_at", "permissions"})
 
     def test_dropping_every_pin_leaves_no_pin_section_to_refuse(self):
         self.assertEqual(
@@ -52,7 +51,7 @@ class ProbeConfig(unittest.TestCase):
                 self.source,
                 self.output,
                 self.report,
-                unpinned=["private_key", "snoozed_until", "scheduled_at"],
+                unpinned=["private_key", "snoozed_until", "scheduled_at", "expires_at", "permissions"],
             ),
             0,
         )
@@ -74,10 +73,11 @@ class ProbeConfig(unittest.TestCase):
         self.assertNotIn("mailbox_id", self.config["fuzz"]["pin"])
 
     def test_a_narrowed_fuzz_run_can_drop_each_pin_it_does_not_reach(self):
-        config = self.fuzz_config(unpinned=["private_key", "snoozed_until", "scheduled_at"])
+        coverage_pins = ["private_key", "snoozed_until", "scheduled_at", "expires_at", "permissions"]
+        config = self.fuzz_config(unpinned=coverage_pins)
         self.assertEqual(config["fuzz"]["pin"].keys(), {"mailbox_id"})
         config = self.fuzz_config(unpinned=["mailbox_id"])
-        self.assertEqual(config["fuzz"]["pin"].keys(), {"private_key", "snoozed_until", "scheduled_at"})
+        self.assertEqual(config["fuzz"]["pin"].keys(), set(coverage_pins))
 
     def test_the_fuzz_phase_makes_the_recipient_before_it_pins_it(self):
         script = (ROOT / "tests/contract/run.sh").read_text()
@@ -151,6 +151,8 @@ class ProbeConfig(unittest.TestCase):
                     "private_key": probes.DKIM_KEY.read_text(),
                     "snoozed_until": probes.SNOOZE_UNTIL,
                     "scheduled_at": None,
+                    "expires_at": probes.EXPIRES_AT,
+                    "permissions": probes.KEY_PERMISSIONS,
                 }
             },
         )

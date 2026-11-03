@@ -1,5 +1,5 @@
-"""Coverage probes that would change restmail.test's signing key or settings
-go to a disposable domain instead (#1167)."""
+"""Coverage probes that would change restmail.test's signing key go to a
+disposable domain instead (#1167)."""
 
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import importlib.util
@@ -13,6 +13,11 @@ import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
+# The name a before hook receives in every phase. Vertrag 0.42.0 adds "coverage: "
+# only to the result it reports, so the environment tells the phases apart.
+UPDATE_DOMAIN = "/api/v1/admin/domains/{id} > Update a domain > 200 > application/json"
+SET_DKIM_KEY = "/api/v1/admin/dkim/{id} > Set or replace DKIM key for a domain > 200 > application/json"
+IN_COVERAGE = {"CONTRACT_COVERAGE": "1"}
 
 
 def load_hooks():
@@ -92,24 +97,23 @@ class AdminDomainProbeHookTests(unittest.TestCase):
         for path, moved in (
             ("/api/v1/admin/dkim/1", "/api/v1/admin/dkim/30"),
             ("/api/v1/admin/dkim/1/rotation", "/api/v1/admin/dkim/30/rotation"),
-            ("/api/v1/admin/domains/1", "/api/v1/admin/domains/30"),
-            ("/api/v1/admin/domains/1?x=1", "/api/v1/admin/domains/30?x=1"),
+            ("/api/v1/admin/dkim/1?x=1", "/api/v1/admin/dkim/30?x=1"),
         ):
-            with self.subTest(path=path):
-                transaction = self.transaction(path, "coverage: " + path + " > 200 · body · valid")
+            with self.subTest(path=path), patch.dict(os.environ, IN_COVERAGE):
+                transaction = self.transaction(path, SET_DKIM_KEY)
                 self.hooks.off_the_admin_domain(transaction)
                 self.assertEqual(transaction["fullPath"], moved)
         self.assertEqual(len(self.server.created), 1)
         self.assertTrue(self.server.created[0].startswith("contract-probe-"))
 
     def test_dmarc_reject_probe_does_not_patch_restmail_test(self):
-        transaction = self.transaction(
-            "/api/v1/admin/domains/1",
-            'coverage: /api/v1/admin/domains/{id} > Update a domain > 200 · body · "dmarc_policy" at enum member "reject"',
-            {"dmarc_policy": "reject"},
-        )
-        self.hooks.a_certificate_before_going_live(transaction)
+        transaction = self.transaction("/api/v1/admin/domains/1", UPDATE_DOMAIN, {"dmarc_policy": "reject"})
+        before = transaction["request"]["body"]
+        with patch.dict(os.environ, IN_COVERAGE):
+            self.hooks.a_certificate_before_going_live(transaction)
         self.assertEqual(transaction["fullPath"], "/api/v1/admin/domains/30")
+        self.assertEqual(transaction["request"]["body"], before)
+        self.assertEqual(len(self.server.created), 1)
 
     def test_only_the_coverage_process_moves_a_request(self):
         # The hook sees the transaction's own name; only the result gets a
@@ -132,6 +136,27 @@ class AdminDomainProbeHookTests(unittest.TestCase):
                 self.assertEqual(transaction["fullPath"], path)
         self.assertEqual(self.server.created, [])
 
+    def test_other_ids_in_the_coverage_process_are_left_alone(self):
+        for path in ("/api/v1/admin/dkim/18", "/api/v1/admin/dkim/0", "/api/v1/admin/dkim/1.5", "/api/v1/admin/dkim/abc"):
+            with self.subTest(path=path), patch.dict(os.environ, IN_COVERAGE):
+                transaction = self.transaction(path, SET_DKIM_KEY)
+                self.hooks.off_the_admin_domain(transaction)
+                self.assertEqual(transaction["fullPath"], path)
+        self.assertEqual(self.server.created, [])
+
+    def test_every_other_phase_keeps_restmail_tests_id(self):
+        for path, name in (
+            ("/api/v1/admin/dkim/1", SET_DKIM_KEY),
+            ("/api/v1/admin/dkim/1", SET_DKIM_KEY + " as domain-admin-b"),
+            ("/api/v1/admin/dkim/1", SET_DKIM_KEY + " as admin"),
+        ):
+            with self.subTest(path=path, name=name), patch.dict(os.environ):
+                os.environ.pop("CONTRACT_COVERAGE", None)
+                transaction = self.transaction(path, name)
+                self.hooks.off_the_admin_domain(transaction)
+                self.assertEqual(transaction["fullPath"], path)
+        self.assertEqual(self.server.created, [])
+
     def test_other_processes_keep_restmail_test(self):
         with patch.dict(os.environ):
             del os.environ["CONTRACT_COVERAGE"]
@@ -145,6 +170,29 @@ class AdminDomainProbeHookTests(unittest.TestCase):
                     self.hooks.off_the_admin_domain(transaction)
                     self.assertEqual(transaction["fullPath"], path)
         self.assertEqual(self.server.created, [])
+
+
+class ScheduledListHookTests(unittest.TestCase):
+    NAME = "/api/v1/messages/scheduled > List your scheduled messages > 200 > application/json"
+
+    def setUp(self):
+        self.hooks, _, _ = load_hooks()
+
+    def scheduled(self, name, environment):
+        with patch.dict(os.environ, environment), patch.object(self.hooks, "schedule_a_message") as schedule:
+            if not environment:
+                os.environ.pop("CONTRACT_COVERAGE", None)
+            self.hooks.list_has_a_message_to_show({"name": name})
+        return schedule.call_count
+
+    def test_only_the_examples_process_makes_a_message(self):
+        self.assertEqual(self.scheduled(self.NAME, {}), 1)
+
+    def test_the_coverage_process_spends_no_send_budget_on_a_list(self):
+        self.assertEqual(self.scheduled(self.NAME, IN_COVERAGE), 0)
+
+    def test_the_authorization_phase_makes_none(self):
+        self.assertEqual(self.scheduled(self.NAME + " as admin", {}), 0)
 
 
 if __name__ == "__main__":

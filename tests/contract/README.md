@@ -167,14 +167,63 @@ command then drops it: it is not in the report, the skip count or
 `skipped-probes-baseline.txt`. A hook that always rewrites a body therefore
 leaves that operation's valid probes unsent and invisible. A hook also never
 sees a `coverage: ` name: the prefix is added to the result, not the transaction.
+`CONTRACT_COVERAGE=1` is what tells a hook it is in the coverage process, whose
+examples phase and working check it also sees.
 
-A value the schema cannot describe goes through `fuzz.pin` instead, which holds
-it before the probe is rendered. `snoozed_until` is held in the future because
-the generator's only date-time is in 2020, and the server rightly refuses that
-(`probes.py`). Both valid snooze probes then reach the server. A pin also takes
-away the probes that vary its own field, so the named examples prove those
-refusals in the gated examples phase, which is not pinned: `past`,
-`malformed_time`, `snoozed_until_missing` and `snoozed_until_wrong_type`.
+So `lost_probes.py` counts them from inside the hook worker, as the last hook of
+every request, and `gate.py` holds the counts to `lost-probes-baseline.txt`, per
+operation. A new operation or a larger count fails. A probe whose body a hook
+changes, or that a hook skips, is a line in `lost-probes.txt`, and a passing gate
+prints how many there were. The first two requests of each transaction are the
+documented ones, which a hook may rewrite: only a generated body is compared. The
+file says why each operation is there. The counter also registers after the
+quiet-hours hooks, so replacing the generated `time_zone` placeholder `x` with
+`UTC` cannot silently discard probes.
+
+There are three ways to keep a probe:
+
+- **`fuzz.pin`** holds a value the schema cannot describe, before the probe is
+  rendered. `snoozed_until` and `expires_at` are held in the future because the
+  generator's only date-time is in 2020, and the server rightly refuses that
+  (`probes.py`). `permissions` is held at a real capability the probe
+  administrator has, because the generator's stand-in is capability `x` at scope
+  `x`. A pin is global by field name, so it does not suit `password`, which eleven
+  operations have. Vertrag does not look through a body's nested `$ref` to see
+  what a pin names, so `apiKeyPermission` is an alias that the description holds in
+  the body.
+- **The fixture matches the body.** `createAPIKey` and `updateAPIKey` check the
+  caller's current password, and the coverage process sends them as
+  `contract-probe-admin@restmail.test`, whose two passwords are plainly fake and
+  are what the requests carry: `x`, which the generator draws, and
+  `current-password`, which the documented examples say. The handler's comparison
+  is the real one, and it signs in with a real second factor (`mfa_admin.py`). A
+  wrong password is still refused: `updateAPIKey`'s `wrong_password` example, and
+  `createAPIKey`'s in `api_keys_live.py`.
+- **Only the path changes.** The same two hooks put these requests on that
+  administrator's own account, so a key is within both grants, and `updateAPIKey`
+  edits a key made for it.
+
+A pin takes away the probes that vary its own field, so the named examples prove
+those refusals in the gated examples phase, which is not pinned. For snooze:
+`past`, `malformed_time`, `snoozed_until_missing` and `snoozed_until_wrong_type`.
+For `createAPIKey` and `updateAPIKey`: `permissions_missing`, `permissions_empty`,
+`permissions_too_many`, `permissions_wrong_type`, `permission_scope_missing`,
+`permission_capability_wrong_type` and `permission_unknown_field`. For
+`createAPIKey` too: `expires_at_malformed`, `expires_at_wrong_type` and
+`expires_at_past`.
+
+`createAppPassword` cannot be held this way. Its description lets a request leave
+out `password`, and the handler answers that with the documented 403
+`reauth_required`, which Vertrag calls a disagreement. So its probes the schema
+forbids reach the handler as drawn, and its well-formed ones are still given the
+password, and counted, until that disagreement is decided.
+
+### Coverage keeps restmail.test unchanged
+
+`off_the_admin_domain` moves both DKIM and `updateDomain` coverage probes to a
+disposable domain. Domain updates therefore cannot leave the fixture admin's
+domain at `sending_policy` bulk or `dmarc_policy` reject and skip the send probes.
+Examples and authorization/ownership requests retain their intended targets.
 
 ### A delivery's recipient in the fuzz phase
 
@@ -294,7 +343,8 @@ the primary run (#1334). A request carrying the fixture admin's session is sent
 with the two-factor administrator's instead (`mfa_admin.py`: a superadmin
 enrolled in TOTP and signed in with a real second factor; nothing is forged).
 Requests with no credential, and the authorization phase's other principals,
-keep theirs. `createAPIKey` is made with that administrator's password.
+keep theirs. `createAPIKey` is made with that administrator's password, except in
+the coverage process ([A hook cannot change a generated body](#a-hook-cannot-change-a-generated-body)).
 `deleteGrant`'s example names grant 1, a fixture principal's own, so the hook
 makes an eligible grant on an account without credentials and deletes that.
 `recoverAccount` is sent for the fixture admin, which has no authenticator, so

@@ -24,7 +24,13 @@ skipped-probes-baseline.txt. Neither a new skipped operation nor a larger
 count can spend another operation's budget. A smaller count must shrink the
 baseline. The pinned tool exempts login's generated-credential probes itself.
 
-Usage: gate.py <openapi.yaml> <vertrag.yml> <junit.xml> <coverage-baseline.txt> [skipped-probes-baseline.txt]
+Probes a hook ended (lost_probes.py) appear in no report, so the hook worker
+counts them and lost-probes-baseline.txt holds them, per operation. A new
+operation or a larger count fails; a smaller count is noted, because only a
+whole-API topology run can measure it.
+
+Usage: gate.py <openapi.yaml> <vertrag.yml> <junit.xml> <coverage-baseline.txt>
+           [skipped-probes-baseline.txt [lost-probes-baseline.txt lost-probes.txt]]
        gate.py --failing-probes <openapi.yaml> <junit.xml>
            prints the operations with a failing probe, in baseline form.
 """
@@ -135,7 +141,44 @@ def skipped_baseline(path, all_ids):
     return counts
 
 
-def gate(spec_path, config_path, report_path, baseline_path, skipped_baseline_path=None):
+def lost_counts(path):
+    """Probes a hook ended, per operation: one operationId a line (lost_probes.py)."""
+    counts = {}
+    with open(path) as source:
+        for line in source:
+            operation = line.strip()
+            if operation:
+                counts[operation] = counts.get(operation, 0) + 1
+    return counts
+
+
+def check_lost_probes(baseline_path, report_path, all_ids):
+    """Print what the count says and answer whether it may pass."""
+    if not os.path.exists(report_path):
+        print("No count of the probes hooks ended: %s is missing" % report_path)
+        return False
+    counts = lost_counts(report_path)
+    try:
+        allowed = skipped_baseline(baseline_path, all_ids)
+    except ValueError as err:
+        print(str(err))
+        return False
+    print("Coverage phase: %d probes ended by a hook, unsent and in no report; the baseline holds %d" % (
+        sum(counts.values()), sum(allowed.values())))
+    held = True
+    for operation in sorted(set(counts) | set(allowed)):
+        count, limit = counts.get(operation, 0), allowed.get(operation, 0)
+        if count > limit:
+            print("Probes ended by a hook increased: %s: %d > %d" % (operation, count, limit))
+            held = False
+        elif count < limit:
+            print("Probes ended by a hook decreased: %s: %d < %d; shrink tests/contract/lost-probes-baseline.txt" % (
+                operation, count, limit))
+    return held
+
+
+def gate(spec_path, config_path, report_path, baseline_path, skipped_baseline_path=None,
+         lost_baseline_path=None, lost_report_path=None):
     ops = operations(spec_path)
     all_ids = set(ops.values())
     skipped, uncounted = exclusions(config_path)
@@ -189,6 +232,9 @@ def gate(spec_path, config_path, report_path, baseline_path, skipped_baseline_pa
             ok = False
             print("Skipped valid probes decreased: %s: %d < %d; shrink tests/contract/skipped-probes-baseline.txt" % (
                 operation, actual, limit))
+
+    if lost_baseline_path is not None and not check_lost_probes(lost_baseline_path, lost_report_path, all_ids):
+        ok = False
 
     new = sorted(probes_failed - set(listed))
     # Only an operation that was probed has passed its probes: one the run never

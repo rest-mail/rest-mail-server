@@ -2,11 +2,11 @@
 """Configure schema-generated probes after the complete examples gate passes.
 
 vertrag 0.29 applies pins to documented examples too. Keep the full examples
-run unpinned; this second run holds an opaque signing key, a snooze date in the
-future and an immediate send, and omits the 4xx transactions whose probes gate.py
-already ignores.
-All probes from successful transactions remain enabled. The first run enforces
-the full surface gate.
+run unpinned; this second run holds an opaque signing key, the dates a schema
+cannot say must be in the future, an immediate send, and an API key's permissions,
+and omits the 4xx transactions whose probes gate.py already ignores. All probes
+from successful transactions remain enabled. The first run enforces the full
+surface gate.
 
 A fuzz run (a report named fuzz.xml) also holds a delivery's mailbox_id at the
 recipient the fixtures make. A coverage run does not.
@@ -40,6 +40,14 @@ SNOOZE_UNTIL = "2099-01-01T10:00:00Z"
 # request body with this field. Its named scheduled_at_* examples prove the
 # refusals in the examples gate, which is not pinned.
 SCHEDULED_AT = None
+# The same for the expiry of an API key or an app password.
+EXPIRES_AT = "2099-01-01T10:00:00Z"
+# A schema-valid permission is a capability "x" at scope "x", and a key may hold
+# only a real capability that its maker and its account both hold. The API key
+# hooks send these probes as this mailbox's administrator, on its own account
+# (mfa_admin.py). The named examples of createAPIKey and updateAPIKey prove the
+# refusals a pin stops sending.
+KEY_PERMISSIONS = [{"capability": "mail:read", "scope": "mailbox:contract-probe-admin@restmail.test"}]
 # A schema cannot say a mailbox must exist either. Fuzz draws a mailbox_id or an
 # address that names nothing and reads the 404 as a disagreement, so the rest of
 # delivery is never reached. The fuzz run holds mailbox_id at the recipient the
@@ -67,6 +75,8 @@ def main(config_path, out_path, report_path, pin=True, unpinned=()):
             "private_key": DKIM_KEY.read_text(),
             "snoozed_until": SNOOZE_UNTIL,
             "scheduled_at": SCHEDULED_AT,
+            "expires_at": EXPIRES_AT,
+            "permissions": KEY_PERMISSIONS,
         }
         if Path(report_path).stem == "fuzz":
             pins.update(fuzz_pins())

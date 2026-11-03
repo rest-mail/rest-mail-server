@@ -25,15 +25,24 @@ func TestAccountValidationExamples(t *testing.T) {
 		{"createAccount", "address_missing"}, {"createAccount", "body_array"}, {"createAccount", "malformed_json"},
 		{"createAppPassword", "name_control"}, {"createAppPassword", "body_array"}, {"createAppPassword", "malformed_json"},
 		{"createAPIKey", "name_missing"}, {"createAPIKey", "body_array"}, {"createAPIKey", "malformed_json"},
+		{"createAPIKey", "permissions_missing"}, {"createAPIKey", "permissions_empty"}, {"createAPIKey", "permissions_too_many"},
+		{"createAPIKey", "permissions_wrong_type"}, {"createAPIKey", "permission_scope_missing"},
+		{"createAPIKey", "permission_capability_wrong_type"}, {"createAPIKey", "permission_unknown_field"},
+		{"createAPIKey", "expires_at_malformed"}, {"createAPIKey", "expires_at_wrong_type"}, {"createAPIKey", "expires_at_past"},
 		{"updateAPIKey", "permissions_missing"}, {"updateAPIKey", "body_array"}, {"updateAPIKey", "malformed_json"},
+		{"updateAPIKey", "permissions_empty"}, {"updateAPIKey", "permissions_too_many"}, {"updateAPIKey", "permissions_wrong_type"},
+		{"updateAPIKey", "permission_scope_missing"}, {"updateAPIKey", "permission_capability_wrong_type"},
+		{"updateAPIKey", "permission_unknown_field"},
 		{"linkAccount", "address_blank"}, {"linkAccount", "body_array"}, {"linkAccount", "malformed_json"},
 		{"unlinkAccount", "invalid_id"},
 	} {
 		t.Run(tc.op+"/"+tc.name, func(t *testing.T) {
 			examplepairs.Proven(t, tc.op, tc.name)
 			pair, ok := pairs[tc.op][tc.name]
-			// name_control fits the schema: only the handler can refuse a control character.
-			if !ok || (!pair.Request.Invalid && tc.name != "name_control") {
+			// These fit the schema: only the handler can refuse a control character or a date
+			// in the past, and a schema's date-time format asserts nothing.
+			fits := tc.name == "name_control" || tc.name == "expires_at_past" || tc.name == "expires_at_malformed"
+			if !ok || (!pair.Request.Invalid && !fits) {
 				t.Fatalf("%s/%s is not an invalid request pair", tc.op, tc.name)
 			}
 			if pair.Requires["body"] == "malformed" {

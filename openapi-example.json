@@ -3799,6 +3799,106 @@
         }
       }
     },
+    "expires_at_malformed": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "name": "Invoice robot",
+          "password": "current-password",
+          "permissions": [
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            }
+          ],
+          "expires_at": "not-a-date-time"
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "expires_at": "must be a date-time"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "expires_at_past": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "name": "Invoice robot",
+          "password": "current-password",
+          "permissions": [
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            }
+          ],
+          "expires_at": "2000-01-01T00:00:00Z"
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "expires_at": "must be in the future"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "expires_at_wrong_type": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "name": "Invoice robot",
+          "password": "current-password",
+          "permissions": [
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            }
+          ],
+          "expires_at": 12345
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "expires_at": "must be a date-time"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "internal_error": {
       "summary": "A database fault is not a client error",
       "requires": {
@@ -3935,6 +4035,477 @@
           "error": {
             "code": "two_factor_required",
             "message": "This action needs a session signed in with two-factor authentication: sign in again with your code"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "permission_capability_wrong_type": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "name": "Invoice robot",
+          "password": "current-password",
+          "permissions": [
+            {
+              "capability": 12345,
+              "scope": "mailbox:robot@example.com"
+            }
+          ]
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "permissions[0].capability": "must be a string"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "permission_scope_missing": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "name": "Invoice robot",
+          "password": "current-password",
+          "permissions": [
+            {
+              "capability": "mail:read"
+            }
+          ]
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "permissions[0].scope": "required"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "permission_unknown_field": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "name": "Invoice robot",
+          "password": "current-password",
+          "permissions": [
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com",
+              "extra": 1
+            }
+          ]
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "permissions[0].extra": "not allowed"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "permissions_empty": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "name": "Invoice robot",
+          "password": "current-password",
+          "permissions": []
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "permissions": "must contain between 1 and 64 scoped permissions"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "permissions_missing": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "name": "Invoice robot",
+          "password": "current-password"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "permissions": "must contain between 1 and 64 scoped permissions"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "permissions_too_many": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "name": "Invoice robot",
+          "password": "current-password",
+          "permissions": [
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            }
+          ]
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "permissions": "must contain between 1 and 64 scoped permissions"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "permissions_wrong_type": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "name": "Invoice robot",
+          "password": "current-password",
+          "permissions": "mail:read"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "permissions": "must be an array"
+              }
+            }
           }
         },
         "mediaType": "application/json"
@@ -41212,6 +41783,133 @@
         "mediaType": "application/json"
       }
     },
+    "permission_capability_wrong_type": {
+      "request": {
+        "path": {
+          "credential_id": 2,
+          "id": 1
+        },
+        "body": {
+          "password": "current-password",
+          "permissions": [
+            {
+              "capability": 12345,
+              "scope": "mailbox:robot@example.com"
+            }
+          ]
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "permissions[0].capability": "must be a string"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "permission_scope_missing": {
+      "request": {
+        "path": {
+          "credential_id": 2,
+          "id": 1
+        },
+        "body": {
+          "password": "current-password",
+          "permissions": [
+            {
+              "capability": "mail:read"
+            }
+          ]
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "permissions[0].scope": "required"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "permission_unknown_field": {
+      "request": {
+        "path": {
+          "credential_id": 2,
+          "id": 1
+        },
+        "body": {
+          "password": "current-password",
+          "permissions": [
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com",
+              "extra": 1
+            }
+          ]
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "permissions[0].extra": "not allowed"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "permissions_empty": {
+      "request": {
+        "path": {
+          "credential_id": 2,
+          "id": 1
+        },
+        "body": {
+          "password": "current-password",
+          "permissions": []
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "permissions": "must contain between 1 and 64 scoped permissions"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "permissions_missing": {
       "request": {
         "path": {
@@ -41232,6 +41930,323 @@
             "details": {
               "fields": {
                 "permissions": "must contain between 1 and 64 scoped permissions"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "permissions_too_many": {
+      "request": {
+        "path": {
+          "credential_id": 2,
+          "id": 1
+        },
+        "body": {
+          "password": "current-password",
+          "permissions": [
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            },
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            }
+          ]
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "permissions": "must contain between 1 and 64 scoped permissions"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "permissions_wrong_type": {
+      "request": {
+        "path": {
+          "credential_id": 2,
+          "id": 1
+        },
+        "body": {
+          "password": "current-password",
+          "permissions": "mail:read"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "permissions": "must be an array"
               }
             }
           }

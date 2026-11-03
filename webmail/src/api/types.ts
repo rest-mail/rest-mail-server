@@ -4826,10 +4826,6 @@ export interface components {
             permissions: components["schemas"]["ScopedPermission"][];
             public_id: string;
         };
-        apiKeyPermission: {
-            capability: string;
-            scope: string;
-        };
         apiKeyResponse: {
             /** Format: date-time */
             created_at: string;
@@ -4884,7 +4880,10 @@ export interface components {
             expires_at?: string | null;
             name: string;
             password: string;
-            permissions: components["schemas"]["apiKeyPermission"][];
+            permissions: {
+                capability: string;
+                scope: string;
+            }[];
         };
         createAccountRequest: {
             /** Format: email */
@@ -5526,7 +5525,10 @@ export interface components {
         };
         updateAPIKeyBody: {
             password: string;
-            permissions: components["schemas"]["apiKeyPermission"][];
+            permissions: {
+                capability: string;
+                scope: string;
+            }[];
         };
         updateAliasRequest: {
             active?: boolean | null;
