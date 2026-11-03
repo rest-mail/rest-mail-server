@@ -9,6 +9,7 @@ WORKDIR /app
 RUN apk add --no-cache git \
  && git config --system --add safe.directory '*'
 COPY go.mod go.sum ./
+COPY third_party/go-imap ./third_party/go-imap
 RUN go mod download
 
 # ── Stage 2: builder ─────────────────────────────────────────────────

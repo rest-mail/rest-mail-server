@@ -177,6 +177,10 @@ jobs:
           # The in-process example tests write the pairs they proved here (#1237).
           RESTMAIL_EXAMPLE_PROOFS: ${{ runner.temp }}/proofs/example-proofs-rest.json
 
+      - name: Test the local IMAP compatibility module
+        working-directory: third_party/go-imap
+        run: go test -race -count=1 -timeout=10m ./...
+
       - name: Test contract fixtures against an empty database
         run: |
           set -euo pipefail

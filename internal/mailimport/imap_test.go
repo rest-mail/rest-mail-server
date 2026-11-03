@@ -170,7 +170,7 @@ func newIMAPFixture(t *testing.T, f *imapSourceFixture) IMAPOptions {
 
 func TestIMAPPreservesReadOnlySource(t *testing.T) {
 	raw := "Message-ID: <source@example.com>\r\nSubject: original\r\n\r\n\x00\xffbody\r\n"
-	f := &imapSourceFixture{raw: raw, flags: `\Seen \Answered \Flagged \Draft \Recent`, count: 1}
+	f := &imapSourceFixture{raw: raw, flags: `\Seen \Answered \Flagged \Draft \Deleted $Forwarded $Junk \Recent`, count: 1}
 	options := newIMAPFixture(t, f)
 	var messages []apitypes.ImportMessageBody
 	err := IMAP(context.Background(), options, 1024, func(source string, body apitypes.ImportMessageBody) error {
@@ -188,7 +188,7 @@ func TestIMAPPreservesReadOnlySource(t *testing.T) {
 	}
 	for _, message := range messages {
 		_, offset := message.InternalDate.Zone()
-		if !bytes.Equal(message.RawMessage, []byte(raw)) || offset != 2*60*60 || message.InternalDate.Day() != 25 || !reflect.DeepEqual(message.Flags, []string{`\Seen`, `\Answered`, `\Flagged`, `\Draft`}) {
+		if !bytes.Equal(message.RawMessage, []byte(raw)) || offset != 2*60*60 || message.InternalDate.Day() != 25 || !reflect.DeepEqual(message.Flags, []string{`\Seen`, `\Answered`, `\Flagged`, `\Draft`, `\Deleted`, "$Forwarded", "$Junk"}) {
 			t.Fatal("source octets, flags or internal date changed")
 		}
 	}
@@ -208,8 +208,8 @@ func TestIMAPRefusesLossAndBoundsReads(t *testing.T) {
 		f    *imapSourceFixture
 		max  int64
 	}{
-		{"deleted", &imapSourceFixture{flags: `\Deleted`, count: 1}, 1024},
-		{"keyword", &imapSourceFixture{flags: "$Forwarded", count: 1}, 1024},
+		{"deleted", &imapSourceFixture{flags: `\Unknown`, count: 1}, 1024},
+		{"keyword", &imapSourceFixture{flags: "bad]keyword", count: 1}, 1024},
 		{"size metadata", &imapSourceFixture{flags: `\Seen`, size: &wrong, count: 1}, 1024},
 		{"bounded literal", &imapSourceFixture{flags: `\Seen`, size: &wrong, count: 1}, 10},
 		{"declared too large", &imapSourceFixture{flags: `\Seen`, count: 1}, 10},

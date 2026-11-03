@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	goimap "github.com/rest-mail/go-imap/pkg/imap"
 	"io"
 	"io/fs"
 	"net/mail"
@@ -78,7 +79,11 @@ func Maildir(ctx context.Context, directory string, maxBytes int64, visit Visit)
 		if problem := rmail.FolderNameProblem(folder); problem != "" {
 			return fmt.Errorf("source folder %q: %s", folder, problem)
 		}
-		flags, err := maildirFlags(entry.Name())
+		keywords, err := maildirKeywords(root, filepath.Dir(filepath.Dir(rel)))
+		if err != nil {
+			return err
+		}
+		flags, err := maildirFlags(entry.Name(), keywords)
 		if err != nil {
 			return fmt.Errorf("%s: %w", rel, err)
 		}
@@ -99,20 +104,23 @@ func Maildir(ctx context.Context, directory string, maxBytes int64, visit Visit)
 	})
 }
 
-func maildirFlags(name string) ([]string, error) {
+func maildirFlags(name string, keywords map[rune]string) ([]string, error) {
 	_, encoded, found := strings.Cut(name, ":2,")
 	if !found {
 		return nil, nil
 	}
 	var flags []string
 	for _, flag := range encoded {
-		value := map[rune]string{'S': `\Seen`, 'R': `\Answered`, 'F': `\Flagged`, 'D': `\Draft`}[flag]
+		value := map[rune]string{'S': `\Seen`, 'R': `\Answered`, 'F': `\Flagged`, 'D': `\Draft`, 'T': `\Deleted`}[flag]
 		if value == "" {
-			return nil, fmt.Errorf("Maildir flag %q is unsupported; keywords are not silently discarded", flag)
+			value = keywords[flag]
+		}
+		if value == "" {
+			return nil, fmt.Errorf("Maildir flag %q has no keyword mapping", flag)
 		}
 		flags = append(flags, value)
 	}
-	return flags, nil
+	return goimap.NormalizeImportFlags(flags)
 }
 
 // Mbox accepts From-framed rfc4155, mboxrd or mboxo. The caller chooses the
@@ -166,19 +174,23 @@ func Mbox(ctx context.Context, source io.Reader, folder, format string, maxBytes
 		if _, present := message.Header["X-Imap"]; present {
 			return errors.New("a Dovecot metadata-only mbox pseudo-message requires an IMAP export; it was not imported as mail")
 		}
-		for _, keywords := range message.Header["X-Keywords"] {
-			if strings.TrimSpace(keywords) != "" {
-				return errors.New("mbox keywords are unsupported; they were not silently discarded")
+		var keywords []string
+		for _, value := range message.Header["X-Keywords"] {
+			keywords = append(keywords, strings.Fields(value)...)
+		}
+		if _, err := goimap.NormalizeImportFlags(keywords); err != nil {
+			return fmt.Errorf("mbox keywords: %w", err)
+		}
+		for _, keyword := range keywords {
+			if strings.Contains(keyword, `\`) {
+				return errors.New("mbox keywords must not contain a backslash")
 			}
 		}
 		// Header.Get sees only the first occurrence. Preserve supported flags
 		// from every occurrence, and refuse unsupported metadata wherever it is.
 		status := strings.Join(message.Header["Status"], "")
 		xStatus := strings.Join(message.Header["X-Status"], "")
-		if strings.Contains(xStatus, "D") {
-			return errors.New("mbox Deleted state is unsupported; the message was not silently hidden")
-		}
-		for _, metadata := range []struct{ name, value, allowed string }{{"Status", status, "RO"}, {"X-Status", xStatus, "AFT"}} {
+		for _, metadata := range []struct{ name, value, allowed string }{{"Status", status, "RO"}, {"X-Status", xStatus, "AFTD"}} {
 			for _, flag := range metadata.value {
 				if !strings.ContainsRune(metadata.allowed, flag) {
 					return fmt.Errorf("mbox %s flag %q is unsupported; it was not silently discarded", metadata.name, flag)
@@ -189,10 +201,14 @@ func Mbox(ctx context.Context, source io.Reader, folder, format string, maxBytes
 		if strings.Contains(status, "R") {
 			flags = append(flags, `\Seen`)
 		}
-		for _, pair := range []struct{ letter, flag string }{{"A", `\Answered`}, {"F", `\Flagged`}, {"T", `\Draft`}} {
+		for _, pair := range []struct{ letter, flag string }{{"D", `\Deleted`}, {"A", `\Answered`}, {"F", `\Flagged`}, {"T", `\Draft`}} {
 			if strings.Contains(xStatus, pair.letter) {
 				flags = append(flags, pair.flag)
 			}
+		}
+		flags, err = goimap.NormalizeImportFlags(append(flags, keywords...))
+		if err != nil {
+			return err
 		}
 		return visit(fmt.Sprintf("message %d", count), apitypes.ImportMessageBody{RawMessage: raw, Folder: folder, Flags: flags, InternalDate: date})
 	}

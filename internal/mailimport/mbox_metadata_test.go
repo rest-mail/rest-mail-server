@@ -16,9 +16,9 @@ func TestMboxChecksEveryMetadataHeaderOccurrence(t *testing.T) {
 	for _, format := range []string{"rfc4155", "mboxrd", "mboxo"} {
 		for _, headers := range []string{
 			"Status: R\nStatus: Z\n",
-			"X-Status: A\nX-Status: D\n",
+			"X-Status: A\nX-Status: Q\n",
 			"X-Status: A\nX-Status: Z\n",
-			"X-Keywords: \nX-Keywords: private-keyword\n",
+			"X-Keywords: \nX-Keywords: bad]keyword\n",
 			"Content-Length: \nContent-Length: 4\n",
 			"X-IMAP: \nX-IMAP: 1 2\n",
 		} {
@@ -38,7 +38,7 @@ func TestMboxChecksEveryMetadataHeaderOccurrence(t *testing.T) {
 }
 
 func TestMboxCombinesSupportedFlagsWithoutRewritingRawHeaders(t *testing.T) {
-	raw := "Subject: original\nStatus: O\nstatus: R\nX-Status: A\nx-status: F\nX-Status: T\n\nbody\n"
+	raw := "Subject: original\nStatus: O\nstatus: R\nX-Status: A\nx-status: F\nX-Status: T\nX-Status: D\nX-Keywords: $Forwarded\nX-Keywords: $Junk\n\nbody\n"
 	for _, format := range []string{"rfc4155", "mboxrd", "mboxo"} {
 		var messages []apitypes.ImportMessageBody
 		err := Mbox(t.Context(), strings.NewReader(metadataMboxSeparator+raw+"\n"), "Archive", format, 4096, func(_ string, message apitypes.ImportMessageBody) error {
@@ -48,7 +48,7 @@ func TestMboxCombinesSupportedFlagsWithoutRewritingRawHeaders(t *testing.T) {
 		if err != nil || len(messages) != 1 {
 			t.Fatalf("%s: messages%d error%v", format, len(messages), err)
 		}
-		if !bytes.Equal(messages[0].RawMessage, []byte(raw)) || !reflect.DeepEqual(messages[0].Flags, []string{`\Seen`, `\Answered`, `\Flagged`, `\Draft`}) {
+		if !bytes.Equal(messages[0].RawMessage, []byte(raw)) || !reflect.DeepEqual(messages[0].Flags, []string{`\Seen`, `\Deleted`, `\Answered`, `\Flagged`, `\Draft`, "$Forwarded", "$Junk"}) {
 			t.Fatalf("%s: raw source or flags changed: %+v", format, messages[0])
 		}
 	}

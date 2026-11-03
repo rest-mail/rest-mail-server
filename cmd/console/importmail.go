@@ -40,7 +40,7 @@ Source files are never changed. Raw messages and credentials are never printed.
   --json                 one summary on stdout; one error on stderr
 
 Maildir uses file mtime for INTERNALDATE and reads cur/new plus Maildir++ folders.
-Deleted-state/keyword flags, source symlinks, Content-Length-framed mbox and mbox
+Source symlinks, Content-Length-framed mbox and mbox
 pseudo-messages are refused explicitly. Mbox escaping format is never guessed.
 Dry-run does not check server authorization, destination, quota or server limits.
 See docs/migrating-mail.md for supported formats and cutover limits.

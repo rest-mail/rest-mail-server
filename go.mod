@@ -2,6 +2,8 @@ module github.com/rest-mail/rest-mail-server
 
 go 1.25.0
 
+replace github.com/rest-mail/go-imap => ./third_party/go-imap
+
 require (
 	github.com/antimatter-studios/go-oapifly v0.35.0
 	github.com/aws/aws-sdk-go-v2 v1.47.3

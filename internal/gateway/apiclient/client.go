@@ -341,11 +341,22 @@ var maxGatewayMessages = 5000
 // complete (not just the newest page) and monotonic. The API pages newest-first
 // with a cursor; follow the cursor to the end, then reverse.
 func (c *Client) ListMessages(token string, accountID uint, folder string) (*MessageListResponse, error) {
+	return c.listMessages(token, accountID, folder, false)
+}
+
+func (c *Client) ListIMAPMessages(token string, accountID uint, folder string) (*MessageListResponse, error) {
+	return c.listMessages(token, accountID, folder, true)
+}
+
+func (c *Client) listMessages(token string, accountID uint, folder string, includeDeleted bool) (*MessageListResponse, error) {
 	var all []MessageSummary
 	cursor := ""
 	for {
 		path := fmt.Sprintf("/api/v1/accounts/%d/folders/%s/messages?limit=100",
 			accountID, url.PathEscape(folder))
+		if includeDeleted {
+			path += "&include_imap_deleted=true"
+		}
 		if cursor != "" {
 			path += "&cursor=" + url.QueryEscape(cursor)
 		}

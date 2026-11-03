@@ -18163,6 +18163,34 @@
         "mediaType": "application/json"
       }
     },
+    "deleted": {
+      "request": {
+        "path": {
+          "id": 12
+        },
+        "body": {
+          "flags": [
+            "\\Deleted"
+          ],
+          "folder": "Archive",
+          "internal_date": "2020-01-02T03:04:05Z",
+          "raw_message": "TWVzc2FnZS1JRDogPGhpc3RvcnlAZXhhbXBsZS50ZXN0Pg0KRnJvbTogT3JpZ2luYWwgPG9sZEBleGFtcGxlLnRlc3Q+DQpTdWJqZWN0OiBvcmlnaW5hbA0KDQpoaXN0b3J5DQo="
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "id": 41,
+            "imported": true,
+            "message_id": "\u003chistory@example.test\u003e",
+            "folder": "Archive"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "invalid_id": {
       "request": {
         "path": {
@@ -18192,6 +18220,96 @@
                 "id": "must be at least 1"
               }
             }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_keyword": {
+      "request": {
+        "path": {
+          "id": 12
+        },
+        "body": {
+          "flags": [
+            "bad]keyword"
+          ],
+          "folder": "Archive",
+          "internal_date": "2020-01-02T03:04:05Z",
+          "raw_message": "TWVzc2FnZS1JRDogPGhpc3RvcnlAZXhhbXBsZS50ZXN0Pg0KRnJvbTogT3JpZ2luYWwgPG9sZEBleGFtcGxlLnRlc3Q+DQpTdWJqZWN0OiBvcmlnaW5hbA0KDQpoaXN0b3J5DQo="
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "flags": "invalid keyword: expected an RFC 3501 atom without backslash"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "keyword_too_long": {
+      "request": {
+        "path": {
+          "id": 12
+        },
+        "body": {
+          "flags": [
+            "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+          ],
+          "folder": "Archive",
+          "internal_date": "2020-01-02T03:04:05Z",
+          "raw_message": "TWVzc2FnZS1JRDogPGhpc3RvcnlAZXhhbXBsZS50ZXN0Pg0KRnJvbTogT3JpZ2luYWwgPG9sZEBleGFtcGxlLnRlc3Q+DQpTdWJqZWN0OiBvcmlnaW5hbA0KDQpoaXN0b3J5DQo="
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "flags": "keyword must contain 1 to 255 ASCII bytes"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "keywords": {
+      "request": {
+        "path": {
+          "id": 12
+        },
+        "body": {
+          "flags": [
+            "$Custom"
+          ],
+          "folder": "Archive",
+          "internal_date": "2020-01-02T03:04:05Z",
+          "raw_message": "TWVzc2FnZS1JRDogPGhpc3RvcnlAZXhhbXBsZS50ZXN0Pg0KRnJvbTogT3JpZ2luYWwgPG9sZEBleGFtcGxlLnRlc3Q+DQpTdWJqZWN0OiBvcmlnaW5hbA0KDQpoaXN0b3J5DQo="
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "id": 41,
+            "imported": true,
+            "message_id": "\u003chistory@example.test\u003e",
+            "folder": "Archive"
           }
         },
         "mediaType": "application/json"
@@ -18345,6 +18463,137 @@
           "error": {
             "code": "request_too_large",
             "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "too_many_keywords": {
+      "request": {
+        "path": {
+          "id": 12
+        },
+        "body": {
+          "flags": [
+            "$keyword0",
+            "$keyword1",
+            "$keyword2",
+            "$keyword3",
+            "$keyword4",
+            "$keyword5",
+            "$keyword6",
+            "$keyword7",
+            "$keyword8",
+            "$keyword9",
+            "$keyword10",
+            "$keyword11",
+            "$keyword12",
+            "$keyword13",
+            "$keyword14",
+            "$keyword15",
+            "$keyword16",
+            "$keyword17",
+            "$keyword18",
+            "$keyword19",
+            "$keyword20",
+            "$keyword21",
+            "$keyword22",
+            "$keyword23",
+            "$keyword24",
+            "$keyword25",
+            "$keyword26",
+            "$keyword27",
+            "$keyword28",
+            "$keyword29",
+            "$keyword30",
+            "$keyword31",
+            "$keyword32",
+            "$keyword33",
+            "$keyword34",
+            "$keyword35",
+            "$keyword36",
+            "$keyword37",
+            "$keyword38",
+            "$keyword39",
+            "$keyword40",
+            "$keyword41",
+            "$keyword42",
+            "$keyword43",
+            "$keyword44",
+            "$keyword45",
+            "$keyword46",
+            "$keyword47",
+            "$keyword48",
+            "$keyword49",
+            "$keyword50",
+            "$keyword51",
+            "$keyword52",
+            "$keyword53",
+            "$keyword54",
+            "$keyword55",
+            "$keyword56",
+            "$keyword57",
+            "$keyword58",
+            "$keyword59",
+            "$keyword60",
+            "$keyword61",
+            "$keyword62",
+            "$keyword63",
+            "$keyword64",
+            "$keyword65",
+            "$keyword66",
+            "$keyword67",
+            "$keyword68",
+            "$keyword69",
+            "$keyword70",
+            "$keyword71",
+            "$keyword72",
+            "$keyword73",
+            "$keyword74",
+            "$keyword75",
+            "$keyword76",
+            "$keyword77",
+            "$keyword78",
+            "$keyword79",
+            "$keyword80",
+            "$keyword81",
+            "$keyword82",
+            "$keyword83",
+            "$keyword84",
+            "$keyword85",
+            "$keyword86",
+            "$keyword87",
+            "$keyword88",
+            "$keyword89",
+            "$keyword90",
+            "$keyword91",
+            "$keyword92",
+            "$keyword93",
+            "$keyword94",
+            "$keyword95",
+            "$keyword96",
+            "$keyword97",
+            "$keyword98",
+            "$keyword99",
+            "$keyword100"
+          ],
+          "folder": "Archive",
+          "internal_date": "2020-01-02T03:04:05Z",
+          "raw_message": "TWVzc2FnZS1JRDogPGhpc3RvcnlAZXhhbXBsZS50ZXN0Pg0KRnJvbTogT3JpZ2luYWwgPG9sZEBleGFtcGxlLnRlc3Q+DQpTdWJqZWN0OiBvcmlnaW5hbA0KDQpoaXN0b3J5DQo="
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "flags": "at most 100 keywords per message"
+              }
+            }
           }
         },
         "mediaType": "application/json"

@@ -604,7 +604,7 @@ export interface paths {
         put?: never;
         /**
          * Store a message the account already has
-         * @description Stores original message octets, folder, supported system flags and required internal_date without delivery rules or push notifications. Requires mail:import on the destination, which every account holds on its own mailbox. A message whose Message-ID and exact octets are already in that account and folder is skipped without changing its flags or date; the same Message-ID with different octets is stored as another message. Messages without Message-ID use a deterministic SHA-256 import identity; the raw source remains unchanged. Every attempt is audited; successful imports and skips also receive a transactional messages.import audit entry. The decoded message is bounded by SMTP_MAX_MESSAGE_SIZE (10 MiB by default); the general API body limit may be stricter. Deleted-state and keyword flags are unsupported and refused rather than hidden or discarded.
+         * @description Stores original message octets, folder, supported system flags and required internal_date without delivery rules or push notifications. Requires mail:import on the destination, which every account holds on its own mailbox. A message whose Message-ID and exact octets are already in that account and folder is skipped without changing its flags or date; the same Message-ID with different octets is stored as another message. Messages without Message-ID use a deterministic SHA-256 import identity; the raw source remains unchanged. Every attempt is audited; successful imports and skips also receive a transactional messages.import audit entry. The decoded message is bounded by SMTP_MAX_MESSAGE_SIZE (10 MiB by default); the general API body limit may be stricter. Deleted state and up to 100 case-insensitive keywords of 1–255 ASCII bytes are preserved. Keywords must be RFC 3501 atoms without backslash. Deleted messages use IMAP deletion state, not API tombstones; EXPUNGE removes them.
          */
         post: operations["importMessage"];
         delete?: never;
@@ -3700,6 +3700,7 @@ export interface components {
             has_attachments: boolean;
             headers?: unknown;
             id: number;
+            imap_deleted?: boolean;
             in_reply_to: string;
             is_answered?: boolean;
             is_deleted: boolean;
@@ -3708,6 +3709,7 @@ export interface components {
             is_flagged: boolean;
             is_read: boolean;
             is_starred: boolean;
+            keywords?: string[];
             mailbox?: components["schemas"]["Mailbox"] | null;
             mailbox_id: number;
             message_id: string;
@@ -4059,6 +4061,7 @@ export interface components {
             has_attachments?: boolean;
             headers?: unknown;
             id?: number;
+            imap_deleted?: boolean;
             in_reply_to?: string;
             is_answered?: boolean;
             is_deleted?: boolean;
@@ -4067,6 +4070,7 @@ export interface components {
             is_flagged?: boolean;
             is_read?: boolean;
             is_starred?: boolean;
+            keywords?: string[];
             mailbox?: components["schemas"]["RestoreSnapshotMailbox"];
             mailbox_id?: number;
             message_id?: string;
@@ -4476,6 +4480,7 @@ export interface components {
             has_attachments: boolean;
             headers?: unknown;
             id: number;
+            imap_deleted?: boolean;
             in_reply_to: string;
             is_answered?: boolean;
             is_deleted: boolean;
@@ -4484,6 +4489,7 @@ export interface components {
             is_flagged: boolean;
             is_read: boolean;
             is_starred: boolean;
+            keywords?: string[];
             mailbox?: components["schemas"]["TestSnapshotMailbox"];
             mailbox_id: number;
             message_id: string;
@@ -5376,11 +5382,13 @@ export interface components {
         };
         updateMessageBody: {
             folder?: string | null;
+            imap_deleted?: boolean | null;
             is_answered?: boolean | null;
             is_draft?: boolean | null;
             is_flagged?: boolean | null;
             is_read?: boolean | null;
             is_starred?: boolean | null;
+            keywords?: string[] | null;
         };
         updatePipelineRequestBody: {
             active?: boolean | null;
@@ -8842,6 +8850,7 @@ export interface operations {
             query?: {
                 limit?: number;
                 cursor?: string;
+                include_imap_deleted?: boolean;
             };
             header?: never;
             path: {

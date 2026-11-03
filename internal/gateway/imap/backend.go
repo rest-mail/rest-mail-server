@@ -148,7 +148,7 @@ func (m *mailbox) Messages(folder string) ([]goimap.Message, error) {
 	if err := validateFolder(folder); err != nil {
 		return nil, err
 	}
-	resp, err := m.api.ListMessages(m.token, m.accountID, folder)
+	resp, err := m.api.ListIMAPMessages(m.token, m.accountID, folder)
 	if err != nil {
 		return nil, err
 	}
@@ -178,6 +178,8 @@ func toMessage(msg apiclient.MessageSummary) goimap.Message {
 		Seen:     msg.IsRead,
 		Flagged:  msg.IsFlagged || msg.IsStarred,
 		Draft:    msg.IsDraft,
+		Deleted:  msg.IMAPDeleted,
+		Keywords: msg.Keywords,
 		Subject:  msg.Subject,
 		From:     goimap.Address{Name: msg.SenderName, Email: msg.Sender},
 		To:       string(msg.RecipientsTo),
@@ -222,8 +224,11 @@ func (m *mailbox) rawMessage(detail apiclient.MessageDetail) string {
 // SELECT; mirroring the flag onto both columns means what you STORE is what
 // you FETCH back.
 func (m *mailbox) Store(uid uint32, f goimap.FlagUpdate) error {
-	updates := apiclient.MessageUpdate{IsAnswered: f.Answered, IsRead: f.Seen, IsFlagged: f.Flagged, IsStarred: f.Flagged, IsDraft: f.Draft}
-	if f.Seen == nil && f.Answered == nil && f.Flagged == nil && f.Draft == nil {
+	updates := apiclient.MessageUpdate{IsAnswered: f.Answered, IsRead: f.Seen, IsFlagged: f.Flagged, IsStarred: f.Flagged, IsDraft: f.Draft, IMAPDeleted: f.Deleted}
+	if f.KeywordsSet {
+		updates.Keywords = &f.Keywords
+	}
+	if !f.KeywordsSet && f.Seen == nil && f.Answered == nil && f.Flagged == nil && f.Draft == nil && f.Deleted == nil {
 		return nil
 	}
 	return m.api.UpdateMessage(m.token, uint(uid), updates)
@@ -298,7 +303,7 @@ func (m *mailbox) CopyUID(uid uint32, dest string) (uint32, error) {
 	seen, flagged, draft, answered := src.IsRead, src.IsFlagged || src.IsStarred, src.IsDraft, src.IsAnswered
 	received := src.ReceivedAt
 
-	flags := importFlags(goimap.FlagUpdate{Answered: &answered, Seen: &seen, Flagged: &flagged, Draft: &draft})
+	flags := importFlags(goimap.FlagUpdate{Answered: &answered, Seen: &seen, Flagged: &flagged, Draft: &draft, Deleted: &src.IMAPDeleted, Keywords: src.Keywords})
 	resp, err := m.api.ImportMessage(m.token, src.MailboxID, &apiclient.ImportRequest{
 		RawMessage:   []byte(m.rawMessage(src)),
 		Folder:       dest,
@@ -382,17 +387,17 @@ func (m *mailbox) Quota() (used, limit int64, err error) {
 	return quota.Data.QuotaUsedBytes, quota.Data.QuotaBytes, nil
 }
 
-// importFlags is the IMAP system flags of f that are set. A flag that is unset or
+// importFlags is the IMAP system flags and keywords of f that are set. A flag that is unset or
 // false is left out, since the import starts every flag off.
 func importFlags(f goimap.FlagUpdate) []string {
 	var flags []string
 	for _, flag := range []struct {
 		set  *bool
 		name string
-	}{{f.Seen, `\Seen`}, {f.Answered, `\Answered`}, {f.Flagged, `\Flagged`}, {f.Draft, `\Draft`}} {
+	}{{f.Seen, `\Seen`}, {f.Answered, `\Answered`}, {f.Flagged, `\Flagged`}, {f.Draft, `\Draft`}, {f.Deleted, `\Deleted`}} {
 		if flag.set != nil && *flag.set {
 			flags = append(flags, flag.name)
 		}
 	}
-	return flags
+	return append(flags, f.Keywords...)
 }

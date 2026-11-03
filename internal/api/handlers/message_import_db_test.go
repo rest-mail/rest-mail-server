@@ -82,7 +82,7 @@ func TestMessageImportPostgresConcurrencySourceQuotaAndAuditRollback(t *testing.
 	router := importMessageRoutes(h)
 	raw := []byte("Message-ID: <binary-history@example.test>\r\nFrom: Original <old@example.test>\r\nSubject: original\r\nAuthentication-Results: previous.example; spf=pass\r\nContent-Type: multipart/mixed; boundary=OLD\r\n\r\n--OLD\r\nContent-Type: text/plain; charset=iso-8859-1\r\nContent-Transfer-Encoding: 8bit\r\n\r\nbody\xff\x00\r\n--OLD\r\nContent-Type: application/octet-stream; name=empty.bin\r\nContent-Disposition: attachment; filename=empty.bin\r\nContent-Transfer-Encoding: base64\r\n\r\n\r\n--OLD--\r\n")
 	date := time.Date(2020, 1, 2, 3, 4, 5, 0, time.UTC)
-	body := apitypes.ImportMessageBody{RawMessage: raw, Folder: "Archive", InternalDate: date, Flags: []string{`\Seen`, `\Answered`, `\Flagged`, `\Draft`}}
+	body := apitypes.ImportMessageBody{RawMessage: raw, Folder: "Archive", InternalDate: date, Flags: []string{`\Seen`, `\Answered`, `\Flagged`, `\Draft`, `\Deleted`, "$Forwarded", "$Junk"}}
 	call := func(message apitypes.ImportMessageBody) *httptest.ResponseRecorder {
 		encoded, err := json.Marshal(message)
 		if err != nil {
@@ -148,7 +148,7 @@ func TestMessageImportPostgresConcurrencySourceQuotaAndAuditRollback(t *testing.
 	if err := db.First(&stored, id).Error; err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(stored.Source(), raw) || stored.RawSize != len(raw) || stored.RawMessage != "" || !stored.ReceivedAt.Equal(date) || !stored.IsRead || !stored.IsAnswered || !stored.IsFlagged || !stored.IsDraft {
+	if !bytes.Equal(stored.Source(), raw) || stored.RawSize != len(raw) || stored.RawMessage != "" || !stored.ReceivedAt.Equal(date) || !stored.IsRead || !stored.IsAnswered || !stored.IsFlagged || !stored.IsDraft || !stored.IMAPDeleted || strings.Join(stored.Keywords, ",") != "$Forwarded,$Junk" || stored.IsDeleted {
 		t.Fatalf("source/metadata changed: %+v", stored)
 	}
 	var attachments []models.Attachment

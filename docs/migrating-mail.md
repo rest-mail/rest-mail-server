@@ -52,9 +52,13 @@ The source is opened with EXAMINE and fetched by UID with BODY.PEEK, so importin
 never marks source messages read, edits their flags, expunges or deletes them.
 Each folder's UIDNEXT freezes the upper UID bound for that pass. Its original
 message octets, INTERNALDATE (including timezone), Seen, Answered, Flagged and
-Draft reach the same public import operation as file imports. Recent is a
-source-session indicator and is not copied as persistent state. Deleted and
-keyword flags cause an explicit refusal rather than losing their meaning.
+Draft, Deleted and keywords reach the same public import operation as file imports. Recent is a
+source-session indicator and is not copied as persistent state. Deleted messages
+retain their flag and use the same IMAP EXPUNGE path as messages marked Deleted
+by a client; ordinary message listings hide them until the flag is cleared.
+Keywords are preserved case-insensitively (first spelling retained), with at most
+100 per message and 255 ASCII bytes per keyword. Each must be an RFC 3501 atom
+without a backslash. Invalid metadata is refused clearly, never silently dropped.
 
 Source hierarchy delimiters are mapped to `/`. Folder mappings are validated
 before any import, and collisions are refused. Non-selectable parents are
@@ -93,11 +97,13 @@ Folder names and original message octets are preserved. Source symlinks are
 refused, including symlinked folders, so a source tree cannot silently import
 files outside it.
 
-Supported filename flags are `S` (Seen), `R` (Answered), `F` (Flagged) and
-`D` (Draft). `T` (Deleted), `P` (Passed/forwarded) and keyword letters are
-refused explicitly. The current IMAP backend cannot restore persistent Deleted
-state or arbitrary keywords; importing them as hidden messages or dropping them
-would lose migration information. These flags remain part of [#734](https://github.com/rest-mail/rest-mail-server/issues/734).
+Supported filename flags are `S` (Seen), `R` (Answered), `F` (Flagged),
+`D` (Draft) and `T` (Deleted). Lowercase keyword letters `a`–`z` are restored
+using that folder's `dovecot-keywords` file, whose lines are a zero-based index
+and keyword name (for example, `0 $Forwarded`). Each folder has its own mapping;
+missing, invalid, duplicate or oversized mappings are refused. The mapping file
+is bounded to 64 KiB. `P` (Passed/forwarded) remains unsupported because it has
+no unambiguous IMAP system flag; export a named keyword instead.
 
 ## Mbox
 
@@ -115,15 +121,14 @@ Message boundaries require a complete From separator with a recognized timestamp
 ordinary body text starting with `From ` is retained. The separator's date becomes
 INTERNALDATE; timestamps without a zone use UTC, as in [RFC4155's default format](https://www.rfc-editor.org/rfc/rfc4155#appendix-A).
 
-The importer reads Seen from `Status: R` and Answered, Flagged and Draft from
-`X-Status: AFT`, following [Dovecot's mbox metadata](https://doc.dovecot.org/main/core/config/mailbox_formats/mbox.html#dovecot-s-metadata).
-Deleted state, keywords, metadata-only pseudo-messages and Content-Length-framed
-variants are refused. Source headers remain in the imported raw message. Export
+The importer reads Seen from `Status: R`, Answered, Flagged, Draft and Deleted
+from `X-Status: AFTD`, and keywords from every `X-Keywords` header, following [Dovecot's mbox metadata](https://doc.dovecot.org/main/core/config/mailbox_formats/mbox.html#dovecot-s-metadata).
+Metadata-only pseudo-messages and Content-Length-framed variants are refused. Source headers remain in the imported raw message. Export
 format differences are not resolved by deleting or rewriting source data.
 
 Every occurrence of source metadata is checked. Supported flags across repeated
-`Status` and `X-Status` headers are combined; a later header cannot hide Deleted
-state, keywords, pseudo-message metadata or Content-Length framing. These checks
+`Status` and `X-Status` headers are combined; a later header cannot hide invalid
+flags, keywords, pseudo-message metadata or Content-Length framing. These checks
 leave the original headers intact.
 
 ## Limits, reruns and cutover
@@ -174,9 +179,8 @@ Attachment objects live outside the database transaction. A refused transaction
 may leave an unreferenced content-addressed object; it does not leave a message
 or attachment reference, and a rerun reuses the same object content.
 
-Direct IMAP source import, including OAuth, is available alongside Maildir/mbox.
-Persistent Deleted and keyword restoration remain outside this
-implementation. Copying with imapsync also works: the E2E job copies a folder
+Direct IMAP source import, including OAuth, is available alongside Maildir/mbox,
+and all three restore Deleted and keywords. Copying with imapsync also works: the E2E job copies a folder
 from Dovecot with it and compares folders, counts, subjects and flags
 (`scripts/tests/test_imapsync_live.py`). The wider migration outcome
 stays tracked in [#734](https://github.com/rest-mail/rest-mail-server/issues/734);

@@ -14,6 +14,7 @@ import (
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapclient"
 	"github.com/emersion/go-sasl"
+	goimap "github.com/rest-mail/go-imap/pkg/imap"
 
 	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
 	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
@@ -243,8 +244,13 @@ func readIMAPMessage(message *imapclient.FetchMessageData, section *imap.FetchIt
 				case `\recent`:
 					// Recent describes this source session, not persistent mail.
 				default:
-					return body, uid, errors.New("IMAP source has Deleted or keyword flags that cannot be preserved")
+					body.Flags = append(body.Flags, string(flag))
 				}
+			}
+			if normalized, err := goimap.NormalizeImportFlags(body.Flags); err != nil {
+				return body, uid, fmt.Errorf("IMAP source flags: %w", err)
+			} else {
+				body.Flags = normalized
 			}
 		case imapclient.FetchItemDataInternalDate:
 			body.InternalDate, date = item.Time, true

@@ -22,7 +22,7 @@ func TestImportMboxChecksMetadataBeforeCallingAPI(t *testing.T) {
 		_, _ = w.Write([]byte(`{"data":{"id":7,"imported":true,"message_id":"<fixture@example.test>","folder":"INBOX"}}`))
 	}))
 	defer server.Close()
-	source := "From sender@example.test Mon Jan  2 15:04:05 2006\nSubject: private source\nX-Keywords: \nX-Keywords: private-keyword\n\nprivate body\n\n"
+	source := "From sender@example.test Mon Jan  2 15:04:05 2006\nSubject: private source\nX-Keywords: \nX-Keywords: bad]keyword\n\nprivate body\n\n"
 	path := filepath.Join(t.TempDir(), "archive.mbox")
 	if err := os.WriteFile(path, []byte(source), 0600); err != nil {
 		t.Fatal(err)
@@ -30,7 +30,7 @@ func TestImportMboxChecksMetadataBeforeCallingAPI(t *testing.T) {
 	var out, stderr bytes.Buffer
 	code := runImportMail(t.Context(), "mbox", []string{"--server", server.URL, "--account-id", "12", "--path", path, "--mbox-format", "mboxrd", "--json"},
 		"private-api-key", server.Client(), &out, &stderr)
-	if code != exitFailed || calls.Load() != 0 || !strings.Contains(stderr.String(), "keywords are unsupported") {
+	if code != exitFailed || calls.Load() != 0 || !strings.Contains(stderr.String(), "mbox keywords") {
 		t.Fatalf("unsupported metadata was sent: exit%d API calls%d out%s err%s", code, calls.Load(), &out, &stderr)
 	}
 	for _, private := range []string{"private-api-key", "private source", "private body", "private-keyword"} {

@@ -81,6 +81,8 @@ type TestSnapshotMessage struct {
 	IsDSN             bool                `json:"is_dsn"`
 	IsFlagged         bool                `json:"is_flagged"`
 	IsStarred         bool                `json:"is_starred"`
+	Keywords          []string            `json:"keywords,omitempty"`
+	IMAPDeleted       bool                `json:"imap_deleted,omitempty"`
 	IsDraft           bool                `json:"is_draft"`
 	IsDeleted         bool                `json:"is_deleted"`
 	ReceivedAt        time.Time           `json:"received_at"`
@@ -214,6 +216,8 @@ type RestoreSnapshotMessage struct {
 	IsDSN             bool                   `json:"is_dsn,omitempty"`
 	IsFlagged         bool                   `json:"is_flagged,omitempty"`
 	IsStarred         bool                   `json:"is_starred,omitempty"`
+	Keywords          []string               `json:"keywords,omitempty"`
+	IMAPDeleted       bool                   `json:"imap_deleted,omitempty"`
 	IsDraft           bool                   `json:"is_draft,omitempty"`
 	IsDeleted         bool                   `json:"is_deleted,omitempty"`
 	ReceivedAt        time.Time              `json:"received_at,omitempty"`

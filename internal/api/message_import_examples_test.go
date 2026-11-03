@@ -402,7 +402,7 @@ func TestMessageImportRealAuthorizationAndRefusals(t *testing.T) {
 		change func(map[string]any)
 		status int
 	}{
-		{"unsupported flag", func(b map[string]any) { b["flags"] = []string{"$Custom"} }, 422},
+		{"unsupported flag", func(b map[string]any) { b["flags"] = []string{"bad keyword"} }, 422},
 		{"missing date", func(b map[string]any) { delete(b, "internal_date") }, 422},
 		{"bad folder", func(b map[string]any) { b["folder"] = "bad\x00folder" }, 422},
 		{"decoded limit", func(b map[string]any) { b["raw_message"] = bytes.Repeat([]byte("x"), 1025) }, 413},

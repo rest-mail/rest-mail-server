@@ -17,6 +17,7 @@ import (
 	"unicode/utf8"
 
 	oapifly "github.com/antimatter-studios/go-oapifly"
+	goimap "github.com/rest-mail/go-imap/pkg/imap"
 	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
 	"github.com/rest-mail/rest-mail-server/internal/api/middleware"
 	"github.com/rest-mail/rest-mail-server/internal/api/respond"
@@ -69,7 +70,7 @@ func (h *MessageImportHandler) Register(rs endpoint.Routes) {
 	}}
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/accounts/{id}/messages/import",
 		OperationID: "importMessage", Summary: "Store a message the account already has", Tags: []string{"Messages"},
-		Description: "Stores original message octets, folder, supported system flags and required internal_date without delivery rules or push notifications. Requires mail:import on the destination, which every account holds on its own mailbox. A message whose Message-ID and exact octets are already in that account and folder is skipped without changing its flags or date; the same Message-ID with different octets is stored as another message. Messages without Message-ID use a deterministic SHA-256 import identity; the raw source remains unchanged. Every attempt is audited; successful imports and skips also receive a transactional messages.import audit entry. The decoded message is bounded by SMTP_MAX_MESSAGE_SIZE (10 MiB by default); the general API body limit may be stricter. Deleted-state and keyword flags are unsupported and refused rather than hidden or discarded.",
+		Description: "Stores original message octets, folder, supported system flags and required internal_date without delivery rules or push notifications. Requires mail:import on the destination, which every account holds on its own mailbox. A message whose Message-ID and exact octets are already in that account and folder is skipped without changing its flags or date; the same Message-ID with different octets is stored as another message. Messages without Message-ID use a deterministic SHA-256 import identity; the raw source remains unchanged. Every attempt is audited; successful imports and skips also receive a transactional messages.import audit entry. The decoded message is bounded by SMTP_MAX_MESSAGE_SIZE (10 MiB by default); the general API body limit may be stricter. Deleted state and up to 100 case-insensitive keywords of 1–255 ASCII bytes are preserved. Keywords must be RFC 3501 atoms without backslash. Deleted messages use IMAP deletion state, not API tombstones; EXPUNGE removes them.",
 		Errors:      []int{http.StatusForbidden, http.StatusNotFound, http.StatusConflict, http.StatusRequestEntityTooLarge},
 		Security:    handlerChecked(models.CapMailImport, folderSchemes...),
 		Middleware:  []endpoint.Middleware{cap}}, h.importMessage)
@@ -109,7 +110,11 @@ func (h *MessageImportHandler) importMessage(r *http.Request, in importMessageRe
 		problems["internal_date"] = "required: the original internal date as an RFC 3339 timestamp"
 	}
 	msg := models.Message{MailboxID: uint(in.ID), Folder: body.Folder, ReceivedAt: body.InternalDate}
-	for _, flag := range body.Flags {
+	flags, flagErr := goimap.NormalizeImportFlags(body.Flags)
+	if flagErr != nil {
+		problems["flags"] = flagErr.Error()
+	}
+	for _, flag := range flags {
 		switch strings.ToLower(flag) {
 		case `\seen`:
 			msg.IsRead = true
@@ -120,8 +125,10 @@ func (h *MessageImportHandler) importMessage(r *http.Request, in importMessageRe
 			msg.IsFlagged, msg.IsStarred = true, true
 		case `\draft`:
 			msg.IsDraft = true
+		case `\deleted`:
+			msg.IMAPDeleted = true
 		default:
-			problems["flags"] = "unsupported flag: " + flag
+			msg.Keywords = append(msg.Keywords, flag)
 		}
 	}
 	if len(problems) != 0 {

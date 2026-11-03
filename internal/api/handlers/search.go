@@ -59,7 +59,7 @@ func (h *SearchHandler) search(r *http.Request, in searchRequest) (endpoint.List
 		return endpoint.List[Message]{}, fmt.Errorf("resolve the searched account: %w", err)
 	}
 
-	query := h.db.Model(&models.Message{}).Where("mailbox_id = ? AND is_deleted = false", mailboxID)
+	query := h.db.Model(&models.Message{}).Where("mailbox_id = ? AND is_deleted = false AND imap_deleted = false", mailboxID)
 
 	// Full-text search
 	if in.Q != "" {
