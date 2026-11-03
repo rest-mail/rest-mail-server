@@ -65,7 +65,7 @@ func (connection *gapPairConnection) QueryContext(ctx context.Context, query str
 			connection.faults++
 			return nil, errors.New("injected account read after successful Basic authentication")
 		}
-	case "updateDraft", "sendDraft", "forwardMessage":
+	case "saveDraft", "updateDraft", "sendDraft", "forwardMessage":
 		if rows, ok := defaultServerCeilingRows(query, args); ok {
 			rows.rows = [][]driver.Value{{"*", models.CapMailboxSession}}
 			return rows, nil
@@ -159,7 +159,7 @@ func TestGapCapabilityExamplePairsThroughProductionRouter(t *testing.T) {
 		t.Fatal(err)
 	}
 	routes := requirementRoutes(t)
-	for _, operation := range []string{"updateDraft", "sendDraft", "forwardMessage"} {
+	for _, operation := range []string{"saveDraft", "updateDraft", "sendDraft", "forwardMessage"} {
 		t.Run(operation, func(t *testing.T) {
 			pair := pairs[operation]["capability_removed"]
 			examplepairs.Proven(t, operation, "capability_removed")

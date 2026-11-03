@@ -1459,6 +1459,17 @@ domains the server will not host are left to the probe, and the request is
 never rewritten. With `from` optional and invalid recipients refused,
 `saveDraft` comes out of the coverage baseline.
 
+The items of `to` and `cc`, in `saveDraft` and `updateDraft`, are described as
+`idn-email`, in `internal/api/described_items.go`. The handlers also accept the
+wider forms `net/mail` reads as one address, such as a display name around one,
+which the operations' descriptions say. `from` has no format: an empty one is
+accepted, and an address that is no mailbox the caller may write to is a 403, not
+a bad body (`draft_fields_test.go`). Vertrag 0.42.0 generates no probe from a list
+item's format, so these formats add none: the draft refusals are proved by named
+examples. Those of `updateDraft` that need the draft to exist say
+`existing_draft` and are proved in process, because the examples phase has no
+draft at the example's id.
+
 Send probes (sendMessage) send from a generated address (`someone@example.com`)
 that no mailbox holds, which the handler refuses with 403. A before hook hosts
 the sender's domain with a DKIM key (an https unsubscribe target needs one) and

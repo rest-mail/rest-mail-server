@@ -18,8 +18,8 @@ import (
 )
 
 var draftExampleNames = map[string][]string{
-	"saveDraft":   {"empty", "wrong_type", "malformed_json", "foreign_sender", "request_too_large"},
-	"updateDraft": {"example", "missing", "invalid_id", "malformed_json", "foreign_owner", "request_too_large"},
+	"saveDraft":   {"empty", "wrong_type", "malformed_json", "foreign_sender", "request_too_large", "to_not_an_address", "cc_empty_address", "to_null", "bcc_not_allowed"},
+	"updateDraft": {"example", "missing", "invalid_id", "malformed_json", "foreign_owner", "request_too_large", "to_not_an_address", "cc_empty_address", "to_null", "bcc_not_allowed", "foreign_sender"},
 	"sendDraft":   {"sent", "discarded", "no_recipients", "missing", "invalid_id", "foreign_owner", "request_too_large"},
 }
 

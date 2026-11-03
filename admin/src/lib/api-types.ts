@@ -2554,7 +2554,7 @@ export interface paths {
         put?: never;
         /**
          * Save a new draft
-         * @description Sender lookup and storage follow request cancellation; dependency failures return 500, not forbidden.
+         * @description Sender lookup and storage follow request cancellation; dependency failures return 500, not forbidden. to and cc items are described as bare addresses, internationalized or not; the handler also accepts whatever RFC 5322 reads as one address, such as a display name around one, and refuses any other item with 422. An empty from, like none, keeps the draft in the caller's own mailbox with no sender; any other from must be the exact address of a mailbox the caller may write to, or the answer is 403.
          */
         post: operations["saveDraft"];
         delete?: never;
@@ -2573,7 +2573,7 @@ export interface paths {
         get?: never;
         /**
          * Update an existing draft
-         * @description Update and reload commit together. A failed write/reload returns 500 and rolls back; an absent or no-longer-draft row is 404. Declared in_reply_to and references fields are persisted; omitted/null fields stay unchanged. Dependency errors are distinct from denied access, and SQL follows request cancellation.
+         * @description Update and reload commit together. A failed write/reload returns 500 and rolls back; an absent or no-longer-draft row is 404. Declared in_reply_to and references fields are persisted; omitted/null fields stay unchanged. Dependency errors are distinct from denied access, and SQL follows request cancellation. to and cc items are described as bare addresses, internationalized or not; the handler also accepts whatever RFC 5322 reads as one address, such as a display name around one, and refuses any other item with 422. An omitted to or cc stays as it is, and an empty list clears it. An empty from clears the sender and leaves the draft in its mailbox; any other from must be the exact address of a mailbox the caller may write to, or the answer is 403.
          */
         put: operations["updateDraft"];
         post?: never;
