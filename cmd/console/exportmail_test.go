@@ -56,7 +56,11 @@ func fakeExportServer(t *testing.T, folders []string, messages []fakeExportMessa
 				}
 			}
 			start := 0
-			fmt.Sscan(r.URL.Query().Get("cursor"), &start)
+			if cursor := r.URL.Query().Get("cursor"); cursor != "" {
+				if _, err := fmt.Sscan(cursor, &start); err != nil {
+					t.Errorf("fake API: bad cursor %q: %v", cursor, err)
+				}
+			}
 			page := map[string]any{"data": []map[string]any{}, "pagination": map[string]any{"has_more": false}}
 			if start < len(inFolder) {
 				more := start+1 < len(inFolder)
