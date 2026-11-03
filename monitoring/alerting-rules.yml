@@ -13,13 +13,15 @@ groups:
 
       # Certificate approaching expiry
       - alert: CertificateExpiringSoon
-        expr: restmail_cert_expiry_days < 7
+        # 14 days, up from 7, as the deep review suggested (#1579): two weeks
+        # leaves time to fix a renewal that keeps failing.
+        expr: restmail_cert_expiry_days < 14
         for: 1h
         labels:
           severity: critical
         annotations:
           summary: "A certificate expires in {{ $value | humanize }} days"
-          description: "The soonest-expiring certificate this server serves expires in less than 7 days (negative: already expired). The admin health endpoint names its domain. Renew immediately."
+          description: "The soonest-expiring certificate this server serves expires in less than 14 days (negative: already expired). The admin health endpoint names its domain. Renew now."
 
       # A domain served here has no usable certificate, so its handshakes are
       # refused. Mail for that domain is not being accepted.
@@ -94,6 +96,81 @@ groups:
           summary: "Queue workers appear stalled"
           description: "No messages have been processed in the last 15 minutes although {{ $value }} queued messages are due for an attempt now. Messages waiting for a later retry are not counted."
 
+      # The oldest message still waiting to leave is old: mail is backing up,
+      # however deep the queue is (#1579). Deferred mail is retried for up to
+      # five days (models.QueueLifetime), so one message to a dead domain keeps
+      # this firing; tune 6h to the delay you accept.
+      - alert: QueueOldestMessageOld
+        expr: restmail_queue_oldest_age_seconds > 6 * 3600
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "The oldest queued message is {{ $value | humanizeDuration }} old"
+          description: "A pending or deferred outbound message has waited more than 6 hours. Check the queue in the admin API for the destinations that are deferring."
+
+      # A process could not reach the database (#1579): connections refused,
+      # dropped or timed out, not queries the database answered with an error.
+      - alert: DatabaseConnectionErrors
+        expr: increase(restmail_db_connection_errors_total[5m]) > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.job }} cannot reach the database"
+          description: "{{ $value | humanize }} database operations in the last 5 minutes failed because the database could not be reached. Check the Postgres server, its network and its connection limit."
+
+      # Every pool connection is in use and callers queue for one (#1579).
+      - alert: DatabasePoolSaturated
+        expr: >
+          restmail_db_pool_in_use_connections / restmail_db_pool_max_open_connections > 0.9
+          and restmail_db_pool_max_open_connections > 0
+          and rate(restmail_db_pool_wait_count_total[5m]) > 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.job }} database pool is nearly exhausted"
+          description: "More than 90% of the pool's connections are in use and callers are waiting for one. Raise DB_MAX_OPEN_CONNS (within Postgres max_connections) or find the slow queries."
+
+      # A pipeline filter errors on more than 5% of the messages it sees
+      # (#1579). An error is the filter failing, not its verdict on the mail.
+      - alert: PipelineFilterErrorRateHigh
+        expr: >
+          sum by (filter) (rate(restmail_pipeline_stage_decisions_total{action="error"}[10m]))
+          /
+          sum by (filter) (rate(restmail_pipeline_stage_decisions_total[10m]))
+          > 0.05
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Pipeline filter {{ $labels.filter }} is erroring"
+          description: "{{ $value | humanizePercentage }} of filter {{ $labels.filter }}'s steps in the last 10 minutes ended in an error. Its service may be down; the gateway logs name the cause."
+
+      # No SMTP connection admitted for an hour (#1579): the listener, the
+      # load balancer or DNS in front of it may be broken. A server nobody
+      # sends to will fire this too; raise the window or silence it there.
+      - alert: SMTPConnectionsStopped
+        expr: sum by (job) (increase(restmail_connections_accepted_total{protocol="smtp"}[1h])) == 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "No SMTP connections in the last hour"
+          description: "The SMTP gateway has admitted no connection for an hour. Check the listener, the load balancer, the MX records and the firewall."
+
+      # The same for IMAP: mail clients poll or IDLE, so an hour without a
+      # connection usually means they cannot reach the gateway.
+      - alert: IMAPConnectionsStopped
+        expr: sum by (job) (increase(restmail_connections_accepted_total{protocol="imap"}[1h])) == 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "No IMAP connections in the last hour"
+          description: "The IMAP gateway has admitted no connection for an hour. Check the listener, the load balancer and the firewall."
+
       # DNSBL (issue #148): only when the operator has enabled the monitor.
       # Reputation: a blocklist's last answer listed one of our sending IPs.
       - alert: DNSBLSendingIPListed
@@ -123,3 +200,24 @@ groups:
         annotations:
           summary: "No DNSBL answer for {{ $labels.ip }} from {{ $labels.provider }} in 6 hours"
           description: "restmail_dnsbl_listed for this pair reflects an answer more than 6 hours old."
+
+  # DKIM key age and rotation (moved here from docs/dkim-rotation-alerts.md,
+  # #1579). They match the same domain, scrape job and instance, so several
+  # API replicas do not cause a many-to-many match. The chart's PrometheusRule
+  # (helm/restmail/templates/prometheusrule.yaml) carries the same two.
+  - name: restmail-dkim
+    rules:
+      - alert: DKIMKeyOverdue
+        expr: restmail_dkim_key_age_seconds > on(domain, job, instance) group_left() (restmail_dkim_rotation_interval_seconds + 2 * 24 * 60 * 60)
+        labels:
+          severity: warning
+        annotations:
+          summary: "DKIM key for {{ $labels.domain }} is overdue"
+          description: "The current key exceeds its configured rotation interval plus two days. Check the rotation status and DNS records."
+      - alert: DKIMPublicationStuck
+        expr: (time() - restmail_dkim_rotation_step_started_seconds > 24 * 60 * 60) and on(domain, job, instance) (restmail_dkim_rotation_state{state="awaiting_publication"} == 1)
+        labels:
+          severity: warning
+        annotations:
+          summary: "DKIM publication for {{ $labels.domain }} is stuck"
+          description: "The staged record has not resolved for more than 24 hours. Publish the TXT record reported by the rotation status endpoint."

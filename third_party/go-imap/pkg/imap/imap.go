@@ -129,6 +129,16 @@ type Backend interface {
 	Authenticate(user, pass string) (Mailbox, error)
 }
 
+// CommandObserver is an optional interface a [Backend] implements to learn how
+// long each command took, from the end of its command line (and any literal
+// arguments) to the end of its handling. name is the command name the client
+// sent, upper-cased; it is not validated, so an observer that labels metrics
+// with it must map unknown names to a fixed value. A command that ends the
+// session (LOGOUT, a failed STARTTLS, a refused APPEND literal) is not observed.
+type CommandObserver interface {
+	ObserveCommand(name string, d time.Duration)
+}
+
 // Mailbox is a single authenticated account's view of its mail. Every method is
 // scoped to the user that [Backend.Authenticate] accepted; a Mailbox is used by
 // one session, though [Mailbox.Messages] may be called concurrently by the IDLE

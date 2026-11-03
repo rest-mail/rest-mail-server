@@ -17,6 +17,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/gateway/connlimiter"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/rawmsg"
 	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
+	"github.com/rest-mail/rest-mail-server/internal/metrics"
 )
 
 // errAccountLocked is returned when an account is temporarily banned for too
@@ -46,6 +47,15 @@ var _ goimap.Backend = (*Backend)(nil)
 // Authenticate signs the user in via the API, with the mailbox's password or
 // an app password, and returns a Mailbox scoped to the resulting token and
 // account.
+// ObserveCommand records restmail_imap_command_duration_seconds for one
+// command (goimap.CommandObserver). Names outside metrics.IMAPCommandNames
+// are labelled "other" (#1579).
+func (b *Backend) ObserveCommand(name string, d time.Duration) {
+	metrics.ObserveIMAPCommand(name, d)
+}
+
+var _ goimap.CommandObserver = (*Backend)(nil)
+
 func (b *Backend) Authenticate(user, pass string) (goimap.Mailbox, error) {
 	// Per-account hard stop: reject a banned account WITHOUT calling the auth API,
 	// so a rotating-IP brute-force is throttled and a ban is never lifted by a

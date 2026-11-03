@@ -1,14 +1,20 @@
 import json
 import pathlib
-import re
 import subprocess
 import sys
 
 root = pathlib.Path(__file__).resolve().parents[3]
-document = (root / "docs/dkim-rotation-alerts.md").read_text()
-block = re.search(r"```yaml\n(.*?)\n```", document, re.DOTALL).group(1)
+# The plain Prometheus rules ship in monitoring/alerting-rules.yml (#1579).
 documented = json.loads(
-    subprocess.check_output(["yq", "-o=json", ".groups", "-"], input=block, text=True)
+    subprocess.check_output(
+        [
+            "yq",
+            "-o=json",
+            '[.groups[] | select(.name == "restmail-dkim")]',
+            str(root / "monitoring/alerting-rules.yml"),
+        ],
+        text=True,
+    )
 )
 rendered = json.loads(
     subprocess.check_output(
@@ -22,5 +28,5 @@ rendered = json.loads(
     )
 )
 if documented != rendered:
-    raise SystemExit("DKIM chart rules differ from the plain Prometheus documentation")
-print("ok: DKIM chart rules match the plain Prometheus documentation")
+    raise SystemExit("DKIM chart rules differ from the restmail-dkim group in monitoring/alerting-rules.yml")
+print("ok: DKIM chart rules match monitoring/alerting-rules.yml")

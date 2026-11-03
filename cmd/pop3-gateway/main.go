@@ -20,6 +20,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/gateway/pop3"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/tlsutil"
 	"github.com/rest-mail/rest-mail-server/internal/grants"
+	"github.com/rest-mail/rest-mail-server/internal/metrics"
 )
 
 func main() {
@@ -101,6 +102,10 @@ func main() {
 	database, err := db.WaitForDB(cfg, 30*time.Second)
 	if err != nil {
 		slog.Warn("database not available for DB-backed SNI", "error", err)
+	}
+	// Pool and connection-error series on this process's /metrics (#1579).
+	if err := metrics.InstrumentDB(database); err != nil {
+		slog.Warn("database metrics not registered", "error", err)
 	}
 
 	// This gateway authorizes through the API, which applies the operator

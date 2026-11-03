@@ -492,16 +492,19 @@ func (w *Worker) queueSizeLoop() {
 // restmail_queue_size to the rows still waiting to leave (pending, deferred or
 // delivering; delivered and bounced rows are history), and restmail_queue_due
 // to those a worker should be taking at now: pending or deferred rows whose
-// next attempt has come, plus rows being sent. On an error it leaves the last
-// values in place.
+// next attempt has come, plus rows being sent, and restmail_queue_oldest_age_seconds
+// to the age of the oldest pending or deferred row (#1579). On an error it
+// leaves the last values in place.
 func refreshQueueSize(db *gorm.DB, now time.Time) error {
 	var counts struct {
-		Total int64
-		Due   int64
+		Total  int64
+		Due    int64
+		Oldest *time.Time
 	}
 	err := db.Raw(
 		`SELECT count(*) AS total,
-		        count(*) FILTER (WHERE status = 'delivering' OR next_attempt <= ?) AS due
+		        count(*) FILTER (WHERE status = 'delivering' OR next_attempt <= ?) AS due,
+		        min(created_at) FILTER (WHERE status IN ('pending', 'deferred')) AS oldest
 		   FROM outbound_queue
 		  WHERE status IN ('pending', 'deferred', 'delivering')`, now,
 	).Scan(&counts).Error
@@ -510,7 +513,18 @@ func refreshQueueSize(db *gorm.DB, now time.Time) error {
 	}
 	metrics.QueueSize.Set(float64(counts.Total))
 	metrics.QueueDue.Set(float64(counts.Due))
+	metrics.QueueOldestAge.Set(oldestAge(counts.Oldest, now))
 	return nil
+}
+
+// oldestAge is restmail_queue_oldest_age_seconds for the oldest waiting row's
+// creation time: 0 for an empty queue, and never negative when the database
+// clock runs ahead of this process's.
+func oldestAge(oldest *time.Time, now time.Time) float64 {
+	if oldest == nil {
+		return 0
+	}
+	return max(now.Sub(*oldest).Seconds(), 0)
 }
 
 // Shutdown stops the queue workers gracefully.
