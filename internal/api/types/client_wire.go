@@ -85,23 +85,23 @@ type sendMessageRequest struct {
 
 type deliverMessageBody struct {
 	MailboxID    uint            `json:"mailbox_id,omitempty"`
-	Address      string          `json:"address,omitempty"`
-	Sender       string          `json:"sender,omitempty"`
-	SenderName   string          `json:"sender_name,omitempty"`
+	Address      string          `json:"address,omitempty" pattern:"^[^\\x00]*$" message:"must not contain a NUL byte"`
+	Sender       string          `json:"sender,omitempty" pattern:"^[^\\x00]*$" message:"must not contain a NUL byte"`
+	SenderName   string          `json:"sender_name,omitempty" pattern:"^[^\\x00]*$" message:"must not contain a NUL byte"`
 	RecipientsTo json.RawMessage `json:"recipients_to,omitempty"`
 	RecipientsCc json.RawMessage `json:"recipients_cc,omitempty"`
-	Subject      string          `json:"subject,omitempty"`
-	BodyText     string          `json:"body_text,omitempty"`
-	BodyHTML     string          `json:"body_html,omitempty"`
-	MessageID    string          `json:"message_id,omitempty"`
-	InReplyTo    string          `json:"in_reply_to,omitempty"`
-	References   string          `json:"references,omitempty"`
+	Subject      string          `json:"subject,omitempty" pattern:"^[^\\x00]*$" message:"must not contain a NUL byte"`
+	BodyText     string          `json:"body_text,omitempty" pattern:"^[^\\x00]*$" message:"must not contain a NUL byte"`
+	BodyHTML     string          `json:"body_html,omitempty" pattern:"^[^\\x00]*$" message:"must not contain a NUL byte"`
+	MessageID    string          `json:"message_id,omitempty" pattern:"^[^\\x00]*$" message:"must not contain a NUL byte"`
+	InReplyTo    string          `json:"in_reply_to,omitempty" pattern:"^[^\\x00]*$" message:"must not contain a NUL byte"`
+	References   string          `json:"references,omitempty" pattern:"^[^\\x00]*$" message:"must not contain a NUL byte"`
 	// RawMessage is base64-decoded from the wire ([]byte, not string) so the
 	// pristine RFC 2822 octets survive JSON transport unchanged — a JSON
 	// string field would mangle every non-UTF-8 byte to U+FFFD (see #173).
 	RawMessage []byte `json:"raw_message,omitempty"`
-	ClientIP   string `json:"client_ip,omitempty"`
-	HeloName   string `json:"helo_name,omitempty"`
+	ClientIP   string `json:"client_ip,omitempty" pattern:"^[^\\x00]*$" message:"must not contain a NUL byte"`
+	HeloName   string `json:"helo_name,omitempty" pattern:"^[^\\x00]*$" message:"must not contain a NUL byte"`
 	// Folder is the destination folder the message must be created in (empty =
 	// INBOX). Set by the IMAP gateway's COPY/APPEND so the message is created
 	// directly in its destination in one atomic delivery, rather than delivered
@@ -110,7 +110,7 @@ type deliverMessageBody struct {
 	// client-supplied flags at creation time. A nil flag pointer / nil (or zero)
 	// ReceivedAt keeps the delivery default, so ordinary inbound mail is
 	// unaffected.
-	Folder     string     `json:"folder,omitempty"`
+	Folder     string     `json:"folder,omitempty" maxLength:"255" maxLengthMessage:"must be at most 255 bytes" pattern:"^$|[^\\x09-\\x0d \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]" patternMessage:"required" pattern2:"^$|^[^\\x09-\\x0d \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]([\\s\\S]*[^\\x09-\\x0d \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000])?$" pattern2Message:"must not begin or end with a space" pattern3:"^[^\\x00-\\x1f\\x7f-\\x9f]*$" pattern3Message:"must not contain a control character" pattern4:"^([^.]|\\.[^.])*(\\.)?$" pattern4Message:"must not contain \"..\""`
 	IsAnswered *bool      `json:"is_answered,omitempty"`
 	IsRead     *bool      `json:"is_read,omitempty"`
 	IsFlagged  *bool      `json:"is_flagged,omitempty"`
@@ -122,7 +122,7 @@ type deliverMessageBody struct {
 	// NULL. TLSCipher is accepted for wire completeness but only the version is
 	// persisted on the message.
 	ReceivedTLS *bool  `json:"received_tls,omitempty"`
-	TLSVersion  string `json:"tls_version,omitempty"`
+	TLSVersion  string `json:"tls_version,omitempty" pattern:"^[^\\x00]*$" message:"must not contain a NUL byte"`
 	TLSCipher   string `json:"tls_cipher,omitempty"`
 	// RequireTLS is the REQUIRETLS tag the message arrived with (RFC 8689 §4.1): a copy
 	// REST Mail sends on, a Sieve redirect, goes with TLS required too.

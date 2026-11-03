@@ -2511,7 +2511,7 @@ export interface paths {
         put?: never;
         /**
          * Deliver a message into a mailbox (protocol gateways)
-         * @description Machine to machine: no user token. The inbound pipeline decides: 201 with the message made, 200 processed when it quarantined or discarded it, 550 rejected, 451 deferred, 422 mailbox_full over quota. A missing mailbox is 404; a failed mailbox lookup is 500, never a missing recipient.
+         * @description Machine to machine: no user token. The inbound pipeline decides: 201 with the message made, 200 processed when it quarantined or discarded it, 550 rejected, 451 deferred, 422 mailbox_full over quota. A missing mailbox is 404; a failed mailbox lookup is 500, never a missing recipient. Stored text must not contain NUL (U+0000), including strings and object keys anywhere in recipients_to or recipients_cc and the decoded raw_message octets; a refusal is 422 validation_failed naming the field, before any write. raw_message is a standard padded base64 string (format: byte), not unencoded message text. An omitted or empty folder means INBOX; otherwise The name is valid UTF-8 of at most 255 bytes, neither blank nor beginning or ending with a space, with no control character and no ".."; a "/" is the hierarchy delimiter IMAP clients show. Any other name is 422.
          */
         post: operations["deliverMessage"];
         delete?: never;
@@ -5002,7 +5002,7 @@ export interface components {
             body_html?: string;
             body_text?: string;
             client_ip?: string;
-            folder?: string;
+            folder?: string & (unknown & unknown & unknown);
             helo_name?: string;
             in_reply_to?: string;
             is_answered?: boolean | null;

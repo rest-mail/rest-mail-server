@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -1141,7 +1142,11 @@ func (h *MessageHandler) RegisterDelivery(rs endpoint.Routes, bodyLimit endpoint
 		OperationID: "deliverMessage", Summary: "Deliver a message into a mailbox (protocol gateways)", Tags: []string{"Messages"},
 		Description: "Machine to machine: no user token. The inbound pipeline decides: 201 with the message made, " +
 			"200 processed when it quarantined or discarded it, 550 rejected, 451 deferred, 422 mailbox_full " +
-			"over quota. A missing mailbox is 404; a failed mailbox lookup is 500, never a missing recipient.",
+			"over quota. A missing mailbox is 404; a failed mailbox lookup is 500, never a missing recipient. " +
+			"Stored text must not contain NUL (U+0000), including strings and object keys anywhere in recipients_to or recipients_cc " +
+			"and the decoded raw_message octets; a refusal is 422 validation_failed naming the field, before any write. " +
+			"raw_message is a standard padded base64 string (format: byte), not unencoded message text. " +
+			"An omitted or empty folder means INBOX; otherwise " + folderNameRule,
 		Status: http.StatusCreated, SuccessStatuses: []int{http.StatusOK},
 		Responses: []oapifly.EndpointResponse{
 			{Status: http.StatusCreated, Description: "Delivered; the message made", Type: oapifly.TypeOf[endpoint.Data[Message]]()},
@@ -1154,6 +1159,27 @@ func (h *MessageHandler) RegisterDelivery(rs endpoint.Routes, bodyLimit endpoint
 // deliverMessage is the inbound delivery endpoint for the gateway.
 func (h *MessageHandler) deliverMessage(r *http.Request, req deliverMessageBody) (endpoint.Status[any], error) {
 	var zero endpoint.Status[any]
+	fields := make(map[string]string)
+	if bytes.IndexByte(req.RawMessage, 0) >= 0 {
+		fields["raw_message"] = "must not contain a NUL byte"
+	}
+	for field, raw := range map[string]json.RawMessage{"recipients_to": req.RecipientsTo, "recipients_cc": req.RecipientsCc} {
+		decoder := json.NewDecoder(bytes.NewReader(raw))
+		decoder.UseNumber()
+		for {
+			token, err := decoder.Token()
+			if err != nil {
+				break
+			}
+			if text, ok := token.(string); ok && strings.IndexByte(text, 0) >= 0 {
+				fields[field] = "must not contain a NUL byte"
+				break
+			}
+		}
+	}
+	if len(fields) != 0 {
+		return zero, endpoint.Invalid(fields)
+	}
 
 	// The folder a gateway delivers into follows the folder rule, behind the gateway's own
 	// check (#759): a name the rule refuses is 422 on folder, and INBOX in any case is INBOX.
