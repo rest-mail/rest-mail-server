@@ -20,7 +20,7 @@ import (
 // the flags a STORE answers with. This test used to accept and ignore such a
 // list, which the §9 flag production does not allow.
 //
-// checklist: IMAP-STORE-11
+// checklist: IMAP-STORE-02 IMAP-STORE-11
 func TestStoreLeavesRecentAlone(t *testing.T) {
 	box := newStoreMailbox()
 	c := storeClient(t, box)

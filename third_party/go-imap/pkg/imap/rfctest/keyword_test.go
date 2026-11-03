@@ -21,7 +21,7 @@ func keywordMessages() []imap.Message {
 // TestKeywordsAdvertisedAndStored proves keyword creation, persistence,
 // case-insensitive search and removal match the advertised PERMANENTFLAGS.
 //
-// checklist: IMAP-STORE-06
+// checklist: IMAP-STORE-06 IMAP-SEARCH-11 IMAP-INV-FLAGS-03
 func TestKeywordsAdvertisedAndStored(t *testing.T) {
 	box := newStoreMailbox()
 	box.messages = keywordMessages()

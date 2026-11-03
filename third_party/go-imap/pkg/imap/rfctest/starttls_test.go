@@ -97,6 +97,7 @@ func requireCaps(t *testing.T, caps []string, have, lack []string) {
 // checklist: IMAP2-CMD-45 IMAP2-CMD-49 IMAP2-CMD-50 IMAP2-CMD-58 IMAP2-CMD-62
 // checklist: IMAP2-RESP-181 IMAP2-RESP-182
 // checklist: IMAP2-SEC-236 IMAP2-SEC-244
+// checklist: IMAP-INV-SEC-03 IMAP-INV-SEC-07
 func TestStartTLSExample(t *testing.T) {
 	c := tlsClient(t)
 	requireCaps(t, c.capabilities("a001"), []string{"IMAP4rev1", "STARTTLS", "LOGINDISABLED"}, []string{"AUTH=PLAIN"})
@@ -142,6 +143,7 @@ func TestStartTLSNonAuthenticated(t *testing.T) {
 // checklist: IMAP2-CMD-57 IMAP2-CMD-62
 // checklist: IMAP2-RESP-182
 // checklist: IMAP2-SEC-244
+// checklist: IMAP-INV-SEC-07
 func TestStartTLSCleartextCredentialsRefused(t *testing.T) {
 	plain := base64.StdEncoding.EncodeToString([]byte("\x00" + testUser + "\x00" + testPass))
 	c := tlsClient(t)
@@ -252,6 +254,7 @@ func TestStartTLSDiscardsPipelinedPlaintext(t *testing.T) {
 // checklist: IMAP-STARTTLS-07
 // checklist: IMAP2-CMD-49
 // checklist: IMAP2-SEC-236
+// checklist: IMAP-INV-SEC-03
 func TestStartTLSFailedNegotiation(t *testing.T) {
 	c := tlsClient(t)
 	if _, tagged := c.command("a1", "STARTTLS"); !strings.HasPrefix(tagged, "a1 OK") {

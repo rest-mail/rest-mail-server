@@ -53,6 +53,7 @@ func securityClient(t *testing.T, backend imap.Backend, limiter imap.Limiter) *c
 // Backend errors can distinguish a missing identity from a refused password;
 // neither distinction, nor internal storage details, belongs on the wire.
 // checklist: IMAP2-SEC-243 IMAP2-SEC-245
+// checklist: IMAP-INV-SEC-04 IMAP-INV-SEC-05
 func TestAuthenticationFailureDetailsStayPrivate(t *testing.T) {
 	for _, reason := range []string{"private: account does not exist", "private: password hash mismatch", "private: storage request failed"} {
 		b := &privateFailureBackend{reason: reason}
@@ -73,6 +74,7 @@ func TestAuthenticationFailureDetailsStayPrivate(t *testing.T) {
 // budget is exhausted, the connection closes instead of allowing more guesses.
 // This does not claim account-level password-spraying detection by the engine.
 // checklist: IMAP2-SEC-246
+// checklist: IMAP-INV-SEC-06
 func TestAuthenticationFailureBudgetAppliesToBothForms(t *testing.T) {
 	b := &privateFailureBackend{reason: "private: rejected"}
 	limiter := &failureLimit{}

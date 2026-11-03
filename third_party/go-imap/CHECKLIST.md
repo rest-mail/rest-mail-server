@@ -1,31 +1,175 @@
-# IMAP RFC checklist — PARTIAL checked foundation
+# IMAP RFC checklist — RFC 3501 inventory, partial conformance proofs
 
-This is an explicitly **PARTIAL** checklist: the first RFC 3501 rows for the
-connection greeting, the any-state commands (CAPABILITY, NOOP, LOGOUT), LOGIN,
-tagged completion, STARTTLS, AUTHENTICATE, CHECK, selection-state (SELECT/EXAMINE), STATUS, STORE, SEARCH, FETCH/ENVELOPE,
-EXPUNGE, CLOSE, APPEND, COPY, mailbox-management (CREATE, DELETE, RENAME,
-SUBSCRIBE, UNSUBSCRIBE, LIST, LSUB) and encoded BODYSTRUCTURE slices, plus partial
-RFC 4315 UID EXPUNGE/COPYUID/APPENDUID, RFC 6154 ordinary LIST attributes,
-RFC 6851 MOVE, RFC 3691 UNSELECT, RFC 5161 ENABLE, RFC 2177 IDLE command exchanges
-and RFC 7888 non-synchronizing APPEND and command-argument refusal slices. It is not
-an inventory of all applicable RFC requirements, a full conformance claim, or
-a coverage badge. A mapped row means its named wire test
-in `pkg/imap/rfctest` asserts the stated behavior through the public
-`server.Session`; it does not prove the entire referenced section.
+This is a complete **RFC 3501 requirement inventory**, with the section and
+grammar-disposition indexes below and explicit unproved, unsupported,
+host-backend, client-only and optional-feature boundaries. It is **not** a full
+conformance claim, a complete collection of wire proofs or a coverage badge.
+RFC 9051 remains a first-pass inventory tracked separately in #718; other
+extension inventories retain their stated scopes. A mapped row means its named
+wire test in `pkg/imap/rfctest` asserts the stated behavior through the public
+`server.Session`; it does not prove the entire referenced section or every
+alternative of a grammar production. The engine advertises IMAP4rev1 only.
 
-The first-pass RFC 9051 inventory below also records shared rev1 proofs,
-unsupported rev2 behavior, host-backend obligations and client-only duties.
-The [core grammar crosswalk](RFC-GRAMMAR.md) now lists every named section-9
-production, with its existing proof families and boundaries, against a pinned
-source index. This structural inventory does not prove every alternative or
-implicit value constraint. Non-keyword protocol rules and the remaining
-extension specifications still need reconciliation. The engine continues to advertise IMAP4rev1 only.
+Requirements paraphrase [RFC 3501](https://www.rfc-editor.org/rfc/rfc3501.txt)
+and, in the separately labelled tables, the cited extension/revision RFCs.
+`Normative` denotes specified protocol behavior without an RFC2119 keyword.
+The Tests cell is either an actual public-session proof or `n/a: <reason>`;
+the latter includes real server requirements that remain unproved or unmet,
+not only literal non-applicability. No percentage of implemented requirements
+can be inferred from that overloaded historical status vocabulary.
+CI runs `go run ./internal/checklist pkg/imap/rfctest`, rejecting missing tests,
+unknown items, inconsistent annotations and duplicate IDs. The section/grammar
+index guard detects structural omissions, not semantic correctness of prose.
+The narrower [core grammar crosswalk](RFC-GRAMMAR.md) remains useful component
+evidence and does not override the residual requirements below.
 
-Requirements below paraphrase [RFC 3501](https://www.rfc-editor.org/rfc/rfc3501.txt)
-and [RFC 9051](https://www.rfc-editor.org/rfc/rfc9051.txt).
-`Normative` denotes protocol text without an explicit RFC 2119 keyword.
-CI runs `go run ./internal/checklist pkg/imap/rfctest`, which fails on an item
-with no test, a test naming an unknown item, or a duplicate ID.
+
+## RFC 3501: complete section index
+
+Audit source: RFC Editor RFC3501 text, retrieved 2026-11-03, SHA-256
+`4437974dde85859f2391f32215295e7b20ce157c3bd2adbe7e5b443e990f15cf`. The source is reference material, not vendored runtime input.
+Every numbered section and appendix is listed once, including headings without
+independent requirements. References ending in `-*` mean all rows in that family,
+not that any one test proves the family. Read each row's actual Tests cell.
+
+| Section | Title | Requirement rows or explicit exclusion |
+|---------|-------|-----------------------------------------|
+| 1 | How to Read This Document | n/a: Reading guide; substantive conventions are indexed at 1.2. |
+| 1.1 | Organization of This Document | n/a: Document organization; no additional wire behavior. |
+| 1.2 | Conventions Used in This Document | IMAP-SYNTAX-05; IMAP-INV-TEXT-01; IMAP-INV-ABNF-22; IMAP-INV-NAME-01 |
+| 1.3 | Special Notes to Implementors | n/a: Implementor reading recommendations and historical context; no additional server requirement beyond the RFC2822 interpretation used by FETCH/ENVELOPE rows. |
+| 2 | Protocol Overview | n/a: Overview heading; see every subsection below. |
+| 2.1 | Link Level | IMAP-INV-LINK-01 |
+| 2.2 | Commands and Responses | IMAP-GREET-01; IMAP-TAG-01; IMAP-INV-ABNF-11 |
+| 2.2.1 | Client Protocol Sender and Server Protocol Receiver | IMAP-INV-CLIENT-01; IMAP-TAG-01; IMAP-RESP-17; IMAP-INV-ABNF-09 |
+| 2.2.2 | Server Protocol Sender and Client Protocol Receiver | IMAP-RESP-01; IMAP-RESP-CLIENT-01; IMAP-INV-SYNTAX-01; IMAP-INV-ABNF-09; IMAP-INV-ABNF-11 |
+| 2.3 | Message Attributes | n/a: Attribute overview; each attribute is indexed below. |
+| 2.3.1 | Message Numbers | IMAP-INV-SEQ-01; IMAP-INV-UID-01 |
+| 2.3.1.1 | Unique Identifier (UID) Message Attribute | IMAP-INV-UID-*; IMAP-SELECT-03; IMAP-SELECT-04; IMAP-SELECT-09; IMAP-STATUS-08 |
+| 2.3.1.2 | Message Sequence Number Message Attribute | IMAP-INV-SEQ-01; IMAP-EXPUNGE-02 |
+| 2.3.2 | Flags Message Attribute | IMAP-INV-FLAGS-*; IMAP-SELECT-08; IMAP-STORE-*; IMAP-EXPUNGE-07; IMAP-APPEND-19 |
+| 2.3.3 | Internal Date Message Attribute | IMAP-INV-DATE-01; IMAP-FETCH-07; IMAP-APPEND-20; IMAP-COPY-12 |
+| 2.3.4 | [RFC-2822] Size Message Attribute | IMAP-INV-SIZE-01; IMAP-FETCH-07 |
+| 2.3.5 | Envelope Structure Message Attribute | IMAP-ENV-* |
+| 2.3.6 | Body Structure Message Attribute | IMAP-BS-*; IMAP-MSG-* |
+| 2.4 | Message Texts | IMAP-FETCH-*; IMAP-MSG-* |
+| 3 | State and Flow Diagram | IMAP-GREET-01; IMAP-MBOX-AUTH-01; IMAP-INV-STATE-01; IMAP-INV-ABNF-09 |
+| 3.1 | Not Authenticated State | IMAP-GREET-01; IMAP-LOGIN-01; IMAP-AUTHENTICATE-* |
+| 3.2 | Authenticated State | IMAP-SELECT-06; IMAP-FETCH-13; IMAP-SEARCH-09; IMAP-CLOSE-* |
+| 3.3 | Selected State | IMAP-SELECT-*; IMAP-EXAMINE-* |
+| 3.4 | Logout State | IMAP-LOGOUT-01; IMAP-STATE-01; IMAP-RESP-13; IMAP-RESP-14; IMAP-INV-CLIENT-04 |
+| 4 | Data Formats | IMAP-INV-ABNF-* |
+| 4.1 | Atom | IMAP-INV-ABNF-02; IMAP-SYNTAX-09 |
+| 4.2 | Number | IMAP-INV-ABNF-13 |
+| 4.3 | String | IMAP-LITERAL-*; IMAP-APPEND-03; IMAP-SYNTAX-04; IMAP-INV-ABNF-08; IMAP-INV-ABNF-19; IMAP-INV-CLIENT-01 |
+| 4.3.1 | 8-bit and Binary Strings | IMAP-INV-TEXT-01; IMAP-INV-TEXT-02; IMAP-INV-TEXT-03; IMAP-RESP-16; IMAP-APPEND-31 |
+| 4.4 | Parenthesized List | IMAP-INV-ABNF-18; IMAP-INV-ABNF-19 |
+| 4.5 | NIL | IMAP-NIL-01; IMAP-ENV-*; IMAP-INV-ABNF-19 |
+| 5 | Operational Considerations | n/a: Operational heading; each rule is indexed below. |
+| 5.1 | Mailbox Naming | IMAP-MUTF7-*; IMAP-SELECT-12; IMAP-INV-CLIENT-05; IMAP-INV-ABNF-17 |
+| 5.1.1 | Mailbox Hierarchy Naming | IMAP-INV-ABNF-17; IMAP-LIST-01; IMAP-LIST-04; IMAP-INV-NAME-01 |
+| 5.1.2 | Mailbox Namespace Naming Convention | IMAP-INV-LIST-04 |
+| 5.1.3 | Mailbox International Naming Convention | IMAP-MUTF7-*; IMAP-INV-CLIENT-05 |
+| 5.2 | Mailbox Size and Message Status Updates | IMAP-UPDATE-01; IMAP-INV-UPDATE-01; IMAP-RESP-CLIENT-01 |
+| 5.3 | Response when no Command in Progress | IMAP-UPDATE-03; IMAP-RESP-12 |
+| 5.4 | Autologout Timer | IMAP-AUTOLOGOUT-01 |
+| 5.5 | Multiple Commands in Progress | IMAP-UPDATE-04; IMAP-INV-CLIENT-01; IMAP-INV-CLIENT-02; IMAP-RESP-12 |
+| 6 | Client Commands | IMAP-INV-STATE-01; IMAP-INV-STATE-02; IMAP-INV-ABNF-09; IMAP-INV-ABNF-10 |
+| 6.1 | Client Commands - Any State | IMAP-CAP-*; IMAP-NOOP-01; IMAP-LOGOUT-01; IMAP-SYNTAX-03 |
+| 6.1.1 | CAPABILITY Command | IMAP-CAP-*; IMAP-INV-CAP-01; IMAP-CLIENT-01 |
+| 6.1.2 | NOOP Command | IMAP-NOOP-01; IMAP-UPDATE-01; IMAP-AUTOLOGOUT-01 |
+| 6.1.3 | LOGOUT Command | IMAP-LOGOUT-01; IMAP-INV-CLIENT-04 |
+| 6.2 | Client Commands - Not Authenticated State | IMAP-AUTH-STATE-01; IMAP-ANON-01; IMAP-STARTTLS-*; IMAP-AUTHENTICATE-*; IMAP-LOGIN-* |
+| 6.2.1 | STARTTLS Command | IMAP-STARTTLS-*; IMAP-CLIENT-01 |
+| 6.2.2 | AUTHENTICATE Command | IMAP-AUTHENTICATE-*; IMAP-INV-SASL-01; IMAP-INV-ABNF-03; IMAP-INV-SEC-07 |
+| 6.2.3 | LOGIN Command | IMAP-LOGIN-*; IMAP-SYNTAX-04; IMAP-CLIENT-01; IMAP-INV-SEC-07 |
+| 6.3 | Client Commands - Authenticated State | IMAP-MBOX-AUTH-01; IMAP-INV-ABNF-09 |
+| 6.3.1 | SELECT Command | IMAP-SELECT-*; IMAP-INV-STATE-01 |
+| 6.3.2 | EXAMINE Command | IMAP-EXAMINE-*; IMAP-SELECT-* |
+| 6.3.3 | CREATE Command | IMAP-CREATE-*; IMAP-INV-CREATE-* |
+| 6.3.4 | DELETE Command | IMAP-DELETE-*; IMAP-INV-DELETE-01 |
+| 6.3.5 | RENAME Command | IMAP-RENAME-*; IMAP-INV-RENAME-01 |
+| 6.3.6 | SUBSCRIBE Command | IMAP-SUB-* |
+| 6.3.7 | UNSUBSCRIBE Command | IMAP-SUB-* |
+| 6.3.8 | LIST Command | IMAP-LIST-*; IMAP-INV-LIST-*; IMAP-INV-CLIENT-06 |
+| 6.3.9 | LSUB Command | IMAP-LSUB-*; IMAP-SUB-02; IMAP-INV-LSUB-01 |
+| 6.3.10 | STATUS Command | IMAP-STATUS-*; IMAP-CLIENT-01 |
+| 6.3.11 | APPEND Command | IMAP-APPEND-*; IMAP-CLIENT-01 |
+| 6.4 | Client Commands - Selected State | IMAP-INV-ABNF-09; IMAP-FETCH-13; IMAP-SEARCH-09; IMAP-STORE-03; IMAP-EXPUNGE-* |
+| 6.4.1 | CHECK Command | IMAP-CHECK-*; IMAP-UPDATE-02; IMAP-CLIENT-01 |
+| 6.4.2 | CLOSE Command | IMAP-CLOSE-*; IMAP-SELECT-07 |
+| 6.4.3 | EXPUNGE Command | IMAP-EXPUNGE-* |
+| 6.4.4 | SEARCH Command | IMAP-SEARCH-*; IMAP-INV-SEARCH-01 |
+| 6.4.5 | FETCH Command | IMAP-FETCH-*; IMAP-ENV-*; IMAP-BS-*; IMAP-MSG-*; IMAP-INV-UID-05 |
+| 6.4.6 | STORE Command | IMAP-STORE-*; IMAP-INV-FLAGS-*; IMAP-INV-ABNF-16 |
+| 6.4.7 | COPY Command | IMAP-COPY-* |
+| 6.4.8 | UID Command | IMAP-FETCH-09; IMAP-STORE-04; IMAP-COPY-*; IMAP-SEARCH-04; IMAP-SEARCH-05; IMAP-INV-UID-06; IMAP-INV-ABNF-21 |
+| 6.5 | Client Commands - Experimental/Expansion | IMAP-XCMD-*; IMAP-INV-XCMD-01 |
+| 6.5.1 | X<atom> Command | IMAP-XCMD-*; IMAP-INV-XCMD-01 |
+| 7 | Server Responses | IMAP-RESP-*; IMAP-INV-UPDATE-01; IMAP-INV-ABNF-11 |
+| 7.1 | Server Responses - Status Responses | IMAP-RESP-*; IMAP-INV-ABNF-20 |
+| 7.1.1 | OK Response | IMAP-GREET-01; IMAP-RESP-02; IMAP-INV-ABNF-11 |
+| 7.1.2 | NO Response | IMAP-RESP-10; IMAP-INV-RESP-01 |
+| 7.1.3 | BAD Response | IMAP-BAD-01; IMAP-RESP-03; IMAP-INV-STATE-01 |
+| 7.1.4 | PREAUTH Response | IMAP-RESP-11 |
+| 7.1.5 | BYE Response | IMAP-GREET-02; IMAP-LOGOUT-01; IMAP-STATE-01; IMAP-RESP-13; IMAP-RESP-14; IMAP-INV-CLIENT-04 |
+| 7.2 | Server Responses - Server and Mailbox Status | IMAP-INV-ABNF-18 |
+| 7.2.1 | CAPABILITY Response | IMAP-CAP-*; IMAP-RESP-02; IMAP-INV-CAP-01; IMAP-INV-ABNF-07 |
+| 7.2.2 | LIST Response | IMAP-LIST-*; IMAP-INV-LIST-*; IMAP-INV-ABNF-17; IMAP-INV-LIST-05 |
+| 7.2.3 | LSUB Response | IMAP-LSUB-*; IMAP-INV-LSUB-01; IMAP-INV-ABNF-17 |
+| 7.2.4 | STATUS Response | IMAP-STATUS-*; IMAP-INV-ABNF-18 |
+| 7.2.5 | SEARCH Response | IMAP-SEARCH-01; IMAP-SEARCH-04; IMAP-INV-ABNF-18 |
+| 7.2.6 | FLAGS Response | IMAP-SELECT-01; IMAP-SELECT-13; IMAP-INV-FLAGS-*; IMAP-RESP-CLIENT-01 |
+| 7.3 | Server Responses - Mailbox Size | IMAP-INV-ABNF-18 |
+| 7.3.1 | EXISTS Response | IMAP-SELECT-01; IMAP-UPDATE-01; IMAP-RESP-CLIENT-01 |
+| 7.3.2 | RECENT Response | IMAP-RESP-15; IMAP-SELECT-08; IMAP-RESP-CLIENT-01 |
+| 7.4 | Server Responses - Message Status | IMAP-INV-ABNF-18 |
+| 7.4.1 | EXPUNGE Response | IMAP-EXPUNGE-02; IMAP-RESP-12; IMAP-RESP-CLIENT-01 |
+| 7.4.2 | FETCH Response | IMAP-FETCH-*; IMAP-ENV-*; IMAP-BS-*; IMAP-MSG-*; IMAP-RESP-16; IMAP-INV-CLIENT-07; IMAP-INV-UID-05; IMAP-INV-ABNF-* |
+| 7.5 | Server Responses - Command Continuation Request | IMAP-RESP-17; IMAP-LITERAL-*; IMAP-AUTHENTICATE-02; IMAP-INV-CLIENT-01 |
+| 8 | Sample IMAP4rev1 connection | n/a: Illustrative transcript, not an additional requirement. Its component behaviors are indexed above; this audit does not claim a verbatim end-to-end replay of the entire sample. |
+| 9 | Formal Syntax | IMAP-INV-CLIENT-08; IMAP-SYNTAX-*; IMAP-INV-ABNF-*; see the exhaustive production dispositions below. |
+| 10 | Author's Note | n/a: Historical supersession note; no additional server behavior. |
+| 11 | Security Considerations | IMAP-STARTTLS-*; IMAP-INV-SEC-* |
+| 11.1 | STARTTLS Security Considerations | IMAP-INV-SEC-01; IMAP-INV-SEC-02; IMAP-INV-SEC-03; IMAP-INV-CLIENT-03 |
+| 11.2 | Other Security Considerations | IMAP-INV-SEC-04; IMAP-INV-SEC-05; IMAP-INV-SEC-06; IMAP-INV-SEC-07; IMAP-AUTHENTICATE-09; IMAP-LOGIN-02 |
+| 12 | IANA Considerations | n/a: IANA/specification-editor registration procedure, not a Session operation; capability naming duties are IMAP-INV-CAP-01 and IMAP-INV-ABNF-07. |
+| A | Normative and informative references | n/a: Bibliography; referenced RFCs are dependencies of definitions, not an assertion that every requirement of every referenced RFC is inventoried here. |
+| B | Changes from RFC 2060 | n/a: Historical change list. Reconciled against current prose/grammar above; superseded intermediate changes (for example NEWNAME) are not current requirements. |
+| C | Key Word Index | n/a: Keyword locator index; duplicates requirements in the indexed sections and adds none. |
+
+### RFC 3501 section 9: every production disposition
+
+This is a requirement inventory, not just a production-name census: each
+residual row states the relevant value/alternative restrictions and its reason
+for remaining unproved. The existing component proofs are retained, but do not
+upgrade a residual boundary into a mapped requirement. The pinned 148-production
+source index is also used by `TestRFC3501Inventory`; no RFC9051 production is
+added or reclassified by this audit.
+
+| Productions | Requirement boundary | Related component rows |
+|-------------|----------------------|------------------------|
+| `address`, `addr-adl`, `addr-host`, `addr-mailbox`, `addr-name` | IMAP-INV-ABNF-01 | IMAP-ENV-* |
+| `astring`, `ASTRING-CHAR`, `atom`, `ATOM-CHAR`, `atom-specials` | IMAP-INV-ABNF-02 | IMAP-SYNTAX-* |
+| `authenticate`, `auth-type`, `base64`, `base64-char`, `base64-terminal` | IMAP-INV-ABNF-03 | IMAP-AUTHENTICATE-* |
+| `body`, `body-type-1part`, `body-type-basic`, `body-type-mpart`, `body-type-msg`, `body-type-text`, `media-basic`, `media-message`, `media-subtype`, `media-text` | IMAP-INV-ABNF-04 | IMAP-BS-*; IMAP-MSG-* |
+| `body-extension`, `body-ext-1part`, `body-ext-mpart` | IMAP-INV-ABNF-05 | IMAP-BS-* |
+| `body-fields`, `body-fld-desc`, `body-fld-dsp`, `body-fld-enc`, `body-fld-id`, `body-fld-lang`, `body-fld-loc`, `body-fld-lines`, `body-fld-md5`, `body-fld-octets`, `body-fld-param` | IMAP-INV-ABNF-06 | IMAP-BS-* |
+| `capability`, `capability-data` | IMAP-INV-ABNF-07 | IMAP-CAP-* |
+| `CHAR8`, `literal` | IMAP-INV-ABNF-08 | IMAP-LITERAL-*; IMAP-APPEND-* |
+| `command`, `command-any`, `command-auth`, `command-nonauth`, `command-select` | IMAP-INV-ABNF-09 | IMAP-SYNTAX-*; IMAP-MBOX-AUTH-01 |
+| `append`, `copy`, `create`, `delete`, `examine`, `fetch`, `list`, `login`, `lsub`, `rename`, `search`, `select`, `status`, `store`, `store-att-flags`, `subscribe`, `uid`, `unsubscribe`, `userid`, `password`, `x-command` | IMAP-INV-ABNF-10 | IMAP-SYNTAX-*; IMAP-SELECT-*; IMAP-SEARCH-*; IMAP-STORE-*; IMAP-FETCH-*; IMAP-APPEND-* |
+| `continue-req`, `greeting`, `response`, `response-data`, `response-done`, `response-fatal`, `response-tagged`, `resp-cond-auth`, `resp-cond-bye`, `resp-cond-state` | IMAP-INV-ABNF-11 | IMAP-GREET-*; IMAP-RESP-*; IMAP-TAG-01 |
+| `date`, `date-day`, `date-day-fixed`, `date-month`, `date-text`, `date-year`, `date-time`, `time`, `zone` | IMAP-INV-ABNF-12 | IMAP-SEARCH-22; IMAP-SEARCH-23; IMAP-APPEND-29; IMAP-FETCH-07 |
+| `digit-nz`, `number`, `nz-number`, `uniqueid` | IMAP-INV-ABNF-13 | IMAP-SYNTAX-08; IMAP-FETCH-18; IMAP-STATUS-08 |
+| `envelope`, `env-bcc`, `env-cc`, `env-date`, `env-from`, `env-in-reply-to`, `env-message-id`, `env-reply-to`, `env-sender`, `env-subject`, `env-to` | IMAP-INV-ABNF-14 | IMAP-ENV-* |
+| `fetch-att`, `section`, `section-msgtext`, `section-part`, `section-spec`, `section-text`, `header-fld-name`, `header-list` | IMAP-INV-ABNF-15 | IMAP-FETCH-*; IMAP-MSG-* |
+| `flag`, `flag-extension`, `flag-fetch`, `flag-keyword`, `flag-list`, `flag-perm` | IMAP-INV-ABNF-16 | IMAP-STORE-05; IMAP-STORE-11; IMAP-APPEND-19 |
+| `list-mailbox`, `list-char`, `list-wildcards`, `mailbox`, `mailbox-list`, `mbx-list-flags`, `mbx-list-oflag`, `mbx-list-sflag` | IMAP-INV-ABNF-17 | IMAP-MUTF7-*; IMAP-LIST-*; IMAP-LSUB-* |
+| `mailbox-data`, `message-data`, `msg-att`, `msg-att-dynamic`, `msg-att-static`, `status-att`, `status-att-list` | IMAP-INV-ABNF-18 | IMAP-FETCH-*; IMAP-STATUS-*; IMAP-RESP-* |
+| `nil`, `nstring`, `string`, `quoted`, `QUOTED-CHAR`, `quoted-specials` | IMAP-INV-ABNF-19 | IMAP-NIL-01; IMAP-SYNTAX-04; IMAP-ENV-*; IMAP-BS-* |
+| `resp-specials`, `resp-text`, `resp-text-code`, `text`, `TEXT-CHAR`, `tag` | IMAP-INV-ABNF-20 | IMAP-SYNTAX-01; IMAP-SYNTAX-02; IMAP-RESP-* |
+| `search-key`, `seq-number`, `seq-range`, `sequence-set` | IMAP-INV-ABNF-21 | IMAP-SEARCH-*; IMAP-SYNTAX-08; IMAP-FETCH-17 |
 
 ## RFC 3501: connection, any-state commands and LOGIN
 
@@ -140,7 +284,7 @@ example. Flag lists are sets; this engine orders system flags as \Seen,
 | ID | Section | Level | Requirement | Tests |
 |----|---------|-------|-------------|-------|
 | IMAP-STORE-01 | RFC 3501 §6.4.6 | Normative | Without .SILENT, answer each changed message with an untagged FETCH carrying its full resulting flag list before the tagged OK. | TestStoreExample |
-| IMAP-STORE-02 | RFC 3501 §6.4.6 | Normative | FLAGS replaces the flag list, +FLAGS adds to it and -FLAGS removes from it; system flags persist through the backend and \Deleted stays visible to later FETCH. | TestStoreExample |
+| IMAP-STORE-02 | RFC 3501 §6.4.6 | Normative | FLAGS replaces the flag list, +FLAGS adds to it and -FLAGS removes from it; system flags persist through the backend and \Deleted stays visible to later FETCH. | TestStoreExample, TestStoreLeavesRecentAlone |
 | IMAP-STORE-03 | RFC 3501 §6.4.6 | SHOULD | With .SILENT, apply the change but send no untagged FETCH, for STORE and UID STORE. | TestStoreSilent |
 | IMAP-STORE-04 | RFC 3501 §6.4.8 | MUST | An untagged FETCH caused by UID STORE includes the UID data item. | TestUIDStoreReportsUID |
 | IMAP-STORE-05 | RFC 3501 §6.4.6 | Normative | A refused backend write answers NO (§6.4.6 "store error") and leaves the session's flags for that message unchanged, for STORE and UID STORE. | TestStoreBackendFailure |
@@ -185,7 +329,7 @@ and BCC values are matched after RFC 2047 encoded-word decoding (IMAP-SEARCH-10)
 | IMAP-SEARCH-08 | RFC 3501 §§6.4.4, 9 | Normative | Require at least one key, including inside groups; reject unknown keys, missing operands, invalid dates and unbalanced groups with tagged BAD and no partial SEARCH result. | TestSearchInvalidCriteria |
 | IMAP-SEARCH-09 | RFC 3501 §§3, 6.4 | Normative | SEARCH and UID SEARCH require a selected mailbox; authenticating alone does not permit searching. | TestSearchRequiresSelection |
 | IMAP-SEARCH-10 | RFC 3501 §6.4.4 | MUST | Decode MIME transfer encodings and encoded headers to the selected character set before searching: BODY/TEXT remove base64 and quoted-printable encodings in every MIME leaf, including encapsulated messages; TEXT, HEADER and SUBJECT decode RFC 2047 encoded words; UTF-8, US-ASCII and ISO-8859-1 content is compared as UTF-8. Malformed encodings, and parts in other charsets, are compared as stored. | TestSearchDecodesMIME |
-| IMAP-SEARCH-11 | RFC 3501 §6.4.4 | Normative | Support the KEYWORD and UNKEYWORD search keys with a flag-keyword atom operand. No keyword can be stored, so KEYWORD matches nothing and UNKEYWORD matches every message; a missing or non-atom operand is BAD. | TestSearchKeywordKeys |
+| IMAP-SEARCH-11 | RFC 3501 §6.4.4 | Normative | KEYWORD and UNKEYWORD take flag-keyword atoms and test presence/absence of that keyword; without keywords the former matches nothing and the latter everything; a missing or non-atom operand is BAD. | TestSearchKeywordKeys, TestKeywordsAdvertisedAndStored |
 | IMAP-SEARCH-12 | RFC 3501 §6.4.4 | Normative | RECENT, NEW and OLD search independent Recent state. | n/a: not supported yet; RECENT approximates unseen, and NEW and OLD follow it (IMAP-SEARCH-27). Message has no Recent field. Tracked in rest-mail/rest-mail-server#374. |
 | IMAP-SEARCH-13 | RFC 3501 §§6.4.4, 6.4.8, 9 | Normative | Reject malformed bare sequence-set keys and UID set operands with BAD and no partial SEARCH result or content evaluation, including inside NOT, OR and groups and in empty mailboxes; keep the session reusable. | TestSearchInvalidSequenceSet |
 | IMAP-SEARCH-14 | RFC 3501 §§6.4.4, 6.4.8, 9 | Normative | Valid reversed, star, overlapping and unsigned-32-bit boundary sets retain sequence/UID membership semantics under SEARCH and UID SEARCH, with each match returned once and no content reads or flag writes. | TestSearchValidSequenceSet |
@@ -292,7 +436,7 @@ failed marks, so a retried CLOSE completes.
 | IMAP-CLOSE-04 | RFC 3501 §6.4.2 | Normative | CLOSE after EXAMINE succeeds silently and deselects without removing messages. | TestReadOnlyCloseAndExpunge |
 | IMAP-CLOSE-05 | RFC 3501 §6.4.2 | Normative | LOGOUT implicitly closes a selected mailbox without expunging marked messages. | TestLogoutDoesNotExpunge |
 | IMAP-CLOSE-06 | RFC 3501 §6.4.2 | Normative | Writable CLOSE removes every marked message before reporting successful completion. | TestCloseBackendFailure |
-| IMAP-EXPUNGE-07 | RFC 3501 §§2.3.2, 6.4.3 | Normative | The Deleted flag is permanent mailbox state visible across sessions until removal. | n/a: not supported yet; Message and FlagUpdate have no Deleted field, so marks exist only in the selecting session. Cross-session deletion and concurrent EXPUNGE suppression remain unaudited. Tracked in rest-mail/rest-mail-server#374. |
+| IMAP-EXPUNGE-07 | RFC 3501 §§2.3.2, 6.4.3 | Normative | Deleted is persistent mailbox state: a second session sees the stored mark, can clear it, and the first session observes that change on NOOP with a persistent backend. | TestRFC3501DeletedSurvivesSessions |
 
 On EXPUNGE/UID EXPUNGE backend errors, this engine continues trying other
 marked messages and returns NO after reporting successful removals. This is
@@ -345,7 +489,7 @@ The RFC 7888 rows cover the `{n+}` form; the engine advertises LITERAL-
 | IMAP-APPEND-16 | RFC 3501 §§3.1, 6.3 | Normative | Refuse APPEND before authentication without inviting message bytes; permit it after successful LOGIN. | TestAppendRequiresAuthentication |
 | IMAP-APPEND-17 | RFC 3501 §6.3.11 | MUST | Restore the mailbox after an unsuccessful append with no partially stored message. | n/a: the backend must append atomically; Mailbox.Append offers no rollback interface and the engine cannot undo a backend that mutates before returning an error. Tracked in rest-mail/rest-mail-server#374. |
 | IMAP-APPEND-18 | RFC 3501 §6.3.11 | MUST | Reject a nonexistent destination without implicitly creating it and supply TRYCREATE unless creation is known to be impossible. | TestTryCreateMissingDestination, TestTryCreatePlainAppendFailure |
-| IMAP-APPEND-19 | RFC 3501 §6.3.11 | Normative | Set Recent on the new message and preserve requested Deleted and keyword flags. | n/a: not supported yet; Recent is approximated from unread messages, FlagUpdate has no Deleted or keyword fields, and APPEND accepts but drops Deleted. Tracked in rest-mail/rest-mail-server#374. |
+| IMAP-APPEND-19 | RFC 3501 §6.3.11 | Normative | Set Recent on the new message and preserve requested Deleted and keyword flags. | n/a: not fully supported or wire-proved as a combined requirement; Recent is still approximated from unread messages. FlagUpdate now has Deleted and Keywords and APPEND dispatches them, so the earlier claim that those fields do not exist is obsolete. Durable storage remains the backend's duty. |
 | IMAP-APPEND-20 | RFC 3501 §6.3.11 | SHOULD | Honor explicit INTERNALDATE and use current time by default for every backend. | n/a: explicit dates reach only DateAppender; other backends drop them, and default timestamps are assigned by the host rather than the engine. Tracked in rest-mail/rest-mail-server#374. |
 | IMAP-APPEND-21 | RFC 3501 §§4.3, 6.3.11 | Normative | Accept a literal mailbox-name astring before the message literal. | TestAppendLiteralMailbox |
 | IMAP-APPEND-22 | RFC 7888 §§3–4 | MUST | For a syntactically valid non-synchronizing literal marker, early APPEND refusal sends BYE and ends the session without dispatching unread octets; backend refusal after consuming the complete command preserves synchronization. | TestAppendRejectedNonSynchronizing, TestAppendNonSynchronizingBackendFailure |
@@ -420,7 +564,7 @@ store preserves content/metadata or atomically copies a whole set.
 | IMAP-COPY-09 | RFC 3501 §§3, 6.4 | Normative | COPY/UID COPY require a selected mailbox and dispatch no backend copy before selection. | TestCopyRequiresSelection |
 | IMAP-COPY-10 | RFC 4315 §3 | Normative | Omit COPYUID when the destination UIDVALIDITY is unavailable rather than reporting guessed metadata; the completed copy still succeeds. | TestCopyUIDValidityFallback |
 | IMAP-COPY-11 | RFC 3501 §6.4.7 | MUST | An unsuccessful COPY restores the destination to its state before the attempt. | n/a: not supported yet; per-message Copy/CopyUID cannot roll back earlier successful copies or a failed backend mutation. A batch transaction/rollback backend API is needed. Tracked in rest-mail/rest-mail-server#374. |
-| IMAP-COPY-12 | RFC 3501 §6.4.7 | SHOULD | Preserve flags and internal date and set Recent in the destination copy. | n/a: backend storage responsibility, not verified by these dispatch fixtures; session-local Deleted and keywords cannot be supplied through Copy. Tracked in rest-mail/rest-mail-server#374. |
+| IMAP-COPY-12 | RFC 3501 §6.4.7 | SHOULD | Preserve flags and internal date and set Recent in the destination copy. | n/a: backend storage responsibility, not verified by these dispatch fixtures; Deleted/Keywords now have persistent model fields, but Copy must preserve them and the date, and actual Recent state is not represented. |
 | IMAP-COPY-13 | RFC 3501 §6.4.7 | MUST | Refuse nonexistent destinations without auto-creation and prefix NO with TRYCREATE unless creation is known impossible. | TestTryCreateMissingDestination |
 | IMAP-COPY-14 | RFC 3501 §§6.4.7, 9 | Normative | Reject invalid sequence sets and mailbox argument syntax with BAD. | TestCopyInvalidArguments |
 | IMAP-COPY-15 | RFC 4315 §§3, 5 | SHOULD NOT | Suppress COPYUID for a destination the user cannot SELECT/EXAMINE and for UIDNOTSTICKY stores. | n/a: not supported yet; backend API exposes no destination readability or UIDNOTSTICKY marker. Hosts can suppress metadata by returning zero/error UIDValidity, but that policy is not independently checked here. Tracked in rest-mail/rest-mail-server#374. |
@@ -735,7 +879,7 @@ name the gap rather than claiming it.
 | IMAP-DELETE-01 | RFC 3501 §§5.1, 6.3.4 | Normative | Deleting INBOX, in any case, is an error answered with tagged NO. | TestInboxCannotBeCreatedOrDeleted |
 | IMAP-DELETE-02 | RFC 3501 §6.3.4 | Normative | Deleting a name that does not exist is an error, and DELETE permanently removes the mailbox. | n/a: not supported yet; DELETE moves the folder's messages to Trash and answers OK for an unknown name, since there is no backend delete operation. Tracked in rest-mail/rest-mail-server#374. |
 | IMAP-DELETE-03 | RFC 3501 §6.3.4 | MUST NOT | DELETE does not remove inferior hierarchical names. | TestDeleteRenameHierarchy |
-| IMAP-DELETE-04 | RFC 3501 §6.3.4 | SHOULD | A server that refuses to delete a name with inferiors says so. | n/a: the engine does not refuse such a delete, so there is nothing to indicate. |
+| IMAP-DELETE-04 | RFC 3501 §6.3.4 | Normative | Refuse DELETE of a Noselect hierarchy name that has inferiors. | n/a: not supported yet; the backend has no selectable/Noselect mailbox-state contract, so this conditional refusal is not enforced or proved. |
 | IMAP-DELETE-05 | RFC 3501 §6.3.4 | MUST | Preserve the deleted mailbox's highest-used UID so a new mailbox of the same name does not reuse its UIDs unless UIDVALIDITY differs. | n/a: UID assignment belongs to the backend; see IMAP-CREATE-04. |
 | IMAP-RENAME-01 | RFC 3501 §6.3.5 | Normative | Renaming from a name that does not exist, or to a name that already exists, is an error answered with tagged NO. | n/a: not supported yet; RENAME answers OK without checking either name, since there is no backend rename operation. Tracked in rest-mail/rest-mail-server#374. |
 | IMAP-RENAME-02 | RFC 3501 §6.3.5 | MUST | Inferior hierarchical names are renamed with their superior; a near name that only shares the prefix is untouched. | TestDeleteRenameHierarchy |
@@ -772,7 +916,7 @@ inventory is complete.
 | IMAP-RESP-09 | RFC 3501 §7.1 | Normative | TRYCREATE marks an APPEND or COPY that failed because the target mailbox does not exist. | TestTryCreateMissingDestination |
 | IMAP-RESP-10 | RFC 3501 §7.1.2 | Normative | A tagged NO reports that the command failed, and the session goes on. | TestExpungeBackendFailure, TestFetchBackendFailure |
 | IMAP-RESP-11 | RFC 3501 §7.1.4 | Normative | PREAUTH greets a connection that is already authenticated. | n/a: the engine never pre-authenticates; every greeting is OK (TestGreeting). |
-| IMAP-RESP-12 | RFC 3501 §7.4.1 | MUST NOT | Send no EXPUNGE when no command is in progress, or while answering FETCH, STORE or SEARCH (UID forms included), even after another session removed a message. | TestNoExpungeDuringFetchStoreSearch |
+| IMAP-RESP-12 | RFC 3501 §7.4.1 | MUST NOT | Send no EXPUNGE when no complete command is in progress, or while answering non-UID FETCH, STORE or SEARCH, even after another session removed a message. The test also defers during UID forms, which the RFC permits but does not require. | TestNoExpungeDuringFetchStoreSearch |
 | IMAP-RESP-13 | RFC 3501 §§6.1.3, 7.1.5 | Normative | BYE is always untagged. On LOGOUT it comes before the tagged OK; on a failure the connection closes straight after it. | TestLogout, TestCommandLiteralRefusalCloses |
 | IMAP-RESP-14 | RFC 3501 §7.1.5 | Normative | BYE announces a panic shutdown, an inactivity autologout, or a greeting that refuses the connection. | n/a: not fully supported yet. Autologout and panic BYE are proven in the server package (pkg/imap/server/session_autologout_test.go, session_panic_test.go), not on this harness; the refusal greeting is IMAP-GREET-02. Tracked in rest-mail/rest-mail-server#374. |
 | IMAP-RESP-15 | RFC 3501 §7.3.2 | Normative | RECENT reports the number of messages with the `\Recent` flag. | n/a: not supported yet; the engine keeps no `\Recent` state and reports the unseen count (see TestSelectionExamples). Tracked in rest-mail/rest-mail-server#374. |
@@ -1012,6 +1156,122 @@ here cover the rules every command line and response shares.
 | IMAP-SYNTAX-08 | RFC 3501 §§6.4.5–6.4.7, 9 (nz-number, seq-range) | Normative | Preserve unsigned 32-bit range endpoints on 32-bit and 64-bit hosts: forward and reversed ranges above signed-int maximum select the same existing messages, while ranges wholly above the snapshot and absent single numbers select none. FETCH, STORE and COPY dispatch only the selected messages. | TestWideSequenceDispatch |
 | IMAP-SYNTAX-09 | RFC 3501 §§4.1, 9 | Normative | Command names stay ASCII regardless of UTF8=ACCEPT; Unicode case equivalents never execute SELECT, SEARCH, STORE or CLOSE. Refuse before literal continuation, closing with BYE if a non-synchronizing literal is unread. | TestCoreCommandNamesAreASCII, TestCoreTextRejectionLiteralBoundaries |
 | IMAP-SYNTAX-10 | RFC 3501 §§4.1, 4.3, 9; RFC 6855 §3 | Normative | UTF8=ACCEPT extends quoted strings, not atoms, keywords, UID subcommands or bare mailbox names; reject typed non-ASCII atoms before fetching or changing data, including literal continuations and APPEND, while preserving legal quoted and counted values. | TestCoreUTF8DoesNotExtendAtoms, TestCoreQuotedAndLiteralValuesRemainText, TestCoreTextRejectionLiteralBoundaries |
+
+
+## RFC 3501: remaining prose and grammar requirements
+
+These rows complete the RFC3501 inventory alongside the earlier command
+rows. `n/a: not fully audited` is an explicit **unproved** boundary, not a claim
+that a server obligation is optional or implemented incorrectly. `n/a: not
+supported yet` describes a known implementation gap; host/client duties and
+unused optional features are distinguished in their reasons. In particular,
+IMAP-SELECT-09 and IMAP-STATUS-08 are unchanged: #804 needs the owner's design
+decision. No engine behavior or RFC9051 scope (#718) is changed here.
+
+| ID | Section | Level | Requirement | Tests |
+|----|---------|-------|-------------|-------|
+| IMAP-INV-LINK-01 | RFC 3501 §2.1 | Normative | Use a reliable ordered byte stream; a TCP IMAP listener uses port 143. | n/a: listener and transport deployment are host duties; Session receives an already-open net.Conn and does not bind a port. |
+| IMAP-INV-UID-01 | RFC 3501 §2.3.1.1 | MUST NOT | Reuse a mailbox-name/UIDVALIDITY/UID identity for another message, including after deletion or renaming and recreation of the mailbox. | n/a: host-backend duty; UID allocation and historical identity are not exposed as transactions to Session. IMAP-CREATE-04, IMAP-DELETE-05 and IMAP-RENAME-04 cover the individual mailbox operations; #804 remains owner-pending. |
+| IMAP-INV-UID-02 | RFC 3501 §2.3.1.1 | MUST NOT | Change a message UID during a session; UIDs SHOULD persist between sessions and any change MUST be detectable by a greater UIDVALIDITY. | n/a: host-backend duty; Message.UID and UIDPlusMailbox.UIDValidity are supplied by the host. Cached-snapshot tests do not establish persistence or cross-session validity increments. |
+| IMAP-INV-UID-03 | RFC 3501 §2.3.1.1 | MUST | Assign UIDs strictly increasingly as messages arrive; if external reordering requires new UIDs, regenerate them with a changed validity value. | n/a: host-backend duty; the engine neither allocates UIDs nor controls non-IMAP writers. Zero, duplicate, descending and exhausted host UID assignments are not fully audited. |
+| IMAP-INV-UID-04 | RFC 3501 §2.3.1.1 | Normative | A store unable to persist UIDs regenerates them per session and supplies a distinct UIDVALIDITY for each such session. | n/a: host-backend duty conditional on nonpersistent storage; there is no Session UID allocator or nonpersistent-store mode. |
+| IMAP-INV-UID-05 | RFC 3501 §2.3.1.1 | MUST NOT | Change internal date, RFC2822 size, envelope, body structure or any message text for a fixed mailbox-name/UIDVALIDITY/UID identity. | n/a: host-backend duty; the engine derives static FETCH items from supplied content and metadata but cannot prevent a backend or another writer replacing them. This also inventories the static-data rule in §§6.4.5 and 9. |
+| IMAP-INV-SEQ-01 | RFC 3501 §2.3.1.2 | MUST | Order message sequence numbers by ascending UID, from 1 through the mailbox count; an arrival takes the next position and expunges immediately renumber successors. | n/a: partly host-backend duty; Session uses the order of Mailbox.Messages without sorting or validating it. IMAP-EXPUNGE-02 proves expunge renumbering, not arbitrary backend ordering or arrival order. |
+| IMAP-INV-FLAGS-01 | RFC 3501 §2.3.2 | Normative | Permanent flag changes are visible to concurrent and subsequent sessions; session-only flags affect only the current session. | n/a: host-backend duty for durable system flags and keywords; the model supplies Deleted/Keywords and component fixtures prove their persistence. Arbitrary per-flag permanent/session policy and durability of every backend are not wire-proved. |
+| IMAP-INV-FLAGS-02 | RFC 3501 §2.3.2 | SHOULD | Treat a message as Recent when it is impossible to determine whether this is the first session notified of its arrival. | n/a: not supported yet; the model has no arrival-notification or Recent state. The unseen approximation in IMAP-SELECT-08 cannot establish this fallback. |
+| IMAP-INV-FLAGS-03 | RFC 3501 §2.3.2 | MAY | Permit user-defined keywords when permanent keyword creation is advertised with \*. | TestKeywordsAdvertisedAndStored |
+| IMAP-INV-DATE-01 | RFC 3501 §2.3.3 | SHOULD | For SMTP delivery use final-delivery time as INTERNALDATE, not the message Date header; COPY preserves the source date and APPEND follows its date argument/default rules. | n/a: host-backend duty for delivery timestamps and COPY; IMAP-FETCH-07 tests supplied metadata, IMAP-APPEND-06 tests DateAppender dispatch, and IMAP-APPEND-20/IMAP-COPY-12 retain the unsupported backend boundaries. |
+| IMAP-INV-SIZE-01 | RFC 3501 §2.3.4 | Normative | RFC2822 size is the complete stored message octet count, including headers, not decoded body size or a character count. | n/a: host-backend duty to supply correct Message.Size. IMAP-FETCH-07 and IMAP-SEARCH-17 test use of metadata, not consistency between arbitrary metadata and stored bytes. |
+| IMAP-INV-TEXT-01 | RFC 3501 §4.3.1 | SHOULD | Transmit 8-bit or multioctet literal text only when its character set is identified; binary data must be textually transfer-encoded. | n/a: not fully supported; the engine can emit stored 8-bit octets without checking a CHARSET declaration. IMAP-RESP-16 records the header/binary re-encoding gap; literal framing alone is not charset validation. |
+| IMAP-INV-STATE-01 | RFC 3501 §6 | Normative | A BAD rejection never changes connection or selected-mailbox state; NO generally preserves state, except unsuccessful SELECT/EXAMINE. | n/a: not audited for every command. Malformed SELECT/EXAMINE now keep the old selection on BAD (TestSelectionRefusalKeepsSelection, IMAP-SELECT-11); other commands' BAD and NO paths are not proved here. |
+| IMAP-INV-UPDATE-01 | RFC 3501 §7 | SHOULD | With simultaneous mailbox access, send appropriate unilateral FETCH and EXPUNGE updates when another agent changes flags or removes messages; new-mail checks report EXISTS and RECENT. | n/a: only NOOP/CHECK/IDLE polling is proved (IMAP-UPDATE-01/02, IMAP-STORE-12). Command-wide observation, concurrent change races and true Recent notifications are not fully supported or audited; IMAP-RESP-12 still governs safe EXPUNGE timing. |
+| IMAP-INV-CAP-01 | RFC 3501 §7.2.1 | MUST | Keep responses within the base protocol until the client invokes an associated advertised extension; advertise only registered standard/standards-track capabilities or X-prefixed private names. | n/a: not fully audited across all advertised extension combinations; individual extension rows cover their invocation paths, not a complete negative opt-in matrix. No private capability is defined. RFC 9051 negotiation is separate #718 scope. |
+| IMAP-INV-CREATE-01 | RFC 3501 §6.3.3 | Normative | Return CREATE OK only after creating a new mailbox with the requested name, and return NO on creation failure. | n/a: not supported yet; CREATE acknowledges ordinary names without a backend creation operation. IMAP-CREATE-02 records duplicate acceptance; successful durable creation and storage failures are not proved. |
+| IMAP-INV-CREATE-02 | RFC 3501 §6.3.3 | MUST | Ignore an unneeded trailing-delimiter declaration and create the name without that final delimiter. | n/a: not supported as a durable operation; no backend create API exists. IMAP-CREATE-03 records missing superior creation, but does not prove the distinct mandatory trailing-delimiter canonicalization. |
+| IMAP-INV-DELETE-01 | RFC 3501 §6.3.4 | Normative | Deleting a selectable parent with inferiors removes its messages but preserves the inferiors and leaves a Noselect hierarchy name. | n/a: not supported completely; message movement to Trash is not a durable mailbox deletion, and no selectable/Noselect parent state is exposed by the backend. Inferior preservation alone is IMAP-DELETE-03. |
+| IMAP-INV-RENAME-01 | RFC 3501 §6.3.5 | SHOULD | Create superior hierarchical names needed for the destination of RENAME. | n/a: not supported yet; the backend has no durable mailbox creation/rename operation, so moving messages cannot establish the required superior names. |
+| IMAP-INV-LIST-01 | RFC 3501 §6.3.8 | SHOULD | Return LIST promptly and avoid excessive work determining Marked/Unmarked or other attributes. | n/a: host-backend latency and scale duty; synchronous Folders calls have no performance bound and no public-session load/latency test establishes this recommendation. |
+| IMAP-INV-LIST-02 | RFC 3501 §§6.3.8, 7.2.2 | Normative | For a flat namespace, return NIL as the hierarchy delimiter, including on the empty-pattern root discovery request. | n/a: optional flat namespaces are not offered; this backend contract uses slash-delimited hierarchical names. Nonempty-reference root discovery is already proved by IMAP-LIST-05. |
+| IMAP-INV-LIST-03 | RFC 3501 §6.3.8 | SHOULD | Preserve any reference prefix included in an interpreted LIST name in the same form, so clients can detect a breakout from the reference context. | n/a: not fully audited beyond IMAP-LIST-04 reference-prefix fixtures; filesystem home expansion and alternate namespace breakout policies are not exposed by this backend. |
+| IMAP-INV-LIST-04 | RFC 3501 §6.3.8 | MAY | Hide otherwise accessible mailbox names from wildcard matching; if the namespace convention is offered, treat leading # as a breakout from the reference context. | n/a: optional hidden-mailbox/namespace policy is not offered; # names are ordinary folder names and there is no alternate namespace lookup. Explicit namespace conventions are not inferred from NAMESPACE support. |
+| IMAP-INV-LSUB-01 | RFC 3501 §6.3.9 | MAY | LSUB attributes may differ from LIST attributes for the same name; LIST attributes take precedence. | n/a: client precedence duty and optional server distinction; no subscription store or independent subscription attributes exist (IMAP-SUB-02). |
+| IMAP-INV-SEARCH-01 | RFC 3501 §6.4.4 | MAY | Exclude MIME leaf body parts whose terminal media type is neither TEXT nor MESSAGE from SEARCH matching. | n/a: optional exclusion is not chosen; the engine searches all MIME leaves. IMAP-SEARCH-10 supplies decoding proofs, not an exclusion-policy requirement. |
+| IMAP-INV-UID-06 | RFC 3501 §6.4.8 | MUST | Every FETCH response caused by any UID command includes UID, even if the command did not explicitly request that item. | n/a: not fully audited beyond UID FETCH (IMAP-FETCH-09) and UID STORE (IMAP-STORE-04). Unilateral FETCH responses during UID COPY/SEARCH and concurrent update timing have no complete wire proof. |
+| IMAP-INV-XCMD-01 | RFC 3501 §6.5.1 | MUST | Private experimental responses use an X prefix and are sent only after the client invokes the associated experimental command. | n/a: no private experimental command or response is defined; rejecting unknown X commands (IMAP-XCMD-01) does not exercise an implemented experimental exchange. |
+| IMAP-INV-RESP-01 | RFC 3501 §7.1.2 | Normative | An untagged NO is a warning and need not make the associated command fail; tagged NO indicates operational failure. | n/a: optional untagged warning emission is not offered by the engine. Tagged failures are proved separately by IMAP-RESP-10. |
+| IMAP-INV-SASL-01 | RFC 3501 §6.2.2 | Normative | Omit automatic unprotected post-authentication capabilities when a SASL security layer was negotiated; the client reissues CAPABILITY under that layer. | n/a: no SASL security layer is offered; PLAIN-only authentication makes the security-layer condition inapplicable (IMAP-AUTHENTICATE-11). |
+| IMAP-INV-SEC-01 | RFC 3501 §11.1 | MUST | Implement TLS_RSA_WITH_RC4_128_MD5 as the original RFC3501 mandatory-to-implement TLS cipher suite. | n/a: not implemented by this inventory; legacy cipher interoperability is not tested or enabled. TLS policy is supplied by the host Go tls.Config. This records the original RFC requirement, not advice to enable this cipher. |
+| IMAP-INV-SEC-02 | RFC 3501 §11.1 | SHOULD | Implement TLS_DHE_DSS_WITH_3DES_EDE_CBC_SHA; other cipher suites are optional under the original specification. | n/a: not implemented or wire-tested; legacy cipher configuration is host/runtime policy. No cipher or security policy is changed by this documentation audit. |
+| IMAP-INV-SEC-03 | RFC 3501 §11.1 | MUST | Check that STARTTLS and the following TLS negotiation succeeded before continuing protected IMAP commands. | TestStartTLSExample, TestStartTLSFailedNegotiation |
+| IMAP-INV-SEC-04 | RFC 3501 §11.2 | SHOULD NOT | Reveal why credentials were invalid in a failed AUTHENTICATE response. | TestAuthenticationFailureDetailsStayPrivate |
+| IMAP-INV-SEC-05 | RFC 3501 §11.2 | SHOULD NOT | Distinguish an invalid LOGIN user name from an invalid password in the wire error. | TestAuthenticationFailureDetailsStayPrivate |
+| IMAP-INV-SEC-06 | RFC 3501 §11.2 | SHOULD | Provide a mechanism to limit or delay failed LOGIN and AUTHENTICATE attempts. | TestAuthenticationFailureBudgetAppliesToBothForms |
+| IMAP-INV-SEC-07 | RFC 3501 §11.2 | MUST | Provide a configuration that protects credentials or advertises LOGINDISABLED, withholds plaintext SASL mechanisms, and refuses LOGIN/PLAIN even for valid credentials until protected. | TestStartTLSExample, TestStartTLSCleartextCredentialsRefused |
+| IMAP-INV-CLIENT-01 | RFC 3501 §2.2.1 | MUST | Clients use distinct command tags, obey exact syntax, finish continuations before starting another command, and wait for each synchronizing literal continuation even at zero octets. | n/a: client-only duties; server continuations and rejection behavior are inventoried by IMAP-LITERAL, IMAP-APPEND and IMAP-SYNTAX rows. |
+| IMAP-INV-CLIENT-02 | RFC 3501 §5.5 | MUST NOT | Clients pipeline ambiguous commands or send a sequence-number command before completion of a command that permits EXPUNGE; UID commands have their own ambiguity rules. | n/a: client-only scheduling duty; server in-order execution is IMAP-UPDATE-04 and EXPUNGE safety is IMAP-RESP-12. |
+| IMAP-INV-CLIENT-03 | RFC 3501 §11.1 | MUST | Clients verify the certificate against the original connection hostname without insecure canonicalization, follow the specified name/wildcard matching rules, and handle a mismatch by confirmation or termination. | n/a: client-only certificate validation duty; Session is the server endpoint. The source permits a leftmost-component wildcard and a match against any certificate name, recommends dNSName SAN when present, and matches names without regard to case. |
+| IMAP-INV-CLIENT-04 | RFC 3501 §3.4 | MUST | On LOGOUT clients read tagged OK before closing; clients SHOULD use LOGOUT rather than unilateral close and SHOULD drain responses until EOF after BYE. | n/a: client-only lifecycle duties. Server logout ordering is IMAP-LOGOUT-01; a peer that already closed may be closed without sending BYE. |
+| IMAP-INV-CLIENT-05 | RFC 3501 §5.1 | MUST NOT | Clients create 8-bit mailbox names in rev1; clients SHOULD interpret legacy 8-bit listings as UTF-8, handle server name case policy, and use the required quoting for special characters. | n/a: client-only naming duties; server modified UTF-7 and INBOX handling are IMAP-MUTF7 and mailbox-command rows. |
+| IMAP-INV-CLIENT-06 | RFC 3501 §6.3.8 | MUST NOT | A hierarchical browser assumes reference interpretation unless the reference is a hierarchy level ending in its delimiter; clients SHOULD avoid other references absent an explicit user request. | n/a: client-only browsing policy; server reference interpretation is inventoried separately. |
+| IMAP-INV-CLIENT-07 | RFC 3501 §7.4.2 | MUST | Clients accept future BODYSTRUCTURE/flag extensions, decode body transfer encodings, interpret body text with its charset/type, and SHOULD treat NIL and empty envelope strings identically. | n/a: client-only data interpretation/forward-compatibility duties; server generation limits and ENVELOPE distinctions have separate rows. |
+| IMAP-INV-STATE-02 | RFC 3501 §6 | Normative | Rejected non-selection commands preserve the selected mailbox and existing flags: unknown command and malformed CAPABILITY/FETCH/STORE/SEARCH are exercised under SELECT and EXAMINE. | TestRFC3501RejectedNonSelectionKeepsState |
+| IMAP-INV-NAME-01 | RFC 3501 §§1.2, 5.1.1, 7.2.2 | MUST | Export left-to-right hierarchy with one consistent separator at all levels, never ampersand: LIST and LSUB use slash for INBOX, Work and Work/Q1. | TestRFC3501HierarchyDelimiter |
+| IMAP-INV-LIST-05 | RFC 3501 §7.2.2 | MUST | Returned LIST names are valid LIST/LSUB references and, unless Noselect, selectable mailbox arguments; all children of a top-level node share the delimiter. | n/a: Folders and Messages consistency/selectability is a host-backend duty. IMAP-INV-NAME-01 proves fixed delimiter output, not validity of every arbitrary backend-supplied name or lookup. |
+| IMAP-INV-TEXT-02 | RFC 3501 §7.4.2 | Normative | Permit 8-bit body section output only when that section's body parameter list identifies its charset; header and MIME sections stay 7-bit. | n/a: not supported completely; raw body output is not conditioned on the presence of a CHARSET parameter and 8-bit stored headers are not re-encoded (IMAP-RESP-16). |
+| IMAP-INV-FLAGS-04 | RFC 3501 §2.3.2 | Normative | Recent identifies the first session notified of an arrival; after read-write notification subsequent sessions do not see it, while EXAMINE and STATUS never consume it. | n/a: not supported yet; no first-notification or Recent state exists. Which simultaneous connection receives Recent is deliberately unspecified by the RFC. IMAP-SELECT-08 and IMAP-STATUS-07 retain the existing gaps. |
+| IMAP-INV-FLAGS-05 | RFC 3501 §7.1 | Normative | A STORE flag absent from PERMANENTFLAGS is ignored or session-only, never persisted; \* permits creating permanent keywords. | n/a: arbitrary per-flag write policy is not exposed by the backend; fixed system flags and keyword creation have component proofs, but all flag-policy/read-only combinations are not audited. |
+| IMAP-INV-SYNTAX-01 | RFC 3501 §2.2.2 | SHOULD | Enforce the specified command syntax and reject missing/extraneous spaces or arguments with matching tagged BAD rather than running the malformed command. | n/a: not fully supported or audited across every command/source form. Literal SEARCH dates and Recent STORE input are accepted contrary to their grammar; a read-only STORE can receive NO before argument validation. Narrow refusals remain individually mapped. |
+| IMAP-INV-LIST-06 | RFC 3501 §7.2.2 | Normative | Noinferiors means no child hierarchy levels exist now or can be created under the name in future. | n/a: optional leaf-only mailbox attributes are not offered; Folder exposes no child-creation policy and the engine does not emit Noinferiors. |
+| IMAP-INV-LIST-07 | RFC 3501 §7.2.2 | Normative | Noselect denotes a name that cannot be selected as a mailbox, not a selectable empty mailbox. | n/a: backend selectability is not generally exposed; synthetic hierarchy parents have IMAP-LIST-06 proofs, but arbitrary Folders/Messages agreement is the host duty in IMAP-INV-LIST-05. |
+| IMAP-INV-LIST-08 | RFC 3501 §7.2.2 | Normative | Marked denotes server interest/probable additions since last selection; Unmarked means no additional messages since last selection. | n/a: optional interest attributes are not offered; no last-selection interest history is represented or exported through Folder. |
+| IMAP-INV-LIST-09 | RFC 3501 §7.2.2 | SHOULD NOT | Send Marked or Unmarked for a Noselect name or when determining mailbox interest is infeasible. | n/a: neither interest marker is emitted; no conditional interest-classification feature exists to map to a named wire proof. The exact meaning of each marker remains IMAP-INV-LIST-08. |
+| IMAP-INV-CLIENT-08 | RFC 3501 §9 | MUST | SEARCH CHARSET arguments use registered IANA charset names. | n/a: client argument-selection and specification-registration duty; the server's US-ASCII support and unsupported-charset refusal are IMAP-SEARCH-07 and IMAP-RESP-06. |
+| IMAP-INV-TEXT-03 | RFC 3501 §4.3.1 | MAY | Treat a string with excessive control characters as binary and require transfer encoding accordingly. | n/a: optional control-density classification is not chosen; no threshold or such classification API is offered. The mandatory NUL/binary rule remains IMAP-RESP-16 and IMAP-INV-ABNF-08. |
+| IMAP-INV-ABNF-01 | RFC 3501 §9 | Normative | Address tuples have exactly personal-name, route, mailbox and host nstrings; strip RFC2822 quoting from personal/local names, and use NIL-host start/end group markers. | n/a: not fully supported; obsolete route addresses are lost (IMAP-ENV-11); all quoting/obsolete address alternatives are not wire-proved. |
+| IMAP-INV-ABNF-02 | RFC 3501 §9 | Normative | Atoms contain one or more permitted ASCII non-specials; astring additionally permits ] or a quoted/literal string, but not an empty bare token. | n/a: not fully audited for every command position and octet; existing syntax/astring proofs are narrower than the full cross-product. |
+| IMAP-INV-ABNF-03 | RFC 3501 §9 | Normative | AUTHENTICATE uses an atom mechanism and CRLF-separated base64 responses; base64 is case-sensitive with complete groups and only the prescribed final padding forms. | n/a: not fully audited for every base64 alphabet/padding/embedded-control combination. PLAIN cancellation and common malformed responses are IMAP-AUTHENTICATE rows. |
+| IMAP-INV-ABNF-04 | RFC 3501 §9 | MUST NOT | Use generic basic-body syntax for MESSAGE/RFC822; choose the structured message form with envelope, nested body and encoded line count, the text form with lines, or a nonempty multipart sequence and subtype. | n/a: not fully audited over every legal MIME type, nested shape and fallback. Existing text/multipart/message examples do not prove all alternatives. |
+| IMAP-INV-ABNF-05 | RFC 3501 §9 | MUST NOT | Emit extensions on nonextensible BODY or undefined future extension data; on BODYSTRUCTURE use ordered optional suffixes: MD5/disposition/language/location for one part, parameters/disposition/language/location for multipart. | n/a: no undefined extension fields are implemented; defined extension ordering/omission has component proofs but no exhaustive optional-prefix/nesting matrix. |
+| IMAP-INV-ABNF-06 | RFC 3501 §9 | Normative | Body fields use parameter pairs or NIL, id/description nstrings, an encoding string and unsigned encoded octet/line counts; disposition is type plus parameters or NIL, language is nstring or a nonempty string list, and location/MD5 are nstrings. | n/a: not fully audited for every nstring/list alternative, arbitrary metadata and uint32 overflow; IMAP-BS-10 retains the complete string-serialization boundary. |
+| IMAP-INV-ABNF-07 | RFC 3501 §9 | MUST | A capability list contains IMAP4rev1 and space-separated AUTH=mechanism or atom entries; new names need X or IANA registration, and RFC1730 compatibility must list IMAP4 first. | n/a: RFC1730 compatibility and private capability definitions are not offered. Base rev1 presence is proved by IMAP-CAP-01/02; full registration/ordering/extension policy is not a wire proof. |
+| IMAP-INV-ABNF-08 | RFC 3501 §9 | MUST NOT | Literal payloads contain NUL; the decimal count is an unsigned 32-bit number and counts exact non-NUL octets following CRLF, including zero and embedded CR/LF. | n/a: not fully audited across all argument positions, count-overflow forms and source provenance. Existing literal bounds/framing tests do not establish the full grammar. |
+| IMAP-INV-ABNF-09 | RFC 3501 §9 | Normative | Commands are tag, one SP, a state-permitted command and CRLF; exact argument counts and one-SP separators are mandatory, including no-argument commands. | n/a: not fully audited across every command/state/source-form combination; the existing command suites are component evidence, not universal parser proof. |
+| IMAP-INV-ABNF-10 | RFC 3501 §9 | Normative | Use the exact command-specific argument order: mailbox astrings, optional APPEND flags/date then literal, required sequence sets and data items, one-or-more SEARCH keys, nonempty STATUS item lists, and UID only around COPY/FETCH/SEARCH/STORE in the base protocol. | n/a: not fully audited for all alternative source forms; literal materialization can erase distinctions between an atom/date and a string. Extensions have their separate capability and grammar rows. |
+| IMAP-INV-ABNF-11 | RFC 3501 §9 | Normative | Responses use exact CRLF framing, + SP for continuation, * SP for data or fatal BYE, and the command tag for OK/NO/BAD completion; greetings allow OK/PREAUTH/BYE and fatal BYE closes immediately. | n/a: PREAUTH is not offered and arbitrary framing/error/transport combinations are not fully audited. Existing public-session tests prove the stated individual paths, not every response alternative. |
+| IMAP-INV-ABNF-12 | RFC 3501 §9 | Normative | SEARCH dates are bare or quoted day-month-four-digit-year, never literals; APPEND/INTERNALDATE use a quoted fixed-width day, month, four-digit year, hh:mm:ss and signed four-digit east-of-UTC offset. | n/a: not fully supported for source types: materialized SEARCH literal dates can become quoted dates. Existing calendar and fixed-width fixtures do not prove source-form preservation in every route. |
+| IMAP-INV-ABNF-13 | RFC 3501 §9 | Normative | Numbers are unsigned decimal uint32; nz-number/uniqueid start with 1–9, cannot be zero or have leading zeros, and uniqueids are strictly increasing. | n/a: host-generated numeric identity/metadata validity and exhaustion are not fully supported; IMAP-SELECT-09/IMAP-STATUS-08 remain unchanged for #804. Input bounds have separate narrow proofs. |
+| IMAP-INV-ABNF-14 | RFC 3501 §9 | Normative | ENVELOPE has ten ordered fields; scalar fields are nstrings and address fields are NIL or nonempty address lists. Absent/empty address lists become NIL and absent/empty Sender/Reply-To default to From. | n/a: not fully audited for all legal/obsolete headers and every nstring/list combination; source-route and malformed-header boundaries remain IMAP-ENV-11/12. |
+| IMAP-INV-ABNF-15 | RFC 3501 §9 | Normative | FETCH takes one data item or a nonempty item list, or one exclusive macro; BODY sections use bracketed positive numeric paths, HEADER/TEXT only at top level or an encapsulated message, numeric-prefix MIME, and nonempty astring header lists. Partial requests use uint32 origin and nonzero count. | n/a: not fully audited over every nested section type and header-list source form; the per-command invalid/composed/partial tests remain the narrower proofs. |
+| IMAP-INV-ABNF-16 | RFC 3501 §9 | MUST NOT | Generate undefined system-flag extensions; accept Recent only in fetched flag lists, never STORE/APPEND flag input, and allow wildcard \* only in PERMANENTFLAGS. | n/a: not fully audited; STORE now refuses Recent with BAD (TestStoreRefusesRecent, IMAP-STORE-11), but APPEND flag input and wildcard use are not proved here. Valid persistent keyword creation is independently proved by IMAP-STORE-06; all future-flag/host-input combinations are not audited. |
+| IMAP-INV-ABNF-17 | RFC 3501 §9 | Normative | Mailbox arguments treat every ASCII case of INBOX specially; LIST patterns additionally allow * and %. LIST/LSUB rows contain a flag list, one quoted delimiter character or NIL, and a mailbox astring; Noselect/Marked/Unmarked are mutually exclusive. | n/a: flat namespaces, arbitrary attributes and every response-string alternative are not fully audited. Fixed delimiter and ordinary listing proofs do not establish the complete grammar. |
+| IMAP-INV-ABNF-18 | RFC 3501 §9 | MUST NOT | Change static FETCH attributes for one message identity; emit message data with a positive sequence number and a nonempty item/value list. FLAGS may vary; mailbox/status/count forms use their specified unsigned numbers and attribute/value pairs. | n/a: immutable values are host duties (IMAP-INV-UID-05), and all backend-generated uint32/empty-list alternatives are not fully audited. Component response examples are not an exhaustive serializer proof. |
+| IMAP-INV-ABNF-19 | RFC 3501 §9 | Normative | Keep NIL distinct from empty string/list; strings are quoted ASCII without CR/LF or counted literals, and quoted escapes allow only double quote and backslash. | n/a: not fully audited across every parser and serializer position; literal materialization erases original string type and raw quoted controls need a complete provenance audit. |
+| IMAP-INV-ABNF-20 | RFC 3501 §9 | Normative | Tags are nonempty astring characters excluding +; response text is nonempty ASCII without CR/LF, optional [code] is followed by SP and text, known numeric codes are positive uint32, and unknown-code arguments cannot contain ]. | n/a: not fully audited for all host-derived diagnostics and positive response-code overflow. Tag/common text tests do not establish all serializer paths. |
+| IMAP-INV-ABNF-21 | RFC 3501 §9 | Normative | SEARCH operands use the specified atom/astring/date/number forms and recursive NOT/OR/groups; sets contain positive endpoints or *, inclusive ranges work in either direction, * means the largest used value (UIDNEXT for an empty UID mailbox), and overlaps may be coalesced or reordered. | n/a: source-form and empty-mailbox UIDNEXT semantics are not fully audited. Out-of-range message sequence numbers should get BAD, including * on an empty mailbox, but current dispatch silently ignores absent numbers (IMAP-SYNTAX-08). |
+| IMAP-INV-ABNF-22 | RFC 3501 §9 | MUST | When grammar alternatives overlap, give the earlier alternative priority; follow case-insensitive ASCII tokens unless otherwise specified, exact single SP separators and the ban on NUL. | n/a: case/SP/NUL have component proofs (IMAP-SYNTAX-05), but precedence is not fully audited over all overlapping alternatives, including system flags, mailbox INBOX and structured MIME types. |
+
+### Corrections and proof limits (2026-11-03)
+
+- IMAP-SELECT-11 previously described deselection after a syntax BAD as a
+  required behavior. Its tests actually assert that deviation. The mapped row
+  now also claims the state preservation that later engine work proved, and
+  IMAP-INV-STATE-01 records what remains unproved for other commands.
+- IMAP-DELETE-04 previously invented a SHOULD about explaining a refused delete.
+  The source instead forbids deleting a Noselect parent with inferiors. Its row
+  now states that actual rule and the unsupported backend selectability boundary.
+- IMAP-RESP-12's test intentionally also defers EXPUNGE during UID forms. The
+  RFC prohibition applies only to non-UID FETCH/STORE/SEARCH and incomplete
+  commands; deferring during UID forms is an implementation choice, not a MUST.
+- Stale keyword/Deleted boundaries are corrected: IMAP-SEARCH-11 now separates
+  its empty-keyword fixture from actual keyword persistence; IMAP-APPEND-19 and
+  IMAP-COPY-12 no longer claim absent model fields. IMAP-EXPUNGE-07 gains a
+  two-session persistence proof; IMAP-STORE-11 loses a misleading Recent proof,
+  whose unchanged test body remains component evidence for IMAP-STORE-02.
+- Inventory completeness is not conformance: Recent, flag-policy combinations, durable folder
+  operations, immutable host identities, rollback, every grammar alternative's
+  wire proof and the original legacy TLS suites retain explicit boundaries.
+  Entire RFC sample transcripts, reference comparisons, race/timed fuzzing,
+  coverage measurement and other RFC inventories are not established here.
 
 ## RFC 9051: core inventory (sections 2–5; first pass)
 
