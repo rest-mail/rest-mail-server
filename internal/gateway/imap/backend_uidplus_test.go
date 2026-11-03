@@ -162,6 +162,12 @@ func (f *fakeAPI) listMessages(w http.ResponseWriter, r *http.Request) {
 		if m.folder != folder {
 			continue
 		}
+		// An imported message lists with the internal date it was given; a
+		// seeded one with the fake's fixed arrival time.
+		received := m.receivedAt
+		if received.IsZero() {
+			received = fakeReceivedAt
+		}
 		out = append(out, apiclient.MessageSummary{
 			ID:          m.id,
 			Folder:      m.folder,
@@ -175,7 +181,7 @@ func (f *fakeAPI) listMessages(w http.ResponseWriter, r *http.Request) {
 			IsFlagged:   m.isFlagged,
 			IsStarred:   m.isStarred,
 			IsDraft:     m.isDraft,
-			ReceivedAt:  fakeReceivedAt,
+			ReceivedAt:  received,
 		})
 	}
 	f.mu.Unlock()
