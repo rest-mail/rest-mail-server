@@ -605,3 +605,27 @@ func TestMailRecords_TLSRPT(t *testing.T) {
 		t.Fatalf("TLS-RPT records %q, want %q", got, want)
 	}
 }
+
+// Mail apps find a domain's settings at autoconfig.<domain> and autodiscover.<domain>, which
+// the API answers on (#721, #722): both are in the record set, pointing at the mail host, so
+// `chore dns:show` lists them and `chore dns:check` looks for them (#1706).
+func TestMailRecords_Discovery(t *testing.T) {
+	got := map[string]DNSRecord{}
+	for _, r := range MailRecords("example.com", "mail.example.net", "", "", "", "", ClientPorts{}) {
+		if strings.HasPrefix(r.Name, "autoconfig.") || strings.HasPrefix(r.Name, "autodiscover.") {
+			got[r.Name] = r
+		}
+	}
+	want := map[string]DNSRecord{
+		"autoconfig.example.com":   {Type: "CNAME", Name: "autoconfig.example.com", Value: "mail.example.net", TTL: 3600},
+		"autodiscover.example.com": {Type: "CNAME", Name: "autodiscover.example.com", Value: "mail.example.net", TTL: 3600},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("discovery records %+v, want %+v", got, want)
+	}
+	for name, w := range want {
+		if got[name] != w {
+			t.Errorf("%s: %+v, want %+v", name, got[name], w)
+		}
+	}
+}

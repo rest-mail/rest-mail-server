@@ -438,10 +438,10 @@ assert_contains "TLS-RPT reports at the root"        "$tmp/api-ingress.yaml" 'pa
 
 helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" \
   --set api.ingress.enabled=true --set api.ingress.host=mail.example.com \
-  --set-json 'api.mtaSts.hosts=[]' > "$tmp/api-ingress-empty-all.yaml"
+  --set-json 'api.mtaSts.hosts=[]' --set-json 'api.mailDiscovery.domains=[]' > "$tmp/api-ingress-empty-all.yaml"
 doc "$tmp/api-ingress-empty-all.yaml" Ingress restmail-api > "$tmp/api-ingress-empty.yaml"
-cmp "$tmp/api-ingress.yaml" "$tmp/api-ingress-empty.yaml" || fail "empty MTA-STS hosts changed the ingress"
-pass "empty MTA-STS hosts leave the ingress byte-for-byte unchanged"
+cmp "$tmp/api-ingress.yaml" "$tmp/api-ingress-empty.yaml" || fail "empty MTA-STS hosts or discovery domains changed the ingress"
+pass "empty MTA-STS hosts and discovery domains leave the ingress byte-for-byte unchanged"
 
 helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" \
   --set api.ingress.enabled=true --set api.ingress.host=mail.example.com \
@@ -465,6 +465,33 @@ for host in mta-sts.example.com mta-sts.xn--bcher-kva.example; do
   pass "$host routes only its policy file and is requested on the API certificate"
 done
 pass "each exactly"
+
+# Mail app discovery (#1706): each listed domain gets autoconfig.<domain>, routing only the
+# Thunderbird document, and autodiscover.<domain>, routing only Outlook's, both on the API
+# certificate beside the API host and the MTA-STS hosts.
+helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" \
+  --set api.ingress.enabled=true --set api.ingress.host=mail.example.com \
+  --set api.ingress.tls.enabled=true --set api.ingress.tls.secretName=api-cert \
+  --set api.service.port=8181 \
+  --set-json 'api.mtaSts.hosts=["mta-sts.example.com"]' \
+  --set-json 'api.mailDiscovery.domains=["example.com","xn--bcher-kva.example"]' > "$tmp/discovery-all.yaml"
+doc "$tmp/discovery-all.yaml" Ingress restmail-api > "$tmp/discovery.yaml"
+[ "$(yq '.spec.tls[0].secretName' "$tmp/discovery.yaml")" = api-cert ] || fail "discovery uses a different TLS secret"
+[ "$(yq '.spec.rules | length' "$tmp/discovery.yaml")" -eq 6 ] || fail "discovery needs a host rule per name"
+[ "$(yq '.spec.tls[0].hosts | length' "$tmp/discovery.yaml")" -eq 6 ] || fail "certificate lost ingress names"
+for domain in example.com xn--bcher-kva.example; do
+  for pair in autoconfig:/mail/config-v1.1.xml autodiscover:/autodiscover/autodiscover.xml; do
+    host="${pair%%:*}.$domain" path="${pair#*:}"
+    HOST="$host" yq '.spec.rules[] | select(.host == strenv(HOST)) | .http.paths' "$tmp/discovery.yaml" > "$tmp/discovery-paths.yaml"
+    [ "$(yq 'length' "$tmp/discovery-paths.yaml")" -eq 1 ] || fail "$host exposes more than its document"
+    [ "$(yq '.[0].path' "$tmp/discovery-paths.yaml")" = "$path" ] || fail "$host lost $path"
+    [ "$(yq '.[0].pathType' "$tmp/discovery-paths.yaml")" = Exact ] || fail "$host matches more than $path"
+    [ "$(yq '.[0].backend.service.name' "$tmp/discovery-paths.yaml")" = restmail-api ] || fail "$host does not reach the API"
+    [ "$(yq '.[0].backend.service.port.number' "$tmp/discovery-paths.yaml")" -eq 8181 ] || fail "$host lost the configured API port"
+    [ "$(HOST="$host" yq '[.spec.tls[0].hosts[] | select(. == strenv(HOST))] | length' "$tmp/discovery.yaml")" -eq 1 ] || fail "$host is not covered by the certificate request"
+    pass "$host routes only $path and is requested on the API certificate"
+  done
+done
 
 # Both off: nothing of either is left, and nothing else goes with them.
 helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" \
