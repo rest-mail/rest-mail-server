@@ -45,12 +45,18 @@ class ContractLinkAccountHookTests(unittest.TestCase):
             spec.loader.exec_module(self.module)
         self.requests = []
         self.unlink_status = 204
+        self.unlink_code = None
 
         def urlopen(request, timeout):
             self.requests.append(request)
             if request.get_method() == "DELETE" and self.unlink_status != 204:
+                refusal = None
+                if self.unlink_code:
+                    refusal = io.BytesIO(
+                        json.dumps({"error": {"code": self.unlink_code}}).encode()
+                    )
                 raise urllib.error.HTTPError(
-                    request.full_url, self.unlink_status, "unlink refused", {}, None
+                    request.full_url, self.unlink_status, "unlink refused", {}, refusal
                 )
             response = io.BytesIO(
                 json.dumps(
@@ -77,7 +83,12 @@ class ContractLinkAccountHookTests(unittest.TestCase):
         self.prepare_fixture = patcher.start()
         self.addCleanup(patcher.stop)
 
-    def apply_hook(self, body, name="coverage: linkAccount"):
+    def apply_hook(
+        self,
+        body,
+        name="coverage: linkAccount",
+        authorization="Bearer ordinary-account",
+    ):
         transaction = {
             "name": name,
             "protocol": "http:",
@@ -86,7 +97,7 @@ class ContractLinkAccountHookTests(unittest.TestCase):
             "request": {
                 "body": copy.deepcopy(body),
                 "uri": "http://example.test/api/v1/accounts/link",
-                "headers": {"Authorization": "Bearer ordinary-account"},
+                "headers": {"Authorization": authorization},
             },
         }
         original = copy.deepcopy(transaction)
@@ -134,6 +145,38 @@ class ContractLinkAccountHookTests(unittest.TestCase):
                 self.unlink_status = status
                 with self.assertRaises(urllib.error.HTTPError):
                     self.apply_hook({"address": "someone@example.com", "password": "x"})
+
+    def test_a_password_only_session_is_left_to_the_server(self):
+        # The authorization phase's ordinary principal: unlinking takes a second
+        # factor, so it can have no link to clear, and its own request is sent.
+        self.unlink_status, self.unlink_code = 403, "two_factor_required"
+        body = {"address": "someone@example.com", "password": "x"}
+        self.assertEqual(self.apply_hook(body), body)
+        self.assertEqual(self.requests[-1].get_method(), "DELETE")
+
+    def test_an_app_password_is_left_to_the_server(self):
+        # The route takes sessions, so a Basic credential cannot have linked.
+        self.unlink_status = 401
+        body = {"address": "someone@example.com", "password": "x"}
+        self.assertEqual(
+            self.apply_hook(body, authorization="Basic b3JkaW5hcnk6eA=="), body
+        )
+        self.assertEqual(self.requests[-1].get_method(), "DELETE")
+
+    def test_other_refused_cleanups_stay_errors(self):
+        for status, code, authorization in (
+            (403, "forbidden", "Bearer ordinary-account"),
+            (403, "recent_two_factor_required", "Bearer ordinary-account"),
+            (401, "unauthorized", "Bearer ordinary-account"),
+            (500, "two_factor_required", "Basic b3JkaW5hcnk6eA=="),
+        ):
+            with self.subTest(status=status, code=code, authorization=authorization):
+                self.unlink_status, self.unlink_code = status, code
+                with self.assertRaises(urllib.error.HTTPError):
+                    self.apply_hook(
+                        {"address": "someone@example.com", "password": "x"},
+                        authorization=authorization,
+                    )
 
     def test_invalid_proofs_do_not_prepare_or_unlink_accounts(self):
         for body in (

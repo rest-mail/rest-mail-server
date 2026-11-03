@@ -581,8 +581,29 @@ def link_a_seeded_account(transaction):
             if response.status != 204:
                 raise RuntimeError("could not clear the preceding contract link")
     except urllib.error.HTTPError as error:
-        if error.code != 404:  # The first proof has no preceding grant.
+        # The first proof has no preceding grant, and neither has a caller the
+        # route turns away for its credential: the link it is about to send gets
+        # the same answer, which is the one the authorization phase wants to see.
+        if error.code != 404 and not turned_away_for_its_credential(error, headers):
             raise
+
+
+def turned_away_for_its_credential(error, headers):
+    """Whether a refused unlink says the caller could never have linked: an app
+    password's Basic credential is not a session (401), and a password-only
+    session has no second factor (403 two_factor_required). Anything else, such
+    as a session that has expired, is a failed set-up and stays an error."""
+    if error.code == 401:
+        return any(
+            key.lower() == "authorization" and value.startswith("Basic ")
+            for key, value in headers.items()
+        )
+    if error.code != 403:
+        return False
+    try:
+        return json.load(error)["error"]["code"] == "two_factor_required"
+    except (ValueError, KeyError, TypeError):
+        return False
 
 
 @hooks.after("createDomain")

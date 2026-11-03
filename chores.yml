@@ -718,6 +718,19 @@ tasks:
         fi
         docker exec -- "${CONTRACT_FIXTURE_PROJECT}-api" go run ./tests/contract/fixtures --test-domain=restmail.test --retry-only
 
+  test:contract-report-targets:
+    desc: 'Top up the held mail a report-only phase consumes (chore test:contract-report-targets -- authorization|ownership); no gate calls this'
+    env:
+      CONTRACT_FIXTURE_CONFIG: '{{.CONFIG}}'
+      CONTRACT_FIXTURE_PROJECT: '{{.RESTMAIL_PROJECT}}'
+    cmds:
+      - |
+        if [ "$CONTRACT_FIXTURE_CONFIG" != "restmail.test" ] || [ -z "$CONTRACT_FIXTURE_PROJECT" ]; then
+          echo "contract fixtures require the disposable restmail.test config" >&2
+          exit 1
+        fi
+        docker exec -- "${CONTRACT_FIXTURE_PROJECT}-api" go run ./tests/contract/fixtures --test-domain=restmail.test --report-targets={{.CLI_ARGS}}
+
   test:contract-domain-tenants:
     desc: Prepare the domain administrators of the ownership phase on the disposable topology
     env:

@@ -153,6 +153,8 @@ gate)
 authorization)
   # Examples always run first, then the matrix repeats destructive requests as
   # the admin, so this runs after the gate.
+  chore test:contract-report-targets -- authorization ||
+    echo "the held mail could not be topped up; the found examples of deleteQuarantine and clearSuppression will say so"
   python3 -B tests/contract/authorization.py "$CONTRACT_SPEC" "$out/vertrag-run.yml" \
     .cache/contract-principals.json "$out/vertrag-authorization.yml" "$out/authorization.xml"
   python3 -B tests/contract/reports.py "$out/vertrag-authorization.yml" "$out/vertrag-authorization.yml" "$out/authorization" "${narrowed[@]}"
@@ -174,6 +176,8 @@ ownership)
   # as their owner before the other tenant is sent their ids. The creates meet
   # what the earlier runs made, so they may clear it (a_leftover_to_remove).
   export CONTRACT_REMOVE_LEFTOVERS=1
+  chore test:contract-report-targets -- ownership ||
+    echo "the held mail could not be topped up; the found examples of deleteQuarantine and clearSuppression will say so"
   python3 -B tests/contract/ownership.py "$CONTRACT_SPEC" "$out/vertrag-run.yml" \
     .cache/contract-principals.json "$out/vertrag-ownership.yml" "$out/ownership.xml"
   python3 -B tests/contract/reports.py "$out/vertrag-ownership.yml" "$out/vertrag-ownership.yml" "$out/ownership" "${narrowed[@]}"
