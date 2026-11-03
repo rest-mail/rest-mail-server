@@ -21,6 +21,11 @@ capability to work. The same syntax, count and length bounds apply to STORE.
 These change protocol behaviour from go-imap v0.13.2, and each corrects a defect
 found by the RFC 3501 inventory in rest-mail/rest-mail-server#374.
 
+- SELECT, EXAMINE and STATUS ask a store that implements `imap.UIDNextMailbox`
+  for UIDNEXT, so it no longer falls when the newest message is expunged
+  (RFC 3501 §2.3.1.1, rest-mail/rest-mail-server#804). A store without it
+  keeps the highest UID present plus one.
+
 - A SELECT or EXAMINE refused with BAD no longer drops the selected mailbox,
   because "a rejected command (BAD response) never changes the state of the
   connection or of the selected mailbox" (RFC 3501 §6). That holds both for a

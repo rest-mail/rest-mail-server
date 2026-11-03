@@ -181,6 +181,10 @@ func autoMigrate(db *gorm.DB) error {
 	if err := MigrateQuietNotifications(db); err != nil {
 		return fmt.Errorf("quiet notification outbox: %w", err)
 	}
+	// Each folder's highest message ID ever, for IMAP UIDNEXT (#804).
+	if err := MigrateFolderUIDMarks(db); err != nil {
+		return fmt.Errorf("folder UID marks: %w", err)
+	}
 
 	// Create composite unique index for mailboxes (domain_id, local_part)
 	if !db.Migrator().HasIndex(&models.Mailbox{}, "idx_mailboxes_domain_localpart") {

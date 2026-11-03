@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"time"
 
 	goimap "github.com/rest-mail/go-imap/pkg/imap"
@@ -16,6 +17,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/connlimiter"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/rawmsg"
+	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
 )
 
 // errAccountLocked is returned when an account is temporarily banned for too
@@ -110,6 +112,7 @@ var (
 	_ goimap.RightsMailbox  = (*mailbox)(nil)
 	_ goimap.DeletedMailbox = (*mailbox)(nil)
 	_ goimap.FolderMailbox  = (*mailbox)(nil)
+	_ goimap.UIDNextMailbox = (*mailbox)(nil)
 )
 
 // CreateFolder makes an empty folder through the API (FolderMailbox), so
@@ -468,6 +471,32 @@ func (m *mailbox) AppendUID(dest string, f goimap.FlagUpdate, raw []byte) (uint3
 // [UIDVALIDITY 1] behaviour. Per-folder UIDVALIDITY is future work.
 func (m *mailbox) UIDValidity(folder string) (uint32, error) {
 	return 1, nil
+}
+
+// UIDNext reports folder's UIDNEXT (UIDNextMailbox, RFC 3501 §2.3.1.1): the
+// folder listing's uid_next, one more than the highest message ID the folder
+// has ever held. The API keeps that mark past expunges, so UIDNEXT does not
+// fall when the newest message goes (#804). A folder the listing lacks, or a
+// value past the UID space, answers 0 and the engine falls back to the highest
+// UID present plus one.
+func (m *mailbox) UIDNext(folder string) (uint32, error) {
+	if err := validateFolder(folder); err != nil {
+		return 0, err
+	}
+	resp, err := m.api.ListFolders(m.token, m.accountID)
+	if err != nil {
+		return 0, err
+	}
+	want := rmail.CanonicalFolder(folder)
+	for _, f := range resp.Data {
+		if f.Folder == want {
+			if f.UIDNext > math.MaxUint32 {
+				return 0, nil
+			}
+			return uint32(f.UIDNext), nil
+		}
+	}
+	return 0, nil
 }
 
 // Quota returns storage use and limit in bytes.

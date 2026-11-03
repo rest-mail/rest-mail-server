@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- UIDNEXT kept by the store (RFC 3501 §2.3.1.1, RFC 9051 §2.3.1.1): a Mailbox
+  that implements the new optional `imap.UIDNextMailbox` interface reports a
+  folder's UIDNEXT from the UIDs it has assigned, and SELECT, EXAMINE and
+  STATUS send it, never below the highest UID present plus one. Expunging the
+  newest message then leaves UIDNEXT where it was. A store error answers NO.
+  A Mailbox without it keeps the highest UID plus one, as before.
 - Keyword storage is now opt-in: a Mailbox that implements the new optional
   `imap.KeywordMailbox` interface keeps keywords, and only then does SELECT's
   PERMANENTFLAGS end with `\*`. Without it a keyword in STORE is ignored and

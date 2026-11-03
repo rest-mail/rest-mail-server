@@ -3654,6 +3654,7 @@ export interface components {
             name: string;
             /** Format: int64 */
             total: number;
+            uid_next: number;
             /** Format: int64 */
             unread: number;
         };

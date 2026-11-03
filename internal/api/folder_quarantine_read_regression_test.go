@@ -25,6 +25,18 @@ func (c folderQuarantineReadConnection) Open(string) (driver.Conn, error) { retu
 
 func (c folderQuarantineReadConnection) QueryContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Rows, error) {
 	folders, quarantine := strings.Contains(query, `FROM "messages"`), strings.Contains(query, `FROM "quarantine"`)
+	if strings.Contains(query, `FROM "folder_uid_marks"`) {
+		if len(args) == 0 || !strings.Contains(query, "mailbox_id =") {
+			return nil, errors.New("folder UID marks lost account restriction")
+		}
+		// INBOX's newest message (60) and all of Trash were expunged: their
+		// marks stay above what the rows still hold (#804).
+		r := &authReadSnapshotRows{columns: []string{"mailbox_id", "folder", "highest_uid"}}
+		if fmt.Sprint(args[0].Value) != "2" {
+			r.rows = [][]driver.Value{{args[0].Value, "INBOX", int64(60)}, {args[0].Value, "Trash", int64(31)}, {args[0].Value, "Archive", int64(40)}}
+		}
+		return r, nil
+	}
 	if !folders && !quarantine {
 		return c.personalDataReadConnection.QueryContext(ctx, query, args)
 	}
@@ -33,7 +45,7 @@ func (c folderQuarantineReadConnection) QueryContext(ctx context.Context, query 
 	}
 	id := fmt.Sprint(args[0].Value)
 	if folders {
-		for _, part := range []string{"COUNT(CASE WHEN is_deleted = false", "is_read = false", "GROUP BY", "ORDER BY folder ASC"} {
+		for _, part := range []string{"COUNT(CASE WHEN is_deleted = false", "is_read = false", "MAX(id) as highest_id", "GROUP BY", "ORDER BY folder ASC"} {
 			if !strings.Contains(query, part) {
 				return nil, fmt.Errorf("folder summary lost %s", part)
 			}
@@ -41,9 +53,9 @@ func (c folderQuarantineReadConnection) QueryContext(ctx context.Context, query 
 		if id == "4" {
 			return nil, errors.New("private folder aggregation detail")
 		}
-		r := &authReadSnapshotRows{columns: []string{"folder", "total", "unread"}}
+		r := &authReadSnapshotRows{columns: []string{"folder", "total", "unread", "highest_id"}}
 		if id != "2" {
-			r.rows = [][]driver.Value{{"Archive", int64(2), int64(1)}, {"INBOX", int64(5), int64(2)}, {"Projects/2026", int64(0), int64(0)}}
+			r.rows = [][]driver.Value{{"Archive", int64(2), int64(1), int64(40)}, {"INBOX", int64(5), int64(2), int64(55)}, {"Projects/2026", int64(0), int64(0), int64(12)}}
 		}
 		return r, nil
 	}

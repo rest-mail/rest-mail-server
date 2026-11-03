@@ -24657,7 +24657,7 @@
   },
   "listFolders": {
     "found": {
-      "summary": "Grouped counts retain populated folders and zero-count hierarchy markers without duplicating INBOX",
+      "summary": "Grouped counts retain populated folders and zero-count hierarchy markers without duplicating INBOX, and UIDNEXT stays above expunged messages",
       "description": "Actual production routes, repositories and credential/grant checks map controlled rows. SQL restrictions and returned fields are asserted, but PostgreSQL aggregation, filtering, ordering and persistence are not claimed.",
       "request": {
         "path": {
@@ -24671,32 +24671,38 @@
             {
               "name": "Archive",
               "total": 2,
-              "unread": 1
+              "unread": 1,
+              "uid_next": 41
             },
             {
               "name": "INBOX",
               "total": 5,
-              "unread": 2
+              "unread": 2,
+              "uid_next": 61
             },
             {
               "name": "Projects/2026",
               "total": 0,
-              "unread": 0
+              "unread": 0,
+              "uid_next": 13
             },
             {
               "name": "Sent",
               "total": 0,
-              "unread": 0
+              "unread": 0,
+              "uid_next": 1
             },
             {
               "name": "Drafts",
               "total": 0,
-              "unread": 0
+              "unread": 0,
+              "uid_next": 1
             },
             {
               "name": "Trash",
               "total": 0,
-              "unread": 0
+              "unread": 0,
+              "uid_next": 32
             }
           ]
         },

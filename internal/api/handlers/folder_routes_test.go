@@ -30,12 +30,14 @@ func TestFolderResponseJSONParity(t *testing.T) {
 		Folder string `json:"name"`
 		Total  int64  `json:"total"`
 		Unread int64  `json:"unread"`
+		// UIDNext is the folder's IMAP UIDNEXT (#804).
+		UIDNext uint64 `json:"uid_next"`
 	}
 	for _, tc := range []struct {
 		name         string
 		old, current interface{}
 	}{
-		{"folder", folderInfo{"INBOX", 3, 1}, FolderSummary{Folder: "INBOX", Total: 3, Unread: 1}},
+		{"folder", folderInfo{"INBOX", 3, 1, 9}, FolderSummary{Folder: "INBOX", Total: 3, Unread: 1, UIDNext: 9}},
 		{"name", map[string]string{"name": "Receipts"}, FolderName{Name: "Receipts"}},
 		{"quota", map[string]interface{}{"quota_bytes": int64(100), "quota_used_bytes": int64(25), "message_count": int64(4), "percent_used": 25.0},
 			Quota{MessageCount: 4, PercentUsed: 25, QuotaBytes: 100, QuotaUsedBytes: 25}},
