@@ -34,7 +34,7 @@ type AwaitingThread struct {
 // not sent, wherever it is filed, and a deleted or trashed message no longer counts in either
 // direction. A scheduled send has no message row until it is sent.
 func countedMessageSQL(table string) string {
-	return table + ".is_deleted = false AND " + table + ".is_draft = false AND " + table + ".folder NOT IN ('Trash', 'Drafts')"
+	return table + ".is_deleted = false AND " + table + ".imap_deleted = false AND " + table + ".is_draft = false AND " + table + ".folder NOT IN ('Trash', 'Drafts')"
 }
 
 // awaitingMessageSQL finds the row that makes a thread wait: a counted message from this

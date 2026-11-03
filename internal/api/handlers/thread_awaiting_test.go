@@ -249,6 +249,58 @@ func TestAwaitingDerivation(t *testing.T) {
 	})
 }
 
+func TestAwaitingIMAPDeletedMessages(t *testing.T) {
+	f := newAwaitingFixture(t)
+	deleted := func(row *models.Message) { row.IMAPDeleted = true }
+
+	t.Run("deleted sent message does not start a wait", func(t *testing.T) {
+		f.t = t
+		f.add("imap-deleted-sent", awaitingOther, "INBOX", 1)
+		f.add("imap-deleted-sent", f.owner.Address, "Sent", 2, deleted)
+		f.wantNotWaiting("imap-deleted-sent")
+	})
+	t.Run("deleted later reply does not end a wait", func(t *testing.T) {
+		f.t = t
+		sent := f.add("imap-deleted-reply", f.owner.Address, "Sent", 1)
+		reply := f.add("imap-deleted-reply", awaitingOther, "INBOX", 2, deleted)
+		f.wantWaiting("imap-deleted-reply", 1)
+		rows := []models.Message{sent}
+		if err := attachAwaitingSince(f.tx, f.owner.ID, rows); err != nil {
+			t.Fatal(err)
+		}
+		if rows[0].AwaitingSince == nil || !rows[0].AwaitingSince.Equal(sent.ReceivedAt) {
+			t.Fatalf("message awaiting_since = %v, want %s", rows[0].AwaitingSince, sent.ReceivedAt)
+		}
+		request := authzRequest(http.MethodGet, "/", f.owner.ID, nil, "")
+		thread, err := f.handler.getThread(request, threadRequest{ID: uint32(f.owner.ID), ThreadID: sent.ThreadID})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(thread.Data) != 1 || thread.Data[0].ID != sent.ID {
+			t.Fatalf("thread = %+v, want only message %d", thread.Data, sent.ID)
+		}
+		if err := f.tx.Model(&reply).Update("imap_deleted", false).Error; err != nil {
+			t.Fatal(err)
+		}
+		f.wantNotWaiting("imap-deleted-reply")
+	})
+	for _, header := range []string{"in-reply-to", "references"} {
+		t.Run("deleted split-thread reply via "+header+" does not end a wait", func(t *testing.T) {
+			f.t = t
+			thread := "imap-deleted-" + header
+			sent := f.add(thread, f.owner.Address, "Sent", 1)
+			f.add(thread+"-reply", awaitingOther, "INBOX", 2, deleted, func(row *models.Message) {
+				if header == "in-reply-to" {
+					row.InReplyTo = sent.MsgID
+				} else {
+					row.References = "<root@awaiting.test> " + sent.MsgID
+				}
+			})
+			f.wantWaiting(thread, 1)
+		})
+	}
+}
+
 // TestAwaitingUnicodeDomain resolves the account's address the way sending as it does.
 func TestAwaitingUnicodeDomain(t *testing.T) {
 	spellings := ownSenderSpellings("Owner@xn--bcher-kva.example")
