@@ -2536,8 +2536,10 @@ def retry_a_held_entry_after_bulk_examples(transaction):
         return
     if current.get("status") in ("pending", "deferred"):
         return
+    # Only this row: the whole fixture set would also add a suppression and a
+    # quarantined message, which other operations' examples and probes count.
     subprocess.run(
-        ["chore", "test:contract-fixtures"],
+        ["chore", "test:contract-retry-fixture"],
         check=True,
         capture_output=True,
         timeout=20,

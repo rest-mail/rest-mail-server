@@ -37,7 +37,7 @@ func TestRetryFixtureReplenishedAfterEmptyFilterBulkBounce(t *testing.T) {
 	if status := retry(t, database, id); status != http.StatusBadRequest {
 		t.Fatalf("retry after empty-filter bulk bounce: %d, want 400", status)
 	}
-	if err := prepareQueueFixtures(database, "restmail.test"); err != nil {
+	if _, err := prepareRetryFixture(database, "restmail.test"); err != nil {
 		t.Fatal(err)
 	}
 	var fresh models.OutboundQueue
@@ -56,5 +56,42 @@ func TestRetryFixtureReplenishedAfterEmptyFilterBulkBounce(t *testing.T) {
 	}
 	if original.Status != "bounced" {
 		t.Fatalf("replenishment undid the bulk action: original status %q", original.Status)
+	}
+}
+
+func TestRetryReplenishmentAddsOnlyTheRetryEntry(t *testing.T) {
+	database := fixtureDB(t)
+	if err := database.Create(&models.Domain{Name: "restmail.test", Active: true}).Error; err != nil {
+		t.Fatal(err)
+	}
+	count := func(model interface{}, query string, args ...interface{}) int64 {
+		t.Helper()
+		var total int64
+		if err := database.Model(model).Where(query, args...).Count(&total).Error; err != nil {
+			t.Fatal(err)
+		}
+		return total
+	}
+	const retryRecipient, bounceRecipient = "contract-retry@retry.invalid", "contract-bounce@retry.invalid"
+	retryBefore := count(&models.OutboundQueue{}, "recipient = ?", retryRecipient)
+	bounceBefore := count(&models.OutboundQueue{}, "recipient = ?", bounceRecipient)
+	held := count(&models.Quarantine{}, "1 = 1")
+	suppressed := count(&models.Suppression{}, "1 = 1")
+
+	if _, err := prepareRetryFixture(database, "restmail.test"); err != nil {
+		t.Fatal(err)
+	}
+
+	if after := count(&models.OutboundQueue{}, "recipient = ?", retryRecipient); after != retryBefore+1 {
+		t.Fatalf("retry entries: %d, want %d", after, retryBefore+1)
+	}
+	if after := count(&models.OutboundQueue{}, "recipient = ?", bounceRecipient); after != bounceBefore {
+		t.Fatalf("bounce entries changed: %d, want %d", after, bounceBefore)
+	}
+	if after := count(&models.Quarantine{}, "1 = 1"); after != held {
+		t.Fatalf("quarantined messages changed: %d, want %d", after, held)
+	}
+	if after := count(&models.Suppression{}, "1 = 1"); after != suppressed {
+		t.Fatalf("suppressions changed: %d, want %d", after, suppressed)
 	}
 }

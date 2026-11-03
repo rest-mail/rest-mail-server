@@ -21,6 +21,7 @@ import (
 
 func main() {
 	domain := flag.String("test-domain", "", "confirm the disposable restmail.test topology")
+	retryOnly := flag.Bool("retry-only", false, "replenish only the retry example's queue entry, leaving every other fixture as it is")
 	linkOnly := flag.Bool("link-account-only", false, "prepare the generated account-link proof after account-creation probes")
 	apiKeys := flag.Bool("api-keys", false, "prepare a fresh account for real-MFA API key checks")
 	domainTenants := flag.Bool("domain-tenants", false, "prepare the domain administrators of the ownership phase")
@@ -31,6 +32,9 @@ func main() {
 		if on {
 			modes++
 		}
+	}
+	if *retryOnly {
+		modes++
 	}
 	if *domain != "restmail.test" || flag.NArg() != 0 || modes > 1 {
 		fmt.Fprintln(os.Stderr, "contract fixtures require --test-domain=restmail.test")
@@ -61,6 +65,8 @@ func main() {
 			err = prepareMFAAdmin(database, *domain)
 		} else if *linkOnly {
 			_, err = prepareLinkFixture(database, *domain)
+		} else if *retryOnly {
+			_, err = prepareRetryFixture(database, *domain)
 		} else {
 			err = prepareQueueFixtures(database, *domain)
 			if err == nil {

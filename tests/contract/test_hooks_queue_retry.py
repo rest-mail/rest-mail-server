@@ -29,7 +29,7 @@ class QueueRetryHookTests(unittest.TestCase):
         ]) as api, patch.object(self.hooks.subprocess, "run") as prepare:
             self.hooks.retry_a_held_entry_after_bulk_examples(transaction)
         prepare.assert_called_once_with(
-            ["chore", "test:contract-fixtures"], check=True, capture_output=True, timeout=20,
+            ["chore", "test:contract-retry-fixture"], check=True, capture_output=True, timeout=20,
         )
         self.assertEqual(api.call_args_list, [
             call(transaction, "GET", "/api/v1/admin/queue/10", expect=(404, 422)),
