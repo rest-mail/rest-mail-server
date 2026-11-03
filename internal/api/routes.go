@@ -63,6 +63,12 @@ type Routers struct {
 	// push is push notifications, when configured; its dispatcher owns a
 	// goroutine that Routers.Close stops.
 	push *pushService
+
+	// sendLimits and recoverFailures are the per-account send limits and the
+	// per-address recovery budget the routes above use, kept so a router test
+	// can move their clocks instead of waiting an hour.
+	sendLimits      *sendlimits.Service
+	recoverFailures *middleware.FailureBudget
 }
 
 // Close releases background resources owned by the routers — currently the trace
@@ -328,7 +334,8 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		cfg.APIMaxRecipientsPerMessage,
 		ratelimit.NewSubmissionLimiter(cfg.APISendRateLimitPerMinute, cfg.APISendRateLimitPerHour),
 	)
-	messageH.SetLayeredSendLimits(sendlimits.FromConfig(cfg.SendLimits))
+	sendLimits := sendlimits.FromConfig(cfg.SendLimits)
+	messageH.SetLayeredSendLimits(sendLimits)
 	// Push notifications (#363): off, with no devices routes, unless APNs is
 	// configured. New mail in an INBOX goes to the phones of the sessions that
 	// list the mailbox, and a logout takes its session's phones with it.
@@ -440,12 +447,14 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	// the account set up in advance (#124). Throttled like login, and each
 	// address may be refused only 5 times, then once per 15 minutes, so
 	// guesses spread across many IPs still cannot add up against one account.
+	var recoverFailures *middleware.FailureBudget
 	if cfg.AuthRateLimitEnabled {
-		authH.SetRecoverFailures(middleware.NewFailureBudget(middleware.RateLimitConfig{
+		recoverFailures = middleware.NewFailureBudget(middleware.RateLimitConfig{
 			RPS:   1.0 / (15 * 60),
 			Burst: 5,
 			TTL:   2 * time.Hour,
-		}))
+		})
+		authH.SetRecoverFailures(recoverFailures)
 	}
 	publicAuth := publicRoutes(r.With(middleware.MaxBodyBytes(cfg.APIMaxBodyBytes))).Describing(describedBodyCap)
 	authH.RegisterSignIn(publicAuth, signInChecks)
@@ -827,7 +836,8 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		testH.Register(admin, handlers.TestRouteChecks{At: describedCapability(needs)})
 	})
 
-	routers := &Routers{Public: r, Recorder: traceRecorder, push: pushSvc, Messages: messageH, Registry: registry}
+	routers := &Routers{Public: r, Recorder: traceRecorder, push: pushSvc, Messages: messageH, Registry: registry,
+		sendLimits: sendLimits, recoverFailures: recoverFailures}
 
 	// Dedicated internal mTLS handler. Only built when enabled; served on a
 	// separate listener whose TLS layer requires a verified gateway client

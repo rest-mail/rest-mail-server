@@ -187,6 +187,7 @@ type credentialFixture struct {
 	t         *testing.T
 	db        *gorm.DB
 	router    http.Handler
+	routers   *Routers
 	jwt       *auth.JWTService
 	address   string
 	password  string // the mailbox's password now, which creating an app password takes
@@ -208,7 +209,7 @@ func newCredentialFixtureWith(t *testing.T, cfg *config.Config) *credentialFixtu
 	jwtSvc := auth.NewJWTService(routerTestSecret, 5*time.Minute, 24*time.Hour)
 	routers := NewRouters(db, jwtSvc, cfg, nil)
 	t.Cleanup(routers.Close)
-	f := &credentialFixture{t: t, db: db, router: routers.Public, jwt: jwtSvc, password: credentialTestPassword}
+	f := &credentialFixture{t: t, db: db, router: routers.Public, routers: routers, jwt: jwtSvc, password: credentialTestPassword}
 
 	domain := models.Domain{Name: "example.test", Active: true}
 	if err := db.Create(&domain).Error; err != nil {

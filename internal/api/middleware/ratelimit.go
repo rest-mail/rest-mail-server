@@ -204,6 +204,14 @@ func (b *FailureBudget) Available(key string) (bool, time.Duration) {
 	return b.rl.available(key)
 }
 
+// SetClock makes the budget read the time from now, so a test can move past a
+// refill without waiting for it.
+func (b *FailureBudget) SetClock(now func() time.Time) {
+	b.rl.mu.Lock()
+	defer b.rl.mu.Unlock()
+	b.rl.now = now
+}
+
 // Charge spends one of key's failures.
 func (b *FailureBudget) Charge(key string) {
 	b.rl.allow(key)
