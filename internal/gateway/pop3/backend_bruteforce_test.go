@@ -54,12 +54,12 @@ func TestAuthenticate_PerAccountHardStop(t *testing.T) {
 // lock an account out.
 func TestAuthenticate_TransientErrorNotBanned(t *testing.T) {
 	var status int32 = http.StatusServiceUnavailable
-	var okBody = `{"data":{"access_token":"t","user":{"id":1,"email":"victim@example.com"}}}`
+	var okBody = `{"data":{"token":"rmgs_t","protocol":"pop3","credential_id":1,"credential_kind":"password","user":{"id":1,"email":"victim@example.com"}}}`
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		code := int(atomic.LoadInt32(&status))
 		if code == http.StatusOK {
 			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusOK)
+			w.WriteHeader(http.StatusCreated)
 			_, _ = w.Write([]byte(okBody))
 			return
 		}
@@ -104,7 +104,8 @@ func TestAuthenticate_LockdownIsNotAFailedGuess(t *testing.T) {
 			_, _ = w.Write([]byte(`{"error":{"code":"access_restricted","message":"This server is not accepting sign-ins for this account"}}`))
 			return
 		}
-		_, _ = w.Write([]byte(`{"data":{"access_token":"t","user":{"id":1,"email":"victim@example.com"}}}`))
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"data":{"token":"rmgs_t","protocol":"pop3","credential_id":1,"credential_kind":"password","user":{"id":1,"email":"victim@example.com"}}}`))
 	}))
 	t.Cleanup(srv.Close)
 
