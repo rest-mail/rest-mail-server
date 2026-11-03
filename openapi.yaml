@@ -6986,6 +6986,11 @@ paths:
         is served ONLY on the dedicated internal listener (verified gateway client
         certificate required) and is absent from the public listener; when disabled
         it is unauthenticated on the public listener. Never accepts a user JWT.
+        Stored text, recipient JSON strings and keys, and decoded raw_message octets
+        must not contain NUL (U+0000); invalid input is 422 validation_failed naming
+        the field before any write. raw_message is standard padded base64 (format: byte).
+        Empty or omitted folder means INBOX; a nonempty name is at most 255 UTF-8 bytes,
+        has no surrounding whitespace, control characters or "..".
       security: []
       x-internal-mtls: true
       requestBody:
@@ -16464,13 +16469,16 @@ components:
           - 'null'
         address:
           type: string
+          pattern: '^[^\x00]*$'
           format: email
           description: Recipient address
         sender:
           type: string
+          pattern: '^[^\x00]*$'
           format: email
         sender_name:
           type: string
+          pattern: '^[^\x00]*$'
         recipients_to:
           type: array
           items:
@@ -16483,16 +16491,22 @@ components:
             format: email
         subject:
           type: string
+          pattern: '^[^\x00]*$'
         body_text:
           type: string
+          pattern: '^[^\x00]*$'
         body_html:
           type: string
+          pattern: '^[^\x00]*$'
         message_id:
           type: string
+          pattern: '^[^\x00]*$'
         in_reply_to:
           type: string
+          pattern: '^[^\x00]*$'
         references:
           type: string
+          pattern: '^[^\x00]*$'
         raw_message:
           type: string
           format: byte
@@ -16503,8 +16517,10 @@ components:
             byte-for-byte, preserving DKIM body hashes and BODY[] fidelity.
         client_ip:
           type: string
+          pattern: '^[^\x00]*$'
         helo_name:
           type: string
+          pattern: '^[^\x00]*$'
         require_tls:
           type: boolean
           description: >-

@@ -88,6 +88,10 @@ func findOpenSchemas(schema map[string]interface{}, path string, open map[string
 	if _, reference := schema["$ref"]; reference {
 		return // The referenced component is checked at its own location.
 	}
+	switch schema["type"] {
+	case "string", "number", "integer", "boolean", "null":
+		return
+	}
 	object := schema["type"] == "object"
 	if types, ok := schema["type"].([]interface{}); ok {
 		for _, kind := range types {
@@ -174,5 +178,31 @@ func TestOpenSchemaInventoryFindsLeaksAndIgnoresExampleData(t *testing.T) {
 	findOpenSchemas(refined, "#/refined", open)
 	if len(open) != 0 {
 		t.Fatalf("an alternative refining a closed object's own fields was reported open: %v", open)
+	}
+}
+
+func TestOpenSchemaInventoryScalarRefinements(t *testing.T) {
+	for _, kind := range []string{"string", "number", "integer", "boolean", "null"} {
+		for _, combinator := range []string{"allOf", "anyOf", "oneOf"} {
+			t.Run(kind+"/"+combinator, func(t *testing.T) {
+				schema := map[string]interface{}{
+					"type": kind,
+					combinator: []interface{}{
+						map[string]interface{}{"pattern": "^[^a]*$"},
+					},
+				}
+				open := map[string]bool{}
+				findOpenSchemas(schema, "#/scalar", open)
+				if len(open) != 0 {
+					t.Fatalf("a scalar refinement was reported as an open object: %v", open)
+				}
+			})
+		}
+	}
+	schema := map[string]interface{}{"pattern": "^[^a]*$"}
+	open := map[string]bool{}
+	findOpenSchemas(schema, "#/untyped", open)
+	if !open["#/untyped"] {
+		t.Fatal("a pattern without a scalar type still admits arbitrary objects")
 	}
 }

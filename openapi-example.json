@@ -10823,6 +10823,30 @@
         "mediaType": "application/json"
       }
     },
+    "address_nul": {
+      "summary": "Address nul is refused before storage",
+      "request": {
+        "body": {
+          "address": "before\u0000after"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "address": "must not contain a NUL byte"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "body_array": {
       "summary": "The body is not a JSON object",
       "request": {
@@ -10838,6 +10862,81 @@
             "details": {
               "fields": {
                 "body": "the body is not a JSON object"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "body_html_nul": {
+      "summary": "Body html nul is refused before storage",
+      "request": {
+        "body": {
+          "mailbox_id": 900100,
+          "body_html": "before\u0000after"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "body_html": "must not contain a NUL byte"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "body_text_nul": {
+      "summary": "Body text nul is refused before storage",
+      "request": {
+        "body": {
+          "mailbox_id": 900100,
+          "body_text": "before\u0000after"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "body_text": "must not contain a NUL byte"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "client_ip_nul": {
+      "summary": "Client ip nul is refused before storage",
+      "request": {
+        "body": {
+          "mailbox_id": 900100,
+          "client_ip": "before\u0000after"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "client_ip": "must not contain a NUL byte"
               }
             }
           }
@@ -10917,6 +11016,31 @@
         "mediaType": "application/json"
       }
     },
+    "folder_blank": {
+      "summary": "Folder blank is refused before storage",
+      "request": {
+        "body": {
+          "mailbox_id": 900100,
+          "folder": " "
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "folder": "required"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "folder_invalid": {
       "summary": "The folder name is refused",
       "description": "A name the folder rule refuses is 422 on folder, behind the gateway's own check.",
@@ -10927,7 +11051,8 @@
           "subject": "Hello",
           "body_text": "Hello",
           "folder": " Archive"
-        }
+        },
+        "invalid": true
       },
       "response": {
         "status": 422,
@@ -10938,6 +11063,56 @@
             "details": {
               "fields": {
                 "folder": "must not begin or end with a space"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "helo_name_nul": {
+      "summary": "Helo name nul is refused before storage",
+      "request": {
+        "body": {
+          "mailbox_id": 900100,
+          "helo_name": "before\u0000after"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "helo_name": "must not contain a NUL byte"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "in_reply_to_nul": {
+      "summary": "In reply to nul is refused before storage",
+      "request": {
+        "body": {
+          "mailbox_id": 900100,
+          "in_reply_to": "before\u0000after"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "in_reply_to": "must not contain a NUL byte"
               }
             }
           }
@@ -11015,6 +11190,31 @@
         "mediaType": "application/json"
       }
     },
+    "message_id_nul": {
+      "summary": "Message id nul is refused before storage",
+      "request": {
+        "body": {
+          "mailbox_id": 900100,
+          "message_id": "before\u0000after"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "message_id": "must not contain a NUL byte"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "no_mailbox": {
       "summary": "No mailbox has that address",
       "request": {
@@ -11078,6 +11278,54 @@
         "mediaType": "application/json"
       }
     },
+    "raw_message_invalid": {
+      "summary": "Raw message invalid is refused before storage",
+      "request": {
+        "body": {
+          "mailbox_id": 900100,
+          "raw_message": "a"
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "raw_message": "must be a base64 string"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "raw_message_nul": {
+      "summary": "Raw message nul is refused before storage",
+      "request": {
+        "body": {
+          "mailbox_id": 900100,
+          "raw_message": "U3ViamVjdDogSGVsbG8NCg0KYmVmb3JlAGFmdGVy"
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "raw_message": "must not contain a NUL byte"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "recipient_missing": {
       "summary": "The body names no mailbox",
       "description": "Neither mailbox_id nor address is there.",
@@ -11097,6 +11345,107 @@
             "details": {
               "fields": {
                 "address": "mailbox_id or address required"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "recipients_cc_nul": {
+      "summary": "Recipients cc nul is refused before storage",
+      "request": {
+        "body": {
+          "mailbox_id": 900100,
+          "recipients_cc": "before\u0000after"
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "recipients_cc": "must not contain a NUL byte"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "recipients_nested_nul": {
+      "summary": "Recipients nested nul is refused before storage",
+      "request": {
+        "body": {
+          "mailbox_id": 900100,
+          "recipients_to": [
+            {
+              "name": "before\u0000after"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "recipients_to": "must not contain a NUL byte"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "recipients_to_nul": {
+      "summary": "Recipients to nul is refused before storage",
+      "request": {
+        "body": {
+          "mailbox_id": 900100,
+          "recipients_to": "before\u0000after"
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "recipients_to": "must not contain a NUL byte"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "references_nul": {
+      "summary": "References nul is refused before storage",
+      "request": {
+        "body": {
+          "mailbox_id": 900100,
+          "references": "before\u0000after"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "references": "must not contain a NUL byte"
               }
             }
           }
@@ -11140,6 +11489,106 @@
           "error": {
             "code": "request_too_large",
             "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "sender_name_nul": {
+      "summary": "Sender name nul is refused before storage",
+      "request": {
+        "body": {
+          "mailbox_id": 900100,
+          "sender_name": "before\u0000after"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "sender_name": "must not contain a NUL byte"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "sender_nul": {
+      "summary": "Sender nul is refused before storage",
+      "request": {
+        "body": {
+          "mailbox_id": 900100,
+          "sender": "before\u0000after"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "sender": "must not contain a NUL byte"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "subject_nul": {
+      "summary": "Subject nul is refused before storage",
+      "request": {
+        "body": {
+          "mailbox_id": 900100,
+          "subject": "before\u0000after"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "subject": "must not contain a NUL byte"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "tls_version_nul": {
+      "summary": "Tls version nul is refused before storage",
+      "request": {
+        "body": {
+          "mailbox_id": 900100,
+          "tls_version": "before\u0000after"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "tls_version": "must not contain a NUL byte"
+              }
+            }
           }
         },
         "mediaType": "application/json"
