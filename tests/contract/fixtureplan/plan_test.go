@@ -23,6 +23,9 @@ func TestDefaultFixturePlan(t *testing.T) {
 func TestFixturePlanRefusesUnsafeOrDanglingDeclarations(t *testing.T) {
 	for _, mutate := range []func(*Plan){
 		func(p *Plan) { p.Domain = "production.example" },
+		func(p *Plan) { p.DeliveryRecipient.ID = 0 },
+		func(p *Plan) { p.DeliveryRecipient.Address = "no-domain" },
+		func(p *Plan) { p.DeliveryRecipient.Address = "shared@" + p.Domain },
 		func(p *Plan) { delete(p.Principals, "ordinary") },
 		func(p *Plan) {
 			v := p.Principals["ordinary"]

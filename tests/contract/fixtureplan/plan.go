@@ -36,10 +36,20 @@ type QueueEntry struct {
 	ExpiresHours     int    `json:"expires_hours"`
 }
 
+// DeliveryRecipient is the mailbox deliverMessage's fuzz probes are pinned to.
+// Its id is fixed because a pin is written before the run, and it is far above
+// any id the topology's sequences reach, so it moves no literal id in an example.
+// It is on a domain of its own, so what it stores touches no principal's mail.
+type DeliveryRecipient struct {
+	ID      uint   `json:"id"`
+	Address string `json:"address"`
+}
+
 type Plan struct {
-	Domain     string                `json:"domain"`
-	Principals map[string]Principal  `json:"principals"`
-	Queue      map[string]QueueEntry `json:"queue"`
+	Domain            string                `json:"domain"`
+	DeliveryRecipient DeliveryRecipient     `json:"delivery_recipient"`
+	Principals        map[string]Principal  `json:"principals"`
+	Queue             map[string]QueueEntry `json:"queue"`
 }
 
 // Default returns a fresh copy so a phase cannot mutate the next phase's plan.
@@ -65,6 +75,9 @@ func Parse(data []byte) (Plan, error) {
 func (p Plan) validate() error {
 	if p.Domain != "restmail.test" {
 		return fmt.Errorf("contract fixture plan requires the disposable restmail.test domain")
+	}
+	if local, domain, ok := strings.Cut(p.DeliveryRecipient.Address, "@"); p.DeliveryRecipient.ID == 0 || !ok || local == "" || domain == "" || domain == p.Domain || strings.ContainsAny(p.DeliveryRecipient.Address, "\r\n\t ") {
+		return fmt.Errorf("the delivery recipient needs an id and an address on a domain of its own")
 	}
 	for _, name := range []string{"admin", "ordinary", "owned", "app_password", "none"} {
 		if _, ok := p.Principals[name]; !ok {

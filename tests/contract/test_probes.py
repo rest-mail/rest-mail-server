@@ -1,5 +1,6 @@
 """Held signing keys and snooze dates must never replace named error examples."""
 
+import json
 import re
 import tempfile
 import unittest
@@ -56,6 +57,36 @@ class ProbeConfig(unittest.TestCase):
         )
         config = yaml.safe_load(self.output.read_text())
         self.assertFalse(config.get("fuzz", {}).get("pin"))
+
+    def fuzz_config(self, **options):
+        report = self.report.with_name("fuzz.xml")
+        self.assertEqual(probes.main(self.source, self.output, report, **options), 0)
+        return yaml.safe_load(self.output.read_text())
+
+    def test_fuzz_holds_mailbox_id_at_the_recipient_the_fixtures_make(self):
+        plan = json.loads((ROOT / "tests/contract/fixtureplan/defaults.json").read_text())
+        self.assertEqual(
+            self.fuzz_config()["fuzz"]["pin"]["mailbox_id"], plan["delivery_recipient"]["id"]
+        )
+
+    def test_coverage_does_not_hold_mailbox_id_so_its_type_probes_are_sent(self):
+        self.assertNotIn("mailbox_id", self.config["fuzz"]["pin"])
+
+    def test_a_narrowed_fuzz_run_can_drop_each_pin_it_does_not_reach(self):
+        config = self.fuzz_config(unpinned=["private_key", "snoozed_until"])
+        self.assertEqual(config["fuzz"]["pin"].keys(), {"mailbox_id"})
+        config = self.fuzz_config(unpinned=["mailbox_id"])
+        self.assertEqual(config["fuzz"]["pin"].keys(), {"private_key", "snoozed_until"})
+
+    def test_the_fuzz_phase_makes_the_recipient_before_it_pins_it(self):
+        script = (ROOT / "tests/contract/run.sh").read_text()
+        phase = script[script.index("\nfuzz)\n") :]
+        self.assertLess(
+            phase.index("chore test:contract-delivery-recipient"),
+            phase.index("python3 -B tests/contract/probes.py"),
+        )
+        chores = (ROOT / "chores.yml").read_text()
+        self.assertIn("go run ./tests/contract/fixtures --test-domain=restmail.test --delivery-recipient", chores)
 
     def test_the_held_snooze_date_is_in_the_future_the_server_requires(self):
         until = datetime.fromisoformat(

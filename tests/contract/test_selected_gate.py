@@ -48,6 +48,11 @@ class SelectedGate(unittest.TestCase):
                 ROOT / "tests/contract/fixtures/dkim-key.pem",
                 helpers / "fixtures/dkim-key.pem",
             )
+            (helpers / "fixtureplan").mkdir()
+            shutil.copyfile(
+                ROOT / "tests/contract/fixtureplan/defaults.json",
+                helpers / "fixtureplan/defaults.json",
+            )
             (work / "openapi.yaml").write_text("openapi: 3.1.0\npaths: {}\n")
             (work / "vertrag.yml").write_text(
                 "spec: openapi.yaml\nhookfiles: tests/contract/entrypoint.py\n"

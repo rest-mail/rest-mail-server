@@ -741,6 +741,19 @@ tasks:
         docker exec -- "${CONTRACT_FIXTURE_PROJECT}-api" go run ./tests/contract/fixtures --test-domain=restmail.test --mfa-admin
         python3 tests/contract/mfa_admin.py enroll "${CONTRACT_ENDPOINT:-http://10.99.0.20:8080}"
 
+  test:contract-delivery-recipient:
+    desc: Prepare the mailbox the fuzz phase pins deliverMessage's generated bodies to
+    env:
+      CONTRACT_FIXTURE_CONFIG: '{{.CONFIG}}'
+      CONTRACT_FIXTURE_PROJECT: '{{.RESTMAIL_PROJECT}}'
+    cmds:
+      - |
+        if [ "$CONTRACT_FIXTURE_CONFIG" != "restmail.test" ] || [ -z "$CONTRACT_FIXTURE_PROJECT" ]; then
+          echo "contract fixtures require the disposable restmail.test config" >&2
+          exit 1
+        fi
+        docker exec -- "${CONTRACT_FIXTURE_PROJECT}-api" go run ./tests/contract/fixtures --test-domain=restmail.test --delivery-recipient
+
   test:contract-link-fixture:
     desc: Prepare the generated link proof only after account-creation probes
     env:

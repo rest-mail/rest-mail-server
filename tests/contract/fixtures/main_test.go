@@ -161,6 +161,63 @@ func TestLinkFixtureRequiresTheDisposableDomain(t *testing.T) {
 	}
 }
 
+func TestDeliveryRecipientRequiresTheDisposableDomain(t *testing.T) {
+	if err := prepareDeliveryRecipient(nil, "production.example"); err == nil {
+		t.Fatal("delivery recipient accepted a different domain")
+	}
+}
+
+// The fuzz pin names this id before the run, so it has to be the mailbox's. A
+// second run finds what the first made, and no sequence moves for later ids.
+func TestDeliveryRecipientIsTheMailboxThePinNames(t *testing.T) {
+	db := fixtureDB(t)
+	plan, err := fixtureplan.Default()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sequences := func() (values [2]int64) {
+		for i, name := range []string{"domains_id_seq", "mailboxes_id_seq"} {
+			if err := db.Raw("SELECT nextval('" + name + "')").Scan(&values[i]).Error; err != nil {
+				t.Fatal(err)
+			}
+		}
+		return values
+	}
+	before := sequences()
+	for range 2 {
+		if err := prepareDeliveryRecipient(db, "restmail.test"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if after := sequences(); after != [2]int64{before[0] + 1, before[1] + 1} {
+		t.Fatalf("the recipient moved a sequence: %v, then %v", before, after)
+	}
+	var account models.Mailbox
+	if err := db.First(&account, plan.DeliveryRecipient.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if account.Address != plan.DeliveryRecipient.Address || !account.Active {
+		t.Fatalf("recipient = %+v", account)
+	}
+	if err := repositories.RequireMailboxReceive(db, &account); err != nil {
+		t.Fatal("the recipient cannot receive:", err)
+	}
+	var policies []models.Pipeline
+	if err := db.Where("domain_id = ?", account.DomainID).Find(&policies).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(policies) != 1 || policies[0].Direction != "inbound" || !policies[0].Active || string(policies[0].Filters) != "[]" {
+		t.Fatalf("the recipient's domain stores %+v", policies)
+	}
+	var elsewhere int64
+	if err := db.Model(&models.Pipeline{}).Where("domain_id <> ?", account.DomainID).Count(&elsewhere).Error; err != nil {
+		t.Fatal(err)
+	}
+	if elsewhere != 0 {
+		t.Fatalf("%d pipelines were stored on other domains", elsewhere)
+	}
+}
+
 func TestAPIKeyFixtureRequiresTheDisposableDomain(t *testing.T) {
 	if _, err := prepareAPIKeyFixture(nil, "production.example"); err == nil {
 		t.Fatal("API key fixture accepted a different domain")

@@ -1,5 +1,6 @@
 {
   "domain": "restmail.test",
+  "delivery_recipient": {"id": 900100, "address": "fuzz-recipient@contract-recipient.test"},
   "principals": {
     "admin": {"kind": "existing", "address": "admin@restmail.test"},
     "ordinary": {"kind": "account", "address": "contract-ordinary@restmail.test", "display_name": "Contract Ordinary", "owner": "admin", "password": true},

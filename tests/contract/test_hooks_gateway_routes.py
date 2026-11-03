@@ -9,6 +9,13 @@ import yaml
 from test_hooks_two_factor_admin import load_hooks
 
 ROOT = Path(__file__).resolve().parents[2]
+# The name a before hook receives. Vertrag 0.42.0 passes the source transaction's
+# name in every phase: the "fuzz: " and "coverage: " prefixes are only on the
+# result it reports.
+DELIVER_NAME = (
+    "/api/v1/messages/deliver > Deliver a message into a mailbox (protocol gateways) "
+    "> 201 > application/json"
+)
 
 
 class GatewayRoutes(unittest.TestCase):
@@ -53,6 +60,23 @@ class GatewayRoutes(unittest.TestCase):
                 t = {"request": {"body": json.dumps(kept)}}
                 module.deliver_a_whole_message(t)
                 self.assertEqual(json.loads(t["request"]["body"]), kept)
+
+    def test_no_hook_rewrites_a_generated_delivery(self):
+        # Vertrag abandons a generated probe whose body a hook changed, and counts
+        # nothing. The fuzz pin is what holds these on a real recipient, so each
+        # hook on this operation has to leave the body's bytes alone.
+        module, _, registered = load_hooks()
+        self.assertTrue(registered["deliverMessage"])
+        for body in (
+            '{"mailbox_id":900100}',
+            '{"mailbox_id": 900100, "sender": "a", "subject": "\\u0000", "address": "a"}',
+            '{"mailbox_id":900100,"raw_message":"QQ==","folder":"kahbk"}',
+        ):
+            for name in registered["deliverMessage"]:
+                with self.subTest(body=body, hook=name):
+                    t = {"name": DELIVER_NAME, "request": {"body": body}}
+                    getattr(module, name)(t)
+                    self.assertEqual(t["request"]["body"], body)
 
 
 if __name__ == "__main__":
