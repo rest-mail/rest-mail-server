@@ -30,9 +30,10 @@ func main() {
 	mfaAdmin := flag.Bool("mfa-admin", false, "prepare the administrator the contract hooks enroll in real MFA")
 	deliveryRecipient := flag.Bool("delivery-recipient", false, "prepare the mailbox deliverMessage's fuzz probes are pinned to")
 	heldMailOnly := flag.Bool("held-mail-only", false, "replenish only the disposable held-mail targets, without touching the queue")
+	reportPhase := flag.String("report-targets", "", "top up the held mail one report-only phase consumes (authorization or ownership); no gate calls this")
 	flag.Parse()
 	modes := 0
-	for _, on := range []bool{*linkOnly, *apiKeys, *domainTenants, *mfaAdmin, *deliveryRecipient, *heldMailOnly} {
+	for _, on := range []bool{*linkOnly, *apiKeys, *domainTenants, *mfaAdmin, *deliveryRecipient, *heldMailOnly, *reportPhase != ""} {
 		if on {
 			modes++
 		}
@@ -80,6 +81,8 @@ func main() {
 			_, err = prepareLinkFixture(database, *domain)
 		} else if *retryOnly {
 			_, err = prepareRetryFixture(database, *domain)
+		} else if *reportPhase != "" {
+			err = prepareReportTargets(database, *domain, *reportPhase)
 		} else {
 			err = prepareQueueFixtures(database, *domain)
 			if err == nil {
@@ -438,21 +441,13 @@ func prepareHeldMailTargets(database *gorm.DB, domain string) (heldMailTargets, 
 	}
 	now := time.Now()
 	err = database.Transaction(func(tx *gorm.DB) error {
-		held := models.Quarantine{
-			MailboxID: admin.ID, Sender: "sender@example.net", Subject: "Held for review",
-			BodyPreview: "Preview only", QuarantineReason: "spam",
-			RawMessage: "From: sender@example.net\r\nTo: " + admin.Address + "\r\nSubject: Held for review\r\n\r\nPreview only\r\n",
-			ReceivedAt: now, ExpiresAt: now.Add(7 * 24 * time.Hour),
-		}
-		if err := tx.Create(&held).Error; err != nil {
+		held := heldMessage(admin, "Held for review", now)
+		if err := tx.Create(held).Error; err != nil {
 			return err
 		}
-		suppressed := models.Suppression{
-			DomainID: admin.DomainID, Address: fmt.Sprintf("contract-suppressed-%d@nowhere.invalid", now.UnixNano()),
-			Reason: models.SuppressionHardBounce, FailureCategory: models.FailureBadMailbox,
-			LastError: "550 5.1.1 no such mailbox", ExpiresAt: now.Add(30 * 24 * time.Hour),
-		}
-		if err := tx.Create(&suppressed).Error; err != nil {
+		address := fmt.Sprintf("contract-suppressed-%d@nowhere.invalid", now.UnixNano())
+		suppressed := suppressedRecipient(admin, address, now)
+		if err := tx.Create(suppressed).Error; err != nil {
 			return err
 		}
 		targets = heldMailTargets{AccountID: admin.ID, MessageID: held.ID, DomainID: admin.DomainID, SuppressionID: suppressed.ID}
@@ -462,4 +457,77 @@ func prepareHeldMailTargets(database *gorm.DB, domain string) (heldMailTargets, 
 		return heldMailTargets{}, err
 	}
 	return targets, nil
+}
+
+func heldMessage(admin models.Mailbox, subject string, now time.Time) *models.Quarantine {
+	return &models.Quarantine{
+		MailboxID: admin.ID, Sender: "sender@example.net", Subject: subject,
+		BodyPreview: "Preview only", QuarantineReason: "spam",
+		RawMessage: "From: sender@example.net\r\nTo: " + admin.Address + "\r\nSubject: " + subject + "\r\n\r\nPreview only\r\n",
+		ReceivedAt: now, ExpiresAt: now.Add(7 * 24 * time.Hour),
+	}
+}
+
+func suppressedRecipient(admin models.Mailbox, address string, now time.Time) *models.Suppression {
+	return &models.Suppression{
+		DomainID: admin.DomainID, Address: address,
+		Reason: models.SuppressionHardBounce, FailureCategory: models.FailureBadMailbox,
+		LastError: "550 5.1.1 no such mailbox", ExpiresAt: now.Add(30 * 24 * time.Hour),
+	}
+}
+
+// reportPhaseTargets is how many quarantined messages and how many suppressed
+// recipients each report-only phase consumes. deleteQuarantine and
+// clearSuppression's found examples take one each time they are sent as the
+// fixture admin. Authorization sends them twice: its examples first, then the
+// matrix's admin cell. Ownership sends them once, in the examples of its account
+// run and of its domain run; its cells name no such row.
+var reportPhaseTargets = map[string]int{"authorization": 2, "ownership": 1}
+
+// prepareReportTargets tops up the held mail a report-only phase consumes, and
+// no more, so nothing outlives the phase it was made for. Only those phases call
+// it, after the gate. The gate must keep seeing what it sees today: coverage's
+// skipped-probe ratchet depends on prepareHeldMail's single rows being spent.
+func prepareReportTargets(database *gorm.DB, domain, phase string) error {
+	if domain != "restmail.test" {
+		return errors.New("contract fixtures require restmail.test")
+	}
+	want, ok := reportPhaseTargets[phase]
+	if !ok {
+		return fmt.Errorf("no report-only phase is called %q", phase)
+	}
+	plan, err := fixtureplan.Default()
+	if err != nil {
+		return err
+	}
+	var admin models.Mailbox
+	if err := database.Where("address = ?", plan.Principals["admin"].Address).First(&admin).Error; err != nil {
+		return err
+	}
+	now := time.Now()
+	return database.Transaction(func(tx *gorm.DB) error {
+		// The rows the hooks would take: unreleased, and unexpired because the
+		// suppression list leaves out expired ones.
+		var held, suppressed int64
+		if err := tx.Model(&models.Quarantine{}).Where("mailbox_id = ? AND released = ?", admin.ID, false).Count(&held).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&models.Suppression{}).
+			Where("domain_id = ? AND address LIKE ? AND expires_at > ?", admin.DomainID, "contract-suppressed-%", now).
+			Count(&suppressed).Error; err != nil {
+			return err
+		}
+		for i := int(held); i < want; i++ {
+			if err := tx.Create(heldMessage(admin, "Held for the "+phase+" report", now)).Error; err != nil {
+				return err
+			}
+		}
+		for i := int(suppressed); i < want; i++ {
+			address := fmt.Sprintf("contract-suppressed-%s-%d-%d@nowhere.invalid", phase, now.UnixNano(), i)
+			if err := tx.Create(suppressedRecipient(admin, address, now)).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }

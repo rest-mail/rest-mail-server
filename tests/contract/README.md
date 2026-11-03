@@ -247,6 +247,14 @@ fixture admin and a suppressed recipient on `restmail.test`; the hooks point
 setup (the topology lists no owner or status keys, so those answer 409); their
 other examples are proven in-process (#1334).
 
+Each `found` example spends its row, and the report-only phases send those
+examples again: authorization in its examples and its admin cell, ownership in
+the examples of its account and domain runs. So `run.sh authorization` and
+`run.sh ownership` first run `chore test:contract-report-targets`, which tops up
+exactly what that phase consumes, and leaves none behind. No gate calls it, and
+it runs after the gate, so examples and coverage see the rows they always saw:
+coverage's skipped-probe ratchet depends on the single rows being spent.
+
 ### The routes the mail gateways call
 
 `checkMailboxAddress` and `deliverMessage` are served only on the API's internal
@@ -415,7 +423,10 @@ Just before its first generated link proof, the hook runs
 account-creation probes, which need that address absent. Before a valid fixture
 proof, the hook removes only the caller's previous link, so repeated probes
 start unlinked. It preserves the generated request and its principal; invalid
-credentials still reach the handler unchanged.
+credentials still reach the handler unchanged. A caller the route turns away for
+its credential (an app password's 401, a password-only session's 403
+`two_factor_required`) can have no previous link, so its refused clean-up is not
+an error and its request is sent. Any other refused clean-up stays an error.
 
 `bulkRetryQueue` and `bulkBounceQueue` send their `invalid_body` (`[]`) request
 with its paired 422 and their `selection_missing` (`{}`) request with its paired
