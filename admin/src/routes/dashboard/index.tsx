@@ -25,12 +25,30 @@ import {
 } from "lucide-react";
 import { AppShell } from "../../components/layout/AppShell";
 import { PipelineFunnel } from "../../components/dashboard/PipelineFunnel";
+import { DomainDashboard } from "../../components/dashboard/DomainDashboard";
+import { AccessDenied } from "../../components/access/AccessDenied";
+import { dashboardNeeds, holds } from "../../lib/access";
 
 export const Route = createFileRoute("/dashboard/")({
   component: Dashboard,
 });
 
+// Dashboard is the first screen after sign-in, so it shows what the session can
+// read: the whole-server dashboard with whole-server access, the domains'
+// dashboard to an administrator of some domains, and otherwise a note.
 function Dashboard() {
+  const user = useAuthStore((state) => state.user);
+  if (holds(user, dashboardNeeds.stats)) {
+    return <ServerDashboard showFunnel={holds(user, dashboardNeeds.funnel)} />;
+  }
+  return (
+    <AppShell title="Dashboard">
+      {holds(user, dashboardNeeds.domains) ? <DomainDashboard /> : <AccessDenied />}
+    </AppShell>
+  );
+}
+
+function ServerDashboard({ showFunnel }: { showFunnel: boolean }) {
   const { accessToken } = useAuthStore();
   const { stats, isLoading, error, fetchDashboardStats } = useDashboardStore();
 
@@ -286,7 +304,7 @@ function Dashboard() {
         <InboundTransportSecurityPanel its={stats?.inboundTransportSecurity} />
 
         {/* Pipeline Funnel (observability) */}
-        <PipelineFunnel accessToken={accessToken} />
+        {showFunnel && <PipelineFunnel accessToken={accessToken} />}
       </div>
     </AppShell>
   );

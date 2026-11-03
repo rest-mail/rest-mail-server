@@ -8,8 +8,11 @@ import type {
 import type { SecondFactor } from "../twoFactor";
 import type { JsonResponse, RequestBody } from "../api-contract";
 
+// capabilities are held at "*"; scopedCapabilities at a narrower scope
+// (lib/access.ts decides from both what the app shows).
 type User = Pick<SetupSession["user"], "email"> & {
   capabilities: NonNullable<SetupSession["capabilities"]>;
+  scopedCapabilities?: NonNullable<SetupSession["scoped_capabilities"]>;
 };
 
 // COOKIE_SESSION is a non-secret sentinel stored in `accessToken` purely as a
@@ -63,6 +66,7 @@ export const useAuthStore = create<AuthState>()(
           user: {
             email: data.user.email,
             capabilities: data.capabilities || [],
+            scopedCapabilities: data.scoped_capabilities || [],
           },
           accessToken: COOKIE_SESSION,
           isAuthenticated: true,
@@ -112,6 +116,7 @@ export const useAuthStore = create<AuthState>()(
           const user: User = {
             email: data.user?.email || email,
             capabilities: data.capabilities || [],
+            scopedCapabilities: data.scoped_capabilities || [],
           };
 
           set({
@@ -158,6 +163,7 @@ export const useAuthStore = create<AuthState>()(
               user: {
                 email: data.user?.email || "",
                 capabilities: data.capabilities || [],
+                scopedCapabilities: data.scoped_capabilities || [],
               },
               sessionChecked: true,
               setupRequired: data.setup_required || [],

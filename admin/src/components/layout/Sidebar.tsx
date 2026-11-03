@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { useUIStore } from '../../lib/stores/uiStore';
 import { useAuthStore } from '../../lib/stores/authStore';
+import { canReach } from '../../lib/access';
 
 interface NavItem {
   to: string;
@@ -38,6 +39,7 @@ export function Sidebar() {
   const navigate = useNavigate();
   const sidebarOpen = useUIStore((state) => state.sidebarOpen);
   const logout = useAuthStore((state) => state.logout);
+  const user = useAuthStore((state) => state.user);
   const router = useRouterState();
   const currentPath = router.location.pathname;
 
@@ -66,7 +68,8 @@ export function Sidebar() {
       {/* Navigation */}
       <nav className="flex-1 px-3 py-4 overflow-y-auto">
         <ul className="space-y-1">
-          {navItems.map((item) => {
+          {/* Only the screens whose API route the session can use. */}
+          {navItems.filter((item) => canReach(user, item.to)).map((item) => {
             const Icon = item.icon;
             const isActive = currentPath === item.to || currentPath.startsWith(item.to + '/');
 

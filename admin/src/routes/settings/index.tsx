@@ -3,26 +3,28 @@ import { AppShell } from '../../components/layout/AppShell'
 import { useAuthStore } from '../../lib/stores/authStore'
 import { useCertificateStore } from '../../lib/stores/certificateStore'
 import { useEffect } from 'react'
+import { canReach } from '../../lib/access'
 
 export const Route = createFileRoute('/settings/')({
   component: SettingsPage,
 })
 
 function SettingsPage() {
-  const { accessToken } = useAuthStore()
+  const { accessToken, user } = useAuthStore()
   const { getExpiringCertificates, fetchCertificates } = useCertificateStore()
+  const seesCertificates = canReach(user, '/settings/certificates')
 
   useEffect(() => {
-    if (accessToken) {
+    if (accessToken && seesCertificates) {
       fetchCertificates().catch(() => {
-        // Silently fail - user may not have permissions
+        // The expiry badge is a hint; the certificates screen shows the error.
       })
     }
-  }, [accessToken])
+  }, [accessToken, seesCertificates])
 
   const expiringCount = getExpiringCertificates(30).length
 
-  const settingsCards = [
+  const allSettingsCards = [
     {
       title: 'Two-Factor Authentication',
       description: 'Protect your admin account with a TOTP authenticator app',
@@ -67,6 +69,8 @@ function SettingsPage() {
       link: '/settings/mta-sts',
     },
   ]
+  // Only the settings whose API route the session can use.
+  const settingsCards = allSettingsCards.filter((card) => canReach(user, card.link))
 
   return (
     <AppShell title="Settings">
