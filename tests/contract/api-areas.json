@@ -19,11 +19,12 @@
   ],
   "632": [
     "acceptInvitation",
+    "closeGatewaySession",
     "getRecoveryEmail",
     "issueClientCredentialsToken",
     "login",
     "logout",
-    "protocolSignIn",
+    "openGatewaySession",
     "recoverAccount",
     "recoveryEmailLink",
     "redeemRecoveryEmail",

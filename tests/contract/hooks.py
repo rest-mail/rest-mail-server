@@ -15,6 +15,7 @@ read from the file it writes.
 import base64
 import json
 import os
+import ssl
 import subprocess
 import sys
 import tempfile
@@ -49,11 +50,6 @@ PRINCIPALS = os.environ.get("CONTRACT_PRINCIPALS", ".cache/contract-principals.j
 def principals():
     with open(PRINCIPALS) as f:
         return json.load(f)
-
-
-def basic(address, password):
-    token = base64.b64encode((f"{address}:{password}").encode()).decode()
-    return "Basic " + token
 
 
 def mfa_admin_token(origin):
@@ -506,7 +502,7 @@ def delete_a_grant_made_for_it(transaction):
 @hooks.before("refreshToken")
 @hooks.before("linkAccount")
 @hooks.before("createAppPassword")
-@hooks.before("protocolSignIn")
+@hooks.before("openGatewaySession")
 @hooks.before("enrollTwoFactor")
 @hooks.before("confirmTwoFactor")
 @hooks.before("recoverAccount")
@@ -1993,14 +1989,49 @@ def give_each_rename_probe_a_folder(transaction):
             raise
 
 
-@hooks.before("/api/v1/auth/protocol-sign-in > * > 200 > application/json")
-@hooks.before("/api/v1/auth/protocol-sign-in > * > 400 > application/json")
-@hooks.before("/api/v1/auth/protocol-sign-in > * > 422 > application/json")
+# The internal listener the gateways call, and the IMAP gateway's client
+# certificate for it (chore test:contract-mtls copies them; vertrag.yml sends the
+# session routes there with the same one).
+INTERNAL_ORIGIN = "https://10.99.0.20:8443"
+CONTRACT_MTLS = os.environ.get("CONTRACT_MTLS_DIR", ".cache/contract-mtls")
+
+
+@hooks.before("/api/v1/gateway-sessions > * > 201 > application/json")
+@hooks.before("/api/v1/gateway-sessions > * > 422 > application/json")
 def sign_in_a_mail_client(transaction):
+    """The IMAP gateway opens a session for the app password principal: its
+    address and secret go in the body, the only place a mail client's password
+    is sent (#1586). The pair's protocol stays, so 422 still names another."""
     app = principals()["app_password"]
-    transaction["request"]["headers"]["Authorization"] = basic(
-        app["address"], app["secret"]
+    body = hooks.get_json(transaction)
+    body["address"], body["password"] = app["address"], app["secret"]
+    hooks.set_json(transaction, body)
+
+
+def open_gateway_session():
+    """A session the IMAP gateway opens for the app password principal, as
+    the gateway does at a mail client's LOGIN."""
+    app = principals()["app_password"]
+    context = ssl.create_default_context(cafile=f"{CONTRACT_MTLS}/internal-ca.crt")
+    context.load_cert_chain(f"{CONTRACT_MTLS}/internal-imap.crt", f"{CONTRACT_MTLS}/internal-imap.key")
+    pace_auth_requests(None)
+    request = urllib.request.Request(
+        INTERNAL_ORIGIN + "/api/v1/gateway-sessions",
+        data=json.dumps({"protocol": "imap", "address": app["address"], "password": app["secret"]}).encode(),
+        headers={"Content-Type": "application/json"},
+        method="POST",
     )
+    with urllib.request.urlopen(request, timeout=10, context=context) as response:
+        token = (json.load(response).get("data") or {}).get("token")
+    if not isinstance(token, str) or not token.startswith("rmgs_"):
+        raise RuntimeError("the IMAP gateway could not open a session")
+    return token
+
+
+@hooks.before("/api/v1/gateway-sessions/current > * > 204")
+def close_a_mail_clients_session(transaction):
+    """The gateway closes a session it opened, with that session's token."""
+    transaction["request"]["headers"]["Authorization"] = "Bearer " + open_gateway_session()
 
 
 def a_leftover_to_remove(transaction):
