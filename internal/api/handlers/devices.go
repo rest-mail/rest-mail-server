@@ -1,10 +1,13 @@
 package handlers
 
 import (
+	"encoding/base64"
 	"errors"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
@@ -19,21 +22,33 @@ import (
 // hex, 32 bytes today, longer allowed.
 var apnsTokenPattern = regexp.MustCompile(`^[0-9a-f]{64,200}$`)
 
-// DeviceHandler serves /api/v1/devices: the phones a session registers for
-// push (#363). The routes exist only when push is configured; a server
-// without it answers 404 on all three, which the app reads as "off".
+// DeviceHandler serves /api/v1/devices: the phones (#363) and browsers
+// (#1572) a session registers for push. The routes exist only when push is
+// configured; a server without it answers 404 on all three, which the app
+// reads as "off".
 type DeviceHandler struct {
 	store *push.Store
 	// topic is the bundle id APNs pushes go to; a registration naming another
-	// app is refused.
+	// app is refused. Empty when APNs is not configured.
 	topic string
-	now   func() time.Time
+	// webPushKey is the VAPID public key, base64url, browsers subscribe with.
+	// Empty when Web Push is not configured.
+	webPushKey string
+	now        func() time.Time
 }
 
-// NewDeviceHandler serves the devices routes for APNs pushes to topic.
+// NewDeviceHandler serves the devices routes for APNs pushes to topic (none
+// when topic is empty).
 func NewDeviceHandler(db *gorm.DB, topic string) *DeviceHandler {
 	return &DeviceHandler{store: push.NewStore(db), topic: topic, now: time.Now}
 }
+
+// SetWebPush turns on Web Push registrations, for subscriptions made with
+// the VAPID public key publicKey.
+func (h *DeviceHandler) SetWebPush(publicKey string) { h.webPushKey = publicKey }
+
+// maxWebPushEndpoint bounds a subscription's endpoint URL.
+const maxWebPushEndpoint = 1024
 
 // deviceResponse is a device as the API shows it. Never the token.
 type deviceResponse struct {
@@ -64,8 +79,15 @@ func (h *DeviceHandler) list(r *http.Request, _ struct{}) (deviceListResponse, e
 		return deviceListResponse{}, endpoint.Refuse(http.StatusUnauthorized, "unauthorized", "Authentication required")
 	}
 	platforms := []string{}
+	webPushKey := ""
 	if pushSession(claims) {
-		platforms = append(platforms, models.PushPlatformAPNs)
+		if h.topic != "" {
+			platforms = append(platforms, models.PushPlatformAPNs)
+		}
+		if h.webPushKey != "" {
+			platforms = append(platforms, models.PushPlatformWebPush)
+			webPushKey = h.webPushKey
+		}
 	}
 	registered, err := h.store.WithContext(r.Context()).List(claims.SessionID)
 	if err != nil {
@@ -75,14 +97,23 @@ func (h *DeviceHandler) list(r *http.Request, _ struct{}) (deviceListResponse, e
 	for i := range registered {
 		devices = append(devices, deviceJSON(&registered[i]))
 	}
-	return deviceListResponse{Platforms: platforms, Devices: devices}, nil
+	return deviceListResponse{Platforms: platforms, WebPushKey: webPushKey, Devices: devices}, nil
 }
 
 type registerDeviceRequest struct {
-	Platform    string `json:"platform"`
+	Platform string `json:"platform"`
+	// Token is the APNs device token, or the Web Push subscription's endpoint.
 	Token       string `json:"token"`
 	Environment string `json:"environment,omitempty"`
 	AppID       string `json:"app_id,omitempty"`
+	// Keys are a Web Push subscription's keys, as PushSubscription.toJSON()
+	// gives them.
+	Keys *webPushKeys `json:"keys,omitempty"`
+}
+
+type webPushKeys struct {
+	P256dh string `json:"p256dh"`
+	Auth   string `json:"auth"`
 }
 
 // Register registers this phone with this session: 201 with the new device,
@@ -97,20 +128,48 @@ func (h *DeviceHandler) register(r *http.Request, req registerDeviceRequest) (en
 	switch {
 	case !pushSession(claims):
 		fields["platform"] = "an administrator's session has no mailbox to be told about"
-	case req.Platform != models.PushPlatformAPNs:
+	case req.Platform == models.PushPlatformAPNs && h.topic != "":
+	case req.Platform == models.PushPlatformWebPush && h.webPushKey != "":
+	default:
 		fields["platform"] = "not configured on this server"
 	}
-	if req.Platform == models.PushPlatformAPNs && !apnsTokenPattern.MatchString(req.Token) {
-		fields["token"] = "not an APNs device token: 64 or more lowercase hex digits"
-	}
-	if req.Environment == "" {
-		req.Environment = models.APNsProduction
-	}
-	if req.Environment != models.APNsProduction && req.Environment != models.APNsSandbox {
-		fields["environment"] = `must be "production" or "sandbox"`
-	}
-	if req.AppID != "" && req.AppID != h.topic {
-		fields["app_id"] = "this server pushes to " + h.topic + " only"
+	var p256dh, auth string
+	if req.Platform == models.PushPlatformWebPush {
+		if !webPushEndpoint(req.Token) {
+			fields["token"] = "not a Web Push endpoint: an https URL of at most 1024 characters"
+		}
+		if req.Keys == nil || push.CheckP256dh(req.Keys.P256dh) != nil {
+			fields["keys.p256dh"] = "not a P-256 public key: base64url of its 65-byte uncompressed point"
+		} else {
+			p256dh = strings.TrimRight(req.Keys.P256dh, "=")
+		}
+		if req.Keys == nil || !webPushAuth(req.Keys.Auth) {
+			fields["keys.auth"] = "not a Web Push auth secret: base64url of 16 bytes"
+		} else {
+			auth = strings.TrimRight(req.Keys.Auth, "=")
+		}
+		if req.Environment != "" {
+			fields["environment"] = "APNs only"
+		}
+		if req.AppID != "" {
+			fields["app_id"] = "APNs only"
+		}
+	} else {
+		if req.Platform == models.PushPlatformAPNs && !apnsTokenPattern.MatchString(req.Token) {
+			fields["token"] = "not an APNs device token: 64 or more lowercase hex digits"
+		}
+		if req.Keys != nil {
+			fields["keys"] = "Web Push only"
+		}
+		if req.Environment == "" {
+			req.Environment = models.APNsProduction
+		}
+		if req.Environment != models.APNsProduction && req.Environment != models.APNsSandbox {
+			fields["environment"] = `must be "production" or "sandbox"`
+		}
+		if req.AppID != "" && req.AppID != h.topic {
+			fields["app_id"] = "this server pushes to " + h.topic + " only"
+		}
 	}
 	if len(fields) > 0 {
 		return endpoint.Status[deviceResponse]{}, endpoint.Invalid(fields)
@@ -126,11 +185,13 @@ func (h *DeviceHandler) register(r *http.Request, req registerDeviceRequest) (en
 		return endpoint.Status[deviceResponse]{}, endpoint.Refuse(http.StatusUnauthorized, "unauthorized", "This session has ended; sign in again")
 	}
 	device, created, err := store.Register(&models.PushDevice{
-		SessionID:   claims.SessionID,
-		MailboxID:   claims.AccountID,
-		Platform:    req.Platform,
-		Token:       req.Token,
-		Environment: req.Environment,
+		SessionID:     claims.SessionID,
+		MailboxID:     claims.AccountID,
+		Platform:      req.Platform,
+		Token:         req.Token,
+		Environment:   req.Environment,
+		WebPushP256dh: p256dh,
+		WebPushAuth:   auth,
 	})
 	if errors.Is(err, push.ErrTooManyDevices) {
 		return endpoint.Status[deviceResponse]{}, endpoint.Invalid(map[string]string{
@@ -191,8 +252,27 @@ func (h *DeviceHandler) RegisterRoutes(rs endpoint.Routes, audit func(string, ..
 }
 
 type deviceListResponse struct {
-	Platforms []string         `json:"platforms"`
-	Devices   []deviceResponse `json:"devices"`
+	Platforms []string `json:"platforms"`
+	// WebPushKey is the VAPID public key (base64url) a browser subscribes
+	// with, when "webpush" is among the platforms.
+	WebPushKey string           `json:"web_push_key,omitempty"`
+	Devices    []deviceResponse `json:"devices"`
+}
+
+// webPushEndpoint reports whether s is a push service endpoint the server
+// will POST to: an absolute https URL, not too long.
+func webPushEndpoint(s string) bool {
+	if len(s) > maxWebPushEndpoint {
+		return false
+	}
+	u, err := url.Parse(s)
+	return err == nil && u.Scheme == "https" && u.Host != "" && u.User == nil
+}
+
+// webPushAuth reports whether s is a 16-byte auth secret, base64url.
+func webPushAuth(s string) bool {
+	b, err := base64.RawURLEncoding.DecodeString(strings.TrimRight(s, "="))
+	return err == nil && len(b) == 16
 }
 
 // Keep a malformed id's existing 404; the id is a string in device responses.

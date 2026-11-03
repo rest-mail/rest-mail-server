@@ -2124,6 +2124,38 @@ func (s APNsSettings) Partial() bool {
 // END push notifications through APNs
 // ══════════════════════════════════════════════════════════════════════════
 
+// ══════════════════════════════════════════════════════════════════════════
+// BEGIN push notifications through Web Push (#1572)
+// ══════════════════════════════════════════════════════════════════════════
+
+// WebPushSettings is how the server pushes to browsers (RFC 8030): the VAPID
+// private key (RFC 8292; a PEM P-256 key file, mounted from a secret) and the
+// subject push services may contact the operator at (mailto: or https:). The
+// public key is derived from the private one. Generate a key with:
+//
+//	openssl ecparam -name prime256v1 -genkey -noout | openssl pkcs8 -topk8 -nocrypt -out vapid.pem
+type WebPushSettings struct {
+	KeyFile string // RESTMAIL_WEBPUSH_VAPID_KEY_FILE
+	Subject string // RESTMAIL_WEBPUSH_VAPID_SUBJECT
+}
+
+// WebPush reads the Web Push settings. Web Push is off unless both are set.
+func (c *Config) WebPush() WebPushSettings {
+	return WebPushSettings{
+		KeyFile: strings.TrimSpace(getEnv("RESTMAIL_WEBPUSH_VAPID_KEY_FILE", "")),
+		Subject: strings.TrimSpace(getEnv("RESTMAIL_WEBPUSH_VAPID_SUBJECT", "")),
+	}
+}
+
+// Configured reports whether everything Web Push needs is set.
+func (s WebPushSettings) Configured() bool { return s.KeyFile != "" && s.Subject != "" }
+
+// Partial reports whether only one of the two is set: Web Push stays off.
+func (s WebPushSettings) Partial() bool { return (s.KeyFile != "") != (s.Subject != "") }
+
+// END push notifications through Web Push
+// ══════════════════════════════════════════════════════════════════════════
+
 // staleDeliveringReclaimMargin is the slack on top of the longest single SMTP
 // step when the reclaim interval is derived. It also has to exceed the worker's
 // heartbeat interval (one minute), so a missed beat cannot cost a live attempt

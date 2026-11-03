@@ -60,3 +60,11 @@ data:
   RESTMAIL_APNS_TOPIC: {{ .topic | quote }}
   {{- end }}
   {{- end }}
+  {{- with .Values.api.push.webpush }}
+  {{- if .enabled }}
+  # Web Push to browsers. The VAPID key is mounted from the Secret
+  # api.push.webpush.existingSecret names (templates/api-deployment.yaml).
+  RESTMAIL_WEBPUSH_VAPID_KEY_FILE: "/etc/restmail/vapid/vapid.pem"
+  RESTMAIL_WEBPUSH_VAPID_SUBJECT: {{ required "api.push.webpush.subject is required (mailto: or https:)" .subject | quote }}
+  {{- end }}
+  {{- end }}

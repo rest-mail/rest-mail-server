@@ -1,6 +1,7 @@
 import type { LoginResponse, Folder, MessageSummary, MessageDetail, Account, Pagination, Attachment, AwaitingThreadsPage } from '../types';
 import { API_BASE as BASE } from './base';
 import type { components, paths } from './types';
+import type { PushDeviceList } from '../lib/webPush';
 
 // BASE is the same-origin API path (default `/api/v1`); see ./base for how it is
 // resolved and why a missing/invalid VITE_API_URL no longer falls back to a
@@ -736,4 +737,22 @@ export async function unsubscribeMailto(messageId: number, index: number): Promi
     method: 'POST',
     body: JSON.stringify({ index }),
   });
+}
+
+// Push devices (#363, #1572): this session's Web Push registration. The
+// routes exist only when the server has push configured; a 404 means off.
+export async function listPushDevices(): Promise<PushDeviceList> {
+  const response: { data: PushDeviceList } = await request(`${BASE}/devices`);
+  return response.data;
+}
+
+export async function registerPushDevice(body: {
+  platform: 'webpush'; token: string; keys: { p256dh: string; auth: string };
+}): Promise<{ id: string }> {
+  const response: { data: { id: string } } = await request(`${BASE}/devices`, { method: 'POST', body: JSON.stringify(body) });
+  return response.data;
+}
+
+export async function removePushDevice(id: string): Promise<void> {
+  return requestNoContent(`${BASE}/devices/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
