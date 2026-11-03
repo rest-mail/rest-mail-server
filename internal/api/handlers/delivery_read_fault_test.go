@@ -280,7 +280,7 @@ func TestRESTMAILPipelineDefaultRequiresAbsentConfiguration(t *testing.T) {
 	}{
 		{"absent domain", []deliveryReadStep{missingDomain}, true, false},
 		{"absent pipeline", []deliveryReadStep{deliveryDomainStep(), missingPipeline}, false, true},
-		// A configured pipeline stays as configured, plus the vacation step (#772).
+		// A stored pipeline retains its settings, plus mandatory vacation and report intake.
 		{"configured empty filters", []deliveryReadStep{deliveryDomainStep(), deliveryPipelineStep("[]")}, false, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -291,7 +291,7 @@ func TestRESTMAILPipelineDefaultRequiresAbsentConfiguration(t *testing.T) {
 			if err != nil || (cfg == nil) != tc.wantNil || d.reads != len(tc.steps) || d.writes != 0 || d.lostContext != 0 {
 				t.Fatalf("config=%+v error=%v reads=%d writes=%d lost=%d", cfg, err, d.reads, d.writes, d.lostContext)
 			}
-			if cfg != nil && (cfg.DomainID != 1 || cfg.Direction != "inbound" || !cfg.Active || (len(cfg.Filters) > 1) != tc.wantDefault) {
+			if cfg != nil && (cfg.DomainID != 1 || cfg.Direction != "inbound" || !cfg.Active || (len(cfg.Filters) > 2) != tc.wantDefault) {
 				t.Fatalf("pipeline changed: %+v", cfg)
 			}
 		})

@@ -515,6 +515,46 @@ All subsections share the pattern: new Zustand store + route + form.
 4. **TLS-RPT reports** (`/settings/tls-reports`) — `tlsReportStore.ts`; filter by domain/org, expand to see `failure_details` JSONB.
 5. **MTA-STS** (`/settings/mta-sts`) — `mtastsStore.ts`; domain selector, mode (none / testing / enforce), MX hosts, max-age presets (1d/7d/30d), `generatePolicyPreview()` for `.well-known/mta-sts.txt`.
 
+**Received DMARC aggregate reports:** keep the published DNS record's
+`rua=mailto:postmaster@<domain>` and ensure that address can receive mail.
+The inbound `dmarc_reports_received` step reads `application/gzip`,
+`application/zip` and `text/xml` attachments containing RFC 7489 or RFC 9990
+`feedback` documents. It runs after required authentication and before attachment
+extraction, including for domains with stored pipelines that omit, disable or
+misplace it. Stored pipeline rows are not rewritten.
+
+Only a trusted pipeline DMARC `pass` for the message's From domain permits
+storage. `reporter` is that authenticated domain; `reporting_org` is the report's
+bounded, untrusted organization name, not an identity assertion. The report's
+published-policy domain must be hosted here and its postmaster address must be
+an envelope recipient. No HTTP report intake is provided.
+
+The compressed attachment budget per message is 512 KiB, with at most ten report
+attachments. Each attachment may inflate to at most 512 KiB in total, including
+all entries of a zip archive; an archive has at most ten entries. There are at
+most 100 report rows per attachment, ten authentication results or override
+reasons per row, and bounded strings and XML nesting. XML directives, including
+DTDs and external entities, are refused. These security limits are not operator
+knobs. Invalid, unauthenticated, duplicate or oversized reports do not prevent
+normal mail delivery to postmaster; alignment, parser and storage failures are logged.
+
+An additive migration creates `dmarc_reports_received`. A unique database index
+on `(reporter, report_id)` discards retransmissions, rather than replacing the
+first received report, including when the duplicate names another policy domain.
+The original mail is still delivered on every attempt.
+
+`GET /api/v1/admin/dmarc-reports` lists typed reports with optional `domain_id`
+and case-insensitive `reporter` substring filters. Literal SQL wildcard characters
+are escaped. Pagination follows the TLS report list: `limit` defaults to 50,
+has a maximum of 200, and `offset` defaults to zero. Responses include the filtered
+total and `has_more`. `GET /api/v1/admin/dmarc-reports/{id}` reads one report,
+including its policy, source counts, evaluated disposition and authentication
+results. Both require `domains:read`: domain-scoped administrators see only
+their domains, while installation-wide readers need `*`. Another domain's
+filter gives an empty list, and another domain's report ID gives the same 404
+as a missing report. A mailbox-only scope is insufficient. The mobile report
+screen is not part of this server implementation.
+
 Estimated effort: 4–5 days.
 
 #### Stage 8 — Polish & testing (10–14 days)

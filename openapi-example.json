@@ -14226,6 +14226,233 @@
       }
     }
   },
+  "getDmarcReport": {
+    "internal_error": {
+      "summary": "The list dependency fails",
+      "description": "Session and permission checks pass, but the list dependency fails. The production handler and error writer produce this refusal without exposing dependency details.",
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_id": {
+      "summary": "invalid id",
+      "request": {
+        "path": {
+          "id": "0"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "summary": "missing",
+      "request": {
+        "path": {
+          "id": "4294967295"
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "dmarc_report_not_found",
+            "message": "DMARC report not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "received": {
+      "summary": "received",
+      "request": {
+        "path": {
+          "id": "1"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "reporter": "reporter.test",
+            "reporting_org": "Reporter",
+            "report_id": "daily-1",
+            "start_date": "2026-11-02T00:00:00Z",
+            "end_date": "2026-11-02T23:59:59Z",
+            "policy_published": {
+              "domain": "a.test",
+              "p": "none"
+            },
+            "records": [
+              {
+                "row": {
+                  "source_ip": "192.0.2.1",
+                  "count": 12,
+                  "policy_evaluated": {
+                    "disposition": "none",
+                    "dkim": "pass",
+                    "spf": "fail"
+                  }
+                },
+                "identifiers": {
+                  "header_from": "a.test"
+                },
+                "auth_results": {
+                  "dkim": [
+                    {
+                      "domain": "a.test",
+                      "selector": "mail",
+                      "result": "pass"
+                    }
+                  ]
+                }
+              }
+            ],
+            "received_at": "2026-11-03T00:00:00Z"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "description": "A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The focused Vertrag test supplies a real oversized body; no typed body is declared.",
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "required_capability": {
+      "summary": "required capability",
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": "1"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "description": "The database-backed current-session lookup fails. The production session-cache builder and stale-session middleware produce this refusal.",
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "summary": "unauthenticated",
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {
+        "path": {
+          "id": "1"
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
   "getDomain": {
     "found": {
       "summary": "Read the full public resource",
@@ -22371,6 +22598,265 @@
     "unauthenticated": {
       "summary": "No session credential was sent",
       "description": "No Authorization header or access cookie is sent. The production JWT middleware refuses the request.",
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {},
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
+  "listDmarcReports": {
+    "available": {
+      "summary": "available",
+      "request": {
+        "query": {
+          "domain_id": "4294967295",
+          "limit": "20"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": [],
+          "pagination": {
+            "has_more": false
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "internal_error": {
+      "summary": "The list dependency fails",
+      "description": "Session and permission checks pass, but the list dependency fails. The production handler and error writer produce this refusal without exposing dependency details.",
+      "requires": {
+        "fault": "database"
+      },
+      "request": {},
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_domain": {
+      "summary": "invalid domain",
+      "request": {
+        "query": {
+          "domain_id": "-1"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Query parameters failed validation",
+            "details": {
+              "fields": {
+                "domain_id": "must be a non-negative integer"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_limit": {
+      "summary": "invalid limit",
+      "request": {
+        "query": {
+          "limit": "not-an-integer"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Query parameters failed validation",
+            "details": {
+              "fields": {
+                "limit": "must be an integer"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_reporter": {
+      "summary": "invalid reporter",
+      "request": {
+        "query": {
+          "reporter": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Query parameters failed validation",
+            "details": {
+              "fields": {
+                "reporter": "must be at most 255 characters"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {},
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "received": {
+      "summary": "received",
+      "request": {
+        "query": {
+          "limit": "20",
+          "reporter": "reporter.test"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": [
+            {
+              "id": 1,
+              "domain_id": 1,
+              "reporter": "reporter.test",
+              "reporting_org": "Reporter",
+              "report_id": "daily-1",
+              "start_date": "2026-11-02T00:00:00Z",
+              "end_date": "2026-11-02T23:59:59Z",
+              "policy_published": {
+                "domain": "a.test",
+                "p": "none"
+              },
+              "records": [
+                {
+                  "row": {
+                    "source_ip": "192.0.2.1",
+                    "count": 12,
+                    "policy_evaluated": {
+                      "disposition": "none",
+                      "dkim": "pass",
+                      "spf": "fail"
+                    }
+                  },
+                  "identifiers": {
+                    "header_from": "a.test"
+                  },
+                  "auth_results": {
+                    "dkim": [
+                      {
+                        "domain": "a.test",
+                        "selector": "mail",
+                        "result": "pass"
+                      }
+                    ]
+                  }
+                }
+              ],
+              "received_at": "2026-11-03T00:00:00Z"
+            }
+          ],
+          "pagination": {
+            "has_more": false,
+            "total": 1
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "description": "A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The focused Vertrag test supplies a real oversized body; no typed body is declared.",
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {},
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "required_capability": {
+      "summary": "required capability",
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {},
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "description": "The database-backed current-session lookup fails. The production session-cache builder and stale-session middleware produce this refusal.",
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {},
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "summary": "unauthenticated",
       "requires": {
         "principal": "anonymous"
       },

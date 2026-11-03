@@ -15756,6 +15756,61 @@
       }
     }
   },
+  "getDmarcReport": {
+    "domain_own": {
+      "summary": "domain own",
+      "request": {
+        "path": {
+          "id": "1"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "reporter": "reporter.test",
+            "reporting_org": "Reporter",
+            "report_id": "daily-1",
+            "start_date": "2026-11-02T00:00:00Z",
+            "end_date": "2026-11-02T23:59:59Z",
+            "policy_published": {
+              "domain": "a.test",
+              "p": "none"
+            },
+            "records": [
+              {
+                "row": {
+                  "source_ip": "192.0.2.1",
+                  "count": 12,
+                  "policy_evaluated": {
+                    "disposition": "none",
+                    "dkim": "pass",
+                    "spf": "fail"
+                  }
+                },
+                "identifiers": {
+                  "header_from": "a.test"
+                },
+                "auth_results": {
+                  "dkim": [
+                    {
+                      "domain": "a.test",
+                      "selector": "mail",
+                      "result": "pass"
+                    }
+                  ]
+                }
+              }
+            ],
+            "received_at": "2026-11-03T00:00:00Z"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
   "getDomain": {
     "domain_scope": {
       "summary": "A grant on the source domain permits this lookup",
@@ -23039,6 +23094,158 @@
           "error": {
             "code": "forbidden",
             "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
+  "listDmarcReports": {
+    "domain_missing_filter": {
+      "summary": "domain missing filter",
+      "request": {
+        "query": {
+          "domain_id": "4294967295"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": [],
+          "pagination": {
+            "has_more": false
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "domain_other_filter": {
+      "summary": "domain other filter",
+      "request": {
+        "query": {
+          "domain_id": "2"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": [],
+          "pagination": {
+            "has_more": false
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "domain_own_filter": {
+      "summary": "domain own filter",
+      "request": {
+        "query": {
+          "domain_id": "1"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": [
+            {
+              "id": 1,
+              "domain_id": 1,
+              "reporter": "reporter.test",
+              "reporting_org": "Reporter",
+              "report_id": "daily-1",
+              "start_date": "2026-11-02T00:00:00Z",
+              "end_date": "2026-11-02T23:59:59Z",
+              "policy_published": {
+                "domain": "a.test",
+                "p": "none"
+              },
+              "records": [
+                {
+                  "row": {
+                    "source_ip": "192.0.2.1",
+                    "count": 12,
+                    "policy_evaluated": {
+                      "disposition": "none",
+                      "dkim": "pass",
+                      "spf": "fail"
+                    }
+                  },
+                  "identifiers": {
+                    "header_from": "a.test"
+                  },
+                  "auth_results": {
+                    "dkim": [
+                      {
+                        "domain": "a.test",
+                        "selector": "mail",
+                        "result": "pass"
+                      }
+                    ]
+                  }
+                }
+              ],
+              "received_at": "2026-11-03T00:00:00Z"
+            }
+          ],
+          "pagination": {
+            "has_more": false,
+            "total": 1
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "domain_unfiltered": {
+      "summary": "domain unfiltered",
+      "request": {},
+      "response": {
+        "status": 200,
+        "body": {
+          "data": [
+            {
+              "id": 1,
+              "domain_id": 1,
+              "reporter": "reporter.test",
+              "reporting_org": "Reporter",
+              "report_id": "daily-1",
+              "start_date": "2026-11-02T00:00:00Z",
+              "end_date": "2026-11-02T23:59:59Z",
+              "policy_published": {
+                "domain": "a.test",
+                "p": "none"
+              },
+              "records": [
+                {
+                  "row": {
+                    "source_ip": "192.0.2.1",
+                    "count": 12,
+                    "policy_evaluated": {
+                      "disposition": "none",
+                      "dkim": "pass",
+                      "spf": "fail"
+                    }
+                  },
+                  "identifiers": {
+                    "header_from": "a.test"
+                  },
+                  "auth_results": {
+                    "dkim": [
+                      {
+                        "domain": "a.test",
+                        "selector": "mail",
+                        "result": "pass"
+                      }
+                    ]
+                  }
+                }
+              ],
+              "received_at": "2026-11-03T00:00:00Z"
+            }
+          ],
+          "pagination": {
+            "has_more": false,
+            "total": 1
           }
         },
         "mediaType": "application/json"

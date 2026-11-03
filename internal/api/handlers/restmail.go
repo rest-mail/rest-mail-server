@@ -373,7 +373,7 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput) (Res
 		// the pipeline. Combined with the engine's per-filter timeout backstop, a
 		// hung filter on this path is bounded even though there is no outer
 		// delivery deadline here.
-		result, err := h.engine.Execute(r.Context(), pipelineCfg, emailJSON)
+		result, err := h.engine.Execute(pipeline.WithDB(r.Context(), h.db), pipelineCfg, emailJSON)
 		if err != nil {
 			// Fail-CLOSED on a pipeline error (OSI-18): temp-fail so the peer
 			// retries rather than delivering mail that skipped inbound filtering.
@@ -838,7 +838,7 @@ func (h *RestmailHandler) inboundPipeline(ctx context.Context, domainName string
 		return nil, fmt.Errorf("decode inbound pipeline: %w", err)
 	}
 	return &pipeline.PipelineConfig{ID: stored.ID, DomainID: stored.DomainID,
-		Direction: stored.Direction, Filters: pipeline.WithVacationStep(filters), Active: stored.Active}, nil
+		Direction: stored.Direction, Filters: pipeline.WithDMARCReportsStep(pipeline.WithVacationStep(filters)), Active: stored.Active}, nil
 }
 
 func restmailReadRefusal(stage string) error {

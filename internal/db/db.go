@@ -132,6 +132,7 @@ func autoMigrate(db *gorm.DB) error {
 		&models.DomainRelay{},
 		// TLS-RPT (RFC 8460) reports
 		&models.TLSReport{},
+		&models.DMARCReportReceived{},
 		// Calendar event lifecycle tracking
 		&models.CalendarEventVersion{},
 		// Roles, their capabilities, and the grants that give them to accounts

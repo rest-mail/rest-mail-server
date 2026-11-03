@@ -802,6 +802,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		mtastsH.Register(admin, policyChecks)
 		relayH.Register(admin, policyChecks)
 		tlsrptH.Register(admin, policyChecks)
+		handlers.NewDMARCReportHandler(db).Register(admin, describedCapability(needsOnList))
 
 		// DKIM and certificates retain their existing capability scopes.
 		dkimH.Register(admin, handlers.DKIMRouteChecks{

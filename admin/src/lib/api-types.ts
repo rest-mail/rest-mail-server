@@ -1160,6 +1160,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/dmarc-reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List received DMARC aggregate reports
+         * @description Domain-scoped administrators read only their own domains' reports and pagination totals. Installation-wide access requires domains:read at *. Domain and reporter filters intersect that scope. Reports are received by mail, not by this API.
+         */
+        get: operations["listDmarcReports"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/dmarc-reports/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read a received DMARC aggregate report
+         * @description Requires domains:read for the report's domain. A missing report and a report outside the caller's domain scope both return 404.
+         */
+        get: operations["getDmarcReport"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/domains": {
         parameters: {
             query?: never;
@@ -3101,6 +3141,79 @@ export interface components {
             /** Format: date-time */
             updated_at: string;
         };
+        DMARCReceivedAuthResults: {
+            dkim?: components["schemas"]["DMARCReceivedDKIM"][];
+            spf?: components["schemas"]["DMARCReceivedSPF"][];
+        };
+        DMARCReceivedDKIM: {
+            domain: string;
+            human_result?: string;
+            result: string;
+            selector?: string;
+        };
+        DMARCReceivedEvaluation: {
+            /** @enum {string} */
+            disposition: "none" | "pass" | "quarantine" | "reject";
+            /** @enum {string} */
+            dkim: "pass" | "fail";
+            reasons?: components["schemas"]["DMARCReceivedReason"][];
+            /** @enum {string} */
+            spf: "pass" | "fail";
+        };
+        DMARCReceivedIdentifiers: {
+            envelope_from?: string;
+            envelope_to?: string;
+            header_from: string;
+        };
+        DMARCReceivedPolicy: {
+            adkim?: string;
+            aspf?: string;
+            discovery_method?: string;
+            domain: string;
+            fo?: string;
+            np?: string;
+            /** @enum {string} */
+            p: "none" | "quarantine" | "reject";
+            pct?: number | null;
+            sp?: string;
+            testing?: string;
+        };
+        DMARCReceivedReason: {
+            comment?: string;
+            type: string;
+        };
+        DMARCReceivedRecord: {
+            auth_results: components["schemas"]["DMARCReceivedAuthResults"];
+            identifiers: components["schemas"]["DMARCReceivedIdentifiers"];
+            row: components["schemas"]["DMARCReceivedRow"];
+        };
+        DMARCReceivedRow: {
+            /** Format: int64 */
+            count: number;
+            policy_evaluated: components["schemas"]["DMARCReceivedEvaluation"];
+            source_ip: string;
+        };
+        DMARCReceivedSPF: {
+            domain: string;
+            human_result?: string;
+            result: string;
+            scope?: string;
+        };
+        DMARCReport: {
+            domain_id: number;
+            /** Format: date-time */
+            end_date: string;
+            id: number;
+            policy_published: components["schemas"]["DMARCReceivedPolicy"];
+            /** Format: date-time */
+            received_at: string;
+            records: components["schemas"]["DMARCReceivedRecord"][];
+            report_id: string;
+            reporter: string;
+            reporting_org: string;
+            /** Format: date-time */
+            start_date: string;
+        };
         DNSRecordCheck: {
             message?: string;
             name: string;
@@ -3152,6 +3265,9 @@ export interface components {
         };
         "Data-CustomFilter": {
             data: components["schemas"]["CustomFilter"];
+        };
+        "Data-DMARCReport": {
+            data: components["schemas"]["DMARCReport"];
         };
         "Data-DashboardStats": {
             data: components["schemas"]["DashboardStats"];
@@ -3565,6 +3681,10 @@ export interface components {
         };
         "List-CustomFilter": {
             data: components["schemas"]["CustomFilter"][];
+            pagination?: components["schemas"]["Pagination"] | null;
+        };
+        "List-DMARCReport": {
+            data: components["schemas"]["DMARCReport"][];
             pagination?: components["schemas"]["Pagination"] | null;
         };
         "List-DeliveryLogEntry": {
@@ -13625,6 +13745,193 @@ export interface operations {
                 };
             };
             /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused API keys, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After": number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listDmarcReports: {
+        parameters: {
+            query?: {
+                domain_id?: number;
+                /** @description Case-insensitive substring of the authenticated reporter domain; SQL wildcard characters are literal. */
+                reporter?: string;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["List-DMARCReport"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused API keys, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After": number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getDmarcReport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-DMARCReport"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
             413: {
                 headers: {
                     [name: string]: unknown;

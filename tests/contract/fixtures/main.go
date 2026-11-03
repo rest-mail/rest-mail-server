@@ -66,6 +66,9 @@ func main() {
 			if err == nil {
 				err = prepareHeldMail(database, *domain)
 			}
+			if err == nil {
+				err = prepareDMARCReport(database, *domain)
+			}
 		}
 	}
 	if err != nil {

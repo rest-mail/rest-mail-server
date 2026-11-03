@@ -133,6 +133,7 @@ func TestRESTMAILDeliver_RunsEachRecipientsSieveScript(t *testing.T) {
 		// The API registers the vacation filter with its database at startup (routes.go); this
 		// engine has its own registry, so the global one is left alone.
 		registry := pipeline.NewRegistry()
+		registry.Register("dmarc_reports_received", filters.NewDMARCReportsReceived)
 		registry.Register("sieve", filters.NewSieve)
 		registry.Register("vacation", filters.NewVacation(db))
 		vacation := pipeline.FilterConfig{Name: "vacation", Type: pipeline.FilterTypeAction, Enabled: true, Config: json.RawMessage(`{}`)}
