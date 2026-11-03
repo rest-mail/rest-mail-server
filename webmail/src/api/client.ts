@@ -647,3 +647,41 @@ export async function deleteFolder(accountId: number, folderName: string): Promi
     method: 'DELETE',
   });
 }
+
+// ── App passwords ──
+// A mail app (IMAP/SMTP) signs in with the mailbox's address and an app
+// password; an account with two-factor authentication must use one. The types
+// come from the served openapi.json so the build fails if they drift.
+
+export type AppPassword =
+  paths['/api/v1/accounts/{id}/credentials']['get']['responses'][200]['content']['application/json']['data'][number];
+export type CreatedAppPassword =
+  paths['/api/v1/accounts/{id}/credentials']['post']['responses'][201]['content']['application/json']['data'];
+type CreateAppPasswordBody =
+  NonNullable<paths['/api/v1/accounts/{id}/credentials']['post']['requestBody']>['content']['application/json'];
+
+/** The account's app passwords that are not revoked, newest first. Never a secret. */
+export async function listAppPasswords(accountId: number): Promise<{ data: AppPassword[] }> {
+  return request(`${BASE}/accounts/${accountId}/credentials`);
+}
+
+/**
+ * Make an app password. The answer holds `password`, the only time it is ever
+ * shown. Needs a recent two-factor sign-in (403 two_factor_required or
+ * recent_two_factor_required) and the current password entered again (403
+ * reauth_required or invalid_password).
+ */
+export async function createAppPassword(
+  accountId: number,
+  body: CreateAppPasswordBody & { password: string },
+): Promise<{ data: CreatedAppPassword }> {
+  return request(`${BASE}/accounts/${accountId}/credentials`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+/** Revoke an app password (204): the next use of it is refused. */
+export async function revokeAppPassword(accountId: number, credentialId: number): Promise<void> {
+  await requestNoContent(`${BASE}/accounts/${accountId}/credentials/${credentialId}`, { method: 'DELETE' });
+}

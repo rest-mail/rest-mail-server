@@ -160,7 +160,8 @@ export function TwoFactorView() {
             !disabling ? (
               <div className="flex items-center justify-between gap-4">
                 <p className="text-sm text-muted-foreground">
-                  Two-factor authentication is protecting your account.
+                  Two-factor authentication is protecting your account. A mail app needs an app
+                  password from App Passwords below, not your own password.
                 </p>
                 <Button
                   variant="outline"

@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { VacationView } from '@/components/settings/VacationView';
 import { TwoFactorView } from '@/components/settings/TwoFactorView';
+import { AppPasswordsView } from '@/components/settings/AppPasswordsView';
 import { Settings, Bell, Users, LayoutPanelTop, MonitorCheck, Trash2, ShieldCheck, Palette, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -52,7 +53,12 @@ export function SettingsView() {
       <div className="flex-1 overflow-auto p-6">
         {tab === 'general'       && <GeneralTab />}
         {tab === 'accounts'      && <AccountsTab />}
-        {tab === 'security'      && <TwoFactorView />}
+        {tab === 'security'      && (
+          <div className="max-w-2xl space-y-6">
+            <TwoFactorView />
+            <AppPasswordsView />
+          </div>
+        )}
         {tab === 'notifications' && <NotificationsTab />}
       </div>
     </div>
