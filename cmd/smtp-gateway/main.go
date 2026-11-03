@@ -23,6 +23,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/gateway/tlsutil"
 	"github.com/rest-mail/rest-mail-server/internal/grants"
 	"github.com/rest-mail/rest-mail-server/internal/sendlimits"
+	"github.com/rest-mail/rest-mail-server/internal/srs"
 )
 
 // loadCACert adds the PEM CA bundle at path to the gateway's outbound HTTP
@@ -200,6 +201,11 @@ func main() {
 	limiter.SetProtocol("smtp")
 	bancheck.Wire(limiter, database, "smtp")
 	smtpServer := smtpgw.NewServer(cfg.GatewayHostname, api, tlsConfig, smtpgw.NewLimitedStore(database, cfg.MasterKey, sendlimits.FromConfig(cfg.SendLimits)), limiter)
+	// #775: forwards leave with an SRS address as their sender, and a bounce to one is
+	// checked at RCPT. ValidateListenerSecurity refuses a production gateway without
+	// a secret; elsewhere forwards keep their sender and such a bounce is refused.
+	srsSigner := srs.New(cfg.SRSSecret, cfg.SRSPreviousSecret)
+	smtpServer.SetSRS(srsSigner, cfg.BounceDSNMaxPerRecipient, cfg.BounceDSNRateWindow)
 	smtpServer.SetMaxMessageSize(cfg.SMTPMaxMessageSize)
 	slog.Info("SMTP max message size configured", "max_message_size", cfg.SMTPMaxMessageSize)
 	if warn := cfg.SMTPMaxMessageSizeWarning(); warn != "" {
@@ -245,6 +251,7 @@ func main() {
 	// #171: the worker DKIM-signs outbound mail that arrived unsigned (SMTP
 	// submission), which needs the key to decrypt the domain's at-rest DKIM key.
 	queueWorker.SetMasterKey(cfg.MasterKey)
+	queueWorker.SetSRS(srsSigner)
 	queueWorker.SetMTASTSEnforce(cfg.MTASTSEnforce)
 	// #725: DANE needs a validating resolver on this host; a wrong address stops the
 	// gateway rather than silently sending without DANE.

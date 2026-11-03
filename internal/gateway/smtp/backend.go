@@ -1,6 +1,10 @@
 package smtp
 
-import "github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
+import (
+	"time"
+
+	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
+)
 
 // Backend is the exact set of REST API operations the SMTP gateway depends on.
 // It is deliberately narrow: only the methods this protocol actually calls.
@@ -51,6 +55,12 @@ type Store interface {
 	// EnqueueOutbound appends a message to the outbound delivery queue for the
 	// queue worker to deliver to a remote MX.
 	EnqueueOutbound(msg OutboundMessage) error
+	// HostedDomain reports whether this server hosts the domain.
+	HostedDomain(domain string) (bool, error)
+	// RelayBounce queues a bounce that came back to an SRS address for the sender
+	// that address carries, with a null reverse path (#775). Past the limit it
+	// queues nothing and reports no error, as a DSN over the limit is dropped.
+	RelayBounce(msg BounceRelay) error
 	// SendingPolicy is the sending policy of the domain an address is on
 	// (models.SendingPolicyBulk, models.SendingPolicyTransactional), or "" when
 	// it has none or is not a domain this server hosts (#144).
@@ -86,6 +96,18 @@ type OutboundMessage struct {
 	MessageID *uint
 	// RequireTLS is the REQUIRETLS tag of the MAIL FROM it came with (RFC 8689 §4.1).
 	RequireTLS bool
+}
+
+// BounceRelay is a bounce to pass on to the sender of mail this server forwarded.
+type BounceRelay struct {
+	Recipient     string // the original sender, from the SRS address
+	SendingDomain string // the hosted domain the SRS address is under
+	RawMessage    string
+	BodyType      string
+	// MaxPerRecipient and Window are the per-recipient DSN limit (#715). A
+	// non-positive MaxPerRecipient means no limit.
+	MaxPerRecipient int
+	Window          time.Duration
 }
 
 // SubmittedMessage is a neutral description of an authenticated submission the

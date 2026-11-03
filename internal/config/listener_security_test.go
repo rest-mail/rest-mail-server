@@ -22,6 +22,7 @@ func secureGatewayCfg(env string) *Config {
 		APIHost:               "0.0.0.0",
 		APIPort:               8080,
 		InternalMTLSEnabled:   true,
+		SRSSecret:             strings.Repeat("f", MinSRSSecretLength),
 	}
 }
 
@@ -97,7 +98,9 @@ func TestValidateListenerSecurity_GatewayWithCert_Production(t *testing.T) {
 func TestValidateListenerSecurity_GatewayNoPortsNoCert(t *testing.T) {
 	clearEnv(t)
 	t.Setenv("DB_SSLMODE", "require")
-	cfg := &Config{Environment: "production"} // all ports zero, no cert
+	// All ports zero, no cert. The queue worker still runs and still needs its
+	// SRS secret: that is not a listener's.
+	cfg := &Config{Environment: "production", SRSSecret: strings.Repeat("f", MinSRSSecretLength)}
 
 	for _, gr := range gatewayRoles {
 		if err := cfg.ValidateListenerSecurity(gr.role); err != nil {

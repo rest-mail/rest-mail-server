@@ -461,6 +461,7 @@ assert_contains "to the sidecar's Service"           "$tmp/api-deploy.yaml" 'val
 assert_contains "the sidecar checks it"              "$tmp/jsf-deploy.yaml" 'key: JS_FILTER_TOKEN'
 assert_absent   "and gets no other secret"           "$tmp/jsf-deploy.yaml" 'key: JWT_SECRET'
 assert_absent   "nor the master key"                 "$tmp/jsf-deploy.yaml" 'key: MASTER_KEY'
+assert_absent   "nor the SRS secret"                 "$tmp/jsf-deploy.yaml" 'key: SRS_SECRET'
 # Exactly one peer may reach it: the API's pods.
 [ "$(grep -c -- '- podSelector:' "$tmp/jsf-np.yaml")" = 1 ] || fail "the sidecar's NetworkPolicy admits more than one peer"
 grep -A4 -- '- podSelector:' "$tmp/jsf-np.yaml" | grep -q 'app.kubernetes.io/component: api$' ||
@@ -522,6 +523,16 @@ secret "$tmp/bare.yaml" restmail-api      > "$tmp/api-secret.yaml"
 secret "$tmp/bare.yaml" restmail-postgres > "$tmp/pg-secret.yaml"
 assert_contains "the API's Secret is made"       "$tmp/api-secret.yaml" 'JWT_SECRET:'
 assert_contains "with a MASTER_KEY"              "$tmp/api-secret.yaml" 'MASTER_KEY:'
+assert_contains "with an SRS_SECRET"             "$tmp/api-secret.yaml" 'SRS_SECRET:'
+# A previous SRS secret only comes from a rotation, never from an install.
+assert_absent   "and no previous SRS secret"     "$tmp/api-secret.yaml" 'SRS_PREVIOUS_SECRET:'
+doc "$tmp/bare.yaml" Deployment restmail-smtp-gateway > "$tmp/smtp-deploy-srs.yaml"
+assert_contains "the SMTP gateway signs with it" "$tmp/smtp-deploy-srs.yaml" 'key: SRS_SECRET'
+grep -A1 'key: SRS_PREVIOUS_SECRET' "$tmp/smtp-deploy-srs.yaml" | grep -q 'optional: true' ||
+  fail "the previous SRS secret is not optional, so a Secret without one would stop the gateway"
+pass "the previous SRS secret is optional"
+doc "$tmp/bare.yaml" Deployment restmail-api > "$tmp/api-deploy-srs.yaml"
+assert_absent   "the API does not get it"        "$tmp/api-deploy-srs.yaml" 'key: SRS_SECRET'
 assert_contains "Postgres's Secret is made"      "$tmp/pg-secret.yaml"  'POSTGRES_PASSWORD:'
 assert_contains "for user restmail"              "$tmp/pg-secret.yaml"  'POSTGRES_USER: "restmail"'
 # MASTER_KEY must survive an uninstall: a new one makes stored keys unreadable.

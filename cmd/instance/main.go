@@ -41,6 +41,8 @@ func main() {
 		renderCmd(os.Args[2:])
 	case "scaffold":
 		scaffoldCmd(os.Args[2:])
+	case "srs-rotate":
+		srsRotateCmd(os.Args[2:])
 	case "dns-env":
 		dnsEnvCmd(os.Args[2:])
 	case "domains":
@@ -133,6 +135,10 @@ usage:
       Flatten a manifest into a config.env (Taskfile var names).
       -o     output path (default: <manifest-dir>/config.env)
       -check don't write; exit non-zero if the target is missing or stale
+
+  instance srs-rotate <secrets.env>
+      Give an instance a new SRS secret, keeping the old one as the previous
+      one, so addresses in flight stay valid. Restart the SMTP gateway after.
 
   instance scaffold [-dir config] [-profile testbed|host] <domain>
       Create config/<domain>/{manifest.yml,config.env,secrets.env} with
@@ -294,6 +300,52 @@ func scaffoldCmd(args []string) {
 		fmt.Fprintf(os.Stderr, "  %-13s %s\n", name, ip)
 	}
 	fmt.Fprintf(os.Stderr, "  files: %s/{manifest.yml,config.env,secrets.env}\n", target)
+}
+
+// srsRotateCmd gives an instance a new SRS secret in its secrets.env, keeping the
+// old one as the previous one (#775). It never prints a secret. The SMTP gateway
+// reads the file's values when it starts, so it takes effect at the next restart.
+func srsRotateCmd(args []string) {
+	if len(args) != 1 {
+		fmt.Fprintln(os.Stderr, "instance srs-rotate: exactly one <secrets.env> is required")
+		os.Exit(2)
+	}
+	path := args[0]
+	secrets, err := os.ReadFile(path)
+	if err != nil {
+		fatal("srs-rotate: %v", err)
+	}
+	rotated, err := instance.RotateSRSSecret(secrets)
+	if err != nil {
+		fatal("srs-rotate: %v", err)
+	}
+	if err := writeFileAtomic0600(path, rotated); err != nil {
+		fatal("srs-rotate: %v", err)
+	}
+	fmt.Fprintf(os.Stderr, "rotated the SRS secret in %s; restart the SMTP gateway to use it\n", path)
+}
+
+// writeFileAtomic0600 replaces path in one step, so a failure leaves the old file
+// whole, and the new one readable only by its owner from the moment it exists.
+func writeFileAtomic0600(path string, data []byte) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return err
+	}
+	// After a successful rename there is nothing left to remove.
+	defer func() { _ = os.Remove(tmp.Name()) }()
+	if err := tmp.Chmod(0o600); err != nil {
+		tmp.Close()
+		return err
+	}
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), path)
 }
 
 // writeScaffold writes the three scaffolded instance files under target.

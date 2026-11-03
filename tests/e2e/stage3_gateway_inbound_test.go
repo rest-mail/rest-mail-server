@@ -46,6 +46,22 @@ func testStage3GatewayInbound(t *testing.T) {
 		t.Logf("Message delivered via gateway: id=%d", msgID)
 	})
 
+	t.Run("Mail3_RefusesForgedSRSAddress", func(t *testing.T) {
+		sc := dialSMTP(t, restmailSMTPAddr)
+		defer sc.close()
+
+		sc.starttlsIfOffered(t, "test.local")
+		sc.sendExpect(t, "MAIL FROM:<>", "250")
+
+		// A bounce to an SRS address this server did not sign gets what an unknown
+		// recipient gets (#775). The hash is not the address's own.
+		sc.send(t, "RCPT TO:<SRS0=AAAA=AA=orig.example=alice@restmail.test>")
+		resp := sc.readLine(t)
+		if !strings.HasPrefix(resp, "550 5.1.1") {
+			t.Fatalf("RCPT to a forged SRS address = %q, want 550 5.1.1", resp)
+		}
+	})
+
 	t.Run("Mail3_RejectsUnknownRecipient", func(t *testing.T) {
 		sc := dialSMTP(t, restmailSMTPAddr)
 		defer sc.close()

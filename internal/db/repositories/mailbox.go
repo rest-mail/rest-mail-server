@@ -67,6 +67,21 @@ func FindMailboxByAddress(db *gorm.DB, address string, mailbox *models.Mailbox) 
 	return nil
 }
 
+// IsHostedDomain reports whether this server hosts the domain. Any spelling of the
+// domain finds it, a Unicode one included, and a name that is not a domain is
+// simply not hosted. A domain out of service for now is still hosted here.
+func IsHostedDomain(db *gorm.DB, domain string) (bool, error) {
+	ascii, err := rmail.DomainASCII(domain)
+	if err != nil {
+		return false, nil
+	}
+	var n int64
+	if err := db.Model(&models.Domain{}).Where("name = ?", ascii).Count(&n).Error; err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
 // FindActiveMailboxByAddress resolves identity before checking activity. Filtering
 // out inactive rows during resolution could redirect an exact legacy spelling to
 // a different, active NFC-equivalent account.

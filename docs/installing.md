@@ -288,6 +288,11 @@ one. It does **not** roll back on its own if verify fails afterwards: a
 database migration may already have run, and the old version under a migrated
 database can be worse. It tells you what failed and the command to go back.
 
+An upgrade can need a new secret. The first version with SRS needs `SRS_SECRET`
+for the SMTP gateway: the chart's own Secret gets one by itself, and with
+`api.existingSecret` you add the key first. See
+[the operator manual](MANUAL.md#710-forwarding-and-the-srs-secret).
+
 ## Uninstalling keeps the mail
 
 ```bash

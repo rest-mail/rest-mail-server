@@ -49,6 +49,9 @@ vars:
   # SMTP-submitted outbound mail (#171). Default matches the API's default so a
   # standalone `chore smtp-gateway:up` shares the same key the API used to encrypt.
   SMTP_GATEWAY_MASTER_KEY: '{{.SMTP_GATEWAY_MASTER_KEY | default "dev-master-key-change-in-production"}}'
+  # Signs and checks the SRS addresses of forwards (#775).
+  SMTP_GATEWAY_SRS_SECRET: '{{.SMTP_GATEWAY_SRS_SECRET | default "dev-srs-secret-change-in-production-only"}}'
+  SMTP_GATEWAY_SRS_PREVIOUS_SECRET: '{{.SMTP_GATEWAY_SRS_PREVIOUS_SECRET | default ""}}'
   SMTP_GATEWAY_TLS_CERT_PATH: '{{.SMTP_GATEWAY_TLS_CERT_PATH | default "/certs/restmail.test.crt"}}'
   SMTP_GATEWAY_TLS_KEY_PATH: '{{.SMTP_GATEWAY_TLS_KEY_PATH | default "/certs/restmail.test.key"}}'
   # Max accepted SMTP message size in bytes. Empty = server default (10 MiB).
@@ -166,10 +169,10 @@ tasks:
         "{{.TASKFILE_DIR}}/stage-certs.sh" {{.SMTP_GATEWAY_OWN_CERTS_VOLUME}} 10001:10001 \
           "{{.SMTP_GATEWAY_CERTS_VOLUME}}:$(basename {{.SMTP_GATEWAY_TLS_CERT_PATH}}),$(basename {{.SMTP_GATEWAY_TLS_KEY_PATH}}),ca.crt?" \
           $INTERNAL || exit 1
-        # Secrets (DB_PASS/MASTER_KEY) go through a 0600 env-file rather than -e
-        # flags, so they never sit on the `docker run` command line (host process
-        # list, shell history, CI logs). MASTER_KEY decrypts at-rest DKIM keys so
-        # the queue worker can DKIM-sign SMTP-submitted outbound mail (#171).
+        # Secrets (DB_PASS/MASTER_KEY/SRS_SECRET) go through a 0600 env-file rather
+        # than -e flags, so they never sit on the `docker run` command line (host
+        # process list, shell history, CI logs). MASTER_KEY decrypts at-rest DKIM keys
+        # so the queue worker can DKIM-sign SMTP-submitted outbound mail (#171).
         # Removed once docker has read it.
         mkdir -p {{.ROOT_DIR}}/.cache
         SECRETS_ENV="{{.ROOT_DIR}}/.cache/{{.SMTP_GATEWAY_CONTAINER_NAME}}.secrets.env"
@@ -180,6 +183,8 @@ tasks:
         chmod 600 "$SECRETS_ENV"
         printf 'DB_PASS=%s\n'    "{{.SMTP_GATEWAY_DB_PASS}}"    >  "$SECRETS_ENV"
         printf 'MASTER_KEY=%s\n' "{{.SMTP_GATEWAY_MASTER_KEY}}" >> "$SECRETS_ENV"
+        printf 'SRS_SECRET=%s\n' "{{.SMTP_GATEWAY_SRS_SECRET}}" >> "$SECRETS_ENV"
+        printf 'SRS_PREVIOUS_SECRET=%s\n' "{{.SMTP_GATEWAY_SRS_PREVIOUS_SECRET}}" >> "$SECRETS_ENV"
         docker run -d --name {{.SMTP_GATEWAY_CONTAINER_NAME}} \
           $HARDENING \
           --hostname {{.SMTP_GATEWAY_RESTMAIL_HOSTNAME}} \

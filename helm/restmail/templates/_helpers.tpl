@@ -220,6 +220,24 @@ need them too — not just the API. Reused across api + all three gateways.
 {{- end -}}
 
 {{/*
+SRS secrets, sourced from the API Secret (#775). Only the SMTP gateway signs and
+checks SRS addresses. The previous one exists only after a rotation.
+*/}}
+{{- define "restmail.srsEnv" -}}
+- name: SRS_SECRET
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "restmail.api.secretName" . }}
+      key: SRS_SECRET
+- name: SRS_PREVIOUS_SECRET
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "restmail.api.secretName" . }}
+      key: SRS_PREVIOUS_SECRET
+      optional: true
+{{- end -}}
+
+{{/*
 Pod DNS spec — applied to every pod template.
 */}}
 {{- define "restmail.dnsSpec" -}}

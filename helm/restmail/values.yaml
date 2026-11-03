@@ -202,13 +202,14 @@ api:
     repository: ghcr.io/rest-mail/api
     tag: ""        # falls back to .Chart.AppVersion when empty
     pullPolicy: ""
-  # Empty: the chart makes JWT_SECRET, MASTER_KEY and JS_FILTER_TOKEN itself,
+  # Empty: the chart makes JWT_SECRET, MASTER_KEY, JS_FILTER_TOKEN and SRS_SECRET itself,
   # keeps them across upgrades, and keeps them when uninstalled
   # (templates/api-secret.yaml) — nothing to prepare. MASTER_KEY encrypts
   # private keys at rest, so it must never change. Or name a Secret you manage,
-  # with keys JWT_SECRET, MASTER_KEY and JS_FILTER_TOKEN (any random string of
-  # 16 characters or more: the API and the JS filter sidecar both read it), and
-  # optionally BOOTSTRAP_ADMIN_PASSWORD. Tools that render without a cluster
+  # with keys JWT_SECRET, MASTER_KEY, JS_FILTER_TOKEN (any random string of
+  # 16 characters or more: the API and the JS filter sidecar both read it) and
+  # SRS_SECRET (32 bytes or more: the SMTP gateway signs forwards' SRS addresses
+  # with it), and optionally SRS_PREVIOUS_SECRET and BOOTSTRAP_ADMIN_PASSWORD. Tools that render without a cluster
   # (Argo CD, `helm template`) cannot keep generated values, so need this.
   existingSecret: ""
   # Only when the chart makes the Secret. Empty: generated once, then kept.

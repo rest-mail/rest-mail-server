@@ -134,8 +134,9 @@ POST. [Bulk mail](../security/bulk-mail.md#one-click).
 **SPF.** A DNS record listing which servers may send for a domain.
 [SPF](../security/spf.md).
 
-**SRS.** Rewriting a forwarded message's envelope sender, so SPF passes at the
-next hop. [SPF](../security/spf.md#why-forwarding-breaks-spf).
+**SRS.** Rewriting a forwarded message's envelope sender to an address of the
+forwarder's, so SPF passes at the next hop and a bounce comes back to the
+forwarder, which passes it on. [SPF](../security/spf.md#why-forwarding-breaks-spf).
 
 **STARTTLS.** Upgrading an SMTP, IMAP or POP3 connection to TLS.
 [Encryption in transit](../security/encryption-in-transit.md).

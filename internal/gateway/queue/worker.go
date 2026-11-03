@@ -27,6 +27,7 @@ import (
 	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
 	"github.com/rest-mail/rest-mail-server/internal/metrics"
 	"github.com/rest-mail/rest-mail-server/internal/outbound"
+	"github.com/rest-mail/rest-mail-server/internal/srs"
 	"github.com/rest-mail/rest-mail-server/internal/testreset"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -181,6 +182,9 @@ type Worker struct {
 	// signs an outbound message that arrived unsigned (SMTP submission, #171).
 	// Empty only when encryption is disabled (dev), where keys are plaintext.
 	masterKey string
+	// srs rewrites the envelope sender of a forward (#775); nil when no secret is
+	// configured.
+	srs *srs.Signer
 	// relayRoots replaces system trust for relay certificates; tests only.
 	relayRoots *x509.CertPool
 	// resolver answers the MX and address lookups delivery makes; nil is the
@@ -321,6 +325,46 @@ func (w *Worker) prepareOutbound(item models.OutboundQueue) (string, error) {
 		return raw, err
 	}
 	return outbound.SealARC(w.db, w.masterKey, sendsAs(item), raw, item.ARCResults, item.ARCChain)
+}
+
+// SetSRS gives the worker the signer that rewrites the envelope sender of a forward
+// (#775). Nil means no secret is configured: a forward then keeps its sender.
+func (w *Worker) SetSRS(signer *srs.Signer) {
+	w.srs = signer
+}
+
+// forwardSender is the sender a message's SMTP envelope carries. A forward whose
+// sender is not on a domain hosted here carries an SRS address under the forwarding
+// domain, so SPF at the next hop is checked against that domain (#775). The queue
+// row keeps the sender, so a failed forward is reported to them, and only SMTP
+// carries the address: a RESTMAIL delivery authenticates the sending server, not SPF.
+//
+// A row with ARC results is a forward (see models.OutboundQueue.ARCResults). A null
+// sender stays null (RFC 5321 §6.1). A failed domain lookup is an error, so the
+// message waits for a retry rather than leave with the wrong sender.
+func (w *Worker) forwardSender(item models.OutboundQueue) (string, error) {
+	if w.srs == nil || item.ARCResults == "" || item.Sender == "" {
+		return item.Sender, nil
+	}
+	hosted, err := repositories.IsHostedDomain(w.db, rmail.DomainFromAddress(item.Sender))
+	if err != nil {
+		return "", fmt.Errorf("check whether the sender's domain is hosted here: %w", err)
+	}
+	if hosted {
+		return item.Sender, nil
+	}
+	// An ASCII domain keeps a forward from needing SMTPUTF8 that the sender's own
+	// mail would not. A sender that fails this is refused by smtpEnvelope.
+	sender, err := rmail.SMTPAddressASCII(item.Sender)
+	if err != nil {
+		return item.Sender, nil
+	}
+	rewritten, err := w.srs.Rewrite(sender, item.SendingDomain, time.Now())
+	if err != nil {
+		slog.Warn("queue: forward keeps its sender, which SRS cannot carry", "id", item.ID, "error", err)
+		return item.Sender, nil
+	}
+	return rewritten, nil
 }
 
 // sendsAs is the hosted domain a queued message is sent as: the one the row
@@ -1479,6 +1523,9 @@ func (w *Worker) deliverSMTPWith(addr, host string, item models.OutboundQueue, s
 		return fmt.Errorf("prepare outbound message: %w", err)
 	}
 	item.RawMessage = prepared
+	if item.Sender, err = w.forwardSender(item); err != nil {
+		return err
+	}
 	sender, recipient, err := smtpEnvelope(item)
 	if err != nil {
 		return err
