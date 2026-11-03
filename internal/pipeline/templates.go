@@ -15,7 +15,7 @@ func DefaultInboundPipeline(domainID uint) *PipelineConfig {
 	return &PipelineConfig{
 		DomainID:  domainID,
 		Direction: "inbound",
-		Filters:   defaultInboundFilters(),
+		Filters:   WithDMARCReportsStep(defaultInboundFilters()),
 		Active:    true,
 		CreatedAt: now,
 		UpdatedAt: now,
@@ -47,7 +47,7 @@ func DefaultPipelineJSON(direction string) json.RawMessage {
 	var filters []FilterConfig
 	switch direction {
 	case "inbound":
-		filters = defaultInboundFilters()
+		filters = WithDMARCReportsStep(defaultInboundFilters())
 	case "outbound":
 		filters = defaultOutboundFilters()
 	default:
@@ -178,6 +178,22 @@ func WithVacationStep(steps []FilterConfig) []FilterConfig {
 		return append(out, vacation)
 	}
 	return append(out[:at:at], append([]FilterConfig{vacation}, out[at:]...)...)
+}
+
+func WithDMARCReportsStep(steps []FilterConfig) []FilterConfig {
+	required, content := []FilterConfig{}, []FilterConfig{}
+	for _, step := range steps {
+		if step.Name == "dmarc_reports_received" {
+			continue
+		}
+		if requiredChecks[step.Name] {
+			required = append(required, step)
+		} else {
+			content = append(content, step)
+		}
+	}
+	required = append(required, FilterConfig{Name: "dmarc_reports_received", Type: FilterTypeAction, Enabled: true, Unskippable: true, Config: json.RawMessage(`{}`)})
+	return append(required, content...)
 }
 
 func defaultOutboundFilters() []FilterConfig {

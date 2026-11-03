@@ -13149,6 +13149,193 @@ paths:
                       details:
                         fields:
                           body: the body is not a JSON object
+  /api/v1/admin/dmarc-reports:
+    get:
+      summary: List received DMARC aggregate reports
+      description: Domain-scoped administrators read only their own domains' reports
+        and pagination totals. Installation-wide access requires domains:read at *.
+        Domain and reporter filters intersect that scope. Reports are received by mail,
+        not by this API.
+      operationId: listDmarcReports
+      tags:
+      - 'Admin: Domain mail policy'
+      parameters:
+      - name: domain_id
+        in: query
+        required: false
+        schema:
+          minimum: 0
+          type: integer
+      - name: reporter
+        in: query
+        description: Case-insensitive substring of the authenticated reporter domain;
+          SQL wildcard characters are literal.
+        required: false
+        schema:
+          maxLength: 255
+          type: string
+      - name: limit
+        in: query
+        required: false
+        schema:
+          maximum: 200
+          type: integer
+      - name: offset
+        in: query
+        required: false
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/List-DMARCReport'
+        '401':
+          description: 'unauthorized: no token, a bad one, or a session that has ended'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: 'Refused before the handler runs: setup_required (the account
+            has not finished setup), csrf_failed (a cookie session''s unsafe request
+            without the CSRF header) or forbidden (the session lacks the capability)'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '413':
+          description: 'request_too_large: the body is over the API''s size cap'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '429':
+          description: 'rate_limited: refused API keys, throttled at login''s rate'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Retry-After:
+              description: Seconds until a request may be made again
+              required: true
+              schema:
+                type: integer
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: 'unavailable: the session or grants check could not be made'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      security:
+      - CookieAuth:
+        - domains:read
+      - BearerAuth:
+        - domains:read
+      - APIKeyAuth:
+        - domains:read
+  /api/v1/admin/dmarc-reports/{id}:
+    get:
+      summary: Read a received DMARC aggregate report
+      description: Requires domains:read for the report's domain. A missing report and
+        a report outside the caller's domain scope both return 404.
+      operationId: getDmarcReport
+      tags:
+      - 'Admin: Domain mail policy'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          minimum: 1
+          type: integer
+        example: 1
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Data-DMARCReport'
+        '401':
+          description: 'unauthorized: no token, a bad one, or a session that has ended'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: 'Refused before the handler runs: setup_required (the account
+            has not finished setup), csrf_failed (a cookie session''s unsafe request
+            without the CSRF header) or forbidden (the session lacks the capability)'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '413':
+          description: 'request_too_large: the body is over the API''s size cap'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '429':
+          description: 'rate_limited: refused API keys, throttled at login''s rate'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Retry-After:
+              description: Seconds until a request may be made again
+              required: true
+              schema:
+                type: integer
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: 'unavailable: the session or grants check could not be made'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      security:
+      - CookieAuth:
+        - domains:read
+      - BearerAuth:
+        - domains:read
+      - APIKeyAuth:
+        - domains:read
+
   /api/v1/admin/tls-reports:
     get:
       operationId: listTlsReports
@@ -17686,6 +17873,267 @@ components:
     # ─────────────────────────────────────────────────────────────
     # Admin: TLS-RPT
     # ─────────────────────────────────────────────────────────────
+    List-DMARCReport:
+      additionalProperties: false
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/DMARCReport'
+          type: array
+        pagination:
+          oneOf:
+          - type: object
+            additionalProperties: false
+            required: [has_more]
+            properties:
+              cursor:
+                type: string
+              total:
+                format: int64
+                type: integer
+              has_more:
+                type: boolean
+          - type: 'null'
+      required:
+      - data
+      type: object
+    DMARCReport:
+      additionalProperties: false
+      properties:
+        domain_id:
+          type: integer
+        end_date:
+          format: date-time
+          type: string
+        id:
+          type: integer
+        policy_published:
+          $ref: '#/components/schemas/DMARCReceivedPolicy'
+        received_at:
+          format: date-time
+          type: string
+        records:
+          items:
+            $ref: '#/components/schemas/DMARCReceivedRecord'
+          maxItems: 100
+          minItems: 1
+          type: array
+        report_id:
+          maxLength: 255
+          type: string
+        reporter:
+          maxLength: 255
+          type: string
+        reporting_org:
+          maxLength: 255
+          type: string
+        start_date:
+          format: date-time
+          type: string
+      required:
+      - id
+      - domain_id
+      - reporter
+      - reporting_org
+      - report_id
+      - start_date
+      - end_date
+      - policy_published
+      - records
+      - received_at
+      type: object
+    DMARCReceivedPolicy:
+      additionalProperties: false
+      properties:
+        adkim:
+          maxLength: 1
+          type: string
+        aspf:
+          maxLength: 1
+          type: string
+        discovery_method:
+          maxLength: 32
+          type: string
+        domain:
+          maxLength: 255
+          type: string
+        fo:
+          maxLength: 32
+          type: string
+        np:
+          maxLength: 10
+          type: string
+        p:
+          enum:
+          - none
+          - quarantine
+          - reject
+          type: string
+        pct:
+          maximum: 100
+          type:
+          - integer
+          - 'null'
+        sp:
+          maxLength: 10
+          type: string
+        testing:
+          maxLength: 1
+          type: string
+      required:
+      - domain
+      - p
+      type: object
+    DMARCReceivedRecord:
+      additionalProperties: false
+      properties:
+        auth_results:
+          $ref: '#/components/schemas/DMARCReceivedAuthResults'
+        identifiers:
+          $ref: '#/components/schemas/DMARCReceivedIdentifiers'
+        row:
+          $ref: '#/components/schemas/DMARCReceivedRow'
+      required:
+      - row
+      - identifiers
+      - auth_results
+      type: object
+    DMARCReceivedAuthResults:
+      additionalProperties: false
+      properties:
+        dkim:
+          items:
+            $ref: '#/components/schemas/DMARCReceivedDKIM'
+          maxItems: 10
+          type: array
+        spf:
+          items:
+            $ref: '#/components/schemas/DMARCReceivedSPF'
+          maxItems: 10
+          type: array
+      type: object
+    DMARCReceivedDKIM:
+      additionalProperties: false
+      properties:
+        domain:
+          maxLength: 255
+          type: string
+        human_result:
+          maxLength: 1024
+          type: string
+        result:
+          maxLength: 32
+          type: string
+        selector:
+          maxLength: 255
+          type: string
+      required:
+      - domain
+      - result
+      type: object
+    DMARCReceivedSPF:
+      additionalProperties: false
+      properties:
+        domain:
+          maxLength: 255
+          type: string
+        human_result:
+          maxLength: 1024
+          type: string
+        result:
+          maxLength: 32
+          type: string
+        scope:
+          maxLength: 32
+          type: string
+      required:
+      - domain
+      - result
+      type: object
+    DMARCReceivedIdentifiers:
+      additionalProperties: false
+      properties:
+        envelope_from:
+          maxLength: 1024
+          type: string
+        envelope_to:
+          maxLength: 1024
+          type: string
+        header_from:
+          maxLength: 255
+          type: string
+      required:
+      - header_from
+      type: object
+    DMARCReceivedRow:
+      additionalProperties: false
+      properties:
+        count:
+          format: int64
+          maximum: 9007199254740991
+          minimum: 1
+          type: integer
+        policy_evaluated:
+          $ref: '#/components/schemas/DMARCReceivedEvaluation'
+        source_ip:
+          maxLength: 45
+          type: string
+      required:
+      - source_ip
+      - count
+      - policy_evaluated
+      type: object
+    DMARCReceivedEvaluation:
+      additionalProperties: false
+      properties:
+        disposition:
+          enum:
+          - none
+          - pass
+          - quarantine
+          - reject
+          type: string
+        dkim:
+          enum:
+          - pass
+          - fail
+          type: string
+        reasons:
+          items:
+            "$ref": "#/components/schemas/DMARCReceivedReason"
+          maxItems: 10
+          type: array
+        spf:
+          enum:
+          - pass
+          - fail
+          type: string
+      required:
+      - disposition
+      - dkim
+      - spf
+      type: object
+    DMARCReceivedReason:
+      additionalProperties: false
+      properties:
+        comment:
+          maxLength: 1024
+          type: string
+        type:
+          maxLength: 1024
+          type: string
+      required:
+      - type
+      type: object
+    Data-DMARCReport:
+      additionalProperties: false
+      properties:
+        data:
+          $ref: '#/components/schemas/DMARCReport'
+      required:
+      - data
+      type: object
+
     TLSReport:
       type: object
       required: [id, domain_id, reporting_org, start_date, end_date, policy_type, policy_domain, received_at]

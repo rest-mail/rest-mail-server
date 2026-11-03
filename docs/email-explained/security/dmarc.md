@@ -180,9 +180,14 @@ and look for `dmarc=pass` in its `Authentication-Results`.
   it ([RFC 8020](https://www.rfc-editor.org/rfc/rfc8020)); Go's resolver
   reports NXDOMAIN and an empty answer alike, so REST Mail asks the DNS servers
   itself and reads the response code
-  ([`nxdomain.go`](../../../internal/nxdomain/nxdomain.go)). Receiving aggregate reports for REST Mail's own
-  domains is still to come
-  ([#730](https://github.com/rest-mail/rest-mail-server/issues/730)).
+  ([`nxdomain.go`](../../../internal/nxdomain/nxdomain.go)). REST Mail also receives
+  aggregate reports for its own domains at the published `postmaster@<domain>`
+  address. An inbound pipeline step stores bounded RFC 7489 and RFC 9990 XML
+  reports only when the report mail itself passes aligned DMARC; gzip and zip
+  attachments are supported. The mail still reaches postmaster, including when
+  the report is invalid or too large. Administrators can list and inspect the
+  reports through the API, restricted to their domains. The mobile report screen
+  remains separate work ([#730](https://github.com/rest-mail/rest-mail-server/issues/730)).
 
 ## Sources
 

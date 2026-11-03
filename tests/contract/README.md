@@ -1392,3 +1392,25 @@ It skips rather than redirects: vertrag reports the id it drew, not a path a
 hook rewrote. Documented refusals, other ids and other principals are sent
 unchanged. `test_own_account_hooks.py` covers it through the configured
 entrypoint.
+
+## Received DMARC reports
+
+The fixture command seeds one typed received report for `restmail.test` with
+authenticated reporter `reporter.test` and report ID `daily-1`. Repeating setup
+keeps the same row through the production `(reporter, report_id)` unique index.
+There is no HTTP report intake to call for setup: SMTP ingestion is proven by
+the server's mail-delivery tests instead.
+
+Domain-grant variants live in `internal/examplepairs/example-matrix.json`.
+Published credential refusals declare their principal prerequisites, so an
+ordinary administrator replay never expects an anonymous or no-capability answer.
+
+`dmarc_report_hooks.py`, loaded by `entrypoint.py`, locates that existing report
+for authenticated `getDmarcReport` successes whose illustrative ID is 1. It
+changes only that resource ID. Refusals, absent credentials, other IDs and invalid
+boundary probes remain untouched; fixture absence fails rather than adding a
+skipped coverage probe. The report-list filters and pagination are sent as
+written. `test_dmarc_report_hooks.py` proves preservation of the principal,
+expected response and invalid probes, and `fixtures/dmarc_test.go` proves
+repeat-safe setup on an isolated database. No skipped-probe baseline increase
+is needed.
