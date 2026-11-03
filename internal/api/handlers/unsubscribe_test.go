@@ -131,8 +131,9 @@ func TestOneClickPoster_DialRefusesPrivateAddresses(t *testing.T) {
 }
 
 // seedUnsubscribeMessage stores a received message in a mailbox of a domain of its own,
-// carrying headers, and answers the handler, the mailbox and the message.
-func seedUnsubscribeMessage(t *testing.T, prefix string, headers map[string][]string) (*MessageHandler, models.Mailbox, models.Message) {
+// carrying decoded headers (none when nil) and the source raw, and answers the handler, the
+// mailbox and the message.
+func seedUnsubscribeMessage(t *testing.T, prefix string, headers map[string][]string, raw string) (*MessageHandler, models.Mailbox, models.Message) {
 	t.Helper()
 	h, _, _ := seedSigningDomain(t, prefix)
 	domain := fmt.Sprintf("%s-%d.test", prefix, time.Now().UnixNano())
@@ -157,7 +158,7 @@ func seedUnsubscribeMessage(t *testing.T, prefix string, headers map[string][]st
 	}
 	msg := models.Message{MailboxID: mailbox.ID, Folder: "INBOX", Subject: "weekly news", BodyText: "hello",
 		Sender: "news@remote.test", RecipientsTo: models.JSONB(`["reader@` + domain + `"]`), RecipientsCc: models.JSONB(`[]`),
-		Headers: models.JSONB(encoded)}
+		Headers: models.JSONB(encoded), RawMessage: raw}
 	if err := h.db.Create(&msg).Error; err != nil {
 		t.Fatalf("seed the message: %v", err)
 	}
@@ -169,7 +170,7 @@ func seedUnsubscribeMessage(t *testing.T, prefix string, headers map[string][]st
 func TestUnsubscribeMailto_SendsThroughTheSendPath(t *testing.T) {
 	h, mailbox, msg := seedUnsubscribeMessage(t, "unsubscribe-mailto", map[string][]string{
 		"List-Unsubscribe": {"<mailto:leave@remote.test?subject=remove%20me&body=please&to=extra@evil.test>"},
-	})
+	}, "")
 	claims := &auth.Claims{AccountID: mailbox.ID, CredentialKind: "app_password"}
 	req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/v1/messages/%d/unsubscribe/mailto", msg.ID), strings.NewReader(`{}`))
 	rr := httptest.NewRecorder()
@@ -205,14 +206,27 @@ func TestUnsubscribeMailto_SendsThroughTheSendPath(t *testing.T) {
 	}
 }
 
-// The options route lists one-click only with List-Unsubscribe-Post, and the one-click route
-// refuses a target that resolves to a private address without posting.
-func TestUnsubscribeRoutes_OneClick(t *testing.T) {
-	h, mailbox, msg := seedUnsubscribeMessage(t, "unsubscribe-oneclick", map[string][]string{
-		"List-Unsubscribe":      {"<https://10.0.0.7/u?t=1>, <mailto:leave@remote.test>"},
-		"List-Unsubscribe-Post": {"List-Unsubscribe=One-Click"},
-	})
-	claims := &auth.Claims{AccountID: mailbox.ID, CredentialKind: "app_password"}
+// receivedListMail is the stored source of a list message as delivery writes it: this
+// server's Authentication-Results first, with dkimResult for the one DKIM-Signature, whose h=
+// is signed. With dkimResult empty the message has no signature.
+func receivedListMail(dkimResult, signed, target string) string {
+	if dkimResult == "" {
+		return "Authentication-Results: restmail;\r\n\tdkim=none\r\n" + listMailFields(target)
+	}
+	return "Authentication-Results: restmail;\r\n\tdkim=" + dkimResult + " header.d=remote.test\r\n" +
+		"DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=remote.test; s=news;\r\n\th=" + signed + "; bh=YQ==; b=YQ==\r\n" +
+		listMailFields(target)
+}
+
+func listMailFields(target string) string {
+	return "From: news@remote.test\r\nSubject: weekly news\r\n" +
+		"List-Unsubscribe: <" + target + ">, <mailto:leave@remote.test>\r\n" +
+		"List-Unsubscribe-Post: List-Unsubscribe=One-Click\r\n\r\nhello\r\n"
+}
+
+// unsubscribeOptionsOf answers the options route for msg.
+func unsubscribeOptionsOf(t *testing.T, h *MessageHandler, claims *auth.Claims, msg models.Message) UnsubscribeOptions {
+	t.Helper()
 	get := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/v1/messages/%d/unsubscribe", msg.ID), nil)
 	rr := httptest.NewRecorder()
 	composeRoute(h)(rr, withClaims(get, claims))
@@ -223,13 +237,79 @@ func TestUnsubscribeRoutes_OneClick(t *testing.T) {
 	if err := json.Unmarshal(dataOf(t, rr), &options); err != nil {
 		t.Fatal(err)
 	}
+	return options
+}
+
+// postOneClick calls the one-click route for msg.
+func postOneClick(h *MessageHandler, claims *auth.Claims, msg models.Message) *httptest.ResponseRecorder {
+	post := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/v1/messages/%d/unsubscribe/one-click", msg.ID), nil)
+	rr := httptest.NewRecorder()
+	composeRoute(h)(rr, withClaims(post, claims))
+	return rr
+}
+
+// RFC 8058 §4: "The DKIM signature MUST cover the List-Unsubscribe and
+// List-Unsubscribe-Post header fields." A target is one-click only under a signature this
+// server verified as pass that signed both; otherwise it is the first plain link and the
+// one-click route refuses it without posting.
+func TestUnsubscribeRoutes_OneClickNeedsCoveringDKIM(t *testing.T) {
+	const covers = "From:Subject:List-Unsubscribe:\r\n\tList-Unsubscribe-Post"
+	cases := []struct {
+		name       string
+		dkimResult string
+		signed     string
+		oneClick   bool
+	}{
+		{"signed and covered", "pass", covers, true},
+		{"unsigned", "", "", false},
+		{"Post not covered", "pass", "From:Subject:List-Unsubscribe", false},
+		{"failed DKIM", "fail", covers, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			var posts atomic.Int32
+			srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				posts.Add(1)
+				w.WriteHeader(http.StatusOK)
+			}))
+			defer srv.Close()
+			// The test poster lets the POST reach this server's own loopback address.
+			target := srv.URL + "/u?t=1"
+			h, mailbox, msg := seedUnsubscribeMessage(t, "unsubscribe-dkim", nil, receivedListMail(c.dkimResult, c.signed, target))
+			h.oneClick = testOneClickPoster(srv, nil)
+			claims := &auth.Claims{AccountID: mailbox.ID, CredentialKind: "app_password"}
+
+			options := unsubscribeOptionsOf(t, h, claims, msg)
+			rr := postOneClick(h, claims, msg)
+			if c.oneClick {
+				if options.OneClick != target || len(options.Links) != 0 {
+					t.Fatalf("options = %+v, want one-click %s", options, target)
+				}
+				if rr.Code != http.StatusOK || posts.Load() != 1 {
+					t.Fatalf("one-click: %d %s, %d posts", rr.Code, rr.Body.String(), posts.Load())
+				}
+				return
+			}
+			if options.OneClick != "" || len(options.Links) != 1 || options.Links[0] != target {
+				t.Fatalf("options = %+v, want %s as a plain link", options, target)
+			}
+			if rr.Code != http.StatusUnprocessableEntity || errorCodeOf(rr) != "unsubscribe_target_refused" || posts.Load() != 0 {
+				t.Fatalf("one-click without a covering signature: %d %s, %d posts", rr.Code, rr.Body.String(), posts.Load())
+			}
+		})
+	}
+}
+
+// A signed one-click target that resolves to a private address is refused without posting.
+func TestUnsubscribeRoutes_OneClick(t *testing.T) {
+	h, mailbox, msg := seedUnsubscribeMessage(t, "unsubscribe-oneclick", nil,
+		receivedListMail("pass", "From:List-Unsubscribe:List-Unsubscribe-Post", "https://10.0.0.7/u?t=1"))
+	claims := &auth.Claims{AccountID: mailbox.ID, CredentialKind: "app_password"}
+	options := unsubscribeOptionsOf(t, h, claims, msg)
 	if options.OneClick != "https://10.0.0.7/u?t=1" || len(options.Mailto) != 1 || options.Mailto[0].To != "leave@remote.test" {
 		t.Fatalf("options = %+v", options)
 	}
-
-	post := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/v1/messages/%d/unsubscribe/one-click", msg.ID), nil)
-	rr = httptest.NewRecorder()
-	composeRoute(h)(rr, withClaims(post, claims))
+	rr := postOneClick(h, claims, msg)
 	if rr.Code != http.StatusUnprocessableEntity || errorCodeOf(rr) != "unsubscribe_target_refused" {
 		t.Fatalf("one-click to a private address: %d %s", rr.Code, rr.Body.String())
 	}

@@ -12612,7 +12612,7 @@ paths:
 
   /api/v1/messages/{id}/unsubscribe:
     get:
-      description: 'The targets the message''s List-Unsubscribe field offers (RFC 2369), checked because the sender wrote them; nothing is sent. one_click is present only when List-Unsubscribe-Post is List-Unsubscribe=One-Click (RFC 8058). links are other HTTPS pages for the person to open; the server never fetches them. A field given more than once, an item that does not parse, an http: URI and a mailto: URI naming more than one address are left out.'
+      description: 'The targets the message''s List-Unsubscribe field offers (RFC 2369), checked because the sender wrote them; nothing is sent. one_click is present only when List-Unsubscribe-Post is List-Unsubscribe=One-Click and a DKIM signature this server verified as pass covers both List-Unsubscribe and List-Unsubscribe-Post (RFC 8058 §4); without one that HTTPS URI is listed first in links instead. links are other HTTPS pages for the person to open; the server never fetches them. A field given more than once, an item that does not parse, an http: URI and a mailto: URI naming more than one address are left out.'
       operationId: getUnsubscribeOptions
       parameters:
       - example: 1
@@ -12697,7 +12697,7 @@ paths:
       - Messages
   /api/v1/messages/{id}/unsubscribe/one-click:
     post:
-      description: The server POSTs List-Unsubscribe=One-Click to the message's one-click target, once, only on this request. The target must be HTTPS and it and every redirect hop must resolve only to public addresses, checked again on the address dialed; otherwise 422 unsubscribe_target_refused. No cookie or credential is sent. 404 no_one_click_unsubscribe when the message has no one-click target; 502 unsubscribe_failed when the target cannot be reached or answers other than 2xx.
+      description: The server POSTs List-Unsubscribe=One-Click to the message's one-click target, once, only on this request. The target must be HTTPS and it and every redirect hop must resolve only to public addresses, checked again on the address dialed; otherwise 422 unsubscribe_target_refused. The same refusal answers a one-click claim that no DKIM signature this server verified as pass covers, List-Unsubscribe and List-Unsubscribe-Post both (RFC 8058 §4). No cookie or credential is sent. 404 no_one_click_unsubscribe when the message has no one-click target; 502 unsubscribe_failed when the target cannot be reached or answers other than 2xx.
       operationId: unsubscribeOneClick
       parameters:
       - example: 1

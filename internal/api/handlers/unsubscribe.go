@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bufio"
 	"context"
 	"crypto/tls"
 	"encoding/json"
@@ -17,12 +18,14 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
+	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 )
 
 // UnsubscribeOptions are the ways a received message's List-Unsubscribe field offers to stop
 // its mail (#1575), checked because the sender wrote them. one_click is the HTTPS URI the
 // server POSTs to when the person asks (RFC 8058), present only when List-Unsubscribe-Post
-// says List-Unsubscribe=One-Click; links are other HTTPS pages for the person to open in a
+// says List-Unsubscribe=One-Click and a DKIM signature this server verified covers both
+// fields (RFC 8058 §4); links are other HTTPS pages for the person to open in a
 // browser; mailto are addresses the server can write to from the account.
 type UnsubscribeOptions struct {
 	OneClick string                    `json:"one_click,omitempty" description:"HTTPS URI for RFC 8058 one-click unsubscribe; the server POSTs to it only on unsubscribeOneClick" example:"https://news.example.com/unsubscribe?t=8f2c"`
@@ -60,19 +63,50 @@ type unsubscribeMailtoBody struct {
 }
 
 // unsubscribeTargets reads the targets of a stored message from its decoded headers or, when
-// the row has none, from the header block of its source, as messageClass does. The source is
-// loaded only then: SourceHeaders stops at the blank line, and a row with decoded headers
-// never has its source read.
-func (h *MessageHandler) unsubscribeTargets(ctx context.Context, m models.Message) (rmail.UnsubscribeTargets, error) {
+// the row has none, from the header section of its source, as messageClass does. Only the
+// header section of the source is read: it holds this server's Authentication-Results and
+// the DKIM-Signature fields, and the body is never needed.
+//
+// RFC 8058 §4: "The DKIM signature MUST cover the List-Unsubscribe and
+// List-Unsubscribe-Post header fields." So the HTTPS target is one-click only when a DKIM
+// signature this server verified as pass signed both fields (pipeline.StoredDKIMCovers);
+// otherwise it is an ordinary link the person opens.
+// unsigned reports that the field claimed one-click but no such signature covers it.
+func (h *MessageHandler) unsubscribeTargets(ctx context.Context, m models.Message) (targets rmail.UnsubscribeTargets, unsigned bool, err error) {
+	var source models.Message
+	if err := h.db.WithContext(ctx).Select("id", "raw_message", "raw_octets").First(&source, m.ID).Error; err != nil {
+		return rmail.UnsubscribeTargets{}, false, fmt.Errorf("load the message source: %w", err)
+	}
+	header := sourceHeaderSection(source.SourceReader())
 	var headers map[string][]string
 	if err := json.Unmarshal(m.Headers, &headers); err != nil || len(headers) == 0 {
-		var source models.Message
-		if err := h.db.WithContext(ctx).Select("id", "raw_message", "raw_octets").First(&source, m.ID).Error; err != nil {
-			return rmail.UnsubscribeTargets{}, fmt.Errorf("load the message source: %w", err)
-		}
-		headers = rmail.SourceHeaders(source.SourceReader())
+		headers = rmail.SourceHeaders(strings.NewReader(header))
 	}
-	return rmail.ParseUnsubscribe(headers), nil
+	targets = rmail.ParseUnsubscribe(headers)
+	if targets.OneClick != "" && !pipeline.StoredDKIMCovers(header, "List-Unsubscribe", "List-Unsubscribe-Post") {
+		return targets.WithoutOneClick(), true, nil
+	}
+	return targets, false, nil
+}
+
+// maxUnsubscribeHeaderSection bounds the header section unsubscribeTargets reads.
+const maxUnsubscribeHeaderSection = 1 << 20
+
+// sourceHeaderSection returns the header section of source: every line up to the blank line
+// that ends it, at most maxUnsubscribeHeaderSection octets.
+func sourceHeaderSection(source io.Reader) string {
+	reader := bufio.NewReader(io.LimitReader(source, maxUnsubscribeHeaderSection))
+	var out strings.Builder
+	for {
+		line, err := reader.ReadString('\n')
+		if line == "\n" || line == "\r\n" {
+			return out.String()
+		}
+		out.WriteString(line)
+		if err != nil {
+			return out.String()
+		}
+	}
 }
 
 // unsubscribeMessageFields are the columns the unsubscribe routes read first.
@@ -84,7 +118,7 @@ func (h *MessageHandler) getUnsubscribeOptions(r *http.Request, in messagePath) 
 	if err != nil {
 		return UnsubscribeOptions{}, err
 	}
-	targets, err := h.unsubscribeTargets(r.Context(), msg)
+	targets, _, err := h.unsubscribeTargets(r.Context(), msg)
 	if err != nil {
 		return UnsubscribeOptions{}, err
 	}
@@ -100,6 +134,10 @@ var (
 	errNoOneClick       = endpoint.Refuse(http.StatusNotFound, "no_one_click_unsubscribe", "The message offers no RFC 8058 one-click unsubscribe")
 	errNoMailtoTarget   = endpoint.Refuse(http.StatusNotFound, "no_mailto_unsubscribe", "The message offers no mailto: unsubscribe target at that index")
 	errUnsubscribeBlock = errors.New("unsubscribe target refused")
+	// RFC 8058 §4: one-click needs a DKIM signature covering List-Unsubscribe and
+	// List-Unsubscribe-Post. Without one the target is a link for the person to open.
+	errOneClickUnsigned = endpoint.Refuse(http.StatusUnprocessableEntity, "unsubscribe_target_refused",
+		"No DKIM signature this server verified covers List-Unsubscribe and List-Unsubscribe-Post, so the server will not post to the target (RFC 8058 §4); open it as a link instead")
 )
 
 // unsubscribeOneClick POSTs List-Unsubscribe=One-Click to the message's one-click target,
@@ -110,9 +148,12 @@ func (h *MessageHandler) unsubscribeOneClick(r *http.Request, in messagePath) (U
 	if err != nil {
 		return UnsubscribedOneClick{}, err
 	}
-	targets, err := h.unsubscribeTargets(r.Context(), msg)
+	targets, unsigned, err := h.unsubscribeTargets(r.Context(), msg)
 	if err != nil {
 		return UnsubscribedOneClick{}, err
+	}
+	if unsigned {
+		return UnsubscribedOneClick{}, errOneClickUnsigned
 	}
 	target := targets.OneClick
 	if target == "" {
@@ -145,7 +186,7 @@ func (h *MessageHandler) unsubscribeMailto(r *http.Request, in unsubscribeMailto
 	if err != nil {
 		return zero, err
 	}
-	targets, err := h.unsubscribeTargets(r.Context(), msg)
+	targets, _, err := h.unsubscribeTargets(r.Context(), msg)
 	if err != nil {
 		return zero, err
 	}

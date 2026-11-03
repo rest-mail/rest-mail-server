@@ -10,7 +10,7 @@ sent until the person confirms, and the dialog names the method.
 
 | Field | What it is |
 | --- | --- |
-| `one_click` | The first HTTPS URI, present only when `List-Unsubscribe-Post` is exactly `List-Unsubscribe=One-Click` (RFC 8058). |
+| `one_click` | The first HTTPS URI, present only when `List-Unsubscribe-Post` is exactly `List-Unsubscribe=One-Click` and a DKIM signature covers both list fields (RFC 8058 §4, below). Otherwise that URI is the first of `links`. |
 | `links` | The other HTTPS URIs: pages the person opens in a browser. The server never fetches them. |
 | `mailto` | `mailto:` targets with their `subject` and `body` (RFC 6068). |
 
@@ -25,6 +25,17 @@ A `to` hfield in a `mailto:` URI is ignored, so a target cannot add recipients.
 `POST /api/v1/messages/{id}/unsubscribe/one-click` (mail:write) makes the server send one
 `POST` with the body `List-Unsubscribe=One-Click` (RFC 8058 §3.1) to the `one_click` URI.
 It is sent only on this request, never on delivery or on reading the message.
+
+RFC 8058 §4 requires a signature: "The DKIM signature MUST cover the List-Unsubscribe and
+List-Unsubscribe-Post header fields." So a target is one-click only when a DKIM signature
+that this server verified as `pass` on delivery lists both fields in its `h=` tag (compared
+without regard to case). The `Authentication-Results` field that delivery writes first
+records one `dkim=` verdict per `DKIM-Signature` field, in order, with its `d=`, but not
+which fields it signed. So the server pairs the verdicts with the stored `DKIM-Signature`
+fields in order and reads each one's `h=` tag. If they cannot be paired one to one, or a
+pair's `d=` differs, nothing counts as signed. Without such a signature the URI is listed
+as an ordinary link, and the one-click route refuses it with `422
+unsubscribe_target_refused`.
 
 The server refuses with `422 unsubscribe_target_refused`, without sending, when:
 
