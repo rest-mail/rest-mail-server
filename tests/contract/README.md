@@ -985,7 +985,9 @@ a hosted domain and mailbox for each address a test send probe uses, and,
   not host, or as existing). A probe repeating the example's address removes
   the account `getMailbox`, `updateMailbox` and `deleteMailbox` are linked to,
   so those follow it to its current id, recreating it if a refused probe left
-  it removed.
+  it removed. These hooks look for the account through every page of the
+  mailbox list: on the topology it sits past the first page by the ownership
+  run, where a look at one page called it absent and its create answered 409.
   Folder create probes keep their generated bodies and account IDs unchanged.
   Folder and contact setup signs in as the fixture admin with a separate bearer
   session, cached per endpoint. It leaves the request's own credentials intact,

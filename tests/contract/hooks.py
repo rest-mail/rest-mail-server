@@ -2467,6 +2467,32 @@ def a_mailbox_for_the_draft(transaction):
         a_mailbox_at(transaction, body.get("from"))
 
 
+def account_with_address(origin, headers, domain_id, address):
+    """The domain's account with this address, or None.
+
+    The list answers one page, 50 rows unless asked and 200 at most, in address
+    order. The E2E suite's accounts and the run's invited-* ones put
+    new-account@restmail.test past the first page by the ownership run, so a
+    look at that page alone called it absent and its create answered 409.
+    """
+    offset = 0
+    while True:
+        request = urllib.request.Request(
+            origin
+            + f"/api/v1/admin/mailboxes?domain_id={domain_id:d}&limit=200&offset={offset:d}",
+            headers=headers,
+        )
+        with urllib.request.urlopen(request, timeout=10) as response:
+            page = json.load(response)
+        accounts = page.get("data") or []
+        for account in accounts:
+            if (account.get("address") or "").lower() == address.lower():
+                return account
+        offset += len(accounts)
+        if not accounts or not (page.get("pagination") or {}).get("has_more"):
+            return None
+
+
 @hooks.before("createAccount")
 def host_the_account_probe_domain(transaction):
     # Coverage probes address a domain the fixture does not host
@@ -2524,16 +2550,7 @@ def host_the_account_probe_domain(transaction):
             if 400 <= error.code < 500:
                 return  # Not a domain the server can host: leave it to the probe.
             raise
-    request = urllib.request.Request(
-        origin + f"/api/v1/admin/mailboxes?domain_id={domain_id:d}",
-        headers=headers,
-    )
-    with urllib.request.urlopen(request, timeout=10) as response:
-        accounts = json.load(response).get("data") or []
-    account = next(
-        (a for a in accounts if (a.get("address") or "").lower() == address.lower()),
-        None,
-    )
+    account = account_with_address(origin, headers, domain_id, address)
     owned = hooks.stash.get("created_account_probes", {})
     key = origin + "\n" + address.lower()
     if account is None:
@@ -2601,16 +2618,7 @@ def on_the_created_account(transaction):
     with urllib.request.urlopen(request, timeout=10) as response:
         domains = json.load(response).get("data") or []
     domain_id = next(d["id"] for d in domains if d.get("name") == address.split("@")[1])
-    request = urllib.request.Request(
-        origin + f"/api/v1/admin/mailboxes?domain_id={domain_id:d}",
-        headers=headers,
-    )
-    with urllib.request.urlopen(request, timeout=10) as response:
-        accounts = json.load(response).get("data") or []
-    account = next(
-        (a for a in accounts if (a.get("address") or "").lower() == address.lower()),
-        None,
-    )
+    account = account_with_address(origin, headers, domain_id, address)
     if account is None:
         request = urllib.request.Request(
             origin + "/api/v1/accounts",

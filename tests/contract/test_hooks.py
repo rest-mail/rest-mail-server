@@ -195,15 +195,27 @@ class FixtureAPI(BaseHTTPRequestHandler):
         if url.path == "/api/v1/admin/domains":
             return self.answer(200, {"data": state["domains"]})
         if url.path == "/api/v1/admin/mailboxes":
-            domain_id = urllib.parse.parse_qs(url.query).get("domain_id", [None])[0]
+            # As the server pages it: by address, 50 rows unless asked, 200 at most.
+            query = urllib.parse.parse_qs(url.query)
+            domain_id = query.get("domain_id", [None])[0]
+            limit = min(int(query.get("limit", ["50"])[0]), 200)
+            offset = int(query.get("offset", ["0"])[0])
+            rows = sorted(
+                (
+                    a
+                    for a in state["accounts"]
+                    if domain_id is None or a["domain_id"] == int(domain_id)
+                ),
+                key=lambda a: a["address"],
+            )
             return self.answer(
                 200,
                 {
-                    "data": [
-                        a
-                        for a in state["accounts"]
-                        if domain_id is None or a["domain_id"] == int(domain_id)
-                    ]
+                    "data": rows[offset : offset + limit],
+                    "pagination": {
+                        "total": len(rows),
+                        "has_more": offset + limit < len(rows),
+                    },
                 },
             )
         self.answer(404)
@@ -384,6 +396,89 @@ class LinkedAccount(AdminAPITestCase):
             )
         hooks.hooks.stash.pop("created_account")
         self.assertEqual(self.linked(101), "/api/v1/admin/mailboxes/101")
+
+
+class AccountsBeyondTheFirstPage(AdminAPITestCase):
+    """The topology's restmail.test holds more accounts than one page of the
+    list, and a run's invited-* accounts sort ahead of new-account@."""
+
+    ADDRESS = "new-account@restmail.test"
+    NAME = "/api/v1/accounts > Create an account > 201 > application/json"
+
+    def setUp(self):
+        super().setUp()
+        for number in range(250):
+            self.create(f"invited-{number:03d}@restmail.test")
+        self.create(self.ADDRESS)
+        self.leftover = self.account_id()
+
+    def account_id(self):
+        return next(
+            a["id"]
+            for a in self.server.state["accounts"]
+            if a["address"] == self.ADDRESS
+        )
+
+    def create_example(self, leftovers):
+        transaction = {
+            "protocol": "http:",
+            "host": "127.0.0.1",
+            "port": self.server.server_port,
+            "name": self.NAME,
+            "request": {"body": json.dumps({"address": self.ADDRESS})},
+        }
+        before = transaction["request"]["body"]
+        with patch.dict(os.environ):
+            os.environ.pop("CONTRACT_REMOVE_LEFTOVERS", None)
+            if leftovers:
+                os.environ["CONTRACT_REMOVE_LEFTOVERS"] = "1"
+            hooks.host_the_account_probe_domain(transaction)
+        self.assertEqual(transaction["request"]["body"], before)
+
+    def test_an_ownership_run_finds_and_clears_the_leftover(self):
+        self.create_example(leftovers=True)
+        self.assertEqual(self.server.state["deleted"], [self.leftover])
+
+    def test_other_runs_still_leave_it_alone(self):
+        self.create_example(leftovers=False)
+        self.assertEqual(self.server.state["deleted"], [])
+
+    def test_a_repeated_probe_finds_the_account_it_made(self):
+        # Not the leftover path: this process claimed the address itself.
+        address = "someone@restmail.test"
+        self.probe({"address": address})
+        self.create(address)
+        made = next(
+            a["id"] for a in self.server.state["accounts"] if a["address"] == address
+        )
+        self.probe({"address": address, "display_name": ""})
+        self.assertEqual(self.server.state["deleted"], [made])
+
+    def test_a_linked_operation_follows_the_account_without_making_another(self):
+        hooks.hooks.stash["created_account"] = {
+            "id": 9999,
+            "body": {"address": self.ADDRESS, "password": "correct-horse-battery"},
+        }
+        transaction = {
+            "protocol": "http:",
+            "host": "127.0.0.1",
+            "port": self.server.server_port,
+            "fullPath": "/api/v1/admin/mailboxes/9999",
+        }
+        accounts = len(self.server.state["accounts"])
+        hooks.on_the_created_account(transaction)
+        self.assertEqual(
+            transaction["fullPath"], f"/api/v1/admin/mailboxes/{self.leftover}"
+        )
+        self.assertEqual(len(self.server.state["accounts"]), accounts)
+
+    def test_an_absent_address_is_still_claimed_after_the_last_page(self):
+        self.probe({"address": "absent@restmail.test"})
+        self.assertEqual(self.server.state["deleted"], [])
+        self.assertIn(
+            "\nabsent@restmail.test",
+            next(iter(hooks.hooks.stash["created_account_probes"])),
+        )
 
 
 class CreateAndLinkAccountProbes(AdminAPITestCase):
