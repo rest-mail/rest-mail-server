@@ -50,6 +50,9 @@ docs/                 This manual + reference docs (adapter-filters,
 
 Dates below reflect when the corresponding feature/plan was merged, implemented, or last verified.
 
+### 2026-11-03 — App passwords from the CLI
+`restmail app-password list|create|revoke --server URL` manages an account's app passwords through the public API (`GET`/`POST /api/v1/accounts/{id}/credentials`, `DELETE …/{credential_id}`), with a person's session token in `RESTMAIL_API_KEY` (sign in with `"client": "native"` and your authenticator code); `--account ID` names an account the session holds `mailbox:manage` on, and by default it is the token's own `account_id`. It keeps the API's rules: `create --name NAME [--expires-at TIME]` needs a sign-in with two-factor authentication at most 15 minutes old and asks for the current password again on the terminal without echo (`--password-stdin` for scripts; never a flag), then prints the new app password once; `revoke ID` asks first (`--yes` skips it) and needs a two-factor session. A `two_factor_required` or `recent_two_factor_required` refusal says how to get a session that passes: sign in again with the code and set the new token; the CLI cannot sign in with a second factor itself and has no way around the rule. `list --json`, and `--json` everywhere, for programs. [§3.3](#33-auth).
+
 ### 2026-10-20 — Self-service password reset
 An account that set up two-factor authentication can reset a forgotten password itself: `POST /api/v1/auth/recover` with its address, a current code from its authenticator, one of its recovery codes (spent) and the new password (12+ characters). Both factors are required, because mail cannot carry a reset link to someone locked out of the mailbox it would go to; the authenticator is checked first, so a wrong code never spends a recovery code. The account keeps its authenticator, its app passwords are revoked and every session ends, as for a password change, and the answer is a fresh session. Every refusal is the same 401 `recovery_failed`, and each address, known or not, may be refused 5 times, then once per 15 minutes, from any IP; past that it is answered 429 without a check. An account without two-factor authentication has no self-service path: an admin resets it. [§3.3](#33-auth).
 
@@ -191,7 +194,7 @@ Webmail treats a 404 while disabling vacation as already absent, not an error.
 - `POST /api/v1/auth/logout` — revoke session
 - `POST /api/v1/auth/refresh` — rotate access token
 - `POST /api/v1/auth/protocol-sign-in` — a gateway signs a mail client in (HTTP Basic: an app password, or the password of an account without 2FA); the one path every gateway uses
-- `GET|POST /api/v1/accounts/:id/credentials`, `DELETE /api/v1/accounts/:id/credentials/:credential_id` — app passwords of the session's own account or one it owns
+- `GET|POST /api/v1/accounts/:id/credentials`, `DELETE /api/v1/accounts/:id/credentials/:credential_id` — app passwords of the session's own account or one it owns; `restmail app-password list|create|revoke` from the CLI
 - `GET|POST /api/v1/devices`, `DELETE /api/v1/devices/:id` — phones registered for push by this session (404 when push is off)
 
 #### User-level mail (authenticated)
