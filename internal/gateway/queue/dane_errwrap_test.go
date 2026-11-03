@@ -2,12 +2,10 @@ package queue
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"net"
 	"strconv"
 	"testing"
-	"time"
 
 	"github.com/rest-mail/rest-mail-server/internal/dane"
 )
@@ -18,8 +16,7 @@ func TestDANEHandshakeFailureKeepsErrNoMatch(t *testing.T) {
 	cert, _ := relayTestCertificate(t, false)
 	settings, finish := relayTestPeer(t, cert, relayPeerOptions{noAUTH: true})
 	wrong := []dane.TLSA{{Usage: dane.UsageDANEEE, Selector: 1, MatchingType: 1, Data: bytes.Repeat([]byte{7}, 32)}}
-	deadline := time.Now().Add(10 * time.Second)
-	link, err := daneTestWorker().openSMTP(context.Background(), net.JoinHostPort(settings.host, strconv.Itoa(settings.port)), settings.host, deadline, true, false, wrong)
+	link, err := daneTestWorker().openSMTP(net.JoinHostPort(settings.host, strconv.Itoa(settings.port)), settings.host, true, false, wrong)
 	if err != nil {
 		t.Fatal(err)
 	}

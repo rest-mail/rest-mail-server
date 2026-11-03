@@ -12,7 +12,6 @@ import (
 	"net/textproto"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
@@ -68,12 +67,11 @@ func relayFailure(ctx context.Context, stage, host string, err error) error {
 		}
 		return &SMTPError{Code: reply.Code, Enhanced: enhanced, Message: "relay " + stage + " rejected", RemoteMTA: host}
 	}
-	// Socket deadlines can fire just before the context's timer callback.
+	// The step's timer ran out on the socket. Say so in the error's own terms, as
+	// its text is not kept.
 	var ne net.Error
 	if errors.As(err, &ne) && ne.Timeout() {
-		if deadline, ok := ctx.Deadline(); ok && !time.Now().Before(deadline) {
-			return fmt.Errorf("relay %s: %w", stage, context.DeadlineExceeded)
-		}
+		return fmt.Errorf("relay %s: %w", stage, context.DeadlineExceeded)
 	}
 	for _, safe := range []error{context.Canceled, context.DeadlineExceeded, io.EOF, io.ErrUnexpectedEOF, net.ErrClosed} {
 		if errors.Is(err, safe) {
@@ -88,7 +86,7 @@ func relayFailure(ctx context.Context, stage, host string, err error) error {
 // row's envelope, including an empty reverse path, with a forward's sender
 // rewritten (forwardSender). No direct-MX or RESTMAIL
 // fallback is permitted. AUTH PLAIN is optional, but only over verified TLS.
-func (w *Worker) deliverToRelay(parent context.Context, settings relaySettings, item models.OutboundQueue) error {
+func (w *Worker) deliverToRelay(ctx context.Context, settings relaySettings, item models.OutboundQueue) error {
 	if err := settings.validate(); err != nil {
 		return err
 	}
@@ -107,40 +105,36 @@ func (w *Worker) deliverToRelay(parent context.Context, settings relaySettings, 
 	if err != nil {
 		return err
 	}
-	budget := w.sendDeadline
-	if budget == nil {
-		budget = defaultSendDeadline
-	}
-	ctx, cancel := context.WithTimeout(parent, budget(int64(len(item.RawMessage))))
-	defer cancel()
+	// The same timers as direct delivery (#714), and nothing times the attempt as a
+	// whole. A caller's own context still ends it at any step: closing the socket
+	// interrupts them all, including StartTLS and net/smtp.Auth, which do not accept
+	// a context.
+	timeouts := w.timeouts()
 	fail := func(stage string, err error) error { return relayFailure(ctx, stage, settings.host, err) }
-	conn, err := (&net.Dialer{}).DialContext(ctx, "tcp", net.JoinHostPort(settings.host, strconv.Itoa(settings.port)))
+	conn, err := (&net.Dialer{Timeout: smtpDialTimeout}).DialContext(ctx, "tcp", net.JoinHostPort(settings.host, strconv.Itoa(settings.port)))
 	if err != nil {
 		return fail("connect", err)
 	}
 	defer conn.Close()
-	deadline, _ := ctx.Deadline()
-	if err := conn.SetDeadline(deadline); err != nil {
-		return fail("deadline", err)
-	}
-	// Closing the underlying socket interrupts every SMTP phase on cancellation,
-	// including StartTLS and net/smtp.Auth, which do not accept a context.
 	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
 	defer stop()
 	tlsConfig := &tls.Config{ServerName: settings.host, RootCAs: settings.roots, MinVersion: tls.VersionTLS12}
 	var transport net.Conn = conn
 	if settings.mode == relayImplicitTLS {
+		armStep(conn, timeouts.StartTLS)
 		secure := tls.Client(conn, tlsConfig)
 		if err := secure.HandshakeContext(ctx); err != nil {
 			return fail("TLS handshake", err)
 		}
 		transport = secure
 	}
+	armStep(conn, timeouts.Greeting)
 	client, err := smtp.NewClient(transport, settings.host)
 	if err != nil {
 		return fail("greeting", err)
 	}
 	defer func() { _ = client.Close() }()
+	armStep(conn, timeouts.Hello)
 	if err := client.Hello(w.hostname); err != nil {
 		return fail("EHLO", err)
 	}
@@ -148,6 +142,8 @@ func (w *Worker) deliverToRelay(parent context.Context, settings relaySettings, 
 		if ok, _ := client.Extension("STARTTLS"); !ok {
 			return errors.New("relay: required STARTTLS unavailable")
 		}
+		armAfterHandshake(tlsConfig, conn, timeouts.Hello)
+		armStep(conn, timeouts.StartTLS)
 		if err := client.StartTLS(tlsConfig); err != nil {
 			return fail("STARTTLS", err)
 		}
@@ -167,6 +163,7 @@ func (w *Worker) deliverToRelay(parent context.Context, settings relaySettings, 
 		if ok, mechanisms := client.Extension("AUTH"); !ok || !relayHasMechanism(mechanisms, "PLAIN") {
 			return errors.New("relay: AUTH PLAIN unavailable")
 		}
+		armStep(conn, timeouts.Auth)
 		if err := client.Auth(smtp.PlainAuth("", settings.username, settings.password, settings.host)); err != nil {
 			return fail("AUTH", err)
 		}
@@ -181,19 +178,23 @@ func (w *Worker) deliverToRelay(parent context.Context, settings relaySettings, 
 	if item.RequireTLS && item.Sender != "" {
 		mail = func(from string) error { return mailRequireTLS(client, from) }
 	}
+	armStep(conn, timeouts.Mail)
 	if err := mail(sender); err != nil {
 		return fail("MAIL", err)
 	}
+	armStep(conn, timeouts.Rcpt)
 	if err := client.Rcpt(recipient); err != nil {
 		return fail("RCPT", err)
 	}
+	armStep(conn, timeouts.Data)
 	data, err := client.Data()
 	if err != nil {
 		return fail("DATA", err)
 	}
-	if _, err := io.WriteString(data, item.RawMessage); err != nil {
+	if err := writeDataBlocks(data, client.Text.W.Flush, item.RawMessage, func() { armStep(conn, timeouts.DataBlock) }); err != nil {
 		return fail("DATA write", err)
 	}
+	armStep(conn, timeouts.FinalReply)
 	if err := data.Close(); err != nil {
 		return fail("DATA reply", err)
 	}

@@ -553,6 +553,12 @@ For standalone issuance and automated renewal, follow the
 | `POP3_TLS_PORT`               | `995`              | POP3 implicit TLS port        |
 | `QUEUE_WORKERS`               | `4`                | Number of outbound queue workers |
 | `QUEUE_POLL_INTERVAL`         | `5s`               | Queue polling interval        |
+| `QUEUE_SMTP_GREETING_TIMEOUT` | `5m`               | Outbound SMTP: wait for the 220 greeting (RFC 5321 §4.5.3.2) |
+| `QUEUE_SMTP_MAIL_TIMEOUT`     | `5m`               | Outbound SMTP: wait for the reply to MAIL |
+| `QUEUE_SMTP_RCPT_TIMEOUT`     | `5m`               | Outbound SMTP: wait for the reply to RCPT |
+| `QUEUE_SMTP_DATA_TIMEOUT`     | `2m`               | Outbound SMTP: wait for the 354 after DATA |
+| `QUEUE_SMTP_DATA_BLOCK_TIMEOUT` | `3m`             | Outbound SMTP: write each 64 KiB block of the message |
+| `QUEUE_SMTP_FINAL_REPLY_TIMEOUT` | `10m`           | Outbound SMTP: wait for the reply to the final `.` |
 | `SUPPRESSION_TTL`             | `2160h` (90 days)  | How long a recipient that hard bounced stays suppressed for the sending domain |
 | `MTASTS_ENFORCE`              | `true`             | Enforce recipient MTA-STS policies on outbound delivery |
 | `DANE_RESOLVER`               | (empty)            | Loopback DNSSEC-validating resolver; set, outbound SMTP applies DANE (RFC 7672) |

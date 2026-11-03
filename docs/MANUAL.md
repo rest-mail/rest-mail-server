@@ -305,6 +305,10 @@ At [internal/gateway/queue/worker.go](../internal/gateway/queue/worker.go). Poll
 - 5xx permanent failure → immediately generate RFC 3464 bounce DSN (multipart/report: text/plain human-readable + message/delivery-status + text/rfc822-headers), insert bounce into queue back to original sender
 - 4xx temporary → increment attempts, retry with exponential backoff until `ExpiresAt`
 
+SMTP to another server, or to a domain's relay, has a timer per step and none for the attempt as a whole (RFC 5321 §4.5.3.2): the greeting, EHLO, STARTTLS, MAIL and RCPT 5 minutes each, DATA 2, each 64 KiB block of the message 3, the final reply 10, QUIT 5. The RESTMAIL EHLO probe uses the same greeting, EHLO and QUIT timers. A stalled peer is dropped at that step's timeout and the message is retried. Six of them are settings, the `QUEUE_SMTP_*_TIMEOUT` variables in [§6.1](#61-core-env-vars). The RESTMAIL hop's HTTPS requests keep their size-aware budget (`INTERNAL_DELIVERY_FLOOR_RATE`).
+
+The worker holding a `delivering` row refreshes its `last_attempt` once a minute until the attempt ends, so `last_attempt` on such a row is its last sign of life, not when the attempt began. A row with no refresh for the longest step plus 2 minutes, 12 minutes by default, was left by a worker that crashed, and another worker claims it again.
+
 #### RESTMAIL protocol upgrade
 - Outbound worker probes the recipient domain's primary MX: the EHLO `RESTMAIL` keyword is only a hint, and any address it carries is ignored (#291).
 - It then asks `GET https://<mx-host>/.well-known/restmail?domain=<domain>` where to deliver, always verifying the certificate against the MX host name (even in development), through the SSRF-guarded dialer, with no redirects and a 4 KiB answer cap. The answer `{"endpoint":"https://…/restmail"}` may name any host; it must be https with no credentials, query or fragment. The message goes to `POST <endpoint>/messages`, always verifying the final endpoint's certificate against its host name too. Neither HTTPS hop honours `QUEUE_TLS_INSECURE` or development mode. Both use system roots plus the operator/testbed CA from `TRUSTED_CA_CERT` (default `/certs/ca.crt`).
@@ -863,6 +867,12 @@ gateways: run the instance task before restarting a gateway with a broken pair.
 | `SRS_PREVIOUS_SECRET` | *(empty)* | The SRS secret before the last rotation, still accepted when checking an address. |
 | `QUEUE_WORKERS` | `4` | |
 | `QUEUE_POLL_INTERVAL` | `5s` | |
+| `QUEUE_SMTP_GREETING_TIMEOUT` | `5m` | Outbound SMTP: how long to wait for the 220 greeting (RFC 5321 §4.5.3.2). Go duration, like the five below; a malformed or non-positive value is a startup error |
+| `QUEUE_SMTP_MAIL_TIMEOUT` | `5m` | Outbound SMTP: the reply to MAIL |
+| `QUEUE_SMTP_RCPT_TIMEOUT` | `5m` | Outbound SMTP: the reply to RCPT |
+| `QUEUE_SMTP_DATA_TIMEOUT` | `2m` | Outbound SMTP: the 354 after DATA |
+| `QUEUE_SMTP_DATA_BLOCK_TIMEOUT` | `3m` | Outbound SMTP: writing each 64 KiB block of the message |
+| `QUEUE_SMTP_FINAL_REPLY_TIMEOUT` | `10m` | Outbound SMTP: the reply to the final `.` |
 | `SUPPRESSION_TTL` | `2160h` (90 days) | How long a recipient that hard bounced (no such mailbox or domain) stays suppressed for the sending domain |
 | `MTASTS_ENFORCE` | `true` | Enforce recipient MTA-STS policies on outbound delivery (RFC 8461) |
 | `DANE_RESOLVER` | (empty) | Loopback address of a DNSSEC-validating resolver, such as `127.0.0.1:53`; set, outbound SMTP applies DANE (RFC 7672) to DNSSEC-secure recipient domains. Any other address stops the SMTP gateway |

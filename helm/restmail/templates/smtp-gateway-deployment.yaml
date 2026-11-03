@@ -70,6 +70,30 @@ spec:
             - name: SMTP_TRANSFER_STALL_TIMEOUT
               value: {{ . | quote }}
             {{- end }}
+            {{- with .Values.smtpGateway.queueSMTPGreetingTimeout }}
+            - name: QUEUE_SMTP_GREETING_TIMEOUT
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.smtpGateway.queueSMTPMailTimeout }}
+            - name: QUEUE_SMTP_MAIL_TIMEOUT
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.smtpGateway.queueSMTPRcptTimeout }}
+            - name: QUEUE_SMTP_RCPT_TIMEOUT
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.smtpGateway.queueSMTPDataTimeout }}
+            - name: QUEUE_SMTP_DATA_TIMEOUT
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.smtpGateway.queueSMTPDataBlockTimeout }}
+            - name: QUEUE_SMTP_DATA_BLOCK_TIMEOUT
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.smtpGateway.queueSMTPFinalReplyTimeout }}
+            - name: QUEUE_SMTP_FINAL_REPLY_TIMEOUT
+              value: {{ . | quote }}
+            {{- end }}
             {{- if .Values.smtp.dane.enabled }}
             - name: DANE_RESOLVER
               value: "127.0.0.1:5353"

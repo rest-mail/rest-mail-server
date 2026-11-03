@@ -125,15 +125,14 @@ func isEnhancedStatus(s string) bool {
 }
 
 // staleDeliveringTimeout is the DEFAULT interval a row may sit in "delivering"
-// before the worker treats it as orphaned by a crashed worker and reclaims it.
-// The effective interval is Worker.reclaim, which SetDeliveryDeadline can raise
-// so it always exceeds the worst-case single-send budget (OSI-7) — otherwise a
-// legitimately slow max-size send would be reclaimed mid-flight and duplicated.
-const staleDeliveringTimeout = 15 * time.Minute
+// without a heartbeat before the worker treats it as orphaned by a crashed worker
+// and reclaims it: the longest single SMTP step at its default plus a margin
+// (#714). The effective interval is Worker.reclaim (SetDeliveryDeadline).
+var staleDeliveringTimeout = config.OutboundSMTPTimeouts{}.Reclaim()
 
-// defaultSendDeadline is the per-attempt send budget used when the caller has not
-// configured a size-aware one via SetDeliveryDeadline. It matches the historical
-// fixed 30 s deadline, so behavior is unchanged until wired to the config.
+// defaultSendDeadline is the budget of an HTTPS request to a RESTMAIL endpoint when
+// the caller has not configured a size-aware one via SetDeliveryDeadline. SMTP is
+// not timed this way: see config.OutboundSMTPTimeouts.
 func defaultSendDeadline(int64) time.Duration { return 30 * time.Second }
 
 // maxRESTMAILErrorBody caps how much of a non-2xx RESTMAIL response body is read
@@ -212,17 +211,23 @@ type Worker struct {
 	// bounces (#141). See suppression.go.
 	suppressionTTL time.Duration
 
-	// Size-aware delivery timing (OSI-7). sendDeadline maps a message's byte size
-	// to the maximum time a single outbound send attempt (SMTP to a peer MX, or
-	// the RESTMAIL HTTPS hop) may take, so a large-but-permitted message is not
-	// cut off by a fixed short deadline. reclaim is how long a row may sit
-	// "delivering" before being reclaimed as orphaned; it is kept strictly larger
-	// than sendDeadline(max size) so an in-flight slow large send completes before
-	// it can be reclaimed and duplicated. Defaults preserve the historical fixed
-	// 30 s send / 15 min reclaim; SetDeliveryDeadline wires the config-derived,
-	// size-aware values.
+	// sendDeadline maps a message's byte size to the maximum time one HTTPS
+	// request of the RESTMAIL hop may take (OSI-7), so a large-but-permitted
+	// message is not cut off by a fixed short deadline. reclaim is how long a row
+	// may sit "delivering" without a heartbeat before being reclaimed as orphaned
+	// (#714). SetDeliveryDeadline wires the config-derived values.
 	sendDeadline func(sizeBytes int64) time.Duration
 	reclaim      time.Duration
+
+	// smtpTimeouts bounds each step of an SMTP conversation (#714); a zero field
+	// is its default. heartbeatEvery is how often the worker holding a row
+	// refreshes it, zero meaning defaultHeartbeat; heartbeatDB is the handle it
+	// does so on, nil meaning db.
+	smtpTimeouts   config.OutboundSMTPTimeouts
+	heartbeatEvery time.Duration
+	heartbeatDB    *gorm.DB
+	// smtpAddr maps an MX host to the address to dial; nil is its port 25. Tests only.
+	smtpAddr func(host string) string
 
 	// SSRF guard (#167). Outbound delivery dials whatever a recipient domain's
 	// MX resolves to, and POSTs to whatever RESTMAIL endpoint an MX advertises —
@@ -409,16 +414,15 @@ func (w *Worker) SetBounceRateLimit(max int, window time.Duration) {
 	w.bounceWindow = window
 }
 
-// SetDeliveryDeadline configures the size-aware per-attempt send budget and the
-// stale-delivering reclaim interval (OSI-7). deadlineFn maps a message's byte
-// size to the maximum time one outbound send attempt may take; reclaim is how
-// long a row may sit "delivering" before the worker reclaims it as orphaned.
+// SetDeliveryDeadline configures the size-aware budget of the RESTMAIL hop's HTTPS
+// requests (OSI-7) and the stale-delivering reclaim interval. deadlineFn maps a
+// message's byte size to the maximum time one such request may take; reclaim is
+// how long a row may go without a heartbeat before the worker reclaims it as
+// orphaned. A nil deadlineFn or a non-positive reclaim is ignored (the default is
+// kept).
 //
-// The caller MUST supply a reclaim that strictly exceeds deadlineFn(max message
-// size): if reclaim were shorter, a legitimately slow max-size send still in
-// flight would be reclaimed by another worker and delivered a second time. A nil
-// deadlineFn or a non-positive reclaim is ignored (the safe default is kept), so
-// a misconfiguration can never shorten reclaim below a send budget.
+// The caller MUST supply a reclaim longer than the longest SMTP step
+// (config.OutboundSMTPTimeouts.Reclaim) and than the heartbeat interval.
 func (w *Worker) SetDeliveryDeadline(deadlineFn func(sizeBytes int64) time.Duration, reclaim time.Duration) {
 	if deadlineFn != nil {
 		w.sendDeadline = deadlineFn
@@ -482,6 +486,10 @@ func (w *Worker) processOne(workerID int) {
 			txtResolver: w.txtResolver, tlsReportClient: w.tlsReportClient,
 			bounceMax: w.bounceMax, bounceWindow: w.bounceWindow, suppressionTTL: w.suppressionTTL,
 			sendDeadline: w.sendDeadline, reclaim: w.reclaim, allowPrivateDest: w.allowPrivateDest,
+			smtpTimeouts: w.smtpTimeouts, heartbeatEvery: w.heartbeatEvery, smtpAddr: w.smtpAddr,
+			// The heartbeat stays on the pool: conn is pinned to this delivery and
+			// holds the reset barrier, and a timed-out statement would close it.
+			heartbeatDB: w.db,
 		}
 		delivery.processNext(workerID)
 	}); err != nil {
@@ -497,13 +505,11 @@ func (w *Worker) processNext(workerID int) {
 	// Claim a pending item using raw SQL with FOR UPDATE SKIP LOCKED
 	var item models.OutboundQueue
 	now := time.Now()
-	// Rows that have been "delivering" longer than w.reclaim were almost certainly
-	// orphaned by a worker that crashed mid-send: a live send is bounded by the
-	// size-aware send deadline (always < w.reclaim), and holds the row's
-	// transaction lock. Reclaim them so mail isn't stranded forever (the claim
-	// below only re-selects pending/deferred). w.reclaim exceeds the worst-case
-	// max-size send budget so a slow-but-legitimate large send is never reclaimed
-	// mid-flight and duplicated (OSI-7).
+	// Rows that have gone longer than w.reclaim without a heartbeat were orphaned
+	// by a worker that crashed mid-send: the worker holding a row refreshes
+	// last_attempt for as long as its attempt runs (startHeartbeat), however long
+	// that is. Reclaim them so mail isn't stranded forever (the claim below only
+	// re-selects pending/deferred).
 	staleDelivering := now.Add(-w.reclaim)
 	err := w.db.Transaction(func(tx *gorm.DB) error {
 		result := tx.Raw(
@@ -558,8 +564,10 @@ func (w *Worker) process(item models.OutboundQueue, now time.Time) {
 		return
 	}
 
-	// Attempt delivery
+	// Attempt delivery, holding the row for as long as that takes.
+	stopHeartbeat := w.startHeartbeat(item)
 	deliveryErr := w.deliver(item)
+	stopHeartbeat()
 
 	if deliveryErr == nil {
 		// Success
@@ -1064,7 +1072,7 @@ func (w *Worker) deliverRESTMAILDiscovered(discoveryURL string, item models.Outb
 // verifiably does not host the domain, or an enforce-mode policy does not name
 // the host (caller falls back to the SMTP path).
 func (w *Worker) tryRESTMAIL(host, dnsDomain string, item models.OutboundQueue, stsPolicy *mtasts.Policy, enforcing bool) (upgraded bool, err error) {
-	return w.tryRESTMAILAt(host+":25", restmailDiscoveryURL(host, dnsDomain), host, item, stsPolicy, enforcing)
+	return w.tryRESTMAILAt(w.smtpAddrOf(host), restmailDiscoveryURL(host, dnsDomain), host, item, stsPolicy, enforcing)
 }
 
 // tryRESTMAILAt is tryRESTMAIL with the probe address and discovery URL given
@@ -1117,38 +1125,34 @@ func (w *Worker) tryRESTMAILAt(addr, discoveryURL, host string, item models.Outb
 //   - supported carries the RESTMAIL extension result when probed. Any address
 //     the keyword carries is discarded (#291): see discoverRESTMAILEndpoint.
 //
-// The ENTIRE probe conversation is bounded by a single absolute deadline set on
-// the socket immediately after dial, before smtp.NewClient reads the greeting.
-// net/smtp installs no deadlines of its own, so without this a remote that
-// accepts the TCP connection and then stays silent would park this worker
-// goroutine forever: the queue row is reclaimed and re-probed on a timer, leaking
-// a goroutine each cycle, so a single silent MX can drain the worker pool and
-// wedge the outbound queue until restart (#169). The probe transfers no message
-// body, so it uses the base per-attempt budget (sendDeadline(0)), which stays far
-// below the reclaim interval.
+// Each step has the same timer it has when delivering, set on the socket before
+// the step starts, so a slow peer delays its own delivery but is not treated as
+// unreachable (#714). net/smtp installs no deadlines of its own, so without them a
+// remote that accepts the TCP connection and then stays silent would park this
+// worker goroutine forever and, one MX at a time, wedge the outbound queue (#169).
 func (w *Worker) probeRESTMAIL(addr, serverName string) (probed, supported bool) {
-	dialer := w.newGuardedDialer(10 * time.Second)
+	timeouts := w.timeouts()
+	dialer := w.newGuardedDialer(smtpDialTimeout)
 	conn, err := dialer.Dial("tcp", addr)
 	if err != nil {
 		return false, false
 	}
 
-	// Bound the whole probe with one absolute deadline, set before smtp.NewClient
-	// reads the greeting, so a silent remote cannot wedge this goroutine (#169).
-	_ = conn.SetDeadline(time.Now().Add(w.sendDeadline(0)))
-
+	armStep(conn, timeouts.Greeting)
 	client, err := smtp.NewClient(conn, serverName)
 	if err != nil {
 		conn.Close()
 		return false, false
 	}
 
+	armStep(conn, timeouts.Hello)
 	if err := client.Hello(w.hostname); err != nil {
 		_ = client.Close()
 		return false, false
 	}
 
 	ok, _ := client.Extension("RESTMAIL")
+	armStep(conn, timeouts.Quit)
 	_ = client.Quit()
 	_ = client.Close()
 	return true, ok
@@ -1498,7 +1502,7 @@ func dsnRecipientField(addr string) string {
 //     verified; a handshake that fails is retried on a new connection without
 //     TLS. A would-fail under "testing" is logged but delivery proceeds.
 func (w *Worker) deliverToHost(host string, item models.OutboundQueue, stsPolicy *mtasts.Policy, stsErr error, records []dane.TLSA) error {
-	return w.deliverSMTPWith(net.JoinHostPort(host, "25"), host, item, stsPolicy, stsErr, records)
+	return w.deliverSMTPWith(w.smtpAddrOf(host), host, item, stsPolicy, stsErr, records)
 }
 
 // deliverSMTP keeps the socket address separate from the MX identity used for
@@ -1531,16 +1535,9 @@ func (w *Worker) deliverSMTPWith(addr, host string, item models.OutboundQueue, s
 		return err
 	}
 
-	// Size-aware whole-attempt budget (OSI-7): the fixed 30 s could not transfer
-	// a large-but-permitted message's DATA phase. The deadline scales with the
-	// message size and stays strictly below w.reclaim, so a slow large send
-	// completes before the row is reclaimed (no duplicate delivery), while
-	// remaining a finite bound (no slowloris). One absolute deadline bounds the
-	// whole attempt (dial + the entire SMTP conversation), applied to the socket
-	// below because net/smtp sets no deadlines of its own.
-	attemptDeadline := time.Now().Add(w.sendDeadline(int64(len(item.RawMessage))))
-	ctx, cancel := context.WithDeadline(context.Background(), attemptDeadline)
-	defer cancel()
+	// Every step below has its own timer, and nothing times the attempt as a whole
+	// (RFC 5321 §4.5.3.2, #714).
+	timeouts := w.timeouts()
 
 	// Effective MTA-STS mode. When enforcement is disabled an enforce policy is
 	// downgraded to testing (attempt TLS, log would-fail, still deliver).
@@ -1568,7 +1565,7 @@ func (w *Worker) deliverSMTPWith(addr, host string, item models.OutboundQueue, s
 		enforce = true
 	}
 
-	link, err := w.openSMTP(ctx, addr, host, attemptDeadline, true, enforce, records)
+	link, err := w.openSMTP(addr, host, true, enforce, records)
 	if err != nil {
 		return err
 	}
@@ -1581,11 +1578,13 @@ func (w *Worker) deliverSMTPWith(addr, host string, item models.OutboundQueue, s
 	}
 	if requireTLS {
 		if link.tlsErr != nil || link.security != transportAuthenticated {
+			armStep(link.conn, timeouts.Quit)
 			_ = link.client.Quit()
 			return &SMTPError{Code: 550, Enhanced: "5.7.10", RemoteMTA: host,
 				Message: "REQUIRETLS: no TLS session with a certificate verified for " + host}
 		}
 		if ok, _ := link.client.Extension("REQUIRETLS"); !ok {
+			armStep(link.conn, timeouts.Quit)
 			_ = link.client.Quit()
 			return &SMTPError{Code: 550, Enhanced: "5.7.30", RemoteMTA: host,
 				Message: "REQUIRETLS support required: " + host + " does not offer REQUIRETLS"}
@@ -1609,7 +1608,7 @@ func (w *Worker) deliverSMTPWith(addr, host string, item models.OutboundQueue, s
 			slog.Info("queue: STARTTLS failed, delivering without TLS", "host", host, "error", link.tlsErr)
 		}
 		_ = link.client.Close()
-		if link, err = w.openSMTP(ctx, addr, host, attemptDeadline, false, false, nil); err != nil {
+		if link, err = w.openSMTP(addr, host, false, false, nil); err != nil {
 			return err
 		}
 	}
@@ -1677,6 +1676,7 @@ func (w *Worker) deliverSMTPWith(addr, host string, item models.OutboundQueue, s
 	if requireTLS {
 		mail = func(from string) error { return mailRequireTLS(client, from) }
 	}
+	armStep(link.conn, timeouts.Mail)
 	if err := mail(sender); err != nil {
 		se := parseSMTPError(err)
 		se.RemoteMTA = host
@@ -1684,6 +1684,7 @@ func (w *Worker) deliverSMTPWith(addr, host string, item models.OutboundQueue, s
 	}
 
 	// Set recipient
+	armStep(link.conn, timeouts.Rcpt)
 	if err := client.Rcpt(recipient); err != nil {
 		se := parseSMTPError(err)
 		se.RemoteMTA = host
@@ -1691,22 +1692,25 @@ func (w *Worker) deliverSMTPWith(addr, host string, item models.OutboundQueue, s
 	}
 
 	// Send data
+	armStep(link.conn, timeouts.Data)
 	wc, err := client.Data()
 	if err != nil {
 		return fmt.Errorf("DATA to %s: %w", host, err)
 	}
-	_, err = fmt.Fprint(wc, item.RawMessage)
+	err = writeDataBlocks(wc, client.Text.W.Flush, item.RawMessage, func() { armStep(link.conn, timeouts.DataBlock) })
 	if err != nil {
 		wc.Close()
 		return fmt.Errorf("write message to %s: %w", host, err)
 	}
+	armStep(link.conn, timeouts.FinalReply)
 	if err := wc.Close(); err != nil {
 		se := parseSMTPError(err)
 		se.RemoteMTA = host
 		return se
 	}
 
-	// Quit
+	// Quit. The message is delivered already, so a stalled QUIT costs only its timer.
+	armStep(link.conn, timeouts.Quit)
 	_ = client.Quit()
 	// What protected it, never more than it was (RFC 7435 §3): a certificate
 	// that did not verify is encryption, not authentication.
@@ -1726,7 +1730,9 @@ const (
 // smtpLink is an open SMTP conversation with an MX, past EHLO and, when it was
 // asked for and the MX offers it, STARTTLS.
 type smtpLink struct {
-	client   *smtp.Client
+	client *smtp.Client
+	// conn is the socket under client, across any STARTTLS, for the step timers.
+	conn     net.Conn
 	security string // transportAuthenticated, transportEncrypted or transportCleartext
 	// tlsErr is the STARTTLS failure, when the upgrade was tried and failed; the
 	// connection is then unusable, and the caller decides what to do.
@@ -1745,26 +1751,27 @@ type smtpLink struct {
 // must verify for host or the upgrade fails; without it the certificate is
 // checked and its verdict recorded, not required (RFC 7435 §3).
 //
-// One absolute deadline bounds the whole conversation, the greeting, EHLO, the
-// handshake, MAIL/RCPT, the message and the final reply, set on the socket
-// because net/smtp sets none; it persists across the STARTTLS upgrade.
-func (w *Worker) openSMTP(ctx context.Context, addr, host string, deadline time.Time, tryTLS, requireVerified bool, records []dane.TLSA) (*smtpLink, error) {
-	dialer := w.newGuardedDialer(10 * time.Second)
-	conn, err := dialer.DialContext(ctx, "tcp", addr)
+// The greeting, EHLO, the STARTTLS exchange and the EHLO after it each have their
+// own timer, set on the socket because net/smtp sets none.
+func (w *Worker) openSMTP(addr, host string, tryTLS, requireVerified bool, records []dane.TLSA) (*smtpLink, error) {
+	timeouts := w.timeouts()
+	dialer := w.newGuardedDialer(smtpDialTimeout)
+	conn, err := dialer.Dial("tcp", addr)
 	if err != nil {
 		return nil, fmt.Errorf("connect to %s: %w", addr, err)
 	}
-	_ = conn.SetDeadline(deadline)
+	armStep(conn, timeouts.Greeting)
 	client, err := smtp.NewClient(conn, host)
 	if err != nil {
 		conn.Close()
 		return nil, fmt.Errorf("SMTP client for %s: %w", addr, err)
 	}
+	armStep(conn, timeouts.Hello)
 	if err := client.Hello(w.hostname); err != nil {
 		_ = client.Close()
 		return nil, fmt.Errorf("EHLO to %s: %w", host, err)
 	}
-	link := &smtpLink{client: client, security: transportCleartext, localIP: addrIP(conn.LocalAddr()), remoteIP: addrIP(conn.RemoteAddr())}
+	link := &smtpLink{client: client, conn: conn, security: transportCleartext, localIP: addrIP(conn.LocalAddr()), remoteIP: addrIP(conn.RemoteAddr())}
 	if ok, _ := client.Extension("STARTTLS"); !tryTLS || !ok {
 		return link, nil
 	}
@@ -1784,6 +1791,8 @@ func (w *Worker) openSMTP(ctx context.Context, addr, host string, deadline time.
 			return nil
 		}
 	}
+	armAfterHandshake(tlsConfig, conn, timeouts.Hello)
+	armStep(conn, timeouts.StartTLS)
 	if err := client.StartTLS(tlsConfig); err != nil {
 		link.tlsErr = err
 		return link, nil
