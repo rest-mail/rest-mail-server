@@ -135,8 +135,13 @@ func TestTestDataMutationPersistence(t *testing.T) {
 		t.Fatalf("reset status %q, error %v", status.Status, err)
 	}
 	reset := read()
-	if len(reset.Domains) != 4 || len(reset.Mailboxes) != 10 || len(reset.Quotas) != 9 || len(reset.Aliases) != 4 || len(reset.Credentials) != 10 {
+	// The fixture's nine accounts are seeded again, and the retained
+	// administrator starts again with a usage row of its own, at nothing.
+	if len(reset.Domains) != 4 || len(reset.Mailboxes) != 10 || len(reset.Quotas) != 10 || len(reset.Aliases) != 4 || len(reset.Credentials) != 10 {
 		t.Fatal("reset did not repopulate the complete fixture")
+	}
+	if usage := reset.Quotas[0]; usage.MailboxID != admin.ID || usage.MessageCount != 0 || usage.TotalBytes() != 0 {
+		t.Fatalf("retained administrator usage = %+v, want its own row at nothing", usage)
 	}
 	if len(reset.Quarantines) != 0 || len(reset.SenderRules) != 0 {
 		t.Fatal("reset missed the actual quarantine or domain_sender_rules table")

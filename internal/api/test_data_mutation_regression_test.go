@@ -137,6 +137,13 @@ func (c *testDataMutationConnection) ExecContext(ctx context.Context, q string, 
 		}
 		return driver.RowsAffected(1), nil
 	}
+	if strings.HasPrefix(q, "INSERT INTO quota_usage (mailbox_id, updated_at)") && strings.Contains(q, "FROM mailboxes") {
+		c.relevant(ctx, "USAGE_RESTARTED", nil)
+		if c.aborted {
+			return nil, &pgconn.PgError{Code: "25P02", Message: "fixture transaction aborted"}
+		}
+		return driver.RowsAffected(1), nil
+	}
 	if strings.HasPrefix(q, `INSERT INTO "quota_usage"`) {
 		_, err := c.insert(ctx, q, args)
 		return driver.RowsAffected(1), err

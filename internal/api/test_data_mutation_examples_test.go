@@ -47,7 +47,7 @@ func TestTestDataMutationExamples(t *testing.T) {
 				if s.store != nil {
 					calls = s.store.snapshot()[before:]
 				}
-				begins, commits, rollbacks, passwords, clears := 0, 0, 0, 0, 0
+				begins, commits, rollbacks, passwords, clears, restarts := 0, 0, 0, 0, 0, 0
 				lookups := map[string]int{}
 				deleted := map[string]bool{}
 				for _, c := range calls {
@@ -60,6 +60,8 @@ func TestTestDataMutationExamples(t *testing.T) {
 						rollbacks++
 					case "PASSWORD_CREATED":
 						passwords++
+					case "USAGE_RESTARTED":
+						restarts++
 					case "DATA_CONTEXT":
 						if c.args[0].Value != true {
 							t.Fatal("test-data work lost HTTP context")
@@ -104,7 +106,10 @@ func TestTestDataMutationExamples(t *testing.T) {
 						if clears != expectedClears {
 							t.Fatalf("clear statements%d want%d", clears, expectedClears)
 						}
-					} else if clears != 0 {
+						if restarts != 1 {
+							t.Fatalf("retained accounts' usage restarted%d times want1", restarts)
+						}
+					} else if clears != 0 || restarts != 0 {
 						t.Fatal("seed cleared existing data")
 					}
 				} else if name == "commit_failure" {
