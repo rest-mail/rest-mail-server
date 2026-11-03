@@ -1364,7 +1364,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Live DNS record check (MX, SPF, DMARC, DKIM, MTA-STS, TLS-RPT) for a domain */
+        /** The DNS records a domain must publish, compared with a live lookup of each */
         get: operations["domainDNSCheck"];
         put?: never;
         post?: never;
@@ -3288,10 +3288,11 @@ export interface components {
             start_date: string;
         };
         DNSRecordCheck: {
+            expected?: string;
             message?: string;
             name: string;
             /** @enum {string} */
-            status: "ok" | "missing" | "error";
+            status: "ok" | "missing" | "different" | "error";
             type: string;
             value?: string;
         };
