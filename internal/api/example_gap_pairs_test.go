@@ -60,6 +60,11 @@ func (connection *gapPairConnection) QueryContext(ctx context.Context, query str
 			connection.faults++
 			return nil, errors.New("injected client secret lookup failure")
 		}
+	case "openGatewaySession":
+		if strings.HasPrefix(query, `SELECT "id","address","display_name" FROM "mailboxes"`) {
+			connection.faults++
+			return nil, errors.New("injected account read after the password was verified")
+		}
 	case "saveDraft", "updateDraft", "sendDraft", "forwardMessage":
 		if rows, ok := defaultServerCeilingRows(query, args); ok {
 			rows.rows = [][]driver.Value{{"*", models.CapMailboxSession}}
@@ -85,7 +90,7 @@ func (connection *gapPairConnection) QueryContext(ctx context.Context, query str
 }
 
 func (connection *gapPairConnection) ExecContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Result, error) {
-	if !strings.HasPrefix(query, "SELECT pg_advisory_xact_lock") && !strings.HasPrefix(query, `INSERT INTO "audit_log"`) {
+	if connection.operation != "openGatewaySession" && !strings.HasPrefix(query, "SELECT pg_advisory_xact_lock") && !strings.HasPrefix(query, `INSERT INTO "audit_log"`) {
 		connection.mutations++
 		connection.t.Errorf("refused request attempted a non-audit write: %s", query)
 		return nil, errors.New("unexpected mutation after refusal")
@@ -99,7 +104,9 @@ func newGapPairRouter(t *testing.T, operation string) (*Routers, *auth.JWTServic
 	pool := sql.OpenDB(connection)
 	t.Cleanup(func() { _ = pool.Close() })
 	jwt := auth.NewJWTService(routerTestSecret, 5*time.Minute, time.Hour)
-	routers := NewRouters(openAccountReadDB(t, pool), jwt, &config.Config{Environment: "test", RecoveryEmailBaseURL: "https://mail.example.test"}, nil)
+	// Opening a gateway session is served only on the internal mTLS listener.
+	cfg := &config.Config{Environment: "test", RecoveryEmailBaseURL: "https://mail.example.test", InternalMTLSEnabled: operation == "openGatewaySession"}
+	routers := NewRouters(openAccountReadDB(t, pool), jwt, cfg, nil)
 	t.Cleanup(routers.Close)
 	return routers, jwt, connection
 }

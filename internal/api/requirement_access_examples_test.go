@@ -130,8 +130,9 @@ func TestAccessRequirementExamples(t *testing.T) {
 			examplepairs.Proven(t, tc.op, tc.name)
 			pair := pairs[tc.op][tc.name]
 			jwt := auth.NewJWTService(routerTestSecret, time.Minute, time.Hour)
-			r := NewRouters(newFailingGormDB(t), jwt, &config.Config{Environment: "test", MasterKey: accessMasterKey}, nil)
+			r := NewRouters(newFailingGormDB(t), jwt, &config.Config{Environment: "test", MasterKey: accessMasterKey, InternalMTLSEnabled: true}, nil)
 			t.Cleanup(r.Close)
+			router := r.Public
 			session, err := jwt.GenerateSession(1, "admin@restmail.test", 0, []string{auth.AMRPassword, auth.AMROTP}, false)
 			if err != nil {
 				t.Fatal(err)
@@ -145,10 +146,12 @@ func TestAccessRequirementExamples(t *testing.T) {
 				req.Header.Set("Authorization", "Bearer "+session.AccessToken)
 			}
 			if tc.name == "credential" {
-				req.SetBasicAuth("admin@restmail.test", "the current password")
+				// A mail client's session, from its gateway.
+				req.Header.Set("Authorization", "Bearer "+fixtureGatewayToken)
+				router = asGateway(imapCN, r.Internal)
 			}
 			rr := httptest.NewRecorder()
-			r.Public.ServeHTTP(rr, req)
+			router.ServeHTTP(rr, req)
 			assertRequirementResponse(t, pair, rr)
 		})
 	}

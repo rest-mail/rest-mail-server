@@ -20666,7 +20666,7 @@
   },
   "listAPIKeys": {
     "app_password": {
-      "summary": "Credential management accepts no HTTP Basic app password",
+      "summary": "A mail client's gateway session reaches no credential management",
       "request": {
         "path": {
           "id": 1
@@ -20677,7 +20677,7 @@
         "body": {
           "error": {
             "code": "unauthorized",
-            "message": "Invalid authorization header format"
+            "message": "Invalid or expired token"
           }
         },
         "mediaType": "application/json"
@@ -20965,7 +20965,7 @@
   },
   "listAccounts": {
     "app_password": {
-      "summary": "An actual HTTP Basic app password lists only its own account",
+      "summary": "An app password's gateway session lists only its own account",
       "request": {},
       "response": {
         "status": 200,
@@ -21564,7 +21564,7 @@
   },
   "listCalendarEvents": {
     "app_password": {
-      "summary": "An actual HTTP Basic app password reads its own account",
+      "summary": "An app password's gateway session reads its own account",
       "request": {
         "path": {
           "id": 10
@@ -22039,7 +22039,7 @@
   },
   "listContacts": {
     "app_password": {
-      "summary": "An actual HTTP Basic app password reads its own account",
+      "summary": "An app password's gateway session reads its own account",
       "request": {
         "path": {
           "id": 10
@@ -22745,7 +22745,7 @@
   },
   "listCredentials": {
     "app_password": {
-      "summary": "Credential management accepts no HTTP Basic app password",
+      "summary": "A mail client's gateway session reaches no credential management",
       "request": {
         "path": {
           "id": 1
@@ -22756,7 +22756,7 @@
         "body": {
           "error": {
             "code": "unauthorized",
-            "message": "Invalid authorization header format"
+            "message": "Invalid or expired token"
           }
         },
         "mediaType": "application/json"
@@ -29606,7 +29606,7 @@
         "body": {
           "error": {
             "code": "unauthorized",
-            "message": "Invalid authorization header format"
+            "message": "Invalid or expired token"
           }
         },
         "mediaType": "application/json"

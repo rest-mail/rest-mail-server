@@ -30,7 +30,7 @@ func TestAccountRefusals_ANoLinkCallerCannotTellAnAccountExists(t *testing.T) {
 		t.Fatal(err)
 	}
 	session := "Bearer " + pair.AccessToken
-	appPassword := basic(f.address, f.createAppPassword("laptop").Password)
+	appPassword := f.mailSession(f.address, f.createAppPassword("laptop").Password)
 
 	createKey := fmt.Sprintf(`{"name":"k","password":%q,"permissions":[{"capability":"mail:read","scope":"mailbox:stranger@example.test"}]}`, credentialTestPassword)
 	updateKey := fmt.Sprintf(`{"password":%q,"permissions":[{"capability":"mail:read","scope":"mailbox:stranger@example.test"}]}`, credentialTestPassword)
@@ -46,11 +46,15 @@ func TestAccountRefusals_ANoLinkCallerCannotTellAnAccountExists(t *testing.T) {
 		{"listCredentials as ordinary", http.MethodGet, "/api/v1/accounts/%d/credentials", session, ""},
 	} {
 		t.Run(tc.operation, func(t *testing.T) {
-			someoneElses := f.do(tc.method, fmt.Sprintf(tc.path, stranger), tc.as, tc.body)
+			send := f.do
+			if tc.as == appPassword { // a mail client, through its gateway
+				send = f.viaGateway
+			}
+			someoneElses := send(tc.method, fmt.Sprintf(tc.path, stranger), tc.as, tc.body)
 			if someoneElses.Code != http.StatusNotFound {
 				t.Fatalf("someone else's account: %d %s", someoneElses.Code, someoneElses.Body.String())
 			}
-			absent := f.do(tc.method, fmt.Sprintf(tc.path, missing), tc.as, tc.body)
+			absent := send(tc.method, fmt.Sprintf(tc.path, missing), tc.as, tc.body)
 			if absent.Code != http.StatusNotFound || absent.Body.String() != someoneElses.Body.String() {
 				t.Errorf("an account that does not exist answers differently:\n%d %s\nsomeone else's:\n%d %s",
 					absent.Code, absent.Body.String(), someoneElses.Code, someoneElses.Body.String())
