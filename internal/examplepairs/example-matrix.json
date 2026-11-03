@@ -14327,6 +14327,7 @@
             "is_starred": false,
             "mailbox_id": 1,
             "message_id": "\u003c00000000-0000-4000-8000-000000000001@example.test\u003e",
+            "mod_seq": 2,
             "raw_size": 1714,
             "received_at": "2030-01-02T03:04:05Z",
             "recipients_cc": [],

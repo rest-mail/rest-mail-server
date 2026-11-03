@@ -178,8 +178,17 @@ func (c *importConnection) QueryContext(ctx context.Context, q string, args []dr
 			return nil, err
 		}
 		fields["id"] = int64(41 + len(c.state.messages))
+		// The trigger gives a message stored in a folder the folder's next mod-sequence,
+		// starting at 2, and the INSERT returns it (#1756).
+		modSeq := int64(2)
+		for _, stored := range c.state.messages {
+			if stored["mailbox_id"] == fields["mailbox_id"] && stored["folder"] == fields["folder"] {
+				modSeq++
+			}
+		}
+		fields["mod_seq"] = modSeq
 		c.state.messages = append(c.state.messages, fields)
-		return invitationRows([]string{"id"}, []driver.Value{fields["id"]}), nil
+		return invitationRows([]string{"id", "mod_seq"}, []driver.Value{fields["id"], modSeq}), nil
 	}
 	if strings.Contains(q, "SELECT seq, hash FROM audit_log") {
 		return invitationRows([]string{"seq", "hash"}, []driver.Value{c.state.auditSeq, c.state.auditHash}), nil

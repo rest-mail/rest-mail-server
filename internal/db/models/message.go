@@ -162,7 +162,7 @@ func (Message) TableName() string { return "messages" }
 // also has the INSERT return mod_seq, so the row it answers holds the value the
 // trigger stored and not the model's default (#1756).
 func (m *Message) BeforeCreate(tx *gorm.DB) error {
-	returnStoredModSeq(tx.Statement)
+	returnStoredModSeq(tx)
 	if m.DowngradedSize == 0 && m.RawSize > 0 {
 		m.DowngradedSize = rmail.DowngradedSize(string(m.Source()))
 	}
@@ -180,7 +180,11 @@ func (m *Message) BeforeCreate(tx *gorm.DB) error {
 // the database fills, which a column with a Go default is not. GORM adds its
 // own RETURNING (the ID) only when none is there yet, so those columns are kept
 // in the one this adds. A batch calls this once per row; the first adds it.
-func returnStoredModSeq(stmt *gorm.Statement) {
+func returnStoredModSeq(tx *gorm.DB) {
+	if tx == nil {
+		return
+	}
+	stmt := tx.Statement
 	if stmt == nil || stmt.Schema == nil {
 		return
 	}
