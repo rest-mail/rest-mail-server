@@ -134,6 +134,10 @@ class OwnDataHooks(unittest.TestCase):
             "createPipeline": "a_pipeline_on_the_created_domain",
             "testPipeline": "test_the_created_pipeline",
             "deletePipeline": "delete_a_pipeline_of_its_own",
+            "createAlias": "remove_a_previous_alias_probe",
+            "getAlias": "on_an_alias_of_its_own",
+            "updateAlias": "on_an_alias_of_its_own",
+            "deleteAlias": "on_an_alias_of_its_own",
         }
         self.assertEqual(set(hooks), set(own_data.MOVED))
         for operation, hook in hooks.items():
