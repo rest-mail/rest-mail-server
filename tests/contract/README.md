@@ -1016,7 +1016,8 @@ RESTMAIL_INTERNAL_MTLS=true`, then `tests/contract/run.sh gate --operation-id
   where a request carries it in its body, and its name in the Host header the
   MTA-STS policy file is served by, cleanup of folders previously created by
   create probes (so repeated valid names do not conflict), and a fresh source
-  folder for each rename probe (a successful rename consumes the previous one),
+  folder for each rename probe (a successful rename consumes the previous one;
+  a probe on an account the run cannot reach is left for the route to refuse),
   and, for `addToAllowlist`, `addToBlocklist` and `createAlias`, the entry a
   previous probe added removed when generated bodies repeat it (the domain
   stays for the whole run, so a repeat is otherwise a 409), with an alias
@@ -1101,6 +1102,7 @@ a hosted domain and mailbox for each address a test send probe uses, and,
 - `coverage-baseline.txt`: the coverage ratchet's baseline.
 - `test_gate.py`: `gate.py`'s own tests (`python3 -m unittest discover -s tests/contract -p test_gate.py`).
 - `test_hooks_save_draft.py`: the saveDraft sender hook's tests, against a stub admin API.
+- `test_hooks_rename_folder.py`: the renameFolder source-folder hook's tests, against a stub admin API.
 - `test_repeat_probe_hooks.py`: the sender rule and alias hooks' tests, against
   a stub admin API (`python3 -m unittest discover -s tests/contract -p test_repeat_probe_hooks.py`).
 - `test_hooks.py`: the `createAccount` hooks' tests, against a stub admin API
