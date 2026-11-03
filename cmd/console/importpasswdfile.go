@@ -22,12 +22,14 @@ const importPasswdFileUsage = `restmail import-passwd-file — create the accoun
 Reads a Dovecot passwd-file (user:{SCHEME}hash:uid:gid:gecos:home:shell:extra),
 from the file named or from stdin, and creates one account per user with its
 existing ARGON2ID, ARGON2I, BLF-CRYPT, SHA256-CRYPT or SHA512-CRYPT hash, as
-import-account does. A user without a domain takes --domain. Authentication uses
-RESTMAIL_API_KEY, a scoped API key with accounts:write on the domains.
+import-account does. A user without a domain takes --domain. Set RESTMAIL_API_KEY
+to the access token of a session with accounts:write on the domains, signed in
+recently with a second factor. A real API key is refused: making an account takes
+a person.
 
 An existing account is reported and left alone, never replaced. A line with no
 password, a weak or unsupported scheme, or an invalid address is reported and
-skipped; the other users are still imported. Hashes and the API key are never
+skipped; the other users are still imported. Hashes and the token are never
 printed. Only addresses and passwords move: not display names, quotas, aliases
 or mail. See docs/migrating-accounts.md.
 
@@ -79,7 +81,7 @@ func runImportPasswdFile(ctx context.Context, args []string, stdin io.Reader, to
 		}
 	}
 	if token == "" && !*dryRun {
-		return o.fail(exitUsage, "no_api_key", "set RESTMAIL_API_KEY to a scoped API key with accounts:write on the domains")
+		return o.fail(exitUsage, "no_api_key", "set RESTMAIL_API_KEY to the access token of a session signed in with a second factor, with accounts:write on the domains")
 	}
 	var source io.Reader
 	switch fs.NArg() {

@@ -22,10 +22,11 @@ const importAccountUsage = `restmail import-account — create an account with i
   printf '%s' "$HASH" | restmail import-account --server https://mail.example.com --address user@example.com
 
 Reads one ARGON2ID, ARGON2I, BLF-CRYPT, SHA256-CRYPT or SHA512-CRYPT hash from
-stdin. Authentication uses RESTMAIL_API_KEY, a scoped API key with
-accounts:write on the domain.
+stdin. Set RESTMAIL_API_KEY to the access token of a session with accounts:write
+on the domain, signed in recently with a second factor. A real API
+key is refused: making an account takes a person.
 The domain must already exist. An existing account is refused, never replaced.
-The hash and API key are never printed. This imports one account, without mail,
+The hash and token are never printed. This imports one account, without mail,
 aliases or forwarding. See docs/migrating-accounts.md for limits and cutover.
 
   --server URL          the server's address (https; http only for localhost)
@@ -62,7 +63,7 @@ func runImportAccount(ctx context.Context, args []string, stdin io.Reader, token
 		return o.fail(exitUsage, "bad_flag", "give --address as a mail address, with no positional arguments")
 	}
 	if token == "" {
-		return o.fail(exitUsage, "no_api_key", "set RESTMAIL_API_KEY to a scoped API key with accounts:write on the domain")
+		return o.fail(exitUsage, "no_api_key", "set RESTMAIL_API_KEY to the access token of a session signed in with a second factor, with accounts:write on the domain")
 	}
 	if isTerminal(stdin) {
 		return o.fail(exitUsage, "no_hash", "pipe the existing password hash on stdin")
@@ -80,7 +81,7 @@ func runImportAccount(ctx context.Context, args []string, stdin io.Reader, token
 	case err != nil:
 		return o.fail(exitFailed, "request_failed", err.Error())
 	case status != http.StatusCreated:
-		return o.fail(exitFailed, "import_refused", fmt.Sprintf("the server refused the import (HTTP %d); check the domain, API key scope and whether the account already exists", status))
+		return o.fail(exitFailed, "import_refused", fmt.Sprintf("the server refused the import (HTTP %d); check the domain, the session's permissions and second factor, and whether the account already exists", status))
 	case id == 0:
 		return o.fail(exitFailed, "invalid_response", "the server returned an invalid account response")
 	}

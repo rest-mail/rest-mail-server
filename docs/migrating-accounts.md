@@ -4,8 +4,13 @@ An operator with `accounts:write` on a hosted domain can create an account
 without resetting its password, one at a time or a whole Dovecot passwd-file at
 once. Aliases, forwarding and mail must still be moved separately.
 
-Create the domain first. Set `RESTMAIL_API_KEY` to a scoped API key covering
-that domain, then pipe the existing hash into the CLI:
+Create the domain first. Making an account takes a person who proved a second
+factor, so an API key is refused with 403, whatever it holds. Sign in with
+`"client": "native"` and your authenticator code, and set `RESTMAIL_API_KEY` to
+the session's `access_token`: it must have `accounts:write` on the domain, and
+the sign-in must be recent when each account is made, 15 minutes old at most, or
+less where the operator has shortened that with `FRESH_TWO_FACTOR_WINDOW`. Then
+pipe the existing hash into the CLI:
 
 ```sh
 printf '%s' "$HASH" | restmail import-account \
@@ -22,8 +27,7 @@ address. If that address already exists, import fails with 409 and leaves it
 alone; an import cannot replace a live account's credentials.
 
 The API equivalent is `POST /api/v1/accounts` with `address`, optional
-`display_name` and `password_hash`, authenticated with a session or scoped API
-key. `password` and `password_hash` are mutually exclusive. The same domain
+`display_name` and `password_hash`, authenticated with such a session. `password` and `password_hash` are mutually exclusive. The same domain
 permission, owner grant, transaction and audit rules as ordinary account
 creation apply. Hashes are absent from the response and audit entries.
 
