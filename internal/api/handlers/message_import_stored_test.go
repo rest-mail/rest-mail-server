@@ -1,0 +1,306 @@
+package handlers
+
+import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"testing"
+
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
+)
+
+// These speak only to the route, so they hold on any way of reading a request. The rows wanted
+// here were recorded from the route as it stood when it held a whole request in memory.
+
+const importedMultipart = "Message-ID: <multi@example.test>\r\n" +
+	"From: =?UTF-8?Q?Caf=C3=A9?= <cafe@example.test>\r\nTo: To One <one@example.test>, two@example.test\r\nCc: cc@example.test\r\n" +
+	"Subject: =?UTF-8?Q?Caf=C3=A9_menu?=\r\nDate: Thu, 02 Jan 2020 03:04:05 +0000\r\nIn-Reply-To: <parent@example.test>\r\nReferences: <root@example.test> <parent@example.test>\r\n" +
+	"Authentication-Results: old.example; spf=pass\r\nContent-Type: multipart/mixed; boundary=OUT\r\n\r\n" +
+	"--OUT\r\nContent-Type: multipart/alternative; boundary=IN\r\n\r\n" +
+	"--IN\r\nContent-Type: text/plain; charset=iso-8859-1\r\nContent-Transfer-Encoding: quoted-printable\r\n\r\ncaf=E9 plain\r\n" +
+	"--IN\r\nContent-Type: text/html; charset=utf-8\r\n\r\n<p>café html</p>\r\n--IN--\r\n" +
+	"--OUT\r\nContent-Type: text/calendar; charset=utf-8\r\n\r\nBEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:one\r\nSUMMARY:Lunch\r\nDTSTART:20200102T030405Z\r\nDTEND:20200102T040405Z\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n" +
+	"--OUT\r\nContent-Type: image/png\r\nContent-Disposition: inline; filename=pic.png\r\nContent-ID: <pic>\r\nContent-Transfer-Encoding: base64\r\n\r\ncGljdHVyZQ==\r\n" +
+	"--OUT\r\nContent-Type: application/pdf; name=name.pdf\r\nContent-Transfer-Encoding: base64\r\n\r\nJVBERg==\r\n" +
+	"--OUT\r\nContent-Type: application/octet-stream\r\nContent-Disposition: attachment; filename=\"a b.bin\"\r\n\r\nbinary\xff\x00\r\n" +
+	"--OUT\r\nContent-Type: application/octet-stream\r\nContent-Disposition: attachment; filename=empty.bin\r\nContent-Transfer-Encoding: base64\r\n\r\n\r\n" +
+	"--OUT\r\nContent-Type: application/pdf\r\nContent-Disposition: attachment; filename=broken.pdf\r\nContent-Transfer-Encoding: base64\r\n\r\n!!!!\r\n" +
+	"--OUT--\r\n"
+
+var importedRowCases = []struct {
+	name, message, extra string
+	want                 string
+}{
+	{name: "text", message: "Message-ID: <text@example.test>\r\nFrom: Old <old@example.test>\r\nTo: to@example.test\r\nSubject: plain\r\nDate: Thu, 02 Jan 2020 03:04:05 +0000\r\n\r\nbody\r\n", want: `{"answered":false,"attachment_bytes":0,"attachments":[],"body_bytes":6,"body_html":"","body_text":"body\r\n","calendar":"[]","cc":"[]","date":"2020-01-02T03:04:05Z","downgraded_size":147,"draft":false,"flagged":false,"folder":"INBOX","has_attachments":false,"headers":"{\"To\": [\"to@example.test\"], \"Date\": [\"Thu, 02 Jan 2020 03:04:05 +0000\"], \"From\": [\"Old \u003cold@example.test\u003e\"], \"Subject\": [\"plain\"], \"Message-Id\": [\"\u003ctext@example.test\u003e\"]}","imap_deleted":false,"in_reply_to":"","keywords":null,"message_count":1,"message_id":"\u003ctext@example.test\u003e","quota_used":11,"raw_is_text":true,"raw_sha256":"9eace67c0680bf65dcba73c529ae2283e4a6014c9e48fc4daf235c6859e28005","raw_size":147,"read":false,"received_at":"2020-01-02T03:04:05Z","references":"","sealed":"e262b65b99a5f3618135e99db36da48fdf2a277e8ca289691325312e1e77af8c","sender":"old@example.test","sender_name":"Old","size_bytes":11,"starred":false,"subject":"plain","subject_bytes":5,"thread_id":"\u003ctext@example.test\u003e","to":"[\"to@example.test\"]"}`},
+	{name: "utf8", message: "Message-ID: <utf8@example.test>\r\nFrom: old@example.test\r\nSubject: café\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nbodé\r\n", want: `{"answered":false,"attachment_bytes":0,"attachments":[],"body_bytes":7,"body_html":"","body_text":"bodé\r\n","calendar":"[]","cc":"[]","date":"","downgraded_size":139,"draft":false,"flagged":false,"folder":"INBOX","has_attachments":false,"headers":"{\"From\": [\"old@example.test\"], \"Subject\": [\"café\"], \"Message-Id\": [\"\u003cutf8@example.test\u003e\"], \"Content-Type\": [\"text/plain; charset=utf-8\"]}","imap_deleted":false,"in_reply_to":"","keywords":null,"message_count":1,"message_id":"\u003cutf8@example.test\u003e","quota_used":12,"raw_is_text":true,"raw_sha256":"19ab90f8643c700cf36cb712eeb1466a3b482e699945cd7f3f6c1c1431a64cac","raw_size":123,"read":false,"received_at":"2020-01-02T03:04:05Z","references":"","sealed":"809b58e0fe9cad129f060a9974fd494c090f05e8a31df25cab070b9dbea86d47","sender":"old@example.test","sender_name":"","size_bytes":12,"starred":false,"subject":"café","subject_bytes":5,"thread_id":"\u003cutf8@example.test\u003e","to":"[]"}`},
+	{name: "not_utf8", message: "Message-ID: <latin@example.test>\r\nFrom: old@example.test\r\nSubject: caf\xe9\r\nContent-Type: text/plain; charset=iso-8859-1\r\nContent-Transfer-Encoding: 8bit\r\n\r\nbod\xe9\r\n", want: `{"answered":false,"attachment_bytes":0,"attachments":[],"body_bytes":7,"body_html":"","body_text":"bodé\r\n","calendar":"[]","cc":"[]","date":"","downgraded_size":174,"draft":false,"flagged":false,"folder":"INBOX","has_attachments":false,"headers":"{\"From\": [\"old@example.test\"], \"Subject\": [\"caf�\"], \"Message-Id\": [\"\u003clatin@example.test\u003e\"], \"Content-Type\": [\"text/plain; charset=iso-8859-1\"], \"Content-Transfer-Encoding\": [\"8bit\"]}","imap_deleted":false,"in_reply_to":"","keywords":null,"message_count":1,"message_id":"\u003clatin@example.test\u003e","quota_used":13,"raw_is_text":false,"raw_sha256":"505cac6769df89364431c39df8a90a61734632c2391dafb53fe8830f6a5ca7a4","raw_size":160,"read":false,"received_at":"2020-01-02T03:04:05Z","references":"","sealed":"88fd474eb2e7135e7cbd18260978a04739fdf92e87eba08d945abb8a2760b548","sender":"old@example.test","sender_name":"","size_bytes":13,"starred":false,"subject":"caf�","subject_bytes":6,"thread_id":"\u003clatin@example.test\u003e","to":"[]"}`},
+	{name: "nul", message: "Message-ID: <nul@example.test>\r\nFrom: old@example.test\r\nSubject: nul\r\n\r\nbo\x00dy\r\n", want: `{"answered":false,"attachment_bytes":0,"attachments":[],"body_bytes":9,"body_html":"","body_text":"bo�dy\r\n","calendar":"[]","cc":"[]","date":"","downgraded_size":79,"draft":false,"flagged":false,"folder":"INBOX","has_attachments":false,"headers":"{\"From\": [\"old@example.test\"], \"Subject\": [\"nul\"], \"Message-Id\": [\"\u003cnul@example.test\u003e\"]}","imap_deleted":false,"in_reply_to":"","keywords":null,"message_count":1,"message_id":"\u003cnul@example.test\u003e","quota_used":12,"raw_is_text":false,"raw_sha256":"ddcbee2f579d1c28ca9f1fbc1e92cf8ed8160a7ced509de30714a96529cf028a","raw_size":79,"read":false,"received_at":"2020-01-02T03:04:05Z","references":"","sealed":"8922e5ebf018649812e11c65b5ebed31fce48c2b10a94262207eb02b3c3e5096","sender":"old@example.test","sender_name":"","size_bytes":12,"starred":false,"subject":"nul","subject_bytes":3,"thread_id":"\u003cnul@example.test\u003e","to":"[]"}`},
+	{name: "no_message_id", message: "From: old@example.test\r\nSubject: none\r\n\r\nbody\r\n", want: `{"answered":false,"attachment_bytes":0,"attachments":[],"body_bytes":6,"body_html":"","body_text":"body\r\n","calendar":"[]","cc":"[]","date":"","downgraded_size":47,"draft":false,"flagged":false,"folder":"INBOX","has_attachments":false,"headers":"{\"From\": [\"old@example.test\"], \"Subject\": [\"none\"]}","imap_deleted":false,"in_reply_to":"","keywords":null,"message_count":1,"message_id":"\u003cimport.283884eb1c0a5981cf6953ad87dc79d2f0f3cbc84814119d2ceb97308d9bc3d0@rest-mail.invalid\u003e","quota_used":10,"raw_is_text":true,"raw_sha256":"283884eb1c0a5981cf6953ad87dc79d2f0f3cbc84814119d2ceb97308d9bc3d0","raw_size":47,"read":false,"received_at":"2020-01-02T03:04:05Z","references":"","sealed":"9816ac6c9f50d2f9e53712d22890f138ac03baa4608619f9902eed9a03e2b8d8","sender":"old@example.test","sender_name":"","size_bytes":10,"starred":false,"subject":"none","subject_bytes":4,"thread_id":"\u003cimport.283884eb1c0a5981cf6953ad87dc79d2f0f3cbc84814119d2ceb97308d9bc3d0@rest-mail.invalid\u003e","to":"[]"}`},
+	{name: "single_part_base64_that_breaks", message: "Message-ID: <broken@example.test>\r\nFrom: old@example.test\r\nContent-Type: text/plain\r\nContent-Transfer-Encoding: base64\r\n\r\naGVsbG8gd29ybGQh!!!!\r\n", want: `{"answered":false,"attachment_bytes":0,"attachments":[],"body_bytes":12,"body_html":"","body_text":"hello world!","calendar":"[]","cc":"[]","date":"","downgraded_size":144,"draft":false,"flagged":false,"folder":"INBOX","has_attachments":false,"headers":"{\"From\": [\"old@example.test\"], \"Message-Id\": [\"\u003cbroken@example.test\u003e\"], \"Content-Type\": [\"text/plain\"], \"Content-Transfer-Encoding\": [\"base64\"]}","imap_deleted":false,"in_reply_to":"","keywords":null,"message_count":1,"message_id":"\u003cbroken@example.test\u003e","quota_used":12,"raw_is_text":true,"raw_sha256":"0414cb60cb3a0fd722508f29c20e7a96fbbc7b4fc2ef3134f3cf4819636e92e4","raw_size":144,"read":false,"received_at":"2020-01-02T03:04:05Z","references":"","sealed":"167571bfc47ad82bbf70b1c23a1ca4586414af96fd2f9139cae09d0e75f0feac","sender":"old@example.test","sender_name":"","size_bytes":12,"starred":false,"subject":"","subject_bytes":0,"thread_id":"\u003cbroken@example.test\u003e","to":"[]"}`},
+	{name: "single_part_not_text", message: "Message-ID: <pdf@example.test>\r\nFrom: old@example.test\r\nContent-Type: application/pdf\r\n\r\n%PDF\r\n", want: `{"answered":false,"attachment_bytes":0,"attachments":[],"body_bytes":0,"body_html":"","body_text":"","calendar":"[]","cc":"[]","date":"","downgraded_size":95,"draft":false,"flagged":false,"folder":"INBOX","has_attachments":false,"headers":"{\"From\": [\"old@example.test\"], \"Message-Id\": [\"\u003cpdf@example.test\u003e\"], \"Content-Type\": [\"application/pdf\"]}","imap_deleted":false,"in_reply_to":"","keywords":null,"message_count":1,"message_id":"\u003cpdf@example.test\u003e","quota_used":0,"raw_is_text":true,"raw_sha256":"824cfdeef992ce777b3248291c2f40d46885dbd947ff4d88608ffa763acf0065","raw_size":95,"read":false,"received_at":"2020-01-02T03:04:05Z","references":"","sealed":"d5540f4cc05c378d6f7883cfd63627757e0313ed896ec32f1e8c0034939bb3a0","sender":"old@example.test","sender_name":"","size_bytes":0,"starred":false,"subject":"","subject_bytes":0,"thread_id":"\u003cpdf@example.test\u003e","to":"[]"}`},
+	{name: "multipart", message: importedMultipart, want: `{"answered":false,"attachment_bytes":19,"attachments":[{"Filename":"name.pdf","ContentType":"application/pdf","StorageType":"filesystem","Checksum":"315d429b7714cedb6ad04ac31240145257692630457f3c88253c5beceac76027","Ref":"315d429b7714cedb6ad04ac31240145257692630457f3c88253c5beceac76027.bin","Size":4},{"Filename":"a b.bin","ContentType":"application/octet-stream","StorageType":"filesystem","Checksum":"fcdbeaeb82861702e6c5bc86f11f162ea821de052c3898f663fbc372cf0c25ac","Ref":"fcdbeaeb82861702e6c5bc86f11f162ea821de052c3898f663fbc372cf0c25ac.bin","Size":8},{"Filename":"empty.bin","ContentType":"application/octet-stream","StorageType":"filesystem","Checksum":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855","Ref":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855.bin","Size":0},{"Filename":"pic.png","ContentType":"image/png","StorageType":"filesystem","Checksum":"2cea274d0bedc39ec4ab6ba9e59ec889e3ed6fb56a1cf088a64d9b383378dc97","Ref":"2cea274d0bedc39ec4ab6ba9e59ec889e3ed6fb56a1cf088a64d9b383378dc97.bin","Size":7}],"body_bytes":28,"body_html":"\u003cp\u003ecafé html\u003c/p\u003e","body_text":"café plain","calendar":"[{\"uid\": \"one\", \"dtend\": \"2020-01-02T04:04:05Z\", \"method\": \"\", \"all_day\": false, \"dtstamp\": \"0001-01-01T00:00:00Z\", \"dtstart\": \"2020-01-02T03:04:05Z\", \"summary\": \"Lunch\", \"sequence\": 0, \"organizer\": {\"address\": \"\"}}]","cc":"[\"cc@example.test\"]","date":"2020-01-02T03:04:05Z","downgraded_size":1503,"draft":false,"flagged":false,"folder":"INBOX","has_attachments":true,"headers":"{\"Cc\": [\"cc@example.test\"], \"To\": [\"To One \u003cone@example.test\u003e, two@example.test\"], \"Date\": [\"Thu, 02 Jan 2020 03:04:05 +0000\"], \"From\": [\"=?UTF-8?Q?Caf=C3=A9?= \u003ccafe@example.test\u003e\"], \"Subject\": [\"=?UTF-8?Q?Caf=C3=A9_menu?=\"], \"Message-Id\": [\"\u003cmulti@example.test\u003e\"], \"References\": [\"\u003croot@example.test\u003e \u003cparent@example.test\u003e\"], \"In-Reply-To\": [\"\u003cparent@example.test\u003e\"], \"Content-Type\": [\"multipart/mixed; boundary=OUT\"], \"X-Original-Authentication-Results\": [\"old.example; spf=pass\"]}","imap_deleted":false,"in_reply_to":"\u003cparent@example.test\u003e","keywords":null,"message_count":1,"message_id":"\u003cmulti@example.test\u003e","quota_used":57,"raw_is_text":false,"raw_sha256":"ca3d1e8d80000c7a3eea339ad558da9fbd81ddb1758e80833b66e5e1c810f8c6","raw_size":1503,"read":false,"received_at":"2020-01-02T03:04:05Z","references":"\u003croot@example.test\u003e \u003cparent@example.test\u003e","sealed":"15497544b902188cf58e0898ef0c9f50fb391d408cf6c460b4d4554464884f71","sender":"cafe@example.test","sender_name":"Café","size_bytes":38,"starred":false,"subject":"Café menu","subject_bytes":10,"thread_id":"\u003croot@example.test\u003e","to":"[\"one@example.test\", \"two@example.test\"]"}`},
+	{name: "flags_and_keywords", message: "Message-ID: <flags@example.test>\r\nFrom: old@example.test\r\n\r\nbody\r\n", extra: `,"folder":"Archive","flags":["\\Seen","\\Answered","\\Flagged","\\Draft","\\Deleted","$Junk","$Forwarded"]`, want: `{"answered":true,"attachment_bytes":0,"attachments":[],"body_bytes":6,"body_html":"","body_text":"body\r\n","calendar":"[]","cc":"[]","date":"","downgraded_size":66,"draft":true,"flagged":true,"folder":"Archive","has_attachments":false,"headers":"{\"From\": [\"old@example.test\"], \"Message-Id\": [\"\u003cflags@example.test\u003e\"]}","imap_deleted":true,"in_reply_to":"","keywords":["$Junk","$Forwarded"],"message_count":1,"message_id":"\u003cflags@example.test\u003e","quota_used":6,"raw_is_text":true,"raw_sha256":"3499b8087c769a55c3da70929e363d2434d9b09bccb0f608c3ce7f2cedebddbc","raw_size":66,"read":true,"received_at":"2020-01-02T03:04:05Z","references":"","sealed":"1c7230ec6ac3dcd3c75e31d1fcb4211d2aa5c16fc9b0943671c01621ffed8588","sender":"old@example.test","sender_name":"","size_bytes":6,"starred":true,"subject":"","subject_bytes":0,"thread_id":"\u003cflags@example.test\u003e","to":"[]"}`},
+}
+
+// importedRow is what is stored for a request: everything but ids, and where the storage root is.
+func importedRow(t *testing.T, name, message, extra string) string {
+	t.Helper()
+	db := importProofDB(t)
+	fx := seedAccountsFixture(t, db)
+	if err := db.Create(&models.QuotaUsage{MailboxID: fx.user.ID}).Error; err != nil {
+		t.Fatal(err)
+	}
+	h := NewMessageImportHandler(db, 1<<20, nil, nil)
+	h.directory = t.TempDir()
+	body := fmt.Sprintf(`{"raw_message":"%s","internal_date":"2020-01-02T03:04:05Z"%s}`, base64.StdEncoding.EncodeToString([]byte(message)), extra)
+	r := authzRequest(http.MethodPost, fmt.Sprintf("/api/v1/accounts/%d/messages/import", fx.user.ID), fx.user.ID, nil, body)
+	r.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	importMessageRoutes(h).ServeHTTP(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("%s: %d %s", name, w.Code, w.Body)
+	}
+	var stored models.Message
+	if err := db.Where("mailbox_id = ?", fx.user.ID).First(&stored).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(stored.Source(), []byte(message)) {
+		t.Fatalf("%s: source changed: %q", name, stored.Source())
+	}
+	var attachments []models.Attachment
+	if err := db.Where("message_id = ?", stored.ID).Order("id").Find(&attachments).Error; err != nil {
+		t.Fatal(err)
+	}
+	type attachment struct {
+		Filename, ContentType, StorageType, Checksum, Ref string
+		Size                                              int64
+	}
+	stores := []attachment{}
+	for _, a := range attachments {
+		stores = append(stores, attachment{a.Filename, a.ContentType, a.StorageType, a.Checksum, filepath.Base(a.StorageRef), a.SizeBytes})
+	}
+	var usage models.QuotaUsage
+	if err := db.Where("mailbox_id = ?", fx.user.ID).First(&usage).Error; err != nil {
+		t.Fatal(err)
+	}
+	var account models.Mailbox
+	if err := db.First(&account, fx.user.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	dated := ""
+	if stored.DateHeader != nil {
+		dated = stored.DateHeader.UTC().Format("2006-01-02T15:04:05Z")
+	}
+	encoded, err := json.Marshal(map[string]any{
+		"raw_is_text": stored.RawOctets == nil, "raw_sha256": fmt.Sprintf("%x", sha256.Sum256(stored.Source())), "raw_size": stored.RawSize, "downgraded_size": stored.DowngradedSize,
+		"message_id": stored.MsgID, "in_reply_to": stored.InReplyTo, "references": stored.References, "thread_id": stored.ThreadID,
+		"sender": stored.Sender, "sender_name": stored.SenderName, "to": string(stored.RecipientsTo), "cc": string(stored.RecipientsCc),
+		"subject": stored.Subject, "body_text": stored.BodyText, "body_html": stored.BodyHTML, "size_bytes": stored.SizeBytes,
+		"headers": string(stored.Headers), "calendar": string(stored.CalendarEventsRaw), "date": dated, "folder": stored.Folder,
+		"received_at": stored.ReceivedAt.UTC().Format("2006-01-02T15:04:05Z"), "sealed": stored.SealedHash,
+		"read": stored.IsRead, "answered": stored.IsAnswered, "flagged": stored.IsFlagged, "starred": stored.IsStarred, "draft": stored.IsDraft, "imap_deleted": stored.IMAPDeleted, "keywords": stored.Keywords,
+		"has_attachments": stored.HasAttachments, "attachments": stores,
+		"subject_bytes": usage.SubjectBytes, "body_bytes": usage.BodyBytes, "attachment_bytes": usage.AttachmentBytes, "message_count": usage.MessageCount, "quota_used": account.QuotaUsedBytes,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(encoded)
+}
+
+func TestMessageImportStoredRows(t *testing.T) {
+	for _, tc := range importedRowCases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := importedRow(t, tc.name, tc.message, tc.extra); got != tc.want {
+				t.Fatalf("stored\n%s\nwant\n%s", got, tc.want)
+			}
+		})
+	}
+}
+
+// A message whose source can't be compared, and each way the same source can be stored.
+func TestMessageImportComparesWithWhatIsStored(t *testing.T) {
+	db := importProofDB(t)
+	fx := seedAccountsFixture(t, db)
+	if err := db.Create(&models.QuotaUsage{MailboxID: fx.user.ID}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Model(&models.Mailbox{}).Where("id = ?", fx.user.ID).Update("quota_bytes", 1<<30).Error; err != nil {
+		t.Fatal(err)
+	}
+	h := NewMessageImportHandler(db, 1<<20, nil, nil)
+	h.directory = t.TempDir()
+	routes := importMessageRoutes(h)
+	send := func(message string) (imported bool, id uint) {
+		t.Helper()
+		body := fmt.Sprintf(`{"raw_message":"%s","folder":"Compare","internal_date":"2020-01-02T03:04:05Z"}`, base64.StdEncoding.EncodeToString([]byte(message)))
+		r := authzRequest(http.MethodPost, fmt.Sprintf("/api/v1/accounts/%d/messages/import", fx.user.ID), fx.user.ID, nil, body)
+		r.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		routes.ServeHTTP(w, r)
+		if w.Code != http.StatusOK {
+			t.Fatalf("%d %s", w.Code, w.Body)
+		}
+		var answer struct {
+			Data struct {
+				ID       uint `json:"id"`
+				Imported bool `json:"imported"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &answer); err != nil {
+			t.Fatal(err)
+		}
+		return answer.Data.Imported, answer.Data.ID
+	}
+	stored := func(messageID, text string, octets []byte) uint {
+		t.Helper()
+		row := models.Message{MailboxID: fx.user.ID, Folder: "Compare", MsgID: messageID, Sender: "s@example.test", RawMessage: text, RawOctets: octets}
+		if err := db.Create(&row).Error; err != nil {
+			t.Fatal(err)
+		}
+		return row.ID
+	}
+
+	sourceless := stored("<none@example.test>", "", nil)
+	if imported, id := send("Message-ID: <none@example.test>\r\n\r\nbody\r\n"); imported || id != sourceless {
+		t.Errorf("a row with no source counts as this one: imported=%t id=%d, want %d", imported, id, sourceless)
+	}
+
+	text := "Message-ID: <asoctets@example.test>\r\n\r\nbody\r\n"
+	asOctets := stored("<asoctets@example.test>", "", []byte(text))
+	if imported, id := send(text); imported || id != asOctets {
+		t.Errorf("the same bytes kept as octets: imported=%t id=%d, want %d", imported, id, asOctets)
+	}
+
+	utf := "Message-ID: <astext@example.test>\r\n\r\nbodé\r\n"
+	asText := stored("<astext@example.test>", utf, nil)
+	if imported, id := send(utf); imported || id != asText {
+		t.Errorf("the same bytes kept as text: imported=%t id=%d, want %d", imported, id, asText)
+	}
+
+	binary := "Message-ID: <binary@example.test>\r\n\r\nbo\x00d\xff\r\n"
+	if imported, _ := send(binary); !imported {
+		t.Error("a new binary message wasn't stored")
+	}
+	if imported, _ := send(binary); imported {
+		t.Error("a binary message was stored twice")
+	}
+
+	bare := stored("bare@example.test", "Message-ID: <bare@example.test>\r\n\r\nbody\r\n", nil)
+	if imported, id := send("Message-ID: <bare@example.test>\r\n\r\nbody\r\n"); imported || id != bare {
+		t.Errorf("an ID stored without brackets: imported=%t id=%d, want %d", imported, id, bare)
+	}
+
+	first, firstID := send("Message-ID: <edited@example.test>\r\n\r\none\r\n")
+	second, secondID := send("Message-ID: <edited@example.test>\r\n\r\ntwo\r\n")
+	if !first || !second || firstID == secondID {
+		t.Errorf("the same ID with other octets is another message: %t %t %d %d", first, second, firstID, secondID)
+	}
+	if again, id := send("Message-ID: <edited@example.test>\r\n\r\ntwo\r\n"); again || id != secondID {
+		t.Errorf("the second of two with one ID: imported=%t id=%d, want %d", again, id, secondID)
+	}
+}
+
+// bigImport is a message of about size bytes, nearly all of it one attachment.
+func bigImport(id string, size int) string {
+	return "Message-ID: <" + id + "@example.test>\r\nFrom: old@example.test\r\nSubject: big\r\nContent-Type: multipart/mixed; boundary=B\r\n\r\n" +
+		"--B\r\nContent-Type: text/plain\r\n\r\nsmall\r\n" +
+		"--B\r\nContent-Type: application/octet-stream\r\nContent-Disposition: attachment; filename=big.bin\r\nContent-Transfer-Encoding: base64\r\n\r\n" +
+		strings.Repeat(strings.Repeat("A", 76)+"\r\n", size/78) + "--B--\r\n"
+}
+
+// A rerun of mail already here, and mail the quota refuses, read no more than they must. Neither
+// reads the source into memory; before, each held the request, the message, and its stored copy.
+func TestMessageImportNotStoredIsNotHeld(t *testing.T) {
+	const size = 32 << 20
+	db := importProofDB(t)
+	fx := seedAccountsFixture(t, db)
+	if err := db.Create(&models.QuotaUsage{MailboxID: fx.user.ID}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Model(&models.Mailbox{}).Where("id = ?", fx.user.ID).Update("quota_bytes", int64(1)<<40).Error; err != nil {
+		t.Fatal(err)
+	}
+	h := NewMessageImportHandler(db, 2*size, nil, nil)
+	h.directory = t.TempDir()
+	routes := importMessageRoutes(h)
+	send := func(message string) (*httptest.ResponseRecorder, uint64) {
+		t.Helper()
+		body := fmt.Sprintf(`{"raw_message":"%s","folder":"Big","internal_date":"2020-01-02T03:04:05Z"}`, base64.StdEncoding.EncodeToString([]byte(message)))
+		r := authzRequest(http.MethodPost, fmt.Sprintf("/api/v1/accounts/%d/messages/import", fx.user.ID), fx.user.ID, nil, body)
+		r.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		var before, after runtime.MemStats
+		runtime.ReadMemStats(&before)
+		routes.ServeHTTP(w, r)
+		runtime.ReadMemStats(&after)
+		return w, after.TotalAlloc - before.TotalAlloc
+	}
+	message := bigImport("rerun", size)
+	if w, _ := send(message); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"imported":true`) {
+		t.Fatalf("first import: %d %s", w.Code, w.Body)
+	}
+	w, allocated := send(message)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"imported":false`) {
+		t.Fatalf("rerun: %d %s", w.Code, w.Body)
+	}
+	t.Logf("a rerun of %d bytes allocated %d", size, allocated)
+	if allocated > size/4 {
+		t.Fatalf("a rerun of %d bytes allocated %d", size, allocated)
+	}
+
+	if err := db.Model(&models.Mailbox{}).Where("id = ?", fx.user.ID).Update("quota_bytes", 1).Error; err != nil {
+		t.Fatal(err)
+	}
+	w, allocated = send(bigImport("full", size))
+	if w.Code != http.StatusConflict {
+		t.Fatalf("over quota: %d %s", w.Code, w.Body)
+	}
+	t.Logf("a refusal of %d bytes at the quota allocated %d", size, allocated)
+	if allocated > size/4 {
+		t.Fatalf("a refusal of %d bytes at the quota allocated %d", size, allocated)
+	}
+}
+
+// Storing still reads the source, because the row keeps it (see importSource.columns), but the
+// attachment isn't read for itself as well, and the request isn't held to get at either.
+func TestMessageImportStoredHoldsOnlyWhatTheRowKeeps(t *testing.T) {
+	const size = 32 << 20
+	db := importProofDB(t)
+	fx := seedAccountsFixture(t, db)
+	if err := db.Create(&models.QuotaUsage{MailboxID: fx.user.ID}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Model(&models.Mailbox{}).Where("id = ?", fx.user.ID).Update("quota_bytes", int64(1)<<40).Error; err != nil {
+		t.Fatal(err)
+	}
+	h := NewMessageImportHandler(db, 2*size, nil, nil)
+	h.directory = t.TempDir()
+	message := bigImport("stored", size)
+	body := fmt.Sprintf(`{"raw_message":"%s","internal_date":"2020-01-02T03:04:05Z"}`, base64.StdEncoding.EncodeToString([]byte(message)))
+	r := authzRequest(http.MethodPost, fmt.Sprintf("/api/v1/accounts/%d/messages/import", fx.user.ID), fx.user.ID, nil, body)
+	r.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	routes := importMessageRoutes(h)
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	routes.ServeHTTP(w, r)
+	runtime.ReadMemStats(&after)
+	if w.Code != http.StatusOK {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	allocated := after.TotalAlloc - before.TotalAlloc
+	t.Logf("storing %d bytes allocated %d, %.1f times over", len(message), allocated, float64(allocated)/float64(len(message)))
+	// Four copies remain: the row's, two made measuring and sealing it (Message.BeforeCreate),
+	// and the database driver's. Reading the whole request in memory came to 22.
+	if allocated > 8*uint64(len(message)) {
+		t.Fatalf("storing %d bytes allocated %d", len(message), allocated)
+	}
+}

@@ -2,12 +2,13 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
-	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"net/http"
 	"net/mail"
@@ -50,6 +51,9 @@ func NewMessageImportHandler(db *gorm.DB, maxBytes int64, store *attachmentstore
 	return &MessageImportHandler{db: db, maxBytes: maxBytes, store: store, broker: broker, directory: attachmentstore.FilesystemRoot}
 }
 
+// importMessageRequest is the request as the document describes it and the binder judges it. The
+// route reads the body itself (importSpooledMessage), so the message is never in Body.RawMessage
+// except for the rare forms named there.
 type importMessageRequest struct {
 	ID   uint32                     `path:"id" minimum:"1" example:"1"`
 	Body apitypes.ImportMessageBody `body:""`
@@ -73,7 +77,7 @@ func (h *MessageImportHandler) Register(rs endpoint.Routes) {
 		Description: "Stores original message octets, folder, supported system flags and required internal_date without delivery rules or push notifications. Requires mail:import on the destination, which every account holds on its own mailbox. A message whose Message-ID and exact octets are already in that account and folder is skipped without changing its flags or date; the same Message-ID with different octets is stored as another message. Messages without Message-ID use a deterministic SHA-256 import identity; the raw source remains unchanged. Every attempt is audited; successful imports and skips also receive a transactional messages.import audit entry. The decoded message is bounded by SMTP_MAX_MESSAGE_SIZE (10 MiB by default); the general API body limit may be stricter. Deleted state and up to 100 case-insensitive keywords of 1–255 ASCII bytes are preserved. Keywords must be RFC 3501 atoms without backslash. Deleted messages use IMAP deletion state, not API tombstones; EXPUNGE removes them.",
 		Errors:      []int{http.StatusForbidden, http.StatusNotFound, http.StatusConflict, http.StatusRequestEntityTooLarge},
 		Security:    handlerChecked(models.CapMailImport, folderSchemes...),
-		Middleware:  []endpoint.Middleware{cap}}, h.importMessage)
+		Middleware:  []endpoint.Middleware{cap}, DescribedRequest: importMessageRequest{}}, h.importSpooledMessage)
 }
 
 // importRefusal is how an import names a refused account: one the caller may not
@@ -90,10 +94,12 @@ func importRefusal(err error) error {
 
 var errImportQuota = endpoint.Refuse(http.StatusConflict, "mailbox_full", "The destination account has insufficient quota")
 
-func (h *MessageImportHandler) importMessage(r *http.Request, in importMessageRequest) (apitypes.ImportMessageResult, error) {
+// storeImportedMessage stores a message from its file. Only headers are read before it is known
+// the message must be stored: a refused message and a rerun of one already here read no more of
+// it than that. Reading past them happens only then, attachments going straight to their store.
+func (h *MessageImportHandler) storeImportedMessage(r *http.Request, accountID uint32, body apitypes.ImportMessageBody, source *importSource) (apitypes.ImportMessageResult, error) {
 	var result apitypes.ImportMessageResult
-	body := in.Body
-	if int64(len(body.RawMessage)) > h.maxBytes {
+	if source.tooLarge() {
 		return result, endpoint.Refuse(http.StatusRequestEntityTooLarge, "message_too_large", "The decoded message exceeds the import size limit")
 	}
 	if body.Folder == "" || strings.EqualFold(body.Folder, "INBOX") {
@@ -103,13 +109,13 @@ func (h *MessageImportHandler) importMessage(r *http.Request, in importMessageRe
 	if problem := rmail.FolderNameProblem(body.Folder); problem != "" {
 		problems["folder"] = problem
 	}
-	if len(body.RawMessage) == 0 {
+	if source.size == 0 {
 		problems["raw_message"] = "required: a complete RFC 5322 message"
 	}
 	if body.InternalDate.IsZero() || body.InternalDate.Year() < 1 || body.InternalDate.Year() > 9999 {
 		problems["internal_date"] = "required: the original internal date as an RFC 3339 timestamp"
 	}
-	msg := models.Message{MailboxID: uint(in.ID), Folder: body.Folder, ReceivedAt: body.InternalDate}
+	msg := models.Message{MailboxID: uint(accountID), Folder: body.Folder, ReceivedAt: body.InternalDate}
 	flags, flagErr := goimap.NormalizeImportFlags(body.Flags)
 	if flagErr != nil {
 		problems["flags"] = flagErr.Error()
@@ -138,35 +144,30 @@ func (h *MessageImportHandler) importMessage(r *http.Request, in importMessageRe
 	if claims == nil {
 		return result, endpoint.Refuse(http.StatusUnauthorized, "unauthorized", "Authentication required")
 	}
-	if _, err := resolveAccountMailbox(h.db, uint(in.ID), claims, models.CapMailImport); err != nil {
+	if _, err := resolveAccountMailbox(h.db, uint(accountID), claims, models.CapMailImport); err != nil {
 		return result, importRefusal(err)
 	}
-	parsed, err := rmime.Parse(body.RawMessage)
+	reader, err := source.reader()
+	if err != nil {
+		return result, err
+	}
+	headers, err := rmime.ParseHeaders(reader)
 	if err != nil {
 		return result, endpoint.Invalid(map[string]string{"raw_message": "must be a parseable RFC 5322 message"})
 	}
-	msg.MsgID = rmail.CanonicalID(parsed.Headers.MessageID)
+	msg.MsgID = rmail.CanonicalID(headers.MessageID)
 	if msg.MsgID == "" || !utf8.ValidString(msg.MsgID) || strings.ContainsRune(msg.MsgID, 0) {
-		msg.MsgID = fmt.Sprintf("<import.%x@rest-mail.invalid>", sha256.Sum256(body.RawMessage))
+		msg.MsgID = fmt.Sprintf("<import.%x@rest-mail.invalid>", source.checksum)
 	}
 	if len(msg.MsgID) > 995 {
 		return result, endpoint.Invalid(map[string]string{"raw_message": "Message-ID exceeds 995 bytes"})
 	}
-	msg.RawSize = len(body.RawMessage)
-	if utf8.Valid(body.RawMessage) && !strings.ContainsRune(string(body.RawMessage), 0) {
-		msg.RawMessage = string(body.RawMessage)
-	} else {
-		msg.RawOctets = body.RawMessage
-	}
-	text := func(value string) string { return strings.ToValidUTF8(strings.ReplaceAll(value, "\x00", "�"), "�") }
-	msg.Subject = text(parsed.Headers.Subject)
-	msg.BodyText, msg.BodyHTML = rmime.TextAndHTML(parsed.Body)
-	msg.BodyText, msg.BodyHTML = text(msg.BodyText), text(msg.BodyHTML)
-	msg.SizeBytes = len(msg.Subject) + len(msg.BodyText) + len(msg.BodyHTML)
-	msg.InReplyTo = text(rmail.CanonicalID(parsed.Headers.InReplyTo))
-	msg.References = text(strings.Join(parsed.Headers.References, " "))
-	if len(parsed.Headers.From) != 0 {
-		msg.Sender, msg.SenderName = text(parsed.Headers.From[0].Address), text(parsed.Headers.From[0].Name)
+	msg.RawSize = int(source.size)
+	msg.Subject = importedText(headers.Subject)
+	msg.InReplyTo = importedText(rmail.CanonicalID(headers.InReplyTo))
+	msg.References = importedText(strings.Join(headers.References, " "))
+	if len(headers.From) != 0 {
+		msg.Sender, msg.SenderName = importedText(headers.From[0].Address), importedText(headers.From[0].Name)
 	}
 	addresses := func(items []pipeline.Address) models.JSONB {
 		list := make([]string, 0, len(items))
@@ -176,26 +177,22 @@ func (h *MessageImportHandler) importMessage(r *http.Request, in importMessageRe
 		encoded, _ := json.Marshal(list)
 		return models.JSONB(encoded)
 	}
-	msg.RecipientsTo, msg.RecipientsCc = addresses(parsed.Headers.To), addresses(parsed.Headers.Cc)
-	headers, _ := json.Marshal(parsed.Headers.Raw)
-	msg.Headers = models.JSONB(headers)
-	if date, err := mail.ParseDate(parsed.Headers.Date); err == nil {
+	msg.RecipientsTo, msg.RecipientsCc = addresses(headers.To), addresses(headers.Cc)
+	encodedHeaders, _ := json.Marshal(headers.Raw)
+	msg.Headers = models.JSONB(encodedHeaders)
+	if date, err := mail.ParseDate(headers.Date); err == nil {
 		msg.DateHeader = &date
-	}
-	if len(parsed.CalendarEvents) != 0 {
-		data, _ := json.Marshal(parsed.CalendarEvents)
-		msg.CalendarEventsRaw = models.JSONB(data)
 	}
 	ctx := r.Context()
 	err = h.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		// Serialize only imports sharing this exact destination/identity. Do
 		// not add a global Message-ID uniqueness rule to ordinary delivery.
-		key := sha256.Sum256([]byte(fmt.Sprintf("restmail/import/%d/%s/%s", in.ID, body.Folder, msg.MsgID)))
+		key := sha256.Sum256([]byte(fmt.Sprintf("restmail/import/%d/%s/%s", accountID, body.Folder, msg.MsgID)))
 		if err := tx.Exec("SELECT pg_advisory_xact_lock(?)", int64(binary.BigEndian.Uint64(key[:8]))).Error; err != nil {
 			return err
 		}
 		var box models.Mailbox
-		if err := tx.First(&box, in.ID).Error; err != nil {
+		if err := tx.First(&box, accountID).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return endpoint.Refuse(http.StatusNotFound, "mailbox_not_found", "Destination account not found")
 			}
@@ -204,55 +201,62 @@ func (h *MessageImportHandler) importMessage(r *http.Request, in importMessageRe
 		// The same Message-ID with the same octets is this message again, so a
 		// rerun skips it. Different octets are a different message that shares an
 		// ID (an edited draft, a badly made ID), so it is stored.
-		var sameID []models.Message
-		err := tx.Select("id", "message_id", "folder", "raw_message", "raw_octets").
-			Where("mailbox_id = ? AND folder = ? AND message_id IN ?", in.ID, body.Folder,
+		var sameID []storedImportSource
+		err := tx.Model(&models.Message{}).Select(storedImportSourceColumns).
+			Where("mailbox_id = ? AND folder = ? AND message_id IN ?", accountID, body.Folder,
 				[]string{msg.MsgID, strings.Trim(msg.MsgID, "<>")}).Order("id").Find(&sameID).Error
-		existing := sameContent(sameID, body.RawMessage)
+		existing := sameContent(sameID, source.checksum)
 		switch {
 		case err != nil:
 			return err
 		case existing != nil:
 			result = apitypes.ImportMessageResult{ID: existing.ID, MessageID: existing.MsgID, Folder: existing.Folder}
 		default:
-			msg.ThreadID, err = repositories.ResolveThreadID(tx, uint(in.ID), msg.MsgID, msg.InReplyTo, msg.References)
+			msg.ThreadID, err = repositories.ResolveThreadID(tx, uint(accountID), msg.MsgID, msg.InReplyTo, msg.References)
 			if err != nil {
 				return err
+			}
+			reader, err := source.reader()
+			if err != nil {
+				return err
+			}
+			// The text columns keep a part's whole text, so no part is cut short here.
+			parsed, err := rmime.ParseStream(ctx, reader, rmime.StreamOptions{Store: h.storeAttachmentPart, MaxText: math.MaxInt64})
+			if err != nil {
+				return fmt.Errorf("store imported attachment: %w", err)
+			}
+			msg.BodyText, msg.BodyHTML = rmime.TextAndHTML(parsed.Body)
+			msg.BodyText, msg.BodyHTML = importedText(msg.BodyText), importedText(msg.BodyHTML)
+			msg.SizeBytes = len(msg.Subject) + len(msg.BodyText) + len(msg.BodyHTML)
+			if len(parsed.CalendarEvents) != 0 {
+				data, _ := json.Marshal(parsed.CalendarEvents)
+				msg.CalendarEventsRaw = models.JSONB(data)
 			}
 			var rows []models.Attachment
 			var attachmentBytes int64
 			for _, group := range [][]pipeline.Attachment{parsed.Attachments, parsed.Inline} {
 				for _, att := range group {
-					data, err := base64.StdEncoding.DecodeString(att.Content)
-					if err != nil {
-						return fmt.Errorf("decode imported attachment: %w", err)
-					}
-					var ref, checksum, storage string
-					if h.store != nil {
-						ref, checksum, err = h.store.Put(ctx, data)
-						storage = "s3"
-					} else {
-						ref, checksum, err = attachmentstore.PutFilesystem(ctx, h.directory, data)
-						storage = "filesystem"
-					}
-					if err != nil {
-						return fmt.Errorf("store imported attachment: %w", err)
-					}
 					rows = append(rows, models.Attachment{Filename: att.Filename, ContentType: att.ContentType,
-						SizeBytes: int64(len(data)), StorageType: storage, StorageRef: ref, Checksum: checksum})
-					attachmentBytes += int64(len(data))
+						SizeBytes: att.Size, StorageType: att.Storage, StorageRef: att.Ref, Checksum: att.Checksum})
+					attachmentBytes += att.Size
 				}
 			}
-			if err := repositories.ReserveStorage(tx, uint(in.ID), int64(msg.SizeBytes)+attachmentBytes); err != nil {
+			if err := repositories.ReserveStorage(tx, uint(accountID), int64(msg.SizeBytes)+attachmentBytes); err != nil {
 				if errors.Is(err, repositories.ErrStorageQuota) {
 					return errImportQuota
 				}
 				return err
 			}
 			msg.HasAttachments = len(rows) != 0
+			// The row keeps the whole source in raw_message or raw_octets, so this is the one
+			// step that reads it all, and only for a message that is being stored.
+			if msg.RawMessage, msg.RawOctets, err = source.columns(); err != nil {
+				return err
+			}
 			if err := tx.Create(&msg).Error; err != nil {
 				return err
 			}
+			msg.RawMessage, msg.RawOctets = "", nil // stored, so no longer held
 			for i := range rows {
 				rows[i].MessageID = msg.ID
 			}
@@ -261,7 +265,7 @@ func (h *MessageImportHandler) importMessage(r *http.Request, in importMessageRe
 					return err
 				}
 			}
-			usage := tx.Model(&models.QuotaUsage{}).Where("mailbox_id = ?", in.ID).Updates(map[string]any{
+			usage := tx.Model(&models.QuotaUsage{}).Where("mailbox_id = ?", accountID).Updates(map[string]any{
 				"subject_bytes":    gorm.Expr("subject_bytes + ?", len(msg.Subject)),
 				"body_bytes":       gorm.Expr("body_bytes + ?", len(msg.BodyText)+len(msg.BodyHTML)),
 				"attachment_bytes": gorm.Expr("attachment_bytes + ?", attachmentBytes),
@@ -277,7 +281,7 @@ func (h *MessageImportHandler) importMessage(r *http.Request, in importMessageRe
 		}
 		entry := middleware.NewAuditEntry("messages.import", r, time.Now())
 		entry.Status = http.StatusOK
-		entry.Target["account_id"] = strconv.FormatUint(uint64(in.ID), 10)
+		entry.Target["account_id"] = strconv.FormatUint(uint64(accountID), 10)
 		entry.Target["message_id"] = strconv.FormatUint(uint64(result.ID), 10)
 		entry.Target["imported"] = strconv.FormatBool(result.Imported)
 		return audit.Append(tx, entry)
@@ -288,22 +292,62 @@ func (h *MessageImportHandler) importMessage(r *http.Request, in importMessageRe
 	// An open client learns of the message; a phone is not told, since this is
 	// mail the account already has.
 	if result.Imported && h.broker != nil {
-		h.broker.Publish(uint(in.ID), SSEEvent{Type: "new_message", Data: map[string]interface{}{
+		h.broker.Publish(uint(accountID), SSEEvent{Type: "new_message", Data: map[string]interface{}{
 			"message_id": result.ID, "folder": result.Folder, "sender": msg.Sender, "subject": msg.Subject,
 		}})
 	}
 	return result, nil
 }
 
-// sameContent is the first of messages holding exactly raw. One with no stored
-// source cannot be compared, so it counts as the same: a rerun must not copy it.
-func sameContent(messages []models.Message, raw []byte) *models.Message {
+// importedText is a decoded header or body as a text column can hold it.
+func importedText(value string) string {
+	return strings.ToValidUTF8(strings.ReplaceAll(value, "\x00", "�"), "�")
+}
+
+// storeAttachmentPart stores one decoded part as it is read. The object store has to be told a
+// size and a checksum before the upload, so a part bound for it goes through a file first.
+func (h *MessageImportHandler) storeAttachmentPart(ctx context.Context, part io.Reader) (rmime.StoredPart, error) {
+	if h.store == nil {
+		ref, checksum, size, err := attachmentstore.PutFilesystemReader(ctx, h.directory, part)
+		return rmime.StoredPart{Storage: "filesystem", Ref: ref, Checksum: checksum, Size: size}, err
+	}
+	file, done, err := newImportSpool()
+	if err != nil {
+		return rmime.StoredPart{}, err
+	}
+	defer done()
+	size, err := io.Copy(file, part)
+	if err != nil {
+		return rmime.StoredPart{}, err
+	}
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return rmime.StoredPart{}, err
+	}
+	ref, checksum, err := h.store.PutReader(ctx, file, size)
+	return rmime.StoredPart{Storage: "s3", Ref: ref, Checksum: checksum, Size: size}, err
+}
+
+// storedImportSource is a stored message with what identifies its source, which the database
+// works out so that the source itself is not read back here.
+type storedImportSource struct {
+	ID           uint
+	MsgID        string `gorm:"column:message_id"`
+	Folder       string
+	SourceSHA256 []byte `gorm:"column:source_sha256"`
+	SourceOctets int64  `gorm:"column:source_octets"`
+}
+
+// storedImportSourceColumns reads a message's source as models.Message.Source does: its octets
+// where it has them, its text otherwise.
+const storedImportSourceColumns = `id, message_id, folder,
+	sha256(coalesce(nullif(raw_octets, ''::bytea), convert_to(coalesce(raw_message, ''), 'UTF8'))) AS source_sha256,
+	octet_length(coalesce(nullif(raw_octets, ''::bytea), convert_to(coalesce(raw_message, ''), 'UTF8'))) AS source_octets`
+
+// sameContent is the first of messages holding exactly the source with this checksum. One with
+// no stored source cannot be compared, so it counts as the same: a rerun must not copy it.
+func sameContent(messages []storedImportSource, checksum [sha256.Size]byte) *storedImportSource {
 	for i := range messages {
-		stored := messages[i].RawOctets
-		if len(stored) == 0 {
-			stored = []byte(messages[i].RawMessage)
-		}
-		if len(stored) == 0 || bytes.Equal(stored, raw) {
+		if messages[i].SourceOctets == 0 || bytes.Equal(messages[i].SourceSHA256, checksum[:]) {
 			return &messages[i]
 		}
 	}
