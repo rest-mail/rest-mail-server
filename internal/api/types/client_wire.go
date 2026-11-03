@@ -336,9 +336,10 @@ type AddressCheck struct {
 }
 
 type FolderSummary struct {
-	Folder string `json:"name"`
-	Total  int64  `json:"total"`
-	Unread int64  `json:"unread"`
+	Folder string  `json:"name"`
+	Total  int64   `json:"total"`
+	Unread int64   `json:"unread"`
+	Role   *string `json:"role" gorm:"-" enums:"inbox,sent,drafts,trash,junk,archive" description:"What a standard folder is for: inbox (INBOX), sent (Sent), drafts (Drafts), trash (Trash), junk (Spam) or archive (Archive), the roles IMAP LIST gives as RFC 6154 special-use attributes (INBOX needs none); null for any other folder"`
 }
 
 type Quota struct {

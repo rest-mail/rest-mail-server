@@ -503,7 +503,7 @@ export interface paths {
         };
         /**
          * Server-Sent Events stream for real-time updates
-         * @description A stream of the account's events, new_message, message_updated, message_deleted, message_sent or folder_update, each an id, the event's name and its JSON data. A Last-Event-ID header asks for the events after it that the server still holds. The session is checked when the stream opens, and again before every event and keepalive: once the account's sessions end, the stream ends without sending anything more. Access lookup failures return 500 before a stream opens; missing or inaccessible accounts retain 403.
+         * @description A stream of the account's events, new_message, message_updated, message_deleted, message_sent or folder_update, each an id, the event's name and its JSON data. A Last-Event-ID header asks for the events after it that the server still holds. The session is checked when the stream opens, and again before every event and keepalive: once the account's sessions end, the stream ends without sending anything more. Access lookup failures return 500 before a stream opens; a missing account, or one the caller may not know of, answers 404, and one the caller can see without mail:read answers 403.
          */
         get: operations["accountEvents"];
         put?: never;
@@ -521,7 +521,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List folders for an account */
+        /**
+         * List folders for an account
+         * @description Every folder of the account with how many messages it holds and how many are unread. INBOX, Sent, Drafts and Trash are listed even when empty. A standard folder carries its role (inbox, sent, drafts, trash, junk for Spam, archive), the one IMAP LIST gives it as an RFC 6154 special-use attribute; any other folder's role is null.
+         */
         get: operations["listFolders"];
         put?: never;
         /**
@@ -3652,6 +3655,8 @@ export interface components {
         };
         FolderSummary: {
             name: string;
+            /** @enum {string|null} */
+            role: "inbox" | "sent" | "drafts" | "trash" | "junk" | "archive" | null;
             /** Format: int64 */
             total: number;
             /** Format: int64 */

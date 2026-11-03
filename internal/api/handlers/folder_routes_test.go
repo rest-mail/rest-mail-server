@@ -24,18 +24,21 @@ func accountFoldersPath(account uint) string {
 }
 
 // The typed answers write the bytes the maps and the local type they replaced wrote: the
-// IMAP gateway and the console read them.
+// IMAP gateway and the console read them. A folder has also carried its role since #1611.
 func TestFolderResponseJSONParity(t *testing.T) {
 	type folderInfo struct {
-		Folder string `json:"name"`
-		Total  int64  `json:"total"`
-		Unread int64  `json:"unread"`
+		Folder string  `json:"name"`
+		Total  int64   `json:"total"`
+		Unread int64   `json:"unread"`
+		Role   *string `json:"role"`
 	}
+	inbox := "inbox"
 	for _, tc := range []struct {
 		name         string
 		old, current interface{}
 	}{
-		{"folder", folderInfo{"INBOX", 3, 1}, FolderSummary{Folder: "INBOX", Total: 3, Unread: 1}},
+		{"folder", folderInfo{"INBOX", 3, 1, &inbox}, FolderSummary{Folder: "INBOX", Total: 3, Unread: 1, Role: &inbox}},
+		{"custom folder", folderInfo{"Receipts", 3, 1, nil}, FolderSummary{Folder: "Receipts", Total: 3, Unread: 1}},
 		{"name", map[string]string{"name": "Receipts"}, FolderName{Name: "Receipts"}},
 		{"quota", map[string]interface{}{"quota_bytes": int64(100), "quota_used_bytes": int64(25), "message_count": int64(4), "percent_used": 25.0},
 			Quota{MessageCount: 4, PercentUsed: 25, QuotaBytes: 100, QuotaUsedBytes: 25}},

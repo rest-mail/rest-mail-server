@@ -13,6 +13,54 @@ const MaxFolderNameLen = 255
 // folder is renamed to one of them.
 var StandardFolders = []string{"INBOX", "Sent", "Drafts", "Trash", "Spam", "Archive"}
 
+// FolderRole is what a standard folder is for, as an API client reads it from a folder
+// listing. Every other folder has none ("").
+type FolderRole string
+
+// The folder roles. Each but RoleInbox is a special-use role of RFC 6154; INBOX needs no
+// attribute in IMAP, which names it by name (RFC 9051 §5.1).
+const (
+	RoleInbox   FolderRole = "inbox"
+	RoleSent    FolderRole = "sent"
+	RoleDrafts  FolderRole = "drafts"
+	RoleTrash   FolderRole = "trash"
+	RoleJunk    FolderRole = "junk"
+	RoleArchive FolderRole = "archive"
+)
+
+// folderRoles gives each of the StandardFolders its role: a mail app then files junk into
+// Spam and archives into Archive rather than making folders of its own beside them (#717).
+// The API's folder listing and the IMAP gateway's LIST both read it, so they cannot disagree.
+var folderRoles = map[string]FolderRole{
+	"INBOX":   RoleInbox,
+	"Sent":    RoleSent,
+	"Drafts":  RoleDrafts,
+	"Trash":   RoleTrash,
+	"Spam":    RoleJunk,
+	"Archive": RoleArchive,
+}
+
+// specialUse is the RFC 6154 attribute of each role that has one.
+var specialUse = map[FolderRole]string{
+	RoleSent:    `\Sent`,
+	RoleDrafts:  `\Drafts`,
+	RoleTrash:   `\Trash`,
+	RoleJunk:    `\Junk`,
+	RoleArchive: `\Archive`,
+}
+
+// RoleOf is the role of folder, or "" for a folder that is not one of the StandardFolders.
+// INBOX is matched in any case, as CanonicalFolder has it; every other name only exactly.
+func RoleOf(folder string) FolderRole {
+	return folderRoles[CanonicalFolder(folder)]
+}
+
+// SpecialUse is the role's RFC 6154 attribute (`\Sent`, `\Junk`, ...), or "" for RoleInbox and
+// for no role.
+func (r FolderRole) SpecialUse() string {
+	return specialUse[r]
+}
+
 // CanonicalFolder is the stored name of folder: INBOX in any case is INBOX, as IMAP has it
 // (RFC 9051 §5.1); every other name is case-sensitive and kept as it is.
 func CanonicalFolder(folder string) string {

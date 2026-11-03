@@ -3102,6 +3102,11 @@ paths:
         - APIKeyAuth: [mail:read]
         - BasicAuth: [mail:read]
       summary: List folders for an account
+      description: >-
+        Every folder of the account with how many messages it holds and how many are unread. INBOX, Sent,
+        Drafts and Trash are listed even when empty. A standard folder carries its role (inbox, sent, drafts,
+        trash, junk for Spam, archive), the one IMAP LIST gives it as an RFC 6154 special-use attribute; any
+        other folder's role is null.
       responses:
         "404":
           $ref: "#/components/responses/NotFound"
@@ -15794,7 +15799,7 @@ components:
     # ─────────────────────────────────────────────────────────────
     Folder:
       type: object
-      required: [name, total, unread]
+      required: [name, total, unread, role]
       properties:
         name:
           type: string
@@ -15802,6 +15807,13 @@ components:
           type: integer
         unread:
           type: integer
+        role:
+          type: [string, "null"]
+          enum: [inbox, sent, drafts, trash, junk, archive, null]
+          description: >-
+            What a standard folder is for: inbox (INBOX), sent (Sent), drafts (Drafts), trash (Trash),
+            junk (Spam) or archive (Archive), the roles IMAP LIST gives as RFC 6154 special-use
+            attributes (INBOX needs none); null for any other folder
 
     FolderName:
       type: object
