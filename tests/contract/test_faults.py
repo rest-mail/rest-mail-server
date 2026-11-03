@@ -10,6 +10,7 @@ import xml.etree.ElementTree as ET
 from html import escape
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import faults
@@ -315,6 +316,145 @@ class LimitProbes(unittest.TestCase):
             finally:
                 server.shutdown()
                 thread.join()
+
+
+class SecretScan(unittest.TestCase):
+    PATH = "/api/v1/auth/password"
+    # The password a refusal echoes, and a value Vertrag redacts: it cannot be judged.
+    SENT = "not-the-password"
+
+    def entry(self, answer, path=None, sent=None):
+        sent = {"current_password": self.SENT} if sent is None else sent
+        return {
+            "request": {
+                "method": "POST",
+                "url": "http://api.test" + (path or self.PATH),
+                "postData": {"text": json.dumps(sent)},
+                "headers": [],
+            },
+            "response": {"status": 403, "headers": [], "content": {"text": json.dumps(answer)}},
+            "comment": "a transaction",
+        }
+
+    def scan(self, directory, entries, keep_as="scan.xml"):
+        har = Path(directory) / "examples.har"
+        if entries is not None:
+            har.write_text(json.dumps({"log": {"entries": entries}}))
+        with patch.object(faults, "OUT", Path(directory)):
+            return faults.scan_recording(har, "changeOwnPassword", self.PATH, keep_as)
+
+    def judged(self, entries, **options):
+        with tempfile.TemporaryDirectory() as directory:
+            report_path = self.scan(directory, entries)
+            return (*faults.judge(report_path, self.PATH, phase="secret_scan", **options), report_path.read_text())
+
+    def refusal(self, message="Current password is incorrect"):
+        return self.entry({"error": {"code": "invalid_password", "message": message}})
+
+    def test_the_catalogue_entry_is_judged_by_the_scan_for_its_reason(self):
+        fault = next(fault for fault in faults.load() if fault["phase"] == "secret_scan")
+        self.assertEqual((fault["operation"], fault["path"]), ("changeOwnPassword", self.PATH))
+        self.assertEqual(fault["expected_failure"], "answers the current_password sent in")
+        self.assertNotIn("known_gap", fault)
+
+    def test_an_echo_in_a_free_string_catches_the_fault_without_naming_the_secret(self):
+        expected = "answers the current_password sent in"
+        passed, why, written = self.judged(
+            [self.refusal(f"Current password is incorrect: {self.SENT}")], faulted=True, expected_failure=expected
+        )
+        self.assertTrue(passed, why)
+        self.assertIn("at $.error.message", why)
+        self.assertNotIn(self.SENT, why)
+        self.assertNotIn(self.SENT, written)
+
+    def test_a_clean_recording_is_green_on_the_baseline_and_catches_nothing(self):
+        entries = [self.refusal()]
+        self.assertTrue(self.judged(entries, faulted=False)[0])
+        passed, why, _ = self.judged(entries, faulted=True)
+        self.assertFalse(passed)
+        self.assertIn("not caught", why)
+
+    def test_an_echo_on_the_baseline_is_red(self):
+        passed, why, _ = self.judged([self.refusal(self.SENT)], faulted=False)
+        self.assertFalse(passed)
+        self.assertIn("red without a fault", why)
+
+    def test_a_finding_for_another_secret_does_not_catch_the_fault(self):
+        issued = self.entry({"data": {"secret": "a-secret-issued-once"}}, sent={"current_password": self.SENT})
+        issued["response"]["status"] = 200
+        echoed = self.refusal("a-secret-issued-once")
+        passed, why, _ = self.judged(
+            [issued, echoed], faulted=True, expected_failure="answers the current_password sent in"
+        )
+        self.assertFalse(passed)
+        self.assertIn("wanted the failure", why)
+
+    def test_a_known_gap_fails_once_the_scan_catches_it(self):
+        passed, why, _ = self.judged([self.refusal(self.SENT)], faulted=True, known_gap="#658")
+        self.assertFalse(passed)
+        self.assertIn("now caught, so remove known_gap #658", why)
+
+    def test_a_recording_that_cannot_be_judged_neither_catches_nor_clears(self):
+        elsewhere = self.entry({"error": {"code": "e", "message": self.SENT}}, path="/api/v1/other")
+        scenarios = {
+            "no recording": None,
+            "not sent to the route": [elsewhere | {"request": {**elsewhere["request"], "postData": {"text": "{}"}}}],
+            "only a redacted password sent": [self.entry({"error": {"code": "e", "message": "m"}}, sent={"current_password": "<redacted>"})],
+            "the route absent": [],
+            "a finding on another route": [self.refusal(), elsewhere],
+        }
+        for name, entries in scenarios.items():
+            for faulted in (False, True):
+                for known_gap in (None, "#658"):
+                    with self.subTest(name, faulted=faulted, known_gap=known_gap):
+                        passed, why, _ = self.judged(entries, faulted=faulted, known_gap=known_gap)
+                        self.assertFalse(passed, why)
+                        self.assertIn("invalid scan proof", why)
+
+    def test_a_finding_names_its_route_only_as_the_answering_one(self):
+        self.assertTrue(faults.answers_route(f"POST http://api.test{self.PATH} [t] answers the password", self.PATH))
+        self.assertFalse(faults.answers_route(f"POST http://api.test/other [t] answers the password sent in POST http://api.test{self.PATH} [t]", self.PATH))
+        self.assertFalse(faults.answers_route(f"the audit log's {self.PATH} entry holds it", self.PATH))
+
+    def test_a_case_that_is_not_the_scans_own_is_refused(self):
+        for contents in [
+            [],
+            ['<testcase name="/api/health &gt; secret_scan"/>'],
+            ['<testcase name="/api/v1/auth/password &gt; secret_scan"><failure type="body_cap"/></testcase>'],
+            ['<testcase name="/api/v1/auth/password &gt; secret_scan"><skipped/></testcase>'],
+        ]:
+            with self.subTest(contents=contents), tempfile.TemporaryDirectory() as directory:
+                passed, why = faults.judge(report(directory, contents), self.PATH, faulted=True, phase="secret_scan")
+                self.assertFalse(passed, why)
+                self.assertIn("invalid scan proof", why)
+
+    def test_run_scans_each_run_of_the_gate_and_restores_the_api(self):
+        fault = next(fault for fault in faults.load() if fault["phase"] == "secret_scan")
+        for answers, expected_code, verdict in [
+            (["Current password is incorrect", self.SENT], 0, "caught:"),
+            (["Current password is incorrect", "Current password is incorrect"], 1, "not caught"),
+            ([self.SENT, self.SENT], 1, "red without a fault"),
+        ]:
+            with self.subTest(answers=answers), tempfile.TemporaryDirectory() as directory, patch.object(
+                faults, "OUT", Path(directory)
+            ), patch.object(faults, "load", return_value=[fault]), patch.object(
+                faults, "restart_api"
+            ) as restart, patch.object(faults, "fault_active", return_value=True):
+                recordings = iter(answers)
+
+                def gate(command, **_):
+                    self.assertEqual(command, ["tests/contract/run.sh", "gate", "--operation-id", "changeOwnPassword"])
+                    har = {"log": {"entries": [self.refusal(next(recordings))]}}
+                    (Path(directory) / "examples.har").write_text(json.dumps(har))
+                    return SimpleNamespace(returncode=0)
+
+                with patch.object(faults.subprocess, "run", side_effect=gate):
+                    self.assertEqual(faults.run("api"), expected_code)
+                self.assertIn(verdict, (Path(directory) / "faults.md").read_text())
+                if verdict != "red without a fault":
+                    self.assertEqual([call.args for call in restart.call_args_list], [(fault["build_tags"],), ("",)])
+                else:
+                    restart.assert_not_called()
 
 
 class LimitRun(unittest.TestCase):
