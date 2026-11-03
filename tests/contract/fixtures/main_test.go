@@ -306,7 +306,7 @@ func TestDomainTenantsAdministerOnlyTheirOwnDomain(t *testing.T) {
 		if err := db.Preload("Role").Where("holder_kind = ? AND holder_id = ?", models.GrantHolderAccount, account.ID).Find(&held).Error; err != nil {
 			t.Fatal(err)
 		}
-		wantScopes := map[string]string{"admin": "domain:" + want, models.RoleReceiver: "mailbox:" + account.Address}
+		wantScopes := map[string]string{"admin": "domain:" + want, models.RoleReceiver: "mailbox:" + account.Address, models.RoleImporter: "mailbox:" + account.Address}
 		if len(held) != len(wantScopes) {
 			t.Fatalf("tenant %s holds %v, want only %v", tenant, held, wantScopes)
 		}
