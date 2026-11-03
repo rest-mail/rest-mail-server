@@ -16,10 +16,14 @@ import (
 // account and nothing about any other account's, and its sends_as list is
 // exactly what sendMessage accepts as From (#1611).
 func TestListAccountAddresses(t *testing.T) {
-	db := openAccountsTestDB(t)
-	if err := db.AutoMigrate(&models.Alias{}, &models.Message{}); err != nil {
+	base := openAccountsTestDB(t)
+	if err := base.AutoMigrate(&models.Alias{}, &models.Message{}); err != nil {
 		t.Skipf("account addresses DB test skipped: migrate failed (%v)", err)
 	}
+	// The sends below store real Sent messages; a transaction keeps them, and
+	// everything else this test writes, out of the database other tests read.
+	db := base.Begin()
+	t.Cleanup(func() { db.Rollback() })
 	fx := seedAccountsFixture(t, db)
 	// Aliases deliver only on a live domain.
 	if err := db.Model(&fx.domain).Update("active", true).Error; err != nil {
