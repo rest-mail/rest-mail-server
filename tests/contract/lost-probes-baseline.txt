@@ -4,36 +4,30 @@
 # probes remain selected. A new operation or a larger count fails. A smaller count
 # is noted by the gate: lower it here in the same change once a topology run shows it.
 # Measured with a whole-API run of Vertrag 0.42.0 against a local build, 2026-11-03,
-# after examples and fixture replenishment, on main after #1529, #1534 and #1536:
-# 158 probes across 15 operations, including the quiet-hours hooks (Part of #1443).
+# after examples and fixture replenishment: 158 probes across 15 operations on main,
+# 107 across 10 after the pins and setup of Part of #1443. A probe counted here was
+# not sent, so it proves nothing.
 # The local dependency and skip differences do not prove the gate.
 #
 # The server cannot accept what the generator draws, and a pin would be global:
-# acceptInvitation: a token only the server can make, per probe.
+# acceptInvitation: a token only the server can make, per probe, and the served
+# schema lets a request omit it and draw a password of one byte.
 acceptInvitation 8
 # A well-formed request may leave the password out, and the handler answers 403.
 createAppPassword 5
-# Certificate and key material the generator cannot draw.
+# Certificate and key material the generator cannot draw. Its domain_id is 1, so held
+# material would install a probe certificate on the fixture admin's live domain.
 createCertificate 8
 # domain_id must name the run's domain, which no static pin can hold.
 createCustomFilter 20
 createPipeline 12
-# The generator's name, example.com, is the fixtures' hosted domain.
-createDomain 22
-# raw_message must parse as a message and carry its own Message-ID.
-importMessage 12
-# The fixture's address and password; a pin of password would reach ten operations.
+# The served address has no format, so the generator draws "!", which no account has.
 linkAccount 10
-# script must be Sieve.
-putSieveScript 6
-# A report must name a hosted policy domain.
+# A report must name a hosted policy domain, and the served schema lets an entry omit it.
 receiveTlsReport 32
-# The hook replaces the generator's unknown time_zone placeholder x with UTC.
-setQuietHours 10
-# filter_name must name a filter.
+# filter_name must name a filter. Its body refers to sampleEmail, so a pin cannot engage.
 testFilter 8
 # pipeline_id must name a pipeline.
 testPipeline 3
-# The hook skips the probe whose id cannot be what its name documents.
-createAccount 1
+# The minimum id is the fixture admin, who holds a password: the hook skips that probe.
 inviteAccount 1

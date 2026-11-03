@@ -302,9 +302,9 @@ class CreateAccountProbes(AdminAPITestCase):
             1,
         )
 
-    def test_skips_an_owned_account_the_fixture_admin_cannot_make(self):
-        # Owned accounts need a two-factor session (#341); the fixture admin
-        # has none, so the probe is skipped before it touches any fixture.
+    def test_sends_an_owned_account_as_the_two_factor_administrator_makes_it(self):
+        # Owned accounts need a two-factor session (#341), which createAccount's
+        # requests carry (send_as_the_two_factor_admin), so the probe is sent.
         transaction = {
             "protocol": "http:",
             "host": "127.0.0.1",
@@ -314,10 +314,8 @@ class CreateAccountProbes(AdminAPITestCase):
             },
         }
         hooks.host_the_account_probe_domain(transaction)
-        self.assertTrue(transaction.get("skip"))
-        self.assertEqual(
-            [d["name"] for d in self.server.state["domains"]], ["restmail.test"]
-        )
+        self.assertFalse(transaction.get("skip"))
+        self.assertIn("example.com", [d["name"] for d in self.server.state["domains"]])
 
     def test_leaves_an_account_it_did_not_create(self):
         self.probe({"address": "admin@restmail.test"})

@@ -2530,12 +2530,6 @@ def host_the_account_probe_domain(transaction):
     from urllib.error import HTTPError
 
     body = hooks.get_json(transaction)
-    # An owned account needs a session that signed in with a second factor
-    # (#341, Decided 12), and the fixture admin has none: its refusal is the
-    # rule, not a disagreement. TestCreateOwnedAccount proves both sides.
-    if isinstance(body, dict) and body.get("owned") is True:
-        transaction["skip"] = True
-        return
     address = body.get("address") if isinstance(body, dict) else None
     if not isinstance(address, str) or address.count("@") != 1:
         return
@@ -3067,6 +3061,71 @@ def unban_an_ip_that_is_banned(transaction):
     )
 
 
+# The one name the generator draws for a domain. Earlier probes host it and give
+# it accounts and aliases on demand, so a create of it must find it gone.
+GENERATED_DOMAIN = "example.com"
+# What remembers an address at that domain, keyed "<origin>\\n<address>" or
+# by the address's account. Each rebuilds what it needs when it finds nothing.
+ADDRESSES_REMEMBERED = (
+    "probe_mailboxes",
+    "sender_mailboxes",
+    "test_send_mailboxes",
+    "created_account_probes",
+    "link_fixture_ids",
+)
+
+
+def empty_the_generated_domain(transaction, domain_id):
+    """Remove the accounts and aliases earlier probes made at the generated domain.
+
+    A hook cannot change a generated body (lost_probes.py), so createDomain's probes
+    name example.com as drawn, and the setup makes that name free. The domain's
+    accounts take a two-factor session to remove, as the domain's grants do."""
+    origin = origin_of(transaction)
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + mfa_admin_token(origin),
+    }
+
+    def call(method, path):
+        request = urllib.request.Request(origin + path, headers=headers, method=method)
+        with urllib.request.urlopen(request, timeout=10) as response:
+            payload = response.read()
+        return (json.loads(payload).get("data") if payload else None) or []
+
+    for alias in call("GET", f"/api/v1/admin/aliases?domain_id={domain_id:d}"):
+        call("DELETE", f"/api/v1/admin/aliases/{alias['id']:d}")
+    for account in call("GET", f"/api/v1/admin/mailboxes?domain_id={domain_id:d}"):
+        call("DELETE", f"/api/v1/admin/mailboxes/{account['id']:d}")
+    for name in ADDRESSES_REMEMBERED:
+        remembered = hooks.stash.get(name, {})
+        for key in [k for k in remembered if k.endswith("@" + GENERATED_DOMAIN)]:
+            del remembered[key]
+    hooks.stash.get("link_fixture_prepared", {}).pop(origin, None)
+    hooks.stash["generated_domain_freed"] = True
+
+
+@hooks.before("*")
+def host_the_generated_domain_again(transaction):
+    # Coverage runs no after hook, so what follows createDomain's probes puts back
+    # what they used: the domain as other operations' hooks expect it, whatever
+    # policy the last probe gave it. Other accounts come back on demand, as they
+    # first did.
+    if not hooks.stash.get("generated_domain_freed") or transaction.get("operationId") == "createDomain":
+        return
+    hooks.stash["generated_domain_freed"] = False
+    for domain in fixture_call(transaction, "GET", "/api/v1/admin/domains") or []:
+        if domain.get("name") == GENERATED_DOMAIN:
+            fixture_call(transaction, "DELETE", f"/api/v1/admin/domains/{domain['id']:d}", expect=PROBE_REFUSALS)
+    # The fixtures host it live, which the admin API cannot do without a certificate.
+    subprocess.run(
+        ["chore", "test:contract-link-fixture"],
+        check=True,
+        capture_output=True,
+        timeout=20,
+    )
+
+
 @hooks.before("createDomain")
 def create_a_domain_that_is_not_there(transaction):
     # The documented create (201) makes example.org, and the coverage process
@@ -3081,20 +3140,17 @@ def create_a_domain_that_is_not_there(transaction):
         or not name
     ):
         return
-    # A probe's name is the generator's example.com, which is the fixtures'
-    # hosted domain: it creates a domain of its own instead.
-    if name == "example.com":
-        name = "domain-probe.example.net"
-        body["name"] = name
-        transaction["request"]["body"] = json.dumps(body)
     for domain in fixture_call(transaction, "GET", "/api/v1/admin/domains") or []:
-        if domain.get("name") == name:
-            fixture_call(
-                transaction,
-                "DELETE",
-                f"/api/v1/admin/domains/{domain['id']:d}",
-                expect=PROBE_REFUSALS,
-            )
+        if domain.get("name") != name:
+            continue
+        if name == GENERATED_DOMAIN:
+            empty_the_generated_domain(transaction, domain["id"])
+        fixture_call(
+            transaction,
+            "DELETE",
+            f"/api/v1/admin/domains/{domain['id']:d}",
+            expect=PROBE_REFUSALS,
+        )
 
 
 @hooks.before("putSieveScript")
@@ -3106,44 +3162,7 @@ def install_a_sieve_script_where_there_is_none(transaction):
     account = path.rsplit("/", 2)[1]
     if " > 201 > " not in transaction.get("name", "") or not positive_id(account):
         return
-    # A coverage probe's script is whatever string the generator drew, which no
-    # schema can make Sieve: it installs the documented "keep;" and keeps the
-    # rest of its body, so what it tests is the other fields.
-    body = hooks.get_json(transaction)
-    if (
-        isinstance(body, dict)
-        and isinstance(body.get("script"), str)
-        and body["script"] != "keep;"
-    ):
-        body["script"] = "keep;"
-        hooks.set_json(transaction, body)
+    # A coverage probe's script is held at the documented "keep;" (probes.py).
     fixture_call(
         transaction, "DELETE", path[path.index("/api/") :], expect=PROBE_REFUSALS
     )
-
-
-@hooks.before("importMessage")
-def import_a_message_a_parser_can_read(transaction):
-    # A coverage probe's raw_message is base64 of whatever the generator drew,
-    # which no schema can make RFC 5322. Such a probe imports a small message of
-    # its own, with its own Message-ID so repeats are not duplicates, and keeps
-    # the rest of its body. A documented message, which has headers, is left.
-    if " > 200 > " not in transaction.get("name", ""):
-        return
-    body = hooks.get_json(transaction)
-    raw = body.get("raw_message") if isinstance(body, dict) else None
-    if not isinstance(raw, str):
-        return
-    try:
-        octets = base64.b64decode(raw, validate=True)
-    except ValueError:
-        octets = b""
-    if b"\r\n\r\n" in octets or b"\n\n" in octets:
-        return
-    message = (
-        f"Message-ID: <contract-import-{time.time_ns()}@example.test>\r\n"
-        "From: Original <old@example.test>\r\n"
-        "Subject: imported\r\n\r\nhistory\r\n"
-    )
-    body["raw_message"] = base64.b64encode(message.encode()).decode()
-    hooks.set_json(transaction, body)

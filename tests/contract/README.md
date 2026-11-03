@@ -29,7 +29,7 @@ In the `E2E (full topology)` job (`.github/workflows/e2e-suite.yml`), after the
 | --- | --- | --- |
 | example pairs | Each registered `*WithVertrag` test in `internal/api` sends its documented example pairs and their boundary cases through Vertrag to the API in the test process (`chore contract:pairs`). It needs no topology. | Gate, first |
 | `examples` | Each documented request gets its documented answer. Ordered by the spec's links (`--sequence`), so a read, an update or a delete addresses what its create made. | Gate |
-| `coverage` | Every boundary each schema implies (the maximum, one past it, a required property missing) gets a 4xx, never a 2xx or a 5xx. | Gate, as a ratchet (below) |
+| `coverage` | Every boundary each schema implies (the maximum, one past it, a required property missing) gets a 4xx, never a 2xx or a 5xx. Valid probes skipped because an example failed fail it too. | Gate (below) |
 | `ignored-auth` check | Every authenticated request, sent again with no credential, is refused. | Gate |
 | `authorization` | Every selected operation as each configured principal, checked against the spec's security roles. A signed-in caller refused an object the path names may get the 404 that hides it (#672); `authorization_refusals.py` names any 404 outside that, so an admin route stays 403 and no credential stays 401. | Report only, after the gates |
 | `ownership` | Each account tenant's principals sent the other tenant's account id, on the operations they are entitled to; every answer must be 403 or 404. | Report only, after authorization |
@@ -177,18 +177,12 @@ or depend on `sendDraft` or its separate #1529 repair.
 Only the merge-queue topology proves the whole gate: a focused local run has
 previously passed while that gate failed because `sendDraft` needed #1529.
 
-`skipped-probes-baseline.txt` holds the **0 remaining probes across 0
-operations**, individually, not as a shared budget. `gate.py` reads 0.42.0's
-JUnit skipped-case reason and fails on a new operation, an increased count,
-an unknown skip format, or a decrease not removed from the baseline. Skipped
-cases never count as passing boundary probes. This file does not exclude
-anything: the requests and valid probes remain selected. The actual whole-API
-count still requires the merge-queue topology; narrowed local proofs cannot
-establish it.
-
-Vertrag 0.42.0's `--fail-on-skipped-probes` fails coverage with exit 2 when
-non-login valid probes are skipped; it deliberately exempts login. Once this
-baseline is empty, use that flag directly instead of retaining skip debt.
+The coverage phase runs with Vertrag's `--fail-on-skipped-probes`, which fails it
+with exit 2 when non-login valid probes are skipped and deliberately exempts login.
+`run.sh` treats that exit as final, on a whole-API run and a narrowed one. The log
+names each operation and what its example answered. A skipped case never counts as
+a passing boundary probe, and `gate.py` still fails on a skipped result in any other
+form. `skipped-probes-baseline.txt` is empty, and `run.sh` no longer reads it.
 
 ### A hook cannot change a generated body
 
@@ -207,16 +201,21 @@ operation. A new operation or a larger count fails. A probe whose body a hook
 changes, or that a hook skips, is a line in `lost-probes.txt`, and a passing gate
 prints how many there were. The first two requests of each transaction are the
 documented ones, which a hook may rewrite: only a generated body is compared. The
-file says why each operation is there. The counter also registers after the
-quiet-hours hooks, so replacing the generated `time_zone` placeholder `x` with
-`UTC` cannot silently discard probes.
+file says why each operation is there. A counted probe was not sent, so it proves
+nothing: the count is a limit, not a pass.
 
 There are three ways to keep a probe:
 
 - **`fuzz.pin`** holds a value the schema cannot describe, before the probe is
   rendered. `snoozed_until` and `expires_at` are held in the future because the
   generator's only date-time is in 2020, and the server rightly refuses that
-  (`probes.py`). `permissions` is held at a real capability the probe
+  (`probes.py`). `time_zone`, `script` and `raw_message` are held because the
+  generator's `x` and base64 of `vertrag` are not a zone, Sieve or a message.
+  `TestQuietHoursCoverageWithVertrag` has its own configuration, so it pins
+  `time_zone` itself.
+  `script` also reaches `validateSieveScript` and `validateCustomFilter`, and
+  `raw_message` reaches `deliverMessage` and `restmailDeliver`. `permissions` is held
+  at a real capability the probe
   administrator has, because the generator's stand-in is capability `x` at scope
   `x`. A pin is global by field name, so it does not suit `password`, which eleven
   operations have. Vertrag does not look through a body's nested `$ref` to see
@@ -241,7 +240,17 @@ For `createAPIKey` and `updateAPIKey`: `permissions_missing`, `permissions_empty
 `permissions_too_many`, `permissions_wrong_type`, `permission_scope_missing`,
 `permission_capability_wrong_type` and `permission_unknown_field`. For
 `createAPIKey` too: `expires_at_malformed`, `expires_at_wrong_type` and
-`expires_at_past`.
+`expires_at_past`. For `time_zone`: `invalid_zone`. For `script`: `script_missing`,
+`script_null`, `script_wrong_type` and `invalid_syntax` on the Sieve operations, and
+`script_missing`, `script_null`, `script_empty` and `script_wrong_type` on
+`validateCustomFilter`. For `raw_message`: `missing_raw`, `raw_wrong_type` and
+`invalid_base64` on `importMessage`, `raw_message_invalid` and `raw_message_nul` on
+`deliverMessage`, and `raw_message_wrong_type` on `restmailDeliver`. A pin engages only
+on a body with no nested reference, so `filter_name` cannot hold `testFilter`.
+
+`createDomain` needs no pin, because its setup makes the generated name free. Its
+hook removes what earlier probes put at `example.com`, and the first hook after its
+probes hosts that domain again through the fixture, so what follows finds it live.
 
 `createAppPassword` cannot be held this way. Its description lets a request leave
 out `password`, and the handler answers that with the documented 403
@@ -456,12 +465,11 @@ Two gates judge the primary run:
   `exclude-operation-id` leaves to the teardown phase. No status is excluded:
   `status-baseline.txt`, which `run.sh` adds to the run's `surface.exclude`
   and `status_baseline.py` holds to only shrink, is empty (#1334).
-- **coverage, a ratchet, in `gate.py`:** `coverage-baseline.txt` lists the
-  operations whose boundary probes still fail (#388). A failing probe on any
-  other operation fails the job, and so does an operation in the baseline
-  whose probes all pass now. A fix takes its operation out of the baseline in
-  the same change, so the baseline only shrinks after its initial seeding in
-  #376. `gate.py` also fails when `exclude-operation-id` and
+- **coverage, Vertrag's verdict, then `gate.py`:** any failed probe or skipped
+  valid probe exits 2, and `run.sh` treats that as final. `coverage-baseline.txt` is
+  empty and can excuse nothing now. `gate.py` still fails on a listed operation
+  whose probes all pass, and on the probes a hook ended beyond their baseline. It
+  also fails when `exclude-operation-id` and
   `surface.exclude` disagree about which operations are left out, or name one
   the spec does not have.
 
@@ -1453,8 +1461,8 @@ not run them.
 A narrowed run (`--tag`, `--operation-id`, `--only-matching`)
 reports without the surface gate and the baseline, which are about the whole API.
 Its coverage verdict comes directly from Vertrag: exit 0 for passing selected
-probes, exit 2 for findings. A narrowed finding is not excused by the whole-API
-baseline. The complete command preserves that failure while still running the
+probes, exit 2 for findings or skipped valid probes. A narrowed finding is not
+excused by the whole-API baseline. The complete command preserves that failure while still running the
 secret scan and producing the authorization report.
 
 The secret scan also runs locally, including after a failing examples gate.

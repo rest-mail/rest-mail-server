@@ -209,7 +209,10 @@ func TestQuietHoursCoverageWithVertrag(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(directory, "quiet.py"), []byte(hook), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(directory, "vertrag.yml"), []byte("language: python\nhookfiles: ./quiet.py\n"), 0600); err != nil {
+	// This run has its own configuration, so it holds time_zone as probes.py holds it
+	// for the whole API: the schema cannot say which strings are IANA zones, so the
+	// generator's x reaches a server that rightly refuses it. invalid_zone proves that.
+	if err := os.WriteFile(filepath.Join(directory, "vertrag.yml"), []byte("language: python\nhookfiles: ./quiet.py\nfuzz:\n  pin:\n    time_zone: UTC\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	server := httptest.NewServer(fixture.router)

@@ -19957,6 +19957,41 @@
     }
   },
   "importMessage": {
+    "raw_wrong_type": {
+      "request": {
+        "path": {
+          "id": 12
+        },
+        "body": {
+          "flags": [
+            "\\Seen",
+            "\\Answered",
+            "\\Flagged",
+            "\\Draft"
+          ],
+          "folder": "Archive",
+          "internal_date": "2020-01-02T03:04:05Z",
+          "raw_message": 12345
+        },
+        "mediaType": "application/json",
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "raw_message": "must be a base64 string"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "api_key": {
       "request": {
         "path": {
@@ -27557,6 +27592,34 @@
     }
   },
   "putSieveScript": {
+    "script_wrong_type": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "script": 12345,
+          "active": true
+        },
+        "mediaType": "application/json",
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "script": "must be a string"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "active_false": {
       "request": {
         "path": {
@@ -30848,6 +30911,32 @@
           "data": {
             "address": "café@xn--mnchen-3ya.test",
             "exists": true
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
+  "restmailDeliver": {
+    "raw_message_wrong_type": {
+      "request": {
+        "body": {
+          "raw_message": 12345
+        },
+        "mediaType": "application/json",
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "raw_message": "must be a string"
+              }
+            }
           }
         },
         "mediaType": "application/json"
@@ -47208,6 +47297,33 @@
     }
   },
   "validateSieveScript": {
+    "script_wrong_type": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "script": 12345
+        },
+        "mediaType": "application/json",
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "script": "must be a string"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "app_password": {
       "request": {
         "path": {
