@@ -128,7 +128,7 @@ func (h *MessageHandler) commitForward(r *http.Request, req sendMessageRequest, 
 		parts[i].Content = base64.StdEncoding.EncodeToString(data)
 		parts[i].Size = int64(len(data))
 	}
-	raw, err := buildOutboundRaw(outboundMessage{Sender: req.Sender, FromName: sender.DisplayName, From: req.From, To: req.To, Cc: req.Cc, Subject: req.Subject, BodyText: req.BodyText, BodyHTML: req.BodyHTML, MessageID: sent.MsgID, InReplyTo: req.InReplyTo, Date: sent.ReceivedAt, Extra: withListUnsubscribe(extra, req.ListUnsubscribe), Attachments: parts})
+	raw, err := buildOutboundRaw(outboundMessage{Sender: req.Sender, FromName: sender.DisplayName, From: req.From, To: req.To, Cc: req.Cc, Subject: req.Subject, BodyText: req.BodyText, BodyHTML: req.BodyHTML, MessageID: sent.MsgID, InReplyTo: req.InReplyTo, References: sent.References, Date: sent.ReceivedAt, Extra: withListUnsubscribe(extra, req.ListUnsubscribe), Attachments: parts})
 	if err != nil {
 		return zero, endpoint.Refuse(500, "internal_error", "Failed to build the forwarded message")
 	}
@@ -205,7 +205,7 @@ func (h *MessageHandler) commitForward(r *http.Request, req sendMessageRequest, 
 				local.broker = nil
 				local.newMail = nil
 				local.recorder = &traces
-				msg, err := local.deliverToLocal(r.Context(), localDeliveryParams{Mailbox: box, Sender: req.From, SenderName: sender.DisplayName, RecipientsTo: toJSON, RecipientsCc: ccJSON, Subject: req.Subject, BodyText: req.BodyText, BodyHTML: req.BodyHTML, MessageID: sent.MsgID, InReplyTo: req.InReplyTo, RawMessage: raw, RequireTLS: req.RequireTLS, IndependentAttachments: true})
+				msg, err := local.deliverToLocal(r.Context(), localDeliveryParams{Mailbox: box, Sender: req.From, SenderName: sender.DisplayName, RecipientsTo: toJSON, RecipientsCc: ccJSON, Subject: req.Subject, BodyText: req.BodyText, BodyHTML: req.BodyHTML, MessageID: sent.MsgID, InReplyTo: req.InReplyTo, References: sent.References, RawMessage: raw, RequireTLS: req.RequireTLS, IndependentAttachments: true})
 				if err != nil {
 					return err
 				}

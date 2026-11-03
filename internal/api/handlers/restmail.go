@@ -547,9 +547,10 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput) (Res
 
 		sizeBytes := len(req.Subject) + len(req.BodyText) + len(req.BodyHTML)
 
-		threadID := req.MessageID
-		if req.InReplyTo != "" {
-			threadID = req.InReplyTo
+		threadID, err := repositories.ResolveThreadID(h.db.WithContext(r.Context()), mailbox.ID, req.MessageID, req.InReplyTo, req.References)
+		if err != nil {
+			failed = append(failed, rcpt)
+			continue
 		}
 
 		recipientsTo, _ := json.Marshal([]string{rcpt})
