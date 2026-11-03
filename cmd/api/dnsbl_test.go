@@ -151,12 +151,29 @@ func TestDNSBLRuntimeInvalid(t *testing.T) {
 	})
 }
 
+// dnsblChangeSignal reports each transition after the observer it wraps has
+// handled it. The monitor calls Changed on its own goroutine after Checked has
+// returned, so a transition received here means every metric of the check that
+// caused it is written. The counter alone does not mean that: Checked moves it
+// before the gauges.
+type dnsblChangeSignal struct {
+	dnsbl.Observer
+	changed chan dnsbl.Transition
+}
+
+func (o dnsblChangeSignal) Changed(tr dnsbl.Transition) error {
+	err := o.Observer.Changed(tr)
+	o.changed <- tr
+	return err
+}
+
 // TestDNSBLRuntimeRunsAndStops: enabled, the monitor checks at once (start
 // delay 0), records the listing, then waits out its interval; stop ends it.
 func TestDNSBLRuntimeRunsAndStops(t *testing.T) {
 	obs, m := newDNSBLTestObserver(t)
+	signal := dnsblChangeSignal{Observer: obs, changed: make(chan dnsbl.Transition, 1)}
 	res := newDNSBLResolver(false)
-	rt, err := newDNSBLRuntime(writeDNSBLConfig(t, dnsblTestConfig), func() dnsbl.Resolver { return res }, obs)
+	rt, err := newDNSBLRuntime(writeDNSBLConfig(t, dnsblTestConfig), func() dnsbl.Resolver { return res }, signal)
 	if err != nil || rt == nil {
 		t.Fatalf("newDNSBLRuntime = %v, %v", rt, err)
 	}
@@ -165,12 +182,16 @@ func TestDNSBLRuntimeRunsAndStops(t *testing.T) {
 	}
 	rt.start(context.Background())
 
-	deadline := time.Now().Add(5 * time.Second)
-	for testutil.ToFloat64(m.checks.WithLabelValues("example", string(dnsbl.StatusListed))) != 1 {
-		if time.Now().After(deadline) {
-			t.Fatal("the first check was never recorded")
+	select {
+	case tr := <-signal.changed:
+		if tr.Kind != dnsbl.TransitionListed {
+			t.Fatalf("transition = %q, want %q", tr.Kind, dnsbl.TransitionListed)
 		}
-		time.Sleep(10 * time.Millisecond)
+	case <-time.After(5 * time.Second):
+		t.Fatal("the first check was never recorded")
+	}
+	if got := testutil.ToFloat64(m.checks.WithLabelValues("example", string(dnsbl.StatusListed))); got != 1 {
+		t.Fatalf("checks = %v, want 1", got)
 	}
 	if got := testutil.ToFloat64(m.listed.WithLabelValues("192.0.2.99", "example")); got != 1 {
 		t.Fatalf("listed = %v, want 1", got)
