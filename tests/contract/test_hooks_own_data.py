@@ -22,6 +22,24 @@ import own_data
 POLICY = re.compile(r"^/api/v1/admin/domains/(\d+)/mta-sts$")
 KEY = re.compile(r"^/api/v1/admin/dkim/(\d+)$")
 IMPORT = re.compile(r"^/api/v1/accounts/(\d+)/messages/import$")
+SETTING = re.compile(r"^/api/v1/accounts/(\d+)/(sieve|vacation)$")
+
+
+# The account settings operations account_settings_of_its_own is registered for
+# in hooks.py, and the two entrypoint.py registers it for after their own hook.
+ACCOUNT_SETTINGS = (
+    "getVacation",
+    "setVacation",
+    "disableVacation",
+    "getSieveScript",
+    "putSieveScript",
+    "deleteSieveScript",
+    "validateSieveScript",
+    "getAccountSendLimits",
+    "setAccountSendLimits",
+    "getQuota",
+)
+QUIET_HOURS = ("getQuietHours", "setQuietHours")
 
 
 class FixtureAPI(BaseHTTPRequestHandler):
@@ -77,6 +95,10 @@ class FixtureAPI(BaseHTTPRequestHandler):
             if match and int(match[1]) in self.server.domains:
                 store[int(match[1])] = body
                 return self.answer(200, body)
+        match = SETTING.fullmatch(self.path)
+        if match and int(match[1]) in self.server.accounts:
+            self.server.settings[(int(match[1]), match[2])] = body
+            return self.answer(200, body)
         self.answer(404)
 
 
@@ -89,6 +111,7 @@ class OwnDataHooks(unittest.TestCase):
         self.server.keys = {}
         self.server.accounts = {}
         self.server.imports = []
+        self.server.settings = {}
         self.server.serial = 40
         self.server.reset_failure = None
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
@@ -219,9 +242,12 @@ class OwnDataHooks(unittest.TestCase):
             "setThreadDue": "on_the_admins_mailbox_after_a_reset",
             "snoozeThread": "on_the_admins_mailbox_after_a_reset",
             "importMessage": "on_the_admins_mailbox_after_a_reset",
+            **{operation: "account_settings_of_its_own" for operation in ACCOUNT_SETTINGS},
         }
-        # entrypoint.py registers setDomainRelay's (below).
-        self.assertEqual(set(hooks) | {"setDomainRelay"}, set(own_data.MOVED))
+        # entrypoint.py registers setDomainRelay's and the quiet hours' (below).
+        self.assertEqual(
+            set(hooks) | {"setDomainRelay"} | set(QUIET_HOURS), set(own_data.MOVED)
+        )
         for operation, hook in hooks.items():
             self.assertIn((operation, hook), self.registered)
 
@@ -614,6 +640,98 @@ class OwnDataHooks(unittest.TestCase):
         self.assertEqual(transaction, before)
         self.assertEqual(self.server.calls, [])
         self.assertEqual(self.stub.stash, stash)
+
+    def setting_transaction(self, method, status, path):
+        transaction = self.transaction(status, path)
+        transaction["request"]["method"] = method
+        return transaction
+
+    def test_the_account_settings_reset_in_their_first_hook(self):
+        # It runs first, so the sieve install's hook sees the clean start and
+        # the path it leaves.
+        for operation in ACCOUNT_SETTINGS:
+            names = [h for o, h in self.registered if o == operation]
+            self.assertEqual(names[0], "account_settings_of_its_own", operation)
+        # The quiet hours' own hook finds a live account for the examples' 1
+        # and fixes their time zone, so this one comes after it.
+        entrypoint = (ROOT / "tests/contract/entrypoint.py").read_text()
+        registration = 'vertrag_hooks.before(operation)(shared["account_settings_of_its_own"])'
+        self.assertLess(
+            entrypoint.index('quiet["register_quiet_hours_hooks"]'),
+            entrypoint.index(registration),
+        )
+        for operation in QUIET_HOURS:
+            self.assertIn(f'"{operation}"', entrypoint)
+            self.assertNotIn(operation, {o for o, _ in self.registered})
+
+    def test_each_account_setting_resets_and_gets_an_account_of_its_own(self):
+        self.clean_starts_on()
+        self.two_factor_session()
+        cases = (
+            # method, status, path, the setting made on the account
+            ("GET", 200, "/api/v1/accounts/1/sieve", "sieve"),
+            ("DELETE", 200, "/api/v1/accounts/1/sieve", "sieve"),
+            ("DELETE", 204, "/api/v1/accounts/1/vacation", "vacation"),
+            ("PUT", 201, "/api/v1/accounts/1/sieve", None),
+            ("PUT", 422, "/api/v1/accounts/1/sieve", None),
+            ("POST", 200, "/api/v1/accounts/1/sieve/validate", None),
+            ("GET", 200, "/api/v1/accounts/1/vacation", None),
+            ("PUT", 422, "/api/v1/accounts/1/vacation", None),
+            ("GET", 200, "/api/v1/accounts/1/quiet-hours", None),
+            ("PUT", 200, "/api/v1/accounts/7/quiet-hours", None),
+            ("GET", 200, "/api/v1/accounts/1/send-limits?x=1", None),
+            ("PUT", 422, "/api/v1/accounts/1/send-limits", None),
+            ("GET", 200, "/api/v1/accounts/1/quota", None),
+        )
+        for method, status, path, made in cases:
+            self.server.settings.clear()
+            transaction = self.setting_transaction(method, status, path)
+            request = copy.deepcopy(transaction["request"])
+            self.hooks.account_settings_of_its_own(transaction)
+            account = max(self.server.accounts)
+            self.assertEqual(
+                transaction["fullPath"],
+                re.sub(r"/accounts/\d+", f"/accounts/{account:d}", path),
+            )
+            address, session = self.server.accounts[account]
+            self.assertRegex(address, r"^contract-own-settings-\d+@restmail\.test$")
+            # Making an account takes the two-factor session; the request's
+            # own credential and body stay as they are.
+            self.assertEqual(session, "Bearer two-factor-session")
+            self.assertEqual(transaction["request"], request)
+            expected = {(account, made)} if made else set()
+            self.assertEqual(set(self.server.settings), expected, (method, status, path))
+            if made == "sieve":
+                self.assertEqual(
+                    self.server.settings[(account, "sieve")], self.hooks.A_SIEVE_SCRIPT
+                )
+            if made == "vacation":
+                self.assertIs(self.server.settings[(account, "vacation")]["enabled"], True)
+            self.assertLessEqual(set(self.stub.stash), set(self.hooks.SURVIVES_A_RESET))
+        self.assertEqual(self.resets(), len(cases))
+
+    def test_account_setting_refusals_reset_and_keep_their_ids(self):
+        self.clean_starts_on()
+        for method, status, path in (
+            ("GET", 422, "/api/v1/accounts/0/send-limits"),
+            ("GET", 404, "/api/v1/accounts/2147483647/vacation"),
+            ("DELETE", 404, "/api/v1/accounts/2147483647/sieve"),
+            ("PUT", 404, "/api/v1/accounts/2147483647/quiet-hours"),
+        ):
+            transaction = self.setting_transaction(method, status, path)
+            self.hooks.account_settings_of_its_own(transaction)
+            self.assertEqual(transaction["fullPath"], path)
+        self.assertEqual(self.server.accounts, {})
+        self.assertEqual(self.resets(), 4)
+
+    def test_without_the_switch_account_settings_change_nothing(self):
+        stash = copy.deepcopy(self.stub.stash)
+        transaction = self.setting_transaction("GET", 200, "/api/v1/accounts/1/sieve")
+        before = copy.deepcopy(transaction)
+        self.hooks.account_settings_of_its_own(transaction)
+        self.assertEqual(transaction, before)
+        self.assertEqual(self.stub.stash, stash)
+        self.assertEqual(self.server.calls, [])
 
     def test_the_policy_file_asks_for_a_domain_of_its_own_after_a_reset(self):
         self.clean_starts_on()
