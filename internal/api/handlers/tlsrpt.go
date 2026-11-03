@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"bufio"
-	"bytes"
 	"compress/gzip"
 	"encoding/json"
 	"errors"
@@ -99,7 +98,8 @@ type TLSRPTSummary struct {
 const tlsRPTMaxBodyBytes int64 = 512 << 10 // 512 KiB
 
 // receiveTLSReportInput is a report as RFC 8460 §5.4 sends it: JSON, under its own media
-// type or plain application/json, or gzip-compressed.
+// type or plain application/json, or gzip-compressed. It describes the request; the route
+// reads the body itself, from a file (receiveSpooledReport).
 type receiveTLSReportInput struct {
 	Report *TLSRPTReport `body:"application/tlsrpt+json,application/json"`
 	Gzip   *[]byte       `body:"application/tlsrpt+gzip" description:"The report, gzip-compressed (RFC 1952)."`
@@ -128,19 +128,20 @@ func (h *TLSReportHandler) RegisterReceive(rs endpoint.Routes, throttle endpoint
 		OperationID: "receiveTlsReport", Summary: "TLS-RPT report ingestion (RFC 8460)", Tags: []string{"System"},
 		Description: "Receives TLS-RPT reports from external MTAs, as JSON or gzip-compressed. No auth by design. " +
 			"A body sent with Content-Encoding: gzip, or gzip-compressed under a JSON media type, is inflated first.",
-		Status: http.StatusCreated, Security: oapifly.Public,
+		Status: http.StatusCreated, Security: oapifly.Public, DescribedRequest: receiveTLSReportInput{},
 		Responses: []oapifly.EndpointResponse{{Status: http.StatusUnprocessableEntity,
 			Description: "Invalid report fields, or no policy domain hosted by this server",
 			Type:        oapifly.TypeOf[tlsReportUnprocessable]()}},
 		Middleware: []endpoint.Middleware{throttle, {Wrap: inflateReport}},
-	}, h.receiveReport)
+	}, h.receiveSpooledReport)
 }
 
 // inflateReport caps a report's body and, for one that came gzip-compressed other than
 // under application/tlsrpt+gzip, inflates it (the inflated report held to the same cap), so a
 // small compressed body cannot expand without bound. RFC 8460 §5.2 asks reporters to gzip
 // their reports: one may say so with Content-Encoding: gzip, or label the compressed bytes as
-// JSON. A stream that is not gzip is the 400.
+// JSON. A stream that is not gzip is the 400. Nothing is inflated here: the body it leaves is
+// a reader, which the handler spools, so a report inflates straight to a file.
 func inflateReport(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r.Body = http.MaxBytesReader(w, r.Body, tlsRPTMaxBodyBytes)
@@ -171,59 +172,13 @@ func inflateReport(next http.Handler) http.Handler {
 	})
 }
 
-// gunzipReport inflates a compressed report, held to the same cap as one sent plain, so a
-// small compressed body cannot expand without bound. It answers the status to refuse with:
-// 413 past the cap, 400 for a stream that is not gzip.
-func gunzipReport(body []byte) ([]byte, int, error) {
-	reader, err := gzip.NewReader(bytes.NewReader(body))
-	if err != nil {
-		return nil, http.StatusBadRequest, err
-	}
-	defer func() { _ = reader.Close() }()
-	inflated, err := io.ReadAll(io.LimitReader(reader, tlsRPTMaxBodyBytes+1))
-	if err != nil {
-		return nil, http.StatusBadRequest, err
-	}
-	if int64(len(inflated)) > tlsRPTMaxBodyBytes {
-		return nil, http.StatusRequestEntityTooLarge, errors.New("decompressed report too large")
-	}
-	return inflated, 0, nil
-}
-
 // receiveReport stores each policy entry of a report for a domain this server hosts as a
-// TLSReport row, with the report as it was sent.
+// TLSReport row, with the report as it was sent: the request's body, read again.
 func (h *TLSReportHandler) receiveReport(r *http.Request, in receiveTLSReportInput) (tlsReportStored, error) {
-	var raw []byte
-	report := in.Report
-	if in.Gzip != nil {
-		inflated, status, err := gunzipReport(*in.Gzip)
-		if err != nil {
-			// The refusals a body the framework reads gives: past the cap it is the
-			// same 413, inflated or not.
-			code, message := "bad_request", "Invalid gzip-compressed TLS-RPT report"
-			if status == http.StatusRequestEntityTooLarge {
-				code, message = "request_too_large", "Request body too large"
-			}
-			return tlsReportStored{}, endpoint.Refuse(status, code, message)
-		}
-		report = &TLSRPTReport{}
-		if err := endpoint.BindBody(report, inflated); err != nil {
-			return tlsReportStored{}, err
-		}
-		raw = inflated
-	} else {
-		// The bound body, read again as it was sent, so a reporter's own fields are kept.
-		read, err := io.ReadAll(r.Body)
-		if err != nil {
-			return tlsReportStored{}, endpoint.Refuse(http.StatusBadRequest, "bad_request", "Invalid request body")
-		}
-		raw = read
-	}
-
 	var stored tlsReportStored
 	err := h.db.WithContext(r.Context()).Transaction(func(tx *gorm.DB) error {
 		var err error
-		stored, err = NewTLSReportHandler(tx).storeReport(report, raw)
+		stored, err = NewTLSReportHandler(tx).storeReport(in.Report, func() ([]byte, error) { return readWholeReport(r.Body) })
 		return err
 	})
 	if err != nil {
@@ -232,12 +187,14 @@ func (h *TLSReportHandler) receiveReport(r *http.Request, in receiveTLSReportInp
 	return stored, nil
 }
 
-// storeReport is shared by HTTP and authenticated MIME report ingestion.
-func (h *TLSReportHandler) storeReport(report *TLSRPTReport, raw []byte) (tlsReportStored, error) {
+// storeReport is shared by HTTP and authenticated MIME report ingestion. raw reads the report
+// as it was sent, which a row keeps whole; it is called only for a report with a row to store,
+// so one for no hosted domain is refused without the report being read into memory.
+func (h *TLSReportHandler) storeReport(report *TLSRPTReport, raw func() ([]byte, error)) (tlsReportStored, error) {
 	startDate, _ := time.Parse(time.RFC3339, report.DateRange.StartDatetime)
 	endDate, _ := time.Parse(time.RFC3339, report.DateRange.EndDatetime)
 	now := time.Now()
-	rawReport := string(raw)
+	rawReport := ""
 	stored := 0
 
 	for _, pol := range report.Policies {
@@ -272,6 +229,13 @@ func (h *TLSReportHandler) storeReport(report *TLSRPTReport, raw []byte) (tlsRep
 			failureDetails = encoded
 		}
 
+		if stored == 0 {
+			read, err := raw()
+			if err != nil {
+				return tlsReportStored{}, err
+			}
+			rawReport = string(read)
+		}
 		row := models.TLSReport{
 			DomainID:        domain.ID,
 			ReportingOrg:    report.OrganizationName,

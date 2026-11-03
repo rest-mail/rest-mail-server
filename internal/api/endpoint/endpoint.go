@@ -650,11 +650,9 @@ func bind(r *http.Request, dst interface{}, s shape) error {
 		r.Body = io.NopCloser(bytes.NewReader(body))
 	}
 
-	if s.body && len(body) > 0 && r.Header.Get("Content-Type") != "" {
-		media, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
-		allowed := bodyMediaTypes(reflect.TypeOf(dst).Elem())
-		if err != nil || !containsMedia(allowed, media) {
-			return Refuse(http.StatusBadRequest, "bad_request", "Unsupported media type: "+r.Header.Get("Content-Type")+"; the body is taken as "+strings.Join(allowed, ", "))
+	if s.body && len(body) > 0 {
+		if err := checkBodyMedia(r, reflect.TypeOf(dst).Elem()); err != nil {
+			return err
 		}
 	}
 	textual := stringParams(reflect.TypeOf(dst))
@@ -683,6 +681,20 @@ func bind(r *http.Request, dst interface{}, s shape) error {
 		return v, v != ""
 	}, body)
 	return bindError(dst, body, err)
+}
+
+// checkBodyMedia is the 400 for a body whose declared media type none of t's forms takes.
+func checkBodyMedia(r *http.Request, t reflect.Type) error {
+	declared := r.Header.Get("Content-Type")
+	if declared == "" {
+		return nil
+	}
+	media, _, err := mime.ParseMediaType(declared)
+	allowed := bodyMediaTypes(t)
+	if err != nil || !containsMedia(allowed, media) {
+		return Refuse(http.StatusBadRequest, "bad_request", "Unsupported media type: "+declared+"; the body is taken as "+strings.Join(allowed, ", "))
+	}
+	return nil
 }
 
 // bodyMediaTypes mirrors the declared body forms; an unnamed form is JSON.
