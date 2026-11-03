@@ -860,8 +860,9 @@ def off_the_admin_domain(transaction):
     # handler as generated. Only coverage probes move: the ownership run sends
     # restmail.test's id to the other tenant on purpose, and the examples
     # follow links to the run's own domain. updateDomain's hook calls this
-    # before it certifies the domain the request names.
-    if not transaction.get("name", "").startswith("coverage:"):
+    # before it certifies the domain the request names. A hook never sees a
+    # "coverage: " name (README), so the coverage process says so itself.
+    if os.environ.get("CONTRACT_COVERAGE") != "1":
         return
     path, _, query = transaction["fullPath"].partition("?")
     parts = path.split("/")
@@ -1070,8 +1071,10 @@ def ask_for_the_created_domains_policy(transaction):
 
 def set_the_admin_domains_policy(transaction, policy):
     """Make restmail.test's sending_policy policy ("" for none), through the
-    admin API, unless it already is."""
-    if hooks.stash.get("admin_domain_policy", "") == policy:
+    admin API, unless this process already made it so. The stash starts empty
+    in each process, and that says nothing about the domain: an earlier process
+    may have left a policy, so the first send always sets it."""
+    if hooks.stash.get("admin_domain_policy") == policy:
         return
     origin = "{}//{}:{}".format(
         transaction["protocol"],
@@ -1172,6 +1175,8 @@ def a_signing_mailbox_at(transaction, address):
                 )
     mailboxes = call("GET", f"/api/v1/admin/mailboxes?domain_id={domain_id:d}") or []
     if not any((m.get("address") or "").lower() == address.lower() for m in mailboxes):
+        # Making an account takes a second factor.
+        headers["Authorization"] = "Bearer " + mfa_admin_token(origin)
         call("POST", "/api/v1/accounts", {"address": address})
     ready[origin + "\n" + address.lower()] = True
     hooks.stash["sender_mailboxes"] = ready
@@ -1194,6 +1199,18 @@ def a_sending_policy_for_the_send(transaction):
     # handler refuses (403): it gets none.
     if isinstance(body, dict) and body.get("from") != "someone@other.test":
         a_signing_mailbox_at(transaction, body.get("from"))
+        # A recipient with a mailbox here is delivered here; one without is
+        # queued for the outside world. Named examples send from the fixture
+        # admin and mean what they name (valid's queue entry is a link target).
+        # Anything else that has a sender here is generated, and stays inside
+        # the topology; without one the handler refuses it before any delivery.
+        sender = str(body.get("from")).lower()
+        ready = hooks.stash.get("sender_mailboxes", {})
+        if body.get("from") != ADMIN and origin_of(transaction) + "\n" + sender in ready:
+            for field in ("to", "cc", "bcc"):
+                recipients = body.get(field)
+                for address in recipients if isinstance(recipients, list) else []:
+                    a_signing_mailbox_at(transaction, address)
 
 
 @hooks.after("/api/v1/messages/send > * > 422 > application/json")

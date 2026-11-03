@@ -52,8 +52,8 @@ six login probes are expected: generated credentials cannot authenticate.
 | Filter/pipeline targets absent | `deleteCustomFilter` 1, `getCustomFilter` 1, `updateCustomFilter` 15, `testCustomFilter` 1, `deletePipeline` 1, `updatePipeline` 7 | Repaired and removed from the skipped-probe baseline |
 | Certificate target absent | `getCertificate` 1 | Repaired and removed from the skipped-probe baseline |
 | Domain/policy targets absent | `deleteMtaStsPolicy` 1, `getMtaStsPolicy` 1, `setMtaStsPolicy` 11 | Repaired and removed from the skipped-probe baseline |
-| Held-mail/queue/scheduled fixtures | `deleteQuarantine` 2, `clearSuppression` 2, `bounceQueueEntry` 1, `cancelScheduledMessage` 1, `deleteQueueEntry` 1, `getQueueEntry` 1, `retryQueueEntry` 1 | Quarantine/suppression repaired; remaining: 5 |
-| Draft/send requests | `updateDraft` 10, `sendDraft` 1, `sendMessage` 14 | Remaining: 25 |
+| Held-mail/queue/scheduled fixtures | `deleteQuarantine` 2, `clearSuppression` 2, `bounceQueueEntry` 1, `cancelScheduledMessage` 1, `deleteQueueEntry` 1, `getQueueEntry` 1, `retryQueueEntry` 1 | Quarantine/suppression and `cancelScheduledMessage` repaired; remaining: 4 |
+| Draft/send requests | `updateDraft` 10, `sendDraft` 1, `sendMessage` 14 | `sendMessage` and `sendDraft` repaired and removed; remaining: 10 |
 
 The log says 404 for absent targets, 422 for the draft/send examples, and
 "got no answer" for quarantine/suppression/bounce/scheduled cancellation.
@@ -124,7 +124,7 @@ The newly reached alias update probe exposed a real description defect:
 422. It now declares `format: idn-email`, like alias creation, without changing
 the handler's address policy or its support for omitted/null patch fields.
 
-`skipped-probes-baseline.txt` holds the **43 remaining probes across 11
+`skipped-probes-baseline.txt` holds the **27 remaining probes across 8
 operations**, individually, not as a shared budget. `gate.py` reads 0.42.0's
 JUnit skipped-case reason and fails on a new operation, an increased count,
 an unknown skip format, or a decrease not removed from the baseline. Skipped
@@ -1299,8 +1299,42 @@ Send probes (sendMessage) send from a generated address (`someone@example.com`)
 that no mailbox holds, which the handler refuses with 403. A before hook hosts
 the sender's domain with a DKIM key (an https unsubscribe target needs one) and
 creates its mailbox through the admin API the first time the address appears,
-then leaves them in place. Malformed senders and domains the server will not
-host are left to the probe, and the request is never rewritten.
+then leaves them in place, with the two-factor administrator's session where
+that takes one. Malformed senders and domains the server will not host are left
+to the probe, and the request is never rewritten.
+
+Domain probes used to leave `restmail.test` at a `bulk` sending policy, so a send
+from it needed `list_unsubscribe`. That one cause skipped `sendMessage`'s 14 probes
+and `sendDraft`'s 1, and failed `cancelScheduledMessage`'s fixture. `off_the_admin_domain`
+now moves those probes in the coverage process, and the first send of a process
+sets the policy instead of assuming it is empty.
+
+These probes are accepted, so they send mail. Vertrag's generator has one
+address for `format: idn-email` and does not read the description's examples, so
+that address is `someone@example.com` for sender and recipients alike. The hook
+gives every well-formed recipient of a generated send a mailbox too, and a
+recipient with a mailbox here is delivered here (`sendMessage`), never queued.
+A whole-API local run wrote no queue row for it, so no mail leaves. Local delivery
+of each is refused by the DMARC check on the sender's domain, and the send still
+answers 201 with its Sent copy. That check is a DNS lookup of `example.com`, which
+does leave the machine when the resolver forwards it: the testbed's dnsmasq
+forwards to public resolvers. Only a CI run shows whether the API's lookups go there.
+
+The description says what the handler requires: `to` required and nonempty, and
+`from`, `to`, `cc` and `bcc` bare addresses. It binds nothing, so no answer
+changes, and the handler still accepts an RFC 5322 display name around an
+address. go-oapifly's tags cannot give a list's items a format, so
+`internal/api/described_items.go` does that. The body is inline rather than a
+component because Vertrag's `fuzz.pin` does not follow a `$ref` at a body's root.
+
+`scheduled_at` is held at null in the coverage run (`probes.py`): the generator's
+only date-time is in 2020, and a send's time must be a minute to a year ahead.
+Null means send at once, and keeps the success example the 201 it documents, where
+any time would make it a 202. No other request body has the field
+(`TestSendMessageDescribesWhatTheHandlerRequires`). The named examples prove what
+the pin takes away, in the gated examples phase, which is not pinned:
+`scheduled_at_past`, `scheduled_at_too_far`, `scheduled_at_malformed` and
+`scheduled_at_wrong_type`.
 
 Update probes (updateDomain) that set `active` to true would meet 409
 `certificate_required`: no created domain has a certificate when they run. A

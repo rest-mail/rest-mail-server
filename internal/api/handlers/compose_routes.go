@@ -67,9 +67,17 @@ type SendDiscarded struct {
 	Status string `json:"status" enums:"discarded"`
 }
 
+// sendMessageDescription is what a send's body is described as. It binds nothing: the handler
+// checks from and to itself, after authorization, so these tags change no answer. Its list
+// items get their format in internal/api/described_items.go, which a tag cannot do. The body
+// is an anonymous struct so the description holds it inline: fuzz.pin in Vertrag 0.42.0 reads
+// a body's properties without following a $ref, and the coverage run pins scheduled_at.
 type sendMessageDescription struct {
-	apitypes.SendMessageRequest
-	From string `json:"from" minLength:"1"`
+	Body struct {
+		apitypes.SendMessageRequest
+		From string   `json:"from" minLength:"1" format:"idn-email"`
+		To   []string `json:"to" minItems:"1"`
+	} `body:""`
 }
 
 // sendOutcomes are the answers a send gives, each with its own status: the sent message (201),
@@ -198,7 +206,9 @@ func (h *MessageHandler) RegisterCompose(rs endpoint.Routes, audit ...func(strin
 		OperationID: "sendMessage", Summary: "Send a message", Tags: []string{"Messages"},
 		DescribedRequest: sendMessageDescription{},
 		Description: "Sent at once (201), or with scheduled_at stored and sent then (202); the outbound pipeline may " +
-			"discard it (200). " + delegatedSendingDescription,
+			"discard it (200). to needs at least one address. from, to, cc and bcc are described as bare addresses, " +
+			"internationalized or not; the handler also accepts an RFC 5322 display name around one. scheduled_at must be at least a minute " +
+			"ahead and within a year; null or omitted sends at once. " + delegatedSendingDescription,
 		Status: http.StatusCreated, SuccessStatuses: []int{http.StatusOK, http.StatusAccepted},
 		Responses: append(append([]oapifly.EndpointResponse{}, sendOutcomes...), oapifly.EndpointResponse{Status: http.StatusUnprocessableEntity, Description: "Binding validation, sender policy or scheduling refusal", Type: oapifly.TypeOf[ForwardRefusalResponse]()}),
 		Errors:    sendRefusals, Security: delegatedSendSecurity(), Middleware: sendAudit("mail.send")}, h.sendMessage)

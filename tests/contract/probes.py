@@ -2,8 +2,9 @@
 """Configure schema-generated probes after the complete examples gate passes.
 
 vertrag 0.29 applies pins to documented examples too. Keep the full examples
-run unpinned; this second run holds an opaque signing key and a snooze date in
-the future, and omits the 4xx transactions whose probes gate.py already ignores.
+run unpinned; this second run holds an opaque signing key, a snooze date in the
+future and an immediate send, and omits the 4xx transactions whose probes gate.py
+already ignores.
 All probes from successful transactions remain enabled. The first run enforces
 the full surface gate.
 
@@ -32,6 +33,13 @@ DKIM_KEY = Path(__file__).resolve().parent / "fixtures/dkim-key.pem"
 # (ErrChangedByHook) without counting it, so the valid probes would never be
 # sent. The pin is applied before the probe is rendered, so they are.
 SNOOZE_UNTIL = "2099-01-01T10:00:00Z"
+# A send's time must be a minute to a year ahead, so the generator's date is
+# refused there too. Null is what the description permits and means "send at
+# once", which keeps the success example the 201 it documents: vertrag pins the
+# example as well, and any time would make it a 202. sendMessage is the only
+# request body with this field. Its named scheduled_at_* examples prove the
+# refusals in the examples gate, which is not pinned.
+SCHEDULED_AT = None
 # A schema cannot say a mailbox must exist either. Fuzz draws a mailbox_id or an
 # address that names nothing and reads the 404 as a disagreement, so the rest of
 # delivery is never reached. The fuzz run holds mailbox_id at the recipient the
@@ -55,7 +63,11 @@ def main(config_path, out_path, report_path, pin=True, unpinned=()):
     config.setdefault("exclude-matching", []).append(REFUSALS)
     # Public test fixture: a schema generator cannot construct a signing key.
     if pin:
-        pins = {"private_key": DKIM_KEY.read_text(), "snoozed_until": SNOOZE_UNTIL}
+        pins = {
+            "private_key": DKIM_KEY.read_text(),
+            "snoozed_until": SNOOZE_UNTIL,
+            "scheduled_at": SCHEDULED_AT,
+        }
         if Path(report_path).stem == "fuzz":
             pins.update(fuzz_pins())
         for name in unpinned:

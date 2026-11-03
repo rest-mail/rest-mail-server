@@ -9,14 +9,13 @@
 # Disposable credential, certificate and held-mail targets also send their nine
 # formerly skipped probes (Part of #1443).
 # Login's six generated-credential probes are exempt in Vertrag itself.
+# sendMessage, sendDraft and cancelScheduledMessage shared one cause, restmail.test
+# left at a sending policy (Part of #1443); local coverage sends all 16 of their probes.
 bounceQueueEntry 1
-cancelScheduledMessage 1
 deleteContact 2
 deleteFolder 2
 deleteQueueEntry 1
 getQueueEntry 1
 retryQueueEntry 1
-sendDraft 1
-sendMessage 14
 updateContact 9
 updateDraft 10

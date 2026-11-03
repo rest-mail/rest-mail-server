@@ -181,6 +181,7 @@ func TestMailStateRequirementExamples(t *testing.T) {
 	routes := requirementRoutes(t)
 	for _, tc := range []struct{ op, name string }{
 		{"deliverMessage", "processed"}, {"deliverMessage", "rejected"}, {"sendMessage", "discarded"}, {"forwardMessage", "discarded"}, {"sendMessage", "scheduled"},
+		{"sendMessage", "scheduled_at_past"}, {"sendMessage", "scheduled_at_too_far"},
 		{"respondToCalendar", "accepted"}, {"respondToCalendar", "foreign_sender"}, {"releaseQuarantine", "released"}, {"releaseQuarantine", "read_only"},
 		{"accountEvents", "inaccessible"}, {"updateMessage", "read_only"}, {"createAccount", "outside_domain"}, {"restmailDeliver", "unauthenticated_delivery"},
 		{"linkAccount", "already_linked"}, {"unlinkAccount", "unlinked"},
