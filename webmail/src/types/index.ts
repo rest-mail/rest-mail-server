@@ -22,6 +22,18 @@ export interface Folder {
   unread: number;
 }
 
+export interface AwaitingThread {
+  thread_id: string;
+  awaiting_since: string;
+  last_message: MessageSummary;
+}
+
+/** A waiting-thread page has no total: counting them walks the whole mailbox. */
+export interface AwaitingThreadsPage {
+  data: AwaitingThread[];
+  pagination?: { has_more: boolean; cursor?: string };
+}
+
 export interface MessageSummary {
   class: components['schemas']['Message']['class'];
   id: number;
@@ -30,6 +42,7 @@ export interface MessageSummary {
   due?: string | null;
   due_source?: 'user' | 'rule' | 'parsed' | null;
   snoozed_until?: string | null;
+  awaiting_since?: string | null;
   folder: string;
   message_id: string;
   sender: string;

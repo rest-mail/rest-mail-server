@@ -252,6 +252,7 @@ type Message struct {
 	Due               *time.Time            `json:"due,omitempty"`
 	DueSource         *string               `json:"due_source,omitempty" enums:"user,rule,parsed"`
 	SnoozedUntil      *time.Time            `json:"snoozed_until,omitempty" description:"The thread's snooze deadline, when snoozed; search and direct reads still include it"`
+	AwaitingSince     *time.Time            `json:"awaiting_since,omitempty" description:"When the thread's last message came from this account. Absent when someone else wrote last. Derived on read"`
 	Sender            string                `json:"sender"`
 	SenderName        string                `json:"sender_name"`
 	RecipientsTo      json.RawMessage       `json:"recipients_to"`

@@ -51,6 +51,7 @@ func messageOf(m models.Message) Message {
 		Due:               m.Due,
 		DueSource:         m.DueSource,
 		SnoozedUntil:      m.SnoozedUntil,
+		AwaitingSince:     m.AwaitingSince,
 		Sender:            m.Sender,
 		SenderName:        m.SenderName,
 		RecipientsTo:      storedList(m.RecipientsTo),

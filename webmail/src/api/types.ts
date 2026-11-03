@@ -785,6 +785,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/accounts/{id}/threads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List an account's threads in a state
+         * @description state=awaiting answers the threads whose last message came from this account, across folders, the most recent first. It is derived from the account's messages on every read, with no setting and no model: a draft, a scheduled send and a deleted or trashed message do not count, and a later message in the thread or a reply to the last one ends the wait. Any state other than awaiting is 422. A snoozed thread stays in this list with its deadline on last_message, because snoozing hides a thread from folder listings only.
+         */
+        get: operations["listThreads"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/accounts/{id}/threads/{threadID}": {
         parameters: {
             query?: never;
@@ -3025,6 +3045,12 @@ export interface components {
             mechanism: string;
             result: string;
         };
+        AwaitingThread: {
+            /** Format: date-time */
+            awaiting_since: string;
+            last_message: components["schemas"]["Message"];
+            thread_id: string;
+        };
         Ban: {
             /** Format: date-time */
             created_at: string;
@@ -3694,6 +3720,10 @@ export interface components {
             data: components["schemas"]["AuditEntry"][];
             pagination?: components["schemas"]["Pagination"] | null;
         };
+        "List-AwaitingThread": {
+            data: components["schemas"]["AwaitingThread"][];
+            pagination?: components["schemas"]["Pagination"] | null;
+        };
         "List-Ban": {
             data: components["schemas"]["Ban"][];
             pagination?: components["schemas"]["Pagination"] | null;
@@ -3829,6 +3859,8 @@ export interface components {
             auth_results?: components["schemas"]["AuthResult"][];
             /** @enum {string} */
             auth_verdict?: "signed" | "unsigned" | "mismatch";
+            /** Format: date-time */
+            awaiting_since?: string | null;
             body_html?: string;
             body_text?: string;
             calendar_events?: unknown;
@@ -10575,6 +10607,108 @@ export interface operations {
                 };
             };
             /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After": number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listThreads: {
+        parameters: {
+            query: {
+                state: "awaiting";
+                /** @description 1 to 100; 50 otherwise */
+                limit?: number;
+                /** @description The cursor of the page before; one that does not decode starts from the newest */
+                cursor?: string;
+            };
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["List-AwaitingThread"];
+                };
+            };
+            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
             413: {
                 headers: {
                     [name: string]: unknown;

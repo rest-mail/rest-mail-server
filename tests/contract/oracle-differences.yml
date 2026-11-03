@@ -1978,6 +1978,46 @@
   reason: >-
     The calendar invitations parsed from the message, stored JSON written as stored; omitted
     when there are none. The oracle omits them.
+- operation: listThreads
+  difference: "response 200 application/json.properties.data.items.properties.last_message.required: *"
+  reason: >-
+    A message always writes every field its model writes; the oracle marks some of them optional and omits others.
+- operation: listThreads
+  difference: "response 200 application/json.properties.data.items.properties.last_message.properties.tls_version: openapi.yaml absent, generated *"
+  reason: >-
+    The negotiated TLS version of an encrypted inbound-MX delivery; written when known. The oracle omits it.
+- operation: listThreads
+  difference: "response 200 application/json.properties.data.items.properties.last_message.properties.received_tls: openapi.yaml absent, generated *"
+  reason: >-
+    Whether an inbound-MX delivery was encrypted, null when unknown. The oracle omits it.
+- operation: listThreads
+  difference: "response 200 application/json.properties.data.items.properties.last_message.properties.is_dsn: openapi.yaml absent, generated *"
+  reason: >-
+    Whether the server generated the message as a delivery status notification. The oracle omits it.
+- operation: listThreads
+  difference: "response 200 application/json.properties.data.items.properties.last_message.properties.mailbox: openapi.yaml absent, generated *"
+  reason: >-
+    A message loaded with its mailbox answers it; this route never loads it. The oracle omits it.
+- operation: listThreads
+  difference: "response 200 application/json.properties.data.items.properties.last_message.properties.recipients_to.*"
+  reason: >-
+    The recipients are the stored JSON, so a gateway's delivery is not narrowed. The oracle states a list of strings.
+- operation: listThreads
+  difference: "response 200 application/json.properties.data.items.properties.last_message.properties.recipients_cc.*"
+  reason: >-
+    The recipients are the stored JSON, so a gateway's delivery is not narrowed. The oracle states a list of strings.
+- operation: listThreads
+  difference: "response 200 application/json.properties.data.items.properties.last_message.properties.headers.oneOf: *"
+  reason: >-
+    The headers are the stored JSON, so a gateway's delivery is not narrowed. The oracle states narrower forms.
+- operation: listThreads
+  difference: "response 200 application/json.properties.data.items.properties.last_message.properties.calendar_events: openapi.yaml absent, generated *"
+  reason: >-
+    The stored calendar events, written when a message has them. The oracle omits them.
+- operation: listThreads
+  difference: "response 200 application/json.properties.pagination.required: openapi.yaml absent, generated [\"has_more\"]"
+  reason: >-
+    The list answers respond.Pagination, in which has_more is always present. The oracle reuses the shared Pagination schema, which leaves it optional.
 - operation: searchMessages
   difference: "response 200 application/json.properties.data*.required: *"
   reason: >-

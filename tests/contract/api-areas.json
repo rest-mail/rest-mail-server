@@ -71,6 +71,7 @@
     "listAttachments",
     "listFolders",
     "listMessages",
+    "listThreads",
     "renameFolder",
     "searchMessages",
     "updateMessage"

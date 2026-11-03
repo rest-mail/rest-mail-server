@@ -6,16 +6,20 @@ interface ThreadSnoozeState {
   selectedMessageId: number | null;
   selectedMessage: MessageDetail | null;
   searchResults: MessageSummary[] | null;
+  waitingMessages: MessageSummary[] | null;
 }
 
 export function threadSnoozeChange(state: ThreadSnoozeState, mailboxId: number, threadId: string, until: string | null): Partial<ThreadSnoozeState> {
   if (state.activeAccountId !== mailboxId) return {};
   const matches = (message: MessageSummary) => message.mailbox_id === mailboxId && message.thread_id === threadId;
   const selected = state.selectedMessage;
-  const hideSelected = until !== null && state.searchResults === null && selected !== null && matches(selected);
+  // Search and the waiting list keep a snoozed thread, so its reader stays open there.
+  const hideSelected = until !== null && state.searchResults === null && state.waitingMessages === null && selected !== null && matches(selected);
+  const withDeadline = (message: MessageSummary) => matches(message) ? { ...message, snoozed_until: until } : message;
   return {
     messages: until === null ? state.messages : state.messages.filter(message => !matches(message)),
-    searchResults: state.searchResults?.map(message => matches(message) ? { ...message, snoozed_until: until } : message) ?? null,
+    searchResults: state.searchResults?.map(withDeadline) ?? null,
+    waitingMessages: state.waitingMessages?.map(withDeadline) ?? null,
     selectedMessageId: hideSelected ? null : state.selectedMessageId,
     selectedMessage: hideSelected ? null : selected && matches(selected) ? { ...selected, snoozed_until: until } : selected,
   };

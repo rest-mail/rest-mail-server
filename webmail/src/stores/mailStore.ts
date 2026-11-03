@@ -4,6 +4,7 @@ import type { Folder, MessageSummary, MessageDetail, Account } from '../types';
 import * as api from '../api/client';
 import { threadDueChange } from '../lib/threadDue';
 import { threadSnoozeChange } from '../lib/threadSnooze';
+import { noWaitingView, waitingPage } from '../lib/threadAwaiting';
 
 interface MailState {
   // Accounts
@@ -25,6 +26,11 @@ interface MailState {
   searchQuery: string;
   searchResults: MessageSummary[] | null;
   isSearching: boolean;
+
+  // Threads waiting on a reply, across folders; null when a folder is showing
+  waitingMessages: MessageSummary[] | null;
+  waitingHasMore: boolean;
+  waitingCursor: string | null;
 
   // Loading states
   loadingFolders: boolean;
@@ -49,6 +55,9 @@ interface MailState {
   refresh: () => Promise<void>;
   searchMessages: (query: string) => Promise<void>;
   clearSearch: () => void;
+  showWaiting: () => Promise<void>;
+  loadMoreWaiting: () => Promise<void>;
+  clearWaiting: () => void;
 }
 
 function errMsg(err: unknown): string {
@@ -68,12 +77,13 @@ export const useMailStore = create<MailState>((set, get) => ({
   searchQuery: '',
   searchResults: null,
   isSearching: false,
+  ...noWaitingView,
   loadingFolders: false,
   loadingMessages: false,
   loadingMessage: false,
 
   setActiveAccount: (accountId) => {
-    set({ activeAccountId: accountId, activeFolder: 'INBOX', messages: [], selectedMessageId: null, selectedMessage: null });
+    set({ activeAccountId: accountId, activeFolder: 'INBOX', messages: [], selectedMessageId: null, selectedMessage: null, ...noWaitingView });
   },
 
   loadAccounts: async () => {
@@ -103,7 +113,7 @@ export const useMailStore = create<MailState>((set, get) => ({
   },
 
   selectFolder: async (folder) => {
-    set({ activeFolder: folder, messages: [], cursor: null, selectedMessageId: null, selectedMessage: null });
+    set({ activeFolder: folder, messages: [], cursor: null, selectedMessageId: null, selectedMessage: null, ...noWaitingView });
     await get().loadMessages();
   },
 
@@ -197,6 +207,7 @@ export const useMailStore = create<MailState>((set, get) => ({
     await api.deleteMessage(msgId);
     set(state => ({
       messages: state.messages.filter(m => m.id !== msgId),
+      waitingMessages: state.waitingMessages?.filter(m => m.id !== msgId) ?? null,
       selectedMessageId: state.selectedMessageId === msgId ? null : state.selectedMessageId,
       selectedMessage: state.selectedMessage?.id === msgId ? null : state.selectedMessage,
     }));
@@ -231,6 +242,7 @@ export const useMailStore = create<MailState>((set, get) => ({
           messages: [],
           selectedMessageId: null,
           selectedMessage: null,
+          ...noWaitingView,
         });
         if (next) {
           await get().loadFolders();
@@ -246,6 +258,7 @@ export const useMailStore = create<MailState>((set, get) => ({
   refresh: async () => {
     await get().loadFolders();
     await get().loadMessages();
+    if (get().waitingMessages) await get().showWaiting();
   },
 
   searchMessages: async (query: string) => {
@@ -257,7 +270,7 @@ export const useMailStore = create<MailState>((set, get) => ({
       return;
     }
 
-    set({ searchQuery: query, isSearching: true });
+    set({ searchQuery: query, isSearching: true, ...noWaitingView });
     try {
       const resp = await api.searchMessages(activeAccountId, query, activeFolder);
       set({ searchResults: resp.data, isSearching: false });
@@ -269,5 +282,34 @@ export const useMailStore = create<MailState>((set, get) => ({
 
   clearSearch: () => {
     set({ searchQuery: '', searchResults: null, isSearching: false });
+  },
+
+  showWaiting: async () => {
+    const { activeAccountId, activeFolder, searchQuery } = get();
+    if (!activeAccountId) return;
+    try {
+      const page = await api.listAwaitingThreads(activeAccountId);
+      // Moving to another folder or starting a search while this loaded keeps that choice.
+      set(state => (state.activeFolder !== activeFolder || state.searchQuery !== searchQuery
+        ? {}
+        : { ...waitingPage(state, activeAccountId, page, false), searchQuery: '', searchResults: null, isSearching: false }));
+    } catch (err) {
+      toast.error(`Failed to load waiting threads: ${errMsg(err)}`);
+    }
+  },
+
+  loadMoreWaiting: async () => {
+    const { activeAccountId, waitingCursor } = get();
+    if (!activeAccountId || !waitingCursor) return;
+    try {
+      const page = await api.listAwaitingThreads(activeAccountId, waitingCursor);
+      set(state => (state.waitingMessages ? waitingPage(state, activeAccountId, page, true) : {}));
+    } catch (err) {
+      toast.error(`Failed to load more waiting threads: ${errMsg(err)}`);
+    }
+  },
+
+  clearWaiting: () => {
+    set(noWaitingView);
   },
 }));

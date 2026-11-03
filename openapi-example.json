@@ -26536,6 +26536,438 @@
       }
     }
   },
+  "listThreads": {
+    "empty": {
+      "summary": "An account with no thread waiting on a reply",
+      "description": "Production routes load real credential and holder ceilings and map fixed message rows. Controlled SQL proves the wiring, the cursor and the bound; separate PostgreSQL tests prove the derivation, its folders and its account isolation.",
+      "request": {
+        "path": {
+          "id": 2
+        },
+        "query": {
+          "state": "awaiting"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": [],
+          "pagination": {
+            "has_more": false
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "first_page": {
+      "summary": "The newest waiting thread and a cursor to the next page",
+      "description": "Production routes load real credential and holder ceilings and map fixed message rows. Controlled SQL proves the wiring, the cursor and the bound; separate PostgreSQL tests prove the derivation, its folders and its account isolation.",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "query": {
+          "limit": 1,
+          "state": "awaiting"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": [
+            {
+              "thread_id": "\u003cthread-72@example.com\u003e",
+              "awaiting_since": "2026-10-20T02:00:00Z",
+              "last_message": {
+                "id": 72,
+                "class": "person",
+                "mailbox_id": 1,
+                "folder": "Sent",
+                "message_id": "\u003cmessage-72@example.com\u003e",
+                "in_reply_to": "",
+                "references": "",
+                "thread_id": "\u003cthread-72@example.com\u003e",
+                "awaiting_since": "2026-10-20T02:00:00Z",
+                "sender": "linked@example.com",
+                "sender_name": "Linked",
+                "recipients_to": [
+                  "recipient@example.net"
+                ],
+                "recipients_cc": [],
+                "subject": "Any news?",
+                "body_text": "Any news?",
+                "size_bytes": 18,
+                "raw_size": 0,
+                "downgraded_size": 0,
+                "has_attachments": false,
+                "is_read": true,
+                "is_dsn": false,
+                "is_flagged": false,
+                "is_starred": false,
+                "is_draft": false,
+                "is_deleted": false,
+                "received_at": "2026-10-20T02:00:00Z",
+                "date_header": null,
+                "created_at": "2026-10-20T00:00:00Z",
+                "updated_at": "2026-10-20T00:00:00Z"
+              }
+            }
+          ],
+          "pagination": {
+            "cursor": "eyJyZWNlaXZlZF9hdCI6IjIwMjYtMTAtMjBUMDI6MDA6MDBaIiwiaWQiOjcyfQ==",
+            "has_more": true
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "found": {
+      "summary": "Threads whose last message came from this account, the most recent first",
+      "description": "Production routes load real credential and holder ceilings and map fixed message rows. Controlled SQL proves the wiring, the cursor and the bound; separate PostgreSQL tests prove the derivation, its folders and its account isolation.",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "query": {
+          "state": "awaiting"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": [
+            {
+              "thread_id": "\u003cthread-72@example.com\u003e",
+              "awaiting_since": "2026-10-20T02:00:00Z",
+              "last_message": {
+                "id": 72,
+                "class": "person",
+                "mailbox_id": 1,
+                "folder": "Sent",
+                "message_id": "\u003cmessage-72@example.com\u003e",
+                "in_reply_to": "",
+                "references": "",
+                "thread_id": "\u003cthread-72@example.com\u003e",
+                "awaiting_since": "2026-10-20T02:00:00Z",
+                "sender": "linked@example.com",
+                "sender_name": "Linked",
+                "recipients_to": [
+                  "recipient@example.net"
+                ],
+                "recipients_cc": [],
+                "subject": "Any news?",
+                "body_text": "Any news?",
+                "size_bytes": 18,
+                "raw_size": 0,
+                "downgraded_size": 0,
+                "has_attachments": false,
+                "is_read": true,
+                "is_dsn": false,
+                "is_flagged": false,
+                "is_starred": false,
+                "is_draft": false,
+                "is_deleted": false,
+                "received_at": "2026-10-20T02:00:00Z",
+                "date_header": null,
+                "created_at": "2026-10-20T00:00:00Z",
+                "updated_at": "2026-10-20T00:00:00Z"
+              }
+            },
+            {
+              "thread_id": "\u003cthread-71@example.com\u003e",
+              "awaiting_since": "2026-10-20T01:00:00Z",
+              "last_message": {
+                "id": 71,
+                "class": "person",
+                "mailbox_id": 1,
+                "folder": "Sent",
+                "message_id": "\u003cmessage-71@example.com\u003e",
+                "in_reply_to": "",
+                "references": "",
+                "thread_id": "\u003cthread-71@example.com\u003e",
+                "awaiting_since": "2026-10-20T01:00:00Z",
+                "sender": "linked@example.com",
+                "sender_name": "Linked",
+                "recipients_to": [
+                  "recipient@example.net"
+                ],
+                "recipients_cc": [],
+                "subject": "Any news?",
+                "body_text": "Any news?",
+                "size_bytes": 18,
+                "raw_size": 0,
+                "downgraded_size": 0,
+                "has_attachments": false,
+                "is_read": true,
+                "is_dsn": false,
+                "is_flagged": false,
+                "is_starred": false,
+                "is_draft": false,
+                "is_deleted": false,
+                "received_at": "2026-10-20T01:00:00Z",
+                "date_header": null,
+                "created_at": "2026-10-20T00:00:00Z",
+                "updated_at": "2026-10-20T00:00:00Z"
+              }
+            }
+          ],
+          "pagination": {
+            "has_more": false
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_id": {
+      "request": {
+        "path": {
+          "id": 0
+        },
+        "query": {
+          "state": "awaiting"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "key_wrong_scope": {
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "query": {
+          "state": "awaiting"
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Account not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "next_page": {
+      "summary": "The page after a cursor, the last one",
+      "description": "Production routes load real credential and holder ceilings and map fixed message rows. Controlled SQL proves the wiring, the cursor and the bound; separate PostgreSQL tests prove the derivation, its folders and its account isolation.",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "query": {
+          "cursor": "eyJyZWNlaXZlZF9hdCI6IjIwMjYtMTAtMjBUMDI6MDA6MDBaIiwiaWQiOjcyfQ==",
+          "limit": 1,
+          "state": "awaiting"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": [
+            {
+              "thread_id": "\u003cthread-71@example.com\u003e",
+              "awaiting_since": "2026-10-20T01:00:00Z",
+              "last_message": {
+                "id": 71,
+                "class": "person",
+                "mailbox_id": 1,
+                "folder": "Sent",
+                "message_id": "\u003cmessage-71@example.com\u003e",
+                "in_reply_to": "",
+                "references": "",
+                "thread_id": "\u003cthread-71@example.com\u003e",
+                "awaiting_since": "2026-10-20T01:00:00Z",
+                "sender": "linked@example.com",
+                "sender_name": "Linked",
+                "recipients_to": [
+                  "recipient@example.net"
+                ],
+                "recipients_cc": [],
+                "subject": "Any news?",
+                "body_text": "Any news?",
+                "size_bytes": 18,
+                "raw_size": 0,
+                "downgraded_size": 0,
+                "has_attachments": false,
+                "is_read": true,
+                "is_dsn": false,
+                "is_flagged": false,
+                "is_starred": false,
+                "is_draft": false,
+                "is_deleted": false,
+                "received_at": "2026-10-20T01:00:00Z",
+                "date_header": null,
+                "created_at": "2026-10-20T00:00:00Z",
+                "updated_at": "2026-10-20T00:00:00Z"
+              }
+            }
+          ],
+          "pagination": {
+            "has_more": false
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "query": {
+          "state": "awaiting"
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "query": {
+          "state": "awaiting"
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "query": {
+          "state": "awaiting"
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "target_unavailable": {
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "path": {
+          "id": 3
+        },
+        "query": {
+          "state": "awaiting"
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "query": {
+          "state": "awaiting"
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "write_only": {
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "query": {
+          "state": "awaiting"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
   "listTlsReports": {
     "available": {
       "summary": "The permitted list is empty",

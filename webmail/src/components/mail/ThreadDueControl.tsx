@@ -19,7 +19,7 @@ export function ThreadDueForm({ message, value, pending, error, onValue, onSave,
   const suggestion = Boolean(message.due) && isDueSuggestion(message.due_source);
   return (
     <div className="mb-3 space-y-2">
-      <ThreadSignals due={message.due} dueSource={message.due_source} />
+      <ThreadSignals awaitingSince={message.awaiting_since} due={message.due} dueSource={message.due_source} />
       {message.due && <time dateTime={message.due} className="block text-xs text-muted-foreground">{new Date(message.due).toLocaleString()}</time>}
       <form className="flex flex-wrap items-center gap-2 text-xs" onSubmit={event => { event.preventDefault(); onSave(); }}>
         <label className="flex items-center gap-2">

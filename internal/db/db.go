@@ -210,6 +210,13 @@ func autoMigrate(db *gorm.DB) error {
 		slog.Warn("failed to create unread index", "error", err)
 	}
 
+	// What a message replies to, for the threads waiting on a reply: without it a page of
+	// them searches the mailbox once for each message the account sent.
+	err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_messages_reply_parent ON messages (mailbox_id, (` + models.MessageReplyParentSQL("") + `))`).Error
+	if err != nil {
+		slog.Warn("failed to create reply parent index", "error", err)
+	}
+
 	// Pipeline indexes
 	db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_contacts_mailbox_email ON contacts(mailbox_id, email)`)
 	db.Exec(`CREATE INDEX IF NOT EXISTS idx_contacts_trust_level ON contacts(mailbox_id, trust_level)`)
