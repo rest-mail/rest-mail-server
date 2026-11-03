@@ -178,6 +178,81 @@ class MtaStsHookTests(unittest.TestCase):
             with self.subTest(status=status), self.assertRaises(urllib.error.HTTPError):
                 self.hooks.prepare_mta_sts_policy_example(self.transaction(status))
 
+    def policy_file(self, status, prefix=""):
+        media = "text/plain" if status == 200 else "application/json"
+        return {
+            "name": prefix + "/.well-known/mta-sts.txt > MTA-STS policy file (RFC 8461) > %d > %s" % (status, media),
+            "protocol": "http:",
+            "host": "127.0.0.1",
+            "port": str(self.server.server_port),
+            "fullPath": "/.well-known/mta-sts.txt",
+            "request": {"headers": {"Host": "mta-sts.example.com"}, "body": ""},
+            "expected": {"statusCode": str(status)},
+        }
+
+    def test_the_policy_file_hook_is_registered(self):
+        self.assertIn(("mtaStsPolicyFile", "ask_for_the_created_domains_policy"), self.registered)
+
+    def test_found_asks_for_a_domain_holding_exactly_the_found_policy(self):
+        # The policy file's text is derived from these fields; the found pair's
+        # response is "version: STSv1\nmode: enforce\nmx: mail.example.com\nmax_age: 604800\n".
+        found = {"mode": "enforce", "mx_hosts": "mail.example.com", "max_age": 604800, "active": True}
+        for prefix in ("", "coverage: "):
+            with self.subTest(prefix=prefix):
+                transaction = self.policy_file(200, prefix)
+                self.hooks.ask_for_the_created_domains_policy(transaction)
+                domain_id = self.server.serial
+                name = self.server.domains[domain_id]["name"]
+                self.assertEqual(transaction["request"]["headers"]["Host"], "mta-sts." + name)
+                self.assertEqual(self.server.policies[domain_id], dict(found, domain_id=domain_id))
+        # One domain of its own, its policy put again before each request.
+        self.assertEqual([call[0] for call in self.server.calls], ["POST", "PUT", "PUT"])
+        self.assertTrue(all(call[2]["Authorization"] == "Bearer setup-session" for call in self.server.calls))
+        self.assertNotIn(1, self.server.policies)
+
+    def test_found_restores_a_policy_something_deactivated(self):
+        self.hooks.ask_for_the_created_domains_policy(self.policy_file(200))
+        domain_id = self.server.serial
+        self.server.policies[domain_id]["active"] = False
+        self.hooks.ask_for_the_created_domains_policy(self.policy_file(200))
+        self.assertTrue(self.server.policies[domain_id]["active"])
+
+    def test_found_makes_its_domain_again_once_it_is_gone(self):
+        first = self.policy_file(200)
+        self.hooks.ask_for_the_created_domains_policy(first)
+        del self.server.domains[self.server.serial]
+        again = self.policy_file(200)
+        self.hooks.ask_for_the_created_domains_policy(again)
+        self.assertEqual([call[0] for call in self.server.calls], ["POST", "PUT", "PUT", "POST", "PUT"])
+        self.assertNotEqual(again["request"]["headers"]["Host"], first["request"]["headers"]["Host"])
+        self.assertTrue(self.server.policies[self.server.serial]["active"])
+
+    def test_found_setup_failures_are_not_swallowed(self):
+        self.server.failure = 500
+        with self.assertRaises(urllib.error.HTTPError):
+            self.hooks.ask_for_the_created_domains_policy(self.policy_file(200))
+
+    def test_other_policy_file_requests_still_ask_for_the_created_domain(self):
+        self.stub.stash["domain"] = "created.test"
+        transaction = self.policy_file(404)
+        self.hooks.ask_for_the_created_domains_policy(transaction)
+        self.assertEqual(transaction["request"]["headers"]["Host"], "mta-sts.created.test")
+        self.assertEqual(self.server.calls, [])
+
+    def test_the_run_provides_the_active_policy_the_hook_sets_up(self):
+        import yaml
+
+        config = yaml.safe_load((ROOT / "vertrag.yml").read_text())
+        self.assertEqual(config["provides"], {"state": ["active_policy"]})
+        examples = json.loads((ROOT / "openapi-example.json").read_text())
+        needing = sorted(
+            f"{operation}/{name}"
+            for operation, pairs in examples.items()
+            for name, pair in pairs.items()
+            if pair.get("requires", {}).get("state") == "active_policy"
+        )
+        self.assertEqual(needing, ["mtaStsPolicyFile/found"])
+
 
 if __name__ == "__main__":
     unittest.main()

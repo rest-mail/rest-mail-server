@@ -105,6 +105,14 @@ narrowed local replay against the real API and PostgreSQL reproduced all 17
 MTA-STS/sender-rule skips before these hooks and none afterward. This is
 Part of #1443, not proof of the whole-topology result.
 
+The public policy file's `found` pair (`mtaStsPolicyFile`, 200 `text/plain`)
+requires `state: active_policy`, which `vertrag.yml` provides because its hook
+sets it up: every phase's request for it gets a domain of the hook's own, whose
+policy the hook puts (enforce, `mail.example.com`, 604800, active) before each
+request, and is sent with `Host: mta-sts.<that domain>`. The policy text and
+media type are the pair's, unchanged. Its other requests still ask for the
+domain the run created. Part of #1161.
+
 Custom filter and pipeline examples name placeholder `1`, which nothing holds
 once the examples process has gone. In the coverage process each success request
 aimed at `1` gets a new row, disabled or inactive, on a disposable domain, and
