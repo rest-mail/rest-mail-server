@@ -24,7 +24,7 @@ class AuthPacing(unittest.TestCase):
         paced = {pattern: function for pattern, function in registered
                  if function is module.pace_auth_requests}
         self.assertEqual(set(paced), {
-            "login", "refreshToken", "linkAccount", "createAppPassword", "protocolSignIn", "enrollTwoFactor",
+            "login", "refreshToken", "linkAccount", "createAppPassword", "openGatewaySession", "enrollTwoFactor",
             "confirmTwoFactor", "recoverAccount", "acceptInvitation", "resetAdmin", "issueClientCredentialsToken",
             "activateGrant", "makeGrantEligible", "updateAPIKey", "createAPIKey",
         })
