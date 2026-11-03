@@ -8,12 +8,13 @@ import { getThemePack, TYPEFACE_CLASS, avatarTint, initialsOf } from '@/theme/pa
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { ClassLabel } from '@/components/mail/signals';
 import { cn } from '@/lib/utils';
-import { Mail, X, Paperclip } from 'lucide-react';
+import { Clock, Mail, X, Paperclip } from 'lucide-react';
+import { WaitingBadge } from './signals';
 
 /** Count total unread across displayed messages */
 function useUnreadCount() {
-  const { messages, searchResults } = useMailStore();
-  const display = searchResults ?? messages;
+  const { messages, searchResults, waitingMessages } = useMailStore();
+  const display = waitingMessages ?? searchResults ?? messages;
   return display.filter(m => !m.is_read).length;
 }
 
@@ -22,6 +23,7 @@ export function MessageList() {
     messages, selectedMessageId, loadingMessages, activeFolder,
     selectMessage, hasMore, loadMoreMessages,
     searchResults, searchQuery, clearSearch,
+    waitingMessages, waitingHasMore, showWaiting, loadMoreWaiting, clearWaiting,
   } = useMailStore();
   const { density } = useSettingsStore();
   const pack = useUIStore(s => getThemePack(s.theme));
@@ -30,8 +32,9 @@ export function MessageList() {
 
   const isInSearch = searchResults !== null;
   const [collapseLists, setCollapseLists] = useState(false);
-  const allMessages = isInSearch ? searchResults : messages;
-  const displayMessages = visibleMessages(allMessages, collapseLists && !isInSearch, selectedMessageId);
+  const isWaiting = waitingMessages !== null;
+  const allMessages = waitingMessages ?? (isInSearch ? searchResults : messages);
+  const displayMessages = visibleMessages(allMessages, collapseLists && !isInSearch && !isWaiting, selectedMessageId);
   const listCount = allMessages.filter(message => message.class === 'newsletter').length;
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
@@ -94,6 +97,16 @@ export function MessageList() {
 
   // Empty state
   if (allMessages.length === 0) {
+    if (isWaiting) {
+      return (
+        <div className={cn('flex flex-col items-center justify-center h-full text-muted-foreground gap-3', TYPEFACE_CLASS[v.listType])}>
+          <p className="text-sm">// nothing_waiting_on_a_reply</p>
+          <button onClick={clearWaiting} className="text-xs text-primary hover:underline">
+            [back_to_{activeFolder?.toLowerCase()}]
+          </button>
+        </div>
+      );
+    }
     if (isInSearch) {
       return (
         <div className={cn('flex flex-col items-center justify-center h-full text-muted-foreground gap-3', TYPEFACE_CLASS[v.listType])}>
@@ -123,21 +136,32 @@ export function MessageList() {
             "text-sm text-muted-foreground",
             v.listType === 'serif' ? 'font-semibold italic' : 'font-heading-oswald font-semibold tracking-wide',
           )}>
-            {isInSearch ? 'SEARCH' : activeFolder}
+            {isWaiting ? 'WAITING' : isInSearch ? 'SEARCH' : activeFolder}
           </span>
-          {isInSearch ? (
-            <button onClick={clearSearch} className="flex items-center gap-1 text-[9px] font-medium text-primary">
-              <X className="w-3 h-3" /> clear
-            </button>
-          ) : unreadCount > 0 ? (
-            <span className="text-[9px] font-medium text-primary">
-              // {unreadCount}_UNREAD
-            </span>
-          ) : null}
+          <span className="flex items-center gap-2">
+            {isWaiting ? (
+              <button onClick={clearWaiting} className="flex items-center gap-1 text-[9px] font-medium text-primary">
+                <X className="w-3 h-3" /> clear
+              </button>
+            ) : (
+              <button onClick={() => void showWaiting()} className="flex items-center gap-1 text-[9px] font-medium text-muted-foreground hover:text-primary">
+                <Clock className="w-3 h-3" /> waiting
+              </button>
+            )}
+            {isWaiting ? null : isInSearch ? (
+              <button onClick={clearSearch} className="flex items-center gap-1 text-[9px] font-medium text-primary">
+                <X className="w-3 h-3" /> clear
+              </button>
+            ) : unreadCount > 0 ? (
+              <span className="text-[9px] font-medium text-primary">
+                // {unreadCount}_UNREAD
+              </span>
+            ) : null}
+          </span>
         </div>
 
         {/* Divider */}
-        {!isInSearch && listCount > 0 && (
+        {!isInSearch && !isWaiting && listCount > 0 && (
           <button
             onClick={() => setCollapseLists(collapsed => !collapsed)}
             aria-pressed={collapseLists}
@@ -212,6 +236,7 @@ export function MessageList() {
                     <Paperclip className="w-3 h-3 text-muted-foreground shrink-0" />
                   )}
                 </div>
+                <WaitingBadge since={msg.awaiting_since} />
               </div>
             </button>
             {/* Divider between messages */}
@@ -221,9 +246,9 @@ export function MessageList() {
           </div>
         ))}
 
-        {hasMore && (
+        {(isWaiting ? waitingHasMore : hasMore) && (
           <button
-            onClick={() => loadMoreMessages()}
+            onClick={() => (isWaiting ? loadMoreWaiting() : loadMoreMessages())}
             className="w-full py-3 text-xs text-primary hover:bg-secondary/30 transition-colors"
           >
             [load_more...]

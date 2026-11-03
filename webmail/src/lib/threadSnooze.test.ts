@@ -12,7 +12,7 @@ const message: MessageDetail = {
   headers: null, in_reply_to: '', references: '',
 };
 const until = '2099-01-01T10:00:00Z';
-const state = { activeAccountId: 2, messages: [message, { ...message, id: 3 }], selectedMessageId: 1, selectedMessage: message, searchResults: null };
+const state = { activeAccountId: 2, messages: [message, { ...message, id: 3 }], selectedMessageId: 1, selectedMessage: message, searchResults: null, waitingMessages: null };
 
 test('snoozing removes the entire thread and reader without a page refresh', () => {
   const changed = threadSnoozeChange(state, 2, 'thread', until);
@@ -29,6 +29,18 @@ test('search retains snoozed results and permits cancelling from the reader', ()
   assert.equal(changed.selectedMessageId, 1);
   const cancelled = threadSnoozeChange({ ...state, ...changed }, 2, 'thread', null);
   assert.equal(cancelled.searchResults?.[0].snoozed_until, null);
+  assert.equal(cancelled.selectedMessage?.snoozed_until, null);
+});
+
+test('the waiting list retains a snoozed thread and its reader, and hides it only from the folder', () => {
+  const waiting = { ...state, waitingMessages: [message] };
+  const changed = threadSnoozeChange(waiting, 2, 'thread', until);
+  assert.deepEqual(changed.messages, []);
+  assert.equal(changed.waitingMessages?.[0].snoozed_until, until);
+  assert.equal(changed.selectedMessage?.snoozed_until, until);
+  assert.equal(changed.selectedMessageId, 1);
+  const cancelled = threadSnoozeChange({ ...waiting, ...changed }, 2, 'thread', null);
+  assert.equal(cancelled.waitingMessages?.[0].snoozed_until, null);
   assert.equal(cancelled.selectedMessage?.snoozed_until, null);
 });
 

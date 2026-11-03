@@ -199,6 +199,10 @@ func (h *MessageHandler) RegisterMessages(rs endpoint.Routes) {
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodDelete, Path: "/api/v1/messages/{id}",
 		OperationID: "deleteMessage", Summary: "Delete a message", Tags: tags, Status: http.StatusNoContent,
 		Errors: []int{http.StatusForbidden, http.StatusNotFound}, Security: writes}, h.deleteMessage)
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/accounts/{id}/threads",
+		OperationID: "listThreads", Summary: "List an account's threads in a state", Tags: tags,
+		Description: "state=awaiting answers the threads whose last message came from this account, across folders, the most recent first. It is derived from the account's messages on every read, with no setting and no model: a draft, a scheduled send and a deleted or trashed message do not count, and a later message in the thread or a reply to the last one ends the wait. Any state other than awaiting is 422. A snoozed thread stays in this list with its deadline on last_message, because snoozing hides a thread from folder listings only.",
+		Errors:      []int{http.StatusForbidden, http.StatusNotFound}, Security: reads}, h.listThreads)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/accounts/{id}/threads/{threadID}",
 		OperationID: "getThread", Summary: "Get all messages in a thread", Tags: tags,
 		Errors: []int{http.StatusForbidden, http.StatusNotFound}, Security: reads}, h.getThread)
@@ -284,6 +288,9 @@ func (h *MessageHandler) listMessages(r *http.Request, in listMessagesRequest) (
 	if hasMore {
 		messages = messages[:limit]
 	}
+	if err := attachAwaitingSince(h.db, mailboxID, messages); err != nil {
+		return zero, err
+	}
 
 	var nextCursor string
 	if hasMore && len(messages) > 0 {
@@ -338,7 +345,11 @@ func (h *MessageHandler) getMessage(r *http.Request, in messagePath) (Message, e
 	if err != nil {
 		return Message{}, err
 	}
-	return messageOf(msg), nil
+	rows := []models.Message{msg}
+	if err := attachAwaitingSince(h.forRequest(r).db, msg.MailboxID, rows); err != nil {
+		return Message{}, err
+	}
+	return messageOf(rows[0]), nil
 }
 
 // updateMessage updates message flags or moves to a folder.

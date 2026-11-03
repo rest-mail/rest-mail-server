@@ -4825,6 +4825,110 @@ paths:
   # ═══════════════════════════════════════════════════════════════
   # Threads
   # ═══════════════════════════════════════════════════════════════
+  "/api/v1/accounts/{id}/threads":
+    get:
+      summary: "List an account's threads in a state"
+      description: "state=awaiting answers the threads whose last message came from this account, across folders, the most recent first. It is derived from the account's messages on every read, with no setting and no model: a draft, a scheduled send and a deleted or trashed message do not count, and a later message in the thread or a reply to the last one ends the wait. Any state other than awaiting is 422. A snoozed thread stays in this list with its deadline on last_message, because snoozing hides a thread from folder listings only."
+      operationId: "listThreads"
+      tags:
+        - "Messages"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            minimum: 1
+            type: "integer"
+        - name: "state"
+          in: "query"
+          required: true
+          schema:
+            enum:
+              - "awaiting"
+            type: "string"
+          example: "awaiting"
+        - name: "limit"
+          in: "query"
+          description: "1 to 100; 50 otherwise"
+          required: false
+          schema:
+            type: "integer"
+        - name: "cursor"
+          in: "query"
+          description: "The cursor of the page before; one that does not decode starts from the newest"
+          required: false
+          schema:
+            type: "string"
+      responses:
+        "200":
+          description: "OK"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/List-AwaitingThread"
+        "401":
+          description: "unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/ErrorResponse"
+        "403":
+          description: "Forbidden"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/ErrorResponse"
+        "404":
+          description: "Not Found"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/ErrorResponse"
+        "413":
+          description: "request_too_large: the body is over the API's size cap"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/ErrorResponse"
+        "422":
+          description: "Unprocessable Entity"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/ValidationErrorResponse"
+        "429":
+          description: "rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/ErrorResponse"
+          headers:
+            Retry-After:
+              description: "Seconds until a request may be made again"
+              required: true
+              schema:
+                type: "integer"
+        "500":
+          description: "Internal Server Error"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/ErrorResponse"
+        "503":
+          description: "unavailable: the credential or session check could not be made"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/ErrorResponse"
+      security:
+        - CookieAuth:
+            - "mail:read"
+        - BearerAuth:
+            - "mail:read"
+        - APIKeyAuth:
+            - "mail:read"
+        - BasicAuth:
+            - "mail:read"
   "/api/v1/accounts/{id}/threads/{threadID}/due":
     post:
       summary: Set or clear a thread's due date
@@ -14544,6 +14648,35 @@ components:
             $ref: "#/components/schemas/ValidationErrorResponse"
 
   schemas:
+    AwaitingThread:
+      additionalProperties: false
+      properties:
+        awaiting_since:
+          format: "date-time"
+          type: "string"
+        last_message:
+          "$ref": "#/components/schemas/Message"
+        thread_id:
+          type: "string"
+      required:
+        - "thread_id"
+        - "awaiting_since"
+        - "last_message"
+      type: "object"
+    List-AwaitingThread:
+      additionalProperties: false
+      properties:
+        data:
+          items:
+            "$ref": "#/components/schemas/AwaitingThread"
+          type: "array"
+        pagination:
+          oneOf:
+            - "$ref": "#/components/schemas/Pagination"
+            - type: "null"
+      required:
+        - "data"
+      type: "object"
     Data-ThreadDue:
       additionalProperties: false
       properties:
@@ -15806,6 +15939,10 @@ components:
           type:
           - string
           - 'null'
+        awaiting_since:
+          type: [string, "null"]
+          format: date-time
+          description: When the thread's last message came from this account. Absent when someone else wrote last. Derived on read
         sender:
           type: string
         sender_name:

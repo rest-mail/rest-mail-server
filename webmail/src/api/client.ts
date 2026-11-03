@@ -1,4 +1,4 @@
-import type { LoginResponse, Folder, MessageSummary, MessageDetail, Account, Pagination, Attachment } from '../types';
+import type { LoginResponse, Folder, MessageSummary, MessageDetail, Account, Pagination, Attachment, AwaitingThreadsPage } from '../types';
 import { API_BASE as BASE } from './base';
 import type { paths } from './types';
 
@@ -445,6 +445,12 @@ export async function getCalendarEvents(accountId: number): Promise<{ data: {
 }
 
 // Threads
+export async function listAwaitingThreads(accountId: number, cursor?: string): Promise<AwaitingThreadsPage> {
+  let path = `${BASE}/accounts/${accountId}/threads?state=awaiting&limit=50`;
+  if (cursor) path += `&cursor=${encodeURIComponent(cursor)}`;
+  return request(path);
+}
+
 export async function setThreadDue(accountId: number, threadId: string, due: string | null): Promise<{ data: { thread_id: string; due: string | null; due_source: 'user' | null } }> {
   return request(`${BASE}/accounts/${accountId}/threads/${encodeURIComponent(threadId)}/due`, {
     method: 'POST',

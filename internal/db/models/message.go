@@ -49,6 +49,15 @@ func (j *JSONB) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// MessageReplyParentSQL is the Message-ID a stored message answers: its In-Reply-To, or the
+// last of its References when that is absent, without the brackets a stored spelling may or
+// may not have. It is cut to 255 characters because idx_messages_reply_parent indexes it and
+// References is unbounded: a longer value would make a B-tree refuse the message outright.
+// prefix names the row, as "reply." does; the index is built with none.
+func MessageReplyParentSQL(prefix string) string {
+	return `left(btrim(COALESCE(NULLIF(` + prefix + `in_reply_to, ''), (regexp_match(` + prefix + `"references", '([^\s<>]+)[\s<>]*$'))[1], ''), '<> '), 255)`
+}
+
 type Message struct {
 	ID        uint   `gorm:"primaryKey" json:"id"`
 	MailboxID uint   `gorm:"not null;index:idx_messages_mailbox_folder;index:idx_messages_mailbox_deleted" json:"mailbox_id"`
@@ -133,6 +142,9 @@ type Message struct {
 	DateHeader  *time.Time `json:"date_header"`
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`
+
+	// AwaitingSince is derived on read from the thread's messages and never stored.
+	AwaitingSince *time.Time `gorm:"-" json:"-"`
 
 	// Associations
 	Mailbox Mailbox `gorm:"foreignKey:MailboxID" json:"mailbox,omitempty"`

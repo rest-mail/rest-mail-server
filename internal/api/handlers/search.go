@@ -105,6 +105,9 @@ func (h *SearchHandler) search(r *http.Request, in searchRequest) (endpoint.List
 	if err := query.Select(messageThreadFields).Order("received_at DESC").Limit(limit).Find(&messages).Error; err != nil {
 		return endpoint.List[Message]{}, fmt.Errorf("read search results: %w", err)
 	}
+	if err := attachAwaitingSince(h.db, mailboxID, messages); err != nil {
+		return endpoint.List[Message]{}, err
+	}
 
 	return endpoint.List[Message]{Data: messagesOf(messages), Pagination: &respond.Pagination{
 		HasMore: int64(limit) < total,

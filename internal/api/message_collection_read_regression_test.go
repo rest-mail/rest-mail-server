@@ -26,7 +26,13 @@ func (c messageCollectionReadConnection) Open(string) (driver.Conn, error) { ret
 // wiring. They do not prove PostgreSQL filtering, ordering or persistence.
 func (c messageCollectionReadConnection) QueryContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Rows, error) {
 	if !strings.Contains(query, `FROM "messages"`) {
+		if strings.HasPrefix(query, `SELECT "address" FROM "mailboxes"`) {
+			return &authReadSnapshotRows{columns: []string{"address"}, rows: [][]driver.Value{{"linked@example.com"}}}, nil
+		}
 		return c.personalDataReadConnection.QueryContext(ctx, query, args)
+	}
+	if strings.Contains(query, "normalize(lower(") {
+		return awaitingThreadRows(query, args)
 	}
 	if len(args) < 3 || !strings.Contains(query, "mailbox_id =") || !strings.Contains(query, "is_deleted =") || args[2].Value != false {
 		return nil, errors.New("message collection lost account or deletion restriction")
@@ -141,7 +147,7 @@ func messageCollectionReadScenarios(t *testing.T) map[string]accountReadScenario
 	out := accountListScenarios(t, func(mode string, keys map[string]accountListKey) driver.Connector {
 		return messageCollectionReadConnection{personalDataReadConnection{accountCredentialListConnection{mode: mode, keys: keys}}}
 	})
-	for _, name := range []string{"first_page", "next_page", "last_page", "invalid_cursor", "partial_cursor", "blank_cursor", "default_limit", "max_limit", "invalid_limit", "encoded_folder", "unknown_folder", "unknown_thread", "count_unavailable"} {
+	for _, name := range []string{"first_page", "next_page", "last_page", "invalid_cursor", "partial_cursor", "blank_cursor", "default_limit", "max_limit", "invalid_limit", "encoded_folder", "unknown_folder", "unknown_thread", "count_unavailable", "unknown_state", "missing_state"} {
 		out[name] = out["found"]
 	}
 	out["domain_grant"] = out["domain_manager"]
