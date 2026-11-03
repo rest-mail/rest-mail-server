@@ -2476,10 +2476,6 @@
   difference: "response 200 application/json.properties.data.properties.user.properties.email.format: openapi.yaml \"email\", generated absent"
   reason: >-
     The account's address as stored; the answer does not promise a format.
-- operation: protocolSignIn
-  difference: "response 200 application/json.properties.data.properties.user.properties.email.format: openapi.yaml \"email\", generated absent"
-  reason: >-
-    The account's address as stored; the answer does not promise a format.
 - operation: login
   difference: "response 200 header Set-Cookie: generated only"
   reason: >-
