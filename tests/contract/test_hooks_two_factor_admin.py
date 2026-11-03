@@ -66,8 +66,12 @@ class TwoFactorAdminHookTests(unittest.TestCase):
         self.assertIn("an_api_key_from_the_two_factor_admin", self.registered["createAPIKey"])
         self.assertIn("an_api_key_of_its_own_to_edit", self.registered["updateAPIKey"])
         self.assertIn("an_app_password_from_the_two_factor_admin", self.registered["createClientSecret"])
-        # The swap runs before the hook that confirms with the maker's password.
-        self.assertEqual(self.registered["createAppPassword"][:1], ["send_as_the_two_factor_admin"])
+        # The swap runs before the hook that confirms with the maker's password,
+        # after only the clean start of the own-data run (#1385).
+        self.assertEqual(
+            self.registered["createAppPassword"][:2],
+            ["a_credential_to_manage", "send_as_the_two_factor_admin"],
+        )
         self.assertIn("confirm_with_the_admin_password", self.registered["createAppPassword"])
 
     def test_every_operation_that_takes_a_second_factor_is_hooked(self):

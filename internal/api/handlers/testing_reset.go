@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/rest-mail/rest-mail-server/internal/api/middleware"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"gorm.io/gorm"
 )
 
@@ -15,7 +16,7 @@ var resetRetainedTables = map[string]string{
 	"test_reset_baseline": "Initial administrator IDs pin the control plane and sequence floors; later fixture administrators are test data.",
 	"mailboxes":           "Only initial administrators survive so the reset caller keeps access.",
 	"domains":             "Only domains containing retained administrators survive so their addresses remain valid.",
-	"credentials":         "Only retained administrators' credentials survive so their sign-in and MFA remain usable.",
+	"credentials":         "Only retained administrators' sign-in credentials survive (resetCredentialKindsKept) so their sign-in and MFA remain usable.",
 	"grants":              "Only retained administrators' own grants and the installation server ceiling survive.",
 	"roles":               "System roles and roles used by retained grants define the installation's authorization vocabulary.",
 	"role_capabilities":   "Only definitions belonging to retained roles survive.",
@@ -84,6 +85,26 @@ var resetMailboxKept = map[string]string{
 	"updated_at":               "Bookkeeping, not a setting.",
 }
 
+// resetCredentialKindsKept are the credential kinds a retained administrator
+// keeps across a reset, and why. Every other kind is what a test made: an app
+// password, an API key or a client secret made before the reset would otherwise
+// still be listed, and still work, after it (#1385).
+var resetCredentialKindsKept = map[string]string{
+	models.CredentialKindPassword:     "The retained administrators sign in with it.",
+	models.CredentialKindTOTP:         "A retained administrator's second factor, which its sign-in and fresh proofs need.",
+	models.CredentialKindRecoveryCode: "Stands in for that second factor, and goes with it.",
+}
+
+// resetCredentialsCleared is the condition on the credentials a reset removes.
+func resetCredentialsCleared() string {
+	kinds := make([]string, 0, len(resetCredentialKindsKept))
+	for kind := range resetCredentialKindsKept {
+		kinds = append(kinds, "'"+kind+"'")
+	}
+	sort.Strings(kinds)
+	return "account_id NOT IN " + resetAdmins + " OR kind NOT IN (" + strings.Join(kinds, ", ") + ")"
+}
+
 func (h *TestHandler) OnReset(reset func()) {
 	if !h.productionLocked() {
 		h.resetState = append(h.resetState, reset)
@@ -127,7 +148,7 @@ func cleanResetData(tx *gorm.DB) error {
 		}
 	}
 	statements := []string{
-		"DELETE FROM credentials WHERE account_id NOT IN " + resetAdmins,
+		"DELETE FROM credentials WHERE " + resetCredentialsCleared(),
 		"DELETE FROM grants WHERE NOT ((holder_kind = 'account' AND holder_id IN " + resetAdmins +
 			" AND (scope NOT LIKE 'mailbox:%' OR scope = (SELECT 'mailbox:' || address FROM mailboxes WHERE id = holder_id))) OR holder_kind = 'server')",
 		"DELETE FROM mailboxes WHERE id NOT IN " + resetAdmins,

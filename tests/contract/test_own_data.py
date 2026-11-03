@@ -144,6 +144,25 @@ QUEUE = (
     "listScheduledMessages",
     "cancelScheduledMessage",
 )
+# The credential and ban operations, with what each one's links reach: each
+# create's revoke, all moved together.
+CREDENTIALS_AND_BANS = {
+    "listCredentials": set(),
+    "createAppPassword": {"revokeCredential"},
+    "revokeCredential": set(),
+    "listAPIKeys": set(),
+    "createAPIKey": {"revokeAPIKey"},
+    "updateAPIKey": set(),
+    "revokeAPIKey": set(),
+    "listAdminAPIKeys": set(),
+    "listClientSecrets": set(),
+    "createClientSecret": set(),
+    "revokeClientSecret": set(),
+    "listBans": set(),
+    "createBan": {"deleteBan"},
+    "deleteBan": set(),
+    "unbanIP": set(),
+}
 FOLLOWS_THE_SENT_MESSAGE = {
     "getMessage",
     "updateMessage",
@@ -224,7 +243,8 @@ class Selection(unittest.TestCase):
             - set(MAILBOXES)
             - set(THREADS_AND_IMPORTS)
             - set(ACCOUNT_SETTINGS)
-            - set(QUEUE),
+            - set(QUEUE)
+            - set(CREDENTIALS_AND_BANS),
             link_followers(description, "createDomain") | {"createDomain"},
         )
 
@@ -429,6 +449,12 @@ class Selection(unittest.TestCase):
         for operation in set(ACCOUNT_SETTINGS) - {"putSieveScript", "getSieveScript"}:
             self.assertEqual(link_followers(description, operation), set(), operation)
         self.assertLessEqual(set(ACCOUNT_SETTINGS), set(own_data.MOVED))
+
+    def test_it_selects_every_credential_and_ban_operation_and_its_links(self):
+        description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
+        for operation, followers in CREDENTIALS_AND_BANS.items():
+            self.assertEqual(link_followers(description, operation), followers, operation)
+        self.assertLessEqual(set(CREDENTIALS_AND_BANS), set(own_data.MOVED))
 
     def test_everything_that_follows_the_created_domain_has_moved(self):
         description = yaml.safe_load((ROOT / "openapi.yaml").read_text())

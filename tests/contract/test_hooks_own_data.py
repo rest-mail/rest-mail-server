@@ -41,6 +41,7 @@ ACCOUNT_SETTINGS = (
     "getQuota",
 )
 QUIET_HOURS = ("getQuietHours", "setQuietHours")
+CREDENTIALS = re.compile(r"^/api/v1/accounts/\d+/(credentials|api-keys|client-secrets)$")
 
 
 class FixtureAPI(BaseHTTPRequestHandler):
@@ -90,6 +91,10 @@ class FixtureAPI(BaseHTTPRequestHandler):
         if bounce and int(bounce[1]) in self.server.queue:
             self.server.queue[int(bounce[1])][1] = "bounced"
             return self.answer(200, {"status": "bounced"})
+        if CREDENTIALS.fullmatch(self.path) or self.path == "/api/v1/admin/bans":
+            self.server.serial += 1
+            self.server.made.append((self.path, body, self.headers["Authorization"]))
+            return self.answer(201, {"id": self.server.serial})
         if self.path != "/api/v1/admin/domains":
             return self.answer(404)
         if body["name"] in self.server.domains.values():
@@ -137,6 +142,7 @@ class OwnDataHooks(unittest.TestCase):
         self.server.imports = []
         self.server.settings = {}
         self.server.queue = {}
+        self.server.made = []
         self.server.serial = 40
         self.server.reset_failure = None
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
@@ -281,6 +287,21 @@ class OwnDataHooks(unittest.TestCase):
             "releaseHeldMessage": "queued_and_held_mail_of_its_own",
             "listScheduledMessages": "queued_and_held_mail_of_its_own",
             "cancelScheduledMessage": "queued_and_held_mail_of_its_own",
+            "listCredentials": "a_credential_to_manage",
+            "createAppPassword": "a_credential_to_manage",
+            "revokeCredential": "a_credential_to_manage",
+            "listAPIKeys": "a_credential_to_manage",
+            "createAPIKey": "a_credential_to_manage",
+            "updateAPIKey": "a_credential_to_manage",
+            "revokeAPIKey": "a_credential_to_manage",
+            "listAdminAPIKeys": "a_credential_to_manage",
+            "listClientSecrets": "a_credential_to_manage",
+            "createClientSecret": "a_credential_to_manage",
+            "revokeClientSecret": "a_credential_to_manage",
+            "listBans": "a_ban_to_manage",
+            "createBan": "a_ban_to_manage",
+            "deleteBan": "a_ban_to_manage",
+            "unbanIP": "a_ban_to_manage",
         }
         # entrypoint.py registers setDomainRelay's and the quiet hours' (below).
         self.assertEqual(
@@ -896,6 +917,111 @@ class OwnDataHooks(unittest.TestCase):
             transaction = self.transaction(200, path)
             getattr(self.hooks, hook)(transaction)
             self.assertEqual(transaction["fullPath"], path)
+        self.assertEqual(self.server.calls, [])
+
+    def test_the_credential_and_ban_operations_reset_in_their_first_hook(self):
+        # It runs first, so the two-factor swap, the edit's own key and the
+        # create's state see the clean start and the path it leaves.
+        for operation in own_data.MOVED[own_data.MOVED.index("listCredentials"):]:
+            names = [h for o, h in self.registered if o == operation]
+            self.assertIn(names[0], ("a_credential_to_manage", "a_ban_to_manage"), operation)
+
+    def test_each_credential_exchange_gets_an_account_and_a_revoke_its_credential(self):
+        self.clean_starts_on()
+        self.two_factor_session()
+        self.hooks.mailbox_address = lambda origin, account: f"account-{account}@restmail.test"
+        for method, path, status in (
+            ("GET", "/api/v1/accounts/1/credentials", 200),
+            ("POST", "/api/v1/accounts/1/api-keys", 422),
+            ("PATCH", "/api/v1/accounts/1/api-keys/2", 200),
+            ("DELETE", "/api/v1/accounts/1/credentials/1", 204),
+            ("DELETE", "/api/v1/accounts/9/credentials/7", 403),
+            ("DELETE", "/api/v1/accounts/1/api-keys/1?x=1", 204),
+            ("DELETE", "/api/v1/accounts/1/client-secrets/5", 204),
+        ):
+            transaction = self.transaction(status, path)
+            transaction["request"]["method"] = method
+            request = copy.deepcopy(transaction["request"])
+            made = len(self.server.made)
+            with patch.object(self.hooks.time, "sleep"):
+                self.hooks.a_credential_to_manage(transaction)
+            account = max(self.server.accounts)
+            address, session = self.server.accounts[account]
+            self.assertRegex(address, r"^contract-own-credential-\d+@restmail\.test$")
+            self.assertEqual(session, "Bearer two-factor-session")
+            want = re.sub(r"/accounts/\d+", f"/accounts/{account:d}", path)
+            if method != "DELETE":
+                # Nothing else is made: the edit makes its own key.
+                self.assertEqual(len(self.server.made), made)
+            else:
+                collection, body, session = self.server.made[-1]
+                self.assertEqual(collection, re.sub(r"/\d+(\?.*)?$", "", want))
+                want = re.sub(r"/\d+(\?|$)", f"/{self.server.serial:d}\\1", want)
+                # Made with the two-factor session and its password.
+                self.assertEqual(session, "Bearer two-factor-session")
+                self.assertEqual(body["password"], self.hooks.mfa_admin.PASSWORD)
+                if "/credentials/" in path:
+                    self.assertNotIn("permissions", body)
+                else:
+                    self.assertEqual(
+                        body["permissions"],
+                        [{"capability": "mail:read", "scope": f"mailbox:account-{account:d}@restmail.test"}],
+                    )
+            self.assertEqual(transaction["fullPath"], want)
+            # The request's own credential and body stay as they are.
+            self.assertEqual(transaction["request"], request)
+            self.assertLessEqual(set(self.stub.stash), set(self.hooks.SURVIVES_A_RESET))
+        self.assertEqual(self.resets(), 7)
+
+    def test_credential_refusals_and_the_admin_list_reset_and_keep_their_paths(self):
+        self.clean_starts_on()
+        for method, path in (
+            ("GET", "/api/v1/accounts/0/credentials"),
+            ("POST", "/api/v1/accounts/2147483647/api-keys"),
+            ("DELETE", "/api/v1/accounts/0/client-secrets/1"),
+            ("GET", "/api/v1/accounts/not-an-integer/credentials"),
+            ("GET", "/api/v1/admin/api-keys?limit=20"),
+        ):
+            transaction = self.transaction(204, path)
+            transaction["request"]["method"] = method
+            before = copy.deepcopy(transaction)
+            self.hooks.a_credential_to_manage(transaction)
+            self.assertEqual(transaction, before)
+        self.assertEqual(self.server.made, [])
+        self.assertEqual(self.server.accounts, {})
+        self.assertEqual(self.resets(), 5)
+
+    def test_the_documented_ban_delete_gets_a_ban_of_its_own(self):
+        self.clean_starts_on()
+        transaction = self.transaction(204, "/api/v1/admin/bans/1")
+        self.hooks.a_ban_to_manage(transaction)
+        made, body, _ = self.server.made[-1]
+        self.assertEqual(made, "/api/v1/admin/bans")
+        self.assertEqual(body["ip"], "192.0.2.77")
+        self.assertEqual(transaction["fullPath"], f"/api/v1/admin/bans/{self.server.serial:d}")
+        for status, path in (
+            (404, "/api/v1/admin/bans/2147483647"),
+            (204, "/api/v1/admin/bans/ip/192.0.2.10"),
+            (201, "/api/v1/admin/bans"),
+            (200, "/api/v1/admin/bans"),
+        ):
+            transaction = self.transaction(status, path)
+            before = copy.deepcopy(transaction)
+            self.hooks.a_ban_to_manage(transaction)
+            self.assertEqual(transaction, before)
+        self.assertEqual(len(self.server.made), 1)
+        self.assertEqual(self.resets(), 5)
+
+    def test_without_the_switch_credential_and_ban_exchanges_are_unchanged(self):
+        for hook, path in (
+            (self.hooks.a_credential_to_manage, "/api/v1/accounts/1/credentials/1"),
+            (self.hooks.a_ban_to_manage, "/api/v1/admin/bans/1"),
+        ):
+            transaction = self.transaction(204, path)
+            transaction["request"]["method"] = "DELETE"
+            before = copy.deepcopy(transaction)
+            hook(transaction)
+            self.assertEqual(transaction, before)
         self.assertEqual(self.server.calls, [])
 
     def test_the_policy_file_asks_for_a_domain_of_its_own_after_a_reset(self):
