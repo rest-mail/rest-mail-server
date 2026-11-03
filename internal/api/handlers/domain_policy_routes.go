@@ -80,7 +80,7 @@ func (setRelayBody) AnyOf() oapifly.AnyOfRule {
 // Register mounts the typed domain mail policy routes.
 func (h *SenderRuleHandler) Register(rs endpoint.Routes, checks DomainPolicyRouteChecks) {
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/admin/domains/{id}/allowlist",
-		OperationID: "listAllowlist", Summary: "List allowlist entries for a domain", Tags: []string{"Admin: Domain mail policy"},
+		OperationID: "listAllowlist", Summary: "List allowlist entries for a domain", Tags: []string{"Admin: Domain mail policy"}, Errors: []int{http.StatusNotFound},
 		Middleware: []endpoint.Middleware{checks.OnDomain(middleware.CapDomainsRead)}}, h.listAllowlist)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/admin/domains/{id}/allowlist",
 		OperationID: "addToAllowlist", Summary: "Add an allowlist entry", Tags: []string{"Admin: Domain mail policy"}, Status: http.StatusCreated, Errors: []int{http.StatusNotFound, http.StatusConflict},
@@ -89,7 +89,7 @@ func (h *SenderRuleHandler) Register(rs endpoint.Routes, checks DomainPolicyRout
 		OperationID: "removeFromAllowlist", Summary: "Remove an allowlist entry", Tags: []string{"Admin: Domain mail policy"}, Status: http.StatusNoContent, Errors: []int{http.StatusNotFound},
 		Middleware: []endpoint.Middleware{checks.OnDomain(middleware.CapDomainsWrite)}}, h.removeFromAllowlist)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/admin/domains/{id}/blocklist",
-		OperationID: "listBlocklist", Summary: "List blocklist entries for a domain", Tags: []string{"Admin: Domain mail policy"},
+		OperationID: "listBlocklist", Summary: "List blocklist entries for a domain", Tags: []string{"Admin: Domain mail policy"}, Errors: []int{http.StatusNotFound},
 		Middleware: []endpoint.Middleware{checks.OnDomain(middleware.CapDomainsRead)}}, h.listBlocklist)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/admin/domains/{id}/blocklist",
 		OperationID: "addToBlocklist", Summary: "Add a blocklist entry", Tags: []string{"Admin: Domain mail policy"}, Status: http.StatusCreated, Errors: []int{http.StatusNotFound, http.StatusConflict},
@@ -102,7 +102,7 @@ func (h *SenderRuleHandler) Register(rs endpoint.Routes, checks DomainPolicyRout
 // Register mounts the typed domain mail policy routes.
 func (h *SuppressionHandler) Register(rs endpoint.Routes, checks DomainPolicyRouteChecks) {
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/admin/domains/{id}/suppressions",
-		OperationID: "listSuppressions", Summary: "List a domain’s suppressed recipients", Tags: []string{"Admin: Domain mail policy"},
+		OperationID: "listSuppressions", Summary: "List a domain’s suppressed recipients", Tags: []string{"Admin: Domain mail policy"}, Errors: []int{http.StatusNotFound},
 		Middleware: []endpoint.Middleware{checks.OnDomain(middleware.CapDomainsRead)}}, h.list)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodDelete, Path: "/api/v1/admin/domains/{id}/suppressions/{sid}",
 		OperationID: "clearSuppression", Summary: "Clear a suppression", Tags: []string{"Admin: Domain mail policy"}, Status: http.StatusNoContent, Errors: []int{http.StatusNotFound},

@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -36,7 +37,20 @@ func (c domainPolicyReadConnection) Connect(context.Context) (driver.Conn, error
 func (c domainPolicyReadConnection) Driver() driver.Driver                        { return c }
 func (c domainPolicyReadConnection) Open(string) (driver.Conn, error)             { return c, nil }
 func (c domainPolicyReadConnection) QueryContext(_ context.Context, query string, args []driver.NamedValue) (driver.Rows, error) {
-	if len(args) == 0 || fmt.Sprint(args[0].Value) != "1" {
+	if len(args) == 0 {
+		return nil, errors.New("domain-policy query lost its domain restriction")
+	}
+	id := fmt.Sprint(args[0].Value)
+	// The handler looks the domain up first: domain1 exists, and the missing
+	// pair's ID names no domain, so its list is never read (#1746).
+	if strings.Contains(query, `SELECT "id" FROM "domains"`) {
+		r := &authReadSnapshotRows{columns: []string{"id"}}
+		if id == "1" {
+			r.rows = [][]driver.Value{{int64(1)}}
+		}
+		return r, nil
+	}
+	if id != "1" {
 		return nil, errors.New("domain-policy query lost its domain restriction")
 	}
 	switch {
@@ -81,7 +95,7 @@ func domainPolicyReadRouters(t *testing.T) (map[string]http.Handler, *auth.JWTSe
 	return map[string]http.Handler{
 		"available": scoped("example.com"), "outside_domain": scoped("other.test"),
 		"unauthenticated": unavailable, "request_too_large": failed,
-		"invalid_domain": unrestricted, "internal_error": failed, "session_unavailable": unavailable,
+		"invalid_domain": unrestricted, "missing": unrestricted, "internal_error": failed, "session_unavailable": unavailable,
 	}, jwt
 }
 
@@ -100,7 +114,11 @@ func TestDomainPolicyReadExamples(t *testing.T) {
 				if !ok {
 					t.Fatal("named domain-policy pair missing")
 				}
-				req := httptest.NewRequest(http.MethodGet, strings.ReplaceAll(path, "{id}", fmt.Sprint(pair.Request.Path["id"])), nil)
+				id := fmt.Sprint(pair.Request.Path["id"])
+				if numeric, ok := pair.Request.Path["id"].(float64); ok {
+					id = strconv.FormatFloat(numeric, 'f', -1, 64)
+				}
+				req := httptest.NewRequest(http.MethodGet, strings.ReplaceAll(path, "{id}", id), nil)
 				if name != "unauthenticated" {
 					req.Header.Set("Authorization", "Bearer "+token)
 				}
@@ -145,7 +163,7 @@ func TestDomainPolicyReadExamplesWithVertrag(t *testing.T) {
 	}
 	for _, tc := range []struct{ name, status string }{
 		{"available", "200"}, {"unauthenticated", "401"}, {"request_too_large", "413"},
-		{"outside_domain", "403"},
+		{"outside_domain", "403"}, {"missing", "404"},
 		{"invalid_domain", "422"}, {"internal_error", "500"}, {"session_unavailable", "503"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

@@ -29,6 +29,13 @@ func (h *SenderRuleHandler) listAllowlist(r *http.Request, in domainPath) (endpo
 	db := h.db.WithContext(r.Context())
 	domainID := in.ID
 
+	if err := domainExists(db, domainID); err != nil {
+		if errors.Is(err, errPolicyDomainMissing) {
+			return endpoint.List[SenderRule]{}, errPolicyDomainMissing
+		}
+		return endpoint.List[SenderRule]{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to list allowlist rules")
+	}
+
 	var rules []models.DomainSenderRule
 	if err := db.Where("domain_id = ? AND list_type = ?", domainID, "allow").
 		Order("created_at DESC").
@@ -117,6 +124,13 @@ func (h *SenderRuleHandler) removeFromAllowlist(r *http.Request, in senderRulePa
 func (h *SenderRuleHandler) listBlocklist(r *http.Request, in domainPath) (endpoint.List[SenderRule], error) {
 	db := h.db.WithContext(r.Context())
 	domainID := in.ID
+
+	if err := domainExists(db, domainID); err != nil {
+		if errors.Is(err, errPolicyDomainMissing) {
+			return endpoint.List[SenderRule]{}, errPolicyDomainMissing
+		}
+		return endpoint.List[SenderRule]{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to list blocklist rules")
+	}
 
 	var rules []models.DomainSenderRule
 	if err := db.Where("domain_id = ? AND list_type = ?", domainID, "block").

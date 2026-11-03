@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 	"time"
 
@@ -27,6 +28,13 @@ func (h *SuppressionHandler) list(r *http.Request, in domainPath) (endpoint.List
 	db := h.db.WithContext(r.Context())
 	domainID := in.ID
 
+	if err := domainExists(db, domainID); err != nil {
+		if errors.Is(err, errPolicyDomainMissing) {
+			return endpoint.List[Suppression]{}, errPolicyDomainMissing
+		}
+		return endpoint.List[Suppression]{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to list suppressions")
+	}
+
 	var suppressions []models.Suppression
 	if err := db.Where("domain_id = ? AND expires_at > ?", domainID, time.Now()).
 		Order("updated_at DESC").
@@ -39,6 +47,22 @@ func (h *SuppressionHandler) list(r *http.Request, in domainPath) (endpoint.List
 		data[i] = suppressionOf(row)
 	}
 	return endpoint.List[Suppression]{Data: data}, nil
+}
+
+// errPolicyDomainMissing is the 404 the per-domain policy routes answer for a
+// domain id no domain has (#1746).
+var errPolicyDomainMissing = endpoint.Refuse(http.StatusNotFound, "not_found", "Domain not found")
+
+// domainExists is nil when a domain has the id, errPolicyDomainMissing when none
+// does, or the lookup's own error. A list read by domain_id alone would answer an
+// empty list for a deleted domain, so the list routes look the domain up first.
+func domainExists(db *gorm.DB, id uint32) error {
+	var domain models.Domain
+	err := db.Select("id").First(&domain, id).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return errPolicyDomainMissing
+	}
+	return err
 }
 
 // delete clears a suppression, so mail from the domain to the address is
