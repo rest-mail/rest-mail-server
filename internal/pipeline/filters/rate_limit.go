@@ -26,6 +26,30 @@ type rateLimitConfig struct {
 type rateLimitStore struct {
 	mu      sync.Mutex
 	buckets map[string]*rateBucket
+	now     func() time.Time
+}
+
+func newRateLimitStore() *rateLimitStore {
+	return &rateLimitStore{buckets: make(map[string]*rateBucket), now: time.Now}
+}
+
+// registeredRateLimit is the store behind the rate_limit filter in the default
+// registry, the one every pipeline the server runs uses.
+var registeredRateLimit = newRateLimitStore()
+
+// SetRateLimitClock makes the registered rate_limit filter read the time from
+// now, with its counters emptied, so a test can move through the minute and
+// hour windows instead of waiting for them. The returned func puts the wall
+// clock back and empties the counters again.
+func SetRateLimitClock(now func() time.Time) (restore func()) {
+	set := func(now func() time.Time) {
+		registeredRateLimit.mu.Lock()
+		defer registeredRateLimit.mu.Unlock()
+		registeredRateLimit.now = now
+		clear(registeredRateLimit.buckets)
+	}
+	set(now)
+	return func() { set(time.Now) }
 }
 
 type rateBucket struct {
@@ -39,7 +63,7 @@ type rateLimitFilter struct {
 }
 
 func init() {
-	pipeline.DefaultRegistry.Register("rate_limit", NewRateLimit())
+	pipeline.DefaultRegistry.Register("rate_limit", rateLimitFactory(registeredRateLimit))
 }
 
 // NewRateLimit returns a filter factory backed by a single shared counter store.
@@ -48,7 +72,10 @@ func init() {
 // Each instance still parses its own config, so different pipelines may set
 // different thresholds against the shared counters.
 func NewRateLimit() pipeline.FilterFactory {
-	store := &rateLimitStore{buckets: make(map[string]*rateBucket)}
+	return rateLimitFactory(newRateLimitStore())
+}
+
+func rateLimitFactory(store *rateLimitStore) pipeline.FilterFactory {
 	return func(config []byte) (pipeline.Filter, error) {
 		cfg := rateLimitConfig{
 			MaxPerHour:   100,
@@ -89,7 +116,7 @@ func (f *rateLimitFilter) Execute(ctx context.Context, email *pipeline.EmailJSON
 	f.store.mu.Lock()
 	defer f.store.mu.Unlock()
 
-	now := time.Now()
+	now := f.store.now()
 
 	minKey := "min:" + id
 	bucket, ok := f.store.buckets[minKey]
