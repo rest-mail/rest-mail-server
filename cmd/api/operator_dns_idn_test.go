@@ -91,14 +91,15 @@ func TestAddMTASTSRecord(t *testing.T) {
 		t.Fatal(err)
 	}
 	entry := domainRecords{Domain: "bücher.example"}
-	addMTASTSRecord(&entry, models.Domain{Name: "bücher.example"}, policy)
+	addMTASTSRecord(&entry, models.Domain{Name: "bücher.example"}, policy, "mail.example.com")
 	want := dns.DNSRecord{Type: "TXT", Name: "_mta-sts.xn--bcher-kva.example", Value: "v=STSv1; id=" + id, TTL: 3600}
-	if len(entry.Records) != 1 || entry.Records[0] != want || entry.Problem != "" {
+	host := dns.DNSRecord{Type: "CNAME", Name: "mta-sts.xn--bcher-kva.example", Value: "mail.example.com", TTL: 3600}
+	if len(entry.Records) != 2 || entry.Records[0] != want || entry.Records[1] != host || !strings.Contains(entry.Problem, "mta-sts.xn--bcher-kva.example: HTTPS route and certificate are unverified") {
 		t.Fatalf("records %+v, problem %q; want %+v", entry.Records, entry.Problem, want)
 	}
 
 	broken := domainRecords{Domain: "example.org", Problem: "no DKIM key: mail from this domain goes out unsigned"}
-	addMTASTSRecord(&broken, models.Domain{Name: "example.org"}, models.MTASTSPolicy{Mode: "enforce", MXHosts: "bad_.example", MaxAge: 1})
+	addMTASTSRecord(&broken, models.Domain{Name: "example.org"}, models.MTASTSPolicy{Mode: "enforce", MXHosts: "bad_.example", MaxAge: 1}, "mail.example.com")
 	if len(broken.Records) != 0 || !strings.Contains(broken.Problem, "no DKIM key") || !strings.Contains(broken.Problem, "MTA-STS policy cannot be served") {
 		t.Fatalf("records %+v, problem %q", broken.Records, broken.Problem)
 	}

@@ -32,6 +32,21 @@ tasks:
       - cmd: '"{{.TASKFILE_DIR}}/lifecycle/dns.sh" show'
         silent: true
 
+  mta-sts-hosts:
+    dotenv: []
+    desc: "Render api.mtaSts.hosts as a JSON Helm values file from active policy DNS records"
+    args:
+      - name: name
+        desc: the Helm release name (default restmail)
+      - name: namespace
+        desc: the namespace (default rest-mail)
+    vars:
+      NAME: restmail
+      NAMESPACE: rest-mail
+    cmds:
+      - cmd: '"{{.TASKFILE_DIR}}/lifecycle/dns.sh" mta-sts-hosts'
+        silent: true
+
   check:
     dotenv: []
     desc: "Check those records are published, as a public resolver sees them"

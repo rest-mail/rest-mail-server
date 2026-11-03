@@ -435,6 +435,35 @@ assert_contains "and sends /api to the API"          "$tmp/api-ingress.yaml" 'pa
 assert_contains "RESTMAIL discovery at the root"     "$tmp/api-ingress.yaml" 'path: /.well-known/restmail'
 assert_contains "TLS-RPT reports at the root"        "$tmp/api-ingress.yaml" 'path: /.well-known/smtp-tlsrpt'
 [ "$(grep -c 'pathType: Exact' "$tmp/api-ingress.yaml")" -eq 2 ] || fail "the two documents are not matched exactly"
+
+helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" \
+  --set api.ingress.enabled=true --set api.ingress.host=mail.example.com \
+  --set-json 'api.mtaSts.hosts=[]' > "$tmp/api-ingress-empty-all.yaml"
+doc "$tmp/api-ingress-empty-all.yaml" Ingress restmail-api > "$tmp/api-ingress-empty.yaml"
+cmp "$tmp/api-ingress.yaml" "$tmp/api-ingress-empty.yaml" || fail "empty MTA-STS hosts changed the ingress"
+pass "empty MTA-STS hosts leave the ingress byte-for-byte unchanged"
+
+helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" \
+  --set api.ingress.enabled=true --set api.ingress.host=mail.example.com \
+  --set api.ingress.tls.enabled=true --set api.ingress.tls.secretName=api-cert \
+  --set 'api.ingress.annotations.cert-manager\.io/cluster-issuer=letsencrypt' \
+  --set api.service.port=8181 \
+  --set-json 'api.mtaSts.hosts=["mta-sts.example.com","mta-sts.xn--bcher-kva.example"]' > "$tmp/mtasts-all.yaml"
+doc "$tmp/mtasts-all.yaml" Ingress restmail-api > "$tmp/mtasts.yaml"
+assert_contains "cert-manager issuer is retained" "$tmp/mtasts.yaml" 'cert-manager.io/cluster-issuer: letsencrypt'
+[ "$(yq '.spec.tls[0].secretName' "$tmp/mtasts.yaml")" = api-cert ] || fail "MTA-STS uses a different TLS secret"
+[ "$(yq '.spec.rules | length' "$tmp/mtasts.yaml")" -eq 3 ] || fail "MTA-STS needs separate host rules"
+[ "$(yq '.spec.tls[0].hosts | length' "$tmp/mtasts.yaml")" -eq 3 ] || fail "certificate lost ingress names"
+for host in mta-sts.example.com mta-sts.xn--bcher-kva.example; do
+  HOST="$host" yq '.spec.rules[] | select(.host == strenv(HOST)) | .http.paths' "$tmp/mtasts.yaml" > "$tmp/mtasts-paths.yaml"
+  [ "$(yq 'length' "$tmp/mtasts-paths.yaml")" -eq 1 ] || fail "$host exposes more than the policy file"
+  [ "$(yq '.[0].path' "$tmp/mtasts-paths.yaml")" = /.well-known/mta-sts.txt ] || fail "$host lost the policy path"
+  [ "$(yq '.[0].pathType' "$tmp/mtasts-paths.yaml")" = Exact ] || fail "$host matches more than the policy path"
+  [ "$(yq '.[0].backend.service.name' "$tmp/mtasts-paths.yaml")" = restmail-api ] || fail "$host does not reach the API"
+  [ "$(yq '.[0].backend.service.port.number' "$tmp/mtasts-paths.yaml")" -eq 8181 ] || fail "$host lost the configured API port"
+  [ "$(HOST="$host" yq '[.spec.tls[0].hosts[] | select(. == strenv(HOST))] | length' "$tmp/mtasts.yaml")" -eq 1 ] || fail "$host is not covered by the certificate request"
+  pass "$host routes only its policy file and is requested on the API certificate"
+done
 pass "each exactly"
 
 # Both off: nothing of either is left, and nothing else goes with them.

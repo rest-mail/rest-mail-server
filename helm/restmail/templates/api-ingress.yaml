@@ -17,6 +17,9 @@ spec:
   tls:
     - hosts:
         - {{ .Values.api.ingress.host | quote }}
+        {{- range .Values.api.mtaSts.hosts }}
+        - {{ . | quote }}
+        {{- end }}
       secretName: {{ default (printf "%s-ingress-tls" (include "restmail.fullname" .)) .Values.api.ingress.tls.secretName | quote }}
   {{- end }}
   rules:
@@ -45,4 +48,16 @@ spec:
                 port:
                   number: {{ $.Values.api.service.port }}
           {{- end }}
+    {{- range .Values.api.mtaSts.hosts }}
+    - host: {{ . | quote }}
+      http:
+        paths:
+          - path: /.well-known/mta-sts.txt
+            pathType: Exact
+            backend:
+              service:
+                name: {{ include "restmail.componentName" (list $ "api") }}
+                port:
+                  number: {{ $.Values.api.service.port }}
+    {{- end }}
 {{- end }}

@@ -377,6 +377,75 @@ healthy install delivers nothing to Gmail without them, so this is the likeliest
 reason one that passes `server:verify` still "does not work". The DKIM record
 can only come from the server, which made the key.
 
+### MTA-STS policy hosts with cert-manager
+
+For each domain with an active, valid policy, `chore dns:show` prints both
+`_mta-sts.<domain> TXT "v=STSv1; id=<policy-id>"` and
+`mta-sts.<domain> CNAME <mail host>`. A domain without an active policy gets
+neither. `chore dns:check` checks both records, including the CNAME target.
+
+The chart cannot discover domains from the database while rendering. After
+creating or changing policies, the install's pipeline can use the same operator
+command as DNS publication to generate a JSON Helm values file (JSON is valid
+YAML):
+
+```sh
+chore dns:mta-sts-hosts --name restmail --namespace rest-mail > mta-sts-hosts.json
+helm upgrade restmail helm/restmail -n rest-mail --reuse-values \
+  -f mta-sts-hosts.json \
+  --set api.ingress.enabled=true \
+  --set api.ingress.host=mail.example.com \
+  --set api.ingress.tls.enabled=true \
+  --set api.ingress.tls.secretName=restmail-api-tls \
+  --set 'api.ingress.annotations.cert-manager\.io/cluster-issuer=letsencrypt'
+```
+
+Replace the mail host, release, namespace and ClusterIssuer with the install's
+own values; retain its existing ingress class and other settings. The issuer
+must already exist. The output is only
+`{"api":{"mtaSts":{"hosts":["mta-sts.example.com"]}}}` (or an empty list),
+sorted and deduplicated. It contains no keys or credentials. Regenerate it
+whenever the set of active policies changes, not just on first installation.
+
+For pipelines already collecting the operator JSON directly, `restmail-api dns
+--mail-host mail.example.com` inside the configured API container (`dns-records`
+remains an alias) returns the same records used by `chore dns:show`. Render the
+values with:
+
+```sh
+jq '{api: {mtaSts: {hosts: [.domains[].records[] |
+  select(.type == "CNAME" and (.name | startswith("mta-sts."))) | .name] | unique}}}' \
+  dns.json > mta-sts-hosts.json
+```
+
+`api.mtaSts.hosts` defaults to `[]`, which leaves the rendered resources
+unchanged. Set names get separate Ingress host rules routing **only** the exact
+`/.well-known/mta-sts.txt` path to the API; the admin/API paths are not exposed
+on those hosts. With ingress TLS enabled, those names also enter
+`spec.tls[].hosts`, from which cert-manager's ingress-shim requests the API
+certificate. Leave the Host header intact: the API uses it to select the
+domain's policy.
+
+**Publication order:** publish the CNAME, deploy the host rules, wait for the
+cert-manager Certificate to be Ready, and verify
+`curl --fail https://mta-sts.example.com/.well-known/mta-sts.txt` with normal
+certificate validation. Only then publish `_mta-sts`. For an HTTP-01 issuer,
+the policy host must resolve to the ingress for issuance to succeed; choose the
+issuer/challenge configuration appropriate to the install.
+
+The record list always warns per policy domain that its HTTPS route and
+certificate are **unverified**. The operator reads policy data, not Kubernetes
+Ingresses, cert-manager readiness, or externally observed TLS: it cannot know
+whether the host is actually served, and a successful DNS check alone does not
+prove it. The note therefore remains even after a correctly configured deploy.
+Do not interpret it as evidence of failure, or the printed TXT as permission to
+publish before verifying HTTPS.
+
+Installs **without cert-manager** rely on
+[#123](https://github.com/rest-mail/rest-mail-server/issues/123). REST Mail's
+own ACME obtaining policy-host certificates (item 4 of #727) is outside this
+cert-manager implementation.
+
 ### Recovering through Admin or Webmail
 
 If the installation password is unavailable, the operator can run

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/rest-mail/rest-mail-server/internal/examplepairs"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -101,6 +102,29 @@ func TestPolicyFileLookupFailuresAreNotMissingPolicies(t *testing.T) {
 				t.Fatalf("policy lookup failure: %d %s", rr.Code, rr.Body.String())
 			}
 		})
+	}
+}
+
+func TestMtaStsPolicyFileOverHTTPS(t *testing.T) {
+	server := httptest.NewTLSServer(policyFileRouter(t))
+	t.Cleanup(server.Close)
+	request, err := http.NewRequest(http.MethodGet, server.URL+policyFilePath, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Host = "mta-sts.example.com"
+	response, err := server.Client().Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "version: STSv1\nmode: enforce\nmx: mail.example.com\nmax_age: 604800\n"
+	if response.StatusCode != http.StatusOK || string(body) != want || response.Header.Get("Content-Type") != "text/plain; charset=utf-8" {
+		t.Fatalf("HTTPS policy: %d %q, content type %q", response.StatusCode, body, response.Header.Get("Content-Type"))
 	}
 }
 
