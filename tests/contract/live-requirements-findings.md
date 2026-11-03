@@ -28,8 +28,8 @@ checks both allowed and refused resources for the last three, and confirms that
 the other account and domain exist before claiming an out-of-scope refusal. The
 API key is created through the public API with real MFA and revoked afterwards.
 The scoped session must actually contain its fixture's domain grant. These nine
-cells do not establish the whole-API authorization cross-product or all 212
-`without_capability` examples.
+cells do not establish the whole-API authorization cross-product or all 214
+`without_capability` examples in the rebased inventory.
 
 Each runner writes a per-exchange Vertrag verdict, a compatible
 `{operation: [example, ...]}` proof list, and an explicit unproven list. New runs
@@ -73,24 +73,55 @@ injection or an exemption from proof.
 
 ## Local evidence, November 3, 2026
 
-The API and seed tools were built from main `472c6444`. Tests used a dedicated
-`postgres:16-alpine`, development configuration and the checksum-verified
+The API and seed tools were first built from main `472c6444`; after rebasing on
+`e286872c`, the API was rebuilt and the anonymous/principal matrix and cap retries
+were run against that build. Tests used a dedicated `postgres:16-alpine`,
+development configuration and the checksum-verified
 Vertrag 0.42.0 darwin-arm64 release. The Python contract suite also runs in
 `python:3.12-slim` with PyYAML and the verified linux-arm64 release; macOS bash
 3.2 is not used to run `tests/contract/run.sh`.
 
-- All nine principal cells pass against the live local build.
+- All nine principal cells pass against both local API builds.
 - The first anonymous run proves 173/177. Its other four are the two owner
   refusals (409 with no registered key) and two push routes (absent when APNs is
   off). Separate live reruns with the required configuration prove all four.
-  Thus all 177 anonymous pairs are reachable and were validated locally.
-- Live over-cap results are recorded separately from the in-process union;
-  the PR records their final measured totals and any unsuccessful first runs.
+  After rebasing, the complete anonymous run passes 179/179, including the two
+  newly added DMARC read operations. All these pairs are reachable live.
+- The first cap run passes 129/185. Its 56 unproven pairs are 54 requests whose
+  real session expired (HTTP 401 rather than 413) and the two absent push
+  routes. The runner now renews its real session after ten minutes. A 59-case
+  retry on the rebased, push-enabled API passes with no unproven pairs: it
+  includes the earlier failures, newly added DMARC operations and one request
+  still pending when the retry inventory was captured. The measured union is
+  187/187 unique `body: over_cap` pairs; this is a union across the two API
+  builds, not a claim that one final full-topology invocation passed.
+- The final Python contract suite passes 408 tests, with no skips, in the
+  Python 3.12 container with the pinned Linux binary. Ruff checks pass for the
+  five new Python files. The rebased custom-filter sequence passes 11/11 with
+  default named-value behavior.
+- The initial broad Go run passes `internal/api` but fails six tests in three
+  packages because it shared the seeded live database. The failures include
+  `TestAuthLogin_DocumentedCredentialExamples` (duplicate `restmail.test`),
+  `TestMessageSealRESTMAILAcceptance`, `TestScheduleMessage_RefusesAPastTime`
+  (two preexisting rows), `TestThreadDueLifecycle` (preexisting messages),
+  `TestDKIMKeyAgeCollector_DatabaseInventory` (7 series, expected 4) and
+  `TestPruner_LeavesRollupsUntouched` (23 rows, expected 1). Rerunning the entire
+  handlers, metrics and trace packages with `tools/testdb-exec`, as CI does,
+  passes all three. No assertion or fixture was weakened to make them pass.
+- The local proof union passes 1336/1336 after the rebased production-router
+  requirements/DMARC tests and an explicit DB_HOST-enabled draft lifecycle
+  run. The first broad run had skipped the latter's database guard. Every Go
+  test invocation uses `-count=1`; these are local results, not new CI results.
 - Historical CI run 41565210080, commit
   `adae7081e31526cc68a71885e86914252b4a69fd`, reports 1323/1323 setup-bearing
   examples proven in process. Its successful union does not establish these
   live runs. `internal/examplepairs/proofs.go` excludes failed/skipped tests,
   and `scripts/example_proofs.py` still fails on an absent proof.
+
+The historical CI total is not the inventory size at `472c6444`: that revision
+has 1324 setup-bearing pairs, after adding `prometheusMetrics/outside_allowlist`.
+The rebased inventory has 1336. The old 1323/1323 log must not be represented as
+proof of the larger inventory.
 
 ## Named values are not yet removed globally
 
