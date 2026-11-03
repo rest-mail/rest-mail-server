@@ -1,6 +1,9 @@
 package api
 
 import (
+	"context"
+
+	oapifly "github.com/antimatter-studios/go-oapifly"
 	"log/slog"
 	"net/http"
 	"time"
@@ -249,6 +252,12 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	}
 	basicCredentials := middleware.NewBasicCredentials(handlers.BasicVerifier(db), auditor.BasicRefused, basicRefusals)
 	credentialH := handlers.NewCredentialHandler(db)
+	// Protocol gateway connection sessions (#1586): a gateway, identified by its
+	// mTLS client certificate on the internal listener, opens one when a mail
+	// client signs in and sends its token on every call for that connection.
+	gatewaySessionH := handlers.NewGatewaySessionHandler(db, middleware.DefaultGatewayServices)
+	gatewaySessions := middleware.GatewaySessions(middleware.DefaultGatewayServices,
+		repositories.GatewaySessionTokenPrefix, handlers.GatewaySessionVerifier(db))
 	oauthH := handlers.NewOAuthHandler(db, jwtService)
 	machineTokens := repositories.NewCredentialRepository(db).MachineTokenVerifier()
 	apiKeys := middleware.NewAPIKeys(repositories.NewCredentialRepository(db).APIKeyVerifier(),
@@ -526,6 +535,11 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		}
 		mailboxH.RegisterAddressCheck(internal)
 		messageH.RegisterDelivery(internal, deliverBodyLimit)
+		gatewaySessionH.Register(internal, handlers.GatewaySessionRouteChecks{
+			Credential: endpoint.Middleware{Wrap: basicCredentials.Authenticate(jwtService), Describes: oapifly.Middleware{Responses: describedMailSession.Responses}},
+			Throttle:   describedThrottle(authThrottle),
+			Audit:      describedAudit(auditLog),
+		})
 	}
 	if !cfg.InternalMTLSEnabled {
 		registerInternal(r)
@@ -652,7 +666,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	// The protocol gateways reach them with Basic.
 	// ═══════════════════════════════════════════════════════════════
 	r.Group(func(r chi.Router) {
-		r.Use(apiKeys.Authenticate(basicCredentials.Authenticate(jwtService, machineTokens)))
+		r.Use(gatewaySessions(apiKeys.Authenticate(basicCredentials.Authenticate(jwtService, machineTokens))))
 		r.Use(middleware.RejectStaleSessions(sessionCurrent))
 		r.Use(middleware.SetupDone)
 		r.Use(middleware.CSRF())
@@ -858,6 +872,19 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		ir.Use(metrics.HTTPMetrics)
 		ir.Use(middleware.RequireClientCert)
 		registerInternal(ir)
+		// A gateway acting for a mail client in its connection session calls the
+		// mail routes here, with its certificate and the session's token; they
+		// are the public router's, which sees the certificate this listener
+		// verified (#1586). Nothing else reaches the public routes from here.
+		forwardGatewaySession := func(w http.ResponseWriter, req *http.Request) {
+			if _, ok := middleware.GatewaySessionToken(req, repositories.GatewaySessionTokenPrefix); !ok {
+				http.NotFound(w, req)
+				return
+			}
+			r.ServeHTTP(w, req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, nil)))
+		}
+		ir.NotFound(forwardGatewaySession)
+		ir.MethodNotAllowed(forwardGatewaySession)
 		routers.Internal = ir
 	}
 

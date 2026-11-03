@@ -503,3 +503,15 @@ type RestmailDiscovery struct {
 type DeliveryProcessed struct {
 	Status string `json:"status" enums:"processed"`
 }
+
+// GatewaySessionOpened is a mail client's connection session at a protocol
+// gateway (#1586): the token the gateway sends as Bearer on every call it makes
+// for the connection, over the internal listener, and the account and
+// credential it signed in with.
+type GatewaySessionOpened struct {
+	Token          string   `json:"token" description:"The connection's session token (rmgs_...). It names a server-side session that is checked on every request; it does not expire while in use, and ends when closed, when its credential is revoked, when the account's sessions are revoked, or after 24 hours unused"`
+	Protocol       string   `json:"protocol" enums:"imap,pop3,smtp"`
+	CredentialID   uint     `json:"credential_id"`
+	CredentialKind string   `json:"credential_kind" enums:"password,app_password"`
+	User           userInfo `json:"user"`
+}

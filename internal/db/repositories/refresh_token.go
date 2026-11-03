@@ -72,8 +72,15 @@ func (r *RefreshTokenRepository) Revoke(jti string) error {
 // RevokeAllForAccount revokes every still-active refresh token of one account
 // (password change / account disable), killing all of its sessions at their
 // next refresh.
+//
+// It also closes the account's protocol gateway sessions (#1586), so a mail
+// client connected over IMAP, POP3 or SMTP loses access at its next command.
 func (r *RefreshTokenRepository) RevokeAllForAccount(accountID uint) error {
-	return r.db.Model(&models.RefreshToken{}).
+	now := time.Now()
+	if err := r.db.Model(&models.RefreshToken{}).
 		Where("account_id = ? AND status = ?", accountID, models.RefreshTokenActive).
-		Updates(map[string]any{"status": models.RefreshTokenRevoked, "updated_at": time.Now()}).Error
+		Updates(map[string]any{"status": models.RefreshTokenRevoked, "updated_at": now}).Error; err != nil {
+		return err
+	}
+	return NewGatewaySessionRepository(r.db).CloseAllForAccount(accountID, now)
 }

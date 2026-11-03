@@ -1332,6 +1332,165 @@ paths:
         "422":
           description: New password missing, shorter than 12 characters, or unchanged
 
+  /api/v1/gateway-sessions:
+    post:
+      description: 'Internal: served on the mTLS listener, for a gateway presenting
+        its own client certificate, which names its service (IMAP, POP3 or SMTP submission).
+        The mail client''s address and password or app password come once, as HTTP Basic,
+        and are checked as the mail routes check them. The answer''s token is sent as
+        Bearer on every call the gateway then makes for that connection, over the internal
+        listener with the same certificate; the session is checked on every request,
+        so revoking the credential or the account''s sessions ends it at the next one.
+        protocol must be the one the service serves; a caller without a gateway certificate
+        is 403 gateway_required.'
+      operationId: openGatewaySession
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [protocol]
+              properties:
+                protocol:
+                  type: string
+                  enum: [imap, pop3, smtp]
+                  description: The protocol the calling gateway serves
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: false
+                    required: [token, protocol, credential_id, credential_kind, user]
+                    properties:
+                      token:
+                        type: string
+                        description: >
+                          The connection's session token (`rmgs_…`), sent as Bearer on every
+                          call for the connection, over the internal listener with the same
+                          certificate.
+                      protocol:
+                        type: string
+                        enum: [imap, pop3, smtp]
+                      credential_id:
+                        type: integer
+                      credential_kind:
+                        type: string
+                        enum: [password, app_password]
+                      user:
+                        type: object
+                        additionalProperties: false
+                        required: [id, email, display_name]
+                        properties:
+                          id:
+                            type: integer
+                          email:
+                            type: string
+                          display_name:
+                            type: string
+          description: Created
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 'unauthorized, app_password_required or setup_required: a refused
+            session, gateway session or HTTP Basic credential'
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "413":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Request Entity Too Large
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+          description: Unprocessable Entity
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 'rate_limited: refused API keys or HTTP Basic credentials, throttled
+            at login''s rate'
+          headers:
+            Retry-After:
+              description: Seconds until a request may be made again
+              required: true
+              schema:
+                type: integer
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 'unavailable: the credential or session check could not be made'
+      security:
+      - BasicAuth: []
+      summary: Open a mail client's connection session (protocol gateways)
+      tags:
+      - Auth
+  /api/v1/gateway-sessions/current:
+    delete:
+      description: 'Internal: the gateway that opened the session closes it at logout
+        or disconnect, sending its token as Bearer with the same client certificate.
+        Closing one already closed is not an error. A caller without a gateway certificate
+        is 403 gateway_required.'
+      operationId: closeGatewaySession
+      responses:
+        "204":
+          description: No Content
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: No session token (`session_required`)
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - GatewaySessionAuth: []
+      summary: Close a mail client's connection session (protocol gateways)
+      tags:
+      - Auth
   /api/v1/auth/protocol-sign-in:
     post:
       operationId: protocolSignIn
@@ -1469,6 +1628,7 @@ paths:
         - BearerAuth: []
         - APIKeyAuth: []
         - BasicAuth: []
+        - GatewaySessionAuth: []
       tags: [Accounts]
       summary: List the accounts this one reaches
       description: >
@@ -14911,6 +15071,18 @@ components:
         the login/refresh JSON body; obtain it from the restmail_access cookie in
         the login response's Set-Cookie header. Bearer requests carry no cookie
         and are exempt from the CSRF check.
+    GatewaySessionAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: rmgs
+      description: >
+        A protocol gateway's connection session token (`rmgs_…`) from
+        openGatewaySession, as an Authorization: Bearer header, sent only over
+        the internal mTLS listener with the client certificate of the gateway
+        that opened it. Checked on every request: it ends when closed, when its
+        credential is revoked, when the account's sessions are revoked, or
+        after 24 hours unused. It reaches what the mail client's credential
+        reaches, never the admin routes. Exempt from the CSRF check.
     APIKeyAuth:
       type: http
       scheme: bearer
