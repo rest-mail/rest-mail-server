@@ -35189,6 +35189,97 @@
     }
   },
   "searchMessages": {
+    "day_in_time_zone": {
+      "summary": "Messages received on a calendar day in the viewer's zone: 2026-10-20T00:00:00Z is 19 October in Los Angeles",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "query": {
+          "after": "2026-10-19",
+          "before": "2026-10-19",
+          "q": "Subject",
+          "time_zone": "America/Los_Angeles"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": [
+            {
+              "class": "person",
+              "calendar_events": [],
+              "created_at": "2026-10-20T00:00:00Z",
+              "date_header": "2026-10-20T00:00:00Z",
+              "downgraded_size": 137,
+              "folder": "INBOX",
+              "has_attachments": false,
+              "headers": {
+                "Subject": [
+                  "Subject"
+                ]
+              },
+              "id": 1,
+              "in_reply_to": "",
+              "is_deleted": false,
+              "is_draft": false,
+              "is_dsn": false,
+              "is_flagged": false,
+              "is_read": false,
+              "is_starred": false,
+              "mailbox_id": 1,
+              "message_id": "\u003cmessage@example.net\u003e",
+              "raw_size": 137,
+              "received_at": "2026-10-20T00:00:00Z",
+              "recipients_cc": [],
+              "recipients_to": [
+                "recipient@example.com"
+              ],
+              "references": "",
+              "sealed_hash": "00ced91ef87007eb619fe4d649ec941257846db0f6aa30fcea744c76902a3eea",
+              "sender": "sender@example.net",
+              "sender_name": "Sender",
+              "size_bytes": 80,
+              "subject": "Subject",
+              "thread_id": "",
+              "updated_at": "2026-10-20T00:00:00Z"
+            }
+          ],
+          "pagination": {
+            "has_more": false,
+            "total": 1
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "day_without_time_zone": {
+      "summary": "A calendar day needs a zone to say when it starts",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "query": {
+          "after": "2026-10-19"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Query parameters failed validation",
+            "details": {
+              "fields": {
+                "after": "must be an RFC 3339 date-time"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "found": {
       "summary": "Messages matching the query",
       "request": {
@@ -35419,6 +35510,33 @@
           "error": {
             "code": "unauthorized",
             "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unknown_time_zone": {
+      "summary": "A zone that is not an IANA name",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "query": {
+          "time_zone": "Mars/Olympus"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Query parameters failed validation",
+            "details": {
+              "fields": {
+                "time_zone": "must be an IANA time zone name"
+              }
+            }
           }
         },
         "mediaType": "application/json"

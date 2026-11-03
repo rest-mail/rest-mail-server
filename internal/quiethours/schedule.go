@@ -27,14 +27,16 @@ func (s Setting) Validate() map[string]string {
 		fields["end"] = "must differ from start"
 	}
 	if s.TimeZone != "" || s.Enabled {
-		if _, err := location(s.TimeZone); err != nil {
+		if _, err := Location(s.TimeZone); err != nil {
 			fields["time_zone"] = "must be an IANA time zone name"
 		}
 	}
 	return fields
 }
 
-func location(name string) (*time.Location, error) {
+// Location is the zone an IANA name says. "Local" is not one, though time.LoadLocation reads
+// it: it would be the server's own zone.
+func Location(name string) (*time.Location, error) {
 	if name == "" || name == "Local" {
 		return nil, fmt.Errorf("not an IANA time zone: %q", name)
 	}
@@ -45,7 +47,7 @@ func (s Setting) Until(now time.Time) time.Time {
 	if !s.Enabled || len(s.Validate()) != 0 {
 		return time.Time{}
 	}
-	zone, _ := location(s.TimeZone)
+	zone, _ := Location(s.TimeZone)
 	start, _ := time.Parse("15:04", s.Start)
 	end, _ := time.Parse("15:04", s.End)
 	startMinute := start.Hour()*60 + start.Minute()

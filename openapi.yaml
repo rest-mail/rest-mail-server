@@ -5616,14 +5616,22 @@ paths:
           in: query
           schema:
             type: string
-            format: date-time
-          description: Messages after this date
+            pattern: '^$|^[0-9]{4}-[0-9]{2}-[0-9]{2}(T.*)?$'
+          description: Received at or after this RFC 3339 date-time; with time_zone, or from the start of this calendar day (YYYY-MM-DD) in that zone
         - name: before
           in: query
           schema:
             type: string
-            format: date-time
-          description: Messages before this date
+            pattern: '^$|^[0-9]{4}-[0-9]{2}-[0-9]{2}(T.*)?$'
+          description: Received at or before this RFC 3339 date-time; with time_zone, or up to the end of this calendar day (YYYY-MM-DD) in that zone
+        - name: time_zone
+          in: query
+          schema:
+            type: string
+            format: iana-time-zone
+            pattern: '^$|^[A-Za-z0-9_+-]+(/[A-Za-z0-9_+-]+)*$'
+            example: America/New_York
+          description: The IANA time zone of the calendar days in after and before. An RFC 3339 date-time carries its own offset, so this does not change it.
         - name: has_attachment
           in: query
           schema:

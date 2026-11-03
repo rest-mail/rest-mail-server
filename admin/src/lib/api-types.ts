@@ -9947,8 +9947,12 @@ export interface operations {
                 q?: string;
                 folder?: string;
                 from?: string;
+                /** @description Received at or after this RFC 3339 date-time; with time_zone, or from the start of this calendar day (YYYY-MM-DD) in that zone */
                 after?: string;
+                /** @description Received at or before this RFC 3339 date-time; with time_zone, or up to the end of this calendar day (YYYY-MM-DD) in that zone */
                 before?: string;
+                /** @description The IANA time zone of the calendar days in after and before. An RFC 3339 date-time carries its own offset, so this does not change it. */
+                time_zone?: string;
                 has_attachment?: "" | "true" | "false";
                 /** @description 1 to 100; 50 otherwise */
                 limit?: number;

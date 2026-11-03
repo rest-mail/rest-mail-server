@@ -680,7 +680,34 @@ func bind(r *http.Request, dst interface{}, s shape) error {
 		v := r.Header.Get(name)
 		return v, v != ""
 	}, body)
-	return bindError(dst, body, err)
+	return bindError(dst, body, withParameterRule(dst, err))
+}
+
+// ParameterRule is a request type with a rule across its parameters, which their tags cannot
+// state one at a time. It runs after Bind, whatever Bind found, and its fields join Bind's in
+// one refusal; for a field in both, its message is the one written.
+type ParameterRule interface {
+	CheckParameters() map[string]string
+}
+
+// withParameterRule is err with the fields of dst's ParameterRule added. A failure that names
+// no fields, a body that cannot be read, stands as it is.
+func withParameterRule(dst interface{}, err error) error {
+	rule, ok := dst.(ParameterRule)
+	if !ok {
+		return err
+	}
+	violations := oapifly.Violations{}
+	if err != nil && !errors.As(err, &violations) {
+		return err
+	}
+	for field, message := range rule.CheckParameters() {
+		violations[field] = message
+	}
+	if len(violations) == 0 {
+		return nil
+	}
+	return violations
 }
 
 // checkBodyMedia is the 400 for a body whose declared media type none of t's forms takes.

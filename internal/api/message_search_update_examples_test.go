@@ -29,7 +29,10 @@ func TestMessageSearchRefusalExamples(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"invalid_id", "missing", "setup_required"} {
+	// The query is refused whoever asks, so both zone refusals take any caller's scenario.
+	scenarios["day_without_time_zone"] = scenarios["invalid_id"]
+	scenarios["unknown_time_zone"] = scenarios["invalid_id"]
+	for _, name := range []string{"invalid_id", "missing", "setup_required", "day_without_time_zone", "unknown_time_zone"} {
 		pair, ok := pairs["searchMessages"][name]
 		if !ok {
 			t.Fatalf("missing searchMessages pair %s", name)
@@ -103,6 +106,7 @@ func TestMessageSearchUpdateStoredExamples(t *testing.T) {
 	stamp := time.Date(2026, 10, 20, 0, 0, 0, 0, time.UTC)
 	for _, c := range []struct{ operation, name, method, path string }{
 		{"searchMessages", "found", http.MethodGet, messageSearchPath},
+		{"searchMessages", "day_in_time_zone", http.MethodGet, messageSearchPath},
 		{"updateMessage", "flags_set", http.MethodPatch, messageUpdatePath},
 	} {
 		t.Run(c.operation+"/"+c.name, func(t *testing.T) {
