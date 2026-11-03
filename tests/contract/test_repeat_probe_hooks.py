@@ -92,6 +92,10 @@ class FixtureAPI(BaseHTTPRequestHandler):
         if url.path == "/api/v1/admin/aliases":
             domain_id = int(urllib.parse.parse_qs(url.query)["domain_id"][0])
             return self.answer(200, {"data": [a for a in state["aliases"] if a["domain_id"] == domain_id]})
+        match = ALIAS.match(url.path)
+        if match:
+            alias = next((a for a in state["aliases"] if a["id"] == int(match[1])), None)
+            return self.answer(200, {"data": alias}) if alias else self.answer(404)
         match = RULES.match(url.path)
         if match and not match[3]:
             if not any(d["id"] == int(match[1]) for d in state["domains"]):
@@ -350,66 +354,110 @@ class AliasProbes(AdminAPITestCase):
         self.assertEqual([d["name"] for d in self.server.state["domains"]], ["restmail.test"])
         self.assertEqual(self.server.state["deleted"], [])
 
-    def test_the_linked_alias_follows_or_is_recreated(self):
-        example = {"source_address": "sales@restmail.test", "destination_address": "admin@restmail.test"}
-        self.probe_alias(example)
-        alias = self.created("aliases", domain_id=1, **example)
-        hooks.keep_the_created_alias(dict(self.transaction(self.PATH, example),
-                                          real={"body": json.dumps({"data": alias})}))
-        self.probe_alias(example)
-        replacement = self.created("aliases", domain_id=1, **example)
+    OWN = "contract-own-alias@restmail.test"
 
-        transaction = self.transaction("%s/%d" % (self.PATH, alias["id"]))
-        hooks.on_the_created_alias(transaction)
-        self.assertEqual(transaction["fullPath"], "%s/%d" % (self.PATH, replacement["id"]))
+    def aliased(self, path, name="x > 200"):
+        transaction = self.transaction(path)
+        transaction["name"] = name
+        hooks.on_an_alias_of_its_own(transaction)
+        return transaction["fullPath"]
 
-        self.server.state["aliases"] = [a for a in self.server.state["aliases"] if a["id"] != replacement["id"]]
-        transaction = self.transaction("%s/%d" % (self.PATH, alias["id"]))
-        hooks.on_the_created_alias(transaction)
-        recreated = next(a for a in self.server.state["aliases"] if a["source_address"] == example["source_address"])
-        self.assertEqual(transaction["fullPath"], "%s/%d" % (self.PATH, recreated["id"]))
+    def test_a_linked_alias_that_exists_is_followed(self):
+        alias = self.created("aliases", domain_id=1, source_address="sales@restmail.test")
+        self.assertEqual(self.aliased("%s/%d" % (self.PATH, alias["id"])), "%s/%d" % (self.PATH, alias["id"]))
+        self.assertEqual(self.server.state["serial"], alias["id"])
+
+    def test_a_removed_alias_is_replaced_by_one_of_its_own_and_reused(self):
+        first = self.aliased(self.PATH + "/101?keep=yes")
+        own = next(a for a in self.server.state["aliases"] if a["source_address"] == self.OWN)
+        self.assertEqual(first, "%s/%d?keep=yes" % (self.PATH, own["id"]))
+        self.assertEqual(own["destination_address"], hooks.ADMIN)
+        # The next exchange finds it at its source and makes no other.
+        self.assertEqual(self.aliased(self.PATH + "/102"), "%s/%d" % (self.PATH, own["id"]))
+        self.assertEqual(len([a for a in self.server.state["aliases"] if a["source_address"] == self.OWN]), 1)
+        self.assertNotIn("created_alias", vertrag_hooks.stash)
 
     def test_other_alias_ids_are_left_alone(self):
-        transaction = self.transaction("%s/3" % self.PATH)
-        hooks.on_the_created_alias(transaction)
-        self.assertEqual(transaction["fullPath"], "%s/3" % self.PATH)
+        self.assertEqual(self.aliased("%s/3" % self.PATH), "%s/3" % self.PATH)
 
-    def test_coverage_placeholder_restores_the_consumed_alias(self):
+    def test_coverage_placeholder_gets_an_alias_that_exists(self):
         self.enterContext(mock.patch.dict(os.environ, {"CONTRACT_COVERAGE": "1"}))
-        example = {"source_address": "sales@restmail.test", "destination_address": "admin@restmail.test"}
-        alias = self.created("aliases", domain_id=1, **example)
-        hooks.keep_the_created_alias(dict(self.transaction(self.PATH, example),
-            real={"body": json.dumps({"data": alias})}))
-        self.server.state["aliases"] = []
         for method in ("GET", "PATCH", "DELETE"):
             with self.subTest(method=method):
                 transaction = self.transaction(self.PATH + "/1?keep=yes")
                 transaction["request"]["method"] = method
-                transaction["name"] = "coverage: " + self.PATH + "/{id} > Alias > 200"
-                hooks.on_the_created_alias(transaction)
-                restored = self.server.state["aliases"][-1]
-                self.assertEqual(transaction["fullPath"], self.PATH + "/%d?keep=yes" % restored["id"])
-                self.assertEqual(restored["source_address"], example["source_address"])
+                transaction["name"] = self.PATH + "/{id} > Alias > 200"
+                hooks.on_an_alias_of_its_own(transaction)
+                own = next(a for a in self.server.state["aliases"] if a["source_address"] == self.OWN)
+                self.assertEqual(transaction["fullPath"], self.PATH + "/%d?keep=yes" % own["id"])
                 self.server.state["aliases"] = []
 
-    def test_coverage_keeps_other_alias_ids_and_bodies(self):
-        self.enterContext(mock.patch.dict(os.environ, {"CONTRACT_COVERAGE": "1"}))
-        vertrag_hooks.stash["created_alias"] = {"id": 101, "body": {"source_address": "sales@restmail.test"}}
-        for target in ("0", "-1", "x", "2147483647", "3"):
-            transaction = self.transaction(self.PATH + "/" + target, {"active": "not-a-boolean"})
-            transaction["name"] = "coverage: /aliases/{id} > Alias > 200"
-            before = json.loads(json.dumps(transaction))
-            hooks.on_the_created_alias(transaction)
-            self.assertEqual(transaction, before)
+    def test_refusals_keep_their_ids_and_bodies(self):
+        for target, name in (("0", "x > 422"), ("-1", "x > 422"), ("x", "x > 422"),
+                             ("2147483647", "x > 404"), ("3", "x > 200"), ("55", "x > 404")):
+            with self.subTest(target=target):
+                transaction = self.transaction(self.PATH + "/" + target, {"active": "not-a-boolean"})
+                transaction["name"] = name
+                before = json.loads(json.dumps(transaction))
+                hooks.on_an_alias_of_its_own(transaction)
+                self.assertEqual(transaction, before)
+        self.assertEqual(self.server.state["serial"], 100)
 
-    def test_noncoverage_placeholder_keeps_its_target(self):
-        self.enterContext(mock.patch.dict(os.environ, {"CONTRACT_COVERAGE": "0"}))
-        vertrag_hooks.stash["created_alias"] = {"id": 101, "body": {"source_address": "sales@restmail.test"}}
-        transaction = self.transaction(self.PATH + "/1")
-        before = json.loads(json.dumps(transaction))
-        hooks.on_the_created_alias(transaction)
-        self.assertEqual(transaction, before)
 
+class AliasCleanStart(AdminAPITestCase):
+    """With CONTRACT_RESET_SEED=1 (the own-data phase), each alias exchange
+    resets first, and a read, update or delete gets an alias on a domain of
+    its own (#1385)."""
+
+    PATH = "/api/v1/admin/aliases"
+
+    def setUp(self):
+        super().setUp()
+        self.enterContext(mock.patch.dict(os.environ, {"CONTRACT_RESET_SEED": "1"}))
+        self.start_clean = self.enterContext(mock.patch.object(hooks, "start_clean"))
+
+    def sent(self, hook, path, name, body=None):
+        transaction = self.transaction(path, body)
+        transaction["name"] = name
+        hook(transaction)
+        self.start_clean.assert_called_once_with(transaction)
+        self.start_clean.reset_mock()
+        return transaction
+
+    def test_get_update_and_delete_reach_an_alias_on_a_domain_of_their_own(self):
+        for name in ("x > 200", "x > 204", "x > 422"):
+            with self.subTest(name=name):
+                transaction = self.sent(hooks.on_an_alias_of_its_own, self.PATH + "/3", name)
+                own = self.server.state["aliases"][-1]
+                domain = next(d for d in self.server.state["domains"] if d["id"] == own["domain_id"])
+                self.assertEqual(domain["name"], hooks.OWN_DOMAIN)
+                self.assertEqual(own["source_address"], "contract-own-alias@" + hooks.OWN_DOMAIN)
+                self.assertEqual(transaction["fullPath"], "%s/%d" % (self.PATH, own["id"]))
+                # The reset (mocked here) removes what it made.
+                self.server.state["domains"].remove(domain)
+                self.server.state["aliases"].remove(own)
+
+    def test_refusals_reset_and_keep_their_ids(self):
+        for target, name in (("2147483647", "x > 404"), ("0", "x > 422"), ("abc", "x > 422")):
+            with self.subTest(target=target):
+                transaction = self.sent(hooks.on_an_alias_of_its_own, self.PATH + "/" + target, name)
+                self.assertEqual(transaction["fullPath"], self.PATH + "/" + target)
+        self.assertEqual(self.server.state["serial"], 100)
+
+    def test_a_create_resets_and_is_sent_as_documented(self):
+        for body in ({"source_address": "sales@restmail.test", "destination_address": "admin@restmail.test"}, []):
+            with self.subTest(body=body):
+                transaction = self.sent(hooks.remove_a_previous_alias_probe, self.PATH, "x > 201", body)
+                self.assertEqual(json.loads(transaction["request"]["body"]), body)
+                self.assertEqual(transaction["fullPath"], self.PATH)
+
+    def test_without_a_reset_none_is_asked_for(self):
+        os.environ.pop("CONTRACT_RESET_SEED")
+        transaction = self.transaction(self.PATH + "/3")
+        transaction["name"] = "x > 200"
+        hooks.on_an_alias_of_its_own(transaction)
+        hooks.remove_a_previous_alias_probe(self.transaction(self.PATH, []))
+        self.start_clean.assert_not_called()
 
 if __name__ == "__main__":
     unittest.main()

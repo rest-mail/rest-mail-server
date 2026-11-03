@@ -145,6 +145,9 @@ def start_clean(transaction):
     hooks.stash["clean_starts"] = hooks.stash.get("clean_starts", 0) + 1
 
 
+OWN_DOMAIN = "contract-own-domain.test"
+
+
 def a_domain_of_its_own(transaction):
     """A domain made for this exchange, after its reset. The name cannot meet an
     earlier one, because the reset removed it."""
@@ -152,7 +155,7 @@ def a_domain_of_its_own(transaction):
         transaction,
         "POST",
         "/api/v1/admin/domains",
-        {"name": "contract-own-domain.test", "server_type": "traditional"},
+        {"name": OWN_DOMAIN, "server_type": "traditional"},
     )["id"]
 
 
@@ -2274,6 +2277,10 @@ def remove_a_previous_alias_probe(transaction):
     # that probe's alias when generated bodies repeat it. Existing aliases and
     # all generated request bytes stay untouched, but for an ownership run's
     # leftovers (a_leftover_to_remove).
+    # After a reset (the own-data phase) no earlier probe's alias is left, so
+    # created_alias_probes, which the reset clears, starts empty.
+    if asked_for_a_clean_start():
+        start_clean(transaction)
     body = hooks.get_json(transaction)
     source = body.get("source_address") if isinstance(body, dict) else None
     if not isinstance(source, str) or source.count("@") != 1:
@@ -2324,56 +2331,61 @@ def remove_a_previous_alias_probe(transaction):
             raise RuntimeError("could not remove the previous alias probe")
 
 
-@hooks.after("createAlias")
-def keep_the_created_alias(transaction):
-    # Only the example runs after hooks, and its id is what getAlias,
-    # updateAlias and deleteAlias are linked to. Probes repeating its source
-    # remove that alias above, so remember what to restore.
-    data = hooks.get_json(transaction, "real").get("data") or {}
-    if not data.get("id"):
-        return
-    hooks.stash["created_alias"] = {
-        "id": data["id"],
-        "body": hooks.get_json(transaction),
-    }
+# The alias getAlias, updateAlias and deleteAlias are sent to when the id they
+# carry has none: createAlias's link names one that a probe or the documented
+# delete may since have removed, and a reset removes it too.
+OWN_ALIAS = "contract-own-alias@"
+
+
+def an_alias_of_its_own(transaction):
+    """An alias made for this exchange. After a reset it is on a domain of its
+    own; otherwise it is the one at OWN_ALIAS on restmail.test, made if absent,
+    so nothing is carried between exchanges."""
+    if asked_for_a_clean_start():
+        a_domain_of_its_own(transaction)
+        return fixture_call(
+            transaction,
+            "POST",
+            "/api/v1/admin/aliases",
+            {"source_address": OWN_ALIAS + OWN_DOMAIN, "destination_address": ADMIN},
+        )["id"]
+    origin = origin_of(transaction)
+    headers = {"Authorization": "Bearer " + admin_token(origin)}
+    source = OWN_ALIAS + "restmail.test"
+    alias = alias_on(origin, headers, hosted_domain_id(origin, headers, "restmail.test"), source)
+    if alias is None:
+        alias = fixture_call(
+            transaction,
+            "POST",
+            "/api/v1/admin/aliases",
+            {"source_address": source, "destination_address": ADMIN},
+        )
+    return alias["id"]
 
 
 @hooks.before("getAlias")
 @hooks.before("updateAlias")
 @hooks.before("deleteAlias")
-def on_the_created_alias(transaction):
-    # Follow the linked alias to its current id, recreating it when a probe
-    # removed it without a successful create of its own to replace it. Any
-    # other id (the 404 examples, path parameter probes) is left alone.
-    created = hooks.stash.get("created_alias")
+def on_an_alias_of_its_own(transaction):
+    # Each exchange the link (or coverage's placeholder 1) reaches is sent to an
+    # alias that exists: after a reset always one of its own, and otherwise one
+    # of its own only when no alias has the id it carries. The refusals keep
+    # their ids: missing's 2147483647, a non-positive or undecodable id, and
+    # every exchange documented to answer 404.
+    if asked_for_a_clean_start():
+        start_clean(transaction)
     path, _, query = transaction["fullPath"].partition("?")
     parent, _, alias_id = path.rpartition("/")
-    coverage_placeholder = os.environ.get("CONTRACT_COVERAGE") == "1" and alias_id == "1"
-    if not created or (alias_id != str(created["id"]) and not coverage_placeholder):
+    if not positive_id(alias_id) or alias_id == "2147483647":
         return
-    origin = "{}//{}:{}".format(
-        transaction["protocol"],
-        transaction["host"],
-        transaction["port"],
-    )
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": "Bearer " + admin_token(origin),
-    }
-    source = created["body"]["source_address"]
-    domain_id = hosted_domain_id(origin, headers, source.split("@")[1].lower())
-    alias = alias_on(origin, headers, domain_id, source)
-    if alias is None:
-        request = urllib.request.Request(
-            origin + "/api/v1/admin/aliases",
-            data=json.dumps(created["body"]).encode(),
-            headers=headers,
-            method="POST",
-        )
-        with urllib.request.urlopen(request, timeout=10) as response:
-            alias = json.load(response)["data"]
+    if " > 404" in transaction.get("name", ""):
+        return
+    if not asked_for_a_clean_start() and fixture_call(
+        transaction, "GET", "/api/v1/admin/aliases/" + alias_id, expect=(404,)
+    ):
+        return
     transaction["fullPath"] = (
-        parent + "/" + str(alias["id"]) + ("?" + query if query else "")
+        parent + "/" + str(an_alias_of_its_own(transaction)) + ("?" + query if query else "")
     )
 
 
