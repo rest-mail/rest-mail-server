@@ -108,9 +108,22 @@ func (c *mailRequirementConnection) QueryContext(ctx context.Context, q string, 
 			return nil, err
 		}
 		return importRows(map[string]any{"id": int64(5), "domain_id": int64(1), "active": true, "direction": "inbound", "filters": filter}), nil
+	case strings.Contains(q, `FROM "installation_sender_rules"`):
+		// No installation-wide rule matches: the domain's own rule decides.
+		return invitationRows([]string{"count"}, []driver.Value{int64(0)}), nil
 	case strings.Contains(q, `FROM "domain_sender_rules"`):
-		if c.name != "rejected" || !strings.Contains(q, "list_type = 'block'") {
+		if c.name != "rejected" {
 			return nil, fmt.Errorf("unexpected sender rule lookup: %s", q)
+		}
+		// The domain blocks this sender and allows nobody: only the block lookup counts.
+		block := strings.Contains(q, "list_type = 'block'")
+		for _, a := range args {
+			if a.Value == "block" {
+				block = true
+			}
+		}
+		if !block {
+			return invitationRows([]string{"count"}, []driver.Value{int64(0)}), nil
 		}
 		c.policyRejections++
 		return invitationRows([]string{"count"}, []driver.Value{int64(1)}), nil
