@@ -15,29 +15,75 @@ import (
 
 // TestStoreLeavesRecentAlone: STORE with FLAGS replaces the flags "other than
 // \Recent" (RFC 3501 §6.4.6), and \Recent is not the client's to set or clear
-// (§2.3.2). Naming it in a FLAGS, +FLAGS or -FLAGS list changes no flag, and it
-// never appears in the flags a STORE answers with.
+// (§2.3.2). Naming it in a FLAGS, +FLAGS or -FLAGS list is refused and changes
+// no flag (TestStoreRefusesRecent has the full matrix), and it never appears in
+// the flags a STORE answers with. This test used to accept and ignore such a
+// list, which the §9 flag production does not allow.
 //
 // checklist: IMAP-STORE-11
 func TestStoreLeavesRecentAlone(t *testing.T) {
 	box := newStoreMailbox()
 	c := storeClient(t, box)
 
-	untagged, tagged := c.command("A1", `STORE 1 FLAGS (\Recent \Seen)`)
-	requireOK(t, tagged, "A1")
+	untagged, tagged := c.command("A0", `STORE 1 FLAGS (\Seen)`)
+	requireOK(t, tagged, "A0")
 	requireExactly(t, untagged, `* 1 FETCH (FLAGS (\Seen))`)
 
-	untagged, tagged = c.command("A2", `STORE 1 -FLAGS (\Recent)`)
-	requireOK(t, tagged, "A2")
-	requireExactly(t, untagged, `* 1 FETCH (FLAGS (\Seen))`)
-
-	untagged, tagged = c.command("A3", `STORE 1 +FLAGS (\Recent)`)
-	requireOK(t, tagged, "A3")
-	requireExactly(t, untagged, `* 1 FETCH (FLAGS (\Seen))`)
+	for i, command := range []string{`STORE 1 FLAGS (\Recent \Seen)`, `STORE 1 -FLAGS (\Recent)`, `STORE 1 +FLAGS (\Recent)`} {
+		tag := fmt.Sprintf("A%d", i+1)
+		untagged, tagged = c.command(tag, "%s", command)
+		requireExactly(t, untagged)
+		if !strings.HasPrefix(tagged, tag+" BAD ") {
+			t.Fatalf("%s: %q, want BAD", command, tagged)
+		}
+	}
+	untagged, tagged = c.command("F1", "FETCH 1 FLAGS")
+	requireOK(t, tagged, "F1")
+	requireExactly(t, untagged, `* 1 FETCH (UID 4001 FLAGS (\Seen))`)
 
 	untagged, tagged = c.command("A4", `STORE 1 FLAGS ()`)
 	requireOK(t, tagged, "A4")
 	requireExactly(t, untagged, `* 1 FETCH (FLAGS ())`)
+}
+
+// TestStoreRefusesRecent: the flag production "Does not include \Recent" (RFC
+// 3501 §9), and "\Recent can not be used as an argument in a STORE or APPEND
+// command" (§2.3.2), so naming it is a syntax error and gets BAD. The whole
+// command is refused: no listed flag is written, even one that is legal. A
+// keyword merely spelled Recent has no backslash and stays an ordinary flag.
+//
+// checklist: IMAP-STORE-11
+func TestStoreRefusesRecent(t *testing.T) {
+	for _, prefix := range []struct{ command, set string }{{"STORE", "1"}, {"UID STORE", "4001"}} {
+		for _, action := range []string{"FLAGS", "+FLAGS", "-FLAGS", "FLAGS.SILENT", "+FLAGS.SILENT", "-FLAGS.SILENT"} {
+			for _, operand := range []string{
+				`(\Recent)`, `(\RECENT)`, `(\recent)`, `(\Seen \Recent)`, `(\Recent \Seen)`,
+				`\Recent`, `\Seen \Recent`,
+			} {
+				t.Run(prefix.command+"/"+action+"/"+operand, func(t *testing.T) {
+					box := newStoreMailbox()
+					c := storeClient(t, box)
+					lines, tagged := c.command("A1", "%s %s %s %s", prefix.command, prefix.set, action, operand)
+					requireExactly(t, lines)
+					if !strings.HasPrefix(tagged, "A1 BAD ") {
+						t.Fatalf("STORE naming \\Recent: %q, want BAD", tagged)
+					}
+					if len(box.updates) != 0 {
+						t.Fatalf("refused STORE wrote flags: %v", box.updates)
+					}
+					lines, tagged = c.command("F1", "FETCH 1 FLAGS")
+					requireOK(t, tagged, "F1")
+					requireExactly(t, lines, "* 1 FETCH (UID 4001 FLAGS ())")
+				})
+			}
+		}
+	}
+
+	box := newStoreMailbox()
+	c := storeClient(t, box)
+	lines, tagged := c.command("K1", "STORE 1 +FLAGS (Recent)")
+	requireOK(t, tagged, "K1")
+	requireExactly(t, lines, "* 1 FETCH (FLAGS (Recent))")
 }
 
 // sharedMailbox is an INBOX another source can change while a session has it

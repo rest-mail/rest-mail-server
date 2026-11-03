@@ -25,3 +25,8 @@ found by the RFC 3501 inventory in rest-mail/rest-mail-server#374.
   its literals are read in `Handle`. A failed selection, answered NO, still
   deselects. `TestSelectionInvalidArguments` asserted the old deselection, so
   it is corrected rather than retained as it was upstream.
+- STORE and UID STORE naming `\Recent`, in any case, are refused with BAD and
+  write nothing, because the §9 `flag` production "does not include" it. A
+  keyword spelled `Recent` is unaffected. `TestStoreLeavesRecentAlone` asserted
+  that the flag was accepted and ignored, so it is corrected in the same way.
+  Under EXAMINE, read-only NO still comes before this check.
