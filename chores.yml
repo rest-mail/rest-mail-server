@@ -870,6 +870,26 @@ tasks:
       - task: health:wait
       - E2E_LIMITS=1 E2E_REQUIRE_STACK=1 "${CHORE_BIN:-chore}" test:e2e -- -run '^TestLimits$'
 
+  test:load:
+    desc: 'One load run against an already-running topology (#1583): SMTP in and out, held IMAP connections, API; flags after --, see tests/load/README.md'
+    cmds:
+      - >-
+        RESTMAIL_NETWORK="{{.RESTMAIL_NETWORK | default "testbed_mailnet"}}"
+        RESTMAIL_TESTBED_DNS_IP="{{.RESTMAIL_TESTBED_DNS_IP | default "10.99.0.10"}}"
+        python3 -B tests/load/run.py {{.CLI_ARGS}}
+
+  load:compare:
+    desc: 'Compare two load runs: chore load:compare -- before/results.json after/results.json'
+    cmds:
+      - python3 -B tests/load/compare.py {{.CLI_ARGS}}
+
+  load:
+    desc: 'Bring up the e2e topology, run the load test (test:load), tear it down'
+    cmds:
+      - task: e2e:up
+      - defer: { task: e2e:down }
+      - task: test:load
+
   e2e:
     desc: 'Full e2e run: bring up the topology, run the tests, tear it down'
     cmds:

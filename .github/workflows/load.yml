@@ -1,0 +1,191 @@
+name: Load
+
+# One load run against the e2e topology (#1583), started by hand: SMTP in,
+# SMTP out (submissions relayed to mail1.test), held IMAP connections and API
+# requests, at the targets given, for the duration given. The results
+# (results.json, results.txt and the raw generator output) are uploaded as an
+# artifact; compare two with `chore load:compare -- a/results.json b/results.json`.
+#
+# A hosted runner carries the topology AND the generators on 4 vCPUs, so what it
+# measures is that runner. It shows a regression between two commits; the
+# capacity of one install needs a run on real hardware (tests/load/README.md).
+#
+# The set-up steps are e2e-suite.yml's, pins included: bump them together.
+on:
+  workflow_dispatch:
+    inputs:
+      smtp_in_rate:
+        description: Inbound messages per second (0 leaves it out)
+        default: "100"
+      smtp_out_rate:
+        description: Outbound submissions per second (0 leaves it out)
+        default: "50"
+      imap_conns:
+        description: Concurrent IMAP connections held (0 leaves it out)
+        default: "1000"
+      api_rate:
+        description: API requests per second (0 leaves it out)
+        default: "100"
+      duration:
+        description: Seconds each load runs
+        default: "60"
+
+concurrency:
+  group: load
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  load:
+    name: Load run
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # git describe in the results names the version tested.
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.10"
+          cache: true
+
+      - name: Install chore (the newest release, attested)
+        # The repo is driven by chores.yml, whose tasks declare `args:`. go-task
+        # parses the file but ignores those declarations, so a task that takes a
+        # parameter silently runs with its default — CI has to use the same runner
+        # as a developer's machine or it is testing something else.
+        #
+        # So it installs what a developer would: the newest release. chores.yml
+        # names the oldest chore that can read it (chore_min_version), and CI
+        # refuses to run below that floor rather than fail on an unknown field.
+        #
+        # Do NOT pipe-execute an install script from the network — that is an
+        # arbitrary-code-execution supply-chain surface. The tarball must match
+        # its release's checksums.txt, and its build attestation must show that
+        # chore's own release pipeline built it, before it is installed.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="$(gh release view --repo antimatter-studios/chore --json tagName --jq .tagName)"
+          version="${tag#v}"
+          min="$(awk '$1 == "chore_min_version:" { print $2 }' chores.yml)"
+          test -n "$min" || { echo "::error::chores.yml has no chore_min_version" >&2; exit 1; }
+          if [ "$(printf '%s\n%s\n' "$min" "$version" | sort -V | head -n1)" != "$min" ]; then
+            echo "::error::the newest chore is $version; chores.yml needs at least $min" >&2
+            exit 1
+          fi
+          tmp="$(mktemp -d)"
+          asset="chore-${version}-linux-x86_64.tar.gz"
+          gh release download "$tag" --repo antimatter-studios/chore \
+            --pattern "$asset" --pattern checksums.txt --dir "$tmp"
+          (cd "$tmp" && awk -v a="$asset" '$2 == a' checksums.txt | sha256sum --check --strict -)
+          gh attestation verify "$tmp/$asset" --repo antimatter-studios/chore
+          tar -xzf "$tmp/$asset" -C "$tmp" chore
+          sudo install -m 0755 "$tmp/chore" /usr/local/bin/chore
+          rm -rf "$tmp"
+          echo "chores.yml needs chore $min or newer"
+          chore --version
+
+      - name: Populate Go module cache
+        run: go mod download
+
+      - name: Route git@github over HTTPS
+        run: git config --global url."https://github.com/".insteadOf "git@github.com:"
+
+      - name: Clone testbed + reference-mailserver substrate (pinned)
+        # The `testbed` include must resolve before `chore e2e:up` is parsed;
+        # reference-mailserver is also cloned by e2e:up, pre-cloning is harmless.
+        #
+        # The init tasks clone each repo's DEFAULT BRANCH (no ref). Pin the
+        # checkout to a known-good commit so an e2e run is reproducible and
+        # tamper-evident: an upstream force-push or a compromised default branch
+        # cannot silently change what CI executes — a missing/rewritten pin fails
+        # the step loudly instead. Bump these SHAs deliberately when adopting
+        # upstream substrate changes.
+        env:
+          TESTBED_REF: 398d29cd40eb1a8553d710dc25491c2a4b727a37              # rest-mail/testbed @ master
+          REFERENCE_MAILSERVER_REF: 4f6f8e0fb61d6aac9a3adffa38f05c55be27e25d  # rest-mail/reference-mailserver @ master
+        run: |
+          set -euo pipefail
+          chore testbed:init
+          chore mailserver:init
+          git -C .workspace/testbed fetch --quiet origin "$TESTBED_REF" || true
+          git -C .workspace/testbed checkout --quiet "$TESTBED_REF"
+          git -C .workspace/reference-mailserver fetch --quiet origin "$REFERENCE_MAILSERVER_REF" || true
+          git -C .workspace/reference-mailserver checkout --quiet "$REFERENCE_MAILSERVER_REF"
+          echo "testbed pinned @ $(git -C .workspace/testbed rev-parse --short HEAD)"
+          echo "reference-mailserver pinned @ $(git -C .workspace/reference-mailserver rev-parse --short HEAD)"
+
+      - name: Patch reference dkim:provision for native-Linux Docker
+        # reference-mailserver's dkim:provision generates the DKIM key as
+        # container-root, then runs `chmod 644` on it FROM THE HOST. On Docker
+        # Desktop bind-mount files are host-user-owned so that works; on native
+        # Linux (this runner) the file is root-owned and the non-root runner
+        # can't chmod it ("Operation not permitted"). Run that chmod inside a
+        # container instead — the same idiom the task already uses two lines
+        # below for the fragment copy. (Follow-up: fix this upstream in
+        # rest-mail/reference-mailserver so it's portable off Docker Desktop.)
+        run: |
+          # Whichever name that project ships: it is migrating from Taskfile.yml to
+          # chores.yml, and this must not break on either side of that.
+          f=""
+          for c in chores.yml Taskfile.yml; do
+            [ -f ".workspace/reference-mailserver/$c" ] && f=".workspace/reference-mailserver/$c" && break
+          done
+          if [ -z "$f" ]; then
+            echo "::error::no chores.yml or Taskfile.yml in reference-mailserver" >&2
+            exit 1
+          fi
+          perl -pi -e 's{chmod 644 "\$KEYDIR/\$DOMAIN\.\$SEL\.key"}{docker run --rm -v "\$(pwd)/\$KEYDIR:/keys" alpine:3.20 chmod 644 "/keys/\$DOMAIN.\$SEL.key"}g' "$f"
+          if grep -qF 'chmod 644 "$KEYDIR/$DOMAIN.$SEL.key"' "$f"; then
+            echo "::error::dkim:provision chmod patch did not apply — upstream reference-mailserver task file changed"
+            exit 1
+          fi
+          echo "patched host chmod -> containerized chmod:"
+          grep -nF 'alpine:3.20 chmod 644' "$f"
+
+      - name: Bring up e2e topology
+        run: chore e2e:up
+
+      - name: Load run
+        # Inputs reach the runner through the environment, never the script text.
+        env:
+          LOAD_SMTP_IN_RATE: ${{ inputs.smtp_in_rate }}
+          LOAD_SMTP_OUT_RATE: ${{ inputs.smtp_out_rate }}
+          LOAD_IMAP_CONNS: ${{ inputs.imap_conns }}
+          LOAD_API_RATE: ${{ inputs.api_rate }}
+          LOAD_DURATION: ${{ inputs.duration }}
+          LOAD_OUT: ${{ runner.temp }}/load
+        run: chore test:load
+
+      - name: Summary
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/load/results.txt" ]; then
+            { echo '```'; cat "$RUNNER_TEMP/load/results.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: load-results
+          path: |
+            ${{ runner.temp }}/load/results.json
+            ${{ runner.temp }}/load/results.txt
+            ${{ runner.temp }}/load/raw/*.json
+            ${{ runner.temp }}/load/raw/*.log
+          retention-days: 90
+          if-no-files-found: warn
+
+      - name: Tear down e2e topology
+        if: always()
+        run: chore e2e:down
