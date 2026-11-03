@@ -109,7 +109,54 @@ var (
 	_ goimap.UTF8Mailbox    = (*mailbox)(nil)
 	_ goimap.RightsMailbox  = (*mailbox)(nil)
 	_ goimap.DeletedMailbox = (*mailbox)(nil)
+	_ goimap.FolderMailbox  = (*mailbox)(nil)
 )
+
+// CreateFolder makes an empty folder through the API (FolderMailbox), so
+// CREATE answers OK only once the folder exists and the next LIST shows it
+// while it holds nothing (RFC 9051 §6.3.4).
+func (m *mailbox) CreateFolder(name string) error {
+	if err := validateFolder(name); err != nil {
+		return err
+	}
+	return m.api.CreateFolder(m.token, m.accountID, name)
+}
+
+// DeleteFolder removes a folder and its messages through the API
+// (FolderMailbox, RFC 9051 §6.3.5). The API keeps the standard folders.
+func (m *mailbox) DeleteFolder(name string) error {
+	if err := validateFolder(name); err != nil {
+		return err
+	}
+	return m.api.DeleteFolder(m.token, m.accountID, name)
+}
+
+// RenameFolder renames a folder through the API, its messages with it
+// (FolderMailbox, RFC 9051 §6.3.6). INBOX is a standard folder the API does
+// not rename, and RFC 9051 has RENAME of INBOX move its messages and leave it
+// empty: so the gateway creates the new folder and moves each message there,
+// each a fresh delivery with a new, higher UID (MoveUID).
+func (m *mailbox) RenameFolder(from, to string) error {
+	if err := validateFolder(to); err != nil {
+		return err
+	}
+	if from != "INBOX" {
+		return m.api.RenameFolder(m.token, m.accountID, from, to)
+	}
+	resp, err := m.api.ListIMAPMessages(m.token, m.accountID, from)
+	if err != nil {
+		return err
+	}
+	if err := m.api.CreateFolder(m.token, m.accountID, to); err != nil {
+		return err
+	}
+	for _, msg := range resp.Data {
+		if _, err := m.MoveUID(toUID(msg.ID), to); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
 // MailboxRights reports the signed-in user's rights on folder (RightsMailbox).
 // REST Mail keeps no rights per folder: a protocol sign-in reaches only the

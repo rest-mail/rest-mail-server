@@ -8,6 +8,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- Folder management (RFC 9051 §§6.3.4-6.3.6): a Mailbox that implements the new
+  optional `imap.FolderMailbox` interface (`CreateFolder`, `DeleteFolder`,
+  `RenameFolder`) keeps folders apart from their messages. CREATE then answers
+  OK only once the folder exists, so the next LIST shows it while it is empty;
+  an extant name is `NO [ALREADYEXISTS]`, a trailing delimiter is dropped and
+  missing superior names are created first. DELETE removes the folder and its
+  messages for good, leaves its inferiors, and answers `NO [NONEXISTENT]` for
+  a name that does not exist. RENAME renames the folder and its inferiors,
+  creating superiors of the new name, and refuses a missing source or an
+  extant destination; RENAME of INBOX moves its messages to the new name and
+  leaves INBOX empty, its inferiors untouched. A Mailbox without it keeps
+  implicit folders, as before.
 - `\Deleted` kept by the store (RFC 3501 §§2.3.2, 6.4.2-6.4.3; RFC 4315 §2.1):
   a Mailbox that implements the new optional `imap.DeletedMailbox` interface
   says it keeps the flag, and EXPUNGE, CLOSE and UID EXPUNGE then remove the

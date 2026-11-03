@@ -62,6 +62,14 @@ advertised.
   `imap.RightsMailbox` interface reports them; a Mailbox without it keeps every
   right, so existing hosts see no change. DELETE of a \Noselect level with
   inferiors answers `NO [HASCHILDREN]` (§6.3.5) for every host.
+- Folder management (RFC 9051 §§6.3.4-6.3.6, go-imap#160). Upstream's
+  folders are implicit, so CREATE answers OK without creating anything and the
+  new folder vanishes from the next LIST, though "the server MUST NOT return
+  OK unless a new mailbox was created with that name" (§6.3.4). The optional
+  `imap.FolderMailbox` interface lets the store create, delete and rename
+  folders: CREATE then answers once the folder exists, DELETE removes it for
+  good and RENAME renames it with its inferiors, INBOX by moving its messages.
+  A Mailbox without it keeps implicit folders.
 - `\Deleted` kept by the store (RFC 3501 §2.3.2, go-imap#159). Upstream keeps
   the mark in the session until EXPUNGE, so the user's other devices never see
   it and a dropped connection loses it. The optional `imap.DeletedMailbox`
