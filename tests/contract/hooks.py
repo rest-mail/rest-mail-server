@@ -517,12 +517,32 @@ def mailbox_id(origin, address):
     return found["id"]
 
 
+@hooks.before("createGrant")
+@hooks.before("activateGrant")
+@hooks.before("deactivateGrant")
+@hooks.before("makeGrantEligible")
+@hooks.before("listGrants")
+@hooks.before("listMyGrants")
+def a_grant_operation_from_a_clean_start(transaction):
+    # After a reset (the own-data phase) every exchange, refusals included,
+    # starts clean. These examples need nothing made for them: their ids are
+    # the refusals' (0 and 2147483647) and the lists read the seeded grants.
+    # The two-factor administrator's session survives the reset.
+    if asked_for_a_clean_start():
+        start_clean(transaction)
+
+
 @hooks.before("deleteGrant")
 def delete_a_grant_made_for_it(transaction):
     # body_boundary names grant 1, which is a fixture principal's own. Delete a
     # grant made for the purpose instead: an eligible admin role on the fixture
     # domain, held by an account made without credentials. Other ids are the
     # refusal examples' and the coverage probes', and are sent as they are.
+    # After a reset (the own-data phase) every exchange, refusals included,
+    # starts clean, and the grant and its holder are made after it, on the
+    # seeded restmail.test.
+    if asked_for_a_clean_start():
+        start_clean(transaction)
     path, _, query = transaction["fullPath"].partition("?")
     parent, _, grant_id = path.rpartition("/")
     if grant_id != "1":

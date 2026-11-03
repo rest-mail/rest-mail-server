@@ -57,6 +57,15 @@ MOVED = (
     # link starts from or reaches either.
     "inviteAccount",
     "acceptInvitation",
+    # The grant operations. deleteGrant makes the grant it deletes; the others'
+    # examples need nothing made. No link starts from or reaches any of them.
+    "createGrant",
+    "deleteGrant",
+    "activateGrant",
+    "deactivateGrant",
+    "makeGrantEligible",
+    "listGrants",
+    "listMyGrants",
 )
 
 FOLLOWS_THE_CREATED_DOMAIN = (
