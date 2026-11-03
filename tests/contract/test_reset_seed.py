@@ -113,6 +113,17 @@ class ResetSeedTest(unittest.TestCase):
             ],
         )
 
+    def test_seed_only_does_not_add_unrelated_fixtures(self):
+        result = reset_seed.reset_and_seed(self.origin, "fixture-jwt", fixtures=())
+        self.assertEqual(len(self.requests), 2)
+        self.assertEqual(result["fixture_output"], {})
+        self.runner.assert_not_called()
+
+    def test_fixture_commands_still_require_the_api_container(self):
+        with self.assertRaises(ValueError):
+            reset_seed.reset_and_seed(self.origin, "fixture-jwt")
+        self.assertEqual(self.requests, [])
+
     def test_reset_http_failures_abort_without_seeding_or_fixtures(self):
         for status in (401, 403, 429, 500):
             with self.subTest(status=status):
@@ -187,7 +198,7 @@ class ResetSeedTest(unittest.TestCase):
         ]
 
     def test_invalid_fixture_selection_fails_before_reset(self):
-        for fixtures in ((), ("unknown",), ("queue", "queue")):
+        for fixtures in (("unknown",), ("queue", "queue")):
             with self.subTest(fixtures=fixtures), self.assertRaises(ValueError):
                 self.prepare(fixtures=fixtures)
         self.assertEqual(self.requests, [])

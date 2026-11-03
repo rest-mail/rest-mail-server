@@ -40,6 +40,7 @@ LINKABLE_PASSWORD = "password123"
 # The two-factor administrator for setup a password cannot do.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import mfa_admin  # noqa: E402
+import reset_seed
 
 PRINCIPALS = os.environ.get("CONTRACT_PRINCIPALS", ".cache/contract-principals.json")
 
@@ -96,6 +97,126 @@ def as_the_two_factor_admin(transaction):
         return False
     transaction["request"]["headers"]["Authorization"] = "Bearer " + mfa_admin_token(origin_of(transaction))
     return True
+
+
+# The operations moved to a clean start, and only in the run that asks for it
+# (run.sh's own-data phase): a reset in the primary run would wipe what the
+# operations still to move depend on. See the README, "Moved to a clean start".
+# What a reset does not remove: the setup sessions, whose accounts it keeps with
+# their ids and credentials, and what the hooks below need to carry a link across it.
+SURVIVES_A_RESET = (
+    "setup_admin_tokens",
+    "mfa_admin_sessions",
+    "clean_starts",
+    "linked_domain_ids",
+    "created_sender_rules",
+)
+
+
+def asked_for_a_clean_start():
+    return os.environ.get("CONTRACT_RESET_SEED") == "1"
+
+
+def start_clean(transaction):
+    """Reset and seed before this exchange, and forget what that removed. A
+    failed reset raises, so the exchange is reported as an error and not sent."""
+    origin = origin_of(transaction)
+    reset_seed.reset_and_seed(origin, admin_token(origin), fixtures=())
+    for key in [k for k in hooks.stash if k not in SURVIVES_A_RESET]:
+        del hooks.stash[key]
+    hooks.stash["clean_starts"] = hooks.stash.get("clean_starts", 0) + 1
+
+
+def a_domain_of_its_own(transaction):
+    """A domain made for this exchange, after its reset. The name cannot meet an
+    earlier one, because the reset removed it."""
+    return fixture_call(
+        transaction,
+        "POST",
+        "/api/v1/admin/domains",
+        {"name": "contract-own-domain.test", "server_type": "traditional"},
+    )["id"]
+
+
+def to_domain(transaction, domain_id):
+    """Send the request to that domain: only the id in the path changes, so a
+    generated body and the request's own credential stay as they are."""
+    path, separator, query = transaction["fullPath"].partition("?")
+    parts = path.split("/")
+    parts[5] = str(domain_id)
+    transaction["fullPath"] = "/".join(parts) + separator + query
+
+
+def the_domain_since_the_reset(transaction):
+    """The domain that stands in for the one createDomain made, once a reset has
+    removed it, made once per reset. It is kept where that domain was, so what
+    reads it (a pipeline's domain_id, the policy file's Host) keeps working."""
+    if hooks.stash.get("domain_id") is None:
+        domain = fixture_call(
+            transaction,
+            "POST",
+            "/api/v1/admin/domains",
+            {"name": "contract-linked-domain.test", "server_type": "traditional"},
+        )
+        hooks.stash["domain_id"] = domain["id"]
+        hooks.stash["domain"] = domain["name"]
+        hooks.stash.setdefault("linked_domain_ids", []).append(str(domain["id"]))
+    return hooks.stash["domain_id"]
+
+
+@hooks.before("updateDomain")
+@hooks.before("listAllowlist")
+@hooks.before("addToAllowlist")
+@hooks.before("removeFromAllowlist")
+@hooks.before("listBlocklist")
+@hooks.before("addToBlocklist")
+@hooks.before("removeFromBlocklist")
+@hooks.before("domainDNSCheck")
+@hooks.before("getDomainRelay")
+@hooks.before("listSuppressions")
+@hooks.before("setDKIMKey")
+@hooks.before("deleteDKIMKey")
+@hooks.before("getDKIMRotation")
+@hooks.before("setDKIMRotation")
+def a_live_domain_for_the_link(transaction):
+    # These follow createDomain's link and have not moved. A reset before a moved
+    # exchange removes the domain the link names, so after one each gets a domain
+    # that exists. Other ids (the refusals' 0, 1 and 2147483647) stay as they are,
+    # and a run with no reset, which is the primary run, changes nothing here.
+    # entrypoint.py registers this for setDomainRelay as well: this file holds that
+    # operation to having no hook of its own that could change a probe's body.
+    linked = hooks.stash.get("linked_domain_ids")
+    if not hooks.stash.get("clean_starts") or not linked:
+        return
+    parts = transaction["fullPath"].partition("?")[0].split("/")
+    if len(parts) < 6 or parts[5] not in linked:
+        return
+    domain_id = the_domain_since_the_reset(transaction)
+    to_domain(transaction, domain_id)
+    # An entry the link names is added again on this domain (on_the_added_sender_rule).
+    if len(parts) > 7 and parts[6] in ("allowlist", "blocklist"):
+        rules = hooks.stash.get("created_sender_rules", {})
+        for parent in [p for p in rules if p.endswith("/" + parts[6])]:
+            rules["/".join(parts[:5] + [str(domain_id), parts[6]])] = rules.pop(parent)
+    # The key the link names went with the domain.
+    if parts[4] == "dkim" and " > 204" in transaction.get("name", ""):
+        with (Path(__file__).resolve().parent / "fixtures" / "dkim-key.pem").open() as key:
+            fixture_call(
+                transaction,
+                "PUT",
+                f"/api/v1/admin/dkim/{domain_id:d}",
+                {"selector": "contract", "private_key": key.read()},
+            )
+
+
+@hooks.before("getDomain")
+def get_a_domain_of_its_own(transaction):
+    if not asked_for_a_clean_start():
+        return
+    start_clean(transaction)
+    # missing (2147483647) and the refused id (0) need nothing to exist.
+    if " > 200" in transaction.get("name", ""):
+        to_domain(transaction, a_domain_of_its_own(transaction))
 
 
 @hooks.before("listAPIKeys")
@@ -594,6 +715,7 @@ def keep_the_created_domain(transaction):
         return
     hooks.stash["domain_id"] = data.get("id")
     hooks.stash["domain"] = data.get("name")
+    hooks.stash.setdefault("linked_domain_ids", []).append(str(data.get("id")))
 
 
 @hooks.before("deleteDomain")
@@ -1017,6 +1139,8 @@ def a_certificate_before_going_live(transaction):
 @hooks.before("getMtaStsPolicy")
 @hooks.before("deleteMtaStsPolicy")
 def prepare_mta_sts_policy_example(transaction):
+    if asked_for_a_clean_start():
+        start_clean(transaction)
     name = transaction.get("name", "")
     if not any(f" > {status}" in name for status in (200, 201, 204)):
         return
@@ -1025,6 +1149,24 @@ def prepare_mta_sts_policy_example(transaction):
     if len(parts) != 7 or parts[-1] != "mta-sts" or not positive_id(parts[5]):
         return
     creating = " > 201" in name
+    if asked_for_a_clean_start():
+        # Its own domain, which holds no policy until this says so. Refusals
+        # above need nothing to exist; the absent-policy 404 makes its own domain
+        # (policy_lookup_hooks.py), after this reset.
+        to_domain(transaction, a_domain_of_its_own(transaction))
+        if not creating:
+            fixture_call(
+                transaction,
+                "PUT",
+                transaction["fullPath"].partition("?")[0],
+                {
+                    "mode": "testing",
+                    "mx_hosts": "mail.example.com",
+                    "max_age": 604800,
+                    "active": True,
+                },
+            )
+        return
     if creating and parts[5] == "2":
         domains = hooks.stash.get("mta_sts_create_domains", {})
         origin = origin_of(transaction)
@@ -1062,6 +1204,8 @@ def prepare_mta_sts_policy_example(transaction):
 
 @hooks.before("mtaStsPolicyFile")
 def ask_for_the_created_domains_policy(transaction):
+    if hooks.stash.get("clean_starts"):
+        the_domain_since_the_reset(transaction)
     # Served at mta-sts.<domain>: the domain is the Host's, not a parameter.
     transaction["request"]["headers"]["Host"] = "mta-sts." + (
         hooks.stash.get("domain") or ""

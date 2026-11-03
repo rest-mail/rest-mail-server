@@ -29,12 +29,13 @@ FIXTURE_FLAGS = {
 }
 
 
-def reset_and_seed(origin, token, *, api_container, fixtures=("queue",), timeout=60):
+def reset_and_seed(origin, token, *, api_container=None, fixtures=("queue",), timeout=60):
     """Reset, seed, then run the existing Go fixture command in the API container.
 
     Pass the surviving fixture administrator's JWT and the same API container
     that serves origin. The default recreates the retry/bounce queue, quarantine
     and suppression fixtures; select existing optional fixture modes as needed.
+    An empty selection uses only the ordinary seed data, with no Docker command.
     Outputs (including domain-tenant IDs) and wall-clock timings are returned.
     Any failed step raises RuntimeError; no exchange should run after that.
     Reset already seeds internally; the explicit, idempotent seed call also
@@ -50,7 +51,6 @@ def reset_and_seed(origin, token, *, api_container, fixtures=("queue",), timeout
         or target.fragment
         or target.username is not None
         or not token
-        or not api_container
         or timeout <= 0
     ):
         raise ValueError(
@@ -58,9 +58,9 @@ def reset_and_seed(origin, token, *, api_container, fixtures=("queue",), timeout
         )
     fixtures = tuple(fixtures)
     if (
-        not fixtures
-        or len(set(fixtures)) != len(fixtures)
+        len(set(fixtures)) != len(fixtures)
         or any(mode not in FIXTURE_FLAGS for mode in fixtures)
+        or (fixtures and not api_container)
     ):
         raise ValueError("select distinct existing contract fixture modes")
     with (
