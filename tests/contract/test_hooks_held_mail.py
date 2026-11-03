@@ -34,7 +34,7 @@ class HeldMailHookTests(unittest.TestCase):
         self.assertEqual(t["fullPath"], "/api/v1/accounts/6/quarantine/8")
         self.module.mailbox_id.assert_called_once_with("http://api:8080", self.module.ADMIN)
         request = self.urlopen.call_args.args[0]
-        self.assertEqual(request.full_url, "http://api:8080/api/v1/accounts/6/quarantine?limit=100")
+        self.assertEqual(request.full_url, "http://api:8080/api/v1/accounts/6/quarantine?limit=200&offset=0")
 
     def test_the_admins_id_is_looked_up_by_address(self):
         patch.object(self.module, "admin_token", return_value="admin-token").start()

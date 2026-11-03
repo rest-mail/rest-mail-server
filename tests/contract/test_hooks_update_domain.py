@@ -10,6 +10,7 @@ import sys
 import threading
 import types
 import unittest
+import urllib.parse
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -43,13 +44,22 @@ class FixtureAPI(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def do_GET(self):
-        self.server.calls.append("GET " + self.path)
-        if self.path == "/api/v1/admin/certificates":
-            return self.answer(200, {"data": self.server.listed + [
+        path, _, query = self.path.partition("?")
+        self.server.calls.append("GET " + path)
+        if path == "/api/v1/admin/certificates":
+            # As the server pages it: 50 rows unless asked, 200 at most.
+            asked = urllib.parse.parse_qs(query)
+            limit = min(int(asked.get("limit", ["50"])[0]), 200)
+            offset = int(asked.get("offset", ["0"])[0])
+            rows = self.server.listed + [
                 {"id": n + 1, "domain_id": c["domain_id"], "not_before": "2026-01-01T00:00:00Z",
                  "not_after": "2999-01-01T00:00:00Z"}
                 for n, c in enumerate(self.server.certificates)
-            ]})
+            ]
+            return self.answer(200, {
+                "data": rows[offset:offset + limit],
+                "pagination": {"total": len(rows), "has_more": offset + limit < len(rows)},
+            })
         if self.path == "/api/v1/admin/domains/7":
             return self.answer(200, {"data": {"id": 7, "name": "example.org"}})
         self.answer(404, {"error": {"code": "domain_not_found"}})
@@ -108,6 +118,15 @@ class UpdateDomainHookTests(unittest.TestCase):
                 self.server.listed, self.server.certificates = [listed], []
                 self.hooks.a_certificate_before_going_live(self.transaction({"active": True}))
                 self.assertEqual(len(self.server.certificates), made)
+
+    def test_a_valid_certificate_past_the_first_page_is_enough(self):
+        # The list answers 200 rows a page: the valid one is the 201st.
+        expired = {"domain_id": 7, "not_before": "2020-01-01T00:00:00Z", "not_after": "2021-01-01T00:00:00Z"}
+        valid = {"domain_id": 7, "not_before": "2026-01-01T00:00:00Z", "not_after": "2999-01-01T00:00:00Z"}
+        self.server.listed, self.server.certificates = [expired] * 200 + [valid], []
+        self.hooks.a_certificate_before_going_live(self.transaction({"active": True}))
+        self.assertEqual(self.server.certificates, [])
+        self.assertEqual(self.server.calls.count("GET /api/v1/admin/certificates"), 2)
 
     def test_other_updates_and_unknown_domains_are_left_alone(self):
         for body, domain_id in (({}, "7"), ({"active": False}, "7"), ({"active": "true"}, "7"),

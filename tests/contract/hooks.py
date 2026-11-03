@@ -449,26 +449,72 @@ def an_api_key_of_its_own_to_edit(transaction):
     transaction["fullPath"] = parent + "/" + str(key["id"]) + ("?" + query if query else "")
 
 
-def hosted_mailboxes(origin):
-    request = urllib.request.Request(
-        origin + "/api/v1/admin/mailboxes?limit=1000",
-        headers={"Authorization": "Bearer " + admin_token(origin)},
-    )
-    with urllib.request.urlopen(request, timeout=10) as response:
-        return json.load(response).get("data") or []
+# The most rows the server's lists answer in one page. A larger limit is cut
+# to it, and an absent one is 50.
+LIST_PAGE = 200
+
+
+def list_rows(origin, path, headers):
+    """Every row of the list at path, following its pages to the last.
+
+    The lists answer one page: a lookup that read only the first called a row
+    past it absent, so its hook made the object again (409) or failed to find
+    its fixture. A list without pagination is answered whole, in one page.
+    """
+    separator = "&" if "?" in path else "?"
+    offset = 0
+    while True:
+        query = urllib.parse.urlencode({"limit": LIST_PAGE, "offset": offset})
+        request = urllib.request.Request(
+            origin + path + separator + query, headers=headers
+        )
+        with urllib.request.urlopen(request, timeout=10) as response:
+            page = json.load(response)
+        rows = page.get("data") or []
+        yield from rows
+        if not rows or not (page.get("pagination") or {}).get("has_more"):
+            return
+        offset += len(rows)
+
+
+def find_in_list(origin, path, headers, predicate):
+    """The first row of the list at path that predicate accepts, or None when
+    no page holds one."""
+    return next((row for row in list_rows(origin, path, headers) if predicate(row)), None)
+
+
+def named(name):
+    """A predicate for the row whose name is name, in any case."""
+    return lambda row: (row.get("name") or "").lower() == name.lower()
+
+
+def addressed(address):
+    """A predicate for the row whose address is address, in any case."""
+    return lambda row: (row.get("address") or "").lower() == address.lower()
 
 
 def mailbox_address(origin, account_id):
     """The address of the account with that id, or None (a probe's id)."""
-    return next((a["address"] for a in hosted_mailboxes(origin) if str(a.get("id")) == str(account_id)), None)
+    found = find_in_list(
+        origin,
+        "/api/v1/admin/mailboxes",
+        {"Authorization": "Bearer " + admin_token(origin)},
+        lambda a: str(a.get("id")) == str(account_id),
+    )
+    return found["address"] if found else None
 
 
 def mailbox_id(origin, address):
     """The id of the account with that address."""
-    found = next((a["id"] for a in hosted_mailboxes(origin) if a.get("address") == address), None)
+    found = find_in_list(
+        origin,
+        "/api/v1/admin/mailboxes",
+        {"Authorization": "Bearer " + admin_token(origin)},
+        lambda a: a.get("address") == address,
+    )
     if found is None:
         raise RuntimeError("no hosted mailbox has the address " + address)
-    return found
+    return found["id"]
 
 
 @hooks.before("deleteGrant")
@@ -780,20 +826,13 @@ def link_a_seeded_account(transaction):
     ids = hooks.stash.get("link_fixture_ids", {})
     key = origin + "\n" + address
     if key not in ids:
-        request = urllib.request.Request(
-            origin + "/api/v1/admin/mailboxes?limit=1000",
-            headers={"Authorization": "Bearer " + admin_token(origin)},
+        account = find_in_list(
+            origin,
+            "/api/v1/admin/mailboxes",
+            {"Authorization": "Bearer " + admin_token(origin)},
+            lambda a: a.get("address") == address,
         )
-        with urllib.request.urlopen(request, timeout=10) as response:
-            accounts = json.load(response).get("data") or []
-        ids[key] = next(
-            (
-                account["id"]
-                for account in accounts
-                if account.get("address") == address
-            ),
-            None,
-        )
+        ids[key] = account["id"] if account else None
         if ids[key] is None:
             raise RuntimeError("contract account-link fixture is missing")
         hooks.stash["link_fixture_ids"] = ids
@@ -1289,7 +1328,9 @@ def a_certificate_before_going_live(transaction):
         if error.code in PROBE_REFUSALS:
             return
         raise
-    if a_valid_certificate(call("GET", "/api/v1/admin/certificates"), int(domain_id)):
+    if a_valid_certificate(
+        list_rows(origin, "/api/v1/admin/certificates", headers), int(domain_id)
+    ):
         return
     with tempfile.TemporaryDirectory() as d:
         key, cert = os.path.join(d, "tls.key"), os.path.join(d, "tls.crt")
@@ -1432,14 +1473,13 @@ def set_the_admin_domains_policy(transaction, policy):
     }
     domain_id = hooks.stash.get("admin_domain_id")
     if domain_id is None:
-        request = urllib.request.Request(
-            origin + "/api/v1/admin/domains", headers=headers
+        domain = find_in_list(
+            origin,
+            "/api/v1/admin/domains",
+            headers,
+            lambda d: d.get("name") == ADMIN.split("@")[1],
         )
-        with urllib.request.urlopen(request, timeout=10) as response:
-            domains = json.load(response).get("data") or []
-        domain_id = next(
-            (d["id"] for d in domains if d.get("name") == ADMIN.split("@")[1]), None
-        )
+        domain_id = domain["id"] if domain else None
         if domain_id is None:
             raise RuntimeError("the fixture admin's domain is not listed")
         hooks.stash["admin_domain_id"] = domain_id
@@ -1483,14 +1523,8 @@ def a_signing_mailbox_at(transaction, address):
         with urllib.request.urlopen(request, timeout=10) as response:
             return json.load(response).get("data")
 
-    domain_id = next(
-        (
-            d["id"]
-            for d in call("GET", "/api/v1/admin/domains") or []
-            if (d.get("name") or "").lower() == domain.lower()
-        ),
-        None,
-    )
+    hosted = find_in_list(origin, "/api/v1/admin/domains", headers, named(domain))
+    domain_id = hosted["id"] if hosted else None
     if domain_id is None:
         try:
             domain_id = call(
@@ -1518,8 +1552,12 @@ def a_signing_mailbox_at(transaction, address):
                     f"/api/v1/admin/dkim/{domain_id:d}",
                     {"selector": "contract", "private_key": key_file.read()},
                 )
-    mailboxes = call("GET", f"/api/v1/admin/mailboxes?domain_id={domain_id:d}") or []
-    if not any((m.get("address") or "").lower() == address.lower() for m in mailboxes):
+    if not find_in_list(
+        origin,
+        f"/api/v1/admin/mailboxes?domain_id={domain_id:d}",
+        headers,
+        addressed(address),
+    ):
         # Making an account takes a second factor.
         headers["Authorization"] = "Bearer " + mfa_admin_token(origin)
         call("POST", "/api/v1/accounts", {"address": address})
@@ -1592,12 +1630,10 @@ def a_mailbox_at_each_test_send_address(transaction):
             "Content-Type": "application/json",
             "Authorization": "Bearer " + mfa_admin_token(origin),
         }
-        request = urllib.request.Request(
-            origin + "/api/v1/admin/domains", headers=headers
+        hosted = find_in_list(
+            origin, "/api/v1/admin/domains", headers, lambda d: d.get("name") == domain
         )
-        with urllib.request.urlopen(request, timeout=10) as response:
-            domains = json.load(response).get("data") or []
-        domain_id = next((d["id"] for d in domains if d.get("name") == domain), None)
+        domain_id = hosted["id"] if hosted else None
         if domain_id is None:
             request = urllib.request.Request(
                 origin + "/api/v1/admin/domains",
@@ -1614,14 +1650,11 @@ def a_mailbox_at_each_test_send_address(transaction):
                 if 400 <= error.code < 500:
                     continue  # Not a domain the server can host: leave it to the probe.
                 raise
-        request = urllib.request.Request(
-            origin + f"/api/v1/admin/mailboxes?domain_id={domain_id:d}",
-            headers=headers,
-        )
-        with urllib.request.urlopen(request, timeout=10) as response:
-            accounts = json.load(response).get("data") or []
-        if not any(
-            (a.get("address") or "").lower() == address.lower() for a in accounts
+        if not find_in_list(
+            origin,
+            f"/api/v1/admin/mailboxes?domain_id={domain_id:d}",
+            headers,
+            addressed(address),
         ):
             request = urllib.request.Request(
                 origin + "/api/v1/accounts",
@@ -2259,12 +2292,11 @@ def on_the_added_sender_rule(transaction):
 def hosted_domain_id(origin, headers, name):
     """The id of the domain called name, hosting it first if need be, or None
     when the server will not host it (left to the probe)."""
-    request = urllib.request.Request(origin + "/api/v1/admin/domains", headers=headers)
-    with urllib.request.urlopen(request, timeout=10) as response:
-        domains = json.load(response).get("data") or []
-    domain_id = next((d["id"] for d in domains if d.get("name") == name), None)
-    if domain_id is not None:
-        return domain_id
+    domain = find_in_list(
+        origin, "/api/v1/admin/domains", headers, lambda d: d.get("name") == name
+    )
+    if domain is not None:
+        return domain["id"]
     request = urllib.request.Request(
         origin + "/api/v1/admin/domains",
         data=json.dumps({"name": name, "server_type": "traditional"}).encode(),
@@ -2369,19 +2401,11 @@ def an_active_domain_for_autoconfig(transaction):
 
 
 def alias_on(origin, headers, domain_id, source):
-    request = urllib.request.Request(
-        origin + f"/api/v1/admin/aliases?domain_id={domain_id:d}",
-        headers=headers,
-    )
-    with urllib.request.urlopen(request, timeout=10) as response:
-        aliases = json.load(response).get("data") or []
-    return next(
-        (
-            a
-            for a in aliases
-            if (a.get("source_address") or "").lower() == source.lower()
-        ),
-        None,
+    return find_in_list(
+        origin,
+        f"/api/v1/admin/aliases?domain_id={domain_id:d}",
+        headers,
+        lambda a: (a.get("source_address") or "").lower() == source.lower(),
     )
 
 
@@ -2534,14 +2558,8 @@ def a_mailbox_at(transaction, address):
         with urllib.request.urlopen(request, timeout=10) as response:
             return json.load(response).get("data")
 
-    domain_id = next(
-        (
-            d["id"]
-            for d in call("GET", "/api/v1/admin/domains") or []
-            if (d.get("name") or "").lower() == domain.lower()
-        ),
-        None,
-    )
+    hosted = find_in_list(origin, "/api/v1/admin/domains", headers, named(domain))
+    domain_id = hosted["id"] if hosted else None
     if domain_id is None:
         try:
             domain_id = call(
@@ -2553,8 +2571,12 @@ def a_mailbox_at(transaction, address):
             if 400 <= error.code < 500:
                 return
             raise
-    mailboxes = call("GET", f"/api/v1/admin/mailboxes?domain_id={domain_id:d}") or []
-    if not any((m.get("address") or "").lower() == address.lower() for m in mailboxes):
+    if not find_in_list(
+        origin,
+        f"/api/v1/admin/mailboxes?domain_id={domain_id:d}",
+        headers,
+        addressed(address),
+    ):
         call("POST", "/api/v1/accounts", {"address": address})
     ready[origin + "\n" + address.lower()] = True
     hooks.stash["probe_mailboxes"] = ready
@@ -2610,10 +2632,10 @@ def host_the_account_probe_domain(transaction):
         "Content-Type": "application/json",
         "Authorization": "Bearer " + admin_token(origin),
     }
-    request = urllib.request.Request(origin + "/api/v1/admin/domains", headers=headers)
-    with urllib.request.urlopen(request, timeout=10) as response:
-        domains = json.load(response).get("data") or []
-    domain_id = next((d["id"] for d in domains if d.get("name") == domain), None)
+    hosted = find_in_list(
+        origin, "/api/v1/admin/domains", headers, lambda d: d.get("name") == domain
+    )
+    domain_id = hosted["id"] if hosted else None
     if domain_id is None:
         request = urllib.request.Request(
             origin + "/api/v1/admin/domains",
@@ -2701,9 +2723,7 @@ def on_the_created_account(transaction):
         "Authorization": "Bearer " + mfa_admin_token(origin),
     }
     address = created["body"]["address"]
-    request = urllib.request.Request(origin + "/api/v1/admin/domains", headers=headers)
-    with urllib.request.urlopen(request, timeout=10) as response:
-        domains = json.load(response).get("data") or []
+    domains = list_rows(origin, "/api/v1/admin/domains", headers)
     domain_id = next(d["id"] for d in domains if d.get("name") == address.split("@")[1])
     request = urllib.request.Request(
         origin + f"/api/v1/admin/mailboxes?domain_id={domain_id:d}",
@@ -2816,12 +2836,15 @@ def delete_the_fixture_quarantined_message(transaction):
         return
     origin = origin_of(transaction)
     collection = "/api/v1/accounts/{}/quarantine".format(mailbox_id(origin, ADMIN))
-    request = urllib.request.Request(
-        origin + collection + "?limit=100",
-        headers={"Authorization": transaction["request"]["headers"]["Authorization"]},
-    )
-    with urllib.request.urlopen(request, timeout=10) as response:
-        held = [m for m in json.load(response).get("data") or [] if not m.get("released")]
+    held = [
+        m
+        for m in list_rows(
+            origin,
+            collection,
+            {"Authorization": transaction["request"]["headers"]["Authorization"]},
+        )
+        if not m.get("released")
+    ]
     if not held:
         raise RuntimeError("the contract fixtures hold no quarantined message for the admin")
     newest = max(held, key=lambda m: m["id"])
