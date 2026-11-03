@@ -6,6 +6,11 @@ status, headers and body schema (#376). Every phase uses the generated
 `/api/docs/openapi.json`, saved with that run’s reports. The handwritten
 `openapi.yaml` remains the independent comparison oracle, not the runtime input.
 
+The additional [live requirement proofs](live-requirements-findings.md) exercise
+anonymous callers, real over-cap bodies and a bounded real-principal matrix
+with the pinned Vertrag. Their findings distinguish local evidence from the
+in-process proof union and the still-outstanding full-topology acceptance.
+
 Bad input follows the owner's decision on #672 (2026-10-28). A body that is not
 valid JSON, or is not the declared media type, gets 400 `bad_request`. Parsed
 input that breaks a shape, field or combination rule gets 422

@@ -782,6 +782,13 @@ def a_pipeline_for_the_coverage_placeholder(transaction):
     )
 
 
+@hooks.after("createCustomFilter")
+def keep_the_created_custom_filter(transaction):
+    data = hooks.get_json(transaction, "real").get("data") or {}
+    if data.get("id"):
+        hooks.stash["created_custom_filter_id"] = data["id"]
+
+
 @hooks.before("getCustomFilter")
 @hooks.before("updateCustomFilter")
 @hooks.before("testCustomFilter")
@@ -799,6 +806,25 @@ def a_custom_filter_for_the_coverage_placeholder(transaction):
             "enabled": False,
         },
     )
+
+
+@hooks.before("getCustomFilter")
+@hooks.before("updateCustomFilter")
+@hooks.before("deleteCustomFilter")
+@hooks.before("testCustomFilter")
+def on_the_created_custom_filter(transaction):
+    """Give the success pair its real fixture, leaving negative and generated IDs alone."""
+    if os.environ.get("CONTRACT_COVERAGE") == "1" or " > 200 > " not in transaction.get("name", ""):
+        return
+    created = hooks.stash.get("created_custom_filter_id")
+    path, separator, query = transaction["fullPath"].partition("?")
+    prefix = "/api/v1/admin/custom-filters/"
+    if not created or not path.startswith(prefix):
+        return
+    resource, slash, suffix = path[len(prefix):].partition("/")
+    if resource != "1":
+        return
+    transaction["fullPath"] = prefix + str(created) + slash + suffix + separator + query
 
 
 def openssl(*args):
