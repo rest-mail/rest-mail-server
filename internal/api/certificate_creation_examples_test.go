@@ -41,7 +41,7 @@ func TestCertificateCreationExamples(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(pairs["createCertificate"]) != 40 {
+	if len(pairs["createCertificate"]) != 44 {
 		t.Fatal("certificate pair count changed")
 	}
 	for name, pair := range pairs["createCertificate"] {

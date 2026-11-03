@@ -5,8 +5,9 @@
 # is noted by the gate: lower it here in the same change once a topology run shows it.
 # Measured with a whole-API run of Vertrag 0.42.0 against a local build, 2026-11-03,
 # after examples and fixture replenishment: 158 probes across 15 operations on main,
-# 107 across 10 after the pins and setup of Part of #1443. A probe counted here was
-# not sent, so it proves nothing.
+# 107 across 10 after the pins and setup of Part of #1443, 91 across 8 once testFilter
+# and createCertificate were pinned. A probe counted here was not sent, so it proves
+# nothing.
 # The local dependency and skip differences do not prove the gate.
 #
 # The server cannot accept what the generator draws, and a pin would be global:
@@ -15,9 +16,6 @@
 acceptInvitation 8
 # A well-formed request may leave the password out, and the handler answers 403.
 createAppPassword 5
-# Certificate and key material the generator cannot draw. Its domain_id is 1, so held
-# material would install a probe certificate on the fixture admin's live domain.
-createCertificate 8
 # domain_id must name the run's domain, which no static pin can hold.
 createCustomFilter 20
 createPipeline 12
@@ -25,8 +23,6 @@ createPipeline 12
 linkAccount 10
 # A report must name a hosted policy domain, and the served schema lets an entry omit it.
 receiveTlsReport 32
-# filter_name must name a filter. Its body refers to sampleEmail, so a pin cannot engage.
-testFilter 8
 # pipeline_id must name a pipeline.
 testPipeline 3
 # The minimum id is the fixture admin, who holds a password: the hook skips that probe.

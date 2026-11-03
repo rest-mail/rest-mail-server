@@ -3392,6 +3392,112 @@
     }
   },
   "createCertificate": {
+    "cert_missing": {
+      "request": {
+        "body": {
+          "domain_id": 1,
+          "key_pem": "key",
+          "auto_renew": false
+        },
+        "mediaType": "application/json",
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "cert_pem": "required"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "cert_wrong_type": {
+      "request": {
+        "body": {
+          "domain_id": 1,
+          "cert_pem": 12345,
+          "key_pem": "key",
+          "auto_renew": false
+        },
+        "mediaType": "application/json",
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "cert_pem": "must be a string"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "key_missing": {
+      "request": {
+        "body": {
+          "domain_id": 1,
+          "cert_pem": "certificate",
+          "auto_renew": false
+        },
+        "mediaType": "application/json",
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "key_pem": "required"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "key_wrong_type": {
+      "request": {
+        "body": {
+          "domain_id": 1,
+          "cert_pem": "certificate",
+          "key_pem": 12345,
+          "auto_renew": false
+        },
+        "mediaType": "application/json",
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "key_pem": "must be a string"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "association_unavailable": {
       "summary": "Association unavailable",
       "request": {
@@ -40205,6 +40311,32 @@
     }
   },
   "testFilter": {
+    "filter_name_empty": {
+      "request": {
+        "body": {
+          "filter_name": "",
+          "config": {},
+          "email": {}
+        },
+        "mediaType": "application/json",
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "filter_name": "required"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "config_missing": {
       "summary": "Config missing",
       "request": {

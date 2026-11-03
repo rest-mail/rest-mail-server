@@ -20,7 +20,9 @@ Usage: probes.py <vertrag.yml> <out.yml> <report.xml> [--no-pin[=<name,name>]]
 
 import base64
 import json
+import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import yaml
@@ -61,12 +63,43 @@ RAW_MESSAGE = base64.b64encode(
     b"From: Original <old@example.test>\r\n"
     b"Subject: imported\r\n\r\nhistory\r\n"
 ).decode()
+# A schema cannot say a filter must be registered either, and the generator's "x" names
+# none. The body refers to a schema with references of its own, so its description holds
+# it inline (describedTestFilterBody, internal/api/handlers/pipeline.go), or this would
+# not engage. Refusals: filter_name_missing, filter_name_empty, filter_name_wrong_type.
+FILTER_NAME = "header_validate"
+# Nor can it make a certificate. A pin holds one value for the whole process, so each
+# configuration gets a throwaway self-signed one, whose name no hosted domain has. Vertrag
+# prints what it pins, so this key is never used for anything else. The probes' domain_id
+# is the fixture admin's domain, so a hook removes what they install, by this issuer
+# (remove_the_probe_certificates). Refusals: cert_missing, cert_empty, cert_wrong_type,
+# cert_invalid, key_missing, key_empty, key_wrong_type.
+PROBE_CERTIFICATE_NAME = "contract-probe-certificate"
 # A schema cannot say a mailbox must exist either. Fuzz draws a mailbox_id or an
 # address that names nothing and reads the 404 as a disagreement, so the rest of
 # delivery is never reached. The fuzz run holds mailbox_id at the recipient the
 # fixtures make (fixtures --delivery-recipient). The coverage run does not: it has
 # no valid delivery probe to hold, and a pin would stop its two mailbox_id probes.
 FIXTURE_PLAN = Path(__file__).resolve().parent / "fixtureplan/defaults.json"
+
+
+def probe_certificate():
+    """A self-signed certificate and its key, as the PEM createCertificate takes."""
+    with tempfile.TemporaryDirectory() as directory:
+        key, certificate = Path(directory, "tls.key"), Path(directory, "tls.crt")
+        subprocess.run(
+            [
+                "openssl", "req", "-x509",
+                "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:P-256", "-nodes",
+                "-days", "30",
+                "-subj", "/CN=" + PROBE_CERTIFICATE_NAME,
+                "-addext", "subjectAltName=DNS:contract-probe.invalid",
+                "-keyout", str(key), "-out", str(certificate),
+            ],
+            check=True,
+            capture_output=True,
+        )
+        return certificate.read_text(), key.read_text()
 
 
 def fuzz_pins():
@@ -84,6 +117,7 @@ def main(config_path, out_path, report_path, pin=True, unpinned=()):
     config.setdefault("exclude-matching", []).append(REFUSALS)
     # Public test fixture: a schema generator cannot construct a signing key.
     if pin:
+        certificate, certificate_key = probe_certificate()
         pins = {
             "private_key": DKIM_KEY.read_text(),
             "snoozed_until": SNOOZE_UNTIL,
@@ -93,6 +127,9 @@ def main(config_path, out_path, report_path, pin=True, unpinned=()):
             "time_zone": TIME_ZONE,
             "script": SCRIPT,
             "raw_message": RAW_MESSAGE,
+            "filter_name": FILTER_NAME,
+            "cert_pem": certificate,
+            "key_pem": certificate_key,
         }
         if Path(report_path).stem == "fuzz":
             pins.update(fuzz_pins())

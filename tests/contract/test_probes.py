@@ -13,7 +13,7 @@ import yaml
 ROOT = Path(__file__).resolve().parents[2]
 COVERAGE_PINS = [
     "private_key", "snoozed_until", "scheduled_at", "expires_at", "permissions",
-    "time_zone", "script", "raw_message",
+    "time_zone", "script", "raw_message", "filter_name", "cert_pem", "key_pem",
 ]
 
 
@@ -148,19 +148,22 @@ class ProbeConfig(unittest.TestCase):
     def test_only_the_key_and_the_two_dates_are_held_and_paths_survive_generated_config_location(
         self,
     ):
+        pins = dict(self.config["fuzz"]["pin"])
+        self.assertTrue(pins.pop("cert_pem").startswith("-----BEGIN CERTIFICATE-----"))
+        self.assertIn("PRIVATE KEY-----", pins.pop("key_pem"))
+        self.assertEqual(self.config["fuzz"].keys(), {"pin"})
         self.assertEqual(
-            self.config["fuzz"],
+            pins,
             {
-                "pin": {
-                    "private_key": probes.DKIM_KEY.read_text(),
-                    "snoozed_until": probes.SNOOZE_UNTIL,
-                    "scheduled_at": None,
-                    "expires_at": probes.EXPIRES_AT,
-                    "permissions": probes.KEY_PERMISSIONS,
-                    "time_zone": probes.TIME_ZONE,
-                    "script": probes.SCRIPT,
-                    "raw_message": probes.RAW_MESSAGE,
-                }
+                "private_key": probes.DKIM_KEY.read_text(),
+                "snoozed_until": probes.SNOOZE_UNTIL,
+                "scheduled_at": None,
+                "expires_at": probes.EXPIRES_AT,
+                "permissions": probes.KEY_PERMISSIONS,
+                "time_zone": probes.TIME_ZONE,
+                "script": probes.SCRIPT,
+                "raw_message": probes.RAW_MESSAGE,
+                "filter_name": probes.FILTER_NAME,
             },
         )
         self.assertEqual(
