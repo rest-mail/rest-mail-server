@@ -359,7 +359,7 @@ func (h *TestHandler) restoreSnapshot(r *http.Request, in RestoreTestSnapshot) (
 				if err := tx.Where("address = ?", snap.Mailboxes[i].Address).First(&mailbox).Error; err != nil {
 					return err
 				}
-				if err := grants.EnsureReceive(tx, &mailbox); err != nil {
+				if err := grants.EnsureDefaults(tx, &mailbox); err != nil {
 					return err
 				}
 			}
@@ -578,7 +578,7 @@ func seedTestData(database *gorm.DB) error {
 			return fmt.Errorf("seed quota: %w", err)
 		}
 		if res.RowsAffected > 0 {
-			if err := grants.EnsureReceive(database, &mailboxes[i]); err != nil {
+			if err := grants.EnsureDefaults(database, &mailboxes[i]); err != nil {
 				return err
 			}
 			if _, err := creds.SetPassword(mailboxes[i].ID, defaultPassword, nil, time.Now()); err != nil {

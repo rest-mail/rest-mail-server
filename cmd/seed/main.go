@@ -100,7 +100,7 @@ func seedFixture(database *gorm.DB, domain string) error {
 		slog.Info("account", "address", fx.Mailboxes[i].Address, "id", fx.Mailboxes[i].ID, "created", result.RowsAffected > 0)
 		database.Where("mailbox_id = ?", fx.Mailboxes[i].ID).FirstOrCreate(&models.QuotaUsage{MailboxID: fx.Mailboxes[i].ID})
 		if result.RowsAffected > 0 {
-			if err := grants.EnsureReceive(database, &fx.Mailboxes[i]); err != nil {
+			if err := grants.EnsureDefaults(database, &fx.Mailboxes[i]); err != nil {
 				return err
 			}
 			if _, err := creds.SetPassword(fx.Mailboxes[i].ID, fx.PasswordHash, nil, time.Now()); err != nil {
@@ -186,7 +186,7 @@ func seedRBAC(database *gorm.DB, domain string) error {
 	}
 	if result.RowsAffected > 0 {
 		database.Where("mailbox_id = ?", admin.ID).FirstOrCreate(&models.QuotaUsage{MailboxID: admin.ID})
-		if err := grants.EnsureReceive(database, &admin); err != nil {
+		if err := grants.EnsureDefaults(database, &admin); err != nil {
 			return err
 		}
 		if _, err := repositories.NewCredentialRepository(database).SetPassword(admin.ID, adminPassword, nil, time.Now()); err != nil {

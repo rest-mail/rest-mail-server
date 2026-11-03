@@ -14414,7 +14414,8 @@ paths:
     post:
       description: Stores original message octets, folder, supported system flags and
         required internal_date without delivery rules or push notifications. Requires mail:import on the destination,
-        which every account holds on its own mailbox. A message whose Message-ID and exact
+        which every account is granted on its own mailbox by the importer role; an owner
+        can revoke that grant, and the account is then refused with 403. A message whose Message-ID and exact
         octets are already in that account and folder is skipped without changing its flags
         or date; the same Message-ID with different octets is stored as another message. Messages without Message-ID use a
         deterministic SHA-256 import identity; the raw source remains unchanged. Every

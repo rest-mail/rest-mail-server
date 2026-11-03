@@ -7,8 +7,8 @@ Keep the source server and its archives until you have compared the destination
 folders, message counts, flags and original sources.
 
 The commands require an existing destination account ID and `RESTMAIL_API_KEY`
-with `mail:import` on its domain or account. Every account holds `mail:import` on its
-own mailbox, and the admin role holds it at its scope. Give the key only the destinations needed
+with `mail:import` on its domain or account. Every new account is granted `mail:import` on
+its own mailbox through the revocable `importer` role, and the admin role holds it at its scope. Give the key only the destinations needed
 for the migration; neither the key nor message contents appear in command output.
 
 ## Read-only IMAP source

@@ -24,8 +24,8 @@ import (
 	"gorm.io/gorm"
 )
 
-// Fixtures that create mailbox rows directly must also create the normal
-// receive grants that account creation now persists.
+// Fixtures that create mailbox rows directly must also create the default
+// receive and import grants that account creation persists.
 func seedReceiveFixture(t *testing.T, db *gorm.DB, mailboxes ...models.Mailbox) {
 	t.Helper()
 	if err := db.AutoMigrate(&models.Mailbox{}, &models.Role{}, &models.Capability{}, &models.RoleCapability{}, &models.Grant{}, &models.GrantActivation{}); err != nil {
@@ -38,7 +38,7 @@ func seedReceiveFixture(t *testing.T, db *gorm.DB, mailboxes ...models.Mailbox) 
 		t.Fatal(err)
 	}
 	for i := range mailboxes {
-		if err := grants.EnsureReceive(db, &mailboxes[i]); err != nil {
+		if err := grants.EnsureDefaults(db, &mailboxes[i]); err != nil {
 			t.Fatal(err)
 		}
 	}

@@ -15,6 +15,7 @@ import (
 	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
 	"github.com/rest-mail/rest-mail-server/internal/auth"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/grants"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
@@ -70,6 +71,9 @@ func TestMessageSealAppendAndStructuredDelivery(t *testing.T) {
 	if err := database.Create(&models.QuotaUsage{MailboxID: fixture.mailbox.ID}).Error; err != nil {
 		t.Fatal(err)
 	}
+	if err := grants.EnsureImport(database, &fixture.mailbox); err != nil {
+		t.Fatal(err)
+	}
 	importer := NewMessageImportHandler(database, 1<<20, nil, nil)
 	importer.directory = t.TempDir()
 	request := httptest.NewRequest(http.MethodPost, "/import", nil)
@@ -101,6 +105,9 @@ func TestMessageSealImportPreservesBinaryAndDoesNotBackfillDuplicate(t *testing.
 	database := sealSourceTestDB(t)
 	fixture := seedMsgDeleteFixture(t, database, 0)
 	if err := database.Create(&models.QuotaUsage{MailboxID: fixture.mailbox.ID}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := grants.EnsureImport(database, &fixture.mailbox); err != nil {
 		t.Fatal(err)
 	}
 	handler := NewMessageImportHandler(database, 1<<20, nil, nil)

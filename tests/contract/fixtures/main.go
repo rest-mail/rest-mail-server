@@ -136,7 +136,7 @@ func prepareAPIKeyFixture(database *gorm.DB, domain string) (*models.Mailbox, er
 		if err := tx.Create(&account).Error; err != nil {
 			return err
 		}
-		if err := grants.EnsureReceive(tx, &account); err != nil {
+		if err := grants.EnsureDefaults(tx, &account); err != nil {
 			return err
 		}
 		hash, err := auth.HashPassword("contract-api-key123!@")
@@ -195,7 +195,7 @@ func prepareDeliveryRecipient(database *gorm.DB, domain string) error {
 				return err
 			}
 		}
-		return grants.EnsureReceive(tx, &account)
+		return grants.EnsureDefaults(tx, &account)
 	})
 }
 
@@ -242,7 +242,7 @@ func prepareSuperadmin(tx *gorm.DB, hosted models.Domain, role models.Role, addr
 		return result.Error
 	}
 	if result.RowsAffected > 0 {
-		if err := grants.EnsureReceive(tx, &account); err != nil {
+		if err := grants.EnsureDefaults(tx, &account); err != nil {
 			return err
 		}
 	}
@@ -332,7 +332,7 @@ func prepareDomainTenants(database *gorm.DB, domain string) (map[string]domainTe
 				return result.Error
 			}
 			if result.RowsAffected > 0 {
-				if err := grants.EnsureReceive(tx, &account); err != nil {
+				if err := grants.EnsureDefaults(tx, &account); err != nil {
 					return err
 				}
 			}
@@ -389,7 +389,7 @@ func prepareLinkFixture(database *gorm.DB, domain string) (uint, error) {
 			return result.Error
 		}
 		if result.RowsAffected > 0 {
-			if err := grants.EnsureReceive(tx, &account); err != nil {
+			if err := grants.EnsureDefaults(tx, &account); err != nil {
 				return err
 			}
 		}

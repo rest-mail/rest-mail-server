@@ -41,15 +41,15 @@ type RoleCapability struct {
 func (RoleCapability) TableName() string { return "role_capabilities" }
 
 // The mail capabilities an account holds on a mailbox. The owner role holds
-// all of these, with mailbox:session. Receive is an explicit, revocable
-// own-mailbox grant; the others are implicit (grants.Load).
+// all of these, with mailbox:session. Receive and import are explicit,
+// revocable own-mailbox grants; the others are implicit (grants.Load).
 const (
 	CapMailRead  = "mail:read"
 	CapMailWrite = "mail:write"
 	// CapMailImport stores a message the account already has, such as its own
 	// client's IMAP APPEND or a migration: no delivery rules run on it. Every
-	// account holds it on its own mailbox. It is its own capability so that an
-	// owner, an API key's scope or the server ceiling can leave it out.
+	// new account is granted it on its own mailbox (RoleImporter), and an owner
+	// can revoke that grant for one account, agent or automation (#1498).
 	CapMailImport       = "mail:import"
 	CapMailSend         = "mail:send"
 	CapMailReceive      = "mail:receive"
@@ -77,3 +77,6 @@ const RoleOwner = "owner"
 
 // RoleReceiver holds only the independently revocable receive capability.
 const RoleReceiver = "receiver"
+
+// RoleImporter holds only the independently revocable import capability.
+const RoleImporter = "importer"

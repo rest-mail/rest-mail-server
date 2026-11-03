@@ -244,8 +244,9 @@ func loadBounded(db *gorm.DB, accountID uint, now time.Time, visited map[uint]bo
 	}
 	if len(own) == 1 {
 		for _, c := range models.OwnerCapabilities {
-			// Receiving is stored as a normal grant so removing it works.
-			if c == models.CapMailReceive {
+			// Receiving and importing are stored as normal grants so
+			// removing them works.
+			if c == models.CapMailReceive || c == models.CapMailImport {
 				continue
 			}
 			held.entries = append(held.entries, Entry{Scope: Mailbox(own[0].Address), Capability: c})
