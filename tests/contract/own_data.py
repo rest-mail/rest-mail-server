@@ -53,6 +53,10 @@ MOVED = (
     # updateDomain certifies a domain before it goes live. It follows
     # createDomain's link and no link starts from it.
     "updateDomain",
+    # inviteAccount and acceptInvitation each make the account they invite. No
+    # link starts from or reaches either.
+    "inviteAccount",
+    "acceptInvitation",
 )
 
 FOLLOWS_THE_CREATED_DOMAIN = (

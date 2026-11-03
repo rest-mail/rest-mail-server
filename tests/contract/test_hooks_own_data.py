@@ -147,6 +147,8 @@ class OwnDataHooks(unittest.TestCase):
             "renameFolder": "give_each_rename_probe_a_folder",
             "deleteFolder": "a_folder_to_delete_of_its_own",
             "updateDomain": "a_certificate_before_going_live",
+            "inviteAccount": "invite_an_account_without_credentials",
+            "acceptInvitation": "redeem_a_fresh_invitation",
         }
         self.assertEqual(set(hooks), set(own_data.MOVED))
         for operation, hook in hooks.items():
