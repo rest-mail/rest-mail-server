@@ -76,6 +76,7 @@ func TestStatusFaultsOnlyChangeTheirTargetStatus(t *testing.T) {
 	}{
 		{"health_status_created", http.StatusOK, http.StatusCreated},
 		{"login_validation_removed", http.StatusUnprocessableEntity, http.StatusOK},
+		{"discover_missing_status_ok", http.StatusNotFound, http.StatusOK},
 	}
 	for _, test := range cases {
 		fault, active := registry[test.name]
@@ -140,6 +141,11 @@ func TestTheShapeBreakers(t *testing.T) {
 		{"rename leaves an answer without the field", renameField("endpoint", "url"), `{"error":"e"}`, `{"error":"e"}`, "application/json"},
 		{"replace", replaceField("data", []any{}), `{"data":{"status":"ok"}}`, `{"data":[]}`, "application/json"},
 		{"not JSON is left alone", replaceField("data", []any{}), `plain`, `plain`, "application/json"},
+		{"replace with null", replaceField("data", nil), `{"data":[{"id":1}]}`, `{"data":null}`, "application/json"},
+		{"null leaves a refusal without the field", replaceField("data", nil), `{"error":{"code":"e"}}`, `{"error":{"code":"e"}}`, "application/json"},
+		{"add to data", addDataField("storage_ref", "x"), `{"data":{"db":"up"}}`, `{"data":{"db":"up","storage_ref":"x"}}`, "application/json"},
+		{"add leaves a list under data", addDataField("storage_ref", "x"), `{"data":[]}`, `{"data":[]}`, "application/json"},
+		{"add leaves a refusal without data", addDataField("storage_ref", "x"), `{"error":{"code":"e"}}`, `{"error":{"code":"e"}}`, "application/json"},
 		{"media type", setMediaType("text/plain"), `{"a":1}`, `{"a":1}`, "text/plain"},
 	}
 	for _, c := range cases {

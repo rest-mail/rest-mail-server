@@ -658,9 +658,23 @@ caught, so the entry goes when the gap closes. The normal API is restored at the
 `.cache/contract/faults.md` has the verdicts, and `faults-<name>-<phase>.xml`
 each run's report.
 
-The shape and status faults are caught by `examples`. The status switches
-return 201 instead of 200 on health, or 200 instead of a 422 validation refusal
-on login, preserving the response body so the status check must notice.
+The shape and status faults are caught by `examples`:
+
+| Fault | What a client sees | Vertrag's failure |
+|---|---|---|
+| `discover_endpoint_renamed` | Discovery's required `endpoint` field sent as `url` | |
+| `discover_wrong_media_type` | Discovery's JSON answered as `text/plain` | |
+| `health_data_as_list` | Health's `data` object answered as a list | |
+| `health_storage_ref_leaked` | Health's `data` carries a `storage_ref` its type does not declare | `body: /data: additional properties 'storage_ref' not allowed` |
+| `accounts_list_null` | The account list's `data` answered as `null` | `body: /data: got null, want array` |
+| `health_status_created` | Health answers 201 instead of 200 | |
+| `discover_missing_status_ok` | An unhosted domain's 404 refusal answered with 200 | `statusCode: Expected status code '404', but got '200'.` |
+| `login_validation_removed` | A login validation refusal answered with 200 instead of 422 | |
+
+The status switches keep the response body, so the status check must notice.
+An entry's `expected_failure` holds Vertrag's failure text. With it, a red run
+for any other reason is not a caught fault. An undeclared field is only caught
+where the served type is closed (`closed-schemas.md`), which health's `data` is.
 
 The limit switches disable the real API body cap or shared authentication
 throttle before constructing the router; login is their witness operation,
@@ -700,14 +714,14 @@ integrated into the fault run before it can be required to turn that run red.
 The fixture administrator's password and session token are also redacted in
 HAR bodies, so their echoes alone are not proof for the recording scanner.
 Authorization and ownership faults still wait until those phases stop being
-report-only. The 200-for-404 status fault also remains part of #654.
+report-only.
 
 ### Adding a fault
 
 1. Write `internal/faultinject/fault_<name>.go`, starting
    `//go:build faultinject && fault_<name>`. Its `init` registers a `Fault`:
    the route's method and path, a `Break` that rewrites the recorded answer
-   (`renameField`, `replaceField` and `setMediaType` are in
+   (`renameField`, `replaceField`, `addDataField` and `setMediaType` are in
    `faultinject.go`), and an `Example` of the route's normal answer for the
    package test. Set `ExampleStatus` when that answer is not 200. A switch
    disabling a real guard uses `Configure` instead of `Break`; only tagged
@@ -715,7 +729,8 @@ report-only. The 200-for-404 status fault also remains part of #654.
    switch check exercises the configured limit middleware as well as the
    response-rewriting faults. A normal build's configuration hook is a no-op.
 2. Add its entry to `faults.yml`: `name`, `build_tags`
-   (`faultinject,fault_<name>`), `operation`, `path`, `phase` and `breaks`.
+   (`faultinject,fault_<name>`), `operation`, `path`, `phase` and `breaks`,
+   and `expected_failure` once you have seen the failure the phase reports.
 
 `go test ./internal/faultinject` (no tags) holds the catalogue and the
 switches to each other, and requires the `faultinject` tag on every source

@@ -13,6 +13,8 @@
 #   path        that operation's path, which Vertrag's report names it by
 #   phase       the witness phase (examples, body_cap, auth_throttle)
 #   breaks      what a client would see
+#   expected_failure  optional: text Vertrag's failure must hold, so the run
+#               counts as catching the fault only when it fails for this reason
 #   known_gap   optional: the issue saying why the run cannot catch it yet. It
 #               then passes uncaught, and fails once caught.
 faults:
@@ -37,12 +39,36 @@ faults:
     phase: examples
     breaks: GET /api/health answers its data object as an empty list
 
+  - name: health_storage_ref_leaked
+    build_tags: faultinject,fault_health_storage_ref_leaked
+    operation: getHealth
+    path: /api/health
+    phase: examples
+    breaks: GET /api/health answers with a storage_ref its data type does not declare
+    expected_failure: "body: /data: additional properties 'storage_ref' not allowed"
+
+  - name: accounts_list_null
+    build_tags: faultinject,fault_accounts_list_null
+    operation: listAccounts
+    path: /api/v1/accounts
+    phase: examples
+    breaks: GET /api/v1/accounts answers its data list as null
+    expected_failure: "body: /data: got null, want array"
+
   - name: health_status_created
     build_tags: faultinject,fault_health_status_created
     operation: getHealth
     path: /api/health
     phase: examples
     breaks: GET /api/health answers 201 instead of 200 without changing its JSON
+
+  - name: discover_missing_status_ok
+    build_tags: faultinject,fault_discover_missing_status_ok
+    operation: restmailDiscover
+    path: /.well-known/restmail
+    phase: examples
+    breaks: GET /.well-known/restmail answers an unhosted domain's 404 refusal with 200
+    expected_failure: "statusCode: Expected status code '404', but got '200'."
 
   - name: login_validation_removed
     build_tags: faultinject,fault_login_validation_removed
