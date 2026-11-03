@@ -305,7 +305,8 @@ func (h *EventHandler) Register(rs endpoint.Routes) {
 			"Last-Event-ID header asks for the events after it that the server still holds. The session is checked when " +
 			"the stream opens, and again before every event and keepalive: once the account's sessions end, the " +
 			"stream ends without sending anything more. Access lookup failures return 500 before a stream opens; " +
-			"missing or inaccessible accounts retain 403.",
+			"a missing account, or one the caller may not know of, answers 404, and one the caller can see without " +
+			"mail:read answers 403.",
 		MediaType: "text/event-stream",
 		Errors:    []int{http.StatusForbidden, http.StatusNotFound, http.StatusServiceUnavailable},
 		Security:  handlerChecked(models.CapMailRead, "CookieAuth", "BearerAuth")}, h.events)

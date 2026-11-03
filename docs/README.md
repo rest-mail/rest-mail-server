@@ -24,6 +24,7 @@ code changes.
 |------|------------|
 | [`CHEATSHEET.md`](CHEATSHEET.md) | Quick reference for the local dev environment: start / inspect / stop a server, reference servers, teardown. |
 | [`MANUAL.md`](MANUAL.md) | Operator + developer manual: dev stack, env-var contract, endpoints, credentials, day-to-day tasks. |
+| [`api-conventions.md`](api-conventions.md) | What an API route should answer: the conventions the owner has decided, each with its decision and test, where the code disagrees, and what is still open. |
 | [`adapter-filters.md`](adapter-filters.md) | Pipeline filters — the built-in Go filters vs the external scanning adapters (rspamd, ClamAV), how they register, and how to write a custom adapter. |
 | [`dns-providers.md`](dns-providers.md) | Configuring the DNS provider integration. |
 | [`fail2ban-setup.md`](fail2ban-setup.md) | The two-layer IP ban system (in-memory connlimiter + DB `bans` table) and external fail2ban integration. |
