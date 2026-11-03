@@ -11,7 +11,5 @@
 # Login's six generated-credential probes are exempt in Vertrag itself.
 # sendMessage, sendDraft and cancelScheduledMessage shared one cause, restmail.test
 # left at a sending policy (Part of #1443); local coverage sends all 16 of their probes.
-bounceQueueEntry 1
-deleteQueueEntry 1
-getQueueEntry 1
-retryQueueEntry 1
+# Single-entry queue operations get a fresh deferred row before every coverage
+# success request (Part of #1443); local coverage sends all their probes.

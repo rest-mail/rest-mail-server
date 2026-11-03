@@ -53,7 +53,7 @@ six login probes are expected: generated credentials cannot authenticate.
 | Filter/pipeline targets absent | `deleteCustomFilter` 1, `getCustomFilter` 1, `updateCustomFilter` 15, `testCustomFilter` 1, `deletePipeline` 1, `updatePipeline` 7 | Repaired and removed from the skipped-probe baseline |
 | Certificate target absent | `getCertificate` 1 | Repaired and removed from the skipped-probe baseline |
 | Domain/policy targets absent | `deleteMtaStsPolicy` 1, `getMtaStsPolicy` 1, `setMtaStsPolicy` 11 | Repaired and removed from the skipped-probe baseline |
-| Held-mail/queue/scheduled fixtures | `deleteQuarantine` 2, `clearSuppression` 2, `bounceQueueEntry` 1, `cancelScheduledMessage` 1, `deleteQueueEntry` 1, `getQueueEntry` 1, `retryQueueEntry` 1 | Quarantine/suppression and `cancelScheduledMessage` repaired; remaining: 4 |
+| Held-mail/queue/scheduled fixtures | `deleteQuarantine` 2, `clearSuppression` 2, `bounceQueueEntry` 1, `cancelScheduledMessage` 1, `deleteQueueEntry` 1, `getQueueEntry` 1, `retryQueueEntry` 1 | Quarantine/suppression, `cancelScheduledMessage` and single-entry queue operations repaired; remaining: 0 |
 | Draft/send requests | `updateDraft` 10, `sendDraft` 1, `sendMessage` 14 | Repaired and removed from the skipped-probe baseline |
 
 The log says 404 for absent targets, 422 for the draft/send examples, and
@@ -146,7 +146,29 @@ The newly reached alias update probe exposed a real description defect:
 422. It now declares `format: idn-email`, like alias creation, without changing
 the handler's address policy or its support for omitted/null patch fields.
 
-`skipped-probes-baseline.txt` holds the **4 remaining probes across 4
+Single-entry queue coverage also gets a fresh deferred row before every success
+request, including the example preflight and minimum-ID probe. After a real
+empty-filter bulk deletion, pinned Vertrag reproduced all four skipped probes:
+delete, get and retry addressed absent placeholder `1` and answered 404; bounce's
+old hook found no dedicated bounce fixture and raised before sending. The retry
+hook could replace a consumed row, but not an absent one. The new
+`queue_entry_hooks.py` uses `CONTRACT_COVERAGE=1`, the original success status,
+method, valid queue ID and fixture-admin session. It also replaces linked IDs:
+a wider queue sequence showed that bulk bounce can consume a linked retry
+target before coverage's initial example. Only the path changes; bodies,
+queries, credentials, malformed IDs, other routes and refusal targets survive.
+Other phases retain their existing queue hooks. The guarded
+`test:contract-queue-entry-fixture` command calls `--queue-entry-only` and returns
+the exact new row ID without adding held mail or changing other fixtures.
+Two consecutive focused runs on the same database each reported 16 probes,
+zero findings and zero skips with `--fail-on-skipped-probes`. The wider queue
+sequence, including all three bulk actions, passed 91/91 transactions with
+79 probes, zero findings and zero skips. Queue setup does not send a message
+or depend on `sendDraft` or its separate #1529 repair.
+Only the merge-queue topology proves the whole gate: a focused local run has
+previously passed while that gate failed because `sendDraft` needed #1529.
+
+`skipped-probes-baseline.txt` holds the **0 remaining probes across 0
 operations**, individually, not as a shared budget. `gate.py` reads 0.42.0's
 JUnit skipped-case reason and fails on a new operation, an increased count,
 an unknown skip format, or a decrease not removed from the baseline. Skipped
