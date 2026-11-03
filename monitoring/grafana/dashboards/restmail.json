@@ -203,6 +203,11 @@
           "expr": "restmail_queue_size",
           "legendFormat": "Queue Depth",
           "refId": "A"
+        },
+        {
+          "expr": "restmail_queue_due",
+          "legendFormat": "Due Now",
+          "refId": "B"
         }
       ],
       "title": "Queue Size",

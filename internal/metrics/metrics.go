@@ -28,6 +28,16 @@ var (
 		Help: "Current outbound queue size",
 	})
 
+	// QueueDue counts the queued rows a worker should be taking now: pending
+	// or deferred rows whose next attempt has come, plus rows being sent.
+	// Rows waiting for a later retry are in QueueSize but not here, so
+	// QueueWorkerStalled does not fire on a queue that is correctly idle
+	// until its retries come due (#1630). No labels.
+	QueueDue = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "restmail_queue_due",
+		Help: "Outbound queue rows due for an attempt now (pending or deferred with next attempt passed, or delivering)",
+	})
+
 	// QueueProcessed counts total messages successfully processed from the queue.
 	QueueProcessed = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "restmail_queue_processed_total",
@@ -242,6 +252,7 @@ func init() {
 		HTTPRequestsTotal,
 		HTTPRequestDuration,
 		QueueSize,
+		QueueDue,
 		QueueProcessed,
 		AttachmentCleanupRemoved,
 		AttachmentCleanupBytes,
