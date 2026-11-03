@@ -2,9 +2,12 @@ package models
 
 import "time"
 
-// Push services a device can be registered with. Only APNs has a sender so far.
+// Push services a device can be registered with.
 const (
 	PushPlatformAPNs = "apns"
+	// PushPlatformWebPush is a browser's push service (RFC 8030), reached
+	// with VAPID (RFC 8292) and encrypted to the browser (RFC 8291).
+	PushPlatformWebPush = "webpush"
 )
 
 // APNs environments: production for App Store and TestFlight builds, sandbox
@@ -28,11 +31,17 @@ type PushDevice struct {
 	// account it owns or has linked, is what it lists (GET /api/v1/accounts).
 	MailboxID uint   `gorm:"not null;index" json:"-"`
 	Platform  string `gorm:"size:16;not null" json:"platform"`
-	// Token is the push service's address for the phone. Never sent back.
-	Token       string    `gorm:"size:256;not null;uniqueIndex:idx_push_devices_session_token" json:"-"`
-	Environment string    `gorm:"size:16;not null" json:"environment"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"-"`
+	// Token is the push service's address for the device: an APNs token, or
+	// a Web Push subscription's endpoint URL. Never sent back.
+	Token       string `gorm:"size:1024;not null;uniqueIndex:idx_push_devices_session_token" json:"-"`
+	Environment string `gorm:"size:16;not null" json:"environment"`
+	// WebPushP256dh and WebPushAuth are a Web Push subscription's keys,
+	// base64url: the browser's P-256 public key and its 16-byte secret, which
+	// every push is encrypted to (RFC 8291). Empty for APNs. Never sent back.
+	WebPushP256dh string    `gorm:"size:128;not null;default:''" json:"-"`
+	WebPushAuth   string    `gorm:"size:64;not null;default:''" json:"-"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"-"`
 }
 
 func (PushDevice) TableName() string { return "push_devices" }

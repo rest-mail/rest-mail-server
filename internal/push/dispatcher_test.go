@@ -27,7 +27,7 @@ func (s *fakeStore) targets(mailboxID uint, _ time.Time) ([]target, error) {
 
 func (s *fakeStore) unread(uint) (int64, error) { return 2, nil }
 
-func (s *fakeStore) RemoveGone(id uint, _ string, _ time.Time) error {
+func (s *fakeStore) RemoveGone(id uint, _, _ string, _ time.Time) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.gone = append(s.gone, id)
