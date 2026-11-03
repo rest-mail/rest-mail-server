@@ -48,12 +48,12 @@ six login probes are expected: generated credentials cannot authenticate.
 | --- | --- | --- |
 | Alias and sender-rule targets consumed/replaced before coverage | `getAlias` 1, `updateAlias` 5, `removeFromAllowlist` 2, `removeFromBlocklist` 2 | Repaired and removed from the skipped-probe baseline |
 | Credential targets absent | `revokeAPIKey` 2, `revokeCredential` 2 | Repaired and removed from the skipped-probe baseline |
-| Contact/folder targets absent | `deleteContact` 2, `updateContact` 9, `deleteFolder` 2 | Remaining: 13 |
+| Contact/folder targets absent | `deleteContact` 2, `updateContact` 9, `deleteFolder` 2 | Repaired and removed from the skipped-probe baseline |
 | Filter/pipeline targets absent | `deleteCustomFilter` 1, `getCustomFilter` 1, `updateCustomFilter` 15, `testCustomFilter` 1, `deletePipeline` 1, `updatePipeline` 7 | Repaired and removed from the skipped-probe baseline |
 | Certificate target absent | `getCertificate` 1 | Repaired and removed from the skipped-probe baseline |
 | Domain/policy targets absent | `deleteMtaStsPolicy` 1, `getMtaStsPolicy` 1, `setMtaStsPolicy` 11 | Repaired and removed from the skipped-probe baseline |
 | Held-mail/queue/scheduled fixtures | `deleteQuarantine` 2, `clearSuppression` 2, `bounceQueueEntry` 1, `cancelScheduledMessage` 1, `deleteQueueEntry` 1, `getQueueEntry` 1, `retryQueueEntry` 1 | Quarantine/suppression and `cancelScheduledMessage` repaired; remaining: 4 |
-| Draft/send requests | `updateDraft` 10, `sendDraft` 1, `sendMessage` 14 | `sendMessage` and `sendDraft` repaired and removed; remaining: 10 |
+| Draft/send requests | `updateDraft` 10, `sendDraft` 1, `sendMessage` 14 | Repaired and removed from the skipped-probe baseline |
 
 The log says 404 for absent targets, 422 for the draft/send examples, and
 "got no answer" for quarantine/suppression/bounce/scheduled cancellation.
@@ -119,12 +119,33 @@ declare `minLength: 1` and `minimum: 0`, keeping the same field messages. An emp
 name is now refused before the lookup, so aimed at a missing filter it answers
 422 rather than 404.
 
+Contact update's `1`, contact deletion's `41`, draft update's `12` and folder
+deletion's `Work` are literal example targets, not fixtures. In the coverage
+process only, their success requests get a fresh row through the API and only
+the path changes. The minimum-id probes (`1`) get their own rows too; malformed
+ids, other accounts, refusal examples, bodies and credentials stay untouched.
+The hooks live in `contact_draft_hooks.py`, registered by `entrypoint.py`, so
+they do not depend on the examples process's stash or on an after hook.
+
+A local replay with pinned Vertrag 0.42.0 and PostgreSQL reproduced the four
+404 examples and their 23 skipped valid probes. `sendDraft` already succeeded
+alone through its existing fresh-draft hook; the failed draft-update link
+prevented it from running in the sequence. With the new setup the five
+operations pass together: 59 probes, no findings and no skips. No description
+or server behaviour changes were needed. This removes their 24 ratcheted
+probes as Part of #1443; it does not establish the whole-topology count.
+A fresh 16-operation sequence, including draft saving, contact creation and
+listing, folder creation and renaming, message listing and `deleteMessage`,
+passed 17 success examples in a separate process, then all 170 coverage probes
+with `--fail-on-skipped-probes`. The setup used real API-created rows for the
+neighbours' literal example targets. This is not the full examples gate.
+
 The newly reached alias update probe exposed a real description defect:
 `destination_address` allowed an empty string, but the handler refused it with
 422. It now declares `format: idn-email`, like alias creation, without changing
 the handler's address policy or its support for omitted/null patch fields.
 
-`skipped-probes-baseline.txt` holds the **27 remaining probes across 8
+`skipped-probes-baseline.txt` holds the **4 remaining probes across 4
 operations**, individually, not as a shared budget. `gate.py` reads 0.42.0's
 JUnit skipped-case reason and fails on a new operation, an increased count,
 an unknown skip format, or a decrease not removed from the baseline. Skipped
