@@ -50,22 +50,25 @@ info:
     remain available. Once enrolled, prove the factor at sign-in before
     changing the password. Escalation still verifies a new code per action.
 
-    * **HTTP Basic** (`BasicAuth`) — an account's address as the user name, and
-      as the password one of its app passwords (`rm_<public id>_<secret>`) or
-      one of its own passwords. It is how the IMAP, POP3 and SMTP gateways sign
-      mail clients in and act for them: one path for both kinds. Accepted only
-      by the operations whose `security` lists it, the mail routes (folders,
-      messages, drafts, attachments, contacts, vacation, Sieve, search,
-      quarantine, calendar). An app password reaches its own account's mailbox
-      alone; the account's password reaches what the account's grants reach.
-      The account's password is refused with Basic when the account has
-      two-factor authentication (`401 app_password_required`: a mail client
-      cannot send a code) or is still in setup (`401 setup_required`). Every
-      credential is checked on every request, so one that is revoked or
-      expires, or a password that changes, stops working at the next. Never
-      accepted by `POST /api/v1/auth/login`, nor by password, 2FA, account,
-      credential or admin operations: those need a session. A refused
-      credential gets `401`; repeated refusals from one client get `429`.
+    * **Gateway session** (`GatewaySessionAuth`) — how the IMAP, POP3 and SMTP
+      submission gateways act for mail clients (#1586). There is no HTTP Basic:
+      an `Authorization: Basic` header is refused everywhere (the OAuth token
+      endpoint's RFC 6749 client authentication aside). When a mail client signs
+      in, its gateway sends the account's address and the password it gave (an
+      app password `rm_<public id>_<secret>`, or one of the account's
+      passwords) once, in the body of `POST /api/v1/gateway-sessions`, over the
+      internal mTLS listener with the gateway's own client certificate. That is
+      the only request that takes a mail client's password. The account's
+      password is refused when the account has two-factor authentication
+      (`401 app_password_required`) or is still in setup (`401
+      setup_required`); a refused one is recorded as `auth.credential_refused`,
+      and repeated refusals get `429`. The answer's `rmgs_` token is then sent
+      as Bearer on every call for that connection, from the same certificate,
+      on the mail routes that list `GatewaySessionAuth`; it is checked on every
+      request, so revoking the credential or the account's sessions ends it at
+      the next one, and it is closed at logout or disconnect. An app password
+      reaches its own account's mailbox alone. Never accepted by password, 2FA,
+      account, credential or admin operations: those need a session.
 
     * **RBAC capability** — there is one kind of account, a mailbox, and one
       kind of session. What an account may do beyond its own mailbox is its
@@ -1336,8 +1339,10 @@ paths:
     post:
       description: 'Internal: served on the mTLS listener, for a gateway presenting
         its own client certificate, which names its service (IMAP, POP3 or SMTP submission).
-        The mail client''s address and password or app password come once, as HTTP Basic,
-        and are checked as the mail routes check them. The answer''s token is sent as
+        The mail client''s address and password or app password come once, in the body:
+        this is the only request that takes a mail client''s password (there is no HTTP
+        Basic). A refused one is recorded as auth.credential_refused and refusals are
+        throttled; an account with two-factor authentication needs an app password. The answer''s token is sent as
         Bearer on every call the gateway then makes for that connection, over the internal
         listener with the same certificate; the session is checked on every request,
         so revoking the credential or the account''s sessions ends it at the next one.
@@ -1350,12 +1355,22 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [protocol]
+              required: [protocol, address, password]
               properties:
                 protocol:
                   type: string
                   enum: [imap, pop3, smtp]
                   description: The protocol the calling gateway serves
+                address:
+                  type: string
+                  format: email
+                  description: The account's address, as the mail client gave it
+                password:
+                  type: string
+                  format: password
+                  description: >
+                    What the mail client gave as its password: an app password, or one
+                    of the account's passwords. Never stored or recorded.
         required: true
       responses:
         "201":
@@ -1409,7 +1424,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
           description: 'unauthorized, app_password_required or setup_required: a refused
-            session, gateway session or HTTP Basic credential'
+            session or gateway session'
         "403":
           content:
             application/json:
@@ -1433,7 +1448,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-          description: 'rate_limited: refused API keys or HTTP Basic credentials, throttled
+          description: 'rate_limited: refused API keys, throttled
             at login''s rate'
           headers:
             Retry-After:
@@ -1453,8 +1468,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
           description: 'unavailable: the credential or session check could not be made'
-      security:
-      - BasicAuth: []
+      security: []
       summary: Open a mail client's connection session (protocol gateways)
       tags:
       - Auth
@@ -1491,135 +1505,6 @@ paths:
       summary: Close a mail client's connection session (protocol gateways)
       tags:
       - Auth
-  /api/v1/auth/protocol-sign-in:
-    post:
-      operationId: protocolSignIn
-      tags: [Auth]
-      summary: Sign a mail client in (protocol gateways)
-      description: >
-        The one way the IMAP, POP3 and SMTP gateways sign a mail client in,
-        whatever it gave as its password: the request carries the address and
-        that password with HTTP Basic, checked against the account's
-        credentials — an app password, or one of the account's passwords — and
-        the audit log records the sign-in (`auth.protocol_sign_in`) with the
-        credential and the protocol. It answers with the account, so the
-        gateway knows which account the requests it then makes, each with the
-        same Basic credentials, are for. No session is made. A session cannot
-        use it. A refused credential is recorded as `auth.basic`. Throttled
-        like login.
-      security:
-        - BasicAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [protocol]
-              properties:
-                protocol:
-                  type: string
-                  enum: [imap, pop3, smtp]
-            examples:
-              signed_in:
-                value: {protocol: imap}
-              invalid_body:
-                value: []
-              protocol_missing:
-                value: {}
-      responses:
-        "200":
-          description: Signed in
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [data]
-                properties:
-                  data:
-                    type: object
-                    required: [user, credential_id, credential_kind]
-                    properties:
-                      user:
-                        type: object
-                        required: [id, email, display_name]
-                        properties:
-                          id:
-                            type: integer
-                            description: The account id, as in /api/v1/accounts/{id}
-                          email:
-                            type: string
-                            format: email
-                          display_name:
-                            type: string
-                      credential_id:
-                        type: integer
-                      credential_kind:
-                        type: string
-                        enum: [password, app_password]
-                        description: >
-                          An app password reaches only its own account's
-                          mailbox; the account's password reaches what its
-                          grants reach (sending as an account it owns, say).
-              examples:
-                signed_in:
-                  value:
-                    data:
-                      user: {id: 1, email: contract-ordinary@restmail.test, display_name: Contract Ordinary}
-                      credential_id: 1
-                      credential_kind: app_password
-        '400':
-          description: Not HTTP Basic (`basic_required`), or an invalid body
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-              examples: {}
-        "401":
-          description: >
-            `unauthorized` for a wrong address or password;
-            `app_password_required` for the right password of an account with
-            two-factor authentication; `setup_required` for one still in setup.
-        "403":
-          description: >
-            `access_restricted`: the server's capabilities leave the account no
-            session on its own mailbox (`mailbox:session`). Being an
-            administrator does not stand in for it; a superadmin is never
-            refused.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-              examples: {}
-        '422':
-          description: Request failed validation (validation_failed), with details.fields naming each failing field
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ValidationErrorResponse'
-              examples:
-                protocol_missing:
-                  value:
-                    error:
-                      code: validation_failed
-                      message: Request body failed validation
-                      details:
-                        fields:
-                          protocol: must be "imap", "pop3" or "smtp"
-                invalid_body:
-                  value:
-                    error:
-                      code: validation_failed
-                      message: Request body failed validation
-                      details:
-                        fields:
-                          body: the body is not a JSON object
-        "429":
-          description: Too many refused credentials from this client, or too many sign-ins
-
-  # ═══════════════════════════════════════════════════════════════
-  # Accounts
-  # ═══════════════════════════════════════════════════════════════
   /api/v1/accounts:
     get:
       operationId: listAccounts
@@ -1627,7 +1512,6 @@ paths:
         - CookieAuth: []
         - BearerAuth: []
         - APIKeyAuth: []
-        - BasicAuth: []
         - GatewaySessionAuth: []
       tags: [Accounts]
       summary: List the accounts this one reaches
@@ -1979,7 +1863,7 @@ paths:
         - CookieAuth: [mail:read]
         - BearerAuth: [mail:read]
         - APIKeyAuth: [mail:read]
-        - BasicAuth: [mail:read]
+        - GatewaySessionAuth: [mail:read]
       summary: Get an account this one may read
       responses:
         "200":
@@ -3292,7 +3176,7 @@ paths:
         - CookieAuth: [mail:read]
         - BearerAuth: [mail:read]
         - APIKeyAuth: [mail:read]
-        - BasicAuth: [mail:read]
+        - GatewaySessionAuth: [mail:read]
       summary: List folders for an account
       description: >-
         Every folder of the account with how many messages it holds and how many are unread. INBOX, Sent,
@@ -3321,7 +3205,7 @@ paths:
         - CookieAuth: [mail:write]
         - BearerAuth: [mail:write]
         - APIKeyAuth: [mail:write]
-        - BasicAuth: [mail:write]
+        - GatewaySessionAuth: [mail:write]
       summary: Create a new folder
       requestBody:
         required: true
@@ -3408,7 +3292,7 @@ paths:
         - CookieAuth: [mail:write]
         - BearerAuth: [mail:write]
         - APIKeyAuth: [mail:write]
-        - BasicAuth: [mail:write]
+        - GatewaySessionAuth: [mail:write]
       summary: Rename a folder
       requestBody:
         required: true
@@ -3444,7 +3328,7 @@ paths:
         - CookieAuth: [mail:write]
         - BearerAuth: [mail:write]
         - APIKeyAuth: [mail:write]
-        - BasicAuth: [mail:write]
+        - GatewaySessionAuth: [mail:write]
       summary: Delete a folder
       responses:
         "204":
@@ -3472,7 +3356,7 @@ paths:
         - CookieAuth: [mail:read]
         - BearerAuth: [mail:read]
         - APIKeyAuth: [mail:read]
-        - BasicAuth: [mail:read]
+        - GatewaySessionAuth: [mail:read]
       summary: List messages in a folder with cursor pagination
       parameters:
         - name: include_imap_deleted
@@ -3523,7 +3407,7 @@ paths:
         - CookieAuth: [mail:read]
         - BearerAuth: [mail:read]
         - APIKeyAuth: [mail:read]
-        - BasicAuth: [mail:read]
+        - GatewaySessionAuth: [mail:read]
       summary: Get a single message by ID
       responses:
         "200":
@@ -3555,7 +3439,7 @@ paths:
         - CookieAuth: [mail:write]
         - BearerAuth: [mail:write]
         - APIKeyAuth: [mail:write]
-        - BasicAuth: [mail:write]
+        - GatewaySessionAuth: [mail:write]
       summary: Update message flags or move to another folder
       requestBody:
         required: true
@@ -3586,7 +3470,7 @@ paths:
         - CookieAuth: [mail:write]
         - BearerAuth: [mail:write]
         - APIKeyAuth: [mail:write]
-        - BasicAuth: [mail:write]
+        - GatewaySessionAuth: [mail:write]
       summary: Delete a message
       parameters:
         - name: permanent
@@ -4278,9 +4162,9 @@ paths:
         - APIKeyAuth: [mail:send]
         - APIKeyAuth: [mail:send_as]
         - APIKeyAuth: [mail:send_on_behalf]
-        - BasicAuth: [mail:send]
-        - BasicAuth: [mail:send_as]
-        - BasicAuth: [mail:send_on_behalf]
+        - GatewaySessionAuth: [mail:send]
+        - GatewaySessionAuth: [mail:send_as]
+        - GatewaySessionAuth: [mail:send_on_behalf]
       summary: Compose and send a new message
       description: >-
         Sending from your own mailbox requires mail:send. Another mailbox in
@@ -4450,9 +4334,9 @@ paths:
         - APIKeyAuth: [mail:send]
         - APIKeyAuth: [mail:send_as]
         - APIKeyAuth: [mail:send_on_behalf]
-        - BasicAuth: [mail:send]
-        - BasicAuth: [mail:send_as]
-        - BasicAuth: [mail:send_on_behalf]
+        - GatewaySessionAuth: [mail:send]
+        - GatewaySessionAuth: [mail:send_as]
+        - GatewaySessionAuth: [mail:send_on_behalf]
       summary: Messages waiting to be sent later
       description: >-
         The pending and in-flight scheduled sends for this account, soonest
@@ -4488,9 +4372,9 @@ paths:
         - APIKeyAuth: [mail:send]
         - APIKeyAuth: [mail:send_as]
         - APIKeyAuth: [mail:send_on_behalf]
-        - BasicAuth: [mail:send]
-        - BasicAuth: [mail:send_as]
-        - BasicAuth: [mail:send_on_behalf]
+        - GatewaySessionAuth: [mail:send]
+        - GatewaySessionAuth: [mail:send_as]
+        - GatewaySessionAuth: [mail:send_on_behalf]
       summary: Cancel a message that has not been sent yet
       description: >-
         Only a message still waiting can be called back. One already being
@@ -4583,7 +4467,7 @@ paths:
                 $ref: '#/components/schemas/Data-MessageSeal'
         '401':
           description: 'unauthorized, app_password_required or setup_required: a refused session
-            or HTTP Basic credential'
+            or gateway session'
           content:
             application/json:
               examples:
@@ -4636,7 +4520,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ValidationErrorResponse'
         '429':
-          description: 'rate_limited: refused API keys or HTTP Basic credentials, throttled at
+          description: 'rate_limited: refused API keys, throttled at
             login''s rate'
           content:
             application/json:
@@ -4667,7 +4551,7 @@ paths:
         - mail:read
       - APIKeyAuth:
         - mail:read
-      - BasicAuth:
+      - GatewaySessionAuth:
         - mail:read
 
   /api/v1/messages/{id}/recipients:
@@ -4821,7 +4705,7 @@ paths:
         - CookieAuth: [mail:read]
         - BearerAuth: [mail:read]
         - APIKeyAuth: [mail:read]
-        - BasicAuth: [mail:read]
+        - GatewaySessionAuth: [mail:read]
       summary: Get the raw RFC 2822 message source
       responses:
         "200":
@@ -4854,9 +4738,9 @@ paths:
         - APIKeyAuth: [mail:read, mail:send]
         - APIKeyAuth: [mail:read, mail:send_as]
         - APIKeyAuth: [mail:read, mail:send_on_behalf]
-        - BasicAuth: [mail:read, mail:send]
-        - BasicAuth: [mail:read, mail:send_as]
-        - BasicAuth: [mail:read, mail:send_on_behalf]
+        - GatewaySessionAuth: [mail:read, mail:send]
+        - GatewaySessionAuth: [mail:read, mail:send_as]
+        - GatewaySessionAuth: [mail:read, mail:send_on_behalf]
       summary: Forward a message
       description: "The message (mail:read) is forwarded through the normal sender authorization, rate limit and outbound policy, with Fwd: and the note above its original header. Stored attachments, including empty and inline parts, are re-attached; the Sent copy owns independent attachment objects. The final signed MIME message is bounded by SMTP_MAX_MESSAGE_SIZE, and sender quota includes the copied parts. Sent, attachment references, quota and recipient work commit together. Unavailable or changed source objects fail the forward instead of dropping parts."
       requestBody:
@@ -4960,7 +4844,7 @@ paths:
         - CookieAuth: [mail:write]
         - BearerAuth: [mail:write]
         - APIKeyAuth: [mail:write]
-        - BasicAuth: [mail:write]
+        - GatewaySessionAuth: [mail:write]
       summary: Save a new draft
       description: >
         All draft fields are optional. Without `from`, the draft is saved in
@@ -5024,7 +4908,7 @@ paths:
         - CookieAuth: [mail:write]
         - BearerAuth: [mail:write]
         - APIKeyAuth: [mail:write]
-        - BasicAuth: [mail:write]
+        - GatewaySessionAuth: [mail:write]
       summary: Update an existing draft
       requestBody:
         required: true
@@ -5086,9 +4970,9 @@ paths:
         - APIKeyAuth: [mail:write, mail:send]
         - APIKeyAuth: [mail:write, mail:send_as]
         - APIKeyAuth: [mail:write, mail:send_on_behalf]
-        - BasicAuth: [mail:write, mail:send]
-        - BasicAuth: [mail:write, mail:send_as]
-        - BasicAuth: [mail:write, mail:send_on_behalf]
+        - GatewaySessionAuth: [mail:write, mail:send]
+        - GatewaySessionAuth: [mail:write, mail:send_as]
+        - GatewaySessionAuth: [mail:write, mail:send_on_behalf]
       summary: Send a saved draft
       requestBody:
         required: false
@@ -5226,7 +5110,7 @@ paths:
               schema:
                 "$ref": "#/components/schemas/List-AwaitingThread"
         "401":
-          description: "unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential"
+          description: "unauthorized, app_password_required or setup_required: a refused session or gateway session"
           content:
             "application/json":
               schema:
@@ -5256,7 +5140,7 @@ paths:
               schema:
                 "$ref": "#/components/schemas/ValidationErrorResponse"
         "429":
-          description: "rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate"
+          description: "rate_limited: refused API keys, throttled at login's rate"
           content:
             "application/json":
               schema:
@@ -5286,7 +5170,7 @@ paths:
             - "mail:read"
         - APIKeyAuth:
             - "mail:read"
-        - BasicAuth:
+        - GatewaySessionAuth:
             - "mail:read"
   "/api/v1/accounts/{id}/threads/{threadID}/due":
     post:
@@ -5349,7 +5233,7 @@ paths:
                 "$ref": "#/components/schemas/ErrorResponse"
         '401':
           description: 'unauthorized, app_password_required or setup_required: a refused
-            session or HTTP Basic credential'
+            session or gateway session'
           content:
             application/json:
               schema:
@@ -5379,7 +5263,7 @@ paths:
               schema:
                 "$ref": "#/components/schemas/ValidationErrorResponse"
         '429':
-          description: 'rate_limited: refused API keys or HTTP Basic credentials, throttled
+          description: 'rate_limited: refused API keys, throttled
             at login''s rate'
           content:
             application/json:
@@ -5410,7 +5294,7 @@ paths:
         - mail:write
       - APIKeyAuth:
         - mail:write
-      - BasicAuth:
+      - GatewaySessionAuth:
         - mail:write
   /api/v1/accounts/{id}/threads/{threadID}/snooze:
     post:
@@ -5674,7 +5558,7 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: 'unauthorized, app_password_required or setup_required: a refused session
-            or HTTP Basic credential'
+            or gateway session'
           content:
             application/json:
               examples:
@@ -5788,7 +5672,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ValidationErrorResponse'
         '429':
-          description: 'rate_limited: refused API keys or HTTP Basic credentials, throttled at
+          description: 'rate_limited: refused API keys, throttled at
             login''s rate'
           content:
             application/json:
@@ -5843,7 +5727,7 @@ paths:
         - mail:write
       - APIKeyAuth:
         - mail:write
-      - BasicAuth:
+      - GatewaySessionAuth:
         - mail:write
 
   /api/v1/accounts/{id}/threads/{threadID}:
@@ -5863,7 +5747,7 @@ paths:
         - CookieAuth: [mail:read]
         - BearerAuth: [mail:read]
         - APIKeyAuth: [mail:read]
-        - BasicAuth: [mail:read]
+        - GatewaySessionAuth: [mail:read]
       summary: Get all messages in a thread
       responses:
         "200":
@@ -5894,7 +5778,7 @@ paths:
         - CookieAuth: [mail:read]
         - BearerAuth: [mail:read]
         - APIKeyAuth: [mail:read]
-        - BasicAuth: [mail:read]
+        - GatewaySessionAuth: [mail:read]
       summary: Get mailbox quota usage
       responses:
         "200":
@@ -5921,7 +5805,7 @@ paths:
         - CookieAuth: [mail:read]
         - BearerAuth: [mail:read]
         - APIKeyAuth: [mail:read]
-        - BasicAuth: [mail:read]
+        - GatewaySessionAuth: [mail:read]
       summary: Search messages with filters
       parameters:
         - name: q
@@ -6041,7 +5925,7 @@ paths:
         - CookieAuth: [mail:read]
         - BearerAuth: [mail:read]
         - APIKeyAuth: [mail:read]
-        - BasicAuth: [mail:read]
+        - GatewaySessionAuth: [mail:read]
       summary: Download an attachment
       description: Whole and single-range downloads are binary; multiple ranges use multipart/byteranges. Conditional requests may return bodyless 304 or 412, and invalid ranges return plain-text 416.
       responses:
@@ -6232,7 +6116,7 @@ paths:
         - CookieAuth: [mail:read]
         - BearerAuth: [mail:read]
         - APIKeyAuth: [mail:read]
-        - BasicAuth: [mail:read]
+        - GatewaySessionAuth: [mail:read]
       summary: List attachments for a message
       responses:
         "200":
@@ -6261,7 +6145,7 @@ paths:
         - CookieAuth: [mail:read]
         - BearerAuth: [mail:read]
         - APIKeyAuth: [mail:read]
-        - BasicAuth: [mail:read]
+        - GatewaySessionAuth: [mail:read]
       summary: Get the account's notification quiet hours
       description: Off by default. Daily local HH:MM start inclusive and end exclusive in an IANA time zone; start later than end crosses midnight. Mail delivery and reading are unaffected.
       responses:
@@ -6296,7 +6180,7 @@ paths:
         - CookieAuth: [mail:write]
         - BearerAuth: [mail:write]
         - APIKeyAuth: [mail:write]
-        - BasicAuth: [mail:write]
+        - GatewaySessionAuth: [mail:write]
       summary: Set the account's notification quiet hours
       description: Hold push notifications during quiet hours and send one account summary of arrival and unread counts when they end. No message content is sent. Enabled schedules require distinct HH:MM times and a valid IANA time zone. Skipped local times end at the first real instant outside the range; repeated local times are quiet whenever the local clock is inside the range.
       requestBody:
@@ -6349,7 +6233,7 @@ paths:
         - CookieAuth: [mail:read]
         - BearerAuth: [mail:read]
         - APIKeyAuth: [mail:read]
-        - BasicAuth: [mail:read]
+        - GatewaySessionAuth: [mail:read]
       summary: Get the account's contact reply-time setting
       description: Off by default. Only this account's stored mail is used; no history is calculated or returned while disabled. Nothing is sent to contacts or external services.
       responses:
@@ -6384,7 +6268,7 @@ paths:
         - CookieAuth: [mail:write]
         - BearerAuth: [mail:write]
         - APIKeyAuth: [mail:write]
-        - BasicAuth: [mail:write]
+        - GatewaySessionAuth: [mail:write]
       summary: Set the account's contact reply-time setting
       description: Opt in to local estimates in contact lists and suggestions. The median of at least three first replies matched by In-Reply-To (or the final References ID when absent) to this account's Sent messages addressed to that contact, using received_at timestamps. Drafts, deleted mail and nonpositive delays are ignored; each sent Message-ID counts once. No headers, outbound requests or tracking are added. This is not a signal from the contact.
       requestBody:
@@ -6437,7 +6321,7 @@ paths:
         - CookieAuth: [mail:read]
         - BearerAuth: [mail:read]
         - APIKeyAuth: [mail:read]
-        - BasicAuth: [mail:read]
+        - GatewaySessionAuth: [mail:read]
       summary: List contacts for an account
       parameters:
         - name: trust_level
@@ -6473,7 +6357,7 @@ paths:
         - CookieAuth: [mail:write]
         - BearerAuth: [mail:write]
         - APIKeyAuth: [mail:write]
-        - BasicAuth: [mail:write]
+        - GatewaySessionAuth: [mail:write]
       summary: Create a new contact
       requestBody:
         required: true
@@ -6594,7 +6478,7 @@ paths:
         - CookieAuth: [mail:write]
         - BearerAuth: [mail:write]
         - APIKeyAuth: [mail:write]
-        - BasicAuth: [mail:write]
+        - GatewaySessionAuth: [mail:write]
       summary: Update a contact
       requestBody:
         required: true
@@ -6622,7 +6506,7 @@ paths:
         - CookieAuth: [mail:write]
         - BearerAuth: [mail:write]
         - APIKeyAuth: [mail:write]
-        - BasicAuth: [mail:write]
+        - GatewaySessionAuth: [mail:write]
       summary: Delete a contact
       responses:
         "204":
@@ -6640,7 +6524,7 @@ paths:
         - CookieAuth: [mail:write]
         - BearerAuth: [mail:write]
         - APIKeyAuth: [mail:write]
-        - BasicAuth: [mail:write]
+        - GatewaySessionAuth: [mail:write]
       summary: Block a sender
       requestBody:
         required: true
@@ -6691,7 +6575,7 @@ paths:
         - CookieAuth: [mail:write]
         - BearerAuth: [mail:write]
         - APIKeyAuth: [mail:write]
-        - BasicAuth: [mail:write]
+        - GatewaySessionAuth: [mail:write]
       summary: Bulk import contacts
       description: As many contacts as fit the API's request size limit. Every entry is checked first, and contacts the account already has are skipped.
       requestBody:
@@ -6815,7 +6699,7 @@ paths:
         - CookieAuth: [mail:read]
         - BearerAuth: [mail:read]
         - APIKeyAuth: [mail:read]
-        - BasicAuth: [mail:read]
+        - GatewaySessionAuth: [mail:read]
       summary: Autocomplete contacts by query
       parameters:
         - name: q
@@ -6853,7 +6737,7 @@ paths:
         - CookieAuth: [mail:read]
         - BearerAuth: [mail:read]
         - APIKeyAuth: [mail:read]
-        - BasicAuth: [mail:read]
+        - GatewaySessionAuth: [mail:read]
       summary: Get vacation auto-reply settings
       responses:
         "404":
@@ -6875,7 +6759,7 @@ paths:
         - CookieAuth: [mail:write]
         - BearerAuth: [mail:write]
         - APIKeyAuth: [mail:write]
-        - BasicAuth: [mail:write]
+        - GatewaySessionAuth: [mail:write]
       summary: Set vacation auto-reply settings
       requestBody:
         required: true
@@ -6990,7 +6874,7 @@ paths:
         - CookieAuth: [mail:write]
         - BearerAuth: [mail:write]
         - APIKeyAuth: [mail:write]
-        - BasicAuth: [mail:write]
+        - GatewaySessionAuth: [mail:write]
       summary: Disable vacation auto-reply
       responses:
         "404":
@@ -7011,7 +6895,7 @@ paths:
         - CookieAuth: [mail:read]
         - BearerAuth: [mail:read]
         - APIKeyAuth: [mail:read]
-        - BasicAuth: [mail:read]
+        - GatewaySessionAuth: [mail:read]
       summary: Get the Sieve filter script
       responses:
         "200":
@@ -7038,7 +6922,7 @@ paths:
         - CookieAuth: [mail:write]
         - BearerAuth: [mail:write]
         - APIKeyAuth: [mail:write]
-        - BasicAuth: [mail:write]
+        - GatewaySessionAuth: [mail:write]
       summary: Create or replace the Sieve filter script
       requestBody:
         required: true
@@ -7122,7 +7006,7 @@ paths:
         - CookieAuth: [mail:write]
         - BearerAuth: [mail:write]
         - APIKeyAuth: [mail:write]
-        - BasicAuth: [mail:write]
+        - GatewaySessionAuth: [mail:write]
       summary: Delete the Sieve filter script
       responses:
         "404":
@@ -7153,7 +7037,7 @@ paths:
         - CookieAuth: [mail:write]
         - BearerAuth: [mail:write]
         - APIKeyAuth: [mail:write]
-        - BasicAuth: [mail:write]
+        - GatewaySessionAuth: [mail:write]
       summary: Validate a Sieve script without saving
       requestBody:
         required: true
@@ -7237,7 +7121,7 @@ paths:
         - CookieAuth: [mail:read]
         - BearerAuth: [mail:read]
         - APIKeyAuth: [mail:read]
-        - BasicAuth: [mail:read]
+        - GatewaySessionAuth: [mail:read]
       summary: List quarantined messages
       responses:
         "404":
@@ -7273,7 +7157,7 @@ paths:
         - CookieAuth: [mail:write]
         - BearerAuth: [mail:write]
         - APIKeyAuth: [mail:write]
-        - BasicAuth: [mail:write]
+        - GatewaySessionAuth: [mail:write]
       summary: Release a quarantined message to inbox
       description: Releasing held mail requires a human session signed in with two-factor authentication.
       responses:
@@ -7329,7 +7213,7 @@ paths:
         - CookieAuth: [mail:write]
         - BearerAuth: [mail:write]
         - APIKeyAuth: [mail:write]
-        - BasicAuth: [mail:write]
+        - GatewaySessionAuth: [mail:write]
       summary: Permanently delete a quarantined message
       responses:
         "200":
@@ -12490,7 +12374,7 @@ paths:
         - CookieAuth: [mail:read, mail:send]
         - BearerAuth: [mail:read, mail:send]
         - APIKeyAuth: [mail:read, mail:send]
-        - BasicAuth: [mail:read, mail:send]
+        - GatewaySessionAuth: [mail:read, mail:send]
       summary: Send an iMIP reply to a calendar invitation in a message
       requestBody:
         required: true
@@ -12546,7 +12430,7 @@ paths:
         - CookieAuth: [mail:read]
         - BearerAuth: [mail:read]
         - APIKeyAuth: [mail:read]
-        - BasicAuth: [mail:read]
+        - GatewaySessionAuth: [mail:read]
       summary: List calendar events (grouped by UID, latest version) for the mailbox
       responses:
         "404":
@@ -15035,7 +14919,7 @@ paths:
         - mail:import
       - APIKeyAuth:
         - mail:import
-      - BasicAuth:
+      - GatewaySessionAuth:
         - mail:import
       summary: Store a message the account already has
       tags:
@@ -15053,14 +14937,6 @@ components:
         cannot read it. This is the transport used by the web frontends. State-
         changing requests (POST/PUT/PATCH/DELETE) additionally require the
         double-submit CSRF header (see the CSRFToken parameter).
-    BasicAuth:
-      type: http
-      scheme: basic
-      description: >
-        A mailbox's address and one of its app passwords, as HTTP Basic
-        (`curl -u 'address:rm_…'`). Checked on every request. Accepted only by
-        the operations that list it; see "App password" above. Answers never
-        carry WWW-Authenticate.
     BearerAuth:
       type: http
       scheme: bearer
