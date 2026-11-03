@@ -162,6 +162,15 @@ class OwnDataHooks(unittest.TestCase):
             "addToBlocklist": "remove_a_previous_sender_rule_probe",
             "removeFromAllowlist": "on_a_sender_rule_of_its_own",
             "removeFromBlocklist": "on_a_sender_rule_of_its_own",
+            "createContact": "remove_a_previous_contact_probe",
+            "updateContact": "on_a_contact_of_its_own",
+            "deleteContact": "on_a_contact_of_its_own",
+            "blockSender": "block_a_new_and_an_existing_sender",
+            "listContacts": "a_contact_operation_from_a_clean_start",
+            "importContacts": "a_contact_operation_from_a_clean_start",
+            "suggestContacts": "a_contact_operation_from_a_clean_start",
+            "getContactReplyTimeSetting": "a_contact_operation_from_a_clean_start",
+            "setContactReplyTimeSetting": "a_contact_operation_from_a_clean_start",
         }
         self.assertEqual(set(hooks), set(own_data.MOVED))
         for operation, hook in hooks.items():

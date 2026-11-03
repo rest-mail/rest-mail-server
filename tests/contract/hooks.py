@@ -2107,12 +2107,83 @@ def a_leftover_to_remove(transaction):
     return len(parts) > 2 and parts[2].split(" ")[0] == "201"
 
 
+def to_the_seeded_account(transaction):
+    """After a reset, send a contact exchange to the seeded admin@restmail.test:
+    the reset removed the mailbox its example names (1) and seeded that address
+    again under another id. Only the account id in the path changes. A
+    non-positive or undecodable id and missing's 2147483647 keep theirs, so
+    they are refused as documented."""
+    path, separator, query = transaction["fullPath"].partition("?")
+    parts = path.split("/")
+    if len(parts) < 5 or not positive_id(parts[4]) or parts[4] == "2147483647":
+        return
+    parts[4] = str(mailbox_id(origin_of(transaction), ADMIN))
+    transaction["fullPath"] = "/".join(parts) + separator + query
+
+
+def a_contact_exchange_from_a_clean_start(transaction):
+    """With a reset asked for, reset before this contact exchange, refusals
+    included, and send it to the seeded account."""
+    if not asked_for_a_clean_start():
+        return
+    start_clean(transaction)
+    to_the_seeded_account(transaction)
+
+
+@hooks.before("listContacts")
+@hooks.before("importContacts")
+@hooks.before("suggestContacts")
+@hooks.before("getContactReplyTimeSetting")
+@hooks.before("setContactReplyTimeSetting")
+def a_contact_operation_from_a_clean_start(transaction):
+    # These examples need nothing made for them: after a reset they read,
+    # import into and set the seeded account's empty contacts and setting.
+    a_contact_exchange_from_a_clean_start(transaction)
+
+
+# The contact updateContact and deleteContact are sent to after a reset: the
+# one createContact's link names went with it.
+OWN_CONTACT = {"email": "contract-own-contact@example.test"}
+
+
+@hooks.before("updateContact")
+@hooks.before("deleteContact")
+def on_a_contact_of_its_own(transaction):
+    # After a reset (the own-data phase) every exchange, refusals included,
+    # starts clean and is sent to the seeded account, and one aimed at a
+    # positive contact id gets a contact of its own there, made after the
+    # reset, so a refusal is refused for its body and not for a contact that
+    # is gone. Missing's 2147483647, a non-positive or undecodable id, every
+    # documented 404 and an account that is not there keep their ids. Without
+    # a reset the link's contact is still there, and nothing changes.
+    if not asked_for_a_clean_start():
+        return
+    a_contact_exchange_from_a_clean_start(transaction)
+    path, _, query = transaction["fullPath"].partition("?")
+    parent, _, contact_id = path.rpartition("/")
+    account_id = parent.split("/")[-2]
+    if not positive_id(contact_id) or contact_id == "2147483647":
+        return
+    if not positive_id(account_id) or account_id == "2147483647":
+        return
+    if " > 404" in transaction.get("name", ""):
+        return
+    contact = fixture_call(transaction, "POST", parent, OWN_CONTACT)
+    transaction["fullPath"] = (
+        parent + "/" + str(contact["id"]) + ("?" + query if query else "")
+    )
+
+
 @hooks.before("createContact")
 def remove_a_previous_contact_probe(transaction):
     # Coverage calls before hooks only. Claim an absent email before its first
     # create, then remove only that probe's contact when generated bodies repeat.
     # Existing contacts and all generated request bytes stay untouched, but
     # for an ownership run's leftovers (a_leftover_to_remove).
+    # After a reset (the own-data phase) the create is sent to the seeded
+    # account, where no earlier probe's contact is left, so
+    # created_contact_probes, which the reset clears, starts empty.
+    a_contact_exchange_from_a_clean_start(transaction)
     from urllib.error import HTTPError
     from urllib.parse import urlencode
 
@@ -2135,36 +2206,31 @@ def remove_a_previous_contact_probe(transaction):
     headers = {"Authorization": "Bearer " + admin_token(origin)}
     key = origin + parent + "\n" + email
     owned = hooks.stash.get("created_contact_probes", {})
-    offset = 0
-    while True:
-        query = urlencode({"search": email, "limit": 200, "offset": offset})
-        request = urllib.request.Request(origin + parent + "?" + query, headers=headers)
-        try:
-            with urllib.request.urlopen(request, timeout=10) as response:
-                page = json.load(response)
-        except HTTPError as error:
-            if error.code in (400, 403, 404):
-                return  # Leave an invalid account ID to the actual probe.
-            raise
-        contacts = page.get("data") or []
-        contact = next((item for item in contacts if item.get("email") == email), None)
-        if contact:
-            if key not in owned and not a_leftover_to_remove(transaction):
-                return
-            request = urllib.request.Request(
-                origin + parent + "/" + str(contact["id"]),
-                headers=headers,
-                method="DELETE",
-            )
-            with urllib.request.urlopen(request, timeout=10) as response:
-                if response.status != 204:
-                    raise RuntimeError("could not remove the previous contact probe")
-            return
-        if not (page.get("pagination") or {}).get("has_more"):
-            owned[key] = True
-            hooks.stash["created_contact_probes"] = owned
-            return
-        offset += len(contacts)
+    try:
+        contact = find_in_list(
+            origin,
+            parent + "?" + urlencode({"search": email}),
+            headers,
+            lambda item: item.get("email") == email,
+        )
+    except HTTPError as error:
+        if error.code in (400, 403, 404):
+            return  # Leave an invalid account ID to the actual probe.
+        raise
+    if contact is None:
+        owned[key] = True
+        hooks.stash["created_contact_probes"] = owned
+        return
+    if key not in owned and not a_leftover_to_remove(transaction):
+        return
+    request = urllib.request.Request(
+        origin + parent + "/" + str(contact["id"]),
+        headers=headers,
+        method="DELETE",
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        if response.status != 204:
+            raise RuntimeError("could not remove the previous contact probe")
 
 
 def sender_rules_path(transaction):
@@ -3003,7 +3069,10 @@ def block_a_new_and_an_existing_sender(transaction):
     # created (201) blocks an address the account has no contact for, and
     # found (200) one it already has. Neither holds after the other has run,
     # or after a previous run, so each is given its state. Other bodies and
-    # coverage probes reach the handler unchanged.
+    # coverage probes reach the handler unchanged. After a reset (the own-data
+    # phase) every exchange, refusals included, starts clean first and is sent
+    # to the seeded account, where created needs nothing removed.
+    a_contact_exchange_from_a_clean_start(transaction)
     body = hooks.get_json(transaction)
     email = body.get("email") if isinstance(body, dict) else None
     name = transaction.get("name", "")
@@ -3012,18 +3081,25 @@ def block_a_new_and_an_existing_sender(transaction):
         return
     path = contacts[contacts.index("/api/") :]
     if email == "new@example.com" and " > 201 > " in name:
-        query = urllib.parse.urlencode({"search": email, "limit": 200})
-        listed = fixture_call(
-            transaction, "GET", path + "?" + query, expect=PROBE_REFUSALS
-        )
-        for contact in listed or []:
-            if contact.get("email") == email:
-                fixture_call(
-                    transaction,
-                    "DELETE",
-                    path + "/" + str(contact["id"]),
-                    expect=PROBE_REFUSALS,
-                )
+        origin = origin_of(transaction)
+        try:
+            contact = find_in_list(
+                origin,
+                path + "?" + urllib.parse.urlencode({"search": email}),
+                {"Authorization": "Bearer " + admin_token(origin)},
+                lambda item: item.get("email") == email,
+            )
+        except urllib.error.HTTPError as error:
+            if error.code not in PROBE_REFUSALS:
+                raise
+            contact = None
+        if contact is not None:
+            fixture_call(
+                transaction,
+                "DELETE",
+                path + "/" + str(contact["id"]),
+                expect=PROBE_REFUSALS,
+            )
     elif email == "existing@example.com" and " > 200 > " in name:
         fixture_call(transaction, "POST", path, {"email": email}, expect=PROBE_REFUSALS)
 

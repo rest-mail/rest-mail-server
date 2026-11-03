@@ -1244,11 +1244,32 @@ is followed unchanged. `created_sender_rule_probes` stays, because an add
 without a reset (the primary run and coverage) still removes only the repeated
 probe entries it made.
 
+Every contact operation of the area map (`createContact`, `updateContact`,
+`deleteContact`, `listContacts`, `blockSender`, `importContacts`,
+`suggestContacts`, `getContactReplyTimeSetting` and
+`setContactReplyTimeSetting`) resets and seeds before each exchange too,
+refusals included. Their examples name the fixture admin's mailbox `1`, which
+the reset removes and seeds again under another id, so an exchange aimed at a
+positive account id other than missing's `2147483647` is sent to the seeded
+`admin@restmail.test`, found by its address (`to_the_seeded_account`). A list,
+a suggestion, an import and the reply-time setting need nothing made there. A
+create is sent as documented, and `blockSender`'s `created` and `found` get the
+state they need, as before. An update or delete aimed at a positive contact id
+gets a contact of its own there (`contract-own-contact@example.test`), since the
+one `createContact`'s link names is gone; missing's `2147483647`, a non-positive
+id and every documented 404 keep theirs. `createContact`'s link reaches only the
+update and the delete. `listAccounts`' link reaches the others but the
+reply-time setting, and is not followed here, because `listAccounts` has not
+moved: each of those exchanges carries its own account id. No contact is
+carried between exchanges. `created_contact_probes` stays, because a create
+without a reset (the primary run and coverage) still removes only the repeated
+probe contacts it made; the reset clears it, so it starts empty here.
+
 This happens only with `CONTRACT_RESET_SEED=1`, which `tests/contract/run.sh own-data`
 sets, and that phase is a gate of its own, sent by `chore test:contract-teardown`
 just before the teardown. It sends the moved operations with everything that follows
-`createDomain`'s, `createPipeline`'s, `createAlias`'s, `createCustomFilter`'s and
-`createFolder`'s links
+`createDomain`'s, `createPipeline`'s, `createAlias`'s, `createCustomFilter`'s,
+`createFolder`'s and `createContact`'s links
 (`own_data.py`), and fails on a skipped
 exchange as well as a failed one.
 
@@ -1557,7 +1578,8 @@ artifact), so a run's verdict can be read in a browser.
 `vertrag run --dry-run --sequence` shows what would be sent, with nothing up.
 
 Contact create probes use a before hook to remove contacts made by earlier
-probes when an email is reused. It first checks that the email was absent,
+probes when an email is reused. It first checks, through every page of the
+account's contacts, that the email was absent,
 leaves pre-existing contacts alone, and preserves generated bodies, account IDs
 and headers. Coverage does not call after hooks, so ownership is recorded before
 the first create attempt.
