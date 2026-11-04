@@ -133,10 +133,20 @@ def asked_for_a_clean_start():
     return os.environ.get("CONTRACT_RESET_SEED") == "1"
 
 
+def setup_origin(transaction):
+    """Where a hook makes its setup calls: the run's own endpoint, which
+    run.sh's own-data phase names in CONTRACT_SETUP_ORIGIN, or else the
+    exchange's. They differ for the gateway routes, which the topology sends to
+    the API's internal listener (vertrag.yml, endpoints): that listener serves
+    only those routes, to a client certificate, so a reset or an account is
+    made on the public one."""
+    return os.environ.get("CONTRACT_SETUP_ORIGIN") or origin_of(transaction)
+
+
 def start_clean(transaction):
     """Reset and seed before this exchange, and forget what that removed. A
     failed reset raises, so the exchange is reported as an error and not sent."""
-    origin = origin_of(transaction)
+    origin = setup_origin(transaction)
     reset_seed.reset_and_seed(origin, admin_token(origin), fixtures=())
     for key in [k for k in hooks.stash if k not in SURVIVES_A_RESET]:
         del hooks.stash[key]
@@ -3748,6 +3758,201 @@ def an_account_of_its_own(origin, prefix, password=None):
     )
     with urllib.request.urlopen(request, timeout=10) as response:
         return json.load(response)["data"]["id"]
+
+
+# The recipient each delivery and mailbox check success names, by operation:
+# a hosted mailbox the reset keeps (the gateway's found example names the
+# in-process fixture's user@example.com, which look_up_a_hosted_mailbox sends
+# to the fixture admin). After a reset the documented success goes to a
+# mailbox of its own instead, made then. The RESTMAIL check's 200 is sent
+# whatever address Vertrag gives it, user@example.test today, which no mailbox
+# has: None takes any one address.
+HOSTED_RECIPIENT = {
+    "checkMailboxAddress": "user@example.com",
+    "deliverMessage": ADMIN,
+    "restmailCheckMailbox": None,
+    "restmailDeliver": "eve@restmail.test",
+}
+
+# The status of each operation's documented success.
+DELIVERY_SUCCESS = {
+    "checkMailboxAddress": "200",
+    "deliverMessage": "201",
+    "restmailCheckMailbox": "200",
+    "restmailDeliver": "201",
+}
+
+
+def operation_of(transaction):
+    """Which delivery or mailbox check operation a transaction is, by its path."""
+    path = transaction["fullPath"].partition("?")[0]
+    return {
+        "/api/mailboxes": "checkMailboxAddress",
+        "/api/v1/messages/deliver": "deliverMessage",
+        "/restmail/mailboxes": "restmailCheckMailbox",
+        "/restmail/messages": "restmailDeliver",
+    }.get(path)
+
+
+def to_a_recipient_of_its_own(transaction, operation):
+    """Send a documented success to a mailbox made for it after the reset, and
+    say which (its id and address), or None when the exchange names another
+    recipient (a refusal's, or a missing mailbox's)."""
+    hosted = HOSTED_RECIPIENT[operation]
+    path, _, query = transaction["fullPath"].partition("?")
+    if operation in ("checkMailboxAddress", "restmailCheckMailbox"):
+        pairs = urllib.parse.parse_qsl(query, keep_blank_values=True)
+        if len(pairs) != 1 or pairs[0][0] != "address" or pairs[0][1] != (hosted or pairs[0][1]):
+            return None
+        made = a_recipient_of_its_own(transaction)
+        transaction["fullPath"] = path + "?" + urllib.parse.urlencode({"address": made["address"]})
+        return made
+    body = hooks.get_json(transaction)
+    if not isinstance(body, dict):
+        return None
+    if operation == "deliverMessage":
+        if body.get("address") != hosted or "raw_message" in body:
+            return None
+        made = a_recipient_of_its_own(transaction)
+        body["address"] = made["address"]
+    else:
+        if body.get("to") != [hosted]:
+            return None
+        made = a_recipient_of_its_own(transaction)
+        body["to"] = [made["address"]]
+        an_inbound_pipeline_without_greylisting(transaction)
+    hooks.set_json(transaction, body)
+    return made
+
+
+def a_recipient_of_its_own(transaction):
+    """A fresh restmail.test mailbox, made on the public listener. Its address
+    is named by the time it is made, like an_account_of_its_own's."""
+    origin = setup_origin(transaction)
+    address = f"contract-own-recipient-{time.time_ns():d}@restmail.test"
+    request = urllib.request.Request(
+        origin + "/api/v1/accounts",
+        data=json.dumps({"address": address, "display_name": "Recipient"}).encode(),
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": "Bearer " + mfa_admin_token(origin),
+        },
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        data = json.load(response)["data"]
+    if type(data.get("id")) is not int or str(data.get("address", "")).lower() != address:
+        raise RuntimeError(f"the recipient was not made as asked: {data!r}")
+    return {"id": data["id"], "address": address}
+
+
+def an_inbound_pipeline_without_greylisting(transaction):
+    """An active inbound pipeline for restmail.test that only validates the
+    headers. After a reset the domain has none, and the default one greylists:
+    a sender, recipient and address it has not seen are deferred 503 for five
+    minutes, so a RESTMAIL delivery from a new mailbox could never succeed."""
+    origin = setup_origin(transaction)
+    headers = {"Content-Type": "application/json", "Authorization": "Bearer " + admin_token(origin)}
+    request = urllib.request.Request(origin + "/api/v1/admin/domains?limit=200", headers=headers)
+    with urllib.request.urlopen(request, timeout=10) as response:
+        domains = json.load(response).get("data") or []
+    domain = next((d for d in domains if d.get("name") == "restmail.test"), None)
+    if domain is None:
+        raise RuntimeError("the reset kept no restmail.test domain")
+    request = urllib.request.Request(
+        origin + "/api/v1/admin/pipelines",
+        data=json.dumps(
+            {
+                "domain_id": domain["id"],
+                "direction": "inbound",
+                "filters": [{"name": "header_validate", "config": {}}],
+                "active": True,
+            }
+        ).encode(),
+        headers=headers,
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=10):
+        pass
+
+
+@hooks.before("checkMailboxAddress")
+@hooks.before("deliverMessage")
+@hooks.before("restmailDiscover")
+@hooks.before("restmailCapabilities")
+@hooks.before("restmailCheckMailbox")
+@hooks.before("restmailDeliver")
+def delivery_after_a_reset(transaction):
+    # The delivery and federation operations, moved to a clean start: each
+    # exchange, refusals included, resets and seeds first, on the public
+    # listener (setup_origin). A documented success of a delivery or a mailbox
+    # check is sent to a mailbox of its own, made after the reset, and its
+    # after hook checks the answer names that mailbox. Refusals keep what they
+    # name: an empty or missing address, nobody@restmail.test, missing's
+    # 2147483647, unavailable@example.com. Discovery asks about the seeded
+    # restmail.test, and the capabilities need nothing made. A RESTMAIL
+    # delivery also gets restmail.test an inbound pipeline that does not
+    # greylist, since the default one defers a new sender.
+    # Registered before the other hooks of these operations, so they see the
+    # clean start and the new recipient. A run with no reset changes nothing.
+    if not asked_for_a_clean_start():
+        return
+    start_clean(transaction)
+    operation = operation_of(transaction)
+    if operation is None or expected_status(transaction) != DELIVERY_SUCCESS[operation]:
+        return
+    made = to_a_recipient_of_its_own(transaction, operation)
+    if made is not None:
+        hooks.stash["recipient_made"] = dict(made, name=transaction.get("name", ""))
+
+
+@hooks.after("checkMailboxAddress")
+@hooks.after("deliverMessage")
+@hooks.after("restmailCheckMailbox")
+@hooks.after("restmailDeliver")
+def the_answer_names_the_recipient_made(transaction):
+    # After a reset a documented success must answer for the mailbox made for
+    # it, so the status and the schema alone do not pass on another mailbox or
+    # on none: a check that it exists, with its address (and, from the
+    # gateway's check, its id), a gateway delivery stored in it, a RESTMAIL
+    # delivery that names it delivered and nothing failed. A documented success
+    # with no mailbox made for it fails too. Refusals and a run with no reset
+    # are left alone; a status other than the one documented fails on its own.
+    made = hooks.stash.pop("recipient_made", None)
+    operation = operation_of(transaction)
+    real = transaction.get("real") or {}
+    if (
+        not asked_for_a_clean_start()
+        or operation is None
+        or expected_status(transaction) != DELIVERY_SUCCESS[operation]
+        or str(real.get("statusCode")) != DELIVERY_SUCCESS[operation]
+    ):
+        return
+    if made is None or made["name"] != transaction.get("name", ""):
+        transaction["fail"] = "no mailbox was made for this exchange"
+        return
+    data = (hooks.get_json(transaction, "real") or {}).get("data")
+    data = data if isinstance(data, dict) else {}
+    address = made["address"]
+    problems = []
+    if operation in ("checkMailboxAddress", "restmailCheckMailbox"):
+        if data.get("exists") is not True:
+            problems.append(f"exists is {data.get('exists')!r}")
+        if str(data.get("address", "")).lower() != address.lower():
+            problems.append(f"the address is {data.get('address')!r}")
+        if operation == "checkMailboxAddress" and data.get("mailbox_id") != made["id"]:
+            problems.append(f"the mailbox id is {data.get('mailbox_id')!r}, not {made['id']:d}")
+    elif operation == "deliverMessage":
+        if data.get("mailbox_id") != made["id"]:
+            problems.append(f"the message is in mailbox {data.get('mailbox_id')!r}, not {made['id']:d}")
+    else:
+        delivered = [str(a).lower() for a in data.get("delivered") or ()]
+        if delivered != [address.lower()]:
+            problems.append(f"delivered is {data.get('delivered')!r}")
+        if data.get("failed"):
+            problems.append(f"failed is {data.get('failed')!r}")
+    if problems:
+        transaction["fail"] = f"the answer is not for the mailbox made for it ({address}): " + "; ".join(problems)
 
 
 @hooks.before("checkMailboxAddress")

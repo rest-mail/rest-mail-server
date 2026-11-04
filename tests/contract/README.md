@@ -1194,6 +1194,40 @@ body, each requested range with its `Content-Range`, and the 416's
 others' own). No link reaches it. A run with no reset changes nothing in either
 hook.
 
+The delivery and federation operations reset and seed before each exchange
+too, refusals included (`delivery_after_a_reset`, registered ahead of their
+other hooks). They are the gateway's `checkMailboxAddress` and
+`deliverMessage`, and RESTMAIL's `restmailDiscover`, `restmailCapabilities`,
+`restmailCheckMailbox` and `restmailDeliver`. The topology sends the gateway
+routes to the API's internal listener, which serves nothing else. So the hooks
+make their resets and data on the run's endpoint, which run.sh names in
+`CONTRACT_SETUP_ORIGIN` (`setup_origin`).
+
+Each documented success of a check or a delivery goes to a mailbox of its own
+on `restmail.test`, made after the reset:
+- the gateway's found check;
+- the gateway's deliveries to `admin@restmail.test`;
+- the RESTMAIL check's 200, whatever address Vertrag gives it (#1801);
+- the RESTMAIL delivery to `eve@restmail.test`. This one also gets
+  `restmail.test` an active inbound pipeline that only validates headers. After
+  a reset the domain has none, and the default pipeline greylists a new sender,
+  which defers the delivery 503 for five minutes.
+
+Their after hook (`the_answer_names_the_recipient_made`) fails a success unless
+the answer is for that mailbox:
+- a check must say it exists, with its address, and from the gateway its id;
+- a gateway delivery must be stored in it;
+- a RESTMAIL delivery must name it delivered, with nothing failed.
+
+Refusals keep what they name: an empty or missing address,
+`nobody@restmail.test`, missing's `2147483647`, `unavailable@example.com`.
+Discovery asks about the seeded `restmail.test`, and the capabilities need
+nothing made. No link starts from or reaches any of them.
+
+`acmeChallenge` has not moved. The server registers the route, and describes
+it, only with ACME on, which the topology is not, so no run sends it. A run with
+no reset changes nothing in these hooks.
+
 A listing's 200 has the same shape with no rows as with the one made for it, so
 its status and schema alone pass on an empty list (#1785). After a reset,
 `listTlsReports`, `listPipelines`, `listThreads`, `listFolders`, `listMessages`
