@@ -203,7 +203,7 @@ var exampleRequirements = map[string][]string{
 	"body":      {"over_cap", "malformed", "compressed", "unsupported_media"},
 	"limit":     {"rate", "message_size"},
 	"fault":     {"database", "database_pool", "session_store", "permission_store", "context_cancelled", "sidecar_response", "error_adapter", "acme_responder"},
-	"network":   {"outside_metrics_allowlist"},
+	"network":   {"outside_metrics_allowlist", "restmail_delivery_auth"},
 	"state": {
 		"password_only_session", "stale_two_factor_session",
 		"send_as_grant", "send_on_behalf_grant", "read_only_mailbox_grant",

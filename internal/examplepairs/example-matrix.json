@@ -31953,6 +31953,271 @@
         },
         "mediaType": "application/json"
       }
+    },
+    "default_external_raw_unsigned_deferred": {
+      "description": "A raw unsigned external message supplies its From and To headers; non-strict mode reaches the recipient-lookup fault without storing anything.",
+      "requires": {
+        "state": "unhosted_domain",
+        "fault": "database",
+        "network": "restmail_delivery_auth"
+      },
+      "request": {
+        "body": {
+          "raw_message": "From: sender@external.test\r\nTo: eve@restmail.test\r\nMessage-ID: <auth-contract@external.test>\r\nDate: Sat, 17 Oct 2026 12:00:00 +0000\r\nSubject: Unsigned authentication contract\r\n\r\nHello.\r\n"
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "deferred",
+            "message": "Message deferred, retry later"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "default_external_unsigned_deferred": {
+      "description": "Non-strict mode permits an unsigned external sender to reach the injected recipient-lookup fault. This is not a successful-storage proof.",
+      "requires": {
+        "state": "unhosted_domain",
+        "fault": "database",
+        "network": "restmail_delivery_auth"
+      },
+      "request": {
+        "body": {
+          "from": "sender@external.test",
+          "to": [
+            "eve@restmail.test"
+          ],
+          "body_text": "Unsigned authentication contract",
+          "message_id": "<auth-contract@external.test>"
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "deferred",
+            "message": "Message deferred, retry later"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "default_local_raw_unsigned_refused": {
+      "description": "A raw unsigned message supplies its hosted From header and To header; omitting structured addresses cannot bypass the local-spoof refusal.",
+      "requires": {
+        "state": "existing_domain",
+        "network": "restmail_delivery_auth"
+      },
+      "request": {
+        "body": {
+          "raw_message": "From: sender@restmail.test\r\nTo: eve@restmail.test\r\nMessage-ID: <auth-contract@external.test>\r\nDate: Sat, 17 Oct 2026 12:00:00 +0000\r\nSubject: Unsigned authentication contract\r\n\r\nHello.\r\n"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Delivery not authenticated"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "default_local_unsigned_refused": {
+      "description": "Non-strict mode still refuses an unsigned sender claiming the hosted restmail.test domain.",
+      "requires": {
+        "state": "existing_domain",
+        "network": "restmail_delivery_auth"
+      },
+      "request": {
+        "body": {
+          "from": "sender@restmail.test",
+          "to": [
+            "eve@restmail.test"
+          ],
+          "body_text": "Unsigned authentication contract",
+          "message_id": "<auth-contract@external.test>"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Delivery not authenticated"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "strict_external_unsigned_refused": {
+      "description": "Strict mode refuses an unsigned external sender from an untrusted socket peer.",
+      "requires": {
+        "state": "unhosted_domain",
+        "network": "restmail_delivery_auth"
+      },
+      "request": {
+        "body": {
+          "from": "sender@external.test",
+          "to": [
+            "eve@restmail.test"
+          ],
+          "body_text": "Unsigned authentication contract",
+          "message_id": "<auth-contract@external.test>"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Delivery not authenticated"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "strict_trusted_external_deferred": {
+      "description": "Strict mode trusts the actual loopback socket peer; an unsigned external sender reaches the injected recipient-lookup fault, not storage.",
+      "requires": {
+        "state": "unhosted_domain",
+        "fault": "database",
+        "network": "restmail_delivery_auth"
+      },
+      "request": {
+        "body": {
+          "from": "sender@external.test",
+          "to": [
+            "eve@restmail.test"
+          ],
+          "body_text": "Unsigned authentication contract",
+          "message_id": "<auth-contract@external.test>"
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "deferred",
+            "message": "Message deferred, retry later"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "strict_trusted_local_deferred": {
+      "description": "Strict mode trusts the actual loopback socket peer; an unsigned hosted sender reaches the injected recipient-lookup fault, not storage.",
+      "requires": {
+        "state": "existing_domain",
+        "fault": "database",
+        "network": "restmail_delivery_auth"
+      },
+      "request": {
+        "body": {
+          "from": "sender@restmail.test",
+          "to": [
+            "eve@restmail.test"
+          ],
+          "body_text": "Unsigned authentication contract",
+          "message_id": "<auth-contract@external.test>"
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "deferred",
+            "message": "Message deferred, retry later"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "trusted_proxy_trusted_origin_deferred": {
+      "description": "A trusted loopback proxy identifies the independently trusted 192.0.2.10 origin. Authentication passes and the recipient lookup defers; no message is stored.",
+      "requires": {
+        "state": "existing_domain",
+        "fault": "database",
+        "network": "restmail_delivery_auth"
+      },
+      "request": {
+        "body": {
+          "from": "sender@restmail.test",
+          "to": [
+            "eve@restmail.test"
+          ],
+          "body_text": "Unsigned authentication contract",
+          "message_id": "<auth-contract@external.test>"
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "deferred",
+            "message": "Message deferred, retry later"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "trusted_proxy_untrusted_origin_refused": {
+      "description": "The loopback proxy is trusted for address resolution and is also in the delivery-peer allowlist, but its untrusted forwarded origin must not inherit that delivery trust.",
+      "requires": {
+        "state": "existing_domain",
+        "network": "restmail_delivery_auth"
+      },
+      "request": {
+        "body": {
+          "from": "sender@restmail.test",
+          "to": [
+            "eve@restmail.test"
+          ],
+          "body_text": "Unsigned authentication contract",
+          "message_id": "<auth-contract@external.test>"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Delivery not authenticated"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "untrusted_forwarded_peer_refused": {
+      "description": "With no trusted proxy, the loopback socket peer cannot claim the trusted 192.0.2.10 peer through forwarding headers.",
+      "requires": {
+        "state": "existing_domain",
+        "network": "restmail_delivery_auth"
+      },
+      "request": {
+        "body": {
+          "from": "sender@restmail.test",
+          "to": [
+            "eve@restmail.test"
+          ],
+          "body_text": "Unsigned authentication contract",
+          "message_id": "<auth-contract@external.test>"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Delivery not authenticated"
+          }
+        },
+        "mediaType": "application/json"
+      }
     }
   },
   "restmailDiscover": {

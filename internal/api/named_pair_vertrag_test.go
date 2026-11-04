@@ -20,6 +20,7 @@ type namedPairExchange struct {
 	method, path, uri, name string
 	status                  int
 	body, token             string
+	headers                 map[string]string
 }
 
 // checkNamedPairWithVertrag sends one published pair through Vertrag, against
@@ -79,6 +80,9 @@ func checkNamedPairWithVertrag(t *testing.T, binary string, handler http.Handler
 	args := []string{"run", "--endpoint", server.URL, "--reporter", "json", "--output", "report.json"}
 	if exchange.token != "" {
 		args = append(args, "--header", "Authorization: Bearer "+exchange.token)
+	}
+	for name, value := range exchange.headers {
+		args = append(args, "--header", name+": "+value)
 	}
 	args = append(args, "openapi.json")
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
