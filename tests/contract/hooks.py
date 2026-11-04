@@ -373,6 +373,8 @@ def the_last_free_operations_after_a_reset(transaction):
     #   path changes (to_the_seeded_account).
     # - listCalendarEvents' 200 gets an invitation of its own, which the after
     #   hook the_listing_holds_what_was_made requires it to list.
+    # - respondToCalendar's 200 and 403 reply to an invitation of their own
+    #   (to_the_invitation_made_for_it).
     # - verifyDelivery's 200 asks about an address no mailbox has, with no
     #   wait, and is answered found: false (#388); probeServices' 200 probes
     #   the database. Neither needs anything made.
@@ -384,14 +386,36 @@ def the_last_free_operations_after_a_reset(transaction):
         return
     start_clean(transaction)
     name = transaction.get("name", "")
+    path = transaction["fullPath"].partition("?")[0]
+    if path.endswith("/calendar-reply") and (" > 200 > " in name or " > 403 > " in name):
+        to_the_invitation_made_for_it(transaction)
     if " > 200 > " not in name:
         return
-    path = transaction["fullPath"].partition("?")[0]
     if path.startswith("/api/v1/accounts/"):
         to_the_seeded_account(transaction)
     if path.endswith("/calendar-events"):
         fixture_call(transaction, "POST", "/api/v1/messages/send", OWN_INVITATION)
         made_for_the_listing(transaction, "invitation", {"uid": OWN_INVITATION_UID})
+
+
+def to_the_invitation_made_for_it(transaction):
+    """respondToCalendar's accepted (200) and foreign_sender (403) need a
+    received invitation (x-requires state calendar_invitation, which the
+    own-data run provides): the seeded admin@restmail.test sends itself one
+    after the reset, and the reply goes to the message it was delivered in.
+    Only the message id in the path changes; foreign_sender's from stays an
+    address the session cannot send as, so it is refused after the invitation
+    is found."""
+    fixture_call(transaction, "POST", "/api/v1/messages/send", OWN_INVITATION)
+    account = mailbox_id(origin_of(transaction), ADMIN)
+    rows = fixture_call(transaction, "GET", f"/api/v1/accounts/{account:d}/calendar-events") or []
+    found = [row.get("message_id") for row in rows if row.get("uid") == OWN_INVITATION_UID]
+    if not found or not found[0]:
+        raise RuntimeError("the invitation made for the reply was not delivered: no message holds it")
+    path, separator, query = transaction["fullPath"].partition("?")
+    parts = path.split("/")
+    parts[4] = str(found[0])
+    transaction["fullPath"] = "/".join(parts) + separator + query
 
 
 @hooks.before("domainDNSCheck")

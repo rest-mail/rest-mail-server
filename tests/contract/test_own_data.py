@@ -322,6 +322,36 @@ class Selection(unittest.TestCase):
         self.assertNotIn("surface", out)
         self.assertEqual(out["unproven"], ".cache/contract/unproven-own-data.json")
 
+    def test_it_provides_the_states_its_hooks_make(self):
+        out = own_data.configure({"provides": {"principal": ["anonymous"], "state": ["x"]}})
+        self.assertEqual(
+            out["provides"],
+            {"principal": ["anonymous"], "state": ["calendar_invitation", "x"]},
+        )
+        self.assertEqual(
+            own_data.configure({"provides": {}})["provides"],
+            {"state": ["calendar_invitation"]},
+        )
+
+    def test_each_provided_state_is_only_the_moved_examples_its_hooks_make(self):
+        # A provided state sends every selected example that requires it, so
+        # each must be exactly the examples the hooks set up after the reset.
+        pairs = json.loads((ROOT / "openapi-example.json").read_text())
+        requiring = {
+            (operation, name)
+            for operation, examples in pairs.items()
+            for name, pair in examples.items()
+            if pair.get("requires", {}).get("state") in own_data.PROVIDES["state"]
+            and operation in own_data.MOVED
+        }
+        self.assertEqual(
+            requiring,
+            {
+                ("respondToCalendar", "accepted"),
+                ("respondToCalendar", "foreign_sender"),
+            },
+        )
+
     def test_it_selects_everything_a_reset_takes_the_created_domain_from(self):
         description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
         selected = set(own_data.MOVED)

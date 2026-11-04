@@ -1330,7 +1330,14 @@ own id. Refusals keep their ids and bodies. `getAccount`'s and
 reset changed. `listCalendarEvents`' 200 gets an invitation of its own (a
 calendar request that account sends itself), and
 `the_listing_holds_what_was_made` fails it unless the answer lists that
-invitation. `verifyDelivery`'s 200 asks about an address no mailbox has, with
+invitation. `respondToCalendar`'s `accepted` (200) and `foreign_sender` (403)
+require a received invitation (`x-requires` state `calendar_invitation`), which
+the own-data run provides (`own_data.PROVIDES`): after the reset the seeded
+account sends itself an invitation, and the reply goes to the message it was
+delivered in (`to_the_invitation_made_for_it`). `accountEvents`' `stream` (200)
+is not sent: its example is a literal `event: ping` stream the live server never
+sends, and Vertrag compares a stream with no `x-events` byte for byte (#1385).
+`verifyDelivery`'s 200 asks about an address no mailbox has, with
 no wait, and is answered `found: false` (#388); `probeServices`' 200 probes the
 database. Neither needs anything made. What is still not moved, and why,
 is on #1385: the quarantine operations and `listAccounts` (whose link reaches
