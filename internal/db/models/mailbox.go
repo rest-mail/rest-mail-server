@@ -16,6 +16,10 @@ type Mailbox struct {
 	QuietHoursStart         string `gorm:"size:5;not null;default:''" json:"-"`
 	QuietHoursEnd           string `gorm:"size:5;not null;default:''" json:"-"`
 	QuietHoursTimeZone      string `gorm:"size:255;not null;default:''" json:"-"`
+	// TimeZone is the IANA name whose calendar days IMAP SEARCH ON, BEFORE and
+	// SINCE compare for this account. Nil means UTC. It is not QuietHoursTimeZone,
+	// which holds only the quiet-hours schedule.
+	TimeZone *string `gorm:"size:255" json:"-"`
 	// QuotaBytes is an explicit cap. Zero inherits the live owner's ceiling
 	// for owned accounts; without an owner, zero means unlimited.
 	QuotaBytes     int64      `gorm:"default:1073741824" json:"quota_bytes"`

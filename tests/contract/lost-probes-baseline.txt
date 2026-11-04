@@ -29,6 +29,9 @@ putSieveScript 6
 # A report must name a hosted policy domain.
 receiveTlsReport 32
 # The hook replaces the generator's unknown time_zone placeholder x with UTC.
+# setAccountTimeZone was measured with TestAccountTimeZoneCoverageWithVertrag's
+# narrowed run, not a whole-API run.
+setAccountTimeZone 3
 setQuietHours 10
 # filter_name must name a filter.
 testFilter 8

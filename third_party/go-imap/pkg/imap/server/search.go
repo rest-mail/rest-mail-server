@@ -1,6 +1,7 @@
 package server
 
 import (
+	"log/slog"
 	"net/mail"
 	"strconv"
 	"strings"
@@ -20,6 +21,7 @@ type searchCriterion struct {
 	field  string            // header: the header field name to search
 	value  string            // for string/date/uid/seqset criteria
 	date   time.Time         // parsed date for since/before/on
+	zone   *time.Location    // since/before/on: the host's zone for the calendar day; nil is the Date's own
 	sub    []searchCriterion // for NOT (1 element), OR (2 elements) or AND (a "(...)" group)
 	ranges []wire.SeqRange   // uid/seqset: pre-parsed ranges, tested by membership (never expanded)
 }
@@ -161,7 +163,51 @@ func (s *Session) parseSearchCriteria(args string) ([]searchCriterion, *searchEr
 	// mapping matched sequence numbers to their UIDs so the per-message test is
 	// the same O(1) membership check UID sets use (never expanded — issue #8).
 	s.resolveSeqSets(criteria)
+	if serr := s.resolveSearchZone(criteria); serr != nil {
+		return nil, serr
+	}
 	return criteria, nil
+}
+
+// resolveSearchZone asks a [imap.SearchZoneMailbox] for its zone, once per command
+// and only when a key compares the internal date, and gives that zone to those
+// keys. It runs after every key has parsed, so a malformed command stays a BAD.
+func (s *Session) resolveSearchZone(criteria []searchCriterion) *searchError {
+	zoned, ok := s.mailbox.(imap.SearchZoneMailbox)
+	if !ok || !comparesInternalDate(criteria) {
+		return nil
+	}
+	zone, err := zoned.SearchZone()
+	if err != nil {
+		// A guessed zone could answer with the wrong day's messages and look right.
+		slog.Warn("imap: search zone failed", "error", err)
+		return &searchError{status: "NO", text: "[UNAVAILABLE] SEARCH failed: time zone unavailable"}
+	}
+	setSearchZone(criteria, zone)
+	return nil
+}
+
+func comparesInternalDate(criteria []searchCriterion) bool {
+	for _, c := range criteria {
+		switch c.kind {
+		case "since", "before", "on":
+			return true
+		}
+		if comparesInternalDate(c.sub) {
+			return true
+		}
+	}
+	return false
+}
+
+func setSearchZone(criteria []searchCriterion, zone *time.Location) {
+	for i := range criteria {
+		switch criteria[i].kind {
+		case "since", "before", "on":
+			criteria[i].zone = zone
+		}
+		setSearchZone(criteria[i].sub, zone)
+	}
 }
 
 // resolveSeqSets walks the criteria tree and turns every "seqset" node's raw set
@@ -528,9 +574,15 @@ func (s *Session) matchOne(msg imap.Message, c searchCriterion, loadRaw func() (
 		return false
 	case "since", "before", "on":
 		// RFC 3501 §6.4.4 compares the internal calendar date, ignoring
-		// both the time of day and timezone. Converting the instant to UTC
-		// first would move messages near midnight onto the wrong day.
-		return compareSearchDate(c.kind, msg.Date, c.date)
+		// both the time of day and timezone. The date is as Message.Date writes
+		// it, unless the host names the zone its calendar days are in. Reading
+		// each instant's day there holds on a day with no midnight or with two,
+		// where the first second of the day cannot be got from the date alone.
+		date := msg.Date
+		if c.zone != nil {
+			date = date.In(c.zone)
+		}
+		return compareSearchDate(c.kind, date, c.date)
 	case "sentsince", "sentbefore", "senton":
 		// The SENT keys compare the Date: header's calendar date, again
 		// disregarding time and timezone (RFC 3501 §6.4.4). A message with no

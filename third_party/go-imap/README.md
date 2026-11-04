@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/rest-mail/go-imap/actions/workflows/ci.yml/badge.svg)](https://github.com/rest-mail/go-imap/actions/workflows/ci.yml)
 [![Coverage gate: >=95%](https://img.shields.io/badge/coverage%20gate-%3E%3D95%25-brightgreen)](COVERAGE.md)
-[![Partial checklist: 511/787 mapped](https://img.shields.io/badge/partial%20checklist-511%2F787%20mapped-blue)](CHECKLIST.md)
+[![Partial checklist: 513/789 mapped](https://img.shields.io/badge/partial%20checklist-513%2F789%20mapped-blue)](CHECKLIST.md)
 [![Go Reference](https://pkg.go.dev/badge/github.com/rest-mail/go-imap.svg)](https://pkg.go.dev/github.com/rest-mail/go-imap/pkg/imap/server)
 [![Go Report Card](https://goreportcard.com/badge/github.com/rest-mail/go-imap)](https://goreportcard.com/report/github.com/rest-mail/go-imap)
 
@@ -147,6 +147,7 @@ func (a *account) MoveUID(srcUID uint32, dest string) (uint32, error) {
 | `Mover` | `MoveUID` | MOVE ([RFC 6851]) as one atomic backend call per message. Without it MOVE still works, through `Mailbox.Move`; with it and `UIDPlusMailbox`, MOVE reports `COPYUID`. |
 | `UTF8Mailbox` | `EnableUTF8` | UTF8=ACCEPT ([RFC 6855]), switched on per session with `ENABLE UTF8=ACCEPT`: UTF-8 quoted strings and mailbox names, raw UTF-8 headers (RFC 6532), and APPEND's `UTF8 (~{n})` data item. |
 | `DateAppender` | `AppendWithDate` | APPEND's date-time argument reaches the store as the message's INTERNALDATE. Without it the date is checked and then dropped. |
+| `SearchZoneMailbox` | `SearchZone` | Names the zone whose calendar days SEARCH BEFORE, ON and SINCE compare, for example an account's own. Without it the day is the one `Message.Date` writes in its own location. FETCH INTERNALDATE and the SENT* keys do not change. |
 
 ### One connection
 

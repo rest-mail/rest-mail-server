@@ -1,6 +1,7 @@
 package rfctest
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -212,4 +213,121 @@ func TestSearchRequiresSelection(t *testing.T) {
 	requireOK(t, tagged, "S1")
 	requireSearch(t, c, "SEARCH ALL", "* SEARCH")
 	requireSearch(t, c, "UID SEARCH ALL", "* SEARCH")
+}
+
+// zonedSearchMailbox is a store that names the zone of SEARCH's calendar days.
+type zonedSearchMailbox struct {
+	selectionMailbox
+	raw   map[uint32]string
+	zone  *time.Location
+	err   error
+	calls int
+}
+
+func (m *zonedSearchMailbox) Fetch(uid uint32) ([]byte, error) {
+	raw, ok := m.raw[uid]
+	if !ok {
+		return nil, errors.New("no such message")
+	}
+	return []byte(raw), nil
+}
+
+func (m *zonedSearchMailbox) SearchZone() (*time.Location, error) {
+	m.calls++
+	return m.zone, m.err
+}
+
+func zonedSearchClient(t *testing.T, box *zonedSearchMailbox, messages []imap.Message) *client {
+	t.Helper()
+	box.folders = map[string][]imap.Message{"INBOX": messages}
+	c := selectionClient(t, box)
+	_, tagged := c.command("S1", "SELECT INBOX")
+	requireOK(t, tagged, "S1")
+	return c
+}
+
+// TestSearchZoneChoosesTheCalendarDay proves a host's zone decides which day BEFORE,
+// ON and SINCE see, in every position a key can take, while FETCH INTERNALDATE
+// keeps Message.Date and a nil zone keeps the date's own location.
+//
+// checklist: IMAP-SEARCH-06 IMAP-SEARCH-31
+func TestSearchZoneChoosesTheCalendarDay(t *testing.T) {
+	messages := []imap.Message{
+		{UID: 10, Date: time.Date(2025, 6, 15, 3, 0, 0, 0, time.UTC)},   // 14 June at UTC-5
+		{UID: 20, Date: time.Date(2025, 6, 15, 12, 0, 0, 0, time.UTC)},  // 15 June at UTC-5
+		{UID: 30, Date: time.Date(2025, 6, 16, 4, 59, 59, 0, time.UTC)}, // the last second of 15 June at UTC-5
+		{UID: 40, Date: time.Date(2025, 6, 16, 5, 0, 0, 0, time.UTC)},   // the first second of 16 June at UTC-5
+	}
+	box := &zonedSearchMailbox{zone: time.FixedZone("", -5*3600)}
+	c := zonedSearchClient(t, box, messages)
+	for _, tc := range []struct{ query, seqs, uids string }{
+		{"ON 14-Jun-2025", "1", "10"},
+		{"ON 15-Jun-2025", "2 3", "20 30"},
+		{"ON 16-Jun-2025", "4", "40"},
+		{"BEFORE 15-Jun-2025", "1", "10"},
+		{"SINCE 16-Jun-2025", "4", "40"},
+		{"SINCE 15-Jun-2025 BEFORE 16-Jun-2025", "2 3", "20 30"},
+		{"NOT ON 15-Jun-2025", "1 4", "10 40"},
+		{"OR ON 14-Jun-2025 ON 16-Jun-2025", "1 4", "10 40"},
+		{"(ON 16-Jun-2025)", "4", "40"},
+	} {
+		t.Run(tc.query, func(t *testing.T) {
+			requireSearch(t, c, "SEARCH "+tc.query, "* SEARCH "+tc.seqs)
+			requireSearch(t, c, "UID SEARCH "+tc.query, "* SEARCH "+tc.uids)
+		})
+	}
+	lines, tagged := c.command("F1", "FETCH 1 INTERNALDATE")
+	requireOK(t, tagged, "F1")
+	if len(lines) != 1 || !strings.Contains(lines[0], `INTERNALDATE "15-Jun-2025 03:00:00 +0000"`) {
+		t.Errorf("FETCH INTERNALDATE = %q, want Message.Date as it is", lines)
+	}
+
+	box.zone = nil
+	requireSearch(t, c, "SEARCH ON 15-Jun-2025", "* SEARCH 1 2")
+	requireSearch(t, c, "SEARCH ON 16-Jun-2025", "* SEARCH 3 4")
+}
+
+// TestSearchZoneLeavesSentDatesAsWritten proves the SENT* keys still read the Date:
+// header as written, whatever zone the host names (RFC 3501 §6.4.4), and that a
+// search without an internal-date key does not ask for the zone.
+//
+// checklist: IMAP-SEARCH-20 IMAP-SEARCH-31
+func TestSearchZoneLeavesSentDatesAsWritten(t *testing.T) {
+	box := &zonedSearchMailbox{zone: time.FixedZone("", 9*3600)}
+	box.raw = map[uint32]string{10: "Date: Sun, 15 Jun 2025 23:30:00 -0500\r\nSubject: late\r\n\r\nbody\r\n"}
+	c := zonedSearchClient(t, box, []imap.Message{{UID: 10, Subject: "late", Date: time.Date(2025, 6, 16, 4, 30, 0, 0, time.UTC)}})
+	requireSearch(t, c, "SEARCH SENTON 15-Jun-2025", "* SEARCH 1")
+	requireSearch(t, c, "SEARCH SENTBEFORE 16-Jun-2025", "* SEARCH 1")
+	requireSearch(t, c, "SEARCH SENTSINCE 16-Jun-2025", "* SEARCH")
+	requireSearch(t, c, "SEARCH SUBJECT late", "* SEARCH 1")
+	if box.calls != 0 {
+		t.Errorf("searches with no internal-date key asked for the zone %d times", box.calls)
+	}
+	requireSearch(t, c, "SEARCH ON 16-Jun-2025 NOT (OR ON 16-Jun-2025 ON 17-Jun-2025)", "* SEARCH")
+	if box.calls != 1 {
+		t.Errorf("one SEARCH asked for the zone %d times, want once", box.calls)
+	}
+}
+
+// TestSearchZoneFailureAnswersNO proves a zone the store cannot give refuses the
+// command with no partial result, keeps a malformed command a BAD without asking, and leaves the session
+// usable.
+//
+// checklist: IMAP-SEARCH-32
+func TestSearchZoneFailureAnswersNO(t *testing.T) {
+	box := &zonedSearchMailbox{err: errors.New("private store detail")}
+	c := zonedSearchClient(t, box, []imap.Message{{UID: 10, Subject: "late", Date: time.Date(2025, 6, 15, 3, 0, 0, 0, time.UTC)}})
+
+	lines, tagged := c.command("Q1", "SEARCH ON 15-Jun-2025")
+	if len(lines) != 0 || !strings.HasPrefix(tagged, "Q1 NO [UNAVAILABLE]") || strings.Contains(tagged, "private") {
+		t.Errorf("SEARCH = %q / %q, want a static tagged NO [UNAVAILABLE] alone", lines, tagged)
+	}
+	calls := box.calls
+	if _, tagged := c.command("Q2", "SEARCH ON 15-Jun-2025 NOSUCHKEY"); !strings.HasPrefix(tagged, "Q2 BAD") {
+		t.Errorf("malformed SEARCH = %q, want BAD", tagged)
+	}
+	if box.calls != calls {
+		t.Errorf("a malformed SEARCH asked for the zone")
+	}
+	requireSearch(t, c, "SEARCH SUBJECT late", "* SEARCH 1")
 }

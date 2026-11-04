@@ -31,6 +31,15 @@ found by the RFC 3501 inventory in rest-mail/rest-mail-server#374.
   that the flag was accepted and ignored, so it is corrected in the same way.
   Under EXAMINE, read-only NO still comes before this check.
 
+## Search zone
+
+`SearchZoneMailbox` is an optional interface for rest-mail/rest-mail-server#1557.
+RFC 3501 §6.4.4 compares the internal date "disregarding time and timezone", and
+IMAP gives a client no way to say which zone its dates are in, so the store's
+stored instants need a zone to have a calendar day at all. REST Mail stores them
+in UTC and names the account's own zone here. A mailbox without the interface
+keeps upstream behaviour.
+
 ## RFC 9051 additions
 
 These add IMAP4rev2 behaviour from RFC 9051 ahead of the `IMAP4rev2`
