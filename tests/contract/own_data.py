@@ -9,8 +9,10 @@ folder, contact or account gone: the same operations without a reset are the com
 
 A reset also removes every principal and fixture the other phases use, and the
 primary run still has operations that depend on them, so this is sent after
-those phases, just before the teardown. The primary run keeps sending every one
-of these operations, without a reset, until the last of them has moved.
+those phases, last. The primary run keeps sending every one of these
+operations, without a reset, until the last of them has moved, but for the
+exchanges that wipe the data (resetTestData's and restoreTestSnapshot's): their
+examples require disposable_data, which only this run provides (#1334).
 
 The configuration is the run's own, narrowed to these operations and without the
 surface gate, which is about the whole API. That gate is also what fails a skipped
@@ -327,6 +329,14 @@ MOVED = (
     "accountEvents",
     "probeServices",
     "verifyDelivery",
+    # The test data operations (#1334). No link starts from or reaches any of
+    # them. Each exchange resets and seeds first; the reset's own just runs
+    # after it. The restore restores a snapshot taken through the API after
+    # its reset, and the reset removes a domain made after it.
+    "resetTestData",
+    "seedTestData",
+    "snapshotTestData",
+    "restoreTestSnapshot",
 )
 
 
@@ -336,7 +346,9 @@ MOVED = (
 # seeded account sends itself an invitation and the reply names its message.
 # accountEvents' stream (event_stream) is not provided: its example is a
 # literal stream the live server never sends, compared byte for byte (#1385).
-PROVIDES = {"state": ["calendar_invitation"]}
+# disposable_data is resetTestData's and restoreTestSnapshot's: what each wipes
+# was made for it by its own reset, and no exchange after it needs that.
+PROVIDES = {"state": ["calendar_invitation", "disposable_data"]}
 
 
 def configure(config):

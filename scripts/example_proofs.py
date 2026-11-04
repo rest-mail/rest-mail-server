@@ -12,7 +12,6 @@ counts as proven when any of the files names it.
 usage: example_proofs.py <openapi-example.json> <proofs.json> [<proofs.json> ...]
 """
 
-import ast
 import json
 import sys
 from pathlib import Path
@@ -30,23 +29,21 @@ def unproven(examples, proofs, never_sent=frozenset()):
 
 def never_sent(root):
     """The operations no phase of the live run sends: vertrag.yml's
-    exclude-operation-id, but for those the teardown pass sends
-    (#1334). Every example of these must be proven in process."""
+    exclude-operation-id (#1334). Every example of these must be proven in
+    process."""
     excluded, listing = [], False
     for line in (root / "vertrag.yml").read_text().splitlines():
         if line.startswith("exclude-operation-id:"):
             listing = True
+            inline = line.split(":", 1)[1].split("#", 1)[0].strip()
+            if inline.startswith("[") and inline.endswith("]"):
+                excluded.extend(op.strip() for op in inline[1:-1].split(",") if op.strip())
+                break
         elif listing and line.startswith("  - "):
             excluded.append(line[4:].strip())
         elif listing and line.strip() and not line.startswith("#"):
             break
-    passes = set()
-    for name in ("teardown.py",):
-        tree = ast.parse((root / "tests/contract" / name).read_text())
-        for node in tree.body:
-            if isinstance(node, ast.Assign) and any(getattr(t, "id", "") == "OPERATIONS" for t in node.targets):
-                passes.update(ast.literal_eval(node.value))
-    return frozenset(op for op in excluded if op not in passes)
+    return frozenset(excluded)
 
 
 def main(argv):

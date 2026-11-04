@@ -244,15 +244,17 @@ jobs:
           set -o pipefail
           chore test:limits 2>&1 | tee "$RUNNER_TEMP/limits.log"
 
-      - name: Contract teardown (the operations that wipe the run's data)
-        # Last: resetTestData and restoreTestSnapshot clear every principal and
-        # fixture the steps above use (#1334). A gate, as the contract step is.
+      - name: Contract own-data run (each exchange after a reset and seed)
+        # Last: each exchange resets the data, which clears every principal and
+        # fixture the steps above use; resetTestData and restoreTestSnapshot
+        # are sent here like any other (#1334, #1385). A gate, as the contract
+        # step is.
         if: inputs.contract-phases == 'gate'
         env:
           CONTRACT_ENDPOINT: http://10.99.0.20:8080
           CONTRACT_LOGS: ${{ runner.temp }}
           CONTRACT_DESCRIPTION_MODE: ${{ inputs.description-mode }}
-        run: chore test:contract-teardown
+        run: chore test:contract-own-data
 
       - name: JavaScript filter isolation, between two real instances
         # The real Go API, started and stopped by the instance commands, beside a

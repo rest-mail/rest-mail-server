@@ -34,7 +34,7 @@ In the `E2E (full topology)` job (`.github/workflows/e2e-suite.yml`), after the
 | `authorization` | Every selected operation as each configured principal, checked against the spec's security roles. A signed-in caller refused an object the path names may get the 404 that hides it (#672); `authorization_refusals.py` names any 404 outside that, so an admin route stays 403 and no credential stays 401. | Report only, after the gates |
 | `ownership` | Each account tenant's principals sent the other tenant's account id, on the operations they are entitled to; every answer must be 403 or 404. | Report only, after authorization |
 | `fuzz` | Values drawn from each schema, shrunk to the smallest failing input, with a replayable seed. | Nightly (`contract-fuzz.yml`), never blocks |
-| `own-data` | The operations moved to a clean start, each exchange after a reset and seed, with what follows `createDomain`'s links ([Moved to a clean start](#moved-to-a-clean-start-part-of-1385)). | Gate, before the teardown |
+| `own-data` | The operations moved to a clean start, each exchange after a reset and seed, with what follows `createDomain`'s links, `resetTestData` and `restoreTestSnapshot` among them ([Moved to a clean start](#moved-to-a-clean-start-part-of-1385)). | Gate, last |
 | faults | The API built with each fault in `faults.yml`, and the phase the fault names run on its operation: it must turn red ([Fault catalogue](#fault-catalogue-654)). | Nightly (`contract-faults.yml`), fails on a fault not caught |
 
 ### Skipped valid coverage probes (#1443)
@@ -408,9 +408,12 @@ Two gates judge the primary run:
   transaction of it was sent and passed, none failed, none skipped (because a
   hook skipped it or the link it follows did not resolve), none answered 5xx,
   and requires every operation it does not exclude. A shortfall exits 3, a
-  failed transaction 1, and the contract step fails on either. Each exclusion
-  is printed with its reason: the two operations that wipe the run's data, which
-  `exclude-operation-id` leaves to the teardown phase. No status is excluded:
+  failed transaction 1, and the contract step fails on either. Nothing is
+  excluded: `exclude-operation-id` and `surface.exclude` are empty (#1334). The
+  exchanges that wipe the data (`resetTestData`'s 200, `restoreTestSnapshot`'s
+  200 and 422) say so in their examples' `x-requires` (state `disposable_data`),
+  which only the own-data run provides; Vertrag measures the primary run's
+  surface on what it can reach, and lists them in `unproven.json`. No status is excluded:
   `status-baseline.txt`, which `run.sh` adds to the run's `surface.exclude`
   and `status_baseline.py` holds to only shrink, is empty (#1334).
 - **coverage, a ratchet, in `gate.py`:** `coverage-baseline.txt` lists the
@@ -1653,9 +1656,9 @@ keeps its id. The create's and the unban's own hooks still give them the state
 they document. No stash value carried these across a reset, so none was removed.
 
 This happens only with `CONTRACT_RESET_SEED=1`, which `tests/contract/run.sh own-data`
-sets, and that phase is a gate of its own, sent by `chore test:contract-teardown`
-just before the teardown. It sends the moved operations with everything that follows
-`createDomain`'s, `createPipeline`'s, `createAlias`'s, `createCustomFilter`'s,
+sets, and that phase is a gate of its own, sent last by `chore test:contract-own-data`.
+There is no teardown pass any more (#1334). The phase sends the moved operations
+with everything that follows `createDomain`'s, `createPipeline`'s, `createAlias`'s, `createCustomFilter`'s,
 `createFolder`'s, `createContact`'s, `sendMessage`'s, `saveDraft`'s,
 `createAccount`'s, `putSieveScript`'s, `listQueue`'s, `createAppPassword`'s,
 `createAPIKey`'s and `createBan`'s links
@@ -1691,7 +1694,24 @@ What a reset does and does not touch here:
   seconds, and a timeout fails the exchange as an error rather than sending it. Event
   streams are closed by the reset. `.cache/contract-principals.json` names accounts
   that the first reset removes, so nothing that reads it can run after this phase,
-  which is why this phase is the last before the teardown.
+  which is why this phase is the last.
+
+**The test data operations (#1334).** `resetTestData`, `seedTestData`,
+`snapshotTestData` and `restoreTestSnapshot` are moved like the rest: each exchange
+resets and seeds first (`the_test_data_operations_after_a_reset`); the reset's own
+exchange just runs after it. Their successes answer the same status whatever they
+did, so an after hook (`the_wipe_did_what_it_says`) checks the data:
+
+- `resetTestData`'s 200 gets a domain made after its reset, and the reset must
+  have removed it and seeded `restmail.test` again.
+- `restoreTestSnapshot`'s 200 restores a snapshot taken through the API
+  (`snapshotTestData`) after its reset, in place of the example's empty body, which
+  would only clear the data. The domains, mailboxes and aliases afterwards must be
+  the snapshot's, and the other tables must hold as many rows.
+
+Their wiping examples require `disposable_data`, which `own_data.PROVIDES` gives
+this run only, so the primary run and its coverage, authorization, ownership and
+fuzz phases send none of them.
 
 ## Principals
 
