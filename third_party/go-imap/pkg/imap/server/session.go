@@ -2,6 +2,7 @@ package server
 
 import (
 	"bufio"
+	"bytes"
 	"crypto/tls"
 	"errors"
 	"fmt"
@@ -107,9 +108,10 @@ var nonSyncTooBig = fmt.Sprintf("[TOOBIG] Non-synchronizing literal over %d byte
 // synchronizing literal" (RFC 7888 §5).
 const maxNonSyncLiteral = 4096
 
-// readLine reads one CRLF/LF-terminated line from the client and returns it with
-// any trailing CR/LF stripped, enforcing MaxCommandLineLength on the line length
-// (excluding the terminator).
+// readLine reads one line from the client and returns it without its CRLF,
+// enforcing MaxCommandLineLength on the line length (excluding the terminator).
+// A line that ends in a bare LF keeps it, and any other CR stays too, so the
+// caller can refuse the line (RFC 3501 §2.2: "strings that end with a CRLF").
 //
 // If the line exceeds the cap, readLine stops accumulating, drains the remainder
 // up to and including the next '\n' without retaining it, and returns
@@ -153,13 +155,13 @@ func (s *Session) readCommandLine() (line string, tooLong, nonSyncLiteral bool, 
 		}
 
 		if e == nil {
-			return strings.TrimRight(string(buf), "\r\n"), false, false, nil
+			return strings.TrimSuffix(string(buf), "\r\n"), false, false, nil
 		}
 		if errors.Is(e, bufio.ErrBufferFull) {
 			continue // more of the same (still-within-cap) line
 		}
 		// Real read error / EOF, possibly with a partial final line.
-		return strings.TrimRight(string(buf), "\r\n"), false, false, e
+		return strings.TrimSuffix(string(buf), "\r\n"), false, false, e
 	}
 }
 
@@ -215,8 +217,8 @@ func endsNonSyncLiteral(tail []byte) bool {
 // argument value; reads the remainder of the command line that follows the
 // octets; and splices the octets back in place of the marker, re-encoded as a
 // quoted-string so the per-command parsers consume them unchanged (an embedded
-// quote/backslash is escaped; other 8-bit content, including CR/LF/NUL, is
-// preserved verbatim for those parsers to validate). The spliced-in continuation
+// quote/backslash is escaped; other 8-bit content, including CR/LF, is preserved
+// verbatim for those parsers to validate). The spliced-in continuation
 // may itself end in another literal, so this repeats until the assembled line
 // carries no trailing literal.
 //
@@ -228,7 +230,7 @@ func endsNonSyncLiteral(tail []byte) bool {
 // Memory stays bounded:
 // the aggregate literal octets are capped at MaxLiteralSize and the assembled
 // line at MaxCommandLineLength, both independent of how the client chunks input.
-func (s *Session) readLiteralArgs(tag, args string) (assembled string, ok, closeConn bool) {
+func (s *Session) readLiteralArgs(tag, command, args string) (assembled string, ok, closeConn bool) {
 	reject := func(reason string, fatal bool) (string, bool, bool) {
 		s.tagged(tag, "BAD", reason)
 		if fatal {
@@ -243,7 +245,7 @@ func (s *Session) readLiteralArgs(tag, args string) (assembled string, ok, close
 		// Validate only typed text, before inviting a synchronizing literal.
 		// Literal octets already spliced into args remain exempt.
 		if reason := s.commandTextError(typed); reason != "" {
-			return reject(reason, isLit && !sync)
+			return reject(reason, (isLit && !sync) || endsNonSyncLiteral([]byte(typed)))
 		}
 		if !isLit {
 			return args, true, false // no (further) trailing literal
@@ -260,6 +262,9 @@ func (s *Session) readLiteralArgs(tag, args string) (assembled string, ok, close
 		// is refused without a continuation, so the client never sends the octets.
 		if size > MaxLiteralSize || total+size > MaxLiteralSize {
 			return reject(fmt.Sprintf("Literal too large (limit %d bytes)", MaxLiteralSize), !sync)
+		}
+		if !literalArgumentAllowed(command, prefix) {
+			return reject("Literal is not allowed at this argument position", !sync)
 		}
 		total += size
 
@@ -280,6 +285,13 @@ func (s *Session) readLiteralArgs(tag, args string) (assembled string, ok, close
 		if tooLong {
 			// readLine discarded the suffix, including any next literal marker.
 			return reject(fmt.Sprintf("Command line too long (limit %d bytes)", MaxCommandLineLength), true)
+		}
+
+		// A literal is CHAR8, which excludes NUL (RFC 3501 §9), whatever argument
+		// it stands in for. Only the continuation can leave another literal unread.
+		if bytes.IndexByte(buf, 0) >= 0 {
+			_, _, nextSync, nextLiteral := wire.SplitTrailingLiteral(cont)
+			return reject("NUL in literal", nextLiteral && !nextSync)
 		}
 
 		typed = cont
@@ -454,6 +466,15 @@ func (s *Session) Handle() {
 		}
 
 		if line == "" {
+			// No command or tag can be determined: the BAD is untagged,
+			// including the empty-line example in RFC 3501 §7.1.3.
+			s.send("* BAD Empty command line")
+			continue
+		}
+		if strings.ContainsAny(line, "\r\n") {
+			if s.refuseLineEnding(line) {
+				return
+			}
 			continue
 		}
 
@@ -498,7 +519,7 @@ func (s *Session) Handle() {
 		// handleAppend's large-message path, which needs the raw octets, not a
 		// re-encoded argument; handleAppend reads a literal mailbox name itself.
 		if ucmd != "APPEND" {
-			materialized, argsOK, closeConn := s.readLiteralArgs(tag, args)
+			materialized, argsOK, closeConn := s.readLiteralArgs(tag, ucmd, args)
 			if closeConn {
 				return // buffered unread octets must never become new commands
 			}
@@ -513,6 +534,9 @@ func (s *Session) Handle() {
 		// lone trailing space, is refused.
 		if wire.NoArguments[ucmd] && len(line) > len(tag)+1+len(cmd) {
 			s.tagged(tag, "BAD", ucmd+" takes no arguments")
+			continue
+		}
+		if s.refuseMailboxArguments(tag, ucmd, args) {
 			continue
 		}
 

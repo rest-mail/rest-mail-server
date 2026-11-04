@@ -182,14 +182,12 @@ func (s *Session) handleRename(tag, args string) {
 		return
 	}
 
-	parts := strings.SplitN(args, " ", 2)
-	if len(parts) < 2 {
+	names, ok := mailboxArguments(args, 2)
+	if !ok {
 		s.tagged(tag, "BAD", "RENAME requires old and new name")
 		return
 	}
-
-	oldName := wire.Unquote(strings.TrimSpace(parts[0]))
-	newName := wire.Unquote(strings.TrimSpace(parts[1]))
+	oldName, newName := names[0], names[1]
 
 	if oldName == "" || newName == "" {
 		s.tagged(tag, "BAD", "RENAME requires old and new name")

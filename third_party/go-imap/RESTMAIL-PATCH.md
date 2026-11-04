@@ -39,7 +39,36 @@ found by the RFC 3501 inventory in rest-mail/rest-mail-server#374.
   write nothing, because the §9 `flag` production "does not include" it. A
   keyword spelled `Recent` is unaffected. `TestStoreLeavesRecentAlone` asserted
   that the flag was accepted and ignored, so it is corrected in the same way.
-  Under EXAMINE, read-only NO still comes before this check.
+- A STORE or UID STORE that breaks the grammar is BAD under EXAMINE too. The
+  read-only NO now comes after the syntax checks (§2.2.2).
+- Three fixes are taken from rest-mail/go-imap, where they are already merged:
+  a literal is refused before its octets are read where the grammar takes an
+  atom, number or date (rest-mail/go-imap#173, `literal_type.go`); an empty
+  command line answers `* BAD` (#176); and CREATE, DELETE, RENAME, SUBSCRIBE and
+  UNSUBSCRIBE take exactly their mailbox astrings (#175). The last is enforced
+  before dispatch here rather than in each handler as upstream does, because
+  open pull requests in this repository change those handlers.
+- These go further than upstream and are proposed there as
+  rest-mail/go-imap#179, found by the command-grammar rows of
+  rest-mail/rest-mail-server#374:
+  - A line ends only in CRLF (§2.2). A bare LF or a stray CR is BAD, tagged when
+    the line starts with a tag, and a line that ends in a non-synchronizing
+    literal marker ends the session because its octets are in flight.
+  - SEARCH, UID SEARCH, LIST and LSUB refuse a leading, trailing or doubled SP,
+    and an SP just inside parentheses (§§2.2.2, 9). LIST and LSUB need both their
+    reference and pattern; they used to default a missing one, and LSUB ignored
+    what followed.
+  - A literal holding NUL is BAD in any argument (§9), since LIST and LSUB took
+    one as a pattern.
+  - AUTHENTICATE with a mechanism that is not an atom is BAD, not the NO of an
+    unsupported mechanism (§9).
+  - APPEND naming `\Recent` is BAD, not NO, before any continuation (§§2.3.2, 9).
+  - APPEND whose message literal is not followed by CRLF says BYE before it
+    closes, as a server must (§3.4).
+  - Response text carries no client literal or host error text (§9): STATUS and
+    LIST no longer echo an unknown item, which a literal could fill with CR, LF
+    and 8-bit octets, and STORE gives the fixed text UID STORE already did. The
+    host's error goes to the log.
 
 ## RFC 9051 additions
 
