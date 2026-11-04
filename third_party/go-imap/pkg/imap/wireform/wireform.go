@@ -47,8 +47,9 @@ func WriteEncodedWords(w interface {
 }
 
 // ParameterField renders a Content-Type or Content-Disposition field 7-bit, changing
-// only what holds an 8-bit octet, so a parameter in any charset keeps its text. ok is
-// false when the value does not parse, or the type itself is 8-bit.
+// only what holds an 8-bit octet or couldn't be read once 7-bit, so a parameter in any
+// charset or spelling keeps its text. ok is false when the value holds no readable
+// type, or the type itself is 8-bit.
 func ParameterField(name, value string) (field string, ok bool) {
 	return message.ParameterField(name, value)
 }

@@ -162,32 +162,34 @@ func multipartParts(body, boundary string) []string {
 
 // multipartSpans returns where each part of a multipart body starts and ends.
 func multipartSpans(body, boundary string) [][2]int {
-	var spans [][2]int
-	eachMultipartSpan(body, boundary, func(start, end int) {
-		spans = append(spans, [2]int{start, end})
-	})
-	return spans
+	return partSpans(body, multipartDelimiters(body, boundary))
 }
 
-// eachMultipartSpan calls part with where each part of a multipart body starts and ends.
-func eachMultipartSpan(body, boundary string, part func(start, end int)) {
+// multipartDelimiter is one delimiter line: where "--boundary" starts, where its line
+// ends, and whether it is the close delimiter.
+type multipartDelimiter struct {
+	at, after int
+	closing   bool
+}
+
+// multipartDelimiters finds each delimiter line of a multipart body, up to and
+// including the close delimiter.
+func multipartDelimiters(body, boundary string) []multipartDelimiter {
 	delim := "--" + boundary
-	// next finds the next delimiter line at or after from. It returns the
-	// offset of the delimiter, the offset just after its line and whether it
-	// is the close delimiter.
-	next := func(from int) (at, after int, closing, found bool) {
+	// next finds the next delimiter line at or after from.
+	next := func(from int) (multipartDelimiter, bool) {
 		for from <= len(body) {
 			i := strings.Index(body[from:], delim)
 			if i < 0 {
-				return 0, 0, false, false
+				return multipartDelimiter{}, false
 			}
-			at = from + i
+			at := from + i
 			from = at + 1
 			if at != 0 && (at < 2 || body[at-2:at] != "\r\n") {
 				continue
 			}
 			rest := body[at+len(delim):]
-			closing = strings.HasPrefix(rest, "--")
+			closing := strings.HasPrefix(rest, "--")
 			if closing {
 				rest = rest[2:]
 			}
@@ -199,30 +201,48 @@ func eachMultipartSpan(body, boundary string, part func(start, end int)) {
 			if strings.Trim(line, " \t") != "" {
 				continue
 			}
-			after = len(body) - len(rest) + len(line)
+			after := len(body) - len(rest) + len(line)
 			if eol >= 0 {
 				after += 2
 			}
-			return at, after, closing, true
+			return multipartDelimiter{at, after, closing}, true
 		}
-		return 0, 0, false, false
+		return multipartDelimiter{}, false
 	}
 
-	_, start, closing, found := next(0)
-	for found && !closing {
-		at, after, c, ok := next(start)
-		if !ok {
-			part(start, len(body))
+	var delimiters []multipartDelimiter
+	for from := 0; ; {
+		d, found := next(from)
+		if !found {
+			return delimiters
+		}
+		delimiters = append(delimiters, d)
+		if d.closing {
+			return delimiters
+		}
+		from = d.after
+	}
+}
+
+// partSpans returns where the part after each delimiter that isn't the close one
+// starts and ends. The CRLF before a delimiter is part of it, and an unterminated last
+// part runs to the end of the body.
+func partSpans(body string, delimiters []multipartDelimiter) [][2]int {
+	var spans [][2]int
+	for i, d := range delimiters {
+		if d.closing {
 			break
 		}
-		end := at
-		if end >= 2 {
-			end -= 2 // the CRLF before the delimiter is part of it
+		end := len(body)
+		if i+1 < len(delimiters) {
+			end = delimiters[i+1].at
+			if end >= 2 {
+				end -= 2
+			}
+			if end < d.after {
+				end = d.after
+			}
 		}
-		if end < start {
-			end = start
-		}
-		part(start, end)
-		start, closing = after, c
+		spans = append(spans, [2]int{d.after, end})
 	}
 }

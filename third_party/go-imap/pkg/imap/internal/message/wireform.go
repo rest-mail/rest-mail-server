@@ -1,8 +1,11 @@
 package message
 
 import (
+	"bytes"
+	"crypto/sha256"
 	"encoding/base64"
-	"io"
+	"encoding/hex"
+	"fmt"
 	"mime/quotedprintable"
 	"strings"
 	"sync"
@@ -20,6 +23,7 @@ import (
 //     QUOTED-PRINTABLE for text with no charset, so no charset is guessed.
 //   - A NUL in a header or a textual leaf stays, and FETCH refuses the message
 //     (IMAP-ENV-12). In non-textual data it is encoded like any other octet.
+//   - A multipart's boundary and delimiter lines stay in step (see wireBoundary).
 //
 // sessionUTF8 is whether the session enabled UTF8=ACCEPT (RFC 6855): valid UTF-8
 // then stays in headers, and in a textual leaf with no charset, whose default
@@ -103,41 +107,197 @@ func has8bit(s string) bool {
 
 // wireEntity converts one entity. Types come from the stored header, which is
 // what the sections and BODYSTRUCTURE of the same message describe.
-func wireEntity(w wireSink, node mimeNode, sessionUTF8 bool) {
-	if !needsWireForm(node.body) {
-		wireHeader(w, node.header, sessionUTF8)
-		_, _ = w.WriteString(node.body)
-		return
+func wireEntity(node mimeNode, sessionUTF8 bool) string {
+	if !has8bit(node.header) && !needsWireForm(node.body) {
+		return node.header + node.body
 	}
 	mt, params := node.mediaType()
+	multipart := strings.HasPrefix(mt, "multipart/") && params["boundary"] != ""
+	if multipart && (needsWireForm(node.body) || has8bit(params["boundary"])) {
+		return wireMultipart(node, mt, params["boundary"], sessionUTF8)
+	}
+	header := wireHeader(node.header, sessionUTF8)
 	switch {
+	case !needsWireForm(node.body):
+		return header + node.body
 	case mt == "message/rfc822":
-		wireHeader(w, node.header, sessionUTF8)
-		wireEntity(w, messageNode(node.body, node.depth+1), sessionUTF8)
-	case strings.HasPrefix(mt, "multipart/") && params["boundary"] != "":
-		wireHeader(w, node.header, sessionUTF8)
-		wireMultipart(w, node, mt, params["boundary"], sessionUTF8)
-	default:
-		wireLeaf(w, node, mt, params, sessionUTF8)
+		return header + wireEntity(messageNode(node.body, node.depth+1), sessionUTF8)
 	}
 }
 
-// wireMultipart converts a multipart body part by part. Delimiter lines stay; a
-// preamble or epilogue that holds 8-bit octets, which MIME readers ignore, has
-// them escaped so a BODY[TEXT] of the multipart is 7-bit too.
-func wireMultipart(w wireSink, node mimeNode, mt, boundary string, sessionUTF8 bool) {
+// wireMultipart converts a multipart body part by part. A preamble or epilogue that
+// holds 8-bit octets, which MIME readers ignore, has them escaped so a BODY[TEXT] of
+// the multipart is 7-bit too. Delimiter lines stay what the boundary says, see
+// wireBoundary, and the header is converted last, since that depends on the rest.
+func wireMultipart(node mimeNode, mt, boundary string, sessionUTF8 bool) string {
 	def := "text/plain"
 	if mt == "multipart/digest" {
 		def = "message/rfc822"
 	}
+	delimiters := multipartDelimiters(node.body, boundary)
+	spans := partSpans(node.body, delimiters)
+	// texts[i] is what stands before delimiter i, and the last is what follows them all.
+	texts := make([]string, len(delimiters)+1)
 	at := 0
-	eachMultipartSpan(node.body, boundary, func(start, end int) {
-		writeEscaped8bit(w, node.body[at:start], false)
-		h, body := splitEntity(node.body[start:end])
-		wireEntity(w, mimeNode{header: h, body: body, defaultType: def, depth: node.depth + 1}, sessionUTF8)
-		at = end
-	})
-	writeEscaped8bit(w, node.body[at:], false)
+	for i := range texts {
+		end := len(node.body)
+		if i < len(delimiters) {
+			end = delimiters[i].at
+		}
+		if i == 0 || i > len(spans) {
+			texts[i] = escape8bit(node.body[at:end])
+		} else {
+			span := spans[i-1]
+			h, body := splitEntity(node.body[span[0]:span[1]])
+			texts[i] = escape8bit(node.body[at:span[0]]) +
+				wireEntity(mimeNode{header: h, body: body, defaultType: def, depth: node.depth + 1}, sessionUTF8) +
+				escape8bit(node.body[span[1]:end])
+		}
+		at = end + len("--"+boundary)
+	}
+
+	spelled := wireBoundary(node.header, boundary, texts, sessionUTF8)
+	header := node.header
+	if spelled != boundary {
+		header = headerWithBoundary(header, spelled)
+	}
+	var b strings.Builder
+	b.WriteString(wireHeader(header, sessionUTF8))
+	for i, text := range texts {
+		if i > 0 {
+			b.WriteString("--" + spelled)
+		}
+		b.WriteString(text)
+	}
+	return b.String()
+}
+
+// wireBoundary is the boundary a multipart goes out with. An 8-bit one has no 7-bit
+// form a client could match against the stored lines, so the header and every delimiter
+// line take the same new spelling, in the octets sent, which also spares a client
+// reading RFC 2231 or a charset to find them. A session that enabled UTF8=ACCEPT reads
+// valid UTF-8 as stored, in the field and on the lines alike.
+//
+// Either spelling must be nothing else in the body, or a client would split where the
+// stored message doesn't: a converted boundary may equal text already there, and
+// conversion may turn text into a stored boundary's delimiter. The texts already hold
+// the delimiters of every nested multipart, so an outer boundary is what moves.
+func wireBoundary(header, boundary string, texts []string, sessionUTF8 bool) string {
+	field, _ := contentTypeField(header)
+	keep := !has8bit(boundary) || strings.IndexByte(boundary, 0) >= 0 ||
+		(sessionUTF8 && utf8.ValidString(boundary) && utf8.ValidString(field))
+	if keep {
+		for _, text := range texts {
+			if len(multipartDelimiters(text, boundary)) > 0 {
+				return freeBoundary(sevenBitBoundary(boundary), texts)
+			}
+		}
+		return boundary
+	}
+	spelled := sevenBitBoundary(boundary)
+	if startsLine(texts, spelled) {
+		return freeBoundary(spelled, texts)
+	}
+	return spelled
+}
+
+// sevenBitBoundary spells boundary in what RFC 2046 §5.1.1 allows one: every other
+// octet is =XX, which leaves no 8-bit octet, no white space to lose at the end of a line
+// and no quoting to get wrong, in at most 70 characters.
+func sevenBitBoundary(boundary string) string {
+	const digits = "0123456789ABCDEF"
+	var b strings.Builder
+	for i := 0; i < len(boundary); i++ {
+		if c := boundary[i]; isBoundaryChar(c) {
+			b.WriteByte(c)
+		} else {
+			b.Write([]byte{'=', digits[c>>4], digits[c&0x0f]})
+		}
+	}
+	if b.Len() > maxBoundary {
+		return shortBoundary(b.String(), sha256.Sum256([]byte(boundary)))
+	}
+	return b.String()
+}
+
+// maxBoundary is the longest boundary RFC 2046 §5.1.1 allows.
+const maxBoundary = 70
+
+func isBoundaryChar(c byte) bool {
+	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' ||
+		strings.IndexByte("'()+_,-./:=?", c) >= 0
+}
+
+// shortBoundary is spelled, cut short enough to hold a hash, with the hash after it.
+func shortBoundary(spelled string, hash [sha256.Size]byte) string {
+	const suffix = 13 // '_' and twelve hex digits
+	if len(spelled) > maxBoundary-suffix {
+		spelled = spelled[:maxBoundary-suffix]
+	}
+	return spelled + "_" + hex.EncodeToString(hash[:6])
+}
+
+// freeBoundary is spelled with a suffix that no line in texts starts with. The suffix
+// hashes the texts, so a message can't hold the line it would need ahead of time, and
+// it is the same each time, so sizes and offsets stay the same between FETCHes.
+func freeBoundary(spelled string, texts []string) string {
+	h := sha256.New()
+	for _, text := range texts {
+		h.Write([]byte(text))
+	}
+	hash := [sha256.Size]byte(h.Sum(nil))
+	for {
+		free := shortBoundary(spelled, hash)
+		if !startsLine(texts, free) {
+			return free
+		}
+		hash = sha256.Sum256(hash[:])
+	}
+}
+
+// startsLine reports whether any line in texts starts with the delimiter of boundary,
+// whatever follows it, which is what some readers take for one.
+func startsLine(texts []string, boundary string) bool {
+	delimiter := "--" + boundary
+	for _, text := range texts {
+		if strings.HasPrefix(text, delimiter) || strings.Contains(text, "\n"+delimiter) {
+			return true
+		}
+	}
+	return false
+}
+
+// contentTypeField is the first Content-Type of a header block, the one a reader
+// takes, and its index among the block's fields.
+func contentTypeField(header string) (string, int) {
+	for i, field := range headerBlockFields(header) {
+		if name, _, ok := strings.Cut(field, ":"); ok && strings.EqualFold(name, "Content-Type") {
+			return field, i
+		}
+	}
+	return "", -1
+}
+
+// headerWithBoundary rewrites the Content-Type of a header block with a new boundary.
+// The result is 7-bit, because something that has to change its boundary has to change
+// it wherever it is read, so wireHeader leaves it alone.
+func headerWithBoundary(header, boundary string) string {
+	field, at := contentTypeField(header)
+	if at < 0 {
+		return header
+	}
+	text, eol := strings.CutSuffix(field, "\r\n")
+	name, value, _ := strings.Cut(text, ":")
+	rewritten, ok := parameterField(name, unfoldHeader(value), boundary)
+	if !ok {
+		return header
+	}
+	if eol {
+		rewritten += "\r\n"
+	}
+	fields := headerBlockFields(header)
+	fields[at] = rewritten
+	return strings.Join(fields, "")
 }
 
 // wireLeaf converts a leaf whose body holds an 8-bit octet or a NUL. A body

@@ -51,6 +51,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   so the entity keeps its real type and its other parameters in BODY, BODYSTRUCTURE
   and sections, at every part level, instead of reading as `text/plain` with a NIL
   disposition. Its 8-bit data is converted for that real type.
+- A Content-Type or Content-Disposition holding an 8-bit octet no longer fails to
+  parse over any other malformed spelling either, so the entity keeps its real type
+  and every parameter's text. `name=Jörg (1).pdf` keeps `(1)` in the value, an
+  unbalanced `"` or `(` is text, and `näme=x` goes out as `n%C3%A4me=x`. A field with
+  no 8-bit octet is unchanged, and still takes the default if it is malformed.
+- An 8-bit boundary splits after FETCH converts it. The header and every delimiter
+  line now spell it the same 7-bit way in the octets sent, as in `boundary="J=C3=B6"`
+  and `--J=C3=B6`, at every level of a message, so parts keep their real type and
+  size in BODYSTRUCTURE. If that spelling, or a 7-bit boundary, would match another
+  line of the converted body, the boundary takes a suffix so the parts stay where the
+  stored message has them. After `ENABLE UTF8=ACCEPT`, valid UTF-8 stays as stored.
 - SEARCH decodes a header one encoded word at a time. A word in a charset it can't
   decode is compared as stored, and neither that nor a stray `=?` stops it decoding
   the words around it, in TEXT, HEADER, SUBJECT, TO, FROM or an encapsulated message.
