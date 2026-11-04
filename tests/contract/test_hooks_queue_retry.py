@@ -57,7 +57,7 @@ class QueueRetryHookTests(unittest.TestCase):
 
     def test_refusals_and_invalid_boundary_ids_reach_the_handler_unchanged(self):
         for entry, status in (
-            ("5", "400"), ("2147483647", "404"), ("10", "401"),
+            ("2147483647", "404"), ("10", "401"), ("0", "400"), ("not-an-id", "400"),
             ("0", "200"), ("-1", "200"), ("1.5", "200"), ("not-an-id", "200"),
         ):
             with self.subTest(entry=entry, status=status):
@@ -69,6 +69,24 @@ class QueueRetryHookTests(unittest.TestCase):
                 api.assert_not_called()
                 prepare.assert_not_called()
                 self.assertEqual(transaction, original)
+
+    def test_the_documented_refusal_retries_an_entry_bounced_for_it(self):
+        # Not entry 5, which an earlier bulk delete with an empty filter removes.
+        transaction = self.transaction("5", "400")
+        original = copy.deepcopy(transaction)
+        with patch.object(self.hooks, "a_disposable_queue_entry", return_value=77), \
+                patch.object(self.hooks, "fixture_call") as api:
+            self.hooks.retry_a_held_entry_after_bulk_examples(transaction)
+        api.assert_called_once_with(transaction, "POST", "/api/v1/admin/queue/77/bounce")
+        self.assertEqual(transaction["fullPath"], "/api/v1/admin/queue/77/retry?proof=kept")
+        self.assertEqual(transaction["request"], original["request"])
+        self.assertEqual(transaction["name"], original["name"])
+
+    def test_a_failed_bounce_fails_the_refusal(self):
+        with patch.object(self.hooks, "a_disposable_queue_entry", return_value=77), \
+                patch.object(self.hooks, "fixture_call", side_effect=RuntimeError("no bounce")):
+            with self.assertRaisesRegex(RuntimeError, "no bounce"):
+                self.hooks.retry_a_held_entry_after_bulk_examples(self.transaction("5", "400"))
 
     def test_failed_replenishment_fails_the_proof(self):
         transaction = self.transaction()

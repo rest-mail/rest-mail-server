@@ -162,7 +162,9 @@ gate)
   ;;
 authorization)
   # Examples always run first, then the matrix repeats destructive requests as
-  # the admin, so this runs after the gate.
+  # the admin, so this runs after the gate. The creates meet what the gate made,
+  # so they may clear it (a_leftover_to_remove).
+  export CONTRACT_REMOVE_LEFTOVERS=1
   chore test:contract-report-targets -- authorization ||
     echo "the held mail could not be topped up; the found examples of deleteQuarantine and clearSuppression will say so"
   python3 -B tests/contract/authorization.py "$CONTRACT_SPEC" "$out/vertrag-run.yml" \

@@ -166,6 +166,57 @@ class CoverageTargetHooks(unittest.TestCase):
         self.assertEqual(len(callbacks), 1)
         callbacks[0](transaction)
 
+    def mailbox_probe(self, path="/api/v1/admin/mailboxes/1", status=200):
+        return {
+            "name": "/api/v1/admin/mailboxes/{id} > Update a mailbox > %d > application/json" % status,
+            "protocol": "http:",
+            "host": "127.0.0.1",
+            "port": str(self.server.server_port),
+            "fullPath": path + "?keep=yes",
+            "request": {
+                "method": "PATCH",
+                "headers": {"Authorization": session(self.shared["mfa_admin"].ADDRESS)},
+                "body": '{"password": "generated"}',
+            },
+        }
+
+    def update_mailbox(self, transaction):
+        [callback] = [
+            callback
+            for callback in self.callbacks["updateMailbox"]
+            if callback.__name__ == "a_disposable_mailbox_for_coverage"
+        ]
+        callback(transaction)
+
+    def test_a_generated_password_never_reaches_the_seeded_account(self):
+        first, second = self.mailbox_probe(), self.mailbox_probe()
+        body = first["request"]["body"]
+        self.update_mailbox(first)
+        self.update_mailbox(second)
+        self.assertRegex(first["fullPath"], r"^/api/v1/admin/mailboxes/10[0-9]\?keep=yes$")
+        self.assertEqual(second["fullPath"], first["fullPath"])
+        self.assertEqual(first["request"]["body"], body)
+        [(path, authorization, made)] = self.server.calls
+        self.assertEqual(path, "/api/v1/accounts")
+        self.assertEqual(authorization, "Bearer setup-mfa-session")
+        self.assertRegex(made["address"], r"^contract-update-[0-9]+@restmail\.test$")
+
+    def test_only_coverages_literal_mailbox_success_moves(self):
+        for transaction in (
+            self.mailbox_probe("/api/v1/admin/mailboxes/57"),
+            self.mailbox_probe("/api/v1/admin/mailboxes/0"),
+            self.mailbox_probe(status=404),
+        ):
+            before = copy.deepcopy(transaction)
+            self.update_mailbox(transaction)
+            self.assertEqual(transaction, before)
+        with patch.dict(os.environ, {"CONTRACT_COVERAGE": "0"}):
+            transaction = self.mailbox_probe()
+            before = copy.deepcopy(transaction)
+            self.update_mailbox(transaction)
+            self.assertEqual(transaction, before)
+        self.assertEqual(self.server.calls, [])
+
     def test_only_the_path_changes_and_every_request_gets_a_fresh_target(self):
         for operation in OPERATIONS:
             with self.subTest(operation=operation):

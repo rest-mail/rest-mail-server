@@ -1254,7 +1254,7 @@ def a_self_signed_certificate(transaction):
     ):
         return
     if body.get("domain_id") == 1 and hooks.stash.get("domain_id") is not None:
-        body["domain_id"] = hooks.stash["domain_id"]
+        body["domain_id"] = a_standing_domain_for_the_certificate(transaction)
     # The server refuses a certificate that does not name the domain it is
     # uploaded for (#1704), so it is made for that domain's own name.
     name = certificate_name_for(transaction, body["domain_id"])
@@ -1281,6 +1281,37 @@ def a_self_signed_certificate(transaction):
             body["cert_pem"] = cert_file.read()
             body["key_pem"] = key_file.read()
             hooks.set_json(transaction, body)
+
+
+def a_standing_domain_for_the_certificate(transaction):
+    """The domain the run made, or one of the certificate's own once that is
+    gone. The authorization matrix sends its cells after the examples, and
+    deleteDomain's example has removed the run's domain by then: the upload met
+    404 Domain not found, which says nothing about who may call it (#376). Only
+    the upload moves: what else reads the run's domain keeps its id."""
+    domain_id = hooks.stash["domain_id"]
+    try:
+        standing = fixture_call(
+            transaction,
+            "GET",
+            "/api/v1/admin/domains/%d" % domain_id,
+            expect=PROBE_REFUSALS,
+        )
+    except (urllib.error.URLError, OSError, ValueError):
+        return domain_id  # A fault the probe injects: it meets its refusal first.
+    if standing:
+        return domain_id
+    if hooks.stash.get("certificate_domain_id") is None:
+        hooks.stash["certificate_domain_id"] = fixture_call(
+            transaction,
+            "POST",
+            "/api/v1/admin/domains",
+            {
+                "name": "contract-certificate-%d.test" % time.time_ns(),
+                "server_type": "traditional",
+            },
+        )["id"]
+    return hooks.stash["certificate_domain_id"]
 
 
 def certificate_name_for(transaction, domain_id):
@@ -2082,13 +2113,13 @@ def a_leftover_to_remove(transaction):
     """Whether a create may remove an object of the same value that this
     process did not make.
 
-    The ownership runs (tests/contract/run.sh sets CONTRACT_REMOVE_LEFTOVERS)
-    come after the examples, coverage and authorization runs of the same job,
-    in vertrag processes of their own, so the objects those runs made from the
-    documented examples are still there and this process's stash does not
-    know them: new-account@restmail.test, created@example.com and
+    The authorization and ownership runs (tests/contract/run.sh sets
+    CONTRACT_REMOVE_LEFTOVERS) come after the examples and coverage runs of the
+    same job, in vertrag processes of their own, so the objects those runs made
+    from the documented examples are still there and this process's stash does
+    not know them: new-account@restmail.test, created@example.com and
     sales@restmail.test answered 409, and every check linked from them went
-    unsent (#657). Only a create documented to succeed (201) clears its way;
+    unsent (#657, #376). Only a create documented to succeed (201) clears its way;
     a 409 example names an object on purpose (admin@restmail.test), and every
     other run leaves objects it did not make alone.
     """
@@ -2103,7 +2134,7 @@ def remove_a_previous_contact_probe(transaction):
     # Coverage calls before hooks only. Claim an absent email before its first
     # create, then remove only that probe's contact when generated bodies repeat.
     # Existing contacts and all generated request bytes stay untouched, but
-    # for an ownership run's leftovers (a_leftover_to_remove).
+    # for a later run's leftovers (a_leftover_to_remove).
     from urllib.error import HTTPError
     from urllib.parse import urlencode
 
@@ -2445,7 +2476,7 @@ def remove_a_previous_alias_probe(transaction):
     # repeat it, which meets the alias an earlier probe made (409). Host the
     # domain, claim an absent source before its first create, and remove only
     # that probe's alias when generated bodies repeat it. Existing aliases and
-    # all generated request bytes stay untouched, but for an ownership run's
+    # all generated request bytes stay untouched, but for a later run's
     # leftovers (a_leftover_to_remove).
     # After a reset (the own-data phase) no earlier probe's alias is left, so
     # created_alias_probes, which the reset clears, starts empty.
@@ -2657,7 +2688,7 @@ def host_the_account_probe_domain(transaction):
     # Host the domain, claim an absent address before its first create, and
     # remove only that probe's account when generated bodies repeat it.
     # Existing accounts and all generated request bytes stay untouched, but
-    # for an ownership run's leftovers (a_leftover_to_remove).
+    # for a later run's leftovers (a_leftover_to_remove).
     from urllib.error import HTTPError
 
     body = hooks.get_json(transaction)
@@ -3067,6 +3098,57 @@ def ban_a_new_and_an_existing_ip(transaction):
         )
 
 
+@hooks.before("updateDraft")
+def update_a_draft_of_its_own(transaction):
+    # The authorization matrix does not send saveDraft's 201 (OWN_ACCOUNT), so
+    # no link fills updateDraft's id and its cells carry the placeholder draft
+    # 12, which no draft holds. The admin's cell documents the success, so it
+    # gets a draft of the admin's own to update (#376). The other principals'
+    # cells keep the id: 404 is their answer whatever it holds. Coverage's
+    # placeholders are contact_draft_hooks.py's, and the ownership run's id is
+    # the one its link filled.
+    if (
+        os.environ.get("CONTRACT_OWNERSHIP") == "1"
+        or os.environ.get("CONTRACT_COVERAGE") == "1"
+        or " > 200 > " not in transaction.get("name", "")
+        or session_address(transaction) != ADMIN
+    ):
+        return
+    path, _, query = transaction["fullPath"].partition("?")
+    drafts, placeholder = path.rstrip("/").rsplit("/", 1)
+    if placeholder != "12":
+        return
+    draft = fixture_call(
+        transaction,
+        "POST",
+        "/api/v1/messages/draft",
+        {
+            "from": ADMIN,
+            "to": [ADMIN],
+            "subject": "Contract draft",
+            "body_text": "Updated by the contract.",
+        },
+    )
+    transaction["fullPath"] = f"{drafts}/{draft['id']:d}" + ("?" + query if query else "")
+
+
+@hooks.before("requestRecoveryEmail")
+def a_recovery_request_for_an_address_of_its_own(transaction):
+    # The server allows five recovery requests an address every 15 minutes
+    # (recovery_email.go), charged whoever sends them. Every run and every
+    # principal repeats the documented address, so the sixth answered 429,
+    # which says nothing about who may call it (#376). Each documented success
+    # asks about an address of its own that no account holds; generated bodies
+    # and refusals stay as they are.
+    if " > 200 > " not in transaction.get("name", ""):
+        return
+    body = hooks.get_json(transaction)
+    if not isinstance(body, dict) or body.get("email") != "unknown@example.test":
+        return
+    body["email"] = "unknown-%d@example.test" % time.time_ns()
+    hooks.set_json(transaction, body)
+
+
 @hooks.before("sendDraft")
 def send_a_draft_of_its_own(transaction):
     # sent (201) and missing (404) both name the placeholder draft 12: sent is
@@ -3114,7 +3196,19 @@ def retry_a_held_entry_after_bulk_examples(transaction):
     name = transaction.get("name", "")
     path, _, query = transaction["fullPath"].partition("?")
     queue, entry, action = path.rstrip("/").rsplit("/", 2)
-    if " > 200 > " not in name or not positive_id(entry):
+    if not positive_id(entry):
+        return
+    if " > 400 > " in name:
+        # The documented refusal names entry 5, which only stood until the
+        # first bulk delete with an empty filter: a later run got 404 (#376).
+        # It gets an entry of its own, bounced first, as bounce's refusal does.
+        target = a_disposable_queue_entry()
+        fixture_call(transaction, "POST", f"/api/v1/admin/queue/{target:d}/bounce")
+        transaction["fullPath"] = f"{queue}/{target:d}/{action}" + (
+            "?" + query if query else ""
+        )
+        return
+    if " > 200 > " not in name:
         return
     current = fixture_call(transaction, "GET", f"{queue}/{entry}", expect=(404, 422))
     recipient = FIXTURE_PLAN["queue"]["retry"]["recipient"]
