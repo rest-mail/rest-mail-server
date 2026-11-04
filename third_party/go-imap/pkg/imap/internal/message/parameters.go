@@ -465,6 +465,8 @@ func validExtendedSuffix(suffix string) bool {
 	return true
 }
 
+var lineBreaksAsSpaces = strings.NewReplacer("\r", " ", "\n", " ")
+
 // readableField rewrites a field holding an 8-bit octet into what mime.ParseMediaType
 // accepts: no comments, every name a token (see parameterName), every value a token or
 // a quoted-string, and each name once. See readField for how it reads, and for a
@@ -485,7 +487,7 @@ func readableField(value string) string {
 		seen[strings.ToLower(name)] = true
 		text := piece.value
 		if !cleanValue(text) {
-			text = quoteString(strings.NewReplacer("\r", " ", "\n", " ").Replace(text))
+			text = quoteString(lineBreaksAsSpaces.Replace(text))
 		}
 		b.WriteString("; " + name + "=" + text)
 	}
