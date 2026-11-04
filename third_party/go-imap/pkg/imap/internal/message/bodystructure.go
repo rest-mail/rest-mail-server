@@ -55,7 +55,7 @@ func parseContentType(value string) (string, map[string]string, error) {
 	if hasParameters {
 		base += ";" + parameters
 	}
-	return mime.ParseMediaType(base)
+	return parseMediaType(base)
 }
 
 // uncommentMIME replaces each RFC 822 §3.4.3 comment in a MIME header value
@@ -64,8 +64,16 @@ func parseContentType(value string) (string, map[string]string, error) {
 // parameter values (including parentheses and quoted-pairs) stay intact.
 // Unbalanced comments and unterminated quoted strings are errors.
 func uncommentMIME(value string) (string, error) {
+	text, _, err := splitComments(value)
+	return text, err
+}
+
+// splitComments is uncommentMIME that also returns each comment it replaced, with
+// its delimiters.
+func splitComments(value string) (string, []string, error) {
 	var b strings.Builder
-	depth := 0
+	var comments []string
+	depth, start := 0, 0
 	quoted := false
 	for i := 0; i < len(value); i++ {
 		c := value[i]
@@ -78,6 +86,9 @@ func uncommentMIME(value string) (string, error) {
 				depth++
 			case ')':
 				depth--
+				if depth == 0 {
+					comments = append(comments, value[start:i+1])
+				}
 			}
 		case quoted:
 			b.WriteByte(c)
@@ -89,18 +100,19 @@ func uncommentMIME(value string) (string, error) {
 			}
 		case c == '(':
 			depth = 1
+			start = i
 			b.WriteByte(' ')
 		case c == ')':
-			return "", mime.ErrInvalidMediaParameter
+			return "", nil, mime.ErrInvalidMediaParameter
 		default:
 			b.WriteByte(c)
 			quoted = c == '"'
 		}
 	}
 	if depth != 0 || quoted {
-		return "", mime.ErrInvalidMediaParameter
+		return "", nil, mime.ErrInvalidMediaParameter
 	}
-	return b.String(), nil
+	return b.String(), comments, nil
 }
 
 // partStructure builds the body structure for one MIME entity given its header
@@ -266,7 +278,7 @@ func dispositionField(header textproto.MIMEHeader, sessionUTF8 bool) string {
 	if err != nil {
 		return "NIL"
 	}
-	disptype, params, err := mime.ParseMediaType(uncommented)
+	disptype, params, err := parseMediaType(uncommented)
 	if err != nil || disptype == "" || strings.Contains(disptype, "/") {
 		return "NIL"
 	}

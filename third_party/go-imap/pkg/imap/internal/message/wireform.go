@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"fmt"
 	"mime/quotedprintable"
-	"sort"
 	"strings"
 	"unicode/utf8"
 )
@@ -254,7 +253,7 @@ func wireHeader(header string, sessionUTF8 bool) string {
 }
 
 // sevenBitField rewrites one field holding an 8-bit octet. Content-Type and
-// Content-Disposition parameters become RFC 2231 extended values, because an
+// Content-Disposition keep their parameters, see ParameterField, because an
 // encoded word may not appear in a parameter (RFC 2047 §5); anything else has its
 // 8-bit text turned into encoded words. A line that is not a field at all is
 // encoded whole, so its octets survive and a reader still finds no field in it.
@@ -271,8 +270,8 @@ func sevenBitField(field string) string {
 	var out string
 	switch strings.ToLower(strings.TrimSpace(name)) {
 	case "content-type", "content-disposition":
-		if params, ok := extendedParameters(name, unfoldHeader(value)); ok {
-			out = params
+		if rewritten, ok := ParameterField(name, unfoldHeader(value)); ok {
+			out = rewritten
 			break
 		}
 		fallthrough
@@ -287,46 +286,6 @@ func sevenBitField(field string) string {
 
 func unfoldHeader(s string) string {
 	return strings.ReplaceAll(s, "\r\n", "")
-}
-
-// extendedParameters renders a parsed media type or disposition with its 8-bit
-// parameter values as RFC 2231 extended values, each on its own folded line. ok
-// is false when the value does not parse, or the type itself is 8-bit.
-func extendedParameters(name, value string) (string, bool) {
-	mt, params, err := parseContentType(strings.TrimSpace(value))
-	if err != nil || has8bit(mt) {
-		return "", false
-	}
-	keys := make([]string, 0, len(params))
-	for k := range params {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	var b strings.Builder
-	b.WriteString(name + ": " + mt)
-	for _, k := range keys {
-		b.WriteString(";\r\n " + parameter(k, params[k]))
-	}
-	return b.String(), true
-}
-
-func parameter(key, value string) string {
-	if !has8bit(value) {
-		value = strings.ReplaceAll(value, `\`, `\\`)
-		return key + `="` + strings.ReplaceAll(value, `"`, `\"`) + `"`
-	}
-	const hex = "0123456789ABCDEF"
-	var b strings.Builder
-	b.WriteString(key + "*=" + wordCharset(value) + "''")
-	for i := 0; i < len(value); i++ {
-		c := value[i]
-		if isAttributeChar(c) {
-			b.WriteByte(c)
-		} else {
-			b.Write([]byte{'%', hex[c>>4], hex[c&0x0f]})
-		}
-	}
-	return b.String()
 }
 
 // isAttributeChar reports whether c may stand unescaped in an RFC 2231 extended
