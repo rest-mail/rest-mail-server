@@ -1263,6 +1263,27 @@ the autoconfig reads' own later hook, and for an autodiscover that succeeds from
 the reset hook (its request is still sent as generated). No link starts from or
 reaches any of them.
 
+The domain administration lists (`listDomains`, `listAliases`, `listDKIMKeys`
+and `listCertificates`) and the certificate operations (`createCertificate`,
+`getCertificate` and `deleteCertificate`) reset and seed before each exchange
+too, refusals included (`domain_administration_after_a_reset`, each operation's
+first hook). A listing that succeeds gets a row of its own after the reset: a
+domain, an alias on a domain of its own, a DKIM key on a domain of its own, or a
+certificate on a domain of its own. A read or a delete of a certificate aimed at
+a positive id other than missing's gets a certificate of its own, since the one
+createCertificate's link names is gone. The create needs nothing made: its
+`domain_id` 1 is the seeded `restmail.test`. createCertificate's link reaches the
+read, and the read's the delete; no other link starts from or reaches any of
+them. `clearSuppression` is not moved: a suppression is made only by the Go
+fixtures, which the reset does not run.
+
+After a reset, the 200 of `listCustomFilters`, `listDomains`, `listAliases`,
+`listDKIMKeys` and `listCertificates` must list the row its before hook made
+(`the_listing_holds_what_was_made`, #1789), since the status and the schema
+alone pass on an empty list. The before hook notes the row in
+`hooks.stash["listing_made"]`; a documented 200 with nothing noted fails too.
+Refusals and a run without a reset are left alone.
+
 `createAlias`, `getAlias`, `updateAlias` and `deleteAlias` reset and seed before
 each exchange too, refusals included. A create is sent as documented after its
 reset: no earlier probe's alias is left, and the seeded `restmail.test` hosts
