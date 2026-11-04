@@ -1,6 +1,11 @@
 # ── Stage 1: node module cache (shared by later stages) ──────────────
 # Base images pinned by digest for reproducible builds (OSI-17).
-FROM node:22-alpine@sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb9c86130c3e2 AS deps
+# This stage and the builder run on the build machine's own platform, whatever
+# the target: their only output is the files in dist, which are the same for
+# every platform, and installing under emulation hung the arm64 build (#1850).
+# Only the prod stage is built per platform. The dev stage inherits this stage's
+# platform, which is right for an image built for the machine running it.
+FROM --platform=$BUILDPLATFORM node:22-alpine@sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb9c86130c3e2 AS deps
 WORKDIR /app
 # pnpm, activated by corepack at the version package.json pins in
 # `packageManager` — so the image build, CI and a developer's shell all install
