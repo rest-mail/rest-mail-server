@@ -5,6 +5,7 @@ on:
     branches: [main]
   workflow_dispatch:
   pull_request:
+    types: [opened, synchronize, reopened, edited]
     paths:
       - .github/workflows/api-gaps.yml
       - internal/api/**
@@ -15,7 +16,7 @@ on:
 # Reconciliation must finish, including topic updates and legacy closures. A newer
 # push queues behind it and checks out current main, rather than cancelling it.
 concurrency:
-  group: api-gap-issues-${{ github.event.pull_request.number || 'main' }}
+  group: ${{ github.event_name == 'pull_request' && github.event.action == 'edited' && github.event.changes.base.ref.from == '' && format('api-gap-ignored-{0}', github.run_id) || format('api-gap-issues-{0}', github.event.pull_request.number || 'main') }}
   cancel-in-progress: false
 
 permissions:
@@ -25,6 +26,7 @@ permissions:
 
 jobs:
   synchronize:
+    if: github.event_name != 'pull_request' || (github.base_ref == 'main' && (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

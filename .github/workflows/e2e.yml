@@ -15,15 +15,17 @@ name: E2E
 #   * `e2e-run`  — the heavy suite; runs ONLY when code changed (skipped on
 #                  docs-only PRs, so no 20-min wait).
 #   * `e2e`      — the gate. It is the job named `E2E (full topology)`, so it is
-#                  the required-check context. It ALWAYS runs (if: always()) and
+#                  the required-check context. It runs even after a job fails and
 #                  reports success when the heavy job passed OR was legitimately
 #                  skipped for a docs-only change. Because this job always posts,
-#                  the required context is satisfied on every PR — code or docs.
+#                  the required context is satisfied on main PRs — code or docs.
+# Stacked PRs report skipped checks; retargeting to main runs the usual checks.
+# Metadata-only edits allocate no runners and cannot replace a required verdict.
 on:
   push:
     branches: [main]
-  # Stack layers target parent branches; their updates need the same E2E gate.
   pull_request:
+    types: [opened, synchronize, reopened, edited]
   workflow_dispatch:
     inputs:
       description-mode:
@@ -37,7 +39,7 @@ on:
 
 # e2e is expensive — supersede in-flight runs for the same ref.
 concurrency:
-  group: e2e-${{ github.ref }}
+  group: ${{ github.event_name == 'pull_request' && github.event.action == 'edited' && github.event.changes.base.ref.from == '' && format('e2e-ignored-{0}', github.run_id) || format('e2e-{0}', github.ref) }}
   cancel-in-progress: true
 
 permissions:
@@ -47,6 +49,7 @@ permissions:
 jobs:
   changes:
     name: Classify changed paths
+    if: github.event_name != 'pull_request' || (github.base_ref == 'main' && (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -136,7 +139,7 @@ jobs:
   e2e-run:
     name: E2E (run full suite)
     needs: changes
-    if: needs.changes.outputs.run_e2e == 'true'
+    if: needs.changes.outputs.run_e2e == 'true' && (github.event_name != 'pull_request' || (github.base_ref == 'main' && (github.event.action != 'edited' || github.event.changes.base.ref.from != '')))
     uses: ./.github/workflows/e2e-suite.yml
     with:
       contract-phases: gate
@@ -144,13 +147,13 @@ jobs:
 
   e2e:
     # Required-check anchor. Branch protection requires the context
-    # `E2E (full topology)`, which is THIS job's name. It always runs so the
-    # required check always posts, and it is green when the heavy suite passed
+    # `E2E (full topology)`, which is THIS job's name except on ignored edits.
+    # On main it runs after failures too, and is green when the heavy suite passed
     # (code PR) or was intentionally skipped (docs-only PR). This is what keeps
     # a docs-only PR from being stranded on a never-reported required check.
-    name: E2E (full topology)
+    name: ${{ github.event_name == 'pull_request' && github.event.action == 'edited' && github.event.changes.base.ref.from == '' && 'E2E (ignored edit)' || 'E2E (full topology)' }}
     needs: [changes, e2e-run]
-    if: always()
+    if: always() && (github.event_name != 'pull_request' || (github.base_ref == 'main' && (github.event.action != 'edited' || github.event.changes.base.ref.from != '')))
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

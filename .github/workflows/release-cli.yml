@@ -21,6 +21,7 @@ on:
   push:
     tags: ["v*"]
   pull_request:
+    types: [opened, synchronize, reopened, edited]
     paths:
       - cmd/console/**
       - internal/console/**
@@ -33,6 +34,7 @@ permissions:
 jobs:
   release:
     name: Release the restmail CLI
+    if: github.event_name != 'pull_request' || (github.base_ref == 'main' && (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     runs-on: ubuntu-latest
     permissions:
       contents: write # creates the GitHub Release
