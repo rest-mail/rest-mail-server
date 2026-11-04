@@ -18649,8 +18649,19 @@ components:
                 type: string
               expected:
                 type: string
+                description: >-
+                  The value to publish at name. On a DKIM record, the public half of
+                  the key the domain signs with, "v=DKIM1; k=<rsa|ed25519>;
+                  p=<base64 public key>". Absent when the domain has nothing to publish
+                  here or the server cannot say what it should be. No private key
+                  material is ever answered with.
+                example: "v=DKIM1; k=ed25519; p=11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo="
               message:
                 type: string
+              problem:
+                type: string
+                description: On a DKIM record that is not ok, what differs from expected.
+                enum: [missing, malformed, different_key_type, different_key, more_than_one, key_unreadable]
 
     # ─────────────────────────────────────────────────────────────
     # Admin: MTA-STS

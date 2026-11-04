@@ -43,6 +43,10 @@ const (
 	domainDNSReverseName = "25.113.0.203.in-addr.arpa"
 	domainDNSOldHost     = "old.provider.example"
 	domainDNSDiffering   = "customer.example"
+	// domainDNSStale (id 7) signs with domainDNSPrivateKey, but its DKIM record still carries
+	// domainDNSStaleKey, another Ed25519 key.
+	domainDNSStale    = "stale.test"
+	domainDNSStaleKey = "v=DKIM1; k=ed25519; p=A6EHv/POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg="
 )
 
 func domainDNSPrivateKey(t *testing.T) string {
@@ -92,6 +96,9 @@ func (c *domainDNSCheckConnection) QueryContext(ctx context.Context, q string, a
 		}
 		if id == 6 {
 			name = domainDNSDiffering
+		}
+		if id == 7 {
+			name = domainDNSStale
 		}
 		if strings.Contains(q, `SELECT "name"`) {
 			if len(args) != 1 || !strings.Contains(q, "id =") {
@@ -218,7 +225,8 @@ func newDomainDNSCheckScenarios(t *testing.T) (map[string]bulkQueueExampleScenar
 }
 
 // domainDNSAnswer publishes what a domain must, on domainDNSMailHost, except that
-// domainDNSDiffering's MX still names its old provider.
+// domainDNSDiffering's MX still names its old provider and domainDNSStale's DKIM record still
+// carries its old key.
 func domainDNSAnswer(typ dnsmessage.Type, name string) (dnsmessage.ResourceBody, error) {
 	domainOf := func(prefix string) string { return strings.TrimPrefix(name, prefix) }
 	target := func(host string) (dnsmessage.Name, error) { return dnsmessage.NewName(host + ".") }
@@ -245,6 +253,8 @@ func domainDNSAnswer(typ dnsmessage.Type, name string) (dnsmessage.ResourceBody,
 		switch {
 		case strings.HasPrefix(name, "_dmarc."):
 			value = "v=DMARC1; p=none; rua=mailto:postmaster@" + domainOf("_dmarc.")
+		case strings.HasSuffix(name, "._domainkey."+domainDNSStale):
+			value = domainDNSStaleKey
 		case strings.Contains(name, "._domainkey."):
 			value = domainDNSPublicKey
 		case strings.HasPrefix(name, "_smtp._tls."):
@@ -427,6 +437,12 @@ func TestDomainDNSCheckExamples(t *testing.T) {
 				t.Fatalf("got%d %s want%d", rr.Code, rr.Body, pair.Response.Status)
 			}
 			assertPublicExampleBody(t, pair.Response.Body, rr.Body.Bytes())
+			// Only the key's public half is answered with (#1830).
+			for _, secret := range []string{"PRIVATE KEY", "MC4CAQAwBQYDK2VwBCIEIJ1hsZ3v", "nWGxne/9WmC6hEr0kuwsxERJxWl7MmkZcDusAxyuf2A"} {
+				if bytes.Contains(rr.Body.Bytes(), []byte(secret)) {
+					t.Fatalf("the answer carries private key material %q: %s", secret, rr.Body)
+				}
+			}
 			questions := calls.snapshot()[before:]
 			want := []string{}
 			if rr.Code == 200 && name != "invalid_stored_name" {
@@ -436,6 +452,9 @@ func TestDomainDNSCheckExamples(t *testing.T) {
 				}
 				if name == "published_differs" {
 					domain = domainDNSDiffering
+				}
+				if name == "dkim_record_differs" {
+					domain = domainDNSStale
 				}
 				want = []string{"TypeMX " + domain, "TypeTXT " + domain, "TypeTXT _dmarc." + domain, "TypeTXT _mta-sts." + domain, "TypeTXT _smtp._tls." + domain}
 				for _, service := range []string{"_submissions", "_imaps", "_pop3s", "_submission", "_imap", "_pop3"} {

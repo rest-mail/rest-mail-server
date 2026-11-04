@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/dkimrotate"
 	"github.com/rest-mail/rest-mail-server/internal/dns"
 	"github.com/rest-mail/rest-mail-server/internal/domainrecords"
 )
@@ -38,6 +39,11 @@ const (
 	statusMissing   = "missing"
 	statusDifferent = "different"
 	statusError     = "error"
+
+	// problemMoreThanOne: the DKIM record carries the right key, among other records at the
+	// selector, and verifiers may not use it (RFC 6376 §3.6.2.2).
+	problemMoreThanOne = "more_than_one"
+	problemUnreadable  = "key_unreadable"
 
 	// dnsCheckBudget bounds one check's lookups, which run together, so a resolver that has
 	// stopped answering costs this and no more.
@@ -92,12 +98,8 @@ func txtKindOf(domain, name string) txtKind {
 }
 
 // sameTXT reports whether two values of a TXT record mean the same: a tag list doesn't care
-// about a trailing semicolon or the space around tags (RFC 6376 §3.2), and DKIM allows space
-// inside the key too (§3.6.1).
-func sameTXT(label, a, b string) bool {
-	if label == "DKIM" {
-		a, b = strings.Join(strings.Fields(a), ""), strings.Join(strings.Fields(b), "")
-	}
+// about a trailing semicolon or the space around tags (RFC 6376 §3.2).
+func sameTXT(a, b string) bool {
 	return canonicalTXT(a) == canonicalTXT(b)
 }
 
@@ -169,7 +171,7 @@ func (h *DomainHandler) checkPublishedRecords(ctx context.Context, domain models
 		work = append(work, func() DNSRecordCheck { return h.checkRecord(ctx, name, record) })
 	}
 	if !listsSigningKey(list.Records[:signing], name) {
-		work = append(work, func() DNSRecordCheck { return signingKeyProblem(domain, name) })
+		work = append(work, func() DNSRecordCheck { return h.signingKeyProblem(ctx, domain, name) })
 	}
 	if len(policies) == 0 {
 		work = append(work, func() DNSRecordCheck { return h.checkMTASTSWithoutPolicy(ctx, name) })
@@ -213,14 +215,21 @@ func listsName(records []dns.DNSRecord, name string) bool {
 	return false
 }
 
-// signingKeyProblem is the DKIM line for a domain whose key gives no record to publish.
-func signingKeyProblem(domain models.Domain, name string) DNSRecordCheck {
+// signingKeyProblem is the DKIM line for a domain whose key gives no record to publish. Only the
+// key's public half is ever answered with, and here there is none. What the selector publishes
+// is still shown.
+func (h *DomainHandler) signingKeyProblem(ctx context.Context, domain models.Domain, name string) DNSRecordCheck {
 	if domain.DKIMSelector == "" || domain.DKIMPrivateKey == "" {
 		return DNSRecordCheck{Type: "DKIM", Name: name, Status: statusMissing,
 			Message: "The domain has no DKIM key, so its mail is not signed"}
 	}
-	return DNSRecordCheck{Type: "DKIM", Name: domain.DKIMSelector + "._domainkey." + name, Status: statusError,
-		Message: "REST Mail could not read this domain's DKIM key, so it has no value to compare. Ask the person who runs the server."}
+	check := DNSRecordCheck{Type: "DKIM", Name: domain.DKIMSelector + "._domainkey." + name, Status: statusError,
+		Problem: problemUnreadable,
+		Message: "REST Mail could not read this domain's DKIM key, so it has no value to compare and the domain's mail waits unsent. Ask the person who runs the server."}
+	if found, err := h.lookupTXT(ctx, check.Name); err == nil && len(found) > 0 {
+		check.Value = found[0]
+	}
+	return check
 }
 
 // checkRecord compares one listed record with what the DNS answers.
@@ -250,6 +259,9 @@ func (h *DomainHandler) checkTXT(ctx context.Context, domain string, record dns.
 		check.Status, check.Message = statusError, lookupFailed
 		return check
 	}
+	if kind.label == "DKIM" {
+		return judgeDKIM(check, kind, found)
+	}
 	var ofKind []string
 	for _, txt := range found {
 		if kind.has(txt) {
@@ -263,7 +275,7 @@ func (h *DomainHandler) checkTXT(ctx context.Context, domain string, record dns.
 		check.Status, check.Message = statusMissing, kind.otherRecords
 	case len(ofKind) > 1:
 		check.Status, check.Message = statusDifferent, kind.onlyOne
-	case !sameTXT(kind.label, ofKind[0], record.Value):
+	case !sameTXT(ofKind[0], record.Value):
 		check.Status, check.Message = statusDifferent, valueDiffers
 	default:
 		check.Status = statusOK
@@ -271,6 +283,32 @@ func (h *DomainHandler) checkTXT(ctx context.Context, domain string, record dns.
 	check.Value = strings.Join(ofKind, ", ")
 	if check.Status == statusMissing && kind.label == "MTA-STS" {
 		check.Message += ". Before publishing it, the policy host needs its HTTPS route and certificate."
+	}
+	return check
+}
+
+// judgeDKIM says what the records at a DKIM selector get wrong compared with check.Expected. A
+// record may add tags or space them differently and still match, as for the rotation's own
+// publication check (dkimrotate.Published). When nothing matches, Value is the record nearest to
+// Expected.
+func judgeDKIM(check DNSRecordCheck, kind txtKind, found []string) DNSRecordCheck {
+	check.Value, check.Problem = dkimrotate.Compare(found, check.Expected)
+	check.Status = statusDifferent
+	switch check.Problem {
+	case "":
+		check.Status = statusOK
+		if len(found) > 1 {
+			check.Status, check.Problem, check.Message = statusDifferent, problemMoreThanOne, kind.onlyOne
+			check.Value = strings.Join(found, ", ")
+		}
+	case dkimrotate.ProblemMissing:
+		check.Status, check.Message = statusMissing, kind.noRecord
+	case dkimrotate.ProblemMalformed:
+		check.Message = valueDiffers + " The TXT record there is not a DKIM key record (v=DKIM1; k=...; p=<base64>)."
+	case dkimrotate.ProblemDifferentKeyType:
+		check.Message = valueDiffers + " It is for another key type (k=) than the domain signs with."
+	default:
+		check.Message = valueDiffers + " It carries another public key (p=) than the domain signs with."
 	}
 	return check
 }

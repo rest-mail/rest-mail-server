@@ -420,9 +420,18 @@ type DNSRecordCheck struct {
 	// Value is what the lookup found.
 	Value string `json:"value,omitempty"`
 	// Expected is the value to publish: the list `restmail-api dns` prints. It is empty when
-	// the domain has nothing to publish here, or the server cannot say what it should be.
+	// the domain has nothing to publish here, or the server cannot say what it should be. On a
+	// DKIM record it is the public half of the key the domain signs with, "v=DKIM1;
+	// k=<rsa|ed25519>; p=<base64 public key>". An RSA value is longer than one 255-byte DNS
+	// string; publish it as several strings of one record.
 	Expected string `json:"expected,omitempty"`
 	Message  string `json:"message,omitempty"`
+	// Problem, on a DKIM record that is not ok, says what differs from Expected: missing, no
+	// record there; malformed, no record there is a DKIM key record; different_key_type, a
+	// record for another key type (k=); different_key, a record with another key, or a revoked
+	// one (empty p=); more_than_one, the key is there among other records; key_unreadable, the
+	// stored key cannot be read, so nothing is expected.
+	Problem string `json:"problem,omitempty" enums:"missing,malformed,different_key_type,different_key,more_than_one,key_unreadable"`
 }
 
 // dnsCheck lists the records a domain must publish, with their values, and compares each with
