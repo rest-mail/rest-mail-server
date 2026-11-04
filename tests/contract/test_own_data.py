@@ -250,6 +250,16 @@ SIGN_IN_AND_RECOVERY = (
     "recoveryEmailLink",
     "verifyRecoveryEmail",
 )
+# The last operations step 2 found free. No link starts from any of them; only
+# listAccounts' reaches the account read and the calendar list.
+LAST_FREE = (
+    "getAccount",
+    "listCalendarEvents",
+    "respondToCalendar",
+    "accountEvents",
+    "probeServices",
+    "verifyDelivery",
+)
 FOLLOWS_THE_SENT_MESSAGE = {
     "getMessage",
     "updateMessage",
@@ -344,7 +354,8 @@ class Selection(unittest.TestCase):
             - set(CERTIFICATES)
             - set(ACCOUNT_LINKS)
             - set(TOKEN_EXCHANGE)
-            - set(SIGN_IN_AND_RECOVERY),
+            - set(SIGN_IN_AND_RECOVERY)
+            - set(LAST_FREE),
             link_followers(description, "createDomain") | {"createDomain"},
         )
 
@@ -369,6 +380,19 @@ class Selection(unittest.TestCase):
             set(PIPELINE_READS + FILTERS + PUBLIC_READS + DOMAIN_LISTS + TOKEN_EXCHANGE + SIGN_IN_AND_RECOVERY),
             set(own_data.MOVED),
         )
+
+    def test_the_last_free_operations_have_moved_and_only_list_accounts_links_to_them(self):
+        description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
+        for operation in LAST_FREE:
+            self.assertEqual(link_followers(description, operation), set())
+        for start in description_operations(description):
+            reached = set(LAST_FREE) & link_followers(description, start)
+            if start == "listAccounts":
+                self.assertEqual(reached, {"getAccount", "listCalendarEvents"})
+            else:
+                self.assertFalse(reached, start)
+        self.assertNotIn("listAccounts", own_data.MOVED)
+        self.assertLessEqual(set(LAST_FREE), set(own_data.MOVED))
 
     def test_it_selects_every_account_link_operation_and_its_links(self):
         description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
