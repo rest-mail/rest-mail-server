@@ -149,7 +149,7 @@ func (m *mailbox) Retrieve(uid string) ([]byte, error) {
 	}
 	// A client that did not send UTF8 gets headers downgraded to ASCII (RFC
 	// 6856 §3, RFC 6857).
-	return []byte(rawmsg.Downgrade(raw)), nil
+	return []byte(rawmsg.DowngradeForPOP3(raw)), nil
 }
 
 // rawMessage returns the stored raw bytes when present, else the rebuild.

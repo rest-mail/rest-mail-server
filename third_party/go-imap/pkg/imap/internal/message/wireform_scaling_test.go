@@ -3,6 +3,7 @@ package message
 import (
 	"reflect"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -86,6 +87,35 @@ func TestWireForm_HeaderConversionIsLinear(t *testing.T) {
 			assertLinear(t, input, func(raw string) { WireForm(raw, false) })
 		})
 	}
+}
+
+// TestSevenBitBoundary_IsLinear covers what POP3 adds to a downgrade: many delimiter
+// lines, lines that only look like one, lines holding the new spelling, and bare LFs.
+func TestSevenBitBoundary_IsLinear(t *testing.T) {
+	const head = "Content-Type: multipart/mixed; boundary=\"\xf6\"\r\n\r\n"
+	for name, unit := range map[string]string{
+		"delimiters":      "--\xf6\r\n\r\nx\r\n",
+		"near misses":     "--\xf6x\r\n",
+		"new spelling":    "--=F6\r\n",
+		"bare line feeds": "--\xf6\nx\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			assertLinear(t, func(size int) string { return head + repeated(unit, size) }, func(raw string) { SevenBitBoundary(raw) })
+		})
+	}
+}
+
+// TestParameterWithoutFirstSegment_IsLinear: laterSegments sorts each parameter's
+// segments once, and looks at nothing else.
+func TestParameterWithoutFirstSegment_IsLinear(t *testing.T) {
+	assertLinear(t, func(size int) string {
+		var b strings.Builder
+		b.WriteString("Content-Type: application/pdf; a=\xf6")
+		for n := 1; b.Len() < size; n++ {
+			b.WriteString("; name*" + strconv.Itoa(n) + "=x")
+		}
+		return b.String() + "\r\n\r\nbody\r\n"
+	}, func(raw string) { WireForm(raw, false) })
 }
 
 // TestParameterField_IsLinear covers what a downgrade reaches without WireForm.

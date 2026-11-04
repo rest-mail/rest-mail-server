@@ -198,9 +198,38 @@ func TestDowngradedSize_CountsTheConvertedAddressField(t *testing.T) {
 	}
 }
 
+// DowngradeForPOP3 respells a top-level 8-bit boundary, and DowngradedSize measures that
+// form. DowngradeHeaders, which the IMAP engine reads, leaves the body to the engine, so
+// what IMAP sends and reports doesn't change.
+func TestDowngradeForPOP3_RespellsAnEightBitBoundary(t *testing.T) {
+	const raw = "Subject: Grüße\r\nContent-Type: multipart/mixed; boundary=\"Jö\"\r\n\r\n--Jö\r\n\r\nHö\r\n--Jö--\r\n"
+	const want = "Subject: =?utf-8?q?Gr=C3=BC=C3=9Fe?=\r\nContent-Type: multipart/mixed;\r\n boundary=\"J=C3=B6\"\r\n\r\n" +
+		"--J=C3=B6\r\n\r\nHö\r\n--J=C3=B6--\r\n"
+	got := DowngradeForPOP3(raw)
+	if got != want {
+		t.Fatalf("DowngradeForPOP3\n got %q\nwant %q", got, want)
+	}
+	if size := DowngradedSize(raw); size != len(want) {
+		t.Fatalf("DowngradedSize = %d, want %d", size, len(want))
+	}
+	const imap = "Subject: =?utf-8?q?Gr=C3=BC=C3=9Fe?=\r\nContent-Type: multipart/mixed;\r\n boundary*=UTF-8''J%C3%B6\r\n\r\n" +
+		"--Jö\r\n\r\nHö\r\n--Jö--\r\n"
+	if got := DowngradeHeaders(raw); got != imap {
+		t.Fatalf("DowngradeHeaders\n got %q\nwant %q", got, imap)
+	}
+}
+
+// A message whose header block is ASCII goes out byte for byte, whatever its body holds.
+func TestDowngradeForPOP3_LeavesAnASCIIHeaderAlone(t *testing.T) {
+	const raw = "Content-Type: multipart/mixed; boundary*=UTF-8''J%C3%B6\n\n--Jö\n\nHö\n--Jö--\n"
+	if got := DowngradeForPOP3(raw); got != raw {
+		t.Fatalf("DowngradeForPOP3 = %q, want it as stored", got)
+	}
+}
+
 // A malformed Content-Type stays a Content-Type through the downgrade with its text,
-// rather than being renamed, and the POP3 reader of an 8-bit boundary still decodes the
-// one the delimiter lines hold, because the body isn't touched.
+// rather than being renamed. An 8-bit boundary still decodes to what the delimiter lines
+// hold, which is how the IMAP engine finds them; POP3 goes on to DowngradeForPOP3.
 func TestDowngrade_MalformedParameterKeepsItsField(t *testing.T) {
 	for _, tc := range []struct{ stored, want string }{
 		{`Content-Type: application/pdf; name=Jörg (1).pdf`, "Content-Type: application/pdf;\r\n name*=UTF-8''J%C3%B6rg%20%281%29.pdf"},
