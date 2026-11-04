@@ -393,3 +393,49 @@ func TestCleanResetDrainsAndTimesOut(t *testing.T) {
 		t.Fatal("reset did not drain completed delivery")
 	}
 }
+
+// A retained administrator's enrollment that was never confirmed, and the
+// recovery codes made with it, do not outlive a reset; a confirmed
+// authenticator and its codes do, as its password does (#1385).
+func TestCleanResetPendingEnrollment(t *testing.T) {
+	db, handler, admin := cleanResetFixture(t)
+	resetFixture(t, handler)
+	kinds := func() map[string]int {
+		t.Helper()
+		var rows []models.Credential
+		if err := db.Where("account_id = ? AND revoked_at IS NULL", admin.ID).Find(&rows).Error; err != nil {
+			t.Fatal(err)
+		}
+		out := map[string]int{}
+		for _, row := range rows {
+			out[row.Kind]++
+		}
+		return out
+	}
+	enroll := func(confirmed *time.Time) {
+		t.Helper()
+		rows := []models.Credential{
+			{AccountID: admin.ID, Kind: models.CredentialKindTOTP, PublicID: fmt.Sprintf("totp-%d", time.Now().UnixNano()), EncryptedSecret: "sealed", ConfirmedAt: confirmed, Scope: models.CredentialScope{}},
+			{AccountID: admin.ID, Kind: models.CredentialKindRecoveryCode, PublicID: fmt.Sprintf("code-a-%d", time.Now().UnixNano()), SecretHash: "a", Scope: models.CredentialScope{}},
+			{AccountID: admin.ID, Kind: models.CredentialKindRecoveryCode, PublicID: fmt.Sprintf("code-b-%d", time.Now().UnixNano()), SecretHash: "b", Scope: models.CredentialScope{}},
+		}
+		for i := range rows {
+			if err := db.Create(&rows[i]).Error; err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+
+	enroll(nil)
+	resetFixture(t, handler)
+	if got, want := kinds(), map[string]int{"password": 1}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("after a reset the pending enrollment is left: %v, want %v", got, want)
+	}
+
+	now := time.Now()
+	enroll(&now)
+	resetFixture(t, handler)
+	if got, want := kinds(), map[string]int{"password": 1, "totp": 1, "recovery_code": 2}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("after a reset the confirmed authenticator is not kept: %v, want %v", got, want)
+	}
+}
