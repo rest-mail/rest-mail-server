@@ -194,3 +194,29 @@ func TestHeaderBlockFields_MatchJoiningLines(t *testing.T) {
 		}
 	}
 }
+
+// TestWireFormSize_MatchesAndIsLinear counts what WireForm sends, on the shapes that
+// repeat a scan, and costs no more than it does.
+func TestWireFormSize_MatchesAndIsLinear(t *testing.T) {
+	cases := map[string]string{
+		"escaped quotes": "Subject: \xf6 " + repeated(`\"`, 8<<10) + "\r\n\r\nbody\r\n",
+		"folded lines":   "Subject: \xf6" + repeated("\r\n x", 8<<10) + "\r\n\r\nbody\r\n",
+		"many fields":    repeated("Subject: \xf6 \\\"\r\n", 8<<10) + "\r\n",
+		"many parts":     "Content-Type: multipart/mixed; boundary=b\r\n\r\n" + repeated("--b\r\nSubject: \xf6\r\n\r\n\xf6\r\n", 8<<10) + "--b--\r\n",
+		"binary":         "Content-Type: application/pdf\r\nContent-Transfer-Encoding: binary\r\n\r\n" + repeated("\xf6", 8<<10) + "\r\n",
+		"text":           "Content-Type: text/plain\r\n\r\n" + repeated("\xf6 \r\n=\r", 8<<10),
+	}
+	for name, raw := range cases {
+		t.Run(name, func(t *testing.T) {
+			for _, sessionUTF8 := range []bool{false, true} {
+				if got, want := WireFormSize(raw, sessionUTF8), len(WireForm(raw, sessionUTF8)); got != want {
+					t.Fatalf("utf8=%v: counted %d, WireForm sent %d", sessionUTF8, got, want)
+				}
+			}
+		})
+	}
+	input := func(size int) string {
+		return "Content-Type: multipart/mixed; boundary=b\r\n\r\n" + repeated("--b\r\nSubject: \xf6\r\n\r\n\xf6\r\n", size) + "--b--\r\n"
+	}
+	assertLinear(t, input, func(raw string) { WireFormSize(raw, false) })
+}

@@ -59,18 +59,51 @@ func entityHeader(header string) textproto.MIMEHeader {
 // the same encoding override, defaults and depth limit as partStructure so
 // sections match BODYSTRUCTURE.
 func (n mimeNode) mediaType() (string, map[string]string) {
-	h := entityHeader(n.header)
-	if !knownTransferEncoding(h.Get("Content-Transfer-Encoding")) {
+	var contentType, encoding string
+	if namesContentField(n.header) {
+		h := entityHeader(n.header)
+		contentType, encoding = h.Get("Content-Type"), h.Get("Content-Transfer-Encoding")
+	}
+	if !knownTransferEncoding(encoding) {
 		return "application/octet-stream", map[string]string{}
 	}
-	mt, params, err := parseContentType(h.Get("Content-Type"))
-	if !usableContentType(mt, params, err) {
-		mt, params = n.defaultType, map[string]string{}
+	var mt string
+	var params map[string]string
+	usable := false
+	if contentType != "" {
+		var err error
+		mt, params, err = parseContentType(contentType)
+		usable = usableContentType(mt, params, err)
 	}
-	if opaqueEntity(mt, params, h.Get("Content-Transfer-Encoding"), n.depth) {
-		return "application/octet-stream", map[string]string{}
+	if !usable {
+		mt, params = n.defaultType, noParameters
+	}
+	if opaqueEntity(mt, params, encoding, n.depth) {
+		return "application/octet-stream", noParameters
 	}
 	return mt, params
+}
+
+// noParameters is what an entity with no usable Content-Type has. Nothing writes to it.
+var noParameters = map[string]string{}
+
+// namesContentField reports whether a header block may hold a Content-Type or a
+// Content-Transfer-Encoding, so a part with neither doesn't pay to parse its header.
+func namesContentField(header string) bool {
+	const prefix = "content-t"
+	for i := 0; i+len(prefix) <= len(header); i++ {
+		if header[i]|0x20 != 'c' {
+			continue
+		}
+		j := 1
+		for j < len(prefix) && header[i+j]|0x20 == prefix[j]|0x20 {
+			j++
+		}
+		if j == len(prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 // usableContentType reports whether a parsed Content-Type field describes the
@@ -154,6 +187,15 @@ func multipartParts(body, boundary string) []string {
 
 // multipartSpans returns where each part of a multipart body starts and ends.
 func multipartSpans(body, boundary string) [][2]int {
+	var spans [][2]int
+	eachMultipartSpan(body, boundary, func(start, end int) {
+		spans = append(spans, [2]int{start, end})
+	})
+	return spans
+}
+
+// eachMultipartSpan calls part with where each part of a multipart body starts and ends.
+func eachMultipartSpan(body, boundary string, part func(start, end int)) {
 	delim := "--" + boundary
 	// next finds the next delimiter line at or after from. It returns the
 	// offset of the delimiter, the offset just after its line and whether it
@@ -191,12 +233,11 @@ func multipartSpans(body, boundary string) [][2]int {
 		return 0, 0, false, false
 	}
 
-	var spans [][2]int
 	_, start, closing, found := next(0)
 	for found && !closing {
 		at, after, c, ok := next(start)
 		if !ok {
-			spans = append(spans, [2]int{start, len(body)})
+			part(start, len(body))
 			break
 		}
 		end := at
@@ -206,8 +247,7 @@ func multipartSpans(body, boundary string) [][2]int {
 		if end < start {
 			end = start
 		}
-		spans = append(spans, [2]int{start, end})
+		part(start, end)
 		start, closing = after, c
 	}
-	return spans
 }
