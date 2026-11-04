@@ -92,10 +92,27 @@ func (h *RelayHandler) get(r *http.Request, in domainPath) (relayView, error) {
 // stored one; an empty password clears it.
 // PUT /api/v1/admin/domains/{id}/relay
 func (h *RelayHandler) set(r *http.Request, in setRelayInput) (relayView, error) {
-	scoped := *h
-	scoped.db = h.db.WithContext(r.Context())
-	h = &scoped
-	domain, err := h.domain(in.ID)
+	// One transaction holding the domain row: concurrent saves of the relay
+	// are serialized, so a kept password is never a stale one and two first
+	// saves cannot both insert, and the domain's deletion (which locks the
+	// same row) either removes the saved relay afterwards or makes this a 404.
+	var view relayView
+	err := h.db.WithContext(r.Context()).Transaction(func(tx *gorm.DB) error {
+		scoped := *h
+		scoped.db = tx
+		var err error
+		view, err = scoped.save(in)
+		return err
+	})
+	if err != nil {
+		return relayView{}, err
+	}
+	return view, nil
+}
+
+// save is set's body, run with h.db the transaction holding the domain lock.
+func (h *RelayHandler) save(in setRelayInput) (relayView, error) {
+	domain, err := lockPolicyDomain(h.db, in.ID)
 	if err != nil {
 		return relayView{}, err
 	}

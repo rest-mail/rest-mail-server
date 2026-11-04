@@ -165,7 +165,7 @@ func domainPolicySteps(index int) []domainPolicySQLStep {
 	case 9:
 		return []domainPolicySQLStep{domainPolicyDomainStep(), domainPolicyMTAStep(), {match: `UPDATE "mtasts_policies"`, affected: 1}}
 	case 10:
-		return []domainPolicySQLStep{{match: `DELETE FROM "mtasts_policies"`, affected: 1}}
+		return []domainPolicySQLStep{domainPolicyDomainStep(), {match: `DELETE FROM "mtasts_policies"`, affected: 1}}
 	case 11:
 		return []domainPolicySQLStep{domainPolicyDomainStep(), domainPolicyRelayStep()}
 	case 12:
@@ -310,8 +310,11 @@ func TestDomainPolicyAbsenceAndExplicitZerosStayStable(t *testing.T) {
 				steps = steps[:1]
 				steps[0].values = nil
 				status = 404
-			case 7, 10:
+			case 7:
 				steps[0].affected = 0
+				status = 404
+			case 10:
+				steps[1].affected = 0
 				status = 404
 			}
 			d := &domainPolicyFaultDB{steps: steps}
@@ -472,7 +475,13 @@ func TestDomainPolicyMissingDomainsKeepExistingRefusals(t *testing.T) {
 			if index == 1 || index == 4 {
 				code = "domain_not_found"
 			}
-			if rr.Code != 404 || !strings.Contains(rr.Body.String(), `"code":"`+code+`"`) || d.calls.Load() != 1 || d.lost.Load() != 0 || d.inserts.Load() != 0 || d.begins.Load() != 0 {
+			// The MTA-STS and relay saves read the domain under a row lock, so
+			// inside a transaction (#1164): a missing domain rolls it back.
+			begins, rollbacks := int32(0), int32(0)
+			if index == 9 || index == 12 {
+				begins, rollbacks = 1, 1
+			}
+			if rr.Code != 404 || !strings.Contains(rr.Body.String(), `"code":"`+code+`"`) || d.calls.Load() != 1 || d.lost.Load() != 0 || d.inserts.Load() != 0 || d.begins.Load() != begins || d.rollbacks.Load() != rollbacks || d.commits.Load() != 0 {
 				t.Fatalf("status=%d body=%s SQL=%d inserts=%d transactions=%d lost=%d", rr.Code, rr.Body, d.calls.Load(), d.inserts.Load(), d.begins.Load(), d.lost.Load())
 			}
 		})
