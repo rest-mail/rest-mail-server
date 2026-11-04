@@ -226,6 +226,13 @@ MOVED = (
     "verifyAuditLog",
     "getDeliveryLogs",
     "getDashboardStats",
+    # The mailbox reads listAccounts' link reaches. listAccounts is not
+    # selected, and no link starts from any of them. Each goes to the fixture
+    # admin's mailbox after its reset, and a listing that succeeds gets a
+    # folder or a message of its own to list.
+    "listFolders",
+    "listMessages",
+    "searchMessages",
 )
 
 

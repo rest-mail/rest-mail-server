@@ -42,6 +42,7 @@ ACCOUNT_SETTINGS = (
 )
 QUIET_HOURS = ("getQuietHours", "setQuietHours")
 CREDENTIALS = re.compile(r"^/api/v1/accounts/\d+/(credentials|api-keys|client-secrets)$")
+FOLDERS = re.compile(r"^/api/v1/accounts/(\d+)/folders$")
 
 
 class FixtureAPI(BaseHTTPRequestHandler):
@@ -99,6 +100,9 @@ class FixtureAPI(BaseHTTPRequestHandler):
             self.server.serial += 1
             self.server.made.append((self.path, body, self.headers["Authorization"]))
             return self.answer(201, {"id": self.server.serial})
+        if FOLDERS.fullmatch(self.path):
+            self.server.folders.append((self.path, body))
+            return self.answer(201, {"name": body["name"]})
         if self.path != "/api/v1/admin/domains":
             return self.answer(404)
         if body["name"] in self.server.domains.values():
@@ -147,6 +151,7 @@ class OwnDataHooks(unittest.TestCase):
         self.server.settings = {}
         self.server.queue = {}
         self.server.made = []
+        self.server.folders = []
         self.server.tls_reports = []
         self.server.serial = 40
         self.server.reset_failure = None
@@ -324,6 +329,9 @@ class OwnDataHooks(unittest.TestCase):
             "verifyAuditLog": "report_and_audit_reads_after_a_reset",
             "getDeliveryLogs": "report_and_audit_reads_after_a_reset",
             "getDashboardStats": "report_and_audit_reads_after_a_reset",
+            "listFolders": "a_mailbox_read_after_a_reset",
+            "listMessages": "a_mailbox_read_after_a_reset",
+            "searchMessages": "a_mailbox_read_after_a_reset",
         }
         # entrypoint.py registers setDomainRelay's and the quiet hours' (below).
         self.assertEqual(
@@ -1243,11 +1251,13 @@ class ListingsHoldWhatWasMade(OwnDataHooks):
         })
         return self.answered(transaction, rows)
 
-    def test_the_three_listings_are_checked_after_they_answer(self):
+    def test_the_listings_are_checked_after_they_answer(self):
         source = (ROOT / "tests/contract/hooks.py").read_text()
         self.assertIn(
             '@hooks.after("listTlsReports")\n@hooks.after("listPipelines")\n'
-            '@hooks.after("listThreads")\ndef the_listing_holds_what_was_made(',
+            '@hooks.after("listThreads")\n@hooks.after("listFolders")\n'
+            '@hooks.after("listMessages")\n@hooks.after("searchMessages")\n'
+            'def the_listing_holds_what_was_made(',
             source,
         )
 
@@ -1280,6 +1290,74 @@ class ListingsHoldWhatWasMade(OwnDataHooks):
         subject = self.stub.stash["listing_made"]["match"]["last_message.subject"]
         self.assertTrue(subject.startswith("Contract awaiting "))
         self.assertIn(f"\r\nSubject: {subject}\r\n", raw)
+
+    def test_the_folder_list_notes_the_folder_it_made(self):
+        self.clean_starts_on()
+        self.hooks.mailbox_id = lambda origin, address: 4
+        transaction = self.transaction(200, "/api/v1/accounts/1/folders", name="/f > F")
+        self.hooks.a_mailbox_read_after_a_reset(transaction)
+        [(path, body)] = self.server.folders
+        self.assertEqual(path, "/api/v1/accounts/4/folders")
+        self.assertEqual(self.stub.stash["listing_made"]["match"], {"name": body["name"]})
+        self.assertEqual(self.stub.stash["listing_made"]["what"], "folder")
+        self.hooks.the_listing_holds_what_was_made(
+            self.answered(transaction, [{"name": "INBOX"}, {"name": body["name"]}])
+        )
+        self.assertNotIn("fail", transaction)
+
+    def test_a_folder_page_notes_the_message_it_imported_there(self):
+        self.clean_starts_on()
+        self.hooks.mailbox_id = lambda origin, address: 4
+        transaction = self.transaction(200, "/api/v1/accounts/1/folders/INBOX/messages", name="/m > M")
+        self.hooks.a_mailbox_read_after_a_reset(transaction)
+        self.assertEqual(transaction["fullPath"], "/api/v1/accounts/4/folders/INBOX/messages")
+        [(path, body)] = self.server.imports
+        self.assertEqual(path, "/api/v1/accounts/4/messages/import")
+        self.assertEqual(body["folder"], "INBOX")
+        match = self.stub.stash["listing_made"]["match"]
+        self.assertEqual(match["folder"], "INBOX")
+        self.assertTrue(match["subject"].startswith("Contract listed "))
+        self.assertIn(f"\r\nSubject: {match['subject']}\r\n", base64.b64decode(body["raw_message"]).decode())
+        self.hooks.the_listing_holds_what_was_made(self.answered(transaction, []))
+        self.assertIn("does not hold the message made for it", transaction["fail"])
+
+    def test_a_search_notes_a_message_its_query_finds(self):
+        self.clean_starts_on()
+        self.hooks.mailbox_id = lambda origin, address: 4
+        transaction = self.transaction(200, "/api/v1/accounts/1/search?q=Subject", name="/s > S")
+        self.hooks.a_mailbox_read_after_a_reset(transaction)
+        self.assertEqual(transaction["fullPath"], "/api/v1/accounts/4/search?q=Subject")
+        [(_, body)] = self.server.imports
+        subject = self.stub.stash["listing_made"]["match"]["subject"]
+        self.assertTrue(subject.startswith("Subject "))
+        self.assertIn(f"\r\nSubject: {subject}\r\n", base64.b64decode(body["raw_message"]).decode())
+
+    def test_mailbox_read_refusals_reset_and_keep_their_ids(self):
+        self.clean_starts_on()
+        self.hooks.mailbox_id = lambda origin, address: self.fail("looked up an account")
+        for status, path in (
+            (422, "/api/v1/accounts/0/folders"),
+            (422, "/api/v1/accounts/0/folders/INBOX/messages"),
+            (422, "/api/v1/accounts/0/search"),
+            (404, "/api/v1/accounts/2147483647/search?q=Subject"),
+        ):
+            with self.subTest(path=path):
+                transaction = self.transaction(status, path)
+                before = self.resets()
+                self.hooks.a_mailbox_read_after_a_reset(transaction)
+                self.assertEqual(self.resets(), before + 1)
+                self.assertEqual(transaction["fullPath"], path)
+                self.assertNotIn("listing_made", self.stub.stash)
+        self.assertEqual(self.server.imports, [])
+        self.assertEqual(self.server.folders, [])
+
+    def test_without_the_switch_a_mailbox_read_is_unchanged(self):
+        self.hooks.mailbox_id = lambda origin, address: self.fail("looked up an account")
+        transaction = self.transaction(200, "/api/v1/accounts/1/folders/INBOX/messages")
+        self.hooks.a_mailbox_read_after_a_reset(transaction)
+        self.assertEqual(transaction["fullPath"], "/api/v1/accounts/1/folders/INBOX/messages")
+        self.assertEqual(self.server.calls, [])
+        self.assertNotIn("listing_made", self.stub.stash)
 
     def test_the_page_after_a_cursor_is_noted_as_holding_none_of_it(self):
         self.clean_starts_on()

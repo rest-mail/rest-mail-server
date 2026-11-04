@@ -1169,13 +1169,27 @@ needs the received DMARC report the Go fixtures make, and no API call makes one,
 since a report arrives only in mail with an aligned DMARC pass. A run with no
 reset changes nothing in this hook.
 
+`listFolders`, `listMessages` and `searchMessages`, the mailbox reads
+`listAccounts`' link reaches, reset and seed before each exchange too, refusals
+included (`a_mailbox_read_after_a_reset`). Their examples name account 1, the
+fixture admin's mailbox, which the reset seeds again under another id, so an
+exchange aimed at a positive account other than missing's `2147483647` goes to
+that mailbox, looked up by address. A listing that succeeds gets something of
+its own, made through the API after its reset: the folder list a folder, the
+folder's page a message imported into that folder, and a search a message whose
+subject holds the query's words. `0` and every documented 404 keep their ids.
+`listAccounts` is not selected, and no link starts from any of the three. A run
+with no reset changes nothing in this hook.
+
 A listing's 200 has the same shape with no rows as with the one made for it, so
 its status and schema alone pass on an empty list (#1785). After a reset,
-`listTlsReports`, `listPipelines` and `listThreads` must list what their before
-hook made, or the exchange fails (`the_listing_holds_what_was_made`, through the
-transaction's `fail` field): the TLS report by its reporter and policy domain,
-the pipeline by its id, the awaiting thread by its subject, which names it by
-the time it is made. A documented 200 with nothing made for it fails too. The
+`listTlsReports`, `listPipelines`, `listThreads`, `listFolders`, `listMessages`
+and `searchMessages` must list what their before hook made, or the exchange
+fails (`the_listing_holds_what_was_made`, through the transaction's `fail`
+field): the TLS report by its reporter and policy domain, the pipeline by its
+id, the awaiting thread by its subject, which names it by the time it is made,
+the folder by its name, the folder's message by its subject and folder, and the
+found message by its subject. A documented 200 with nothing made for it fails too. The
 threads page after the example's cursor holds older threads only and is empty
 by design, so its hook notes that it lists none of it. Refusals and a run with
 no reset are left alone. The other moved listings have nothing an API call can
