@@ -46,6 +46,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   that holds an 8-bit octet. The others stay as sent, in their order, including RFC
   2231 text and comments, and an 8-bit comment becomes encoded words instead of going
   missing.
+- A Content-Type or Content-Disposition holding an unquoted 8-bit value, such as
+  `name=Jörg.pdf`, no longer fails to parse. The value reads as if it were quoted,
+  so the entity keeps its real type and its other parameters in BODY, BODYSTRUCTURE
+  and sections, at every part level, instead of reading as `text/plain` with a NIL
+  disposition. Its 8-bit data is converted for that real type.
 - SEARCH decodes a header one encoded word at a time. A word in a charset it can't
   decode is compared as stored, and neither that nor a stray `=?` stops it decoding
   the words around it, in TEXT, HEADER, SUBJECT, TO, FROM or an encapsulated message.

@@ -8,9 +8,11 @@ import (
 
 // parseMediaType is mime.ParseMediaType with RFC 2231 parameters read here, because
 // it drops one in any charset but UTF-8 and US-ASCII, and keeps only the later
-// segments of a continued one. v holds no comments. See extendedValue for what a
-// parameter becomes.
+// segments of a continued one, and with an unquoted 8-bit value read as if it were
+// quoted, because it refuses the whole field for one. v holds no comments. See
+// extendedValue for what a parameter becomes.
 func parseMediaType(v string) (string, map[string]string, error) {
+	v = quoteBareValues(v)
 	mt, params, err := mime.ParseMediaType(v)
 	if err != nil || !strings.Contains(v, "*") {
 		return mt, params, err
@@ -41,6 +43,65 @@ func parseMediaType(v string) (string, map[string]string, error) {
 		}
 	}
 	return mt, params, nil
+}
+
+// quoteBareValues quotes each parameter value that holds an 8-bit octet and isn't a
+// quoted-string. A token may not hold one (RFC 2045 §5.1), but mailers do send
+// name=Jörg.pdf, and refusing it would cost the real type and every other parameter.
+// The value runs to the next ';', white space included. v holds no comments.
+func quoteBareValues(v string) string {
+	if !has8bit(v) {
+		return v
+	}
+	segments, ok := fieldSegments(v)
+	if !ok {
+		return v
+	}
+	for i, segment := range segments {
+		key, value, ok := strings.Cut(segment, "=")
+		value = trimWSP(value)
+		if i == 0 || !ok || !has8bit(value) || isQuotedString(value) {
+			continue
+		}
+		segments[i] = key + "=" + quoteString(value)
+	}
+	return strings.Join(segments, ";")
+}
+
+// isQuotedString reports whether value is one whole quoted-string.
+func isQuotedString(value string) bool {
+	if len(value) < 2 || value[0] != '"' {
+		return false
+	}
+	for i := 1; i < len(value); i++ {
+		switch value[i] {
+		case '\\':
+			i++
+		case '"':
+			return i == len(value)-1
+		}
+	}
+	return false
+}
+
+func quoteString(value string) string {
+	return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(value) + `"`
+}
+
+// isToken reports whether value may stand as a MIME token (RFC 2045 §5.1).
+func isToken(value string) bool {
+	for i := 0; i < len(value); i++ {
+		if c := value[i]; c <= 0x20 || c >= 0x7f || strings.IndexByte(`()<>@,;:\"/[]?=`, c) >= 0 {
+			return false
+		}
+	}
+	return value != ""
+}
+
+// trimWSP trims white space only. strings.TrimSpace would also take a no-break space
+// or NEL off the end of a value, and those are its text.
+func trimWSP(s string) string {
+	return strings.Trim(s, " \t\r\n")
 }
 
 // extendedValue puts an RFC 2231 parameter back together, in the order
@@ -203,7 +264,7 @@ func unquoteParameter(value string) string {
 // order, because the text of one go-imap can't read is still the only copy of it. ok
 // is false when the value does not parse, or the type itself is 8-bit.
 func ParameterField(name, value string) (string, bool) {
-	value = strings.TrimSpace(value)
+	value = trimWSP(value)
 	mt, _, err := parseContentType(value)
 	if err != nil || has8bit(mt) {
 		return "", false
@@ -214,9 +275,9 @@ func ParameterField(name, value string) (string, bool) {
 	}
 	extended := extendedFamilies(segments[1:])
 	var b strings.Builder
-	b.WriteString(name + ": " + sevenBitComments(strings.TrimSpace(segments[0])))
+	b.WriteString(name + ": " + sevenBitComments(trimWSP(segments[0])))
 	for _, segment := range segments[1:] {
-		segment = strings.TrimSpace(segment)
+		segment = trimWSP(segment)
 		if segment == "" {
 			continue
 		}
@@ -257,7 +318,7 @@ func sevenBitParameter(segment string, extended map[string]bool) (string, bool) 
 		return "", false
 	}
 	key, value, ok := strings.Cut(text, "=")
-	key, value = strings.TrimSpace(key), strings.TrimSpace(value)
+	key, value = trimWSP(key), trimWSP(value)
 	if !ok || has8bit(key) {
 		return "", false
 	}
@@ -273,8 +334,8 @@ func sevenBitParameter(segment string, extended map[string]bool) (string, bool) 
 	return b.String(), true
 }
 
-// parameterValue spells key=value in 7 bits. mime.ParseMediaType refuses an 8-bit
-// token, so an 8-bit value here is a quoted-string.
+// parameterValue spells key=value in 7 bits. An 8-bit value that isn't a quoted-string
+// reads as if it were, see quoteBareValues.
 //
 //   - A segment already extended keeps its charset: its 8-bit octets are escaped.
 //   - Otherwise it becomes extended (RFC 2231 §4), and a first or only segment names
@@ -288,10 +349,11 @@ func parameterValue(key, value string, extended map[string]bool) (string, bool) 
 	if !has8bit(value) {
 		return key + "=" + value, true
 	}
-	if len(value) < 2 || value[0] != '"' || value[len(value)-1] != '"' {
-		return "", false
+	text := value
+	quoted := isQuotedString(value)
+	if quoted {
+		text = unquoteParameter(value)
 	}
-	text := unquoteParameter(value)
 	base, segment, isExtended := strings.Cut(key, "*")
 	switch {
 	case !isExtended && extended[strings.ToLower(base)]:
@@ -299,7 +361,11 @@ func parameterValue(key, value string, extended map[string]bool) (string, bool) 
 	case !isExtended:
 		return key + "*=" + wordCharset(text) + "''" + percentEncode(text), true
 	case segment == "" || strings.HasSuffix(segment, "*"):
-		return key + "=" + escapeOctets(value), true
+		escaped := escapeOctets(value)
+		if !quoted && !isToken(escaped) {
+			escaped = quoteString(escaped)
+		}
+		return key + "=" + escaped, true
 	case segment == "0":
 		return key + "*=" + wordCharset(text) + "''" + percentEncode(text), true
 	}
