@@ -28,7 +28,7 @@ var unstructuredFields = map[string]bool{
 // (RFC 6856 section 3, RFC 6855 section 3, downgrading per RFC 6857 and
 // RFC 6858). A message whose header block is already ASCII is returned
 // unchanged, byte for byte. The body is never touched: 8-bit bodies are legal
-// for these clients.
+// for these clients. See DowngradeForPOP3 for the one thing POP3 adds.
 //
 //   - Subject, Comments and Keywords become RFC 2047 encoded-words.
 //   - An address field changes only what holds an 8-bit octet, see
@@ -220,15 +220,25 @@ func containsNonASCII(s string) bool {
 	return false
 }
 
-// DowngradedSize is the octet count of DowngradeHeaders(raw): what a POP3 or
-// IMAP client that has not enabled UTF-8 receives. It equals len(raw) when the
-// header block is already ASCII. Nothing is built to measure it.
-func DowngradedSize(raw string) int {
-	header, sep, body := splitHeader(raw)
-	if !containsNonASCII(header) {
-		return len(raw)
+// DowngradeForPOP3 is what RETR and TOP send a client that has not enabled UTF-8:
+// DowngradeHeaders, and a top-level 8-bit boundary in a spelling the client can match.
+//
+// POP3 sends the body as stored, so the delimiter lines hold the stored octets, and no
+// 7-bit header can name those: RFC 2231 only moves the problem to a reader that decodes
+// it, in a charset it knows. So the Content-Type and the delimiter lines take one 7-bit
+// spelling, the one IMAP FETCH sends, and no other octet of the body changes. Every line
+// stays a line, and DowngradedSize measures this form, so TOP and LIST stay right. IMAP
+// doesn't come here, because its engine converts the whole message, boundary included.
+func DowngradeForPOP3(raw string) string {
+	if header, _, _ := splitHeader(raw); !containsNonASCII(header) {
+		return raw
 	}
-	var size headerSink
-	writeDowngraded(&size, header, sep)
-	return int(size) + len(body)
+	return DowngradeHeaders(wireform.SevenBitBoundary(raw))
+}
+
+// DowngradedSize is the octet count of DowngradeForPOP3(raw): what a POP3 client that
+// has not enabled UTF-8 receives. It equals len(raw) when the header block is already
+// ASCII.
+func DowngradedSize(raw string) int {
+	return len(DowngradeForPOP3(raw))
 }

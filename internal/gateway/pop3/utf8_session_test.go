@@ -14,6 +14,7 @@ import (
 	pop3server "github.com/rest-mail/go-pop3/pkg/pop3/server"
 
 	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
+	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
 )
 
 const utf8Raw = "From: Jörg <joerg@bücher.example>\r\nSubject: Grüße\r\n\r\nHallo, Jörg.\r\n"
@@ -31,7 +32,7 @@ func storeAPI(t *testing.T, raw string) *apiclient.Client {
 		reply(w, `{"data":{"access_token":"tok","user":{"id":1,"email":"jorg@example.test"}}}`)
 	})
 	mux.HandleFunc("/api/v1/accounts/1/folders/INBOX/messages", func(w http.ResponseWriter, r *http.Request) {
-		reply(w, fmt.Sprintf(`{"data":[{"id":7,"raw_size":%d}]}`, len(raw)))
+		reply(w, fmt.Sprintf(`{"data":[{"id":7,"raw_size":%d,"downgraded_size":%d}]}`, len(raw), rmail.DowngradedSize(raw)))
 	})
 	mux.HandleFunc("/api/v1/messages/7", func(w http.ResponseWriter, r *http.Request) {
 		reply(w, `{"data":{"id":7}}`)
