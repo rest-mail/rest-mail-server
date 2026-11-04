@@ -111,6 +111,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   nothing, so the new message stayed out of sight until the next SELECT. EXISTS
   now goes out only when the size changed. `TestMoveNames` required the old
   behaviour for a move into INBOX and now requires this one.
+- AUTHENTICATE answers a client response that is not valid base64 (a
+  character outside the alphabet, a non-terminal `=`, a quoted initial
+  response) with a tagged BAD, as RFC 9051 §6.2.2 requires, in both the
+  continuation and the SASL-IR initial-response form. It used to answer
+  `NO Invalid base64`. Valid base64 with wrong credentials is still NO.
+  `TestSASLIR` and `TestPlainBase64Alphabet` required the old behaviour and
+  now require this one.
 - DELETE of a name that is not a mailbox but has inferior mailboxes is refused
   `NO [HASCHILDREN]` (RFC 9051 §6.3.5, RFC 5530 §3) instead of answering OK.
 - A SELECT or EXAMINE refused with BAD keeps the mailbox already selected, with
