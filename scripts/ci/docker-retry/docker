@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+# Stands in for `docker` on CI's PATH, so every image pull retries a transient
+# registry failure wherever it starts: a `docker pull`, the implicit pull of
+# `docker run`, the FROM of a `docker build`, in our scripts and in the tasks of
+# the reference mail server alike. A workflow job turns it on with
+#
+#   echo "$GITHUB_WORKSPACE/scripts/ci/docker-retry" >> "$GITHUB_PATH"
+#
+# Only a failed registry or network request is retried. A missing image, a
+# refused login, a failed build step and a container's own exit status are not,
+# and the last attempt's exit status is the one the caller sees.
+set -u
+
+# Find the real docker: the first one on PATH that is not this script.
+kept=
+while IFS= read -r -d: dir; do
+  [ "$dir/docker" -ef "$0" ] || kept="$kept${kept:+:}$dir"
+done <<<"$PATH:"
+PATH=$kept
+export PATH
+
+# Commands that can pull. `docker run` exits 125 when the container never
+# started, so a container that prints the same words is not mistaken for a pull.
+pulls=
+required_status=
+case "${1:-}" in
+  pull | build) pulls=1 ;;
+  create) pulls=1 ;;
+  run) pulls=1 required_status=125 ;;
+  image) [ "${2:-}" = pull ] && pulls=1 ;;
+  buildx) [ "${2:-}" = build ] && pulls=1 ;;
+  container)
+    case "${2:-}" in
+      create) pulls=1 ;;
+      run) pulls=1 required_status=125 ;;
+    esac
+    ;;
+  compose)
+    for arg in "$@"; do
+      case "$arg" in up | pull) pulls=1 ;; esac
+    done
+    ;;
+esac
+
+# A build read from stdin has used its input by the time it fails.
+for arg in "$@"; do
+  [ "$arg" = - ] && pulls=
+done
+
+[ -n "$pulls" ] || exec docker "$@"
+err_file=$(mktemp) || exec docker "$@"
+trap 'rm -f "$err_file"' EXIT
+
+# The daemon's, the builder's or compose's own error line, naming a request that
+# failed on the network or got a 5xx. A build step's output starts with `#<n>`,
+# so a RUN step that hits the same error does not match.
+source_line='^(docker: Error response from daemon: |Error response from daemon: |ERROR: | *[^ #][^ ]* +Error )'
+network_failure='(Get|Head|Post) "https?://[^"]*": .*(EOF|TLS handshake timeout|request canceled|i/o timeout|connection reset by peer|connection refused|no such host|server misbehaving|Temporary failure in name resolution|context deadline exceeded|Client\.Timeout exceeded)'
+server_failure='unexpected (HTTP )?status.*: 50[0234]( |$)'
+
+attempt=1
+for delay in ${DOCKER_RETRY_DELAYS:-5 15 30} ''; do
+  # stderr goes through tee to be read below; stdout and stdin stay as they were.
+  { docker "$@" 2>&1 >&3 3>&- | tee "$err_file" >&2 3>&-; status=${PIPESTATUS[0]}; } 3>&1
+  [ "$status" -ne 0 ] || exit 0
+  [ -n "$delay" ] || exit "$status"
+  [ -z "$required_status" ] || [ "$status" -eq "$required_status" ] || exit "$status"
+  LC_ALL=C grep -aE "$source_line" "$err_file" |
+    LC_ALL=C grep -aEq "$network_failure|$server_failure" || exit "$status"
+  echo "docker-retry: attempt $attempt of docker $1 hit a transient registry failure; retrying in ${delay}s" >&2
+  sleep "$delay"
+  attempt=$((attempt + 1))
+done
