@@ -87,6 +87,32 @@ class VertragInstall(unittest.TestCase):
         self.assertEqual(self.requests, [])
         self.assertEqual(target.read_bytes(), self.binary)
 
+    def test_bad_release_metadata_preserves_the_cache_without_downloading(self):
+        target = self.install()
+        receipt = self.cache / "vertrag-pin.json"
+        previous_receipt = receipt.read_bytes()
+        for system, machine in [("linux", "x86_64"), ("darwin", "arm64")]:
+            self.system, self.machine = system, machine
+            name = vertrag_pin.asset("0.29.1", system, machine)
+            for checksums in [
+                f"not-a-checksum  {name}\n",
+                f"{self.sha}  {name}\n{self.sha}  {name}\n",
+            ]:
+                with self.subTest(system=system, checksums=checksums):
+                    with (
+                        mock.patch.object(
+                            vertrag_pin, "release_checksums", return_value=checksums
+                        ),
+                        mock.patch.object(
+                            vertrag_pin, "fetch", return_value=self.archive
+                        ) as download,
+                        self.assertRaises(ValueError),
+                    ):
+                        self.install()
+                    download.assert_not_called()
+                    self.assertEqual(target.read_bytes(), self.binary)
+                    self.assertEqual(receipt.read_bytes(), previous_receipt)
+
     def test_corrupt_binary_receipt_or_platform_forces_a_verified_reinstall(self):
         for damage in ["binary", "receipt", "platform", "executable", "missing"]:
             with self.subTest(damage=damage):

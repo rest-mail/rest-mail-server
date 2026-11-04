@@ -59,12 +59,20 @@ def asset(version, system="linux", machine="x86_64"):
 
 
 def checksum_for(checksums, name):
-    """name's sha256 in a release's checksums.txt."""
+    """The unique, valid sha256 for name in a release's checksums.txt."""
+    matches = []
     for line in checksums.splitlines():
         parts = line.split()
         if len(parts) == 2 and parts[1] == name:
-            return parts[0]
-    raise ValueError(f"checksums.txt has no entry for {name}")
+            matches.append(parts[0])
+    if not matches:
+        raise ValueError(f"checksums.txt has no entry for {name}")
+    if len(matches) != 1:
+        raise ValueError(f"checksums.txt has multiple entries for {name}")
+    checksum = matches[0]
+    if not re.fullmatch(r"[0-9a-fA-F]{64}", checksum):
+        raise ValueError(f"checksums.txt has an invalid sha256 for {name}")
+    return checksum.lower()
 
 
 def fetch(url):

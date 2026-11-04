@@ -12,7 +12,7 @@ from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-import vertrag_pin  # noqa: E402
+import vertrag_pin
 
 PIN = """# Managed by scripts/vertrag_pin.py.
 VERTRAG_VERSION: 0.29.0
@@ -28,7 +28,10 @@ class VertragPin(unittest.TestCase):
     def test_reads_the_pin(self):
         self.assertEqual(
             vertrag_pin.pinned(PIN),
-            ("0.29.0", "6ab32926379d4c4b205b48fb4f0d0d31fd3c1a7d79af7effacce63c6c17df3c6"),
+            (
+                "0.29.0",
+                "6ab32926379d4c4b205b48fb4f0d0d31fd3c1a7d79af7effacce63c6c17df3c6",
+            ),
         )
 
     def test_rewrites_version_and_checksum_together(self):
@@ -68,8 +71,14 @@ class VertragPin(unittest.TestCase):
             def git(*args):
                 result = subprocess.run(
                     [
-                        "git", "-c", "user.name=Pin test", "-c", "user.email=pin@example.test",
-                        "-c", "commit.gpgsign=false", *args,
+                        "git",
+                        "-c",
+                        "user.name=Pin test",
+                        "-c",
+                        "user.email=pin@example.test",
+                        "-c",
+                        "commit.gpgsign=false",
+                        *args,
                     ],
                     cwd=root,
                     text=True,
@@ -84,7 +93,9 @@ class VertragPin(unittest.TestCase):
             with (
                 mock.patch.object(vertrag_pin, "PIN_FILE", str(pin)),
                 mock.patch.object(vertrag_pin, "latest_version", return_value="0.30.0"),
-                mock.patch.object(vertrag_pin, "release_checksums", return_value=CHECKSUMS),
+                mock.patch.object(
+                    vertrag_pin, "release_checksums", return_value=CHECKSUMS
+                ),
                 contextlib.redirect_stdout(io.StringIO()),
             ):
                 self.assertEqual(vertrag_pin.main(["vertrag_pin.py", "bump"]), 0)
@@ -116,7 +127,58 @@ class VertragPin(unittest.TestCase):
 
     def test_an_archive_the_release_does_not_list_is_refused(self):
         with self.assertRaises(ValueError):
-            vertrag_pin.checksum_for(CHECKSUMS, vertrag_pin.asset("0.30.0", "darwin", "arm64"))
+            vertrag_pin.checksum_for(
+                CHECKSUMS, vertrag_pin.asset("0.30.0", "darwin", "arm64")
+            )
+
+    def test_a_release_checksum_must_be_one_complete_sha256(self):
+        name = vertrag_pin.asset("0.30.0")
+        for checksum in ["not-a-checksum", "f" * 63, "f" * 65, "g" * 64]:
+            with (
+                self.subTest(checksum=checksum),
+                self.assertRaisesRegex(ValueError, "invalid sha256"),
+            ):
+                vertrag_pin.checksum_for(f"{checksum}  {name}\n", name)
+
+    def test_duplicate_archive_checksums_are_ambiguous_even_when_they_agree(self):
+        name = vertrag_pin.asset("0.30.0")
+        for second in ["1" * 64, "2" * 64]:
+            with self.subTest(second=second):
+                checksums = f"{'1' * 64}  {name}\n{second}  {name}\n"
+                with self.assertRaisesRegex(ValueError, "multiple entries"):
+                    vertrag_pin.checksum_for(checksums, name)
+
+    def test_uppercase_release_checksum_produces_a_readable_lowercase_pin(self):
+        name = vertrag_pin.asset("0.30.0")
+        checksum = vertrag_pin.checksum_for(f"{'A' * 64}  {name}\n", name)
+        bumped = vertrag_pin.with_pin(PIN, "0.30.0", checksum)
+        self.assertEqual(vertrag_pin.pinned(bumped), ("0.30.0", "a" * 64))
+
+    def test_invalid_release_metadata_leaves_the_tracked_pin_unchanged(self):
+        name = vertrag_pin.asset("0.30.0")
+        for checksums in [
+            f"not-a-checksum  {name}\n",
+            f"{'1' * 64}  {name}\n{'2' * 64}  {name}\n",
+        ]:
+            with (
+                self.subTest(checksums=checksums),
+                tempfile.TemporaryDirectory() as directory,
+            ):
+                pin = Path(directory) / "vertrag-pin.yml"
+                pin.write_text(PIN)
+                with (
+                    mock.patch.object(vertrag_pin, "PIN_FILE", str(pin)),
+                    mock.patch.object(
+                        vertrag_pin, "latest_version", return_value="0.30.0"
+                    ),
+                    mock.patch.object(
+                        vertrag_pin, "release_checksums", return_value=checksums
+                    ),
+                    contextlib.redirect_stdout(io.StringIO()),
+                    self.assertRaises(ValueError),
+                ):
+                    vertrag_pin.bump()
+                self.assertEqual(pin.read_text(), PIN)
 
     def test_a_file_without_a_pin_is_refused(self):
         with self.assertRaises(ValueError):
