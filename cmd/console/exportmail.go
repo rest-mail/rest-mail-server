@@ -20,6 +20,7 @@ import (
 
 	"github.com/rest-mail/rest-mail-server/internal/api/respond"
 	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
+	"github.com/rest-mail/rest-mail-server/internal/mailimport"
 )
 
 const exportMailUsage = `restmail export-maildir — export an account's mail as a Maildir through the public API
@@ -29,7 +30,7 @@ const exportMailUsage = `restmail export-maildir — export an account's mail as
 RESTMAIL_API_KEY needs mail:read on the account or its domain. Every account holds
 mail:read on its own mailbox. The output is the layout restmail import-maildir
 reads: INBOX is the root, folder Archive/2020 is the Maildir++ folder
-.Archive.2020, each message is its stored source byte for byte in cur/, its flags
+.Archive.2020 (each level in modified UTF-7, as Dovecot names it), each message is its stored source byte for byte in cur/, its flags
 are the filename's ":2," letters (S Seen, R Answered, F Flagged, D Draft,
 T Deleted), its keywords are letters a–z mapped by that folder's
 dovecot-keywords file, and its internal date is the file's modification time.
@@ -151,19 +152,13 @@ func exportDestination(path string, allowNonEmpty bool) error {
 }
 
 // maildirFolder is where import-maildir finds a folder: INBOX is the root and
-// every other folder a Maildir++ dot folder, "/" becoming ".".
+// every other folder a Maildir++ dot folder, "/" becoming "." and each level
+// in modified UTF-7, as Dovecot names them.
 func maildirFolder(name string) (string, error) {
 	if problem := rmail.FolderNameProblem(name); problem != "" {
 		return "", fmt.Errorf("folder %q %s", name, problem)
 	}
-	name = rmail.CanonicalFolder(name)
-	if name == "INBOX" {
-		return ".", nil
-	}
-	if strings.Contains(name, ".") {
-		return "", fmt.Errorf("folder %q contains \".\", which Maildir++ reads as a subfolder; rename it before exporting", name)
-	}
-	return "." + strings.ReplaceAll(name, "/", "."), nil
+	return mailimport.MaildirDirectory(rmail.CanonicalFolder(name))
 }
 
 func (e *mailExporter) run(root string) (int, error) {

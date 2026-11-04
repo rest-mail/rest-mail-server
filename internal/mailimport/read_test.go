@@ -99,7 +99,7 @@ func TestMaildirRefusesUnsupportedAndUnsafeSources(t *testing.T) {
 	}
 }
 
-func TestMboxPreservesMetadataAndExplicitEscaping(t *testing.T) {
+func TestMboxReadsMetadataAndExplicitEscaping(t *testing.T) {
 	for _, tc := range []struct{ format, expected string }{
 		{"rfc4155", ">From original\n>>From quoted\n"},
 		{"mboxo", "From original\n>>From quoted\n"},
@@ -114,7 +114,7 @@ func TestMboxPreservesMetadataAndExplicitEscaping(t *testing.T) {
 			if err != nil || len(got) != 2 {
 				t.Fatalf("read: %v, messages=%d", err, len(got))
 			}
-			want := "Message-ID: <one@example.test>\nStatus: RO\nX-Status: AFT\nSubject: first\n\n" + tc.expected + "From ordinary body text\n"
+			want := "Message-ID: <one@example.test>\nSubject: first\n\n" + tc.expected + "From ordinary body text\n"
 			if string(got[0].RawMessage) != want || string(got[1].RawMessage) != strings.TrimSuffix(second, "\r\n") {
 				t.Fatalf("source bytes changed: first=%q second=%q", got[0].RawMessage, got[1].RawMessage)
 			}

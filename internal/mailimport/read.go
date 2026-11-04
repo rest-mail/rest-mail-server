@@ -14,6 +14,7 @@ import (
 	"net/mail"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -70,11 +71,8 @@ func Maildir(ctx context.Context, directory string, maxBytes int64, visit Visit)
 		folder := filepath.Dir(filepath.Dir(rel))
 		if folder == "." {
 			folder = "INBOX"
-		} else {
-			folder = filepath.ToSlash(folder)
-			if strings.HasPrefix(folder, ".") {
-				folder = strings.ReplaceAll(strings.TrimPrefix(folder, "."), ".", "/")
-			}
+		} else if folder, err = maildirFolder(filepath.ToSlash(folder)); err != nil {
+			return err
 		}
 		if problem := rmail.FolderNameProblem(folder); problem != "" {
 			return fmt.Errorf("source folder %q: %s", folder, problem)
@@ -210,7 +208,10 @@ func Mbox(ctx context.Context, source io.Reader, folder, format string, maxBytes
 		if err != nil {
 			return err
 		}
-		return visit(fmt.Sprintf("message %d", count), apitypes.ImportMessageBody{RawMessage: raw, Folder: folder, Flags: flags, InternalDate: date})
+		// The metadata is now in flags. Like Dovecot serving the message over
+		// IMAP, store it without them: a later flag edit on the source then
+		// leaves the same octets, so a rerun skips it instead of copying it.
+		return visit(fmt.Sprintf("message %d", count), apitypes.ImportMessageBody{RawMessage: withoutMboxMetadata(raw), Folder: folder, Flags: flags, InternalDate: date})
 	}
 	for {
 		if err := ctx.Err(); err != nil {
@@ -252,6 +253,36 @@ func Mbox(ctx context.Context, source io.Reader, folder, format string, maxBytes
 			return flush()
 		}
 	}
+}
+
+// mboxMetadataFields are the header fields Dovecot keeps a message's mailbox
+// state in, not part of the message itself.
+var mboxMetadataFields = []string{"status", "x-status", "x-keywords", "x-uid", "x-imapbase"}
+
+// withoutMboxMetadata is raw with every mboxMetadataFields field removed from
+// its header, continuation lines included. Every other octet is kept.
+func withoutMboxMetadata(raw []byte) []byte {
+	out := make([]byte, 0, len(raw))
+	dropping := false
+	for rest := raw; len(rest) > 0; {
+		end := bytes.IndexByte(rest, '\n') + 1
+		if end == 0 {
+			end = len(rest)
+		}
+		line := rest[:end]
+		if bytes.Equal(line, []byte("\n")) || bytes.Equal(line, []byte("\r\n")) {
+			return append(out, rest...)
+		}
+		if line[0] != ' ' && line[0] != '\t' {
+			name, _, _ := bytes.Cut(line, []byte(":"))
+			dropping = slices.Contains(mboxMetadataFields, strings.ToLower(string(bytes.TrimSpace(name))))
+		}
+		if !dropping {
+			out = append(out, line...)
+		}
+		rest = rest[end:]
+	}
+	return out
 }
 
 func boundedLine(r *bufio.Reader, limit int64) ([]byte, error) {

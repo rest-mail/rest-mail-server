@@ -39,7 +39,8 @@ Source files are never changed. Raw messages and credentials are never printed.
   --dry-run              validate source only, with no API calls or key required
   --json                 one summary on stdout; one error on stderr
 
-Maildir uses file mtime for INTERNALDATE and reads cur/new plus Maildir++ folders.
+Maildir uses file mtime for INTERNALDATE and reads cur/new plus Maildir++ folders,
+decoding their modified UTF-7 names as Dovecot writes them.
 Source symlinks, Content-Length-framed mbox and mbox
 pseudo-messages are refused explicitly. Mbox escaping format is never guessed.
 Dry-run does not check server authorization, destination, quota or server limits.
