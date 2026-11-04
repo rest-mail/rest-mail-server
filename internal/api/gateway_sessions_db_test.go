@@ -11,9 +11,12 @@ import (
 	"testing"
 	"time"
 
+	oapifly "github.com/antimatter-studios/go-oapifly"
+	"github.com/rest-mail/rest-mail-server"
 	"github.com/rest-mail/rest-mail-server/internal/config"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/db/repositories"
+	"github.com/rest-mail/rest-mail-server/internal/examplepairs"
 )
 
 // The gateways' connection sessions (#1586): a gateway, known by its mTLS
@@ -159,6 +162,46 @@ func TestGatewaySessionOnlyForItsOwnService(t *testing.T) {
 	// The session is still the IMAP gateway's.
 	if code := g.folders(imapCN, token); code != http.StatusOK {
 		t.Errorf("folders as the IMAP gateway = %d, want 200", code)
+	}
+}
+
+// The described gateway_required pairs (network=without_gateway_certificate):
+// on the internal listener, a certificate that names no gateway, or one that
+// does not sign mail clients in, is refused before anything else happens,
+// even with the account's right app password or a live session's token.
+func TestGatewayRequiredExamples(t *testing.T) {
+	pairs, err := oapifly.ReadExamples(restmail.Examples, "openapi-example.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := newGatewayFixture(t)
+	token := g.open(imapCN, "imap")
+	for _, tc := range []struct {
+		name, op, cn, method, path, authorization, body string
+	}{
+		{"open/no_gateway", "openGatewaySession", "someone-else", http.MethodPost, "/api/v1/gateway-sessions", "", openBody("imap", g.address, g.app.Password)},
+		{"open/delivery", "openGatewaySession", deliveryCN, http.MethodPost, "/api/v1/gateway-sessions", "", openBody("smtp", g.address, g.app.Password)},
+		{"close/no_gateway", "closeGatewaySession", "someone-else", http.MethodDelete, "/api/v1/gateway-sessions/current", "Bearer " + token, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			pair, ok := pairs[tc.op]["gateway_required"]
+			if !ok {
+				t.Fatalf("%s has no gateway_required pair", tc.op)
+			}
+			if got := requirementOf(pair); got != "network=without_gateway_certificate" {
+				t.Fatalf("%s gateway_required requires %q", tc.op, got)
+			}
+			examplepairs.Proven(t, tc.op, "gateway_required")
+			rr := g.as(tc.cn, tc.method, tc.path, tc.authorization, tc.body)
+			if rr.Code != pair.Response.Status || !strings.HasPrefix(rr.Header().Get("Content-Type"), pair.Response.MediaType) {
+				t.Fatalf("got %d %q, want %d %q: %s", rr.Code, rr.Header().Get("Content-Type"), pair.Response.Status, pair.Response.MediaType, rr.Body.String())
+			}
+			assertPublicExampleBody(t, pair.Response.Body, rr.Body.Bytes())
+		})
+	}
+	// The refused close left the session open for its own gateway.
+	if code := g.folders(imapCN, token); code != http.StatusOK {
+		t.Fatalf("folders after a refused close = %d, want 200", code)
 	}
 }
 
