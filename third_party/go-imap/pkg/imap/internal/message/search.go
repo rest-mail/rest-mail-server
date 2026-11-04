@@ -18,11 +18,7 @@ var searchHeaderDecoder = &mime.WordDecoder{
 		if !isLatin1(charset) {
 			return nil, fmt.Errorf("unsupported charset %q", charset)
 		}
-		b, err := io.ReadAll(input)
-		if err != nil {
-			return nil, err
-		}
-		return strings.NewReader(latin1ToUTF8(b)), nil
+		return latin1Reader(input)
 	},
 }
 
@@ -113,6 +109,15 @@ func isLatin1(charset string) bool {
 		return true
 	}
 	return false
+}
+
+// latin1Reader is input converted from ISO-8859-1 to UTF-8.
+func latin1Reader(input io.Reader) (io.Reader, error) {
+	b, err := io.ReadAll(input)
+	if err != nil {
+		return nil, err
+	}
+	return strings.NewReader(latin1ToUTF8(b)), nil
 }
 
 func latin1ToUTF8(b []byte) string {
