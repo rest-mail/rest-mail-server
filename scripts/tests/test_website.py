@@ -47,7 +47,8 @@ class Helpers(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="website-helper-")
         self.addCleanup(self.temp.cleanup)
-        self.root = Path(self.temp.name)
+        # The helper reports canonical paths; macOS aliases /var to /private/var.
+        self.root = Path(self.temp.name).resolve()
         self.bin = self.root / "bin"
         self.bin.mkdir()
         for name in ("git", "npm", "editor", "docker"):

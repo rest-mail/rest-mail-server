@@ -15,7 +15,8 @@ class DescriptionEquivalence(unittest.TestCase):
     def setUp(self):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
-        self.root = Path(directory.name)
+        # Reports name canonical paths; macOS aliases /var to /private/var.
+        self.root = Path(directory.name).resolve()
         self.saved = self.root / "openapi.json"
         self.body = b'{"openapi":"3.1.0","paths":{"/api/health":{"get":{"operationId":"getHealth"}}}}'
         self.saved.write_bytes(self.body)
