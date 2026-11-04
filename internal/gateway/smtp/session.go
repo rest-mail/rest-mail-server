@@ -955,7 +955,7 @@ func (s *session) Data(r io.Reader) error {
 				switch {
 				case apiErr.StatusCode == 404:
 					failCode, failEnhanced, failMsg = 550, gosmtp.EnhancedCode{5, 1, 1}, "No such user"
-				case apiErr.StatusCode == 403 || apiErr.StatusCode == 550:
+				case apiErr.StatusCode == 403:
 					failCode, failEnhanced, failMsg = 550, gosmtp.EnhancedCode{5, 7, 1}, "Rejected by policy"
 				case apiErr.StatusCode == 422:
 					// Recipient mailbox is over quota (the API answers HTTP 422
@@ -965,7 +965,7 @@ func (s *session) Data(r io.Reader) error {
 					// hides the cause. 452 4.2.2 is the transient form (retry); a
 					// policy-permanent full mailbox would be 552 5.2.2.
 					failCode, failEnhanced, failMsg = 452, gosmtp.EnhancedCode{4, 2, 2}, "Mailbox full"
-				case apiErr.StatusCode == 503 || apiErr.StatusCode == 451:
+				case apiErr.StatusCode == 503:
 					failCode, failEnhanced, failMsg = 451, gosmtp.EnhancedCode{4, 3, 0}, "Try again later"
 				default:
 					failCode, failEnhanced, failMsg = 451, gosmtp.EnhancedCode{4, 3, 0}, "Temporary delivery failure"
@@ -996,13 +996,13 @@ func (s *session) Data(r io.Reader) error {
 }
 
 // aliasRoutingRefusal recognises the API's permanent refusal of a reserved alias that
-// cannot route, which this gateway turns into SMTP 550. GET /api/mailboxes answers it 403
-// and deliverMessage with its documented 550, both as rejected with the fixed sentence.
+// cannot route, which this gateway turns into SMTP 550. GET /api/mailboxes and deliverMessage
+// both answer it 403 rejected with the fixed sentence.
 // Any other answer says nothing about the recipient: a 403 from anywhere else stays the
 // temporary failure it was, so a fault here never bounces a sender's mail.
 func aliasRoutingRefusal(err error) (string, bool) {
 	var apiError *apiclient.APIError
-	if !errors.As(err, &apiError) || (apiError.StatusCode != 403 && apiError.StatusCode != 550) {
+	if !errors.As(err, &apiError) || apiError.StatusCode != 403 {
 		return "", false
 	}
 	var refusal struct {

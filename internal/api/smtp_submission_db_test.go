@@ -219,7 +219,7 @@ func send(c *smtp.Client, from, to, message string) error {
 
 func isDMARCReject(err error) bool {
 	var apiErr *apiclient.APIError
-	return errors.As(err, &apiErr) && apiErr.StatusCode == 550 && strings.Contains(apiErr.Body, "DMARC policy reject")
+	return errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusForbidden && strings.Contains(apiErr.Body, "DMARC policy reject")
 }
 
 func smtpCode(err error) int {
