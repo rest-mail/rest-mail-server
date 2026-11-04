@@ -87,6 +87,86 @@ func TestQueueMutationPostgresRollback(t *testing.T) {
 	}
 }
 
+// A bounce acts on mail still in flight, by ID or in bulk. Any other state is
+// final: the single route refuses it and the bulk route passes over it, and the
+// row keeps its state and its last error either way.
+func TestQueueBounceStatesPostgres(t *testing.T) {
+	db := queueMutationPostgres(t)
+	tx := db.Begin()
+	if tx.Error != nil {
+		t.Fatal(tx.Error)
+	}
+	t.Cleanup(func() { _ = tx.Rollback().Error })
+	handler := queueRoutes(NewQueueHandler(tx))
+	for _, tc := range []struct {
+		status string
+		bounce bool
+	}{
+		{"pending", true},
+		{"deferred", true},
+		{"delivering", true},
+		{"delivered", false},
+		{"bounced", false},
+		{"expired", false},
+	} {
+		entry := func(t *testing.T) models.OutboundQueue {
+			t.Helper()
+			item := models.OutboundQueue{Sender: "sender@example.test", Recipient: "recipient@example.test", Domain: "example.test", Status: tc.status, LastError: "original"}
+			if err := tx.Create(&item).Error; err != nil {
+				t.Fatal(err)
+			}
+			return item
+		}
+		stored := func(t *testing.T, id uint) models.OutboundQueue {
+			t.Helper()
+			var item models.OutboundQueue
+			if err := tx.First(&item, id).Error; err != nil {
+				t.Fatal(err)
+			}
+			return item
+		}
+		t.Run(tc.status+"/single", func(t *testing.T) {
+			item := entry(t)
+			rr := httptest.NewRecorder()
+			handler.ServeHTTP(rr, httptest.NewRequest("POST", "/api/v1/admin/queue/"+uintToStr(item.ID)+"/bounce", nil))
+			got := stored(t, item.ID)
+			if tc.bounce {
+				if rr.Code != 200 || !strings.Contains(rr.Body.String(), `"status":"bounced"`) {
+					t.Fatalf("status=%d body=%s", rr.Code, rr.Body)
+				}
+				if got.Status != "bounced" || got.LastError != "manually bounced by admin" {
+					t.Fatalf("bounce was not persisted: %+v", got)
+				}
+				return
+			}
+			if rr.Code != 400 || errorCodeOf(rr) != "bad_request" || !strings.Contains(rr.Body.String(), "Only pending, deferred or delivering entries can be bounced") {
+				t.Fatalf("status=%d code=%s body=%s", rr.Code, errorCodeOf(rr), rr.Body)
+			}
+			if got.Status != tc.status || got.LastError != "original" {
+				t.Fatalf("refused bounce changed the entry: %+v", got)
+			}
+		})
+		t.Run(tc.status+"/bulk", func(t *testing.T) {
+			item := entry(t)
+			rr := httptest.NewRecorder()
+			request := httptest.NewRequest("POST", "/api/v1/admin/queue/bulk-bounce", strings.NewReader(`{"ids":[`+uintToStr(item.ID)+`]}`))
+			request.Header.Set("Content-Type", "application/json")
+			handler.ServeHTTP(rr, request)
+			got := stored(t, item.ID)
+			wantStatus, wantAffected, wantError := tc.status, `"affected":0`, "original"
+			if tc.bounce {
+				wantStatus, wantAffected, wantError = "bounced", `"affected":1`, "manually bounced by admin (bulk)"
+			}
+			if rr.Code != 200 || !strings.Contains(rr.Body.String(), wantAffected) {
+				t.Fatalf("status=%d body=%s, want %s", rr.Code, rr.Body, wantAffected)
+			}
+			if got.Status != wantStatus || got.LastError != wantError {
+				t.Fatalf("bulk bounce left %+v, want status %s and error %s", got, wantStatus, wantError)
+			}
+		})
+	}
+}
+
 // A second connection holds the row lock while the registered route runs. The
 // request deadline must stop the blocked SELECT and leave the row unchanged.
 func TestQueueMutationPostgresLockDeadline(t *testing.T) {

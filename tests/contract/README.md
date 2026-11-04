@@ -294,6 +294,11 @@ row keeps the bulk action's result. Eligible entries, unrelated IDs, malformed
 IDs, documented refusals, request bodies and caller credentials are unchanged.
 No exchange or probe is excluded, and neither coverage baseline is increased.
 
+The single bounce has the same need, because a bounced entry is refused (#1567).
+Its success takes the held bounce entry, or a new one from
+`chore test:contract-queue-entry-fixture` when a bulk bounce took it. Its 400
+gets a new entry bounced first, so the refusal never takes the held one.
+
 The hook replenishes that one row and nothing else. `chore test:contract-fixtures`
 also adds a quarantined message and a suppression, and those counts decide what
 coverage reaches: `clearSuppression` and `deleteQuarantine` hold two skipped

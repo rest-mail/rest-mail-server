@@ -1894,7 +1894,7 @@ export interface paths {
         put?: never;
         /**
          * Bounce a single queue entry
-         * @description Database work follows the HTTP request context, including cancellation and deadlines. The entry is locked in one transaction before the update is written; lookup, update or commit failures cannot return success.
+         * @description Only a pending, deferred or delivering entry can be bounced, as with the bulk route; any other state is refused with 400 bad_request and the entry is left as it was. Database work follows the HTTP request context, including cancellation and deadlines. The entry is locked in one transaction before eligibility is checked and the update is written; lookup, update or commit failures cannot return success.
          */
         post: operations["bounceQueueEntry"];
         delete?: never;
@@ -19230,6 +19230,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Data-QueueAction"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description unauthorized: no token, a bad one, or a session that has ended */

@@ -10318,7 +10318,7 @@ paths:
       - $ref: "#/components/parameters/ResourceId"
     post:
       operationId: bounceQueueEntry
-      description: Database work follows the HTTP request context, including cancellation and deadlines. The entry is locked in one transaction before the update is written; lookup, update or commit failures cannot return success.
+      description: Only a pending, deferred or delivering entry can be bounced, as with the bulk route; any other state is refused with 400 bad_request and the entry is left as it was. Database work follows the HTTP request context, including cancellation and deadlines. The entry is locked in one transaction before eligibility is checked and the update is written; lookup, update or commit failures cannot return success.
       tags: ["Admin: Queue"]
       security:
         - CookieAuth: [queue:manage]
@@ -10346,6 +10346,12 @@ paths:
               operationId: deleteQueueEntry
               parameters:
                 id: '$request.path.id'
+        "400":
+          description: The entry is not pending, deferred or delivering
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "404":
           $ref: "#/components/responses/NotFound"
 

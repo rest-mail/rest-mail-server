@@ -258,9 +258,7 @@ func TestQueueSingleMutationLocksAndPreservesRefusals(t *testing.T) {
 				}
 				if scenario == "delivered" {
 					c.status = "delivered"
-					if action == "retry" {
-						want = 400
-					}
+					want = 400
 				}
 				rr := serveQueueRequest(t, c, "POST", "/api/v1/admin/queue/1/"+action, "", time.Second)
 				if rr.Code != want || c.beginCalls != 1 || c.lockReads != 1 {

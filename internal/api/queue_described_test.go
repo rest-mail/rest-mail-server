@@ -18,7 +18,7 @@ func TestQueueIsDescribedFromItsTypes(t *testing.T) {
 		{"/bulk-delete", "delete", "bulkDeleteQueue", "queue:manage", []string{"200", "400", "401", "403", "413", "422", "429", "500", "503"}},
 		{"/{id}", "get", "getQueueEntry", "queue:read", []string{"200", "401", "403", "404", "413", "422", "429", "500", "503"}},
 		{"/{id}/retry", "post", "retryQueueEntry", "queue:manage", []string{"200", "400", "401", "403", "404", "413", "422", "429", "500", "503"}},
-		{"/{id}/bounce", "post", "bounceQueueEntry", "queue:manage", []string{"200", "401", "403", "404", "413", "422", "429", "500", "503"}},
+		{"/{id}/bounce", "post", "bounceQueueEntry", "queue:manage", []string{"200", "400", "401", "403", "404", "413", "422", "429", "500", "503"}},
 		{"/{id}", "delete", "deleteQueueEntry", "queue:manage", []string{"204", "401", "403", "404", "413", "422", "429", "500", "503"}},
 	} {
 		t.Run(want.id, func(t *testing.T) {

@@ -41,6 +41,7 @@ LINKABLE_PASSWORD = "password123"
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import mfa_admin  # noqa: E402
 import reset_seed
+from queue_entry_hooks import a_disposable_queue_entry
 
 PRINCIPALS = os.environ.get("CONTRACT_PRINCIPALS", ".cache/contract-principals.json")
 
@@ -2934,25 +2935,33 @@ def bounce_the_held_bounce_entry(transaction):
     if os.environ.get("CONTRACT_COVERAGE") == "1":
         return
     # The documented bounce and the retry would both take the one entry the
-    # queue links lead to, and a bounced entry cannot be retried. The bounce
-    # gets the fixture's own held entry; coverage probes keep their ids.
+    # queue links lead to, and a bounced entry can be neither retried nor
+    # bounced. The bounce gets the fixture's own held entry, or a new one when
+    # a bulk bounce's empty filter took it. The refusal gets an entry bounced
+    # first, never the held one. Coverage probes keep their ids.
     name = transaction.get("name", "")
     path, _, query = transaction["fullPath"].partition("?")
     queue, entry, action = path.rstrip("/").rsplit("/", 2)
     # Coverage probes reach hooks under the documented name; an id out of
     # range or not a number marks one.
-    if " > 200 > " not in name or not positive_id(entry):
+    if not positive_id(entry):
         return
-    recipient = FIXTURE_PLAN["queue"]["bounce"]["recipient"]
-    listed = fixture_call(
-        transaction,
-        "GET",
-        "/api/v1/admin/queue?" + urllib.parse.urlencode({"recipient": recipient}),
-    )
-    items = (listed or {}).get("items") or []
-    if not items:
-        raise RuntimeError("the contract bounce fixture is missing")
-    transaction["fullPath"] = f"{queue}/{items[0]['id']:d}/{action}" + (
+    if " > 400 > " in name:
+        target = a_disposable_queue_entry()
+        fixture_call(transaction, "POST", f"/api/v1/admin/queue/{target:d}/bounce")
+    elif " > 200 > " in name:
+        recipient = FIXTURE_PLAN["queue"]["bounce"]["recipient"]
+        listed = fixture_call(
+            transaction,
+            "GET",
+            "/api/v1/admin/queue?"
+            + urllib.parse.urlencode({"recipient": recipient, "status": "deferred"}),
+        )
+        items = (listed or {}).get("items") or []
+        target = items[0]["id"] if items else a_disposable_queue_entry()
+    else:
+        return
+    transaction["fullPath"] = f"{queue}/{target:d}/{action}" + (
         "?" + query if query else ""
     )
 
