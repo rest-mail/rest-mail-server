@@ -132,6 +132,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   one.
 - DELETE of a name that is not a mailbox but has inferior mailboxes is refused
   `NO [HASCHILDREN]` (RFC 9051 §6.3.5, RFC 5530 §3) instead of answering OK.
+- Converting a header for FETCH takes time in proportion to its size. A run of
+  `\"` in an 8-bit field, or a field folded many times, used to take quadratic
+  time, 16.6 s for a 156 KB Subject. The output doesn't change.
 - FETCH converts a message as it is sent, as RFC 3501 §7.4.2 requires, and what
   the mailbox returned does not change. HEADER and MIME sections and the header
   of an encapsulated message are 7-bit. Non-textual data goes out BASE64 and text

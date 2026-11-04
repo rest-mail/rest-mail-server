@@ -157,19 +157,22 @@ func splitHeader(raw string) (header, sep, body string) {
 func headerFields(header string) []string {
 	lines := strings.Split(strings.ReplaceAll(header, "\r\n", "\n"), "\n")
 	var fields []string
-	for _, line := range lines {
-		if len(fields) > 0 && (strings.HasPrefix(line, " ") || strings.HasPrefix(line, "\t")) {
-			fields[len(fields)-1] += "\r\n" + line
-			continue
+	for start := 0; start < len(lines); {
+		end := start + 1
+		for end < len(lines) && (strings.HasPrefix(lines[end], " ") || strings.HasPrefix(lines[end], "\t")) {
+			end++
 		}
-		fields = append(fields, line)
+		fields = append(fields, strings.Join(lines[start:end], "\r\n"))
+		start = end
 	}
 	return fields
 }
 
+var unfolder = strings.NewReplacer("\r\n", "", "\n", "")
+
 // unfold joins a folded value onto one line (RFC 5322 section 2.2.3).
 func unfold(value string) string {
-	return strings.NewReplacer("\r\n", "", "\n", "").Replace(value)
+	return unfolder.Replace(value)
 }
 
 func containsNonASCII(s string) bool {

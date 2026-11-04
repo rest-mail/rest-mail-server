@@ -1,9 +1,11 @@
 package message
 
 import (
+	"bufio"
 	"net/mail"
 	"net/textproto"
 	"strings"
+	"sync"
 )
 
 // mimeNode is one entity on a numeric section path: either an RFC 5322
@@ -27,6 +29,11 @@ func messageNode(raw string, depth int) mimeNode {
 	return mimeNode{header: HeaderSection(raw), body: TextSection(raw), message: true, defaultType: "text/plain", depth: depth}
 }
 
+// entityReaders holds the buffers entityHeader reads with. net/mail keeps a reader
+// that is already buffered, and would allocate a full buffer for any other, so a
+// message of many small parts shares these instead of allocating one for each.
+var entityReaders = sync.Pool{New: func() any { return bufio.NewReader(nil) }}
+
 // entityHeader reads a MIME entity's header block (with or without its
 // terminating blank line) with net/mail's RFC 5322 reader. Unlike
 // net/textproto, it accepts the control octets RFC 5322 §4.2 keeps as
@@ -35,7 +42,13 @@ func messageNode(raw string, depth int) mimeNode {
 // read as empty. BODYSTRUCTURE, sections and SEARCH all read part headers
 // here, so they agree on each part's type.
 func entityHeader(header string) textproto.MIMEHeader {
-	m, err := mail.ReadMessage(strings.NewReader(header))
+	r := entityReaders.Get().(*bufio.Reader)
+	defer func() {
+		r.Reset(nil)
+		entityReaders.Put(r)
+	}()
+	r.Reset(strings.NewReader(header))
+	m, err := mail.ReadMessage(r)
 	if err != nil {
 		return textproto.MIMEHeader{}
 	}

@@ -71,16 +71,24 @@ func selectHeaders(raw string, fields []string, exclude bool) string {
 // leading whitespace (RFC 5322 §2.2.3).
 func HeaderFieldValues(raw, name string) []string {
 	var values []string
+	var value strings.Builder
+	found := false
 	for _, line := range strings.Split(selectHeaders(raw, []string{name}, false), "\r\n") {
 		switch {
 		case line == "":
 		case line[0] == ' ' || line[0] == '\t':
-			if len(values) > 0 {
-				values[len(values)-1] += line
-			}
+			value.WriteString(line)
 		default:
-			values = append(values, line[strings.Index(line, ":")+1:])
+			if found {
+				values = append(values, value.String())
+				value.Reset()
+			}
+			found = true
+			value.WriteString(line[strings.Index(line, ":")+1:])
 		}
+	}
+	if found {
+		values = append(values, value.String())
 	}
 	return values
 }
