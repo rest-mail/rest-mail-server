@@ -50,9 +50,15 @@ found by the RFC 3501 inventory in rest-mail/rest-mail-server#374.
     or quoted-printable keeps that encoding, so nothing is encoded twice.
   - After `ENABLE UTF8=ACCEPT`, valid UTF-8 stays in headers and in text naming no
     charset, whose default there is UTF-8 (RFC 6532 §3).
-  - ENVELOPE reads the unconverted header, as before, because an address with an
-    8-bit mailbox has no 7-bit form. It and BODYSTRUCTURE still send a string
-    decoded from an encoded word or RFC 2231 value as a literal.
+  - ENVELOPE and BODYSTRUCTURE read the converted message, for
+    rest-mail/rest-mail-server#1882, because those strings have nowhere to name a
+    charset (RFC 3501 §4.3.1). Without UTF-8, a string a decoder produced (a name
+    from an encoded word, a parameter from RFC 2231) goes out as encoded words,
+    even a parameter, since the rule against that (RFC 2047 §5) is about message
+    headers and an IMAP string can hold nothing else. An address with an 8-bit
+    mailbox has no 7-bit form, so its whole field reads NIL, at the top of a
+    message and in an encapsulated one alike. After `ENABLE UTF8=ACCEPT`, valid
+    UTF-8 goes out as a literal, as before.
 
 ## RFC 9051 additions
 
