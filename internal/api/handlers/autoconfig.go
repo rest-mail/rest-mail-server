@@ -6,6 +6,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"strings"
@@ -310,7 +311,7 @@ func (h *AutoconfigHandler) microsoftAutodiscover(r *http.Request, in autodiscov
 	if in.Body != nil {
 		body = []byte(*in.Body)
 	}
-	if err := xml.Unmarshal(body, &adReq); err != nil {
+	if err := decodeAutodiscoverXML(body, &adReq); err != nil {
 		if in.EmailAddress == "" {
 			return endpoint.Document{}, endpoint.Refuse(http.StatusBadRequest, "bad_request", "invalid request")
 		}
@@ -342,6 +343,36 @@ func (h *AutoconfigHandler) microsoftAutodiscover(r *http.Request, in autodiscov
 	// carried as explicit xmlns attributes to reproduce the exact two-namespace document
 	// shape Outlook expects.
 	return xmlDocument(autodiscoverResponse(h.mailHost, email)), nil
+}
+
+func decodeAutodiscoverXML(body []byte, request any) error {
+	decoder := xml.NewDecoder(bytes.NewReader(body))
+	if err := decoder.Decode(request); err != nil {
+		return err
+	}
+	for {
+		offset := decoder.InputOffset()
+		token, err := decoder.Token()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		switch trailing := token.(type) {
+		case xml.CharData:
+			if len(bytes.Trim(body[offset:decoder.InputOffset()], " \t\r\n")) != 0 {
+				return errors.New("unexpected text after Autodiscover XML")
+			}
+		case xml.Comment:
+		case xml.ProcInst:
+			if strings.EqualFold(trailing.Target, "xml") {
+				return errors.New("unexpected XML declaration after Autodiscover XML")
+			}
+		default:
+			return errors.New("unexpected content after Autodiscover XML")
+		}
+	}
 }
 
 // xmlDocument is v written as an indented XML document, with its declaration.
