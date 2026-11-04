@@ -326,7 +326,6 @@ class OwnDataHooks(unittest.TestCase):
             "receiveTlsReport": "report_and_audit_reads_after_a_reset",
             "listAuditEntries": "report_and_audit_reads_after_a_reset",
             "verifyAuditLog": "report_and_audit_reads_after_a_reset",
-            "getDeliveryLogs": "report_and_audit_reads_after_a_reset",
             "getDashboardStats": "report_and_audit_reads_after_a_reset",
             "listFolders": "a_mailbox_read_after_a_reset",
             "listMessages": "a_mailbox_read_after_a_reset",
@@ -338,6 +337,7 @@ class OwnDataHooks(unittest.TestCase):
             "restmailCapabilities": "delivery_after_a_reset",
             "restmailCheckMailbox": "delivery_after_a_reset",
             "restmailDeliver": "delivery_after_a_reset",
+            "getDeliveryLogs": "the_delivery_log_after_a_reset",
             "testFilter": "filter_requests_after_a_reset",
             "listCustomFilters": "filter_requests_after_a_reset",
             "validateCustomFilter": "filter_requests_after_a_reset",
@@ -470,7 +470,6 @@ class OwnDataHooks(unittest.TestCase):
             "receiveTlsReport",
             "listAuditEntries",
             "verifyAuditLog",
-            "getDeliveryLogs",
             "getDashboardStats",
         ):
             names = [h for o, h in self.registered if o == operation]
