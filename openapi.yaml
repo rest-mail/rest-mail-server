@@ -12041,7 +12041,8 @@ paths:
         the field before any write. raw_message is standard padded base64 (format: byte).
         The recipient is resolved from address. Arriving mail uses server time and
         default Inbox/flags, subject to inbound rules. Import-only fields sent by
-        older callers are ignored.
+        older callers are ignored. An arrival past the hop limit or a reserved alias
+        that cannot route is 403 rejected before the pipeline runs.
       security: []
       x-internal-mtls: true
       requestBody:
@@ -12116,7 +12117,7 @@ paths:
             "X-Frame-Options":
               "$ref": "#/components/headers/X-Frame-Options"
         "403":
-          description: "rejected: the inbound pipeline refused the message; the SMTP gateway answers its peer 550 5.7.1"
+          description: "rejected: the inbound pipeline refused the message, it came past the hop limit, or a reserved alias cannot route; the SMTP gateway answers its peer 550"
           content:
             application/json:
               schema:
