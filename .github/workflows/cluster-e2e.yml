@@ -20,6 +20,11 @@ name: Cluster Install Check
 # Daily, on every v* tag, and by hand, never on a pull request: it builds seven
 # images and takes several minutes. It gates nothing.
 #
+# One failure issue ("cluster-e2e is failing", label cluster-e2e): a failed
+# scheduled, v* tag or main run opens it, or comments on the open one with the
+# run, commit, images and the failing step's receipts; a passing one closes it.
+# A run dispatched on any other ref leaves it alone (scripts/cluster_e2e_issue.py).
+#
 # Run by hand: Actions → Cluster Install Check → Run workflow, or
 #   gh workflow run cluster-e2e.yml --ref <branch>
 
@@ -207,3 +212,34 @@ jobs:
           path: cluster-report/
           retention-days: 14
           if-no-files-found: warn
+
+  # Its own job, so only this one can write issues: the install job builds and
+  # runs the images with a read-only token.
+  failure-issue:
+    name: Failure issue
+    needs: install
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+      actions: read # the install job's failed steps
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Missing when the install failed before anything was written.
+      - name: Download the cluster report
+        continue-on-error: true
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: cluster-report
+          path: cluster-report
+
+      - name: Open, update or close the failure issue
+        run: |
+          python3 -B scripts/cluster_e2e_issue.py --result "${{ needs.install.result }}" \
+            --receipts cluster-report/receipts.txt --image-tag "$IMAGE_PREFIX/*:$IMAGE_TAG"
