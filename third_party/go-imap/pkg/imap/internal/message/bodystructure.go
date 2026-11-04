@@ -47,6 +47,13 @@ func parseContentType(value string) (string, map[string]string, error) {
 	if err != nil {
 		return "", nil, err
 	}
+	mt, params, err := parseUncommented(uncommented)
+	return mt, restoreNames(value, params), err
+}
+
+// parseUncommented is parseMediaType of a field whose comments are gone, with white space
+// around the slash of its type gone too.
+func parseUncommented(uncommented string) (string, map[string]string, error) {
 	base, parameters, hasParameters := strings.Cut(uncommented, ";")
 	if typ, subtype, ok := strings.Cut(base, "/"); ok {
 		base = strings.TrimSpace(typ) + "/" + strings.TrimSpace(subtype)
@@ -54,8 +61,7 @@ func parseContentType(value string) (string, map[string]string, error) {
 	if hasParameters {
 		base += ";" + parameters
 	}
-	mt, params, err := parseMediaType(base)
-	return mt, restoreNames(value, params), err
+	return parseMediaType(base)
 }
 
 // uncommentMIME replaces each RFC 822 §3.4.3 comment in a MIME header value
@@ -69,16 +75,25 @@ func uncommentMIME(value string) (string, error) {
 	if has8bit(value) {
 		return readableField(value), nil
 	}
-	text, _, err := splitComments(value)
-	return text, err
-}
-
-// splitComments is uncommentMIME that also returns each comment it replaced, with
-// its delimiters.
-func splitComments(value string) (string, []string, error) {
+	if strings.IndexByte(value, '(') < 0 && strings.IndexByte(value, ')') < 0 {
+		// With no comment in it nothing would change, unless a quoted-string never closes.
+		quoted := false
+		for i := 0; i < len(value); i++ {
+			switch c := value[i]; {
+			case quoted && c == '\\':
+				i++
+			case c == '"':
+				quoted = !quoted
+			}
+		}
+		if quoted {
+			return "", mime.ErrInvalidMediaParameter
+		}
+		return value, nil
+	}
 	var b strings.Builder
-	var comments []string
-	depth, start := 0, 0
+	b.Grow(len(value))
+	depth := 0
 	quoted := false
 	for i := 0; i < len(value); i++ {
 		c := value[i]

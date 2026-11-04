@@ -179,24 +179,25 @@ func spaceNULEntity(w wireSink, node mimeNode) {
 		_, _ = w.WriteString(node.body)
 		return
 	}
-	mt, params := node.mediaType()
+	t := node.wireType()
+	mt := t.mt
 	switch {
 	case mt == "message/rfc822":
 		spaceNULEntity(w, messageNode(node.body, node.depth+1))
-	case strings.HasPrefix(mt, "multipart/") && params["boundary"] != "":
+	case strings.HasPrefix(mt, "multipart/") && t.boundary != "":
 		def := "text/plain"
 		if mt == "multipart/digest" {
 			def = "message/rfc822"
 		}
 		at := 0
-		for _, span := range partSpans(node.body, multipartDelimiters(node.body, params["boundary"])) {
+		for _, span := range partSpans(node.body, multipartDelimiters(node.body, t.boundary)) {
 			writeSpaced(w, node.body[at:span[0]])
 			h, body := splitEntity(node.body[span[0]:span[1]])
 			spaceNULEntity(w, mimeNode{header: h, body: body, defaultType: def, depth: node.depth + 1})
 			at = span[1]
 		}
 		writeSpaced(w, node.body[at:])
-	case nulIsData(mt, params):
+	case nulIsData(mt, t.charset):
 		_, _ = w.WriteString(node.body)
 	default:
 		writeSpaced(w, node.body)
@@ -219,11 +220,11 @@ func (b *byteSink) WriteString(s string) (int, error) {
 // nulIsData reports whether a NUL in a leaf of this type means something, so a space
 // would corrupt it: anything not text, which includes an encoding nobody can remove
 // (see mediaType), and text in a charset whose characters hold NUL octets.
-func nulIsData(mt string, params map[string]string) bool {
+func nulIsData(mt, charset string) bool {
 	if !strings.HasPrefix(mt, "text/") {
 		return true
 	}
-	charset := strings.ToLower(params["charset"])
+	charset = strings.ToLower(charset)
 	for _, wide := range []string{"utf-16", "utf16", "utf-32", "utf32", "ucs-2", "ucs2", "ucs-4", "ucs4", "iso-10646-ucs-", "csucs4", "csunicode"} {
 		if strings.HasPrefix(charset, wide) {
 			return true
@@ -263,11 +264,12 @@ func wireEntity(w wireSink, node mimeNode, sessionUTF8 bool) {
 		_, _ = w.WriteString(node.body)
 		return
 	}
-	mt, params := node.mediaType()
-	multipart := strings.HasPrefix(mt, "multipart/") && params["boundary"] != ""
+	t := node.wireType()
+	mt := t.mt
+	multipart := strings.HasPrefix(mt, "multipart/") && t.boundary != ""
 	switch {
-	case multipart && (needsWireForm(node.body) || has8bit(params["boundary"])):
-		wireMultipart(w, node, mt, params["boundary"], sessionUTF8)
+	case multipart && (needsWireForm(node.body) || has8bit(t.boundary)):
+		wireMultipart(w, node, mt, t.boundary, sessionUTF8)
 	case !needsWireForm(node.body):
 		wireHeader(w, node.header, sessionUTF8)
 		_, _ = w.WriteString(node.body)
@@ -275,7 +277,7 @@ func wireEntity(w wireSink, node mimeNode, sessionUTF8 bool) {
 		wireHeader(w, node.header, sessionUTF8)
 		wireEntity(w, messageNode(node.body, node.depth+1), sessionUTF8)
 	default:
-		wireLeaf(w, node, mt, params, sessionUTF8)
+		wireLeaf(w, node, mt, t.charset, sessionUTF8)
 	}
 }
 
@@ -288,12 +290,18 @@ func wireMultipart(w wireSink, node mimeNode, mt, boundary string, sessionUTF8 b
 	if mt == "multipart/digest" {
 		parts.def = "message/rfc822"
 	}
-	parts.delimiters = multipartDelimiters(node.body, boundary)
-	parts.spans = partSpans(node.body, parts.delimiters)
 	if counter, ok := w.(*wireCounter); ok {
+		// Nothing outlives the count, so a message of many parts borrows where they are.
+		scratch := partScratches.Get().(*partScratch)
+		defer partScratches.Put(scratch)
+		scratch.delimiters = appendDelimiters(scratch.delimiters[:0], node.body, boundary)
+		scratch.spans = appendPartSpans(scratch.spans[:0], node.body, scratch.delimiters)
+		parts.delimiters, parts.spans = scratch.delimiters, scratch.spans
 		parts.count(counter)
 		return
 	}
+	parts.delimiters = multipartDelimiters(node.body, boundary)
+	parts.spans = partSpans(node.body, parts.delimiters)
 	// texts[i] is what stands before delimiter i, and the last is what follows them all.
 	texts := make([]string, len(parts.delimiters)+1)
 	for i := range texts {
@@ -316,6 +324,14 @@ func wireMultipart(w wireSink, node mimeNode, mt, boundary string, sessionUTF8 b
 		_, _ = w.WriteString(text)
 	}
 }
+
+// partScratch is where a count keeps a multipart's delimiters and spans.
+type partScratch struct {
+	delimiters []multipartDelimiter
+	spans      [][2]int
+}
+
+var partScratches = sync.Pool{New: func() any { return new(partScratch) }}
 
 // multipartTexts is what a multipart's delimiter lines divide its body into.
 type multipartTexts struct {
@@ -451,15 +467,13 @@ func SevenBitBoundary(raw string) string {
 
 func (s *boundaryScan) sevenBitBoundary(raw string) string {
 	// Only the header says whether the rest needs reading.
-	mt, params := messageNode(withoutBareLineFeeds(raw[:headerBlockEnd(raw)]), 0).mediaType()
-	boundary := params["boundary"]
-	if !strings.HasPrefix(mt, "multipart/") || !has8bit(boundary) {
+	t := messageNode(withoutBareLineFeeds(raw[:headerBlockEnd(raw)]), 0).wireType()
+	if !strings.HasPrefix(t.mt, "multipart/") || !has8bit(t.boundary) {
 		return raw
 	}
 	canonical := withoutBareLineFeeds(raw)
 	node := messageNode(canonical, 0)
-	_, params = node.mediaType()
-	boundary = params["boundary"]
+	boundary := node.wireType().boundary
 	delimiters := s.delimiters(node.body, boundary)
 	// texts[i] is what stands before delimiter i, and the last is what follows them all.
 	texts := make([]string, len(delimiters)+1)
@@ -620,15 +634,15 @@ func headerWithBoundary(header, boundary string) string {
 // decodes the same data: base64 readers ignore octets outside the alphabet (RFC
 // 2045 §6.8), so they go, and quoted-printable can spell them. A NUL in text is a
 // space on any of these paths; text whose NUL is data is treated as data.
-func wireLeaf(w wireSink, node mimeNode, mt string, params map[string]string, sessionUTF8 bool) {
-	textual := strings.HasPrefix(mt, "text/") && (strings.IndexByte(node.body, 0) < 0 || !nulIsData(mt, params))
-	if textual && (!has8bit(node.body) || params["charset"] != "" || (sessionUTF8 && utf8.ValidString(node.body))) {
+func wireLeaf(w wireSink, node mimeNode, mt, charset string, sessionUTF8 bool) {
+	textual := strings.HasPrefix(mt, "text/") && (strings.IndexByte(node.body, 0) < 0 || !nulIsData(mt, charset))
+	if textual && (!has8bit(node.body) || charset != "" || (sessionUTF8 && utf8.ValidString(node.body))) {
 		wireHeader(w, node.header, sessionUTF8)
 		writeSpaced(w, node.body)
 		return
 	}
 	cte := ""
-	if namesContentField(node.header) {
+	if namesTransferEncoding(node.header) {
 		if v := HeaderFieldValues(node.header, "Content-Transfer-Encoding"); len(v) > 0 {
 			cte = strings.TrimSpace(v[0])
 		}
@@ -715,6 +729,9 @@ func writeWithout8bit(w wireSink, s string) {
 // wireChunk is how much of a body a transfer encoding holds at once.
 const wireChunk = 1 << 12
 
+// base64Chunks keeps a message of many small encoded parts from allocating for each.
+var base64Chunks = sync.Pool{New: func() any { return new([wireChunk / 76 * 78]byte) }}
+
 // writeQuotedPrintable encodes text, so a NUL goes in as a space rather than as =00.
 func writeQuotedPrintable(w wireSink, body string) {
 	q := quotedprintable.NewWriter(w)
@@ -739,7 +756,9 @@ func writeBase64Lines(w wireSink, body string) {
 	const lineData, lineLen = 57, 76
 	crlf := strings.HasSuffix(body, "\r\n")
 	lines := min(len(body)/lineData+1, wireChunk/lineLen)
-	chunk := make([]byte, lines*(lineLen+2))
+	buffer := base64Chunks.Get().(*[wireChunk / lineLen * (lineLen + 2)]byte)
+	defer base64Chunks.Put(buffer)
+	chunk := buffer[:lines*(lineLen+2)]
 	var data [lineData]byte
 	used := 0
 	for len(body) > 0 {
