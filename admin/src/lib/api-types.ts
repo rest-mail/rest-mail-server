@@ -4476,8 +4476,6 @@ export interface components {
             /** Format: date-time */
             date_header: string | null;
             downgraded_size: number;
-            imap_size: number;
-            imap_utf8_size: number;
             /** Format: date-time */
             due?: string | null;
             /** @enum {string|null} */
@@ -4487,6 +4485,8 @@ export interface components {
             headers?: unknown;
             id: number;
             imap_deleted?: boolean;
+            imap_size: number;
+            imap_utf8_size: number;
             in_reply_to: string;
             is_answered?: boolean;
             is_deleted: boolean;
@@ -4919,13 +4919,13 @@ export interface components {
             /** Format: date-time */
             date_header?: string | null;
             downgraded_size?: number;
-            imap_size?: number;
-            imap_utf8_size?: number;
             folder?: string;
             has_attachments?: boolean;
             headers?: unknown;
             id?: number;
             imap_deleted?: boolean;
+            imap_size?: number;
+            imap_utf8_size?: number;
             in_reply_to?: string;
             is_answered?: boolean;
             is_deleted?: boolean;
@@ -5373,13 +5373,13 @@ export interface components {
             /** Format: date-time */
             date_header: string | null;
             downgraded_size: number;
-            imap_size: number;
-            imap_utf8_size: number;
             folder: string;
             has_attachments: boolean;
             headers?: unknown;
             id: number;
             imap_deleted?: boolean;
+            imap_size: number;
+            imap_utf8_size: number;
             in_reply_to: string;
             is_answered?: boolean;
             is_deleted: boolean;

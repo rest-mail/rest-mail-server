@@ -114,8 +114,8 @@ type Message struct {
 	// 7-bit on the way out (RFC 3501 section 7.4.2) and RawMessage never changes.
 	// RFC822.SIZE reports them, so a client's size matches what it receives
 	// without the message being loaded for every metadata FETCH. They equal
-	// RawSize when the message is already 7-bit. Zero means "not measured yet";
-	// consumers fall back to the sizes above.
+	// RawSize when the message is already 7-bit, and are zero only when no raw
+	// source is stored.
 	IMAPSize     int `gorm:"column:imap_size;not null;default:0" json:"imap_size"`
 	IMAPUTF8Size int `gorm:"column:imap_utf8_size;not null;default:0" json:"imap_utf8_size"`
 	// ReceivedTLS records the inbound transport security of an inbound-MX
