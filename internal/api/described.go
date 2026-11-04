@@ -217,6 +217,10 @@ var exampleRequirements = map[string][]string{
 		"concurrent_change", "deleted_account", "existing_contact", "existing_domain", "existing_folder",
 		"last_superadmin", "missing_recipient", "no_authenticator", "no_master_key", "uncertified_domain", "unhosted_domain",
 		"acme_enabled", "acme_issued_token",
+		// A run that resets and seeds before each exchange (#1334, #1385): an
+		// exchange that wipes the data, or whose probes would, takes nothing
+		// another exchange needs.
+		"disposable_data",
 	},
 }
 

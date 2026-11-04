@@ -398,6 +398,107 @@ def the_last_free_operations_after_a_reset(transaction):
         made_for_the_listing(transaction, "invitation", {"uid": OWN_INVITATION_UID})
 
 
+# The test data operations (#1334). resetTestData's and restoreTestSnapshot's
+# successes wipe the data, so their examples require disposable_data, which
+# only this run provides: each exchange resets and seeds first, so the wipe
+# takes nothing another exchange needs.
+RESET_RESTORE_SNAPSHOT = "the_snapshot_restored"
+RESET_LEFTOVER = "the_domain_the_reset_removes"
+TEST_DATA_OPERATIONS = (
+    "resetTestData",
+    "seedTestData",
+    "snapshotTestData",
+    "restoreTestSnapshot",
+)
+
+
+def snapshot_identities(snapshot):
+    """What a snapshot holds, by what names each row rather than by id: the
+    domains, mailboxes and aliases, and how many of the other rows."""
+    snapshot = snapshot if isinstance(snapshot, dict) else {}
+
+    def rows(key):
+        found = snapshot.get(key)
+        return found if isinstance(found, list) else []
+
+    return {
+        "domains": sorted(row.get("name") for row in rows("domains")),
+        "mailboxes": sorted(row.get("address") for row in rows("mailboxes")),
+        "aliases": sorted(row.get("source_address") for row in rows("aliases")),
+        **{key: len(rows(key)) for key in ("messages", "queue", "pipelines", "bans")},
+    }
+
+
+@hooks.before("resetTestData")
+@hooks.before("seedTestData")
+@hooks.before("snapshotTestData")
+@hooks.before("restoreTestSnapshot")
+def the_test_data_operations_after_a_reset(transaction):
+    # Each exchange, refusals included, resets and seeds first; a reset's own
+    # exchange just runs after it. The successes:
+    # - resetTestData's 200 gets a domain made after the reset, which its
+    #   after hook requires the reset to have removed.
+    # - restoreTestSnapshot's 200 restores a snapshot taken through the API
+    #   after the reset (snapshotTestData), and its after hook requires the
+    #   data to be what that snapshot held. The example's empty body would
+    #   only clear the data.
+    # - seedTestData's and snapshotTestData's 200 need nothing made.
+    # A run with no reset changes nothing here, and sends none of the wiping
+    # exchanges: their examples require disposable_data.
+    hooks.stash.pop(RESET_RESTORE_SNAPSHOT, None)
+    hooks.stash.pop(RESET_LEFTOVER, None)
+    if not asked_for_a_clean_start():
+        return
+    start_clean(transaction)
+    name = transaction.get("name", "")
+    if " > 200 > " not in name:
+        return
+    path = transaction["fullPath"].partition("?")[0]
+    if path.endswith("/admin/test/reset"):
+        a_domain_of_its_own(transaction)
+        hooks.stash[RESET_LEFTOVER] = {"name": name, "domain": OWN_DOMAIN}
+    elif path.endswith("/admin/test/snapshot/restore"):
+        snapshot = fixture_call(transaction, "POST", "/api/v1/admin/test/snapshot")
+        if not isinstance(snapshot, dict) or not snapshot.get("domains"):
+            raise RuntimeError("the snapshot taken after the reset holds no domains")
+        hooks.set_json(transaction, snapshot)
+        hooks.stash[RESET_RESTORE_SNAPSHOT] = {"name": name, "held": snapshot_identities(snapshot)}
+
+
+@hooks.after("resetTestData")
+@hooks.after("restoreTestSnapshot")
+def the_wipe_did_what_it_says(transaction):
+    # A reset or a restore answers the same status whatever it did, so the
+    # status and the schema alone pass one that changed nothing (or, for the
+    # restore, cleared everything). After a 200 the data must show it:
+    # the reset removed the domain made before it and seeded restmail.test
+    # again; the restore put back what its snapshot held.
+    reset = hooks.stash.pop(RESET_LEFTOVER, None)
+    restore = hooks.stash.pop(RESET_RESTORE_SNAPSHOT, None)
+    real = transaction.get("real") or {}
+    name = transaction.get("name", "")
+    if (
+        not asked_for_a_clean_start()
+        or " > 200 > " not in name
+        or str(real.get("statusCode")) != "200"  # The status check fails it.
+    ):
+        return
+    made = reset if transaction["fullPath"].partition("?")[0].endswith("/reset") else restore
+    if made is None or made["name"] != name:
+        transaction["fail"] = "nothing was made for the wipe to be checked against (#1334)"
+        return
+    now = snapshot_identities(fixture_call(transaction, "POST", "/api/v1/admin/test/snapshot"))
+    if made is reset:
+        if made["domain"] in now["domains"]:
+            transaction["fail"] = f"the reset left {made['domain']}, made before it, in place"
+        elif "restmail.test" not in now["domains"]:
+            transaction["fail"] = "the reset did not seed restmail.test again"
+        return
+    if now != made["held"]:
+        differ = ", ".join(key for key in sorted(now) if now[key] != made["held"][key])
+        transaction["fail"] = f"the restore did not put back what its snapshot held ({differ})"
+
+
 def to_the_invitation_made_for_it(transaction):
     """respondToCalendar's accepted (200) and foreign_sender (403) need a
     received invitation (x-requires state calendar_invitation, which the

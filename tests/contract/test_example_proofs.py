@@ -78,18 +78,20 @@ class ExampleProofs(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout, "2 of 2 examples that need setup are proven in process\n")
 
-    def test_every_pass_sends_what_the_primary_run_leaves_out(self):
-        # Each operation the primary run leaves out is sent by the teardown
-        # pass, so none goes unsent.
+    def test_the_live_run_leaves_nothing_out(self):
+        # exclude-operation-id is empty (#1334): resetTestData and
+        # restoreTestSnapshot are sent by the own-data run like any other.
         self.assertEqual(example_proofs.never_sent(ROOT), frozenset())
 
     def test_an_unsent_operations_examples_need_proofs(self):
         root = Path(tempfile.mkdtemp())
-        (root / "tests/contract").mkdir(parents=True)
-        (root / "vertrag.yml").write_text("a: 1\nexclude-operation-id:\n  - sentByAPass\n  - neverSent\n\nb: 2\n")
-        (root / "tests/contract/teardown.py").write_text('OPERATIONS = ("sentByAPass",)\n')
+        (root / "vertrag.yml").write_text("a: 1\nexclude-operation-id:\n  - neverSent\n\nb: 2\n")
         unsent = example_proofs.never_sent(root)
         self.assertEqual(unsent, frozenset({"neverSent"}))
+        (root / "vertrag.yml").write_text("exclude-operation-id: [neverSent]  # inline\nb: 2\n")
+        self.assertEqual(example_proofs.never_sent(root), frozenset({"neverSent"}))
+        (root / "vertrag.yml").write_text("exclude-operation-id: []\nb:\n  - notAnExclusion\n")
+        self.assertEqual(example_proofs.never_sent(root), frozenset())
         examples = {"neverSent": {"found": {}, "gone": {}}, "live": {"found": {}}}
         self.assertEqual(example_proofs.unproven(examples, {"neverSent": ["found"]}, unsent),
                          [("neverSent", "gone", {"sent": "never"})])

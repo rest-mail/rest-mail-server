@@ -33260,6 +33260,9 @@
   },
   "resetTestData": {
     "admin": {
+      "requires": {
+        "state": "disposable_data"
+      },
       "request": {},
       "response": {
         "status": 200,
@@ -34092,6 +34095,9 @@
   },
   "restoreTestSnapshot": {
     "admin": {
+      "requires": {
+        "state": "disposable_data"
+      },
       "request": {
         "body": {}
       },
@@ -34229,6 +34235,9 @@
       }
     },
     "unknown_field": {
+      "requires": {
+        "state": "disposable_data"
+      },
       "request": {
         "body": {
           "unexpected": true

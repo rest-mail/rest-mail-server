@@ -260,6 +260,12 @@ LAST_FREE = (
     "probeServices",
     "verifyDelivery",
 )
+TEST_DATA = (
+    "resetTestData",
+    "seedTestData",
+    "snapshotTestData",
+    "restoreTestSnapshot",
+)
 FOLLOWS_THE_SENT_MESSAGE = {
     "getMessage",
     "updateMessage",
@@ -307,7 +313,7 @@ def description_operations(description):
 class Selection(unittest.TestCase):
     def test_the_run_is_narrowed_to_these_operations(self):
         config = {
-            "exclude-operation-id": ["resetTestData", "restoreTestSnapshot"],
+            "exclude-operation-id": [],
             "surface": {"exclude": []},
             "unproven": ".cache/contract/unproven.json",
         }
@@ -316,9 +322,9 @@ class Selection(unittest.TestCase):
             out["operation-id"],
             list(own_data.MOVED),
         )
-        self.assertEqual(
-            out["exclude-operation-id"], ["resetTestData", "restoreTestSnapshot"]
-        )
+        for operation in ("resetTestData", "seedTestData", "snapshotTestData", "restoreTestSnapshot"):
+            self.assertIn(operation, out["operation-id"])
+        self.assertEqual(out["exclude-operation-id"], [])
         self.assertNotIn("surface", out)
         self.assertEqual(out["unproven"], ".cache/contract/unproven-own-data.json")
 
@@ -326,11 +332,11 @@ class Selection(unittest.TestCase):
         out = own_data.configure({"provides": {"principal": ["anonymous"], "state": ["x"]}})
         self.assertEqual(
             out["provides"],
-            {"principal": ["anonymous"], "state": ["calendar_invitation", "x"]},
+            {"principal": ["anonymous"], "state": ["calendar_invitation", "disposable_data", "x"]},
         )
         self.assertEqual(
             own_data.configure({"provides": {}})["provides"],
-            {"state": ["calendar_invitation"]},
+            {"state": ["calendar_invitation", "disposable_data"]},
         )
 
     def test_each_provided_state_is_only_the_moved_examples_its_hooks_make(self):
@@ -349,6 +355,39 @@ class Selection(unittest.TestCase):
             {
                 ("respondToCalendar", "accepted"),
                 ("respondToCalendar", "foreign_sender"),
+                ("resetTestData", "admin"),
+                ("restoreTestSnapshot", "admin"),
+                ("restoreTestSnapshot", "unknown_field"),
+            },
+        )
+
+    def test_only_this_run_sends_what_wipes_the_data(self):
+        # The primary run provides no disposable_data, so it sends none of the
+        # wiping exchanges; every example of the two operations it could send
+        # requires something, so none of their transactions is sent there,
+        # nor are their coverage probes or fuzz requests (#1334).
+        pairs = json.loads((ROOT / "openapi-example.json").read_text())
+        config = yaml.safe_load((ROOT / "vertrag.yml").read_text())
+        provided = config.get("provides") or {}
+        for operation in ("resetTestData", "restoreTestSnapshot"):
+            for name, pair in pairs[operation].items():
+                with self.subTest(operation=operation, name=name):
+                    requires = pair.get("requires") or {}
+                    self.assertTrue(requires, "sent by the primary run")
+                    for kind, value in requires.items():
+                        self.assertNotIn(value, provided.get(kind) or [])
+        wiping = {
+            (operation, name)
+            for operation in ("resetTestData", "restoreTestSnapshot")
+            for name, pair in pairs[operation].items()
+            if (pair.get("requires") or {}).get("state") == "disposable_data"
+        }
+        self.assertEqual(
+            wiping,
+            {
+                ("resetTestData", "admin"),
+                ("restoreTestSnapshot", "admin"),
+                ("restoreTestSnapshot", "unknown_field"),
             },
         )
 
@@ -385,7 +424,8 @@ class Selection(unittest.TestCase):
             - set(ACCOUNT_LINKS)
             - set(TOKEN_EXCHANGE)
             - set(SIGN_IN_AND_RECOVERY)
-            - set(LAST_FREE),
+            - set(LAST_FREE)
+            - set(TEST_DATA),
             link_followers(description, "createDomain") | {"createDomain"},
         )
 
@@ -423,6 +463,15 @@ class Selection(unittest.TestCase):
                 self.assertFalse(reached, start)
         self.assertNotIn("listAccounts", own_data.MOVED)
         self.assertLessEqual(set(LAST_FREE), set(own_data.MOVED))
+
+    def test_the_test_data_operations_have_moved_and_no_link_touches_them(self):
+        description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
+        for operation in TEST_DATA:
+            self.assertEqual(link_followers(description, operation), set())
+        for start in description_operations(description):
+            self.assertFalse(set(TEST_DATA) & link_followers(description, start), start)
+        self.assertLessEqual(set(TEST_DATA), set(own_data.MOVED))
+        self.assertEqual(set(TEST_DATA) & set(own_data.MOVED[:-len(TEST_DATA)]), set())
 
     def test_it_selects_every_account_link_operation_and_its_links(self):
         description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
@@ -719,7 +768,7 @@ class Wiring(unittest.TestCase):
     def test_only_the_own_data_phase_resets(self):
         script = (ROOT / "tests/contract/run.sh").read_text()
         self.assertEqual(script.count("CONTRACT_RESET_SEED=1"), 1)
-        phase = script[script.index("\nown-data)\n") : script.index("\nteardown)\n")]
+        phase = script[script.index("\nown-data)\n") : script.index("\nfuzz)\n")]
         self.assertIn("CONTRACT_RESET_SEED=1", phase)
         self.assertIn("own_data.py --check", phase)
         self.assertNotIn("CONTRACT_RESET_SEED", (ROOT / "chores.yml").read_text())
@@ -733,7 +782,7 @@ class Wiring(unittest.TestCase):
         # The gateway routes are sent to the internal listener, which serves
         # nothing else: run.sh names the run's endpoint for the setup calls.
         script = (ROOT / "tests/contract/run.sh").read_text()
-        phase = script[script.index("\nown-data)\n") : script.index("\nteardown)\n")]
+        phase = script[script.index("\nown-data)\n") : script.index("\nfuzz)\n")]
         export = phase.index("export CONTRACT_SETUP_ORIGIN")
         self.assertIn('own_data.py --endpoint "$out/vertrag-own-data.yml"', phase[:export])
         self.assertLess(export, phase.index("CONTRACT_RESET_SEED=1"))
@@ -746,25 +795,30 @@ class Wiring(unittest.TestCase):
                 self.assertEqual(own_data.main(["--endpoint", str(config)]), 0)
         self.assertEqual(printed.getvalue(), "http://10.99.0.20:8080\n")
 
-    def test_it_is_a_gate_sent_just_before_the_teardown(self):
+    def test_it_is_the_last_gate_and_there_is_no_teardown(self):
         chores = (ROOT / "chores.yml").read_text()
         own = chores.index("tests/contract/run.sh own-data {{.CLI_ARGS}} || code=$?")
-        teardown = chores.index(
-            "tests/contract/run.sh teardown {{.CLI_ARGS}} || code=$?"
+        self.assertLess(chores.index("  test:contract-own-data:"), own)
+        self.assertNotIn("run.sh teardown", chores)
+        self.assertNotIn("teardown)", (ROOT / "tests/contract/run.sh").read_text())
+        self.assertFalse((ROOT / "tests/contract/teardown.py").exists())
+        workflow = yaml.safe_load((ROOT / ".github/workflows/e2e-suite.yml").read_text())
+        steps = workflow["jobs"]["suite"]["steps"]
+        names = [step.get("name", "") for step in steps]
+        step = next(s for s in steps if s.get("run") == "chore test:contract-own-data")
+        self.assertNotIn("continue-on-error", step)
+        self.assertEqual(step["if"], "inputs.contract-phases == 'gate'")
+        self.assertLess(names.index("Limits suite"), names.index(step["name"]))
+        self.assertLess(
+            names.index("Contract tests (example pairs, examples, coverage, secret scan and authorization report)"),
+            names.index(step["name"]),
         )
-        self.assertLess(own, teardown)
-        self.assertLess(chores.index("  test:contract-teardown:"), own)
 
     def test_nothing_is_taken_out_of_the_primary_run(self):
         config = yaml.safe_load((ROOT / "vertrag.yml").read_text())
-        self.assertEqual(
-            config["exclude-operation-id"], ["resetTestData", "restoreTestSnapshot"]
-        )
+        self.assertEqual(config["exclude-operation-id"], [])
         self.assertEqual(config["exclude-matching"], [])
-        self.assertEqual(
-            [item["operation"] for item in config["surface"]["exclude"]],
-            ["resetTestData", "restoreTestSnapshot"],
-        )
+        self.assertEqual(config["surface"]["exclude"], [])
 
 
 if __name__ == "__main__":

@@ -846,19 +846,18 @@ tasks:
           golang:1.26.10 \
           go test -race -count=1 -v -timeout 8m ./tests/e2e/... {{.CLI_ARGS}}
 
-  test:contract-teardown:
-    desc: Send the operations that reset before each exchange, then those that wipe the contract run's data, last (#1334, #1385)
+  test:contract-own-data:
+    desc: Send the operations that reset before each exchange, resetTestData and restoreTestSnapshot among them, last (#1334, #1385)
     cmds:
       # The limits suite, before this, spends the API's buckets in its memory;
-      # a restart gives the teardown's sign-in its own.
+      # a restart gives the own-data run's sign-in its own.
       - docker restart "{{.RESTMAIL_PROJECT}}-api" >/dev/null
       - task: health:wait
       - |
         set -eu
         code=0
         CONTRACT_DEFER_SUMMARY=1 tests/contract/run.sh own-data {{.CLI_ARGS}} || code=$?
-        CONTRACT_DEFER_SUMMARY=1 tests/contract/run.sh teardown {{.CLI_ARGS}} || code=$?
-        python3 -B tests/contract/summary.py .cache/contract examples coverage authorization ownership ownership-domains ownership-mailboxes own-data teardown
+        python3 -B tests/contract/summary.py .cache/contract examples coverage authorization ownership ownership-domains ownership-mailboxes own-data
         exit "$code"
 
   test:limits:

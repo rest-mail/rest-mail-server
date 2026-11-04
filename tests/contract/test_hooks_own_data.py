@@ -388,6 +388,10 @@ class OwnDataHooks(unittest.TestCase):
             "accountEvents": "the_last_free_operations_after_a_reset",
             "probeServices": "the_last_free_operations_after_a_reset",
             "verifyDelivery": "the_last_free_operations_after_a_reset",
+            "resetTestData": "the_test_data_operations_after_a_reset",
+            "seedTestData": "the_test_data_operations_after_a_reset",
+            "snapshotTestData": "the_test_data_operations_after_a_reset",
+            "restoreTestSnapshot": "the_test_data_operations_after_a_reset",
         }
         # entrypoint.py registers setDomainRelay's and the quiet hours' (below).
         self.assertEqual(

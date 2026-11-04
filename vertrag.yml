@@ -67,9 +67,10 @@ checks:
   # anyway is a failure.
   ignored-auth: true
 
-# Operations never sent, in any phase. Each one's reason is beside it under
-# surface.exclude below, which takes the same operations out of the surface
-# the run is held to; tests/contract/gate.py checks the two lists agree.
+# Operations never sent, in any phase: exclude-operation-id below. An entry's
+# reason would be beside it under surface.exclude, which takes the same
+# operations out of the surface the run is held to; tests/contract/gate.py
+# checks the two lists agree.
 # Push and ACME are off in this topology, so their routes are absent from the
 # generated description and must not be named as exclusions. Internal mTLS is
 # off too, so the gateways' machine routes (checkMailboxAddress,
@@ -85,9 +86,11 @@ endpoints:
       cert: .cache/contract-mtls/internal-client.crt
       cert-key: .cache/contract-mtls/internal-client.key
 
-exclude-operation-id:
-  - resetTestData
-  - restoreTestSnapshot
+# Nothing is left out (#1334). The exchanges that wipe the data
+# (resetTestData's and restoreTestSnapshot's) say so in their examples'
+# x-requires (state disposable_data), which only the own-data run provides,
+# after the reset and seed it makes before each exchange (tests/contract/own_data.py).
+exclude-operation-id: []
 
 # No documented response is held back from the run (#1334): tests/contract/test_gate.py
 # fails on a pattern here. The coverage phase adds its own (tests/contract/probes.py).
@@ -107,19 +110,16 @@ named-values: illustrate
 # What the run is held to (vertrag's surface gate, #376): every operation in
 # the spec, counted only when every documented transaction of it was sent in
 # the examples phase and passed, none failed, none skipped, none answered 5xx.
-# A shortfall exits 3. Taken out of the count, with their reason: the
-# operations never sent in this phase (exclude-operation-id above). The statuses
-# no example proves yet are listed by operation in
+# A shortfall exits 3. Nothing is taken out of the count (exclude-operation-id
+# above is empty); an exchange whose x-requires this run does not provide is
+# another run's to prove, and Vertrag measures the surface on what this run can
+# reach. The statuses no example proves yet are listed by operation in
 # tests/contract/status-baseline.txt, empty today, which run.sh adds here and
 # holds to only shrink (tests/contract/status_baseline.py, #1334).
 surface:
   count: passed
   require: 100
-  exclude:
-    - operation: resetTestData
-      reason: "Wipes the data the rest of the run depends on: sent last, by the teardown phase (tests/contract/teardown.py)."
-    - operation: restoreTestSnapshot
-      reason: "Wipes the data the rest of the run depends on: sent last, by the teardown phase (tests/contract/teardown.py)."
+  exclude: []
 
 # The HAR records the traffic for the secret scan (tests/contract/secret_scan.py, #673).
 reporter: [cli, junit, har]
