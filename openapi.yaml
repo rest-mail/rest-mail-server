@@ -4966,14 +4966,6 @@ paths:
               operationId: updateDraft
               parameters:
                 id: '$response.body#/data/id'
-            deleteMessage:
-              operationId: deleteMessage
-              parameters:
-                id: '$response.body#/data/id'
-            getMessage:
-              operationId: getMessage
-              parameters:
-                id: '$response.body#/data/id'
         '400':
           description: The body is not valid JSON or not the declared media type
           content:

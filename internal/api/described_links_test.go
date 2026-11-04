@@ -68,6 +68,27 @@ func TestDescriptionLinksCreatesToTheirReads(t *testing.T) {
 	}
 }
 
+// getMessage's answer links getThread, which only holds for a message with a thread. A send always
+// has one; a new draft that replies to nothing has an empty thread_id. A sequenced contract run
+// follows the first link to an operation in document order, so a link from saveDraft, which comes
+// before sendMessage, would send getThread an empty id (#1749).
+func TestOnlyASendLeadsToTheMessageThatLinksItsThread(t *testing.T) {
+	for _, generator := range gapGenerators(t) {
+		eachConventionOperation(contractDocument(t, generator), func(op conventionOperation) {
+			for status, value := range op.responses {
+				response, _ := value.(map[string]interface{})
+				links, _ := response["links"].(map[string]interface{})
+				for name, each := range links {
+					link, _ := each.(map[string]interface{})
+					if link["operationId"] == "getMessage" && op.id != "sendMessage" {
+						t.Errorf("%s %s links getMessage as %s: only a send has the thread its answer links", op.id, status, name)
+					}
+				}
+			}
+		})
+	}
+}
+
 // openapi.yaml states the same links, by operation and status, so the comparison oracle does
 // not fall behind the description a client reads.
 func TestOracleStatesTheGeneratedLinks(t *testing.T) {

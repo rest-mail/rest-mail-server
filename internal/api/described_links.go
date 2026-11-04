@@ -230,9 +230,7 @@ var responseLinks = map[string]map[string]map[string]oapifly.Link{
 	},
 	"saveDraft": {
 		"201": {
-			"deleteMessage": {OperationID: "deleteMessage", Parameters: map[string]string{"id": "$response.body#/data/id"}},
-			"getMessage":    {OperationID: "getMessage", Parameters: map[string]string{"id": "$response.body#/data/id"}},
-			"updateDraft":   {OperationID: "updateDraft", Parameters: map[string]string{"id": "$response.body#/data/id"}},
+			"updateDraft": {OperationID: "updateDraft", Parameters: map[string]string{"id": "$response.body#/data/id"}},
 		},
 	},
 	// A sent message that carries a calendar_event keeps the invitation in its Sent copy,

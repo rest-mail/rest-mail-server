@@ -29,15 +29,16 @@ type lifecycleCase struct {
 	create    string // the operation; its path and method come from the description
 	path      string // the create's parameters filled, when it has any
 	body      string
-	persisted string // text the read shows after the create
-	list      string // the list that reads it, when no link does
-	update    string // the update's body, when it has an update link
-	changed   string // text the read shows after the update
-	repeat404 bool   // no read route, and a repeated delete answers 404
-	gone      string // what the list no longer shows, %d for the id, when changed is not unique
-	trashed   bool   // the first delete moves it to Trash, and the next removes it
-	emptied   string // a value with one per parent: the read after the delete answers this
-	noDelete  bool   // no route deletes it: the reason is in convention-exceptions.json
+	persisted string   // text the read shows after the create
+	list      string   // the list that reads it, when no link does
+	update    string   // the update's body, when it has an update link
+	changed   string   // text the read shows after the update
+	repeat404 bool     // no read route, and a repeated delete answers 404
+	gone      string   // what the list no longer shows, %d for the id, when changed is not unique
+	trashed   bool     // the first delete moves it to Trash, and the next removes it
+	emptied   string   // a value with one per parent: the read after the delete answers this
+	noDelete  bool     // no route deletes it: the reason is in convention-exceptions.json
+	unlinked  []string // the operations, taking the made id, its recorded reasons leave unlinked
 }
 
 func TestCreatesPersistAndEndAt404(t *testing.T) {
@@ -97,7 +98,7 @@ func TestCreatesPersistAndEndAt404(t *testing.T) {
 		{name: "app password", create: "createAppPassword", path: mine + "/credentials", list: mine + "/credentials", body: fmt.Sprintf(`{"name":"Lifecycle mail","password":%q}`, accessPassword), persisted: `Lifecycle mail`},
 		{name: "grant", create: "createGrant", list: "/api/v1/admin/grants", body: fmt.Sprintf(`{"holder":{"kind":"account","id":%d},"role":"admin","scope":"domain:lifecycle-grant.test","mode":"eligible"}`, f.ma.ID), persisted: `domain:lifecycle-grant.test`},
 		{name: "draft", create: "saveDraft", body: `{"from":"owner@access.test","to":["owner@access.test"],"subject":"Made","body_text":"Saved."}`, persisted: `"subject":"Made"`,
-			update: `{"from":"owner@access.test","to":["owner@access.test"],"subject":"Changed","body_text":"Saved again."}`, changed: `"subject":"Changed"`, trashed: true},
+			update: `{"from":"owner@access.test","to":["owner@access.test"],"subject":"Changed","body_text":"Saved again."}`, changed: `"subject":"Changed"`, trashed: true, unlinked: []string{"getMessage", "deleteMessage"}},
 		{name: "sent message", create: "sendMessage", body: `{"from":"owner@access.test","to":["owner@access.test"],"subject":"Sent lifecycle","body_text":"Sent."}`, persisted: `"subject":"Sent lifecycle"`,
 			update: `{"is_flagged":true}`, changed: `"is_flagged":true`, trashed: true},
 		{name: "sieve script", create: "putSieveScript", path: mine + "/sieve", body: `{"script":"keep;"}`, persisted: `keep;`, emptied: `"script":""`},
@@ -227,6 +228,10 @@ func runLifecycle(t *testing.T, router http.Handler, doc map[string]any, token s
 		}
 	}
 	learn(links, createPath, create.path, made.Body.Bytes())
+	for _, operation := range tc.unlinked {
+		link := map[string]any{"operationId": operation, "parameters": map[string]any{"id": "$response.body#/data/id"}}
+		ways[lifecycleVerbs[lifecycleOperationNamed(t, doc, operation).method]] = way{link, createPath, create.path, made.Body.Bytes()}
+	}
 
 	send := func(verb, body string) *httptest.ResponseRecorder {
 		t.Helper()

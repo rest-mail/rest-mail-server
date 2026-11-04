@@ -98,6 +98,8 @@
       "*": "Server to server delivery: the sending server has no access to the mailbox it delivered into, so nothing here is its to follow."
     },
     "saveDraft": {
+      "delete": "deleteMessage deletes a draft, but is not linked from here. saveDraft comes before sendMessage in the description and a sequenced contract run follows the first link, so this link would point deleteMessage's example at a draft, which sendDraft consumes in the message ownership run. TestCreatesPersistAndEndAt404 still proves a draft's delete.",
+      "read": "getMessage reads a draft, but is not linked from here. Its answer links getThread, which claims a thread, and a new draft that replies to nothing has an empty thread_id. sendMessage links getMessage, and a sent message always has a thread. TestCreatesPersistAndEndAt404 still proves a draft's read.",
       "update": "updateDraft is a draft's change and is linked; updateMessage changes a saved message's flags and folder, not a draft's contents."
     },
     "sendDraft": {
