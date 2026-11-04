@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Stages 1 and 2 of the installed-cluster check (#1750): drive a fresh Helm install.
+"""Stages 1 to 3 of the installed-cluster check (#1750): drive a fresh Helm install.
 
 It runs against a cluster where helm/restmail is already installed, with the
 production images. Stage 1 reaches it through a kubectl port-forward to each
@@ -37,6 +37,17 @@ Each step tests REST Mail's wiring, not the components' own behaviour:
                 (fixture principals and data, tests/contract/fixtures), which a
                 production image does not carry. Reports (HTML, JUnit, JSON,
                 Markdown, HAR) go to <report-dir>/contract/.
+  mail-out      stage 3: the bootstrap admin sends a message through the API to
+                the reference mail server (scripts/cluster_reference.py,
+                --reference-namespace); it arrives in the reference mailbox,
+                read over the reference's IMAP. REST Mail found the reference
+                by its MX in the cluster's DNS and delivered it over SMTP.
+  mail-in       stage 3: the reference submits a message (its submission port,
+                STARTTLS, AUTH) to the mailbox made in `mailbox`; the reference
+                delivers it to REST Mail's MX, and it is read back through
+                REST Mail's IMAP gateway
+  pop3-retrieve stage 3: that message is retrieved through REST Mail's POP3
+                gateway (USER/PASS, then RETR)
 
 Every step prints one receipt line: the commit, the images the pods run, the
 step and its result. Receipts also go to <report-dir>/receipts.txt.
@@ -55,6 +66,7 @@ import hmac
 import imaplib
 import json
 import os
+import poplib
 import re
 import secrets
 import smtplib
@@ -77,6 +89,9 @@ STEPS = (
     "imap-sign-in",
     "filter-validate",
     "contract-examples",
+    "mail-out",
+    "mail-in",
+    "pop3-retrieve",
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -86,7 +101,12 @@ ROOT = Path(__file__).resolve().parents[1]
 API_PATH = "/api"
 
 # The Services the chart makes and the port each one is reached on.
-SERVICES = {"api": 8080, "smtp-gateway": 25, "imap-gateway": 993}
+SERVICES = {"api": 8080, "smtp-gateway": 25, "imap-gateway": 993, "pop3-gateway": 995}
+
+# The reference mail server's Secret and Service (scripts/cluster_reference.py)
+# and the ports reached on it: submission with STARTTLS, and IMAP over TLS.
+REFERENCE_SECRET, REFERENCE_SERVICE = "reference-mail", "mail"
+REFERENCE_PORTS = {"submission": 587, "imaps": 993}
 
 # A recipient on a domain no install hosts (RFC 2606 reserves .invalid).
 UNHOSTED = "nobody@unhosted.invalid"
@@ -104,7 +124,7 @@ class StepFailed(Exception):
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="cluster_e2e.py",
-        description="Stages 1 and 2 of the installed-cluster check (#1750) against a running Helm install.",
+        description="Stages 1 to 3 of the installed-cluster check (#1750) against a running Helm install.",
     )
     parser.add_argument("--namespace", default=os.environ.get("NAMESPACE", "restmail"))
     parser.add_argument("--release", default=os.environ.get("RELEASE", "restmail"),
@@ -123,9 +143,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                         help="PEM certificate to trust for the Ingress's TLS, besides the system roots")
     parser.add_argument("--vertrag", default=os.environ.get("CONTRACT_VERTRAG", ""),
                         help="the Vertrag binary (default: the pinned one, from scripts/vertrag_pin.py ensure)")
+    parser.add_argument("--reference-namespace", default=os.environ.get("REFERENCE_NAMESPACE", ""),
+                        help="where scripts/cluster_reference.py deployed the reference mail server (stage 3)")
+    parser.add_argument("--mail-timeout", type=int, default=240,
+                        help="seconds to wait for a message to arrive on the other side (stage 3)")
     args = parser.parse_args(argv)
-    if args.timeout <= 0:
-        parser.error("--timeout must be positive")
+    if args.timeout <= 0 or args.mail_timeout <= 0:
+        parser.error("--timeout and --mail-timeout must be positive")
     if not args.release or "/" in args.release:
         parser.error("--release must be a name")
     if args.ingress_url and not re.match(r"https?://[^/]+$", args.ingress_url.rstrip("/")):
@@ -209,11 +233,22 @@ class Cluster:
             raise StepFailed(f"secret/{self.release}-api holds no BOOTSTRAP_ADMIN_PASSWORD")
         return base64.b64decode(encoded).decode()
 
-    def forward(self, service: str, port: int, timeout: int) -> int:
-        """Port-forward svc/<release>-<service>:<port> to a free local port; return it."""
+    def secret_value(self, namespace: str, name: str, key: str) -> str:
+        out = subprocess.run([self.kubectl, "-n", namespace, "get", f"secret/{name}", "-o",
+                              f"jsonpath={{.data.{key}}}"], capture_output=True, text=True)
+        if out.returncode != 0 or not out.stdout.strip():
+            raise StepFailed(f"secret {namespace}/{name} holds no {key}: {out.stderr.strip()}")
+        return base64.b64decode(out.stdout.strip()).decode()
+
+    def forward(self, service: str, port: int, timeout: int, namespace: str = "", full_name: str = "") -> int:
+        """Port-forward svc/<release>-<service>:<port> to a free local port; return it.
+
+        With namespace and full_name, svc/<full_name> in that namespace instead.
+        """
+        namespace, target = namespace or self.namespace, full_name or f"{self.release}-{service}"
         log = open(self.report_dir / f"port-forward-{service}.log", "w")
         proc = subprocess.Popen(
-            [self.kubectl, "-n", self.namespace, "port-forward", f"svc/{self.release}-{service}",
+            [self.kubectl, "-n", namespace, "port-forward", f"svc/{target}",
              f":{port}", "--address", "127.0.0.1"],
             stdout=subprocess.PIPE, stderr=log, text=True)
         self.forwards.append(proc)
@@ -230,7 +265,7 @@ class Cluster:
                 # reading, so a full pipe never stalls the forward.
                 threading.Thread(target=drain, args=(proc.stdout, log), daemon=True).start()
                 return local
-        raise StepFailed(f"port-forward to svc/{self.release}-{service}:{port} did not start "
+        raise StepFailed(f"port-forward to svc/{target}:{port} in {namespace} did not start "
                          f"(see port-forward-{service}.log)")
 
     def close(self) -> None:
@@ -377,6 +412,90 @@ def load_reports_module():
     return module
 
 
+def mail_marker(direction: str) -> str:
+    """A subject no other message has, so the receiving side finds this one."""
+    return f"cluster-e2e {direction} {secrets.token_hex(8)}"
+
+
+def submission_message(sender: str, recipient: str, subject: str) -> bytes:
+    """The message the reference submits to REST Mail (mail-in)."""
+    from email.message import EmailMessage
+    from email.utils import formatdate, make_msgid
+    message = EmailMessage()
+    message["From"], message["To"], message["Subject"] = sender, recipient, subject
+    message["Date"] = formatdate(localtime=False)
+    message["Message-ID"] = make_msgid(domain=sender.split("@", 1)[1])
+    message.set_content("Sent by the reference mail server to REST Mail (#1750 stage 3).\n")
+    return message.as_bytes()
+
+
+def received_with(raw: bytes, subject: str, sender: str) -> dict[str, str]:
+    """The header fields that show raw is the message sent: its Subject and From.
+
+    Raises StepFailed when raw is another message. The Received fields are
+    returned (folded to one line each) for the receipt's evidence.
+    """
+    from email import message_from_bytes, policy
+    message = message_from_bytes(raw, policy=policy.default)
+    if str(message.get("Subject", "")).strip() != subject:
+        raise StepFailed(f"the message found has Subject {message.get('Subject')!r}, want {subject!r}")
+    if sender.lower() not in str(message.get("From", "")).lower():
+        raise StepFailed(f"the message found is From {message.get('From')!r}, want {sender}")
+    return {"received": " | ".join(" ".join(str(v).split()) for v in message.get_all("Received", []))}
+
+
+def wait_for(probe, timeout: float, interval: float = 5, clock=time.monotonic, sleep=time.sleep):
+    """Call probe until it returns something other than None, or the timeout passes.
+
+    Returns (result, seconds waited); (None, seconds) on a timeout. An error
+    the probe raises ends the wait: only "not there yet" is retried.
+    """
+    start = clock()
+    while True:
+        result = probe()
+        waited = clock() - start
+        if result is not None or waited >= timeout:
+            return result, waited
+        sleep(interval)
+
+
+def insecure_tls() -> ssl.SSLContext:
+    """TLS without verification: the certificates here are self-signed for names
+    only the cluster's DNS knows, and only the wiring is under test."""
+    context = ssl.create_default_context()
+    context.check_hostname = False
+    context.verify_mode = ssl.CERT_NONE
+    return context
+
+
+def imap_find(imap: imaplib.IMAP4, subject: str) -> bytes | None:
+    """The newest message in the selected mailbox with this Subject, else None."""
+    kind, data = imap.uid("SEARCH", None, "SUBJECT", f'"{subject}"')
+    if kind != "OK":
+        raise StepFailed(f"UID SEARCH answered {kind} {data!r}")
+    uids = (data[0] or b"").split() if data else []
+    if not uids:
+        return None
+    kind, data = imap.uid("FETCH", uids[-1], "(BODY.PEEK[])")
+    if kind != "OK":
+        raise StepFailed(f"UID FETCH answered {kind} {data!r}")
+    for part in data:
+        if isinstance(part, tuple) and len(part) == 2:
+            return part[1]
+    raise StepFailed(f"UID FETCH {uids[-1].decode()} returned no message")
+
+
+def pop3_find(messages: list[bytes], subject: str) -> int | None:
+    """The 1-based number of the last POP3 message (its TOP lines) with this Subject."""
+    from email.parser import BytesHeaderParser
+    from email import policy
+    found = None
+    for number, head in enumerate(messages, 1):
+        if str(BytesHeaderParser(policy=policy.default).parsebytes(head).get("Subject", "")).strip() == subject:
+            found = number
+    return found
+
+
 class Stages:
     def __init__(self, args: argparse.Namespace, cluster: Cluster):
         self.args, self.cluster = args, cluster
@@ -428,6 +547,7 @@ class Stages:
                              f"{answer.get('data', {}).get('setup_required')!r}")
         self.state["token"] = answer["data"]["access_token"]
         self.state["domain"] = address.split("@", 1)[1]
+        self.state["admin"] = address
         return f"admin={address},session=full"
 
     def mailbox(self) -> str:
@@ -528,6 +648,119 @@ class Stages:
             raise StepFailed(f"Vertrag exited {code}: {detail} (see contract/examples.log)")
         return detail
 
+    def mail_out(self) -> str:
+        token, admin = self.need("token"), self.need("admin")
+        reference, password = self.reference_account()
+        subject = mail_marker("out")
+        self.need_api().expect("2xx", "POST", "/api/v1/messages/send",
+                               {"from": admin, "to": [reference], "subject": subject,
+                                "body_text": "Sent by REST Mail to the reference mail server (#1750 stage 3)."},
+                               token)
+        port = self.reference_forward("imaps")
+        raw, waited = wait_for(lambda: self.reference_inbox(port, reference, password, subject),
+                               self.args.mail_timeout)
+        if raw is None:
+            raise StepFailed(f"{reference} did not receive {subject!r} within {self.args.mail_timeout}s "
+                             f"(see the smtp-gateway's log for the queue)")
+        evidence = received_with(raw, subject, admin)
+        (self.report_dir / "mail-out.eml").write_bytes(raw)
+        return f"from={admin},to={reference},after={int(waited)}s,message=mail-out.eml,received={evidence['received'][:200]}"
+
+    def mail_in(self) -> str:
+        mailbox, mailbox_password = self.need("mailbox"), self.need("mailbox_password")
+        reference, password = self.reference_account()
+        subject = mail_marker("in")
+        port = self.reference_forward("submission")
+        with smtplib.SMTP("127.0.0.1", port, timeout=60) as smtp:
+            smtp.ehlo("cluster-e2e.invalid")
+            smtp.starttls(context=insecure_tls())
+            smtp.ehlo("cluster-e2e.invalid")
+            smtp.login(reference, password)
+            refused = smtp.sendmail(reference, [mailbox], submission_message(reference, mailbox, subject))
+            if refused:
+                raise StepFailed(f"the reference refused {mailbox}: {refused}")
+        imap_port = self.cluster.forward("imap-gateway", SERVICES["imap-gateway"], self.args.timeout)
+
+        def probe():
+            imap = imaplib.IMAP4_SSL("127.0.0.1", imap_port, ssl_context=insecure_tls(), timeout=60)
+            try:
+                imap.login(mailbox, mailbox_password)
+                kind, data = imap.select("INBOX", readonly=True)
+                if kind != "OK":
+                    raise StepFailed(f"SELECT INBOX answered {kind} {data!r}")
+                return imap_find(imap, subject)
+            finally:
+                try:
+                    imap.logout()
+                except (imaplib.IMAP4.error, OSError):
+                    pass
+
+        try:
+            raw, waited = wait_for(probe, self.args.mail_timeout)
+        except imaplib.IMAP4.error as error:
+            raise StepFailed(f"REST Mail's IMAP gateway: {error}") from error
+        if raw is None:
+            raise StepFailed(f"{mailbox} did not receive {subject!r} over IMAP within {self.args.mail_timeout}s")
+        evidence = received_with(raw, subject, reference)
+        (self.report_dir / "mail-in.eml").write_bytes(raw)
+        self.state["inbound_subject"] = subject
+        return f"from={reference},to={mailbox},after={int(waited)}s,read=imap,message=mail-in.eml,received={evidence['received'][:200]}"
+
+    def pop3_retrieve(self) -> str:
+        mailbox, password = self.need("mailbox"), self.need("mailbox_password")
+        subject = self.need("inbound_subject")
+        port = self.cluster.forward("pop3-gateway", SERVICES["pop3-gateway"], self.args.timeout)
+        try:
+            pop = poplib.POP3_SSL("127.0.0.1", port, context=insecure_tls(), timeout=60)
+            try:
+                pop.user(mailbox)
+                pop.pass_(password)
+                count, _ = pop.stat()
+                heads = [b"\r\n".join(pop.top(n, 0)[1]) for n in range(1, count + 1)]
+                number = pop3_find(heads, subject)
+                if number is None:
+                    raise StepFailed(f"none of the {count} POP3 messages has Subject {subject!r}")
+                raw = b"\r\n".join(pop.retr(number)[1])
+            finally:
+                pop.quit()
+        except poplib.error_proto as error:
+            raise StepFailed(f"REST Mail's POP3 gateway: {error}") from error
+        received_with(raw, subject, self.reference_account()[0])
+        return f"login=OK,stat={count},retr={number},bytes={len(raw)}"
+
+    def reference_account(self) -> tuple[str, str]:
+        if not self.args.reference_namespace:
+            raise StepFailed("needs --reference-namespace (REFERENCE_NAMESPACE): run scripts/cluster_reference.py first")
+        if "reference" not in self.state:
+            ns = self.args.reference_namespace
+            self.state["reference"] = (self.cluster.secret_value(ns, REFERENCE_SECRET, "address"),
+                                       self.cluster.secret_value(ns, REFERENCE_SECRET, "password"))
+        return self.state["reference"]
+
+    def reference_forward(self, port_name: str) -> int:
+        key = "reference_port_" + port_name
+        if key not in self.state:
+            self.state[key] = self.cluster.forward(f"reference-{port_name}", REFERENCE_PORTS[port_name],
+                                                   self.args.timeout, self.args.reference_namespace,
+                                                   REFERENCE_SERVICE)
+        return self.state[key]
+
+    def reference_inbox(self, port: int, address: str, password: str, subject: str) -> bytes | None:
+        imap = imaplib.IMAP4_SSL("127.0.0.1", port, ssl_context=insecure_tls(), timeout=60)
+        try:
+            imap.login(address, password)
+            kind, data = imap.select("INBOX", readonly=True)
+            if kind != "OK":
+                raise StepFailed(f"the reference's SELECT INBOX answered {kind} {data!r}")
+            return imap_find(imap, subject)
+        except imaplib.IMAP4.error as error:
+            raise StepFailed(f"the reference's IMAP: {error}") from error
+        finally:
+            try:
+                imap.logout()
+            except (imaplib.IMAP4.error, OSError):
+                pass
+
     def pinned_vertrag(self) -> str:
         out = subprocess.run([sys.executable, "-B", str(ROOT / "scripts/vertrag_pin.py"), "ensure",
                               str(ROOT / ".cache/bin")], capture_output=True, text=True)
@@ -578,7 +811,8 @@ def main(argv: list[str] | None = None) -> int:
                     try:
                         detail = getattr(stage, step.replace("-", "_"))()
                         line = receipt(args.commit, images, step, "pass", detail)
-                    except (StepFailed, OSError, smtplib.SMTPException, KeyError, ImportError) as error:
+                    except (StepFailed, OSError, smtplib.SMTPException, imaplib.IMAP4.error, poplib.error_proto,
+                            KeyError, ImportError) as error:
                         failed = True
                         line = receipt(args.commit, images, step, "fail", str(error))
                         print(f"::error::{step}: {error}", file=sys.stderr)

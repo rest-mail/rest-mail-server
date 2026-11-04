@@ -584,7 +584,7 @@ tasks:
       - python3 scripts/vertrag_pin.py install .cache/bin
 
   cluster:e2e:
-    desc: 'Stages 1 and 2 of the installed-cluster check against a fresh helm/restmail install (kubectl context); the same script cluster-e2e.yml runs'
+    desc: 'Stages 1 to 3 of the installed-cluster check against a fresh helm/restmail install (kubectl context); the same script cluster-e2e.yml runs'
     cmds:
       # Stage 1 needs python3 and kubectl only; stage 2 (contract-examples)
       # also PyYAML, the pinned Vertrag (installed into .cache/bin) and the
@@ -592,6 +592,9 @@ tasks:
       # the system does not trust. NAMESPACE, RELEASE and REPORT_DIR
       # (defaults restmail, restmail, cluster-report) pick the install; extra
       # arguments go to the script, e.g. `chore cluster:e2e -- --only health`.
+      # Stage 3 (mail-out, mail-in, pop3-retrieve) needs the reference mail
+      # server scripts/cluster_reference.py deploys, which changes the
+      # cluster's DNS (throwaway clusters only): REFERENCE_NAMESPACE names it.
       - python3 -B scripts/cluster_e2e.py {{.CLI_ARGS}}
 
   test:coverage:
