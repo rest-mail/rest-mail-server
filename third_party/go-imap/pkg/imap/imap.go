@@ -16,7 +16,8 @@
 // The server caches the slice [Mailbox.Messages] returns for the selected folder
 // and derives sequence numbers, UIDs, flags, ENVELOPE and SEARCH results from it,
 // calling [Mailbox.Fetch] only when a body is requested — and FETCH BODY[] then
-// serves whatever Fetch returns, byte-for-byte. A folder exists when [Mailbox.Folders]
+// serves Fetch byte-for-byte when already 7-bit and otherwise converts it; BINARY
+// keeps the stored octets. A folder exists when [Mailbox.Folders]
 // lists it. A Mailbox that implements [FolderMailbox] creates, deletes and renames
 // folders itself; for any other, folders are implicit: a folder exists once a
 // message names it, and deleting or renaming one is composed from
@@ -76,8 +77,11 @@ type Message struct {
 	// ascends with arrival order within the mailbox. The Server also passes it to
 	// the Backend to name this message.
 	UID uint32
-	// Size is the nonnegative RFC822.SIZE octet count of the complete message,
-	// including headers. It backs FETCH RFC822.SIZE and SEARCH LARGER/SMALLER.
+	// Size is the nonnegative RFC822.SIZE octet count of the complete message as
+	// FETCH sends it, including headers, which [wireform.Convert] measures. It
+	// backs FETCH RFC822.SIZE and SEARCH LARGER/SMALLER.
+	//
+	// [wireform.Convert]: https://pkg.go.dev/github.com/rest-mail/go-imap/pkg/imap/wireform#Convert
 	Size int
 	// Seen, Answered, Flagged, Draft and Deleted are the persistent system
 	// flags IMAP reports; Keywords holds the message's flag-keyword atoms.

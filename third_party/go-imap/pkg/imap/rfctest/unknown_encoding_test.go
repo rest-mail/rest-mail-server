@@ -16,10 +16,10 @@ import (
 func TestUnknownTransferEncoding(t *testing.T) {
 	inner := "Subject: =?utf-8?b?bmVlZGxl?=\r\n" + depthLeafHeader + "\r\n" + depthLeafBody
 	for _, tc := range []struct{ name, contentType, body string }{
-		{"absent-type", "", "caf\xe9"},
-		{"text-charset", "text/plain; charset=iso-8859-1", "caf\xe9"},
-		{"application", "application/pdf; name=report.pdf", "caf\xe9"},
-		{"invalid-type", "not-a-media-type", "caf\xe9"},
+		{"absent-type", "", "cafe"},
+		{"text-charset", "text/plain; charset=iso-8859-1", "cafe"},
+		{"application", "application/pdf; name=report.pdf", "cafe"},
+		{"invalid-type", "not-a-media-type", "cafe"},
 		{"message", "message/rfc822; name=forward.eml", inner},
 		{"multipart", "multipart/mixed; boundary=B", "--B\r\n" + inner + "\r\n--B--"},
 		{"digest", "multipart/digest; boundary=B", "--B\r\n\r\n" + inner + "\r\n--B--"},

@@ -131,6 +131,16 @@ func splitEntity(raw string) (header, body string) {
 // the delimiter. Preamble and epilogue are skipped; an unterminated last part
 // runs to the end of the body.
 func multipartParts(body, boundary string) []string {
+	spans := multipartSpans(body, boundary)
+	parts := make([]string, len(spans))
+	for i, span := range spans {
+		parts[i] = body[span[0]:span[1]]
+	}
+	return parts
+}
+
+// multipartSpans returns where each part of a multipart body starts and ends.
+func multipartSpans(body, boundary string) [][2]int {
 	delim := "--" + boundary
 	// next finds the next delimiter line at or after from. It returns the
 	// offset of the delimiter, the offset just after its line and whether it
@@ -168,12 +178,12 @@ func multipartParts(body, boundary string) []string {
 		return 0, 0, false, false
 	}
 
-	var parts []string
+	var spans [][2]int
 	_, start, closing, found := next(0)
 	for found && !closing {
 		at, after, c, ok := next(start)
 		if !ok {
-			parts = append(parts, body[start:])
+			spans = append(spans, [2]int{start, len(body)})
 			break
 		}
 		end := at
@@ -183,8 +193,8 @@ func multipartParts(body, boundary string) []string {
 		if end < start {
 			end = start
 		}
-		parts = append(parts, body[start:end])
+		spans = append(spans, [2]int{start, end})
 		start, closing = after, c
 	}
-	return parts
+	return spans
 }

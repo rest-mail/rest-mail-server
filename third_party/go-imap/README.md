@@ -321,9 +321,11 @@ The host:
 
 - Assigns UIDs: positive, stable and ascending with arrival in each folder, and
   returns messages oldest first.
-- Reports `Size` as the exact octet count of the stored message.
-- Returns the stored octets from `Fetch` unchanged; FETCH `BODY[]` serves them
-  byte for byte.
+- Reports `Size` as the exact octet count FETCH sends for the message, which
+  `wireform.Convert` measures when it is stored.
+- Returns the stored octets from `Fetch` unchanged. FETCH `BODY[]` serves them
+  byte for byte when they are already 7-bit, and converts them as it sends them
+  otherwise.
 - Reports `Quota` in octets; the server converts to the 1024-octet units of
   RFC 2087.
 - Makes `Append`, `Copy`, `Move` and `Delete` atomic per message. The server calls
@@ -334,21 +336,25 @@ The host:
 
 The library:
 
-- Builds BODY, BODYSTRUCTURE and ENVELOPE from the stored octets, and bounds
-  MIME nesting at depth 64.
+- Converts a message as FETCH sends it (RFC 3501 §7.4.2): 8-bit header text
+  becomes RFC 2047 encoded words in charset `UTF-8`, or `UNKNOWN-8BIT` when it is
+  not UTF-8; non-textual data goes out BASE64; text naming no charset goes out
+  QUOTED-PRINTABLE; text naming a charset stays. BINARY sends the stored octets.
+- Builds BODY and BODYSTRUCTURE from what FETCH sends and ENVELOPE from the stored
+  octets, and bounds MIME nesting at depth 64.
 - Treats an unknown Content-Transfer-Encoding as `application/octet-stream`
   (RFC 2045 §6.4) everywhere: BODYSTRUCTURE, sections and SEARCH.
 - Removes base64 and quoted-printable for BINARY, and answers
   `NO [UNKNOWN-CTE]` when it cannot.
 - Decodes encoded words, transfer encodings and ISO-8859-1 before SEARCH
   compares text. It accepts the US-ASCII and UTF-8 charsets.
-- Refuses to FETCH a message whose octets, or whose decoded ENVELOPE and MIME
-  strings, hold NUL.
+- Refuses to FETCH a message with a NUL in a header or in text, or whose decoded
+  ENVELOPE and MIME strings hold one. A NUL in non-textual data goes out encoded.
 
 The host:
 
-- Stores messages as received. The library does not downgrade 8-bit headers or
-  binary bodies for clients that did not ask for them.
+- Stores messages as received. The library converts on the way out and never
+  changes what the host stores.
 
 ## RFC conformance
 

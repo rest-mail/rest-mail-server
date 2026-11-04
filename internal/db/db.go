@@ -263,8 +263,8 @@ func autoMigrate(db *gorm.DB) error {
 	db.Exec(`DROP INDEX IF EXISTS idx_vacation_responses_unique`)
 	db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_vacation_responses_handle ON vacation_responses(mailbox_id, sender, handle)`)
 
-	// Messages stored before downgraded_size existed get it measured once.
-	if err := BackfillDowngradedSize(db); err != nil {
+	// Messages stored before a size column existed get it measured once.
+	if err := BackfillWireSizes(db); err != nil {
 		slog.Warn("failed to backfill downgraded message sizes", "error", err)
 	}
 
@@ -272,22 +272,23 @@ func autoMigrate(db *gorm.DB) error {
 	return nil
 }
 
-// downgradedSizeBatch is how many messages BackfillDowngradedSize reads at a time.
-const downgradedSizeBatch = 200
+// wireSizeBatch is how many messages BackfillWireSizes reads at a time.
+const wireSizeBatch = 200
 
-// BackfillDowngradedSize measures downgraded_size for messages stored with a
-// raw source before the column existed. A message whose headers are ASCII gets
-// its raw_size. Until a row is measured the gateways report raw_size, as before,
-// so a backfill that stops part way leaves nothing worse than it was. Rows are
-// read in id order a batch at a time; a measured row is never read again.
-func BackfillDowngradedSize(db *gorm.DB) error {
+// BackfillWireSizes measures the sizes a gateway reports for messages stored with
+// a raw source before their columns existed. A message whose headers are ASCII and
+// whose body is 7-bit gets its raw_size in each. Until a row is measured the
+// gateways report raw_size, as before, so a backfill that stops part way leaves
+// nothing worse than it was. Rows are read in id order a batch at a time; a
+// measured row is never read again.
+func BackfillWireSizes(db *gorm.DB) error {
 	var lastID uint
 	measured := 0
 	for {
 		var rows []models.Message
 		err := db.Select("id", "raw_size", "raw_message", "raw_octets").
-			Where("id > ? AND raw_size > 0 AND downgraded_size = 0", lastID).
-			Order("id").Limit(downgradedSizeBatch).Find(&rows).Error
+			Where("id > ? AND raw_size > 0 AND (downgraded_size = 0 OR imap_size = 0 OR imap_utf8_size = 0)", lastID).
+			Order("id").Limit(wireSizeBatch).Find(&rows).Error
 		if err != nil {
 			return err
 		}
@@ -295,9 +296,12 @@ func BackfillDowngradedSize(db *gorm.DB) error {
 			break
 		}
 		for _, row := range rows {
-			size := rmail.DowngradedSize(string(row.Source()))
-			if err := db.Model(&models.Message{}).Where("id = ?", row.ID).
-				UpdateColumn("downgraded_size", size).Error; err != nil {
+			raw := string(row.Source())
+			if err := db.Model(&models.Message{}).Where("id = ?", row.ID).UpdateColumns(map[string]any{
+				"downgraded_size": rmail.DowngradedSize(raw),
+				"imap_size":       rmail.IMAPWireSize(raw, false),
+				"imap_utf8_size":  rmail.IMAPWireSize(raw, true),
+			}).Error; err != nil {
 				return err
 			}
 			lastID = row.ID
@@ -305,7 +309,7 @@ func BackfillDowngradedSize(db *gorm.DB) error {
 		}
 	}
 	if measured > 0 {
-		slog.Info("backfilled downgraded message sizes", "messages", measured)
+		slog.Info("backfilled message wire sizes", "messages", measured)
 	}
 	return nil
 }

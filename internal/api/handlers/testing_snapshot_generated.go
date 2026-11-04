@@ -73,6 +73,8 @@ type TestSnapshotMessage struct {
 	SizeBytes         int                 `json:"size_bytes"`
 	RawSize           int                 `json:"raw_size"`
 	DowngradedSize    int                 `json:"downgraded_size"`
+	IMAPSize          int                 `json:"imap_size"`
+	IMAPUTF8Size      int                 `json:"imap_utf8_size"`
 	ReceivedTLS       *bool               `json:"received_tls,omitempty"`
 	TLSVersion        string              `json:"tls_version,omitempty"`
 	HasAttachments    bool                `json:"has_attachments"`
@@ -208,6 +210,8 @@ type RestoreSnapshotMessage struct {
 	SizeBytes         int                    `json:"size_bytes,omitempty"`
 	RawSize           int                    `json:"raw_size,omitempty"`
 	DowngradedSize    int                    `json:"downgraded_size,omitempty"`
+	IMAPSize          int                    `json:"imap_size,omitempty"`
+	IMAPUTF8Size      int                    `json:"imap_utf8_size,omitempty"`
 	ReceivedTLS       *bool                  `json:"received_tls,omitempty"`
 	TLSVersion        string                 `json:"tls_version,omitempty"`
 	HasAttachments    bool                   `json:"has_attachments,omitempty"`

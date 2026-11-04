@@ -132,6 +132,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   one.
 - DELETE of a name that is not a mailbox but has inferior mailboxes is refused
   `NO [HASCHILDREN]` (RFC 9051 §6.3.5, RFC 5530 §3) instead of answering OK.
+- FETCH converts a message as it is sent, as RFC 3501 §7.4.2 requires, and what
+  the mailbox returned does not change. HEADER and MIME sections and the header
+  of an encapsulated message are 7-bit. Non-textual data goes out BASE64 and text
+  naming no charset QUOTED-PRINTABLE, while text naming a charset keeps its 8-bit
+  data. BODYSTRUCTURE describes the converted octets, and partial offsets count
+  them. A message already 7-bit goes out byte for byte, and BINARY still sends
+  the stored octets. `Message.Size` must now be the converted length, which the
+  new `wireform` package measures.
+- Binary data holding a NUL can be fetched: BODY sends it BASE64 and BINARY as a
+  literal8. A NUL in a header or in text is still refused.
 - A SELECT or EXAMINE refused with BAD keeps the mailbox already selected, with
   its read-only mode and deletion marks: a rejected command never changes state
   (RFC 3501 §6). Only a well-formed selection attempt that fails with NO

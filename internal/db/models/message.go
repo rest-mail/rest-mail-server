@@ -109,6 +109,15 @@ type Message struct {
 	// section 2.3.4). Zero means "not measured yet" (a row stored before this
 	// column existed and not yet backfilled); consumers fall back to RawSize.
 	DowngradedSize int `gorm:"not null;default:0" json:"downgraded_size"`
+	// IMAPSize and IMAPUTF8Size are the octet counts an IMAP FETCH of the whole
+	// message sends, without and with UTF-8 enabled: FETCH converts a message to
+	// 7-bit on the way out (RFC 3501 section 7.4.2) and RawMessage never changes.
+	// RFC822.SIZE reports them, so a client's size matches what it receives
+	// without the message being loaded for every metadata FETCH. They equal
+	// RawSize when the message is already 7-bit. Zero means "not measured yet";
+	// consumers fall back to the sizes above.
+	IMAPSize     int `gorm:"column:imap_size;not null;default:0" json:"imap_size"`
+	IMAPUTF8Size int `gorm:"column:imap_utf8_size;not null;default:0" json:"imap_utf8_size"`
 	// ReceivedTLS records the inbound transport security of an inbound-MX
 	// (port 25) delivery: true = the connection was encrypted (implicit TLS or
 	// STARTTLS), false = plaintext. It is a pointer so NULL can mean "not an
@@ -170,6 +179,12 @@ func (m *Message) BeforeCreate(tx *gorm.DB) error {
 	returnStoredModSeq(tx)
 	if m.DowngradedSize == 0 && m.RawSize > 0 {
 		m.DowngradedSize = rmail.DowngradedSize(m.sourceText())
+	}
+	if m.IMAPSize == 0 && m.RawSize > 0 {
+		m.IMAPSize = rmail.IMAPWireSize(string(m.Source()), false)
+	}
+	if m.IMAPUTF8Size == 0 && m.RawSize > 0 {
+		m.IMAPUTF8Size = rmail.IMAPWireSize(string(m.Source()), true)
 	}
 	if m.PendingDraft || (m.IsDeleted && m.Sender == "system" && m.Subject == "" && m.BodyText == "" && m.BodyHTML == "" && m.RawMessage == "" && m.RawOctets == nil) {
 		m.SealedHash = ""

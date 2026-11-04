@@ -65,6 +65,8 @@ func messageOf(m models.Message) Message {
 		SizeBytes:         m.SizeBytes,
 		RawSize:           m.RawSize,
 		DowngradedSize:    m.DowngradedSize,
+		IMAPSize:          m.IMAPSize,
+		IMAPUTF8Size:      m.IMAPUTF8Size,
 		ReceivedTLS:       m.ReceivedTLS,
 		TLSVersion:        m.TLSVersion,
 		HasAttachments:    m.HasAttachments,

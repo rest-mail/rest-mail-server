@@ -111,6 +111,29 @@ stored instants need a zone to have a calendar day at all. REST Mail stores them
 in UTC and names the account's own zone here. A mailbox without the interface
 keeps upstream behaviour.
 
+- FETCH converts a message as it is sent, for rest-mail/rest-mail-server#1861,
+  because headers "MUST be 7-bit" and "non-textual data such as binary data MUST
+  be transfer encoded" (RFC 3501 §7.4.2). The octets `Mailbox.Fetch` returns are
+  never changed, and BINARY and SEARCH still read them; `RFC822`, `BODY[...]`,
+  partial offsets and `BODYSTRUCTURE` use the converted form, and a host reports
+  its length as `Message.Size`, measured with `wireform.Convert`. Only what breaks
+  the rule is rewritten, so a message already 7-bit goes out byte for byte and a
+  signature over it still verifies from FETCH output. A converted message's
+  signature fails if a client re-verifies it from FETCH output, and still verifies
+  over the store. These are implementation defaults, not owner decisions:
+  - Valid UTF-8 header text becomes RFC 2047 encoded words in charset `UTF-8`;
+    any other 8-bit text uses `UNKNOWN-8BIT`, so no charset is guessed.
+    Content-Type and Content-Disposition parameters become RFC 2231 extended
+    values instead, because an encoded word may not stand in a parameter.
+  - 8-bit text stays when its section names a charset. Text naming none goes out
+    QUOTED-PRINTABLE, and non-textual data BASE64. A body already declared base64
+    or quoted-printable keeps that encoding, so nothing is encoded twice.
+  - After `ENABLE UTF8=ACCEPT`, valid UTF-8 stays in headers and in text naming no
+    charset, whose default there is UTF-8 (RFC 6532 §3).
+  - ENVELOPE reads the unconverted header, as before, because an address with an
+    8-bit mailbox has no 7-bit form. It and BODYSTRUCTURE still send a string
+    decoded from an encoded word or RFC 2231 value as a literal.
+
 ## RFC 9051 additions
 
 These add IMAP4rev2 behaviour from RFC 9051 ahead of the `IMAP4rev2`

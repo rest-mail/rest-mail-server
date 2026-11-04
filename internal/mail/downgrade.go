@@ -4,6 +4,9 @@ import (
 	"mime"
 	netmail "net/mail"
 	"strings"
+	"unicode/utf8"
+
+	"github.com/rest-mail/go-imap/pkg/imap/wireform"
 )
 
 // addressFields hold an address-list (RFC 5322 section 3.6.2 and 3.6.3, plus
@@ -39,6 +42,7 @@ var unstructuredFields = map[string]bool{
 //   - Any other field, or one of the above that cannot be parsed, is renamed
 //     Downgraded-<name> with its value as encoded-words (RFC 6857 section 3.1),
 //     so nothing the client might interpret carries altered content.
+//   - Text that is not valid UTF-8 uses charset UNKNOWN-8BIT instead of UTF-8.
 func DowngradeHeaders(raw string) string {
 	header, sep, body := splitHeader(raw)
 	if !containsNonASCII(header) {
@@ -78,6 +82,10 @@ func downgradeField(name, value string) string {
 		}
 	case key == "content-type" || key == "content-disposition":
 		if mediaType, params, err := mime.ParseMediaType(value); err == nil && !containsNonASCII(mediaType) {
+			if !utf8.ValidString(value) {
+				// RFC 2231 parameters that name no charset they are not in.
+				return strings.TrimSuffix(wireform.Convert(name+": "+value+"\r\n\r\n", false), "\r\n\r\n")
+			}
 			if formatted := mime.FormatMediaType(mediaType, params); formatted != "" && !containsNonASCII(formatted) {
 				return name + ": " + formatted
 			}
@@ -119,10 +127,15 @@ func downgradeAddress(a *netmail.Address) string {
 	return encodeText(original) + " :;"
 }
 
-// encodeText renders text as encoded-words when it is not plain ASCII.
+// encodeText renders text as encoded-words when it is not plain ASCII. Octets
+// that are not UTF-8 go out as UNKNOWN-8BIT, so they survive and no charset is
+// guessed.
 func encodeText(s string) string {
 	if !containsNonASCII(s) {
 		return s
+	}
+	if !utf8.ValidString(s) {
+		return wireform.EncodeWords(s)
 	}
 	return mime.QEncoding.Encode("utf-8", s)
 }
