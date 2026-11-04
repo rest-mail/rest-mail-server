@@ -56,7 +56,7 @@ func TestPlainMalformedPayloads(t *testing.T) {
 				} else {
 					tagged = c.authenticate("A1", "PLAIN", response)
 				}
-				if !strings.HasPrefix(tagged, "A1 NO ") || b.calls != 0 {
+				if !strings.HasPrefix(tagged, "A1 BAD ") || b.calls != 0 {
 					t.Fatalf("malformed PLAIN: reply=%q backend calls=%d", tagged, b.calls)
 				}
 				_, selected := c.command("S1", "SELECT INBOX")
@@ -170,7 +170,9 @@ func TestLiteralLoginRFC7888Example(t *testing.T) {
 
 // RFC4959 section3 requires the base64 alphabet, with padding only at the
 // end. Go's general base64 decoder tolerates CR/LF; SASL wire tokens cannot.
-// checklist: IMAP-SASLIR-06
+// RFC9051 section6.2.2: a response that does not decode MUST get a tagged BAD,
+// in the continuation and the initial-response form alike.
+// checklist: IMAP-SASLIR-06 IMAP2-CMD-52 IMAP2-CMD-54
 func TestPlainBase64Alphabet(t *testing.T) {
 	valid := plainResponse("alice", "secret")
 	for _, initial := range []bool{false, true} {
@@ -186,7 +188,7 @@ func TestPlainBase64Alphabet(t *testing.T) {
 				} else {
 					tagged = c.authenticate("A1", "PLAIN", encoded)
 				}
-				if !strings.HasPrefix(tagged, "A1 NO ") || b.calls != 0 {
+				if !strings.HasPrefix(tagged, "A1 BAD ") || b.calls != 0 {
 					t.Fatalf("invalid base64: reply=%q backend calls=%d", tagged, b.calls)
 				}
 				_, retry := c.command("A2", "AUTHENTICATE PLAIN %s", valid)
