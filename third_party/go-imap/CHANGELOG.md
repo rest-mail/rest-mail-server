@@ -13,6 +13,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - The CLOSED response code (RFC 9051 §§6.3.2, 7.1): SELECT or EXAMINE that
   replaces a selection sends `* OK [CLOSED]` first, to IMAP4rev2 sessions only.
   Nothing enables IMAP4rev2 yet, so IMAP4rev1 sessions see no change.
+- `SearchZoneMailbox`, an optional `Mailbox` interface that names the zone whose
+  calendar days SEARCH BEFORE, ON and SINCE compare. A zone the store cannot give
+  answers NO `[UNAVAILABLE]`. A mailbox without it sees no change.
 
 ### Fixed
 

@@ -59,6 +59,38 @@ class QuietHoursFixtures(unittest.TestCase):
             [name for name, _ in self.registered], ["getQuietHours", "setQuietHours"]
         )
 
+    def test_the_account_time_zone_route_gets_the_same_two_things(self):
+        registered = []
+        hooks = types.ModuleType("vertrag_hooks")
+        hooks.before = lambda operation: (
+            lambda function: registered.append(operation) or function
+        )
+        with patch.dict(sys.modules, {"vertrag_hooks": hooks}):
+            loaded = runpy.run_path(
+                str(Path(__file__).with_name("quiet_hours_hooks.py"))
+            )
+        prepare = loaded["register_quiet_hours_hooks"](
+            lambda _: "setup-session",
+            "time-zone",
+            ("getAccountTimeZone", "setAccountTimeZone"),
+        )
+        self.assertEqual(registered, ["getAccountTimeZone", "setAccountTimeZone"])
+        transaction = copy.deepcopy(self.transaction)
+        transaction["fullPath"] = "/api/v1/accounts/1/time-zone"
+        transaction["request"]["body"] = '{"time_zone":"x"}'
+        response = io.BytesIO(json.dumps({"data": [{"id": 42}]}).encode())
+        with patch("urllib.request.urlopen", return_value=response):
+            prepare(transaction)
+        self.assertEqual(transaction["fullPath"], "/api/v1/accounts/42/time-zone")
+        self.assertEqual(json.loads(transaction["request"]["body"]), {"time_zone": "UTC"})
+
+        untouched = copy.deepcopy(self.transaction)
+        original = copy.deepcopy(untouched)
+        with patch("urllib.request.urlopen") as send:
+            prepare(untouched)
+        send.assert_not_called()
+        self.assertEqual(untouched, original)
+
     def test_does_not_rewrite_negative_or_principal_probes(self):
         for update in (
             {"fullPath": "/api/v1/accounts/0/quiet-hours"},

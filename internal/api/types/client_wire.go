@@ -342,6 +342,12 @@ type FolderSummary struct {
 	Role   *string `json:"role" gorm:"-" enums:"inbox,sent,drafts,trash,junk,archive" description:"What a standard folder is for: inbox (INBOX), sent (Sent), drafts (Drafts), trash (Trash), junk (Spam) or archive (Archive), the roles IMAP LIST gives as RFC 6154 special-use attributes (INBOX needs none); null for any other folder"`
 }
 
+// AccountTimeZone is the account's own time zone, which IMAP SEARCH's calendar
+// days follow. Null means none is set.
+type AccountTimeZone struct {
+	TimeZone *string `json:"time_zone" format:"iana-time-zone" example:"Europe/Berlin" description:"An IANA time zone name; null means none is set, and IMAP uses UTC"`
+}
+
 type Quota struct {
 	MessageCount   int64   `json:"message_count"`
 	PercentUsed    float64 `json:"percent_used"`
