@@ -35,7 +35,11 @@ quiet["register_quiet_hours_hooks"](
 # After the quiet hours hook, which, only without a reset asked for, finds a
 # live account for the examples' 1 without changing the body: then the reset,
 # and an account of its own, only with a reset asked for (own_data.py).
-for operation in ("getQuietHours", "setQuietHours"):
+quiet["register_quiet_hours_hooks"](
+    shared["admin_token"], shared["asked_for_a_clean_start"],
+    route="time-zone", operations=("getAccountTimeZone", "setAccountTimeZone")
+)
+for operation in ("getQuietHours", "setQuietHours", "getAccountTimeZone", "setAccountTimeZone"):
     vertrag_hooks.before(operation)(shared["account_settings_of_its_own"])
 contact_draft = runpy.run_path(str(directory / "contact_draft_hooks.py"))
 contact_draft["register_contact_draft_hooks"](shared["fixture_call"], shared["ADMIN"])

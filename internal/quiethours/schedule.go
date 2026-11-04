@@ -1,9 +1,9 @@
 package quiethours
 
 import (
-	"fmt"
 	"time"
-	_ "time/tzdata"
+
+	"github.com/rest-mail/rest-mail-server/internal/timezone"
 )
 
 type Setting struct {
@@ -35,10 +35,7 @@ func (s Setting) Validate() map[string]string {
 }
 
 func location(name string) (*time.Location, error) {
-	if name == "" || name == "Local" {
-		return nil, fmt.Errorf("not an IANA time zone: %q", name)
-	}
-	return time.LoadLocation(name)
+	return timezone.Load(name)
 }
 
 func (s Setting) Until(now time.Time) time.Time {

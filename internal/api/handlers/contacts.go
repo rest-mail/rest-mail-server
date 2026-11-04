@@ -82,6 +82,7 @@ type contactPath struct {
 // and answers 403 forbidden when it is not.
 func (h *ContactHandler) RegisterContacts(rs endpoint.Routes) {
 	h.registerQuietHours(rs)
+	h.registerAccountTimeZone(rs)
 	schemes := []string{"CookieAuth", "BearerAuth", "APIKeyAuth", "GatewaySessionAuth"}
 	reads := handlerChecked(models.CapMailRead, schemes...)
 	writes := handlerChecked(models.CapMailWrite, schemes...)

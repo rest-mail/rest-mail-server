@@ -24,6 +24,7 @@ import (
 	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
 	"github.com/rest-mail/rest-mail-server/internal/metrics"
 	"github.com/rest-mail/rest-mail-server/internal/requestid"
+	"github.com/rest-mail/rest-mail-server/internal/timezone"
 	"github.com/rest-mail/rest-mail-server/internal/tracing"
 )
 
@@ -193,6 +194,8 @@ var (
 	// and per folder, and the UIDs that left each folder.
 	_ goimap.ModSeqMailbox   = (*mailbox)(nil)
 	_ goimap.VanishedMailbox = (*mailbox)(nil)
+	// SEARCH's calendar days are the account's (SearchZoneMailbox).
+	_ goimap.SearchZoneMailbox = (*mailbox)(nil)
 )
 
 // importMessage stores a message through the import operation, counted in this
@@ -370,7 +373,8 @@ func (m *mailbox) Messages(folder string) ([]goimap.Message, error) {
 // one (RFC 3501 requires RFC822.SIZE to be the transmitted size exactly),
 // falling back to size_bytes for messages without a stored raw. The UID uses
 // toUID, the same 32-bit clamp APPENDUID/COPYUID apply, so an ID past the UID
-// space clamps to 0 rather than wrapping to a small, wrong UID.
+// space clamps to 0 rather than wrapping to a small, wrong UID. Date is in UTC, so
+// INTERNALDATE is rendered in UTC whatever zone the API process runs in.
 func toMessage(msg apiclient.MessageSummary) goimap.Message {
 	return goimap.Message{
 		UID:      toUID(msg.ID),
@@ -385,8 +389,22 @@ func toMessage(msg apiclient.MessageSummary) goimap.Message {
 		Subject:  msg.Subject,
 		From:     goimap.Address{Name: msg.SenderName, Email: msg.Sender},
 		To:       string(msg.RecipientsTo),
-		Date:     msg.ReceivedAt,
+		Date:     msg.ReceivedAt.UTC(),
 	}
+}
+
+// SearchZone is the account's time zone, whose calendar days SEARCH BEFORE, ON and
+// SINCE compare, or UTC when the account has none. It is read for each such SEARCH,
+// so a change reaches a connection that is already open.
+func (m *mailbox) SearchZone() (*time.Location, error) {
+	resp, err := m.api.GetAccountTimeZone(m.token, m.accountID)
+	if err != nil {
+		return nil, err
+	}
+	if resp.Data.TimeZone == nil {
+		return time.UTC, nil
+	}
+	return timezone.Load(*resp.Data.TimeZone)
 }
 
 // Fetch returns the full-fidelity RFC 2822 form of a message: the pristine

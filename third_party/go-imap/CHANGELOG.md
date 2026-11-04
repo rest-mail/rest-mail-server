@@ -94,6 +94,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   answered `\Subscribed \NonExistent`, and LSUB answers an unsubscribed level
   above a subscribed name `\Noselect`. A Mailbox without it keeps every
   existing folder subscribed, as before.
+- `SearchZoneMailbox`, an optional `Mailbox` interface that names the zone whose
+  calendar days SEARCH BEFORE, ON and SINCE compare. A zone the store cannot give
+  answers NO `[UNAVAILABLE]`. A mailbox without it sees no change.
 
 ### Fixed
 
