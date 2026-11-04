@@ -12,6 +12,8 @@
 #   * no cert-manager: the workflow creates the TLS Secret named below from a
 #     self-signed certificate;
 #   * no load balancer: the gateways get ClusterIP Services;
+#   * no public addresses: every mail server the install delivers to in the
+#     check has a private one, so the queue may dial them;
 #   * a small disk.
 #
 # The bootstrap admin password is not here. The workflow generates one per run
@@ -27,9 +29,11 @@ mailserver:
   hostname: mail.restmail-ci.test
   domain: restmail-ci.test
 
-# ── TLS — the self-signed Secret the workflow creates ────────────────────
-# It holds tls.crt and tls.key only. Its certificate names the mail host and the
-# Postgres Service, which serves TLS from the same Secret.
+# ── TLS — the Secret the workflow creates ─────────────────────────────────
+# tls.crt and tls.key are issued by a CA the workflow makes per run, and ca.crt
+# is that CA: the second install's certificate comes from it too, so each
+# trusts the other's RESTMAIL HTTPS. The certificate names the mail host and
+# the Postgres Service, which serves TLS from the same Secret.
 tls:
   secretName: restmail-ci-tls
 
@@ -71,6 +75,9 @@ smtpGateway:
     pullPolicy: Never
   service:
     type: ClusterIP
+  # Every other mail server here (the reference, the second install) is a
+  # ClusterIP or pod address, all private: stage 3 delivers to them.
+  allowPrivateDestinations: true
 
 imapGateway:
   image:
