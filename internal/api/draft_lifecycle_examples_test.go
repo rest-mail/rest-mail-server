@@ -183,10 +183,13 @@ func (fx draftExampleFixture) verify(t *testing.T, operation, name string, pair 
 			if stored.DowngradedSize == 0 || data["downgraded_size"] != float64(stored.DowngradedSize) {
 				t.Fatalf("sent downgraded size differs from storage: %v, stored %d", data["downgraded_size"], stored.DowngradedSize)
 			}
+			if stored.POP3UTF8Size == 0 || data["pop3_utf8_size"] != float64(stored.POP3UTF8Size) {
+				t.Fatalf("sent POP3 size differs from storage: %v, stored %d", data["pop3_utf8_size"], stored.POP3UTF8Size)
+			}
 			if data["imap_size"] != float64(len(stored.RawMessage)) || data["imap_utf8_size"] != float64(len(stored.RawMessage)) {
 				t.Fatalf("sent IMAP sizes differ from the 7-bit source: %v and %v, source %d", data["imap_size"], data["imap_utf8_size"], len(stored.RawMessage))
 			}
-			for _, field := range []string{"message_id", "thread_id", "raw_size", "downgraded_size", "imap_size", "imap_utf8_size"} {
+			for _, field := range []string{"message_id", "thread_id", "raw_size", "downgraded_size", "pop3_utf8_size", "imap_size", "imap_utf8_size"} {
 				data[field] = want[field]
 			}
 		}

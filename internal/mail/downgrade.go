@@ -369,8 +369,9 @@ func containsNonASCII(s string) bool {
 // 7-bit header can name those: RFC 2231 only moves the problem to a reader that decodes
 // it, in a charset it knows. So the Content-Type and the delimiter lines take one 7-bit
 // spelling, the one IMAP FETCH sends, and no other octet of the body changes. Every line
-// stays a line, and DowngradedSize measures this form, so TOP and LIST stay right. IMAP
-// doesn't come here, because its engine converts the whole message, boundary included.
+// stays a line, and DowngradedSize measures what this form puts on the wire, so TOP and
+// LIST stay right. IMAP doesn't come here, because its engine converts the whole message,
+// boundary included.
 func DowngradeForPOP3(raw string) string {
 	if header, _, _ := splitHeader(raw); !containsNonASCII(header) {
 		return raw
@@ -378,19 +379,27 @@ func DowngradeForPOP3(raw string) string {
 	return DowngradeHeaders(wireform.SevenBitBoundary(raw))
 }
 
-// DowngradedSize is the octet count of DowngradeForPOP3(raw): what a POP3 client that
-// has not enabled UTF-8 receives. It equals len(raw) when the header block is already
-// ASCII. Nothing is built to measure it, but a body whose top-level 8-bit boundary has
-// to change.
+// DowngradedSize is what a POP3 client that has not enabled UTF-8 receives:
+// POP3WireSize of DowngradeForPOP3(raw).
 func DowngradedSize(raw string) int {
-	header, sep, body := splitHeader(raw)
-	if !containsNonASCII(header) {
-		return len(raw)
+	return POP3WireSize(DowngradeForPOP3(raw))
+}
+
+// POP3WireSize is the octet count RETR sends for raw, which STAT and LIST must report
+// (RFC 1939 section 5 and 11). RETR sends every line ending in CRLF, because a bare LF
+// could otherwise hide a line from dot-stuffing: a bare LF goes out as CRLF, a message
+// that doesn't end in a line break gets one, a bare CR stays, and an empty message stays
+// empty. Dot-stuffing and the final terminator are framing, so they aren't counted.
+//
+// This is pop3.OctetCount from go-pop3, which builds the wire form to measure it. Counting
+// instead keeps a large message from being copied twice more when it is stored.
+func POP3WireSize(raw string) int {
+	if raw == "" {
+		return 0
 	}
-	if respelled := wireform.SevenBitBoundary(raw); respelled != raw {
-		header, sep, body = splitHeader(respelled)
+	size := len(raw) + strings.Count(raw, "\n") - strings.Count(raw, "\r\n")
+	if raw[len(raw)-1] != '\n' {
+		size += 2
 	}
-	var size headerSink
-	writeDowngraded(&size, header, sep)
-	return int(size) + len(body)
+	return size
 }
