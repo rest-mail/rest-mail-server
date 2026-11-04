@@ -289,6 +289,55 @@ func wireBoundary(header, boundary string, texts []string, sessionUTF8 bool) str
 	return spelled
 }
 
+// bareLineFeeds spells each bare LF as CRLF and leaves a bare CR alone, as a POP3 server
+// does to the lines it sends (RFC 1939 §3).
+var bareLineFeeds = strings.NewReplacer("\r\n", "\r\n", "\n", "\r\n")
+
+// SevenBitBoundary is raw for a host that sends the body as stored, as POP3 does, with
+// only the header downgraded. It has no 7-bit form of an 8-bit boundary a client could
+// match against the stored lines, so a top-level multipart's Content-Type and delimiter
+// lines take the spelling WireForm gives them, and nothing else changes. A part's header
+// is sent as stored, so a nested boundary and its lines still match, and stay. Any other
+// message comes back as it is. When the boundary moves, every bare LF of raw becomes
+// CRLF, which makes its delimiters readable here and is what such a host then sends.
+func SevenBitBoundary(raw string) string {
+	canonical := bareLineFeeds.Replace(raw)
+	node := messageNode(canonical, 0)
+	mt, params := node.mediaType()
+	boundary := params["boundary"]
+	if !strings.HasPrefix(mt, "multipart/") || !has8bit(boundary) {
+		return raw
+	}
+	delimiters := multipartDelimiters(node.body, boundary)
+	// texts[i] is what stands before delimiter i, and the last is what follows them all.
+	texts := make([]string, len(delimiters)+1)
+	at := 0
+	for i, d := range delimiters {
+		texts[i] = node.body[at:d.at]
+		at = d.at + len("--"+boundary)
+	}
+	texts[len(delimiters)] = node.body[at:]
+
+	spelled := sevenBitBoundary(boundary)
+	if startsLine(texts, spelled) {
+		spelled = freeBoundary(spelled, texts)
+	}
+	header := headerWithBoundary(node.header, spelled)
+	if header == node.header {
+		return raw
+	}
+	var b strings.Builder
+	b.Grow(len(canonical) + len(texts)*len(spelled))
+	b.WriteString(header)
+	for i, text := range texts {
+		if i > 0 {
+			b.WriteString("--" + spelled)
+		}
+		b.WriteString(text)
+	}
+	return b.String()
+}
+
 // sevenBitBoundary spells boundary in what RFC 2046 §5.1.1 allows one: every other
 // octet is =XX, which leaves no 8-bit octet, no white space to lose at the end of a line
 // and no quoting to get wrong, in at most 70 characters.

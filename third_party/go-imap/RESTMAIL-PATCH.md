@@ -182,6 +182,16 @@ keeps upstream behaviour.
     conversion would make collide, takes a suffix hashed from the converted body when
     a line there would otherwise match, so the parts stay where the stored message has
     them, and every FETCH and size measurement gets the same octets.
+  - `parseMediaType` keeps a continued parameter with no first segment, for
+    rest-mail/rest-mail-server#1897, where `mime.ParseMediaType` and `extendedValue`
+    both stop at a missing `*0`. `laterSegments` joins what came in segment order, with
+    no charset, since only a first segment can name one (RFC 2231 §4.1). A plain value
+    of the same name stands instead, and a multipart's boundary stays absent, because
+    delimiter lines match a whole value (IMAP-BS-11).
+  - `SevenBitBoundary` is new and exported through `wireform`, for the same issue. FETCH
+    doesn't use it. It gives a host that sends the body as stored, as a POP3 server does,
+    what `wireMultipart` gives FETCH for a top-level 8-bit boundary: one spelling in
+    Content-Type and on the delimiter lines. Other octets stay. It adds no dependency.
 
 - SEARCH decodes a header one encoded word at a time, for
   rest-mail/rest-mail-server#1887, rather than through

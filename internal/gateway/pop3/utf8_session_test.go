@@ -33,7 +33,7 @@ func storeAPI(t *testing.T, raw string) *apiclient.Client {
 		reply(w, `{"data":{"token":"rmgs_tok","protocol":"pop3","user":{"id":1,"email":"jorg@example.test"}}}`)
 	})
 	mux.HandleFunc("/api/v1/accounts/1/folders/INBOX/messages", func(w http.ResponseWriter, r *http.Request) {
-		reply(w, fmt.Sprintf(`{"data":[{"id":7,"raw_size":%d}]}`, len(raw)))
+		reply(w, fmt.Sprintf(`{"data":[{"id":7,"raw_size":%d,"downgraded_size":%d}]}`, len(raw), rmail.DowngradedSize(raw)))
 	})
 	mux.HandleFunc("/api/v1/messages/7", func(w http.ResponseWriter, r *http.Request) {
 		reply(w, `{"data":{"id":7}}`)

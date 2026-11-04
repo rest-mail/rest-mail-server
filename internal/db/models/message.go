@@ -105,13 +105,11 @@ type Message struct {
 	RawSize int `gorm:"not null;default:0" json:"raw_size"`
 	// DowngradedSize is the octet count a POP3 client that has not enabled UTF-8
 	// receives: the stored raw with its header block downgraded to ASCII (RFC
-	// 6857) and a top-level 8-bit boundary respelled, see rmail.DowngradeForPOP3,
-	// with every line ending in CRLF as RETR sends it. POP3UTF8Size is the same
-	// count for a client that has enabled UTF-8, which gets the headers as stored.
-	// Both equal RawSize when the headers are already ASCII, every line ends in
-	// CRLF and the last line has one. STAT and LIST report them, because the size
-	// must count the octets actually sent (RFC 1939 section 5). Zero means "not
-	// measured yet" (a row not yet backfilled); consumers fall back to RawSize.
+	// 6857) and a top-level 8-bit boundary respelled, see rmail.DowngradeForPOP3.
+	// It equals RawSize when the headers are already ASCII. STAT and LIST report
+	// it to such a client, because the size must count the octets actually sent
+	// (RFC 1939 section 5). Zero means "not measured yet" (a row stored before this
+	// column existed and not yet backfilled); consumers fall back to RawSize.
 	DowngradedSize int `gorm:"not null;default:0" json:"downgraded_size"`
 	POP3UTF8Size   int `gorm:"column:pop3_utf8_size;not null;default:0" json:"pop3_utf8_size"`
 	// IMAPSize and IMAPUTF8Size are the octet counts an IMAP FETCH of the whole

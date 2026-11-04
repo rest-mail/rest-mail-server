@@ -105,9 +105,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   answered `\Subscribed \NonExistent`, and LSUB answers an unsubscribed level
   above a subscribed name `\Noselect`. A Mailbox without it keeps every
   existing folder subscribed, as before.
-- `SearchZoneMailbox`, an optional `Mailbox` interface that names the zone whose
-  calendar days SEARCH BEFORE, ON and SINCE compare. A zone the store cannot give
-  answers NO `[UNAVAILABLE]`. A mailbox without it sees no change.
+- `wireform.SevenBitBoundary`, for a host that downgrades only the top-level header
+  and sends the body as stored, as POP3 does. A top-level multipart's 8-bit boundary
+  takes the spelling FETCH gives it, in Content-Type and on its delimiter lines, and
+  nothing else changes. FETCH doesn't use it.
 
 ### Fixed
 
@@ -134,6 +135,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   one.
 - DELETE of a name that is not a mailbox but has inferior mailboxes is refused
   `NO [HASCHILDREN]` (RFC 9051 §6.3.5, RFC 5530 §3) instead of answering OK.
+- BODY and BODYSTRUCTURE keep a continued parameter with no first segment.
+  `name*1=x; other=keep` used to read as `("OTHER" "keep")`, and now reads as
+  `("NAME" "x" "OTHER" "keep")`, in segment order and naming no charset. A plain value
+  of the same name stands instead. A multipart with only part of a boundary still reads
+  as having none. `charset*1=x` now reads as `("CHARSET" "x")`, so 8-bit text under it
+  counts as naming a charset and keeps its 8-bit data.
 - Converting a header for FETCH takes time in proportion to its size. A run of
   `\"` in an 8-bit field, or a field folded many times, used to take quadratic
   time, 16.6 s for a 156 KB Subject. The output doesn't change.
