@@ -817,7 +817,8 @@ const jsonTextChunk = 32 << 10
 // on its text in pieces, as encoding/json would decode it: an escape that isn't half of a pair of
 // surrogates is its character, and anything else that isn't UTF-8 is U+FFFD.
 func (s *jsonScanner) textRest(write func([]byte) error) error {
-	out := make([]byte, 0, jsonTextChunk+utf8.UTFMax)
+	// Room for one chunk less a byte, a run just short of a chunk, and a character.
+	out := make([]byte, 0, 2*jsonTextChunk+utf8.UTFMax)
 	// bytewise is how far the input is to be read a byte at a time, for text that isn't UTF-8.
 	var bytewise int64
 	for {
@@ -834,7 +835,14 @@ func (s *jsonScanner) textRest(write func([]byte) error) error {
 			}
 			switch {
 			case len(run) == 0:
-			case utf8.Valid(run):
+			case !utf8.Valid(run):
+				bytewise = s.read + int64(len(run))
+			case len(run) < jsonTextChunk:
+				// An ordinary message has an escape on every line, so its runs are short, and
+				// one write each would be a system call for every line.
+				out = append(out, run...)
+				s.takeRun(run)
+			default:
 				if err := write(out); err != nil {
 					return err
 				}
@@ -843,8 +851,6 @@ func (s *jsonScanner) textRest(write func([]byte) error) error {
 					return err
 				}
 				s.takeRun(run)
-			default:
-				bytewise = s.read + int64(len(run))
 			}
 		}
 		char, err := s.next()

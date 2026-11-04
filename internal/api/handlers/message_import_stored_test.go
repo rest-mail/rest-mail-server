@@ -436,12 +436,15 @@ func TestDeliverHoldsTheLimitOnHostileShapes(t *testing.T) {
 	if w, _ := send("Message-ID: <warm@example.test>\r\n" + id + "\r\nb\r\n"); w.Code != http.StatusCreated {
 		t.Fatalf("%d %s", w.Code, w.Body)
 	}
+	// A message nested in another isn't that message's text, so the shapes with parts carry a text
+	// part beside them, of half the message.
+	mixed := "Content-Type: multipart/mixed; boundary=B\r\n\r\n--B\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n" + strings.Repeat("\u00f6", size/4) + "\r\n"
 	for name, message := range map[string]string{
 		"plain ASCII":              id + "Content-Type: text/plain\r\n\r\n" + strings.Repeat("hello world\r\n", size/13),
 		"8-bit text, no charset":   id + "Content-Type: text/plain\r\n\r\n" + strings.Repeat("\u00f6", size/2) + "\r\n",
-		"60 nested messages":       id + strings.Repeat("Content-Type: message/rfc822\r\n\r\n", 60) + "Subject: \u00f6\r\n\r\n" + strings.Repeat("\u00f6", size/2),
-		"1000 typed parts":         id + "Content-Type: multipart/mixed; boundary=B\r\n\r\n" + strings.Repeat("--B\r\nContent-Type: a/b\r\n\r\n\u00f6"+strings.Repeat("y", size/1000)+"\r\n", 1000) + "--B--\r\n",
-		"typed parts in a message": id + "Content-Type: message/rfc822\r\n\r\nContent-Type: multipart/mixed; boundary=B\r\n\r\n" + strings.Repeat("--B\r\nContent-Type: a/b\r\n\r\nx\r\n", size/28) + "--B--\r\n",
+		"60 nested messages":       id + mixed + "--B\r\n" + strings.Repeat("Content-Type: message/rfc822\r\n\r\n", 60) + "Subject: \u00f6\r\n\r\n" + strings.Repeat("\u00f6", size/4) + "\r\n--B--\r\n",
+		"1000 typed parts":         id + mixed + strings.Repeat("--B\r\nContent-Type: a/b\r\n\r\n\u00f6"+strings.Repeat("y", size/2000)+"\r\n", 999) + "--B--\r\n",
+		"typed parts in a message": id + mixed + "--B\r\nContent-Type: message/rfc822\r\n\r\nContent-Type: multipart/mixed; boundary=C\r\n\r\n" + strings.Repeat("--C\r\nContent-Type: a/b\r\n\r\nx\r\n", size/56) + "--C--\r\n--B--\r\n",
 	} {
 		t.Run(name, func(t *testing.T) {
 			// TotalAlloc counts the whole process, so a run gets another try before it fails: a
@@ -468,7 +471,7 @@ func TestDeliverHoldsTheLimitOnHostileShapes(t *testing.T) {
 			if err := db.Where("mailbox_id = ?", mailbox.ID).Order("id DESC").First(&stored).Error; err != nil {
 				t.Fatal(err)
 			}
-			if strings.Contains(message, "Content-Type: text/plain") && len(stored.BodyText) < size/2 {
+			if len(stored.BodyText) < size/4 {
 				t.Fatalf("stored %d bytes of text", len(stored.BodyText))
 			}
 		})

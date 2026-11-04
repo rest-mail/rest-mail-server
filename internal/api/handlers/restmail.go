@@ -643,7 +643,7 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput, spoo
 			if err := repositories.ReserveStorage(tx, mailbox.ID, int64(sizeBytes)); err != nil {
 				return err
 			}
-			if err := tx.Create(&msg).Error; err != nil {
+			if err := createDeliveredMessage(tx, &msg); err != nil {
 				return err
 			}
 			return tx.Model(&models.QuotaUsage{}).Where("mailbox_id = ?", mailbox.ID).Updates(map[string]interface{}{
