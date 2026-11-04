@@ -37,6 +37,10 @@ PUBLIC_TARGETS = os.environ.get(
     "RESTMAIL_LIVE_PUBLIC_TARGETS", "1.1.1.1:443 example.com:443"
 ).split()
 FILTER_PORT = 3100
+# `chore js-filter:restart` returns once the container exists, not once the
+# service inside it listens, so a check right after it must wait.
+FILTER_READY_TIMEOUT = 60
+FILTER_READY_INTERVAL = 1
 SCRIPT = 'function filter(email) { return { type: "action", action: "continue" }; }'
 EMAIL = {"from": "isolation@example.test"}
 
@@ -170,8 +174,51 @@ class JSFilterIsolationLiveTest(unittest.TestCase):
             args += ["-e", "NO_TOKEN=1"]
         return run(*args, self.project(config) + "-api", "sh", "-c", CALL).stdout
 
+    def wait_for_filter(self, config):
+        """Wait, within a bound, for a starting filter to accept connections.
+
+        Only a filter still starting is waited for: a container that stopped or
+        restarted has crashed, and any other probe result is a fault, so each
+        fails at once. The probe runs inside the filter, so a broken network
+        path between the API and the filter still fails the checks after this.
+        """
+        container = self.project(config) + "-js-filter"
+        target = f"127.0.0.1:{FILTER_PORT}"
+
+        def not_ready(reason):
+            logs = run("docker", "logs", "--tail", "20", container, check=False)
+            self.fail(
+                f"js-filter service {container} is not ready: {reason}\n"
+                f"last log lines:\n{logs.stdout}{logs.stderr}"
+            )
+
+        deadline = time.monotonic() + FILTER_READY_TIMEOUT
+        while True:
+            state = run(
+                "docker",
+                "inspect",
+                "--format",
+                "{{.State.Status}} restarts={{.RestartCount}}",
+                container,
+                check=False,
+            )
+            state = (state.stdout + state.stderr).strip()
+            if state != "running restarts=0":
+                not_ready(state)
+            code, outcome = self.probe(container, target)
+            if code == 0:
+                return
+            if outcome != "ECONNREFUSED":
+                not_ready(f"probe of {target} exited {code}: {outcome}")
+            if time.monotonic() >= deadline:
+                not_ready(
+                    f"{target} still refused connections after {FILTER_READY_TIMEOUT}s"
+                )
+            time.sleep(FILTER_READY_INTERVAL)
+
     def check_api_to_filter(self, config):
         project = self.project(config)
+        self.wait_for_filter(config)
         url = run(
             "docker", "exec", project + "-api", "sh", "-c", 'echo "$JS_FILTER_URL"'
         ).stdout.strip()
