@@ -135,6 +135,10 @@ func main() {
 		slog.Error("failed to connect to database", "error", err)
 		os.Exit(1)
 	}
+	// Pool and connection-error series on this process's /metrics (#1579).
+	if err := metrics.InstrumentDB(database); err != nil {
+		slog.Warn("database metrics not registered", "error", err)
+	}
 
 	// Run auto-migration. Boot is ADDITIVE-only (allowDestructive=false): the API
 	// never issues destructive DML at startup, so a rolling deploy cannot have

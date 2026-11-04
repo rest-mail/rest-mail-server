@@ -38,6 +38,15 @@ var (
 		Help: "Outbound queue rows due for an attempt now (pending or deferred with next attempt passed, or delivering)",
 	})
 
+	// QueueOldestAge is the age in seconds of the oldest pending or deferred
+	// outbound row, 0 when there is none. A deep queue that is minutes old and
+	// one that is hours old are different problems; QueueOldestMessage reads
+	// this (#1579). No labels.
+	QueueOldestAge = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "restmail_queue_oldest_age_seconds",
+		Help: "Age in seconds of the oldest pending or deferred outbound queue row (0 when none)",
+	})
+
 	// QueueProcessed counts total messages successfully processed from the queue.
 	QueueProcessed = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "restmail_queue_processed_total",
@@ -70,6 +79,52 @@ var (
 		},
 		[]string{"protocol"},
 	)
+
+	// ConnectionsAccepted counts protocol connections admitted by the
+	// connection limiter, per protocol (smtp, imap, pop3, as the gateway names
+	// its limiter). restmail_active_connections is a level that is often 0 on
+	// a quiet server; this counter's rate falling to zero is what says a
+	// listener stopped taking connections (#1579).
+	ConnectionsAccepted = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "restmail_connections_accepted_total",
+			Help: "Protocol connections admitted, by protocol",
+		},
+		[]string{"protocol"},
+	)
+
+	// SMTPTransactionDuration records one SMTP mail transaction, from MAIL
+	// FROM to its end: the reply to DATA (outcome accepted or rejected), or a
+	// RSET or disconnect before that (aborted). The label is bounded to those
+	// three (#1579).
+	SMTPTransactionDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "restmail_smtp_transaction_duration_seconds",
+			Help:    "SMTP mail transaction duration from MAIL FROM to its end, by outcome",
+			Buckets: []float64{0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 300},
+		},
+		[]string{"outcome"},
+	)
+
+	// IMAPCommandDuration records how long the IMAP gateway took over each
+	// command. The command label is bounded to IMAPCommandNames; any other
+	// name a client sends is "other" (#1579).
+	IMAPCommandDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "restmail_imap_command_duration_seconds",
+			Help:    "IMAP command duration, by command",
+			Buckets: []float64{0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10},
+		},
+		[]string{"command"},
+	)
+
+	// DBConnectionErrors counts database operations that failed because the
+	// database could not be reached: a connection refused, dropped or timed
+	// out, as opposed to a query the database answered with an error (#1579).
+	DBConnectionErrors = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "restmail_db_connection_errors_total",
+		Help: "Database operations that failed because the database could not be reached",
+	})
 
 	// MessagesReceived counts inbound-MX messages received from the internet,
 	// per transport security. `transport` is strictly bounded to tls/plaintext;
@@ -253,11 +308,17 @@ func init() {
 		HTTPRequestDuration,
 		QueueSize,
 		QueueDue,
+		QueueOldestAge,
 		QueueProcessed,
 		AttachmentCleanupRemoved,
 		AttachmentCleanupBytes,
 		QueueErrors,
 		ActiveConnections,
+		ConnectionsAccepted,
+		SMTPTransactionDuration,
+		IMAPCommandDuration,
+		DBConnectionErrors,
+		dbPool,
 		MessagesReceived,
 		MessagesSent,
 		OutboundTransport,

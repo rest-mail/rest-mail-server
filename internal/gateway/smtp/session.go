@@ -21,6 +21,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/connlimiter"
 	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
+	"github.com/rest-mail/rest-mail-server/internal/metrics"
 	rmime "github.com/rest-mail/rest-mail-server/internal/mime"
 	"github.com/rest-mail/rest-mail-server/internal/ratelimit"
 	"github.com/rest-mail/rest-mail-server/internal/srs"
@@ -92,6 +93,28 @@ type session struct {
 	// requireTLS is this transaction's REQUIRETLS: its sender requires TLS on every hop
 	// (RFC 8689 §4.1). go-smtp accepts it only on a TLS session.
 	requireTLS bool
+	// txStart is when this transaction's MAIL FROM was accepted; zero when
+	// none is open. restmail_smtp_transaction_duration_seconds runs from it.
+	txStart time.Time
+}
+
+// SMTP transaction outcomes, the bounded outcome label of
+// restmail_smtp_transaction_duration_seconds.
+const (
+	txAccepted = "accepted"
+	txRejected = "rejected"
+	txAborted  = "aborted"
+)
+
+// endTransaction records the open transaction's duration with outcome and
+// closes it. Without an open transaction it does nothing, so the implicit
+// Reset after DATA does not count it twice.
+func (s *session) endTransaction(outcome string) {
+	if s.txStart.IsZero() {
+		return
+	}
+	metrics.SMTPTransactionDuration.WithLabelValues(outcome).Observe(time.Since(s.txStart).Seconds())
+	s.txStart = time.Time{}
 }
 
 // tarpitReject records one connection-level rejection (an invalid inbound RCPT
@@ -427,6 +450,11 @@ func (s *session) Mail(from string, opts *gosmtp.MailOptions) error {
 	}
 
 	s.mailFrom = from
+	// A MAIL FROM without a RSET first replaces the transaction (RFC 5321
+	// §4.1.1.2 makes it an error the server may accept); the old one ended
+	// unfinished.
+	s.endTransaction(txAborted)
+	s.txStart = time.Now()
 	s.rcptTo = nil
 	s.srsRelays = nil
 	// Remember the declared BODY= type so the outbound path can honor RFC 6152
@@ -620,7 +648,15 @@ func (s *session) rcptSRS(to string) (handled bool, err error) {
 // aggregate: only fail the transaction (4xx/5xx) if NOTHING was committed —
 // returning an error after some recipients were already delivered/queued
 // makes the client retry the entire message, duplicating those recipients.
-func (s *session) Data(r io.Reader) error {
+func (s *session) Data(r io.Reader) (err error) {
+	defer func() {
+		if err != nil {
+			s.endTransaction(txRejected)
+		} else {
+			s.endTransaction(txAccepted)
+		}
+	}()
+
 	// Message-body transfer begins here (go-smtp calls Data for both DATA and
 	// BDAT): arm the anti-slowloris tracker for the duration of the body read
 	// and disarm the moment it ends, so between-command idling is never
@@ -1019,6 +1055,7 @@ func aliasRoutingRefusal(err error) (string, bool) {
 
 // Reset discards the current transaction (RSET, or implicitly after DATA).
 func (s *session) Reset() {
+	s.endTransaction(txAborted)
 	s.mailFrom = ""
 	s.rcptTo = nil
 	s.srsRelays = nil
@@ -1029,5 +1066,6 @@ func (s *session) Reset() {
 
 // Logout is called when the connection is closed.
 func (s *session) Logout() error {
+	s.endTransaction(txAborted)
 	return nil
 }

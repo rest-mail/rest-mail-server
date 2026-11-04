@@ -22,6 +22,7 @@ import (
 	smtpgw "github.com/rest-mail/rest-mail-server/internal/gateway/smtp"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/tlsutil"
 	"github.com/rest-mail/rest-mail-server/internal/grants"
+	"github.com/rest-mail/rest-mail-server/internal/metrics"
 	rmime "github.com/rest-mail/rest-mail-server/internal/mime"
 	"github.com/rest-mail/rest-mail-server/internal/sendlimits"
 	"github.com/rest-mail/rest-mail-server/internal/srs"
@@ -173,6 +174,10 @@ func main() {
 	if err != nil {
 		slog.Error("failed to connect to database", "error", err)
 		os.Exit(1)
+	}
+	// Pool and connection-error series on this process's /metrics (#1579).
+	if err := metrics.InstrumentDB(database); err != nil {
+		slog.Warn("database metrics not registered", "error", err)
 	}
 
 	// The operator override replaces the stored server ceiling here as it does

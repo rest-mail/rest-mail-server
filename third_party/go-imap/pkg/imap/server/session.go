@@ -511,6 +511,7 @@ func (s *Session) Handle() {
 			continue
 		}
 
+		cmdStart := time.Now()
 		switch ucmd {
 		case "CAPABILITY":
 			s.handleCapability(tag)
@@ -624,6 +625,9 @@ func (s *Session) Handle() {
 			return
 		default:
 			s.tagged(tag, "BAD", "Unknown command")
+		}
+		if o, ok := s.backend.(imap.CommandObserver); ok {
+			o.ObserveCommand(ucmd, time.Since(cmdStart))
 		}
 	}
 }

@@ -71,6 +71,7 @@ func New(cfg Config) *Limiter {
 func (l *Limiter) SetBanChecker(checker BanChecker, protocol string) {
 	l.banChecker = checker
 	l.protocol = protocol
+	initProtocolSeries(protocol)
 }
 
 // SetProtocol tags this limiter with the protocol it fronts ("smtp"/"imap"/
@@ -80,6 +81,16 @@ func (l *Limiter) SetBanChecker(checker BanChecker, protocol string) {
 // metrics are not emitted (avoids an empty-label series in tests/tooling).
 func (l *Limiter) SetProtocol(protocol string) {
 	l.protocol = protocol
+	initProtocolSeries(protocol)
+}
+
+// initProtocolSeries creates the protocol's restmail_connections_accepted_total
+// series at 0, so SMTPConnectionsStopped and IMAPConnectionsStopped can see a
+// gateway that has admitted nothing since it started (#1579).
+func initProtocolSeries(protocol string) {
+	if protocol != "" {
+		metrics.ConnectionsAccepted.WithLabelValues(protocol)
+	}
 }
 
 // Accept checks whether a new connection from ip is allowed.
@@ -112,6 +123,7 @@ func (l *Limiter) Accept(ip string) bool {
 
 	if l.protocol != "" {
 		metrics.ActiveConnections.WithLabelValues(l.protocol).Inc()
+		metrics.ConnectionsAccepted.WithLabelValues(l.protocol).Inc()
 	}
 	return true
 }
