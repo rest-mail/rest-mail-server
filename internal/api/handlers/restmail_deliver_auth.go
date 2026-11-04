@@ -119,7 +119,7 @@ func dkimAlignedWith(ctx context.Context, raw, fromDomain string) (aligned, keyU
 	if raw == "" || fromDomain == "" {
 		return false, false
 	}
-	for _, r := range dkim.Verify(ctx, []byte(raw), nil) {
+	for _, r := range dkim.Verify(ctx, []byte(raw), lookupRestmailDKIMTXT) {
 		if !domainsAligned(r.Domain, fromDomain) {
 			continue
 		}
@@ -131,6 +131,10 @@ func dkimAlignedWith(ctx context.Context, raw, fromDomain string) (aligned, keyU
 		}
 	}
 	return false, keyUnavailable
+}
+
+func lookupRestmailDKIMTXT(ctx context.Context, name string) ([]string, error) {
+	return net.DefaultResolver.LookupTXT(ctx, strings.TrimSuffix(name, ".")+".")
 }
 
 // domainsAligned implements a relaxed, DMARC-style alignment check: the domains
