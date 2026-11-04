@@ -169,19 +169,21 @@ func (f *fakeAPI) listMessages(w http.ResponseWriter, r *http.Request) {
 			received = fakeReceivedAt
 		}
 		out = append(out, apiclient.MessageSummary{
-			ID:          m.id,
-			Folder:      m.folder,
-			Subject:     m.subject,
-			Sender:      m.sender,
-			SenderName:  m.senderNm,
-			RawSize:     len(m.raw),
-			IMAPDeleted: m.imapDeleted,
-			Keywords:    m.keywords,
-			IsRead:      m.isRead,
-			IsFlagged:   m.isFlagged,
-			IsStarred:   m.isStarred,
-			IsDraft:     m.isDraft,
-			ReceivedAt:  received,
+			ID:           m.id,
+			Folder:       m.folder,
+			Subject:      m.subject,
+			Sender:       m.sender,
+			SenderName:   m.senderNm,
+			RawSize:      len(m.raw),
+			IMAPSize:     len(m.raw),
+			IMAPUTF8Size: len(m.raw),
+			IMAPDeleted:  m.imapDeleted,
+			Keywords:     m.keywords,
+			IsRead:       m.isRead,
+			IsFlagged:    m.isFlagged,
+			IsStarred:    m.isStarred,
+			IsDraft:      m.isDraft,
+			ReceivedAt:   received,
 		})
 	}
 	f.mu.Unlock()
@@ -270,20 +272,22 @@ func (f *fakeAPI) getMessage(w http.ResponseWriter, r *http.Request) {
 	}
 	var dr apiclient.MessageDetailResponse
 	dr.Data = apiclient.MessageSummary{
-		ID:          m.id,
-		MailboxID:   7,
-		Folder:      m.folder,
-		Subject:     m.subject,
-		Sender:      m.sender,
-		SenderName:  m.senderNm,
-		RawSize:     len(m.raw),
-		IMAPDeleted: m.imapDeleted,
-		Keywords:    m.keywords,
-		IsRead:      m.isRead,
-		IsFlagged:   m.isFlagged,
-		IsStarred:   m.isStarred,
-		IsDraft:     m.isDraft,
-		ReceivedAt:  received,
+		ID:           m.id,
+		MailboxID:    7,
+		Folder:       m.folder,
+		Subject:      m.subject,
+		Sender:       m.sender,
+		SenderName:   m.senderNm,
+		RawSize:      len(m.raw),
+		IMAPSize:     len(m.raw),
+		IMAPUTF8Size: len(m.raw),
+		IMAPDeleted:  m.imapDeleted,
+		Keywords:     m.keywords,
+		IsRead:       m.isRead,
+		IsFlagged:    m.isFlagged,
+		IsStarred:    m.isStarred,
+		IsDraft:      m.isDraft,
+		ReceivedAt:   received,
 	}
 	writeJSON(w, dr)
 }
