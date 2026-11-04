@@ -12,6 +12,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/api/middleware"
 	"github.com/rest-mail/rest-mail-server/internal/api/respond"
 	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
+	"github.com/rest-mail/rest-mail-server/internal/crypto"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/db/repositories"
 	"github.com/rest-mail/rest-mail-server/internal/dns"
@@ -66,10 +67,50 @@ type DomainHandler struct {
 	db    *gorm.DB
 	dns   dns.Provider
 	cache *grants.Cache
+	// masterKey decrypts stored certificate keys, as the gateways do.
+	masterKey string
 
 	// Capture the configured resolver and carry each HTTP request context into DNS.
 	lookupMX  func(context.Context, string) ([]*net.MX, error)
 	lookupTXT func(context.Context, string) ([]string, error)
+}
+
+// SetMasterKey supplies the key stored certificate keys are encrypted with, so
+// that making a domain live can check its certificate as the gateways load it.
+func (h *DomainHandler) SetMasterKey(masterKey string) {
+	h.masterKey = masterKey
+}
+
+// servableCertificate refuses to take a domain live unless its newest current
+// certificate is one the gateways can serve it with: the private key is the
+// certificate's own and the certificate names the domain. A row with current
+// dates is not enough, since the gateways would refuse every handshake for a
+// domain whose pair they cannot load (issues #289, #1704).
+func (h *DomainHandler) servableCertificate(ctx context.Context, domain models.Domain) error {
+	var certs []models.Certificate
+	if err := h.db.WithContext(ctx).
+		Where("domain_id = ? AND not_before <= NOW() AND not_after > NOW()", domain.ID).
+		Order("not_after DESC").Find(&certs).Error; err != nil {
+		return fmt.Errorf("check the domain's certificate: %w", err)
+	}
+	if len(certs) == 0 {
+		return endpoint.Refuse(http.StatusConflict, "certificate_required",
+			"This domain has no currently valid certificate, so it cannot go live. Add one first.")
+	}
+	keyPEM := certs[0].KeyPEM
+	if h.masterKey != "" {
+		decrypted, err := crypto.DecryptString(keyPEM, h.masterKey)
+		if err != nil {
+			return endpoint.Refuse(http.StatusConflict, "certificate_required",
+				"This domain's certificate cannot be served: its private key cannot be read. Upload a new one first.")
+		}
+		keyPEM = decrypted
+	}
+	if err := certificateServes(certs[0].CertPEM, keyPEM, domain.Name); err != nil {
+		return endpoint.Refuse(http.StatusConflict, "certificate_required",
+			"This domain's certificate cannot be served: "+err.Error()+". Upload a new one first.")
+	}
+	return nil
 }
 
 func NewDomainHandler(db *gorm.DB, dnsProvider dns.Provider, caches ...*grants.Cache) *DomainHandler {
@@ -285,15 +326,8 @@ func (h *DomainHandler) update(r *http.Request, in updateDomainRequest) (Domain,
 		// another name (issues #289, #290). Taking one out of service is always
 		// allowed.
 		if *req.Active {
-			var current int64
-			if err := h.db.WithContext(r.Context()).Model(&models.Certificate{}).
-				Where("domain_id = ? AND not_before <= NOW() AND not_after > NOW()", domain.ID).
-				Count(&current).Error; err != nil {
-				return Domain{}, fmt.Errorf("check the domain's certificate: %w", err)
-			}
-			if current == 0 {
-				return Domain{}, endpoint.Refuse(http.StatusConflict, "certificate_required",
-					"This domain has no currently valid certificate, so it cannot go live. Add one first.")
+			if err := h.servableCertificate(r.Context(), domain); err != nil {
+				return Domain{}, err
 			}
 		}
 		updates["active"] = *req.Active

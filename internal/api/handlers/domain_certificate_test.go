@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -66,18 +67,24 @@ func TestDomainLifecycle_NotLiveWithoutACertificate(t *testing.T) {
 		return rr
 	}
 
-	storeCert := func(t *testing.T, tx *gorm.DB, domainID uint, notBefore, notAfter time.Time) {
+	key, keyPEM := throwawayKey(t)
+	_, otherKeyPEM := throwawayKey(t)
+	storePair := func(t *testing.T, tx *gorm.DB, domainID uint, certPEM, keyPEM string, notBefore, notAfter time.Time) {
 		t.Helper()
 		if err := tx.Create(&models.Certificate{
 			DomainID:  domainID,
-			CertPEM:   "-- test certificate --",
-			KeyPEM:    "-- test key --",
+			CertPEM:   certPEM,
+			KeyPEM:    keyPEM,
 			Issuer:    "self-signed",
 			NotBefore: notBefore,
 			NotAfter:  notAfter,
 		}).Error; err != nil {
 			t.Fatalf("store certificate: %v", err)
 		}
+	}
+	storeCert := func(t *testing.T, tx *gorm.DB, domainID uint, notBefore, notAfter time.Time) {
+		t.Helper()
+		storePair(t, tx, domainID, throwawayCertificate(t, key, name, []string{name}, notBefore, notAfter), keyPEM, notBefore, notAfter)
 	}
 
 	t.Run("a new domain is not live", func(t *testing.T) {
@@ -144,6 +151,39 @@ func TestDomainLifecycle_NotLiveWithoutACertificate(t *testing.T) {
 			t.Error("the domain did not go live even though it has a current certificate")
 		}
 	})
+
+	// A row with current dates is not enough: the gateways load the pair and
+	// a client checks the name, so a pair they cannot serve keeps the domain
+	// out of service (issue #1704).
+	for _, bad := range []struct{ name, certPEM, keyPEM, says string }{
+		{"another certificate's key", "", otherKeyPEM, "does not belong to this certificate"},
+		{"a certificate for another name", throwawayCertificate(t, key, "mail."+name, []string{"mail." + name},
+			time.Now().Add(-time.Hour), time.Now().Add(30*24*time.Hour)), keyPEM, "does not name " + name},
+	} {
+		t.Run("a stored pair with "+bad.name+" does not make it live", func(t *testing.T) {
+			tx := newTx(t)
+			domain := create(t, tx, name)
+			notBefore, notAfter := time.Now().Add(-time.Hour), time.Now().Add(30*24*time.Hour)
+			certPEM := bad.certPEM
+			if certPEM == "" {
+				certPEM = throwawayCertificate(t, key, name, []string{name}, notBefore, notAfter)
+			}
+			storePair(t, tx, domain.ID, certPEM, bad.keyPEM, notBefore, notAfter)
+
+			rr := update(t, tx, domain.ID, true)
+			if rr.Code != http.StatusConflict || !strings.Contains(rr.Body.String(), "certificate_required") ||
+				!strings.Contains(rr.Body.String(), bad.says) {
+				t.Fatalf("status %d, want 409 certificate_required saying %q (body %s)", rr.Code, bad.says, rr.Body.String())
+			}
+			var stored models.Domain
+			if err := tx.First(&stored, domain.ID).Error; err != nil {
+				t.Fatalf("reload: %v", err)
+			}
+			if stored.Active {
+				t.Error("the domain went live with a certificate that cannot be served")
+			}
+		})
+	}
 
 	t.Run("taking a domain out of service is always allowed", func(t *testing.T) {
 		tx := newTx(t)

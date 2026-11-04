@@ -90,6 +90,23 @@ func (h *CertificateHandler) createCertificate(r *http.Request, req createCertif
 		return Certificate{}, endpoint.Invalid(map[string]string{"cert_pem": "Failed to parse certificate: " + err.Error()})
 	}
 
+	// Refuse what the gateways could not serve, where the person uploading it
+	// sees why, rather than as failed handshakes later (issue #1704).
+	if now := db.NowFunc(); !x509Cert.NotAfter.After(now) {
+		return Certificate{}, endpoint.Invalid(map[string]string{"cert_pem": "The certificate expired on " +
+			x509Cert.NotAfter.UTC().Format(time.RFC3339)})
+	}
+	if _, err := certificateKeyPair(req.CertPEM, req.KeyPEM); err != nil {
+		if errors.Is(err, errKeyMismatch) {
+			return Certificate{}, endpoint.Invalid(map[string]string{"key_pem": "The private key does not belong to this certificate"})
+		}
+		return Certificate{}, endpoint.Invalid(map[string]string{"key_pem": "Failed to read the private key"})
+	}
+	if name := certificateName(domain.Name); !certificateCovers(x509Cert, name) {
+		return Certificate{}, endpoint.Invalid(map[string]string{"cert_pem": "The certificate does not name " + name +
+			", the domain it is uploaded for"})
+	}
+
 	// Encrypt the private key if master key is configured
 	keyToStore := req.KeyPEM
 	if h.masterKey != "" {

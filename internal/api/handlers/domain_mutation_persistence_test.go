@@ -178,7 +178,10 @@ func TestDomainMutationActivationAndReloadFailure(t *testing.T) {
 	if rr.Code != 409 {
 		t.Fatalf("expired/future certificate accepted:%d %s", rr.Code, rr.Body)
 	}
-	if err := db.Create(&models.Certificate{DomainID: answer.Data.ID, CertPEM: "public-test-certificate", KeyPEM: "public-test-key", Issuer: "Fixture", NotBefore: now.Add(-time.Hour), NotAfter: now.Add(time.Hour)}).Error; err != nil {
+	// A current pair the gateways can serve the domain with (#1704).
+	key, keyPEM := throwawayKey(t)
+	certPEM := throwawayCertificate(t, key, "activation-domain.test", []string{"activation-domain.test"}, now.Add(-time.Hour), now.Add(time.Hour))
+	if err := db.Create(&models.Certificate{DomainID: answer.Data.ID, CertPEM: certPEM, KeyPEM: keyPEM, Issuer: "Fixture", NotBefore: now.Add(-time.Hour), NotAfter: now.Add(time.Hour)}).Error; err != nil {
 		t.Fatal(err)
 	}
 	rr = patch(`{"active":true}`)

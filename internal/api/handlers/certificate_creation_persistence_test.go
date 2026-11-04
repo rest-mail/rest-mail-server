@@ -47,7 +47,9 @@ func TestCertificateCreationPersistence(t *testing.T) {
 	if !ok {
 		t.Fatal("fixture cannot sign")
 	}
-	at := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	// Current, since an expired certificate is refused (#1704); whole seconds,
+	// as a certificate carries them.
+	at := time.Now().UTC().Truncate(time.Second).Add(-time.Hour)
 	template := &x509.Certificate{SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "contract.example.org"}, NotBefore: at, NotAfter: at.AddDate(0, 0, 30)}
 	der, err := x509.CreateCertificate(rand.Reader, template, template, signer.Public(), signer)
 	if err != nil {

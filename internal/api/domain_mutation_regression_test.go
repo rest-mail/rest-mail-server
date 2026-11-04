@@ -3,13 +3,21 @@ package api
 import (
 	"bytes"
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"database/sql"
 	"database/sql/driver"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -153,11 +161,14 @@ func (c *domainMutationConnection) QueryContext(ctx context.Context, q string, a
 		if id == 7 {
 			return nil, errors.New("private certificate count detail")
 		}
-		n := int64(1)
-		if id == 6 {
-			n = 0
+		// The gate loads the pair the gateways would serve and checks it, so
+		// the current certificate is a real one for the domain (#1704).
+		r := &authReadSnapshotRows{columns: []string{"id", "domain_id", "cert_pem", "key_pem", "issuer", "not_before", "not_after", "auto_renew", "created_at", "updated_at"}}
+		if id != 6 {
+			certPEM, keyPEM := domainMutationCertificate()
+			r.rows = [][]driver.Value{{int64(1), id, certPEM, keyPEM, "CN=example.org", sieveInstallationTime.AddDate(0, 0, -1), sieveInstallationTime.AddDate(0, 0, 30), false, sieveInstallationTime, sieveInstallationTime}}
 		}
-		return &authReadSnapshotRows{columns: []string{"count"}, rows: [][]driver.Value{{n}}}, nil
+		return r, nil
 	}
 	return c.accountCredentialListConnection.QueryContext(ctx, q, args)
 }
@@ -184,6 +195,25 @@ func (c *domainMutationConnection) ExecContext(_ context.Context, q string, args
 	}
 	return driver.RowsAffected(1), nil
 }
+
+var domainMutationCertificate = sync.OnceValues(func() (string, string) {
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		panic(err)
+	}
+	template := &x509.Certificate{SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "example.org"}, DNSNames: []string{"example.org"},
+		NotBefore: sieveInstallationTime.AddDate(0, 0, -1), NotAfter: sieveInstallationTime.AddDate(0, 0, 30)}
+	der, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
+	if err != nil {
+		panic(err)
+	}
+	keyDER, err := x509.MarshalPKCS8PrivateKey(key)
+	if err != nil {
+		panic(err)
+	}
+	return string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})),
+		string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: keyDER}))
+})
 
 func newDomainMutationScenarios(t *testing.T) map[string]bulkQueueExampleScenario {
 	t.Helper()

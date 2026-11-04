@@ -191,6 +191,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	invitationH := handlers.NewInvitationHandler(db, authH, cfg.TOTP2FAEnabled && cfg.MasterKey != "")
 	twofaH := handlers.NewTwoFactorHandler(db, cfg.MasterKey, cfg.TOTP2FAEnabled, sessions)
 	domainH := handlers.NewDomainHandler(db, dnsProvider, grantCache)
+	domainH.SetMasterKey(cfg.MasterKey)
 	mailboxH := handlers.NewMailboxHandler(db, grantCache, sessions)
 	aliasH := handlers.NewAliasHandler(db)
 	broker := handlers.NewSSEBroker()
