@@ -4692,7 +4692,7 @@ paths:
         - mail:read
       - APIKeyAuth:
         - mail:read
-      - BasicAuth:
+      - GatewaySessionAuth:
         - mail:read
 
   /api/v1/messages/{id}/raw:
