@@ -115,6 +115,20 @@ THREADS_AND_IMPORTS = ("listThreads", "setThreadDue", "snoozeThread", "importMes
 PIPELINE_READS = ("listPipelines", "listPipelineLogs", "getPipelineAnalytics")
 # The rest of the filter operations, which no link starts from or reaches.
 FILTERS = ("testFilter", "listCustomFilters", "validateCustomFilter")
+# The public reads and the mail client discovery reads, which no link starts
+# from or reaches.
+PUBLIC_READS = (
+    "getHealth",
+    "describeServer",
+    "apiRoot",
+    "swaggerUI",
+    "openapiSpec",
+    "openapiDocument",
+    "prometheusMetrics",
+    "mozillaAutoconfig",
+    "mozillaAutoconfigWellKnown",
+    "microsoftAutodiscover",
+)
 FOLLOWS_THE_SENT_MESSAGE = {
     "getMessage",
     "updateMessage",
@@ -195,7 +209,8 @@ class Selection(unittest.TestCase):
             - set(MAILBOXES)
             - set(THREADS_AND_IMPORTS)
             - set(PIPELINE_READS)
-            - set(FILTERS),
+            - set(FILTERS)
+            - set(PUBLIC_READS),
             link_followers(description, "createDomain") | {"createDomain"},
         )
 
@@ -210,11 +225,11 @@ class Selection(unittest.TestCase):
 
     def test_the_pipeline_reads_have_moved_and_no_link_touches_them(self):
         description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
-        for operation in PIPELINE_READS + FILTERS:
+        for operation in PIPELINE_READS + FILTERS + PUBLIC_READS:
             self.assertEqual(link_followers(description, operation), set())
             for start in description_operations(description):
                 self.assertNotIn(operation, link_followers(description, start), start)
-        self.assertLessEqual(set(PIPELINE_READS + FILTERS), set(own_data.MOVED))
+        self.assertLessEqual(set(PIPELINE_READS + FILTERS + PUBLIC_READS), set(own_data.MOVED))
 
     def test_it_selects_every_alias_operation_and_its_links(self):
         description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
