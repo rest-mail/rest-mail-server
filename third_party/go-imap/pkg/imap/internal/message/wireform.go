@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"fmt"
 	"mime/quotedprintable"
-	"sort"
 	"strings"
 	"unicode/utf8"
 )
@@ -130,6 +129,19 @@ func wireLeaf(node mimeNode, header, mt string, params map[string]string, sessio
 	return setHeaderField(header, "Content-Transfer-Encoding", "base64") + base64Lines(node.body)
 }
 
+// metadataText is an ENVELOPE or BODYSTRUCTURE string a decoder produced: a name
+// from an encoded word, or a parameter from RFC 2231. Those strings have nowhere
+// to name a charset (RFC 3501 §4.3.1), so 8-bit text goes out as encoded words,
+// separated by a space so the string needs no literal. After UTF8=ACCEPT (RFC 6855)
+// valid UTF-8 is the agreed charset and stays. A NUL stays too, so FETCH refuses
+// the message rather than hiding it.
+func metadataText(text string, sessionUTF8 bool) string {
+	if !has8bit(text) || strings.IndexByte(text, 0) >= 0 || (sessionUTF8 && utf8.ValidString(text)) {
+		return text
+	}
+	return strings.Join(encodedWords(text), " ")
+}
+
 // escape8bit spells each 8-bit octet =XX and leaves every other octet alone.
 func escape8bit(s string) string {
 	if !has8bit(s) {
@@ -205,18 +217,20 @@ func setHeaderField(header, name, value string) string {
 // element of its own, so joining the result gives the block back.
 func headerBlockFields(header string) []string {
 	var fields []string
-	for len(header) > 0 {
-		end := len(header)
-		if i := strings.Index(header, "\r\n"); i >= 0 {
-			end = i + 2
+	start := 0
+	for at := 0; at < len(header); {
+		if at > start && header[at] != ' ' && header[at] != '\t' {
+			fields = append(fields, header[start:at])
+			start = at
 		}
-		line := header[:end]
-		if len(fields) > 0 && (line[0] == ' ' || line[0] == '\t') {
-			fields[len(fields)-1] += line
-		} else {
-			fields = append(fields, line)
+		i := strings.Index(header[at:], "\r\n")
+		if i < 0 {
+			break
 		}
-		header = header[end:]
+		at += i + 2
+	}
+	if start < len(header) {
+		fields = append(fields, header[start:])
 	}
 	return fields
 }
@@ -241,7 +255,7 @@ func wireHeader(header string, sessionUTF8 bool) string {
 }
 
 // sevenBitField rewrites one field holding an 8-bit octet. Content-Type and
-// Content-Disposition parameters become RFC 2231 extended values, because an
+// Content-Disposition keep their parameters, see ParameterField, because an
 // encoded word may not appear in a parameter (RFC 2047 §5); anything else has its
 // 8-bit text turned into encoded words. A line that is not a field at all is
 // encoded whole, so its octets survive and a reader still finds no field in it.
@@ -258,8 +272,8 @@ func sevenBitField(field string) string {
 	var out string
 	switch strings.ToLower(strings.TrimSpace(name)) {
 	case "content-type", "content-disposition":
-		if params, ok := extendedParameters(name, unfoldHeader(value)); ok {
-			out = params
+		if rewritten, ok := ParameterField(name, unfoldHeader(value)); ok {
+			out = rewritten
 			break
 		}
 		fallthrough
@@ -274,46 +288,6 @@ func sevenBitField(field string) string {
 
 func unfoldHeader(s string) string {
 	return strings.ReplaceAll(s, "\r\n", "")
-}
-
-// extendedParameters renders a parsed media type or disposition with its 8-bit
-// parameter values as RFC 2231 extended values, each on its own folded line. ok
-// is false when the value does not parse, or the type itself is 8-bit.
-func extendedParameters(name, value string) (string, bool) {
-	mt, params, err := parseContentType(strings.TrimSpace(value))
-	if err != nil || has8bit(mt) {
-		return "", false
-	}
-	keys := make([]string, 0, len(params))
-	for k := range params {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	var b strings.Builder
-	b.WriteString(name + ": " + mt)
-	for _, k := range keys {
-		b.WriteString(";\r\n " + parameter(k, params[k]))
-	}
-	return b.String(), true
-}
-
-func parameter(key, value string) string {
-	if !has8bit(value) {
-		value = strings.ReplaceAll(value, `\`, `\\`)
-		return key + `="` + strings.ReplaceAll(value, `"`, `\"`) + `"`
-	}
-	const hex = "0123456789ABCDEF"
-	var b strings.Builder
-	b.WriteString(key + "*=" + wordCharset(value) + "''")
-	for i := 0; i < len(value); i++ {
-		c := value[i]
-		if isAttributeChar(c) {
-			b.WriteByte(c)
-		} else {
-			b.Write([]byte{'%', hex[c>>4], hex[c&0x0f]})
-		}
-	}
-	return b.String()
 }
 
 // isAttributeChar reports whether c may stand unescaped in an RFC 2231 extended
@@ -331,6 +305,7 @@ func isAttributeChar(c byte) bool {
 // in a quoted-string (RFC 2047 §5).
 func encodeHeaderValue(column int, value string) string {
 	var b strings.Builder
+	tokens := headerTokens{value: value, unclosed: len(value)}
 	line := column
 	write := func(s string) {
 		b.WriteString(s)
@@ -341,8 +316,8 @@ func encodeHeaderValue(column int, value string) string {
 		}
 	}
 	for i := 0; i < len(value); {
-		if !isHeaderSpace(value[i]) && !has8bit(headerToken(value[i:])) {
-			token := headerToken(value[i:])
+		if !isHeaderSpace(value[i]) && !has8bit(tokens.at(i)) {
+			token := tokens.at(i)
 			write(token)
 			i += len(token)
 			continue
@@ -356,16 +331,16 @@ func encodeHeaderValue(column int, value string) string {
 			i = j
 			continue
 		}
-		end := i + len(headerToken(value[i:]))
+		end := i + len(tokens.at(i))
 		for {
 			j := end
 			for j < len(value) && isHeaderSpace(value[j]) {
 				j++
 			}
-			if j == end || j == len(value) || !has8bit(headerToken(value[j:])) {
+			if j == end || j == len(value) || !has8bit(tokens.at(j)) {
 				break
 			}
-			end = j + len(headerToken(value[j:]))
+			end = j + len(tokens.at(j))
 		}
 		lead, run, trail := peelPunctuation(unfoldHeader(value[i:end]))
 		write(lead)
@@ -388,25 +363,48 @@ func isHeaderSpace(c byte) bool {
 	return c == ' ' || c == '\t' || c == '\r' || c == '\n'
 }
 
-// headerToken is the token at the start of s: up to white space, a quoted-string
-// that closes counting as part of it, spaces and all.
-func headerToken(s string) string {
-	i := 0
-	for i < len(s) && !isHeaderSpace(s[i]) {
-		if s[i] == '"' {
-			for j := i + 1; j < len(s); j++ {
-				if s[j] == '\\' {
-					j++
-				} else if s[j] == '"' {
-					i = j
-					break
-				}
+// headerTokens reads the tokens of one field value. unclosed is the offset of the
+// first '"' found to have no closing quote, so that scan runs only once: every later
+// '"' in the value has none either. A scan that reached a later '"' would have closed
+// on it, so it must have skipped it as a quoted-pair, and a scan from just after that
+// '"' follows the same octets to the end of the value.
+type headerTokens struct {
+	value    string
+	unclosed int
+}
+
+// at is the token starting at offset start: up to white space, a quoted-string that
+// closes counting as part of it, spaces and all.
+func (t *headerTokens) at(start int) string {
+	i := start
+	for i < len(t.value) && !isHeaderSpace(t.value[i]) {
+		if t.value[i] == '"' && i < t.unclosed {
+			closes := t.closingQuote(i)
+			if closes < 0 {
+				t.unclosed = i
+			} else {
+				i = closes
 			}
 		}
 		i++
 	}
-	return s[:i]
+	return t.value[start:i]
 }
+
+// closingQuote is the offset of the '"' that closes the one at open, or -1.
+func (t *headerTokens) closingQuote(open int) int {
+	for j := open + 1; j < len(t.value); j++ {
+		if t.value[j] == '\\' {
+			j++
+		} else if t.value[j] == '"' {
+			return j
+		}
+	}
+	return -1
+}
+
+// unescapeQuotedPairs reads the quoted-pairs of a quoted-string.
+var unescapeQuotedPairs = strings.NewReplacer(`\\`, `\`, `\"`, `"`)
 
 // peelPunctuation splits the structure around a run from its text. Quotes are
 // dropped with the quoted-pairs they allowed.
@@ -422,7 +420,7 @@ func peelPunctuation(run string) (lead, text, trail string) {
 	if strings.Contains(lead, `"`) || strings.Contains(trail, `"`) {
 		lead = strings.ReplaceAll(lead, `"`, "")
 		trail = strings.ReplaceAll(trail, `"`, "")
-		text = strings.NewReplacer(`\\`, `\`, `\"`, `"`).Replace(text)
+		text = unescapeQuotedPairs.Replace(text)
 	}
 	return lead, text, trail
 }
@@ -448,38 +446,41 @@ func encodedWords(text string) []string {
 	open := "=?" + charset + "?Q?"
 	const closing = "?="
 	var words []string
-	var cur strings.Builder
+	var cur, enc []byte
 	for i := 0; i < len(text); {
 		size := 1
 		if charset == "UTF-8" {
 			_, size = utf8.DecodeRuneInString(text[i:])
 		}
-		enc := qEncode(text[i : i+size])
-		if cur.Len() > 0 && len(open)+cur.Len()+len(enc)+len(closing) > 75 {
-			words = append(words, open+cur.String()+closing)
-			cur.Reset()
+		enc = appendQEncoded(enc[:0], text[i:i+size])
+		if len(cur) > 0 && len(open)+len(cur)+len(enc)+len(closing) > 75 {
+			words = append(words, open+string(cur)+closing)
+			cur = cur[:0]
 		}
-		cur.WriteString(enc)
+		cur = append(cur, enc...)
 		i += size
 	}
-	return append(words, open+cur.String()+closing)
+	return append(words, open+string(cur)+closing)
 }
 
 // qEncode is the Q encoding restricted to what RFC 2047 §5(3) allows wherever an
 // encoded word may stand.
 func qEncode(s string) string {
+	return string(appendQEncoded(nil, s))
+}
+
+func appendQEncoded(b []byte, s string) []byte {
 	const hex = "0123456789ABCDEF"
-	var b strings.Builder
 	for i := 0; i < len(s); i++ {
 		c := s[i]
 		switch {
 		case c == ' ':
-			b.WriteByte('_')
+			b = append(b, '_')
 		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9', strings.IndexByte("!*+-/", c) >= 0:
-			b.WriteByte(c)
+			b = append(b, c)
 		default:
-			b.Write([]byte{'=', hex[c>>4], hex[c&0x0f]})
+			b = append(b, '=', hex[c>>4], hex[c&0x0f])
 		}
 	}
-	return b.String()
+	return b
 }
