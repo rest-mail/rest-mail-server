@@ -134,7 +134,7 @@ func bindDeliveryBody(t *testing.T, route, contentType string, body []byte) (ref
 		boundText, boundHTML = req.BodyText, req.BodyHTML
 	} else {
 		var in restmailDeliverInput
-		spool, err = spoolDelivery(r, &in, spooledBodySpec{rawIsText: true, declared: restmailDeclaredFields}, func() []byte { return []byte(in.Body.RawMessage) })
+		spool, err = spoolDelivery(r, &in, spooledBodySpec{declared: restmailDeclaredFields}, func() []byte { return in.Body.RawMessage })
 		boundText, boundHTML = in.Body.BodyText, in.Body.BodyHTML
 	}
 	if err != nil {
@@ -177,7 +177,7 @@ func TestDeliveryStandInAnswersAsTheWholeBodyDoes(t *testing.T) {
 	alphabet := []byte("{}[],:\"\\/ \n0123-.etrufalsn!=QA\xff\x00")
 	seeds := [][]byte{
 		[]byte(`{"address":"a@b.test","sender":"s","raw_message":"UVE9PQ==","body_text":"t\u00e9\n","body_html":"h","folder":"Archive","recipients_to":["x"],"is_read":true}`),
-		[]byte(`{"from":"a@b.test","to":["c@d.test"],"raw_message":"Subject: q\r\n\r\nb\u00e9","body_text":"t\n","body_html":"h","headers":{"a":["b"]}}`),
+		[]byte(`{"from":"a@b.test","to":["c@d.test"],"raw_message":"U3ViamVjdDogcQ0KDQpi","body_text":"t\n","body_html":"h","headers":{"a":["b"]}}`),
 	}
 	for range importRandomCases(5000) {
 		data := append([]byte(nil), seeds[random.Intn(len(seeds))]...)
@@ -211,7 +211,7 @@ func TestDeliveryStandInAnswersAsTheWholeBodyDoes(t *testing.T) {
 		if err := endpoint.BindRequest(r, &in, []byte(body)); err != nil {
 			return refusalText(err), "", "", ""
 		}
-		return "", in.Body.RawMessage, in.Body.BodyText, in.Body.BodyHTML
+		return "", string(in.Body.RawMessage), in.Body.BodyText, in.Body.BodyHTML
 	}
 	for _, route := range []string{"gateway", "restmail"} {
 		for _, contentType := range []string{"application/json", "", "text/plain"} {

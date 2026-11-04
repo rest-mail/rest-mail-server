@@ -1,6 +1,10 @@
 package models
 
-import "time"
+import (
+	"time"
+
+	"gorm.io/gorm"
+)
 
 // CalendarEventVersion tracks the lifecycle of calendar events by UID.
 // Each incoming calendar message (REQUEST, CANCEL, REPLY) creates a version
@@ -26,4 +30,12 @@ type CalendarEventVersion struct {
 	// `foreignKey:MessageID` onto messages.message_id (the RFC 5322 Message-ID
 	// string) during AutoMigrate, rewriting it to bigint. MessageID above is a
 	// plain indexed FK column to messages.id.
+}
+
+// BeforeCreate keeps what was read from the event readable: it may be in any charset.
+func (v *CalendarEventVersion) BeforeCreate(*gorm.DB) error {
+	for _, text := range []*string{&v.UID, &v.Method, &v.Status, &v.Summary, &v.Organizer} {
+		*text = ReadableText(*text)
+	}
+	return nil
 }

@@ -23,6 +23,7 @@ import (
 
 	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
 	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
 )
 
 // An import's request and the message in it go to files, and are read from there (#1437), as a
@@ -207,10 +208,8 @@ func (s *importSource) columns() (string, []byte, error) {
 	if err != nil {
 		return "", nil, err
 	}
-	if utf8.ValidString(text) && !strings.ContainsRune(text, 0) {
-		return text, nil, nil
-	}
-	return "", []byte(text), nil
+	column, octets := models.SourceColumns(text)
+	return column, octets, nil
 }
 
 // text reads the whole file into memory, for the step that can't do without it.
@@ -278,8 +277,6 @@ func declaredFieldsOf(body any) map[string]bool {
 type spooledBodySpec struct {
 	// source receives raw_message.
 	source *importSource
-	// rawIsText says raw_message is a JSON string holding the message itself, not base64.
-	rawIsText bool
 	// declared are the fields the binder reads as they came.
 	declared map[string]bool
 	// texts are string fields that can be as large as the message. A string in one goes to a file
@@ -385,12 +382,6 @@ func (s *jsonScanner) importFields(spec *spooledBodySpec) (importBodyScan, error
 			// Sent twice, the last one wins, and every earlier one can still be refused, in
 			// words that name a place in it. Only the binder on the whole request can say.
 			return importBodyScan{bindWhole: true}, nil
-		case name == importRawField && char == '"' && spec.rawIsText:
-			seenRaw, scanned.streamed = true, true
-			if err := s.textRest(source.write); err != nil {
-				return scanned, err
-			}
-			standIn.WriteString(importTextStandIn(source))
 		case isText && char == '"':
 			seenText[name] = true
 			field, err := newSpooledText()

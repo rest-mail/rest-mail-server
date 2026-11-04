@@ -66,7 +66,7 @@ func TestRestmailDeliver_EmptyRecipientSources(t *testing.T) {
 	for _, body := range []string{
 		`{}`, `{"to":[]}`, `{"recipients":[]}`, `{"to":null,"recipients":null}`,
 		`{"to":[],"recipients":[],"raw_message":""}`,
-		`{"raw_message":"From: sender@external.test\r\nSubject: No recipients\r\n\r\nhello"}`,
+		`{"raw_message":"RnJvbTogc2VuZGVyQGV4dGVybmFsLnRlc3QNClN1YmplY3Q6IE5vIHJlY2lwaWVudHMNCg0KaGVsbG8="}`,
 	} {
 		t.Run(body, func(t *testing.T) {
 			rr := httptest.NewRecorder()
@@ -105,11 +105,11 @@ func TestRestmailDeliver_RecipientSources(t *testing.T) {
 		{"recipients", map[string]interface{}{"recipients": []string{mailbox.Address}}},
 		{"empty_to", map[string]interface{}{"to": []string{}, "recipients": []string{mailbox.Address}}},
 		{"null_to", map[string]interface{}{"to": nil, "recipients": []string{mailbox.Address}}},
-		{"raw", map[string]interface{}{"raw_message": raw}},
-		{"empty_lists_raw", map[string]interface{}{"to": []string{}, "recipients": []string{}, "raw_message": raw}},
-		{"null_lists_raw", map[string]interface{}{"to": nil, "recipients": nil, "raw_message": raw}},
+		{"raw", map[string]interface{}{"raw_message": []byte(raw)}},
+		{"empty_lists_raw", map[string]interface{}{"to": []string{}, "recipients": []string{}, "raw_message": []byte(raw)}},
+		{"null_lists_raw", map[string]interface{}{"to": nil, "recipients": nil, "raw_message": []byte(raw)}},
 		{"to_precedes_alias", map[string]interface{}{"to": []string{mailbox.Address}, "recipients": []string{"missing@recipient-contract.test"}}},
-		{"alias_precedes_raw", map[string]interface{}{"recipients": []string{mailbox.Address}, "raw_message": "To: missing@recipient-contract.test\r\n\r\nhello"}},
+		{"alias_precedes_raw", map[string]interface{}{"recipients": []string{mailbox.Address}, "raw_message": []byte("To: missing@recipient-contract.test\r\n\r\nhello")}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			body := map[string]interface{}{"from": "sender@external.test", "date": "Sat, 17 Oct 2026 12:00:00 +0000", "subject": "Recipient source"}

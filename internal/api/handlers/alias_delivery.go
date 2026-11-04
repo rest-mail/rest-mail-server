@@ -15,7 +15,7 @@ import (
 	"gorm.io/gorm"
 )
 
-func (h *RestmailHandler) deliverResolvedRecipients(ctx context.Context, req restmailDeliverBody, sender, clientIP string, accepted, refused []string, recipients map[string]repositories.Recipient) (RestmailDelivery, error) {
+func (h *RestmailHandler) deliverResolvedRecipients(ctx context.Context, req restmailDeliverBody, source, sender, clientIP string, accepted, refused []string, recipients map[string]repositories.Recipient) (RestmailDelivery, error) {
 	result := RestmailDelivery{Delivered: []string{}, Failed: refused}
 	var lastError error
 	deferred := false
@@ -25,7 +25,7 @@ func (h *RestmailHandler) deliverResolvedRecipients(ctx context.Context, req res
 		_, err := h.localDelivery.deliverToRecipient(ctx, recipient, localDeliveryParams{
 			Mailbox: recipient.Mailbox, Sender: sender, RecipientsTo: to, Subject: req.Subject,
 			BodyText: req.BodyText, BodyHTML: req.BodyHTML, MessageID: req.MessageID,
-			InReplyTo: req.InReplyTo, References: req.References, RawMessage: req.RawMessage, ClientIP: clientIP,
+			InReplyTo: req.InReplyTo, References: req.References, RawMessage: source, ClientIP: clientIP,
 		})
 		if err != nil {
 			lastError = err
