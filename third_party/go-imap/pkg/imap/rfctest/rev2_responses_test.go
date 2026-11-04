@@ -74,21 +74,16 @@ func TestNoExpungeWhileLiteralPending(t *testing.T) {
 func TestBodyStructureContinuedParameters(t *testing.T) {
 	for _, tc := range []struct {
 		segments, value string
-		literals        []string
 	}{
-		{`*0="quarter"; name*1="ly report"`, `"quarterly report"`, nil},
-		{`*0*=utf-8''caf; name*1*=%C3%A9`, `{5}`, []string{"café", "café"}},
+		{`*0="quarter"; name*1="ly report"`, `"quarterly report"`},
+		{`*0*=utf-8''caf; name*1*=%C3%A9`, `"=?UTF-8?Q?caf=C3=A9?="`},
 	} {
 		media := "Content-Type: application/octet-stream; name" + tc.segments + "\r\n\r\nx"
 		base := `("APPLICATION" "OCTET-STREAM" ("NAME" ` + tc.value + `) NIL NIL "7BIT" 1`
-		structureResponse(t, media, base+")", base+" NIL NIL NIL NIL)", tc.literals...)
+		structureResponse(t, media, base+")", base+" NIL NIL NIL NIL)")
 		segments := strings.ReplaceAll(tc.segments, "name", "filename")
 		disposition := "Content-Type: application/octet-stream\r\nContent-Disposition: attachment; filename" + segments + "\r\n\r\nx"
 		base = `("APPLICATION" "OCTET-STREAM" NIL NIL NIL "7BIT" 1`
-		var literals []string
-		if len(tc.literals) > 0 {
-			literals = []string{"café"}
-		}
-		structureResponse(t, disposition, base+")", base+` NIL ("ATTACHMENT" ("FILENAME" `+tc.value+`)) NIL NIL)`, literals...)
+		structureResponse(t, disposition, base+")", base+` NIL ("ATTACHMENT" ("FILENAME" `+tc.value+`)) NIL NIL)`)
 	}
 }

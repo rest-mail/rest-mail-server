@@ -94,8 +94,8 @@ func TestMessageStructureScalarStrings(t *testing.T) {
 		{"quoted", "Subject: a \"quote\" and \\slash\r\n", `(NIL "a \"quote\" and \\slash" NIL NIL NIL NIL NIL NIL NIL NIL)`, nil},
 		{"encoded-word", "Subject: =?UTF-8?Q?caf=C3=A9?=\r\n", `(NIL "=?UTF-8?Q?caf=C3=A9?=" NIL NIL NIL NIL NIL NIL NIL NIL)`, nil},
 		{"address literals", "From: =?UTF-8?Q?J=C3=B6rg?= <j@example.com>\r\nCc: =?UTF-8?Q?a=0D=0Ab?= <x@example.com>\r\n",
-			`(NIL NIL (({5} NIL "j" "example.com")) (({5} NIL "j" "example.com")) (({5} NIL "j" "example.com")) NIL (({4} NIL "x" "example.com")) NIL NIL NIL)`,
-			[]string{"Jörg", "Jörg", "Jörg", "a\r\nb"}},
+			`(NIL NIL (("=?UTF-8?Q?J=C3=B6rg?=" NIL "j" "example.com")) (("=?UTF-8?Q?J=C3=B6rg?=" NIL "j" "example.com")) (("=?UTF-8?Q?J=C3=B6rg?=" NIL "j" "example.com")) NIL (({4} NIL "x" "example.com")) NIL NIL NIL)`,
+			[]string{"a\r\nb"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			lines := 3

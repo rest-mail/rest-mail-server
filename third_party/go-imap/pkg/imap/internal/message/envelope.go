@@ -14,7 +14,11 @@ import (
 // headers (RFC 3501 §7.4.2). Missing fields are NIL; only Sender and Reply-To
 // default to From. INTERNALDATE and cached summary fields are not header values.
 // The legacy Message fallback is retained only when no header block can be read.
-func BuildEnvelope(msg imap.Message, raw string, rawOK bool) string {
+// raw is the message as FETCH sends it, whose headers WireForm has already made
+// 7-bit where the session requires it, so an 8-bit mailbox reads NIL without UTF-8:
+// an encoded word may not stand in an addr-spec (RFC 2047 §5). sessionUTF8 is
+// whether the session enabled UTF8=ACCEPT; see metadataText.
+func BuildEnvelope(msg imap.Message, raw string, rawOK, sessionUTF8 bool) string {
 	var hdr mail.Header
 	if rawOK {
 		// A malformed raw header block has no trustworthy envelope fields.
@@ -25,20 +29,20 @@ func BuildEnvelope(msg imap.Message, raw string, rawOK bool) string {
 	}
 
 	dateField := wire.QuoteString(msg.Date.Format("Mon, 02 Jan 2006 15:04:05 -0700"))
-	subject := wire.QuoteString(msg.Subject)
-	fromFallback := buildAddress(msg.From.Name, msg.From.Email)
-	toFallback := buildAddressList(msg.To)
+	subject := wire.QuoteString(metadataText(msg.Subject, sessionUTF8))
+	fromFallback := buildAddress(msg.From.Name, msg.From.Email, sessionUTF8)
+	toFallback := buildAddressList(msg.To, sessionUTF8)
 	if hdr != nil {
 		dateField = envelopeHeaderString(hdr, "Date")
 		subject = envelopeHeaderString(hdr, "Subject")
 		fromFallback, toFallback = "NIL", "NIL"
 	}
-	from := headerAddressList(hdr, "From", fromFallback)
-	sender := headerAddressList(hdr, "Sender", from)
-	replyTo := headerAddressList(hdr, "Reply-To", from)
-	to := headerAddressList(hdr, "To", toFallback)
-	cc := headerAddressList(hdr, "Cc", "NIL")
-	bcc := headerAddressList(hdr, "Bcc", "NIL")
+	from := headerAddressList(hdr, "From", fromFallback, sessionUTF8)
+	sender := headerAddressList(hdr, "Sender", from, sessionUTF8)
+	replyTo := headerAddressList(hdr, "Reply-To", from, sessionUTF8)
+	to := headerAddressList(hdr, "To", toFallback, sessionUTF8)
+	cc := headerAddressList(hdr, "Cc", "NIL", sessionUTF8)
+	bcc := headerAddressList(hdr, "Bcc", "NIL", sessionUTF8)
 	inReplyTo := envelopeHeaderString(hdr, "In-Reply-To")
 	messageID := envelopeHeaderString(hdr, "Message-Id")
 
@@ -62,7 +66,7 @@ func envelopeHeaderString(hdr mail.Header, name string) string {
 // raw message was unavailable), and also when the header is present but parses to
 // no address. Callers choose the fallback: normally NIL, or From for the Sender
 // and Reply-To defaults.
-func headerAddressList(hdr mail.Header, name, fallback string) string {
+func headerAddressList(hdr mail.Header, name, fallback string, sessionUTF8 bool) string {
 	if hdr == nil {
 		return fallback
 	}
@@ -70,7 +74,7 @@ func headerAddressList(hdr mail.Header, name, fallback string) string {
 	if v == "" {
 		return fallback
 	}
-	if list := buildAddressList(v); list != "NIL" {
+	if list := buildAddressList(v, sessionUTF8); list != "NIL" {
 		return list
 	}
 	return fallback
@@ -88,25 +92,26 @@ func headerValue(hdr mail.Header, name string) string {
 // addressPart constructs a single IMAP address structure "(name NIL mailbox
 // host)" — personal name, source-route (always NIL), mailbox name and host name
 // (RFC 3501 §7.4.2). It is the inner element of the parenthesized address lists
-// that make up the from/sender/reply-to/to/cc/bcc envelope fields.
-func addressPart(name, email string) string {
+// that make up the from/sender/reply-to/to/cc/bcc envelope fields. The name has
+// been decoded, so it can hold 8-bit text; see metadataText.
+func addressPart(name, email string, sessionUTF8 bool) string {
 	user, host, _ := strings.Cut(email, "@")
-	return mailboxPart(name, user, host)
+	return mailboxPart(name, user, host, sessionUTF8)
 }
 
 // mailboxPart is addressPart for a mailbox whose local part and domain are
 // already separated.
-func mailboxPart(name, local, domain string) string {
-	return fmt.Sprintf("(%s NIL %s %s)", wire.QuoteString(name), wire.QuoteString(local), wire.QuoteString(domain))
+func mailboxPart(name, local, domain string, sessionUTF8 bool) string {
+	return fmt.Sprintf("(%s NIL %s %s)", wire.QuoteString(metadataText(name, sessionUTF8)), wire.QuoteString(local), wire.QuoteString(domain))
 }
 
 // buildAddress wraps a single address in the parenthesized address-list form an
 // envelope field takes, e.g. ((name NIL mailbox host)). An empty address is NIL.
-func buildAddress(name, email string) string {
+func buildAddress(name, email string, sessionUTF8 bool) string {
 	if email == "" {
 		return "NIL"
 	}
-	return "(" + addressPart(name, email) + ")"
+	return "(" + addressPart(name, email, sessionUTF8) + ")"
 }
 
 // buildAddressList parses an RFC 5322 address-list header value (e.g.
@@ -115,14 +120,14 @@ func buildAddress(name, email string) string {
 // group structure, or a list with no readable mailbox yields NIL, matching the
 // RFC's treatment of an absent header. A mailbox that cannot be read is left
 // out without losing the others in the list.
-func buildAddressList(list string) string {
+func buildAddressList(list string, sessionUTF8 bool) string {
 	list = strings.TrimSpace(list)
 	if list == "" {
 		return "NIL"
 	}
 	var b strings.Builder
 	b.WriteByte('(')
-	if !appendAddressGroups(&b, list) || b.Len() == 1 {
+	if !appendAddressGroups(&b, list, sessionUTF8) || b.Len() == 1 {
 		return "NIL"
 	}
 	b.WriteByte(')')
@@ -134,16 +139,16 @@ func buildAddressList(list string) string {
 // 5322 §4 has a reader accept, and RFC 5321 address literals that net/mail
 // tests as bare IPs, are read by parseObsMailbox. A blank member (obs-mbox-list
 // allows empty elements) writes nothing, as does a mailbox neither can read.
-func appendMailbox(b *strings.Builder, value string) {
+func appendMailbox(b *strings.Builder, value string, sessionUTF8 bool) {
 	if strings.TrimSpace(stripComments(value)) == "" {
 		return
 	}
 	if a, err := mail.ParseAddress(value); err == nil {
-		b.WriteString(addressPart(a.Name, a.Address))
+		b.WriteString(addressPart(a.Name, a.Address, sessionUTF8))
 		return
 	}
 	if name, local, domain, ok := parseObsMailbox(value); ok {
-		b.WriteString(mailboxPart(name, local, domain))
+		b.WriteString(mailboxPart(name, local, domain, sessionUTF8))
 	}
 }
 
@@ -153,7 +158,7 @@ func appendMailbox(b *strings.Builder, value string) {
 // are data. It reports false for a malformed group structure — a nested or
 // unterminated group, a group end outside a group, or text after a group end —
 // so no unmatched group sentinel is written.
-func appendAddressGroups(b *strings.Builder, list string) bool {
+func appendAddressGroups(b *strings.Builder, list string, sessionUTF8 bool) bool {
 	inGroup, closed := false, false
 	start, comments := 0, 0
 	quoted, angle, domain, escaped := false, false, false, false
@@ -163,7 +168,7 @@ func appendAddressGroups(b *strings.Builder, list string) bool {
 			if inGroup || (closed && strings.TrimSpace(stripComments(list[start:])) != "") {
 				return false
 			}
-			appendMailbox(b, list[start:])
+			appendMailbox(b, list[start:], sessionUTF8)
 			break
 		}
 		c := list[i]
@@ -227,15 +232,15 @@ func appendAddressGroups(b *strings.Builder, list string) bool {
 				if err != nil {
 					return false
 				}
-				fmt.Fprintf(b, "(NIL NIL %s NIL)", wire.EncodeMailboxName(name.Name))
+				fmt.Fprintf(b, "(NIL NIL %s NIL)", wire.EncodeMailboxName(metadataText(name.Name, sessionUTF8)))
 				inGroup = true
 			case ',':
-				appendMailbox(b, member)
+				appendMailbox(b, member, sessionUTF8)
 			case ';':
 				if !inGroup {
 					return false
 				}
-				appendMailbox(b, member)
+				appendMailbox(b, member, sessionUTF8)
 				b.WriteString("(NIL NIL NIL NIL)")
 				inGroup, closed = false, true
 			}
@@ -431,7 +436,7 @@ func decodePhrase(phrase string) string {
 // encapsulated message has no such model, so every field comes from the raw header
 // block. A header that cannot be parsed yields ten NIL fields, keeping the
 // required envelope structure well-formed.
-func buildEncapsulatedEnvelope(raw string) string {
+func buildEncapsulatedEnvelope(raw string, sessionUTF8 bool) string {
 	m, err := mail.ReadMessage(strings.NewReader(raw))
 	if err != nil {
 		return "(NIL NIL NIL NIL NIL NIL NIL NIL NIL NIL)"
@@ -443,12 +448,12 @@ func buildEncapsulatedEnvelope(raw string) string {
 	// frame literal-only octets rather than writing them in quoted strings.
 	dateField := envelopeHeaderString(hdr, "Date")
 	subject := envelopeHeaderString(hdr, "Subject")
-	from := headerAddressList(hdr, "From", "NIL")
-	sender := headerAddressList(hdr, "Sender", from)
-	replyTo := headerAddressList(hdr, "Reply-To", from)
-	to := headerAddressList(hdr, "To", "NIL")
-	cc := headerAddressList(hdr, "Cc", "NIL")
-	bcc := headerAddressList(hdr, "Bcc", "NIL")
+	from := headerAddressList(hdr, "From", "NIL", sessionUTF8)
+	sender := headerAddressList(hdr, "Sender", from, sessionUTF8)
+	replyTo := headerAddressList(hdr, "Reply-To", from, sessionUTF8)
+	to := headerAddressList(hdr, "To", "NIL", sessionUTF8)
+	cc := headerAddressList(hdr, "Cc", "NIL", sessionUTF8)
+	bcc := headerAddressList(hdr, "Bcc", "NIL", sessionUTF8)
 	inReplyTo := envelopeHeaderString(hdr, "In-Reply-To")
 	messageID := envelopeHeaderString(hdr, "Message-Id")
 

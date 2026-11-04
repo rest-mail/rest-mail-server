@@ -130,6 +130,19 @@ func wireLeaf(node mimeNode, header, mt string, params map[string]string, sessio
 	return setHeaderField(header, "Content-Transfer-Encoding", "base64") + base64Lines(node.body)
 }
 
+// metadataText is an ENVELOPE or BODYSTRUCTURE string a decoder produced: a name
+// from an encoded word, or a parameter from RFC 2231. Those strings have nowhere
+// to name a charset (RFC 3501 §4.3.1), so 8-bit text goes out as encoded words,
+// separated by a space so the string needs no literal. After UTF8=ACCEPT (RFC 6855)
+// valid UTF-8 is the agreed charset and stays. A NUL stays too, so FETCH refuses
+// the message rather than hiding it.
+func metadataText(text string, sessionUTF8 bool) string {
+	if !has8bit(text) || strings.IndexByte(text, 0) >= 0 || (sessionUTF8 && utf8.ValidString(text)) {
+		return text
+	}
+	return strings.Join(encodedWords(text), " ")
+}
+
 // escape8bit spells each 8-bit octet =XX and leaves every other octet alone.
 func escape8bit(s string) string {
 	if !has8bit(s) {
