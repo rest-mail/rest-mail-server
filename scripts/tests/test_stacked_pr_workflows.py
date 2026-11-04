@@ -4,7 +4,6 @@ import json
 import os
 from pathlib import Path
 import re
-import shutil
 import subprocess
 import tempfile
 import textwrap
@@ -53,7 +52,7 @@ def evaluate(expression, values):
             value = value.get(part, "") if isinstance(value, dict) else ""
         return repr(value)
 
-    expression = re.sub(r"\b(?:github|needs)(?:\.[\w-]+)+", lookup, expression)
+    expression = re.sub(r"\b(?:github|needs|inputs)(?:\.[\w-]+)+", lookup, expression)
     expression = expression.replace("&&", " and ").replace("||", " or ")
     return eval(expression, {"__builtins__": {}}, {
         "always": lambda: True,
@@ -80,7 +79,7 @@ class StackedPRWorkflows(unittest.TestCase):
                 continue
             cls.workflows[path.name] = source
             cls.jobs[path.name] = blocks(blocks(source, 0)["jobs"], 2)
-        cls.full = {name: source for name, source in cls.workflows.items() if name != "ci-labels.yml"}
+        cls.full = {name: source for name, source in cls.workflows.items() if name not in {"ci-labels.yml", "ci-retarget.yml"}}
 
     def test_every_pr_workflow_is_covered_and_keeps_its_existing_events(self):
         self.assertEqual(set(self.full), {
@@ -90,7 +89,9 @@ class StackedPRWorkflows(unittest.TestCase):
             with self.subTest(workflow=name):
                 trigger = blocks(blocks(source, 0)["on"], 2)["pull_request"]
                 types = set(field(trigger, "types", 4).strip("[]").split(", "))
-                expected = DEFAULT_TYPES | {"edited"}
+                expected = set(DEFAULT_TYPES)
+                if name not in REQUIRED:
+                    expected.add("edited")
                 if name == "ci.yml":
                     expected.add("ready_for_review")
                 self.assertEqual(types, expected)
@@ -138,8 +139,7 @@ class StackedPRWorkflows(unittest.TestCase):
             self.assertIn("always()", field(job, "if", 4))
 
     def test_ignored_edits_cannot_cancel_running_or_pending_work(self):
-        expected = {"ci.yml": "ci-refs/pull/42/merge", "e2e.yml": "e2e-refs/pull/42/merge",
-                    "api-gaps.yml": "api-gap-issues-42", "email-explained.yml": "email-explained-publish"}
+        expected = {"api-gaps.yml": "api-gap-issues-42", "email-explained.yml": "email-explained-publish"}
         for name, active in expected.items():
             expression = field(blocks(self.workflows[name], 0)["concurrency"], "group", 2)
             with self.subTest(workflow=name):
@@ -204,17 +204,97 @@ class StackedPRWorkflows(unittest.TestCase):
             self.assertFalse(evaluate(expression, context(base="parent", label=label)))
             self.assertEqual(bool(evaluate(expression, context(label=label))), label in {"contract-change", "permission-change"})
 
-    @unittest.skipUnless(shutil.which("jq"), "jq is needed to exercise gh's run selection")
-    def test_label_helper_ignores_metadata_receipts_even_if_they_conclude_success(self):
+    def test_an_edit_starts_no_run_of_a_workflow_that_owns_a_required_check(self):
+        # A run on the head, even a skipped one with no required name in it, leaves GitHub
+        # saying the required check is expected: enqueuePullRequest refused #1692 and #1900
+        # with both checks green in the older runs (#1876). So only a new event may start one.
+        for workflow in REQUIRED:
+            with self.subTest(workflow=workflow):
+                source = self.workflows[workflow]
+                trigger = blocks(blocks(source, 0)["on"], 2)["pull_request"]
+                self.assertNotIn("edited", field(trigger, "types", 4))
+                self.assertNotIn("run-name", blocks(source, 0))
+                self.assertNotIn("github.event.action", field(blocks(source, 0)["concurrency"], "group", 2))
+
+    def test_no_other_workflow_can_report_a_required_check(self):
+        required = {name for _, name in REQUIRED.values()}
+        for workflow, jobs in self.jobs.items():
+            if workflow in REQUIRED:
+                continue
+            for job_name, job in jobs.items():
+                with self.subTest(workflow=workflow, job=job_name):
+                    self.assertNotIn(field(job, "name", 4), required)
+
+    def test_a_skipped_gate_cannot_read_as_the_required_check(self):
+        # GitHub reports a skipped job's name unevaluated (#1895's stack gates, #1900's edit
+        # gates). A plain name would report as skipped, which a required check accepts.
+        for workflow, (job_name, required_name) in REQUIRED.items():
+            with self.subTest(workflow=workflow):
+                name = field(self.jobs[workflow][job_name], "name", 4)
+                self.assertNotEqual(name, required_name)
+                self.assertRegex(name, r"^\$\{\{ .*github\..* \}\}$")
+
+    def test_retarget_relay_runs_only_for_a_base_change_to_main(self):
+        expression = field(self.jobs["ci-retarget.yml"]["dispatch-required-checks"], "if", 4)
+        self.assertTrue(evaluate(expression, context(action="edited", changes={"base": {"ref": {"from": "feature/parent"}}})))
+        self.assertTrue(evaluate(expression, context(action="edited", changes={"base": {"ref": {"from": "feature/parent"}}, "title": {"from": "old"}})))
+        self.assertFalse(evaluate(expression, context(action="edited", base="feature/other", changes={"base": {"ref": {"from": "feature/parent"}}})))
+        for changes in ({}, {"title": {"from": "old"}}, {"body": {"from": "old"}}, {"base": {"sha": {"from": "old"}}}):
+            with self.subTest(changes=changes):
+                self.assertFalse(evaluate(expression, context(action="edited", changes=changes)))
+        trigger = blocks(blocks(self.workflows["ci-retarget.yml"], 0)["on"], 2)["pull_request"]
+        self.assertEqual(field(trigger, "types", 4), "[edited]")
+
+    def run_relay(self, gh_exit):
+        script = shell_of(self.jobs["ci-retarget.yml"]["dispatch-required-checks"], "Dispatch CI and E2E for the pull request's head")
+        with tempfile.TemporaryDirectory() as directory:
+            log = Path(directory) / "calls"
+            gh = Path(directory) / "gh"
+            gh.write_text(f'#!/bin/sh\necho "$*" >> "{log}"\nexit {gh_exit}\n')
+            gh.chmod(0o755)
+            env = dict(os.environ, PATH=f"{directory}:{os.environ['PATH']}", GITHUB_REPOSITORY="rest-mail/rest-mail-server",
+                       HEAD_REF="feature/layer", PR="42", BASE_SHA="abc123")
+            result = subprocess.run(["bash", "-c", script], env=env, capture_output=True, text=True, timeout=5)
+            return result.returncode, log.read_text().splitlines()
+
+    def test_retarget_relay_dispatches_both_required_workflows_for_the_head(self):
+        code, calls = self.run_relay(0)
+        self.assertEqual(code, 0)
+        self.assertEqual(calls, [
+            "workflow run ci.yml --repo rest-mail/rest-mail-server --ref feature/layer -f pull-request=42 -f base-sha=abc123",
+            "workflow run e2e.yml --repo rest-mail/rest-mail-server --ref feature/layer",
+        ])
+        dispatch = blocks(blocks(self.workflows["ci.yml"], 0)["on"], 2)["workflow_dispatch"]
+        for name in ("pull-request", "base-sha"):
+            self.assertIn(f"      {name}:", dispatch)
+
+    def test_retarget_relay_fails_when_github_refuses_the_dispatch(self):
+        code, calls = self.run_relay(1)
+        self.assertEqual(code, 1)
+        self.assertEqual(len(calls), 1)
+
+    def test_a_retarget_dispatch_still_runs_the_contract_gate(self):
+        job = self.jobs["ci.yml"]["contract-diff"]
+        expression = field(job, "if", 4)
+        dispatch = context(event="workflow_dispatch")
+        dispatch["inputs"] = {"pull-request": "42", "base-sha": "abc123"}
+        self.assertTrue(evaluate(expression, dispatch))
+        # The Vertrag bump dispatches with no pull request: there is nothing to compare.
+        self.assertFalse(evaluate(expression, context(event="workflow_dispatch")))
+        queue = context(event="merge_group")
+        queue["inputs"] = {"pull-request": "42"}
+        self.assertFalse(evaluate(expression, queue))
+        for expected in ("github.event.pull_request.head.sha || github.sha",
+                         "github.event.pull_request.base.sha || inputs.base-sha",
+                         "github.event.pull_request.number || inputs.pull-request"):
+            self.assertIn(expected, job)
+
+    def test_label_helper_reruns_the_newest_ci_run_of_any_event(self):
+        # After a retarget the newest run on the head was dispatched, not a pull_request run.
         script = shell_of(self.jobs["ci-labels.yml"]["rerun-contract-gate"], "Re-run the contract gate once the newest CI run is done")
-        query = re.search(r"--jq '([^']+)'", script.split("gh run list", 1)[1])[1]
-        title = evaluate(field(self.workflows["ci.yml"], "run-name", 0), context(action="edited"))
-        runs = [{"databaseId": 102, "status": "completed", "conclusion": "success", "displayTitle": title},
-                {"databaseId": 101, "status": "completed", "displayTitle": "Real CI"}]
-        for candidates, expected in ((runs, "101 completed"), (runs[:1], ""), ([], "")):
-            with self.subTest(candidates=candidates):
-                result = subprocess.run(["jq", "-r", query], input=json.dumps(candidates), capture_output=True, text=True, check=True, timeout=5)
-                self.assertEqual(result.stdout.strip(), expected)
+        lookup = script.split("gh run list", 1)[1].split("--jq", 1)[0]
+        self.assertNotIn("--event", lookup)
+        self.assertIn("--limit 1", lookup)
 
 
 if __name__ == "__main__":

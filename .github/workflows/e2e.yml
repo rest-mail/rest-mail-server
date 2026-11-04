@@ -19,15 +19,17 @@ name: E2E
 #                  reports success when the heavy job passed OR was legitimately
 #                  skipped for a docs-only change. Because this job always posts,
 #                  the required context is satisfied on main PRs — code or docs.
-# Stacked PRs report skipped checks; retargeting to main runs the usual checks.
-# Metadata-only edits allocate no runners and cannot replace a required verdict.
+# Stacked PRs report skipped checks; ci-retarget.yml dispatches this workflow when one
+# is retargeted to main. There is no `edited` trigger: every edit starts a run, and from
+# then on GitHub says the required check is expected, whatever an older run on that head
+# reported (#1876).
 #   * `e2e-proofs` — after the heavy suite, every example that needs setup is proven
 #                  by an in-process test or a live runner; the gate needs it too.
 on:
   push:
     branches: [main]
   pull_request:
-    types: [opened, synchronize, reopened, edited]
+    types: [opened, synchronize, reopened]
   workflow_dispatch:
     inputs:
       description-mode:
@@ -41,7 +43,7 @@ on:
 
 # e2e is expensive — supersede in-flight runs for the same ref.
 concurrency:
-  group: ${{ github.event_name == 'pull_request' && github.event.action == 'edited' && github.event.changes.base.ref.from == '' && format('e2e-ignored-{0}', github.run_id) || format('e2e-{0}', github.ref) }}
+  group: e2e-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
