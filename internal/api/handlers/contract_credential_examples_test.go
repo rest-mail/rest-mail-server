@@ -29,7 +29,7 @@ func TestAppPasswordCreate_ExamplePairs(t *testing.T) {
 		t.Fatalf("createAppPassword pairs = %v, want %v", got, want)
 	}
 	wantRequests := map[string]interface{}{
-		"created":       map[string]interface{}{"name": "iPhone Mail"},
+		"created":       map[string]interface{}{"name": "iPhone Mail", "password": "x"},
 		"name_missing":  map[string]interface{}{},
 		"name_empty":    map[string]interface{}{"name": ""},
 		"name_too_long": map[string]interface{}{"name": strings.Repeat("x", 101)},
