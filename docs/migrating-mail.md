@@ -63,8 +63,9 @@ Keywords are preserved case-insensitively (first spelling retained), with at mos
 100 per message and 255 ASCII bytes per keyword. Each must be an RFC 3501 atom
 without a backslash. Invalid metadata is refused clearly, never silently dropped.
 
-Source hierarchy delimiters are mapped to `/`. Folder mappings are validated
-before any import, and collisions are refused. Non-selectable parents are
+Source hierarchy delimiters are mapped to `/`. Every folder is named before
+any import, and a folder name never stops the import or leaves mail behind: see
+[Folder names that collide or are invalid](#folder-names-that-collide-or-are-invalid). Non-selectable parents are
 skipped; their selectable children are still copied. Empty source folders cannot
 be created by this message-import operation. The same Message-ID in different
 folders remains a separate destination copy, including provider label folders.
@@ -96,9 +97,40 @@ restmail import-maildir --server https://mail.example.com --account-id 12 --path
 
 The source root must contain `cur` and `new`. Both are read; `tmp` is skipped.
 Maildir++ `.Archive.2020` becomes `Archive/2020`, and the root becomes INBOX.
-Folder names and original message octets are preserved. Source symlinks are
+Each `.`-separated level is a [modified UTF-7](https://www.rfc-editor.org/rfc/rfc3501#section-5.1.3)
+name, as Dovecot writes it, and is decoded: `.R&AOk-sum&AOk-.&ZcWITA-` becomes
+`Résumé/旅行`. A level with octets outside US-ASCII cannot be modified UTF-7, so
+it is kept as the UTF-8 name it already is. A level that is neither, such as
+`.Tom & Jerry` (Dovecot writes `Tom & Jerry` as `.Tom &- Jerry`), is still
+imported, under its literal text, and the rename is reported. Original message
+octets are preserved. Source symlinks are
 refused, including symlinked folders, so a source tree cannot silently import
 files outside it.
+
+### Folder names that collide or are invalid
+
+`import-maildir` and `import-imap` bring every message across; a folder name
+never stops the import or skips mail. All source folders are named before the
+first message is sent:
+
+- A name that is not a legal REST Mail folder name is changed as little as
+  possible: invalid UTF-8 and control characters become `�`, `..` becomes
+  `. .`, surrounding spaces are dropped and an overlong name is shortened.
+- When two source folders map to the same name, the one whose own name maps
+  cleanly keeps it, otherwise the first in source order. The other is imported
+  as `<name> (2)`, then `(3)` and so on, skipping any name another source
+  folder already has. `.Tom &- Jerry` becomes `Tom & Jerry` and `.Tom & Jerry`
+  becomes `Tom & Jerry (2)`.
+
+Each rename is a line on standard output (`Source folder ".Tom & Jerry" is
+imported as "Tom & Jerry (2)": …`), or an entry of `renamed_folders` (`source`,
+`folder`, `reason`) in the `--json` summary. The names depend only on the
+source, so a rerun maps every folder the same way and resumes into it. Source
+folders are imported into destination folders of the same name that already
+exist, such as `INBOX`, `Sent` or a folder an earlier run created, alongside
+the mail already there. `import-mbox --folder` writes to the folder you name
+and refuses a name that is not legal. Outside import, creating a folder that
+already exists is an error.
 
 Supported filename flags are `S` (Seen), `R` (Answered), `F` (Flagged),
 `D` (Draft) and `T` (Deleted). Lowercase keyword letters `a`–`z` are restored
@@ -126,13 +158,18 @@ INTERNALDATE; timestamps without a zone use UTC, as in [RFC4155's default format
 
 The importer reads Seen from `Status: R`, Answered, Flagged, Draft and Deleted
 from `X-Status: AFTD`, and keywords from every `X-Keywords` header, following [Dovecot's mbox metadata](https://doc.dovecot.org/main/core/config/mailbox_formats/mbox.html#dovecot-s-metadata).
-Metadata-only pseudo-messages and Content-Length-framed variants are refused. Source headers remain in the imported raw message. Export
-format differences are not resolved by deleting or rewriting source data.
+Metadata-only pseudo-messages and Content-Length-framed variants are refused.
+Once read into flags, Dovecot's metadata fields (`Status`, `X-Status`,
+`X-Keywords`, `X-UID` and `X-IMAPbase`) are removed from the stored message, as
+Dovecot itself leaves them out when it serves the message over IMAP. Every other
+octet is kept, so a flag-only edit on the source does not make the message
+different, and the same message imported from mbox or over IMAP is the same
+message. Export format differences are not resolved by deleting or rewriting
+source data.
 
 Every occurrence of source metadata is checked. Supported flags across repeated
 `Status` and `X-Status` headers are combined; a later header cannot hide invalid
-flags, keywords, pseudo-message metadata or Content-Length framing. These checks
-leave the original headers intact.
+flags, keywords, pseudo-message metadata or Content-Length framing.
 
 ## Limits, reruns and cutover
 
@@ -153,12 +190,17 @@ nonzero and reports how many imports and skips completed. Earlier successful
 imports remain stored. Fix the reported problem and rerun the same command.
 `--json` writes one summary on success or one error on failure.
 
-The server deduplicates atomically by account, folder and Message-ID. A matching
-copy is skipped, retaining its first imported contents, flags and internal date.
-The same Message-ID in another folder or account is independent. Missing or
-unusable Message-IDs receive a deterministic identity from the complete raw
-message, without inserting that identity into its original headers. Duplicate
-detection does not compare or replace an existing Message-ID's contents.
+The server deduplicates atomically by account, folder, Message-ID and message
+octets. A message already there with the same Message-ID and the same octets is
+skipped, retaining its first imported flags and internal date. The same
+Message-ID with different octets (an edited draft, a reused ID) is stored as
+another message; existing contents are never replaced. Flags are not part of the
+octets: Maildir keeps them in the filename, IMAP apart from the message, and
+mbox metadata fields are removed as described above, so a flag-only edit on the
+source is skipped on a rerun. The same Message-ID in another folder or account
+is independent. Missing or unusable Message-IDs receive a deterministic identity
+from the complete raw message, without inserting that identity into its original
+headers.
 
 Import once while both servers are available, then stop source-side changes for
 the final pass and repeat the import before moving clients. A rerun adds new
@@ -208,7 +250,8 @@ request audit: `GET /api/v1/accounts/{id}/folders`,
 and `GET /api/v1/messages/{id}/raw`. It adds no audit entry of its own.
 
 INBOX becomes the Maildir root and every other folder a Maildir++ folder, `/`
-becoming `.`: `Archive/2020` is `.Archive.2020`. Empty folders get their
+becoming `.` and each level written in modified UTF-7, as Dovecot names them:
+`Archive/2020` is `.Archive.2020` and `Résumé/旅行` is `.R&AOk-sum&AOk-.&ZcWITA-`. Empty folders get their
 directories too, but an import cannot create a folder without messages. A
 folder whose name contains `.` is refused before anything is written, since
 Maildir++ would read it back as a subfolder; rename it first.

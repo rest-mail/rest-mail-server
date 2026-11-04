@@ -27,6 +27,9 @@ type IMAPOptions struct {
 	AccessToken                 string
 	StartTLS                    bool // Require a verified upgrade before any credentials.
 	TLSConfig                   *tls.Config
+	// Renamed, if not nil, hears each source folder imported under another
+	// name than its own, before any message is read.
+	Renamed func(FolderRename)
 }
 
 // IMAP reads all selectable source folders over implicit TLS or an explicitly
@@ -108,7 +111,7 @@ func IMAP(ctx context.Context, options IMAPOptions, maxBytes int64, visit Visit)
 		return errors.New("could not list IMAP source folders")
 	}
 	sort.Slice(folders, func(i, j int) bool { return folders[i].Mailbox < folders[j].Mailbox })
-	destinations := make(map[string]string)
+	var claims []folderClaim
 	for _, folder := range folders {
 		if imapUnselectable(folder.Attrs) {
 			continue
@@ -118,15 +121,17 @@ func IMAP(ctx context.Context, options IMAPOptions, maxBytes int64, visit Visit)
 			name = strings.ReplaceAll(name, string(folder.Delim), "/")
 		}
 		name = rmail.CanonicalFolder(name)
-		if rmail.FolderNameProblem(name) != "" {
-			return errors.New("an IMAP source folder cannot be represented at the destination")
+		reason := ""
+		if problem := rmail.FolderNameProblem(name); problem != "" {
+			name, reason = safeFolder(name), "not a valid folder name ("+problem+")"
 		}
-		if _, exists := destinations[name]; exists {
-			return errors.New("IMAP source folder names collide at the destination")
-		}
-		destinations[name] = folder.Mailbox
+		claims = append(claims, folderClaim{source: folder.Mailbox, name: name, reason: reason})
 	}
-	// Validate all folder mappings before importing anything.
+	// Name every folder before importing anything; names never stop the import.
+	destinations := make(map[string]string, len(claims))
+	for mailbox, name := range planFolders(claims, options.Renamed) {
+		destinations[name] = mailbox
+	}
 	names := make([]string, 0, len(destinations))
 	for name := range destinations {
 		names = append(names, name)

@@ -51,7 +51,7 @@ func TestMaildirPreservesFoldersFlagsDatesAndOctets(t *testing.T) {
 		err := Maildir(context.Background(), root, 1024, func(_ string, message apitypes.ImportMessageBody) error {
 			got[message.Folder] = message
 			return nil
-		})
+		}, nil)
 		if err != nil || len(got) != 2 {
 			t.Fatalf("read: %v, folders=%v", err, got)
 		}
@@ -74,7 +74,7 @@ func TestMaildirRefusesUnsupportedAndUnsafeSources(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(root, "cur", "message:2,"+flag), []byte("Subject: x\n\nx\n"), 0600); err != nil {
 			t.Fatal(err)
 		}
-		if err := Maildir(context.Background(), root, 1024, func(string, apitypes.ImportMessageBody) error { t.Fatal("unsupported flag reached import"); return nil }); err == nil {
+		if err := Maildir(context.Background(), root, 1024, func(string, apitypes.ImportMessageBody) error { t.Fatal("unsupported flag reached import"); return nil }, nil); err == nil {
 			t.Fatalf("silently discarded flag %s", flag)
 		}
 	}
@@ -82,24 +82,24 @@ func TestMaildirRefusesUnsupportedAndUnsafeSources(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "cur", "large"), bytes.Repeat([]byte("x"), 2048), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := Maildir(context.Background(), root, 1024, func(string, apitypes.ImportMessageBody) error { t.Fatal("oversized source reached import"); return nil }); err == nil {
+	if err := Maildir(context.Background(), root, 1024, func(string, apitypes.ImportMessageBody) error { t.Fatal("oversized source reached import"); return nil }, nil); err == nil {
 		t.Fatal("oversized message accepted")
 	}
 	root = sourceMaildir(t)
 	if err := os.Symlink(t.TempDir(), filepath.Join(root, ".External")); err != nil {
 		t.Fatal(err)
 	}
-	if err := Maildir(context.Background(), root, 1024, func(string, apitypes.ImportMessageBody) error { t.Fatal("external source reached import"); return nil }); err == nil {
+	if err := Maildir(context.Background(), root, 1024, func(string, apitypes.ImportMessageBody) error { t.Fatal("external source reached import"); return nil }, nil); err == nil {
 		t.Fatal("source symlink accepted")
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if err := Maildir(ctx, sourceMaildir(t), 1024, func(string, apitypes.ImportMessageBody) error { t.Fatal("canceled import continued"); return nil }); !errors.Is(err, context.Canceled) {
+	if err := Maildir(ctx, sourceMaildir(t), 1024, func(string, apitypes.ImportMessageBody) error { t.Fatal("canceled import continued"); return nil }, nil); !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancellation lost: %v", err)
 	}
 }
 
-func TestMboxPreservesMetadataAndExplicitEscaping(t *testing.T) {
+func TestMboxReadsMetadataAndExplicitEscaping(t *testing.T) {
 	for _, tc := range []struct{ format, expected string }{
 		{"rfc4155", ">From original\n>>From quoted\n"},
 		{"mboxo", "From original\n>>From quoted\n"},
@@ -114,7 +114,7 @@ func TestMboxPreservesMetadataAndExplicitEscaping(t *testing.T) {
 			if err != nil || len(got) != 2 {
 				t.Fatalf("read: %v, messages=%d", err, len(got))
 			}
-			want := "Message-ID: <one@example.test>\nStatus: RO\nX-Status: AFT\nSubject: first\n\n" + tc.expected + "From ordinary body text\n"
+			want := "Message-ID: <one@example.test>\nSubject: first\n\n" + tc.expected + "From ordinary body text\n"
 			if string(got[0].RawMessage) != want || string(got[1].RawMessage) != strings.TrimSuffix(second, "\r\n") {
 				t.Fatalf("source bytes changed: first=%q second=%q", got[0].RawMessage, got[1].RawMessage)
 			}

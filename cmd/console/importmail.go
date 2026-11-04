@@ -39,7 +39,10 @@ Source files are never changed. Raw messages and credentials are never printed.
   --dry-run              validate source only, with no API calls or key required
   --json                 one summary on stdout; one error on stderr
 
-Maildir uses file mtime for INTERNALDATE and reads cur/new plus Maildir++ folders.
+Maildir uses file mtime for INTERNALDATE and reads cur/new plus Maildir++ folders,
+decoding their modified UTF-7 names as Dovecot writes them. A folder name never
+stops the import: an invalid or colliding name is imported under a derived name
+or "<name> (2)", and each rename is reported (renamed_folders in --json).
 Source symlinks, Content-Length-framed mbox and mbox
 pseudo-messages are refused explicitly. Mbox escaping format is never guessed.
 Dry-run does not check server authorization, destination, quota or server limits.
@@ -90,6 +93,13 @@ func runImportMail(ctx context.Context, mode string, args []string, token string
 		}
 	}
 	total, imported, skipped := 0, 0, 0
+	renames := []mailimport.FolderRename{}
+	report := func(rename mailimport.FolderRename) {
+		renames = append(renames, rename)
+		if !o.json {
+			fmt.Fprintf(stdout, "Source folder %q is imported as %q: %s.\n", rename.Source, rename.Folder, rename.Reason)
+		}
+	}
 	visit := func(source string, message apitypes.ImportMessageBody) error {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -120,7 +130,7 @@ func runImportMail(ctx context.Context, mode string, args []string, token string
 	}
 	var err error
 	if mode == "maildir" {
-		err = mailimport.Maildir(ctx, *path, *limit, visit)
+		err = mailimport.Maildir(ctx, *path, *limit, visit, report)
 	} else {
 		var file *os.File
 		file, err = os.Open(*path)
@@ -141,7 +151,7 @@ func runImportMail(ctx context.Context, mode string, args []string, token string
 		return o.fail(exitFailed, "import_failed", fmt.Sprintf("%s (completed %d imports, skipped %d existing copies; rerun to resume)", err, imported, skipped))
 	}
 	if o.json {
-		_ = json.NewEncoder(stdout).Encode(map[string]any{"messages": total, "imported": imported, "skipped": skipped, "dry_run": *dry})
+		_ = json.NewEncoder(stdout).Encode(map[string]any{"messages": total, "imported": imported, "skipped": skipped, "dry_run": *dry, "renamed_folders": renames})
 	} else if *dry {
 		fmt.Fprintf(stdout, "Validated %d source messages; no API calls made.\n", total)
 	} else {

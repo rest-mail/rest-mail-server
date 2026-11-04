@@ -14,7 +14,7 @@ import (
 	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
 )
 
-func TestImportMboxPublicAPIPreservesSourceMetadata(t *testing.T) {
+func TestImportMboxPublicAPISendsSourceMetadataAsFlags(t *testing.T) {
 	raw := []byte("Message-ID: <history@example.test>\nSubject: old\nStatus: RO\nX-Status: AFT\n\n>From escaped body\nbinary\xff\x00\n")
 	source := append([]byte("From old@example.test Thu Jan  2 03:04:05 +0200 2020\n"), raw...)
 	source = append(source, '\n')
@@ -32,7 +32,8 @@ func TestImportMboxPublicAPIPreservesSourceMetadata(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			t.Error(err)
 		}
-		wantRaw := bytes.Replace(raw, []byte("\n>From "), []byte("\nFrom "), 1)
+		// Status and X-Status become flags and leave the message, as Dovecot serves it (#1838).
+		wantRaw := []byte("Message-ID: <history@example.test>\nSubject: old\n\nFrom escaped body\nbinary\xff\x00\n")
 		if !bytes.Equal(body.RawMessage, wantRaw) || body.Folder != "History" || !body.InternalDate.Equal(time.Date(2020, 1, 2, 1, 4, 5, 0, time.UTC)) || !reflect.DeepEqual(body.Flags, []string{`\Seen`, `\Answered`, `\Flagged`, `\Draft`}) {
 			t.Error("mbox source metadata or octets changed")
 		}

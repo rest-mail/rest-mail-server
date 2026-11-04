@@ -127,3 +127,64 @@ func TestImportMboxDryRunAndExplicitFormat(t *testing.T) {
 		t.Fatalf("source changed: %q %v", got, err)
 	}
 }
+
+// #1833 owner decision: folder names never stop or thin an import. A malformed
+// Dovecot name and a collision are imported under derived and numbered names,
+// both reported in the summary and the human output, and every message arrives.
+func TestImportMaildirRenamesFoldersAndImportsEveryMessage(t *testing.T) {
+	root := t.TempDir()
+	directories := []string{".", ".Tom &- Jerry", ".Tom & Jerry", ".Caf&AOk-", ".Café"}
+	for i, directory := range directories {
+		for _, sub := range []string{"cur", "new"} {
+			if err := os.MkdirAll(filepath.Join(root, directory, sub), 0755); err != nil {
+				t.Fatal(err)
+			}
+		}
+		raw := fmt.Sprintf("Message-ID: <%d@example.test>\r\n\r\nbody\r\n", i)
+		if err := os.WriteFile(filepath.Join(root, directory, "cur", "1:2,S"), []byte(raw), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	folders := map[string]int{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var message apitypes.ImportMessageBody
+		if err := json.NewDecoder(r.Body).Decode(&message); err != nil {
+			t.Error(err)
+		}
+		folders[message.Folder]++
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{"data":{"id":%d,"imported":true,"message_id":"<x@example.test>","folder":%q}}`, len(folders), message.Folder)
+	}))
+	defer srv.Close()
+	var out, stderr bytes.Buffer
+	if code := runImportMail(context.Background(), "maildir", []string{"--server", srv.URL, "--account-id", "12", "--path", root, "--json"}, "private-test-key", srv.Client(), &out, &stderr); code != exitOK || stderr.Len() != 0 {
+		t.Fatalf("code %d stderr %q", code, stderr.String())
+	}
+	var summary struct {
+		Messages, Imported int
+		Renamed            []struct{ Source, Folder, Reason string } `json:"renamed_folders"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &summary); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]int{"INBOX": 1, "Tom & Jerry": 1, "Tom & Jerry (2)": 1, "Café": 1, "Café (2)": 1}
+	if summary.Messages != len(directories) || summary.Imported != len(directories) || !reflect.DeepEqual(folders, want) {
+		t.Fatalf("summary %+v folders %v, want %d messages in %v", summary, folders, len(directories), want)
+	}
+	reported := map[string]string{}
+	for _, rename := range summary.Renamed {
+		if rename.Reason == "" {
+			t.Errorf("rename %+v has no reason", rename)
+		}
+		reported[rename.Source] = rename.Folder
+	}
+	if !reflect.DeepEqual(reported, map[string]string{".Tom & Jerry": "Tom & Jerry (2)", ".Café": "Café (2)"}) {
+		t.Fatalf("renames %+v", summary.Renamed)
+	}
+	out.Reset()
+	if code := runImportMail(context.Background(), "maildir", []string{"--path", root, "--account-id", "12", "--dry-run"}, "", nil, &out, &stderr); code != exitOK ||
+		!strings.Contains(out.String(), `Source folder ".Tom & Jerry" is imported as "Tom & Jerry (2)": not valid modified UTF-7`) ||
+		!strings.Contains(out.String(), "Validated 5 source messages") {
+		t.Fatalf("human output %q", out.String())
+	}
+}

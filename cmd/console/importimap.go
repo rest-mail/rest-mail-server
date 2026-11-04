@@ -41,7 +41,8 @@ TLS. The source is examined read-only; BODY.PEEK never marks mail read.
   --json                 one summary on stdout; one error on stderr
 
 All selectable folders, original octets, supported flags and INTERNALDATE are
-copied. Deleted and keyword flags are preserved. Rerun to
+copied. An invalid or colliding folder name is imported under a derived name or
+"<name> (2)" and reported (renamed_folders in --json). Deleted and keyword flags are preserved. Rerun to
 resume: destination account/folder/Message-ID deduplication skips existing mail.
 Later source edits, moves and deletes are not synchronized. Empty source folders
 cannot be created by message import. No device flow or token refresh is performed.
@@ -110,6 +111,13 @@ func runImportIMAPSource(ctx context.Context, args []string, token, password, ac
 		}
 	}
 	total, imported, skipped := 0, 0, 0
+	renames := []mailimport.FolderRename{}
+	report := func(rename mailimport.FolderRename) {
+		renames = append(renames, rename)
+		if !o.json {
+			fmt.Fprintf(stdout, "Source folder %q is imported as %q: %s.\n", rename.Source, rename.Folder, rename.Reason)
+		}
+	}
 	visit := func(source string, message apitypes.ImportMessageBody) error {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -138,7 +146,7 @@ func runImportIMAPSource(ctx context.Context, args []string, token, password, ac
 		}
 		return nil
 	}
-	err = readSource(ctx, mailimport.IMAPOptions{Address: net.JoinHostPort(u.Hostname(), port), Username: *user, Password: password, AccessToken: accessToken, StartTLS: *startTLS}, *limit, visit)
+	err = readSource(ctx, mailimport.IMAPOptions{Address: net.JoinHostPort(u.Hostname(), port), Username: *user, Password: password, AccessToken: accessToken, StartTLS: *startTLS, Renamed: report}, *limit, visit)
 	if err != nil {
 		detail := err.Error()
 		if accessToken != "" {
@@ -148,7 +156,7 @@ func runImportIMAPSource(ctx context.Context, args []string, token, password, ac
 		return o.fail(exitFailed, "import_failed", fmt.Sprintf("%s (completed %d imports, skipped %d existing copies; rerun to resume)", detail, imported, skipped))
 	}
 	if o.json {
-		_ = json.NewEncoder(stdout).Encode(map[string]any{"messages": total, "imported": imported, "skipped": skipped, "dry_run": *dry})
+		_ = json.NewEncoder(stdout).Encode(map[string]any{"messages": total, "imported": imported, "skipped": skipped, "dry_run": *dry, "renamed_folders": renames})
 	} else if *dry {
 		fmt.Fprintf(stdout, "Validated %d source messages; no destination API calls made.\n", total)
 	} else {

@@ -124,7 +124,7 @@ func TestExportMaildirReadsBackThroughImportMaildir(t *testing.T) {
 	if err := mailimport.Maildir(context.Background(), root, 1<<20, func(_ string, m apitypes.ImportMessageBody) error {
 		got = append(got, m)
 		return nil
-	}); err != nil {
+	}, nil); err != nil {
 		t.Fatalf("import-maildir cannot read the export: %v", err)
 	}
 	want := map[string]struct {
