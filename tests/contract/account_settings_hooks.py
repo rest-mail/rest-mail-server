@@ -38,4 +38,15 @@ def register_absent_settings_hooks(shared):
             fixtures[origin] = account_id
         transaction["fullPath"] = f"/api/v1/accounts/{fixtures[origin]}/{setting}" + (separator + query if separator else "")
 
+    @hooks.before("getSieveScript")
+    def a_stored_script_to_read(transaction):
+        path = transaction.get("fullPath", "").partition("?")[0]
+        if not re.fullmatch(r"/api/v1/accounts/[1-9][0-9]*/sieve", path):
+            return
+        if str(transaction.get("expected", {}).get("statusCode")) != "200":
+            return
+        if not shared["with_the_fixture_admins_session"](transaction):
+            return
+        shared["fixture_call"](transaction, "PUT", path, {"script": "keep;", "active": False})
+
     return prepare_absent_account_setting

@@ -287,6 +287,8 @@ and forgotten on a clean-start reset. Success setup must still install the
 script or set the vacation reply before reading/deleting it. The database-backed
 `TestAccountSettingsAbsentLifecycle` proves that setup, successful removal and
 subsequent absence, including stored empty/inactive scripts and disabled replies.
+The same file stores an inactive script before the fixture admin's `getSieveScript`
+200, because nothing else stores one first and the read now answers 404 without it.
 `test_account_settings_hooks.py` proves registration, scope and setup failures.
 
 ### A delivery's recipient in the fuzz phase

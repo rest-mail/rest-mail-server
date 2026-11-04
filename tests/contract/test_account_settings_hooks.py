@@ -88,6 +88,34 @@ class AbsentSettingsHooks(unittest.TestCase):
             self.prepare(transaction)
         self.assertEqual(transaction, before)
 
+    def stored_script_hook(self):
+        stored = []
+        self.shared["fixture_call"] = lambda *args: stored.append(args[1:])
+        return next(function for name, function in self.registered if name == "getSieveScript" and function.__name__ == "a_stored_script_to_read"), stored
+
+    def test_a_successful_read_has_a_script_stored_first(self):
+        hook, stored = self.stored_script_hook()
+        transaction = self.transaction()
+        transaction["fullPath"] = "/api/v1/accounts/1/sieve?keep=1"
+        transaction["expected"]["statusCode"] = "200"
+        before = copy.deepcopy(transaction)
+        hook(transaction)
+        self.assertEqual(transaction, before)
+        self.assertEqual(stored, [("PUT", "/api/v1/accounts/1/sieve", {"script": "keep;", "active": False})])
+
+    def test_only_the_fixture_admins_successful_read_stores_a_script(self):
+        hook, stored = self.stored_script_hook()
+        absent = self.transaction()
+        other_principal = self.transaction()
+        other_principal["expected"]["statusCode"] = "200"
+        other_principal["request"]["headers"] = {}
+        invalid = self.transaction()
+        invalid["expected"]["statusCode"] = "200"
+        invalid["fullPath"] = "/api/v1/accounts/0/sieve"
+        for transaction in (absent, other_principal, invalid):
+            hook(transaction)
+        self.assertEqual(stored, [])
+
 
 if __name__ == "__main__":
     unittest.main()
