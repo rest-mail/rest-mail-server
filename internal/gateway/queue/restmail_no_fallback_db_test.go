@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/rest-mail/go-mtasts/pkg/mtasts"
+	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"gorm.io/gorm"
 )
@@ -91,9 +92,13 @@ func (mx *noFallbackMX) serve(c net.Conn) {
 // restPeer is the REST side of the same peer: its discovery endpoint answers
 // discovery (200 names the peer's own /restmail), and POST /restmail/messages
 // answers post.
+// A peer with deferFirst set answers that many POSTs first the way a REST Mail
+// server's deliver handler answers a message its inbound pipeline defers
+// (greylisting a first message): 503, error code "deferred".
 type restPeer struct {
 	discovery, post atomic.Int32
 	posts           atomic.Int32
+	deferFirst      atomic.Int32
 }
 
 // noFallbackWorker returns a worker whose recipient domain's only MX is
@@ -113,6 +118,10 @@ func noFallbackWorker(t *testing.T, domain string, mx *noFallbackMX, peer *restP
 			fmt.Fprintf(rw, `{"endpoint":%q}`, base.Load().(string)+"/restmail")
 		case "/restmail/messages":
 			peer.posts.Add(1)
+			if peer.deferFirst.Add(-1) >= 0 {
+				endpoint.WriteError(rw, endpoint.Refuse(http.StatusServiceUnavailable, "deferred", "Message deferred, retry later"))
+				return
+			}
 			rw.WriteHeader(int(peer.post.Load()))
 			fmt.Fprint(rw, `{"error":"from the peer"}`)
 		default:
@@ -291,5 +300,78 @@ func TestNoSMTPFallback_NeverIdentifiedUsesSMTP(t *testing.T) {
 	}
 	if row := readRow(t, gdb, item.ID); row.Transport != models.TransportSMTP {
 		t.Fatalf("row transport %q, want %q", row.Transport, models.TransportSMTP)
+	}
+}
+
+// An ordinary first message between two REST Mail installs (#291): the
+// receiver's default inbound pipeline greylists it, and its deliver handler
+// answers 503 "deferred". The row stays queued on the greylisting schedule, its
+// first retry no sooner than the greylist's five-minute delay, and the retry
+// goes by RESTMAIL and is accepted. No attempt goes by SMTP, whether the peer
+// was identified by the EHLO probe or by the capability cache, and whatever
+// the EHLO says on the retry.
+func TestNoSMTPFallback_GreylistDeferredThenAccepted(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		cached bool
+	}{{"identified by probe", false}, {"identified by cache", true}} {
+		t.Run(tc.name, func(t *testing.T) {
+			domain := "nofallback-greylist-" + strings.ReplaceAll(tc.name, " ", "-") + ".test"
+			mx := newNoFallbackMX(t, !tc.cached)
+			peer := &restPeer{}
+			peer.discovery.Store(http.StatusOK)
+			peer.post.Store(http.StatusAccepted)
+			peer.deferFirst.Store(1)
+			w, gdb, item := noFallbackWorker(t, domain, mx, peer, nil)
+			if tc.cached {
+				cacheRESTMAIL(t, gdb, domain, true)
+			}
+
+			now := time.Now()
+			err := w.deliver(item)
+			noSMTP(t, gdb, item, mx, err, false)
+			if got := ClassifyFailure(err); got != models.FailureGreylisted {
+				t.Fatalf("deferred answer classified %s, want %s: %v", got, models.FailureGreylisted, err)
+			}
+			item.Attempts = 1
+			w.recordFailure(item, err, now)
+			row := readRow(t, gdb, item.ID)
+			if row.Status != "deferred" || row.FailureCategory != models.FailureGreylisted {
+				t.Fatalf("row status %q, category %q: want deferred, greylisted", row.Status, row.FailureCategory)
+			}
+			if wait := row.NextAttempt.Sub(now); wait < 5*time.Minute {
+				t.Fatalf("first retry after %s: before the receiver's five-minute greylist delay ends", wait)
+			}
+
+			// The retry: the EHLO no longer advertising RESTMAIL changes nothing.
+			mx.restmail.Store(false)
+			if err := w.deliver(row); err != nil {
+				t.Fatalf("retry: %v", err)
+			}
+			if mx.mails.Load() != 0 || peer.posts.Load() != 2 {
+				t.Fatalf("MAIL commands %d, RESTMAIL POSTs %d: want both attempts by RESTMAIL only", mx.mails.Load(), peer.posts.Load())
+			}
+			cachedSupported(t, gdb, domain)
+		})
+	}
+}
+
+// A REST Mail server's "deferred" refusal is retried on the greylisting
+// schedule; any other 503 stays an ordinary transient failure.
+func TestRESTMAILRefusalDeferredIsGreylisting(t *testing.T) {
+	for _, tc := range []struct {
+		body string
+		want models.FailureCategory
+	}{
+		{`{"error":{"code":"deferred","message":"Message deferred, retry later"}}`, models.FailureGreylisted},
+		{`{"error":{"code":"internal_error","message":"Internal server error"}}`, models.FailureOtherTransient},
+		{`not json`, models.FailureOtherTransient},
+	} {
+		if got := ClassifyFailure(restmailRefusal(http.StatusServiceUnavailable, []byte(tc.body))); got != tc.want {
+			t.Errorf("503 %s classified %s, want %s", tc.body, got, tc.want)
+		}
+	}
+	if got := ClassifyFailure(restmailRefusal(http.StatusForbidden, []byte(`{"error":{"code":"deferred"}}`))); !got.Permanent() {
+		t.Errorf("403 with code deferred classified %s, want permanent", got)
 	}
 }

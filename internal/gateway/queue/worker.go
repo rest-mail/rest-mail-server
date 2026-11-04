@@ -1129,6 +1129,12 @@ func (w *Worker) deliverRESTMAILHTTPS(endpointURL string, item models.OutboundQu
 // unfollowed 3xx) are transient, so the message is deferred and retried by
 // RESTMAIL; any other 4xx is the receiving server refusing the message, so it
 // bounces with the server's own words in the DSN.
+//
+// A 503 whose error code is "deferred" is the receiving server's inbound
+// pipeline holding the message back. Its default pipeline greylists a first
+// message from a new sender (5 minutes), and the answer does not name the
+// filter, so it is retried on the greylisting schedule: a first retry that
+// lands after the greylist delay instead of just before it.
 func restmailRefusal(status int, body []byte) *SMTPError {
 	text := strings.TrimSpace(string(body))
 	if len(text) > 512 {
@@ -1136,6 +1142,9 @@ func restmailRefusal(status int, body []byte) *SMTPError {
 	}
 	msg := fmt.Sprintf("RESTMAIL delivery got HTTP %d: %s", status, text)
 	switch {
+	case status == http.StatusServiceUnavailable && restmailErrorCode(body) == restmailDeferred:
+		return &SMTPError{Code: 451, Enhanced: "4.7.1",
+			Message: "deferred by the receiving server's inbound pipeline (greylisting or another filter), retry later: " + msg}
 	case status == http.StatusTooManyRequests:
 		return &SMTPError{Code: 451, Enhanced: "4.7.0", Message: "rate limited: " + msg}
 	case status == http.StatusRequestTimeout || status == http.StatusTooEarly || status < 400 || status >= 500:
@@ -1144,6 +1153,24 @@ func restmailRefusal(status int, body []byte) *SMTPError {
 		return &SMTPError{Code: 552, Enhanced: "5.3.4", Message: msg}
 	}
 	return &SMTPError{Code: 550, Enhanced: "5.0.0", Message: msg}
+}
+
+// restmailDeferred is the error code a REST Mail server's deliver endpoint
+// answers, with a 503, when its inbound pipeline defers the message.
+const restmailDeferred = "deferred"
+
+// restmailErrorCode is the code of a REST Mail error body
+// ({"error":{"code":...,"message":...}}), or "" when the body is not one.
+func restmailErrorCode(body []byte) string {
+	var e struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	if json.Unmarshal(body, &e) != nil {
+		return ""
+	}
+	return e.Error.Code
 }
 
 // deliverRESTMAILDiscovered asks discoveryURL — the MX host's verified
