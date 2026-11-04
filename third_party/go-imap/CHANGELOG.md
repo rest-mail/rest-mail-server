@@ -82,9 +82,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   character outside the alphabet, a non-terminal `=`, a quoted initial
   response) with a tagged BAD, as RFC 9051 §6.2.2 requires, in both the
   continuation and the SASL-IR initial-response form. It used to answer
-  `NO Invalid base64`. Valid base64 with wrong credentials is still NO.
-  `TestSASLIR` and `TestPlainBase64Alphabet` required the old behaviour and
-  now require this one.
+  `NO Invalid base64`. Valid base64 with wrong credentials, or that decodes
+  to malformed PLAIN data (missing or extra NULs, an empty authcid or
+  password, invalid UTF-8), is still NO: that is an authentication failure,
+  not a protocol error (`TestPlainMalformedPayloads`). `TestSASLIR` and
+  `TestPlainBase64Alphabet` required the old behaviour and now require this
+  one.
 - DELETE of a name that is not a mailbox but has inferior mailboxes is refused
   `NO [HASCHILDREN]` (RFC 9051 §6.3.5, RFC 5530 §3) instead of answering OK.
 - A SELECT or EXAMINE refused with BAD keeps the mailbox already selected, with
