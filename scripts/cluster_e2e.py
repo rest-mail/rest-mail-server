@@ -48,7 +48,9 @@ Each step tests REST Mail's wiring, not the components' own behaviour:
   mail-in       stage 3: the reference submits a message (its submission port,
                 STARTTLS, AUTH) to the mailbox made in `mailbox`; the reference
                 delivers it to REST Mail's MX, and it is read back through
-                REST Mail's IMAP gateway
+                REST Mail's IMAP gateway. REST Mail greylists the
+                reference's first attempt (451), so the message arrives on
+                the reference's retry, after the greylist delay
   pop3-retrieve stage 3: that message is retrieved through REST Mail's POP3
                 gateway (USER/PASS, then RETR)
 
@@ -112,6 +114,11 @@ SERVICES = {"api": 8080, "smtp-gateway": 25, "imap-gateway": 993, "pop3-gateway"
 # and the ports reached on it: submission with STARTTLS, and IMAP over TLS.
 REFERENCE_SECRET, REFERENCE_SERVICE = "reference-mail", "mail"
 REFERENCE_PORTS = {"submission": 587, "imaps": 993}
+# How long a fresh install greylists a new sender/recipient/IP triple
+# (internal/pipeline/templates.go, delay_minutes). The reference's first
+# delivery in mail-in is deferred with a 451 for this long before its retry
+# is accepted, so mail-in waits this on top of --mail-timeout.
+GREYLIST_DELAY = 300
 
 # A recipient on a domain no install hosts (RFC 2606 reserves .invalid).
 UNHOSTED = "nobody@unhosted.invalid"
@@ -465,6 +472,11 @@ def received_with(raw: bytes, subject: str, sender: str) -> dict[str, str]:
     return {"received": " | ".join(" ".join(str(v).split()) for v in message.get_all("Received", []))}
 
 
+def mail_in_wait(mail_timeout: int) -> int:
+    """Seconds mail-in waits: the greylist delay the first attempt meets, then mail_timeout."""
+    return GREYLIST_DELAY + mail_timeout
+
+
 def wait_for(probe, timeout: float, interval: float = 5, clock=time.monotonic, sleep=time.sleep):
     """Call probe until it returns something other than None, or the timeout passes.
 
@@ -735,12 +747,14 @@ class Stages:
                 except (imaplib.IMAP4.error, OSError):
                     pass
 
+        wait = mail_in_wait(self.args.mail_timeout)
         try:
-            raw, waited = wait_for(probe, self.args.mail_timeout)
+            raw, waited = wait_for(probe, wait)
         except imaplib.IMAP4.error as error:
             raise StepFailed(f"REST Mail's IMAP gateway: {error}") from error
         if raw is None:
-            raise StepFailed(f"{mailbox} did not receive {subject!r} over IMAP within {self.args.mail_timeout}s")
+            raise StepFailed(f"{mailbox} did not receive {subject!r} over IMAP within {wait}s "
+                             f"(the reference's log has each attempt; the first is greylisted)")
         evidence = received_with(raw, subject, reference)
         (self.report_dir / "mail-in.eml").write_bytes(raw)
         self.state["inbound_subject"] = subject

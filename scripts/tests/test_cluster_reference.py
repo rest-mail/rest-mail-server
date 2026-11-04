@@ -128,13 +128,27 @@ class ManifestTests(unittest.TestCase):
         self.assertEqual(reference.SECRET, cluster_e2e.REFERENCE_SECRET)
         self.assertEqual(service["spec"]["selector"], self.items["Deployment"]["spec"]["selector"]["matchLabels"])
 
-    def test_the_account_is_copied_into_a_writable_config_directory(self):
+    def test_the_account_and_postfix_overrides_are_copied_into_a_writable_config_directory(self):
         pod = self.items["Deployment"]["spec"]["template"]["spec"]
         copy = pod["initContainers"][0]
-        self.assertEqual(copy["command"][-1], "/tmp/docker-mailserver/postfix-accounts.cf")
+        self.assertEqual(copy["command"], ["cp", "/secret/postfix-accounts.cf", "/secret/postfix-main.cf",
+                                           "/tmp/docker-mailserver/"])
         volumes = {v["name"]: v for v in pod["volumes"]}
         self.assertEqual(volumes["account"]["secret"]["secretName"], reference.SECRET)
+        self.assertEqual({item["key"] for item in volumes["account"]["secret"]["items"]},
+                         {"postfix-accounts.cf", "postfix-main.cf"})
         self.assertIn("emptyDir", volumes["config"])
+
+    def test_the_reference_retries_soon_after_a_greylist_deferral(self):
+        # REST Mail greylists a first-time triple for 5 minutes (#1750's first
+        # mail-in run: 451 4.3.0, then Postfix's default 300s+ backoff outlived
+        # the step). The retries must come at most a couple of minutes apart.
+        settings = dict(line.split(" = ") for line in reference.POSTFIX_MAIN.splitlines())
+        seconds = {key: int(value.removesuffix("s")) for key, value in settings.items()}
+        self.assertEqual(set(seconds), {"queue_run_delay", "minimal_backoff_time", "maximal_backoff_time"})
+        self.assertLessEqual(seconds["queue_run_delay"], seconds["minimal_backoff_time"])
+        self.assertLessEqual(seconds["minimal_backoff_time"], seconds["maximal_backoff_time"])
+        self.assertLessEqual(seconds["maximal_backoff_time"] + seconds["queue_run_delay"], 120)
 
     def test_secret_values_are_base64(self):
         secret = reference.secret_manifest("ref", "s", {"password": "p"})
