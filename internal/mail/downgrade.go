@@ -350,7 +350,8 @@ func splitHeader(raw string) (header, sep, body string) {
 // without its final line break. bare says a line break in it is a lone LF.
 func eachHeaderField(header string, each func(span string, bare bool)) {
 	for at := 0; at <= len(header); {
-		start, end, bare, ended := at, len(header), false, false
+		start, bare, ended := at, false, false
+		var end int
 		for {
 			i := strings.IndexByte(header[at:], '\n')
 			if i < 0 {
