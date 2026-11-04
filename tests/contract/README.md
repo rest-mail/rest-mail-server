@@ -1606,7 +1606,7 @@ in order:
 
 1. `chore contract:pairs`, the registered example-pair checks
    (`tests/contract/example_pairs.sh`). It builds the `internal/api` test binary
-   once and runs the named tests in three parallel shards, each limited to 25
+   once and runs the matching tests in three parallel shards, each limited to 25
    minutes. A failure stops the run here, as it fails the CI job.
 2. `chore e2e:up`, unless `CONTRACT_ENDPOINT` names a running topology.
 3. The principal fixture, when it is absent (below).
@@ -1627,10 +1627,12 @@ calls `chore contract`, so a run here whose receipt shows the same server commit
 and substrate pins has CI's inputs. A recorded local and CI run with equal
 verdicts at the same pins is still open in #1751.
 
-The example-pair test list lives in the `contract:pairs` task in `chores.yml`.
-A new `*WithVertrag` test in `internal/api` must be added there, or no run sends
-it; `test_run.py` fails until it is. Without `RESTMAIL_VERTRAG_BINARY` those tests skip, so `go test` alone does
-not run them.
+The `contract:pairs` task in `chores.yml` selects `WithVertrag$`. The wrapper
+discovers the matching tests from the compiled `internal/api` test binary before
+sharding them, so new `*WithVertrag` tests run without editing a shared name list.
+`test_run.py` checks that the pattern selects every such test, and the wrapper
+fails if no tests match. Without `RESTMAIL_VERTRAG_BINARY` those tests skip, so
+`go test` alone does not run them.
 
 A narrowed run (`--tag`, `--operation-id`, `--only-matching`)
 reports without the surface gate and the baseline, which are about the whole API.
