@@ -383,7 +383,8 @@ chore dns:show       # every record each domain needs
 chore dns:check      # what a public resolver actually sees
 ```
 
-MX, SPF, DMARC, DKIM, the mail host's address and its reverse record. A
+MX, SPF, DMARC, DKIM, the mail host's address and its reverse record, and the
+names mail apps find their settings by (SRV, `autoconfig.` and `autodiscover.`). A
 healthy install delivers nothing to Gmail without them, so this is the likeliest
 reason one that passes `server:verify` still "does not work". The DKIM record
 can only come from the server, which made the key.
@@ -456,6 +457,49 @@ Installs **without cert-manager** rely on
 [#123](https://github.com/rest-mail/rest-mail-server/issues/123). REST Mail's
 own ACME obtaining policy-host certificates (item 4 of #727) is outside this
 cert-manager implementation.
+
+### Mail app discovery hosts with cert-manager
+
+Mail apps look for a domain's settings at two names: Thunderbird and others
+fetch `https://autoconfig.<domain>/mail/config-v1.1.xml`, Outlook posts to
+`https://autodiscover.<domain>/autodiscover/autodiscover.xml`. The API answers
+both for every hosted domain. `chore dns:show` prints
+`autoconfig.<domain> CNAME <mail host>` and
+`autodiscover.<domain> CNAME <mail host>` for each domain, and `chore dns:check`
+checks them.
+
+The chart routes them for the domains listed in `api.mailDiscovery.domains`,
+in A-label form (`xn--bcher-kva.example`, not `bücher.example`):
+
+```sh
+helm upgrade restmail helm/restmail -n rest-mail --reuse-values \
+  --set-json 'api.mailDiscovery.domains=["example.com","example.org"]'
+```
+
+Each domain gets two Ingress host rules: `autoconfig.<domain>` routes **only**
+the exact `/mail/config-v1.1.xml` path and `autodiscover.<domain>` **only**
+`/autodiscover/autodiscover.xml`, so the admin and API paths are not exposed on
+those names. With ingress TLS enabled, both names enter `spec.tls[].hosts`
+beside the API host and the MTA-STS hosts, and cert-manager requests them on the
+API certificate. Leave the Host header intact: the API reads the domain from it.
+The default, `[]`, leaves the rendered resources unchanged. As with MTA-STS
+hosts, the chart cannot read the domains from the database, so update the list
+when domains are added or removed. From the operator JSON:
+
+```sh
+jq '{api: {mailDiscovery: {domains: [.domains[].records[] |
+  select(.type == "CNAME" and (.name | startswith("autoconfig."))) |
+  .name | ltrimstr("autoconfig.")] | unique}}}' dns.json > mail-discovery.json
+```
+
+**Publication order:** publish the two CNAMEs, deploy the host rules, wait for
+the Certificate to be Ready, and check
+`curl --fail https://autoconfig.example.com/mail/config-v1.1.xml` with normal
+certificate validation. An app that reaches a discovery name without a valid
+certificate may warn the user (Outlook does), so do not publish the CNAMEs on an
+install that will not route them; the settings can always be typed in by hand. Whether real mail apps complete this on a
+real install is still to be tried
+([#1588](https://github.com/rest-mail/rest-mail-server/issues/1588)).
 
 ### Recovering through Admin or Webmail
 

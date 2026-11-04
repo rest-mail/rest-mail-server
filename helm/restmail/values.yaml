@@ -291,6 +291,13 @@ api:
     port: 8080
   mtaSts:
     hosts: []
+  # Hosted domains (A-label form) whose mail-app discovery names the API ingress
+  # routes and requests on its certificate: autoconfig.<domain> (GET
+  # /mail/config-v1.1.xml) and autodiscover.<domain> (POST
+  # /autodiscover/autodiscover.xml), each only its own document. Empty changes
+  # nothing. See the chart README, "Mail app discovery hosts".
+  mailDiscovery:
+    domains: []
   ingress:
     enabled: false
     className: ""

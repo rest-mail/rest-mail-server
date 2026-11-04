@@ -421,6 +421,26 @@ for the full pipeline. Installs **without cert-manager** rely on
 [#123](https://github.com/rest-mail/rest-mail-server/issues/123), including
 REST Mail's own ACME for these names; that is not implemented by this chart change.
 
+### Mail app discovery hosts (cert-manager)
+
+Mail apps find a domain's settings at `autoconfig.<domain>` (Thunderbird and
+others, `GET /mail/config-v1.1.xml`) and `autodiscover.<domain>` (Outlook,
+`POST /autodiscover/autodiscover.xml`). The API answers both; list the hosted
+domains, in A-label form, for the chart to route them:
+
+```yaml
+api:
+  mailDiscovery:
+    domains: [example.com, example.org]
+```
+
+Each domain gets two host rules, each routing only its own exact path to the
+API with the Host header kept, and with TLS enabled both names join the API
+certificate's `tls.hosts`, like the MTA-STS hosts. The default `[]` changes no
+rendered resource. `chore dns:show` prints the matching CNAMEs; deploy the route
+and certificate before publishing them. See the
+[operator playbook](../../docs/installing.md#mail-app-discovery-hosts-with-cert-manager).
+
 ## Install (development against rest-mail/testbed in kind/k3s)
 
 The dev override file `values-dev.yaml` encodes the testbed-specific

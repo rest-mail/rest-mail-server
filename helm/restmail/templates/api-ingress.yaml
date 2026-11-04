@@ -20,6 +20,10 @@ spec:
         {{- range .Values.api.mtaSts.hosts }}
         - {{ . | quote }}
         {{- end }}
+        {{- range .Values.api.mailDiscovery.domains }}
+        - {{ printf "autoconfig.%s" . | quote }}
+        - {{ printf "autodiscover.%s" . | quote }}
+        {{- end }}
       secretName: {{ default (printf "%s-ingress-tls" (include "restmail.fullname" .)) .Values.api.ingress.tls.secretName | quote }}
   {{- end }}
   rules:
@@ -59,5 +63,25 @@ spec:
                 name: {{ include "restmail.componentName" (list $ "api") }}
                 port:
                   number: {{ $.Values.api.service.port }}
+    {{- end }}
+    {{- /*
+    Where mail apps look for a hosted domain's settings (#1706): Thunderbird and others
+    GET /mail/config-v1.1.xml on autoconfig.<domain>, Outlook POSTs
+    /autodiscover/autodiscover.xml on autodiscover.<domain>. Each name routes only its
+    own document; the API reads the domain from the Host header.
+    */}}
+    {{- range $domain := .Values.api.mailDiscovery.domains }}
+    {{- range list (list "autoconfig" "/mail/config-v1.1.xml") (list "autodiscover" "/autodiscover/autodiscover.xml") }}
+    - host: {{ printf "%s.%s" (index . 0) $domain | quote }}
+      http:
+        paths:
+          - path: {{ index . 1 }}
+            pathType: Exact
+            backend:
+              service:
+                name: {{ include "restmail.componentName" (list $ "api") }}
+                port:
+                  number: {{ $.Values.api.service.port }}
+    {{- end }}
     {{- end }}
 {{- end }}

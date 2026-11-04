@@ -39,6 +39,14 @@ type ClientPorts struct {
 // (RFC 8314 §5.1 names submissions), and say outright that the cleartext ones
 // are not offered, with the target "." (RFC 6186 §3.4), so a client does not
 // try ports nothing listens on.
+//
+// autoconfig.<domain> and autodiscover.<domain> are where mail apps look for a
+// domain's settings: Thunderbird and others fetch
+// https://autoconfig.<domain>/mail/config-v1.1.xml, Outlook posts to
+// https://autodiscover.<domain>/autodiscover/autodiscover.xml. The API answers
+// both on any name (#721, #722), so each is a CNAME to the mail host, as the
+// MTA-STS policy host is. The HTTPS route and certificate for them come from
+// the install: the chart's api.mailDiscovery.domains (#1706).
 func MailRecords(domain, mailHost, ip, dkimSelector, dkimValue, dmarcPolicy string, ports ClientPorts) []DNSRecord {
 	if dmarcPolicy == "" {
 		dmarcPolicy = "none"
@@ -70,6 +78,8 @@ func MailRecords(domain, mailHost, ip, dkimSelector, dkimValue, dmarcPolicy stri
 		srv("_submission", 0),
 		srv("_imap", 0),
 		srv("_pop3", 0),
+		DNSRecord{Type: "CNAME", Name: "autoconfig." + domain, Value: mailHost, TTL: 3600},
+		DNSRecord{Type: "CNAME", Name: "autodiscover." + domain, Value: mailHost, TTL: 3600},
 	)
 	if ip != "" {
 		records = append(records, DNSRecord{Type: "PTR", Name: ip, Value: mailHost, TTL: 3600})

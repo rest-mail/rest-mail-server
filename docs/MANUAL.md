@@ -1099,6 +1099,16 @@ has the pipeline commands and readiness checks. Installs **without cert-manager*
 rely on [#123](https://github.com/rest-mail/rest-mail-server/issues/123), including
 REST Mail's own ACME obtaining these certificates (item 4 of #727).
 
+#### Route mail app discovery
+
+`chore dns:show` also prints `autoconfig.<domain>` and `autodiscover.<domain>`, each a
+CNAME to the mail host: where Thunderbird and Outlook look for a domain's settings, which
+the API answers. List the hosted domains (A-label form) in `api.mailDiscovery.domains`:
+the API ingress then routes only `/mail/config-v1.1.xml` on `autoconfig.<domain>` and only
+`/autodiscover/autodiscover.xml` on `autodiscover.<domain>`, and adds both names to its TLS
+hosts for cert-manager. Deploy the route and certificate before publishing the CNAMEs. The
+[operator playbook](installing.md#mail-app-discovery-hosts-with-cert-manager) has the commands.
+
 #### Ask the server what state it is in
 
 ```sh
