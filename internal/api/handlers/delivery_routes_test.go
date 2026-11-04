@@ -97,7 +97,7 @@ func TestDeliveryDescribesEachOutcome(t *testing.T) {
 		}
 	}
 	want := map[int]reflect.Type{
-		http.StatusCreated: reflect.TypeOf(endpoint.Data[Message]{}),
+		http.StatusCreated: reflect.TypeOf(endpoint.Data[DeliveredMessage]{}),
 		http.StatusOK:      reflect.TypeOf(endpoint.Data[DeliveryProcessed]{}),
 	}
 	if !reflect.DeepEqual(got, want) {

@@ -517,6 +517,13 @@ type RestmailDiscovery struct {
 	Endpoint string `json:"endpoint" format:"uri" pattern:"^https://"`
 }
 
+// DeliveredMessage names the message a delivery made.
+type DeliveredMessage struct {
+	ID        uint   `json:"id"`
+	MessageID string `json:"message_id"`
+	Folder    string `json:"folder"`
+}
+
 // DeliveryProcessed is an accepted message quarantined or discarded without a mailbox row.
 type DeliveryProcessed struct {
 	Status string `json:"status" enums:"processed"`

@@ -255,7 +255,7 @@ func (c *Client) CheckMailbox(address string) (*MailboxCheckResponse, error) {
 
 type DeliverRequest = apitypes.DeliverMessageBody
 
-type deliveredMessageEnvelope = endpoint.Data[apitypes.Message]
+type deliveredMessageEnvelope = endpoint.Data[apitypes.DeliveredMessage]
 
 // DeliverResponse contains either a delivered message or a processed receipt.
 // Processed is local result metadata, decoded from the registered alternative body.

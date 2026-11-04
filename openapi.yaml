@@ -7355,6 +7355,9 @@ paths:
         Stored text, recipient JSON strings and keys, and decoded raw_message octets
         must not contain NUL (U+0000); invalid input is 422 validation_failed naming
         the field before any write. raw_message is standard padded base64 (format: byte).
+        With raw_message and neither body_text nor body_html, the stored text is read
+        from raw_message; when it can't be parsed, the text is whatever follows its
+        first blank line.
         Empty or omitted folder means INBOX; a nonempty name is at most 255 UTF-8 bytes,
         has no surrounding whitespace, control characters or "..".
       security: []
@@ -7392,7 +7395,7 @@ paths:
                 value: {"address": "admin@restmail.test", "sender": "sender@example.net", "subject": "Hello", "body_text": "Hello"}
       responses:
         "201":
-          description: Message delivered
+          description: Delivered; which message was made
           content:
             application/json:
               schema:
@@ -7400,7 +7403,7 @@ paths:
                 required: [data]
                 properties:
                   data:
-                    $ref: "#/components/schemas/Message"
+                    $ref: "#/components/schemas/DeliveredMessage"
         "422":
           description: Request body failed validation
           content:
@@ -17098,6 +17101,16 @@ components:
           type: string
           format: email
 
+    DeliveredMessage:
+      type: object
+      required: [id, message_id, folder]
+      properties:
+        id:
+          type: integer
+        message_id:
+          type: string
+        folder:
+          type: string
     DeliverMessageRequest:
       type: object
       required: [address, sender]

@@ -396,9 +396,10 @@ func TestMessageImportStoredHoldsTheLimitOnHostileShapes(t *testing.T) {
 	}
 }
 
-// The gateway's next hop holds the same limit: its request is a file until the message is read,
-// once, and that one read parses it once. Non-UTF-8 octets through this route are #1921's, and
-// long address lists and many parameters on one field are still over it, which #1915 records.
+// The gateway's next hop holds the same limit on what the gateway sends: its request is a file
+// until the message is read, once, and that one read parses it once and gives the row its text.
+// Non-UTF-8 octets through this route are #1921's, and long address lists and many parameters on
+// one field are still over it, which #1915 records.
 func TestDeliverHoldsTheLimitOnHostileShapes(t *testing.T) {
 	const size = 1 << 20
 	const id = "From: old@example.test\r\nSubject: s\r\nDate: Thu, 02 Jan 2020 03:04:05 +0000\r\n"
@@ -420,7 +421,8 @@ func TestDeliverHoldsTheLimitOnHostileShapes(t *testing.T) {
 	seedReceiveFixture(t, db, mailbox)
 	route := deliveryRoute(NewMessageHandler(db, nil, nil, "", nil))
 	send := func(message string) (*httptest.ResponseRecorder, uint64) {
-		body := fmt.Sprintf(`{"address":"%s","sender":"old@example.test","raw_message":"%s"}`, mailbox.Address, base64.StdEncoding.EncodeToString([]byte(message)))
+		// What the SMTP gateway sends: the source, and from it the fields it reads, but not its text.
+		body := fmt.Sprintf(`{"address":"%[1]s","sender":"old@example.test","sender_name":"Old","subject":"s","message_id":"m@example.test","recipients_to":["%[1]s"],"client_ip":"192.0.2.1","helo_name":"mail.example.test","received_tls":true,"tls_version":"TLS1.3","tls_cipher":"TLS_AES_128_GCM_SHA256","raw_message":"%[2]s"}`, mailbox.Address, base64.StdEncoding.EncodeToString([]byte(message)))
 		r := httptest.NewRequest(http.MethodPost, "/api/v1/messages/deliver", strings.NewReader(body))
 		r.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
@@ -460,6 +462,14 @@ func TestDeliverHoldsTheLimitOnHostileShapes(t *testing.T) {
 			t.Logf("delivering %d bytes allocated %d, %.1f times over", length, best, float64(best)/float64(length))
 			if best > 8*uint64(length) {
 				t.Fatalf("delivering %d bytes allocated %d", length, best)
+			}
+			// The limit only means something if the text was stored too.
+			var stored models.Message
+			if err := db.Where("mailbox_id = ?", mailbox.ID).Order("id DESC").First(&stored).Error; err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(message, "Content-Type: text/plain") && len(stored.BodyText) < size/2 {
+				t.Fatalf("stored %d bytes of text", len(stored.BodyText))
 			}
 		})
 	}
