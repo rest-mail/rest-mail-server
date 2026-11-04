@@ -7,7 +7,6 @@ import (
 
 	"github.com/rest-mail/rest-mail-server/internal/config"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
-	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -232,54 +231,7 @@ func autoMigrate(db *gorm.DB) error {
 	db.Exec(`DROP INDEX IF EXISTS idx_vacation_responses_unique`)
 	db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_vacation_responses_handle ON vacation_responses(mailbox_id, sender, handle)`)
 
-	// Messages stored before pop3_utf8_size existed get their POP3 sizes measured once.
-	if err := BackfillPOP3Sizes(db); err != nil {
-		slog.Warn("failed to backfill POP3 message sizes", "error", err)
-	}
-
 	slog.Info("database migration completed")
-	return nil
-}
-
-// pop3SizeBatch is how many messages BackfillPOP3Sizes reads at a time.
-const pop3SizeBatch = 200
-
-// BackfillPOP3Sizes measures the sizes POP3 reports for messages stored with a
-// raw source before pop3_utf8_size existed. It rewrites downgraded_size too, which
-// used not to count the line breaks RETR adds. Until a row is measured the gateways
-// report what they did before, so a backfill that stops part way leaves nothing
-// worse than it was. Rows are read in id order a batch at a time; a measured row is
-// never read again.
-func BackfillPOP3Sizes(db *gorm.DB) error {
-	var lastID uint
-	measured := 0
-	for {
-		var rows []models.Message
-		err := db.Select("id", "raw_size", "raw_message", "raw_octets").
-			Where("id > ? AND raw_size > 0 AND pop3_utf8_size = 0", lastID).
-			Order("id").Limit(pop3SizeBatch).Find(&rows).Error
-		if err != nil {
-			return err
-		}
-		if len(rows) == 0 {
-			break
-		}
-		for _, row := range rows {
-			source := row.SourceView()
-			if err := db.Model(&models.Message{}).Where("id = ?", row.ID).
-				UpdateColumns(map[string]any{
-					"downgraded_size": rmail.DowngradedSize(source),
-					"pop3_utf8_size":  rmail.POP3WireSize(source),
-				}).Error; err != nil {
-				return err
-			}
-			lastID = row.ID
-			measured++
-		}
-	}
-	if measured > 0 {
-		slog.Info("backfilled POP3 message sizes", "messages", measured)
-	}
 	return nil
 }
 
