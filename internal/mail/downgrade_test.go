@@ -244,3 +244,14 @@ func TestDowngrade_MalformedParameterKeepsItsField(t *testing.T) {
 		}
 	}
 }
+
+// headerFields is the fields of a header block, each still folded.
+func headerFields(header string) []string {
+	var fields []string
+	eachHeaderField(header, func(span string, bare bool) {
+		var b strings.Builder
+		writeFolded(&b, span, bare)
+		fields = append(fields, b.String())
+	})
+	return fields
+}

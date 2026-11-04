@@ -19,6 +19,18 @@ func Convert(raw string, utf8 bool) string {
 	return message.WireForm(raw, utf8)
 }
 
+// Size is len(Convert(raw, utf8)): the same conversion, counted rather than built, so
+// measuring a message at store time holds nothing that grows with its data.
+func Size(raw string, utf8 bool) int {
+	return message.WireFormSize(raw, utf8)
+}
+
+// JoinedSize is Size(block+body, utf8) without joining them, for a host that rewrites
+// the header block of a message and keeps its stored body.
+func JoinedSize(block, body string, utf8 bool) int {
+	return message.WireFormJoinedSize(block, body, utf8)
+}
+
 // SevenBitBoundary is raw for a host that downgrades only the top-level header and
 // sends the body as stored, as POP3 does. A top-level multipart's 8-bit boundary takes
 // the 7-bit spelling [Convert] gives it, in Content-Type and on its delimiter lines, so

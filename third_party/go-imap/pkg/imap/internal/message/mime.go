@@ -210,7 +210,7 @@ func multipartDelimiters(body, boundary string) []multipartDelimiter {
 		return multipartDelimiter{}, false
 	}
 
-	var delimiters []multipartDelimiter
+	delimiters := make([]multipartDelimiter, 0, strings.Count(body, delim))
 	for from := 0; ; {
 		d, found := next(from)
 		if !found {
@@ -228,7 +228,7 @@ func multipartDelimiters(body, boundary string) []multipartDelimiter {
 // starts and ends. The CRLF before a delimiter is part of it, and an unterminated last
 // part runs to the end of the body.
 func partSpans(body string, delimiters []multipartDelimiter) [][2]int {
-	var spans [][2]int
+	spans := make([][2]int, 0, len(delimiters))
 	for i, d := range delimiters {
 		if d.closing {
 			break
@@ -245,4 +245,5 @@ func partSpans(body string, delimiters []multipartDelimiter) [][2]int {
 		}
 		spans = append(spans, [2]int{d.after, end})
 	}
+	return spans
 }
