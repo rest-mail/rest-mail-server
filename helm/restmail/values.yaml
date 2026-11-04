@@ -60,9 +60,10 @@ networking:
 # ── TLS ───────────────────────────────────────────────────────────────────
 tls:
   # Name of an existing Kubernetes Secret of type kubernetes.io/tls.
-  # Each gateway pod mounts its tls.crt and tls.key at /certs/, and nothing
-  # else from it. The API mounts only its ca.crt, if it has one, to trust peers
-  # that certificate's CA issued.
+  # Each gateway pod mounts its tls.crt and tls.key at /certs/. The API mounts
+  # only its ca.crt, if it has one, to trust peers that certificate's CA
+  # issued; the SMTP gateway mounts that ca.crt too, for the RESTMAIL
+  # discovery and delivery its queue verifies.
   # Expected keys: tls.crt, tls.key.
   secretName: restmail-tls
   # Mount path inside the pod.
@@ -454,6 +455,11 @@ smtpGateway:
     inbound: 10025
     submissionTLS: 10465
   queueWorkers: 4
+  # Let the queue deliver to private addresses (RFC 1918, loopback,
+  # link-local) for an MX or a RESTMAIL endpoint. Off, the outbound SSRF guard
+  # refuses them (#167). Only for a testbed whose mail servers are all inside
+  # one private network, such as the cluster install check's kind cluster.
+  allowPrivateDestinations: false
   # Max accepted SMTP message size in bytes (drives both the EHLO SIZE
   # advertisement and DATA enforcement). Empty = server default (10 MiB).
   # Must be positive when set; the gateway refuses to start on 0/negative.
