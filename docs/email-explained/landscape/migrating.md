@@ -48,7 +48,9 @@ REST Mail, from Postfix and Dovecot or a bundle, and equally to moving away.
 - **Copy the mail** while users keep working on the old server. Any IMAP-to-IMAP
   tool can do it; [imapsync](https://imapsync.lamiral.info/) is "an IMAP
   transfer tool" whose "purpose [...] is to migrate IMAP accounts". Run it once
-  now, and again at the cutover to pick up what arrived since.
+  now, and again at the cutover to pick up what arrived since. Whatever copies
+  the mail, compare both sides yourself afterwards, folder by folder: a tool can
+  report success and still leave something behind.
 - **Test:** send to and from the new server, check DKIM, SPF and DMARC pass
   at a large provider, and sign in from a mail app.
 
@@ -107,14 +109,30 @@ Only when nothing has arrived at the old server for several days:
   permissions, work-factor limits and the API. SHA-crypt and Argon2 hashes
   become bcrypt after a matching password proof, when the password fits
   bcrypt's length limit.
-- **Historical mail:** `restmail import-maildir` and `restmail import-mbox`
-  import supported source formats through a domain-scoped public API, keeping
-  original octets, folders, internal dates and supported flags. Reruns skip
-  existing Message-IDs in the same account and folder. Start with a dry run and
-  read [importing historical mail](../../migrating-mail.md) for format limits,
-  unsupported Deleted/keyword flags and cutover checks.
-- **Remaining migration work:** direct IMAP-source bulk import and the imapsync
-  cutover proof remain in [#734](https://github.com/rest-mail/rest-mail-server/issues/734).
+- **Historical mail:** `restmail import-imap` copies an account straight from
+  the old server over verified TLS, and `restmail import-maildir` and
+  `restmail import-mbox` import supported source files. All three go through a
+  domain-scoped public API and keep original octets, folders, internal dates and
+  flags, including Deleted and keywords. Reruns skip a message already in the
+  same account and folder, keeping its first imported flags. An IMAP-to-IMAP
+  tool such as imapsync also works against REST Mail's IMAP service, and
+  copies flag changes again on each run.
+  [Importing and exporting mail](../../migrating-mail.md) covers each route,
+  its dry run, and the checks before cutover.
+- **What does not move by itself:** the message-import routes cannot create a
+  folder with no messages in it, and do not update a copy already imported when
+  its flags change or it is moved or deleted on the old server. An empty folder
+  copied by imapsync can be lost too, while imapsync still reports success
+  ([#1834](https://github.com/rest-mail/rest-mail-server/issues/1834)), so list
+  the folders on both sides before the cutover.
+- **Aliases and forwards:** an alias importer is still in review
+  ([#1667](https://github.com/rest-mail/rest-mail-server/pull/1667)); until it
+  lands, recreate aliases and hosted forwards by hand. Forwards to addresses
+  outside REST Mail stay refused for now, because nobody has confirmed those
+  addresses want the mail
+  ([owner's decision](https://github.com/rest-mail/rest-mail-server/issues/734#issuecomment-6618625370)).
+  The overall migration work is tracked in
+  [#734](https://github.com/rest-mail/rest-mail-server/issues/734).
 
 ## Sources
 

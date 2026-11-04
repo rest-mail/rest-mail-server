@@ -5,7 +5,8 @@ To move an account's mail out of REST Mail, see
 
 Create the destination accounts first using [account import](migrating-accounts.md).
 Then copy an IMAP source account, or import a mailbox's Maildir or a supported
-mbox export, through the public API.
+mbox export, through the public API, or copy over IMAP with
+[imapsync](#copying-with-imapsync).
 Keep the source server and its archives until you have compared the destination
 folders, message counts, flags and original sources.
 
@@ -171,6 +172,199 @@ Every occurrence of source metadata is checked. Supported flags across repeated
 `Status` and `X-Status` headers are combined; a later header cannot hide invalid
 flags, keywords, pseudo-message metadata or Content-Length framing.
 
+## Copying with imapsync
+
+[imapsync](https://imapsync.lamiral.info/) copies one account from any IMAP
+server to another, and REST Mail's IMAP service accepts it like any mail client.
+It is an alternative to `import-imap`, not a part of it: it signs in to the
+destination over IMAP instead of using the import API, and behaves differently
+on reruns (below). Which route a migration takes is a decision for the person
+running it; this section only shows how to run imapsync safely. The options
+here were checked against imapsync's own documentation and source (2.314), and
+a trial migration from Dovecot used 2.326. The E2E job's
+`scripts/tests/test_imapsync_live.py` runs imapsync inside the test topology
+with test passwords and an unverified test certificate: do not copy that recipe.
+
+Before the first run:
+
+- **The destination account exists.** Create it with
+  [account import](migrating-accounts.md), so it keeps its old password. imapsync
+  signs in as that account over IMAP on port 993. An account with two-factor
+  authentication, or still in setup, cannot sign in to IMAP with its password:
+  give imapsync an [app password](MANUAL.md#33-auth) for it instead.
+- **imapsync can sign in to the source.** Use the user's own password, or the
+  source's administrator or master login with `--authuser1` (imapsync then
+  signs in as that administrator and opens `--user1`'s mailbox), if the
+  source supports one.
+- **The passwords are in files, not on the command line.** Each file holds the
+  password on its first line. Write them from your secret manager, readable only
+  by you, and delete them when the migration ends:
+
+  ```sh
+  umask 077
+  mkdir -p ~/migration
+  # write the source password to ~/migration/alice.old and the
+  # destination password to ~/migration/alice.new, without echoing them
+  ```
+
+  `--passfile1` and `--passfile2` read them, so the passwords do not appear in
+  `ps`, shell history or imapsync's log.
+- **The certificates are checked.** imapsync does not verify the server's
+  certificate unless told to: its default is `SSL_verify_mode=0`, and it says so
+  when it starts. Pass `--sslargs1 SSL_verify_mode=1` and
+  `--sslargs2 SSL_verify_mode=1` every time. With implicit TLS (`--ssl1`,
+  `--ssl2`, port 993) imapsync then also checks that the certificate names the
+  host, so give `--host1` and `--host2` as the names on the certificates, not
+  IP addresses. A server whose certificate comes from a private CA needs that CA:
+  `--sslargs1 SSL_ca_file=/path/to/old-ca.pem`. If the old server offers only
+  STARTTLS on port 143, use `--tls1` instead of `--ssl1` and add
+  `--sslargs1 SSL_verifycn_scheme=imap --sslargs1 SSL_verifycn_name=old.example.com`,
+  because imapsync's STARTTLS path does not check the name by itself.
+
+Check that both sign-ins work, then do a dry run, then copy:
+
+```sh
+cd ~/migration
+imapsync --justlogin \
+  --host1 old.example.com --ssl1 --sslargs1 SSL_verify_mode=1 \
+  --user1 alice@example.com --passfile1 alice.old \
+  --host2 mail.example.com --ssl2 --sslargs2 SSL_verify_mode=1 \
+  --user2 alice@example.com --passfile2 alice.new \
+  --noreleasecheck --logdir ~/migration/logs
+
+# the same options with --dry instead of --justlogin: shows what would be copied
+# the same options with neither: copies
+```
+
+`--noreleasecheck` keeps imapsync from fetching its latest version number from
+its website during the migration. Logging stays on: the log in `--logdir`
+records what was copied, with passwords shown as `MASKED`. Keep it with the
+password files and delete it with them. With `--dry`, a folder that does not
+yet exist on REST Mail is listed but its messages are not counted; the real run
+creates it.
+
+imapsync copies every folder, each message's original octets, its internal date
+and its flags, including Deleted and keywords. It does not delete anything on
+either side, and its exit status is 0 when it found no errors. That status is
+not enough to accept a copy: in the trial migration, imapsync reported `4/4`
+folders synced and `0` errors while REST Mail had not kept an empty folder
+([#1834](https://github.com/rest-mail/rest-mail-server/issues/1834)). Until that
+is fixed, an empty folder exists on REST Mail only once a message is in it.
+
+Run the same command again with nothing changed on the source: it should say
+`Messages transferred : 0`. Run it again at the cutover to copy what arrived
+since. On each rerun imapsync recognises messages it already copied by their
+`Message-ID` and `Received` headers, and by default copies their current flags
+again (`--noresyncflags` turns that off). That differs from the import API,
+where the first imported copy keeps its flags and a rerun changes nothing about
+it. A message deleted or moved on the source after it was copied stays on REST
+Mail under both routes. A message with neither a `Message-ID` nor a `Received`
+header is not copied by imapsync, which is one more reason to count.
+
+## Checking a copy
+
+Compare the two accounts yourself after every pass, whichever route copied the
+mail. This script signs in to both over implicit TLS on port 993, verifying the
+certificate and host name against the system's trusted CAs or a CA file given
+after the other arguments, and reads both read-only.
+For every selectable folder on the old server it checks that REST Mail has that
+folder, then compares each message's Message-ID, flags, internal date and size
+(which stands in for its octets and attachments). Save it as
+`compare-mailboxes.py`:
+
+```python
+import imaplib, re, ssl, sys, time
+
+LIST = re.compile(rb'\((?P<flags>[^)]*)\) (?:"(?P<delim>[^"]*)"|NIL) (?P<name>.+)$')
+
+
+def connect(host, user, passfile, cafile=None):
+    context = ssl.create_default_context(cafile=cafile)  # verifies certificate and name
+    client = imaplib.IMAP4_SSL(host, 993, ssl_context=context, timeout=60)
+    client.login(user, open(passfile).readline().rstrip("\r\n"))
+    return client
+
+
+def folders(client):
+    """{name with "/" as delimiter: name as the server spells it}, selectable only."""
+    found = {}
+    for line in client.list()[1]:
+        match = LIST.match(line)
+        if not match or b"\\noselect" in match["flags"].lower():
+            continue
+        name = match["name"].decode()
+        if name.startswith('"'):
+            name = name[1:-1].replace('\\"', '"').replace("\\\\", "\\")
+        delim = (match["delim"] or b"/").decode()
+        found[name.replace(delim, "/")] = name
+    return found
+
+
+def messages(client, name):
+    """Sorted (Message-ID, flags, INTERNALDATE, size) of every message in a folder."""
+    status, data = client.select('"%s"' % name.replace("\\", "\\\\").replace('"', '\\"'), readonly=True)
+    if status != "OK":
+        raise SystemExit("cannot open %r" % name)
+    if int(data[0]) == 0:
+        return []
+    found = []
+    for item in client.fetch("1:*", "(FLAGS INTERNALDATE RFC822.SIZE BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)])")[1]:
+        if not isinstance(item, tuple):
+            continue
+        flags = re.search(rb"FLAGS \(([^)]*)\)", item[0]).group(1).decode().split()
+        date = time.mktime(imaplib.Internaldate2tuple(item[0]))  # the instant, any zone
+        size = int(re.search(rb"RFC822\.SIZE (\d+)", item[0]).group(1))
+        found.append((item[1].decode(errors="replace").strip(),
+                      " ".join(sorted(f.lower() for f in flags if f != "\\Recent")), date, size))
+    return sorted(found)
+
+
+args = sys.argv[1:] + ["", ""]
+old = connect(*args[0:3], args[6] or None)
+new = connect(*args[3:6], args[7] or None)
+old_folders, new_folders = folders(old), folders(new)
+problems = 0
+for folder in sorted(old_folders):
+    if folder not in new_folders:
+        print("MISSING FOLDER %s" % folder)
+        problems += 1
+        continue
+    a, b = messages(old, old_folders[folder]), messages(new, new_folders[folder])
+    print("%-40s %6d %6d %s" % (folder, len(a), len(b), "ok" if a == b else "DIFFERENT"))
+    problems += a != b
+print("%d problem(s)" % problems)
+sys.exit(1 if problems else 0)
+```
+
+```sh
+python3 compare-mailboxes.py old.example.com alice@example.com alice.old \
+  mail.example.com alice@example.com alice.new [old-ca.pem [new-ca.pem]]
+```
+
+It prints each folder with both message counts, `MISSING FOLDER` for a folder
+REST Mail does not have, including an empty one, and `DIFFERENT` when the
+messages differ, and exits 1 if anything is wrong. Folder names are printed as
+the servers send them, in modified UTF-7 (`R&AOk-sum&AOk-` is `Résumé`), with
+either side's hierarchy separator turned into `/`. A folder whose name contains
+the other server's separator compares as a different name; check it by hand.
+If a size differs, compare that message's source on both sides.
+
+## Cutover checklist
+
+1. Every destination account exists and signs in, and a first copy has been
+   checked with the script above.
+2. Stop new mail changing the old account: point the MX at REST Mail
+   ([the migration chapter](email-explained/landscape/migrating.md#3-cut-over))
+   with the old server forwarding late arrivals, or stop delivery on the old
+   server so mail waits in senders' queues. Ask users to stop using the old
+   server, or turn off their sign-in there.
+3. Run the final pass: the same import or imapsync command again.
+4. Check every account again with the script: every folder present, including
+   empty and non-ASCII ones, the same count in every folder, and no message
+   `DIFFERENT`. An exit status of 0 from the copy is not this check.
+5. Move the mail apps to REST Mail. Keep the old server, its archives and the
+   imapsync logs until users confirm nothing is missing.
+
 ## Limits, reruns and cutover
 
 Each request imports one message. The decoded message is limited by
@@ -205,8 +399,9 @@ headers.
 Import once while both servers are available, then stop source-side changes for
 the final pass and repeat the import before moving clients. A rerun adds new
 Message-IDs; it does not reconcile later flag edits, moves or deletions of copies
-already imported. Compare the destination inventory and retain source archives
-before retiring the old server.
+already imported. Compare the destination inventory
+([Checking a copy](#checking-a-copy), [Cutover checklist](#cutover-checklist))
+and retain source archives before retiring the old server.
 
 ## Public operation
 
@@ -225,7 +420,8 @@ may leave an unreferenced content-addressed object; it does not leave a message
 or attachment reference, and a rerun reuses the same object content.
 
 Direct IMAP source import, including OAuth, is available alongside Maildir/mbox,
-and all three restore Deleted and keywords. Copying with imapsync also works: the E2E job copies a folder
+and all three restore Deleted and keywords. Copying with imapsync also works
+([Copying with imapsync](#copying-with-imapsync)): the E2E job copies a folder
 from Dovecot with it and compares folders, counts, subjects and flags
 (`scripts/tests/test_imapsync_live.py`). The wider migration outcome
 stays tracked in [#734](https://github.com/rest-mail/rest-mail-server/issues/734);
