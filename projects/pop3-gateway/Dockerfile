@@ -1,6 +1,11 @@
 # ── Stage 1: module cache (shared by all later stages) ───────────────
 # Base images pinned by digest for reproducible builds (OSI-17).
-FROM golang:1.26.10-alpine@sha256:a2012b4a1d1f9f7e9f44e0d39b805a901e856b1dd80b4e6ee4338db547050308 AS deps
+# This stage and the builder run on the build machine's own platform, whatever
+# the target: the modules are the same files everywhere and Go cross-compiles,
+# so no step here runs under emulation (#1855). Only the prod stage is built per
+# platform. The dev stage inherits this stage's platform, which is right for an
+# image built for the machine running it.
+FROM --platform=$BUILDPLATFORM golang:1.26.10-alpine@sha256:a2012b4a1d1f9f7e9f44e0d39b805a901e856b1dd80b4e6ee4338db547050308 AS deps
 WORKDIR /app
 # git is required so `go mod download` can fetch module versions not yet cached
 # by the Go module proxy (direct VCS fallback). `safe.directory` lets Go's
@@ -15,7 +20,10 @@ RUN go mod download
 # ── Stage 2: builder ─────────────────────────────────────────────────
 FROM deps AS builder
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -o /bin/pop3-gateway ./cmd/pop3-gateway
+# Set by BuildKit to the platform this image is being built for.
+ARG TARGETOS
+ARG TARGETARCH
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /bin/pop3-gateway ./cmd/pop3-gateway
 
 # ── Stage 3: dev (hot reload via air) ────────────────────────────────
 # Source code is volume-mounted at /app by docker-compose.override.yml.
@@ -40,10 +48,9 @@ FROM alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6
 RUN apk add --no-cache ca-certificates \
  && addgroup -S -g 10001 restmail && adduser -S -u 10001 -G restmail restmail
 COPY --from=builder /bin/pop3-gateway /usr/local/bin/pop3-gateway
-COPY projects/pop3-gateway/entrypoint.sh /entrypoint.sh
 # 0755, not +x: the mode must not depend on how the builder's checkout set the
 # read bits, or the unprivileged user below cannot read its own entrypoint.
-RUN chmod 0755 /entrypoint.sh
+COPY --chmod=0755 projects/pop3-gateway/entrypoint.sh /entrypoint.sh
 # Numeric, so Kubernetes can tell it is not root without being told the uid.
 USER 10001:10001
 EXPOSE 995
