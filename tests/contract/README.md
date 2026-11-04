@@ -22,8 +22,8 @@ remain enabled with 10,000 requests/second and a burst of 10,000. Only the
 corresponding hook pacing sleeps are skipped. Trace flushing and send-budget
 waits are unchanged. The Limits suite recreates the API with the contract and
 load overrides off, checks the actual container environment against the real
-defaults, and then spends those default limits. Teardown recreates the API
-with the job's contract setting again. The coverage report is collected before
+defaults, and then spends those default limits. The own-data run recreates the
+API with the job's contract setting again. The coverage report is collected before
 either recreation; no coverage report or fixture is transferred between jobs.
 
 The additional [live requirement proofs](#live-requirement-proofs-1237) exercise

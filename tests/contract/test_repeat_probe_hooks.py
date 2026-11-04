@@ -402,7 +402,7 @@ class AliasProbes(AdminAPITestCase):
 
     def test_only_the_phases_after_the_gate_turn_on_clearing_leftovers(self):
         script = (Path(__file__).resolve().parents[2] / "tests/contract/run.sh").read_text()
-        phases = re.compile(r"^(gate|authorization|ownership|own-data|teardown|fuzz)\)$", re.M)
+        phases = re.compile(r"^(gate|authorization|ownership|own-data|fuzz)\)$", re.M)
         marks = list(phases.finditer(script))
         turned_on = []
         for mark, following in zip(marks, marks[1:] + [None]):
