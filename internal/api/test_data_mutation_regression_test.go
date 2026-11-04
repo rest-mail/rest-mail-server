@@ -144,6 +144,13 @@ func (c *testDataMutationConnection) ExecContext(ctx context.Context, q string, 
 		}
 		return driver.RowsAffected(1), nil
 	}
+	if strings.HasPrefix(q, "INSERT INTO role_capabilities (role_id, capability_id)") && strings.Contains(q, "CROSS JOIN capabilities") {
+		c.relevant(ctx, "CEILING_RESTARTED", nil)
+		if c.aborted {
+			return nil, &pgconn.PgError{Code: "25P02", Message: "fixture transaction aborted"}
+		}
+		return driver.RowsAffected(1), nil
+	}
 	if strings.HasPrefix(q, "UPDATE domains SET ") {
 		c.relevant(ctx, "DOMAINS_RESTARTED", nil)
 		if c.aborted {

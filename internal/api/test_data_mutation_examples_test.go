@@ -47,7 +47,7 @@ func TestTestDataMutationExamples(t *testing.T) {
 				if s.store != nil {
 					calls = s.store.snapshot()[before:]
 				}
-				begins, commits, rollbacks, passwords, clears, restarts, domainRestarts, accountRestarts := 0, 0, 0, 0, 0, 0, 0, 0
+				begins, commits, rollbacks, passwords, clears, restarts, domainRestarts, accountRestarts, ceilingRestarts := 0, 0, 0, 0, 0, 0, 0, 0, 0
 				lookups := map[string]int{}
 				deleted := map[string]bool{}
 				for _, c := range calls {
@@ -66,6 +66,8 @@ func TestTestDataMutationExamples(t *testing.T) {
 						domainRestarts++
 					case "ACCOUNTS_RESTARTED":
 						accountRestarts++
+					case "CEILING_RESTARTED":
+						ceilingRestarts++
 					case "DATA_CONTEXT":
 						if c.args[0].Value != true {
 							t.Fatal("test-data work lost HTTP context")
@@ -119,7 +121,10 @@ func TestTestDataMutationExamples(t *testing.T) {
 						if accountRestarts != 1 {
 							t.Fatalf("retained accounts' settings restarted%d times want1", accountRestarts)
 						}
-					} else if clears != 0 || restarts != 0 || domainRestarts != 0 || accountRestarts != 0 {
+						if ceilingRestarts != 1 {
+							t.Fatalf("server capability ceiling restarted%d times want1", ceilingRestarts)
+						}
+					} else if clears != 0 || restarts != 0 || domainRestarts != 0 || accountRestarts != 0 || ceilingRestarts != 0 {
 						t.Fatal("seed cleared existing data")
 					}
 				} else if name == "commit_failure" {

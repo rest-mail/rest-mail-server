@@ -508,6 +508,23 @@ def get_a_domain_of_its_own(transaction):
         to_domain(transaction, a_domain_of_its_own(transaction))
 
 
+@hooks.before("listRoles")
+@hooks.before("listCapabilities")
+@hooks.before("getServerLimits")
+@hooks.before("updateServerLimits")
+@hooks.before("getServerCapabilities")
+@hooks.before("updateServerCapabilities")
+def server_settings_after_a_reset(transaction):
+    # The server settings, moved to a clean start: each exchange, refusals
+    # included, resets and seeds first. None needs anything made. The roles
+    # and capabilities are the installation's own, which a reset keeps; the
+    # limits go back to their defaults, and the capability ceiling to every
+    # capability, so a change one exchange makes is gone before the next. A
+    # run with no reset changes nothing here.
+    if asked_for_a_clean_start():
+        start_clean(transaction)
+
+
 @hooks.before("listAPIKeys")
 @hooks.before("revokeAPIKey")
 @hooks.before("updateServerLimits")

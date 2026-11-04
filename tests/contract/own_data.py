@@ -206,6 +206,15 @@ MOVED = (
     "listPipelines",
     "listPipelineLogs",
     "getPipelineAnalytics",
+    # The server settings. No link starts from or reaches any of them, and none
+    # needs anything made: the reset puts the limits and the capability ceiling
+    # back as a new installation has them.
+    "listRoles",
+    "listCapabilities",
+    "getServerLimits",
+    "updateServerLimits",
+    "getServerCapabilities",
+    "updateServerCapabilities",
 )
 
 

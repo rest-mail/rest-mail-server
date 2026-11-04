@@ -165,6 +165,15 @@ CREDENTIALS_AND_BANS = {
 }
 # The pipeline reads, which no link starts from or reaches.
 PIPELINE_READS = ("listPipelines", "listPipelineLogs", "getPipelineAnalytics")
+# The server settings, which no link starts from or reaches.
+SERVER_SETTINGS = (
+    "listRoles",
+    "listCapabilities",
+    "getServerLimits",
+    "updateServerLimits",
+    "getServerCapabilities",
+    "updateServerCapabilities",
+)
 FOLLOWS_THE_SENT_MESSAGE = {
     "getMessage",
     "updateMessage",
@@ -247,7 +256,8 @@ class Selection(unittest.TestCase):
             - set(ACCOUNT_SETTINGS)
             - set(QUEUE)
             - set(CREDENTIALS_AND_BANS)
-            - set(PIPELINE_READS),
+            - set(PIPELINE_READS)
+            - set(SERVER_SETTINGS),
             link_followers(description, "createDomain") | {"createDomain"},
         )
 
@@ -267,6 +277,14 @@ class Selection(unittest.TestCase):
             for start in description_operations(description):
                 self.assertNotIn(operation, link_followers(description, start), start)
         self.assertLessEqual(set(PIPELINE_READS), set(own_data.MOVED))
+
+    def test_the_server_settings_have_moved_and_no_link_touches_them(self):
+        description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
+        for operation in SERVER_SETTINGS:
+            self.assertEqual(link_followers(description, operation), set())
+            for start in description_operations(description):
+                self.assertNotIn(operation, link_followers(description, start), start)
+        self.assertLessEqual(set(SERVER_SETTINGS), set(own_data.MOVED))
 
     def test_it_selects_every_alias_operation_and_its_links(self):
         description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
