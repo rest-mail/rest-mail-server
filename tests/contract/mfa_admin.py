@@ -23,6 +23,7 @@ import json
 import os
 import sys
 import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -59,6 +60,14 @@ def _sign_in(base_url, address=ADDRESS, password=PASSWORD, **factor):
     return _post(base_url, "/api/v1/auth/login", body)
 
 
+def _code(refused):
+    """The error code of a refused request, or None."""
+    try:
+        return json.loads(refused.read()).get("error", {}).get("code")
+    except (ValueError, AttributeError):
+        return None
+
+
 def _step():
     return int(time.time()) // 30
 
@@ -71,9 +80,16 @@ def enroll(base_url):
 
 
 def _enroll(base_url, address, password, state):
-    if state.exists():
-        return
-    plain = _sign_in(base_url, address, password)["access_token"]
+    # A kept enrollment holds only while the server still asks this account for
+    # a second factor. A database restored to before the enrollment (a local
+    # rerun) does not, and signing in with the kept codes would then give a
+    # session without one: enroll again instead.
+    try:
+        plain = _sign_in(base_url, address, password)["access_token"]
+    except urllib.error.HTTPError as refused:
+        if state.exists() and refused.code == 401 and _code(refused) == "totp_required":
+            return
+        raise
     enrolled = _post(base_url, "/api/v1/auth/2fa/enroll", {}, plain)
     _post(base_url, "/api/v1/auth/2fa/confirm", {"totp_code": totp(enrolled["secret"])}, plain)
     state.parent.mkdir(parents=True, exist_ok=True)
