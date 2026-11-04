@@ -21,3 +21,10 @@ func Convert(raw string, utf8 bool) string {
 func EncodeWords(text string) string {
 	return message.EncodeWords(text)
 }
+
+// ParameterField renders a Content-Type or Content-Disposition field 7-bit, changing
+// only what holds an 8-bit octet, so a parameter in any charset keeps its text. ok is
+// false when the value does not parse, or the type itself is 8-bit.
+func ParameterField(name, value string) (field string, ok bool) {
+	return message.ParameterField(name, value)
+}

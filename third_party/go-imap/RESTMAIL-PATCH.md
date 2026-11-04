@@ -65,6 +65,24 @@ found by the RFC 3501 inventory in rest-mail/rest-mail-server#374.
     module has no dependencies, so that is every charset but UTF-8, US-ASCII and
     ISO-8859-1. This relies on `net/mail` keeping a word whose charset reader
     fails on read, which the session tests would catch if it changed.
+  - An RFC 2231 parameter in such a charset gets the same treatment, for
+    rest-mail/rest-mail-server#1886, and go-imap reads these parameters itself
+    because `mime.ParseMediaType` drops them. The value goes out as one encoded word
+    naming the charset, in either session, however long, because go-imap can't tell
+    where a character of that charset ends and a word may not split one (RFC 2047
+    §5). That outranks the 75-character limit (§2). A boundary or a charset name
+    that is ASCII stays plain text, because the structure depends on it.
+  - Converting a Content-Type or Content-Disposition field changes only the
+    parameter holding an 8-bit octet, and the field is otherwise as it was sent.
+    A plain 8-bit value beside an extended form of the same parameter becomes encoded
+    words in its quoted-string, against RFC 2047 §5, because a second extended form
+    would make the field unreadable. Readers take the extended form.
+
+- SEARCH decodes a header one encoded word at a time, for
+  rest-mail/rest-mail-server#1887, rather than through
+  `mime.WordDecoder.DecodeHeader`, which gives up on the whole header at a charset
+  with no reader. It finds each word's bounds itself to do that: a word no longer
+  spans lines, and a word it can't decode ends at white space.
 
 ## RFC 9051 additions
 
