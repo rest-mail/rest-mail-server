@@ -1,4 +1,8 @@
-@import "tailwindcss";
+/* Tailwind reads class names only from src/ and index.html (#1854). Without
+   source(), it scans every text file under the build root, so a word in the
+   Dockerfile or README could add a rule and change every asset hash. */
+@import "tailwindcss" source("../src");
+@source "../index.html";
 
 :root {
   /* Colors - Swiss Clean Design System */
