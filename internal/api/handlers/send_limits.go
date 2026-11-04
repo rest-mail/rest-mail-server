@@ -20,6 +20,16 @@ import (
 	"gorm.io/gorm/clause"
 )
 
+// Limits and sending are refused for an inactive account, or one below an
+// inactive owner. It is the account's state, so neither is a server failure,
+// and trying again changes nothing until an administrator makes it active. A
+// send answers as for any sender the caller may not use; every send route
+// documents that refusal.
+var (
+	errInactiveLimits = endpoint.Refuse(http.StatusConflict, "account_inactive", "The account, or an account that owns it, is inactive")
+	errInactiveSender = endpoint.Refuse(http.StatusForbidden, "forbidden", "You are not authorized to send from this address")
+)
+
 type heldSendIDKey struct{}
 type releaseSendKey struct{}
 
@@ -72,6 +82,9 @@ func (h *MessageHandler) reserveLayeredSend(r *http.Request, req sendMessageRequ
 			}
 			return tx.Create(&held).Error
 		}})
+	if errors.Is(err, sendlimits.ErrAccountInactive) {
+		return nil, errInactiveSender
+	}
 	if err != nil {
 		return nil, endpoint.Refuse(http.StatusServiceUnavailable, "deferred", "Could not retain or account for the message; try again later")
 	}
@@ -87,8 +100,8 @@ func (h *MessageHandler) reserveLayeredSend(r *http.Request, req sendMessageRequ
 
 func (h *MessageHandler) RegisterSendLimits(rs endpoint.Routes, checks SessionRouteChecks) {
 	manage := handlerChecked(models.CapMailboxManage, "CookieAuth", "BearerAuth")
-	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/accounts/{id}/send-limits", OperationID: "getAccountSendLimits", Summary: "Read effective account send limits", Tags: []string{"Accounts"}, Security: manage, Errors: []int{http.StatusNotFound}}, h.getAccountSendLimits)
-	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPut, Path: "/api/v1/accounts/{id}/send-limits", OperationID: "setAccountSendLimits", Summary: "Set account send limits with a two-factor session", Description: "All four values are required; zero is unlimited. Owned accounts may only be capped below their owner's live limits. A two-factor person session and mailbox:manage are required. Changes are audited with the actual actor and session. Domain and server ceilings still apply.", Tags: []string{"Accounts"}, Security: manage, Errors: []int{http.StatusForbidden, http.StatusNotFound, http.StatusConflict}, Middleware: []endpoint.Middleware{checks.Audit("send_limits.update", middleware.AuditFailuresOnly())}}, h.setAccountSendLimits)
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/accounts/{id}/send-limits", OperationID: "getAccountSendLimits", Summary: "Read effective account send limits", Description: "An inactive account, or one with an inactive account above it in its ownership chain, has no effective limits and answers 409 account_inactive.", Tags: []string{"Accounts"}, Security: manage, Errors: []int{http.StatusNotFound, http.StatusConflict}}, h.getAccountSendLimits)
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPut, Path: "/api/v1/accounts/{id}/send-limits", OperationID: "setAccountSendLimits", Summary: "Set account send limits with a two-factor session", Description: "All four values are required; zero is unlimited. Owned accounts may only be capped below their owner's live limits; an inactive owner has none, and answers 409 account_inactive. A two-factor person session and mailbox:manage are required. Changes are audited with the actual actor and session. Domain and server ceilings still apply.", Tags: []string{"Accounts"}, Security: manage, Errors: []int{http.StatusForbidden, http.StatusNotFound, http.StatusConflict}, Middleware: []endpoint.Middleware{checks.Audit("send_limits.update", middleware.AuditFailuresOnly())}}, h.setAccountSendLimits)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/accounts/{id}/held-messages", OperationID: "listHeldMessages", Summary: "List an account's retained send-limit holds", Tags: []string{"Messages"}, Security: handlerChecked(models.CapMailRead, "CookieAuth", "BearerAuth"), Errors: []int{http.StatusNotFound}}, h.listHeldMessages)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/messages/scheduled/{id}/release", OperationID: "releaseHeldMessage", Summary: "Release held mail with a two-factor session", Description: "Requires a two-factor person session, mailbox:manage on the submitting account and mail:send on the sender. Releases one retained message, bypassing account budgets for this deliberate send while still charging them. Domain/server budgets, live sender permissions and outbound policies remain enforced. Returns the retained record: 200 after release, or 202 if budgets or policies defer and keep the same hold. Concurrent releases cannot send twice. The real releasing actor/session and original submitting account are audited. An unknown or unlinked sender answers the same 404 not_found; a visible sender without the sending capability answers 403 forbidden. Live sender policy refusals answer 422 validation_failed with details.fields naming list_unsubscribe or list_unsubscribe.https.", Tags: []string{"Messages"}, Security: manage, SuccessStatuses: []int{http.StatusAccepted}, Responses: []oapifly.EndpointResponse{{Status: http.StatusOK, Description: "The retained message after release", Type: oapifly.TypeOf[endpoint.Data[ScheduledMessage]]()}, {Status: http.StatusAccepted, Description: "The same message remains held by domain/server budget or outbound policy", Type: oapifly.TypeOf[endpoint.Data[ScheduledMessage]]()}, {Status: http.StatusUnprocessableEntity, Description: "Binding validation or live sender policy refusal", Type: oapifly.TypeOf[ForwardRefusalResponse]()}}, Errors: []int{http.StatusForbidden, http.StatusNotFound, http.StatusConflict, http.StatusServiceUnavailable}, Middleware: []endpoint.Middleware{checks.Audit("send_limits.release", middleware.AuditFailuresOnly())}}, h.releaseHeldSend)
 }
@@ -129,7 +142,11 @@ func (h *MessageHandler) getAccountSendLimits(r *http.Request, in accountPath) (
 	if err := h.limitService(); err != nil {
 		return zero, err
 	}
-	return h.layeredLimits.EffectiveAccount(h.db.WithContext(r.Context()), uint(in.ID))
+	limits, err := h.layeredLimits.EffectiveAccount(h.db.WithContext(r.Context()), uint(in.ID))
+	if errors.Is(err, sendlimits.ErrAccountInactive) {
+		return zero, errInactiveLimits
+	}
+	return limits, err
 }
 func (h *MessageHandler) setAccountSendLimits(r *http.Request, in setSendLimitsRequest) (models.SendLimitValues, error) {
 	var zero models.SendLimitValues
@@ -150,6 +167,9 @@ func (h *MessageHandler) setAccountSendLimits(r *http.Request, in setSendLimitsR
 		if err := h.layeredLimits.SetAccount(tx, uint(in.ID), in.Body); err != nil {
 			if errors.Is(err, sendlimits.ErrOwnerCeiling) {
 				return endpoint.Refuse(http.StatusConflict, "owner_limit_exceeded", err.Error())
+			}
+			if errors.Is(err, sendlimits.ErrAccountInactive) {
+				return errInactiveLimits
 			}
 			return err
 		}

@@ -217,6 +217,8 @@ var exampleRequirements = map[string][]string{
 		"concurrent_change", "deleted_account", "existing_contact", "existing_domain", "existing_draft", "existing_folder",
 		"last_superadmin", "missing_recipient", "no_authenticator", "no_master_key", "uncertified_domain", "unhosted_domain",
 		"acme_enabled", "acme_issued_token",
+		// The live run's accounts stay active: others sign in as them.
+		"inactive_account",
 	},
 }
 

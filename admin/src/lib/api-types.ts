@@ -735,11 +735,14 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Read effective account send limits */
+        /**
+         * Read effective account send limits
+         * @description An inactive account, or one with an inactive account above it in its ownership chain, has no effective limits and answers 409 account_inactive.
+         */
         get: operations["getAccountSendLimits"];
         /**
          * Set account send limits with a two-factor session
-         * @description All four values are required; zero is unlimited. Owned accounts may only be capped below their owner's live limits. A two-factor person session and mailbox:manage are required. Changes are audited with the actual actor and session. Domain and server ceilings still apply.
+         * @description All four values are required; zero is unlimited. Owned accounts may only be capped below their owner's live limits; an inactive owner has none, and answers 409 account_inactive. A two-factor person session and mailbox:manage are required. Changes are audited with the actual actor and session. Domain and server ceilings still apply.
          */
         put: operations["setAccountSendLimits"];
         post?: never;
@@ -10135,6 +10138,15 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

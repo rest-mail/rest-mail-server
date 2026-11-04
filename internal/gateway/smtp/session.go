@@ -23,6 +23,7 @@ import (
 	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
 	rmime "github.com/rest-mail/rest-mail-server/internal/mime"
 	"github.com/rest-mail/rest-mail-server/internal/ratelimit"
+	"github.com/rest-mail/rest-mail-server/internal/sendlimits"
 	"github.com/rest-mail/rest-mail-server/internal/srs"
 )
 
@@ -714,6 +715,10 @@ func (s *session) Data(r io.Reader) error {
 				sender = fromAddr
 			}
 			limited, err := budget.ReserveSubmission(SubmissionAttempt{AccountID: s.accountID, CredentialID: s.credentialID, Sender: sender, HeaderSender: fromAddr, Recipients: int64(len(s.rcptTo)), Remote: s.remoteAddr()})
+			if errors.Is(err, sendlimits.ErrAccountInactive) {
+				slog.Warn("smtp: submission refused: inactive account", "auth_user", maskEmail(s.authEmail), "mail_from", maskEmail(sender), "header_from", maskEmail(fromAddr), "event", "smtp_inactive_identity")
+				return &gosmtp.SMTPError{Code: 550, EnhancedCode: gosmtp.EnhancedCode{5, 7, 1}, Message: "The sending account is inactive"}
+			}
 			if err != nil || limited {
 				return &gosmtp.SMTPError{Code: 451, EnhancedCode: gosmtp.EnhancedCode{4, 7, 1}, Message: "Sending temporarily held; retain this message and retry later"}
 			}
