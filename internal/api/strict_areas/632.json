@@ -2,7 +2,6 @@
   "632": [
     "login",
     "logout",
-    "protocolSignIn",
     "recoverAccount",
     "refreshToken"
   ]
