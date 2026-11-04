@@ -816,6 +816,13 @@ class RestmailPeerTests(unittest.TestCase):
         with self.assertRaisesRegex(cluster_e2e.StepFailed, "--peer-namespace"):
             stage.restmail_peer()
 
+    def test_the_peers_domain_goes_live_before_anything_is_sent_to_it(self):
+        import inspect
+        source = inspect.getsource(cluster_e2e.Stages.restmail_peer)
+        live = source.index("put_domain_live(peer_api, peer_token, peer, peer_domain)")
+        self.assertLess(source.index("bootstrap_session(peer_api, peer)"), live)
+        self.assertLess(live, source.index('"/api/v1/messages/send"'))
+
     def test_the_new_steps_run_in_order_after_the_mail_they_check(self):
         steps = list(cluster_e2e.STEPS)
         self.assertLess(steps.index("contract-examples"), steps.index("dkim-key"))
