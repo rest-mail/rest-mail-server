@@ -129,6 +129,11 @@ PUBLIC_READS = (
     "mozillaAutoconfigWellKnown",
     "microsoftAutodiscover",
 )
+# The domain administration lists, which no link starts from or reaches.
+DOMAIN_LISTS = ("listDomains", "listAliases", "listDKIMKeys", "listCertificates")
+# The certificate operations: createCertificate's link reaches the read, and
+# the read's the delete.
+CERTIFICATES = ("createCertificate", "getCertificate", "deleteCertificate")
 FOLLOWS_THE_SENT_MESSAGE = {
     "getMessage",
     "updateMessage",
@@ -210,7 +215,9 @@ class Selection(unittest.TestCase):
             - set(THREADS_AND_IMPORTS)
             - set(PIPELINE_READS)
             - set(FILTERS)
-            - set(PUBLIC_READS),
+            - set(PUBLIC_READS)
+            - set(DOMAIN_LISTS)
+            - set(CERTIFICATES),
             link_followers(description, "createDomain") | {"createDomain"},
         )
 
@@ -225,11 +232,24 @@ class Selection(unittest.TestCase):
 
     def test_the_pipeline_reads_have_moved_and_no_link_touches_them(self):
         description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
-        for operation in PIPELINE_READS + FILTERS + PUBLIC_READS:
+        for operation in PIPELINE_READS + FILTERS + PUBLIC_READS + DOMAIN_LISTS:
             self.assertEqual(link_followers(description, operation), set())
             for start in description_operations(description):
                 self.assertNotIn(operation, link_followers(description, start), start)
-        self.assertLessEqual(set(PIPELINE_READS + FILTERS + PUBLIC_READS), set(own_data.MOVED))
+        self.assertLessEqual(
+            set(PIPELINE_READS + FILTERS + PUBLIC_READS + DOMAIN_LISTS), set(own_data.MOVED)
+        )
+
+    def test_it_selects_every_certificate_operation_and_its_links(self):
+        description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
+        self.assertEqual(
+            link_followers(description, "createCertificate") | {"createCertificate"},
+            set(CERTIFICATES),
+        )
+        for start in description_operations(description):
+            if start not in CERTIFICATES:
+                self.assertFalse(set(CERTIFICATES) & link_followers(description, start), start)
+        self.assertLessEqual(set(CERTIFICATES), set(own_data.MOVED))
 
     def test_it_selects_every_alias_operation_and_its_links(self):
         description = yaml.safe_load((ROOT / "openapi.yaml").read_text())

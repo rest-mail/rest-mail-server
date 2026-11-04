@@ -638,7 +638,135 @@ def filter_requests_after_a_reset(transaction):
     start_clean(transaction)
     path = transaction["fullPath"].partition("?")[0]
     if path == "/api/v1/admin/custom-filters" and " > 200" in transaction.get("name", ""):
-        a_custom_filter_of_its_own(transaction)
+        made_for_the_listing(transaction, "custom filter", {"id": a_custom_filter_of_its_own(transaction)})
+
+
+@hooks.before("listDomains")
+@hooks.before("listAliases")
+@hooks.before("listDKIMKeys")
+@hooks.before("listCertificates")
+@hooks.before("createCertificate")
+@hooks.before("getCertificate")
+@hooks.before("deleteCertificate")
+def domain_administration_after_a_reset(transaction):
+    # The domain administration lists and the certificate operations, moved to
+    # a clean start: each exchange, refusals included, resets and seeds first.
+    # A listing that succeeds gets a row of its own, made after the reset, and
+    # notes it for the_listing_holds_what_was_made. A read or delete of a
+    # certificate aimed at a positive id other than missing's 2147483647 (the
+    # found example's 1, or the id createCertificate's link names, gone after
+    # the reset) gets a certificate of its own. A create needs nothing made:
+    # its documented domain_id 1 is the seeded restmail.test, which the reset
+    # keeps as id 1, and its later hook supplies the certificate. Registered
+    # ahead of every other hook of these operations. A run with no reset
+    # changes nothing here.
+    if not asked_for_a_clean_start():
+        return
+    start_clean(transaction)
+    path, separator, query = transaction["fullPath"].partition("?")
+    succeeds = " > 200" in transaction.get("name", "")
+    if path == "/api/v1/admin/domains" and succeeds:
+        made_for_the_listing(transaction, "domain", {"id": a_domain_of_its_own(transaction)})
+    elif path == "/api/v1/admin/aliases" and succeeds:
+        made_for_the_listing(transaction, "alias", {"id": an_alias_of_its_own(transaction)})
+    elif path == "/api/v1/admin/dkim" and succeeds:
+        domain_id = a_domain_of_its_own(transaction)
+        a_signing_key(transaction, domain_id)
+        made_for_the_listing(
+            transaction, "DKIM key", {"domain_id": domain_id, "selector": "contract", "has_key": True}
+        )
+    elif path == "/api/v1/admin/certificates" and succeeds:
+        made_for_the_listing(transaction, "certificate", {"id": a_certificate_of_its_own(transaction)})
+    elif path.startswith("/api/v1/admin/certificates/"):
+        certificate = path.rsplit("/", 1)[-1]
+        if positive_id(certificate) and certificate != "2147483647":
+            transaction["fullPath"] = (
+                "/api/v1/admin/certificates/" + str(a_certificate_of_its_own(transaction)) + separator + query
+            )
+
+
+def a_certificate_of_its_own(transaction):
+    """A self-signed certificate made for this exchange, after its reset, on a
+    domain of its own."""
+    domain_id = a_domain_of_its_own(transaction)
+    with tempfile.TemporaryDirectory() as d:
+        key, cert = os.path.join(d, "tls.key"), os.path.join(d, "tls.crt")
+        openssl(
+            "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "30",
+            "-subj", "/CN=" + OWN_DOMAIN, "-addext", "subjectAltName=DNS:" + OWN_DOMAIN,
+            "-keyout", key, "-out", cert,
+        )
+        with open(cert) as cert_file, open(key) as key_file:
+            return fixture_call(
+                transaction,
+                "POST",
+                "/api/v1/admin/certificates",
+                {
+                    "domain_id": domain_id,
+                    "cert_pem": cert_file.read(),
+                    "key_pem": key_file.read(),
+                    "auto_renew": False,
+                },
+            )["id"]
+
+
+def made_for_the_listing(transaction, what, match):
+    """Note what a listing's before hook made after its reset, for
+    the_listing_holds_what_was_made: a row whose fields hold every value in
+    match (a dotted field reads a nested object) is the one made. match None
+    says the page is not meant to list it."""
+    hooks.stash["listing_made"] = {
+        "name": transaction.get("name", ""),
+        "what": what,
+        "match": match,
+    }
+
+
+def row_field(row, field):
+    for key in field.split("."):
+        row = row.get(key) if isinstance(row, dict) else None
+    return row
+
+
+@hooks.after("listCustomFilters")
+@hooks.after("listDomains")
+@hooks.after("listAliases")
+@hooks.after("listDKIMKeys")
+@hooks.after("listCertificates")
+def the_listing_holds_what_was_made(transaction):
+    # A listing's 200 has the same shape with no rows as with the one its
+    # before hook made after the reset, so the status and the schema alone
+    # pass on an empty list (#1789). After a reset the answer must list what
+    # was made for it, or the exchange fails. A documented 200 with nothing
+    # made for it fails too: it would prove only the shape again. Refusals and
+    # a run with no reset are left alone.
+    made = hooks.stash.pop("listing_made", None)
+    if made is not None and made["name"] != transaction.get("name", ""):
+        made = None
+    real = transaction.get("real") or {}
+    if (
+        not asked_for_a_clean_start()
+        or " > 200" not in transaction.get("name", "")
+        or str(real.get("statusCode")) != "200"  # The status check fails it.
+    ):
+        return
+    if made is None:
+        transaction["fail"] = "the listing had nothing made for it to list (#1789)"
+        return
+    if made["match"] is None:  # Its before hook says this page lists none of it.
+        return
+    rows = (hooks.get_json(transaction, "real") or {}).get("data")
+    rows = rows if isinstance(rows, list) else []
+    if any(
+        all(row_field(row, field) == value for field, value in made["match"].items())
+        for row in rows
+    ):
+        return
+    wanted = ", ".join(f"{field} {value!r}" for field, value in made["match"].items())
+    transaction["fail"] = (
+        f"the listing does not hold the {made['what']} made for it ({wanted}): "
+        f"it answered {len(rows):d} other row{'' if len(rows) == 1 else 's'}"
+    )
 
 
 @hooks.before("getHealth")
