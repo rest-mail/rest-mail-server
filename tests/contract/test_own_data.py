@@ -144,6 +144,29 @@ CLIENT_SECRETS = (
     "revokeClientSecret",
     "issueClientCredentialsToken",
 )
+# The sign-in and recovery operations, which no link starts from or reaches.
+SIGN_IN_AND_RECOVERY = (
+    "login",
+    "logout",
+    "refreshToken",
+    "protocolSignIn",
+    "resetAdmin",
+    "recoverAccount",
+    "ownerChallenge",
+    "ownerToken",
+    "ownerStatus",
+    "getTwoFactorStatus",
+    "enrollTwoFactor",
+    "confirmTwoFactor",
+    "disableTwoFactor",
+    "changeOwnPassword",
+    "requestRecoveryEmail",
+    "redeemRecoveryEmail",
+    "getRecoveryEmail",
+    "registerRecoveryEmail",
+    "recoveryEmailLink",
+    "verifyRecoveryEmail",
+)
 FOLLOWS_THE_SENT_MESSAGE = {
     "getMessage",
     "updateMessage",
@@ -229,7 +252,8 @@ class Selection(unittest.TestCase):
             - set(DOMAIN_LISTS)
             - set(CERTIFICATES)
             - set(ACCOUNT_LINKS)
-            - set(CLIENT_SECRETS),
+            - set(CLIENT_SECRETS)
+            - set(SIGN_IN_AND_RECOVERY),
             link_followers(description, "createDomain") | {"createDomain"},
         )
 
@@ -244,12 +268,14 @@ class Selection(unittest.TestCase):
 
     def test_the_pipeline_reads_have_moved_and_no_link_touches_them(self):
         description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
-        for operation in PIPELINE_READS + FILTERS + PUBLIC_READS + DOMAIN_LISTS + CLIENT_SECRETS:
+        for operation in (
+            PIPELINE_READS + FILTERS + PUBLIC_READS + DOMAIN_LISTS + CLIENT_SECRETS + SIGN_IN_AND_RECOVERY
+        ):
             self.assertEqual(link_followers(description, operation), set())
             for start in description_operations(description):
                 self.assertNotIn(operation, link_followers(description, start), start)
         self.assertLessEqual(
-            set(PIPELINE_READS + FILTERS + PUBLIC_READS + DOMAIN_LISTS + CLIENT_SECRETS),
+            set(PIPELINE_READS + FILTERS + PUBLIC_READS + DOMAIN_LISTS + CLIENT_SECRETS + SIGN_IN_AND_RECOVERY),
             set(own_data.MOVED),
         )
 
