@@ -200,6 +200,8 @@ jobs:
           DB_PASS: restmail
           # The in-process example tests write the pairs they proved here (#1237).
           RESTMAIL_EXAMPLE_PROOFS: ${{ runner.temp }}/proofs/example-proofs-rest.json
+          # Full random inputs for the import route's spool tests (#1437).
+          RESTMAIL_IMPORT_LONG_PROOF: "1"
 
       - name: Test the local IMAP compatibility module
         working-directory: third_party/go-imap
