@@ -17,6 +17,9 @@ class FrontendReadonlyTests(unittest.TestCase):
         for app in ("webmail", "admin"):
             for mode in ("dev", "prod"):
                 with self.subTest(app=app, mode=mode), tempfile.TemporaryDirectory() as temp:
+                    # The launch reports canonical paths; macOS aliases /var
+                    # to /private/var, so use the resolved directory throughout.
+                    temp = os.path.realpath(temp)
                     directory = Path(temp)
                     docker = directory / "docker"
                     docker.write_text('''#!/usr/bin/env python3

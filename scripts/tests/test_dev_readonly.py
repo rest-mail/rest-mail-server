@@ -75,7 +75,9 @@ class DevReadonlyTests(unittest.TestCase):
     def test_dev_mounts_and_production_boundary(self):
         for service in SERVICES:
             with self.subTest(service=service), tempfile.TemporaryDirectory() as temp:
-                directory = Path(temp)
+                # The scripts report canonical paths; macOS aliases /var to
+                # /private/var, so compare against the resolved directory.
+                directory = Path(temp).resolve()
                 (directory / "bin").mkdir()
                 docker = directory / "bin/docker"
                 docker.write_text("""#!/usr/bin/env python3

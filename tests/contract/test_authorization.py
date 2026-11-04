@@ -15,7 +15,8 @@ class AuthorizationConfig(unittest.TestCase):
     def setUp(self):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
-        self.root = Path(directory.name)
+        # Reports name canonical paths; macOS aliases /var to /private/var.
+        self.root = Path(directory.name).resolve()
         self.spec = self.root / "openapi.yaml"
         self.spec.write_text(
             yaml.safe_dump(
