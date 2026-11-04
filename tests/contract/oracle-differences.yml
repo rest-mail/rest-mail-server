@@ -1049,12 +1049,6 @@
   difference: "response 200 application/json.properties.data.properties.broken_at_seq.type: openapi.yaml \"integer\", generated [\"integer\",\"null\"]"
   reason: >-
     The audit verification result uses optional pointer fields. go-oapifly describes their nullable Go types; the existing omitempty tags omit them when unset.
-- operation: getDashboardStats
-  difference: 'response 200 application/json.properties.data.properties.recentActivity.type: openapi.yaml "array", generated ["array","null"]'
-  reason: >-
-    With no recent activity the dashboard has always written null. A pointer to the
-    slice preserves that response through endpoint registration; populated activity
-    remains an array and all camelCase names remain unchanged.
 
 # Outbound queue (#650)
 

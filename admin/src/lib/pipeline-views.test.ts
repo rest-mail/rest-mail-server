@@ -61,7 +61,14 @@ describe("views of opaque JSON fields", () => {
       log: { filter: "size_check", result: "pass" },
     };
     expect(traceView({ ...trace, stages: [step] }).stages).toEqual([step]);
-    expect(traceView({ ...trace, stages: null }).stages).toEqual([]);
+    expect(traceView({ ...trace, stages: [] }).stages).toEqual([]);
+    // The API answers [] now (#1749); an older one during an upgrade still answered null.
+    expect(
+      traceView({
+        ...trace,
+        stages: null as unknown as components["schemas"]["StepResult"][],
+      }).stages,
+    ).toEqual([]);
     expect(() =>
       traceView(
         JSON.parse(

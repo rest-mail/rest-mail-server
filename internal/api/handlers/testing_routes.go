@@ -71,21 +71,30 @@ type TestDelivery struct {
 }
 
 type TestProbeResults struct {
-	SMTP           *TestProbeResult `json:"smtp,omitempty"`
-	SMTPSubmission *TestProbeResult `json:"smtp_submission,omitempty"`
-	IMAP           *TestProbeResult `json:"imap,omitempty"`
-	POP3           *TestProbeResult `json:"pop3,omitempty"`
-	DNS            *TestProbeResult `json:"dns,omitempty"`
-	DB             *TestProbeResult `json:"db,omitempty"`
+	SMTP           *TestProbeResult    `json:"smtp,omitempty"`
+	SMTPSubmission *TestProbeResult    `json:"smtp_submission,omitempty"`
+	IMAP           *TestProbeResult    `json:"imap,omitempty"`
+	POP3           *TestProbeResult    `json:"pop3,omitempty"`
+	DNS            *TestDNSProbeResult `json:"dns,omitempty"`
+	DB             *TestProbeResult    `json:"db,omitempty"`
 }
 
 type TestProbeResult struct {
-	Status    string    `json:"status"`
-	Address   string    `json:"address,omitempty"`
-	Domain    string    `json:"domain,omitempty"`
-	Error     string    `json:"error,omitempty"`
-	Latency   string    `json:"latency,omitempty"`
-	MXRecords *[]string `json:"mx_records,omitempty"`
+	Status  string `json:"status"`
+	Address string `json:"address,omitempty"`
+	Domain  string `json:"domain,omitempty"`
+	Error   string `json:"error,omitempty"`
+	Latency string `json:"latency,omitempty"`
+}
+
+// TestDNSProbeResult is the DNS probe's answer. Only it looks up MX records, so only it has
+// the list, and a lookup that fails or finds none answers [].
+type TestDNSProbeResult struct {
+	Status    string   `json:"status"`
+	Domain    string   `json:"domain"`
+	Error     string   `json:"error,omitempty"`
+	Latency   string   `json:"latency,omitempty"`
+	MXRecords []string `json:"mx_records"`
 }
 
 func probePtr(result TestProbeResult) *TestProbeResult { return &result }
@@ -100,14 +109,14 @@ type TestDataStatus struct {
 //
 //go:generate sh -c "cd ../../.. && python3 scripts/generate_testing_snapshot.py"
 type TestSnapshot struct {
-	Domains    *[]TestSnapshotDomain        `json:"domains"`
-	Mailboxes  *[]TestSnapshotMailbox       `json:"mailboxes"`
-	Aliases    *[]TestSnapshotAlias         `json:"aliases"`
-	Messages   *[]TestSnapshotMessage       `json:"messages"`
-	Queue      *[]TestSnapshotOutboundQueue `json:"queue"`
-	Pipelines  *[]TestSnapshotPipeline      `json:"pipelines"`
-	Bans       *[]TestSnapshotBan           `json:"bans"`
-	SnapshotAt time.Time                    `json:"snapshot_at"`
+	Domains    []TestSnapshotDomain        `json:"domains"`
+	Mailboxes  []TestSnapshotMailbox       `json:"mailboxes"`
+	Aliases    []TestSnapshotAlias         `json:"aliases"`
+	Messages   []TestSnapshotMessage       `json:"messages"`
+	Queue      []TestSnapshotOutboundQueue `json:"queue"`
+	Pipelines  []TestSnapshotPipeline      `json:"pipelines"`
+	Bans       []TestSnapshotBan           `json:"bans"`
+	SnapshotAt time.Time                   `json:"snapshot_at"`
 }
 
 // RestoreTestSnapshot accepts sparse fixture rows as the original model decoder did.

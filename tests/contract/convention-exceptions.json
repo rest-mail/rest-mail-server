@@ -1,0 +1,113 @@
+{
+  "nullable_success_lists": {},
+  "create_resource": {
+    "blockSender": {
+      "path": "/api/v1/accounts/{id}/contacts/{cid}",
+      "reason": "Blocking a sender makes or changes a contact, which lives with the other contacts rather than under /contacts/block."
+    },
+    "createAccount": {
+      "path": "/api/v1/admin/mailboxes/{id}",
+      "reason": "The account is read and changed through the admin mailbox routes; DELETE /accounts/{id} gives up a link to an account and does not delete it."
+    },
+    "linkAccount": {
+      "path": "/api/v1/accounts/{id}",
+      "reason": "What linking makes is the caller's access to an account, read and given up at the account's own path rather than under /accounts/link."
+    },
+    "saveDraft": {
+      "path": "/api/v1/messages/{id}",
+      "reason": "A draft is a message: it is read and deleted through the message routes, and only its change and its send are draft routes."
+    },
+    "sendMessage": {
+      "path": "/api/v1/messages/{id}",
+      "reason": "A send answers the message it saved, which lives under the message routes rather than under /messages/send."
+    }
+  },
+  "create_lifecycle": {
+    "activateGrant": {
+      "*": "Starts a timed use of a grant that already exists: there is no activation to read or change by id, and ending it takes a second factor in the body of deactivateGrant."
+    },
+    "addToAllowlist": {
+      "read": "No route reads one entry: listAllowlist is the read of a domain's entries.",
+      "update": "An entry is only a pattern; changing one is removing it and adding another."
+    },
+    "addToBlocklist": {
+      "read": "No route reads one entry: listBlocklist is the read of a domain's entries.",
+      "update": "An entry is only a pattern; changing one is removing it and adding another."
+    },
+    "blockSender": {
+      "read": "No route reads one contact: listContacts is the read of a mailbox's contacts."
+    },
+    "createAPIKey": {
+      "read": "No route reads one key, and its secret is shown once: listAPIKeys is the read of an account's keys."
+    },
+    "createAppPassword": {
+      "read": "No route reads one app password, and its secret is shown once: listCredentials is the read.",
+      "update": "An app password has nothing to change: it is revoked and another is made."
+    },
+    "createBan": {
+      "read": "No route reads one ban: listBans is the read of the bans in force.",
+      "update": "A ban is changed by creating it again, which answers 200 with the ban replaced."
+    },
+    "createCertificate": {
+      "update": "No route changes a certificate: a replacement is a new upload, and the old one is deleted."
+    },
+    "createClientSecret": {
+      "read": "No route reads one client secret, and its secret is shown once: listClientSecrets is the read.",
+      "update": "A client secret has nothing to change: it is revoked and another is made."
+    },
+    "createContact": {
+      "read": "No route reads one contact: listContacts is the read of a mailbox's contacts."
+    },
+    "createFolder": {
+      "read": "No route reads one folder: listFolders reads a mailbox's folders and listMessages a folder's contents."
+    },
+    "createGrant": {
+      "read": "No route reads one grant: listGrants is the read of the grants a caller may see.",
+      "update": "A grant's mode changes only through activateGrant, deactivateGrant and makeGrantEligible, each taking a fresh second factor in its body, so no answer can fill them."
+    },
+    "createPipeline": {
+      "read": "No route reads one pipeline: listPipelines is the read of the pipelines an administrator may see."
+    },
+    "deliverMessage": {
+      "*": "Machine to machine delivery: the caller is a gateway with no access to the mailbox it delivered into, so the message routes are not its to follow."
+    },
+    "forwardMessage": {
+      "*": "A send that is often scheduled (202 answers a schedule, not a message); sendMessage links the lifecycle of the message a send saves."
+    },
+    "inviteAccount": {
+      "*": "An invitation is a one-time token shown once: it has no id to read, change or delete, and issuing another invalidates it."
+    },
+    "linkAccount": {
+      "update": "A link has no fields of its own to change: it exists or it does not."
+    },
+    "putSieveScript": {
+      "update": "This PUT is itself the update: it creates the script or replaces it at the same path."
+    },
+    "receiveTlsReport": {
+      "*": "A public ingest for other servers' TLS reports: its answer says only that the report was stored, with no id, and administrators read reports through /api/v1/admin/tls-reports."
+    },
+    "registerPushDevice": {
+      "read": "No route reads one device: listPushDevices is the read of the caller's devices.",
+      "update": "Registering the same token again is the update: it answers 200 with the device refreshed."
+    },
+    "registerRecoveryEmail": {
+      "delete": "No route removes a recovery address: registering another is the only change an account can make to it.",
+      "update": "Registering again is the update: it replaces the address and clears its verification."
+    },
+    "restmailDeliver": {
+      "*": "Server to server delivery: the sending server has no access to the mailbox it delivered into, so nothing here is its to follow."
+    },
+    "saveDraft": {
+      "update": "updateDraft is a draft's change and is linked; updateMessage changes a saved message's flags and folder, not a draft's contents."
+    },
+    "sendDraft": {
+      "*": "A send that deletes the draft it sends and is often scheduled (202 answers a schedule, not a message); sendMessage links the lifecycle of the message a send saves."
+    },
+    "sendTestEmail": {
+      "*": "A test-environment route that injects a message for a contract or end-to-end test to look for: its answer is a report and not a resource."
+    },
+    "setMtaStsPolicy": {
+      "update": "This PUT is itself the update: it creates the policy or replaces it at the same path."
+    }
+  }
+}

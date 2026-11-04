@@ -3366,7 +3366,7 @@ export interface components {
             mailboxCount: number;
             messageVolume: components["schemas"]["MessageVolumeData"][];
             queueStats: components["schemas"]["QueueStats"];
-            recentActivity: components["schemas"]["RecentActivity"][] | null;
+            recentActivity: components["schemas"]["RecentActivity"][];
         };
         "Data-APIRoot": {
             data: components["schemas"]["APIRoot"];
@@ -4062,7 +4062,7 @@ export interface components {
             sampled: boolean;
             /** Format: float */
             spam_score?: number | null;
-            stages: components["schemas"]["StepResult"][] | null;
+            stages: components["schemas"]["StepResult"][];
             /** @enum {string} */
             transport: "" | "plaintext" | "tls";
         };
@@ -4670,6 +4670,13 @@ export interface components {
             direction: string;
             outcome: string;
         };
+        TestDNSProbeResult: {
+            domain: string;
+            error?: string;
+            latency?: string;
+            mx_records: string[];
+            status: string;
+        };
         TestDataStatus: {
             status: string;
         };
@@ -4695,25 +4702,24 @@ export interface components {
             domain?: string;
             error?: string;
             latency?: string;
-            mx_records?: string[] | null;
             status: string;
         };
         TestProbeResults: {
             db?: components["schemas"]["TestProbeResult"] | null;
-            dns?: components["schemas"]["TestProbeResult"] | null;
+            dns?: components["schemas"]["TestDNSProbeResult"] | null;
             imap?: components["schemas"]["TestProbeResult"] | null;
             pop3?: components["schemas"]["TestProbeResult"] | null;
             smtp?: components["schemas"]["TestProbeResult"] | null;
             smtp_submission?: components["schemas"]["TestProbeResult"] | null;
         };
         TestSnapshot: {
-            aliases: components["schemas"]["TestSnapshotAlias"][] | null;
-            bans: components["schemas"]["TestSnapshotBan"][] | null;
-            domains: components["schemas"]["TestSnapshotDomain"][] | null;
-            mailboxes: components["schemas"]["TestSnapshotMailbox"][] | null;
-            messages: components["schemas"]["TestSnapshotMessage"][] | null;
-            pipelines: components["schemas"]["TestSnapshotPipeline"][] | null;
-            queue: components["schemas"]["TestSnapshotOutboundQueue"][] | null;
+            aliases: components["schemas"]["TestSnapshotAlias"][];
+            bans: components["schemas"]["TestSnapshotBan"][];
+            domains: components["schemas"]["TestSnapshotDomain"][];
+            mailboxes: components["schemas"]["TestSnapshotMailbox"][];
+            messages: components["schemas"]["TestSnapshotMessage"][];
+            pipelines: components["schemas"]["TestSnapshotPipeline"][];
+            queue: components["schemas"]["TestSnapshotOutboundQueue"][];
             /** Format: date-time */
             snapshot_at: string;
         };

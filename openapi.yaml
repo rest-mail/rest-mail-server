@@ -424,6 +424,9 @@ paths:
               "schema":
                 "$ref": "#/components/schemas/Data-passwordChanged"
           "description": "OK"
+          "links":
+            "getRecoveryEmail":
+              "operationId": "getRecoveryEmail"
         "400":
           "content":
             "application/json":
@@ -1571,6 +1574,14 @@ paths:
               operationId: listCalendarEvents
               parameters:
                 id: '$response.body#/data/0/id'
+            getQuietHours:
+              operationId: getQuietHours
+              parameters:
+                id: '$response.body#/data/0/id'
+            setQuietHours:
+              operationId: setQuietHours
+              parameters:
+                id: '$response.body#/data/0/id'
         "401":
           $ref: "#/components/responses/Unauthorized"
     post:
@@ -1743,6 +1754,10 @@ paths:
           links:
             unlinkAccount:
               operationId: unlinkAccount
+              parameters:
+                id: '$response.body#/data/id'
+            getAccount:
+              operationId: getAccount
               parameters:
                 id: '$response.body#/data/id'
         "401":
@@ -2272,7 +2287,16 @@ paths:
                 }
               }
             },
-            "description": "Created"
+            "description": "Created",
+            "links": {
+              "revokeClientSecret": {
+                "operationId": "revokeClientSecret",
+                "parameters": {
+                  "credential_id": "$response.body#/data/id",
+                  "id": "$request.path.id"
+                }
+              }
+            }
           },
           "400": {
             "content": {
@@ -2767,6 +2791,11 @@ paths:
               parameters:
                 id: '$request.path.id'
                 credential_id: '$response.body#/data/id'
+            updateAPIKey:
+              operationId: updateAPIKey
+              parameters:
+                credential_id: '$response.body#/data/id'
+                id: '$request.path.id'
         '400':
           description: The body is not valid JSON or not the declared media type
           content:
@@ -3076,6 +3105,11 @@ paths:
                       platform: apns
                       environment: production
                       created_at: "2026-01-01T00:00:00Z"
+          links:
+            removePushDevice:
+              operationId: removePushDevice
+              parameters:
+                device_id: '$response.body#/data/id'
         "201":
           description: Registered
           content:
@@ -3093,6 +3127,11 @@ paths:
                       platform: apns
                       environment: production
                       created_at: "2026-01-01T00:00:00Z"
+          links:
+            removePushDevice:
+              operationId: removePushDevice
+              parameters:
+                device_id: '$response.body#/data/id'
         '400':
           description: The body is not valid JSON or not the declared media type
         "422":
@@ -3260,6 +3299,11 @@ paths:
               parameters:
                 id: '$request.path.id'
                 folder: '$response.body#/data/name'
+            deleteFolder:
+              operationId: deleteFolder
+              parameters:
+                folder: '$response.body#/data/name'
+                id: '$request.path.id'
         "422":
           description: Folder name is missing, empty, or not a string
           content:
@@ -3439,6 +3483,10 @@ paths:
                 threadID: '$response.body#/data/thread_id'
             verifyMessageSeal:
               operationId: verifyMessageSeal
+              parameters:
+                id: '$response.body#/data/id'
+            listMessageRecipients:
+              operationId: listMessageRecipients
               parameters:
                 id: '$response.body#/data/id'
         "404":
@@ -4294,6 +4342,10 @@ paths:
               operationId: getMessageTrace
               parameters:
                 id: '$response.body#/data/id'
+            deleteMessage:
+              operationId: deleteMessage
+              parameters:
+                id: '$response.body#/data/id'
             # A message sent with a calendar_event keeps the invitation in
             # its Sent copy (#1163).
             respondToCalendar:
@@ -4912,6 +4964,14 @@ paths:
           links:
             updateDraft:
               operationId: updateDraft
+              parameters:
+                id: '$response.body#/data/id'
+            deleteMessage:
+              operationId: deleteMessage
+              parameters:
+                id: '$response.body#/data/id'
+            getMessage:
+              operationId: getMessage
               parameters:
                 id: '$response.body#/data/id'
         '400':
@@ -6585,6 +6645,17 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/Contact"
+          links:
+            deleteContact:
+              operationId: deleteContact
+              parameters:
+                cid: '$response.body#/data/id'
+                id: '$request.path.id'
+            updateContact:
+              operationId: updateContact
+              parameters:
+                cid: '$response.body#/data/id'
+                id: '$request.path.id'
         "200":
           description: Sender blocked; the contact already existed
           content:
@@ -6595,6 +6666,17 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/Contact"
+          links:
+            deleteContact:
+              operationId: deleteContact
+              parameters:
+                cid: '$response.body#/data/id'
+                id: '$request.path.id'
+            updateContact:
+              operationId: updateContact
+              parameters:
+                cid: '$response.body#/data/id'
+                id: '$request.path.id'
 
   /api/v1/accounts/{id}/contacts/import:
     parameters:
@@ -7027,6 +7109,15 @@ paths:
               examples:
                 valid:
                   value: {}
+          links:
+            deleteSieveScript:
+              operationId: deleteSieveScript
+              parameters:
+                id: '$request.path.id'
+            getSieveScript:
+              operationId: getSieveScript
+              parameters:
+                id: '$request.path.id'
         "200":
           description: Sieve script replaced
           content:
@@ -7043,6 +7134,10 @@ paths:
           links:
             getSieveScript:
               operationId: getSieveScript
+              parameters:
+                id: '$request.path.id'
+            deleteSieveScript:
+              operationId: deleteSieveScript
               parameters:
                 id: '$request.path.id'
         "422":
@@ -7852,6 +7947,10 @@ paths:
                 id: '$response.body#/data/id'
             setMtaStsPolicy:
               operationId: setMtaStsPolicy
+              parameters:
+                id: '$response.body#/data/id'
+            deleteDomain:
+              operationId: deleteDomain
               parameters:
                 id: '$response.body#/data/id'
             stopDomainOutbound:
@@ -9678,6 +9777,10 @@ paths:
               operationId: testCustomFilter
               parameters:
                 id: '$response.body#/data/id'
+            deleteCustomFilter:
+              operationId: deleteCustomFilter
+              parameters:
+                id: '$response.body#/data/id'
         "422":
           description: Request body failed validation
           content:
@@ -11465,6 +11568,10 @@ paths:
               operationId: getCertificate
               parameters:
                 id: '$response.body#/data/id'
+            deleteCertificate:
+              operationId: deleteCertificate
+              parameters:
+                id: '$response.body#/data/id'
         '400':
           description: The body is not valid JSON or not the declared media type
           content:
@@ -12703,6 +12810,11 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/Grant"
+          links:
+            deleteGrant:
+              operationId: deleteGrant
+              parameters:
+                id: '$response.body#/data/id'
         "401":
           $ref: "#/components/responses/Unauthorized"
         '403':
@@ -13554,6 +13666,10 @@ paths:
             # domain arrives in the Host header (tests/contract/hooks.py).
             mtaStsPolicyFile:
               operationId: mtaStsPolicyFile
+            deleteMtaStsPolicy:
+              operationId: deleteMtaStsPolicy
+              parameters:
+                id: '$request.path.id'
         "200":
           description: Policy updated
           content:
@@ -15719,15 +15835,30 @@ components:
           type: string
         latency:
           type: string
-        mx_records:
-          items:
-            type: string
-          type:
-          - array
-          - 'null'
         status:
           type: string
       required:
+      - status
+      type: object
+    TestDNSProbeResult:
+      additionalProperties: false
+      description: The DNS probe's answer. A lookup that fails or finds none has an empty mx_records.
+      properties:
+        domain:
+          type: string
+        error:
+          type: string
+        latency:
+          type: string
+        mx_records:
+          items:
+            type: string
+          type: array
+        status:
+          type: string
+      required:
+      - domain
+      - mx_records
       - status
       type: object
     TestProbeResults:
@@ -15739,7 +15870,7 @@ components:
           - type: 'null'
         dns:
           oneOf:
-          - $ref: '#/components/schemas/TestProbeResult'
+          - $ref: '#/components/schemas/TestDNSProbeResult'
           - type: 'null'
         imap:
           oneOf:
@@ -19354,12 +19485,10 @@ components:
           type: integer
           format: int64
         stages:
-          description: Typed engine stage timeline, or null when none was stored
-          oneOf:
-            - type: array
-              items:
-                $ref: "#/components/schemas/TraceStage"
-            - type: "null"
+          description: Typed engine stage timeline; an empty list when none was stored
+          type: array
+          items:
+            $ref: "#/components/schemas/TraceStage"
         sampled:
           type: boolean
         created_at:

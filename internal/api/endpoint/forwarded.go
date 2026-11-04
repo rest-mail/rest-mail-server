@@ -9,7 +9,9 @@ import (
 // deliberately bypasses the data envelope and empty-list normalization, for an answer whose
 // contract is not the API's: an upstream's (the JavaScript sidecar owns its response
 // contract, including user-defined script results), or a protocol document another server
-// parses (RESTMAIL discovery).
+// parses (RESTMAIL discovery). A list T declares is still never null: a route that forwards
+// one keeps that promise itself (handlers.scriptLogsListed), since only it can tell the list
+// from a look-alike in a script's own result.
 type Forwarded[T any] struct {
 	Status int
 	Body   []byte

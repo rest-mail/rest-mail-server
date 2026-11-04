@@ -7,9 +7,10 @@ import (
 )
 
 // responseLinks are the generated description's Link Objects, by operation and status: each
-// create leads to the reads and changes of what it made, and a list to its first item, so a
-// sequenced contract run fills their path parameters from a real answer rather than the
-// examples' ids (#1232). They are the links openapi.yaml states.
+// create leads to the read, the changes and the delete of what it made, and a list to its
+// first item, so a sequenced contract run fills their path parameters from a real answer
+// rather than the examples' ids (#1232). They are the links openapi.yaml states.
+// TestEveryCreateLeadsToItsLifecycle holds each create to that, or to a recorded reason.
 var responseLinks = map[string]map[string]map[string]oapifly.Link{
 	"addToAllowlist": {
 		"201": {
@@ -21,6 +22,16 @@ var responseLinks = map[string]map[string]map[string]oapifly.Link{
 			"removeFromBlocklist": {OperationID: "removeFromBlocklist", Parameters: map[string]string{"eid": "$response.body#/data/id", "id": "$request.path.id"}},
 		},
 	},
+	"blockSender": {
+		"200": {
+			"deleteContact": {OperationID: "deleteContact", Parameters: map[string]string{"cid": "$response.body#/data/id", "id": "$request.path.id"}},
+			"updateContact": {OperationID: "updateContact", Parameters: map[string]string{"cid": "$response.body#/data/id", "id": "$request.path.id"}},
+		},
+		"201": {
+			"deleteContact": {OperationID: "deleteContact", Parameters: map[string]string{"cid": "$response.body#/data/id", "id": "$request.path.id"}},
+			"updateContact": {OperationID: "updateContact", Parameters: map[string]string{"cid": "$response.body#/data/id", "id": "$request.path.id"}},
+		},
+	},
 	"bounceQueueEntry": {
 		"200": {
 			"deleteQueueEntry": {OperationID: "deleteQueueEntry", Parameters: map[string]string{"id": "$request.path.id"}},
@@ -29,6 +40,7 @@ var responseLinks = map[string]map[string]map[string]oapifly.Link{
 	"createAPIKey": {
 		"201": {
 			"revokeAPIKey": {OperationID: "revokeAPIKey", Parameters: map[string]string{"credential_id": "$response.body#/data/id", "id": "$request.path.id"}},
+			"updateAPIKey": {OperationID: "updateAPIKey", Parameters: map[string]string{"credential_id": "$response.body#/data/id", "id": "$request.path.id"}},
 		},
 	},
 	"createAccount": {
@@ -57,7 +69,13 @@ var responseLinks = map[string]map[string]map[string]oapifly.Link{
 	},
 	"createCertificate": {
 		"201": {
-			"getCertificate": {OperationID: "getCertificate", Parameters: map[string]string{"id": "$response.body#/data/id"}},
+			"getCertificate":    {OperationID: "getCertificate", Parameters: map[string]string{"id": "$response.body#/data/id"}},
+			"deleteCertificate": {OperationID: "deleteCertificate", Parameters: map[string]string{"id": "$response.body#/data/id"}},
+		},
+	},
+	"createClientSecret": {
+		"201": {
+			"revokeClientSecret": {OperationID: "revokeClientSecret", Parameters: map[string]string{"credential_id": "$response.body#/data/id", "id": "$request.path.id"}},
 		},
 	},
 	"createContact": {
@@ -69,6 +87,7 @@ var responseLinks = map[string]map[string]map[string]oapifly.Link{
 	"createCustomFilter": {
 		"201": {
 			"getCustomFilter":    {OperationID: "getCustomFilter", Parameters: map[string]string{"id": "$response.body#/data/id"}},
+			"deleteCustomFilter": {OperationID: "deleteCustomFilter", Parameters: map[string]string{"id": "$response.body#/data/id"}},
 			"testCustomFilter":   {OperationID: "testCustomFilter", Parameters: map[string]string{"id": "$response.body#/data/id"}},
 			"updateCustomFilter": {OperationID: "updateCustomFilter", Parameters: map[string]string{"id": "$response.body#/data/id"}},
 		},
@@ -77,6 +96,7 @@ var responseLinks = map[string]map[string]map[string]oapifly.Link{
 		"201": {
 			"addToAllowlist":     {OperationID: "addToAllowlist", Parameters: map[string]string{"id": "$response.body#/data/id"}},
 			"addToBlocklist":     {OperationID: "addToBlocklist", Parameters: map[string]string{"id": "$response.body#/data/id"}},
+			"deleteDomain":       {OperationID: "deleteDomain", Parameters: map[string]string{"id": "$response.body#/data/id"}},
 			"domainDNSCheck":     {OperationID: "domainDNSCheck", Parameters: map[string]string{"id": "$response.body#/data/id"}},
 			"getDKIMRotation":    {OperationID: "getDKIMRotation", Parameters: map[string]string{"id": "$response.body#/data/id"}},
 			"getDomain":          {OperationID: "getDomain", Parameters: map[string]string{"id": "$response.body#/data/id"}},
@@ -94,7 +114,13 @@ var responseLinks = map[string]map[string]map[string]oapifly.Link{
 	},
 	"createFolder": {
 		"201": {
+			"deleteFolder": {OperationID: "deleteFolder", Parameters: map[string]string{"folder": "$response.body#/data/name", "id": "$request.path.id"}},
 			"renameFolder": {OperationID: "renameFolder", Parameters: map[string]string{"folder": "$response.body#/data/name", "id": "$request.path.id"}},
+		},
+	},
+	"createGrant": {
+		"201": {
+			"deleteGrant": {OperationID: "deleteGrant", Parameters: map[string]string{"id": "$response.body#/data/id"}},
 		},
 	},
 	"createPipeline": {
@@ -137,6 +163,7 @@ var responseLinks = map[string]map[string]map[string]oapifly.Link{
 	},
 	"linkAccount": {
 		"201": {
+			"getAccount":    {OperationID: "getAccount", Parameters: map[string]string{"id": "$response.body#/data/id"}},
 			"unlinkAccount": {OperationID: "unlinkAccount", Parameters: map[string]string{"id": "$response.body#/data/id"}},
 		},
 	},
@@ -175,7 +202,25 @@ var responseLinks = map[string]map[string]map[string]oapifly.Link{
 	},
 	"putSieveScript": {
 		"200": {
-			"getSieveScript": {OperationID: "getSieveScript", Parameters: map[string]string{"id": "$request.path.id"}},
+			"deleteSieveScript": {OperationID: "deleteSieveScript", Parameters: map[string]string{"id": "$request.path.id"}},
+			"getSieveScript":    {OperationID: "getSieveScript", Parameters: map[string]string{"id": "$request.path.id"}},
+		},
+		"201": {
+			"deleteSieveScript": {OperationID: "deleteSieveScript", Parameters: map[string]string{"id": "$request.path.id"}},
+			"getSieveScript":    {OperationID: "getSieveScript", Parameters: map[string]string{"id": "$request.path.id"}},
+		},
+	},
+	"registerPushDevice": {
+		"200": {
+			"removePushDevice": {OperationID: "removePushDevice", Parameters: map[string]string{"device_id": "$response.body#/data/id"}},
+		},
+		"201": {
+			"removePushDevice": {OperationID: "removePushDevice", Parameters: map[string]string{"device_id": "$response.body#/data/id"}},
+		},
+	},
+	"registerRecoveryEmail": {
+		"200": {
+			"getRecoveryEmail": {OperationID: "getRecoveryEmail"},
 		},
 	},
 	"renameFolder": {
@@ -185,7 +230,9 @@ var responseLinks = map[string]map[string]map[string]oapifly.Link{
 	},
 	"saveDraft": {
 		"201": {
-			"updateDraft": {OperationID: "updateDraft", Parameters: map[string]string{"id": "$response.body#/data/id"}},
+			"deleteMessage": {OperationID: "deleteMessage", Parameters: map[string]string{"id": "$response.body#/data/id"}},
+			"getMessage":    {OperationID: "getMessage", Parameters: map[string]string{"id": "$response.body#/data/id"}},
+			"updateDraft":   {OperationID: "updateDraft", Parameters: map[string]string{"id": "$response.body#/data/id"}},
 		},
 	},
 	// A sent message that carries a calendar_event keeps the invitation in its Sent copy,
@@ -193,6 +240,7 @@ var responseLinks = map[string]map[string]map[string]oapifly.Link{
 	// cancelScheduledMessage calls back (#1163).
 	"sendMessage": {
 		"201": {
+			"deleteMessage":     {OperationID: "deleteMessage", Parameters: map[string]string{"id": "$response.body#/data/id"}},
 			"forwardMessage":    {OperationID: "forwardMessage", Parameters: map[string]string{"id": "$response.body#/data/id"}},
 			"getMessage":        {OperationID: "getMessage", Parameters: map[string]string{"id": "$response.body#/data/id"}},
 			"getMessageTrace":   {OperationID: "getMessageTrace", Parameters: map[string]string{"id": "$response.body#/data/id"}},
@@ -212,8 +260,9 @@ var responseLinks = map[string]map[string]map[string]oapifly.Link{
 	},
 	"setMtaStsPolicy": {
 		"201": {
-			"getMtaStsPolicy":  {OperationID: "getMtaStsPolicy", Parameters: map[string]string{"id": "$request.path.id"}},
-			"mtaStsPolicyFile": {OperationID: "mtaStsPolicyFile"},
+			"deleteMtaStsPolicy": {OperationID: "deleteMtaStsPolicy", Parameters: map[string]string{"id": "$request.path.id"}},
+			"getMtaStsPolicy":    {OperationID: "getMtaStsPolicy", Parameters: map[string]string{"id": "$request.path.id"}},
+			"mtaStsPolicyFile":   {OperationID: "mtaStsPolicyFile"},
 		},
 	},
 	"stopDomainOutbound": {

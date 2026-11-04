@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -81,21 +82,30 @@ func TestRegisteredAuditReadsRecordCapabilityRefusals(t *testing.T) {
 	}
 }
 
-// The endpoint writer normally turns nil slices into []. Preserve the dashboard's
-// existing null for no recent activity, without changing the populated response.
-func TestDashboardStatsKeepsNullRecentActivity(t *testing.T) {
-	for _, activities := range []*[]RecentActivity{nil, {}, {{ID: "event", Type: "created", Description: "domain created", Timestamp: time.Date(2026, 10, 23, 12, 0, 0, 0, time.UTC)}}} {
-		r := chi.NewRouter()
-		stats := DashboardStats{MessageVolume: []MessageVolumeData{}, RecentActivity: activities}
-		endpoint.Register(endpoint.Routes{Router: r, Registry: endpoint.NewRegistry()}, endpoint.Operation{Method: http.MethodGet, Path: "/stats"}, func(*http.Request, struct{}) (DashboardStats, error) { return stats, nil })
-		rr := httptest.NewRecorder()
-		r.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/stats", nil))
-		// This is the envelope the old handler wrote with respond.Data, before the
-		// registered endpoint's normalization. Compare the entire serialized body.
-		want := httptest.NewRecorder()
-		respond.Data(want, http.StatusOK, stats)
-		if rr.Code != want.Code || rr.Body.String() != want.Body.String() {
-			t.Fatalf("dashboard JSON changed:\nbefore %s\nafter %s", want.Body, rr.Body)
-		}
+// A list is never null (#622): with no recent activity the dashboard answers [], whether the
+// handler left the list nil or empty, and populated activity is unchanged. This replaces the
+// null a pointer to the slice used to preserve through endpoint registration, which nothing
+// read: the admin dashboard treats null and [] alike, and webmail does not read the field.
+func TestDashboardStatsRecentActivityIsNeverNull(t *testing.T) {
+	event := RecentActivity{ID: "event", Type: "created", Description: "domain created", Timestamp: time.Date(2026, 10, 23, 12, 0, 0, 0, time.UTC)}
+	for _, tc := range []struct {
+		name       string
+		activities []RecentActivity
+		want       string
+	}{
+		{"nil", nil, `"recentActivity":[]`},
+		{"empty", []RecentActivity{}, `"recentActivity":[]`},
+		{"populated", []RecentActivity{event}, `"recentActivity":[{"id":"event","type":"created","description":"domain created","timestamp":"2026-10-23T12:00:00Z"}]`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := chi.NewRouter()
+			stats := DashboardStats{MessageVolume: []MessageVolumeData{}, RecentActivity: tc.activities}
+			endpoint.Register(endpoint.Routes{Router: r, Registry: endpoint.NewRegistry()}, endpoint.Operation{Method: http.MethodGet, Path: "/stats"}, func(*http.Request, struct{}) (DashboardStats, error) { return stats, nil })
+			rr := httptest.NewRecorder()
+			r.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/stats", nil))
+			if rr.Code != http.StatusOK || !strings.Contains(rr.Body.String(), tc.want) {
+				t.Fatalf("got %d %s, want %s", rr.Code, rr.Body, tc.want)
+			}
+		})
 	}
 }
