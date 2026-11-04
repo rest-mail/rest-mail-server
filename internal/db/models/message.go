@@ -82,6 +82,7 @@ type Message struct {
 	BodyHTML     string     `gorm:"type:text" json:"body_html,omitempty"`
 	Headers      JSONB      `gorm:"type:jsonb" json:"headers,omitempty"`
 	RawMessage   string     `gorm:"type:text" json:"-"`
+	AuthResults  JSONB      `gorm:"type:jsonb;default:null" json:"-"`
 	SealedHash   string     `gorm:"size:64;default:null" json:"sealed_hash,omitempty"`
 	// RuleClass is the class a Sieve rule assigned at delivery, recorded once with the message
 	// so the answer stays the same when the script later changes. NULL on every row delivered

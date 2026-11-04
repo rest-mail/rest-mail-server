@@ -106,9 +106,9 @@ func TestInboundTransportSecurity_Aggregation(t *testing.T) {
 		// Inbound-MX over TLS.
 		{MailboxID: 1, Sender: "a@remote.test", ReceivedTLS: &tru, TLSVersion: "TLS1.3", RawMessage: "Subject: ok\r\n\r\nhi"},
 		// Inbound-MX plaintext, SPF passed → auth pass.
-		{MailboxID: 1, Sender: "b@remote.test", ReceivedTLS: &fls, RawMessage: "Authentication-Results: mx; spf=pass smtp.mailfrom=remote.test\r\n\r\nhi"},
+		{MailboxID: 1, Sender: "b@remote.test", ReceivedTLS: &fls, AuthResults: models.JSONB(`[{"method":"spf","result":"pass"}]`), RawMessage: "Authentication-Results: mx; spf=pass smtp.mailfrom=remote.test\r\n\r\nhi"},
 		// Inbound-MX plaintext, DKIM passed → auth pass.
-		{MailboxID: 1, Sender: "c@remote.test", ReceivedTLS: &fls, RawMessage: "Authentication-Results: restmail; dkim=pass header.d=remote.test\r\n\r\nhi"},
+		{MailboxID: 1, Sender: "c@remote.test", ReceivedTLS: &fls, AuthResults: models.JSONB(`[{"method":"dkim","result":"pass"}]`), RawMessage: "Authentication-Results: restmail; dkim=pass header.d=remote.test\r\n\r\nhi"},
 		// Inbound-MX plaintext, nothing passed → auth fail.
 		{MailboxID: 1, Sender: "d@remote.test", ReceivedTLS: &fls, RawMessage: "Authentication-Results: mx; spf=fail; dkim=none\r\n\r\nhi"},
 		// NOT inbound-MX (nil) → must be excluded from the denominator entirely.

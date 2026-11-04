@@ -49,5 +49,6 @@ func (h *AuditHandler) Register(rs endpoint.Routes, checks AdminLogRouteChecks) 
 func (h *StatsHandler) Register(rs endpoint.Routes, at func(string) endpoint.Middleware) {
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/admin/stats",
 		OperationID: "getDashboardStats", Summary: "Dashboard statistics", Tags: []string{"Admin: Stats"},
-		Middleware: []endpoint.Middleware{at(middleware.CapDomainsRead)}}, h.dashboardStats)
+		Description: "inboundTransportSecurity counts stored inbound-MX deliveries, one per local recipient, identified by recorded received_tls. plaintextAuthPass counts plaintext deliveries with a saved typed SPF or DKIM pass. Message headers and bodies are never consulted. plaintextAuthFail counts plaintext deliveries without a recorded pass, including unknown verdicts and mail stored before typed verdict persistence; it is not a count of explicit authentication failures. Historic verdicts are not inferred from message text.",
+		Middleware:  []endpoint.Middleware{at(middleware.CapDomainsRead)}}, h.dashboardStats)
 }
