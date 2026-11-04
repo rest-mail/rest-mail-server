@@ -1,11 +1,15 @@
 """Held signing keys and snooze dates must never replace named error examples."""
 
 import json
+import os
 import re
+import subprocess
+import sys
 import tempfile
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
+from unittest.mock import patch
 
 import probes
 import yaml
@@ -60,7 +64,27 @@ class ProbeConfig(unittest.TestCase):
 
     def fuzz_config(self, **options):
         report = self.report.with_name("fuzz.xml")
-        self.assertEqual(probes.main(self.source, self.output, report, **options), 0)
+        self.discovery = {
+            "paths": {
+                "/.well-known/restmail": {
+                    "get": {
+                        "operationId": "restmailDiscover",
+                        "parameters": [{"in": "query", "name": "domain", "schema": {"type": "string"}, "examples": {"found": {"value": "restmail.test"}, "missing": {"value": "unhosted.test"}}}],
+                    }
+                },
+                "/another": {
+                    "get": {
+                        "operationId": "anotherOperation",
+                        "parameters": [{"in": "query", "name": "domain", "schema": {"type": "string"}}],
+                    }
+                },
+            }
+        }
+        self.discovery_source = self.output.with_name("openapi.json")
+        self.discovery_source.write_text(json.dumps(self.discovery))
+        source = self.output.with_name("source.yml")
+        source.write_text(yaml.safe_dump({**self.base, "spec": str(self.discovery_source)}))
+        self.assertEqual(probes.main(source, self.output, report, **options), 0)
         return yaml.safe_load(self.output.read_text())
 
     def test_fuzz_holds_mailbox_id_at_the_recipient_the_fixtures_make(self):
@@ -68,6 +92,46 @@ class ProbeConfig(unittest.TestCase):
         self.assertEqual(
             self.fuzz_config()["fuzz"]["pin"]["mailbox_id"], plan["delivery_recipient"]["id"]
         )
+
+    def test_fuzz_holds_domain_at_the_domain_the_run_hosts(self):
+        plan = json.loads(probes.FIXTURE_PLAN.read_text())
+        config = self.fuzz_config()
+        held = json.loads(Path(config["spec"]).read_text())
+        expected = json.loads(json.dumps(self.discovery))
+        expected["paths"]["/.well-known/restmail"]["get"]["parameters"][0]["schema"]["enum"] = [plan["domain"]]
+        expected["paths"]["/.well-known/restmail"]["get"]["parameters"][0]["examples"]["missing"]["value"] = plan["domain"]
+        self.assertEqual(held, expected)
+        self.assertEqual(json.loads(self.discovery_source.read_text()), self.discovery)
+        self.assertEqual(self.config["spec"], str(ROOT / ".cache/contract/openapi.json"))
+
+    def test_discovery_hold_fails_if_its_parameter_disappears(self):
+        config = self.fuzz_config()
+        document = json.loads(Path(config["spec"]).read_text())
+        document["paths"]["/.well-known/restmail"]["get"]["parameters"] = []
+        Path(config["spec"]).write_text(json.dumps(document))
+        with self.assertRaisesRegex(ValueError, "no domain query parameter"):
+            probes.hold_discovery_domain(config, self.output)
+
+    def test_live_description_uses_the_identical_saved_snapshot_for_the_hold(self):
+        config = self.fuzz_config()
+        config["spec"] = "http://127.0.0.1:8080/api/docs/openapi.json"
+        with patch.dict(os.environ, {"CONTRACT_SPEC": str(self.discovery_source)}):
+            probes.hold_discovery_domain(config, self.output)
+        self.assertEqual(Path(config["spec"]).name, "fuzz-openapi.json")
+        with patch.dict(os.environ, {"CONTRACT_SPEC": ""}):
+            with self.assertRaisesRegex(ValueError, "saved description"):
+                probes.hold_discovery_domain({"spec": "http://localhost/openapi.json"}, self.output)
+
+    def test_report_configuration_keeps_the_held_description_including_pin_retry(self):
+        config = self.fuzz_config()
+        subprocess.run(
+            [sys.executable, str(ROOT / "tests/contract/reports.py"), str(self.output), str(self.output), str(self.report.with_name("fuzz")), "--narrowed"],
+            env={**os.environ, "CONTRACT_RUN_SPEC": "", "CONTRACT_SPEC": ""},
+            check=True,
+        )
+        self.assertEqual(yaml.safe_load(self.output.read_text())["spec"], config["spec"])
+        script = (ROOT / "tests/contract/run.sh").read_text()
+        self.assertEqual(script.count('CONTRACT_RUN_SPEC= CONTRACT_SPEC= python3 -B tests/contract/reports.py'), 2)
 
     def test_coverage_does_not_hold_mailbox_id_so_its_type_probes_are_sent(self):
         self.assertNotIn("mailbox_id", self.config["fuzz"]["pin"])

@@ -92,7 +92,8 @@ func (h *VacationHandler) Register(rs endpoint.Routes) {
 		Errors: []int{http.StatusForbidden, http.StatusNotFound}, Security: handlerChecked(models.CapMailWrite, mailRulesSchemes...)}, h.set)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodDelete, Path: "/api/v1/accounts/{id}/vacation",
 		OperationID: "disableVacation", Summary: "Disable vacation auto-reply", Tags: tags, Status: http.StatusNoContent,
-		Errors: []int{http.StatusForbidden, http.StatusNotFound}, Security: handlerChecked(models.CapMailWrite, mailRulesSchemes...)}, h.disable)
+		Description: "Disables a stored vacation reply, including one already disabled. 404 not_found when the account has no stored vacation reply.",
+		Errors:      []int{http.StatusForbidden, http.StatusNotFound}, Security: handlerChecked(models.CapMailWrite, mailRulesSchemes...)}, h.disable)
 }
 
 // mailRulesMailbox resolves the account the path names to its mailbox, verifying that the
@@ -233,8 +234,7 @@ func (h *VacationHandler) disable(r *http.Request, in accountPath) (endpoint.Emp
 	var config models.VacationConfig
 	if err := h.db.WithContext(r.Context()).Where("mailbox_id = ?", mailboxID).First(&config).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			// Nothing to disable; return success.
-			return endpoint.Empty{}, nil
+			return endpoint.Empty{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Vacation reply not found")
 		}
 		return endpoint.Empty{}, fmt.Errorf("look up vacation config to disable: %w", err)
 	}

@@ -80,7 +80,7 @@ drop_unmatched_pin() {
   [ -n "$names" ] || return 1
   echo "a narrowed run: nothing selected has $names, so it is not pinned"
   python3 -B tests/contract/probes.py "$out/vertrag-run.yml" "$out/vertrag-probes.yml" "$2.xml" "--no-pin=$names"
-  python3 -B tests/contract/reports.py "$out/vertrag-probes.yml" "$out/vertrag-probes.yml" "$2" "${narrowed[@]}"
+  CONTRACT_RUN_SPEC= CONTRACT_SPEC= python3 -B tests/contract/reports.py "$out/vertrag-probes.yml" "$out/vertrag-probes.yml" "$2" "${narrowed[@]}"
 }
 
 # Select the same verified binary as CI before contacting the target server.
@@ -240,7 +240,7 @@ fuzz)
   # The mailbox probes.py pins deliverMessage's generated bodies to.
   chore test:contract-delivery-recipient || echo "the delivery recipient could not be prepared; deliverMessage's fuzz probes answer 404"
   python3 -B tests/contract/probes.py "$out/vertrag-run.yml" "$out/vertrag-probes.yml" "$out/fuzz.xml"
-  python3 -B tests/contract/reports.py "$out/vertrag-probes.yml" "$out/vertrag-probes.yml" "$out/fuzz" "${narrowed[@]}"
+  CONTRACT_RUN_SPEC= CONTRACT_SPEC= python3 -B tests/contract/reports.py "$out/vertrag-probes.yml" "$out/vertrag-probes.yml" "$out/fuzz" "${narrowed[@]}"
   "$CONTRACT_VERTRAG" run --config "$out/vertrag-probes.yml" --sequence --phases fuzz "${select[@]}" \
     >"$logs/contract-fuzz.log" 2>&1 || echo "vertrag exited $?: findings are in the report"
   if drop_unmatched_pin "$logs/contract-fuzz.log" "$out/fuzz"; then

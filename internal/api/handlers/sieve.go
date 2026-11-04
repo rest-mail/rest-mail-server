@@ -31,9 +31,7 @@ func (h *SieveHandler) forRequest(r *http.Request) *SieveHandler {
 	return &SieveHandler{db: h.db.WithContext(r.Context())}
 }
 
-// SieveScript is the account's Sieve script. With none stored it is the empty script, not
-// active, with no id, hash or timestamps; a stored one has them all, its hash being the
-// sha256 hex of the script validated at install.
+// SieveScript is the account's stored Sieve script, whose hash is the sha256 hex of the script validated at install.
 type SieveScript struct {
 	ID          uint       `json:"id,omitempty"`
 	MailboxID   uint       `json:"mailbox_id"`
@@ -58,7 +56,7 @@ func sieveScriptOf(m models.SieveScript) SieveScript {
 	}
 }
 
-// SieveDeleted is the answer to deleting the script, whether or not there was one.
+// SieveDeleted is the answer to deleting an existing script.
 type SieveDeleted struct {
 	Status string `json:"status" enums:"deleted"`
 }
@@ -100,7 +98,8 @@ func (h *SieveHandler) Register(rs endpoint.Routes) {
 	writes := handlerChecked(models.CapMailWrite, mailRulesSchemes...)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/accounts/{id}/sieve",
 		OperationID: "getSieveScript", Summary: "Get the Sieve filter script", Tags: tags,
-		Errors: []int{http.StatusForbidden, http.StatusNotFound}, Security: reads}, h.get)
+		Description: "404 not_found when the account has no stored Sieve script.",
+		Errors:      []int{http.StatusForbidden, http.StatusNotFound}, Security: reads}, h.get)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPut, Path: "/api/v1/accounts/{id}/sieve",
 		OperationID: "putSieveScript", Summary: "Create or replace the Sieve filter script", Tags: tags,
 		Description: "201 when it creates the script, 200 when it replaces it. A script that does not parse, or " +
@@ -109,13 +108,14 @@ func (h *SieveHandler) Register(rs endpoint.Routes) {
 		Errors: []int{http.StatusForbidden, http.StatusNotFound}, Security: writes}, h.put)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodDelete, Path: "/api/v1/accounts/{id}/sieve",
 		OperationID: "deleteSieveScript", Summary: "Delete the Sieve filter script", Tags: tags,
-		Errors: []int{http.StatusForbidden, http.StatusNotFound}, Security: writes}, h.delete)
+		Description: "Deletes a stored script. 404 not_found when the account has no stored Sieve script.",
+		Errors:      []int{http.StatusForbidden, http.StatusNotFound}, Security: writes}, h.delete)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/accounts/{id}/sieve/validate",
 		OperationID: "validateSieveScript", Summary: "Validate a Sieve script without saving", Tags: tags,
 		Errors: []int{http.StatusForbidden, http.StatusNotFound}, Security: writes}, h.validate)
 }
 
-// get returns the Sieve script for a mailbox, or the empty script when it has none.
+// get returns the stored Sieve script for a mailbox.
 // GET /api/v1/accounts/{id}/sieve
 func (h *SieveHandler) get(r *http.Request, in accountPath) (SieveScript, error) {
 	h = h.forRequest(r)
@@ -127,7 +127,7 @@ func (h *SieveHandler) get(r *http.Request, in accountPath) (SieveScript, error)
 	var script models.SieveScript
 	if err := h.db.Where("mailbox_id = ?", mailboxID).First(&script).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return SieveScript{MailboxID: mailboxID}, nil
+			return SieveScript{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Sieve script not found")
 		}
 		return SieveScript{}, err
 	}
@@ -207,8 +207,12 @@ func (h *SieveHandler) delete(r *http.Request, in accountPath) (SieveDeleted, er
 		return SieveDeleted{}, err
 	}
 
-	if err := h.db.WithContext(r.Context()).Where("mailbox_id = ?", mailboxID).Delete(&models.SieveScript{}).Error; err != nil {
-		return SieveDeleted{}, fmt.Errorf("delete Sieve script: %w", err)
+	result := h.db.WithContext(r.Context()).Where("mailbox_id = ?", mailboxID).Delete(&models.SieveScript{})
+	if result.Error != nil {
+		return SieveDeleted{}, fmt.Errorf("delete Sieve script: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return SieveDeleted{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Sieve script not found")
 	}
 	return SieveDeleted{Status: "deleted"}, nil
 }

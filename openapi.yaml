@@ -6816,9 +6816,27 @@ paths:
         - APIKeyAuth: [mail:write]
         - BasicAuth: [mail:write]
       summary: Disable vacation auto-reply
+      description: Disables a stored vacation reply, including one already disabled. 404 not_found when the account has no stored vacation reply.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: integer, minimum: 1}
+          examples:
+            missing: {value: 2}
       responses:
         "404":
-          $ref: "#/components/responses/NotFound"
+          description: Account not found, inaccessible, or no stored vacation reply
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                missing:
+                  value:
+                    error:
+                      code: not_found
+                      message: Vacation reply not found
         "204":
           description: Vacation disabled
 
@@ -6837,6 +6855,14 @@ paths:
         - APIKeyAuth: [mail:read]
         - BasicAuth: [mail:read]
       summary: Get the Sieve filter script
+      description: 404 not_found when the account has no stored Sieve script.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: integer, minimum: 1}
+          examples:
+            defaults: {value: 2}
       responses:
         "200":
           description: Sieve script
@@ -6854,7 +6880,17 @@ paths:
               parameters:
                 id: '$request.path.id'
         "404":
-          $ref: "#/components/responses/NotFound"
+          description: Account not found, inaccessible, or no stored Sieve script
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                defaults:
+                  value:
+                    error:
+                      code: not_found
+                      message: Sieve script not found
     put:
       operationId: putSieveScript
       tags: [Sieve]
@@ -6948,9 +6984,27 @@ paths:
         - APIKeyAuth: [mail:write]
         - BasicAuth: [mail:write]
       summary: Delete the Sieve filter script
+      description: Deletes a stored script. 404 not_found when the account has no stored Sieve script.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: integer, minimum: 1}
+          examples:
+            missing: {value: 2}
       responses:
         "404":
-          $ref: "#/components/responses/NotFound"
+          description: Account not found, inaccessible, or no stored Sieve script
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                missing:
+                  value:
+                    error:
+                      code: not_found
+                      message: Sieve script not found
         "200":
           description: Script deleted
           content:

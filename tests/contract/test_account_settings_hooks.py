@@ -1,0 +1,93 @@
+"""Absent-setting fixtures through the configured contract entrypoint."""
+
+import copy
+import json
+import runpy
+import sys
+import types
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+import yaml
+
+ROOT = Path(__file__).resolve().parents[2]
+
+
+class AbsentSettingsHooks(unittest.TestCase):
+    def setUp(self):
+        module = types.ModuleType("vertrag_hooks")
+        module.stash = {}
+        self.registered = []
+
+        def before(name):
+            def register(function):
+                self.registered.append((name, function))
+                return function
+            return register
+
+        module.before = before
+        module.after = lambda _: lambda function: function
+        with patch.dict(sys.modules, {"vertrag_hooks": module}):
+            config = yaml.safe_load((ROOT / "vertrag.yml").read_text())
+            self.loaded = runpy.run_path(str(ROOT / config["hookfiles"]))
+        self.shared = self.loaded["shared"]
+        self.shared["with_the_fixture_admins_session"] = lambda transaction: transaction["request"]["headers"].get("Authorization") == "Bearer original-admin"
+        self.calls = []
+
+        def create_account(*args):
+            self.calls.append(copy.deepcopy(args))
+            return 42
+
+        self.shared["an_account_without_credentials"] = create_account
+        self.prepare = next(function for name, function in self.registered if name == "getSieveScript" and function.__name__ == "prepare_absent_account_setting")
+
+    def transaction(self, setting="sieve", method="GET"):
+        return {
+            "protocol": "http:", "host": "localhost", "port": "8080",
+            "fullPath": f"/api/v1/accounts/2/{setting}?keep=1",
+            "request": {"method": method, "headers": {"Authorization": "Bearer original-admin"}},
+            "expected": {"statusCode": "404", "body": json.dumps({"error": {"code": "not_found", "message": "Sieve script not found" if setting == "sieve" else "Vacation reply not found"}})},
+        }
+
+    def test_registers_all_three_and_preserves_credential_and_expectation(self):
+        for operation in ("getSieveScript", "deleteSieveScript", "disableVacation"):
+            self.assertEqual(sum(name == operation and function.__name__ == "prepare_absent_account_setting" for name, function in self.registered), 1)
+        for setting, method in (("sieve", "GET"), ("sieve", "DELETE"), ("vacation", "DELETE")):
+            transaction = self.transaction(setting, method)
+            before = copy.deepcopy(transaction)
+            self.prepare(transaction)
+            before["fullPath"] = f"/api/v1/accounts/42/{setting}?keep=1"
+            self.assertEqual(transaction, before)
+        self.assertEqual(len(self.calls), 1)
+        self.assertEqual(self.calls[0], ("http://localhost:8080",))
+
+    def test_other_principals_successes_and_refusals_are_untouched(self):
+        for change in ("principal", "success", "account_absent", "invalid", "method"):
+            transaction = self.transaction()
+            if change == "principal":
+                transaction["request"]["headers"] = {}
+            elif change == "success":
+                transaction["expected"]["statusCode"] = "200"
+            elif change == "account_absent":
+                transaction["expected"]["body"] = '{"error":{"code":"not_found","message":"Account not found"}}'
+            elif change == "invalid":
+                transaction["fullPath"] = "/api/v1/accounts/0/sieve"
+            else:
+                transaction["request"]["method"] = "PUT"
+            before = copy.deepcopy(transaction)
+            self.prepare(transaction)
+            self.assertEqual(transaction, before)
+        self.assertEqual(self.calls, [])
+
+    def test_setup_failure_is_not_hidden(self):
+        transaction = self.transaction()
+        before = copy.deepcopy(transaction)
+        self.shared["an_account_without_credentials"] = lambda *args: False
+        with self.assertRaisesRegex(RuntimeError, "positive account ID"):
+            self.prepare(transaction)
+        self.assertEqual(transaction, before)
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -175,6 +175,16 @@ Containers resolve names through the testbed dnsmasq (`10.99.0.10`). Persistence
 
 API at `http://localhost:8080` (or `/api` through the reverse proxy). All endpoints under `/api/v1/`; server-to-server RESTMAIL endpoints under `/restmail/` (unversioned).
 
+#### Account settings
+
+The account settings API returns 404 `not_found` when `GET` or `DELETE`
+`/api/v1/accounts/{id}/sieve` finds no stored script, and when `DELETE`
+`/api/v1/accounts/{id}/vacation` finds no stored vacation reply. Install a script
+or set a vacation reply before reading/deleting it. Deleting a stored Sieve
+script returns 200; disabling a stored vacation reply returns 204, including
+one already disabled. `GET` vacation retains its disabled defaults when absent.
+Webmail treats a 404 while disabling vacation as already absent, not an error.
+
 #### Auth / session
 - `POST /api/v1/auth/login` — `{email, password, totp_code?|recovery_code?}`; returns access token + sets refresh cookie
 - `POST /api/v1/auth/password`, `POST /api/v1/auth/2fa/{enroll,confirm,disable}` — any account's own password and authenticator
@@ -826,6 +836,9 @@ Helm: `api.auditAnchorS3.bucket`, `endpoint`, `region`, `prefix`,
 For externally managed files, leave `ACME_ENABLED=false` and follow the
 [standalone Certbot integration](external-certificates.md). Its scheduler owns
 renewal; REST Mail consumes the files without starting another renewal process.
+There is no REST Mail renew-now API or admin action by design. Ask the external
+certificate manager with `cmctl renew` or `certbot renew --force-renewal`; see
+[Certificates expiring](runbooks/certificates-expiring.md).
 
 For manifest deployments using `cert_provider: acme`, `chore instance:certs:issue`
 issues through HTTP-01 and saves the serving pair in the certs volume. Every
