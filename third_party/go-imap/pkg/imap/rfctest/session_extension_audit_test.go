@@ -27,7 +27,10 @@ func (b *acceptingCredentials) Authenticate(user, pass string) (imap.Mailbox, er
 
 // RFC4616 section2 requires exactly two NUL delimiters, nonempty authcid and
 // password, and well-formed UTF-8. Both SASL-IR and continuation exchanges must
-// refuse malformed fields without invoking even a permissive backend.
+// refuse malformed fields without invoking even a permissive backend. Each
+// payload here is valid base64, so the refusal is an authentication failure
+// (NO), not the protocol error RFC9051 section6.2.2 reserves BAD for: that is
+// a response that does not decode (TestPlainBase64Alphabet).
 // checklist: IMAP-PLAIN-01 IMAP-PLAIN-02
 func TestPlainMalformedPayloads(t *testing.T) {
 	for _, initial := range []bool{false, true} {
@@ -56,7 +59,7 @@ func TestPlainMalformedPayloads(t *testing.T) {
 				} else {
 					tagged = c.authenticate("A1", "PLAIN", response)
 				}
-				if !strings.HasPrefix(tagged, "A1 BAD ") || b.calls != 0 {
+				if !strings.HasPrefix(tagged, "A1 NO ") || b.calls != 0 {
 					t.Fatalf("malformed PLAIN: reply=%q backend calls=%d", tagged, b.calls)
 				}
 				_, selected := c.command("S1", "SELECT INBOX")
