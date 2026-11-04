@@ -37,7 +37,7 @@ type lateAliasRefusal struct{ *mockBackend }
 
 func (backend *lateAliasRefusal) DeliverMessageFrom(request *apiclient.DeliverRequest, content apiclient.DeliverContent) (*apiclient.DeliverResponse, error) {
 	if request.Address == "alias@local.test" {
-		return nil, &apiclient.APIError{StatusCode: 550, Body: aliasRefusedBody}
+		return nil, &apiclient.APIError{StatusCode: 403, Body: aliasRefusedBody}
 	}
 	return backend.mockBackend.DeliverMessageFrom(request, content)
 }
@@ -153,8 +153,8 @@ func TestAliasRoutingRefusalRecognisesOnlyTheRefusal(t *testing.T) {
 		want   bool
 	}{
 		{403, aliasRefusedBody, true},
-		// deliverMessage still reports a refused alias with its documented 550.
-		{550, aliasRefusedBody, true},
+		// Every route answers a refused alias with 403 now, so a 550 is not this refusal.
+		{550, aliasRefusedBody, false},
 		{404, aliasRefusedBody, false},
 		{422, aliasRefusedBody, false},
 		{451, aliasRefusedBody, false},

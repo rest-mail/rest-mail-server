@@ -2573,7 +2573,7 @@ export interface paths {
         put?: never;
         /**
          * Deliver a message into a mailbox (protocol gateways)
-         * @description Machine to machine: no user token. The inbound pipeline decides: 201 with the message made, 200 processed when it quarantined or discarded it, 550 rejected, 451 deferred, 422 mailbox_full over quota. A missing mailbox is 404; a failed mailbox lookup is 500, never a missing recipient. Stored text must not contain NUL (U+0000), including strings and object keys anywhere in recipients_to or recipients_cc and the decoded raw_message octets; a refusal is 422 validation_failed naming the field, before any write. raw_message is a standard padded base64 string (format: byte), not unencoded message text. An omitted or empty folder means INBOX; otherwise The name is valid UTF-8 of at most 255 bytes, neither blank nor beginning or ending with a space, with no control character and no ".."; a "/" is the hierarchy delimiter IMAP clients show. Any other name is 422.
+         * @description Machine to machine: no user token. The inbound pipeline decides: 201 with the message made, 200 processed when it quarantined or discarded it, 403 rejected, 503 deferred, 422 mailbox_full over quota. These are REST statuses for every caller; the SMTP gateway rewrites them into its SMTP reply (#1664). A missing mailbox is 404; a failed mailbox lookup is 500, never a missing recipient. Stored text must not contain NUL (U+0000), including strings and object keys anywhere in recipients_to or recipients_cc and the decoded raw_message octets; a refusal is 422 validation_failed naming the field, before any write. raw_message is a standard padded base64 string (format: byte), not unencoded message text. An arrival (received_tls set) past the hop limit and a reserved alias that cannot route are 403 rejected before the pipeline runs. An omitted or empty folder means INBOX; otherwise The name is valid UTF-8 of at most 255 bytes, neither blank nor beginning or ending with a space, with no control character and no ".."; a "/" is the hierarchy delimiter IMAP clients show. Any other name is 422.
          */
         post: operations["deliverMessage"];
         delete?: never;
@@ -22916,6 +22916,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Not Found */
             404: {
                 headers: {
@@ -22943,15 +22952,6 @@ export interface operations {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
-            /** @description Unavailable For Legal Reasons */
-            451: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
             /** @description Internal Server Error */
             500: {
                 headers: {
@@ -22961,7 +22961,8 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            550: {
+            /** @description Service Unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -274,7 +274,7 @@ func TestDeliveryRefusalsDoNotHoldTheMessage(t *testing.T) {
 		d.restmail(w, body, "application/json", RestmailDeliverAuthConfig{})
 	}
 	looping := padded(receivedMessage(rmime.DefaultMaxReceived+1, "owner@spool.test"))
-	limitCase("gateway a mail loop", gatewayBody(looping, map[string]any{"received_tls": false}), gateway, 550)
+	limitCase("gateway a mail loop", gatewayBody(looping, map[string]any{"received_tls": false}), gateway, 403)
 	limitCase("restmail a mail loop", restmailBody(looping, nil), trusted, 403)
 	// A part as large as the message comes first, so reaching the limit means passing over it.
 	tooNested := "From: someone@remote.test\r\nTo: owner@spool.test\r\nContent-Type: multipart/mixed; boundary=outer\r\n\r\n" +
@@ -351,7 +351,7 @@ func TestDeliveryLeavesNoFile(t *testing.T) {
 		t.Run("gateway "+string(action), func(t *testing.T) {
 			w := httptest.NewRecorder()
 			probed.gateway(w, bytes.NewReader(gatewayBody(message, map[string]any{"body_text": "text", "body_html": "<p>html</p>"})), "application/json")
-			if w.Code >= 500 && w.Code != 550 {
+			if w.Code >= 500 && w.Code != 503 {
 				t.Fatalf("answered %d %s", w.Code, w.Body)
 			}
 			assertNoSpool(t, spool)

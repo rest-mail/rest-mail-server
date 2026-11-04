@@ -7380,6 +7380,8 @@ paths:
         the field before any write. raw_message is standard padded base64 (format: byte).
         Empty or omitted folder means INBOX; a nonempty name is at most 255 UTF-8 bytes,
         has no surrounding whitespace, control characters or "..".
+        An arrival (received_tls set) past the hop limit and a reserved alias that cannot
+        route are 403 rejected before the pipeline runs.
       security: []
       x-internal-mtls: true
       requestBody:
@@ -7441,6 +7443,18 @@ paths:
                   value: {"error": {"code": "validation_failed", "message": "Request body failed validation", "details": {"fields": {"address": "mailbox_id or address required"}}}}
                 recipient_missing:
                   value: {"error": {"code": "validation_failed", "message": "Request body failed validation", "details": {"fields": {"address": "mailbox_id or address required"}}}}
+        "403":
+          description: "rejected: the inbound pipeline refused the message, it came past the hop limit, or a reserved alias cannot route; the SMTP gateway answers its peer 550"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "503":
+          description: "deferred: the inbound pipeline deferred the message; the SMTP gateway answers its peer 451 4.3.0"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
   # ═══════════════════════════════════════════════════════════════
   # RESTMAIL Protocol

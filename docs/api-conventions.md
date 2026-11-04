@@ -12,6 +12,7 @@ What a route should answer, for a developer adding one. This file records only w
 | The account or object does not exist | 404, identical to the row above | [2026-11-01, #672](https://github.com/rest-mail/rest-mail-server/issues/672#issuecomment-6563382794) | `TestAccountRefusals_ANoLinkCallerCannotTellAnAccountExists` |
 | The caller can see the account or object, and this action is not allowed | 403 | [2026-11-01, #672](https://github.com/rest-mail/rest-mail-server/issues/672#issuecomment-6563382794) | `TestMailStateRequirementExamples/updateMessage/read_only`, `TestMailStateRequirementExamples/releaseQuarantine/read_only` |
 | The caller lacks the role for an admin route | 403 | [2026-11-01, #672](https://github.com/rest-mail/rest-mail-server/issues/672#issuecomment-6563382794) | `TestRequireCapability_AdminMissingCapability` |
+| A protocol gateway's call is refused or deferred (the gateway speaks SMTP to its peer) | A REST status to every caller: `deliverMessage` answers 403 `rejected` and 503 `deferred`, never an SMTP code; the SMTP gateway rewrites them into 550 5.7.1 and 451 4.3.0 | [2026-11-03, #1533](https://github.com/rest-mail/rest-mail-server/issues/1533), [#1664](https://github.com/rest-mail/rest-mail-server/issues/1664) | `TestGatewayInboundPolicyExecutesConfiguredFilters`, `TestGatewayInboundPolicyFailuresDeferBeforeSideEffects`, `TestSMTP_DeliveryRefusalBecomesSMTPReply` |
 | An endpoint returns a list and there is no data | `[]`, never `null` | [2026-10-23, #622](https://github.com/rest-mail/rest-mail-server/issues/622), under Decided | `TestRegisteredRoutesAnswer` (the `/empty` case) |
 
 ### Bad input: 400 or 422
@@ -52,6 +53,8 @@ A registered route gets this from `oapifly.EmptyLists`, which the endpoint write
 - `TestAccountRefusals_ANoLinkCallerCannotTellAnAccountExists`: `internal/api/account_refusal_cells_test.go`
 - `TestMailStateRequirementExamples`: `internal/api/requirement_mail_examples_test.go`
 - `TestRequireCapability_AdminMissingCapability`: `internal/api/middleware/middleware_test.go`
+- `TestGatewayInboundPolicyExecutesConfiguredFilters`, `TestGatewayInboundPolicyFailuresDeferBeforeSideEffects`: `internal/api/handlers/local_delivery_policy_test.go`
+- `TestSMTP_DeliveryRefusalBecomesSMTPReply`: `internal/gateway/smtp/session_deliver_refusal_test.go`
 
 ## Where the code disagrees
 
