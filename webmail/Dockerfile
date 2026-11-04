@@ -43,10 +43,12 @@ ENV NGINX_BASE_PATH=${NGINX_BASE_PATH}
 # config: a read-only root filesystem then needs only conf.d and /tmp writable.
 # Modes are set outright, not taken from the checkout (see the builder).
 USER root
-COPY nginx.conf /etc/nginx/restmail/default.conf.template
-COPY docker-entrypoint.sh /docker-entrypoint.d/30-configure-base-path.sh
-RUN chmod 0755 /etc/nginx/restmail /docker-entrypoint.d/30-configure-base-path.sh && \
-    chmod 0644 /etc/nginx/restmail/default.conf.template
+# WORKDIR makes the directory 0755 first, because COPY --chmod would give a
+# directory it makes the mode of the file, and nginx could not then enter it.
+WORKDIR /etc/nginx/restmail
+COPY --chmod=0644 nginx.conf default.conf.template
+WORKDIR /
+COPY --chmod=0755 docker-entrypoint.sh /docker-entrypoint.d/30-configure-base-path.sh
 COPY --from=builder /app/dist /usr/share/nginx/html
 # Back to the unprivileged uid the base image ships with.
 USER 101

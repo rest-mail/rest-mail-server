@@ -1,7 +1,12 @@
 # ── Stage 1: module cache (shared by all later stages) ───────────────
 # Base images are pinned by digest for reproducible, tamper-evident builds
 # (OSI-17). Bump the tag+digest together when updating.
-FROM golang:1.26.10-alpine@sha256:a2012b4a1d1f9f7e9f44e0d39b805a901e856b1dd80b4e6ee4338db547050308 AS deps
+# This stage and the builder run on the build machine's own platform, whatever
+# the target: the modules are the same files everywhere and Go cross-compiles,
+# so no step here runs under emulation (#1855). Only the prod stage is built per
+# platform. The dev stage inherits this stage's platform, which is right for an
+# image built for the machine running it.
+FROM --platform=$BUILDPLATFORM golang:1.26.10-alpine@sha256:a2012b4a1d1f9f7e9f44e0d39b805a901e856b1dd80b4e6ee4338db547050308 AS deps
 WORKDIR /app
 # git is required so `go mod download` can fetch module versions not yet cached
 # by the Go module proxy (direct VCS fallback). `safe.directory` lets Go's
@@ -19,13 +24,16 @@ COPY . .
 # Passed by .github/workflows/docker.yml. A local build has neither, so it says
 # "dev", and tries git for the commit.
 ARG VERSION=dev
+# Set by BuildKit to the platform this image is being built for.
+ARG TARGETOS
+ARG TARGETARCH
 ARG COMMIT=
 RUN COMMIT=${COMMIT:-$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")} \
  && BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
  && LDFLAGS="-X github.com/rest-mail/rest-mail-server/internal/version.Version=${VERSION} \
              -X github.com/rest-mail/rest-mail-server/internal/version.Commit=${COMMIT} \
              -X github.com/rest-mail/rest-mail-server/internal/version.BuildDate=${BUILD_DATE}" \
- && CGO_ENABLED=0 GOOS=linux go build -ldflags "${LDFLAGS}" -o /bin/restmail-api ./cmd/api
+ && CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -ldflags "${LDFLAGS}" -o /bin/restmail-api ./cmd/api
 # NOTE: cmd/seed is deliberately NOT built into any shipped image. It creates
 # fixture accounts with well-known passwords (mailbox `password123`, and an
 # admin whose forced password-change only mitigates the admin), so it must never
@@ -56,10 +64,9 @@ RUN apk add --no-cache ca-certificates curl \
  && chown -R restmail:restmail /attachments /usr/local/share/ca-certificates /etc/ssl
 COPY --from=builder /bin/restmail-api /usr/local/bin/restmail-api
 # cmd/seed is intentionally excluded from the prod image (see builder stage).
-COPY projects/api-entrypoint.sh /entrypoint.sh
 # 0755, not +x: the mode must not depend on how the builder's checkout set the
 # read bits, or the unprivileged user below cannot read its own entrypoint.
-RUN chmod 0755 /entrypoint.sh
+COPY --chmod=0755 projects/api-entrypoint.sh /entrypoint.sh
 USER restmail
 EXPOSE 8080
 HEALTHCHECK --interval=10s --timeout=5s --retries=5 \
