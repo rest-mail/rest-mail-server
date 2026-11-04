@@ -32218,6 +32218,481 @@
         },
         "mediaType": "application/json"
       }
+    },
+    "dkim_default_external_tampered_unchecked_deferred": {
+      "description": "Default mode accepts an external sender without checking its signature: a tampered message makes no DNS query and reaches the injected recipient-lookup fault.",
+      "requires": {
+        "state": "dkim_key_published",
+        "fault": "database"
+      },
+      "request": {
+        "body": {
+          "raw_message": "DKIM-Signature: v=1; a=ed25519-sha256; c=relaxed/relaxed; d=external.test;\r\n s=contract;\r\n h=from:from:reply-to:subject:subject:date:date:to:to:cc:message-id:\r\n message-id:mime-version:content-type;\r\n bh=yZQq1c8wjBl0fZ4Wc/oraMCAG1mZJv5v/hlvyFy+t6A=; b=lWczstqo30QEtsuJg6DYy1+IMz\r\n QoEUqIHWvlBO0YesflfwBw4kZe1DYAfd1iy2kB0kbczS9+gCG0Q551W3IXAQ==\r\nFrom: sender@external.test\r\nTo: eve@restmail.test\r\nMessage-ID: <dkim-contract@external.test>\r\nDate: Sat, 17 Oct 2026 12:00:00 +0000\r\nSubject: Urgent signed authentication contract\r\n\r\nHello.\r\n"
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "deferred",
+            "message": "Message deferred, retry later"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "dkim_local_aligned_deferred": {
+      "description": "An ed25519 signature by the hosted From domain verifies against its published key, so the delivery passes the gate and reaches the injected recipient-lookup fault. This does not claim storage.",
+      "requires": {
+        "state": "dkim_key_published",
+        "fault": "database"
+      },
+      "request": {
+        "body": {
+          "raw_message": "DKIM-Signature: v=1; a=ed25519-sha256; c=relaxed/relaxed; d=restmail.test;\r\n s=contract;\r\n h=from:from:reply-to:subject:subject:date:date:to:to:cc:message-id:\r\n message-id:mime-version:content-type;\r\n bh=yZQq1c8wjBl0fZ4Wc/oraMCAG1mZJv5v/hlvyFy+t6A=; b=7hknqTAxRbAuMDSQ7fmgj9o/xp\r\n iZt+9jSodlGTFipweCJBQ0kmpQ5k5mINAUprxuCW/gLdeSuirUzlUPFrGADA==\r\nFrom: sender@restmail.test\r\nTo: eve@restmail.test\r\nMessage-ID: <dkim-contract@restmail.test>\r\nDate: Sat, 17 Oct 2026 12:00:00 +0000\r\nSubject: Signed authentication contract\r\n\r\nHello.\r\n"
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "deferred",
+            "message": "Message deferred, retry later"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "dkim_local_expired_refused": {
+      "description": "A signature whose x= time has passed does not authenticate the hosted From domain.",
+      "requires": {
+        "state": "dkim_key_published"
+      },
+      "request": {
+        "body": {
+          "raw_message": "DKIM-Signature: v=1; a=ed25519-sha256; c=relaxed/relaxed; d=restmail.test;\r\n s=contract; t=1000000000; x=1000000100;\r\n h=from:from:reply-to:subject:subject:date:date:to:to:cc:message-id:\r\n message-id:mime-version:content-type;\r\n bh=yZQq1c8wjBl0fZ4Wc/oraMCAG1mZJv5v/hlvyFy+t6A=; b=apRcH41nvg4CAIVQl+Qg0wUt+T\r\n wceuZNgE4/ifXosVY0+xlYDyvu4/f6NI0UopEmcjiwUIlEZqZTJdtXvm75Cg==\r\nFrom: sender@restmail.test\r\nTo: eve@restmail.test\r\nMessage-ID: <dkim-contract@restmail.test>\r\nDate: Sat, 17 Oct 2026 12:00:00 +0000\r\nSubject: Signed authentication contract\r\n\r\nHello.\r\n"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Delivery not authenticated"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "dkim_local_key_lookup_failed_deferred": {
+      "description": "The aligned signer's key lookup answers SERVFAIL. The signature is unverified, not bad, so the delivery defers before any recipient lookup and the sender retries.",
+      "requires": {
+        "state": "dkim_key_lookup_failing"
+      },
+      "request": {
+        "body": {
+          "raw_message": "DKIM-Signature: v=1; a=ed25519-sha256; c=relaxed/relaxed; d=restmail.test;\r\n s=broken;\r\n h=from:from:reply-to:subject:subject:date:date:to:to:cc:message-id:\r\n message-id:mime-version:content-type;\r\n bh=yZQq1c8wjBl0fZ4Wc/oraMCAG1mZJv5v/hlvyFy+t6A=; b=MOSR1iuWiLAQc1Z/yowPD9zOEM\r\n eGQnyoV13r6IGvIwWTFtlh/9IdSfdpHjRHJ3ZDCdD8M7FtfEAZpC7yrev6AQ==\r\nFrom: sender@restmail.test\r\nTo: eve@restmail.test\r\nMessage-ID: <dkim-contract@restmail.test>\r\nDate: Sat, 17 Oct 2026 12:00:00 +0000\r\nSubject: Signed authentication contract\r\n\r\nHello.\r\n"
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "deferred",
+            "message": "Message deferred, retry later"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "dkim_local_lookalike_signer_refused": {
+      "description": "A signer whose name merely ends in the hosted domain's letters does not align with it.",
+      "requires": {
+        "state": "dkim_key_published"
+      },
+      "request": {
+        "body": {
+          "raw_message": "DKIM-Signature: v=1; a=ed25519-sha256; c=relaxed/relaxed; d=notrestmail.test;\r\n s=contract;\r\n h=from:from:reply-to:subject:subject:date:date:to:to:cc:message-id:\r\n message-id:mime-version:content-type;\r\n bh=yZQq1c8wjBl0fZ4Wc/oraMCAG1mZJv5v/hlvyFy+t6A=; b=cCAIRhSAFLwbWLaB9QpBxKVWeE\r\n 0AlVaQlsBkYzuXyYTizB9GH23rxVreCqpx9VUxZ5nICJmqJEEkPmDPttm5CA==\r\nFrom: sender@restmail.test\r\nTo: eve@restmail.test\r\nMessage-ID: <dkim-contract@restmail.test>\r\nDate: Sat, 17 Oct 2026 12:00:00 +0000\r\nSubject: Signed authentication contract\r\n\r\nHello.\r\n"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Delivery not authenticated"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "dkim_local_lookup_failed_beside_unaligned_deferred": {
+      "description": "A verified unaligned signature does not settle the delivery while the aligned signer's key lookup is failing, so it defers before any recipient lookup.",
+      "requires": {
+        "state": "dkim_key_lookup_failing"
+      },
+      "request": {
+        "body": {
+          "raw_message": "DKIM-Signature: v=1; a=ed25519-sha256; c=relaxed/relaxed; d=other.test;\r\n s=contract; h=from:to:subject:date:message-id;\r\n bh=yZQq1c8wjBl0fZ4Wc/oraMCAG1mZJv5v/hlvyFy+t6A=; b=6wzvPw4nPKelwxCjMsXVVpJtRO\r\n cJbdVjUI4kWdLGkf8Yt/yzpUUflSsWee/9+JbQJ2iYdJKPsFZ9A8x0ClPsDw==\r\nDKIM-Signature: v=1; a=ed25519-sha256; c=relaxed/relaxed; d=restmail.test;\r\n s=broken;\r\n h=from:from:reply-to:subject:subject:date:date:to:to:cc:message-id:\r\n message-id:mime-version:content-type;\r\n bh=yZQq1c8wjBl0fZ4Wc/oraMCAG1mZJv5v/hlvyFy+t6A=; b=MOSR1iuWiLAQc1Z/yowPD9zOEM\r\n eGQnyoV13r6IGvIwWTFtlh/9IdSfdpHjRHJ3ZDCdD8M7FtfEAZpC7yrev6AQ==\r\nFrom: sender@restmail.test\r\nTo: eve@restmail.test\r\nMessage-ID: <dkim-contract@restmail.test>\r\nDate: Sat, 17 Oct 2026 12:00:00 +0000\r\nSubject: Signed authentication contract\r\n\r\nHello.\r\n"
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "deferred",
+            "message": "Message deferred, retry later"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "dkim_local_missing_key_refused": {
+      "description": "A selector with no key record (NXDOMAIN) is a permanent failure, so the delivery is refused and not deferred.",
+      "requires": {
+        "state": "dkim_key_published"
+      },
+      "request": {
+        "body": {
+          "raw_message": "DKIM-Signature: v=1; a=ed25519-sha256; c=relaxed/relaxed; d=restmail.test;\r\n s=missing;\r\n h=from:from:reply-to:subject:subject:date:date:to:to:cc:message-id:\r\n message-id:mime-version:content-type;\r\n bh=yZQq1c8wjBl0fZ4Wc/oraMCAG1mZJv5v/hlvyFy+t6A=; b=XDQ4KTz1monhRmOGnwbCG5BpoD\r\n bKAevTqkcmz7zrVo+T2+Q7gRm0cvbAplWwhEUv5Hok2MJKu2XCtG6nAXcEDA==\r\nFrom: sender@restmail.test\r\nTo: eve@restmail.test\r\nMessage-ID: <dkim-contract@restmail.test>\r\nDate: Sat, 17 Oct 2026 12:00:00 +0000\r\nSubject: Signed authentication contract\r\n\r\nHello.\r\n"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Delivery not authenticated"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "dkim_local_parent_signer_deferred": {
+      "description": "A signature by the parent of a hosted From subdomain aligns, so the delivery reaches the injected recipient-lookup fault.",
+      "requires": {
+        "state": "dkim_key_published",
+        "fault": "database"
+      },
+      "request": {
+        "body": {
+          "raw_message": "DKIM-Signature: v=1; a=ed25519-sha256; c=relaxed/relaxed; d=restmail.test;\r\n s=contract;\r\n h=from:from:reply-to:subject:subject:date:date:to:to:cc:message-id:\r\n message-id:mime-version:content-type;\r\n bh=yZQq1c8wjBl0fZ4Wc/oraMCAG1mZJv5v/hlvyFy+t6A=; b=9UHodosIKmgAGnKQPHkZgwRbgD\r\n SYSQj3Nh1r6ZJ3RqRfmHNf/Y/vbRfIve+hFcBEdcxAAOO7CZjgHs3SLp+WBg==\r\nFrom: sender@sub.restmail.test\r\nTo: eve@restmail.test\r\nMessage-ID: <dkim-contract@sub.restmail.test>\r\nDate: Sat, 17 Oct 2026 12:00:00 +0000\r\nSubject: Signed authentication contract\r\n\r\nHello.\r\n"
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "deferred",
+            "message": "Message deferred, retry later"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "dkim_local_revoked_key_refused": {
+      "description": "A key record with an empty p= is revoked, so its signature does not authenticate the hosted From domain.",
+      "requires": {
+        "state": "dkim_key_published"
+      },
+      "request": {
+        "body": {
+          "raw_message": "DKIM-Signature: v=1; a=ed25519-sha256; c=relaxed/relaxed; d=restmail.test;\r\n s=revoked;\r\n h=from:from:reply-to:subject:subject:date:date:to:to:cc:message-id:\r\n message-id:mime-version:content-type;\r\n bh=yZQq1c8wjBl0fZ4Wc/oraMCAG1mZJv5v/hlvyFy+t6A=; b=6vKyD3v5Pvgb29Z69Kx0eSkR1E\r\n qi6snS4nWXj40s/jQhy4Oh3lw4kFOnFOg23S7pfjqZPdnBmPAR55DUXGj+Bg==\r\nFrom: sender@restmail.test\r\nTo: eve@restmail.test\r\nMessage-ID: <dkim-contract@restmail.test>\r\nDate: Sat, 17 Oct 2026 12:00:00 +0000\r\nSubject: Signed authentication contract\r\n\r\nHello.\r\n"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Delivery not authenticated"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "dkim_local_rsa_aligned_deferred": {
+      "description": "An rsa-sha256 signature by the hosted From domain verifies against a 2048-bit key published in several TXT strings; the delivery reaches the injected recipient-lookup fault.",
+      "requires": {
+        "state": "dkim_key_published",
+        "fault": "database"
+      },
+      "request": {
+        "body": {
+          "raw_message": "DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=restmail.test;\r\n s=rsa2048;\r\n h=from:from:reply-to:subject:subject:date:date:to:to:cc:message-id:\r\n message-id:mime-version:content-type;\r\n bh=yZQq1c8wjBl0fZ4Wc/oraMCAG1mZJv5v/hlvyFy+t6A=; b=nmTirOlNsipHCxc0aunlI6wZE7\r\n 2Fj3vTd2zA2qC6en0tqj52d6jv+XFcWR2Wwy4UiXhzxU0iLINGbc6G/iGSfaqmy5+ZQNjvShMUpMi\r\n AT8QYjJbagoVdUklXpe/0I+uAejzG8CzdhGFwh3v26M86kw662TAe+AFZA1h15TcYSIlr/A5OmxaW\r\n Sh8GC8biYtyj+0vL04WkAaxyZKIF0fMGGvotr0UQvBE3IS7BLtM08bfkKM6yHHBX7y4qFdjDN5NSA\r\n 4jUEkMCPrOY2XKs0cI0GtHKmgoPXyOyg2c7ovLI3gcCj8c+5YE4TNZo8Zki/C6PRUbRaNZDquZKq4\r\n R4BeRBrw==\r\nFrom: sender@restmail.test\r\nTo: eve@restmail.test\r\nMessage-ID: <dkim-contract@restmail.test>\r\nDate: Sat, 17 Oct 2026 12:00:00 +0000\r\nSubject: Signed authentication contract\r\n\r\nHello.\r\n"
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "deferred",
+            "message": "Message deferred, retry later"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "dkim_local_second_signature_aligned_deferred": {
+      "description": "An unaligned signature does not hide an aligned one after it; the delivery reaches the injected recipient-lookup fault.",
+      "requires": {
+        "state": "dkim_key_published",
+        "fault": "database"
+      },
+      "request": {
+        "body": {
+          "raw_message": "DKIM-Signature: v=1; a=ed25519-sha256; c=relaxed/relaxed; d=other.test;\r\n s=contract; h=from:to:subject:date:message-id;\r\n bh=yZQq1c8wjBl0fZ4Wc/oraMCAG1mZJv5v/hlvyFy+t6A=; b=6wzvPw4nPKelwxCjMsXVVpJtRO\r\n cJbdVjUI4kWdLGkf8Yt/yzpUUflSsWee/9+JbQJ2iYdJKPsFZ9A8x0ClPsDw==\r\nDKIM-Signature: v=1; a=ed25519-sha256; c=relaxed/relaxed; d=restmail.test;\r\n s=contract;\r\n h=from:from:reply-to:subject:subject:date:date:to:to:cc:message-id:\r\n message-id:mime-version:content-type;\r\n bh=yZQq1c8wjBl0fZ4Wc/oraMCAG1mZJv5v/hlvyFy+t6A=; b=7hknqTAxRbAuMDSQ7fmgj9o/xp\r\n iZt+9jSodlGTFipweCJBQ0kmpQ5k5mINAUprxuCW/gLdeSuirUzlUPFrGADA==\r\nFrom: sender@restmail.test\r\nTo: eve@restmail.test\r\nMessage-ID: <dkim-contract@restmail.test>\r\nDate: Sat, 17 Oct 2026 12:00:00 +0000\r\nSubject: Signed authentication contract\r\n\r\nHello.\r\n"
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "deferred",
+            "message": "Message deferred, retry later"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "dkim_local_structured_from_aligned_deferred": {
+      "description": "A structured from naming the hosted domain aligns with the raw message's signature, so the delivery reaches the injected recipient-lookup fault.",
+      "requires": {
+        "state": "dkim_key_published",
+        "fault": "database"
+      },
+      "request": {
+        "body": {
+          "from": "sender@restmail.test",
+          "raw_message": "DKIM-Signature: v=1; a=ed25519-sha256; c=relaxed/relaxed; d=restmail.test;\r\n s=contract;\r\n h=from:from:reply-to:subject:subject:date:date:to:to:cc:message-id:\r\n message-id:mime-version:content-type;\r\n bh=yZQq1c8wjBl0fZ4Wc/oraMCAG1mZJv5v/hlvyFy+t6A=; b=7hknqTAxRbAuMDSQ7fmgj9o/xp\r\n iZt+9jSodlGTFipweCJBQ0kmpQ5k5mINAUprxuCW/gLdeSuirUzlUPFrGADA==\r\nFrom: sender@restmail.test\r\nTo: eve@restmail.test\r\nMessage-ID: <dkim-contract@restmail.test>\r\nDate: Sat, 17 Oct 2026 12:00:00 +0000\r\nSubject: Signed authentication contract\r\n\r\nHello.\r\n",
+          "to": [
+            "eve@restmail.test"
+          ]
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "deferred",
+            "message": "Message deferred, retry later"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "dkim_local_subdomain_signer_deferred": {
+      "description": "A signature by a subdomain of the hosted From domain aligns, so the delivery reaches the injected recipient-lookup fault.",
+      "requires": {
+        "state": "dkim_key_published",
+        "fault": "database"
+      },
+      "request": {
+        "body": {
+          "raw_message": "DKIM-Signature: v=1; a=ed25519-sha256; c=relaxed/relaxed; d=mail.restmail.test;\r\n s=contract;\r\n h=from:from:reply-to:subject:subject:date:date:to:to:cc:message-id:\r\n message-id:mime-version:content-type;\r\n bh=yZQq1c8wjBl0fZ4Wc/oraMCAG1mZJv5v/hlvyFy+t6A=; b=PaL36CvKFOcyd3JaJwczPQA7hX\r\n fYU9GZ+Dd311AqldWymZrc8Qygk1ful5QxNYNL9p2q5nBelBZsPI+9HPXaCA==\r\nFrom: sender@restmail.test\r\nTo: eve@restmail.test\r\nMessage-ID: <dkim-contract@restmail.test>\r\nDate: Sat, 17 Oct 2026 12:00:00 +0000\r\nSubject: Signed authentication contract\r\n\r\nHello.\r\n"
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "deferred",
+            "message": "Message deferred, retry later"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "dkim_local_tampered_body_refused": {
+      "description": "A body changed after signing fails verification, so the hosted From domain is not authenticated.",
+      "requires": {
+        "state": "dkim_key_published"
+      },
+      "request": {
+        "body": {
+          "raw_message": "DKIM-Signature: v=1; a=ed25519-sha256; c=relaxed/relaxed; d=restmail.test;\r\n s=contract;\r\n h=from:from:reply-to:subject:subject:date:date:to:to:cc:message-id:\r\n message-id:mime-version:content-type;\r\n bh=yZQq1c8wjBl0fZ4Wc/oraMCAG1mZJv5v/hlvyFy+t6A=; b=7hknqTAxRbAuMDSQ7fmgj9o/xp\r\n iZt+9jSodlGTFipweCJBQ0kmpQ5k5mINAUprxuCW/gLdeSuirUzlUPFrGADA==\r\nFrom: sender@restmail.test\r\nTo: eve@restmail.test\r\nMessage-ID: <dkim-contract@restmail.test>\r\nDate: Sat, 17 Oct 2026 12:00:00 +0000\r\nSubject: Signed authentication contract\r\n\r\nPay this invoice.\r\n"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Delivery not authenticated"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "dkim_local_tampered_subject_refused": {
+      "description": "A signed header changed after signing fails verification, so the hosted From domain is not authenticated.",
+      "requires": {
+        "state": "dkim_key_published"
+      },
+      "request": {
+        "body": {
+          "raw_message": "DKIM-Signature: v=1; a=ed25519-sha256; c=relaxed/relaxed; d=restmail.test;\r\n s=contract;\r\n h=from:from:reply-to:subject:subject:date:date:to:to:cc:message-id:\r\n message-id:mime-version:content-type;\r\n bh=yZQq1c8wjBl0fZ4Wc/oraMCAG1mZJv5v/hlvyFy+t6A=; b=7hknqTAxRbAuMDSQ7fmgj9o/xp\r\n iZt+9jSodlGTFipweCJBQ0kmpQ5k5mINAUprxuCW/gLdeSuirUzlUPFrGADA==\r\nFrom: sender@restmail.test\r\nTo: eve@restmail.test\r\nMessage-ID: <dkim-contract@restmail.test>\r\nDate: Sat, 17 Oct 2026 12:00:00 +0000\r\nSubject: Urgent signed authentication contract\r\n\r\nHello.\r\n"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Delivery not authenticated"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "dkim_local_unaligned_lookup_failed_refused": {
+      "description": "A failed key lookup for an unaligned signer could not authenticate the hosted From domain whatever it returned, so the delivery is refused and not deferred.",
+      "requires": {
+        "state": "dkim_key_lookup_failing"
+      },
+      "request": {
+        "body": {
+          "raw_message": "DKIM-Signature: v=1; a=ed25519-sha256; c=relaxed/relaxed; d=other.test;\r\n s=broken;\r\n h=from:from:reply-to:subject:subject:date:date:to:to:cc:message-id:\r\n message-id:mime-version:content-type;\r\n bh=yZQq1c8wjBl0fZ4Wc/oraMCAG1mZJv5v/hlvyFy+t6A=; b=4UXlXPXykgvhgnzWA1HdfJt1M4\r\n tDt/ZnXuOGGfOxeoL26oOfHkpYbiZ3rNy3WnZuYVbcGcGXHcadwpXkhCDuCA==\r\nFrom: sender@restmail.test\r\nTo: eve@restmail.test\r\nMessage-ID: <dkim-contract@restmail.test>\r\nDate: Sat, 17 Oct 2026 12:00:00 +0000\r\nSubject: Signed authentication contract\r\n\r\nHello.\r\n"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Delivery not authenticated"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "dkim_local_unaligned_refused": {
+      "description": "A valid signature by an unrelated domain does not authenticate a hosted From domain.",
+      "requires": {
+        "state": "dkim_key_published"
+      },
+      "request": {
+        "body": {
+          "raw_message": "DKIM-Signature: v=1; a=ed25519-sha256; c=relaxed/relaxed; d=other.test;\r\n s=contract;\r\n h=from:from:reply-to:subject:subject:date:date:to:to:cc:message-id:\r\n message-id:mime-version:content-type;\r\n bh=yZQq1c8wjBl0fZ4Wc/oraMCAG1mZJv5v/hlvyFy+t6A=; b=py2QLDAITPjyruVq0iANKqhNon\r\n 7FJX9PhmbtnScmP3JLQD/O3k0/RXqJZVCGzrIdlUX4JqdCixkIj+RkpTGKDQ==\r\nFrom: sender@restmail.test\r\nTo: eve@restmail.test\r\nMessage-ID: <dkim-contract@restmail.test>\r\nDate: Sat, 17 Oct 2026 12:00:00 +0000\r\nSubject: Signed authentication contract\r\n\r\nHello.\r\n"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Delivery not authenticated"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "dkim_local_wrong_key_refused": {
+      "description": "A signature that the published key does not verify does not authenticate the hosted From domain.",
+      "requires": {
+        "state": "dkim_key_published"
+      },
+      "request": {
+        "body": {
+          "raw_message": "DKIM-Signature: v=1; a=ed25519-sha256; c=relaxed/relaxed; d=restmail.test;\r\n s=wrongkey;\r\n h=from:from:reply-to:subject:subject:date:date:to:to:cc:message-id:\r\n message-id:mime-version:content-type;\r\n bh=yZQq1c8wjBl0fZ4Wc/oraMCAG1mZJv5v/hlvyFy+t6A=; b=bo0NH2f6/bE+wq/KrR7/WZhhq6\r\n l9uGdN93oUcSHgB9AfcCbsuKbdxG4AmK84z3jhQSODsTuX7s5AG2jAF4W3Aw==\r\nFrom: sender@restmail.test\r\nTo: eve@restmail.test\r\nMessage-ID: <dkim-contract@restmail.test>\r\nDate: Sat, 17 Oct 2026 12:00:00 +0000\r\nSubject: Signed authentication contract\r\n\r\nHello.\r\n"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Delivery not authenticated"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "dkim_strict_external_aligned_deferred": {
+      "description": "Strict mode accepts an external sender signed by its own domain; the delivery reaches the injected recipient-lookup fault.",
+      "requires": {
+        "state": "dkim_key_published",
+        "fault": "database"
+      },
+      "request": {
+        "body": {
+          "raw_message": "DKIM-Signature: v=1; a=ed25519-sha256; c=relaxed/relaxed; d=external.test;\r\n s=contract;\r\n h=from:from:reply-to:subject:subject:date:date:to:to:cc:message-id:\r\n message-id:mime-version:content-type;\r\n bh=yZQq1c8wjBl0fZ4Wc/oraMCAG1mZJv5v/hlvyFy+t6A=; b=lWczstqo30QEtsuJg6DYy1+IMz\r\n QoEUqIHWvlBO0YesflfwBw4kZe1DYAfd1iy2kB0kbczS9+gCG0Q551W3IXAQ==\r\nFrom: sender@external.test\r\nTo: eve@restmail.test\r\nMessage-ID: <dkim-contract@external.test>\r\nDate: Sat, 17 Oct 2026 12:00:00 +0000\r\nSubject: Signed authentication contract\r\n\r\nHello.\r\n"
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "deferred",
+            "message": "Message deferred, retry later"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "dkim_strict_external_key_lookup_failed_deferred": {
+      "description": "Strict mode defers an external sender whose aligned signer's key lookup answers SERVFAIL, before any recipient lookup.",
+      "requires": {
+        "state": "dkim_key_lookup_failing"
+      },
+      "request": {
+        "body": {
+          "raw_message": "DKIM-Signature: v=1; a=ed25519-sha256; c=relaxed/relaxed; d=external.test;\r\n s=broken;\r\n h=from:from:reply-to:subject:subject:date:date:to:to:cc:message-id:\r\n message-id:mime-version:content-type;\r\n bh=yZQq1c8wjBl0fZ4Wc/oraMCAG1mZJv5v/hlvyFy+t6A=; b=RqggWWgnSEIZsUWoqwYiR/r3ei\r\n LJnPrsubsZNBquv/KIMYDRJ5FQrCTRCcVBV4RewaslpAHcO50I238uGps5Bw==\r\nFrom: sender@external.test\r\nTo: eve@restmail.test\r\nMessage-ID: <dkim-contract@external.test>\r\nDate: Sat, 17 Oct 2026 12:00:00 +0000\r\nSubject: Signed authentication contract\r\n\r\nHello.\r\n"
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "deferred",
+            "message": "Message deferred, retry later"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "dkim_strict_external_unaligned_refused": {
+      "description": "Strict mode refuses an external sender signed by an unrelated domain.",
+      "requires": {
+        "state": "dkim_key_published"
+      },
+      "request": {
+        "body": {
+          "raw_message": "DKIM-Signature: v=1; a=ed25519-sha256; c=relaxed/relaxed; d=other.test;\r\n s=contract;\r\n h=from:from:reply-to:subject:subject:date:date:to:to:cc:message-id:\r\n message-id:mime-version:content-type;\r\n bh=yZQq1c8wjBl0fZ4Wc/oraMCAG1mZJv5v/hlvyFy+t6A=; b=RvxtSFj7PS0O6cldjtWFNxu8Pv\r\n N4lfqbYk5n0NzqrnvmI55NXX4mPdy77mhvM6ogjj38LP1249vCYaOSgVVRAQ==\r\nFrom: sender@external.test\r\nTo: eve@restmail.test\r\nMessage-ID: <dkim-contract@external.test>\r\nDate: Sat, 17 Oct 2026 12:00:00 +0000\r\nSubject: Signed authentication contract\r\n\r\nHello.\r\n"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Delivery not authenticated"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "dkim_trusted_peer_tampered_unchecked_deferred": {
+      "description": "A trusted peer is accepted without checking its signature: a tampered hosted-sender message makes no DNS query and reaches the injected recipient-lookup fault.",
+      "requires": {
+        "state": "dkim_key_published",
+        "fault": "database"
+      },
+      "request": {
+        "body": {
+          "raw_message": "DKIM-Signature: v=1; a=ed25519-sha256; c=relaxed/relaxed; d=restmail.test;\r\n s=contract;\r\n h=from:from:reply-to:subject:subject:date:date:to:to:cc:message-id:\r\n message-id:mime-version:content-type;\r\n bh=yZQq1c8wjBl0fZ4Wc/oraMCAG1mZJv5v/hlvyFy+t6A=; b=7hknqTAxRbAuMDSQ7fmgj9o/xp\r\n iZt+9jSodlGTFipweCJBQ0kmpQ5k5mINAUprxuCW/gLdeSuirUzlUPFrGADA==\r\nFrom: sender@restmail.test\r\nTo: eve@restmail.test\r\nMessage-ID: <dkim-contract@restmail.test>\r\nDate: Sat, 17 Oct 2026 12:00:00 +0000\r\nSubject: Urgent signed authentication contract\r\n\r\nHello.\r\n"
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "deferred",
+            "message": "Message deferred, retry later"
+          }
+        },
+        "mediaType": "application/json"
+      }
     }
   },
   "restmailDiscover": {

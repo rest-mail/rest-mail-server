@@ -109,16 +109,28 @@ func (a *restmailDeliverAuth) authorize(clientIP, fromDomain string, fromLocal, 
 // dkimAlignedWith reports whether raw carries at least one DKIM signature that
 // verifies (pass) and whose signing domain aligns with fromDomain. It reuses the
 // same go-dkim verifier the inbound pipeline's dkim_verify filter uses.
-func dkimAlignedWith(ctx context.Context, raw, fromDomain string) bool {
+//
+// When none does, keyUnavailable reports whether an aligned signature could not be
+// checked because its key lookup failed. That signature is unverified, not bad, so
+// the caller defers instead of refusing (RFC 6376 §6.1.2): a refusal would bounce
+// mail over a DNS outage. A signer that does not align cannot authenticate the
+// sender whatever its key says, so its failed lookup changes nothing.
+func dkimAlignedWith(ctx context.Context, raw, fromDomain string) (aligned, keyUnavailable bool) {
 	if raw == "" || fromDomain == "" {
-		return false
+		return false, false
 	}
 	for _, r := range dkim.Verify(ctx, []byte(raw), nil) {
-		if r.Result == dkim.ResultPass && domainsAligned(r.Domain, fromDomain) {
-			return true
+		if !domainsAligned(r.Domain, fromDomain) {
+			continue
+		}
+		switch r.Result {
+		case dkim.ResultPass:
+			return true, false
+		case dkim.ResultTempError:
+			keyUnavailable = true
 		}
 	}
-	return false
+	return false, keyUnavailable
 }
 
 // domainsAligned implements a relaxed, DMARC-style alignment check: the domains

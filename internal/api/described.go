@@ -219,6 +219,8 @@ var exampleRequirements = map[string][]string{
 		"acme_enabled", "acme_issued_token",
 		// The live run's accounts stay active: others sign in as them.
 		"inactive_account",
+		// The signing keys a RESTMAIL delivery's signature is checked against over DNS.
+		"dkim_key_published", "dkim_key_lookup_failing",
 	},
 }
 
