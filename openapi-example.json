@@ -1663,6 +1663,23 @@
     }
   },
   "bounceQueueEntry": {
+    "already_bounced": {
+      "request": {
+        "path": {
+          "id": 5
+        }
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Only pending, deferred or delivering entries can be bounced"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "domain_scope": {
       "requires": {
         "principal": "without_capability"

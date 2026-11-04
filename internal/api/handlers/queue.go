@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
 	"time"
 
@@ -106,6 +107,26 @@ type queuePath struct {
 
 var errQueueNotFound = endpoint.Refuse(http.StatusNotFound, "not_found", "Queue entry not found")
 
+// queueRule is the states an action works on and, for a single entry, its
+// refusal of any other. The bulk routes pass over entries in other states.
+type queueRule struct {
+	from    []string
+	refusal error
+}
+
+var (
+	queueRetry = queueRule{
+		from:    []string{"pending", "deferred"},
+		refusal: endpoint.Refuse(http.StatusBadRequest, "bad_request", "Only pending or deferred entries can be retried"),
+	}
+	// A bounce works on mail still in flight. Any other state is final, and
+	// "bounced" over it would misreport what happened to the message.
+	queueBounce = queueRule{
+		from:    []string{"pending", "deferred", "delivering"},
+		refusal: endpoint.Refuse(http.StatusBadRequest, "bad_request", "Only pending, deferred or delivering entries can be bounced"),
+	}
+)
+
 func findQueue(db *gorm.DB, id uint32) (models.OutboundQueue, error) {
 	var item models.OutboundQueue
 	if err := db.First(&item, id).Error; err != nil {
@@ -129,16 +150,16 @@ type QueueAction struct {
 	Status string `json:"status"`
 }
 
-// updateQueue locks the current row before checking retry eligibility and writing.
+// updateQueue locks the current row before checking the action applies and writing.
 // A failed lookup, refusal, update or commit cannot produce a success response.
-func (h *QueueHandler) updateQueue(ctx context.Context, id uint32, retry bool, values map[string]interface{}) error {
+func (h *QueueHandler) updateQueue(ctx context.Context, id uint32, rule queueRule, values map[string]interface{}) error {
 	return h.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		item, err := findQueue(tx.Clauses(clause.Locking{Strength: "UPDATE"}), id)
 		if err != nil {
 			return err
 		}
-		if retry && item.Status != "deferred" && item.Status != "pending" {
-			return endpoint.Refuse(http.StatusBadRequest, "bad_request", "Only pending or deferred entries can be retried")
+		if !slices.Contains(rule.from, item.Status) {
+			return rule.refusal
 		}
 		result := tx.Model(&item).Updates(values)
 		if result.Error != nil {
@@ -152,14 +173,14 @@ func (h *QueueHandler) updateQueue(ctx context.Context, id uint32, retry bool, v
 }
 
 func (h *QueueHandler) retryQueueEntry(r *http.Request, in queuePath) (QueueAction, error) {
-	if err := h.updateQueue(r.Context(), in.ID, true, map[string]interface{}{"status": "pending", "next_attempt": time.Now()}); err != nil {
+	if err := h.updateQueue(r.Context(), in.ID, queueRetry, map[string]interface{}{"status": "pending", "next_attempt": time.Now()}); err != nil {
 		return QueueAction{}, err
 	}
 	return QueueAction{Status: "retrying"}, nil
 }
 
 func (h *QueueHandler) bounceQueueEntry(r *http.Request, in queuePath) (QueueAction, error) {
-	if err := h.updateQueue(r.Context(), in.ID, false, map[string]interface{}{"status": "bounced", "last_error": "manually bounced by admin"}); err != nil {
+	if err := h.updateQueue(r.Context(), in.ID, queueBounce, map[string]interface{}{"status": "bounced", "last_error": "manually bounced by admin"}); err != nil {
 		return QueueAction{}, err
 	}
 	return QueueAction{Status: "bounced"}, nil
@@ -263,7 +284,7 @@ func (h *QueueHandler) buildBulkQuery(ctx context.Context, req bulkQueueRequest)
 // POST /api/v1/admin/queue/bulk-retry
 func (h *QueueHandler) bulkRetry(r *http.Request, req bulkQueueRequest) (BulkQueueResult, error) {
 	result := h.buildBulkQuery(r.Context(), req).
-		Where("status IN ?", []string{"deferred", "pending"}).
+		Where("status IN ?", queueRetry.from).
 		Updates(map[string]interface{}{
 			"status":       "pending",
 			"next_attempt": time.Now(),
@@ -282,7 +303,7 @@ func (h *QueueHandler) bulkBounce(r *http.Request, req bulkQueueRequest) (BulkQu
 	// by filter would also flip already-delivered (or expired/bounced) rows to
 	// "bounced", corrupting their final state.
 	result := h.buildBulkQuery(r.Context(), req).
-		Where("status IN ?", []string{"pending", "deferred", "delivering"}).
+		Where("status IN ?", queueBounce.from).
 		Updates(map[string]interface{}{
 			"status":     "bounced",
 			"last_error": "manually bounced by admin (bulk)",
@@ -381,7 +402,7 @@ func (h *QueueHandler) Register(rs endpoint.Routes, checks QueueRouteChecks) {
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/admin/queue/{id}/retry",
 		OperationID: "retryQueueEntry", Summary: "Retry a single queue entry", Description: "Database work follows the HTTP request context, including cancellation and deadlines. The entry is locked in one transaction before eligibility is checked and the update is written; lookup, update or commit failures cannot return success.", Tags: tags, Errors: []int{http.StatusNotFound, http.StatusBadRequest}, Middleware: []endpoint.Middleware{checks.At(middleware.CapQueueManage)}}, h.retryQueueEntry)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/admin/queue/{id}/bounce",
-		OperationID: "bounceQueueEntry", Summary: "Bounce a single queue entry", Description: "Database work follows the HTTP request context, including cancellation and deadlines. The entry is locked in one transaction before the update is written; lookup, update or commit failures cannot return success.", Tags: tags, Errors: []int{http.StatusNotFound}, Middleware: []endpoint.Middleware{checks.At(middleware.CapQueueManage)}}, h.bounceQueueEntry)
+		OperationID: "bounceQueueEntry", Summary: "Bounce a single queue entry", Description: "Only a pending, deferred or delivering entry can be bounced, as with the bulk route; any other state is refused with 400 bad_request and the entry is left as it was. Database work follows the HTTP request context, including cancellation and deadlines. The entry is locked in one transaction before eligibility is checked and the update is written; lookup, update or commit failures cannot return success.", Tags: tags, Errors: []int{http.StatusNotFound, http.StatusBadRequest}, Middleware: []endpoint.Middleware{checks.At(middleware.CapQueueManage)}}, h.bounceQueueEntry)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodDelete, Path: "/api/v1/admin/queue/{id}",
 		OperationID: "deleteQueueEntry", Summary: "Delete a queue entry", Description: "Answers 404 not_found when the ID does not exist. Database work follows the HTTP request context, including cancellation and deadlines.", Tags: tags, Status: http.StatusNoContent, Errors: []int{http.StatusNotFound}, Middleware: []endpoint.Middleware{checks.At(middleware.CapQueueManage)}}, h.deleteQueueEntry)
 }

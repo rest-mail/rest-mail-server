@@ -726,17 +726,17 @@
   },
   "bounceQueueEntry": {
     "already_delivered": {
-      "description": "The existing single-entry bounce action accepts an entry regardless of its prior status; this contract change preserves that behavior and does not infer the bulk action transition policy.",
       "request": {
         "path": {
           "id": 4
         }
       },
       "response": {
-        "status": 200,
+        "status": 400,
         "body": {
-          "data": {
-            "status": "bounced"
+          "error": {
+            "code": "bad_request",
+            "message": "Only pending, deferred or delivering entries can be bounced"
           }
         },
         "mediaType": "application/json"
@@ -769,6 +769,23 @@
         "body": {
           "data": {
             "status": "bounced"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "expired": {
+      "request": {
+        "path": {
+          "id": 6
+        }
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Only pending, deferred or delivering entries can be bounced"
           }
         },
         "mediaType": "application/json"

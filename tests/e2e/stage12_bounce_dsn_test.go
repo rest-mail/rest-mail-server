@@ -66,6 +66,7 @@ func testStage12BounceDSN(t *testing.T) {
 
 		// Wait for the queue item to appear and be attempted at least once
 		var queueItemID uint
+		var queueItemStatus string
 		deadline := time.Now().Add(90 * time.Second)
 		for time.Now().Before(deadline) {
 			qResp, err := adminClient.get("/api/v1/admin/queue?recipient=nonexistent@bounce-test-unresolvable.invalid&limit=10")
@@ -91,6 +92,7 @@ func testStage12BounceDSN(t *testing.T) {
 			for _, item := range queueList.Data.Items {
 				if item.Attempts >= 1 && (item.Status == "deferred" || item.Status == "bounced") {
 					queueItemID = item.ID
+					queueItemStatus = item.Status
 					break
 				}
 			}
@@ -107,10 +109,15 @@ func testStage12BounceDSN(t *testing.T) {
 
 		t.Logf("Found queue item id=%d, forcing bounce via admin API...", queueItemID)
 
-		// Force bounce via admin API -- this simulates max retries exhausted
+		// Force bounce via admin API -- this simulates max retries exhausted.
+		// The worker may already have bounced the entry, and then it is refused.
+		wantStatus := http.StatusOK
+		if queueItemStatus == "bounced" {
+			wantStatus = http.StatusBadRequest
+		}
 		bounceResp, err := adminClient.post(fmt.Sprintf("/api/v1/admin/queue/%d/bounce", queueItemID), nil)
 		requireNoError(t, err)
-		requireStatus(t, bounceResp, http.StatusOK)
+		requireStatus(t, bounceResp, wantStatus)
 
 		// Verify the queue item is now bounced
 		detailResp, err := adminClient.get(fmt.Sprintf("/api/v1/admin/queue/%d", queueItemID))
