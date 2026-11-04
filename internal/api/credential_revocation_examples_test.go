@@ -30,7 +30,11 @@ func newCredentialRevocationScenarios(t *testing.T) mailRemovalScenarios {
 		return credentialRevocationConnection{base.accountCredentialListConnection, store}
 	})
 	plain := f.scenarios["found"]
-	jwt := auth.NewJWTService(routerTestSecret, time.Minute, time.Hour)
+	accessLifetime := 15 * time.Minute
+	if deadline, ok := t.Deadline(); ok {
+		accessLifetime = time.Until(deadline) + time.Minute
+	}
+	jwt := auth.NewJWTService(routerTestSecret, accessLifetime, time.Hour)
 	mfa, err := jwt.GenerateSession(10, "user@example.com", 0, []string{auth.AMRPassword, auth.AMROTP}, false)
 	if err != nil {
 		t.Fatal(err)
@@ -72,7 +76,6 @@ func newCredentialRevocationScenarios(t *testing.T) mailRemovalScenarios {
 }
 
 func TestCredentialRevocationExamples(t *testing.T) {
-	f := newCredentialRevocationScenarios(t)
 	pairs, err := examplepairs.Read()
 	if err != nil {
 		t.Fatal(err)
@@ -83,6 +86,7 @@ func TestCredentialRevocationExamples(t *testing.T) {
 		}
 		for name, pair := range pairs[op] {
 			t.Run(op+"/"+name, func(t *testing.T) {
+				f := newCredentialRevocationScenarios(t)
 				examplepairs.Proven(t, op, name)
 				s, ok := f.scenarios[name]
 				if !ok {
@@ -184,7 +188,6 @@ func TestCredentialRevocationExamplesWithVertrag(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f := newCredentialRevocationScenarios(t)
 	pairs, err := oapifly.ReadExamples(restmail.Examples, "openapi-example.json")
 	if err != nil {
 		t.Fatal(err)
@@ -192,6 +195,7 @@ func TestCredentialRevocationExamplesWithVertrag(t *testing.T) {
 	for op, path := range credentialRevocationPaths {
 		for name, pair := range pairs[op] {
 			t.Run(op+"/"+name, func(t *testing.T) {
+				f := newCredentialRevocationScenarios(t)
 				s, ok := f.scenarios[name]
 				if !ok {
 					t.Fatalf("missing scenario %s", name)

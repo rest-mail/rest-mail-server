@@ -1,15 +1,17 @@
 package handlers
 
 import (
-	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
 	"github.com/rest-mail/rest-mail-server/internal/api/middleware"
 	"github.com/rest-mail/rest-mail-server/internal/auth"
@@ -19,6 +21,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/grants"
 	"github.com/rest-mail/rest-mail-server/internal/testreset"
+	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
 
@@ -296,36 +299,70 @@ func TestCleanResetProductionGuard(t *testing.T) {
 
 func TestCleanResetDrainsAndTimesOut(t *testing.T) {
 	db, handler, _ := cleanResetFixture(t)
-	claimed, finish, done := make(chan struct{}), make(chan struct{}), make(chan error, 1)
-	go func() { done <- testreset.Delivery(db, func(*gorm.DB) { close(claimed); <-finish }) }()
-	<-claimed
-	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
-	defer cancel()
-	called := false
-	err := testreset.Reset(ctx, db, func(*gorm.DB) error { called = true; return nil })
-	if err == nil || called || !strings.Contains(err.Error(), "reset not performed") {
-		t.Fatalf("drain hid timeout: %v, called=%v", err, called)
-	}
-	resetDone := make(chan error, 1)
+	claimed, finish, done := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	var deliveryErr error
 	go func() {
-		_, err := handler.resetTestData(httptest.NewRequest("POST", "/api/v1/admin/test/reset", nil), endpoint.Empty{})
-		resetDone <- err
+		deliveryErr = testreset.Delivery(db, func(*gorm.DB) { close(claimed); <-finish })
+		close(done)
 	}()
+	finishDelivery := sync.OnceFunc(func() {
+		close(finish)
+		<-done
+		if deliveryErr != nil {
+			t.Error(deliveryErr)
+		}
+	})
+	defer finishDelivery()
 	select {
-	case err := <-resetDone:
-		t.Fatalf("reset returned while delivery was held: %v", err)
-	case <-time.After(50 * time.Millisecond):
+	case <-claimed:
+	case <-done:
+		t.Fatalf("delivery did not acquire the barrier: %v", deliveryErr)
 	}
-	close(finish)
-	if err := <-done; err != nil {
+	timeoutDB, err := gorm.Open(postgres.Open(db.Dialector.(*postgres.Dialector).Config.DSN+" lock_timeout=50ms"), &gorm.Config{Logger: db.Logger})
+	if err != nil {
 		t.Fatal(err)
 	}
-	select {
-	case err := <-resetDone:
-		if err != nil {
+	timeoutPool, err := timeoutDB.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer timeoutPool.Close()
+	called := false
+	err = testreset.Reset(t.Context(), timeoutDB, func(*gorm.DB) error { called = true; return nil })
+	var timeoutErr *pgconn.PgError
+	if !errors.As(err, &timeoutErr) || timeoutErr.Code != "55P03" || called || !strings.Contains(err.Error(), "reset not performed") {
+		t.Fatalf("drain hid timeout: %v, called=%v", err, called)
+	}
+	resetDone := make(chan struct{})
+	var resetErr error
+	go func() {
+		_, resetErr = handler.resetTestData(httptest.NewRequest("POST", "/api/v1/admin/test/reset", nil), endpoint.Empty{})
+		close(resetDone)
+	}()
+	defer func() {
+		finishDelivery()
+		<-resetDone
+		if resetErr != nil {
+			t.Error(resetErr)
+		}
+	}()
+	for {
+		var waiting bool
+		if err := db.WithContext(t.Context()).Raw(`SELECT EXISTS (
+			SELECT 1 FROM pg_locks
+			WHERE locktype = 'advisory' AND NOT granted
+			AND database = (SELECT oid FROM pg_database WHERE datname = current_database())
+		)`).Scan(&waiting).Error; err != nil {
 			t.Fatal(err)
 		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("reset did not drain completed delivery")
+		if waiting {
+			break
+		}
+		select {
+		case <-resetDone:
+			t.Fatalf("reset returned while delivery was held: %v", resetErr)
+		default:
+		}
 	}
+	finishDelivery()
 }
