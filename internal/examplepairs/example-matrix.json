@@ -2036,7 +2036,7 @@
       "request": {
         "body": {
           "source_address": "sales@restmail.test",
-          "destination_address": "Team \u003c外部Café@例え.JP\u003e"
+          "destination_address": "Team <外部Café@例え.JP>"
         }
       },
       "response": {
@@ -2046,7 +2046,7 @@
             "id": 1,
             "domain_id": 1,
             "source_address": "sales@restmail.test",
-            "destination_address": "Team \u003c外部Café@例え.JP\u003e",
+            "destination_address": "Team <外部Café@例え.JP>",
             "active": true,
             "created_at": "2026-01-01T00:00:00Z"
           }
@@ -2245,7 +2245,7 @@
     "source_display": {
       "request": {
         "body": {
-          "source_address": "Sales Team \u003cSALES@RESTMAIL.TEST\u003e",
+          "source_address": "Sales Team <SALES@RESTMAIL.TEST>",
           "destination_address": "Remote@Destination.TEST"
         }
       },
@@ -4449,7 +4449,7 @@
           "id": 1
         },
         "body": {
-          "email": "Refused \u003crefused@example.com\u003e",
+          "email": "Refused <refused@example.com>",
           "name": "Someone",
           "trust_level": "trusted"
         }
@@ -15170,11 +15170,12 @@
         "body": {
           "data": {
             "class": "person",
-            "body_html": "\u003cp\u003eplease review\u003c/p\u003e\n\u003cp\u003e---------- Forwarded message ----------\u003cbr\u003e\nFrom: old@example.test\u003cbr\u003e\nSubject: receipt\u003c/p\u003e\n\u003cp\u003eoriginal\u003cimg src=\"cid:original-image\"\u003e\u003c/p\u003e",
+            "body_html": "<p>please review</p>\n<p>---------- Forwarded message ----------<br>\nFrom: old@example.test<br>\nSubject: receipt</p>\n<p>original<img src=\"cid:original-image\"></p>",
             "body_text": "please review\n\n---------- Forwarded message ----------\nFrom: old@example.test\nSubject: receipt\n\noriginal receipt",
             "created_at": "2030-01-02T03:04:05Z",
             "date_header": null,
-            "downgraded_size": 1714,
+            "downgraded_size": 1724,
+            "pop3_utf8_size": 1724,
             "imap_size": 1714,
             "imap_utf8_size": 1714,
             "folder": "Sent",
@@ -15188,7 +15189,7 @@
             "is_read": true,
             "is_starred": false,
             "mailbox_id": 1,
-            "message_id": "\u003c00000000-0000-4000-8000-000000000001@example.test\u003e",
+            "message_id": "<00000000-0000-4000-8000-000000000001@example.test>",
             "mod_seq": 2,
             "raw_size": 1714,
             "received_at": "2030-01-02T03:04:05Z",
@@ -15202,7 +15203,7 @@
             "sender_name": "",
             "size_bytes": 285,
             "subject": "Fwd: receipt",
-            "thread_id": "\u003c00000000-0000-4000-8000-000000000001@example.test\u003e",
+            "thread_id": "<00000000-0000-4000-8000-000000000001@example.test>",
             "updated_at": "2030-01-02T03:04:05Z"
           }
         },
@@ -16952,7 +16953,7 @@
             "id": 10,
             "mailbox_id": 10,
             "folder": "INBOX",
-            "message_id": "\u003cmessage@example.net\u003e",
+            "message_id": "<message@example.net>",
             "in_reply_to": "",
             "references": "",
             "thread_id": "",
@@ -16964,7 +16965,7 @@
             "recipients_cc": [],
             "subject": "Subject café",
             "body_text": "Hello café",
-            "body_html": "\u003cp\u003eHello café\u003c/p\u003e",
+            "body_html": "<p>Hello café</p>",
             "headers": {
               "X-Trace": [
                 "one",
@@ -16988,7 +16989,8 @@
             "received_at": "2026-10-20T00:00:00Z",
             "date_header": null,
             "created_at": "2026-10-20T00:00:00Z",
-            "updated_at": "2026-10-20T00:00:00Z"
+            "updated_at": "2026-10-20T00:00:00Z",
+            "pop3_utf8_size": 0
           }
         },
         "mediaType": "application/json"
@@ -17025,7 +17027,7 @@
             "id": 1,
             "mailbox_id": 1,
             "folder": "INBOX",
-            "message_id": "\u003cmessage@example.net\u003e",
+            "message_id": "<message@example.net>",
             "in_reply_to": "",
             "references": "",
             "thread_id": "",
@@ -17037,7 +17039,7 @@
             "recipients_cc": [],
             "subject": "Subject café",
             "body_text": "Hello café",
-            "body_html": "\u003cp\u003eHello café\u003c/p\u003e",
+            "body_html": "<p>Hello café</p>",
             "headers": {
               "X-Trace": [
                 "one",
@@ -17061,7 +17063,8 @@
             "received_at": "2026-10-20T00:00:00Z",
             "date_header": null,
             "created_at": "2026-10-20T00:00:00Z",
-            "updated_at": "2026-10-20T00:00:00Z"
+            "updated_at": "2026-10-20T00:00:00Z",
+            "pop3_utf8_size": 0
           }
         },
         "mediaType": "application/json"
@@ -17082,7 +17085,7 @@
             "id": 7,
             "mailbox_id": 1,
             "folder": "INBOX",
-            "message_id": "\u003cmessage@example.net\u003e",
+            "message_id": "<message@example.net>",
             "in_reply_to": "",
             "references": "",
             "thread_id": "",
@@ -17094,7 +17097,7 @@
             "recipients_cc": [],
             "subject": "Subject café",
             "body_text": "Hello café",
-            "body_html": "\u003cp\u003eHello café\u003c/p\u003e",
+            "body_html": "<p>Hello café</p>",
             "headers": {
               "X-Trace": [
                 "one",
@@ -17118,7 +17121,8 @@
             "received_at": "2026-10-20T00:00:00Z",
             "date_header": null,
             "created_at": "2026-10-20T00:00:00Z",
-            "updated_at": "2026-10-20T00:00:00Z"
+            "updated_at": "2026-10-20T00:00:00Z",
+            "pop3_utf8_size": 0
           }
         },
         "mediaType": "application/json"
@@ -17138,7 +17142,7 @@
             "id": 1,
             "mailbox_id": 1,
             "folder": "INBOX",
-            "message_id": "\u003cmessage@example.net\u003e",
+            "message_id": "<message@example.net>",
             "in_reply_to": "",
             "references": "",
             "thread_id": "",
@@ -17150,7 +17154,7 @@
             "recipients_cc": [],
             "subject": "Subject café",
             "body_text": "Hello café",
-            "body_html": "\u003cp\u003eHello café\u003c/p\u003e",
+            "body_html": "<p>Hello café</p>",
             "headers": {
               "X-Trace": [
                 "one",
@@ -17174,7 +17178,8 @@
             "received_at": "2026-10-20T00:00:00Z",
             "date_header": null,
             "created_at": "2026-10-20T00:00:00Z",
-            "updated_at": "2026-10-20T00:00:00Z"
+            "updated_at": "2026-10-20T00:00:00Z",
+            "pop3_utf8_size": 0
           }
         },
         "mediaType": "application/json"
@@ -17251,7 +17256,7 @@
             "id": 1,
             "mailbox_id": 1,
             "folder": "INBOX",
-            "message_id": "\u003cmessage@example.net\u003e",
+            "message_id": "<message@example.net>",
             "in_reply_to": "",
             "references": "",
             "thread_id": "",
@@ -17263,7 +17268,7 @@
             "recipients_cc": [],
             "subject": "Subject café",
             "body_text": "Hello café",
-            "body_html": "\u003cp\u003eHello café\u003c/p\u003e",
+            "body_html": "<p>Hello café</p>",
             "headers": {
               "X-Trace": [
                 "one",
@@ -17287,7 +17292,8 @@
             "received_at": "2026-10-20T00:00:00Z",
             "date_header": null,
             "created_at": "2026-10-20T00:00:00Z",
-            "updated_at": "2026-10-20T00:00:00Z"
+            "updated_at": "2026-10-20T00:00:00Z",
+            "pop3_utf8_size": 0
           }
         },
         "mediaType": "application/json"
@@ -17324,7 +17330,7 @@
             "id": 1,
             "mailbox_id": 1,
             "folder": "INBOX",
-            "message_id": "\u003cmessage@example.net\u003e",
+            "message_id": "<message@example.net>",
             "in_reply_to": "",
             "references": "",
             "thread_id": "",
@@ -17336,7 +17342,7 @@
             "recipients_cc": [],
             "subject": "Subject café",
             "body_text": "Hello café",
-            "body_html": "\u003cp\u003eHello café\u003c/p\u003e",
+            "body_html": "<p>Hello café</p>",
             "headers": {
               "X-Trace": [
                 "one",
@@ -17360,7 +17366,8 @@
             "received_at": "2026-10-20T00:00:00Z",
             "date_header": null,
             "created_at": "2026-10-20T00:00:00Z",
-            "updated_at": "2026-10-20T00:00:00Z"
+            "updated_at": "2026-10-20T00:00:00Z",
+            "pop3_utf8_size": 0
           }
         },
         "mediaType": "application/json"
@@ -17415,7 +17422,7 @@
             "id": 6,
             "mailbox_id": 1,
             "folder": "INBOX",
-            "message_id": "\u003cmessage@example.net\u003e",
+            "message_id": "<message@example.net>",
             "in_reply_to": "",
             "references": "",
             "thread_id": "",
@@ -17427,7 +17434,7 @@
             "recipients_cc": [],
             "subject": "Subject café",
             "body_text": "Hello café",
-            "body_html": "\u003cp\u003eHello café\u003c/p\u003e",
+            "body_html": "<p>Hello café</p>",
             "headers": {
               "X-Trace": [
                 "one",
@@ -17451,7 +17458,8 @@
             "received_at": "2026-10-20T00:00:00Z",
             "date_header": null,
             "created_at": "2026-10-20T00:00:00Z",
-            "updated_at": "2026-10-20T00:00:00Z"
+            "updated_at": "2026-10-20T00:00:00Z",
+            "pop3_utf8_size": 0
           }
         },
         "mediaType": "application/json"
@@ -17488,7 +17496,7 @@
             "id": 10,
             "mailbox_id": 10,
             "folder": "INBOX",
-            "message_id": "\u003cmessage@example.net\u003e",
+            "message_id": "<message@example.net>",
             "in_reply_to": "",
             "references": "",
             "thread_id": "",
@@ -17500,7 +17508,7 @@
             "recipients_cc": [],
             "subject": "Subject café",
             "body_text": "Hello café",
-            "body_html": "\u003cp\u003eHello café\u003c/p\u003e",
+            "body_html": "<p>Hello café</p>",
             "headers": {
               "X-Trace": [
                 "one",
@@ -17524,7 +17532,8 @@
             "received_at": "2026-10-20T00:00:00Z",
             "date_header": null,
             "created_at": "2026-10-20T00:00:00Z",
-            "updated_at": "2026-10-20T00:00:00Z"
+            "updated_at": "2026-10-20T00:00:00Z",
+            "pop3_utf8_size": 0
           }
         },
         "mediaType": "application/json"
@@ -17561,7 +17570,7 @@
             "id": 2,
             "mailbox_id": 2,
             "folder": "INBOX",
-            "message_id": "\u003cmessage@example.net\u003e",
+            "message_id": "<message@example.net>",
             "in_reply_to": "",
             "references": "",
             "thread_id": "",
@@ -17573,7 +17582,7 @@
             "recipients_cc": [],
             "subject": "Subject café",
             "body_text": "Hello café",
-            "body_html": "\u003cp\u003eHello café\u003c/p\u003e",
+            "body_html": "<p>Hello café</p>",
             "headers": {
               "X-Trace": [
                 "one",
@@ -17583,6 +17592,7 @@
             "size_bytes": 80,
             "raw_size": 0,
             "downgraded_size": 0,
+            "pop3_utf8_size": 0,
             "imap_size": 0,
             "imap_utf8_size": 0,
             "received_tls": true,
@@ -17661,7 +17671,7 @@
           "data": {
             "id": 101,
             "message_id": 1,
-            "rfc_message_id": "\u003cfixture@example.com\u003e",
+            "rfc_message_id": "<fixture@example.com>",
             "direction": "inbound",
             "transport": "tls",
             "mail_from": "sender@example.com",
@@ -17748,7 +17758,7 @@
           "data": {
             "id": 101,
             "message_id": 1,
-            "rfc_message_id": "\u003cfixture@example.com\u003e",
+            "rfc_message_id": "<fixture@example.com>",
             "direction": "inbound",
             "transport": "tls",
             "mail_from": "sender@example.com",
@@ -17796,7 +17806,7 @@
           "data": {
             "id": 105,
             "message_id": 5,
-            "rfc_message_id": "\u003cfixture@example.com\u003e",
+            "rfc_message_id": "<fixture@example.com>",
             "direction": "inbound",
             "transport": "tls",
             "mail_from": "sender@example.com",
@@ -17831,7 +17841,7 @@
           "data": {
             "id": 102,
             "message_id": 2,
-            "rfc_message_id": "\u003cfixture@example.com\u003e",
+            "rfc_message_id": "<fixture@example.com>",
             "direction": "inbound",
             "transport": "tls",
             "mail_from": "sender@example.com",
@@ -18865,9 +18875,9 @@
               "id": 52,
               "mailbox_id": 10,
               "folder": "INBOX",
-              "message_id": "\u003cmessage-52@example.net\u003e",
-              "in_reply_to": "\u003cparent@example.net\u003e",
-              "references": "\u003cparent@example.net\u003e",
+              "message_id": "<message-52@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
               "sender_name": "Sender café",
@@ -18891,16 +18901,17 @@
               "created_at": "2026-10-20T00:00:00Z",
               "updated_at": "2026-10-20T00:00:00Z",
               "body_text": "Plain delivery",
-              "received_tls": false
+              "received_tls": false,
+              "pop3_utf8_size": 0
             },
             {
               "class": "person",
               "id": 53,
               "mailbox_id": 10,
               "folder": "INBOX",
-              "message_id": "\u003cmessage-53@example.net\u003e",
-              "in_reply_to": "\u003cparent@example.net\u003e",
-              "references": "\u003cparent@example.net\u003e",
+              "message_id": "<message-53@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
               "sender_name": "Sender café",
@@ -18922,16 +18933,17 @@
               "received_at": "2026-10-20T01:00:00Z",
               "date_header": null,
               "created_at": "2026-10-20T00:00:00Z",
-              "updated_at": "2026-10-20T00:00:00Z"
+              "updated_at": "2026-10-20T00:00:00Z",
+              "pop3_utf8_size": 0
             },
             {
               "class": "person",
               "id": 51,
               "mailbox_id": 10,
               "folder": "INBOX",
-              "message_id": "\u003cmessage-51@example.net\u003e",
-              "in_reply_to": "\u003cparent@example.net\u003e",
-              "references": "\u003cparent@example.net\u003e",
+              "message_id": "<message-51@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
               "sender_name": "Sender café",
@@ -18959,7 +18971,7 @@
               "created_at": "2026-10-20T00:00:00Z",
               "updated_at": "2026-10-20T00:00:00Z",
               "body_text": "Hello café",
-              "body_html": "\u003cp\u003eHello café\u003c/p\u003e",
+              "body_html": "<p>Hello café</p>",
               "headers": {
                 "Subject": [
                   "Hello café"
@@ -18975,7 +18987,8 @@
                 }
               ],
               "received_tls": true,
-              "tls_version": "TLS1.3"
+              "tls_version": "TLS1.3",
+              "pop3_utf8_size": 0
             }
           ]
         },
@@ -19034,9 +19047,9 @@
               "id": 52,
               "mailbox_id": 1,
               "folder": "INBOX",
-              "message_id": "\u003cmessage-52@example.net\u003e",
-              "in_reply_to": "\u003cparent@example.net\u003e",
-              "references": "\u003cparent@example.net\u003e",
+              "message_id": "<message-52@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
               "sender_name": "Sender café",
@@ -19060,16 +19073,17 @@
               "created_at": "2026-10-20T00:00:00Z",
               "updated_at": "2026-10-20T00:00:00Z",
               "body_text": "Plain delivery",
-              "received_tls": false
+              "received_tls": false,
+              "pop3_utf8_size": 0
             },
             {
               "class": "person",
               "id": 53,
               "mailbox_id": 1,
               "folder": "INBOX",
-              "message_id": "\u003cmessage-53@example.net\u003e",
-              "in_reply_to": "\u003cparent@example.net\u003e",
-              "references": "\u003cparent@example.net\u003e",
+              "message_id": "<message-53@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
               "sender_name": "Sender café",
@@ -19091,16 +19105,17 @@
               "received_at": "2026-10-20T01:00:00Z",
               "date_header": null,
               "created_at": "2026-10-20T00:00:00Z",
-              "updated_at": "2026-10-20T00:00:00Z"
+              "updated_at": "2026-10-20T00:00:00Z",
+              "pop3_utf8_size": 0
             },
             {
               "class": "person",
               "id": 51,
               "mailbox_id": 1,
               "folder": "INBOX",
-              "message_id": "\u003cmessage-51@example.net\u003e",
-              "in_reply_to": "\u003cparent@example.net\u003e",
-              "references": "\u003cparent@example.net\u003e",
+              "message_id": "<message-51@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
               "sender_name": "Sender café",
@@ -19128,7 +19143,7 @@
               "created_at": "2026-10-20T00:00:00Z",
               "updated_at": "2026-10-20T00:00:00Z",
               "body_text": "Hello café",
-              "body_html": "\u003cp\u003eHello café\u003c/p\u003e",
+              "body_html": "<p>Hello café</p>",
               "headers": {
                 "Subject": [
                   "Hello café"
@@ -19144,7 +19159,8 @@
                 }
               ],
               "received_tls": true,
-              "tls_version": "TLS1.3"
+              "tls_version": "TLS1.3",
+              "pop3_utf8_size": 0
             }
           ]
         },
@@ -19167,9 +19183,9 @@
               "id": 52,
               "mailbox_id": 1,
               "folder": "INBOX",
-              "message_id": "\u003cmessage-52@example.net\u003e",
-              "in_reply_to": "\u003cparent@example.net\u003e",
-              "references": "\u003cparent@example.net\u003e",
+              "message_id": "<message-52@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
               "sender_name": "Sender café",
@@ -19193,16 +19209,17 @@
               "created_at": "2026-10-20T00:00:00Z",
               "updated_at": "2026-10-20T00:00:00Z",
               "body_text": "Plain delivery",
-              "received_tls": false
+              "received_tls": false,
+              "pop3_utf8_size": 0
             },
             {
               "class": "person",
               "id": 53,
               "mailbox_id": 1,
               "folder": "INBOX",
-              "message_id": "\u003cmessage-53@example.net\u003e",
-              "in_reply_to": "\u003cparent@example.net\u003e",
-              "references": "\u003cparent@example.net\u003e",
+              "message_id": "<message-53@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
               "sender_name": "Sender café",
@@ -19224,16 +19241,17 @@
               "received_at": "2026-10-20T01:00:00Z",
               "date_header": null,
               "created_at": "2026-10-20T00:00:00Z",
-              "updated_at": "2026-10-20T00:00:00Z"
+              "updated_at": "2026-10-20T00:00:00Z",
+              "pop3_utf8_size": 0
             },
             {
               "class": "person",
               "id": 51,
               "mailbox_id": 1,
               "folder": "INBOX",
-              "message_id": "\u003cmessage-51@example.net\u003e",
-              "in_reply_to": "\u003cparent@example.net\u003e",
-              "references": "\u003cparent@example.net\u003e",
+              "message_id": "<message-51@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
               "sender_name": "Sender café",
@@ -19261,7 +19279,7 @@
               "created_at": "2026-10-20T00:00:00Z",
               "updated_at": "2026-10-20T00:00:00Z",
               "body_text": "Hello café",
-              "body_html": "\u003cp\u003eHello café\u003c/p\u003e",
+              "body_html": "<p>Hello café</p>",
               "headers": {
                 "Subject": [
                   "Hello café"
@@ -19277,7 +19295,8 @@
                 }
               ],
               "received_tls": true,
-              "tls_version": "TLS1.3"
+              "tls_version": "TLS1.3",
+              "pop3_utf8_size": 0
             }
           ]
         },
@@ -19375,9 +19394,9 @@
               "id": 52,
               "mailbox_id": 1,
               "folder": "INBOX",
-              "message_id": "\u003cmessage-52@example.net\u003e",
-              "in_reply_to": "\u003cparent@example.net\u003e",
-              "references": "\u003cparent@example.net\u003e",
+              "message_id": "<message-52@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
               "sender_name": "Sender café",
@@ -19401,16 +19420,17 @@
               "created_at": "2026-10-20T00:00:00Z",
               "updated_at": "2026-10-20T00:00:00Z",
               "body_text": "Plain delivery",
-              "received_tls": false
+              "received_tls": false,
+              "pop3_utf8_size": 0
             },
             {
               "class": "person",
               "id": 53,
               "mailbox_id": 1,
               "folder": "INBOX",
-              "message_id": "\u003cmessage-53@example.net\u003e",
-              "in_reply_to": "\u003cparent@example.net\u003e",
-              "references": "\u003cparent@example.net\u003e",
+              "message_id": "<message-53@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
               "sender_name": "Sender café",
@@ -19432,16 +19452,17 @@
               "received_at": "2026-10-20T01:00:00Z",
               "date_header": null,
               "created_at": "2026-10-20T00:00:00Z",
-              "updated_at": "2026-10-20T00:00:00Z"
+              "updated_at": "2026-10-20T00:00:00Z",
+              "pop3_utf8_size": 0
             },
             {
               "class": "person",
               "id": 51,
               "mailbox_id": 1,
               "folder": "INBOX",
-              "message_id": "\u003cmessage-51@example.net\u003e",
-              "in_reply_to": "\u003cparent@example.net\u003e",
-              "references": "\u003cparent@example.net\u003e",
+              "message_id": "<message-51@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
               "sender_name": "Sender café",
@@ -19469,7 +19490,7 @@
               "created_at": "2026-10-20T00:00:00Z",
               "updated_at": "2026-10-20T00:00:00Z",
               "body_text": "Hello café",
-              "body_html": "\u003cp\u003eHello café\u003c/p\u003e",
+              "body_html": "<p>Hello café</p>",
               "headers": {
                 "Subject": [
                   "Hello café"
@@ -19485,7 +19506,8 @@
                 }
               ],
               "received_tls": true,
-              "tls_version": "TLS1.3"
+              "tls_version": "TLS1.3",
+              "pop3_utf8_size": 0
             }
           ]
         },
@@ -19526,9 +19548,9 @@
               "id": 52,
               "mailbox_id": 1,
               "folder": "INBOX",
-              "message_id": "\u003cmessage-52@example.net\u003e",
-              "in_reply_to": "\u003cparent@example.net\u003e",
-              "references": "\u003cparent@example.net\u003e",
+              "message_id": "<message-52@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
               "sender_name": "Sender café",
@@ -19552,16 +19574,17 @@
               "created_at": "2026-10-20T00:00:00Z",
               "updated_at": "2026-10-20T00:00:00Z",
               "body_text": "Plain delivery",
-              "received_tls": false
+              "received_tls": false,
+              "pop3_utf8_size": 0
             },
             {
               "class": "person",
               "id": 53,
               "mailbox_id": 1,
               "folder": "INBOX",
-              "message_id": "\u003cmessage-53@example.net\u003e",
-              "in_reply_to": "\u003cparent@example.net\u003e",
-              "references": "\u003cparent@example.net\u003e",
+              "message_id": "<message-53@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
               "sender_name": "Sender café",
@@ -19583,16 +19606,17 @@
               "received_at": "2026-10-20T01:00:00Z",
               "date_header": null,
               "created_at": "2026-10-20T00:00:00Z",
-              "updated_at": "2026-10-20T00:00:00Z"
+              "updated_at": "2026-10-20T00:00:00Z",
+              "pop3_utf8_size": 0
             },
             {
               "class": "person",
               "id": 51,
               "mailbox_id": 1,
               "folder": "INBOX",
-              "message_id": "\u003cmessage-51@example.net\u003e",
-              "in_reply_to": "\u003cparent@example.net\u003e",
-              "references": "\u003cparent@example.net\u003e",
+              "message_id": "<message-51@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
               "sender_name": "Sender café",
@@ -19620,7 +19644,7 @@
               "created_at": "2026-10-20T00:00:00Z",
               "updated_at": "2026-10-20T00:00:00Z",
               "body_text": "Hello café",
-              "body_html": "\u003cp\u003eHello café\u003c/p\u003e",
+              "body_html": "<p>Hello café</p>",
               "headers": {
                 "Subject": [
                   "Hello café"
@@ -19636,7 +19660,8 @@
                 }
               ],
               "received_tls": true,
-              "tls_version": "TLS1.3"
+              "tls_version": "TLS1.3",
+              "pop3_utf8_size": 0
             }
           ]
         },
@@ -19713,9 +19738,9 @@
               "id": 52,
               "mailbox_id": 10,
               "folder": "INBOX",
-              "message_id": "\u003cmessage-52@example.net\u003e",
-              "in_reply_to": "\u003cparent@example.net\u003e",
-              "references": "\u003cparent@example.net\u003e",
+              "message_id": "<message-52@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
               "sender_name": "Sender café",
@@ -19739,16 +19764,17 @@
               "created_at": "2026-10-20T00:00:00Z",
               "updated_at": "2026-10-20T00:00:00Z",
               "body_text": "Plain delivery",
-              "received_tls": false
+              "received_tls": false,
+              "pop3_utf8_size": 0
             },
             {
               "class": "person",
               "id": 53,
               "mailbox_id": 10,
               "folder": "INBOX",
-              "message_id": "\u003cmessage-53@example.net\u003e",
-              "in_reply_to": "\u003cparent@example.net\u003e",
-              "references": "\u003cparent@example.net\u003e",
+              "message_id": "<message-53@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
               "sender_name": "Sender café",
@@ -19770,16 +19796,17 @@
               "received_at": "2026-10-20T01:00:00Z",
               "date_header": null,
               "created_at": "2026-10-20T00:00:00Z",
-              "updated_at": "2026-10-20T00:00:00Z"
+              "updated_at": "2026-10-20T00:00:00Z",
+              "pop3_utf8_size": 0
             },
             {
               "class": "person",
               "id": 51,
               "mailbox_id": 10,
               "folder": "INBOX",
-              "message_id": "\u003cmessage-51@example.net\u003e",
-              "in_reply_to": "\u003cparent@example.net\u003e",
-              "references": "\u003cparent@example.net\u003e",
+              "message_id": "<message-51@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
               "sender_name": "Sender café",
@@ -19807,7 +19834,7 @@
               "created_at": "2026-10-20T00:00:00Z",
               "updated_at": "2026-10-20T00:00:00Z",
               "body_text": "Hello café",
-              "body_html": "\u003cp\u003eHello café\u003c/p\u003e",
+              "body_html": "<p>Hello café</p>",
               "headers": {
                 "Subject": [
                   "Hello café"
@@ -19823,7 +19850,8 @@
                 }
               ],
               "received_tls": true,
-              "tls_version": "TLS1.3"
+              "tls_version": "TLS1.3",
+              "pop3_utf8_size": 0
             }
           ]
         },
@@ -20918,7 +20946,7 @@
           "data": {
             "id": 41,
             "imported": true,
-            "message_id": "\u003chistory@example.test\u003e",
+            "message_id": "<history@example.test>",
             "folder": "Archive"
           }
         },
@@ -20978,7 +21006,7 @@
           "data": {
             "id": 41,
             "imported": true,
-            "message_id": "\u003cbinary@example.test\u003e",
+            "message_id": "<binary@example.test>",
             "folder": "Archive"
           }
         },
@@ -21066,7 +21094,7 @@
           "data": {
             "id": 41,
             "imported": true,
-            "message_id": "\u003chistory@example.test\u003e",
+            "message_id": "<history@example.test>",
             "folder": "INBOX"
           }
         },
@@ -21097,7 +21125,7 @@
           "data": {
             "id": 41,
             "imported": false,
-            "message_id": "\u003chistory@example.test\u003e",
+            "message_id": "<history@example.test>",
             "folder": "Archive"
           }
         },
@@ -21288,7 +21316,7 @@
           "data": {
             "id": 41,
             "imported": true,
-            "message_id": "\u003cimport.9b98f1924d1d2ce37341bb414c6b3a53b345718aee0e7760eb94724f9b8de94e@rest-mail.invalid\u003e",
+            "message_id": "<import.9b98f1924d1d2ce37341bb414c6b3a53b345718aee0e7760eb94724f9b8de94e@rest-mail.invalid>",
             "folder": "Archive"
           }
         },
@@ -24667,9 +24695,9 @@
               "id": 51,
               "mailbox_id": 10,
               "folder": "INBOX",
-              "message_id": "\u003cmessage-51@example.net\u003e",
-              "in_reply_to": "\u003cparent@example.net\u003e",
-              "references": "\u003cparent@example.net\u003e",
+              "message_id": "<message-51@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
               "sender_name": "Sender café",
@@ -24697,7 +24725,7 @@
               "created_at": "2026-10-20T00:00:00Z",
               "updated_at": "2026-10-20T00:00:00Z",
               "body_text": "Hello café",
-              "body_html": "\u003cp\u003eHello café\u003c/p\u003e",
+              "body_html": "<p>Hello café</p>",
               "headers": {
                 "Subject": [
                   "Hello café"
@@ -24713,16 +24741,17 @@
                 }
               ],
               "received_tls": true,
-              "tls_version": "TLS1.3"
+              "tls_version": "TLS1.3",
+              "pop3_utf8_size": 0
             },
             {
               "class": "person",
               "id": 53,
               "mailbox_id": 10,
               "folder": "INBOX",
-              "message_id": "\u003cmessage-53@example.net\u003e",
-              "in_reply_to": "\u003cparent@example.net\u003e",
-              "references": "\u003cparent@example.net\u003e",
+              "message_id": "<message-53@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
               "sender_name": "Sender café",
@@ -24744,16 +24773,17 @@
               "received_at": "2026-10-20T01:00:00Z",
               "date_header": null,
               "created_at": "2026-10-20T00:00:00Z",
-              "updated_at": "2026-10-20T00:00:00Z"
+              "updated_at": "2026-10-20T00:00:00Z",
+              "pop3_utf8_size": 0
             },
             {
               "class": "person",
               "id": 52,
               "mailbox_id": 10,
               "folder": "INBOX",
-              "message_id": "\u003cmessage-52@example.net\u003e",
-              "in_reply_to": "\u003cparent@example.net\u003e",
-              "references": "\u003cparent@example.net\u003e",
+              "message_id": "<message-52@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
               "sender_name": "Sender café",
@@ -24777,7 +24807,8 @@
               "created_at": "2026-10-20T00:00:00Z",
               "updated_at": "2026-10-20T00:00:00Z",
               "body_text": "Plain delivery",
-              "received_tls": false
+              "received_tls": false,
+              "pop3_utf8_size": 0
             }
           ],
           "pagination": {
@@ -24825,9 +24856,9 @@
               "id": 51,
               "mailbox_id": 1,
               "folder": "INBOX",
-              "message_id": "\u003cmessage-51@example.net\u003e",
-              "in_reply_to": "\u003cparent@example.net\u003e",
-              "references": "\u003cparent@example.net\u003e",
+              "message_id": "<message-51@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
               "sender_name": "Sender café",
@@ -24855,7 +24886,7 @@
               "created_at": "2026-10-20T00:00:00Z",
               "updated_at": "2026-10-20T00:00:00Z",
               "body_text": "Hello café",
-              "body_html": "\u003cp\u003eHello café\u003c/p\u003e",
+              "body_html": "<p>Hello café</p>",
               "headers": {
                 "Subject": [
                   "Hello café"
@@ -24871,16 +24902,17 @@
                 }
               ],
               "received_tls": true,
-              "tls_version": "TLS1.3"
+              "tls_version": "TLS1.3",
+              "pop3_utf8_size": 0
             },
             {
               "class": "person",
               "id": 53,
               "mailbox_id": 1,
               "folder": "INBOX",
-              "message_id": "\u003cmessage-53@example.net\u003e",
-              "in_reply_to": "\u003cparent@example.net\u003e",
-              "references": "\u003cparent@example.net\u003e",
+              "message_id": "<message-53@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
               "sender_name": "Sender café",
@@ -24902,16 +24934,17 @@
               "received_at": "2026-10-20T01:00:00Z",
               "date_header": null,
               "created_at": "2026-10-20T00:00:00Z",
-              "updated_at": "2026-10-20T00:00:00Z"
+              "updated_at": "2026-10-20T00:00:00Z",
+              "pop3_utf8_size": 0
             },
             {
               "class": "person",
               "id": 52,
               "mailbox_id": 1,
               "folder": "INBOX",
-              "message_id": "\u003cmessage-52@example.net\u003e",
-              "in_reply_to": "\u003cparent@example.net\u003e",
-              "references": "\u003cparent@example.net\u003e",
+              "message_id": "<message-52@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
               "sender_name": "Sender café",
@@ -24935,7 +24968,8 @@
               "created_at": "2026-10-20T00:00:00Z",
               "updated_at": "2026-10-20T00:00:00Z",
               "body_text": "Plain delivery",
-              "received_tls": false
+              "received_tls": false,
+              "pop3_utf8_size": 0
             }
           ],
           "pagination": {
@@ -24980,9 +25014,9 @@
               "id": 51,
               "mailbox_id": 1,
               "folder": "INBOX",
-              "message_id": "\u003cmessage-51@example.net\u003e",
-              "in_reply_to": "\u003cparent@example.net\u003e",
-              "references": "\u003cparent@example.net\u003e",
+              "message_id": "<message-51@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
               "sender_name": "Sender café",
@@ -25010,7 +25044,7 @@
               "created_at": "2026-10-20T00:00:00Z",
               "updated_at": "2026-10-20T00:00:00Z",
               "body_text": "Hello café",
-              "body_html": "\u003cp\u003eHello café\u003c/p\u003e",
+              "body_html": "<p>Hello café</p>",
               "headers": {
                 "Subject": [
                   "Hello café"
@@ -25026,16 +25060,17 @@
                 }
               ],
               "received_tls": true,
-              "tls_version": "TLS1.3"
+              "tls_version": "TLS1.3",
+              "pop3_utf8_size": 0
             },
             {
               "class": "person",
               "id": 53,
               "mailbox_id": 1,
               "folder": "INBOX",
-              "message_id": "\u003cmessage-53@example.net\u003e",
-              "in_reply_to": "\u003cparent@example.net\u003e",
-              "references": "\u003cparent@example.net\u003e",
+              "message_id": "<message-53@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
               "sender_name": "Sender café",
@@ -25057,16 +25092,17 @@
               "received_at": "2026-10-20T01:00:00Z",
               "date_header": null,
               "created_at": "2026-10-20T00:00:00Z",
-              "updated_at": "2026-10-20T00:00:00Z"
+              "updated_at": "2026-10-20T00:00:00Z",
+              "pop3_utf8_size": 0
             },
             {
               "class": "person",
               "id": 52,
               "mailbox_id": 1,
               "folder": "INBOX",
-              "message_id": "\u003cmessage-52@example.net\u003e",
-              "in_reply_to": "\u003cparent@example.net\u003e",
-              "references": "\u003cparent@example.net\u003e",
+              "message_id": "<message-52@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
               "sender_name": "Sender café",
@@ -25090,7 +25126,8 @@
               "created_at": "2026-10-20T00:00:00Z",
               "updated_at": "2026-10-20T00:00:00Z",
               "body_text": "Plain delivery",
-              "received_tls": false
+              "received_tls": false,
+              "pop3_utf8_size": 0
             }
           ],
           "pagination": {
@@ -25121,9 +25158,9 @@
               "id": 51,
               "mailbox_id": 1,
               "folder": "INBOX",
-              "message_id": "\u003cmessage-51@example.net\u003e",
-              "in_reply_to": "\u003cparent@example.net\u003e",
-              "references": "\u003cparent@example.net\u003e",
+              "message_id": "<message-51@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
               "sender_name": "Sender café",
@@ -25151,7 +25188,7 @@
               "created_at": "2026-10-20T00:00:00Z",
               "updated_at": "2026-10-20T00:00:00Z",
               "body_text": "Hello café",
-              "body_html": "\u003cp\u003eHello café\u003c/p\u003e",
+              "body_html": "<p>Hello café</p>",
               "headers": {
                 "Subject": [
                   "Hello café"
@@ -25167,16 +25204,17 @@
                 }
               ],
               "received_tls": true,
-              "tls_version": "TLS1.3"
+              "tls_version": "TLS1.3",
+              "pop3_utf8_size": 0
             },
             {
               "class": "person",
               "id": 53,
               "mailbox_id": 1,
               "folder": "INBOX",
-              "message_id": "\u003cmessage-53@example.net\u003e",
-              "in_reply_to": "\u003cparent@example.net\u003e",
-              "references": "\u003cparent@example.net\u003e",
+              "message_id": "<message-53@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
               "sender_name": "Sender café",
@@ -25198,16 +25236,17 @@
               "received_at": "2026-10-20T01:00:00Z",
               "date_header": null,
               "created_at": "2026-10-20T00:00:00Z",
-              "updated_at": "2026-10-20T00:00:00Z"
+              "updated_at": "2026-10-20T00:00:00Z",
+              "pop3_utf8_size": 0
             },
             {
               "class": "person",
               "id": 52,
               "mailbox_id": 1,
               "folder": "INBOX",
-              "message_id": "\u003cmessage-52@example.net\u003e",
-              "in_reply_to": "\u003cparent@example.net\u003e",
-              "references": "\u003cparent@example.net\u003e",
+              "message_id": "<message-52@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
               "sender_name": "Sender café",
@@ -25231,7 +25270,8 @@
               "created_at": "2026-10-20T00:00:00Z",
               "updated_at": "2026-10-20T00:00:00Z",
               "body_text": "Plain delivery",
-              "received_tls": false
+              "received_tls": false,
+              "pop3_utf8_size": 0
             }
           ],
           "pagination": {
@@ -25258,9 +25298,9 @@
               "id": 51,
               "mailbox_id": 1,
               "folder": "INBOX",
-              "message_id": "\u003cmessage-51@example.net\u003e",
-              "in_reply_to": "\u003cparent@example.net\u003e",
-              "references": "\u003cparent@example.net\u003e",
+              "message_id": "<message-51@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
               "sender_name": "Sender café",
@@ -25288,7 +25328,7 @@
               "created_at": "2026-10-20T00:00:00Z",
               "updated_at": "2026-10-20T00:00:00Z",
               "body_text": "Hello café",
-              "body_html": "\u003cp\u003eHello café\u003c/p\u003e",
+              "body_html": "<p>Hello café</p>",
               "headers": {
                 "Subject": [
                   "Hello café"
@@ -25304,16 +25344,17 @@
                 }
               ],
               "received_tls": true,
-              "tls_version": "TLS1.3"
+              "tls_version": "TLS1.3",
+              "pop3_utf8_size": 0
             },
             {
               "class": "person",
               "id": 53,
               "mailbox_id": 1,
               "folder": "INBOX",
-              "message_id": "\u003cmessage-53@example.net\u003e",
-              "in_reply_to": "\u003cparent@example.net\u003e",
-              "references": "\u003cparent@example.net\u003e",
+              "message_id": "<message-53@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
               "sender_name": "Sender café",
@@ -25335,16 +25376,17 @@
               "received_at": "2026-10-20T01:00:00Z",
               "date_header": null,
               "created_at": "2026-10-20T00:00:00Z",
-              "updated_at": "2026-10-20T00:00:00Z"
+              "updated_at": "2026-10-20T00:00:00Z",
+              "pop3_utf8_size": 0
             },
             {
               "class": "person",
               "id": 52,
               "mailbox_id": 1,
               "folder": "INBOX",
-              "message_id": "\u003cmessage-52@example.net\u003e",
-              "in_reply_to": "\u003cparent@example.net\u003e",
-              "references": "\u003cparent@example.net\u003e",
+              "message_id": "<message-52@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
               "sender_name": "Sender café",
@@ -25368,7 +25410,8 @@
               "created_at": "2026-10-20T00:00:00Z",
               "updated_at": "2026-10-20T00:00:00Z",
               "body_text": "Plain delivery",
-              "received_tls": false
+              "received_tls": false,
+              "pop3_utf8_size": 0
             }
           ],
           "pagination": {
@@ -25414,9 +25457,9 @@
               "id": 51,
               "mailbox_id": 1,
               "folder": "Projects/2026 café",
-              "message_id": "\u003cmessage-51@example.net\u003e",
-              "in_reply_to": "\u003cparent@example.net\u003e",
-              "references": "\u003cparent@example.net\u003e",
+              "message_id": "<message-51@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
               "sender_name": "Sender café",
@@ -25444,7 +25487,7 @@
               "created_at": "2026-10-20T00:00:00Z",
               "updated_at": "2026-10-20T00:00:00Z",
               "body_text": "Hello café",
-              "body_html": "\u003cp\u003eHello café\u003c/p\u003e",
+              "body_html": "<p>Hello café</p>",
               "headers": {
                 "Subject": [
                   "Hello café"
@@ -25460,16 +25503,17 @@
                 }
               ],
               "received_tls": true,
-              "tls_version": "TLS1.3"
+              "tls_version": "TLS1.3",
+              "pop3_utf8_size": 0
             },
             {
               "class": "person",
               "id": 53,
               "mailbox_id": 1,
               "folder": "Projects/2026 café",
-              "message_id": "\u003cmessage-53@example.net\u003e",
-              "in_reply_to": "\u003cparent@example.net\u003e",
-              "references": "\u003cparent@example.net\u003e",
+              "message_id": "<message-53@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
               "sender_name": "Sender café",
@@ -25491,16 +25535,17 @@
               "received_at": "2026-10-20T01:00:00Z",
               "date_header": null,
               "created_at": "2026-10-20T00:00:00Z",
-              "updated_at": "2026-10-20T00:00:00Z"
+              "updated_at": "2026-10-20T00:00:00Z",
+              "pop3_utf8_size": 0
             },
             {
               "class": "person",
               "id": 52,
               "mailbox_id": 1,
               "folder": "Projects/2026 café",
-              "message_id": "\u003cmessage-52@example.net\u003e",
-              "in_reply_to": "\u003cparent@example.net\u003e",
-              "references": "\u003cparent@example.net\u003e",
+              "message_id": "<message-52@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
               "sender_name": "Sender café",
@@ -25524,7 +25569,8 @@
               "created_at": "2026-10-20T00:00:00Z",
               "updated_at": "2026-10-20T00:00:00Z",
               "body_text": "Plain delivery",
-              "received_tls": false
+              "received_tls": false,
+              "pop3_utf8_size": 0
             }
           ],
           "pagination": {
@@ -25555,9 +25601,9 @@
               "id": 51,
               "mailbox_id": 1,
               "folder": "INBOX",
-              "message_id": "\u003cmessage-51@example.net\u003e",
-              "in_reply_to": "\u003cparent@example.net\u003e",
-              "references": "\u003cparent@example.net\u003e",
+              "message_id": "<message-51@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
               "sender_name": "Sender café",
@@ -25585,7 +25631,7 @@
               "created_at": "2026-10-20T00:00:00Z",
               "updated_at": "2026-10-20T00:00:00Z",
               "body_text": "Hello café",
-              "body_html": "\u003cp\u003eHello café\u003c/p\u003e",
+              "body_html": "<p>Hello café</p>",
               "headers": {
                 "Subject": [
                   "Hello café"
@@ -25601,7 +25647,8 @@
                 }
               ],
               "received_tls": true,
-              "tls_version": "TLS1.3"
+              "tls_version": "TLS1.3",
+              "pop3_utf8_size": 0
             }
           ],
           "pagination": {
@@ -25668,9 +25715,9 @@
               "id": 51,
               "mailbox_id": 1,
               "folder": "INBOX",
-              "message_id": "\u003cmessage-51@example.net\u003e",
-              "in_reply_to": "\u003cparent@example.net\u003e",
-              "references": "\u003cparent@example.net\u003e",
+              "message_id": "<message-51@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
               "sender_name": "Sender café",
@@ -25698,7 +25745,7 @@
               "created_at": "2026-10-20T00:00:00Z",
               "updated_at": "2026-10-20T00:00:00Z",
               "body_text": "Hello café",
-              "body_html": "\u003cp\u003eHello café\u003c/p\u003e",
+              "body_html": "<p>Hello café</p>",
               "headers": {
                 "Subject": [
                   "Hello café"
@@ -25714,16 +25761,17 @@
                 }
               ],
               "received_tls": true,
-              "tls_version": "TLS1.3"
+              "tls_version": "TLS1.3",
+              "pop3_utf8_size": 0
             },
             {
               "class": "person",
               "id": 53,
               "mailbox_id": 1,
               "folder": "INBOX",
-              "message_id": "\u003cmessage-53@example.net\u003e",
-              "in_reply_to": "\u003cparent@example.net\u003e",
-              "references": "\u003cparent@example.net\u003e",
+              "message_id": "<message-53@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
               "sender_name": "Sender café",
@@ -25745,16 +25793,17 @@
               "received_at": "2026-10-20T01:00:00Z",
               "date_header": null,
               "created_at": "2026-10-20T00:00:00Z",
-              "updated_at": "2026-10-20T00:00:00Z"
+              "updated_at": "2026-10-20T00:00:00Z",
+              "pop3_utf8_size": 0
             },
             {
               "class": "person",
               "id": 52,
               "mailbox_id": 1,
               "folder": "INBOX",
-              "message_id": "\u003cmessage-52@example.net\u003e",
-              "in_reply_to": "\u003cparent@example.net\u003e",
-              "references": "\u003cparent@example.net\u003e",
+              "message_id": "<message-52@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
               "sender_name": "Sender café",
@@ -25778,7 +25827,8 @@
               "created_at": "2026-10-20T00:00:00Z",
               "updated_at": "2026-10-20T00:00:00Z",
               "body_text": "Plain delivery",
-              "received_tls": false
+              "received_tls": false,
+              "pop3_utf8_size": 0
             }
           ],
           "pagination": {
@@ -25856,9 +25906,9 @@
               "id": 51,
               "mailbox_id": 1,
               "folder": "INBOX",
-              "message_id": "\u003cmessage-51@example.net\u003e",
-              "in_reply_to": "\u003cparent@example.net\u003e",
-              "references": "\u003cparent@example.net\u003e",
+              "message_id": "<message-51@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
               "sender_name": "Sender café",
@@ -25886,7 +25936,7 @@
               "created_at": "2026-10-20T00:00:00Z",
               "updated_at": "2026-10-20T00:00:00Z",
               "body_text": "Hello café",
-              "body_html": "\u003cp\u003eHello café\u003c/p\u003e",
+              "body_html": "<p>Hello café</p>",
               "headers": {
                 "Subject": [
                   "Hello café"
@@ -25902,16 +25952,17 @@
                 }
               ],
               "received_tls": true,
-              "tls_version": "TLS1.3"
+              "tls_version": "TLS1.3",
+              "pop3_utf8_size": 0
             },
             {
               "class": "person",
               "id": 53,
               "mailbox_id": 1,
               "folder": "INBOX",
-              "message_id": "\u003cmessage-53@example.net\u003e",
-              "in_reply_to": "\u003cparent@example.net\u003e",
-              "references": "\u003cparent@example.net\u003e",
+              "message_id": "<message-53@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
               "sender_name": "Sender café",
@@ -25933,16 +25984,17 @@
               "received_at": "2026-10-20T01:00:00Z",
               "date_header": null,
               "created_at": "2026-10-20T00:00:00Z",
-              "updated_at": "2026-10-20T00:00:00Z"
+              "updated_at": "2026-10-20T00:00:00Z",
+              "pop3_utf8_size": 0
             },
             {
               "class": "person",
               "id": 52,
               "mailbox_id": 1,
               "folder": "INBOX",
-              "message_id": "\u003cmessage-52@example.net\u003e",
-              "in_reply_to": "\u003cparent@example.net\u003e",
-              "references": "\u003cparent@example.net\u003e",
+              "message_id": "<message-52@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
               "sender_name": "Sender café",
@@ -25966,7 +26018,8 @@
               "created_at": "2026-10-20T00:00:00Z",
               "updated_at": "2026-10-20T00:00:00Z",
               "body_text": "Plain delivery",
-              "received_tls": false
+              "received_tls": false,
+              "pop3_utf8_size": 0
             }
           ],
           "pagination": {
@@ -26011,9 +26064,9 @@
               "id": 51,
               "mailbox_id": 1,
               "folder": "INBOX",
-              "message_id": "\u003cmessage-51@example.net\u003e",
-              "in_reply_to": "\u003cparent@example.net\u003e",
-              "references": "\u003cparent@example.net\u003e",
+              "message_id": "<message-51@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
               "sender_name": "Sender café",
@@ -26041,7 +26094,7 @@
               "created_at": "2026-10-20T00:00:00Z",
               "updated_at": "2026-10-20T00:00:00Z",
               "body_text": "Hello café",
-              "body_html": "\u003cp\u003eHello café\u003c/p\u003e",
+              "body_html": "<p>Hello café</p>",
               "headers": {
                 "Subject": [
                   "Hello café"
@@ -26057,16 +26110,17 @@
                 }
               ],
               "received_tls": true,
-              "tls_version": "TLS1.3"
+              "tls_version": "TLS1.3",
+              "pop3_utf8_size": 0
             },
             {
               "class": "person",
               "id": 53,
               "mailbox_id": 1,
               "folder": "INBOX",
-              "message_id": "\u003cmessage-53@example.net\u003e",
-              "in_reply_to": "\u003cparent@example.net\u003e",
-              "references": "\u003cparent@example.net\u003e",
+              "message_id": "<message-53@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
               "sender_name": "Sender café",
@@ -26088,16 +26142,17 @@
               "received_at": "2026-10-20T01:00:00Z",
               "date_header": null,
               "created_at": "2026-10-20T00:00:00Z",
-              "updated_at": "2026-10-20T00:00:00Z"
+              "updated_at": "2026-10-20T00:00:00Z",
+              "pop3_utf8_size": 0
             },
             {
               "class": "person",
               "id": 52,
               "mailbox_id": 1,
               "folder": "INBOX",
-              "message_id": "\u003cmessage-52@example.net\u003e",
-              "in_reply_to": "\u003cparent@example.net\u003e",
-              "references": "\u003cparent@example.net\u003e",
+              "message_id": "<message-52@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
               "sender_name": "Sender café",
@@ -26121,7 +26176,8 @@
               "created_at": "2026-10-20T00:00:00Z",
               "updated_at": "2026-10-20T00:00:00Z",
               "body_text": "Plain delivery",
-              "received_tls": false
+              "received_tls": false,
+              "pop3_utf8_size": 0
             }
           ],
           "pagination": {
@@ -26170,9 +26226,9 @@
               "id": 52,
               "mailbox_id": 1,
               "folder": "INBOX",
-              "message_id": "\u003cmessage-52@example.net\u003e",
-              "in_reply_to": "\u003cparent@example.net\u003e",
-              "references": "\u003cparent@example.net\u003e",
+              "message_id": "<message-52@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
               "sender_name": "Sender café",
@@ -26196,7 +26252,8 @@
               "created_at": "2026-10-20T00:00:00Z",
               "updated_at": "2026-10-20T00:00:00Z",
               "body_text": "Plain delivery",
-              "received_tls": false
+              "received_tls": false,
+              "pop3_utf8_size": 0
             }
           ],
           "pagination": {
@@ -26226,9 +26283,9 @@
               "id": 51,
               "mailbox_id": 1,
               "folder": "INBOX",
-              "message_id": "\u003cmessage-51@example.net\u003e",
-              "in_reply_to": "\u003cparent@example.net\u003e",
-              "references": "\u003cparent@example.net\u003e",
+              "message_id": "<message-51@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
               "sender_name": "Sender café",
@@ -26256,7 +26313,7 @@
               "created_at": "2026-10-20T00:00:00Z",
               "updated_at": "2026-10-20T00:00:00Z",
               "body_text": "Hello café",
-              "body_html": "\u003cp\u003eHello café\u003c/p\u003e",
+              "body_html": "<p>Hello café</p>",
               "headers": {
                 "Subject": [
                   "Hello café"
@@ -26272,16 +26329,17 @@
                 }
               ],
               "received_tls": true,
-              "tls_version": "TLS1.3"
+              "tls_version": "TLS1.3",
+              "pop3_utf8_size": 0
             },
             {
               "class": "person",
               "id": 53,
               "mailbox_id": 1,
               "folder": "INBOX",
-              "message_id": "\u003cmessage-53@example.net\u003e",
-              "in_reply_to": "\u003cparent@example.net\u003e",
-              "references": "\u003cparent@example.net\u003e",
+              "message_id": "<message-53@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
               "sender_name": "Sender café",
@@ -26303,16 +26361,17 @@
               "received_at": "2026-10-20T01:00:00Z",
               "date_header": null,
               "created_at": "2026-10-20T00:00:00Z",
-              "updated_at": "2026-10-20T00:00:00Z"
+              "updated_at": "2026-10-20T00:00:00Z",
+              "pop3_utf8_size": 0
             },
             {
               "class": "person",
               "id": 52,
               "mailbox_id": 1,
               "folder": "INBOX",
-              "message_id": "\u003cmessage-52@example.net\u003e",
-              "in_reply_to": "\u003cparent@example.net\u003e",
-              "references": "\u003cparent@example.net\u003e",
+              "message_id": "<message-52@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
               "sender_name": "Sender café",
@@ -26336,7 +26395,8 @@
               "created_at": "2026-10-20T00:00:00Z",
               "updated_at": "2026-10-20T00:00:00Z",
               "body_text": "Plain delivery",
-              "received_tls": false
+              "received_tls": false,
+              "pop3_utf8_size": 0
             }
           ],
           "pagination": {
@@ -26385,9 +26445,9 @@
               "id": 53,
               "mailbox_id": 1,
               "folder": "INBOX",
-              "message_id": "\u003cmessage-53@example.net\u003e",
-              "in_reply_to": "\u003cparent@example.net\u003e",
-              "references": "\u003cparent@example.net\u003e",
+              "message_id": "<message-53@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
               "sender_name": "Sender café",
@@ -26409,7 +26469,8 @@
               "received_at": "2026-10-20T01:00:00Z",
               "date_header": null,
               "created_at": "2026-10-20T00:00:00Z",
-              "updated_at": "2026-10-20T00:00:00Z"
+              "updated_at": "2026-10-20T00:00:00Z",
+              "pop3_utf8_size": 0
             }
           ],
           "pagination": {
@@ -26458,9 +26519,9 @@
               "id": 51,
               "mailbox_id": 1,
               "folder": "INBOX",
-              "message_id": "\u003cmessage-51@example.net\u003e",
-              "in_reply_to": "\u003cparent@example.net\u003e",
-              "references": "\u003cparent@example.net\u003e",
+              "message_id": "<message-51@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
               "sender_name": "Sender café",
@@ -26488,7 +26549,7 @@
               "created_at": "2026-10-20T00:00:00Z",
               "updated_at": "2026-10-20T00:00:00Z",
               "body_text": "Hello café",
-              "body_html": "\u003cp\u003eHello café\u003c/p\u003e",
+              "body_html": "<p>Hello café</p>",
               "headers": {
                 "Subject": [
                   "Hello café"
@@ -26504,16 +26565,17 @@
                 }
               ],
               "received_tls": true,
-              "tls_version": "TLS1.3"
+              "tls_version": "TLS1.3",
+              "pop3_utf8_size": 0
             },
             {
               "class": "person",
               "id": 53,
               "mailbox_id": 1,
               "folder": "INBOX",
-              "message_id": "\u003cmessage-53@example.net\u003e",
-              "in_reply_to": "\u003cparent@example.net\u003e",
-              "references": "\u003cparent@example.net\u003e",
+              "message_id": "<message-53@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
               "sender_name": "Sender café",
@@ -26535,16 +26597,17 @@
               "received_at": "2026-10-20T01:00:00Z",
               "date_header": null,
               "created_at": "2026-10-20T00:00:00Z",
-              "updated_at": "2026-10-20T00:00:00Z"
+              "updated_at": "2026-10-20T00:00:00Z",
+              "pop3_utf8_size": 0
             },
             {
               "class": "person",
               "id": 52,
               "mailbox_id": 1,
               "folder": "INBOX",
-              "message_id": "\u003cmessage-52@example.net\u003e",
-              "in_reply_to": "\u003cparent@example.net\u003e",
-              "references": "\u003cparent@example.net\u003e",
+              "message_id": "<message-52@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
               "sender_name": "Sender café",
@@ -26568,7 +26631,8 @@
               "created_at": "2026-10-20T00:00:00Z",
               "updated_at": "2026-10-20T00:00:00Z",
               "body_text": "Plain delivery",
-              "received_tls": false
+              "received_tls": false,
+              "pop3_utf8_size": 0
             }
           ],
           "pagination": {
@@ -26595,9 +26659,9 @@
               "id": 51,
               "mailbox_id": 10,
               "folder": "INBOX",
-              "message_id": "\u003cmessage-51@example.net\u003e",
-              "in_reply_to": "\u003cparent@example.net\u003e",
-              "references": "\u003cparent@example.net\u003e",
+              "message_id": "<message-51@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
               "sender_name": "Sender café",
@@ -26625,7 +26689,7 @@
               "created_at": "2026-10-20T00:00:00Z",
               "updated_at": "2026-10-20T00:00:00Z",
               "body_text": "Hello café",
-              "body_html": "\u003cp\u003eHello café\u003c/p\u003e",
+              "body_html": "<p>Hello café</p>",
               "headers": {
                 "Subject": [
                   "Hello café"
@@ -26641,16 +26705,17 @@
                 }
               ],
               "received_tls": true,
-              "tls_version": "TLS1.3"
+              "tls_version": "TLS1.3",
+              "pop3_utf8_size": 0
             },
             {
               "class": "person",
               "id": 53,
               "mailbox_id": 10,
               "folder": "INBOX",
-              "message_id": "\u003cmessage-53@example.net\u003e",
-              "in_reply_to": "\u003cparent@example.net\u003e",
-              "references": "\u003cparent@example.net\u003e",
+              "message_id": "<message-53@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
               "sender_name": "Sender café",
@@ -26672,16 +26737,17 @@
               "received_at": "2026-10-20T01:00:00Z",
               "date_header": null,
               "created_at": "2026-10-20T00:00:00Z",
-              "updated_at": "2026-10-20T00:00:00Z"
+              "updated_at": "2026-10-20T00:00:00Z",
+              "pop3_utf8_size": 0
             },
             {
               "class": "person",
               "id": 52,
               "mailbox_id": 10,
               "folder": "INBOX",
-              "message_id": "\u003cmessage-52@example.net\u003e",
-              "in_reply_to": "\u003cparent@example.net\u003e",
-              "references": "\u003cparent@example.net\u003e",
+              "message_id": "<message-52@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
               "sender_name": "Sender café",
@@ -26705,7 +26771,8 @@
               "created_at": "2026-10-20T00:00:00Z",
               "updated_at": "2026-10-20T00:00:00Z",
               "body_text": "Plain delivery",
-              "received_tls": false
+              "received_tls": false,
+              "pop3_utf8_size": 0
             }
           ],
           "pagination": {
@@ -27673,17 +27740,17 @@
         "body": {
           "data": [
             {
-              "thread_id": "\u003cthread-72@example.com\u003e",
+              "thread_id": "<thread-72@example.com>",
               "awaiting_since": "2026-10-20T02:00:00Z",
               "last_message": {
                 "id": 72,
                 "class": "person",
                 "mailbox_id": 1,
                 "folder": "Sent",
-                "message_id": "\u003cmessage-72@example.com\u003e",
+                "message_id": "<message-72@example.com>",
                 "in_reply_to": "",
                 "references": "",
-                "thread_id": "\u003cthread-72@example.com\u003e",
+                "thread_id": "<thread-72@example.com>",
                 "awaiting_since": "2026-10-20T02:00:00Z",
                 "sender": "linked@example.com",
                 "sender_name": "Linked",
@@ -27696,6 +27763,7 @@
                 "size_bytes": 18,
                 "raw_size": 0,
                 "downgraded_size": 0,
+                "pop3_utf8_size": 0,
                 "imap_size": 0,
                 "imap_utf8_size": 0,
                 "has_attachments": false,
@@ -27712,17 +27780,17 @@
               }
             },
             {
-              "thread_id": "\u003cthread-71@example.com\u003e",
+              "thread_id": "<thread-71@example.com>",
               "awaiting_since": "2026-10-20T01:00:00Z",
               "last_message": {
                 "id": 71,
                 "class": "person",
                 "mailbox_id": 1,
                 "folder": "Sent",
-                "message_id": "\u003cmessage-71@example.com\u003e",
+                "message_id": "<message-71@example.com>",
                 "in_reply_to": "",
                 "references": "",
-                "thread_id": "\u003cthread-71@example.com\u003e",
+                "thread_id": "<thread-71@example.com>",
                 "awaiting_since": "2026-10-20T01:00:00Z",
                 "sender": "linked@example.com",
                 "sender_name": "Linked",
@@ -27735,6 +27803,7 @@
                 "size_bytes": 18,
                 "raw_size": 0,
                 "downgraded_size": 0,
+                "pop3_utf8_size": 0,
                 "imap_size": 0,
                 "imap_utf8_size": 0,
                 "has_attachments": false,
@@ -27968,7 +28037,7 @@
         "query": {
           "emailaddress": ""
         },
-        "body": "\u003cAutodiscover\u003e\u003cRequest\u003e\u003cEMailAddress\u003euser@example.com\u003c/EMailAddress\u003e\u003c/Request\u003e\u003c/Autodiscover\u003e\u003c![CDATA[ ]]\u003e",
+        "body": "<Autodiscover><Request><EMailAddress>user@example.com</EMailAddress></Request></Autodiscover><![CDATA[ ]]>",
         "mediaType": "application/xml"
       },
       "response": {
@@ -27988,7 +28057,7 @@
         "query": {
           "emailaddress": ""
         },
-        "body": "\u003cAutodiscover\u003e\u003cRequest\u003e\u003cEMailAddress\u003euser@example.com\u003c/EMailAddress\u003e\u003c/Request\u003e\u003c/Autodiscover\u003e\u0026#x20;",
+        "body": "<Autodiscover><Request><EMailAddress>user@example.com</EMailAddress></Request></Autodiscover>&#x20;",
         "mediaType": "application/xml"
       },
       "response": {
@@ -28008,7 +28077,7 @@
         "query": {
           "emailaddress": ""
         },
-        "body": "\u003cAutodiscover\u003e\u003cRequest\u003e\u003cEMailAddress\u003euser@example.com\u003c/EMailAddress\u003e\u003c/Request\u003e\u003c/Autodiscover\u003e ",
+        "body": "<Autodiscover><Request><EMailAddress>user@example.com</EMailAddress></Request></Autodiscover> ",
         "mediaType": "application/xml"
       },
       "response": {
@@ -28028,7 +28097,7 @@
         "query": {
           "emailaddress": ""
         },
-        "body": "\u003cAutodiscover\u003e\u003cRequest/\u003e\u003c/Autodiscover\u003e",
+        "body": "<Autodiscover><Request/></Autodiscover>",
         "mediaType": "application/xml"
       },
       "response": {
@@ -28053,7 +28122,7 @@
         "query": {
           "emailaddress": ""
         },
-        "body": "\u003cAutodiscover\u003e\u003cRequest\u003e\u003cEMailAddress\u003euser@example.com\u003c/EMailAddress\u003e\u003c/Request\u003e\u003c/Autodiscover\u003e\u003c?xml version=\"1.0\"?\u003e",
+        "body": "<Autodiscover><Request><EMailAddress>user@example.com</EMailAddress></Request></Autodiscover><?xml version=\"1.0\"?>",
         "mediaType": "application/xml"
       },
       "response": {
@@ -28073,7 +28142,7 @@
         "query": {
           "emailaddress": ""
         },
-        "body": "\u003cAutodiscover\u003e\u003cRequest\u003e\u003cEMailAddress\u003euser@example.com\u003c/EMailAddress\u003e\u003c/Request\u003e\u003c/Autodiscover\u003e\u003c!DOCTYPE other\u003e",
+        "body": "<Autodiscover><Request><EMailAddress>user@example.com</EMailAddress></Request></Autodiscover><!DOCTYPE other>",
         "mediaType": "application/xml"
       },
       "response": {
@@ -28093,7 +28162,7 @@
         "query": {
           "emailaddress": ""
         },
-        "body": "\u003cAutodiscover\u003e\u003cRequest\u003e\u003cEMailAddress\u003euser@example.com\u003c/EMailAddress\u003e\u003c/Request\u003e\u003c/Autodiscover\u003e\u003cAutodiscover/\u003e",
+        "body": "<Autodiscover><Request><EMailAddress>user@example.com</EMailAddress></Request></Autodiscover><Autodiscover/>",
         "mediaType": "application/xml"
       },
       "response": {
@@ -28113,7 +28182,7 @@
         "query": {
           "emailaddress": ""
         },
-        "body": "\u003cAutodiscover\u003e\u003cRequest\u003e\u003cEMailAddress\u003euser@example.com\u003c/EMailAddress\u003e\u003c/Request\u003e\u003c/Autodiscover\u003e\u003c",
+        "body": "<Autodiscover><Request><EMailAddress>user@example.com</EMailAddress></Request></Autodiscover><",
         "mediaType": "application/xml"
       },
       "response": {
@@ -28133,12 +28202,12 @@
         "query": {
           "emailaddress": ""
         },
-        "body": "\u003cAutodiscover\u003e\u003cRequest\u003e\u003cEMailAddress\u003euser@example.com\u003c/EMailAddress\u003e\u003c/Request\u003e\u003c/Autodiscover\u003e\r\n\t \u003c!-- client comment --\u003e \u003c?client done?\u003e \n",
+        "body": "<Autodiscover><Request><EMailAddress>user@example.com</EMailAddress></Request></Autodiscover>\r\n\t <!-- client comment --> <?client done?> \n",
         "mediaType": "application/xml"
       },
       "response": {
         "status": 200,
-        "body": "\u003c?xml version=\"1.0\" encoding=\"UTF-8\"?\u003e\n\u003cAutodiscover xmlns=\"http://schemas.microsoft.com/exchange/autodiscover/responseschema/2006\"\u003e\n  \u003cResponse xmlns=\"http://schemas.microsoft.com/exchange/autodiscover/outlook/responseschema/2006a\"\u003e\n    \u003cAccount\u003e\n      \u003cAccountType\u003eemail\u003c/AccountType\u003e\n      \u003cAction\u003esettings\u003c/Action\u003e\n      \u003cProtocol\u003e\n        \u003cType\u003eIMAP\u003c/Type\u003e\n        \u003cServer\u003erestmail.test\u003c/Server\u003e\n        \u003cPort\u003e993\u003c/Port\u003e\n        \u003cSSL\u003eon\u003c/SSL\u003e\n        \u003cEncryption\u003eSSL\u003c/Encryption\u003e\n        \u003cLoginName\u003euser@example.com\u003c/LoginName\u003e\n      \u003c/Protocol\u003e\n      \u003cProtocol\u003e\n        \u003cType\u003eSMTP\u003c/Type\u003e\n        \u003cServer\u003erestmail.test\u003c/Server\u003e\n        \u003cPort\u003e465\u003c/Port\u003e\n        \u003cSSL\u003eon\u003c/SSL\u003e\n        \u003cEncryption\u003eSSL\u003c/Encryption\u003e\n        \u003cLoginName\u003euser@example.com\u003c/LoginName\u003e\n      \u003c/Protocol\u003e\n    \u003c/Account\u003e\n  \u003c/Response\u003e\n\u003c/Autodiscover\u003e",
+        "body": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Autodiscover xmlns=\"http://schemas.microsoft.com/exchange/autodiscover/responseschema/2006\">\n  <Response xmlns=\"http://schemas.microsoft.com/exchange/autodiscover/outlook/responseschema/2006a\">\n    <Account>\n      <AccountType>email</AccountType>\n      <Action>settings</Action>\n      <Protocol>\n        <Type>IMAP</Type>\n        <Server>restmail.test</Server>\n        <Port>993</Port>\n        <SSL>on</SSL>\n        <Encryption>SSL</Encryption>\n        <LoginName>user@example.com</LoginName>\n      </Protocol>\n      <Protocol>\n        <Type>SMTP</Type>\n        <Server>restmail.test</Server>\n        <Port>465</Port>\n        <SSL>on</SSL>\n        <Encryption>SSL</Encryption>\n        <LoginName>user@example.com</LoginName>\n      </Protocol>\n    </Account>\n  </Response>\n</Autodiscover>",
         "mediaType": "application/xml"
       }
     },
@@ -28148,12 +28217,12 @@
         "query": {
           "emailaddress": "user@example.com"
         },
-        "body": "\u003cAutodiscover\u003e\u003cRequest\u003e\u003cEMailAddress\u003eother@absent.test\u003c/EMailAddress\u003e\u003c/Request\u003e\u003c/Autodiscover\u003e\u003cAutodiscover/\u003e",
+        "body": "<Autodiscover><Request><EMailAddress>other@absent.test</EMailAddress></Request></Autodiscover><Autodiscover/>",
         "mediaType": "application/xml"
       },
       "response": {
         "status": 200,
-        "body": "\u003c?xml version=\"1.0\" encoding=\"UTF-8\"?\u003e\n\u003cAutodiscover xmlns=\"http://schemas.microsoft.com/exchange/autodiscover/responseschema/2006\"\u003e\n  \u003cResponse xmlns=\"http://schemas.microsoft.com/exchange/autodiscover/outlook/responseschema/2006a\"\u003e\n    \u003cAccount\u003e\n      \u003cAccountType\u003eemail\u003c/AccountType\u003e\n      \u003cAction\u003esettings\u003c/Action\u003e\n      \u003cProtocol\u003e\n        \u003cType\u003eIMAP\u003c/Type\u003e\n        \u003cServer\u003erestmail.test\u003c/Server\u003e\n        \u003cPort\u003e993\u003c/Port\u003e\n        \u003cSSL\u003eon\u003c/SSL\u003e\n        \u003cEncryption\u003eSSL\u003c/Encryption\u003e\n        \u003cLoginName\u003euser@example.com\u003c/LoginName\u003e\n      \u003c/Protocol\u003e\n      \u003cProtocol\u003e\n        \u003cType\u003eSMTP\u003c/Type\u003e\n        \u003cServer\u003erestmail.test\u003c/Server\u003e\n        \u003cPort\u003e465\u003c/Port\u003e\n        \u003cSSL\u003eon\u003c/SSL\u003e\n        \u003cEncryption\u003eSSL\u003c/Encryption\u003e\n        \u003cLoginName\u003euser@example.com\u003c/LoginName\u003e\n      \u003c/Protocol\u003e\n    \u003c/Account\u003e\n  \u003c/Response\u003e\n\u003c/Autodiscover\u003e",
+        "body": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Autodiscover xmlns=\"http://schemas.microsoft.com/exchange/autodiscover/responseschema/2006\">\n  <Response xmlns=\"http://schemas.microsoft.com/exchange/autodiscover/outlook/responseschema/2006a\">\n    <Account>\n      <AccountType>email</AccountType>\n      <Action>settings</Action>\n      <Protocol>\n        <Type>IMAP</Type>\n        <Server>restmail.test</Server>\n        <Port>993</Port>\n        <SSL>on</SSL>\n        <Encryption>SSL</Encryption>\n        <LoginName>user@example.com</LoginName>\n      </Protocol>\n      <Protocol>\n        <Type>SMTP</Type>\n        <Server>restmail.test</Server>\n        <Port>465</Port>\n        <SSL>on</SSL>\n        <Encryption>SSL</Encryption>\n        <LoginName>user@example.com</LoginName>\n      </Protocol>\n    </Account>\n  </Response>\n</Autodiscover>",
         "mediaType": "application/xml"
       }
     },
@@ -28163,7 +28232,7 @@
         "query": {
           "emailaddress": ""
         },
-        "body": "\u003cAutodiscover\u003e\u003cRequest\u003e\u003cEMailAddress\u003euser@example.com\u003c/EMailAddress\u003e\u003c/Request\u003e\u003c/Autodiscover\u003egarbage",
+        "body": "<Autodiscover><Request><EMailAddress>user@example.com</EMailAddress></Request></Autodiscover>garbage",
         "mediaType": "application/xml"
       },
       "response": {
@@ -28183,12 +28252,12 @@
         "query": {
           "emailaddress": ""
         },
-        "body": "\u003cAutodiscover\u003e\u003cRequest\u003e\u003cEMailAddress\u003euser@example.com\u003c/EMailAddress\u003e\u003c/Request\u003e\u003c/Autodiscover\u003e",
+        "body": "<Autodiscover><Request><EMailAddress>user@example.com</EMailAddress></Request></Autodiscover>",
         "mediaType": "application/xml"
       },
       "response": {
         "status": 200,
-        "body": "\u003c?xml version=\"1.0\" encoding=\"UTF-8\"?\u003e\n\u003cAutodiscover xmlns=\"http://schemas.microsoft.com/exchange/autodiscover/responseschema/2006\"\u003e\n  \u003cResponse xmlns=\"http://schemas.microsoft.com/exchange/autodiscover/outlook/responseschema/2006a\"\u003e\n    \u003cAccount\u003e\n      \u003cAccountType\u003eemail\u003c/AccountType\u003e\n      \u003cAction\u003esettings\u003c/Action\u003e\n      \u003cProtocol\u003e\n        \u003cType\u003eIMAP\u003c/Type\u003e\n        \u003cServer\u003erestmail.test\u003c/Server\u003e\n        \u003cPort\u003e993\u003c/Port\u003e\n        \u003cSSL\u003eon\u003c/SSL\u003e\n        \u003cEncryption\u003eSSL\u003c/Encryption\u003e\n        \u003cLoginName\u003euser@example.com\u003c/LoginName\u003e\n      \u003c/Protocol\u003e\n      \u003cProtocol\u003e\n        \u003cType\u003eSMTP\u003c/Type\u003e\n        \u003cServer\u003erestmail.test\u003c/Server\u003e\n        \u003cPort\u003e465\u003c/Port\u003e\n        \u003cSSL\u003eon\u003c/SSL\u003e\n        \u003cEncryption\u003eSSL\u003c/Encryption\u003e\n        \u003cLoginName\u003euser@example.com\u003c/LoginName\u003e\n      \u003c/Protocol\u003e\n    \u003c/Account\u003e\n  \u003c/Response\u003e\n\u003c/Autodiscover\u003e",
+        "body": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Autodiscover xmlns=\"http://schemas.microsoft.com/exchange/autodiscover/responseschema/2006\">\n  <Response xmlns=\"http://schemas.microsoft.com/exchange/autodiscover/outlook/responseschema/2006a\">\n    <Account>\n      <AccountType>email</AccountType>\n      <Action>settings</Action>\n      <Protocol>\n        <Type>IMAP</Type>\n        <Server>restmail.test</Server>\n        <Port>993</Port>\n        <SSL>on</SSL>\n        <Encryption>SSL</Encryption>\n        <LoginName>user@example.com</LoginName>\n      </Protocol>\n      <Protocol>\n        <Type>SMTP</Type>\n        <Server>restmail.test</Server>\n        <Port>465</Port>\n        <SSL>on</SSL>\n        <Encryption>SSL</Encryption>\n        <LoginName>user@example.com</LoginName>\n      </Protocol>\n    </Account>\n  </Response>\n</Autodiscover>",
         "mediaType": "application/xml"
       }
     }
@@ -33279,7 +33348,7 @@
               "id": 41,
               "mailbox_id": 21,
               "folder": "INBOX",
-              "message_id": "\u003csnapshot-fixture@example.com\u003e",
+              "message_id": "<snapshot-fixture@example.com>",
               "in_reply_to": "",
               "references": "",
               "thread_id": "",
@@ -33486,7 +33555,7 @@
               "id": 41,
               "mailbox_id": 21,
               "folder": "INBOX",
-              "message_id": "\u003csnapshot-fixture@example.com\u003e",
+              "message_id": "<snapshot-fixture@example.com>",
               "in_reply_to": "",
               "references": "",
               "thread_id": "",
@@ -33693,7 +33762,7 @@
               "id": 41,
               "mailbox_id": 21,
               "folder": "INBOX",
-              "message_id": "\u003csnapshot-fixture@example.com\u003e",
+              "message_id": "<snapshot-fixture@example.com>",
               "in_reply_to": "",
               "references": "",
               "thread_id": "",
@@ -33900,7 +33969,7 @@
               "id": 41,
               "mailbox_id": 21,
               "folder": "INBOX",
-              "message_id": "\u003csnapshot-fixture@example.com\u003e",
+              "message_id": "<snapshot-fixture@example.com>",
               "in_reply_to": "",
               "references": "",
               "thread_id": "",
@@ -34107,7 +34176,7 @@
               "id": 41,
               "mailbox_id": 21,
               "folder": "INBOX",
-              "message_id": "\u003csnapshot-fixture@example.com\u003e",
+              "message_id": "<snapshot-fixture@example.com>",
               "in_reply_to": "",
               "references": "",
               "thread_id": "",
@@ -34314,7 +34383,7 @@
               "id": 41,
               "mailbox_id": 21,
               "folder": "INBOX",
-              "message_id": "\u003csnapshot-fixture@example.com\u003e",
+              "message_id": "<snapshot-fixture@example.com>",
               "in_reply_to": "",
               "references": "",
               "thread_id": "",
@@ -34521,7 +34590,7 @@
               "id": 41,
               "mailbox_id": 21,
               "folder": "INBOX",
-              "message_id": "\u003csnapshot-fixture@example.com\u003e",
+              "message_id": "<snapshot-fixture@example.com>",
               "in_reply_to": "",
               "references": "",
               "thread_id": "",
@@ -34889,7 +34958,7 @@
               "id": 41,
               "mailbox_id": 21,
               "folder": "INBOX",
-              "message_id": "\u003csnapshot-fixture@example.com\u003e",
+              "message_id": "<snapshot-fixture@example.com>",
               "in_reply_to": "",
               "references": "",
               "thread_id": "",
@@ -35096,7 +35165,7 @@
               "id": 41,
               "mailbox_id": 21,
               "folder": "INBOX",
-              "message_id": "\u003csnapshot-fixture@example.com\u003e",
+              "message_id": "<snapshot-fixture@example.com>",
               "in_reply_to": "",
               "references": "",
               "thread_id": "",
@@ -36483,6 +36552,7 @@
             "size_bytes": 18,
             "raw_size": 0,
             "downgraded_size": 0,
+            "pop3_utf8_size": 0,
             "imap_size": 0,
             "imap_utf8_size": 0,
             "has_attachments": false,
@@ -36838,7 +36908,7 @@
         "body": {
           "data": {
             "message_id": 1,
-            "msg_id": "\u003c0a1b2c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d@restmail.test\u003e",
+            "msg_id": "<0a1b2c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d@restmail.test>",
             "from": "postmaster@restmail.test",
             "to": "admin@restmail.test",
             "subject": "Test"
@@ -36898,7 +36968,7 @@
         "body": {
           "data": {
             "message_id": 1,
-            "msg_id": "\u003c0a1b2c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d@restmail.test\u003e",
+            "msg_id": "<0a1b2c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d@restmail.test>",
             "from": "postmaster@restmail.test",
             "to": "admin@restmail.test",
             "subject": "Test"
@@ -36940,7 +37010,7 @@
         "body": {
           "data": {
             "message_id": 1,
-            "msg_id": "\u003c0a1b2c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d@restmail.test\u003e",
+            "msg_id": "<0a1b2c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d@restmail.test>",
             "from": "postmaster@restmail.test",
             "to": "admin@restmail.test",
             "subject": "Test"
@@ -36963,7 +37033,7 @@
         "body": {
           "data": {
             "message_id": 1,
-            "msg_id": "\u003c0a1b2c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d@restmail.test\u003e",
+            "msg_id": "<0a1b2c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d@restmail.test>",
             "from": "postmaster@restmail.test",
             "to": "admin@restmail.test",
             "subject": "Test email from REST Mail"
@@ -36986,7 +37056,7 @@
         "body": {
           "data": {
             "message_id": 1,
-            "msg_id": "\u003c0a1b2c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d@restmail.test\u003e",
+            "msg_id": "<0a1b2c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d@restmail.test>",
             "from": "postmaster@restmail.test",
             "to": "admin@restmail.test",
             "subject": "Test email from REST Mail"
@@ -37070,7 +37140,7 @@
         "body": {
           "data": {
             "message_id": 1,
-            "msg_id": "\u003c0a1b2c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d@restmail.test\u003e",
+            "msg_id": "<0a1b2c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d@restmail.test>",
             "from": "postmaster@restmail.test",
             "to": "admin@restmail.test",
             "subject": "Test"
@@ -37285,7 +37355,7 @@
         "body": {
           "data": {
             "message_id": 1,
-            "msg_id": "\u003c0a1b2c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d@restmail.test\u003e",
+            "msg_id": "<0a1b2c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d@restmail.test>",
             "from": "postmaster@restmail.test",
             "to": "postmaster@restmail.test",
             "subject": "Test"
@@ -37440,7 +37510,7 @@
         "body": {
           "data": {
             "message_id": 1,
-            "msg_id": "\u003c0a1b2c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d@restmail.test\u003e",
+            "msg_id": "<0a1b2c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d@restmail.test>",
             "from": "postmaster@restmail.test",
             "to": "admin@restmail.test",
             "subject": "Fixture ✓"
@@ -40304,7 +40374,7 @@
                 "id": 41,
                 "mailbox_id": 21,
                 "folder": "INBOX",
-                "message_id": "\u003csnapshot-fixture@example.com\u003e",
+                "message_id": "<snapshot-fixture@example.com>",
                 "in_reply_to": "",
                 "references": "",
                 "thread_id": "",
@@ -40322,6 +40392,7 @@
                 "size_bytes": 123,
                 "raw_size": 0,
                 "downgraded_size": 0,
+                "pop3_utf8_size": 0,
                 "imap_size": 0,
                 "imap_utf8_size": 0,
                 "has_attachments": false,
@@ -40635,7 +40706,7 @@
                 "id": 41,
                 "mailbox_id": 21,
                 "folder": "INBOX",
-                "message_id": "\u003csnapshot-fixture@example.com\u003e",
+                "message_id": "<snapshot-fixture@example.com>",
                 "in_reply_to": "",
                 "references": "",
                 "thread_id": "",
@@ -40653,6 +40724,7 @@
                 "size_bytes": 123,
                 "raw_size": 0,
                 "downgraded_size": 0,
+                "pop3_utf8_size": 0,
                 "imap_size": 0,
                 "imap_utf8_size": 0,
                 "has_attachments": false,
@@ -40937,7 +41009,7 @@
                 "id": 41,
                 "mailbox_id": 21,
                 "folder": "INBOX",
-                "message_id": "\u003csnapshot-fixture@example.com\u003e",
+                "message_id": "<snapshot-fixture@example.com>",
                 "in_reply_to": "",
                 "references": "",
                 "thread_id": "",
@@ -40955,6 +41027,7 @@
                 "size_bytes": 123,
                 "raw_size": 0,
                 "downgraded_size": 0,
+                "pop3_utf8_size": 0,
                 "imap_size": 0,
                 "imap_utf8_size": 0,
                 "has_attachments": false,
@@ -42375,7 +42448,7 @@
                 }
               ],
               "subject": "A filter test",
-              "message-id": "\u003cfilter-test@example.com\u003e",
+              "message-id": "<filter-test@example.com>",
               "date": "Sat, 17 Oct 2026 12:00:00 +0000"
             },
             "body": {
@@ -42426,7 +42499,7 @@
                 }
               ],
               "subject": "A filter test",
-              "message-id": "\u003cfilter-test@example.com\u003e",
+              "message-id": "<filter-test@example.com>",
               "date": "Sat, 17 Oct 2026 12:00:00 +0000"
             },
             "body": {
@@ -42477,7 +42550,7 @@
                 }
               ],
               "subject": "A filter test",
-              "message-id": "\u003cfilter-test@example.com\u003e",
+              "message-id": "<filter-test@example.com>",
               "date": "Sat, 17 Oct 2026 12:00:00 +0000"
             },
             "body": {
@@ -42528,7 +42601,7 @@
                 }
               ],
               "subject": "A filter test",
-              "message-id": "\u003cfilter-test@example.com\u003e",
+              "message-id": "<filter-test@example.com>",
               "date": "Sat, 17 Oct 2026 12:00:00 +0000"
             },
             "body": {
@@ -42574,7 +42647,7 @@
                 }
               ],
               "subject": "A filter test",
-              "message-id": "\u003cfilter-test@example.com\u003e",
+              "message-id": "<filter-test@example.com>",
               "date": "Sat, 17 Oct 2026 12:00:00 +0000"
             },
             "body": {
@@ -42620,7 +42693,7 @@
                 }
               ],
               "subject": "A filter test",
-              "message-id": "\u003cfilter-test@example.com\u003e",
+              "message-id": "<filter-test@example.com>",
               "date": "Sat, 17 Oct 2026 12:00:00 +0000"
             },
             "body": {
@@ -42666,7 +42739,7 @@
                 }
               ],
               "subject": "A filter test",
-              "message-id": "\u003cfilter-test@example.com\u003e",
+              "message-id": "<filter-test@example.com>",
               "date": "Sat, 17 Oct 2026 12:00:00 +0000"
             },
             "body": {
@@ -42710,7 +42783,7 @@
                 }
               ],
               "subject": "A filter test",
-              "message-id": "\u003cfilter-test@example.com\u003e",
+              "message-id": "<filter-test@example.com>",
               "date": "Sat, 17 Oct 2026 12:00:00 +0000"
             },
             "body": {
@@ -42806,7 +42879,7 @@
                 }
               ],
               "subject": "A filter test",
-              "message-id": "\u003cfilter-test@example.com\u003e",
+              "message-id": "<filter-test@example.com>",
               "date": "Sat, 17 Oct 2026 12:00:00 +0000"
             },
             "body": {
@@ -42852,7 +42925,7 @@
                 }
               ],
               "subject": "A filter test",
-              "message-id": "\u003cfilter-test@example.com\u003e",
+              "message-id": "<filter-test@example.com>",
               "date": "Sat, 17 Oct 2026 12:00:00 +0000"
             },
             "body": {
@@ -42898,7 +42971,7 @@
                 }
               ],
               "subject": "A filter test",
-              "message-id": "\u003cfilter-test@example.com\u003e",
+              "message-id": "<filter-test@example.com>",
               "date": "Sat, 17 Oct 2026 12:00:00 +0000"
             },
             "body": {
@@ -42944,7 +43017,7 @@
                 }
               ],
               "subject": "A filter test",
-              "message-id": "\u003cfilter-test@example.com\u003e",
+              "message-id": "<filter-test@example.com>",
               "date": "Sat, 17 Oct 2026 12:00:00 +0000"
             },
             "body": {
@@ -42990,7 +43063,7 @@
                 }
               ],
               "subject": "A filter test",
-              "message-id": "\u003cfilter-test@example.com\u003e",
+              "message-id": "<filter-test@example.com>",
               "date": "Sat, 17 Oct 2026 12:00:00 +0000"
             },
             "body": {
@@ -43041,7 +43114,7 @@
                 }
               ],
               "subject": "A filter test",
-              "message-id": "\u003cfilter-test@example.com\u003e",
+              "message-id": "<filter-test@example.com>",
               "date": "Sat, 17 Oct 2026 12:00:00 +0000"
             },
             "body": {
@@ -43087,7 +43160,7 @@
                 }
               ],
               "subject": "A filter test",
-              "message-id": "\u003cfilter-test@example.com\u003e",
+              "message-id": "<filter-test@example.com>",
               "date": "Sat, 17 Oct 2026 12:00:00 +0000"
             },
             "body": {
@@ -43155,7 +43228,7 @@
                 }
               ],
               "subject": "A filter test",
-              "message-id": "\u003cfilter-test@example.com\u003e",
+              "message-id": "<filter-test@example.com>",
               "date": "Sat, 17 Oct 2026 12:00:00 +0000"
             },
             "body": {
@@ -43201,7 +43274,7 @@
                 }
               ],
               "subject": "A filter test",
-              "message-id": "\u003cfilter-test@example.com\u003e",
+              "message-id": "<filter-test@example.com>",
               "date": "Sat, 17 Oct 2026 12:00:00 +0000"
             },
             "body": {
@@ -43272,7 +43345,7 @@
                 }
               ],
               "subject": "A filter test",
-              "message-id": "\u003cfilter-test@example.com\u003e",
+              "message-id": "<filter-test@example.com>",
               "date": "Sat, 17 Oct 2026 12:00:00 +0000"
             },
             "body": {
@@ -43323,7 +43396,7 @@
                 }
               ],
               "subject": "A filter test",
-              "message-id": "\u003cfilter-test@example.com\u003e",
+              "message-id": "<filter-test@example.com>",
               "date": "Sat, 17 Oct 2026 12:00:00 +0000"
             },
             "body": {
@@ -43374,7 +43447,7 @@
                 }
               ],
               "subject": "A filter test",
-              "message-id": "\u003cfilter-test@example.com\u003e",
+              "message-id": "<filter-test@example.com>",
               "date": "Sat, 17 Oct 2026 12:00:00 +0000"
             },
             "body": {
@@ -43425,7 +43498,7 @@
                 }
               ],
               "subject": "A filter test",
-              "message-id": "\u003cfilter-test@example.com\u003e",
+              "message-id": "<filter-test@example.com>",
               "date": "Sat, 17 Oct 2026 12:00:00 +0000"
             },
             "body": {
@@ -47834,6 +47907,7 @@
             "size_bytes": 18,
             "raw_size": 0,
             "downgraded_size": 0,
+            "pop3_utf8_size": 0,
             "imap_size": 0,
             "imap_utf8_size": 0,
             "has_attachments": false,
@@ -50204,7 +50278,7 @@
           "data": {
             "found": true,
             "message_id": 51,
-            "msg_id": "\u003cverify@example.net\u003e",
+            "msg_id": "<verify@example.net>",
             "subject": "50%_\\off",
             "sender": "sender@example.net",
             "received_at": "2026-10-20T00:00:00Z"
@@ -50226,7 +50300,7 @@
           "data": {
             "found": true,
             "message_id": 51,
-            "msg_id": "\u003cverify@example.net\u003e",
+            "msg_id": "<verify@example.net>",
             "subject": "50%_\\off",
             "sender": "sender@example.net",
             "received_at": "2026-10-20T00:00:00Z"
@@ -50274,7 +50348,7 @@
     "filtered": {
       "request": {
         "query": {
-          "message_id": "\u003cverify@example.net\u003e",
+          "message_id": "<verify@example.net>",
           "subject": "50%_\\off",
           "timeout": "0s",
           "to": "recipient@example.com"
@@ -50286,7 +50360,7 @@
           "data": {
             "found": true,
             "message_id": 51,
-            "msg_id": "\u003cverify@example.net\u003e",
+            "msg_id": "<verify@example.net>",
             "subject": "50%_\\off",
             "sender": "sender@example.net",
             "received_at": "2026-10-20T00:00:00Z"
@@ -50308,7 +50382,7 @@
           "data": {
             "found": true,
             "message_id": 51,
-            "msg_id": "\u003cverify@example.net\u003e",
+            "msg_id": "<verify@example.net>",
             "subject": "50%_\\off",
             "sender": "sender@example.net",
             "received_at": "2026-10-20T00:00:00Z"

@@ -14,6 +14,7 @@ import (
 	pop3server "github.com/rest-mail/go-pop3/pkg/pop3/server"
 
 	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
+	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
 )
 
 const utf8Raw = "From: Jörg <joerg@bücher.example>\r\nSubject: Grüße\r\n\r\nHallo, Jörg.\r\n"
@@ -21,6 +22,10 @@ const utf8Raw = "From: Jörg <joerg@bücher.example>\r\nSubject: Grüße\r\n\r\n
 // utf8API answers the calls a POP3 session makes for one account whose INBOX
 // holds one message with raw UTF-8 headers.
 func utf8API(t *testing.T) *apiclient.Client {
+	return storeAPI(t, utf8Raw)
+}
+
+func storeAPI(t *testing.T, raw string) *apiclient.Client {
 	t.Helper()
 	mux := http.NewServeMux()
 	reply := func(w http.ResponseWriter, body string) {
@@ -32,14 +37,15 @@ func utf8API(t *testing.T) *apiclient.Client {
 		reply(w, `{"data":{"token":"rmgs_tok","protocol":"pop3","user":{"id":1,"email":"jorg@example.test"}}}`)
 	})
 	mux.HandleFunc("/api/v1/accounts/1/folders/INBOX/messages", func(w http.ResponseWriter, r *http.Request) {
-		reply(w, fmt.Sprintf(`{"data":[{"id":7,"raw_size":%d}]}`, len(utf8Raw)))
+		reply(w, fmt.Sprintf(`{"data":[{"id":7,"raw_size":%d,"downgraded_size":%d,"pop3_utf8_size":%d}]}`,
+			len(raw), rmail.DowngradedSize(raw), rmail.POP3WireSize(raw)))
 	})
 	mux.HandleFunc("/api/v1/messages/7", func(w http.ResponseWriter, r *http.Request) {
 		reply(w, `{"data":{"id":7}}`)
 	})
 	mux.HandleFunc("/api/v1/messages/7/raw", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "message/rfc822")
-		_, _ = io.WriteString(w, utf8Raw)
+		_, _ = io.WriteString(w, raw)
 	})
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
@@ -53,9 +59,13 @@ type pop3Client struct {
 }
 
 func dialUTF8(t *testing.T) *pop3Client {
+	return dialStore(t, utf8Raw)
+}
+
+func dialStore(t *testing.T, raw string) *pop3Client {
 	t.Helper()
 	client, server := net.Pipe()
-	sess := pop3server.NewSession(server, NewBackend(utf8API(t), nil), nil, nil)
+	sess := pop3server.NewSession(server, NewBackend(storeAPI(t, raw), nil), nil, nil)
 	done := make(chan struct{})
 	go func() {
 		defer close(done)

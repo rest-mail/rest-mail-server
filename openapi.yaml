@@ -27528,10 +27528,18 @@ components:
         downgraded_size:
           type: integer
           description: >-
-            Octet count of the stored raw message with its headers downgraded
-            to ASCII (RFC 6857), as sent to a POP3 client that has not enabled
-            UTF-8. Equals raw_size when the headers are already ASCII. 0 when
-            not measured; consumers should fall back to raw_size.
+            Octet count POP3 RETR sends a client that has not enabled UTF-8: the
+            stored raw message with its headers downgraded to ASCII (RFC 6857)
+            and every line ending in CRLF. Equals raw_size when the headers are
+            already ASCII and every line, the last one included, ends in CRLF. 0
+            when not measured; consumers should fall back to raw_size.
+        pop3_utf8_size:
+          type: integer
+          description: >-
+            Octet count POP3 RETR sends a client that has enabled UTF-8: the
+            stored raw message with every line ending in CRLF. Equals raw_size
+            when every line, the last one included, already does. 0 when not
+            measured; consumers should fall back to raw_size.
         imap_size:
           type: integer
           description: >-
