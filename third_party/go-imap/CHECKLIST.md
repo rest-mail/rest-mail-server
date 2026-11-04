@@ -355,7 +355,7 @@ This is not a full search grammar or conformance audit. Date tokens and
 quoted-token framing/escapes are checked above, each with a grammar-based fuzz
 target: FuzzSearchDate compares date tokens against an independent RFC grammar
 and Gregorian calendar oracle, and FuzzSearchQuotes covers quoted-token framing;
-CI runs each for 30 seconds. The shared literal reader materializes literals as
+CI runs each nightly for 500,000 executions. The shared literal reader materializes literals as
 quoted strings, so this slice preserves CR/LF and 8-bit literal bytes and does
 not distinguish them from illegal bytes sent directly in a wire quoted-string.
 Literal date operands, full string character validation, bare astring grammar
@@ -780,7 +780,7 @@ the remaining core/extension requirements still need a complete inventory.
 A `Mailbox` names its folders in UTF-8 and the server converts at the wire:
 until the client enables UTF8=ACCEPT, every mailbox name in a command or
 response is modified UTF-7 (§5.1.3); after, it is UTF-8 (RFC 6855 §3). The
-tests use the RFC's own examples, and FuzzModifiedUTF7, run in CI, checks the
+tests use the RFC's own examples, and FuzzModifiedUTF7, run nightly in CI, checks the
 converter against an independent regexp of the grammar and its round trip. §5.1.1's single hierarchy separator is "/",
 the delimiter every LIST and LSUB reply names; §5.1.2's "#" namespaces are not
 offered, and names starting with "#" are ordinary names.

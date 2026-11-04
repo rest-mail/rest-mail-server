@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# Say whether this run's change can move the result of the vendored go-imap
+# module's gates (#1925), as go_imap_changed=true|false in $GITHUB_OUTPUT.
+#
+# The module has no dependencies, so its result moves only with its own files,
+# with the workflow that names the gates and the Go version, or with this script.
+# BASE_SHA is the commit this run is compared with: the pull request's base, the
+# merge group's base or the commit before a push. A checkout is one commit deep,
+# so the base is fetched by its hash. Anything uncertain answers true: a gate that
+# runs without need costs a minute, and one skipped by mistake proves nothing.
+set -uo pipefail
+
+PATHS=(third_party/go-imap .github/workflows/ci.yml scripts/ci/go-imap-changed)
+
+answer() {
+  echo "go_imap_changed=$1" >> "$GITHUB_OUTPUT"
+  echo "go_imap_changed=$1: $2"
+  exit 0
+}
+
+base=${BASE_SHA:-}
+case "$base" in
+  "" | 0000000000000000000000000000000000000000)
+    answer true "this event has no commit to compare with" ;;
+esac
+
+if ! git cat-file -e "$base^{commit}" 2>/dev/null \
+  && ! git fetch --quiet --no-tags --depth=1 origin "$base"; then
+  answer true "could not fetch $base"
+fi
+
+git diff --quiet "$base" HEAD -- "${PATHS[@]}"
+case $? in
+  0) answer false "nothing the gates depend on changed since $base" ;;
+  1) answer true "$(git diff --name-only "$base" HEAD -- "${PATHS[@]}" | wc -l) file(s) the gates depend on changed since $base" ;;
+  *) answer true "could not compare with $base" ;;
+esac

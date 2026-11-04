@@ -1,6 +1,9 @@
 # Coverage gate and remaining work
 
-CI requires at least **95% statement coverage**, aiming for 100%. It runs:
+CI requires at least **95% statement coverage**, aiming for 100%. This copy's CI
+is the server's: the Test job of the root `.github/workflows/ci.yml` runs this
+whenever this directory or that workflow changes, and it is part of the required
+`CI` check. From this directory, it runs:
 
 ```sh
 go test -race -count=1 -covermode=atomic -coverpkg=./... -coverprofile=coverage.out ./...
@@ -12,7 +15,7 @@ the build. The gate rejects absent, duplicate, malformed and out-of-range totals
 It has no configurable lower threshold and no exclusions. The reported total
 uses `go tool cover`'s displayed precision, matching the shared RFC workflow.
 CI uploads `coverage.out` and the function report `coverage.txt` as the
-`statement-coverage` artifact even when the gate fails, unless the run is
+`go-imap-statement-coverage` artifact even when the gate fails, unless the run is
 cancelled. A run that fails before producing coverage has no profile to upload.
 
 `-coverpkg=./...` is necessary: the checked wire proofs in `pkg/imap/rfctest`
@@ -36,7 +39,9 @@ go test -count=1 -covermode=atomic -coverprofile=checklist.out ./internal/checkl
 
 Those commands predate the package split (v0.13.0), when the library was the
 root package. After the split, the same `-coverpkg=./...` run measured
-**97.0%** on Go 1.27.1 darwin/arm64, the same total as before the move.
+**97.0%** on Go 1.27.1 darwin/arm64, the same total as before the move. On Go
+1.26.10 linux/arm64, without `-race`, it measured **96.8%** at server commit
+`4bef6d84`.
 
 The profiles are combined by source file and block range, counting each block's
 statements once and marking it covered when any package executed it. This counts
@@ -66,9 +71,9 @@ This statement remains in the coverage denominator.
 
 The audited go-spf producer at
 `7d291c08d310b9c62afc287e75a534a39150fafb` does not pass `-coverpkg=./...`
-and uses duration-bounded fuzzing. go-imap keeps its existing workflow and
-execution-bounded fuzz runs (see golang/go#75804) until the shared producer can
-preserve both. Its fixed 95..100% total-validation rule is reproduced locally
+and uses duration-bounded fuzzing. go-imap keeps its own steps in the server's
+workflows and execution-bounded fuzz runs (see golang/go#75804) until the shared
+producer can preserve both. Its fixed 95..100% total-validation rule is reproduced locally
 with offline fixtures, including pipeline failure propagation. Coverage and
 checklist badges remain a later slice after the gate is green.
 

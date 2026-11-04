@@ -438,13 +438,14 @@ The badges at the top are checked by `TestReadmeChecklistBadge` and
 `TestReadmeCoverageBadge` in `internal/checklist`. The checklist badge counts
 mapped rows over all rows: the `n/a` rows are in the denominator, so the badge
 never claims more than the tests prove. The coverage badge shows the floor CI
-enforces, not a measured figure; each CI run prints the measured statement
-coverage in its **Require at least 95% statement coverage** step. CI measures
+enforces, not a measured figure; each CI run of a change to this module prints
+the measured statement coverage in its **Require at least 95% statement
+coverage** step. CI measures
 with `-coverpkg=./...`, so the black-box suite counts toward the packages it
 exercises. Coverage is in [COVERAGE.md](COVERAGE.md).
 
-Nine fuzz targets run in CI, against the FETCH, SEARCH, MIME and mailbox-name
-grammars.
+Nine fuzz targets run nightly in CI, against the FETCH, SEARCH, MIME and
+mailbox-name grammars.
 
 ## Changelog
 

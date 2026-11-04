@@ -102,6 +102,82 @@ jobs:
           echo "=== Direct dependencies ==="
           go list -m -u all 2>/dev/null | grep '\[' || echo "All dependencies are up to date."
 
+  go-imap-fuzz:
+    name: Vendored go-imap fuzzing
+    # Every fuzz target in third_party/go-imap (#1925); go test on a pull request runs
+    # only their seed inputs. A failure opens an issue (or updates the one that is
+    # open) and keeps the failing inputs as an artifact; the issue closes itself once
+    # a whole run passes. Nine targets, at most ten minutes each.
+    runs-on: ubuntu-latest
+    timeout-minutes: 100
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TITLE: "Vendored go-imap: nightly fuzzing found a failure"
+      FUZZTIME: 500000x
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.10"
+          cache: true
+
+      - name: Fuzz every target
+        id: fuzz
+        working-directory: third_party/go-imap
+        env:
+          FUZZ_LOG_DIR: ${{ runner.temp }}/go-imap-fuzz
+        run: ../../scripts/ci/go-imap-fuzz
+
+      - name: Keep the logs and failing inputs
+        if: failure() && steps.fuzz.outcome == 'failure'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: go-imap-fuzz-findings
+          path: |
+            ${{ runner.temp }}/go-imap-fuzz
+            third_party/go-imap/pkg/**/testdata/fuzz/**
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: Open or update the issue
+        if: failure() && steps.fuzz.outcome == 'failure'
+        run: |
+          set -euo pipefail
+          logs="$RUNNER_TEMP/go-imap-fuzz"
+          {
+            echo "The nightly fuzzing of \`third_party/go-imap\` failed. Each failing input is in the \`go-imap-fuzz-findings\` artifact of [this run]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID), at the package's \`testdata/fuzz/<target>\`: commit it there to keep it as a seed, and fix the cause. This issue closes itself once a whole run passes."
+            if [ ! -s "$logs/failed.txt" ]; then
+              echo
+              echo "No target recorded a failure, so the run failed before or between them: read the run's log."
+            fi
+            while read -r target package; do
+              echo
+              echo "**$target** in \`$package\`:"
+              echo
+              echo '```'
+              tail -n 25 "$logs/$target.log" 2>/dev/null || echo "no log"
+              echo '```'
+            done < "$logs/failed.txt"
+          } > "$RUNNER_TEMP/issue.md"
+          number=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --label bug --json number,title --jq ".[] | select(.title == \"$TITLE\") | .number" | head -1)
+          if [ -n "$number" ]; then
+            gh issue edit "$number" --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/issue.md"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$TITLE" --label bug --body-file "$RUNNER_TEMP/issue.md"
+          fi
+
+      - name: Close the issue once every target passes
+        if: success()
+        run: |
+          set -euo pipefail
+          number=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --label bug --json number,title --jq ".[] | select(.title == \"$TITLE\") | .number" | head -1)
+          if [ -n "$number" ]; then
+            gh issue close "$number" --repo "$GITHUB_REPOSITORY" --comment "Every fuzz target passes again ([run]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID))."
+          fi
+
   guide-links:
     name: Email, explained outside links
     # Every outside link in docs/email-explained, and every anchor in one, still
