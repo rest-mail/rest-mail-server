@@ -38,6 +38,8 @@ const topUsage = `restmail — run a rest-mail server
   restmail export-settings export an account's settings as JSON through the public API
   restmail mail-queue     inspect, retry, bounce and purge the outbound mail queue
   restmail app-password  list, make and revoke an account's app passwords
+  restmail export-contacts export an account's contacts as vCard through the public API
+  restmail export-calendar export stored invitations as iCalendar through the public API
   restmail version       print the version
   restmail [flags]       the interactive admin console (-api, -user, -pass)
 
@@ -147,6 +149,10 @@ func runSubcommand(args []string, stdout, stderr io.Writer) (code int, handled b
 		return runExportSettings(context.Background(), args[2:], os.Getenv("RESTMAIL_API_KEY"), client, time.Now, stdout, stderr), true
 	case "app-password":
 		return runAppPassword(context.Background(), args[2:], os.Getenv("RESTMAIL_API_KEY"), os.Stdin, client, stdout, stderr), true
+	case "export-contacts", "export-calendar":
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		return runExportData(ctx, args[1], args[2:], os.Getenv("RESTMAIL_API_KEY"), &http.Client{Timeout: 30 * time.Minute}, stdout, stderr), true
 	case "version":
 		fmt.Fprintln(stdout, "restmail", version)
 		return 0, true
