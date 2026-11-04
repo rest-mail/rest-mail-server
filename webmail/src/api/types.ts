@@ -1983,7 +1983,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Dashboard statistics */
+        /**
+         * Dashboard statistics
+         * @description inboundTransportSecurity counts stored inbound-MX deliveries, one per local recipient, identified by recorded received_tls. plaintextAuthPass counts plaintext deliveries with a saved typed SPF or DKIM pass. Message headers and bodies are never consulted. plaintextAuthFail counts plaintext deliveries without a recorded pass, including unknown verdicts and mail stored before typed verdict persistence; it is not a count of explicit authentication failures. Historic verdicts are not inferred from message text.
+         */
         get: operations["getDashboardStats"];
         put?: never;
         post?: never;
@@ -3899,8 +3902,6 @@ export interface components {
             /** Format: date-time */
             date_header: string | null;
             downgraded_size: number;
-            imap_size: number;
-            imap_utf8_size: number;
             /** Format: date-time */
             due?: string | null;
             /** @enum {string|null} */
@@ -3910,6 +3911,8 @@ export interface components {
             headers?: unknown;
             id: number;
             imap_deleted?: boolean;
+            imap_size: number;
+            imap_utf8_size: number;
             in_reply_to: string;
             is_answered?: boolean;
             is_deleted: boolean;
@@ -4284,13 +4287,13 @@ export interface components {
             /** Format: date-time */
             date_header?: string | null;
             downgraded_size?: number;
-            imap_size?: number;
-            imap_utf8_size?: number;
             folder?: string;
             has_attachments?: boolean;
             headers?: unknown;
             id?: number;
             imap_deleted?: boolean;
+            imap_size?: number;
+            imap_utf8_size?: number;
             in_reply_to?: string;
             is_answered?: boolean;
             is_deleted?: boolean;
@@ -4717,13 +4720,13 @@ export interface components {
             /** Format: date-time */
             date_header: string | null;
             downgraded_size: number;
-            imap_size: number;
-            imap_utf8_size: number;
             folder: string;
             has_attachments: boolean;
             headers?: unknown;
             id: number;
             imap_deleted?: boolean;
+            imap_size: number;
+            imap_utf8_size: number;
             in_reply_to: string;
             is_answered?: boolean;
             is_deleted: boolean;
