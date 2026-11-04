@@ -13,7 +13,11 @@ name: Cluster Install Check
 # validated by the js-filter sidecar. Then stage 2: Vertrag's examples phase
 # sent through the install's Ingress (ingress-nginx in kind, TLS from the
 # self-signed Secret), against the description the install serves there; its
-# HTML report is in the cluster-report artifact, under contract/. Locally,
+# HTML report is in the cluster-report artifact, under contract/. Then stage
+# 3: a reference Postfix/Dovecot in the cluster (scripts/cluster_reference.py,
+# with CoreDNS zones giving each domain its MX), mail from REST Mail to it
+# through the API, mail from it to REST Mail read back over IMAP, and the same
+# message over POP3; the messages are in the report too. Locally,
 # against any cluster with the chart installed: `chore cluster:e2e`, the same
 # script.
 #
@@ -65,6 +69,10 @@ env:
   # The API Ingress's host (api.ingress in values-ci.yaml), which the runner
   # resolves to the node's mapped port 443.
   INGRESS_HOST: mail.restmail-ci.test
+  # Stage 3: the install's mail domain (mailserver.domain in values-ci.yaml;
+  # its MX is INGRESS_HOST, the mail host), and where the reference runs.
+  MAIL_DOMAIN: restmail-ci.test
+  REFERENCE_NAMESPACE: reference
 
 jobs:
   install:
@@ -175,15 +183,25 @@ jobs:
             exit 1
           fi
 
+      # Stage 3's other side: a reference Postfix/Dovecot, pinned by digest,
+      # in its own namespace, and DNS in the cluster for both mail domains.
+      - name: Deploy the reference mail server
+        run: |
+          python3 -B scripts/cluster_reference.py --namespace "$REFERENCE_NAMESPACE" \
+            --restmail-namespace "$NAMESPACE" --release "$RELEASE" \
+            --mail-domain "$MAIL_DOMAIN" --mail-host "$INGRESS_HOST"
+
       # Stage 1 port-forwards the API and the gateways itself; stage 2 goes
-      # through the Ingress, trusting the self-signed certificate it serves.
+      # through the Ingress, trusting the self-signed certificate it serves;
+      # stage 3 sends mail between the install and the reference both ways.
       # One receipt line per step (commit, images, step, result) to the log and
       # to cluster-report/receipts.txt.
-      - name: Stages 1 and 2 against the install
+      - name: Stages 1 to 3 against the install
         run: |
           python3 -B -c 'import yaml' 2>/dev/null || pip install --quiet pyyaml
           python3 -B scripts/cluster_e2e.py --namespace "$NAMESPACE" --release "$RELEASE" --report-dir "$REPORT_DIR" --commit "$GITHUB_SHA" \
-            --ingress-url "https://$INGRESS_HOST" --ingress-ca "$RUNNER_TEMP/tls.crt"
+            --ingress-url "https://$INGRESS_HOST" --ingress-ca "$RUNNER_TEMP/tls.crt" \
+            --reference-namespace "$REFERENCE_NAMESPACE"
 
       # Always, and most of all on a failure: everything needed to see why a
       # pod did not come up, without re-running the job.
@@ -197,6 +215,10 @@ jobs:
           kubectl -n "$NAMESPACE" describe pods,deployments,statefulsets,services,pvc > describe.txt 2>&1 || true
           kubectl get events -A --sort-by=.lastTimestamp > events.txt 2>&1 || true
           kubectl -n ingress-nginx logs deployment/ingress-nginx-controller > logs/ingress-nginx-controller.log 2>&1 || true
+          kubectl -n "$REFERENCE_NAMESPACE" logs deployment/reference-mail --all-containers > logs/reference-mail.log 2>&1 || true
+          kubectl -n "$REFERENCE_NAMESPACE" describe pods > describe-reference.txt 2>&1 || true
+          kubectl -n kube-system get configmap coredns -o yaml > coredns.yaml 2>&1 || true
+          kubectl -n kube-system logs deployment/coredns > logs/coredns.log 2>&1 || true
           helm -n "$NAMESPACE" status "$RELEASE" > helm-status.txt 2>&1 || true
           for pod in $(kubectl -n "$NAMESPACE" get pods -o name 2>/dev/null); do
             name="${pod#pod/}"

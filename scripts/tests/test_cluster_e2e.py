@@ -1,11 +1,12 @@
-"""Stages 1 and 2 of the installed-cluster check (#1750), without a cluster.
+"""Stages 1 to 3 of the installed-cluster check (#1750), without a cluster.
 
 The steps themselves need an install (cluster-e2e.yml runs them); these test
 what does not: the arguments, the receipt lines, the TOTP the admin signs in
 with, reading kubectl's port-forward line, what a failed step does to the rest,
 stage 2's selection, Vertrag configuration and verdict (against a local HTTP
-server standing in for the Ingress and a stand-in Vertrag), and that the
-workflow and `chore cluster:e2e` run the same script.
+server standing in for the Ingress and a stand-in Vertrag), stage 3's
+message matching and waiting, and that the workflow and `chore cluster:e2e`
+run the same script.
 """
 
 import http.server
@@ -22,6 +23,7 @@ import threading
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from types import SimpleNamespace
+import unittest.mock
 from unittest.mock import patch
 
 import yaml
@@ -45,6 +47,12 @@ class ArgumentTests(unittest.TestCase):
                          ("restmail", "restmail", "cluster-report", "kubectl", 60))
         self.assertIsNone(args.only)
         self.assertEqual((args.ingress_url, args.ingress_ca, args.vertrag), ("", "", ""))
+        self.assertEqual((args.reference_namespace, args.mail_timeout), ("", 240))
+
+    def test_reference_namespace_from_the_environment(self):
+        self.assertEqual(self.parse("--commit", "c", env={"REFERENCE_NAMESPACE": "ref"}).reference_namespace, "ref")
+        with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            self.parse("--commit", "c", "--mail-timeout", "0")
 
     def test_environment_supplies_what_the_workflow_sets(self):
         args = self.parse(env={"NAMESPACE": "ns", "RELEASE": "rel", "REPORT_DIR": "/r", "GITHUB_SHA": "deadbeef"})
@@ -66,10 +74,10 @@ class ArgumentTests(unittest.TestCase):
             with self.subTest(bad=bad), redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
                 self.parse("--commit", "c", *bad)
 
-    def test_every_check_is_a_step_and_stage_2_comes_last(self):
+    def test_every_check_is_a_step_and_stage_3_comes_last(self):
         self.assertEqual(cluster_e2e.STEPS, ("health", "description", "admin-sign-in", "mailbox",
                                              "domain-live", "smtp-rcpt", "imap-sign-in", "filter-validate",
-                                             "contract-examples"))
+                                             "contract-examples", "mail-out", "mail-in", "pop3-retrieve"))
         for step in cluster_e2e.STEPS:
             self.assertTrue(callable(getattr(cluster_e2e.Stages, step.replace("-", "_"))), step)
 
@@ -451,6 +459,99 @@ class ContractStepTests(unittest.TestCase):
             stage.contract_examples()
 
 
+class FakeImap:
+    """UID SEARCH and FETCH over a fixed set of messages."""
+
+    def __init__(self, messages):
+        self.messages = messages  # uid -> raw
+
+    def uid(self, command, *args):
+        if command == "SEARCH":
+            subject = args[-1].strip('"')
+            hits = [str(uid).encode() for uid, raw in sorted(self.messages.items())
+                    if f"Subject: {subject}\r\n".encode() in raw]
+            return "OK", [b" ".join(hits)]
+        uid = int(args[0])
+        return "OK", [(f"{uid} (UID {uid} BODY[] {{n}}".encode(), self.messages[uid]), b")"]
+
+
+class Stage3Tests(unittest.TestCase):
+    SENDER, RECIPIENT = "reference@reference.test", "cluster-e2e@restmail-ci.test"
+
+    def message(self, subject, sender=None):
+        return cluster_e2e.submission_message(sender or self.SENDER, self.RECIPIENT, subject).replace(b"\n", b"\r\n")
+
+    def test_markers_differ_and_name_the_direction(self):
+        first, second = cluster_e2e.mail_marker("in"), cluster_e2e.mail_marker("in")
+        self.assertNotEqual(first, second)
+        self.assertTrue(first.startswith("cluster-e2e in "))
+
+    def test_the_sent_message_is_recognised_by_subject_and_sender(self):
+        raw = b"Received: from mail.reference.test\r\n  by mail.restmail-ci.test\r\n" + self.message("s 1")
+        evidence = cluster_e2e.received_with(raw, "s 1", self.SENDER)
+        self.assertEqual(evidence["received"], "from mail.reference.test by mail.restmail-ci.test")
+
+    def test_another_message_is_not_the_one_sent(self):
+        with self.assertRaisesRegex(cluster_e2e.StepFailed, "Subject"):
+            cluster_e2e.received_with(self.message("other"), "s 1", self.SENDER)
+        with self.assertRaisesRegex(cluster_e2e.StepFailed, "From"):
+            cluster_e2e.received_with(self.message("s 1", "someone@else.test"), "s 1", self.SENDER)
+
+    def test_imap_find_returns_the_newest_match_or_none(self):
+        imap = FakeImap({3: self.message("a"), 7: self.message("b"), 9: self.message("b")})
+        self.assertEqual(cluster_e2e.imap_find(imap, "b"), imap.messages[9])
+        self.assertIsNone(cluster_e2e.imap_find(imap, "c"))
+
+    def test_pop3_find_numbers_from_one(self):
+        heads = [self.message("a"), self.message("b"), self.message("c")]
+        self.assertEqual(cluster_e2e.pop3_find(heads, "b"), 2)
+        self.assertIsNone(cluster_e2e.pop3_find(heads, "d"))
+
+    def clock(self):
+        now = [0.0]
+        return now, (lambda: now[0]), (lambda seconds: now.__setitem__(0, now[0] + seconds))
+
+    def test_wait_for_retries_until_the_message_is_there(self):
+        now, clock, sleep = self.clock()
+        answers = iter([None, None, b"raw"])
+        self.assertEqual(cluster_e2e.wait_for(lambda: next(answers), 60, 5, clock, sleep), (b"raw", 10.0))
+
+    def test_wait_for_gives_up_at_the_timeout(self):
+        now, clock, sleep = self.clock()
+        calls = []
+        result, waited = cluster_e2e.wait_for(lambda: calls.append(1), 12, 5, clock, sleep)
+        self.assertIsNone(result)
+        self.assertEqual((waited, len(calls)), (15.0, 4))
+
+    def test_an_error_ends_the_wait(self):
+        now, clock, sleep = self.clock()
+
+        def probe():
+            raise cluster_e2e.StepFailed("refused")
+        with self.assertRaises(cluster_e2e.StepFailed):
+            cluster_e2e.wait_for(probe, 60, 5, clock, sleep)
+        self.assertEqual(now[0], 0.0)
+
+    def test_without_a_reference_namespace_stage_3_says_what_it_needs(self):
+        args = cluster_e2e.parse_args(["--commit", "c"])
+        stage = cluster_e2e.Stages(args, cluster=None)
+        stage.state.update(token="t", admin="admin@restmail-ci.test", mailbox="m@x.test", mailbox_password="p",
+                           inbound_subject="s")
+        for step in (stage.mail_out, stage.mail_in):
+            with self.subTest(step=step.__name__), self.assertRaisesRegex(cluster_e2e.StepFailed,
+                                                                          "--reference-namespace"):
+                step()
+
+    def test_the_reference_account_comes_from_its_secret(self):
+        args = cluster_e2e.parse_args(["--commit", "c", "--reference-namespace", "ref"])
+        cluster = unittest.mock.Mock()
+        cluster.secret_value.side_effect = lambda ns, name, key: f"{ns}/{name}/{key}"
+        stage = cluster_e2e.Stages(args, cluster)
+        self.assertEqual(stage.reference_account(), ("ref/reference-mail/address", "ref/reference-mail/password"))
+        stage.reference_account()
+        self.assertEqual(cluster.secret_value.call_count, 2)
+
+
 class EntryPointTests(unittest.TestCase):
     COMMAND = "scripts/cluster_e2e.py"
 
@@ -473,6 +574,7 @@ class EntryPointTests(unittest.TestCase):
         self.assertIn('--report-dir "$REPORT_DIR"', runs[0]["run"])
         self.assertIn('--ingress-url "https://$INGRESS_HOST"', runs[0]["run"])
         self.assertIn('--ingress-ca "$RUNNER_TEMP/tls.crt"', runs[0]["run"])
+        self.assertIn('--reference-namespace "$REFERENCE_NAMESPACE"', runs[0]["run"])
         # The old inline two-request smoke is gone: the script owns it now.
         self.assertNotIn("Request the API through a port-forward", names)
 
@@ -497,6 +599,23 @@ class EntryPointTests(unittest.TestCase):
         self.assertIn("hostPort: 443", steps["Create the cluster"])
         names = list(steps)
         self.assertLess(names.index("Install the ingress controller"), names.index("Install the chart"))
+
+    def test_the_reference_is_deployed_before_the_stages_with_the_installs_mail_names(self):
+        workflow = self.workflow()
+        steps = workflow["jobs"]["install"]["steps"]
+        names = [step["name"] for step in steps]
+        deploy = steps[names.index("Deploy the reference mail server")]["run"]
+        self.assertIn("scripts/cluster_reference.py", deploy)
+        self.assertLess(names.index("Wait for every pod to be ready"), names.index("Deploy the reference mail server"))
+        self.assertLess(names.index("Deploy the reference mail server"), names.index("Stages 1 to 3 against the install"))
+        values = yaml.safe_load((ROOT / "helm/restmail/values-ci.yaml").read_text())["mailserver"]
+        self.assertEqual(workflow["env"]["MAIL_DOMAIN"], values["domain"])
+        self.assertEqual(workflow["env"]["INGRESS_HOST"], values["hostname"])
+        for flag in ('--mail-domain "$MAIL_DOMAIN"', '--mail-host "$INGRESS_HOST"',
+                     '--namespace "$REFERENCE_NAMESPACE"', '--release "$RELEASE"'):
+            self.assertIn(flag, deploy)
+        collect = steps[names.index("Collect pod logs, descriptions and events")]["run"]
+        self.assertIn("logs/reference-mail.log", collect)
 
     def test_script_needs_no_go_toolchain(self):
         source = SCRIPT.read_text()
