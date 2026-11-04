@@ -1,8 +1,10 @@
 {
   "636": [
     "accountEvents",
+    "getQuietHours",
     "listPushDevices",
     "registerPushDevice",
-    "removePushDevice"
+    "removePushDevice",
+    "setQuietHours"
   ]
 }

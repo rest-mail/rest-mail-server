@@ -1,9 +1,17 @@
 {
   "632": [
+    "acceptInvitation",
+    "getRecoveryEmail",
+    "issueClientCredentialsToken",
     "login",
     "logout",
     "protocolSignIn",
     "recoverAccount",
-    "refreshToken"
+    "recoveryEmailLink",
+    "redeemRecoveryEmail",
+    "refreshToken",
+    "registerRecoveryEmail",
+    "requestRecoveryEmail",
+    "verifyRecoveryEmail"
   ]
 }
