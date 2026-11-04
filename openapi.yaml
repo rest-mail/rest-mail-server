@@ -14985,7 +14985,10 @@ paths:
         octets are already in that account and folder is skipped without changing its flags
         or date; the same Message-ID with different octets is stored as another message.
         With always_store true no such check is made - a new message is stored with its own
-        id, flags and date, and the one already there is left as it was. Messages without Message-ID use a
+        id, flags and date, and the one already there is left as it was. With match_submission true and folder
+        Sent, a message whose Message-ID is on one authenticated SMTP submission saved in
+        that account's Sent in the last 5 minutes is not stored, whatever always_store says,
+        and the answer names the saved message with imported false. Messages without Message-ID use a
         deterministic SHA-256 import identity; the raw source remains unchanged. Every
         attempt is audited; successful imports and skips also receive a transactional
         messages.import audit entry. The decoded message is bounded by SMTP_MAX_MESSAGE_SIZE
@@ -19608,6 +19611,8 @@ components:
         internal_date:
           format: date-time
           type: string
+        match_submission:
+          type: boolean
         raw_message:
           format: byte
           type: string

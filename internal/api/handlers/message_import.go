@@ -74,7 +74,7 @@ func (h *MessageImportHandler) Register(rs endpoint.Routes) {
 	}}
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/accounts/{id}/messages/import",
 		OperationID: "importMessage", Summary: "Store a message the account already has", Tags: []string{"Messages"},
-		Description: "Stores original message octets, folder, supported system flags and required internal_date without delivery rules or push notifications. Requires mail:import on the destination, which every account is granted on its own mailbox by the importer role; an owner can revoke that grant, and the account is then refused with 403. A message whose Message-ID and exact octets are already in that account and folder is skipped without changing its flags or date; the same Message-ID with different octets is stored as another message. With always_store true no such check is made: a new message is stored with its own id, flags and date, and the one already there is left as it was. Messages without Message-ID use a deterministic SHA-256 import identity; the raw source remains unchanged. Every attempt is audited; successful imports and skips also receive a transactional messages.import audit entry. The decoded message is bounded by SMTP_MAX_MESSAGE_SIZE (10 MiB by default); the general API body limit may be stricter. Deleted state and up to 100 case-insensitive keywords of 1–255 ASCII bytes are preserved. Keywords must be RFC 3501 atoms without backslash. Deleted messages use IMAP deletion state, not API tombstones; EXPUNGE removes them.",
+		Description: "Stores original message octets, folder, supported system flags and required internal_date without delivery rules or push notifications. Requires mail:import on the destination, which every account is granted on its own mailbox by the importer role; an owner can revoke that grant, and the account is then refused with 403. A message whose Message-ID and exact octets are already in that account and folder is skipped without changing its flags or date; the same Message-ID with different octets is stored as another message. With always_store true no such check is made: a new message is stored with its own id, flags and date, and the one already there is left as it was. With match_submission true and folder Sent, a message whose Message-ID is on one authenticated SMTP submission saved in that account's Sent in the last 5 minutes is not stored, whatever always_store says, and the answer names the saved message with imported false. Messages without Message-ID use a deterministic SHA-256 import identity; the raw source remains unchanged. Every attempt is audited; successful imports and skips also receive a transactional messages.import audit entry. The decoded message is bounded by SMTP_MAX_MESSAGE_SIZE (10 MiB by default); the general API body limit may be stricter. Deleted state and up to 100 case-insensitive keywords of 1–255 ASCII bytes are preserved. Keywords must be RFC 3501 atoms without backslash. Deleted messages use IMAP deletion state, not API tombstones; EXPUNGE removes them.",
 		Errors:      []int{http.StatusForbidden, http.StatusNotFound, http.StatusConflict, http.StatusRequestEntityTooLarge},
 		Security:    handlerChecked(models.CapMailImport, folderSchemes...),
 		Middleware:  []endpoint.Middleware{cap}, DescribedRequest: importMessageRequest{}}, h.importSpooledMessage)
@@ -91,6 +91,16 @@ func importRefusal(err error) error {
 	}
 	return err
 }
+
+// A mail app that saves its own copy of what it sent uploads it to Sent with APPEND once
+// the message is submitted, which also saves one there. A copy found in this folder
+// within this time of its submission is taken for that upload. Apps upload straight after
+// sending, or as long after as a large message takes on a slow line, and a longer window
+// would only swallow more of what a client meant to store (#1707).
+const (
+	submittedCopyFolder = "Sent"
+	submittedCopyWindow = 5 * time.Minute
+)
 
 var errImportQuota = endpoint.Refuse(http.StatusConflict, "mailbox_full", "The destination account has insufficient quota")
 
@@ -156,8 +166,10 @@ func (h *MessageImportHandler) storeImportedMessage(r *http.Request, accountID u
 		return result, endpoint.Invalid(map[string]string{"raw_message": "must be a parseable RFC 5322 message"})
 	}
 	msg.MsgID = rmail.CanonicalID(headers.MessageID)
+	matchSubmission := body.MatchSubmission && body.Folder == submittedCopyFolder
 	if msg.MsgID == "" || !utf8.ValidString(msg.MsgID) || strings.ContainsRune(msg.MsgID, 0) {
 		msg.MsgID = fmt.Sprintf("<import.%x@rest-mail.invalid>", source.checksum)
+		matchSubmission = false // made up here, so no submission can carry it
 	}
 	if len(msg.MsgID) > 995 {
 		return result, endpoint.Invalid(map[string]string{"raw_message": "Message-ID exceeds 995 bytes"})
@@ -198,13 +210,16 @@ func (h *MessageImportHandler) storeImportedMessage(r *http.Request, accountID u
 			}
 			return err
 		}
+		var existing *storedImportSource
+		var err error
+		if matchSubmission {
+			existing, err = submittedCopy(tx, accountID, msg.MsgID)
+		}
 		// The same Message-ID with the same octets is this message again, so a
 		// rerun skips it. Different octets are a different message that shares an
 		// ID (an edited draft, a badly made ID), so it is stored. A caller asking to
 		// always store wants a new message either way, so nothing need be compared.
-		var existing *storedImportSource
-		var err error
-		if !body.AlwaysStore {
+		if existing == nil && err == nil && !body.AlwaysStore {
 			var sameID []storedImportSource
 			err = tx.Model(&models.Message{}).Select(storedImportSourceColumns).
 				Where("mailbox_id = ? AND folder = ? AND message_id IN ?", accountID, body.Folder,
@@ -353,6 +368,22 @@ type storedImportSource struct {
 const storedImportSourceColumns = `id, message_id, folder,
 	sha256(coalesce(nullif(raw_octets, ''::bytea), convert_to(coalesce(raw_message, ''), 'UTF8'))) AS source_sha256,
 	octet_length(coalesce(nullif(raw_octets, ''::bytea), convert_to(coalesce(raw_message, ''), 'UTF8'))) AS source_octets`
+
+// submittedCopy is the message submission saved in this account's Sent under this
+// Message-ID within submittedCopyWindow, or nil. Only that message counts: one stored by
+// any other route has no submitted_at. One the client has deleted does not count, because
+// answering with it would leave the client holding only a message on its way out.
+func submittedCopy(tx *gorm.DB, accountID uint32, messageID string) (*storedImportSource, error) {
+	var found []storedImportSource
+	err := tx.Model(&models.Message{}).Select("id, message_id, folder").
+		Where("mailbox_id = ? AND folder = ? AND message_id IN ? AND submitted_at > ? AND NOT imap_deleted AND NOT is_deleted",
+			accountID, submittedCopyFolder, []string{messageID, strings.Trim(messageID, "<>")}, time.Now().Add(-submittedCopyWindow)).
+		Order("id").Limit(1).Find(&found).Error
+	if err != nil || len(found) == 0 {
+		return nil, err
+	}
+	return &found[0], nil
+}
 
 // sameContent is the first of messages holding exactly the source with this checksum. One with
 // no stored source cannot be compared, so it counts as the same: a rerun must not copy it.

@@ -121,6 +121,10 @@ type Message struct {
 	// of it REST Mail sends on, a Sieve redirect or a forward of the message itself, goes
 	// with TLS required too.
 	RequireTLS bool `gorm:"not null;default:false" json:"-"`
+	// SubmittedAt is when authenticated SMTP submission saved this message to the
+	// sender's Sent. NULL on a message that came any other way. An IMAP APPEND reads it
+	// to tell whether a mail app's own copy is of a message already saved (#1707).
+	SubmittedAt *time.Time `gorm:"default:null" json:"-"`
 	// TLSVersion is the negotiated TLS version label (e.g. "TLS1.3") for an
 	// encrypted inbound-MX delivery; empty when plaintext or not applicable.
 	TLSVersion     string `gorm:"size:16" json:"tls_version,omitempty"`

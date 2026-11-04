@@ -13,11 +13,17 @@ type ImportMessageBody struct {
 	// commands mean: a new message, whatever the folder holds already. A migration
 	// leaves it off, so that a rerun skips what it has already stored.
 	AlwaysStore bool `json:"always_store,omitempty" description:"Store a new message even if this folder already holds this Message-ID and these exact octets. Omitted or false skips such a message."`
+	// MatchSubmission is how an IMAP client's APPEND asks not to store a second copy of
+	// what the account has just sent: a mail app uploads its own copy of a message
+	// submission has already saved in Sent (#1707). It is checked before AlwaysStore. A
+	// migration leaves it off, so that nothing it brings is taken for a sent message.
+	MatchSubmission bool `json:"match_submission,omitempty" description:"When folder is Sent, answer with the message authenticated SMTP submission saved in this account in the last 5 minutes under this Message-ID, instead of storing another. Omitted or false never does."`
 }
 
 // ImportMessageResult identifies the stored copy. Imported=false means a copy
 // with this Message-ID and these exact octets already existed in this account and
-// folder; it is unchanged. A request with AlwaysStore always answers Imported=true.
+// folder, or MatchSubmission found the copy submission saved; it is unchanged. A
+// request with AlwaysStore answers Imported=true unless MatchSubmission found one.
 type ImportMessageResult struct {
 	ID        uint   `json:"id"`
 	Imported  bool   `json:"imported"`

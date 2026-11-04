@@ -108,6 +108,7 @@ func (s *dbStore) PersistSubmittedMessage(msg SubmittedMessage) (*uint, error) {
 		senderName = mb.DisplayName
 	}
 
+	now := time.Now()
 	row := models.Message{
 		MailboxID:    mb.ID,
 		Folder:       "Sent",
@@ -126,7 +127,8 @@ func (s *dbStore) PersistSubmittedMessage(msg SubmittedMessage) (*uint, error) {
 		IsRead:       true,
 		SizeBytes:    len(msg.Subject) + len(msg.BodyText) + len(msg.BodyHTML),
 		RawSize:      len(msg.RawMessage),
-		ReceivedAt:   time.Now(),
+		ReceivedAt:   now,
+		SubmittedAt:  &now,
 	}
 	if err := s.db.Create(&row).Error; err != nil {
 		return nil, err
