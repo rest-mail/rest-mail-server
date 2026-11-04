@@ -18,10 +18,10 @@ DELIVERY = "/api/v1/admin/logs/delivery"
 PIPELINE = "/api/v1/admin/pipelines/logs"
 
 
-def transaction(path, status):
+def transaction(path, status, query="limit=20"):
     return {
         "protocol": "http:", "host": "api", "port": "8080",
-        "fullPath": path + "?limit=20", "name": f"{path} > x > {status} > application/json",
+        "fullPath": path + "?" + query, "name": f"{path} > x > {status} > application/json",
         "request": {"headers": {"Authorization": "Bearer session"}},
     }
 
@@ -117,6 +117,22 @@ class LogListings(unittest.TestCase):
         self.assertTrue(recipient.endswith("@" + self.globals["OWN_LOG_DOMAIN"]))
         self.after(answered(sent, 200, [{"id": 3, "recipient": "other@x.test"}, {"id": 4, "recipient": recipient}]))
         self.assertNotIn("fail", sent)
+
+    def test_the_delivery_log_drops_only_the_status_vertrag_adds(self):
+        # The queue worker can claim the entry before the listing is sent, and
+        # a pending-only listing would then miss it.
+        sent = transaction(DELIVERY, 200, "limit=20&status=pending")
+        self.before("getDeliveryLogs", sent)
+        self.assertEqual(sent["fullPath"], DELIVERY + "?limit=20")
+        recipient = self.the_send()
+        self.after(answered(sent, 200, [{"recipient": recipient, "status": "bounced"}]))
+        self.assertNotIn("fail", sent)
+
+    def test_a_delivery_refusal_keeps_its_status(self):
+        for status in ("401", "422"):
+            sent = transaction(DELIVERY, status, "limit=20&status=pending")
+            self.before("getDeliveryLogs", sent)
+            self.assertEqual(sent["fullPath"], DELIVERY + "?limit=20&status=pending")
 
     def test_a_delivery_log_without_the_message_fails(self):
         sent = transaction(DELIVERY, 200)

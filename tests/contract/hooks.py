@@ -2218,6 +2218,18 @@ def the_delivery_log_after_a_reset(transaction):
     start_clean(transaction)
     if " > 200" not in transaction.get("name", ""):
         return
+    # The example documents limit=20 only; Vertrag adds the status enum's first
+    # value, pending. The topology's queue worker can claim the entry (and
+    # defer or bounce it) before the listing is sent, so the status is dropped:
+    # the queued row stays in the log whatever its status, as listQueue's hook
+    # does for the same race.
+    path, _, query = transaction["fullPath"].partition("?")
+    kept = [
+        (name, value)
+        for name, value in urllib.parse.parse_qsl(query, keep_blank_values=True)
+        if name != "status"
+    ]
+    transaction["fullPath"] = path + ("?" + urllib.parse.urlencode(kept) if kept else "")
     recipient = f"contract-log-{time.time_ns():d}@{OWN_LOG_DOMAIN}"
     a_message_for_the_logs(transaction, recipient)
     made_for_the_listing(transaction, "queued message", {"recipient": recipient})

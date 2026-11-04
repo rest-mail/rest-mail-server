@@ -1155,7 +1155,9 @@ hooks.
 and the pipeline log each get a message the fixture admin sends after the reset
 (#1785). For the delivery log it goes to a remote recipient of its own
 (`contract-log-<time>@contract-remote.test`), so the send queues it, which is
-what the delivery log reads; the log must list that recipient. For the pipeline
+what the delivery log reads; the log must list that recipient. Its hook drops
+the `status=pending` Vertrag adds to the documented `limit=20`, since the
+topology's queue worker can claim the entry first, as `listQueue`'s hook does. For the pipeline
 log it goes to the fixture admin's own mailbox (`the_pipeline_log_holds_a_send`,
 after `pipeline_reads_after_a_reset`), because Vertrag sends the documented
 listing with the declared defaults `direction=inbound`, `action=continue` and
