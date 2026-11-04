@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"mime"
-	"mime/multipart"
 	"net/mail"
 	"net/textproto"
 	"sort"
@@ -136,22 +135,19 @@ func partStructure(header textproto.MIMEHeader, body []byte, extension bool, def
 // then (for BODYSTRUCTURE) the extension fields (RFC 3501 §7.4.2). header is the
 // multipart's own header, the source of its body-ext-mpart disposition field.
 func multipartStructure(subtype string, params map[string]string, header textproto.MIMEHeader, body []byte, extension bool, depth int) string {
-	mr := multipart.NewReader(bytes.NewReader(body), params["boundary"])
 	childType := "text/plain"
 	if strings.EqualFold(subtype, "digest") {
 		childType = "message/rfc822"
 	}
 	var parts strings.Builder
-	for {
-		// BODY/BODYSTRUCTURE describe the transfer-encoded octets and lines
-		// (RFC 3501 §7.4.2). NextPart transparently decodes quoted-printable
-		// and removes its encoding header, corrupting all three metadata fields.
-		p, err := mr.NextRawPart()
-		if err != nil {
-			break
-		}
-		pb, _ := io.ReadAll(p)
-		parts.WriteString(partStructure(p.Header, pb, extension, childType, depth+1))
+	// Split the parts with the same code as section FETCH and SEARCH
+	// (multipartParts) and read each header as entityHeader does for them, so
+	// all three agree on which parts exist. BODY/BODYSTRUCTURE describe the
+	// transfer-encoded octets and lines (RFC 3501 §7.4.2), which the raw split
+	// keeps as stored.
+	for _, part := range multipartParts(string(body), params["boundary"]) {
+		h, b := splitEntity(part)
+		parts.WriteString(partStructure(entityHeader(h), []byte(b), extension, childType, depth+1))
 	}
 	// A multipart with no decodable parts is still described as containing one
 	// empty text/plain part, keeping the structure well-formed.

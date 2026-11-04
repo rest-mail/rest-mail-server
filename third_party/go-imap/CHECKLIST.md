@@ -639,6 +639,7 @@ CRLF and nested binary attachments guard against accidental decoding.
 | IMAP-BS-21 | RFC 2045 §§5.1, 5.2; RFC 3501 §7.4.2 | Normative | Content-Type requires type/subtype; a bare token must not invent a subtype. Apply the recommended TEXT/PLAIN US-ASCII fallback to absent/invalid type syntax and malformed parameters in ordinary entities, mixed children and encapsulated messages, discarding invalid type parameters but retaining independent content headers and encoded dimensions. | TestBodyStructureInvalidContentType, TestBodyStructureExplicitContentType |
 | IMAP-BS-22 | RFC 2045 §5.1; RFC 822 §§3.4.2–3.4.3; RFC 3501 §7.4.2 | Normative | Content-Type ignores nested comments and quoted-pairs between lexical tokens, accepts whitespace around the slash, and preserves parentheses/escapes inside quoted parameter values. Comment-bearing multipart boundaries retain children; nested and encapsulated entities parse independently without changing encoded dimensions or metadata side effects. | TestBodyStructureContentTypeComments, TestBodyStructureNestedContentTypeComments |
 | IMAP-BS-23 | RFC 2045 §§5.1–5.2; RFC 822 §3.4.3 | Normative | A comment separates tokens rather than joining them; split type/subtype/attribute/value tokens and unbalanced comments use invalid-type recovery, dropping invalid parameters and retaining independent Content-ID. | TestBodyStructureInvalidContentTypeComments |
+| IMAP-BS-24 | RFC 3501 §§6.4.5, 7.4.2; RFC 5322 §4.2 | Normative | BODY and BODYSTRUCTURE describe every multipart child that numeric section FETCH and SEARCH see, split by the same code, including a child whose header holds a control octet and every child after it. | TestBodyStructureControlOctetPart |
 
 This slice preserves quoted-printable source data via raw MIME part traversal.
 It does not validate or decode transfer encodings, expose numbered MIME FETCH
@@ -697,9 +698,10 @@ where RFC 2822 requires a nonempty Date or From.
 | IMAP-ENV-08 | RFC 3501 §§4.3, 7.4.2, 9 | Normative | Scalar header strings escape quote/backslash and use counted literals for 8-bit octets; encoded words remain header text. | TestEnvelopeScalarStrings |
 | IMAP-ENV-09 | RFC 3501 §§2.3.3, 6.3.2, 6.4.5 | Normative | EXAMINE ENVELOPE remains read-only, INTERNALDATE remains arrival metadata and repeated items share a raw read. | TestEnvelopeReadOnlyAndSharedLoad |
 | IMAP-ENV-10 | RFC 3501 §7.4.2 | Normative | Preserve RFC 2822 groups with group-start and group-end address structures. | TestEnvelopeGroups, TestEnvelopeMalformedGroups |
-| IMAP-ENV-11 | RFC 3501 §7.4.2 | Normative | Preserve source routes and legal address syntax. | n/a: not supported yet; source routes are always NIL and net/mail rejects some obsolete syntax, so the whole list falls back to NIL. Component string framing is checked by IMAP-ENV-13. Tracked in rest-mail/rest-mail-server#374. |
+| IMAP-ENV-11 | RFC 3501 §7.4.2 | Normative | Preserve source routes and legal address syntax. | n/a: source routes are not supported yet and are always NIL. Other legal syntax net/mail refuses is read as IMAP-ENV-14 describes. Component string framing is checked by IMAP-ENV-13. Tracked in rest-mail/rest-mail-server#374. |
 | IMAP-ENV-12 | RFC 3501 §§4.3.1, 7.4.2 | Normative | Treat malformed header blocks and prohibited NUL octets consistently without fabricating valid header information. | TestEnvelopeMalformedHeaders, TestFetchRejectsNUL |
 | IMAP-ENV-13 | RFC 3501 §§4.3, 7.4.2, 9 | Normative | Address personal-name, mailbox and host components escape quoted-specials and use counted literals for 8-bit octets and CR/LF decoded from encoded words, in top-level and encapsulated envelopes. | TestEnvelopeAddressStrings, TestMessageStructureScalarStrings |
+| IMAP-ENV-14 | RFC 3501 §7.4.2; RFC 5322 §§3.4.1, 4.4; RFC 5321 §4.1.3 | Normative | Read obsolete address syntax (a local part of dotted words with quoted words, CFWS around dots) and domain or address literals into address structures; a mailbox that cannot be read is left out without losing the others in the header. | TestEnvelopeObsoleteAddresses |
 
 Malformed top-level header blocks yield ten NIL envelope fields rather than
 cached summary data; malformed encapsulated headers retain the same ten-field
@@ -735,8 +737,8 @@ MESSAGE/RFC822 vector. Line counts are explicitly specified per fixture.
 | IMAP-MSG-09 | RFC 3501 §§4.3.1, 7.4.2; RFC 2046 §5.2.1 | Normative | Handle invalid encodings, binary octets and excessive encapsulation consistently: a MESSAGE/RFC822 entity whose Content-Transfer-Encoding is not 7bit, 8bit or binary is one opaque APPLICATION/OCTET-STREAM leaf with its declared encoding in BODY and BODYSTRUCTURE, a numeric FETCH section returns its octets and nothing deeper, and SEARCH BODY matches its decoded octets. Raw/decoded NUL is refused on FETCH (IMAP-ENV-12), and excessive encapsulation is IMAP-MSG-10. | TestMessageRFC822Encoding |
 | IMAP-MSG-10 | RFC 3501 §§6.4.4, 6.4.5, 7.4.2; RFC 2046 §§5.1, 5.2.1 | Normative | Handle excessive multipart and MESSAGE/RFC822 nesting consistently: nesting is bounded at depth 64, where such an entity is one opaque APPLICATION/OCTET-STREAM leaf in BODY and BODYSTRUCTURE, a numeric FETCH section returns its octets and nothing deeper, and SEARCH BODY matches its stored octets. | TestMIMEDepthLimit |
 
-The nested address parser preserves groups (IMAP-ENV-10); source routes and
-other legal address syntax rejected by net/mail remain IMAP-ENV-11 gaps.
+The nested address parser preserves groups (IMAP-ENV-10) and reads the obsolete
+syntax net/mail refuses (IMAP-ENV-14); source routes remain an IMAP-ENV-11 gap.
 Malformed MIME framing and complete extension-field semantics remain unaudited.
 
 ## RFC 3691 / RFC 5161 / RFC 2177: extension command exchanges

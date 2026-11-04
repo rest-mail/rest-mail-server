@@ -1,7 +1,7 @@
 package message
 
 import (
-	"bufio"
+	"net/mail"
 	"net/textproto"
 	"strings"
 )
@@ -27,11 +27,26 @@ func messageNode(raw string, depth int) mimeNode {
 	return mimeNode{header: HeaderSection(raw), body: TextSection(raw), message: true, defaultType: "text/plain", depth: depth}
 }
 
+// entityHeader reads a MIME entity's header block (with or without its
+// terminating blank line) with net/mail's RFC 5322 reader. Unlike
+// net/textproto, it accepts the control octets RFC 5322 §4.2 keeps as
+// obs-utext, so a part whose header holds one is still described by its own
+// fields. A header block net/mail cannot read has no trustworthy fields and is
+// read as empty. BODYSTRUCTURE, sections and SEARCH all read part headers
+// here, so they agree on each part's type.
+func entityHeader(header string) textproto.MIMEHeader {
+	m, err := mail.ReadMessage(strings.NewReader(header))
+	if err != nil {
+		return textproto.MIMEHeader{}
+	}
+	return textproto.MIMEHeader(m.Header)
+}
+
 // mediaType returns the lower-case Content-Type and its parameters, applying
 // the same encoding override, defaults and depth limit as partStructure so
 // sections match BODYSTRUCTURE.
 func (n mimeNode) mediaType() (string, map[string]string) {
-	h, _ := textproto.NewReader(bufio.NewReader(strings.NewReader(n.header))).ReadMIMEHeader()
+	h := entityHeader(n.header)
 	if !knownTransferEncoding(h.Get("Content-Transfer-Encoding")) {
 		return "application/octet-stream", map[string]string{}
 	}
