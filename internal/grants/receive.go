@@ -5,7 +5,6 @@ import (
 
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 // CanReceive is the mandatory inbound RBAC gate, before reports, filters or
@@ -29,47 +28,8 @@ func EnsureReceive(db *gorm.DB, mailbox *models.Mailbox) error {
 	return ensureOwn(db, mailbox, models.RoleReceiver)
 }
 
-// EnsureReceiveDefaults backfills the old implicit ability to receive exactly
-// once. Creation of the protected receiver role is the migration marker, in
-// the same transaction as every grant and audit entry. Restarts never restore
-// a receive grant or a server permission that someone removed.
-func EnsureReceiveDefaults(db *gorm.DB) error {
-	return db.Transaction(func(tx *gorm.DB) error {
-		if err := Lock(tx); err != nil {
-			return err
-		}
-		role := models.Role{Name: models.RoleReceiver, Description: "Accept inbound mail for a mailbox", SystemRole: true}
-		result := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&role)
-		if result.Error != nil {
-			return result.Error
-		}
-		if result.RowsAffected == 0 {
-			return nil
-		}
-		var capability models.Capability
-		if err := tx.Where("name = ?", models.CapMailReceive).First(&capability).Error; err != nil {
-			return err
-		}
-		if err := tx.Create(&models.RoleCapability{RoleID: role.ID, CapabilityID: capability.ID}).Error; err != nil {
-			return err
-		}
-		// An already initialized, nonempty server ceiling gains the new
-		// vocabulary once, preserving existing inbound behavior. An empty
-		// ceiling stays closed; fresh ceilings are initialized afterwards.
-		if err := tx.Exec(`INSERT INTO role_capabilities (role_id, capability_id)
-			SELECT r.id, ? FROM roles r WHERE r.name = ?
-			AND EXISTS (SELECT 1 FROM role_capabilities rc WHERE rc.role_id = r.id)
-			ON CONFLICT DO NOTHING`, capability.ID, models.RoleServer).Error; err != nil {
-			return err
-		}
-		var mailboxes []models.Mailbox
-		return tx.FindInBatches(&mailboxes, 100, func(batch *gorm.DB, _ int) error {
-			for i := range mailboxes {
-				if err := EnsureReceive(tx, &mailboxes[i]); err != nil {
-					return err
-				}
-			}
-			return nil
-		}).Error
-	})
+// EnsureReceiverRole creates the protected receiver role holding mail:receive,
+// once. It grants nothing: accounts get it as they are created (EnsureReceive).
+func EnsureReceiverRole(db *gorm.DB) error {
+	return ensureOneCapabilityRole(db, models.RoleReceiver, "Accept inbound mail for a mailbox", models.CapMailReceive)
 }

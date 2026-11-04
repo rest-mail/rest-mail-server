@@ -249,9 +249,10 @@ func EnsureRBAC(database *gorm.DB) error {
 	}
 	slog.Info("role capabilities assigned", "role", models.RoleOwner, "count", len(models.OwnerCapabilities))
 
-	// This data migration also runs on existing installations. It initializes
-	// the server object once, after the complete capability vocabulary exists.
-	if err := grants.EnsureReceiveDefaults(database); err != nil {
+	// These run after the complete capability vocabulary exists: the server
+	// ceiling starts holding all of it. They grant nothing to any account, which
+	// gets its own grants as it is created (grants.EnsureDefaults).
+	if err := grants.EnsureReceiverRole(database); err != nil {
 		return err
 	}
 	if err := grants.EnsureImportRole(database); err != nil {

@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"errors"
+	"slices"
 	"strconv"
 	"testing"
 	"time"
@@ -44,27 +45,53 @@ func TestReceiveDefaultGrantRollsBackWhenAuditFails(t *testing.T) {
 	}
 }
 
-func TestReceiveMigrationPreservesExistingMailboxesAndRevocations(t *testing.T) {
+// The receiver role comes from the first start, holding only mail:receive, and
+// a start gives an account nothing: a mailbox holds it from being created.
+func TestReceiveRoleAndStartGrantNothing(t *testing.T) {
 	db := openBootstrapTestDB(t)
-	d := models.Domain{Name: "receive-migration.test", Active: true}
+	d := models.Domain{Name: "receive-start.test", Active: true}
 	if err := db.Create(&d).Error; err != nil {
 		t.Fatal(err)
 	}
-	mailbox := models.Mailbox{DomainID: d.ID, LocalPart: "old", Address: "old@" + d.Name, Active: true}
+	mailbox := models.Mailbox{DomainID: d.ID, LocalPart: "row", Address: "row@" + d.Name, Active: true}
 	if err := db.Create(&mailbox).Error; err != nil {
 		t.Fatal(err)
 	}
-	// Simulate an installation with a server ceiling predating receive.
-	if err := db.Create(&models.Capability{Name: models.CapMailSend}).Error; err != nil {
-		t.Fatal(err)
-	}
-	if err := grants.EnsureServerCeiling(db); err != nil {
-		t.Fatal(err)
-	}
 	mustRBAC(t, db)
+	var role models.Role
+	if err := db.Where("name = ? AND system_role", models.RoleReceiver).First(&role).Error; err != nil {
+		t.Fatal(err)
+	}
+	if got, err := grants.RoleCapabilities(db, role.ID); err != nil || !slices.Equal(got, []string{models.CapMailReceive}) {
+		t.Fatalf("receiver role holds %v, %v", got, err)
+	}
+	if got, err := grants.RoleCapabilities(db, serverGrant(t, db).RoleID); err != nil || !slices.Contains(got, models.CapMailReceive) {
+		t.Fatalf("server ceiling without mail:receive: %v, %v", got, err)
+	}
+	if allowed, err := grants.CanReceive(db, &mailbox); err != nil || allowed {
+		t.Fatalf("a start gave a mailbox receive: %v %v", allowed, err)
+	}
+}
+
+// What someone removed stays removed across restarts: a mailbox's receive
+// grant, the capability on the receiver role, and the capability on the server.
+func TestReceiveRestartKeepsRemovals(t *testing.T) {
+	db := openBootstrapTestDB(t)
+	mustRBAC(t, db)
+	d := models.Domain{Name: "receive-restart.test", Active: true}
+	if err := db.Create(&d).Error; err != nil {
+		t.Fatal(err)
+	}
+	mailbox := models.Mailbox{DomainID: d.ID, LocalPart: "new", Address: "new@" + d.Name, Active: true}
+	if err := db.Create(&mailbox).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := grants.EnsureReceive(db, &mailbox); err != nil {
+		t.Fatal(err)
+	}
 	allowed, err := grants.CanReceive(db, &mailbox)
 	if err != nil || !allowed {
-		t.Fatalf("existing mailbox: receive=%v err=%v", allowed, err)
+		t.Fatalf("new mailbox: receive=%v err=%v", allowed, err)
 	}
 	var role models.Role
 	if err := db.Where("name = ?", models.RoleReceiver).First(&role).Error; err != nil {
@@ -79,7 +106,7 @@ func TestReceiveMigrationPreservesExistingMailboxesAndRevocations(t *testing.T) 
 		t.Fatal(err)
 	}
 	if count != 1 {
-		t.Fatalf("migration audit count=%d", count)
+		t.Fatalf("grant audit count=%d", count)
 	}
 	if err := grants.Remove(db, &grant, models.AuditEntry{ActorKind: models.AuditActorSystem, ActorName: "test"}); err != nil {
 		t.Fatal(err)
@@ -89,18 +116,24 @@ func TestReceiveMigrationPreservesExistingMailboxesAndRevocations(t *testing.T) 
 	if err != nil || held.Allows(models.CapMailReceive, grants.Mailbox(mailbox.Address)) {
 		t.Fatalf("restart restored receive: %v %v", held, err)
 	}
-	// The migration must not refill a revoked server capability either.
-	server := serverGrant(t, db)
-	if err := db.Where("role_id = ? AND capability_id = (SELECT id FROM capabilities WHERE name = ?)", server.RoleID, models.CapMailReceive).Delete(&models.RoleCapability{}).Error; err != nil {
-		t.Fatal(err)
-	}
-	mustRBAC(t, db)
 	if err := grants.EnsureReceive(db, &mailbox); err != nil {
 		t.Fatal(err)
 	}
-	allowed, err = grants.CanReceive(db, &mailbox)
-	if err != nil || allowed {
-		t.Fatalf("restart restored server receive: %v %v", allowed, err)
+	removeCapability := func(roleID uint) {
+		t.Helper()
+		if err := db.Where("role_id = ? AND capability_id = (SELECT id FROM capabilities WHERE name = ?)", roleID, models.CapMailReceive).Delete(&models.RoleCapability{}).Error; err != nil {
+			t.Fatal(err)
+		}
+		mustRBAC(t, db)
+		allowed, err := grants.CanReceive(db, &mailbox)
+		if err != nil || allowed {
+			t.Fatalf("restart restored a removed capability: %v %v", allowed, err)
+		}
+	}
+	removeCapability(serverGrant(t, db).RoleID)
+	removeCapability(role.ID)
+	if got, err := grants.RoleCapabilities(db, role.ID); err != nil || len(got) != 0 {
+		t.Fatalf("restart refilled the receiver role: %v, %v", got, err)
 	}
 }
 

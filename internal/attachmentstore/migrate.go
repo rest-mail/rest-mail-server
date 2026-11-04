@@ -12,10 +12,8 @@ import (
 	"gorm.io/gorm"
 )
 
-func filesystemRows(db *gorm.DB, root string) *gorm.DB {
-	// Before S3 support, a pipeline could label a filesystem path as s3.
-	// Migrate those paths too, under the same filesystem confinement checks.
-	return db.Where("storage_type = ? OR (storage_type = ? AND storage_ref LIKE ?)", "filesystem", "s3", root+"/%")
+func filesystemRows(db *gorm.DB) *gorm.DB {
+	return db.Where("storage_type = ?", "filesystem")
 }
 
 // MigrateFilesystem copies and verifies each object before changing its row.
@@ -29,7 +27,7 @@ func MigrateFilesystem(ctx context.Context, db *gorm.DB, store *S3, root string)
 	migrated := 0
 	for {
 		var rows []models.Attachment
-		if err := filesystemRows(db, root).Where("id > ?", last).Order("id").Limit(100).Find(&rows).Error; err != nil {
+		if err := filesystemRows(db).Where("id > ?", last).Order("id").Limit(100).Find(&rows).Error; err != nil {
 			return migrated, err
 		}
 		if len(rows) == 0 {
@@ -50,7 +48,7 @@ func MigrateFilesystem(ctx context.Context, db *gorm.DB, store *S3, root string)
 		}
 	}
 	var remaining int64
-	if err := filesystemRows(db.Model(&models.Attachment{}), root).Count(&remaining).Error; err != nil {
+	if err := filesystemRows(db.Model(&models.Attachment{})).Count(&remaining).Error; err != nil {
 		return migrated, err
 	}
 	if remaining != 0 {

@@ -11,7 +11,7 @@ const FilesystemRoot = "/attachments"
 
 var ErrPathEscape = errors.New("attachment path escapes storage root")
 
-// ResolveFilesystemPath confines legacy reads and migration to the attachment
+// ResolveFilesystemPath confines reads and migration to the attachment
 // tree, both lexically and after resolving symlinks.
 func ResolveFilesystemPath(root, ref string) (string, error) {
 	clean := filepath.Clean(ref)

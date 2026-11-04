@@ -11,7 +11,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"strings"
 
 	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
 	"github.com/rest-mail/rest-mail-server/internal/attachmentstore"
@@ -56,8 +55,7 @@ func (h *MessageHandler) readForwardParts(r *http.Request, original *models.Mess
 			return nil, errForwardTooLarge
 		}
 		var reader io.ReadCloser
-		legacy := row.StorageType == "s3" && strings.HasPrefix(row.StorageRef, h.forwardRoot+"/")
-		if row.StorageType == "filesystem" || legacy {
+		if row.StorageType == "filesystem" {
 			path, err := attachmentstore.ResolveFilesystemPath(h.forwardRoot, row.StorageRef)
 			if err != nil {
 				return nil, errForwardAttachment
@@ -310,9 +308,9 @@ func (h *MessageHandler) forwardPartBytes(ctx context.Context, part pipeline.Att
 		data, err = base64.StdEncoding.DecodeString(part.Content)
 	} else {
 		var reader io.ReadCloser
-		if part.Storage == "s3" && h.forwardStore != nil && !strings.HasPrefix(part.Ref, h.forwardRoot+"/") {
+		if part.Storage == "s3" && h.forwardStore != nil {
 			reader, err = h.forwardStore.Open(ctx, part.Ref)
-		} else if part.Storage == "filesystem" || (part.Storage == "s3" && strings.HasPrefix(part.Ref, h.forwardRoot+"/")) {
+		} else if part.Storage == "filesystem" {
 			var path string
 			path, err = attachmentstore.ResolveFilesystemPath(h.forwardRoot, part.Ref)
 			if err == nil {

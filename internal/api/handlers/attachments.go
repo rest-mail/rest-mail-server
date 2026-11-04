@@ -137,13 +137,10 @@ func (h *AttachmentHandler) getAttachment(r *http.Request, in attachmentPath) (e
 		Name:        att.Filename,
 	}
 
-	// Older extract_attachments configurations could label a disk path as s3.
-	// Keep those readable through the confined legacy path until migration.
-	legacyS3Path := att.StorageType == "s3" && strings.HasPrefix(att.StorageRef, attachmentsRoot+"/")
-	if att.StorageType == "s3" && !legacyS3Path {
+	if att.StorageType == "s3" {
 		return h.s3Attachment(r, &att, served)
 	}
-	if att.StorageType != "filesystem" && !legacyS3Path {
+	if att.StorageType != "filesystem" {
 		return endpoint.Served{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Unknown attachment storage type")
 	}
 

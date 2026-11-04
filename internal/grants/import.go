@@ -28,14 +28,21 @@ func EnsureDefaults(db *gorm.DB, mailbox *models.Mailbox) error {
 // EnsureImportRole creates the protected importer role holding mail:import,
 // once. It grants nothing: accounts get it as they are created (EnsureImport).
 func EnsureImportRole(db *gorm.DB) error {
+	return ensureOneCapabilityRole(db, models.RoleImporter, "Store a message in a mailbox without running delivery rules", models.CapMailImport)
+}
+
+// ensureOneCapabilityRole creates a protected role holding one capability. The
+// role's existence is the marker: restarts never put back a capability someone
+// removed from it.
+func ensureOneCapabilityRole(db *gorm.DB, name, description, capabilityName string) error {
 	return db.Transaction(func(tx *gorm.DB) error {
-		role := models.Role{Name: models.RoleImporter, Description: "Store a message in a mailbox without running delivery rules", SystemRole: true}
+		role := models.Role{Name: name, Description: description, SystemRole: true}
 		result := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&role)
 		if result.Error != nil || result.RowsAffected == 0 {
 			return result.Error
 		}
 		var capability models.Capability
-		if err := tx.Where("name = ?", models.CapMailImport).First(&capability).Error; err != nil {
+		if err := tx.Where("name = ?", capabilityName).First(&capability).Error; err != nil {
 			return err
 		}
 		return tx.Create(&models.RoleCapability{RoleID: role.ID, CapabilityID: capability.ID}).Error
