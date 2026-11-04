@@ -105,7 +105,14 @@ func TestTestDataMutationExamples(t *testing.T) {
 								t.Fatalf("reset did not target actual model table%s", table)
 							}
 						}
-						expectedClears := len(testResetScenarioTables) - 4
+						// The reset clears every table it does not retain with one
+						// DELETE, then removes the rows a retained table does not
+						// keep with one DELETE per statement in cleanResetData:
+						// credentials (3: other accounts', unconfirmed TOTP
+						// enrollments, recovery codes without a confirmed TOTP),
+						// grants, mailboxes, domains, roles, role_capabilities.
+						const retainedTables, retainedRowStatements = 10, 8
+						expectedClears := len(testResetScenarioTables) - retainedTables + retainedRowStatements
 						if name == "missing_table" {
 							expectedClears--
 						}
