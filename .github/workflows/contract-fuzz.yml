@@ -1,18 +1,25 @@
 name: Contract fuzz
 
-# Nightly, the contract tests' fuzz phase (#376): vertrag draws values from
-# every schema in openapi.yaml, shrinks what fails to its smallest input, and
-# prints the seed that replays it. Exploratory rather than deterministic, so it
-# blocks nothing: it runs the E2E topology on its own schedule, and its report
-# (fuzz.xml, with the log) is the run's e2e-container-logs artifact. Anything
-# it finds gets an issue by hand, with the seed.
+# Nightly and on every v* tag, the contract tests' fuzz phase (#376, #626):
+# vertrag draws values from every schema in the description the API generates,
+# shrinks what fails to its smallest input, and prints the seed that replays it.
+# Exploratory rather than deterministic, so it blocks nothing: it runs the E2E
+# topology on its own schedule, and its report (fuzz.xml, with the log) is the
+# run's e2e-container-logs artifact.
+#
+# Each finding has one issue with its replay seed (label contract-fuzz): a failure
+# opens or updates it, and a later run in which that transaction passes closes it
+# (scripts/contract_tier_issues.py).
 on:
   schedule:
     - cron: "30 3 * * *"
+  push:
+    tags: ["v*"]
   workflow_dispatch:
 
+# By ref, so a nightly run cannot cancel a release tag's.
 concurrency:
-  group: contract-fuzz
+  group: contract-fuzz-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -25,3 +32,38 @@ jobs:
     uses: ./.github/workflows/e2e-suite.yml
     with:
       contract-phases: fuzz
+
+  # Its own job, so only this one can write issues: the suite builds and runs the
+  # images with a read-only token.
+  finding-issues:
+    name: Finding issues
+    needs: fuzz
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # One at a time across refs, so two runs cannot both open the same finding.
+    concurrency:
+      group: contract-fuzz-issues
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Missing when the suite failed before it collected anything; the script
+      # then files the run itself as not finished.
+      - name: Download the suite's reports
+        continue-on-error: true
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: e2e-container-logs
+          path: e2e-container-logs
+
+      - name: Open, update or close the finding issues
+        env:
+          SUITE_RESULT: ${{ needs.fuzz.result }}
+        run: python3 -B scripts/contract_tier_issues.py --tier fuzz --result "$SUITE_RESULT" --reports e2e-container-logs
