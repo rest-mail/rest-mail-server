@@ -21590,6 +21590,9 @@
     "write_only": {
       "summary": "A mail-write grant alone does not permit a read",
       "description": "The caller knows of the account through its grant, so it is told what it lacks.",
+      "requires": {
+        "principal": "without_capability"
+      },
       "request": {
         "path": {
           "id": 1
