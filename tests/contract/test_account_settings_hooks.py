@@ -88,23 +88,30 @@ class AbsentSettingsHooks(unittest.TestCase):
             self.prepare(transaction)
         self.assertEqual(transaction, before)
 
-    def stored_script_hook(self):
+    def stored_setting_hook(self):
         stored = []
         self.shared["fixture_call"] = lambda *args: stored.append(args[1:])
-        return next(function for name, function in self.registered if name == "getSieveScript" and function.__name__ == "a_stored_script_to_read"), stored
+        return next(function for name, function in self.registered if name == "getSieveScript" and function.__name__ == "a_stored_setting_to_act_on"), stored
 
-    def test_a_successful_read_has_a_script_stored_first(self):
-        hook, stored = self.stored_script_hook()
-        transaction = self.transaction()
-        transaction["fullPath"] = "/api/v1/accounts/1/sieve?keep=1"
-        transaction["expected"]["statusCode"] = "200"
-        before = copy.deepcopy(transaction)
-        hook(transaction)
-        self.assertEqual(transaction, before)
-        self.assertEqual(stored, [("PUT", "/api/v1/accounts/1/sieve", {"script": "keep;", "active": False})])
+    def test_all_three_successes_register_the_stored_setting(self):
+        for operation in ("getSieveScript", "deleteSieveScript", "disableVacation"):
+            self.assertEqual(sum(name == operation and function.__name__ == "a_stored_setting_to_act_on" for name, function in self.registered), 1)
 
-    def test_only_the_fixture_admins_successful_read_stores_a_script(self):
-        hook, stored = self.stored_script_hook()
+    def test_a_success_has_its_setting_stored_first(self):
+        hook, stored = self.stored_setting_hook()
+        for setting, method, status in (("sieve", "GET", "200"), ("sieve", "DELETE", "200"), ("vacation", "DELETE", "204")):
+            transaction = self.transaction(setting, method)
+            transaction["fullPath"] = f"/api/v1/accounts/1/{setting}?keep=1"
+            transaction["expected"]["statusCode"] = status
+            before = copy.deepcopy(transaction)
+            hook(transaction)
+            self.assertEqual(transaction, before)
+        script = ("PUT", "/api/v1/accounts/1/sieve", {"script": "keep;", "active": False})
+        reply = ("PUT", "/api/v1/accounts/1/vacation", {"enabled": True, "subject": "Away", "body": "Back soon."})
+        self.assertEqual(stored, [script, script, reply])
+
+    def test_only_the_fixture_admins_success_stores_a_setting(self):
+        hook, stored = self.stored_setting_hook()
         absent = self.transaction()
         other_principal = self.transaction()
         other_principal["expected"]["statusCode"] = "200"
