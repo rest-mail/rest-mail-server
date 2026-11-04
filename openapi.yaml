@@ -16282,13 +16282,12 @@ components:
             that has not enabled UTF-8, with headers 7-bit and non-textual data
             transfer-encoded (RFC 3501 section 7.4.2). The stored message does
             not change. Equals raw_size when the message is already 7-bit. 0
-            when not measured; consumers should fall back to downgraded_size.
+            when no raw message is stored.
         imap_utf8_size:
           type: integer
           description: >-
             Octet count of the message as an IMAP FETCH sends it to a session
-            that has enabled UTF-8. 0 when not measured; consumers should fall
-            back to raw_size.
+            that has enabled UTF-8. 0 when no raw message is stored.
         auth_results:
           type: array
           items:

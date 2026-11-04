@@ -32,6 +32,8 @@ func TestFetchRejectsNUL(t *testing.T) {
 	for _, raw := range []string{
 		"Subject: a\x00b\r\n\r\nbody",
 		"To: =?utf-8?Q?a=00b?= <a@example.com>\r\n\r\nbody",
+		"To: =?utf-8?Q?=C3=A9=00?= <a@example.com>\r\n\r\nbody",
+		"Content-Type: text/plain; name*=utf-8''%C3%A9%00\r\n\r\nbody",
 		"Content-Type: text/plain; name*=utf-8''a%00b\r\n\r\nbody",
 		"Subject: header\r\n\r\na\x00b",
 		"To: =?utf-8?Q?a=00b?=:;\r\n\r\nbody",
