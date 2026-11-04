@@ -33,7 +33,8 @@ RUN COMMIT=${COMMIT:-$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
  && LDFLAGS="-X github.com/rest-mail/rest-mail-server/internal/version.Version=${VERSION} \
              -X github.com/rest-mail/rest-mail-server/internal/version.Commit=${COMMIT} \
              -X github.com/rest-mail/rest-mail-server/internal/version.BuildDate=${BUILD_DATE}" \
- && CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -ldflags "${LDFLAGS}" -o /bin/restmail-api ./cmd/api
+ && CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -ldflags "${LDFLAGS}" -o /bin/restmail-api ./cmd/api \
+ && CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -ldflags "${LDFLAGS}" -o /bin/restmail-rotate-key ./cmd/rotate-key
 # NOTE: cmd/seed is deliberately NOT built into any shipped image. It creates
 # fixture accounts with well-known passwords (mailbox `password123`, and an
 # admin whose forced password-change only mitigates the admin), so it must never
@@ -65,6 +66,9 @@ RUN apk add --no-cache ca-certificates curl \
  && mkdir -p /attachments \
  && chown -R restmail:restmail /attachments /usr/local/share/ca-certificates /etc/ssl
 COPY --from=builder /bin/restmail-api /usr/local/bin/restmail-api
+# The master key rotation runs while the API is stopped, from this image with
+# the API's settings (helm/restmail/README.md). It does nothing without both keys.
+COPY --from=builder /bin/restmail-rotate-key /usr/local/bin/restmail-rotate-key
 # cmd/seed is intentionally excluded from the prod image (see builder stage).
 # 0755, not +x: the mode must not depend on how the builder's checkout set the
 # read bits, or the unprivileged user below cannot read its own entrypoint.

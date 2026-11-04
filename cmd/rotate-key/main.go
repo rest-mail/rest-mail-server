@@ -7,6 +7,7 @@
 //   - credentials.encrypted_secret — TOTP secrets
 //   - certificates.key_pem        — ACME/TLS private keys
 //   - acme_accounts.key_pem       — the API's ACME account keys
+//   - domain_relays.password_enc  — relay SMTP AUTH passwords (relay:v1: form)
 package main
 
 import (
@@ -26,10 +27,11 @@ import (
 func usage() {
 	fmt.Fprintf(os.Stderr, "Usage: ROTATE_OLD_MASTER_KEY=… ROTATE_NEW_MASTER_KEY=… %s\n", os.Args[0])
 	fmt.Fprintf(os.Stderr, "\nRe-encrypts all at-rest secrets (DKIM signing keys, TOTP 2FA secrets,\n")
-	fmt.Fprintf(os.Stderr, "TLS/ACME private keys and ACME account keys) in the database under the\n")
-	fmt.Fprintf(os.Stderr, "new master key.\n")
+	fmt.Fprintf(os.Stderr, "TLS/ACME private keys, ACME account keys and relay passwords) in the\n")
+	fmt.Fprintf(os.Stderr, "database under the new master key.\n")
 	fmt.Fprintf(os.Stderr, "\nThe keys are read only from the environment, never from arguments, which\n")
-	fmt.Fprintf(os.Stderr, "ps(1) output and shell history would show.\n")
+	fmt.Fprintf(os.Stderr, "ps(1) output and shell history would show. The new key must be one the\n")
+	fmt.Fprintf(os.Stderr, "server would start with, at least %d bytes.\n", config.MinMasterKeyLength)
 	fmt.Fprintf(os.Stderr, "\nDatabase environment variables: DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASS\n")
 }
 
@@ -51,6 +53,11 @@ func main() {
 	if oldKey == newKey {
 		log.Fatal("old and new keys must be different")
 	}
+	// Only the new key: the old one has to be readable to rotate away from it,
+	// whatever it is. This runs before anything connects, so no row can change.
+	if err := config.ValidateMasterKey(newKey); err != nil {
+		log.Fatalf("new master key refused: %v", err)
+	}
 
 	cfg, err := config.Load()
 	if err != nil {
@@ -68,8 +75,8 @@ func main() {
 	}
 
 	fmt.Printf("\nMaster key rotation complete: %d domain DKIM keys, %d rotation DKIM keys, %d 2FA secrets, "+
-		"%d certificates, %d ACME accounts processed.\n",
-		summary.DomainDKIM, summary.RotationDKIM, summary.TwoFactor, summary.Certificates, summary.ACMEAccounts)
+		"%d certificates, %d ACME accounts, %d relay passwords processed.\n",
+		summary.DomainDKIM, summary.RotationDKIM, summary.TwoFactor, summary.Certificates, summary.ACMEAccounts, summary.RelayPasswords)
 	if summary.Failures > 0 {
 		fmt.Printf("WARNING: %d secrets could not be decrypted with the old key and were left "+
 			"untouched (see warnings above).\n", summary.Failures)
@@ -79,12 +86,13 @@ func main() {
 
 // rotateSummary counts what a rotation touched.
 type rotateSummary struct {
-	DomainDKIM   int
-	RotationDKIM int
-	TwoFactor    int
-	Certificates int
-	ACMEAccounts int
-	Failures     int
+	DomainDKIM     int
+	RotationDKIM   int
+	TwoFactor      int
+	Certificates   int
+	ACMEAccounts   int
+	RelayPasswords int
+	Failures       int
 }
 
 // rotate re-encrypts every at-rest secret from oldKey to newKey. A per-secret
@@ -117,6 +125,11 @@ func rotate(database *gorm.DB, oldKey, newKey string) (rotateSummary, error) {
 	s.Failures += failures
 
 	if s.ACMEAccounts, failures, err = rotateACMEAccounts(database, oldKey, newKey); err != nil {
+		return s, err
+	}
+	s.Failures += failures
+
+	if s.RelayPasswords, failures, err = rotateRelayPasswords(database, oldKey, newKey); err != nil {
 		return s, err
 	}
 	s.Failures += failures
@@ -275,6 +288,38 @@ func rotateACMEAccounts(database *gorm.DB, oldKey, newKey string) (processed, fa
 		}
 		processed++
 		log.Printf("rotated ACME account key (directory=%s)", account.Directory)
+	}
+	return processed, failures, nil
+}
+
+// rotateRelayPasswords re-encrypts domain_relays.password_enc, the SMTP AUTH
+// password of a domain's relay. One left under the old key stops the domain's
+// mail: the queue retries it, and never falls back to direct delivery.
+func rotateRelayPasswords(database *gorm.DB, oldKey, newKey string) (processed, failures int, err error) {
+	var relays []models.DomainRelay
+	if err := database.Find(&relays).Error; err != nil {
+		return 0, 0, fmt.Errorf("query domain relays: %w", err)
+	}
+	for i := range relays {
+		relay := &relays[i]
+		if relay.PasswordEnc == "" {
+			continue
+		}
+		plain, derr := models.LoadRelayPassword(relay.PasswordEnc, oldKey)
+		if derr != nil {
+			log.Printf("WARN: failed to decrypt relay password (id=%d, domain=%d): %v", relay.ID, relay.DomainID, derr)
+			failures++
+			continue
+		}
+		enc, eerr := models.EncryptRelayPassword(plain, newKey)
+		if eerr != nil {
+			return processed, failures, fmt.Errorf("re-encrypt relay password id=%d: %w", relay.ID, eerr)
+		}
+		if uerr := database.Model(relay).Update("password_enc", enc).Error; uerr != nil {
+			return processed, failures, fmt.Errorf("update relay password id=%d: %w", relay.ID, uerr)
+		}
+		processed++
+		log.Printf("rotated relay password (id=%d, domain=%d)", relay.ID, relay.DomainID)
 	}
 	return processed, failures, nil
 }

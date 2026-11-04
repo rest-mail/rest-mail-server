@@ -1434,6 +1434,19 @@ const MinJWTSecretLength = 32
 // guessability; 16 bytes is a conservative floor (instance:new generates 64).
 const MinMasterKeyLength = 16
 
+// ValidateMasterKey says why a production server would refuse key as its
+// MASTER_KEY, or returns nil. The server's own check and cmd/rotate-key both
+// call it, so a rotation cannot leave the data under a key the server refuses.
+func ValidateMasterKey(key string) error {
+	switch {
+	case key == "":
+		return fmt.Errorf("MASTER_KEY is empty; set a random key of at least %d bytes (private keys are encrypted at rest with it)", MinMasterKeyLength)
+	case len(key) < MinMasterKeyLength:
+		return fmt.Errorf("MASTER_KEY is too short (%d bytes); use at least %d bytes of randomness", len(key), MinMasterKeyLength)
+	}
+	return nil
+}
+
 // MinSRSSecretLength is the minimum accepted SRS_SECRET length in bytes (#775),
 // the same floor as JWT_SECRET: it is an HMAC key too.
 const MinSRSSecretLength = 32
@@ -1497,11 +1510,8 @@ func (c *Config) validateSecurityConfig() error {
 
 	// MASTER_KEY: reject blank and anything below the length floor. Private keys
 	// (DKIM, ACME) are encrypted at rest with a key derived from it.
-	switch {
-	case c.MasterKey == "":
-		findings = append(findings, fmt.Sprintf("MASTER_KEY is empty; set a random key of at least %d bytes (private keys are encrypted at rest with it)", MinMasterKeyLength))
-	case len(c.MasterKey) < MinMasterKeyLength:
-		findings = append(findings, fmt.Sprintf("MASTER_KEY is too short (%d bytes); use at least %d bytes of randomness", len(c.MasterKey), MinMasterKeyLength))
+	if err := ValidateMasterKey(c.MasterKey); err != nil {
+		findings = append(findings, err.Error())
 	}
 
 	// ── TLS ──

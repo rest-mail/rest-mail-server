@@ -313,6 +313,51 @@ gets a volume of its own, filled with copies of the files it needs right before
 it starts, and owned by the user it runs as; no service mounts either issuing
 volume.
 
+## Rotating the master key
+
+The API image carries `restmail-rotate-key`, which re-encrypts every stored
+secret under a new `MASTER_KEY`. The services must be stopped while it runs, so
+there is no API pod to `kubectl exec` into. Run it as a one-off pod copied from
+the API Deployment instead: that gives it the database settings, the labels the
+Postgres NetworkPolicy admits, and the `JWT_SECRET` and `MASTER_KEY` its config
+check asks for. **These commands were checked against `helm template` output and
+have not been run on a cluster.** They assume a release called `restmail` in the
+namespace `rest-mail`.
+
+```bash
+chore server:offline
+
+# The new key goes in a Secret from a file, never on a command line.
+openssl rand -base64 32 | tr -d '\n' > new-master-key
+kubectl -n rest-mail create secret generic restmail-rotate-key \
+  --from-file=ROTATE_NEW_MASTER_KEY=new-master-key
+
+kubectl -n rest-mail get deployment restmail-api -o json | jq '{
+  apiVersion: "v1", kind: "Pod",
+  metadata: {name: "restmail-rotate-key", labels: .spec.template.metadata.labels},
+  spec: (.spec.template.spec | del(.initContainers) | .restartPolicy = "Never"
+    | .containers = [.containers[0]
+      | del(.ports, .livenessProbe, .readinessProbe, .startupProbe)
+      | .command = ["restmail-rotate-key"]
+      | .env += [
+          {name: "ROTATE_OLD_MASTER_KEY", valueFrom: (.env[] | select(.name == "MASTER_KEY") | .valueFrom)},
+          {name: "ROTATE_NEW_MASTER_KEY", valueFrom: {secretKeyRef: {name: "restmail-rotate-key", key: "ROTATE_NEW_MASTER_KEY"}}}
+        ]])
+}' | kubectl -n rest-mail create -f -
+
+kubectl -n rest-mail logs -f pod/restmail-rotate-key
+kubectl -n rest-mail get pod restmail-rotate-key \
+  -o jsonpath='{.status.containerStatuses[0].state.terminated.exitCode}'
+```
+
+Exit status 0 means every secret moved, and the last log line has the counts.
+Exit status 1 with a `WARN` line names a row left as it was.
+
+Then delete the pod and the `restmail-rotate-key` Secret, put the new key in the
+`restmail-api` Secret (and in `api.masterKey`, if your values set it), and run
+`chore server:online`. Keep `new-master-key` somewhere safe, and out of the
+working directory, until a new backup exists.
+
 ## Where the chart is published
 
 Every change under `helm/` on `main` publishes the chart to ghcr, so something
