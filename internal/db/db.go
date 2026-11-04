@@ -178,6 +178,9 @@ func autoMigrate(db *gorm.DB) error {
 	if err := MigrateAuditLog(db); err != nil {
 		return err
 	}
+	if err := MigrateAgentLedger(db); err != nil {
+		return err
+	}
 	if err := MigrateQuietNotifications(db); err != nil {
 		return fmt.Errorf("quiet notification outbox: %w", err)
 	}

@@ -62,7 +62,10 @@
     "revokeCredential",
     "setAccountSendLimits",
     "unlinkAccount",
-    "updateAPIKey"
+    "updateAPIKey",
+    "appendAgentLedgerEntry",
+    "listAgentLedger",
+    "updateAgentTrust"
   ],
   "636": [
     "accountEvents",

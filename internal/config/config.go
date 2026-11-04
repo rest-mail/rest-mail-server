@@ -88,6 +88,9 @@ type Config struct {
 	JWTRefreshExpiry time.Duration
 	// FreshTwoFactorWindow may only shorten the 15-minute sudo window.
 	FreshTwoFactorWindow time.Duration
+	// AgentUndoWindow is how long an assistant's action can be undone (#1423).
+	// Zero, the default, means no action has a window, so none can be automatic.
+	AgentUndoWindow time.Duration
 
 	// Auth rate limiting: a per-client-IP token bucket applied to the
 	// auth-sensitive HTTP routes (login/refresh) to blunt brute-force and
@@ -600,6 +603,14 @@ func Load() (*Config, error) {
 			return nil, fmt.Errorf("FRESH_TWO_FACTOR_WINDOW must be a positive duration no longer than 15m")
 		}
 		cfg.FreshTwoFactorWindow = window
+	}
+
+	if raw := os.Getenv("AGENT_UNDO_WINDOW"); raw != "" {
+		window, err := time.ParseDuration(raw)
+		if err != nil || window < 0 {
+			return nil, fmt.Errorf("AGENT_UNDO_WINDOW must be a duration that is not negative")
+		}
+		cfg.AgentUndoWindow = window
 	}
 
 	if cfg.JWTSecret == "dev-secret-change-in-production" && cfg.IsProduction() {

@@ -1396,6 +1396,575 @@
       }
     }
   },
+  "appendAgentLedgerEntry": {
+    "actor_in_body": {
+      "summary": "The actor comes from the session, never the body",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "capability": "send_mail",
+          "level": "suggest",
+          "action": "reply",
+          "target": {
+            "message_id": "7"
+          },
+          "actor_id": 99
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "actor_id": "not allowed"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "already_undone": {
+      "summary": "The entry has been undone already",
+      "requires": {
+        "state": "undone_entry"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "undoes": 1
+        }
+      },
+      "response": {
+        "status": 409,
+        "body": {
+          "error": {
+            "code": "already_undone",
+            "message": "This entry has already been undone"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "automatic": {
+      "summary": "An automatic action says what reverses it, and gets an undo window",
+      "requires": {
+        "state": "automatic_with_undo_window"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "capability": "file_newsletters",
+          "level": "auto",
+          "action": "archive",
+          "target": {
+            "message_id": "9"
+          },
+          "undo": {
+            "folder": "INBOX",
+            "message_id": "9"
+          }
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "seq": 1,
+            "occurred_at": "2026-11-04T09:30:00Z",
+            "actor_kind": "account",
+            "actor_id": 1,
+            "actor_name": "chris@example.test",
+            "credential_id": null,
+            "capability": "file_newsletters",
+            "level": "auto",
+            "action": "archive",
+            "target": {
+              "message_id": "9"
+            },
+            "undo": {
+              "folder": "INBOX",
+              "message_id": "9"
+            },
+            "undo_until": "2026-11-04T10:30:00Z",
+            "undoes": null,
+            "undone_by": null,
+            "request_id": "req-1",
+            "prev_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+            "hash": "a3f1c9d27e8b4f60a1d5c3e79b2046f8c1e7d09a6b3f5824ce17a09d3b6f4e21"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "automatic_without_undo": {
+      "summary": "An automatic action that does not say what reverses it",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "capability": "file_newsletters",
+          "level": "auto",
+          "action": "archive"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "undo": "an automatic action must be on a capability that can be undone, and say what reverses it"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "internal_error": {
+      "summary": "A database fault is not a client error",
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "capability": "send_mail",
+          "level": "suggest",
+          "action": "reply",
+          "target": {
+            "message_id": "7"
+          }
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_id": {
+      "description": "The JSON body validates; the malformed path value is refused by the path binder with 422.",
+      "request": {
+        "path": {
+          "id": 0
+        },
+        "body": {
+          "capability": "send_mail",
+          "level": "suggest",
+          "action": "reply",
+          "target": {
+            "message_id": "7"
+          }
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "malformed_json": {
+      "description": "The wire body is the raw truncated JSON byte {, with application/json content type.",
+      "requires": {
+        "body": "malformed"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": "{",
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "description": "No account exists at the id; an account the caller may not know of answers the same.",
+      "request": {
+        "path": {
+          "id": 2147483647
+        },
+        "body": {
+          "capability": "send_mail",
+          "level": "suggest",
+          "action": "reply",
+          "target": {
+            "message_id": "7"
+          }
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Account not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "no_undo_window": {
+      "summary": "While no undo window is configured, nothing can be automatic",
+      "requires": {
+        "state": "own_session"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "capability": "file_newsletters",
+          "level": "auto",
+          "action": "archive",
+          "target": {
+            "message_id": "9"
+          },
+          "undo": {
+            "folder": "INBOX",
+            "message_id": "9"
+          }
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "level": "this server has no undo window, so nothing can be automatic"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "own_session_required": {
+      "summary": "An owner of the account is not the account",
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "capability": "send_mail",
+          "level": "suggest",
+          "action": "reply",
+          "target": {
+            "message_id": "7"
+          }
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "own_session_required",
+            "message": "Only the account's own signed-in session may write to its ledger"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "capability": "send_mail",
+          "level": "suggest",
+          "action": "reply",
+          "target": {
+            "message_id": "7"
+          }
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "capability": "send_mail",
+          "level": "suggest",
+          "action": "reply",
+          "target": {
+            "message_id": "7"
+          }
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "suggested": {
+      "summary": "The account's own session records a suggestion, which every level allows",
+      "requires": {
+        "state": "own_session"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "capability": "send_mail",
+          "level": "suggest",
+          "action": "reply",
+          "target": {
+            "message_id": "7"
+          }
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "seq": 1,
+            "occurred_at": "2026-11-04T09:30:00Z",
+            "actor_kind": "account",
+            "actor_id": 1,
+            "actor_name": "chris@example.test",
+            "credential_id": null,
+            "capability": "send_mail",
+            "level": "suggest",
+            "action": "reply",
+            "target": {
+              "message_id": "7"
+            },
+            "undo": {},
+            "undo_until": null,
+            "undoes": null,
+            "undone_by": null,
+            "request_id": "req-1",
+            "prev_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+            "hash": "a3f1c9d27e8b4f60a1d5c3e79b2046f8c1e7d09a6b3f5824ce17a09d3b6f4e21"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "trust_level_too_low": {
+      "summary": "The capability's level does not allow an approved action",
+      "requires": {
+        "state": "own_session"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "capability": "send_mail",
+          "level": "approve",
+          "action": "reply"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "trust_level_too_low",
+            "message": "This capability's level on this account does not allow that"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "capability": "send_mail",
+          "level": "suggest",
+          "action": "reply",
+          "target": {
+            "message_id": "7"
+          }
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "undo_window_closed": {
+      "summary": "The entry's undo window has closed, or it never had one",
+      "requires": {
+        "state": "closed_undo_window"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "undoes": 1
+        }
+      },
+      "response": {
+        "status": 409,
+        "body": {
+          "error": {
+            "code": "undo_window_closed",
+            "message": "This entry has no open undo window"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "undone": {
+      "summary": "An entry is undone within its window",
+      "requires": {
+        "state": "open_undo_window"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "undoes": 1
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "seq": 2,
+            "occurred_at": "2026-11-04T09:30:00Z",
+            "actor_kind": "account",
+            "actor_id": 1,
+            "actor_name": "chris@example.test",
+            "credential_id": null,
+            "capability": "file_newsletters",
+            "level": "approve",
+            "action": "undo",
+            "target": {
+              "message_id": "9"
+            },
+            "undo": {},
+            "undo_until": null,
+            "undoes": 1,
+            "undone_by": null,
+            "request_id": "req-1",
+            "prev_hash": "a3f1c9d27e8b4f60a1d5c3e79b2046f8c1e7d09a6b3f5824ce17a09d3b6f4e21",
+            "hash": "5d7e21c4b9a03f68e2c1d47f90ab36c5e8f10d2a7c94b36e15d8a2f07c4b9e63"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unknown_entry": {
+      "summary": "The entry to undo does not exist",
+      "requires": {
+        "state": "own_session"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "undoes": 4000
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "undoes": "no such entry"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
   "blockSender": {
     "created": {
       "request": {
@@ -21703,6 +22272,270 @@
           "error": {
             "code": "unauthorized",
             "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
+  "listAgentLedger": {
+    "empty": {
+      "summary": "Nothing has been recorded on this account",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "query": {
+          "limit": 20
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": [],
+          "pagination": {
+            "has_more": false
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "entries": {
+      "summary": "The account's actions, newest first, one undone by the next",
+      "requires": {
+        "state": "ledger_with_an_undo"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "query": {
+          "limit": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": [
+            {
+              "seq": 2,
+              "occurred_at": "2026-11-04T09:30:00Z",
+              "actor_kind": "account",
+              "actor_id": 1,
+              "actor_name": "chris@example.test",
+              "credential_id": null,
+              "capability": "file_newsletters",
+              "level": "approve",
+              "action": "undo",
+              "target": {
+                "message_id": "9"
+              },
+              "undo": {},
+              "undo_until": null,
+              "undoes": 1,
+              "undone_by": null,
+              "request_id": "req-1",
+              "prev_hash": "a3f1c9d27e8b4f60a1d5c3e79b2046f8c1e7d09a6b3f5824ce17a09d3b6f4e21",
+              "hash": "5d7e21c4b9a03f68e2c1d47f90ab36c5e8f10d2a7c94b36e15d8a2f07c4b9e63"
+            }
+          ],
+          "pagination": {
+            "has_more": true,
+            "cursor": "2"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "internal_error": {
+      "summary": "A database fault is not a client error",
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_capability": {
+      "summary": "The capability filter is not a capability",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "query": {
+          "capability": "delete_everything"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Query parameters failed validation",
+            "details": {
+              "fields": {
+                "capability": "must be send_mail or file_newsletters"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_id": {
+      "summary": "The account id is not a positive whole number",
+      "request": {
+        "path": {
+          "id": 0
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "description": "No account exists at the id; an account the caller may not know of answers the same.",
+      "request": {
+        "path": {
+          "id": 2147483647
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Account not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "without_read": {
+      "summary": "An API key holding no mail:read on the account",
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
           }
         },
         "mediaType": "application/json"
@@ -42748,6 +43581,365 @@
           "error": {
             "code": "invalid_password",
             "message": "The password is incorrect"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
+  "updateAgentTrust": {
+    "automatic": {
+      "summary": "With an undo window configured, a capability that can be undone can be automatic",
+      "requires": {
+        "state": "two_factor_session_with_undo_window"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "file_newsletters": "auto"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "undo_window_seconds": 3600,
+            "capabilities": [
+              {
+                "capability": "send_mail",
+                "level": "suggest",
+                "can_be_automatic": false
+              },
+              {
+                "capability": "file_newsletters",
+                "level": "auto",
+                "can_be_automatic": true
+              }
+            ]
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "internal_error": {
+      "summary": "A database fault is not a client error",
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {}
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_id": {
+      "description": "The JSON body validates; the malformed path value is refused by the path binder with 422.",
+      "request": {
+        "path": {
+          "id": 0
+        },
+        "body": {}
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "malformed_json": {
+      "description": "The wire body is the raw truncated JSON byte {, with application/json content type.",
+      "requires": {
+        "body": "malformed"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": "{",
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "description": "No account exists at the id; an account the caller may not know of answers the same.",
+      "request": {
+        "path": {
+          "id": 2147483647
+        },
+        "body": {}
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Account not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "no_undo_window": {
+      "summary": "While no undo window is configured, nothing can be automatic",
+      "requires": {
+        "state": "two_factor_session"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "file_newsletters": "auto"
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "file_newsletters": "this server has no undo window, so nothing can be automatic"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "recent_two_factor_required": {
+      "summary": "The second factor was proved too long ago",
+      "requires": {
+        "state": "stale_two_factor_session"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "file_newsletters": "approve"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "recent_two_factor_required",
+            "message": "Sign in again with two-factor authentication: a recent second factor is required"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {}
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "send_mail_automatic": {
+      "summary": "Sending cannot be undone, so it cannot be automatic",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "send_mail": "auto"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "send_mail": "must be suggest or approve: this capability cannot be undone, so it cannot be automatic"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {}
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "two_factor_required": {
+      "summary": "A session without a second factor cannot change a level",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "file_newsletters": "approve"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "two_factor_required",
+            "message": "This action needs a session signed in with two-factor authentication: sign in again with your code"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {}
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unchanged": {
+      "summary": "An empty body changes nothing, and answers every level",
+      "requires": {
+        "state": "two_factor_session"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {}
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "undo_window_seconds": 0,
+            "capabilities": [
+              {
+                "capability": "send_mail",
+                "level": "suggest",
+                "can_be_automatic": false
+              },
+              {
+                "capability": "file_newsletters",
+                "level": "suggest",
+                "can_be_automatic": false
+              }
+            ]
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "updated": {
+      "summary": "A recent second factor raises one capability; the other stays where it was",
+      "requires": {
+        "state": "two_factor_session"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "file_newsletters": "approve"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "undo_window_seconds": 0,
+            "capabilities": [
+              {
+                "capability": "send_mail",
+                "level": "suggest",
+                "can_be_automatic": false
+              },
+              {
+                "capability": "file_newsletters",
+                "level": "approve",
+                "can_be_automatic": false
+              }
+            ]
           }
         },
         "mediaType": "application/json"

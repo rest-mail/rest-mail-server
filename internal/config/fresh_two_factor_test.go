@@ -35,3 +35,33 @@ func TestFreshTwoFactorWindow(t *testing.T) {
 		})
 	}
 }
+
+// An unset undo window is no window, and so nothing can be automatic.
+func TestAgentUndoWindow(t *testing.T) {
+	for _, tc := range []struct {
+		value string
+		want  time.Duration
+		bad   bool
+	}{
+		{"", 0, false}, {"0s", 0, false}, {"30m", 30 * time.Minute, false}, {"-1m", 0, true}, {"soon", 0, true},
+	} {
+		t.Run(tc.value, func(t *testing.T) {
+			clearEnv(t)
+			t.Setenv("ENVIRONMENT", "development")
+			t.Setenv("AGENT_UNDO_WINDOW", tc.value)
+			c, err := Load()
+			if tc.bad {
+				if err == nil || !strings.Contains(err.Error(), "AGENT_UNDO_WINDOW") {
+					t.Fatalf("got %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if c.AgentUndoWindow != tc.want {
+				t.Fatalf("got %v, want %v", c.AgentUndoWindow, tc.want)
+			}
+		})
+	}
+}

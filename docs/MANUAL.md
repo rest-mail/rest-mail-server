@@ -210,6 +210,9 @@ API at `http://localhost:8080` (or `/api` through the reverse proxy). All endpoi
 - `DELETE /api/v1/accounts/:id/contacts/:cid`
 - `POST /api/v1/accounts/:id/contacts/block`
 - `POST /api/v1/accounts/:id/contacts/import`
+- `GET /api/v1/accounts/:id/agent/ledger` — an assistant's actions on the account, newest first (`before_seq`, `limit`, `capability`); append-only and hash-chained per account, in the audit log's shape; needs `mail:read`
+- `POST /api/v1/accounts/:id/agent/ledger` — record an action (`capability`, `level`, `action`, `target?`, `undo?`), or `{undoes: seq}` within the entry's undo window; only the account's own signed-in session may write, and the actor comes from the session
+- `PATCH /api/v1/accounts/:id/agent/trust` — set a capability (`send_mail`, `file_newsletters`) to `suggest`, `approve` or `auto`; every capability starts at `suggest`; needs `mailbox:manage` and a session with a recent second factor. What cannot be undone cannot be `auto`: sending never can, and nothing can while `AGENT_UNDO_WINDOW` is unset. A level never widens the account's grants
 - `GET /api/v1/accounts/:id/events` — SSE stream (unidirectional). Events: `message.new`, `message.updated`, `message.deleted`, `message_sent`, `folder.updated`, `queue.delivered`, `queue.bounced`. Supports `Last-Event-ID` header for replay from ring buffer (64 events/mailbox).
 
 #### Admin (capability-gated)

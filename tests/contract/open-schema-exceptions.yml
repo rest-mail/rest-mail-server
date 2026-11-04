@@ -1,6 +1,14 @@
 # Open schemas in the generated document (#658), each with its reason.
 # TestGeneratedSchemasAreClosedUnlessRecorded rejects new and stale entries.
 # Dictionary fields are permanent exceptions; opaque JSON names its area follow-up.
+'#/components/schemas/AgentLedgerEntry/properties/target': Assistant ledger targets and undos are dictionaries
+  of names and string values that depend on the action.
+'#/components/schemas/AgentLedgerEntry/properties/undo': Assistant ledger targets and undos are dictionaries
+  of names and string values that depend on the action.
+'#/components/schemas/appendAgentLedgerBody/properties/target': Assistant ledger targets and undos are dictionaries
+  of names and string values that depend on the action.
+'#/components/schemas/appendAgentLedgerBody/properties/undo': Assistant ledger targets and undos are dictionaries
+  of names and string values that depend on the action.
 '#/components/schemas/AuditEntry/properties/target': Audit targets are a dictionary
   of target names and string identifiers.
 '#/components/schemas/CustomFilter/properties/config': Filter configuration is plugin

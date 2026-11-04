@@ -196,6 +196,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	messageImportH := handlers.NewMessageImportHandler(db, cfg.SMTPMaxMessageSize, attachmentStore, broker)
 	contactH := handlers.NewContactHandler(db)
 	vacationH := handlers.NewVacationHandler(db)
+	agentH := handlers.NewAgentHandler(db, cfg.AgentUndoWindow)
 	sieveH := handlers.NewSieveHandler(db)
 	senderRuleH := handlers.NewSenderRuleHandler(db)
 	suppressionH := handlers.NewSuppressionHandler(db)
@@ -626,6 +627,11 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 			// by another key; handlers audit changes in their transactions.
 			credentialH.Register(person, personChecks)
 
+			// The assistant's ledger and trust (#1423): writing an entry takes the
+			// account's own session and changing a level a fresh second factor,
+			// so no credential over HTTP Basic reaches them.
+			agentH.Register(person, personChecks)
+
 			// Push devices (#363): the phones this session registers, only when
 			// push is configured; otherwise there are no such routes, and the
 			// 404 tells the app push is off. Never the token in the audit log.
@@ -682,6 +688,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 			Describing(describedMailSession, describedSetupDone).
 			DescribingWhen(middleware.CSRFProtectsMethod, describedCSRF).Describing(describedBodyCap)
 		vacationH.Register(mailRules)
+		agentH.RegisterRead(mailRules)
 		sieveH.Register(mailRules)
 
 		// Quarantine

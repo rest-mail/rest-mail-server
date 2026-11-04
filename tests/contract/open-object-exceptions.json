@@ -1,4 +1,8 @@
 {
+  "#/components/schemas/AgentLedgerEntry/properties/target": "An assistant's entry names what it acted on, and what reverses it, as string pairs whose keys depend on the action. Values remain strings, and their number and length are capped.",
+  "#/components/schemas/AgentLedgerEntry/properties/undo": "An assistant's entry names what it acted on, and what reverses it, as string pairs whose keys depend on the action. Values remain strings, and their number and length are capped.",
+  "#/components/schemas/appendAgentLedgerBody/properties/target": "An assistant's entry names what it acted on, and what reverses it, as string pairs whose keys depend on the action. Values remain strings, and their number and length are capped.",
+  "#/components/schemas/appendAgentLedgerBody/properties/undo": "An assistant's entry names what it acted on, and what reverses it, as string pairs whose keys depend on the action. Values remain strings, and their number and length are capped.",
   "#/components/schemas/AuditEntry/properties/target": "Audit targets are a dictionary of resource identifiers whose keys depend on the recorded action. Values remain strings.",
   "#/components/schemas/CustomFilter/properties/config": "Filter configuration is explicitly raw JSON because the selected registered filter or user-supplied JavaScript determines its shape. The enclosing request controls which resource fields can be set.",
   "#/components/schemas/EmailJSON/properties/metadata": "Mail pipeline metadata is an explicit string dictionary shared by independent filters; keys are supplied by those filters.",

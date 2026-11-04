@@ -248,6 +248,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/accounts/{id}/agent/ledger": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the assistant's actions on an account
+         * @description Newest first. A page is followed by the next with before_seq set to the cursor. Each entry carries the hash of the account's entry before it. Needs mail:read on the account.
+         */
+        get: operations["listAgentLedger"];
+        put?: never;
+        /**
+         * Record an assistant's action on an account
+         * @description Only the account's own signed-in session may write an entry; who else may is not decided yet (#1423). The actor comes from the session, never the body. An action may run only at the level the account's trust allows on its capability. An automatic action must say what reverses it, on a capability that can be undone, with an undo window configured. Set undoes to the seq of an entry to record that it was undone, within its window and once.
+         */
+        post: operations["appendAgentLedgerEntry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounts/{id}/agent/trust": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Change how far an assistant may go on each capability
+         * @description Every capability starts at suggest. Sets the levels the body names, all or none, and answers every capability's level; an empty body changes nothing. A capability that cannot be undone, or any capability while no undo window is configured, cannot be set to auto. A level never widens the account's grants. Needs mailbox:manage on the account and a person's session with a recent second factor.
+         */
+        patch: operations["updateAgentTrust"];
+        trace?: never;
+    };
     "/api/v1/accounts/{id}/api-keys": {
         parameters: {
             query?: never;
@@ -2992,6 +3036,49 @@ export interface components {
             exists: boolean;
             mailbox_id?: number;
         };
+        AgentCapabilityLevel: {
+            can_be_automatic: boolean;
+            /** @enum {string} */
+            capability: "send_mail" | "file_newsletters";
+            /** @enum {string} */
+            level: "suggest" | "approve" | "auto";
+        };
+        AgentLedgerEntry: {
+            action: string;
+            actor_id: number | null;
+            /** @enum {string} */
+            actor_kind: "account" | "system" | "anonymous";
+            actor_name: string;
+            /** @enum {string} */
+            capability: "send_mail" | "file_newsletters";
+            credential_id: number | null;
+            hash: string;
+            /** @enum {string} */
+            level: "suggest" | "approve" | "auto";
+            /** Format: date-time */
+            occurred_at: string;
+            prev_hash: string;
+            request_id: string;
+            /** Format: int64 */
+            seq: number;
+            target: {
+                [key: string]: string;
+            };
+            undo: {
+                [key: string]: string;
+            };
+            /** Format: date-time */
+            undo_until: string | null;
+            /** Format: int64 */
+            undoes: number | null;
+            /** Format: int64 */
+            undone_by: number | null;
+        };
+        AgentTrust: {
+            capabilities: components["schemas"]["AgentCapabilityLevel"][];
+            /** Format: int64 */
+            undo_window_seconds: number;
+        };
         Alias: {
             active: boolean;
             /** Format: date-time */
@@ -3308,6 +3395,12 @@ export interface components {
         };
         "Data-AddressCheck": {
             data: components["schemas"]["AddressCheck"];
+        };
+        "Data-AgentLedgerEntry": {
+            data: components["schemas"]["AgentLedgerEntry"];
+        };
+        "Data-AgentTrust": {
+            data: components["schemas"]["AgentTrust"];
         };
         "Data-Alias": {
             data: components["schemas"]["Alias"];
@@ -3739,6 +3832,10 @@ export interface components {
             /** Format: double */
             tlsPercent: number;
             totalInboundMX: number;
+        };
+        "List-AgentLedgerEntry": {
+            data: components["schemas"]["AgentLedgerEntry"][];
+            pagination?: components["schemas"]["Pagination"] | null;
         };
         "List-Alias": {
             data: components["schemas"]["Alias"][];
@@ -4885,6 +4982,30 @@ export interface components {
             permissions: components["schemas"]["ScopedPermission"][];
             public_id: string;
         };
+        appendAgentLedgerBody: {
+            action?: string;
+            /** @enum {string} */
+            capability?: "send_mail" | "file_newsletters";
+            /** @enum {string} */
+            level?: "suggest" | "approve" | "auto";
+            target?: {
+                [key: string]: string;
+            };
+            undo?: {
+                [key: string]: string;
+            };
+            /** Format: int64 */
+            undoes?: number;
+        } | {
+            /** @enum {unknown} */
+            level: "suggest" | "approve";
+        } | {
+            /** @enum {unknown} */
+            capability: "file_newsletters";
+            /** @enum {unknown} */
+            level: "auto";
+            undo: unknown;
+        } | unknown;
         blockSenderBody: {
             /** Format: email */
             email: string;
@@ -5575,6 +5696,12 @@ export interface components {
                 capability: string;
                 scope: string;
             }[];
+        };
+        updateAgentTrustBody: {
+            /** @enum {string} */
+            file_newsletters?: "suggest" | "approve" | "auto";
+            /** @enum {string} */
+            send_mail?: "suggest" | "approve";
         };
         updateAliasRequest: {
             active?: boolean | null;
@@ -6563,6 +6690,311 @@ export interface operations {
                 };
             };
             /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listAgentLedger: {
+        parameters: {
+            query?: {
+                capability?: "" | "send_mail" | "file_newsletters";
+                before_seq?: number;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["List-AgentLedgerEntry"];
+                };
+            };
+            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After": number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    appendAgentLedgerEntry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["appendAgentLedgerBody"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-AgentLedgerEntry"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    updateAgentTrust: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["updateAgentTrustBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-AgentTrust"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
             413: {
                 headers: {
                     [name: string]: unknown;

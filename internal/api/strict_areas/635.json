@@ -1,5 +1,6 @@
 {
   "635": [
+    "appendAgentLedgerEntry",
     "createAPIKey",
     "createAccount",
     "createAppPassword",
@@ -7,10 +8,12 @@
     "linkAccount",
     "listAPIKeys",
     "listAccounts",
+    "listAgentLedger",
     "listCredentials",
     "revokeAPIKey",
     "revokeCredential",
     "unlinkAccount",
-    "updateAPIKey"
+    "updateAPIKey",
+    "updateAgentTrust"
   ]
 }

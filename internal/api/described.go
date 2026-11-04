@@ -206,6 +206,8 @@ var exampleRequirements = map[string][]string{
 	"network":   {"outside_metrics_allowlist"},
 	"state": {
 		"password_only_session", "stale_two_factor_session",
+		"own_session", "automatic_with_undo_window", "open_undo_window", "undone_entry", "closed_undo_window",
+		"ledger_with_an_undo", "two_factor_session_with_undo_window",
 		"send_as_grant", "send_on_behalf_grant", "read_only_mailbox_grant",
 		"active_grant", "active_policy", "calendar_invitation", "client_secret", "discarding_pipeline", "dkim_revocation", "eligible_grant",
 		"enrolled_authenticator", "enrollment_disabled", "event_stream", "existing_device", "existing_grant", "existing_link", "existing_policy", "existing_script",

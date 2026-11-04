@@ -21,6 +21,7 @@ var resetRetainedTables = map[string]string{
 	"capabilities":        "The installed capability catalog is schema/bootstrap data, not fixture data.",
 	"owner_keys":          "Installation recovery trust must not be erased by fixture cleanup.",
 	"audit_log":           "The append-only, hash-chained audit log cannot be deleted without destroying integrity.",
+	"agent_ledger":        "The append-only, hash-chained assistant ledger cannot be deleted without destroying integrity.",
 }
 
 func (h *TestHandler) OnReset(reset func()) {
