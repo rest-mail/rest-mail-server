@@ -223,6 +223,9 @@ class OwnDataHooks(unittest.TestCase):
             "listPipelines": "pipeline_reads_after_a_reset",
             "listPipelineLogs": "pipeline_reads_after_a_reset",
             "getPipelineAnalytics": "pipeline_reads_after_a_reset",
+            "testFilter": "filter_requests_after_a_reset",
+            "listCustomFilters": "filter_requests_after_a_reset",
+            "validateCustomFilter": "filter_requests_after_a_reset",
         }
         # entrypoint.py registers setDomainRelay's (below).
         self.assertEqual(set(hooks) | {"setDomainRelay"}, set(own_data.MOVED))

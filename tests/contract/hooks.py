@@ -623,6 +623,24 @@ def pace_owner_requests(transaction):
     time.sleep(1.1)
 
 
+@hooks.before("testFilter")
+@hooks.before("listCustomFilters")
+@hooks.before("validateCustomFilter")
+def filter_requests_after_a_reset(transaction):
+    # The rest of the filter operations, moved to a clean start: each exchange,
+    # refusals included, resets and seeds first. A listing of custom filters
+    # that succeeds gets one of its own, made after the reset, so it lists more
+    # than nothing. The preview and the validation take only a body and need
+    # nothing made. Registered ahead of every other hook of these operations. A
+    # run with no reset changes nothing here.
+    if not asked_for_a_clean_start():
+        return
+    start_clean(transaction)
+    path = transaction["fullPath"].partition("?")[0]
+    if path == "/api/v1/admin/custom-filters" and " > 200" in transaction.get("name", ""):
+        a_custom_filter_of_its_own(transaction)
+
+
 @hooks.before("testPipeline")
 @hooks.before("testFilter")
 @hooks.before("testCustomFilter")

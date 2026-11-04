@@ -1146,6 +1146,12 @@ own on a domain of its own; the logs and the analytics need nothing made. No
 link starts from or reaches the three reads. A run with no reset changes
 nothing in these hooks.
 
+`testFilter`, `listCustomFilters` and `validateCustomFilter` reset and seed before
+each exchange too, refusals included (`filter_requests_after_a_reset`, each
+operation's first hook). A listing that succeeds gets a custom filter of its own;
+the preview and the validation take only a body and need nothing made. No link
+starts from or reaches any of them.
+
 `createAlias`, `getAlias`, `updateAlias` and `deleteAlias` reset and seed before
 each exchange too, refusals included. A create is sent as documented after its
 reset: no earlier probe's alias is left, and the seeded `restmail.test` hosts

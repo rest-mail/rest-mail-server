@@ -113,6 +113,8 @@ MAILBOXES = (
 THREADS_AND_IMPORTS = ("listThreads", "setThreadDue", "snoozeThread", "importMessage")
 # The pipeline reads, which no link starts from or reaches.
 PIPELINE_READS = ("listPipelines", "listPipelineLogs", "getPipelineAnalytics")
+# The rest of the filter operations, which no link starts from or reaches.
+FILTERS = ("testFilter", "listCustomFilters", "validateCustomFilter")
 FOLLOWS_THE_SENT_MESSAGE = {
     "getMessage",
     "updateMessage",
@@ -192,7 +194,8 @@ class Selection(unittest.TestCase):
             - set(DRAFTS)
             - set(MAILBOXES)
             - set(THREADS_AND_IMPORTS)
-            - set(PIPELINE_READS),
+            - set(PIPELINE_READS)
+            - set(FILTERS),
             link_followers(description, "createDomain") | {"createDomain"},
         )
 
@@ -207,11 +210,11 @@ class Selection(unittest.TestCase):
 
     def test_the_pipeline_reads_have_moved_and_no_link_touches_them(self):
         description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
-        for operation in PIPELINE_READS:
+        for operation in PIPELINE_READS + FILTERS:
             self.assertEqual(link_followers(description, operation), set())
             for start in description_operations(description):
                 self.assertNotIn(operation, link_followers(description, start), start)
-        self.assertLessEqual(set(PIPELINE_READS), set(own_data.MOVED))
+        self.assertLessEqual(set(PIPELINE_READS + FILTERS), set(own_data.MOVED))
 
     def test_it_selects_every_alias_operation_and_its_links(self):
         description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
