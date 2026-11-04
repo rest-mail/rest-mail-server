@@ -13,7 +13,7 @@ import yaml
 ROOT = Path(__file__).resolve().parents[2]
 COVERAGE_PINS = [
     "private_key", "snoozed_until", "scheduled_at", "expires_at", "permissions",
-    "time_zone", "script", "raw_message",
+    "time_zone", "script", "raw_message", "recipients", "date",
 ]
 
 
@@ -160,6 +160,8 @@ class ProbeConfig(unittest.TestCase):
                     "time_zone": probes.TIME_ZONE,
                     "script": probes.SCRIPT,
                     "raw_message": probes.RAW_MESSAGE,
+                    "recipients": probes.RECIPIENTS,
+                    "date": probes.DELIVERY_DATE,
                 }
             },
         )

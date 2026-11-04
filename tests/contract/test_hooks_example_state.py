@@ -4,6 +4,7 @@ an array body left alone, invitations, blocked senders, bans and drafts."""
 import base64
 import importlib.util
 import json
+import os
 import sys
 import threading
 import types
@@ -139,6 +140,34 @@ class ExampleStateHookTest(unittest.TestCase):
             "fullPath": path,
             "request": {"body": json.dumps(body) if body is not None else ""},
         }
+
+    def test_coverage_imports_where_there_is_room_and_changes_only_the_path(self):
+        success = "/api/v1/accounts/{id}/messages/import > Store a message the account already has > 200 > application/json"
+        refusal = success.replace(" > 200 > ", " > 422 > ")
+        body = {"raw_message": "held", "internal_date": "2020-01-02T03:04:05Z"}
+        documented = "/api/v1/accounts/12/messages/import"
+        with patch.object(self.hooks, "mailbox_id", return_value=7) as lookup:
+            with patch.dict(os.environ, {"CONTRACT_COVERAGE": "1"}):
+                moved = self.transaction(success, documented, body)
+                self.hooks.import_into_an_account_with_room(moved)
+                self.assertEqual(moved["fullPath"], "/api/v1/accounts/7/messages/import")
+                self.assertEqual(json.loads(moved["request"]["body"]), body)
+                # A refusal, and a probe that chose its own id, keep what they name.
+                for name, path in (
+                    (refusal, documented),
+                    (success, "/api/v1/accounts/1/messages/import"),
+                    (success, "/api/v1/accounts/0/messages/import"),
+                ):
+                    kept = self.transaction(name, path, body)
+                    self.hooks.import_into_an_account_with_room(kept)
+                    self.assertEqual(kept["fullPath"], path)
+            lookup.assert_called_once()
+            # The examples phase keeps the documented account.
+            with patch.dict(os.environ):
+                os.environ.pop("CONTRACT_COVERAGE", None)
+                kept = self.transaction(success, documented, body)
+                self.hooks.import_into_an_account_with_room(kept)
+                self.assertEqual(kept["fullPath"], documented)
 
     def test_an_array_body_has_no_password_to_confirm(self):
         transaction = self.transaction(

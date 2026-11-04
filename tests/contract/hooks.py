@@ -3153,6 +3153,22 @@ def create_a_domain_that_is_not_there(transaction):
         )
 
 
+@hooks.before("importMessage")
+def import_into_an_account_with_room(transaction):
+    # Only the path: a hook that changed a generated body would end the probe. The
+    # documented account is 12, which the E2E stages leave at its quota on the topology.
+    # A held message is new mail there (probes.py), so the example would answer 409 and
+    # skip the valid probes. The examples phase keeps the documented account.
+    if (
+        os.environ.get("CONTRACT_COVERAGE") != "1"
+        or " > 200 > " not in transaction.get("name", "")
+        or transaction.get("fullPath") != "/api/v1/accounts/12/messages/import"
+    ):
+        return
+    account = mailbox_id(origin_of(transaction), ADMIN)
+    transaction["fullPath"] = f"/api/v1/accounts/{account:d}/messages/import"
+
+
 @hooks.before("putSieveScript")
 def install_a_sieve_script_where_there_is_none(transaction):
     # The documented install (201) creates the account's script, and the

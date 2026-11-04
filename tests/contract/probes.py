@@ -61,6 +61,13 @@ RAW_MESSAGE = base64.b64encode(
     b"From: Original <old@example.test>\r\n"
     b"Subject: imported\r\n\r\nhistory\r\n"
 ).decode()
+# raw_message also reaches restmailDeliver, whose field is the message itself and not
+# base64, so the handler cannot read a recipient or a Date from the value above. Only
+# restmailDeliver's body has these two fields: a delivery to a mailbox the run has,
+# on the documented date. Refusals: recipients_missing, recipients_wrong_type,
+# recipient_wrong_type, date_wrong_type.
+RECIPIENTS = ["eve@restmail.test"]
+DELIVERY_DATE = "Sat, 17 Oct 2026 12:00:00 +0000"
 # A schema cannot say a mailbox must exist either. Fuzz draws a mailbox_id or an
 # address that names nothing and reads the 404 as a disagreement, so the rest of
 # delivery is never reached. The fuzz run holds mailbox_id at the recipient the
@@ -93,6 +100,8 @@ def main(config_path, out_path, report_path, pin=True, unpinned=()):
             "time_zone": TIME_ZONE,
             "script": SCRIPT,
             "raw_message": RAW_MESSAGE,
+            "recipients": RECIPIENTS,
+            "date": DELIVERY_DATE,
         }
         if Path(report_path).stem == "fuzz":
             pins.update(fuzz_pins())
