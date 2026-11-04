@@ -24516,7 +24516,7 @@ export interface operations {
                     "application/json": components["schemas"]["Data-MessageRecipients"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized: no token, a bad one, a session that has ended, or a gateway session that has ended */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -24561,7 +24561,7 @@ export interface operations {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
-            /** @description rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate */
+            /** @description rate_limited: refused API keys, throttled at login's rate */
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
