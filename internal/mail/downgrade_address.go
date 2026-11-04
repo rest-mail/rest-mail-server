@@ -116,8 +116,9 @@ func isFoldingSpace(c byte) bool {
 // '.' stay in their atom. ok is false when a quoted-string, comment or angle-addr never
 // closes, or a comment closes that never opened.
 func addressTokens(value string) (tokens []addressToken, ok bool) {
+	lastBracket := strings.LastIndexByte(value, ']')
 	for i := 0; i < len(value); {
-		kind, end := tokenAt(value, i)
+		kind, end := tokenAt(value, i, lastBracket)
 		if end < 0 {
 			return nil, false
 		}
@@ -128,8 +129,9 @@ func addressTokens(value string) (tokens []addressToken, ok bool) {
 }
 
 // tokenAt finds the token at value[i], and where it ends, or -1 if it never closes or
-// closes what never opened.
-func tokenAt(value string, i int) (tokenKind, int) {
+// closes what never opened. lastBracket is the offset of value's last ']', so a '[' with
+// none after it doesn't scan for one.
+func tokenAt(value string, i, lastBracket int) (tokenKind, int) {
 	switch c := value[i]; {
 	case isFoldingSpace(c):
 		end := i + 1
@@ -150,11 +152,9 @@ func tokenAt(value string, i int) (tokenKind, int) {
 	}
 	end := i
 	for end < len(value) && !isFoldingSpace(value[end]) && strings.IndexByte(`()"<,:;`, value[end]) < 0 {
-		if value[end] == '[' {
+		if value[end] == '[' && end < lastBracket {
 			// A domain literal holds colons.
-			if closing := strings.IndexByte(value[end:], ']'); closing >= 0 {
-				end += closing
-			}
+			end += strings.IndexByte(value[end:], ']')
 		}
 		end++
 	}
