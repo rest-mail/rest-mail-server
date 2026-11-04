@@ -688,7 +688,7 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput, spoo
 			if err := repositories.ReserveStorage(tx, mailbox.ID, int64(sizeBytes)+attachmentBytes); err != nil {
 				return err
 			}
-			if err := tx.Create(&msg).Error; err != nil {
+			if err := createDeliveredMessage(tx, &msg); err != nil {
 				return err
 			}
 			for _, attachment := range attachmentRows {

@@ -162,6 +162,7 @@ func parseEntity(e *gomessage.Entity, sourceSize int, budget *partBudget) (pipel
 		if err := budget.enter(1); err != nil {
 			return pipeline.Body{}, nil, nil, nil, err
 		}
+		budget.sourceSize = sourceSize
 		return parseMultipart(mr, mediaType, 1, budget)
 	}
 
@@ -232,13 +233,13 @@ func parseMultipart(mr gomessage.MultipartReader, mediaType string, depth int, b
 			continue
 		}
 
-		// Every part reads into one buffer, which nothing below keeps: text is copied out of it, and
-		// anything else is encoded.
-		budget.scratch.Reset()
-		if _, err := budget.scratch.ReadFrom(part.Body); err != nil {
+		// Every part reads into one buffer. A part that's kept stays there, and one that's encoded
+		// gives the room back.
+		content, err := budget.readPart(part.Body)
+		if err != nil {
 			continue
 		}
-		content := budget.scratch.Bytes()
+		kept := unsafe.String(unsafe.SliceData(content), len(content))
 
 		disposition, _, _ := part.Header.ContentDisposition()
 		disposition = strings.ToLower(disposition)
@@ -247,12 +248,12 @@ func parseMultipart(mr gomessage.MultipartReader, mediaType string, depth int, b
 		// Calendar invite: parse events regardless of disposition, and also
 		// keep the raw .ics content available as a body part.
 		if partMediaType == "text/calendar" {
-			if events, parseErr := ParseCalendar(string(content)); parseErr == nil && len(events) > 0 {
+			if events, parseErr := ParseCalendar(kept); parseErr == nil && len(events) > 0 {
 				calendarEvents = append(calendarEvents, events...)
 			}
 			body.Parts = append(body.Parts, pipeline.Body{
 				ContentType: partMediaType,
-				Content:     string(content),
+				Content:     kept,
 			})
 			continue
 		}
@@ -271,6 +272,7 @@ func parseMultipart(mr gomessage.MultipartReader, mediaType string, depth int, b
 				ContentID:   contentID,
 				Content:     base64.StdEncoding.EncodeToString(content),
 			})
+			budget.release(content)
 			continue
 		}
 
@@ -283,13 +285,14 @@ func parseMultipart(mr gomessage.MultipartReader, mediaType string, depth int, b
 				Disposition: "attachment",
 				Content:     base64.StdEncoding.EncodeToString(content),
 			})
+			budget.release(content)
 			continue
 		}
 
 		// Regular body part.
 		body.Parts = append(body.Parts, pipeline.Body{
 			ContentType: partMediaType,
-			Content:     string(content),
+			Content:     kept,
 		})
 	}
 

@@ -78,9 +78,14 @@ func structureLimit(format string, args ...any) error {
 type partBudget struct {
 	limits Limits
 	parts  int
-	// scratch holds the part being read.
-	scratch bytes.Buffer
+	// sourceSize is the size of the whole message, when it is known.
+	sourceSize int
+	// arena holds what's read of the parts. See readPart.
+	arena []byte
 }
+
+// partArenaLeast is the least an arena holds, for a message whose size isn't known.
+const partArenaLeast = 4 << 10
 
 func newPartBudget() *partBudget { return &partBudget{limits: CurrentLimits()} }
 
@@ -91,6 +96,37 @@ func (b *partBudget) part() error {
 		return structureLimit("more than %d MIME parts", b.limits.MaxParts)
 	}
 	return nil
+}
+
+// readPart reads a part's content onto the end of the arena, and answers it. It stays there until
+// release, so a part that's kept is a view of the arena and costs no copy of its own, and a
+// message's parts together cost one buffer of the message's size, which they nearly always fit in.
+// When they don't, because a charset grew them, the part moves to a new arena and what's kept stays
+// on the old one. Nothing is written over a part that wasn't released.
+func (b *partBudget) readPart(r io.Reader) ([]byte, error) {
+	start := len(b.arena)
+	for {
+		if len(b.arena) == cap(b.arena) {
+			held := len(b.arena) - start
+			next := make([]byte, held, max(2*held, b.sourceSize+bytes.MinRead, partArenaLeast))
+			copy(next, b.arena[start:])
+			b.arena, start = next, 0
+		}
+		n, err := r.Read(b.arena[len(b.arena):cap(b.arena)])
+		b.arena = b.arena[:len(b.arena)+n]
+		if err == io.EOF {
+			return b.arena[start:], nil
+		}
+		if err != nil {
+			b.arena = b.arena[:start]
+			return nil, err
+		}
+	}
+}
+
+// release gives the arena back the part readPart last answered, for one nothing keeps.
+func (b *partBudget) release(content []byte) {
+	b.arena = b.arena[:len(b.arena)-len(content)]
 }
 
 // enter answers an error when a multipart at depth would nest too deep.
