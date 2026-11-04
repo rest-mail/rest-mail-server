@@ -12208,13 +12208,12 @@ paths:
         is served ONLY on the dedicated internal listener (verified gateway client
         certificate required) and is absent from the public listener; when disabled
         it is unauthenticated on the public listener. Never accepts a user JWT.
-        Stored text, recipient JSON strings and keys, and decoded raw_message octets
-        must not contain NUL (U+0000); invalid input is 422 validation_failed naming
-        the field before any write. raw_message is standard padded base64 (format: byte).
-        The recipient is resolved from address. Arriving mail uses server time and
-        default Inbox/flags, subject to inbound rules. Import-only fields sent by
-        older callers are ignored. An arrival past the hop limit or a reserved alias
-        that cannot route is 403 rejected before the pipeline runs.
+        Stored text and recipient JSON strings and keys must not contain NUL (U+0000);
+        invalid input is 422 validation_failed naming the field before any write.
+        raw_message is standard padded base64 (format: byte) and may hold any octets,
+        which are stored exactly.
+        Empty or omitted folder means INBOX; a nonempty name is at most 255 UTF-8 bytes,
+        has no surrounding whitespace, control characters or "..".
       security: []
       x-internal-mtls: true
       requestBody:
@@ -28403,7 +28402,8 @@ components:
           description: Raw headers as JSON
         raw_message:
           type: string
-          description: Full RFC 2822 raw message
+          format: byte
+          description: Full RFC 5322 message, base64-encoded so any octets arrive exactly as sent
         sender:
           type: string
           format: email

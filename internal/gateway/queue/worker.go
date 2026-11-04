@@ -675,6 +675,7 @@ func (w *Worker) claim(now time.Time) (models.OutboundQueue, error) {
 		if result.RowsAffected == 0 {
 			return gorm.ErrRecordNotFound
 		}
+		item.JoinSource()
 
 		// Mark as delivering
 		return tx.Model(&item).Updates(map[string]interface{}{
@@ -1171,7 +1172,7 @@ func (w *Worker) deliverRESTMAILHTTPS(ctx context.Context, endpointURL string, i
 	payload := map[string]interface{}{
 		"from":        item.Sender,
 		"to":          []string{item.Recipient},
-		"raw_message": item.RawMessage,
+		"raw_message": []byte(item.RawMessage),
 	}
 	payloadBytes, _ := json.Marshal(payload)
 

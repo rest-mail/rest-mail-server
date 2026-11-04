@@ -130,7 +130,7 @@ func TestAliasForwardDeliveryAndSigning(t *testing.T) {
 						t.Fatal(err)
 					}
 				} else {
-					payload, _ := json.Marshal(map[string]any{"from": sender, "to": []string{source}, "raw_message": raw})
+					payload, _ := json.Marshal(map[string]any{"from": sender, "to": []string{source}, "raw_message": []byte(raw)})
 					response, err := http.Post(apiServer.URL+"/restmail/messages", "application/json", strings.NewReader(string(payload)))
 					if err != nil {
 						t.Fatal(err)

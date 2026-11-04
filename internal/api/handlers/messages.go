@@ -1172,13 +1172,12 @@ func (h *MessageHandler) RegisterDelivery(rs endpoint.Routes, bodyLimit endpoint
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/messages/deliver",
 		OperationID: "deliverMessage", Summary: "Deliver a message into a mailbox (protocol gateways)", Tags: []string{"Messages"},
 		Description: "Machine to machine: no user token. The inbound pipeline decides: 201 with the message made, " +
-			"200 processed when it quarantined or discarded it, 403 rejected, 503 deferred (greylisted or rate_limited when the " +
-			"greylist or rate_limit step held it back), 422 mailbox_full over quota. These are REST statuses for every caller; the SMTP gateway rewrites them into its SMTP reply (#1664). A missing mailbox is 404; a failed mailbox lookup is 500, never a missing recipient. " +
-			"Stored text must not contain NUL (U+0000), including strings and object keys anywhere in recipients_to or recipients_cc " +
-			"and the decoded raw_message octets; a refusal is 422 validation_failed naming the field, before any write. " +
-			"raw_message is a standard padded base64 string (format: byte), not unencoded message text. " +
-			"An arrival (received_tls set) past the hop limit and a reserved alias that cannot route are 403 rejected before the pipeline runs. " +
-			"The recipient is resolved from address. Arriving mail uses server time and default Inbox/flags, subject to inbound rules. Import-only fields sent by older callers are ignored.",
+			"200 processed when it quarantined or discarded it, 403 rejected, 503 deferred, 422 mailbox_full " +
+			"over quota. These are REST statuses for every caller; the SMTP gateway rewrites them into its SMTP reply (#1664). A missing mailbox is 404; a failed mailbox lookup is 500, never a missing recipient. " +
+			"Stored text must not contain NUL (U+0000), including strings and object keys anywhere in recipients_to or recipients_cc; " +
+			"a refusal is 422 validation_failed naming the field, before any write. " +
+			"raw_message is a standard padded base64 string (format: byte), not unencoded message text, and may hold any octets: they are stored exactly. " +
+			"An omitted or empty folder means INBOX; otherwise " + folderNameRule,
 		Status: http.StatusCreated, SuccessStatuses: []int{http.StatusOK},
 		Responses: []oapifly.EndpointResponse{
 			{Status: http.StatusCreated, Description: "Delivered; the message made", Type: oapifly.TypeOf[endpoint.Data[Message]]()},
@@ -1209,9 +1208,6 @@ func (h *MessageHandler) deliverSpooledMessage(r *http.Request, _ struct{}) (end
 func (h *MessageHandler) deliverMessage(r *http.Request, req deliverMessageBody, spool *deliverySpool) (endpoint.Status[any], error) {
 	var zero endpoint.Status[any]
 	fields := make(map[string]string)
-	if spool.raw.nul {
-		fields["raw_message"] = "must not contain a NUL byte"
-	}
 	for field, raw := range map[string]json.RawMessage{"recipients_to": req.RecipientsTo, "recipients_cc": req.RecipientsCc} {
 		decoder := json.NewDecoder(bytes.NewReader(raw))
 		decoder.UseNumber()

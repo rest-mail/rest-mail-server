@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -14,16 +13,15 @@ import (
 
 func TestDeliveryRejectsNULBeforeStorage(t *testing.T) {
 	database := openMsgDeleteTestDB(t)
-	fields := []string{"address", "sender", "sender_name", "subject", "body_text", "body_html", "message_id", "in_reply_to", "references", "client_ip", "helo_name", "tls_version", "raw_message", "recipients_to", "recipients_cc"}
+	fields := []string{"address", "sender", "sender_name", "subject", "body_text", "body_html", "message_id", "in_reply_to", "references", "client_ip", "helo_name", "folder", "tls_version", "recipients_to", "recipients_cc", "received_at"}
 	for _, field := range fields {
 		t.Run(field, func(t *testing.T) {
 			transaction := database.Begin()
 			t.Cleanup(func() { transaction.Rollback() })
 			fixture := seedMsgDeleteFixture(t, transaction, 0)
-			body := map[string]any{"address": fixture.mailbox.Address}
-			body[field] = "before\x00after"
-			if field == "raw_message" {
-				body[field] = base64.StdEncoding.EncodeToString([]byte("Subject: Hello\r\n\r\nbefore\x00after"))
+			body := map[string]any{"mailbox_id": fixture.mailbox.ID, field: "before\x00after"}
+			if field == "address" {
+				delete(body, "mailbox_id")
 			}
 			encoded, err := json.Marshal(body)
 			if err != nil {

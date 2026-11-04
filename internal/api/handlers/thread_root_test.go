@@ -82,7 +82,7 @@ func TestThreadRootDeliveryAndDraftRoutes(t *testing.T) {
 					body["address"], body["sender"], body["raw_message"] = owner.Address, other.Address, []byte(raw)
 					serve = deliveryRoute(handler)
 				case "restmail":
-					body["from"], body["to"], body["raw_message"] = other.Address, []string{owner.Address}, raw
+					body["from"], body["to"], body["raw_message"] = other.Address, []string{owner.Address}, []byte(raw)
 					path = "/restmail/messages"
 					serve = restmailRoutes(NewRestmailHandler(tx, nil, nil, RestmailTarpitConfig{}, RestmailDeliverAuthConfig{TrustedCIDRs: []string{"192.0.2.0/24"}})).ServeHTTP
 				case "import":

@@ -150,9 +150,9 @@
   "stored": "{\"attachments\":[],\"calendar\":[],\"holds\":[],\"messages\":[],\"usage\":[{\"attachment\":0,\"body\":0,\"count\":0,\"subject\":0}],\"used\":[0,0]}"
  },
  "gateway/not_utf8": {
-  "status": 500,
-  "answer": "{\"error\":{\"code\":\"internal_error\",\"message\":\"Failed to deliver message\"}}\n",
-  "stored": "{\"attachments\":[],\"calendar\":[],\"holds\":[],\"messages\":[],\"usage\":[{\"attachment\":0,\"body\":0,\"count\":0,\"subject\":0}],\"used\":[0,0]}"
+  "status": 201,
+  "answer": "{\"data\":{\"class\":\"person\",\"id\":0,\"mailbox_id\":0,\"folder\":\"INBOX\",\"message_id\":\"\u003cgenerated@remote.test\\u003e\",\"in_reply_to\":\"\",\"references\":\"\",\"thread_id\":\"\u003cgenerated@remote.test\\u003e\",\"sender\":\"someone@remote.test\",\"sender_name\":\"\",\"recipients_to\":[],\"recipients_cc\":[],\"subject\":\"s\",\"sealed\":\"…\",\"size_bytes\":1,\"raw_size\":184,\"downgraded_size\":198,\"has_attachments\":false,\"is_read\":false,\"is_dsn\":false,\"is_flagged\":false,\"is_starred\":false,\"is_draft\":false,\"is_deleted\":false,\"at\":\"…\",\"date_header\":null,\"at\":\"…\",\"at\":\"…\"}}\n",
+  "stored": "{\"attachments\":[],\"calendar\":[],\"holds\":[],\"messages\":[{\"answered\":false,\"body_html\":\"\",\"body_text\":\"\",\"calendar\":\"[]\",\"cc\":\"[]\",\"downgraded_size\":198,\"draft\":false,\"flagged\":false,\"folder\":\"INBOX\",\"has_attachments\":false,\"headers\":\"[]\",\"in_reply_to\":\"\",\"internal_date_fixed\":false,\"message_id\":\"\u003cgenerated@remote.test\\u003e\",\"raw_is_text\":false,\"raw_sha256\":\"a1279367c81ab2e27612ecdedab29764aeed82c9466c7ee6379c0c9762ebf85d\",\"raw_size\":184,\"read\":false,\"references\":\"\",\"require_tls\":false,\"rule_class\":\"\",\"sealed\":\"…\",\"sender\":\"someone@remote.test\",\"sender_name\":\"\",\"size_bytes\":1,\"starred\":false,\"subject\":\"s\",\"thread_id\":\"\u003cgenerated@remote.test\\u003e\",\"tls\":null,\"tls_version\":\"\",\"to\":\"[]\"}],\"usage\":[{\"attachment\":0,\"body\":0,\"count\":1,\"subject\":1}],\"used\":[1,0]}"
  },
  "gateway/null": {
   "status": 422,
@@ -211,7 +211,7 @@
  },
  "gateway/raw_and_recipients_nul": {
   "status": 422,
-  "answer": "{\"error\":{\"code\":\"validation_failed\",\"message\":\"Request body failed validation\",\"details\":{\"fields\":{\"raw_message\":\"must not contain a NUL byte\",\"recipients_to\":\"must not contain a NUL byte\"}}}}\n",
+  "answer": "{\"error\":{\"code\":\"validation_failed\",\"message\":\"Request body failed validation\",\"details\":{\"fields\":{\"recipients_to\":\"must not contain a NUL byte\"}}}}\n",
   "stored": "{\"attachments\":[],\"calendar\":[],\"holds\":[],\"messages\":[],\"usage\":[{\"attachment\":0,\"body\":0,\"count\":0,\"subject\":0}],\"used\":[0,0]}"
  },
  "gateway/raw_empty": {
@@ -220,9 +220,9 @@
   "stored": "{\"attachments\":[],\"calendar\":[],\"holds\":[],\"messages\":[{\"answered\":false,\"body_html\":\"\",\"body_text\":\"t\",\"calendar\":\"[]\",\"cc\":\"[]\",\"downgraded_size\":0,\"draft\":false,\"flagged\":false,\"folder\":\"INBOX\",\"has_attachments\":false,\"headers\":\"[]\",\"in_reply_to\":\"\",\"internal_date_fixed\":false,\"message_id\":\"\\u003cz@remote.test\\u003e\",\"raw_is_text\":true,\"raw_sha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\",\"raw_size\":0,\"read\":false,\"references\":\"\",\"require_tls\":false,\"rule_class\":\"\",\"sealed\":\"4418bc00cf0e618f8bb90e36bb714095fcdd2ff49c8cb9ef0900b33ed0c6973c\",\"sender\":\"someone@remote.test\",\"sender_name\":\"\",\"size_bytes\":2,\"starred\":false,\"subject\":\"s\",\"thread_id\":\"\\u003cz@remote.test\\u003e\",\"tls\":null,\"tls_version\":\"\",\"to\":\"[]\"}],\"usage\":[{\"attachment\":0,\"body\":1,\"count\":1,\"subject\":1}],\"used\":[2,0]}"
  },
  "gateway/raw_escaped": {
-  "status": 500,
-  "answer": "{\"error\":{\"code\":\"internal_error\",\"message\":\"Failed to deliver message\"}}\n",
-  "stored": "{\"attachments\":[],\"calendar\":[],\"holds\":[],\"messages\":[],\"usage\":[{\"attachment\":0,\"body\":0,\"count\":0,\"subject\":0}],\"used\":[0,0]}"
+  "status": 201,
+  "answer": "{\"data\":{\"class\":\"person\",\"id\":0,\"mailbox_id\":0,\"folder\":\"INBOX\",\"message_id\":\"\u003cgenerated@remote.test\\u003e\",\"in_reply_to\":\"\",\"references\":\"\",\"thread_id\":\"\u003cgenerated@remote.test\\u003e\",\"sender\":\"someone@remote.test\",\"sender_name\":\"\",\"recipients_to\":[],\"recipients_cc\":[],\"subject\":\"s\",\"sealed\":\"…\",\"size_bytes\":1,\"raw_size\":20,\"downgraded_size\":31,\"has_attachments\":false,\"is_read\":false,\"is_dsn\":false,\"is_flagged\":false,\"is_starred\":false,\"is_draft\":false,\"is_deleted\":false,\"at\":\"…\",\"date_header\":null,\"at\":\"…\",\"at\":\"…\"}}\n",
+  "stored": "{\"attachments\":[],\"calendar\":[],\"holds\":[],\"messages\":[{\"answered\":false,\"body_html\":\"\",\"body_text\":\"\",\"calendar\":\"[]\",\"cc\":\"[]\",\"downgraded_size\":31,\"draft\":false,\"flagged\":false,\"folder\":\"INBOX\",\"has_attachments\":false,\"headers\":\"[]\",\"in_reply_to\":\"\",\"internal_date_fixed\":false,\"message_id\":\"\u003cgenerated@remote.test\\u003e\",\"raw_is_text\":false,\"raw_sha256\":\"7ac7f181a134323d2b2c470f86fc80d0896717213d10385a947a0a40f6b49d8f\",\"raw_size\":20,\"read\":false,\"references\":\"\",\"require_tls\":false,\"rule_class\":\"\",\"sealed\":\"…\",\"sender\":\"someone@remote.test\",\"sender_name\":\"\",\"size_bytes\":1,\"starred\":false,\"subject\":\"s\",\"thread_id\":\"\u003cgenerated@remote.test\\u003e\",\"tls\":null,\"tls_version\":\"\",\"to\":\"[]\"}],\"usage\":[{\"attachment\":0,\"body\":0,\"count\":1,\"subject\":1}],\"used\":[1,0]}"
  },
  "gateway/raw_not_base64": {
   "status": 422,
@@ -230,9 +230,9 @@
   "stored": "{\"attachments\":[],\"calendar\":[],\"holds\":[],\"messages\":[],\"usage\":[{\"attachment\":0,\"body\":0,\"count\":0,\"subject\":0}],\"used\":[0,0]}"
  },
  "gateway/raw_nul": {
-  "status": 422,
-  "answer": "{\"error\":{\"code\":\"validation_failed\",\"message\":\"Request body failed validation\",\"details\":{\"fields\":{\"raw_message\":\"must not contain a NUL byte\"}}}}\n",
-  "stored": "{\"attachments\":[],\"calendar\":[],\"holds\":[],\"messages\":[],\"usage\":[{\"attachment\":0,\"body\":0,\"count\":0,\"subject\":0}],\"used\":[0,0]}"
+  "status": 201,
+  "answer": "{\"data\":{\"class\":\"person\",\"id\":0,\"mailbox_id\":0,\"folder\":\"INBOX\",\"message_id\":\"\u003cgenerated@remote.test\\u003e\",\"in_reply_to\":\"\",\"references\":\"\",\"thread_id\":\"\u003cgenerated@remote.test\\u003e\",\"sender\":\"someone@remote.test\",\"sender_name\":\"\",\"recipients_to\":[],\"recipients_cc\":[],\"subject\":\"s\",\"sealed\":\"…\",\"size_bytes\":1,\"raw_size\":18,\"downgraded_size\":18,\"has_attachments\":false,\"is_read\":false,\"is_dsn\":false,\"is_flagged\":false,\"is_starred\":false,\"is_draft\":false,\"is_deleted\":false,\"at\":\"…\",\"date_header\":null,\"at\":\"…\",\"at\":\"…\"}}\n",
+  "stored": "{\"attachments\":[],\"calendar\":[],\"holds\":[],\"messages\":[{\"answered\":false,\"body_html\":\"\",\"body_text\":\"\",\"calendar\":\"[]\",\"cc\":\"[]\",\"downgraded_size\":18,\"draft\":false,\"flagged\":false,\"folder\":\"INBOX\",\"has_attachments\":false,\"headers\":\"[]\",\"in_reply_to\":\"\",\"internal_date_fixed\":false,\"message_id\":\"\u003cgenerated@remote.test\\u003e\",\"raw_is_text\":false,\"raw_sha256\":\"2c8d4f375524a3e15ebac6ae6527c10fa296600d4849fc9d53026a7b609b17b6\",\"raw_size\":18,\"read\":false,\"references\":\"\",\"require_tls\":false,\"rule_class\":\"\",\"sealed\":\"…\",\"sender\":\"someone@remote.test\",\"sender_name\":\"\",\"size_bytes\":1,\"starred\":false,\"subject\":\"s\",\"thread_id\":\"\u003cgenerated@remote.test\\u003e\",\"tls\":null,\"tls_version\":\"\",\"to\":\"[]\"}],\"usage\":[{\"attachment\":0,\"body\":0,\"count\":1,\"subject\":1}],\"used\":[1,0]}"
  },
  "gateway/raw_null": {
   "status": 422,
@@ -250,9 +250,9 @@
   "stored": "{\"attachments\":[],\"calendar\":[],\"holds\":[],\"messages\":[{\"answered\":false,\"body_html\":\"\",\"body_text\":\"\",\"calendar\":\"[]\",\"cc\":\"[]\",\"downgraded_size\":17,\"draft\":false,\"flagged\":false,\"folder\":\"INBOX\",\"has_attachments\":false,\"headers\":\"[]\",\"in_reply_to\":\"\",\"internal_date_fixed\":false,\"message_id\":\"\u003cgenerated@remote.test\\u003e\",\"raw_is_text\":true,\"raw_sha256\":\"c1d19a79c78cb36d0166affd09a3bd7df8bdacb35767bc15124c0c1088ca09d1\",\"raw_size\":17,\"read\":false,\"references\":\"\",\"require_tls\":false,\"rule_class\":\"\",\"sealed\":\"…\",\"sender\":\"someone@remote.test\",\"sender_name\":\"\",\"size_bytes\":1,\"starred\":false,\"subject\":\"s\",\"thread_id\":\"\u003cgenerated@remote.test\\u003e\",\"tls\":null,\"tls_version\":\"\",\"to\":\"[]\"}],\"usage\":[{\"attachment\":0,\"body\":0,\"count\":1,\"subject\":1}],\"used\":[1,0]}"
  },
  "gateway/raw_numbers_nul": {
-  "status": 422,
-  "answer": "{\"error\":{\"code\":\"validation_failed\",\"message\":\"Request body failed validation\",\"details\":{\"fields\":{\"raw_message\":\"must not contain a NUL byte\"}}}}\n",
-  "stored": "{\"attachments\":[],\"calendar\":[],\"holds\":[],\"messages\":[],\"usage\":[{\"attachment\":0,\"body\":0,\"count\":0,\"subject\":0}],\"used\":[0,0]}"
+  "status": 201,
+  "answer": "{\"data\":{\"class\":\"person\",\"id\":0,\"mailbox_id\":0,\"folder\":\"INBOX\",\"message_id\":\"\u003cgenerated@remote.test\\u003e\",\"in_reply_to\":\"\",\"references\":\"\",\"thread_id\":\"\u003cgenerated@remote.test\\u003e\",\"sender\":\"someone@remote.test\",\"sender_name\":\"\",\"recipients_to\":[],\"recipients_cc\":[],\"subject\":\"s\",\"sealed\":\"…\",\"size_bytes\":1,\"raw_size\":2,\"downgraded_size\":2,\"has_attachments\":false,\"is_read\":false,\"is_dsn\":false,\"is_flagged\":false,\"is_starred\":false,\"is_draft\":false,\"is_deleted\":false,\"at\":\"…\",\"date_header\":null,\"at\":\"…\",\"at\":\"…\"}}\n",
+  "stored": "{\"attachments\":[],\"calendar\":[],\"holds\":[],\"messages\":[{\"answered\":false,\"body_html\":\"\",\"body_text\":\"\",\"calendar\":\"[]\",\"cc\":\"[]\",\"downgraded_size\":2,\"draft\":false,\"flagged\":false,\"folder\":\"INBOX\",\"has_attachments\":false,\"headers\":\"[]\",\"in_reply_to\":\"\",\"internal_date_fixed\":false,\"message_id\":\"\u003cgenerated@remote.test\\u003e\",\"raw_is_text\":false,\"raw_sha256\":\"308b561495666ebb99e79cf47c5da05846f05bb02c5daa39738663f8daa12687\",\"raw_size\":2,\"read\":false,\"references\":\"\",\"require_tls\":false,\"rule_class\":\"\",\"sealed\":\"…\",\"sender\":\"someone@remote.test\",\"sender_name\":\"\",\"size_bytes\":1,\"starred\":false,\"subject\":\"s\",\"thread_id\":\"\u003cgenerated@remote.test\\u003e\",\"tls\":null,\"tls_version\":\"\",\"to\":\"[]\"}],\"usage\":[{\"attachment\":0,\"body\":0,\"count\":1,\"subject\":1}],\"used\":[1,0]}"
  },
  "gateway/raw_object": {
   "status": 422,
@@ -477,7 +477,7 @@
  "restmail/not_utf8": {
   "status": 201,
   "answer": "{\"data\":{\"delivered\":[\"owner@spool.test\"],\"failed\":[]}}\n",
-  "stored": "{\"attachments\":[],\"calendar\":[],\"holds\":[],\"messages\":[{\"answered\":false,\"body_html\":\"\",\"body_text\":\"bodï¿½\\r\\n\",\"calendar\":\"[]\",\"cc\":\"[]\",\"downgraded_size\":206,\"draft\":false,\"flagged\":false,\"folder\":\"INBOX\",\"has_attachments\":false,\"headers\":\"{\\\"To\\\": [\\\"owner@spool.test\\\"], \\\"From\\\": [\\\"someone@remote.test\\\"], \\\"Subject\\\": [\\\"caf�\\\"], \\\"Message-Id\\\": [\\\"\\u003clatin@remote.test\\u003e\\\"], \\\"Content-Type\\\": [\\\"text/plain; charset=iso-8859-1\\\"], \\\"Content-Transfer-Encoding\\\": [\\\"8bit\\\"]}\",\"in_reply_to\":\"\",\"internal_date_fixed\":false,\"message_id\":\"\\u003clatin@remote.test\\u003e\",\"raw_is_text\":true,\"raw_sha256\":\"42617c91ae3394aca3b4982442bfbbe900ad77e25497d08afa43818d0d16b96f\",\"raw_size\":188,\"read\":false,\"references\":\"\",\"require_tls\":false,\"rule_class\":\"\",\"sealed\":\"59bc8aba28975071e2c7dc025418073d1c7241dd5e5d83e7d3c99ff2cae1323d\",\"sender\":\"someone@remote.test\",\"sender_name\":\"\",\"size_bytes\":17,\"starred\":false,\"subject\":\"caf�\",\"thread_id\":\"\\u003clatin@remote.test\\u003e\",\"tls\":null,\"tls_version\":\"\",\"to\":\"[\\\"owner@spool.test\\\"]\"}],\"usage\":[{\"attachment\":0,\"body\":11,\"count\":1,\"subject\":6}],\"used\":[17,0]}"
+  "stored": "{\"attachments\":[],\"calendar\":[],\"holds\":[],\"messages\":[{\"answered\":false,\"body_html\":\"\",\"body_text\":\"bodé\\r\\n\",\"calendar\":\"[]\",\"cc\":\"[]\",\"downgraded_size\":198,\"draft\":false,\"flagged\":false,\"folder\":\"INBOX\",\"has_attachments\":false,\"headers\":\"{\\\"To\\\": [\\\"owner@spool.test\\\"], \\\"From\\\": [\\\"someone@remote.test\\\"], \\\"Subject\\\": [\\\"caf�\\\"], \\\"Message-Id\\\": [\\\"\\u003clatin@remote.test\\u003e\\\"], \\\"Content-Type\\\": [\\\"text/plain; charset=iso-8859-1\\\"], \\\"Content-Transfer-Encoding\\\": [\\\"8bit\\\"]}\",\"in_reply_to\":\"\",\"internal_date_fixed\":false,\"message_id\":\"\\u003clatin@remote.test\\u003e\",\"raw_is_text\":false,\"raw_sha256\":\"a1279367c81ab2e27612ecdedab29764aeed82c9466c7ee6379c0c9762ebf85d\",\"raw_size\":184,\"read\":false,\"references\":\"\",\"require_tls\":false,\"rule_class\":\"\",\"sealed\":\"6e2139a32e23236c8845d6b87d7c08df2497791fad4c96377d217a5a13ea078d\",\"sender\":\"someone@remote.test\",\"sender_name\":\"\",\"size_bytes\":13,\"starred\":false,\"subject\":\"caf�\",\"thread_id\":\"\\u003clatin@remote.test\\u003e\",\"tls\":null,\"tls_version\":\"\",\"to\":\"[\\\"owner@spool.test\\\"]\"}],\"usage\":[{\"attachment\":0,\"body\":7,\"count\":1,\"subject\":6}],\"used\":[13,0]}"
  },
  "restmail/null": {
   "status": 422,
@@ -557,17 +557,22 @@
  "restmail/raw_escaped": {
   "status": 201,
   "answer": "{\"data\":{\"delivered\":[\"owner@spool.test\"],\"failed\":[]}}\n",
-  "stored": "{\"attachments\":[],\"calendar\":[],\"holds\":[],\"messages\":[{\"answered\":false,\"body_html\":\"\",\"body_text\":\"b�A/\\r\\n\",\"calendar\":\"[]\",\"cc\":\"[]\",\"downgraded_size\":86,\"draft\":false,\"flagged\":false,\"folder\":\"INBOX\",\"has_attachments\":false,\"headers\":\"{\\\"Subject\\\": [\\\"café 😀\\\"], \\\"Message-Id\\\": [\\\"\\u003cesc@remote.test\\u003e\\\"]}\",\"in_reply_to\":\"\",\"internal_date_fixed\":false,\"message_id\":\"\\u003cesc@remote.test\\u003e\",\"raw_is_text\":true,\"raw_sha256\":\"628191c23b31c81bb2d8483beac2c0845d6f47d55b809ee349b608b07853c537\",\"raw_size\":62,\"read\":false,\"references\":\"\",\"require_tls\":false,\"rule_class\":\"\",\"sealed\":\"4923e1dc73b33bbcbd4c0b9faac5a482f85bb80ffc62ee5b10433459241511d7\",\"sender\":\"someone@remote.test\",\"sender_name\":\"\",\"size_bytes\":18,\"starred\":false,\"subject\":\"café 😀\",\"thread_id\":\"\\u003cesc@remote.test\\u003e\",\"tls\":null,\"tls_version\":\"\",\"to\":\"[\\\"owner@spool.test\\\"]\"}],\"usage\":[{\"attachment\":0,\"body\":8,\"count\":1,\"subject\":10}],\"used\":[18,0]}"
+  "stored": "{\"attachments\":[],\"calendar\":[],\"holds\":[],\"messages\":[{\"answered\":false,\"body_html\":\"\",\"body_text\":\"\",\"calendar\":\"[]\",\"cc\":\"[]\",\"downgraded_size\":31,\"draft\":false,\"flagged\":false,\"folder\":\"INBOX\",\"has_attachments\":false,\"headers\":\"[]\",\"in_reply_to\":\"\",\"internal_date_fixed\":false,\"message_id\":\"\\u003cesc@remote.test\\u003e\",\"raw_is_text\":false,\"raw_sha256\":\"7ac7f181a134323d2b2c470f86fc80d0896717213d10385a947a0a40f6b49d8f\",\"raw_size\":20,\"read\":false,\"references\":\"\",\"require_tls\":false,\"rule_class\":\"\",\"sealed\":\"d473a86e75f4c2a5b1c112f389bd3de0dc5ff7c06c8c054dbecca47dc392f587\",\"sender\":\"someone@remote.test\",\"sender_name\":\"\",\"size_bytes\":0,\"starred\":false,\"subject\":\"\",\"thread_id\":\"\\u003cesc@remote.test\\u003e\",\"tls\":null,\"tls_version\":\"\",\"to\":\"[\\\"owner@spool.test\\\"]\"}],\"usage\":[{\"attachment\":0,\"body\":0,\"count\":1,\"subject\":0}],\"used\":[0,0]}"
+ },
+ "restmail/raw_not_base64": {
+  "status": 422,
+  "answer": "{\"error\":{\"code\":\"validation_failed\",\"message\":\"Request body failed validation\",\"details\":{\"fields\":{\"raw_message\":\"must be a base64 string\"}}}}\n",
+  "stored": "{\"attachments\":[],\"calendar\":[],\"holds\":[],\"messages\":[],\"usage\":[{\"attachment\":0,\"body\":0,\"count\":0,\"subject\":0}],\"used\":[0,0]}"
  },
  "restmail/raw_not_utf8": {
   "status": 201,
   "answer": "{\"data\":{\"delivered\":[\"owner@spool.test\"],\"failed\":[]}}\n",
-  "stored": "{\"attachments\":[],\"calendar\":[],\"holds\":[],\"messages\":[{\"answered\":false,\"body_html\":\"\",\"body_text\":\"bé�\\r\\n\",\"calendar\":\"[]\",\"cc\":\"[]\",\"downgraded_size\":72,\"draft\":false,\"flagged\":false,\"folder\":\"INBOX\",\"has_attachments\":false,\"headers\":\"{\\\"Subject\\\": [\\\"�\\\"], \\\"Message-Id\\\": [\\\"\\u003cn8@remote.test\\u003e\\\"]}\",\"in_reply_to\":\"\",\"internal_date_fixed\":false,\"message_id\":\"\\u003cn8@remote.test\\u003e\",\"raw_is_text\":true,\"raw_sha256\":\"c53b855751913fa6c90905a13c31c00faaa09ee821dbd9dbee9a0b466d86d675\",\"raw_size\":54,\"read\":false,\"references\":\"\",\"require_tls\":false,\"rule_class\":\"\",\"sealed\":\"69194afc4d2075961c6bb009d6f72f3e6f8a402470af5cd72732eb4ec55b28ba\",\"sender\":\"someone@remote.test\",\"sender_name\":\"\",\"size_bytes\":11,\"starred\":false,\"subject\":\"�\",\"thread_id\":\"\\u003cn8@remote.test\\u003e\",\"tls\":null,\"tls_version\":\"\",\"to\":\"[\\\"owner@spool.test\\\"]\"}],\"usage\":[{\"attachment\":0,\"body\":8,\"count\":1,\"subject\":3}],\"used\":[11,0]}"
+  "stored": "{\"attachments\":[],\"calendar\":[],\"holds\":[],\"messages\":[{\"answered\":false,\"body_html\":\"\",\"body_text\":\"bé�\\r\\n\",\"calendar\":\"[]\",\"cc\":\"[]\",\"downgraded_size\":64,\"draft\":false,\"flagged\":false,\"folder\":\"INBOX\",\"has_attachments\":false,\"headers\":\"{\\\"Subject\\\": [\\\"�\\\"], \\\"Message-Id\\\": [\\\"\\u003cn8@remote.test\\u003e\\\"]}\",\"in_reply_to\":\"\",\"internal_date_fixed\":false,\"message_id\":\"\\u003cn8@remote.test\\u003e\",\"raw_is_text\":false,\"raw_sha256\":\"2a1acecd75e2b1f8b40db3ab51013706d54bfe4cf91cc0ce024b1748e0e11a30\",\"raw_size\":50,\"read\":false,\"references\":\"\",\"require_tls\":false,\"rule_class\":\"\",\"sealed\":\"496946879bea8ff9761152c46635648f78339d1328db72b0396fb54d9041c404\",\"sender\":\"someone@remote.test\",\"sender_name\":\"\",\"size_bytes\":11,\"starred\":false,\"subject\":\"�\",\"thread_id\":\"\\u003cn8@remote.test\\u003e\",\"tls\":null,\"tls_version\":\"\",\"to\":\"[\\\"owner@spool.test\\\"]\"}],\"usage\":[{\"attachment\":0,\"body\":8,\"count\":1,\"subject\":3}],\"used\":[11,0]}"
  },
  "restmail/raw_nul": {
-  "status": 422,
-  "answer": "{\"error\":{\"code\":\"undeliverable\",\"message\":\"No recipient accepted the message\"}}\n",
-  "stored": "{\"attachments\":[],\"calendar\":[],\"holds\":[],\"messages\":[],\"usage\":[{\"attachment\":0,\"body\":0,\"count\":0,\"subject\":0}],\"used\":[0,0]}"
+  "status": 201,
+  "answer": "{\"data\":{\"delivered\":[\"owner@spool.test\"],\"failed\":[]}}\n",
+  "stored": "{\"attachments\":[],\"calendar\":[],\"holds\":[],\"messages\":[{\"answered\":false,\"body_html\":\"\",\"body_text\":\"b�dy\",\"calendar\":\"[]\",\"cc\":\"[]\",\"downgraded_size\":37,\"draft\":false,\"flagged\":false,\"folder\":\"INBOX\",\"has_attachments\":false,\"headers\":\"{\\\"Message-Id\\\": [\\\"\\u003cnul@remote.test\\u003e\\\"]}\",\"in_reply_to\":\"\",\"internal_date_fixed\":false,\"message_id\":\"\\u003cnul@remote.test\\u003e\",\"raw_is_text\":false,\"raw_sha256\":\"addcb1b6b177640c7ef5a94479287e801ebdd0270fc0ae2a6f04931e45639549\",\"raw_size\":37,\"read\":false,\"references\":\"\",\"require_tls\":false,\"rule_class\":\"\",\"sealed\":\"9a4d1b1ed164e7ceb148ae8ec4434f9645d812481a440e833febadcae7774821\",\"sender\":\"someone@remote.test\",\"sender_name\":\"\",\"size_bytes\":6,\"starred\":false,\"subject\":\"\",\"thread_id\":\"\\u003cnul@remote.test\\u003e\",\"tls\":null,\"tls_version\":\"\",\"to\":\"[\\\"owner@spool.test\\\"]\"}],\"usage\":[{\"attachment\":0,\"body\":6,\"count\":1,\"subject\":0}],\"used\":[6,0]}"
  },
  "restmail/raw_null": {
   "status": 422,
@@ -576,7 +581,7 @@
  },
  "restmail/raw_number": {
   "status": 422,
-  "answer": "{\"error\":{\"code\":\"validation_failed\",\"message\":\"Request body failed validation\",\"details\":{\"fields\":{\"raw_message\":\"must be a string\"}}}}\n",
+  "answer": "{\"error\":{\"code\":\"validation_failed\",\"message\":\"Request body failed validation\",\"details\":{\"fields\":{\"raw_message\":\"must be a base64 string\"}}}}\n",
   "stored": "{\"attachments\":[],\"calendar\":[],\"holds\":[],\"messages\":[],\"usage\":[{\"attachment\":0,\"body\":0,\"count\":0,\"subject\":0}],\"used\":[0,0]}"
  },
  "restmail/raw_twice": {
@@ -635,9 +640,9 @@
   "stored": "{\"attachments\":[],\"calendar\":[],\"holds\":[],\"messages\":[{\"answered\":false,\"body_html\":\"\",\"body_text\":\"a�b�\",\"calendar\":\"[]\",\"cc\":\"[]\",\"downgraded_size\":0,\"draft\":false,\"flagged\":false,\"folder\":\"INBOX\",\"has_attachments\":false,\"headers\":\"[]\",\"in_reply_to\":\"\",\"internal_date_fixed\":false,\"message_id\":\"\\u003cu8@remote.test\\u003e\",\"raw_is_text\":true,\"raw_sha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\",\"raw_size\":0,\"read\":false,\"references\":\"\",\"require_tls\":false,\"rule_class\":\"\",\"sealed\":\"1d607b95a786f08f8124023eb4a0fa0bde89b77cc2559218df4061ca08089f3c\",\"sender\":\"someone@remote.test\",\"sender_name\":\"\",\"size_bytes\":8,\"starred\":false,\"subject\":\"\",\"thread_id\":\"\\u003cu8@remote.test\\u003e\",\"tls\":null,\"tls_version\":\"\",\"to\":\"[\\\"owner@spool.test\\\"]\"}],\"usage\":[{\"attachment\":0,\"body\":8,\"count\":1,\"subject\":0}],\"used\":[8,0]}"
  },
  "restmail/text_nul": {
-  "status": 422,
-  "answer": "{\"error\":{\"code\":\"undeliverable\",\"message\":\"No recipient accepted the message\"}}\n",
-  "stored": "{\"attachments\":[],\"calendar\":[],\"holds\":[],\"messages\":[],\"usage\":[{\"attachment\":0,\"body\":0,\"count\":0,\"subject\":0}],\"used\":[0,0]}"
+  "status": 201,
+  "answer": "{\"data\":{\"delivered\":[\"owner@spool.test\"],\"failed\":[]}}\n",
+  "stored": "{\"attachments\":[],\"calendar\":[],\"holds\":[],\"messages\":[{\"answered\":false,\"body_html\":\"\",\"body_text\":\"a�b\",\"calendar\":\"[]\",\"cc\":\"[]\",\"downgraded_size\":0,\"draft\":false,\"flagged\":false,\"folder\":\"INBOX\",\"has_attachments\":false,\"headers\":\"[]\",\"in_reply_to\":\"\",\"internal_date_fixed\":false,\"message_id\":\"\\u003ctn0@remote.test\\u003e\",\"raw_is_text\":true,\"raw_sha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\",\"raw_size\":0,\"read\":false,\"references\":\"\",\"require_tls\":false,\"rule_class\":\"\",\"sealed\":\"d122a8ba07df07f2fe7626e8f069cd0d5d638765c1cd8618df0a9486ec336b33\",\"sender\":\"someone@remote.test\",\"sender_name\":\"\",\"size_bytes\":5,\"starred\":false,\"subject\":\"\",\"thread_id\":\"\\u003ctn0@remote.test\\u003e\",\"tls\":null,\"tls_version\":\"\",\"to\":\"[\\\"owner@spool.test\\\"]\"}],\"usage\":[{\"attachment\":0,\"body\":5,\"count\":1,\"subject\":0}],\"used\":[5,0]}"
  },
  "restmail/text_null": {
   "status": 422,
