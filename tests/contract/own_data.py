@@ -1,10 +1,10 @@
 """The operations that start from a clean database, in a run of their own (#1385).
 
 MOVED resets and seeds before each exchange and makes the data that exchange
-needs (hooks.py, start_clean). A reset removes what createDomain and
-createPipeline made, so the run also sends everything that follows their links,
-which must still pass with that domain or pipeline gone: the same operations
-without a reset are the comparison.
+needs (hooks.py, start_clean). A reset removes what createDomain,
+createPipeline and createAlias made, so the run also sends everything that
+follows their links, which must still pass with that domain, pipeline or alias
+gone: the same operations without a reset are the comparison.
 
 A reset also removes every principal and fixture the other phases use, and the
 primary run still has operations that depend on them, so this is sent after
@@ -32,6 +32,11 @@ MOVED = (
     "createPipeline",
     "testPipeline",
     "deletePipeline",
+    # createAlias's link reaches only these three, all moved.
+    "createAlias",
+    "getAlias",
+    "updateAlias",
+    "deleteAlias",
 )
 
 FOLLOWS_THE_CREATED_DOMAIN = (

@@ -66,8 +66,10 @@ Vertrag sequences examples with linked resource IDs, but coverage starts from
 the description's original placeholder IDs. Its before hooks receive the
 original transaction name, **not** the reporter's `coverage:` prefix.
 `run.sh` therefore scopes `CONTRACT_COVERAGE=1` to the coverage process (and its
-retry). Alias and sender-rule hooks resolve only placeholder `1` to the
-fixture they own, recreating that fixture if consumed. Sender-rule removal also
+retry). Sender-rule hooks resolve only placeholder `1` to the
+fixture they own, recreating that fixture if consumed. The alias hooks send
+placeholder `1`, like any positive id other than missing's that no alias has,
+to an alias of their own. Sender-rule removal also
 works with an empty process stash: its coverage placeholder gets a dedicated
 rule through the admin API, independently for each list and removal. Other IDs,
 invalid paths, request bodies and transaction credentials are unchanged.
@@ -1025,9 +1027,11 @@ RESTMAIL_INTERNAL_MTLS=true`, then `tests/contract/run.sh gate --operation-id
   and, for `addToAllowlist`, `addToBlocklist` and `createAlias`, the entry a
   previous probe added removed when generated bodies repeat it (the domain
   stays for the whole run, so a repeat is otherwise a 409), with an alias
-  probe's domain hosted first. The entries `removeFromAllowlist`,
-  `removeFromBlocklist`, `getAlias`, `updateAlias` and `deleteAlias` are linked
-  to are followed to their current id, and added again if a probe left none.
+  probe's domain hosted first. The entries `removeFromAllowlist` and
+  `removeFromBlocklist` are linked to are followed to their current id, and
+  added again if a probe left none. `getAlias`, `updateAlias` and
+  `deleteAlias` keep a linked id that still has an alias, and otherwise get
+  an alias of their own (`on_an_alias_of_its_own`).
   TLS-RPT reports are sent a second apart: the route is rate-limited. Their
   schema requires a policy domain and caps the array at 100 policies, matching
   the storage limit. The hook hosts generated policy domains before sending
@@ -1206,10 +1210,24 @@ a reset, an update to a positive id other than missing's gets a pipeline that
 exists, on the domain that stands in for the created one
 (`a_live_pipeline_for_the_link`); a run with no reset changes nothing there.
 
+`createAlias`, `getAlias`, `updateAlias` and `deleteAlias` reset and seed before
+each exchange too, refusals included. A create is sent as documented after its
+reset: no earlier probe's alias is left, and the seeded `restmail.test` hosts
+`sales@restmail.test`. A read, update or delete gets an alias of its own, on a
+domain of its own (`contract-own-alias@contract-own-domain.test`). Missing's
+`2147483647`, a non-positive or undecodable id and every documented 404 keep
+their ids. `createAlias`'s link reaches only those three, so nothing that follows
+it is left unmoved. No alias is carried between exchanges, so `hooks.stash`
+holds no `created_alias`: without a reset, an exchange whose positive id no
+longer has an alias (the documented delete or a probe removed it) gets the one
+at `contract-own-alias@restmail.test`, made if absent. `created_alias_probes`
+stays, because a create without a reset (the primary run and coverage) still
+removes only the repeated probe aliases it made.
+
 This happens only with `CONTRACT_RESET_SEED=1`, which `tests/contract/run.sh own-data`
 sets, and that phase is a gate of its own, sent by `chore test:contract-teardown`
 just before the teardown. It sends the moved operations with everything that follows
-`createDomain`'s and `createPipeline`'s links (`own_data.py`), and fails on a skipped
+`createDomain`'s, `createPipeline`'s and `createAlias`'s links (`own_data.py`), and fails on a skipped
 exchange as well as a failed one.
 
 **The primary run does not reset.** It still sends these operations as before, because a
