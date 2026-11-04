@@ -141,6 +141,12 @@ REFERENCE_PORTS = {"submission": 587, "imaps": 993}
 # delivery in mail-in is deferred with a 451 for this long before its retry
 # is accepted, so mail-in waits this on top of --mail-timeout.
 GREYLIST_DELAY = 300
+# The latest the first install's queue retries a delivery the receiver
+# deferred with greylisting: the greylisted schedule's first retry (7 minutes,
+# internal/gateway/queue/retry.go) plus its jitter of up to a fifth. The peer
+# install greylists restmail-peer's first RESTMAIL delivery (503 deferred), so
+# restmail-peer waits this on top of --mail-timeout.
+GREYLIST_RETRY = 7 * 60 * 6 // 5
 
 # The first install's queue logs this line, with the url and the recipient,
 # when a RESTMAIL delivery succeeds (internal/gateway/queue/worker.go); and
@@ -558,6 +564,11 @@ def mail_in_wait(mail_timeout: int) -> int:
     return GREYLIST_DELAY + mail_timeout
 
 
+def restmail_peer_wait(mail_timeout: int) -> int:
+    """Seconds restmail-peer waits: the queue's greylisted retry the first attempt meets, then mail_timeout."""
+    return GREYLIST_RETRY + mail_timeout
+
+
 def bootstrap_session(api: "Api", cluster: "Cluster") -> tuple[str, str]:
     """Sign the install's bootstrap admin in as a person does the first time: its
     own password, an authenticator, then a full session. Returns the session's
@@ -944,11 +955,11 @@ class Stages:
                                 "body_text": "Sent by one REST Mail install to another (#1750 stage 3)."}, token)
         imap_port = self.cluster.forward("peer-imap-gateway", SERVICES["imap-gateway"], self.args.timeout,
                                          ns, f"{release}-imap-gateway")
-        raw, waited = wait_for(lambda: imap_read(imap_port, mailbox, password, subject, "the peer's IMAP"),
-                               self.args.mail_timeout)
+        wait = restmail_peer_wait(self.args.mail_timeout)
+        raw, waited = wait_for(lambda: imap_read(imap_port, mailbox, password, subject, "the peer's IMAP"), wait)
         if raw is None:
-            raise StepFailed(f"{mailbox} did not receive {subject!r} within {self.args.mail_timeout}s "
-                             f"(see the first install's smtp-gateway log)")
+            raise StepFailed(f"{mailbox} did not receive {subject!r} within {wait}s "
+                             f"(see the first install's smtp-gateway log; the peer greylists the first attempt)")
         (self.report_dir / "restmail-peer.eml").write_bytes(raw)
         received_with(raw, subject, admin)
         log = self.cluster.run("logs", f"deployment/{self.args.release}-smtp-gateway", "--all-containers=true",
