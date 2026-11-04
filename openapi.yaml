@@ -4230,6 +4230,12 @@ paths:
               operationId: getMessageTrace
               parameters:
                 id: '$response.body#/data/id'
+            # A message sent with a calendar_event keeps the invitation in
+            # its Sent copy (#1163).
+            respondToCalendar:
+              operationId: respondToCalendar
+              parameters:
+                id: '$response.body#/data/id'
         "202":
           description: Accepted and scheduled for the time in `scheduled_at`
           content:
@@ -4240,6 +4246,11 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/ScheduledSend"
+          links:
+            cancelScheduledMessage:
+              operationId: cancelScheduledMessage
+              parameters:
+                id: '$response.body#/data/id'
         '400':
           description: The body is not valid JSON or not the declared media type
           content:

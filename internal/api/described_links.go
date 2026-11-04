@@ -188,14 +188,21 @@ var responseLinks = map[string]map[string]map[string]oapifly.Link{
 			"updateDraft": {OperationID: "updateDraft", Parameters: map[string]string{"id": "$response.body#/data/id"}},
 		},
 	},
+	// A sent message that carries a calendar_event keeps the invitation in its Sent copy,
+	// which respondToCalendar replies to. A scheduled send (202) is what
+	// cancelScheduledMessage calls back (#1163).
 	"sendMessage": {
 		"201": {
-			"forwardMessage":  {OperationID: "forwardMessage", Parameters: map[string]string{"id": "$response.body#/data/id"}},
-			"getMessage":      {OperationID: "getMessage", Parameters: map[string]string{"id": "$response.body#/data/id"}},
-			"getMessageTrace": {OperationID: "getMessageTrace", Parameters: map[string]string{"id": "$response.body#/data/id"}},
-			"getRawMessage":   {OperationID: "getRawMessage", Parameters: map[string]string{"id": "$response.body#/data/id"}},
-			"listAttachments": {OperationID: "listAttachments", Parameters: map[string]string{"id": "$response.body#/data/id"}},
-			"updateMessage":   {OperationID: "updateMessage", Parameters: map[string]string{"id": "$response.body#/data/id"}},
+			"forwardMessage":    {OperationID: "forwardMessage", Parameters: map[string]string{"id": "$response.body#/data/id"}},
+			"getMessage":        {OperationID: "getMessage", Parameters: map[string]string{"id": "$response.body#/data/id"}},
+			"getMessageTrace":   {OperationID: "getMessageTrace", Parameters: map[string]string{"id": "$response.body#/data/id"}},
+			"getRawMessage":     {OperationID: "getRawMessage", Parameters: map[string]string{"id": "$response.body#/data/id"}},
+			"listAttachments":   {OperationID: "listAttachments", Parameters: map[string]string{"id": "$response.body#/data/id"}},
+			"respondToCalendar": {OperationID: "respondToCalendar", Parameters: map[string]string{"id": "$response.body#/data/id"}},
+			"updateMessage":     {OperationID: "updateMessage", Parameters: map[string]string{"id": "$response.body#/data/id"}},
+		},
+		"202": {
+			"cancelScheduledMessage": {OperationID: "cancelScheduledMessage", Parameters: map[string]string{"id": "$response.body#/data/id"}},
 		},
 	},
 	"setDKIMKey": {

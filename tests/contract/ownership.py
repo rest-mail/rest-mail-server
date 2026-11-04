@@ -32,12 +32,16 @@ its own mailbox, sent on the /api/v1/admin/mailboxes/{id} operations and the
 mailbox list.
 
 With --messages it writes the fourth: the two accounts again, sent the other's
-messages, drafts, scheduled sends and attachments (#1163). Their ids are a
-message's, not an account's, so the run declares none: the victim tenant makes
-each cell's resource itself, by the chain the description's links lead from
-(sendMessage, saveDraft, updateDraft, getRawMessage), and the cells no link
-leads to are reported unsent. hooks.py sends that chain, and the attacker's
-request, from the sender's own address (ownership_hooks.py). Its tenants'
+messages, drafts, scheduled sends, invitations and attachments (#1163). Their
+ids are a message's, not an account's: the victim tenant makes each cell's
+resource itself, by the chain the description's links lead from (sendMessage,
+saveDraft, updateDraft, getRawMessage). ownership_hooks.py sends that chain,
+and the attacker's request, from the sender's own address, schedules the
+victim's scheduled send for tomorrow and puts an invitation in its sent
+message, so the run provides future_time and calendar_invitation. No link
+leads to an attachment, so before the run each tenant imports a message with
+one into its own account through the API and declares its id as path.id,
+which only getAttachment, the one row without a chain, reads. Its tenants'
 principals file is the account run's.
 
 Usage: ownership.py [--domains|--mailboxes|--messages] <openapi.yaml> <vertrag.yml> <tenants.json> <out.yml> <report.xml>
@@ -47,9 +51,11 @@ import base64
 import json
 import os
 import sys
+import time
+import urllib.request
 
 import yaml
-from authorization import sign_in
+from authorization import LOGIN, sign_in
 
 # What an account holds on its own mailbox: an app password reads, writes and
 # sends, and a signed-in session also manages the account.
@@ -216,7 +222,10 @@ def account_principals(fixture):
 
 # Each account tenant's principals: the signed-in owner first, so the owner is
 # who a chain is sent as when it may call every operation of it.
-ACCOUNT_TENANTS = {"a": ["ordinary", "app-password"], "b": ["other", "other-app-password"]}
+ACCOUNT_TENANTS = {
+    "a": ["ordinary", "app-password"],
+    "b": ["other", "other-app-password"],
+}
 
 
 def main(spec_path, config_path, principals_path, out_path, report_path):
@@ -237,9 +246,102 @@ def main(spec_path, config_path, principals_path, out_path, report_path):
     return 0
 
 
+# What the message run's hooks make true (ownership_hooks.py): the victim's
+# scheduled send is for tomorrow, and its sent message carries an invitation,
+# so the links to cancelScheduledMessage and respondToCalendar have a resource.
+MESSAGE_STATES = ["future_time", "calendar_invitation"]
+
+
+def attachment_message(stamp):
+    """A message with one attachment, as an account already holding it imports it."""
+    return (
+        f"Message-ID: <contract-ownership-{stamp}@example.test>\r\n"
+        "From: Original <old@example.test>\r\n"
+        "Subject: ownership attachment\r\n"
+        "MIME-Version: 1.0\r\n"
+        'Content-Type: multipart/mixed; boundary="part"\r\n\r\n'
+        "--part\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n"
+        "See the attachment.\r\n"
+        "--part\r\nContent-Type: text/plain; name=notes.txt\r\n"
+        "Content-Disposition: attachment; filename=notes.txt\r\n"
+        "Content-Transfer-Encoding: base64\r\n\r\n"
+        + base64.b64encode(b"ownership notes\n").decode()
+        + "\r\n--part--\r\n"
+    ).encode()
+
+
+def call(endpoint, method, path, body=None, token=None):
+    request = urllib.request.Request(
+        endpoint.rstrip("/") + path,
+        data=None if body is None else json.dumps(body).encode(),
+        method=method,
+        headers={"Content-Type": "application/json"},
+    )
+    if token:
+        request.add_header("Authorization", "Bearer " + token)
+    with urllib.request.urlopen(request, timeout=20) as response:
+        return json.load(response)
+
+
+def held_attachment(endpoint, principal):
+    """The id of an attachment the account holds: signed in as it, a message
+    with one is imported into its own account (importMessage, which every
+    account may do on its own mailbox) and its attachment read back. No
+    operation links to getAttachment, so its id is declared."""
+    session = call(
+        endpoint,
+        "POST",
+        LOGIN,
+        {
+            "email": principal["address"],
+            "password": principal["password"],
+            "client": "native",
+        },
+    )
+    token = session["data"]["access_token"]
+    imported = call(
+        endpoint,
+        "POST",
+        "/api/v1/accounts/{}/messages/import".format(principal["id"]),
+        {
+            "raw_message": base64.b64encode(
+                attachment_message(time.time_ns())
+            ).decode(),
+            "folder": "INBOX",
+            "internal_date": "2026-01-02T03:04:05Z",
+        },
+        token,
+    )
+    listed = call(
+        endpoint,
+        "GET",
+        "/api/v1/messages/{}/attachments".format(imported["data"]["id"]),
+        token=token,
+    )
+    return str(listed["data"][0]["id"])
+
+
+def held_attachments(endpoint, fixture):
+    """Each account tenant's attachment as its declared path.id, or none, with
+    why, when one cannot be made: its getAttachment cells are then unsent."""
+    try:
+        return {
+            tenant: {"path.id": held_attachment(endpoint, fixture[principals[0]])}
+            for tenant, principals in ACCOUNT_TENANTS.items()
+        }
+    except (OSError, ValueError, KeyError, IndexError, TypeError) as error:
+        print(
+            f"ownership.py: no attachment declared for the message run: {error}",
+            file=sys.stderr,
+        )
+        return {}
+
+
 def messages(spec_path, config_path, principals_path, out_path, report_path):
-    """The message run: the account tenants, declaring no ids, sent the
-    message operations, with ownership_hooks.py loaded after the run's hooks."""
+    """The message run: the account tenants, sent the message operations, with
+    ownership_hooks.py loaded after the run's hooks. Every row but
+    getAttachment is linked from what the victim makes, so a tenant's only
+    declared id is its own attachment, which no row with a chain reads."""
     with open(principals_path) as source:
         fixture = json.load(source)
     config = run_config(spec_path, config_path, report_path)
@@ -249,9 +351,18 @@ def messages(spec_path, config_path, principals_path, out_path, report_path):
         os.path.join(here, "ownership_hooks.py"),
     ]
     config["only-matching"] = [MESSAGE_OPERATIONS]
+    config["provides"] = {
+        **(config.get("provides") or {}),
+        "state": list(MESSAGE_STATES),
+    }
     config["principals"] = account_principals(fixture)
+    ids = held_attachments(config["endpoint"], fixture)
     config["tenants"] = {
-        tenant: {"principals": principals} for tenant, principals in ACCOUNT_TENANTS.items()
+        tenant: {
+            "principals": principals,
+            **({"ids": ids[tenant]} if tenant in ids else {}),
+        }
+        for tenant, principals in ACCOUNT_TENANTS.items()
     }
     config["ownership"] = {"refuse": NOT_YOURS}
     write_private(config, out_path)
