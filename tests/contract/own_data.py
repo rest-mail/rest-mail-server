@@ -318,9 +318,9 @@ MOVED = (
     # and only listAccounts' link reaches getAccount and listCalendarEvents;
     # listAccounts is not selected, so each is sent with its own id. The
     # account read and the calendar list go to the seeded account after their
-    # reset, and the list gets an invitation of its own; the delivery check
-    # gets a message of its own to find. The rest are refusals, or probe the
-    # database, and need nothing made.
+    # reset, and the list gets an invitation of its own. The delivery check's
+    # success asks about an address no mailbox has, and the probe's probes the
+    # database: neither needs anything made. The rest are refusals.
     "getAccount",
     "listCalendarEvents",
     "respondToCalendar",

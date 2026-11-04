@@ -1319,6 +1319,25 @@ The reset also drops a kept administrator's enrollment that was never
 confirmed, with its recovery codes, so the primary run's enrollment of the
 fixture admin does not come back after it (`TestCleanResetPendingEnrollment`).
 
+The last operations step 2 found free reset and seed before each exchange too,
+refusals included (`the_last_free_operations_after_a_reset`, each operation's
+first hook): `getAccount`, `listCalendarEvents`, `respondToCalendar`,
+`accountEvents`, `probeServices` and `verifyDelivery`. No link starts from any
+of them, and only `listAccounts`' link reaches `getAccount` and
+`listCalendarEvents`; `listAccounts` is not selected, so each is sent with its
+own id. Refusals keep their ids and bodies. `getAccount`'s and
+`listCalendarEvents`' 200 go to the seeded `admin@restmail.test`, whose id the
+reset changed. `listCalendarEvents`' 200 gets an invitation of its own (a
+calendar request that account sends itself), and
+`the_listing_holds_what_was_made` fails it unless the answer lists that
+invitation. `verifyDelivery`'s 200 asks about an address no mailbox has, with
+no wait, and is answered `found: false` (#388); `probeServices`' 200 probes the
+database. Neither needs anything made. What is still not moved, and why,
+is on #1385: the quarantine operations and `listAccounts` (whose link reaches
+`listQuarantine`) wait on #1163; the reset, seed and snapshot operations can
+never start clean; the push device and ACME routes are not in the topology;
+`clearSuppression` and `getDmarcReport` need state only the Go fixtures make.
+
 `createAlias`, `getAlias`, `updateAlias` and `deleteAlias` reset and seed before
 each exchange too, refusals included. A create is sent as documented after its
 reset: no earlier probe's alias is left, and the seeded `restmail.test` hosts
