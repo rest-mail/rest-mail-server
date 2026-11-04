@@ -5724,6 +5724,7 @@ def deliver_a_whole_message(transaction):
             f"{body.get('body_text', '')}\r\n"
         )
         body["raw_message"] = base64.b64encode(message.encode()).decode()
+        body.pop("body_text", None)
     hooks.set_json(transaction, body)
 
 

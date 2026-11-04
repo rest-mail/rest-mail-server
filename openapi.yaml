@@ -12208,14 +12208,14 @@ paths:
         is served ONLY on the dedicated internal listener (verified gateway client
         certificate required) and is absent from the public listener; when disabled
         it is unauthenticated on the public listener. Never accepts a user JWT.
-        Stored text and recipient JSON strings and keys must not contain NUL (U+0000);
-        invalid input is 422 validation_failed naming the field before any write.
-        raw_message is standard padded base64 (format: byte) and may hold any octets,
-        which are stored exactly.
-        The recipient is resolved from address. Arriving mail uses server time and
-        default Inbox/flags, subject to inbound rules. Import-only fields sent by
-        older callers are ignored. An arrival past the hop limit or a reserved alias
-        that cannot route is 403 rejected before the pipeline runs.
+        Stored text, recipient JSON strings and keys, and decoded raw_message octets
+        must not contain NUL (U+0000); invalid input is 422 validation_failed naming
+        the field before any write. raw_message is standard padded base64 (format: byte).
+        With raw_message and neither body_text nor body_html, the stored text is read
+        from raw_message; when it can't be parsed, the text is whatever follows its
+        first blank line.
+        Empty or omitted folder means INBOX; a nonempty name is at most 255 UTF-8 bytes,
+        has no surrounding whitespace, control characters or "..".
       security: []
       x-internal-mtls: true
       requestBody:
@@ -12245,7 +12245,7 @@ paths:
                 value: {"address": "admin@restmail.test", "sender": "sender@example.net", "subject": "Hello", "body_text": "Hello"}
       responses:
         "201":
-          description: Message delivered
+          description: Delivered; which message was made
           content:
             application/json:
               schema:
@@ -12253,7 +12253,7 @@ paths:
                 required: [data]
                 properties:
                   data:
-                    $ref: "#/components/schemas/Message"
+                    $ref: "#/components/schemas/DeliveredMessage"
           "headers":
             "Content-Security-Policy":
               "$ref": "#/components/headers/Content-Security-Policy"
@@ -28249,6 +28249,16 @@ components:
           type: string
           format: email
 
+    DeliveredMessage:
+      type: object
+      required: [id, message_id, folder]
+      properties:
+        id:
+          type: integer
+        message_id:
+          type: string
+        folder:
+          type: string
     DeliverMessageRequest:
       type: object
       required: [address]

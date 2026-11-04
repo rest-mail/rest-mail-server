@@ -34,7 +34,7 @@ func TestDeliverMessage_RawBytesRoundTripNonUTF8(t *testing.T) {
 		got = []byte(req.RawMessage)
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
-			"data": map[string]interface{}{"id": 1, "mailbox_id": 1, "subject": "bin"},
+			"data": map[string]interface{}{"id": 1, "message_id": "bin@example.test", "folder": "INBOX"},
 		})
 	})
 

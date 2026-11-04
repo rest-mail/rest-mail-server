@@ -980,7 +980,31 @@ func (s *session) Data(r io.Reader) (err error) {
 			continue
 		}
 
-		// Local delivery via API.
+		if prepareLocal {
+			prepareLocal = false
+			localClientIP, localHelo = "", ""
+			// The signed copy goes back to disk, so what follows reads it as it reads any
+			// other message.
+			file, err := s.prepareSubmitted(wholeMessage)
+			if err != nil {
+				// A configured DKIM key could not be loaded: defer, as the queue
+				// worker does, rather than deliver the message unsigned.
+				s.log.Error("smtp: could not prepare a submission for local delivery; deferring",
+					"from", s.mailFrom, "error", err)
+				localErr = err
+			} else {
+				preparedFile = file
+				localSource = messageSource{body: file}
+			}
+		}
+		if localErr != nil {
+			failCode, failEnhanced, failMsg = 451, gosmtp.EnhancedCode{4, 3, 0}, "Temporary delivery failure"
+			failed++
+			continue
+		}
+
+		// Local delivery via API. The server reads the message's text from its source, so the
+		// request doesn't carry it a second time (#1915).
 		deliverReq := &apiclient.DeliverRequest{
 			Address:    rcpt,
 			Sender:     s.mailFrom,

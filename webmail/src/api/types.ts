@@ -3802,6 +3802,9 @@ export interface components {
         "Data-DashboardStats": {
             data: components["schemas"]["DashboardStats"];
         };
+        "Data-DeliveredMessage": {
+            data: components["schemas"]["DeliveredMessage"];
+        };
         "Data-DeliveryProcessed": {
             data: components["schemas"]["DeliveryProcessed"];
         };
@@ -4047,6 +4050,11 @@ export interface components {
         };
         "Data-vacationSetting": {
             data: components["schemas"]["vacationSetting"];
+        };
+        DeliveredMessage: {
+            folder: string;
+            id: number;
+            message_id: string;
         };
         DeliveryLogEntry: {
             attempts: number;
@@ -26573,6 +26581,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description request_too_large: the body is over the API's size cap */
             413: {
                 headers: {
@@ -27166,6 +27183,15 @@ export interface operations {
                     "X-Content-Type-Options": string;
                     /** @description DENY */
                     "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
                     [name: string]: unknown;
                 };
                 content: {
@@ -29563,6 +29589,15 @@ export interface operations {
                     "X-Content-Type-Options": string;
                     /** @description DENY */
                     "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
                     [name: string]: unknown;
                 };
                 content: {
@@ -42688,7 +42723,7 @@ export interface operations {
                     "application/json": components["schemas"]["Data-DeliveryProcessed"];
                 };
             };
-            /** @description Delivered; the message made */
+            /** @description Delivered; which message was made */
             201: {
                 headers: {
                     /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
@@ -42704,7 +42739,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Data-Message"];
+                    "application/json": components["schemas"]["Data-DeliveredMessage"];
                 };
             };
             /** @description Bad Request */
