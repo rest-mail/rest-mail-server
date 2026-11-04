@@ -45,7 +45,7 @@ func (s *Session) handleSTARTTLS(tag string) bool {
 }
 
 func (s *Session) handleLogin(tag, args string) {
-	if s.refuseReauthentication(tag, "LOGIN") {
+	if s.refuseReauthentication(tag, "LOGIN") || s.refuseBanned(tag) {
 		return
 	}
 	// Enforce the same policy the greeting advertises via LOGINDISABLED: refuse
@@ -76,8 +76,43 @@ func (s *Session) refuseReauthentication(tag, cmd string) bool {
 	return true
 }
 
+// banReply is the text of the untagged BYE and the tagged NO a banned client
+// gets in answer to LOGIN or AUTHENTICATE.
+const banReply = "Too many authentication failures, try again later"
+
+// refuseBanned answers LOGIN or AUTHENTICATE from a client address the
+// [Limiter] has banned, and returns true when it did. The credential is not
+// checked: the backend is never called while the address is banned, so a
+// password sprayer gets no further guesses and a correct guess cannot lift the
+// ban. A session opened before the ban is covered too; new connections are
+// already refused in the greeting.
+//
+// The tagged NO carries UNAVAILABLE, not AUTHENTICATIONFAILED: RFC 5530 §3
+// says AUTHENTICATIONFAILED tells the client there is no point in trying the
+// same credentials again later, which is untrue of a temporary ban, while
+// UNAVAILABLE is a temporary failure the client should retry later. The
+// server then says BYE and closes the connection (RFC 3501 §7.1.5), as the
+// SMTP gateway closes with a 421.
+func (s *Session) refuseBanned(tag string) bool {
+	ip := extractIP(s.conn.RemoteAddr().String())
+	if !s.limiter.IsBanned(ip) {
+		return false
+	}
+	slog.Warn("imap: auth rejected: banned",
+		"remote", s.conn.RemoteAddr(),
+		"event", "imap_auth_banned",
+		"ip", ip,
+	)
+	s.send("* BYE " + banReply)
+	s.tagged(tag, "NO", "[UNAVAILABLE] "+banReply)
+	_ = s.conn.Close()
+	return true
+}
+
 func (s *Session) handleAuthenticate(tag, args string) {
-	if s.refuseReauthentication(tag, "AUTHENTICATE") {
+	// A banned client is refused before the exchange starts, so it is never
+	// asked for the credential it would send.
+	if s.refuseReauthentication(tag, "AUTHENTICATE") || s.refuseBanned(tag) {
 		return
 	}
 	// A missing mechanism name is an invalid argument: BAD, not the NO an
@@ -183,9 +218,7 @@ func (s *Session) authenticate(tag, username, password, okMsg string) {
 			"ip", ip,
 		)
 		s.limiter.RecordAuthFail(ip)
-		if s.limiter.IsBanned(ip) {
-			s.tagged(tag, "NO", "Too many authentication failures")
-			_ = s.conn.Close()
+		if s.refuseBanned(tag) {
 			return
 		}
 		s.tagged(tag, "NO", "[AUTHENTICATIONFAILED] Invalid credentials")

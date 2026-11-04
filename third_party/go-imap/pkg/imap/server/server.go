@@ -129,9 +129,17 @@ func (s *Server) acceptLoop(listener net.Listener, implicitTLS bool) {
 		}
 
 		ip := extractIP(conn.RemoteAddr().String())
+		// A client whose authentication failures earned a ban is refused in
+		// the greeting, before a session exists, so it cannot spend another
+		// guess on a fresh connection.
+		if s.limiter.IsBanned(ip) {
+			slog.Warn("imap: connection rejected, banned", "ip", ip)
+			go refuseConn(conn, "* BYE "+banReply+"\r\n")
+			continue
+		}
 		if !s.limiter.Accept(ip) {
 			slog.Warn("imap: connection rejected by limiter", "ip", ip)
-			go refuseConn(conn)
+			go refuseConn(conn, "* BYE Connection refused, try again later\r\n")
 			continue
 		}
 
@@ -164,14 +172,15 @@ func (s *Server) acceptLoop(listener net.Listener, implicitTLS bool) {
 // the handshake that write triggers completes).
 var refuseByeGrace = 5 * time.Second
 
-// refuseConn greets a connection the [Limiter] turned away with an untagged BYE,
-// the greeting RFC 3501 §7.1.5 defines for a server unwilling to accept a
-// connection from this client, then closes it. It runs off the accept loop so a
-// slow or silent peer (or a stalled TLS handshake) cannot delay other accepts.
-func refuseConn(conn net.Conn) {
+// refuseConn greets a connection the [Limiter] turned away with bye, an
+// untagged BYE: the greeting RFC 3501 §7.1.5 defines for a server unwilling to
+// accept a connection from this client. It then closes it. It runs off the
+// accept loop so a slow or silent peer (or a stalled TLS handshake) cannot
+// delay other accepts.
+func refuseConn(conn net.Conn, bye string) {
 	defer func() { _ = conn.Close() }()
 	_ = conn.SetDeadline(time.Now().Add(refuseByeGrace))
-	_, _ = io.WriteString(conn, "* BYE Connection refused, try again later\r\n")
+	_, _ = io.WriteString(conn, bye)
 }
 
 // trackConn registers conn as in-flight and reserves its slot in the wait

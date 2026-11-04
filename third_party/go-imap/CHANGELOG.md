@@ -16,6 +16,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- A client address the Limiter has banned can no longer sign in: it is refused
+  in the greeting with `* BYE`, and LOGIN or AUTHENTICATE in a session opened
+  before the ban get `* BYE` and `NO [UNAVAILABLE]` without calling the
+  backend. The ban used to be read only after a failed attempt, so a correct
+  password still signed in. The reply to the failure that earns the ban is now
+  the same `* BYE` and `NO [UNAVAILABLE]`.
 - A SELECT or EXAMINE refused with BAD keeps the mailbox already selected, with
   its read-only mode and deletion marks: a rejected command never changes state
   (RFC 3501 §6). Only a well-formed selection attempt that fails with NO
