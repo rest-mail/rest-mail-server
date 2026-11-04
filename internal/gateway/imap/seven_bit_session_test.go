@@ -81,6 +81,37 @@ func dialStore(t *testing.T, raw string) *imapClient {
 	return c
 }
 
+// A name decoded from an encoded word and a parameter decoded from RFC 2231 reach a
+// session without UTF-8 as encoded words, with no literal (RFC 3501 section 4.3.1),
+// and a session that enabled UTF-8 as UTF-8 literals.
+func TestDecodedStringsThroughTheGateway(t *testing.T) {
+	const raw = "From: =?UTF-8?Q?J=C3=B6rg?= <j@example.com>\r\n" +
+		"Content-Type: application/octet-stream; name*=utf-8''caf%C3%A9\r\n\r\ndata\r\n"
+	c := dialStore(t, raw)
+	c.do("a1", "LOGIN jorg@example.test pw")
+	c.do("a2", "SELECT INBOX")
+	got := c.do("a3", "FETCH 1 (ENVELOPE BODYSTRUCTURE)")
+	for _, want := range []string{`(("=?UTF-8?Q?J=C3=B6rg?=" NIL "j" "example.com"))`, `("NAME" "=?UTF-8?Q?caf=C3=A9?=")`} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("%q lacks %q", got, want)
+		}
+	}
+	if strings.Contains(got, "{") || strings.IndexByte(got, 0xc3) >= 0 {
+		t.Fatalf("8-bit text or a literal reached the session: %q", got)
+	}
+
+	c = dialStore(t, raw)
+	c.do("a1", "LOGIN jorg@example.test pw")
+	c.do("a2", "ENABLE UTF8=ACCEPT")
+	c.do("a3", "SELECT INBOX")
+	got = c.do("a4", "FETCH 1 (ENVELOPE BODYSTRUCTURE)")
+	for _, want := range []string{"{5}\r\nJörg", "{5}\r\ncafé"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("%q lacks %q", got, want)
+		}
+	}
+}
+
 // fetchedLiteral splits "* 1 FETCH (... {n}\r\n<payload>)\r\n..." into the text
 // before the literal and the payload.
 func fetchedLiteral(t *testing.T, got string) (framing, payload string) {
