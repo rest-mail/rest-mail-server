@@ -545,6 +545,23 @@ class Stage3Tests(unittest.TestCase):
         args = cluster_e2e.parse_args(["--commit", "c"])
         self.assertEqual(cluster_e2e.mail_in_wait(args.mail_timeout), cluster_e2e.GREYLIST_DELAY + args.mail_timeout)
 
+    def test_restmail_peer_waits_out_the_queue_greylisted_retry(self):
+        # The peer install greylists the first RESTMAIL delivery (503
+        # deferred); the first install's queue retries it on the greylisted
+        # schedule, up to a fifth later than its first delay. The first run
+        # waited only --mail-timeout (240s) and gave up before any retry.
+        retry = (ROOT / "internal" / "gateway" / "queue" / "retry.go").read_text()
+        first = re.search(r"models\.FailureGreylisted:\s*\{first:\s*(\d+)\s*\*\s*time\.Minute", retry)
+        jitter = re.search(r"backoffJitterFraction\s*=\s*([0-9.]+)", retry)
+        self.assertIsNotNone(first)
+        self.assertIsNotNone(jitter)
+        latest = int(first.group(1)) * 60 * (1 + float(jitter.group(1)))
+        self.assertGreaterEqual(cluster_e2e.GREYLIST_RETRY, latest)
+        self.assertGreaterEqual(cluster_e2e.GREYLIST_RETRY, cluster_e2e.GREYLIST_DELAY)
+        args = cluster_e2e.parse_args(["--commit", "c"])
+        self.assertEqual(cluster_e2e.restmail_peer_wait(args.mail_timeout),
+                         cluster_e2e.GREYLIST_RETRY + args.mail_timeout)
+
     def test_without_a_reference_namespace_stage_3_says_what_it_needs(self):
         args = cluster_e2e.parse_args(["--commit", "c"])
         stage = cluster_e2e.Stages(args, cluster=None)
