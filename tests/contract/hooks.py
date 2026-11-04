@@ -2273,6 +2273,35 @@ def a_sent_message(transaction):
     return message_id
 
 
+# How long a sent message's trace may take to be written: the recorder writes
+# a batch every 500 ms (internal/trace/recorder.go), more on a loaded host.
+TRACE_WAIT_SECONDS = 10
+
+
+def a_traced_message(transaction):
+    """The id of a message the fixture admin sends itself, once its trace has
+    been written. Traces are written in the background, so the send's answer
+    comes before its trace; this asks for the trace until it is there. A trace
+    that never comes raises: the API keeps a delivered message's trace only at
+    TRACE_SAMPLE_RATE, 0.1 unless set (internal/config/config.go), and the
+    contract needs every one kept, TRACE_SAMPLE_RATE=1 as tasks/api.yml sets."""
+    message_id = a_sent_message(transaction)
+    deadline = time.monotonic() + TRACE_WAIT_SECONDS
+    while True:
+        trace = fixture_call(
+            transaction, "GET", f"/api/v1/admin/messages/{message_id:d}/trace", expect=(404,)
+        )
+        if trace is not None:
+            return message_id
+        if time.monotonic() >= deadline:
+            raise RuntimeError(
+                f"no trace was written for message {message_id:d} within "
+                f"{TRACE_WAIT_SECONDS:d} s: run the API with TRACE_SAMPLE_RATE=1, "
+                "since it keeps 1 in 10 delivered messages' traces by default"
+            )
+        time.sleep(0.25)
+
+
 @hooks.before("getMessage")
 @hooks.before("updateMessage")
 @hooks.before("getRawMessage")
@@ -2287,9 +2316,10 @@ def on_a_message_of_its_own(transaction):
     # starts clean, and the message the link names went with the reset. So an
     # exchange aimed at a positive message id gets a message of its own, made
     # after the reset: imported into the seeded admin's mailbox, or for a trace
-    # sent, since only a send writes one. A refusal is then refused for its
-    # body and not for a message that is gone. Missing's 2147483647, a
-    # non-positive or undecodable id and every documented 404 keep their ids.
+    # sent, since only a send writes one, and read once its trace is written.
+    # A refusal is then refused for its body and not for a message that is
+    # gone. Missing's 2147483647, a non-positive or undecodable id and every
+    # documented 404 keep their ids.
     # Without a reset the link's message is still there, and nothing changes.
     if not asked_for_a_clean_start():
         return
@@ -2307,11 +2337,162 @@ def on_a_message_of_its_own(transaction):
     if " > 404" in transaction.get("name", ""):
         return
     if traced:
-        message_id = a_sent_message(transaction)
+        message_id = a_traced_message(transaction)
     else:
         message_id = an_imported_message(transaction, "Contract own", "Contract own message")
     parts[segment] = str(message_id)
     transaction["fullPath"] = "/".join(parts) + ("?" + query if query else "")
+
+
+# The bytes of the attachment getAttachment's examples read after a reset:
+# more than the 10 the single range asks for, fewer than the 1000 the
+# unsatisfiable range starts at, and text, so the answer reads back as sent.
+ATTACHMENT_BYTES = b"REST Mail contract attachment: the bytes its ranges are read from.\n"
+
+# getAttachment's statuses that read an attachment which is there: the whole
+# file, a range, the bodyless 304 and 412, and the unsatisfiable range's 416.
+ATTACHMENT_READS = ("200", "206", "304", "412", "416")
+
+
+def an_attachment_of_its_own(transaction):
+    """The id of an attachment holding ATTACHMENT_BYTES, on a message imported
+    into the fixture admin's mailbox through the API, for this exchange."""
+    origin = origin_of(transaction)
+    boundary = f"contract-{time.time_ns():d}"
+    raw = (
+        f"Message-ID: <attachment-{time.time_ns():d}@restmail.test>\r\n"
+        "From: sender@example.test\r\n"
+        f"To: {ADMIN}\r\n"
+        f"Date: {formatdate(usegmt=True)}\r\n"
+        "Subject: Contract attachment\r\n"
+        "MIME-Version: 1.0\r\n"
+        f'Content-Type: multipart/mixed; boundary="{boundary}"\r\n\r\n'
+        f"--{boundary}\r\n"
+        "Content-Type: text/plain; charset=utf-8\r\n\r\n"
+        "A contract fixture with an attachment.\r\n"
+        f"--{boundary}\r\n"
+        "Content-Type: application/octet-stream\r\n"
+        'Content-Disposition: attachment; filename="contract.bin"\r\n'
+        "Content-Transfer-Encoding: base64\r\n\r\n"
+        f"{base64.b64encode(ATTACHMENT_BYTES).decode()}\r\n"
+        f"--{boundary}--\r\n"
+    ).encode()
+    message = fixture_call(
+        transaction,
+        "POST",
+        f"/api/v1/accounts/{mailbox_id(origin, ADMIN):d}/messages/import",
+        {
+            "raw_message": base64.b64encode(raw).decode(),
+            "folder": "INBOX",
+            "internal_date": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        },
+    )
+    message_id = (message or {}).get("id")
+    if type(message_id) is not int or message_id < 1:
+        raise RuntimeError("the fixture import returned no message")
+    attachments = fixture_call(transaction, "GET", f"/api/v1/messages/{message_id:d}/attachments")
+    ids = [row.get("id") for row in attachments or () if isinstance(row, dict)]
+    if len(ids) != 1 or type(ids[0]) is not int or ids[0] < 1:
+        raise RuntimeError(f"the imported message holds no single attachment: {ids!r}")
+    return ids[0]
+
+
+def expected_status(transaction):
+    """The status in a transaction's name: "<path> > <summary> > 206 > ..."."""
+    for part in transaction.get("name", "").split(" > ")[1:]:
+        if len(part) == 3 and part.isdecimal():
+            return part
+    return ""
+
+
+@hooks.before("getAttachment")
+def on_an_attachment_of_its_own(transaction):
+    # getAttachment, moved to a clean start: each exchange, refusals included,
+    # resets and seeds first. Its examples name attachment 1, which the reset
+    # does not make. An exchange that reads an attachment which is there (the
+    # whole file, a range, the 304 and 412 conditionals and the 416 range) is
+    # sent to one of its own, imported after the reset with ATTACHMENT_BYTES,
+    # and its after hook checks the answer against those bytes. Refusals keep
+    # their ids (0, missing's 2147483647 and the others' own), and so does every
+    # documented 404. No link reaches it. A run with no reset changes nothing.
+    if not asked_for_a_clean_start():
+        return
+    start_clean(transaction)
+    path, separator, query = transaction["fullPath"].partition("?")
+    parts = path.split("/")
+    if len(parts) != 5 or not positive_id(parts[4]) or parts[4] == "2147483647":
+        return
+    if expected_status(transaction) not in ATTACHMENT_READS:
+        return
+    parts[4] = str(an_attachment_of_its_own(transaction))
+    transaction["fullPath"] = "/".join(parts) + separator + query
+    hooks.stash["attachment_made"] = transaction.get("name", "")
+
+
+def header_of(message, name):
+    """A header of a request or answer, by name in any case, or ""."""
+    for key, value in ((message or {}).get("headers") or {}).items():
+        if key.lower() == name.lower():
+            return ", ".join(value) if isinstance(value, list) else str(value)
+    return ""
+
+
+@hooks.after("getAttachment")
+def the_attachment_answers_its_bytes(transaction):
+    # After a reset, a read of the attachment made for it must answer that
+    # attachment's bytes, so the status and the headers alone do not pass on
+    # another one: the whole file, each range the request asks for with its
+    # Content-Range, and the unsatisfiable range's "bytes */<length>". The
+    # bodyless 304 and 412 need the attachment to be there, which their
+    # status shows. A status other than the one documented fails on its own.
+    made = hooks.stash.pop("attachment_made", None)
+    status = expected_status(transaction)
+    real = transaction.get("real") or {}
+    if (
+        not asked_for_a_clean_start()
+        or status not in ATTACHMENT_READS
+        or str(real.get("statusCode")) != status
+    ):
+        return
+    if made != transaction.get("name", ""):
+        transaction["fail"] = "no attachment was made for this read"
+        return
+    total = len(ATTACHMENT_BYTES)
+    body = real.get("body") or ""
+    body = body.encode("latin-1") if isinstance(body, str) else bytes(body)
+    ranges = header_of(transaction.get("request"), "Range").partition("=")[2]
+    spans = []
+    for span in filter(None, (s.strip() for s in ranges.split(","))):
+        first, _, last = span.partition("-")
+        if first.isdecimal():
+            spans.append((int(first), min(int(last) if last else total - 1, total - 1)))
+    problems = []
+    if status == "200" and body != ATTACHMENT_BYTES:
+        problems.append(f"the body ({len(body):d} bytes) is not the {total:d} bytes attached")
+    elif status == "206" and len(spans) == 1:
+        first, last = spans[0]
+        if body != ATTACHMENT_BYTES[first : last + 1]:
+            problems.append(f"the body is not bytes {first:d}-{last:d} of the attachment")
+        if header_of(real, "Content-Range") != f"bytes {first:d}-{last:d}/{total:d}":
+            problems.append(
+                f"Content-Range is {header_of(real, 'Content-Range')!r}, "
+                f"not 'bytes {first:d}-{last:d}/{total:d}'"
+            )
+    elif status == "206":
+        # A part per range: its headers, Content-Range among them, then its bytes.
+        for first, last in spans:
+            header = f"Content-Range: bytes {first:d}-{last:d}/{total:d}\r\n".encode()
+            start = body.find(header)
+            start = body.find(b"\r\n\r\n", start) + 4 if start >= 0 else -1
+            want = ATTACHMENT_BYTES[first : last + 1]
+            if start < 4 or body[start : start + len(want)] != want:
+                problems.append(f"no part holds bytes {first:d}-{last:d} of the attachment")
+    elif status == "416" and header_of(real, "Content-Range") != f"bytes */{total:d}":
+        problems.append(
+            f"Content-Range is {header_of(real, 'Content-Range')!r}, not 'bytes */{total:d}'"
+        )
+    if problems:
+        transaction["fail"] = "the attachment made for it was not answered: " + "; ".join(problems)
 
 
 @hooks.before("getThread")
@@ -2542,7 +2723,10 @@ def list_the_sent_messages_queue_entry(transaction):
 def wait_for_the_trace(transaction):
     # Traces are written in the background, a batch every 500 ms
     # (internal/trace/recorder.go); the testbed keeps every one
-    # (TRACE_SAMPLE_RATE=1 in tasks/api.yml).
+    # (TRACE_SAMPLE_RATE=1 in tasks/api.yml). After a reset the message is one
+    # of its own, read only once its trace is there (a_traced_message).
+    if asked_for_a_clean_start():
+        return
     time.sleep(1)
 
 

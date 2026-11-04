@@ -332,6 +332,7 @@ class OwnDataHooks(unittest.TestCase):
             "listFolders": "a_mailbox_read_after_a_reset",
             "listMessages": "a_mailbox_read_after_a_reset",
             "searchMessages": "a_mailbox_read_after_a_reset",
+            "getAttachment": "on_an_attachment_of_its_own",
         }
         # entrypoint.py registers setDomainRelay's and the quiet hours' (below).
         self.assertEqual(

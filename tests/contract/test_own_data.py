@@ -188,6 +188,8 @@ REPORTS_AND_AUDIT = (
 # The mailbox reads: listAccounts' link reaches them, and no link starts from
 # any of them.
 MAILBOX_READS = ("listFolders", "listMessages", "searchMessages")
+# The attachment download: no link starts from or reaches it.
+ATTACHMENTS = ("getAttachment",)
 FOLLOWS_THE_SENT_MESSAGE = {
     "getMessage",
     "updateMessage",
@@ -273,7 +275,8 @@ class Selection(unittest.TestCase):
             - set(PIPELINE_READS)
             - set(SERVER_SETTINGS)
             - set(REPORTS_AND_AUDIT)
-            - set(MAILBOX_READS),
+            - set(MAILBOX_READS)
+            - set(ATTACHMENTS),
             link_followers(description, "createDomain") | {"createDomain"},
         )
 
@@ -324,6 +327,14 @@ class Selection(unittest.TestCase):
             self.assertEqual(linking, {"listAccounts"}, operation)
         self.assertNotIn("listAccounts", own_data.configure({})["operation-id"])
         self.assertLessEqual(set(MAILBOX_READS), set(own_data.MOVED))
+
+    def test_the_attachment_download_has_moved_and_no_link_touches_it(self):
+        description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
+        for operation in ATTACHMENTS:
+            self.assertEqual(link_followers(description, operation), set())
+            for start in description_operations(description):
+                self.assertNotIn(operation, link_followers(description, start), start)
+        self.assertLessEqual(set(ATTACHMENTS), set(own_data.MOVED))
 
     def test_it_selects_every_alias_operation_and_its_links(self):
         description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
