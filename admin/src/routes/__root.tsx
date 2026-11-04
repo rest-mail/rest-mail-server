@@ -5,6 +5,7 @@ import { useAuthStore } from '../lib/stores/authStore'
 
 import '../styles.css'
 import { AccountAccess } from '../components/auth/AccountAccess'
+import { ScreenGate } from '../components/access/ScreenGate'
 import { apiV1 } from '../lib/api'
 
 // Devtools are loaded ONLY in development, via a dev-gated dynamic import. In a
@@ -72,7 +73,9 @@ function RootComponent() {
           if (!session.setup_required?.length) void navigate({ to: '/dashboard' })
         }}
         onSignOut={() => { logout(); void navigate({ to: '/login' }) }}>
-        <Outlet />
+        <ScreenGate>
+          <Outlet />
+        </ScreenGate>
       </AccountAccess>
       <Suspense fallback={null}>
         <DevTools />

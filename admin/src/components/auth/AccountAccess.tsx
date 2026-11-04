@@ -5,7 +5,7 @@ import type { JsonResponse, RequestBody } from "../../lib/api-contract";
 
 export type SetupSession = Pick<
   JsonResponse<"login", 200>["data"],
-  "user" | "capabilities" | "setup_required"
+  "user" | "capabilities" | "scoped_capabilities" | "setup_required"
 >;
 export type SetupStep = NonNullable<SetupSession["setup_required"]>[number];
 type Enrollment = JsonResponse<"enrollTwoFactor", 200>["data"];
