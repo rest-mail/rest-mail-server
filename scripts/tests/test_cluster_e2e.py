@@ -75,7 +75,7 @@ class ArgumentTests(unittest.TestCase):
 
     def test_every_check_is_a_step_and_stage_3_comes_last(self):
         self.assertEqual(cluster_e2e.STEPS, ("health", "description", "admin-sign-in", "mailbox",
-                                             "smtp-rcpt", "imap-sign-in", "filter-validate",
+                                             "domain-live", "smtp-rcpt", "imap-sign-in", "filter-validate",
                                              "contract-examples", "mail-out", "mail-in", "pop3-retrieve"))
         for step in cluster_e2e.STEPS:
             self.assertTrue(callable(getattr(cluster_e2e.Stages, step.replace("-", "_"))), step)
@@ -433,6 +433,74 @@ class Stage3Tests(unittest.TestCase):
         self.assertEqual(stage.reference_account(), ("ref/reference-mail/address", "ref/reference-mail/password"))
         stage.reference_account()
         self.assertEqual(cluster.secret_value.call_count, 2)
+
+
+class DomainLiveTests(unittest.TestCase):
+    """A fresh install's domain is not live: its mailboxes are refused (550 5.1.1)
+    until it has a certificate and is turned live, as run 41780851725 showed."""
+
+    class FakeApi:
+        def __init__(self, active=True):
+            self.calls, self.active = [], active
+
+        def expect(self, want, method, path, body=None, token=""):
+            self.calls.append((want, method, path, body, token))
+            if (method, path) == ("GET", "/api/v1/admin/domains"):
+                return {"data": [{"id": 3, "name": "other.test"}, {"id": 7, "name": "RestMail-CI.test"}]}
+            if (method, path) == ("GET", "/api/v1/admin/domains/7"):
+                return {"data": {"id": 7, "name": "restmail-ci.test", "active": self.active}}
+            return {"data": {}}
+
+    def cluster(self):
+        cluster = unittest.mock.Mock(namespace="restmail-ci")
+        cluster.tls_secret.return_value = "restmail-ci-tls"
+        cluster.secret_value.side_effect = lambda ns, name, key: f"{ns}/{name}/{key}"
+        return cluster
+
+    def test_uploads_the_served_certificate_then_turns_the_domain_live(self):
+        api, cluster = self.FakeApi(), self.cluster()
+        detail = cluster_e2e.put_domain_live(api, "tok", cluster, "restmail-ci.test")
+        self.assertEqual(detail, "domain=restmail-ci.test,id=7,certificate=restmail-ci-tls,active=true")
+        self.assertEqual([(c[1], c[2]) for c in api.calls], [
+            ("GET", "/api/v1/admin/domains"), ("POST", "/api/v1/admin/certificates"),
+            ("PATCH", "/api/v1/admin/domains/7"), ("GET", "/api/v1/admin/domains/7")])
+        self.assertEqual(api.calls[1][0], 201)
+        self.assertEqual(api.calls[1][3], {"domain_id": 7, "cert_pem": r"restmail-ci/restmail-ci-tls/tls\.crt",
+                                           "key_pem": r"restmail-ci/restmail-ci-tls/tls\.key", "auto_renew": False})
+        self.assertEqual(api.calls[2][3], {"active": True})
+        self.assertTrue(all(c[4] == "tok" for c in api.calls))
+
+    def test_a_domain_still_not_live_fails_the_step(self):
+        with self.assertRaisesRegex(cluster_e2e.StepFailed, "not live"):
+            cluster_e2e.put_domain_live(self.FakeApi(active=False), "tok", self.cluster(), "restmail-ci.test")
+
+    def test_an_unknown_domain_fails_the_step(self):
+        with self.assertRaisesRegex(cluster_e2e.StepFailed, "no domain nope.test"):
+            cluster_e2e.find_domain([{"id": 1, "name": "restmail-ci.test"}, "junk"], "nope.test")
+
+    def test_the_step_goes_live_before_mail_reaches_the_mailbox(self):
+        steps = cluster_e2e.STEPS
+        self.assertLess(steps.index("mailbox"), steps.index("domain-live"))
+        self.assertLess(steps.index("domain-live"), steps.index("smtp-rcpt"))
+        self.assertLess(steps.index("domain-live"), steps.index("mail-in"))
+
+    def test_the_tls_secret_is_the_one_the_smtp_gateway_mounts(self):
+        cluster = cluster_e2e.Cluster("kubectl", "ns", "restmail", Path("."))
+        with patch.object(cluster, "run", return_value="restmail-ci-tls\n") as run:
+            self.assertEqual(cluster.tls_secret(), "restmail-ci-tls")
+        self.assertEqual(run.call_args.args[:2], ("get", "deployment/restmail-smtp-gateway"))
+        self.assertIn('?(@.name=="tls")', run.call_args.args[-1])
+        with patch.object(cluster, "run", return_value=""), self.assertRaises(cluster_e2e.StepFailed):
+            cluster.tls_secret()
+
+    def test_the_chart_mounts_the_tls_secret_as_tls_in_the_smtp_gateway(self):
+        template = (ROOT / "helm/restmail/templates/smtp-gateway-deployment.yaml").read_text()
+        self.assertRegex(template, r"- name: tls\n\s+secret:\n\s+secretName: \{\{ \.Values\.tls\.secretName \}\}")
+
+    def test_bootstrap_still_creates_the_domain_not_live(self):
+        # If the install ever comes up live on its own, this step can go.
+        bootstrap = (ROOT / "internal/bootstrap/bootstrap.go").read_text()
+        self.assertIn('Active: false', bootstrap)
 
 
 class EntryPointTests(unittest.TestCase):
