@@ -276,6 +276,42 @@ disposable domain. Domain updates therefore cannot leave the fixture admin's
 domain at `sending_policy` bulk or `dmarc_policy` reject and skip the send probes.
 Examples and authorization/ownership requests retain their intended targets.
 
+### Discovery of the run's hosted domain
+
+The report-only fuzz configuration holds `restmailDiscover`'s query `domain` at
+`fixtureplan/defaults.json`'s `domain` (`restmail.test`), which the run hosts.
+Discovery correctly returns 404 for an unhosted domain. Vertrag 0.42's `fuzz.pin`
+holds body fields and GraphQL arguments, not query parameters, so `probes.py`
+uses its equivalent for this parameter: a fuzz-only copy of the description,
+`fuzz-openapi.json`, with this one query schema's `enum` and parameter example
+values held at the hosted domain, just as a body pin also holds example values.
+Valid generation cannot draw an unhosted name; invalid generation still probes
+refusals. It does not rewrite requests, exempt findings or change other `domain`
+parameters. The published description, examples gate (including the unhosted 404),
+coverage, gates and baselines are unchanged. `test_probes.py` proves that scope
+and that a missing parameter fails instead of silently losing the hold.
+Live-description mode derives this fuzz-only copy from the identical saved
+snapshot. The fuzz report writer and unmatched-body-pin retry preserve the copy
+instead of restoring `CONTRACT_RUN_SPEC`; examples and coverage still use their
+original descriptions.
+
+### Missing account settings
+
+The Sieve read and delete return 404 when no script is stored; vacation disable
+returns 404 when no reply is stored. Their named absence pairs use an isolated
+account created through the public API by `account_settings_hooks.py`, loaded
+from `entrypoint.py`. It changes only the account path for the fixture admin's
+explicit setting-absent 404; account-not-found, other principals, success exchanges
+and validation probes are untouched. The private fixture is reused per origin
+and forgotten on a clean-start reset. Success setup must still install the
+script or set the vacation reply before reading/deleting it. The database-backed
+`TestAccountSettingsAbsentLifecycle` proves that setup, successful removal and
+subsequent absence, including stored empty/inactive scripts and disabled replies.
+The same file stores the setting before the fixture admin's `getSieveScript` and
+`deleteSieveScript` 200 and `disableVacation` 204, because the example and coverage
+phases can reach them with nothing stored, and they now answer 404 without it.
+`test_account_settings_hooks.py` proves registration, scope and setup failures.
+
 ### A delivery's recipient in the fuzz phase
 
 Fuzz draws a `mailbox_id` or an `address` that names nothing, and Vertrag holds a

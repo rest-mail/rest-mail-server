@@ -531,7 +531,11 @@ export async function setVacation(accountId: number, data: {
 }
 
 export async function disableVacation(accountId: number): Promise<void> {
-  await request(`${BASE}/accounts/${accountId}/vacation`, { method: 'DELETE' });
+  try {
+    await requestNoContent(`${BASE}/accounts/${accountId}/vacation`, { method: 'DELETE' });
+  } catch (error) {
+    if (!(error instanceof ApiError && error.status === 404)) throw error;
+  }
 }
 
 // Quarantine

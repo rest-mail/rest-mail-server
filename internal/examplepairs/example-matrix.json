@@ -12882,22 +12882,6 @@
         "mediaType": "application/json"
       }
     },
-    "missing": {
-      "request": {
-        "path": {
-          "id": 2
-        }
-      },
-      "response": {
-        "status": 200,
-        "body": {
-          "data": {
-            "status": "deleted"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
     "ownership_unavailable": {
       "request": {
         "path": {
@@ -13172,17 +13156,6 @@
           }
         },
         "mediaType": "application/json"
-      }
-    },
-    "missing": {
-      "description": "A genuinely absent configuration is already disabled and needs no update.",
-      "request": {
-        "path": {
-          "id": 2
-        }
-      },
-      "response": {
-        "status": 204
       }
     },
     "ownership_unavailable": {
@@ -17766,25 +17739,6 @@
           "error": {
             "code": "internal_error",
             "message": "Internal server error"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "defaults": {
-      "summary": "A genuinely absent configuration returns its documented defaults",
-      "request": {
-        "path": {
-          "id": 2
-        }
-      },
-      "response": {
-        "status": 200,
-        "body": {
-          "data": {
-            "mailbox_id": 2,
-            "script": "",
-            "active": false
           }
         },
         "mediaType": "application/json"

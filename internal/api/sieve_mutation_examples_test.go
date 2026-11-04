@@ -67,7 +67,7 @@ func TestSieveMutationExamples(t *testing.T) {
 				}
 				assertPublicExampleBody(t, pair.Response.Body, rr.Body.Bytes())
 				calls := f.store.snapshot()[before:]
-				wantWrite := op == "deleteSieveScript" && (rr.Code == 200 || name == "internal_error")
+				wantWrite := op == "deleteSieveScript" && (rr.Code == 200 || name == "internal_error" || name == "missing")
 				if (len(calls) == 1) != wantWrite || len(calls) > 1 {
 					t.Fatalf("Sieve mutation attempts=%d want %t", len(calls), wantWrite)
 				}

@@ -9,7 +9,8 @@ from successful transactions remain enabled. The first run enforces the full
 surface gate.
 
 A fuzz run (a report named fuzz.xml) also holds a delivery's mailbox_id at the
-recipient the fixtures make. A coverage run does not.
+recipient the fixtures make, and discovery's domain at the hosted fixture in a
+fuzz-only description. A coverage run does not.
 
 A run narrowed to operations without a pinned field has nothing for that pin to
 hold, and Vertrag refuses a pin that matches nothing. Such a run names the fields
@@ -20,8 +21,10 @@ Usage: probes.py <vertrag.yml> <out.yml> <report.xml> [--no-pin[=<name,name>]]
 
 import base64
 import json
+import os
 import sys
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import yaml
 from reports import spec_location
@@ -81,6 +84,32 @@ def fuzz_pins():
     return {"mailbox_id": plan["delivery_recipient"]["id"]}
 
 
+def hold_discovery_domain(config, out_path):
+    location = os.environ.get("CONTRACT_SPEC") or config["spec"]
+    if urlsplit(location).scheme in ("http", "https"):
+        raise ValueError("discovery fuzz requires the saved description in CONTRACT_SPEC")
+    source = Path(location)
+    document = yaml.safe_load(source.read_text())
+    for item in document.get("paths", {}).values():
+        operation = item.get("get", {})
+        if operation.get("operationId") != "restmailDiscover":
+            continue
+        for parameter in operation.get("parameters", []):
+            if parameter.get("in") == "query" and parameter.get("name") == "domain":
+                plan = json.loads(FIXTURE_PLAN.read_text())
+                parameter["schema"]["enum"] = [plan["domain"]]
+                if "example" in parameter:
+                    parameter["example"] = plan["domain"]
+                for example in parameter.get("examples", {}).values():
+                    if "value" in example:
+                        example["value"] = plan["domain"]
+                target = Path(out_path).resolve().with_name("fuzz-openapi.json")
+                target.write_text(json.dumps(document))
+                config["spec"] = str(target)
+                return
+        raise ValueError("restmailDiscover has no domain query parameter to hold")
+
+
 def main(config_path, out_path, report_path, pin=True, unpinned=()):
     source = Path(config_path).resolve()
     with source.open() as stream:
@@ -105,6 +134,7 @@ def main(config_path, out_path, report_path, pin=True, unpinned=()):
         }
         if Path(report_path).stem == "fuzz":
             pins.update(fuzz_pins())
+            hold_discovery_domain(config, out_path)
         for name in unpinned:
             del pins[name]
         if pins:

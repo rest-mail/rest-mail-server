@@ -77,7 +77,7 @@ func TestVacationMutationExamples(t *testing.T) {
 				}
 				calls := f.store.snapshot()[before:]
 				reads, writes := 0, 0
-				wantRead := rr.Code < 300 || name == "lookup_unavailable" || name == "create_unavailable" || name == "update_unavailable"
+				wantRead := rr.Code < 300 || name == "lookup_unavailable" || name == "create_unavailable" || name == "update_unavailable" || (op == "disableVacation" && name == "missing")
 				wantWrite := wantRead && name != "lookup_unavailable" && !(op == "disableVacation" && name == "missing")
 				for _, m := range calls {
 					if strings.HasPrefix(m.query, "SELECT") {

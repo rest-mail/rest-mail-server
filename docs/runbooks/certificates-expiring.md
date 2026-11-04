@@ -66,9 +66,11 @@ steps below until that is fixed.
 - **Built-in ACME**: it checks every 12 hours and renews certificates with
   `auto_renew` set that expire within 30 days. Read `chore server:logs api
   --since 24h` for the ACME error (often port 80 not reaching the API for the
-  HTTP-01 challenge). Renewing one now: not available yet (#1628). The
-  workaround is to fix the cause and restart the API, which checks again a
-  minute after it starts.
+  HTTP-01 challenge). There is no REST Mail renew-now action by design: certificate
+  renewal belongs to the external certificate manager. Use `cmctl renew` or
+  `certbot renew --force-renewal` for those installations, as described above.
+  The workaround for the built-in manager is to fix the cause and restart the
+  API, which checks again a minute after it starts.
 - **A certificate you uploaded** (`auto_renew` false): upload the new one in
   `/settings/certificates`, or `POST /api/v1/admin/certificates`.
 

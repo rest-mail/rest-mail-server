@@ -756,7 +756,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get the Sieve filter script */
+        /**
+         * Get the Sieve filter script
+         * @description 404 not_found when the account has no stored Sieve script.
+         */
         get: operations["getSieveScript"];
         /**
          * Create or replace the Sieve filter script
@@ -764,7 +767,10 @@ export interface paths {
          */
         put: operations["putSieveScript"];
         post?: never;
-        /** Delete the Sieve filter script */
+        /**
+         * Delete the Sieve filter script
+         * @description Deletes a stored script. 404 not_found when the account has no stored Sieve script.
+         */
         delete: operations["deleteSieveScript"];
         options?: never;
         head?: never;
@@ -877,7 +883,10 @@ export interface paths {
         /** Set vacation auto-reply settings */
         put: operations["setVacation"];
         post?: never;
-        /** Disable vacation auto-reply */
+        /**
+         * Disable vacation auto-reply
+         * @description Disables a stored vacation reply, including one already disabled. 404 not_found when the account has no stored vacation reply.
+         */
         delete: operations["disableVacation"];
         options?: never;
         head?: never;

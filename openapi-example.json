@@ -11221,7 +11221,7 @@
   },
   "deleteSieveScript": {
     "found": {
-      "description": "Production route/session/credential/holder/CSRF gates precede mailbox-bound deletion or side-effect-free validation. Local SQL proves exact mailbox selection, idempotent zero-row deletion and fault refusal; validation never reads or writes stored scripts. Fixed local rows do not prove PostgreSQL/audit persistence or delivery-time execution.",
+      "description": "Production route/session/credential/holder/CSRF gates precede mailbox-bound deletion or side-effect-free validation. Local SQL proves exact mailbox selection, zero-row absence refusal and fault refusal; validation never reads or writes stored scripts. Fixed local rows do not prove PostgreSQL/audit persistence or delivery-time execution.",
       "request": {
         "path": {
           "id": 1
@@ -11275,6 +11275,24 @@
           "error": {
             "code": "forbidden",
             "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "summary": "The account exists but has no stored Sieve script",
+      "request": {
+        "path": {
+          "id": 2
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Sieve script not found"
           }
         },
         "mediaType": "application/json"
@@ -12589,6 +12607,24 @@
           "error": {
             "code": "internal_error",
             "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "summary": "The account exists but has no stored vacation reply",
+      "request": {
+        "path": {
+          "id": 2
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Vacation reply not found"
           }
         },
         "mediaType": "application/json"
@@ -18794,6 +18830,24 @@
     }
   },
   "getSieveScript": {
+    "defaults": {
+      "summary": "The account exists but has no stored Sieve script",
+      "request": {
+        "path": {
+          "id": 2
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Sieve script not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "found": {
       "summary": "A linked account is readable through its mailbox grant",
       "description": "The real account resolver loads mail:read from the grant tables and maps the full public result. No credential hash or secret is returned.",
@@ -46213,7 +46267,7 @@
   },
   "validateSieveScript": {
     "found": {
-      "description": "Production route/session/credential/holder/CSRF gates precede mailbox-bound deletion or side-effect-free validation. Local SQL proves exact mailbox selection, idempotent zero-row deletion and fault refusal; validation never reads or writes stored scripts. Fixed local rows do not prove PostgreSQL/audit persistence or delivery-time execution.",
+      "description": "Production route/session/credential/holder/CSRF gates precede mailbox-bound deletion or side-effect-free validation. Local SQL proves exact mailbox selection, zero-row absence refusal and fault refusal; validation never reads or writes stored scripts. Fixed local rows do not prove PostgreSQL/audit persistence or delivery-time execution.",
       "request": {
         "path": {
           "id": 1
