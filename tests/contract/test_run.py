@@ -278,7 +278,9 @@ class ContractCommand(unittest.TestCase):
                 'exit "${PAIRS_EXIT:-0}"; fi\n'
                 'exit "${FIXTURE_EXIT:-0}"\n',
                 "python3": 'if [ "${1:-}" = -B ]; then shift; fi\n'
-                'case "$1" in *vertrag_pin.py) echo pin >> "$CALLS"; '
+                'case "$1" in *substrate_pins.py) shift; echo "substrate:$*" >> "$CALLS"; '
+                'exit "${SUBSTRATE_EXIT:-0}";; '
+                '*vertrag_pin.py) echo pin >> "$CALLS"; '
                 '[ "${TOOL_EXIT:-0}" = 0 ] || exit "$TOOL_EXIT"; '
                 'echo "$PWD/.cache/bin/vertrag"; exit 0;; '
                 '*report_files.py) exec "$REAL_PYTHON" -B "$@";; '
@@ -358,6 +360,7 @@ class ContractCommand(unittest.TestCase):
             calls,
             [
                 "pin",
+                "substrate:preflight --report",
                 "chore:contract:pairs",
                 "chore:test:contract-fixtures",
                 "chore:test:contract-api-keys",
@@ -391,6 +394,7 @@ class ContractCommand(unittest.TestCase):
             calls,
             [
                 "pin",
+                "substrate:preflight --report",
                 "chore:contract:pairs",
                 "chore:test:contract-fixtures",
                 "summary:tests/contract/summary.py .cache/contract examples coverage authorization ownership ownership-domains ownership-mailboxes ownership-messages",
@@ -409,6 +413,7 @@ class ContractCommand(unittest.TestCase):
                     calls,
                     [
                         "pin",
+                        "substrate:preflight" + (" --report" if endpoint else ""),
                         "chore:contract:pairs",
                         "summary:tests/contract/summary.py .cache/contract examples coverage authorization ownership ownership-domains ownership-mailboxes ownership-messages",
                     ],
@@ -418,18 +423,35 @@ class ContractCommand(unittest.TestCase):
         result, calls = self.run_command(principals=False)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(calls[0], "pin")
-        self.assertEqual(calls[1], "chore:contract:pairs")
-        self.assertEqual(calls[2], "chore:test:e2e -- -run ^TestContractPrincipals$")
-        self.assertEqual(calls[3], "chore:test:contract-fixtures")
+        self.assertEqual(calls[1], "substrate:preflight --report")
+        self.assertEqual(calls[2], "chore:contract:pairs")
+        self.assertEqual(calls[3], "chore:test:e2e -- -run ^TestContractPrincipals$")
+        self.assertEqual(calls[4], "chore:test:contract-fixtures")
 
     def test_default_endpoint_starts_the_topology_before_principal_setup(self):
         result, calls = self.run_command(principals=False, CONTRACT_ENDPOINT="")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(calls[0], "pin")
-        self.assertEqual(calls[1], "chore:contract:pairs")
-        self.assertEqual(calls[2], "chore:e2e:up")
-        self.assertEqual(calls[3], "chore:test:e2e -- -run ^TestContractPrincipals$")
+        self.assertEqual(calls[1], "substrate:preflight")
+        self.assertEqual(calls[2], "chore:contract:pairs")
+        self.assertEqual(calls[3], "chore:e2e:up")
+        self.assertEqual(calls[4], "chore:test:e2e -- -run ^TestContractPrincipals$")
         self.assertEqual(sum(call.startswith("summary:") for call in calls), 1)
+
+    def test_a_substrate_other_than_ci_stops_before_pairs_and_topology(self):
+        # The preflight fails only when this run brings the topology up (#1751).
+        result, calls = self.run_command(
+            principals=False, CONTRACT_ENDPOINT="", SUBSTRATE_EXIT="1"
+        )
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertEqual(
+            calls,
+            [
+                "pin",
+                "substrate:preflight",
+                "summary:tests/contract/summary.py .cache/contract examples coverage authorization ownership ownership-domains ownership-mailboxes",
+            ],
+        )
 
     def test_tool_failure_precedes_topology_and_fixture_changes(self):
         artifacts = {}
