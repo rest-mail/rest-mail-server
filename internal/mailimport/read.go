@@ -26,7 +26,9 @@ type Visit func(source string, message apitypes.ImportMessageBody) error
 
 // Maildir reads cur/new and Maildir++ dot folders in deterministic order. The
 // source file's mtime is its Dovecot INTERNALDATE. tmp is never imported.
-func Maildir(ctx context.Context, directory string, maxBytes int64, visit Visit) error {
+// Folder names are planned before any message is read: renamed, if not nil,
+// hears each source folder imported under another name than its own.
+func Maildir(ctx context.Context, directory string, maxBytes int64, visit Visit, renamed func(FolderRename)) error {
 	if maxBytes < 1 || maxBytes > 1<<30 {
 		return errors.New("message size limit must be between 1 byte and 1 GiB")
 	}
@@ -41,6 +43,10 @@ func Maildir(ctx context.Context, directory string, maxBytes int64, visit Visit)
 		return err
 	}
 	defer func() { _ = root.Close() }()
+	folders, err := maildirFolderPlan(directory, renamed)
+	if err != nil {
+		return err
+	}
 	return filepath.WalkDir(directory, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -68,14 +74,9 @@ func Maildir(ctx context.Context, directory string, maxBytes int64, visit Visit)
 		if err != nil {
 			return err
 		}
-		folder := filepath.Dir(filepath.Dir(rel))
-		if folder == "." {
-			folder = "INBOX"
-		} else if folder, err = maildirFolder(filepath.ToSlash(folder)); err != nil {
-			return err
-		}
-		if problem := rmail.FolderNameProblem(folder); problem != "" {
-			return fmt.Errorf("source folder %q: %s", folder, problem)
+		folder, planned := folders[filepath.ToSlash(filepath.Dir(filepath.Dir(rel)))]
+		if !planned {
+			return fmt.Errorf("source folder of %s changed during import; rerun to resume", rel)
 		}
 		keywords, err := maildirKeywords(root, filepath.Dir(filepath.Dir(rel)))
 		if err != nil {
@@ -98,8 +99,44 @@ func Maildir(ctx context.Context, directory string, maxBytes int64, visit Visit)
 		if int64(len(raw)) > maxBytes {
 			return fmt.Errorf("source message exceeds the size limit: %s", rel)
 		}
-		return visit(rel, apitypes.ImportMessageBody{RawMessage: raw, Folder: rmail.CanonicalFolder(folder), Flags: flags, InternalDate: info.ModTime()})
+		return visit(rel, apitypes.ImportMessageBody{RawMessage: raw, Folder: folder, Flags: flags, InternalDate: info.ModTime()})
 	})
+}
+
+// maildirFolderPlan maps every source folder directory (one holding cur or
+// new, outside tmp) to its destination folder.
+func maildirFolderPlan(directory string, renamed func(FolderRename)) (map[string]string, error) {
+	var claims []folderClaim
+	seen := make(map[string]bool)
+	err := filepath.WalkDir(directory, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if !entry.IsDir() {
+			return nil
+		}
+		if entry.Name() == "tmp" {
+			return filepath.SkipDir
+		}
+		if entry.Name() != "cur" && entry.Name() != "new" {
+			return nil
+		}
+		rel, err := filepath.Rel(directory, filepath.Dir(path))
+		if err != nil {
+			return err
+		}
+		rel = filepath.ToSlash(rel)
+		if !seen[rel] {
+			seen[rel] = true
+			name, reason := maildirFolder(rel)
+			claims = append(claims, folderClaim{source: rel, name: name, reason: reason})
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return planFolders(claims, renamed), nil
 }
 
 func maildirFlags(name string, keywords map[rune]string) ([]string, error) {

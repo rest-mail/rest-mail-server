@@ -9,10 +9,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -270,23 +272,41 @@ func TestIMAPTLSAndCredentialErrorsArePrivate(t *testing.T) {
 	}
 }
 
-func TestIMAPFolderMappingIsValidatedBeforeImport(t *testing.T) {
-	for _, tc := range []struct{ name, list string }{
-		{"collision", "* LIST () \".\" \"a.b\"\r\n* LIST () \".\" \"a/b\"\r\n"},
-		{"invalid", "* LIST () \"/\" \"../escape\"\r\n"},
+// #1833 owner decision: folder names never stop an IMAP import. Colliding and
+// invalid names are imported under numbered or derived names, each reported
+// before any folder is examined, and every message arrives.
+func TestIMAPFolderNamesAreRenamedNotRefused(t *testing.T) {
+	for _, tc := range []struct {
+		name, list string
+		want       []string
+		renamed    map[string]string
+	}{
+		{"collision", "* LIST () \".\" \"a.b\"\r\n* LIST () \".\" \"a/b\"\r\n", []string{"a/b", "a/b (2)"}, map[string]string{"a/b": "a/b (2)"}},
+		{"invalid", "* LIST () \"/\" \"../escape\"\r\n", []string{". ./escape"}, map[string]string{"../escape": ". ./escape"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			f := &imapSourceFixture{folders: tc.list}
-			err := IMAP(context.Background(), newIMAPFixture(t, f), 1024, func(string, apitypes.ImportMessageBody) error { t.Fatal("imported invalid folder map"); return nil })
-			if err == nil {
-				t.Fatal("invalid folder map accepted")
-			}
-			f.mu.Lock()
-			defer f.mu.Unlock()
-			for _, command := range f.commands {
-				if command == "EXAMINE" {
-					t.Fatal("folder mappings were not prevalidated")
+			f := &imapSourceFixture{folders: tc.list, raw: "Message-ID: <a@example.test>\r\n\r\nbody", count: 1}
+			options := newIMAPFixture(t, f)
+			renamed := map[string]string{}
+			options.Renamed = func(rename FolderRename) {
+				f.mu.Lock()
+				defer f.mu.Unlock()
+				if slices.Contains(f.commands, "EXAMINE") {
+					t.Error("a rename was reported after folders were examined")
 				}
+				if rename.Reason == "" {
+					t.Errorf("rename %+v has no reason", rename)
+				}
+				renamed[rename.Source] = rename.Folder
+			}
+			var folders []string
+			err := IMAP(context.Background(), options, 1024, func(_ string, message apitypes.ImportMessageBody) error {
+				folders = append(folders, message.Folder)
+				return nil
+			})
+			slices.Sort(folders)
+			if err != nil || !slices.Equal(folders, tc.want) || !maps.Equal(renamed, tc.renamed) {
+				t.Fatalf("folders %q renamed %v error %v, want %q %v", folders, renamed, err, tc.want, tc.renamed)
 			}
 		})
 	}

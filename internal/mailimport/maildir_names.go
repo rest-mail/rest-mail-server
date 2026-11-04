@@ -6,6 +6,8 @@ import (
 	"strings"
 	"unicode/utf16"
 	"unicode/utf8"
+
+	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
 )
 
 // MaildirDirectory is the Maildir++ directory holding a REST Mail folder, the
@@ -31,27 +33,41 @@ func MaildirDirectory(folder string) (string, error) {
 // read back. Each "."-separated level is a modified UTF-7 name, as Dovecot
 // writes it, and is decoded. A level with octets outside US-ASCII cannot be
 // modified UTF-7, so it is taken as the UTF-8 name a Maildir written with
-// UTF-8 names holds. An ASCII level that is not valid modified UTF-7 is
-// refused rather than stored under a name the source never had.
-func maildirFolder(directory string) (string, error) {
-	if !strings.HasPrefix(directory, ".") {
-		return directory, nil
+// UTF-8 names holds. A level that is neither keeps its literal text, and reason
+// says why the folder's name is derived; the import never stops over a name.
+func maildirFolder(directory string) (folder, reason string) {
+	if directory == "." {
+		return "INBOX", ""
 	}
-	levels := strings.Split(strings.TrimPrefix(directory, "."), ".")
+	levels := []string{directory}
+	if strings.HasPrefix(directory, ".") {
+		levels = strings.Split(strings.TrimPrefix(directory, "."), ".")
+	}
 	for i, level := range levels {
-		if !isASCII(level) {
+		switch {
+		case !strings.HasPrefix(directory, "."):
+		case !isASCII(level):
 			if !utf8.ValidString(level) {
-				return "", fmt.Errorf("source folder %q is neither modified UTF-7 nor UTF-8", directory)
+				reason = "neither modified UTF-7 nor UTF-8; imported under its literal text"
 			}
-			continue
+		default:
+			if decoded, ok := decodeMailboxName(level); ok {
+				levels[i] = decoded
+			} else if reason == "" {
+				reason = "not valid modified UTF-7 (RFC 3501 §5.1.3); imported under its literal text"
+			}
 		}
-		decoded, ok := decodeMailboxName(level)
-		if !ok {
-			return "", fmt.Errorf("source folder %q is not valid modified UTF-7 (RFC 3501 §5.1.3); rename it on the source", directory)
-		}
-		levels[i] = decoded
 	}
-	return strings.Join(levels, "/"), nil
+	folder = rmail.CanonicalFolder(strings.Join(levels, "/"))
+	if problem := rmail.FolderNameProblem(folder); problem != "" {
+		folder = safeFolder(folder)
+		if reason == "" {
+			reason = "not a valid folder name (" + problem + ")"
+		}
+	} else if reason != "" {
+		folder = safeFolder(folder)
+	}
+	return folder, reason
 }
 
 func isASCII(s string) bool {
