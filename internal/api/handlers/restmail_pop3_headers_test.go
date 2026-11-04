@@ -2,6 +2,9 @@ package handlers
 
 import (
 	"bytes"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/json"
 	"io"
 	"net"
@@ -36,7 +39,7 @@ func TestRESTMAILStoredHeadersThroughPOP3RETR(t *testing.T) {
 			if err := db.Model(&models.Domain{}).Where("id = ?", mailbox.DomainID).Update("active", true).Error; err != nil {
 				t.Fatal(err)
 			}
-			if err := db.AutoMigrate(&models.Credential{}, &models.ThreadDue{}, &models.ThreadSnooze{}, &models.VacationConfig{}, &models.Alias{}); err != nil {
+			if err := db.AutoMigrate(&models.Credential{}, &models.GatewaySession{}, &models.ThreadDue{}, &models.ThreadSnooze{}, &models.VacationConfig{}, &models.Alias{}); err != nil {
 				t.Fatal(err)
 			}
 			registry := pipeline.NewRegistry()
@@ -61,13 +64,27 @@ func TestRESTMAILStoredHeadersThroughPOP3RETR(t *testing.T) {
 			router := chi.NewRouter()
 			rs := endpoint.Routes{Router: router, Registry: endpoint.NewRegistry()}
 			NewRestmailHandler(db, pipeline.NewEngine(registry, nil), nil, RestmailTarpitConfig{}, RestmailDeliverAuthConfig{TrustedCIDRs: []string{"127.0.0.1/32"}}).Register(rs, passingSignInChecks.Throttle)
-			router.Group(func(reads chi.Router) {
-				reads.Use(middleware.NewBasicCredentials(BasicVerifier(db), nil, nil).Authenticate(nil))
-				authenticated := endpoint.Routes{Router: reads, Registry: rs.Registry}
-				NewCredentialHandler(db).RegisterProtocolSignIn(authenticated, passingSignInChecks)
-				NewMessageHandler(db, nil, nil, "", nil).RegisterMessages(authenticated)
+			NewGatewaySessionHandler(db, middleware.DefaultGatewayServices).Register(rs, GatewaySessionRouteChecks{
+				Credential: endpoint.Middleware{Wrap: middleware.NewSessionPasswords(PasswordVerifier(db), nil, nil).Authenticate()},
+				Throttle:   passingSignInChecks.Throttle,
+				Audit:      passingSignInChecks.Audit,
 			})
-			api := httptest.NewServer(router)
+			router.Group(func(reads chi.Router) {
+				refuse := func(http.Handler) http.Handler {
+					return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusUnauthorized) })
+				}
+				reads.Use(middleware.GatewaySessions(middleware.DefaultGatewayServices,
+					repositories.GatewaySessionTokenPrefix, GatewaySessionVerifier(db))(refuse))
+				NewMessageHandler(db, nil, nil, "", nil).RegisterMessages(endpoint.Routes{Router: reads, Registry: rs.Registry})
+			})
+			// The POP3 gateway reaches the API as the internal listener sees it:
+			// with its own verified client certificate (#1586).
+			internal := middleware.RequireClientCert(router)
+			api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				leaf := &x509.Certificate{Subject: pkix.Name{CommonName: "rest-mail-pop3-gateway"}}
+				r.TLS = &tls.ConnectionState{PeerCertificates: []*x509.Certificate{leaf}, VerifiedChains: [][]*x509.Certificate{{leaf}}}
+				internal.ServeHTTP(w, r)
+			}))
 			t.Cleanup(api.Close)
 			messageID := "stored@example.test\r\nX-Stored-Message-ID: extra"
 			inReplyTo := "parent@example.test\nX-Stored-In-Reply-To: extra"
