@@ -38,6 +38,11 @@ jobs:
       # tests/e2e/suite_test.go. A half-up topology must go RED, never green by
       # skipping every stage. Forwarded into the test container by `test:e2e`.
       E2E_REQUIRE_STACK: "1"
+      # The dev containers keep their Go build cache in a volume for this run, instead of
+      # on a tmpfs lost at every restart. The API alone restarts four times, at about
+      # 70 s of compiling each, and each isolation instance recompiles everything (#1896).
+      # tasks/dev-gocache.sh. The binaries are the same: the cache is keyed by their inputs.
+      RESTMAIL_DEV_GOCACHE_VOLUME: rest-mail-dev-gocache
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

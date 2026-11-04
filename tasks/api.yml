@@ -116,6 +116,9 @@ tasks:
             -e GOPATH=/tmp/go -e GOMODCACHE=/tmp/go/pkg/mod \
             -e GOCACHE=/tmp/go-build-cache \
             -e GOPROXY=file:///go/pkg/mod/cache/download,https://proxy.golang.org,direct"
+          if [ -n "${RESTMAIL_DEV_GOCACHE_VOLUME:-}" ]; then
+            DEV_FLAGS="$DEV_FLAGS $("{{.TASKFILE_DIR}}/dev-gocache.sh" 0)"
+          fi
           # Air's go build reads GOFLAGS, so the tags reach the binary it runs.
           if [ -n "{{.API_BUILD_TAGS}}" ]; then
             echo "  building the api with tags {{.API_BUILD_TAGS}}"

@@ -89,6 +89,9 @@ tasks:
             -e GOPATH=/tmp/go -e GOMODCACHE=/tmp/go/pkg/mod \
             -e GOCACHE=/tmp/go-build-cache \
             -e GOPROXY=file:///go/pkg/mod/cache/download,https://proxy.golang.org,direct"
+          if [ -n "${RESTMAIL_DEV_GOCACHE_VOLUME:-}" ]; then
+            DEV_FLAGS="$DEV_FLAGS $("{{.TASKFILE_DIR}}/dev-gocache.sh" 10001)"
+          fi
         else
           DEV_FLAGS=""
         fi
