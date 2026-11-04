@@ -364,10 +364,10 @@ def the_last_free_operations_after_a_reset(transaction):
     #   and seeded that address again under another id. Only the id in the
     #   path changes (to_the_seeded_account).
     # - listCalendarEvents' 200 gets an invitation of its own, which the after
-    #   hook requires it to list.
-    # - verifyDelivery's 200 gets a message of its own, delivered to the
-    #   address it asks about, which the after hook requires it to find.
-    # - probeServices' 200 probes the database and needs nothing made.
+    #   hook the_listing_holds_what_was_made requires it to list.
+    # - verifyDelivery's 200 asks about an address no mailbox has, with no
+    #   wait, and is answered found: false (#388); probeServices' 200 probes
+    #   the database. Neither needs anything made.
     # No link starts from any of them, and only listAccounts' link reaches
     # getAccount and listCalendarEvents; listAccounts is not selected.
     # Registered ahead of every other hook of these operations. A run with no
@@ -383,79 +383,7 @@ def the_last_free_operations_after_a_reset(transaction):
         to_the_seeded_account(transaction)
     if path.endswith("/calendar-events"):
         fixture_call(transaction, "POST", "/api/v1/messages/send", OWN_INVITATION)
-        hooks.stash["invitation_made"] = {"name": name, "uid": OWN_INVITATION_UID}
-    elif path == "/api/v1/admin/test/verify":
-        sent = fixture_call(
-            transaction,
-            "POST",
-            "/api/v1/admin/test/send",
-            {
-                "from": ADMIN,
-                "to": ADMIN,
-                "subject": "Contract delivery check",
-                "body": "A message made for this exchange after its reset.",
-            },
-        )
-        hooks.stash["delivery_made"] = {"name": name, "id": sent["message_id"]}
-
-
-def made_for(transaction, key):
-    """What the before hook made for this exchange after its reset, or None
-    when it made nothing, or made it for another exchange."""
-    made = hooks.stash.pop(key, None)
-    if made is not None and made["name"] != transaction.get("name", ""):
-        return None
-    return made
-
-
-def a_success_after_a_reset(transaction):
-    """Whether this is a documented 200, answered 200, in a run that resets.
-    Refusals and a wrong status are left to the status check."""
-    real = transaction.get("real") or {}
-    return (
-        asked_for_a_clean_start()
-        and " > 200 > " in transaction.get("name", "")
-        and str(real.get("statusCode")) == "200"
-    )
-
-
-@hooks.after("listCalendarEvents")
-def the_invitation_made_is_listed(transaction):
-    # The list has the same shape with no invitation as with one, so after a
-    # reset its 200 must list the invitation made for it, or the exchange
-    # fails.
-    made = made_for(transaction, "invitation_made")
-    if not a_success_after_a_reset(transaction):
-        return
-    if made is None:
-        transaction["fail"] = "the calendar list had no invitation made for it to list"
-        return
-    rows = (hooks.get_json(transaction, "real") or {}).get("data")
-    rows = rows if isinstance(rows, list) else []
-    if not any(isinstance(row, dict) and row.get("uid") == made["uid"] for row in rows):
-        transaction["fail"] = (
-            f"the calendar list does not hold the invitation made for it ({made['uid']}): "
-            f"it answered {len(rows):d} other row{'' if len(rows) == 1 else 's'}"
-        )
-
-
-@hooks.after("verifyDelivery")
-def the_delivery_made_is_found(transaction):
-    # found: false is a 200 too, for an address with nothing delivered, so
-    # after a reset the check must find the message made for it, or the
-    # exchange fails.
-    made = made_for(transaction, "delivery_made")
-    if not a_success_after_a_reset(transaction):
-        return
-    if made is None:
-        transaction["fail"] = "the delivery check had no message made for it to find"
-        return
-    data = (hooks.get_json(transaction, "real") or {}).get("data") or {}
-    if data.get("found") is not True or data.get("message_id") != made["id"]:
-        transaction["fail"] = (
-            f"the delivery check did not find the message made for it ({made['id']:d}): "
-            f"it answered found {data.get('found')!r}, message {data.get('message_id')!r}"
-        )
+        made_for_the_listing(transaction, "invitation", {"uid": OWN_INVITATION_UID})
 
 
 @hooks.before("domainDNSCheck")
@@ -1026,6 +954,7 @@ def row_field(row, field):
 @hooks.after("listAliases")
 @hooks.after("listDKIMKeys")
 @hooks.after("listCertificates")
+@hooks.after("listCalendarEvents")
 def the_listing_holds_what_was_made(transaction):
     # A listing's 200 has the same shape with no rows as with the one its
     # before hook made after the reset, so the status and the schema alone
