@@ -15,7 +15,7 @@ SERVICES = ("api", "smtp-gateway", "imap-gateway", "pop3-gateway")
 
 
 class DevReadonlyTests(unittest.TestCase):
-    def launch(self, service, mode, directory):
+    def launch(self, service, mode, directory, **extra_env):
         prefix = service.upper().replace("-", "_")
         source = (ROOT / "tasks" / (service + ".yml")).read_text()
         # Execute the actual up command blocks. Only scalar Task templates in
@@ -50,6 +50,7 @@ class DevReadonlyTests(unittest.TestCase):
             CAPTURE=str(capture),
             OUTPUT="/dev/null",
             VERBOSE="",
+            **extra_env,
         )
         subprocess.run(["sh", "-n"], input=script, text=True, check=True)
         result = subprocess.run(
@@ -100,6 +101,13 @@ elif args[0] == "inspect":
                 dev, dev_stage = self.launch(service, "dev", directory)
                 prod, prod_stage = self.launch(service, "prod", directory)
                 uid = 0 if service == "api" else 10001
+                # Off unless a run asks: a person's dev containers keep the bounded tmpfs.
+                self.assertNotIn("/tmp/go-build-cache", [arg.split(":", 1)[-1] for arg in dev["args"]])
+                # A CI run keeps the cache in a volume for each user, over that tmpfs (#1896).
+                cached, _ = self.launch(service, "dev", directory, RESTMAIL_DEV_GOCACHE_VOLUME="fixture-cache")
+                self.assertIn(f"fixture-cache-{uid}:/tmp/go-build-cache", cached["args"])
+                prod_cached, _ = self.launch(service, "prod", directory, RESTMAIL_DEV_GOCACHE_VOLUME="fixture-cache")
+                self.assertEqual(prod_cached["args"], prod["args"])
                 flags = shlex.split(f"""--read-only -v {directory}:/app
                     --tmpfs /app/tmp:rw,exec,nosuid,nodev,size=128m,mode=0700,uid={uid},gid={uid}
                     --tmpfs /tmp:rw,exec,nosuid,nodev,size=1g,mode=1777

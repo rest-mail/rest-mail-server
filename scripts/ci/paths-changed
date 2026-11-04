@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# Whether any of these paths differ between a base commit and HEAD, for a CI step that
+# can skip work that cannot be affected otherwise. It writes changed=true or changed=false
+# to $GITHUB_OUTPUT. When in doubt the answer is true: no base (a push or a dispatch), a
+# base that cannot be fetched, or a diff that fails.
+#
+#   scripts/ci/paths-changed BASE_SHA PATH...
+set -uo pipefail
+
+[ $# -ge 2 ] || {
+  echo "usage: $0 BASE_SHA PATH..." >&2
+  exit 2
+}
+base=$1
+shift
+
+changed=true
+if [ -z "$base" ]; then
+  echo "no base commit: running"
+elif ! git fetch --quiet --depth=1 origin "$base"; then
+  echo "cannot fetch $base: running"
+elif ! files="$(git diff --name-only "$base" HEAD -- "$@")"; then
+  echo "cannot compare with $base: running"
+elif [ -n "$files" ]; then
+  echo "changed since $base:"
+  printf '%s\n' "$files"
+else
+  echo "none of these changed since $base: $*"
+  changed=false
+fi
+
+echo "changed=$changed" >> "$GITHUB_OUTPUT"

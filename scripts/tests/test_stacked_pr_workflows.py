@@ -29,10 +29,11 @@ def field(source, name, indent):
     return match[1] if match else ""
 
 
-def context(event="pull_request", action="opened", base="main", changes=None, label="run-e2e", run_id=100):
+def context(event="pull_request", action="opened", base="main", changes=None, label="run-e2e", run_id=100, actor="someone"):
     return {
         "github": {
             "event_name": event,
+            "actor": actor,
             "base_ref": base if event == "pull_request" else "",
             "ref": "refs/pull/42/merge" if event == "pull_request" else "refs/heads/main",
             "run_id": run_id,
@@ -101,7 +102,7 @@ class StackedPRWorkflows(unittest.TestCase):
                 with self.subTest(workflow=name, job=job_name, values=values):
                     self.assertTrue(field(job, "if", 4), "Every PR job needs a rule before runner allocation")
                     # A dispatched run has no CI run for the proof union to join.
-                    expected = enabled and not (job_name == "e2e-proofs" and values["github"]["event_name"] == "workflow_dispatch") and not (job_name == "contract-diff" and values["github"]["event_name"] != "pull_request")
+                    expected = enabled and not (job_name == "e2e-proofs" and values["github"]["event_name"] == "workflow_dispatch") and not (job_name == "contract-diff" and values["github"]["event_name"] != "pull_request") and not (job_name == "seed-caches" and values["github"]["event_name"] != "push")
                     self.assertEqual(bool(evaluate(field(job, "if", 4), values)), expected)
 
     def test_stacked_prs_allocate_no_runners_even_with_run_e2e(self):
@@ -126,6 +127,22 @@ class StackedPRWorkflows(unittest.TestCase):
             values = context(event=event)
             values["needs"]["changes"]["outputs"]["run_e2e"] = "false"
             self.assertFalse(evaluate(field(self.jobs["e2e.yml"]["e2e-run"], "if", 4), values))
+
+    def test_a_merge_queue_push_does_not_run_ci_again_on_the_commit_it_tested(self):
+        queue = context(event="push", actor="github-merge-queue[bot]")
+        for job_name, job in self.jobs["ci.yml"].items():
+            with self.subTest(job=job_name):
+                self.assertEqual(bool(evaluate(field(job, "if", 4), queue)), job_name in {"seed-caches", "ci"})
+        # Only the queue's own push: anyone else's has not been through the queue.
+        for job_name, job in self.jobs["ci.yml"].items():
+            with self.subTest(job=job_name, actor="a person"):
+                self.assertEqual(bool(evaluate(field(job, "if", 4), context(event="push"))), job_name != "contract-diff")
+
+    def test_only_the_queues_own_push_skips_and_every_gate_still_reports(self):
+        for values in (context(event="merge_group", actor="github-merge-queue[bot]"), context(actor="github-merge-queue[bot]")):
+            with self.subTest(event=values["github"]["event_name"]):
+                self.assertTrue(evaluate(field(self.jobs["ci.yml"]["test"], "if", 4), values))
+                self.assertTrue(evaluate(field(self.jobs["ci.yml"]["ci"], "if", 4), values))
 
     def test_required_contexts_report_skipped_on_stacks_but_edits_cannot_replace_them(self):
         for workflow, (job_name, required_name) in REQUIRED.items():
