@@ -50,13 +50,13 @@ mkdir -p "$out" "$logs"
 served="$PWD/$out/openapi.json"
 export CONTRACT_SPEC="$served"
 names=("$phase")
-if [ "$phase" = ownership ]; then names=(ownership ownership-domains ownership-mailboxes); fi
+if [ "$phase" = ownership ]; then names=(ownership ownership-domains ownership-mailboxes ownership-messages); fi
 reset_run=()
 # The teardown, like authorization, keeps the gate's saved inputs and reports.
 if [ "$phase" != authorization ] && [ "$phase" != ownership ] && [ "$phase" != own-data ] && [ "$phase" != teardown ]; then
   reset_run=(--reset-run)
   names=(fuzz)
-  if [ "$phase" = gate ]; then names=(examples coverage authorization ownership ownership-domains ownership-mailboxes browser-sessions); fi
+  if [ "$phase" = gate ]; then names=(examples coverage authorization ownership ownership-domains ownership-mailboxes ownership-messages browser-sessions); fi
 fi
 # Clear this invocation's reports before dependencies or tools can fail. An
 # authorization or ownership run keeps the gate's saved inputs, but not an old
@@ -184,6 +184,8 @@ ownership)
   # as their owner before the other tenant is sent their ids. The creates meet
   # what the earlier runs made, so they may clear it (a_leftover_to_remove).
   export CONTRACT_REMOVE_LEFTOVERS=1
+  # The message run's hooks send from the sender's own address (ownership_hooks.py).
+  export CONTRACT_OWNERSHIP=1
   chore test:contract-report-targets -- ownership ||
     echo "the held mail could not be topped up; the found examples of deleteQuarantine and clearSuppression will say so"
   python3 -B tests/contract/ownership.py "$CONTRACT_SPEC" "$out/vertrag-run.yml" \
@@ -194,6 +196,17 @@ ownership)
     >"$logs/contract-ownership.log" 2>&1 || code=$?
   cat "$logs/contract-ownership.log"
   echo "vertrag ownership exited $code (report only)"
+  # The accounts again, sent each other's messages, drafts, scheduled sends and
+  # attachments: their ids are not an account's, so in a run of their own.
+  python3 -B tests/contract/ownership.py --messages "$CONTRACT_SPEC" "$out/vertrag-run.yml" \
+    .cache/contract-principals.json "$out/vertrag-ownership-messages.yml" "$out/ownership-messages.xml"
+  python3 -B tests/contract/reports.py "$out/vertrag-ownership-messages.yml" "$out/vertrag-ownership-messages.yml" "$out/ownership-messages" "${narrowed[@]}"
+  messages_code=0
+  "$CONTRACT_VERTRAG" run --config "$out/vertrag-ownership-messages.yml" --sequence --phases ownership "${select[@]}" \
+    >"$logs/contract-ownership-messages.log" 2>&1 || messages_code=$?
+  cat "$logs/contract-ownership-messages.log"
+  echo "vertrag ownership of messages exited $messages_code (report only)"
+  if [ "$code" -eq 0 ]; then code=$messages_code; fi
   # The domain administrators, in runs of their own: tenant ids are keyed by
   # parameter name, so each kind of id they declare (their domain's, their own
   # mailbox's) needs a run, as the account run already declares path.id.

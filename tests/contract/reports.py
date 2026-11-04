@@ -28,8 +28,12 @@ def spec_location(value, directory):
 def configure(config, source_dir, base, narrowed=False, endpoint="", spec=""):
     if config.get("spec"):
         config["spec"] = spec_location(config["spec"], source_dir)
-    if config.get("hookfiles"):
-        config["hookfiles"] = str((Path(source_dir) / config["hookfiles"]).resolve())
+    hookfiles = config.get("hookfiles")
+    if isinstance(hookfiles, list):
+        # The message ownership run loads its own hooks after the run's.
+        config["hookfiles"] = [str((Path(source_dir) / f).resolve()) for f in hookfiles]
+    elif hookfiles:
+        config["hookfiles"] = str((Path(source_dir) / hookfiles).resolve())
     if spec:
         config["spec"] = spec_location(spec, Path.cwd())
     if endpoint and endpoint != config.get("endpoint"):

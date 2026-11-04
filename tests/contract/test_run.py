@@ -347,7 +347,7 @@ class ContractCommand(unittest.TestCase):
                 "chore:test:contract-domain-tenants",
                 "run:ownership --tag Domains",
                 "chore:api:coverage:report",
-                "summary:tests/contract/summary.py .cache/contract examples coverage authorization ownership ownership-domains ownership-mailboxes",
+                "summary:tests/contract/summary.py .cache/contract examples coverage authorization ownership ownership-domains ownership-mailboxes ownership-messages",
             ],
         )
 
@@ -368,7 +368,7 @@ class ContractCommand(unittest.TestCase):
                 "pin",
                 "chore:contract:pairs",
                 "chore:test:contract-fixtures",
-                "summary:tests/contract/summary.py .cache/contract examples coverage authorization ownership ownership-domains ownership-mailboxes",
+                "summary:tests/contract/summary.py .cache/contract examples coverage authorization ownership ownership-domains ownership-mailboxes ownership-messages",
             ],
         )
 
@@ -385,7 +385,7 @@ class ContractCommand(unittest.TestCase):
                     [
                         "pin",
                         "chore:contract:pairs",
-                        "summary:tests/contract/summary.py .cache/contract examples coverage authorization ownership ownership-domains ownership-mailboxes",
+                        "summary:tests/contract/summary.py .cache/contract examples coverage authorization ownership ownership-domains ownership-mailboxes ownership-messages",
                     ],
                 )
 
@@ -420,7 +420,7 @@ class ContractCommand(unittest.TestCase):
             calls,
             [
                 "pin",
-                "summary:tests/contract/summary.py .cache/contract examples coverage authorization ownership ownership-domains ownership-mailboxes",
+                "summary:tests/contract/summary.py .cache/contract examples coverage authorization ownership ownership-domains ownership-mailboxes ownership-messages",
             ],
         )
         self.assertNotIn("previous", artifacts["summary.md"])
