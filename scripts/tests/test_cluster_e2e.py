@@ -14,6 +14,7 @@ import importlib.util
 import io
 import json
 import os
+import re
 from pathlib import Path
 import stat
 import tempfile
@@ -402,6 +403,17 @@ class Stage3Tests(unittest.TestCase):
         with self.assertRaises(cluster_e2e.StepFailed):
             cluster_e2e.wait_for(probe, 60, 5, clock, sleep)
         self.assertEqual(now[0], 0.0)
+
+    def test_mail_in_waits_out_the_greylist_before_the_mail_timeout(self):
+        # A fresh install defers the reference's first delivery (451) for the
+        # greylist delay of the default inbound pipeline; the first run waited
+        # only --mail-timeout and gave up before the retry.
+        templates = (ROOT / "internal" / "pipeline" / "templates.go").read_text()
+        minutes = {int(m) for m in re.findall(r'"delay_minutes":\s*(\d+)', templates)}
+        self.assertTrue(minutes)
+        self.assertGreaterEqual(cluster_e2e.GREYLIST_DELAY, max(minutes) * 60)
+        args = cluster_e2e.parse_args(["--commit", "c"])
+        self.assertEqual(cluster_e2e.mail_in_wait(args.mail_timeout), cluster_e2e.GREYLIST_DELAY + args.mail_timeout)
 
     def test_without_a_reference_namespace_stage_3_says_what_it_needs(self):
         args = cluster_e2e.parse_args(["--commit", "c"])

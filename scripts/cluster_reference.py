@@ -81,6 +81,18 @@ REFERENCE_ENV = {
 }
 
 
+# Postfix settings the reference applies over its own (docker-mailserver reads
+# postfix-main.cf from its config directory). REST Mail greylists a new
+# sender/recipient/IP triple (internal/pipeline/templates.go, 5 minutes), so
+# the reference's first delivery to it is deferred with a 451, as it would be
+# for any first-time sender. Postfix's default backoff is 300s to 4000s, with
+# a queue run every 300s: the retry after the greylist delay could land well
+# past 10 minutes. These make it retry every minute, like a busy MTA would.
+POSTFIX_MAIN = ("queue_run_delay = 30s\n"
+                "minimal_backoff_time = 30s\n"
+                "maximal_backoff_time = 60s\n")
+
+
 def accounts_line(address: str, password: str) -> str:
     """One postfix-accounts.cf line. Dovecot reads the {PLAIN} scheme as is."""
     if not re.fullmatch(r"[^@|\s]+@[^@|\s]+", address):
@@ -162,11 +174,12 @@ def manifests(namespace: str, image: str = REFERENCE_IMAGE) -> dict:
                 "metadata": {"labels": labels},
                 "spec": {
                     "hostname": "mail",
-                    # The accounts file goes into a writable directory: the
-                    # image writes its other config files next to it.
+                    # The accounts file and the Postfix overrides go into a
+                    # writable directory: the image writes its other config
+                    # files next to them.
                     "initContainers": [{
                         "name": "accounts", "image": image,
-                        "command": ["cp", "/secret/postfix-accounts.cf", config + "/postfix-accounts.cf"],
+                        "command": ["cp", "/secret/postfix-accounts.cf", "/secret/postfix-main.cf", config + "/"],
                         "volumeMounts": [{"name": "account", "mountPath": "/secret", "readOnly": True},
                                          {"name": "config", "mountPath": config}],
                     }],
@@ -181,8 +194,8 @@ def manifests(namespace: str, image: str = REFERENCE_IMAGE) -> dict:
                     }],
                     "volumes": [
                         {"name": "account", "secret": {"secretName": SECRET,
-                                                       "items": [{"key": "postfix-accounts.cf",
-                                                                  "path": "postfix-accounts.cf"}]}},
+                                                       "items": [{"key": key, "path": key} for key in
+                                                                 ("postfix-accounts.cf", "postfix-main.cf")]}},
                         {"name": "tls", "secret": {"secretName": TLS_SECRET}},
                         {"name": "config", "emptyDir": {}},
                     ],
@@ -256,7 +269,8 @@ def main(argv: list[str] | None = None) -> int:
 
     address, password = f"{REFERENCE_USER}@{REFERENCE_DOMAIN}", secrets.token_hex(16)
     kubectl.apply(secret_manifest(ns, SECRET, {"address": address, "password": password,
-                                               "postfix-accounts.cf": accounts_line(address, password)}))
+                                               "postfix-accounts.cf": accounts_line(address, password),
+                                               "postfix-main.cf": POSTFIX_MAIN}))
     crt, key = self_signed(REFERENCE_HOST)
     kubectl.apply(secret_manifest(ns, TLS_SECRET, {"tls.crt": crt, "tls.key": key}, "kubernetes.io/tls"))
     kubectl.apply(manifests(ns))
