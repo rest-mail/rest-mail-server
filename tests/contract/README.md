@@ -1886,6 +1886,24 @@ rebasing is. It is not a check that the PR's head is compatible with the newest
 base. The job runs for pull requests only, so a merge group skips it. A branch
 with no single merge base fails the job rather than comparing from the tip.
 
+The verdict runs `scripts/contract_diff.py` and installs the comparator with
+`scripts/oasdiff_pin.py` as they are at the base's newest commit (#1760), so a PR
+cannot change the rules that judge it. For a stack that is the parent branch's
+copy, and the PR is judged again when it is retargeted. `test_contract_diff.py`
+proves the PR's own copies, with the comparator version the PR pins, and the
+check summary says when a PR changes either script. New rules therefore apply
+from the first run after they merge. The workflow comes from the merged ref, so
+its arguments and the base's copy match on any branch, however stale. A PR that
+changes both fails with exit code 2, because the base's copy does not know the
+new argument. Land such a change in two PRs: add the new argument beside the old
+one, then change the workflow once that is merged. A test runs the workflow's
+arguments against the checked-out script, so dropping one the workflow still
+passes fails the PR and the merge queue.
+
+This covers an edit to those two scripts. A PR can still change the verdict by
+editing the workflow itself, or the code that generates the head description.
+Only review catches those (#1776).
+
 The checksum-pinned oasdiff 1.34.0 compares OpenAPI 3.1 operations, parameters,
 schemas, statuses, headers and security requirements, including capability roles.
 The check summary names the exact revisions and classifies the changes; the

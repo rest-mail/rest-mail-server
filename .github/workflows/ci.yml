@@ -152,6 +152,34 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           echo "sha=$merge_base" >> "$GITHUB_OUTPUT"
 
+      # The verdict must not be something the PR can edit, so it runs copies from the
+      # base (#1760). Base tip, not merge base: this workflow comes from the merged ref,
+      # so the arguments below belong to these copies on every branch however stale,
+      # and branching from an old commit picks no older rules. The tests below still
+      # prove the PR's own copies. Each runs before the head's code does.
+      - name: Take the verdict scripts from the base tip
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          MERGE_BASE: ${{ steps.branch-point.outputs.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/contract-gate"
+          for script in contract_diff.py oasdiff_pin.py; do
+            git show "$BASE_SHA:scripts/$script" > "$RUNNER_TEMP/contract-gate/$script" || {
+              echo "::error::$BASE_SHA has no scripts/$script, and the verdict never uses the PR's own copy" >&2
+              exit 1
+            }
+          done
+          changed=$(git diff --name-only "$MERGE_BASE" "$HEAD_SHA" -- scripts/contract_diff.py scripts/oasdiff_pin.py)
+          {
+            echo "The verdict uses the scripts at base tip \`$BASE_SHA\`."
+            for path in $changed; do
+              echo "This PR changes \`$path\`. The tests prove that copy, but it does not judge this PR."
+            done
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Checkout the comparison base
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -165,8 +193,14 @@ jobs:
           go-version: "1.26.10"
           cache: true
 
-      - name: Install the pinned OpenAPI 3.1 comparator
-        run: python3 scripts/oasdiff_pin.py install "$RUNNER_TEMP/bin"
+      - name: Install the comparator the verdict uses
+        run: |
+          python3 "$RUNNER_TEMP/contract-gate/oasdiff_pin.py" install "$RUNNER_TEMP/contract-gate/bin"
+
+      # A PR that moves the pin is tested with the version it asks for.
+      - name: Install the comparator the PR's tests use
+        run: |
+          python3 scripts/oasdiff_pin.py install "$RUNNER_TEMP/bin"
 
       - name: Prove classification and label gates with the real comparator
         env:
@@ -188,6 +222,8 @@ jobs:
       # The labels are read now, not from the event: ci-labels.yml re-runs this job
       # when a deliberate-change label is added or removed, and a re-run keeps the
       # event of the run it repeats.
+      # A PR cannot change these arguments and the script together: see
+      # "Contract changes in pull requests" in tests/contract/README.md.
       - name: Report contract changes and require deliberate labels
         env:
           GH_TOKEN: ${{ github.token }}
@@ -198,9 +234,9 @@ jobs:
           while IFS= read -r label; do
             [ -n "$label" ] && labels+=(--label "$label")
           done < <(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json labels --jq '.labels[].name')
-          python3 scripts/contract_diff.py \
+          python3 "$RUNNER_TEMP/contract-gate/contract_diff.py" \
             "$RUNNER_TEMP/contract-diff/base.json" "$RUNNER_TEMP/contract-diff/head.json" \
-            --oasdiff "$RUNNER_TEMP/bin/oasdiff" "${labels[@]}" \
+            --oasdiff "$RUNNER_TEMP/contract-gate/bin/oasdiff" "${labels[@]}" \
             --output "$RUNNER_TEMP/contract-diff"
 
       - name: Publish the comparison and generated descriptions

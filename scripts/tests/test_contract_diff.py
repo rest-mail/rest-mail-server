@@ -232,7 +232,6 @@ class ContractDiff(unittest.TestCase):
         self.assertIn("comparison failed", summary)
 
 
-
 CI_WORKFLOW = ROOT / ".github/workflows/ci.yml"
 BRANCH_POINT_STEP = "Find where the PR branched from its base"
 
@@ -607,6 +606,275 @@ class StaleBranchComparison(unittest.TestCase):
         self.assertEqual(result.returncode, 1, result.stderr)
         self.assertEqual(report["missing_labels"], ["contract-change"])
         self.assertIn("gadgets", json.dumps(report["changes"]).lower())
+
+
+GATE_SCRIPTS_STEP = "Take the verdict scripts from the base tip"
+VERDICT_COMPARATOR_STEP = "Install the comparator the verdict uses"
+VERDICT_STEP = "Report contract changes and require deliberate labels"
+HEAD_COMPARATOR_STEP = "Install the comparator the PR's tests use"
+HEAD_TESTS_STEP = "Prove classification and label gates with the real comparator"
+REAL_SCRIPT = (ROOT / "scripts/contract_diff.py").read_text()
+# What a pull request could write to decide its own verdict.
+ALWAYS_PASSES = "import sys\nsys.exit(0)\n"
+A_REMOVAL = json.dumps(
+    [{"id": "api-removed-without-deprecation", "level": 3, "text": "fixture removal"}]
+)
+
+
+def installer_of(comparator):
+    """An oasdiff_pin.py that needs no network and installs the given shell."""
+    return textwrap.dedent(
+        f"""\
+        import pathlib, sys
+        target = pathlib.Path(sys.argv[2])
+        target.mkdir(parents=True, exist_ok=True)
+        (target / "oasdiff").write_text({comparator!r})
+        (target / "oasdiff").chmod(0o755)
+        """
+    )
+
+
+def reporting(changes):
+    return f"#!/bin/sh\ncat <<'EOF'\n{changes}\nEOF\n"
+
+
+class VerdictFixture(GitFixture):
+    """Runs the job's own shell, in order, in a clone standing at the PR head."""
+
+    def commit_scripts(self, script=None, installer=None):
+        for name, text in (("contract_diff.py", script), ("oasdiff_pin.py", installer)):
+            path = self.origin / "scripts" / name
+            if text is not None:
+                path.parent.mkdir(exist_ok=True)
+                path.write_text(text)
+                self.git("add", str(path))
+        return self.commit(description())
+
+    def env_for(self, base_tip, merge_base, head):
+        binaries = self.temp / "bin"
+        binaries.mkdir(exist_ok=True)
+        github = binaries / "gh"
+        github.write_text('#!/bin/sh\nprintf "%s\\n" "$VERDICT_LABELS"\n')
+        github.chmod(0o755)
+        return dict(
+            self.env,
+            PATH=str(binaries) + os.pathsep + self.env["PATH"],
+            PR="1",
+            GITHUB_REPOSITORY="fixture/repository",
+            VERDICT_LABELS="",
+            BASE_SHA=base_tip,
+            MERGE_BASE=merge_base,
+            HEAD_SHA=head,
+            RUNNER_TEMP=str(self.temp),
+            GITHUB_OUTPUT=str(self.temp / "output"),
+            GITHUB_STEP_SUMMARY=str(self.temp / "summary"),
+            GITHUB_EVENT_PATH=str(self.temp / "event.json"),
+        )
+
+    def run_step(self, shell, env):
+        return subprocess.run(
+            ["bash", "-c", shell],
+            cwd=self.clone,
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=20,
+        )
+
+    def take_scripts(self, base_tip, head):
+        """The steps up to the head's first code: where the verdict's copies come from."""
+        (self.temp / "output").unlink(missing_ok=True)
+        step, merge_base, _ = self.branch_point(base_tip, head)
+        assert step.returncode == 0, step.stderr
+        self.git("checkout", "--quiet", head, cwd=self.clone)
+        env = self.env_for(base_tip, merge_base, head)
+        return self.run_step(run_block(workflow_step(GATE_SCRIPTS_STEP)), env), env
+
+    def verdict(
+        self, base_tip, head, labels=(), base_spec=None, head_spec=None, event_labels=()
+    ):
+        taken, env = self.take_scripts(base_tip, head)
+        assert taken.returncode == 0, taken.stderr
+        installed = self.run_step(
+            run_block(workflow_step(VERDICT_COMPARATOR_STEP)), env
+        )
+        assert installed.returncode == 0, installed.stderr
+        (self.temp / "event.json").write_text(
+            json.dumps(
+                {"pull_request": {"labels": [{"name": n} for n in event_labels]}}
+            )
+        )
+        env["VERDICT_LABELS"] = "\n".join(labels)
+        for name, spec in (("base", base_spec), ("head", head_spec)):
+            (self.temp / "contract-diff" / f"{name}.json").write_text(
+                json.dumps(spec or description())
+            )
+        return self.run_step(run_block(workflow_step(VERDICT_STEP)), env)
+
+    def report(self):
+        return json.loads((self.temp / "contract-diff/changes.json").read_text())
+
+
+class VerdictScripts(unittest.TestCase):
+    """The verdict comes from copies the PR did not change (#1760). Needs git only."""
+
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.git = VerdictFixture(directory.name)
+        self.installer = installer_of(reporting(A_REMOVAL))
+
+    def base_with_gate(self):
+        return self.git.commit_scripts(REAL_SCRIPT, self.installer)
+
+    def assert_contract_label_required(self, result):
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertEqual(self.git.report()["missing_labels"], ["contract-change"])
+
+    def test_a_head_that_rewrites_the_script_does_not_decide_its_verdict(self):
+        base_tip = self.base_with_gate()
+        self.git.branch("pr", base_tip)
+        head = self.git.commit_scripts(ALWAYS_PASSES)
+        self.assert_contract_label_required(self.git.verdict(base_tip, head))
+        # The base's copy reads the labels, so a deliberate change can still land.
+        self.assertEqual(
+            self.git.verdict(base_tip, head, ["contract-change"]).returncode, 0
+        )
+
+    def test_a_removed_live_label_is_not_restored_by_the_old_event(self):
+        base_tip = self.base_with_gate()
+        self.git.branch("pr", base_tip)
+        head = self.git.commit_scripts(ALWAYS_PASSES)
+        self.assert_contract_label_required(
+            self.git.verdict(base_tip, head, event_labels=["contract-change"])
+        )
+
+    def test_a_head_that_rewrites_the_installer_does_not_choose_the_comparator(self):
+        base_tip = self.base_with_gate()
+        self.git.branch("pr", base_tip)
+        head = self.git.commit_scripts(installer=installer_of(reporting("[]")))
+        self.assert_contract_label_required(self.git.verdict(base_tip, head))
+
+    def test_a_stale_head_takes_the_rules_of_the_base_tip(self):
+        # Base tip, not merge base: branching from an old commit picks no old rules,
+        # and the arguments ci.yml passes always belong to the script it runs.
+        start = self.git.commit_scripts(ALWAYS_PASSES, installer_of(reporting("[]")))
+        base_tip = self.base_with_gate()
+        self.git.branch("pr", start)
+        head = self.git.commit(description())
+        self.assert_contract_label_required(self.git.verdict(base_tip, head))
+
+    def test_a_head_from_before_the_scripts_existed_still_gets_a_verdict(self):
+        start = self.git.commit(description())
+        base_tip = self.base_with_gate()
+        self.git.branch("pr", start)
+        head = self.git.commit(description())
+        self.assert_contract_label_required(self.git.verdict(base_tip, head))
+
+    def test_a_base_tip_without_the_scripts_fails_instead_of_using_the_head(self):
+        base_tip = self.git.commit(description())
+        self.git.branch("pr", base_tip)
+        head = self.git.commit_scripts(ALWAYS_PASSES, self.installer)
+        taken, _ = self.git.take_scripts(base_tip, head)
+        self.assertNotEqual(taken.returncode, 0)
+        self.assertIn(f"::error::{base_tip} has no scripts/", taken.stderr)
+
+    def test_a_pr_changing_the_arguments_in_lockstep_fails_closed(self):
+        # ci.yml comes from the merged ref, so it can name a flag the base's copy
+        # lacks. The change lands in two PRs; the README says how.
+        base_tip = self.base_with_gate()
+        self.git.branch("pr", base_tip)
+        head = self.git.commit_scripts(ALWAYS_PASSES)
+        taken, env = self.git.take_scripts(base_tip, head)
+        self.assertEqual(taken.returncode, 0, taken.stderr)
+        self.git.run_step(run_block(workflow_step(VERDICT_COMPARATOR_STEP)), env)
+        shell = run_block(workflow_step(VERDICT_STEP)).replace(
+            "--output", "--pr-output"
+        )
+        result = self.git.run_step(shell, env)
+        self.assertEqual(result.returncode, 2, result.stderr)
+        self.assertIn("--pr-output", result.stderr)
+
+    def test_the_job_passes_only_arguments_this_scripts_copy_accepts(self):
+        # The contract job is skipped in the merge queue and judges a PR with the
+        # base's copy, so nothing else notices a PR dropping a flag ci.yml still
+        # passes, until it has failed every other PR. Lint runs this on the queue.
+        base_tip = self.git.commit_scripts(REAL_SCRIPT, installer_of(reporting("[]")))
+        self.git.branch("pr", base_tip)
+        head = self.git.commit(description())
+        result = self.git.verdict(base_tip, head)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(self.git.report(), {"changes": [], "missing_labels": []})
+
+    def test_the_summary_names_the_copy_and_only_this_prs_changes_to_the_scripts(self):
+        start = self.base_with_gate()
+        base_tip = self.git.commit_scripts(REAL_SCRIPT + "\n# newer rules\n")
+        self.git.branch("pr", start)
+        unchanged = self.git.commit(description())
+        changed = self.git.commit_scripts(REAL_SCRIPT + "\n# this PR's rules\n")
+        summary = self.git.temp / "summary"
+
+        taken, _ = self.git.take_scripts(base_tip, unchanged)
+        self.assertEqual(taken.returncode, 0, taken.stderr)
+        self.assertIn(base_tip, summary.read_text())
+        self.assertNotIn("does not judge", summary.read_text())
+
+        summary.unlink()
+        taken, _ = self.git.take_scripts(base_tip, changed)
+        self.assertEqual(taken.returncode, 0, taken.stderr)
+        self.assertIn("scripts/contract_diff.py", summary.read_text())
+        self.assertIn("does not judge", summary.read_text())
+
+    def test_the_head_is_still_tested_and_runs_only_after_the_copies_are_taken(self):
+        tests = workflow_step(HEAD_TESTS_STEP)
+        self.assertIn("discover -s scripts/tests -p test_contract_diff.py", tests)
+        self.assertIn("OASDIFF: ${{ runner.temp }}/bin/oasdiff", tests)
+        self.assertIn(
+            'python3 scripts/oasdiff_pin.py install "$RUNNER_TEMP/bin"',
+            workflow_step(HEAD_COMPARATOR_STEP),
+        )
+        text = CI_WORKFLOW.read_text()
+        order = [
+            text.index(f"- name: {name}\n")
+            for name in (
+                BRANCH_POINT_STEP,
+                GATE_SCRIPTS_STEP,
+                VERDICT_COMPARATOR_STEP,
+                HEAD_COMPARATOR_STEP,
+                HEAD_TESTS_STEP,
+                "Generate the base and head descriptions",
+                VERDICT_STEP,
+            )
+        ]
+        self.assertEqual(order, sorted(order))
+        self.assertIn(
+            "MERGE_BASE: ${{ steps.branch-point.outputs.sha }}",
+            workflow_step(GATE_SCRIPTS_STEP),
+        )
+
+
+@unittest.skipUnless(
+    BINARY, "OASDIFF names the pinned binary; contract-diff CI installs it"
+)
+class VerdictWithTheRealComparator(unittest.TestCase):
+    """The whole path with real descriptions and a head that passes itself (#1760)."""
+
+    def test_a_real_removal_needs_its_label_whatever_the_head_script_says(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        fixture = VerdictFixture(directory.name)
+        base_tip = fixture.commit_scripts(
+            REAL_SCRIPT,
+            installer_of(f'#!/bin/sh\nexec "{Path(BINARY).resolve()}" "$@"\n'),
+        )
+        fixture.branch("pr", base_tip)
+        head = fixture.commit_scripts(ALWAYS_PASSES)
+        removed = description()
+        del removed["paths"]["/widgets"]["post"]
+        result = fixture.verdict(base_tip, head, head_spec=removed)
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertEqual(fixture.report()["missing_labels"], ["contract-change"])
 
 
 if __name__ == "__main__":
