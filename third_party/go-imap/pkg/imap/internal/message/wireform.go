@@ -217,18 +217,20 @@ func setHeaderField(header, name, value string) string {
 // element of its own, so joining the result gives the block back.
 func headerBlockFields(header string) []string {
 	var fields []string
-	for len(header) > 0 {
-		end := len(header)
-		if i := strings.Index(header, "\r\n"); i >= 0 {
-			end = i + 2
+	start := 0
+	for at := 0; at < len(header); {
+		if at > start && header[at] != ' ' && header[at] != '\t' {
+			fields = append(fields, header[start:at])
+			start = at
 		}
-		line := header[:end]
-		if len(fields) > 0 && (line[0] == ' ' || line[0] == '\t') {
-			fields[len(fields)-1] += line
-		} else {
-			fields = append(fields, line)
+		i := strings.Index(header[at:], "\r\n")
+		if i < 0 {
+			break
 		}
-		header = header[end:]
+		at += i + 2
+	}
+	if start < len(header) {
+		fields = append(fields, header[start:])
 	}
 	return fields
 }
@@ -303,6 +305,7 @@ func isAttributeChar(c byte) bool {
 // in a quoted-string (RFC 2047 §5).
 func encodeHeaderValue(column int, value string) string {
 	var b strings.Builder
+	tokens := headerTokens{value: value, unclosed: len(value)}
 	line := column
 	write := func(s string) {
 		b.WriteString(s)
@@ -313,8 +316,8 @@ func encodeHeaderValue(column int, value string) string {
 		}
 	}
 	for i := 0; i < len(value); {
-		if !isHeaderSpace(value[i]) && !has8bit(headerToken(value[i:])) {
-			token := headerToken(value[i:])
+		if !isHeaderSpace(value[i]) && !has8bit(tokens.at(i)) {
+			token := tokens.at(i)
 			write(token)
 			i += len(token)
 			continue
@@ -328,16 +331,16 @@ func encodeHeaderValue(column int, value string) string {
 			i = j
 			continue
 		}
-		end := i + len(headerToken(value[i:]))
+		end := i + len(tokens.at(i))
 		for {
 			j := end
 			for j < len(value) && isHeaderSpace(value[j]) {
 				j++
 			}
-			if j == end || j == len(value) || !has8bit(headerToken(value[j:])) {
+			if j == end || j == len(value) || !has8bit(tokens.at(j)) {
 				break
 			}
-			end = j + len(headerToken(value[j:]))
+			end = j + len(tokens.at(j))
 		}
 		lead, run, trail := peelPunctuation(unfoldHeader(value[i:end]))
 		write(lead)
@@ -360,25 +363,48 @@ func isHeaderSpace(c byte) bool {
 	return c == ' ' || c == '\t' || c == '\r' || c == '\n'
 }
 
-// headerToken is the token at the start of s: up to white space, a quoted-string
-// that closes counting as part of it, spaces and all.
-func headerToken(s string) string {
-	i := 0
-	for i < len(s) && !isHeaderSpace(s[i]) {
-		if s[i] == '"' {
-			for j := i + 1; j < len(s); j++ {
-				if s[j] == '\\' {
-					j++
-				} else if s[j] == '"' {
-					i = j
-					break
-				}
+// headerTokens reads the tokens of one field value. unclosed is the offset of the
+// first '"' found to have no closing quote, so that scan runs only once: every later
+// '"' in the value has none either. A scan that reached a later '"' would have closed
+// on it, so it must have skipped it as a quoted-pair, and a scan from just after that
+// '"' follows the same octets to the end of the value.
+type headerTokens struct {
+	value    string
+	unclosed int
+}
+
+// at is the token starting at offset start: up to white space, a quoted-string that
+// closes counting as part of it, spaces and all.
+func (t *headerTokens) at(start int) string {
+	i := start
+	for i < len(t.value) && !isHeaderSpace(t.value[i]) {
+		if t.value[i] == '"' && i < t.unclosed {
+			closes := t.closingQuote(i)
+			if closes < 0 {
+				t.unclosed = i
+			} else {
+				i = closes
 			}
 		}
 		i++
 	}
-	return s[:i]
+	return t.value[start:i]
 }
+
+// closingQuote is the offset of the '"' that closes the one at open, or -1.
+func (t *headerTokens) closingQuote(open int) int {
+	for j := open + 1; j < len(t.value); j++ {
+		if t.value[j] == '\\' {
+			j++
+		} else if t.value[j] == '"' {
+			return j
+		}
+	}
+	return -1
+}
+
+// unescapeQuotedPairs reads the quoted-pairs of a quoted-string.
+var unescapeQuotedPairs = strings.NewReplacer(`\\`, `\`, `\"`, `"`)
 
 // peelPunctuation splits the structure around a run from its text. Quotes are
 // dropped with the quoted-pairs they allowed.
@@ -394,7 +420,7 @@ func peelPunctuation(run string) (lead, text, trail string) {
 	if strings.Contains(lead, `"`) || strings.Contains(trail, `"`) {
 		lead = strings.ReplaceAll(lead, `"`, "")
 		trail = strings.ReplaceAll(trail, `"`, "")
-		text = strings.NewReplacer(`\\`, `\`, `\"`, `"`).Replace(text)
+		text = unescapeQuotedPairs.Replace(text)
 	}
 	return lead, text, trail
 }
@@ -420,38 +446,41 @@ func encodedWords(text string) []string {
 	open := "=?" + charset + "?Q?"
 	const closing = "?="
 	var words []string
-	var cur strings.Builder
+	var cur, enc []byte
 	for i := 0; i < len(text); {
 		size := 1
 		if charset == "UTF-8" {
 			_, size = utf8.DecodeRuneInString(text[i:])
 		}
-		enc := qEncode(text[i : i+size])
-		if cur.Len() > 0 && len(open)+cur.Len()+len(enc)+len(closing) > 75 {
-			words = append(words, open+cur.String()+closing)
-			cur.Reset()
+		enc = appendQEncoded(enc[:0], text[i:i+size])
+		if len(cur) > 0 && len(open)+len(cur)+len(enc)+len(closing) > 75 {
+			words = append(words, open+string(cur)+closing)
+			cur = cur[:0]
 		}
-		cur.WriteString(enc)
+		cur = append(cur, enc...)
 		i += size
 	}
-	return append(words, open+cur.String()+closing)
+	return append(words, open+string(cur)+closing)
 }
 
 // qEncode is the Q encoding restricted to what RFC 2047 §5(3) allows wherever an
 // encoded word may stand.
 func qEncode(s string) string {
+	return string(appendQEncoded(nil, s))
+}
+
+func appendQEncoded(b []byte, s string) []byte {
 	const hex = "0123456789ABCDEF"
-	var b strings.Builder
 	for i := 0; i < len(s); i++ {
 		c := s[i]
 		switch {
 		case c == ' ':
-			b.WriteByte('_')
+			b = append(b, '_')
 		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9', strings.IndexByte("!*+-/", c) >= 0:
-			b.WriteByte(c)
+			b = append(b, c)
 		default:
-			b.Write([]byte{'=', hex[c>>4], hex[c&0x0f]})
+			b = append(b, '=', hex[c>>4], hex[c&0x0f])
 		}
 	}
-	return b.String()
+	return b
 }

@@ -31,7 +31,10 @@ func messageNode(raw string, depth int) mimeNode {
 // the same encoding override, defaults and depth limit as partStructure so
 // sections match BODYSTRUCTURE.
 func (n mimeNode) mediaType() (string, map[string]string) {
-	h, _ := textproto.NewReader(bufio.NewReader(strings.NewReader(n.header))).ReadMIMEHeader()
+	// The buffer fits the header, so a message of many small parts doesn't allocate
+	// a full one for each.
+	buffer := min(len(n.header), 4096)
+	h, _ := textproto.NewReader(bufio.NewReaderSize(strings.NewReader(n.header), buffer)).ReadMIMEHeader()
 	if !knownTransferEncoding(h.Get("Content-Transfer-Encoding")) {
 		return "application/octet-stream", map[string]string{}
 	}
