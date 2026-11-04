@@ -1,4 +1,5 @@
 import type { LoginResponse, Folder, MessageSummary, MessageDetail, Account, Pagination, Attachment, AwaitingThreadsPage } from '../types';
+import { ApiError, apiErrorFromBody } from './apiError';
 import { API_BASE as BASE } from './base';
 import type { components, paths } from './types';
 
@@ -23,17 +24,7 @@ export function getCsrfToken(): string {
   return match ? decodeURIComponent(match[1]) : '';
 }
 
-export class ApiError extends Error {
-  status: number;
-  code: string;
-
-  constructor(status: number, code: string, message: string) {
-    super(message);
-    this.name = 'ApiError';
-    this.status = status;
-    this.code = code;
-  }
-}
+export { ApiError };
 
 let onUnauthorized: (() => void) | null = null;
 
@@ -59,16 +50,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     if (res.status === 401 && onUnauthorized) {
       onUnauthorized();
     }
-    const body = await res.text();
-    try {
-      const parsed = JSON.parse(body);
-      if (parsed.error) {
-        throw new ApiError(res.status, parsed.error.code || 'unknown', parsed.error.message || body);
-      }
-    } catch (e) {
-      if (e instanceof ApiError) throw e;
-    }
-    throw new ApiError(res.status, 'unknown', `API error ${res.status}: ${body}`);
+    throw apiErrorFromBody(res.status, await res.text());
   }
   return res.json();
 }
@@ -89,16 +71,7 @@ async function requestNoContent(path: string, options: RequestInit = {}): Promis
     if (res.status === 401 && onUnauthorized) {
       onUnauthorized();
     }
-    const body = await res.text();
-    try {
-      const parsed = JSON.parse(body);
-      if (parsed.error) {
-        throw new ApiError(res.status, parsed.error.code || 'unknown', parsed.error.message || body);
-      }
-    } catch (e) {
-      if (e instanceof ApiError) throw e;
-    }
-    throw new ApiError(res.status, 'unknown', `API error ${res.status}: ${body}`);
+    throw apiErrorFromBody(res.status, await res.text());
   }
 }
 
@@ -356,6 +329,17 @@ export async function getQuietHours(accountId: number): Promise<QuietHoursRespon
 
 export async function setQuietHours(accountId: number, setting: QuietHoursSetting): Promise<QuietHoursResponse> {
   return request(`${BASE}/accounts/${accountId}/quiet-hours`, { method: 'PUT', body: JSON.stringify(setting) });
+}
+
+type AccountTimeZoneResponse = paths['/api/v1/accounts/{id}/time-zone']['get']['responses'][200]['content']['application/json'];
+
+export async function getAccountTimeZone(accountId: number): Promise<AccountTimeZoneResponse> {
+  return request(`${BASE}/accounts/${accountId}/time-zone`);
+}
+
+/** Null clears the zone, and IMAP then uses UTC. An unknown name is a 422 ApiError with `fields.time_zone`. */
+export async function setAccountTimeZone(accountId: number, timeZone: string | null): Promise<AccountTimeZoneResponse> {
+  return request(`${BASE}/accounts/${accountId}/time-zone`, { method: 'PUT', body: JSON.stringify({ time_zone: timeZone }) });
 }
 
 export async function getContactReplyTimeSetting(accountId: number): Promise<ContactReplyTimeSetting> {
