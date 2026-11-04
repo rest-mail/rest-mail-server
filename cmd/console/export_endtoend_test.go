@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/url"
 	"path/filepath"
 	"reflect"
 	"slices"
@@ -95,6 +97,36 @@ func (s *migrationServer) keptMail(t *testing.T, account uint) []keptMessage {
 	return kept
 }
 
+// snoozeFolder snoozes every thread of a folder through the public API, which
+// hides each from the folder's default listing.
+func (s *migrationServer) snoozeFolder(t *testing.T, account uint, folder string) {
+	t.Helper()
+	var threads []string
+	if err := s.db.Model(&models.Message{}).Where("mailbox_id = ? AND folder = ?", account, folder).Distinct().Pluck("thread_id", &threads).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(threads) == 0 {
+		t.Fatalf("folder %s holds no thread to snooze", folder)
+	}
+	body := `{"snoozed_until":"` + time.Now().Add(time.Hour).UTC().Format(time.RFC3339) + `"}`
+	for _, thread := range threads {
+		req, err := http.NewRequest(http.MethodPost, s.apiURL+"/api/v1/accounts/"+strconv.FormatUint(uint64(account), 10)+"/threads/"+url.PathEscape(thread)+"/snooze", strings.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Authorization", "Bearer "+s.session)
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := s.client.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("snooze thread %q: HTTP %d", thread, resp.StatusCode)
+		}
+	}
+}
+
 func TestExportedAccountImportsIntoAnotherServerIntact(t *testing.T) {
 	source := newMigrationServer(t)
 	from := source.newAccount(t, "from@"+migrationDomain)
@@ -109,6 +141,8 @@ func TestExportedAccountImportsIntoAnotherServerIntact(t *testing.T) {
 	if len(want) != len(messages) {
 		t.Fatalf("the source account holds %d messages, want %d", len(want), len(messages))
 	}
+	// A folder with only a snoozed thread still exports whole (#1599).
+	source.snoozeFolder(t, from, "Archive/2020")
 
 	export := filepath.Join(t.TempDir(), "export")
 	var out, errs bytes.Buffer

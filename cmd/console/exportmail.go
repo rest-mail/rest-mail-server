@@ -45,9 +45,8 @@ dovecot-keywords file, and its internal date is the file's modification time.
 Messages are downloaded one at a time to the folder's tmp/ and renamed into
 cur/ when complete, so a message file is never seen half written. Folder names
 containing "." are refused before anything is written: Maildir++ cannot tell
-them apart from subfolders. Messages in a snoozed thread are not listed by the
-API, so they are not exported until the snooze ends. Raw messages and
-credentials are never printed. See docs/migrating-mail.md.
+them apart from subfolders. Raw messages and credentials are never printed.
+See docs/migrating-mail.md.
 
 Exit status: 0 complete, 2 usage, 1 export failed.
 `
@@ -206,7 +205,7 @@ func (e *mailExporter) exportFolder(dir, folder string) error {
 		return err
 	}
 	seen := map[uint]bool{}
-	path := "/api/v1/accounts/" + strconv.FormatUint(e.account, 10) + "/folders/" + url.PathEscape(folder) + "/messages?limit=100&include_imap_deleted=true"
+	path := "/api/v1/accounts/" + strconv.FormatUint(e.account, 10) + "/folders/" + url.PathEscape(folder) + "/messages?limit=100&include_imap_deleted=true&include_snoozed=true"
 	cursor := ""
 	for {
 		// A page's metadata is kept, never a message, so the list response is
