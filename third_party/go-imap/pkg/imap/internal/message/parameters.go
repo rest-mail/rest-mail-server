@@ -1,7 +1,9 @@
 package message
 
 import (
+	"cmp"
 	"mime"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -9,8 +11,9 @@ import (
 
 // parseMediaType is mime.ParseMediaType with RFC 2231 parameters read here, because
 // it drops one in any charset but UTF-8 and US-ASCII, and keeps only the later
-// segments of a continued one. v holds no comments, and a field holding an 8-bit
-// octet has been through readableField. See extendedValue for what a parameter becomes.
+// segments of a continued one, and none of one with no first segment. v holds no
+// comments, and a field holding an 8-bit octet has been through readableField. See
+// extendedValue for what a parameter becomes.
 func parseMediaType(v string) (string, map[string]string, error) {
 	mt, params, err := mime.ParseMediaType(v)
 	if err != nil || !strings.Contains(v, "*") {
@@ -38,6 +41,15 @@ func parseMediaType(v string) (string, map[string]string, error) {
 	}
 	for base, pieces := range families {
 		if value, ok := extendedValue(base, pieces); ok {
+			params[base] = value
+			continue
+		}
+		// Delimiter lines match a boundary's whole value, and this is only part of one.
+		_, plain := params[base]
+		if plain || (base == "boundary" && strings.HasPrefix(mt, "multipart/")) {
+			continue
+		}
+		if value, ok := laterSegments(base, pieces); ok {
 			params[base] = value
 		}
 	}
@@ -120,6 +132,38 @@ func extendedValue(base string, pieces map[string]string) (string, bool) {
 		return "", false
 	}
 	return keptValue(base, charset, octets.String()), true
+}
+
+// laterSegments is the text of a continued parameter whose first segment never came,
+// in segment order. Nothing stands in for what is missing: only a first segment can
+// name a charset (RFC 2231 §4.1), so the octets name none, and a gap closes up.
+func laterSegments(base string, pieces map[string]string) (string, bool) {
+	type segment struct{ number, key string }
+	var segments []segment
+	for key := range pieces {
+		suffix := strings.TrimPrefix(key, base+"*")
+		if suffix != "" && validExtendedSuffix(suffix) {
+			number := strings.TrimLeft(strings.TrimSuffix(suffix, "*"), "0")
+			segments = append(segments, segment{number, key})
+		}
+	}
+	if len(segments) == 0 {
+		return "", false
+	}
+	// A number can be too long to parse, and without leading zeros the longer is larger.
+	// The name settles a tie, so the same field always reads the same.
+	slices.SortFunc(segments, func(a, b segment) int {
+		return cmp.Or(cmp.Compare(len(a.number), len(b.number)), cmp.Compare(a.number, b.number), cmp.Compare(a.key, b.key))
+	})
+	var octets strings.Builder
+	for _, s := range segments {
+		if v := pieces[s.key]; strings.HasSuffix(s.key, "*") {
+			octets.WriteString(percentDecode(v))
+		} else {
+			octets.WriteString(v)
+		}
+	}
+	return keptValue(base, "", octets.String()), true
 }
 
 // splitExtendedValue reads charset'language'text. A value without both quotes is
