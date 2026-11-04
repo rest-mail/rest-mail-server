@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/rest-mail/go-imap/pkg/imap/wireform"
+	gopop3 "github.com/rest-mail/go-pop3/pkg/pop3"
 )
 
 func wireSizeShapes() map[string]string {
@@ -48,7 +49,8 @@ func measuresWhatFetchSends(t *testing.T, name, raw string) {
 	t.Helper()
 	downgraded := DowngradeHeaders(raw)
 	want := WireSizes{
-		Downgraded: len(DowngradeForPOP3(raw)),
+		Downgraded: gopop3.OctetCount([]byte(DowngradeForPOP3(raw))),
+		POP3UTF8:   gopop3.OctetCount([]byte(raw)),
 		IMAP:       len(wireform.Convert(downgraded, false)),
 		IMAPUTF8:   len(wireform.Convert(raw, true)),
 	}

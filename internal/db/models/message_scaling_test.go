@@ -77,7 +77,7 @@ func TestMessage_BeforeCreate_DoesNotCopyTheSource(t *testing.T) {
 			if got := after.TotalAlloc - before.TotalAlloc; got > uint64(len(raw))/2 {
 				t.Errorf("BeforeCreate of %d bytes allocated %d", len(raw), got)
 			}
-			if message.DowngradedSize != len(raw) || message.IMAPSize != len(raw) || message.IMAPUTF8Size != len(raw) {
+			if message.DowngradedSize != len(raw) || message.IMAPSize != len(raw) || message.IMAPUTF8Size != len(raw) || message.POP3UTF8Size != len(raw) {
 				t.Errorf("sizes %d %d %d, want %d", message.DowngradedSize, message.IMAPSize, message.IMAPUTF8Size, len(raw))
 			}
 		})
