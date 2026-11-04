@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
+	"unsafe"
 
 	"gorm.io/gorm"
 
@@ -165,14 +166,17 @@ func (Message) TableName() string { return "messages" }
 // BeforeCreate measures the sizes a gateway reports for a message stored with its
 // raw source, on every path that stores one, so no delivery path can forget them.
 func (m *Message) BeforeCreate(*gorm.DB) error {
-	if m.DowngradedSize == 0 && m.RawSize > 0 {
-		m.DowngradedSize = rmail.DowngradedSize(m.sourceText())
-	}
-	if m.IMAPSize == 0 && m.RawSize > 0 {
-		m.IMAPSize = rmail.IMAPWireSize(string(m.Source()), false)
-	}
-	if m.IMAPUTF8Size == 0 && m.RawSize > 0 {
-		m.IMAPUTF8Size = rmail.IMAPWireSize(string(m.Source()), true)
+	if m.RawSize > 0 && (m.DowngradedSize == 0 || m.IMAPSize == 0 || m.IMAPUTF8Size == 0) {
+		sizes := rmail.MeasureWireSizes(m.sourceView())
+		if m.DowngradedSize == 0 {
+			m.DowngradedSize = sizes.Downgraded
+		}
+		if m.IMAPSize == 0 {
+			m.IMAPSize = sizes.IMAP
+		}
+		if m.IMAPUTF8Size == 0 {
+			m.IMAPUTF8Size = sizes.IMAPUTF8
+		}
 	}
 	if m.PendingDraft || (m.IsDeleted && m.Sender == "system" && m.Subject == "" && m.BodyText == "" && m.BodyHTML == "" && m.RawMessage == "" && m.RawOctets == nil) {
 		m.SealedHash = ""
@@ -183,10 +187,11 @@ func (m *Message) BeforeCreate(*gorm.DB) error {
 	return err
 }
 
-// sourceText is Source as text. A message held as text isn't copied for it.
-func (m Message) sourceText() string {
+// sourceView is the source as a string without copying it, for reading it while nothing
+// else writes to it: measuring a message must not cost a copy of it. Nothing may keep it.
+func (m *Message) sourceView() string {
 	if m.RawOctets != nil {
-		return string(m.RawOctets)
+		return unsafe.String(unsafe.SliceData(m.RawOctets), len(m.RawOctets))
 	}
 	return m.RawMessage
 }

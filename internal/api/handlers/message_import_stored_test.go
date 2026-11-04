@@ -321,10 +321,62 @@ func TestMessageImportStoredHoldsOnlyWhatTheRowKeeps(t *testing.T) {
 	}
 	allocated := after.TotalAlloc - before.TotalAlloc
 	t.Logf("storing %d bytes allocated %d, %.1f times over", len(message), allocated, float64(allocated)/float64(len(message)))
-	// Four copies remain: the row's, two made measuring and sealing it (Message.BeforeCreate),
-	// and the database driver's, plus about 2 MiB whatever the size. Reading the whole request in
-	// memory came to 22.
+	// Three copies remain: the row's, one made sealing it (Message.BeforeCreate), and the
+	// database driver's, plus about 2 MiB whatever the size. Measuring its sizes copies nothing.
+	// Reading the whole request in memory came to 22.
 	if allocated > 8*uint64(len(message)) {
 		t.Fatalf("storing %d bytes allocated %d", len(message), allocated)
+	}
+}
+
+// The same limit holds for an attachment FETCH has to convert, because measuring what it would
+// send holds no copy of the message.
+func TestMessageImportStoredHoldsTheLimitOnHostileShapes(t *testing.T) {
+	const size = 1 << 20
+	const id = "From: old@example.test\r\n"
+	db := importProofDB(t)
+	fx := seedAccountsFixture(t, db)
+	if err := db.Create(&models.QuotaUsage{MailboxID: fx.user.ID}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := grants.EnsureImport(db, &fx.user); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Model(&models.Mailbox{}).Where("id = ?", fx.user.ID).Update("quota_bytes", int64(1)<<40).Error; err != nil {
+		t.Fatal(err)
+	}
+	// What the first import in a process builds and keeps isn't the message's to answer for.
+	warm := NewMessageImportHandler(db, 2*size, nil, nil)
+	warm.directory = t.TempDir()
+	first := authzRequest(http.MethodPost, fmt.Sprintf("/api/v1/accounts/%d/messages/import", fx.user.ID), fx.user.ID, nil,
+		fmt.Sprintf(`{"raw_message":"%s","internal_date":"2020-01-02T03:04:05Z"}`, base64.StdEncoding.EncodeToString([]byte("Message-ID: <warm@example.test>\r\nFrom: old@example.test\r\n\r\nb\r\n"))))
+	first.Header.Set("Content-Type", "application/json")
+	importMessageRoutes(warm).ServeHTTP(httptest.NewRecorder(), first)
+	for name, message := range map[string]string{
+		"binary attachment":    id + "Subject: Gr\u00fc\u00dfe\r\nContent-Type: multipart/mixed; boundary=B\r\n\r\n--B\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nsm\u00e4ll\r\n--B\r\nContent-Type: application/octet-stream\r\nContent-Transfer-Encoding: binary\r\n\r\n" + strings.Repeat("\xf6", size) + "\r\n--B--\r\n",
+		"base64, stray octets": id + "Subject: Gr\u00fc\u00dfe\r\nContent-Type: multipart/mixed; boundary=B\r\n\r\n--B\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nsm\u00e4ll\r\n--B\r\nContent-Type: application/octet-stream\r\nContent-Transfer-Encoding: base64\r\n\r\n" + strings.Repeat("AAAA\xf6", size/5) + "\r\n--B--\r\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			h := NewMessageImportHandler(db, 2*size, nil, nil)
+			h.directory = t.TempDir()
+			message = "Message-ID: <" + strings.ReplaceAll(name, " ", "-") + "@example.test>\r\n" + message
+			body := fmt.Sprintf(`{"raw_message":"%s","internal_date":"2020-01-02T03:04:05Z"}`, base64.StdEncoding.EncodeToString([]byte(message)))
+			r := authzRequest(http.MethodPost, fmt.Sprintf("/api/v1/accounts/%d/messages/import", fx.user.ID), fx.user.ID, nil, body)
+			r.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			routes := importMessageRoutes(h)
+			var before, after runtime.MemStats
+			runtime.ReadMemStats(&before)
+			routes.ServeHTTP(w, r)
+			runtime.ReadMemStats(&after)
+			if w.Code != http.StatusOK {
+				t.Fatalf("%d %s", w.Code, w.Body)
+			}
+			allocated := after.TotalAlloc - before.TotalAlloc
+			t.Logf("storing %d bytes allocated %d, %.1f times over", len(message), allocated, float64(allocated)/float64(len(message)))
+			if allocated > 8*uint64(len(message)) {
+				t.Fatalf("storing %d bytes allocated %d", len(message), allocated)
+			}
+		})
 	}
 }
