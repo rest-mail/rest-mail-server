@@ -26863,6 +26863,66 @@
     }
   },
   "microsoftAutodiscover": {
+    "trailing_cdata": {
+      "summary": "XML with trailing cdata is refused before lookup",
+      "request": {
+        "query": {
+          "emailaddress": ""
+        },
+        "body": "\u003cAutodiscover\u003e\u003cRequest\u003e\u003cEMailAddress\u003euser@example.com\u003c/EMailAddress\u003e\u003c/Request\u003e\u003c/Autodiscover\u003e\u003c![CDATA[ ]]\u003e",
+        "mediaType": "application/xml"
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "invalid request"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "trailing_character_reference": {
+      "summary": "XML with trailing character reference is refused before lookup",
+      "request": {
+        "query": {
+          "emailaddress": ""
+        },
+        "body": "\u003cAutodiscover\u003e\u003cRequest\u003e\u003cEMailAddress\u003euser@example.com\u003c/EMailAddress\u003e\u003c/Request\u003e\u003c/Autodiscover\u003e\u0026#x20;",
+        "mediaType": "application/xml"
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "invalid request"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "trailing_unicode_space": {
+      "summary": "XML with trailing unicode space is refused before lookup",
+      "request": {
+        "query": {
+          "emailaddress": ""
+        },
+        "body": "\u003cAutodiscover\u003e\u003cRequest\u003e\u003cEMailAddress\u003euser@example.com\u003c/EMailAddress\u003e\u003c/Request\u003e\u003c/Autodiscover\u003e ",
+        "mediaType": "application/xml"
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "invalid request"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "address_missing": {
       "summary": "XML without an address is refused",
       "request": {
@@ -26883,6 +26943,136 @@
                 "EMailAddress": "email address required"
               }
             }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "trailing_declaration": {
+      "summary": "XML with trailing declaration is refused before lookup",
+      "request": {
+        "query": {
+          "emailaddress": ""
+        },
+        "body": "\u003cAutodiscover\u003e\u003cRequest\u003e\u003cEMailAddress\u003euser@example.com\u003c/EMailAddress\u003e\u003c/Request\u003e\u003c/Autodiscover\u003e\u003c?xml version=\"1.0\"?\u003e",
+        "mediaType": "application/xml"
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "invalid request"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "trailing_directive": {
+      "summary": "XML with trailing directive is refused before lookup",
+      "request": {
+        "query": {
+          "emailaddress": ""
+        },
+        "body": "\u003cAutodiscover\u003e\u003cRequest\u003e\u003cEMailAddress\u003euser@example.com\u003c/EMailAddress\u003e\u003c/Request\u003e\u003c/Autodiscover\u003e\u003c!DOCTYPE other\u003e",
+        "mediaType": "application/xml"
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "invalid request"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "trailing_element": {
+      "summary": "XML with trailing element is refused before lookup",
+      "request": {
+        "query": {
+          "emailaddress": ""
+        },
+        "body": "\u003cAutodiscover\u003e\u003cRequest\u003e\u003cEMailAddress\u003euser@example.com\u003c/EMailAddress\u003e\u003c/Request\u003e\u003c/Autodiscover\u003e\u003cAutodiscover/\u003e",
+        "mediaType": "application/xml"
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "invalid request"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "trailing_malformed": {
+      "summary": "XML with trailing malformed is refused before lookup",
+      "request": {
+        "query": {
+          "emailaddress": ""
+        },
+        "body": "\u003cAutodiscover\u003e\u003cRequest\u003e\u003cEMailAddress\u003euser@example.com\u003c/EMailAddress\u003e\u003c/Request\u003e\u003c/Autodiscover\u003e\u003c",
+        "mediaType": "application/xml"
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "invalid request"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "trailing_misc": {
+      "summary": "Whitespace, comments and processing instructions after the XML document remain valid",
+      "request": {
+        "query": {
+          "emailaddress": ""
+        },
+        "body": "\u003cAutodiscover\u003e\u003cRequest\u003e\u003cEMailAddress\u003euser@example.com\u003c/EMailAddress\u003e\u003c/Request\u003e\u003c/Autodiscover\u003e\r\n\t \u003c!-- client comment --\u003e \u003c?client done?\u003e \n",
+        "mediaType": "application/xml"
+      },
+      "response": {
+        "status": 200,
+        "body": "\u003c?xml version=\"1.0\" encoding=\"UTF-8\"?\u003e\n\u003cAutodiscover xmlns=\"http://schemas.microsoft.com/exchange/autodiscover/responseschema/2006\"\u003e\n  \u003cResponse xmlns=\"http://schemas.microsoft.com/exchange/autodiscover/outlook/responseschema/2006a\"\u003e\n    \u003cAccount\u003e\n      \u003cAccountType\u003eemail\u003c/AccountType\u003e\n      \u003cAction\u003esettings\u003c/Action\u003e\n      \u003cProtocol\u003e\n        \u003cType\u003eIMAP\u003c/Type\u003e\n        \u003cServer\u003erestmail.test\u003c/Server\u003e\n        \u003cPort\u003e993\u003c/Port\u003e\n        \u003cSSL\u003eon\u003c/SSL\u003e\n        \u003cEncryption\u003eSSL\u003c/Encryption\u003e\n        \u003cLoginName\u003euser@example.com\u003c/LoginName\u003e\n      \u003c/Protocol\u003e\n      \u003cProtocol\u003e\n        \u003cType\u003eSMTP\u003c/Type\u003e\n        \u003cServer\u003erestmail.test\u003c/Server\u003e\n        \u003cPort\u003e465\u003c/Port\u003e\n        \u003cSSL\u003eon\u003c/SSL\u003e\n        \u003cEncryption\u003eSSL\u003c/Encryption\u003e\n        \u003cLoginName\u003euser@example.com\u003c/LoginName\u003e\n      \u003c/Protocol\u003e\n    \u003c/Account\u003e\n  \u003c/Response\u003e\n\u003c/Autodiscover\u003e",
+        "mediaType": "application/xml"
+      }
+    },
+    "trailing_query_fallback": {
+      "summary": "An extra XML root uses the query fallback instead of the XML address",
+      "request": {
+        "query": {
+          "emailaddress": "user@example.com"
+        },
+        "body": "\u003cAutodiscover\u003e\u003cRequest\u003e\u003cEMailAddress\u003eother@absent.test\u003c/EMailAddress\u003e\u003c/Request\u003e\u003c/Autodiscover\u003e\u003cAutodiscover/\u003e",
+        "mediaType": "application/xml"
+      },
+      "response": {
+        "status": 200,
+        "body": "\u003c?xml version=\"1.0\" encoding=\"UTF-8\"?\u003e\n\u003cAutodiscover xmlns=\"http://schemas.microsoft.com/exchange/autodiscover/responseschema/2006\"\u003e\n  \u003cResponse xmlns=\"http://schemas.microsoft.com/exchange/autodiscover/outlook/responseschema/2006a\"\u003e\n    \u003cAccount\u003e\n      \u003cAccountType\u003eemail\u003c/AccountType\u003e\n      \u003cAction\u003esettings\u003c/Action\u003e\n      \u003cProtocol\u003e\n        \u003cType\u003eIMAP\u003c/Type\u003e\n        \u003cServer\u003erestmail.test\u003c/Server\u003e\n        \u003cPort\u003e993\u003c/Port\u003e\n        \u003cSSL\u003eon\u003c/SSL\u003e\n        \u003cEncryption\u003eSSL\u003c/Encryption\u003e\n        \u003cLoginName\u003euser@example.com\u003c/LoginName\u003e\n      \u003c/Protocol\u003e\n      \u003cProtocol\u003e\n        \u003cType\u003eSMTP\u003c/Type\u003e\n        \u003cServer\u003erestmail.test\u003c/Server\u003e\n        \u003cPort\u003e465\u003c/Port\u003e\n        \u003cSSL\u003eon\u003c/SSL\u003e\n        \u003cEncryption\u003eSSL\u003c/Encryption\u003e\n        \u003cLoginName\u003euser@example.com\u003c/LoginName\u003e\n      \u003c/Protocol\u003e\n    \u003c/Account\u003e\n  \u003c/Response\u003e\n\u003c/Autodiscover\u003e",
+        "mediaType": "application/xml"
+      }
+    },
+    "trailing_text": {
+      "summary": "XML with trailing text is refused before lookup",
+      "request": {
+        "query": {
+          "emailaddress": ""
+        },
+        "body": "\u003cAutodiscover\u003e\u003cRequest\u003e\u003cEMailAddress\u003euser@example.com\u003c/EMailAddress\u003e\u003c/Request\u003e\u003c/Autodiscover\u003egarbage",
+        "mediaType": "application/xml"
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "invalid request"
           }
         },
         "mediaType": "application/json"

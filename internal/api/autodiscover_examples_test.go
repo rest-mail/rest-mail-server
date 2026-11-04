@@ -26,6 +26,12 @@ var autodiscoverExampleCases = map[string]struct {
 	"malformed": {"available", 400}, "address_missing": {"available", 422}, "address_invalid": {"available", 422},
 	"domain_not_found": {"domain_not_found", 404}, "oversized": {"available", 413},
 	"internal_error": {"internal_error", 500}, "mail_host_unconfigured": {"mail_host_unconfigured", 503},
+	"trailing_text": {"available", 400}, "trailing_element": {"available", 400},
+	"trailing_malformed": {"available", 400}, "trailing_declaration": {"available", 400},
+	"trailing_directive": {"available", 400}, "trailing_misc": {"available", 200},
+	"trailing_query_fallback": {"available", 200},
+	"trailing_unicode_space":  {"available", 400}, "trailing_character_reference": {"available", 400},
+	"trailing_cdata": {"available", 400},
 }
 
 func TestAutodiscoverExamplesMatchRegisteredResponses(t *testing.T) {
