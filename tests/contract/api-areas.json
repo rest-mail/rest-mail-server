@@ -48,6 +48,7 @@
   "635": [
     "createAPIKey",
     "createAccount",
+    "getAccountTimeZone",
     "createAppPassword",
     "createClientSecret",
     "getAccount",
@@ -61,6 +62,7 @@
     "revokeClientSecret",
     "revokeCredential",
     "setAccountSendLimits",
+    "setAccountTimeZone",
     "unlinkAccount",
     "updateAPIKey"
   ],
