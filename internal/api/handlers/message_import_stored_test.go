@@ -395,3 +395,72 @@ func TestMessageImportStoredHoldsTheLimitOnHostileShapes(t *testing.T) {
 		})
 	}
 }
+
+// The gateway's next hop holds the same limit: its request is a file until the message is read,
+// once, and that one read parses it once. Non-UTF-8 octets through this route are #1921's, and
+// long address lists and many parameters on one field are still over it, which #1915 records.
+func TestDeliverHoldsTheLimitOnHostileShapes(t *testing.T) {
+	const size = 1 << 20
+	const id = "From: old@example.test\r\nSubject: s\r\nDate: Thu, 02 Jan 2020 03:04:05 +0000\r\n"
+	db := importProofDB(t)
+	if err := db.AutoMigrate(&models.Pipeline{}, &models.OutboundQueue{}); err != nil {
+		t.Fatal(err)
+	}
+	domain := models.Domain{Name: "deliver-limit.test", Active: true}
+	if err := db.Create(&domain).Error; err != nil {
+		t.Fatal(err)
+	}
+	mailbox := models.Mailbox{DomainID: domain.ID, LocalPart: "to", Address: "to@deliver-limit.test", Active: true, QuotaBytes: 1 << 40}
+	if err := db.Create(&mailbox).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&models.QuotaUsage{MailboxID: mailbox.ID}).Error; err != nil {
+		t.Fatal(err)
+	}
+	seedReceiveFixture(t, db, mailbox)
+	route := deliveryRoute(NewMessageHandler(db, nil, nil, "", nil))
+	send := func(message string) (*httptest.ResponseRecorder, uint64) {
+		body := fmt.Sprintf(`{"address":"%s","sender":"old@example.test","raw_message":"%s"}`, mailbox.Address, base64.StdEncoding.EncodeToString([]byte(message)))
+		r := httptest.NewRequest(http.MethodPost, "/api/v1/messages/deliver", strings.NewReader(body))
+		r.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		var before, after runtime.MemStats
+		runtime.ReadMemStats(&before)
+		route(w, r)
+		runtime.ReadMemStats(&after)
+		return w, after.TotalAlloc - before.TotalAlloc
+	}
+	// What the first delivery in a process builds and keeps isn't the message's to answer for.
+	if w, _ := send("Message-ID: <warm@example.test>\r\n" + id + "\r\nb\r\n"); w.Code != http.StatusCreated {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	for name, message := range map[string]string{
+		"plain ASCII":              id + "Content-Type: text/plain\r\n\r\n" + strings.Repeat("hello world\r\n", size/13),
+		"8-bit text, no charset":   id + "Content-Type: text/plain\r\n\r\n" + strings.Repeat("\u00f6", size/2) + "\r\n",
+		"60 nested messages":       id + strings.Repeat("Content-Type: message/rfc822\r\n\r\n", 60) + "Subject: \u00f6\r\n\r\n" + strings.Repeat("\u00f6", size/2),
+		"1000 typed parts":         id + "Content-Type: multipart/mixed; boundary=B\r\n\r\n" + strings.Repeat("--B\r\nContent-Type: a/b\r\n\r\n\u00f6"+strings.Repeat("y", size/1000)+"\r\n", 1000) + "--B--\r\n",
+		"typed parts in a message": id + "Content-Type: message/rfc822\r\n\r\nContent-Type: multipart/mixed; boundary=B\r\n\r\n" + strings.Repeat("--B\r\nContent-Type: a/b\r\n\r\nx\r\n", size/28) + "--B--\r\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			// TotalAlloc counts the whole process, so a run gets another try before it fails: a
+			// message that really costs too much costs too much every time.
+			best, length := uint64(1)<<63, 0
+			for attempt := range 3 {
+				stored := fmt.Sprintf("Message-ID: <%s-%d@example.test>\r\n", strings.ReplaceAll(name, " ", "-"), attempt) + message
+				length = len(stored)
+				w, allocated := send(stored)
+				if w.Code != http.StatusCreated {
+					t.Fatalf("%d %s", w.Code, w.Body)
+				}
+				best = min(best, allocated)
+				if best <= 8*uint64(length) {
+					break
+				}
+			}
+			t.Logf("delivering %d bytes allocated %d, %.1f times over", length, best, float64(best)/float64(length))
+			if best > 8*uint64(length) {
+				t.Fatalf("delivering %d bytes allocated %d", length, best)
+			}
+		})
+	}
+}

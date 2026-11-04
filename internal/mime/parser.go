@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"unsafe"
 
 	gomessage "github.com/emersion/go-message"
 	// Registers a charset reader so go-message decodes non-UTF-8 text parts.
@@ -29,9 +30,18 @@ func Parse(raw []byte) (*pipeline.EmailJSON, error) {
 	return ParseReader(bytes.NewReader(raw))
 }
 
+// ParseString is Parse for a message already held as text, with no copy of it.
+func ParseString(raw string) (*pipeline.EmailJSON, error) {
+	return ParseReader(strings.NewReader(raw))
+}
+
 // ParseReader is Parse from a reader, for a caller that holds the message in some other form and
 // has no need to copy it to parse it. What it builds is held whole, as Parse's is.
 func ParseReader(source io.Reader) (*pipeline.EmailJSON, error) {
+	var sourceSize int
+	if sized, ok := source.(interface{ Len() int }); ok {
+		sourceSize = sized.Len()
+	}
 	// go-message returns a usable *Entity even when it reports an unknown charset
 	// or transfer encoding, so only a nil entity is a hard failure.
 	entity, err := gomessage.Read(source)
@@ -43,7 +53,7 @@ func ParseReader(source io.Reader) (*pipeline.EmailJSON, error) {
 		Headers: parseHeaders(entity.Header),
 	}
 
-	body, attachments, inline, calendarEvents, err := parseEntity(entity, newPartBudget())
+	body, attachments, inline, calendarEvents, err := parseEntity(entity, sourceSize, newPartBudget())
 	if err != nil {
 		return nil, fmt.Errorf("parse message: %w", err)
 	}
@@ -144,7 +154,7 @@ var headerLineBreakStripper = strings.NewReplacer("\r", "", "\n", "")
 
 // parseEntity converts a go-message entity (whole message or a single part)
 // into the body tree, attachments, inline parts, and calendar events.
-func parseEntity(e *gomessage.Entity, budget *partBudget) (pipeline.Body, []pipeline.Attachment, []pipeline.Attachment, []pipeline.CalendarEvent, error) {
+func parseEntity(e *gomessage.Entity, sourceSize int, budget *partBudget) (pipeline.Body, []pipeline.Attachment, []pipeline.Attachment, []pipeline.CalendarEvent, error) {
 	mediaType, _, _ := e.Header.ContentType()
 	mediaType = strings.ToLower(mediaType)
 
@@ -157,10 +167,14 @@ func parseEntity(e *gomessage.Entity, budget *partBudget) (pipeline.Body, []pipe
 
 	// Single-part body. go-message has already decoded the transfer encoding
 	// and (for text/*) converted the charset to UTF-8.
-	content, _ := io.ReadAll(e.Body)
+	// The buffer is the source's size, which the decoded body fits unless a charset grows it, and
+	// it's the body's own from here on, so the text can be the same octets.
+	buffer := bytes.NewBuffer(make([]byte, 0, sourceSize+bytes.MinRead))
+	_, _ = buffer.ReadFrom(e.Body)
+	content := buffer.Bytes()
 	body := pipeline.Body{
 		ContentType: mediaType,
-		Content:     string(content),
+		Content:     unsafe.String(unsafe.SliceData(content), len(content)),
 	}
 
 	var calEvents []pipeline.CalendarEvent
@@ -218,10 +232,13 @@ func parseMultipart(mr gomessage.MultipartReader, mediaType string, depth int, b
 			continue
 		}
 
-		content, err := io.ReadAll(part.Body)
-		if err != nil {
+		// Every part reads into one buffer, which nothing below keeps: text is copied out of it, and
+		// anything else is encoded.
+		budget.scratch.Reset()
+		if _, err := budget.scratch.ReadFrom(part.Body); err != nil {
 			continue
 		}
+		content := budget.scratch.Bytes()
 
 		disposition, _, _ := part.Header.ContentDisposition()
 		disposition = strings.ToLower(disposition)

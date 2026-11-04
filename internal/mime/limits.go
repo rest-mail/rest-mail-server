@@ -78,6 +78,8 @@ func structureLimit(format string, args ...any) error {
 type partBudget struct {
 	limits Limits
 	parts  int
+	// scratch holds the part being read.
+	scratch bytes.Buffer
 }
 
 func newPartBudget() *partBudget { return &partBudget{limits: CurrentLimits()} }
