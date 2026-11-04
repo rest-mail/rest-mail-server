@@ -14,29 +14,33 @@ import (
 func wireSizeShapes() map[string]string {
 	binary := "Content-Type: image/png\r\nContent-Transfer-Encoding: binary\r\n"
 	return map[string]string{
-		"7-bit":                  "Subject: hi\r\n\r\nbody\r\n",
-		"bare line feeds":        "Subject: hi\n\nbody\n",
-		"8-bit subject":          "Subject: Grüße \"qü\" (cö) <x>\r\n\r\nbody\r\n",
-		"not UTF-8, folded":      "Subject: caf\xe9\r\n\tfolded \xff\r\n\r\nb\xf6dy\r\n",
-		"8-bit address":          "From: Jö <j@exämple.test>, \"A é\" <üser@example.test>\r\nTo: bad\xff <<\r\n\r\nb\r\n",
-		"8-bit field name":       "Naïme: value\r\n\r\nb\r\n",
-		"name folding to a CTE":  "Content-Tranſfer-Encoding: base64\r\n\r\n\xf6\r\n",
-		"not a field":            "NöColon line\r\n\r\nb\r\n",
-		"8-bit type":             "Content-Type: appl\xf6/pdf; a=1\r\n\r\n\xf6\r\n",
-		"8-bit parameter":        "Content-Type: text/plain; name=\"caf\xe9.txt\"\r\n\r\n\xf6\r\n",
-		"NUL in a header":        "Subject: nul\x00\xf6\r\n\r\nb\r\n",
-		"blank line in a header": "Subject: \xf6\n\nX-Later: y\r\n\r\n\xf6\r\n",
-		"base64, stray octets":   "Content-Type: application/pdf\r\nContent-Transfer-Encoding: base64\r\n\r\nAAA\xff=\x00\r\n--B\xff\r\n",
-		"base64 from binary":     binary + "\r\n" + strings.Repeat("\xff", 57*200+5) + "\r\n",
-		"exact base64 lines":     binary + "\r\n" + strings.Repeat("\xff", 57*53),
-		"quoted-printable":       "Content-Type: text/plain\r\nContent-Transfer-Encoding: quoted-printable\r\n\r\n=\xf6 \x00\r\n",
-		"text with no charset":   "Content-Type: text/plain\r\n\r\n" + strings.Repeat("\xf6 x\r\n\t=abc\r", 1500),
-		"unknown encoding":       "Content-Type: image/png\r\nContent-Transfer-Encoding: x-weird\r\n\r\n\xf6\r\n",
-		"multipart":              "Subject: \xf6\r\nContent-Type: multipart/mixed; boundary=B\r\n\r\npre\xf6\r\n--B\r\nSubject: \xf6\r\n\r\npart\xf6\r\n--B\r\n" + binary + "\r\n\xff\xfe\r\n--B--\r\nepi\xf6\r\n",
-		"8-bit boundary":         "Content-Type: multipart/mixed; boundary=\"\xf6b\"\r\n\r\n--\xf6b\r\n\r\n\xf6\r\n--\xf6b--\r\n",
-		"8-bit header, boundary": "Subject: ü\r\nContent-Type: multipart/mixed; boundary=\"\xf6b\"\r\n\r\n--\xf6b\r\n\r\n\xf6\r\n--\xf6b--\r\n",
-		"encapsulated":           "Content-Type: message/rfc822\r\n\r\nSubject: inner \xf6\r\nContent-Type: image/png\r\n\r\n\xf6\r\n",
-		"malformed multipart":    "Content-Type: multipart/mixed\r\n\r\n--B\r\n\xf6\r\n",
+		"7-bit":                    "Subject: hi\r\n\r\nbody\r\n",
+		"bare line feeds":          "Subject: hi\n\nbody\n",
+		"8-bit subject":            "Subject: Grüße \"qü\" (cö) <x>\r\n\r\nbody\r\n",
+		"not UTF-8, folded":        "Subject: caf\xe9\r\n\tfolded \xff\r\n\r\nb\xf6dy\r\n",
+		"8-bit address":            "From: Jö <j@exämple.test>, \"A é\" <üser@example.test>\r\nTo: bad\xff <<\r\n\r\nb\r\n",
+		"8-bit field name":         "Naïme: value\r\n\r\nb\r\n",
+		"name folding to a CTE":    "Content-Tranſfer-Encoding: base64\r\n\r\n\xf6\r\n",
+		"not a field":              "NöColon line\r\n\r\nb\r\n",
+		"8-bit type":               "Content-Type: appl\xf6/pdf; a=1\r\n\r\n\xf6\r\n",
+		"8-bit parameter":          "Content-Type: text/plain; name=\"caf\xe9.txt\"\r\n\r\n\xf6\r\n",
+		"NUL in a header":          "Subject: nul\x00\xf6\r\n\r\nb\r\n",
+		"blank line in a header":   "Subject: \xf6\n\nX-Later: y\r\n\r\n\xf6\r\n",
+		"base64, stray octets":     "Content-Type: application/pdf\r\nContent-Transfer-Encoding: base64\r\n\r\nAAA\xff=\x00\r\n--B\xff\r\n",
+		"base64 from binary":       binary + "\r\n" + strings.Repeat("\xff", 57*200+5) + "\r\n",
+		"exact base64 lines":       binary + "\r\n" + strings.Repeat("\xff", 57*53),
+		"quoted-printable":         "Content-Type: text/plain\r\nContent-Transfer-Encoding: quoted-printable\r\n\r\n=\xf6 \x00\r\n",
+		"text with no charset":     "Content-Type: text/plain\r\n\r\n" + strings.Repeat("\xf6 x\r\n\t=abc\r", 1500),
+		"unknown encoding":         "Content-Type: image/png\r\nContent-Transfer-Encoding: x-weird\r\n\r\n\xf6\r\n",
+		"multipart":                "Subject: \xf6\r\nContent-Type: multipart/mixed; boundary=B\r\n\r\npre\xf6\r\n--B\r\nSubject: \xf6\r\n\r\npart\xf6\r\n--B\r\n" + binary + "\r\n\xff\xfe\r\n--B--\r\nepi\xf6\r\n",
+		"8-bit boundary":           "Content-Type: multipart/mixed; boundary=\"\xf6b\"\r\n\r\n--\xf6b\r\n\r\n\xf6\r\n--\xf6b--\r\n",
+		"8-bit header, boundary":   "Subject: ü\r\nContent-Type: multipart/mixed; boundary=\"\xf6b\"\r\n\r\n--\xf6b\r\n\r\n\xf6\r\n--\xf6b--\r\n",
+		"text that is a delimiter": "Content-Type: multipart/mixed; boundary=\"\xf6b\"\r\n\r\n--\xf6b\r\nContent-Type: text/plain; charset=x\r\n\r\n--=F6b\r\n\xf6\r\n--\xf6b--\r\n",
+		"conversion makes one":     "Content-Type: multipart/mixed; boundary=B\r\n\r\n--B\r\nContent-Type: application/pdf\r\nContent-Transfer-Encoding: base64\r\n\r\nAA\r\n--B\xff\r\nAA\r\n--B--\r\n",
+		"nested, outer moves":      "Content-Type: multipart/mixed; boundary=\"A\xf6\"\r\n\r\n--A\xf6\r\nContent-Type: multipart/mixed; boundary=\"=\"\r\n\r\n--=\r\n\r\n\xf6\r\n--=--\r\n--A\xf6--\r\n",
+		"delimiter in a part":      "Content-Type: multipart/mixed; boundary=B\r\n\r\n--B\r\nX-A: \xf6\r\n--Bx: y\r\n\r\n\xf6\r\n--B--\r\n",
+		"encapsulated":             "Content-Type: message/rfc822\r\n\r\nSubject: inner \xf6\r\nContent-Type: image/png\r\n\r\n\xf6\r\n",
+		"malformed multipart":      "Content-Type: multipart/mixed\r\n\r\n--B\r\n\xf6\r\n",
 	}
 }
 
@@ -45,8 +49,7 @@ func measuresWhatFetchSends(t *testing.T, name, raw string) {
 	t.Helper()
 	downgraded := DowngradeHeaders(raw)
 	want := WireSizes{
-		Downgraded: gopop3.OctetCount([]byte(downgraded)),
-		POP3UTF8:   gopop3.OctetCount([]byte(raw)),
+		Downgraded: len(DowngradeForPOP3(raw)),
 		IMAP:       len(wireform.Convert(downgraded, false)),
 		IMAPUTF8:   len(wireform.Convert(raw, true)),
 	}
@@ -141,6 +144,12 @@ func TestMeasuringHoldsNoCopy(t *testing.T) {
 				t.Errorf("measuring %d bytes allocated %d", len(raw), got)
 			}
 		})
+	}
+	// POP3 sends the body as stored but for the delimiter lines of an 8-bit boundary, so
+	// those are respelled to count them, once: that one copy is all this message costs.
+	raw := "Subject: \u00fc\r\nContent-Type: multipart/mixed; boundary=\"\xf6b\"\r\n\r\n--\xf6b\r\nContent-Type: application/pdf\r\nContent-Transfer-Encoding: binary\r\n\r\n" + strings.Repeat("\xf6", size) + "\r\n--\xf6b--\r\n"
+	if got := allocated(func() { MeasureWireSizes(raw) }); got > 3*uint64(len(raw))/2 {
+		t.Errorf("measuring %d bytes with an 8-bit boundary allocated %d", len(raw), got)
 	}
 }
 
