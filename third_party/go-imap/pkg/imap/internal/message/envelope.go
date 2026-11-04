@@ -1,7 +1,9 @@
 package message
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"mime"
 	"net/mail"
 	"strings"
@@ -9,6 +11,70 @@ import (
 	"github.com/rest-mail/go-imap/pkg/imap"
 	"github.com/rest-mail/go-imap/pkg/imap/internal/wire"
 )
+
+// addressParser reads address lists with every charset go-imap has a reader for,
+// and leaves any other encoded word as it was sent, see keptWordReader.
+var addressParser = mail.AddressParser{WordDecoder: &mime.WordDecoder{
+	CharsetReader: func(charset string, input io.Reader) (io.Reader, error) {
+		if isLatin1(charset) {
+			return latin1Reader(input)
+		}
+		return keptWordReader{}, nil
+	},
+}}
+
+// keptWordReader fails when read. net/mail fails a whole address list when a
+// CharsetReader returns an error, but treats a failed read like any other word it
+// can't decode, and keeps the word's original text in the name. So the address
+// stays, and the word still names its charset, with no byte guessed.
+type keptWordReader struct{}
+
+func (keptWordReader) Read([]byte) (int, error) {
+	return 0, errors.New("charset has no reader")
+}
+
+// isKeptWord reports whether word is one addressParser kept: an encoded word in a
+// charset neither it nor net/mail decodes.
+func isKeptWord(word string) bool {
+	body, ok := strings.CutPrefix(word, "=?")
+	if !ok {
+		return false
+	}
+	body, ok = strings.CutSuffix(body, "?=")
+	if !ok || strings.Count(body, "?") != 2 || has8bit(body) {
+		return false
+	}
+	charset, _, _ := strings.Cut(body, "?")
+	return charset != "" && !strings.EqualFold(charset, "UTF-8") && !strings.EqualFold(charset, "US-ASCII") && !isLatin1(charset)
+}
+
+// addressNameText is metadataText for a personal or group name, which can hold both
+// decoded text and words addressParser kept. A kept word is 7-bit and already names
+// its charset, so only the text around it is encoded: encoding it again would have
+// a client show its raw spelling.
+func addressNameText(name string, sessionUTF8 bool) string {
+	text := metadataText(name, sessionUTF8)
+	if text == name {
+		return name
+	}
+	var out, run []string
+	flush := func() {
+		if len(run) > 0 {
+			out = append(out, metadataText(strings.Join(run, " "), sessionUTF8))
+			run = nil
+		}
+	}
+	for _, field := range strings.Split(name, " ") {
+		if isKeptWord(field) {
+			flush()
+			out = append(out, field)
+		} else {
+			run = append(run, field)
+		}
+	}
+	flush()
+	return strings.Join(out, " ")
+}
 
 // BuildEnvelope constructs the ten ENVELOPE fields from the stored message's
 // headers (RFC 3501 §7.4.2). Missing fields are NIL; only Sender and Reply-To
@@ -93,7 +159,7 @@ func headerValue(hdr mail.Header, name string) string {
 // host)" — personal name, source-route (always NIL), mailbox name and host name
 // (RFC 3501 §7.4.2). It is the inner element of the parenthesized address lists
 // that make up the from/sender/reply-to/to/cc/bcc envelope fields. The name has
-// been decoded, so it can hold 8-bit text; see metadataText.
+// been decoded, so it can hold 8-bit text; see addressNameText.
 func addressPart(name, email string, sessionUTF8 bool) string {
 	user, host, _ := strings.Cut(email, "@")
 	return mailboxPart(name, user, host, sessionUTF8)
@@ -102,7 +168,7 @@ func addressPart(name, email string, sessionUTF8 bool) string {
 // mailboxPart is addressPart for a mailbox whose local part and domain are
 // already separated.
 func mailboxPart(name, local, domain string, sessionUTF8 bool) string {
-	return fmt.Sprintf("(%s NIL %s %s)", wire.QuoteString(metadataText(name, sessionUTF8)), wire.QuoteString(local), wire.QuoteString(domain))
+	return fmt.Sprintf("(%s NIL %s %s)", wire.QuoteString(addressNameText(name, sessionUTF8)), wire.QuoteString(local), wire.QuoteString(domain))
 }
 
 // buildAddress wraps a single address in the parenthesized address-list form an
@@ -143,7 +209,7 @@ func appendMailbox(b *strings.Builder, value string, sessionUTF8 bool) {
 	if strings.TrimSpace(stripComments(value)) == "" {
 		return
 	}
-	if a, err := mail.ParseAddress(value); err == nil {
+	if a, err := addressParser.Parse(value); err == nil {
 		b.WriteString(addressPart(a.Name, a.Address, sessionUTF8))
 		return
 	}
@@ -228,11 +294,11 @@ func appendAddressGroups(b *strings.Builder, list string, sessionUTF8 bool) bool
 				}
 				// Parse the group's display-name as a mailbox display-name so
 				// comments, quoted-pairs and encoded words share one decoder.
-				name, err := mail.ParseAddress(member + " <group@invalid>")
+				name, err := addressParser.Parse(member + " <group@invalid>")
 				if err != nil {
 					return false
 				}
-				fmt.Fprintf(b, "(NIL NIL %s NIL)", wire.EncodeMailboxName(metadataText(name.Name, sessionUTF8)))
+				fmt.Fprintf(b, "(NIL NIL %s NIL)", wire.EncodeMailboxName(addressNameText(name.Name, sessionUTF8)))
 				inGroup = true
 			case ',':
 				appendMailbox(b, member, sessionUTF8)
@@ -419,10 +485,11 @@ func dottedWords(toks []addressToken, quotedOK bool) (string, bool) {
 	return b.String(), true
 }
 
-// decodePhrase decodes RFC 2047 encoded words in a display name, keeping the
-// text as written when it holds none or cannot be decoded.
+// decodePhrase decodes RFC 2047 encoded words in a display name with
+// addressParser's charsets, keeping the text as written when it holds none or
+// one of them cannot be decoded.
 func decodePhrase(phrase string) string {
-	if decoded, err := new(mime.WordDecoder).DecodeHeader(phrase); err == nil {
+	if decoded, err := addressParser.WordDecoder.DecodeHeader(phrase); err == nil {
 		return decoded
 	}
 	return phrase
