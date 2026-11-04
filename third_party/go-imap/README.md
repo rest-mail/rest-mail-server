@@ -423,7 +423,7 @@ reason.
 | Authentication | PLAIN and LOGIN only: no challenge-response mechanism (CRAM-MD5, DIGEST-MD5, SCRAM), EXTERNAL or ANONYMOUS. | When a TLS config is supplied, PLAIN is only offered inside TLS. A nil TLS config explicitly permits development/legacy cleartext authentication. CRAM-MD5 and DIGEST-MD5 are obsolete and need passwords stored in plaintext-equivalent form. SCRAM needs a second, SCRAM-specific credential store and helps only when TLS is already broken. ANONYMOUS has no use on a server of personal accounts. |
 | Subscriptions | No subscription store: every folder counts as subscribed. | Clients show every folder anyway; a second list of folders would only go stale. |
 | UIDs | Without `UIDPlusMailbox`, UIDVALIDITY is 1 and UIDNEXT is the highest UID plus one. UIDNOTSTICKY is never reported. | A backend that has real values implements `UIDPlusMailbox`; UIDs are expected to persist. |
-| ENVELOPE | Source routes are always NIL, and obsolete address syntax that `net/mail` rejects gives NIL. | Source routes are obsolete. |
+| ENVELOPE | Obsolete address syntax that `net/mail` rejects, other than a source route, gives NIL for the whole header. | Reading it needs an address parser of our own: rest-mail/rest-mail-server#1862. |
 
 #### Not planned
 
