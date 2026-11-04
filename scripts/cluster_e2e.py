@@ -172,6 +172,36 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return args
 
 
+def find_domain(domains: list, name: str) -> int:
+    """The id of the domain called name in the API's domain list."""
+    for entry in domains or []:
+        if isinstance(entry, dict) and str(entry.get("name", "")).lower() == name.lower():
+            return int(entry["id"])
+    raise StepFailed(f"the API lists no domain {name}")
+
+
+def put_domain_live(api: "Api", token: str, cluster: "Cluster", domain: str) -> str:
+    """Take a fresh install's domain live, as its operator would.
+
+    The install creates its domain not live: it has no certificate of its own
+    yet (issues #289, #290). Until it goes live, its mailboxes receive nothing
+    (the inbound pipeline refuses them as unknown, 550 5.1.1). Upload the
+    certificate the install already serves (the chart's TLS Secret), then turn
+    the domain live, and read it back.
+    """
+    domain_id = find_domain(api.expect(200, "GET", "/api/v1/admin/domains", token=token).get("data"), domain)
+    secret = cluster.tls_secret()
+    cert = cluster.secret_value(cluster.namespace, secret, "tls\\.crt")
+    key = cluster.secret_value(cluster.namespace, secret, "tls\\.key")
+    api.expect(201, "POST", "/api/v1/admin/certificates",
+               {"domain_id": domain_id, "cert_pem": cert, "key_pem": key, "auto_renew": False}, token)
+    api.expect(200, "PATCH", f"/api/v1/admin/domains/{domain_id}", {"active": True}, token)
+    live = api.expect(200, "GET", f"/api/v1/admin/domains/{domain_id}", token=token).get("data") or {}
+    if live.get("active") is not True:
+        raise StepFailed(f"{domain} is not live after PATCH active=true: {json.dumps(live)[:200]}")
+    return f"domain={domain},id={domain_id},certificate={secret},active=true"
+
+
 def git_head() -> str:
     try:
         out = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=True)
@@ -244,6 +274,14 @@ class Cluster:
         if not encoded:
             raise StepFailed(f"secret/{self.release}-api holds no BOOTSTRAP_ADMIN_PASSWORD")
         return base64.b64decode(encoded).decode()
+
+    def tls_secret(self) -> str:
+        """The TLS Secret the install's SMTP gateway serves (the chart's tls.secretName)."""
+        name = self.run("get", f"deployment/{self.release}-smtp-gateway", "-o",
+                        "jsonpath={.spec.template.spec.volumes[?(@.name==\"tls\")].secret.secretName}").strip()
+        if not name:
+            raise StepFailed(f"deployment/{self.release}-smtp-gateway mounts no tls Secret")
+        return name
 
     def secret_value(self, namespace: str, name: str, key: str) -> str:
         out = subprocess.run([self.kubectl, "-n", namespace, "get", f"secret/{name}", "-o",
