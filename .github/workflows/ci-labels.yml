@@ -23,7 +23,7 @@ jobs:
   rerun-contract-gate:
     name: Re-run the contract gate for its labels
     # Not a required check, so being skipped for other labels decides nothing.
-    if: contains(fromJSON('["contract-change", "permission-change"]'), github.event.label.name)
+    if: github.base_ref == 'main' && contains(fromJSON('["contract-change", "permission-change"]'), github.event.label.name)
     runs-on: ubuntu-latest
     timeout-minutes: 150
     permissions:
@@ -42,8 +42,8 @@ jobs:
           while :; do
             sha=$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json headRefOid --jq .headRefOid)
             run=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml --event pull_request \
-              --commit "$sha" --limit 1 --json databaseId,status \
-              --jq '.[0] | select(.) | "\(.databaseId) \(.status)"')
+              --commit "$sha" --limit 100 --json databaseId,status,displayTitle \
+              --jq '[.[] | select(.displayTitle != "CI (ignored edit)")][0] | select(.) | "\(.databaseId) \(.status)"')
             if [ -z "$run" ]; then
               echo "No CI run for $sha yet; when it starts, it reads the current labels."
               exit 0

@@ -25,6 +25,7 @@ on:
       - "scripts/email-explained/package-lock.json"
       - ".github/workflows/email-explained.yml"
   pull_request:
+    types: [opened, synchronize, reopened, edited]
     paths:
       - "docs/email-explained/**"
       - "scripts/email-explained/bundle.mjs"
@@ -40,7 +41,7 @@ permissions:
 
 # One publish at a time, the newest last.
 concurrency:
-  group: email-explained-publish
+  group: ${{ github.event_name == 'pull_request' && (github.base_ref != 'main' || (github.event.action == 'edited' && github.event.changes.base.ref.from == '')) && format('email-explained-ignored-{0}', github.run_id) || 'email-explained-publish' }}
   cancel-in-progress: false
 
 env:
@@ -49,6 +50,7 @@ env:
 jobs:
   publish:
     name: Publish the guide's bundle
+    if: github.event_name != 'pull_request' || (github.base_ref == 'main' && (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     runs-on: ubuntu-latest
     defaults:
       run:

@@ -2,6 +2,7 @@ name: Pulumi component
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, edited]
     paths:
       - packages/pulumi/**
       - tasks/install.yml
@@ -24,6 +25,7 @@ permissions:
 jobs:
   component:
     name: Pulumi package and secret boundaries
+    if: github.event_name != 'pull_request' || (github.base_ref == 'main' && (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     runs-on: ubuntu-latest
     timeout-minutes: 10
     defaults:

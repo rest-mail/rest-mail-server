@@ -1,14 +1,16 @@
 name: CI
+run-name: ${{ github.event_name == 'pull_request' && github.event.action == 'edited' && github.event.changes.base.ref.from == '' && 'CI (ignored edit)' || '' }}
 
 on:
   push:
     branches: [main]
-  # Stack layers target parent branches; every PR must receive the same gates.
-  # No `labeled`, `unlabeled` or `edited`: each would start a run that cancels the one
-  # in progress, and a claim label set at creation did that to every new PR (#1593).
+  # Stack layers report skipped gates until retargeted to main (#1775).
+  # Only base-changing edits run jobs; other edits have their own concurrency group
+  # and non-required gate name, so they cannot replace or cancel a real verdict.
+  # No `labeled` or `unlabeled`: claim labels must not cancel CI (#1593).
   # The labels the contract gate reads re-run that gate from ci-labels.yml instead.
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review, edited]
   # The Vertrag bump (bump-vertrag.yml) dispatches CI for its branch: a pull request it
   # opens with the workflow's own token starts no checks by itself.
   workflow_dispatch:
@@ -20,7 +22,7 @@ on:
 # judges the required check by the newest run, so that one supersedes it. Each run
 # on main or by dispatch has a group of its own, so every merged commit keeps its result.
 concurrency:
-  group: ${{ github.event_name == 'pull_request' && format('ci-{0}', github.ref) || format('ci-run-{0}', github.run_id) }}
+  group: ${{ github.event_name == 'pull_request' && (github.event.action != 'edited' || github.event.changes.base.ref.from != '') && format('ci-{0}', github.ref) || format('ci-run-{0}', github.run_id) }}
   cancel-in-progress: true
 
 permissions:
@@ -29,7 +31,7 @@ permissions:
 jobs:
   contract-diff:
     name: API contract changes
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && github.base_ref == 'main' && (github.event.action != 'edited' || github.event.changes.base.ref.from != '')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -104,6 +106,7 @@ jobs:
 
   lint:
     name: Lint
+    if: github.event_name != 'pull_request' || (github.base_ref == 'main' && (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -143,6 +146,7 @@ jobs:
 
   test:
     name: Test
+    if: github.event_name != 'pull_request' || (github.base_ref == 'main' && (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     runs-on: ubuntu-latest
     needs: lint
     services:
@@ -246,6 +250,7 @@ jobs:
 
   test-api:
     name: Test internal/api (${{ matrix.shard }} of 4)
+    if: github.event_name != 'pull_request' || (github.base_ref == 'main' && (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     # internal/api is the slowest package by far: nearly 1000 s under the race
     # detector, most of it in PostgreSQL fixtures, against a 20 minute limit per
     # package (#1307). Each shard runs every fourth of its top-level tests, by
@@ -335,6 +340,7 @@ jobs:
 
   test-report:
     name: Test report
+    if: github.event_name != 'pull_request' || (github.base_ref == 'main' && (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     # Joins what the Test job and the internal/api shards wrote: the example
     # proofs, judged as one set, and the coverage, as one profile.
     runs-on: ubuntu-latest
@@ -393,6 +399,7 @@ jobs:
 
   attachments-s3:
     name: Garage attachment storage
+    if: github.event_name != 'pull_request' || (github.base_ref == 'main' && (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -406,6 +413,7 @@ jobs:
 
   build:
     name: Build
+    if: github.event_name != 'pull_request' || (github.base_ref == 'main' && (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     runs-on: ubuntu-latest
     needs: [test, test-api]
     strategy:
@@ -446,6 +454,7 @@ jobs:
 
   helm:
     name: Helm Chart
+    if: github.event_name != 'pull_request' || (github.base_ref == 'main' && (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -464,6 +473,7 @@ jobs:
 
   webmail:
     name: Webmail Build
+    if: github.event_name != 'pull_request' || (github.base_ref == 'main' && (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -522,6 +532,7 @@ jobs:
 
   admin:
     name: Admin Build
+    if: github.event_name != 'pull_request' || (github.base_ref == 'main' && (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -593,6 +604,7 @@ jobs:
   # from this workflow — makes the job names above free to change.
   js-filter:
     name: JS Filter
+    if: github.event_name != 'pull_request' || (github.base_ref == 'main' && (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     # The sidecar that runs javascript filters: its own tests (the sandbox
     # escapes of #160 among them), then the API's filter against it, end to end.
     runs-on: ubuntu-latest
@@ -668,6 +680,7 @@ jobs:
 
   first-start:
     name: First start
+    if: github.event_name != 'pull_request' || (github.base_ref == 'main' && (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     # Proves, against the real image, the path a fresh install takes: the
     # first admin signs in with the bootstrap password the installer chose and
     # is forced to choose their own and enroll 2FA, a domain and a mailbox get
@@ -705,6 +718,7 @@ jobs:
 
   webapp-images:
     name: Web app image (${{ matrix.app }})
+    if: github.event_name != 'pull_request' || (github.base_ref == 'main' && (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -775,6 +789,7 @@ jobs:
 
   guide:
     name: Email, explained
+    if: github.event_name != 'pull_request' || (github.base_ref == 'main' && (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     # The guide is checked where it is written, so a broken link, an unsourced
     # chapter or a diagram Archify refuses fails the pull request that broke it
     # (docs/design/email-explained-website.md). Outside links change on other
@@ -808,9 +823,9 @@ jobs:
         run: node bundle.mjs --archify "$ARCHIFY" --out "$RUNNER_TEMP/email-explained"
 
   ci:
-    name: CI
+    name: ${{ github.event_name == 'pull_request' && github.event.action == 'edited' && github.event.changes.base.ref.from == '' && 'CI (ignored edit)' || 'CI' }}
     needs: [contract-diff, lint, test, test-api, test-report, attachments-s3, build, helm, webmail, admin, js-filter, first-start, webapp-images, guide]
-    if: always()
+    if: always() && (github.event_name != 'pull_request' || (github.base_ref == 'main' && (github.event.action != 'edited' || github.event.changes.base.ref.from != '')))
     runs-on: ubuntu-latest
     steps:
       - name: Verdict
