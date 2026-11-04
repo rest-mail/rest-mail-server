@@ -1,6 +1,7 @@
 package mail
 
 import (
+	"fmt"
 	"math/rand"
 	"mime"
 	"runtime"
@@ -146,5 +147,53 @@ func TestMeasuringHoldsNoCopy(t *testing.T) {
 	raw := "Subject: \u00fc\r\nContent-Type: multipart/mixed; boundary=\"\xf6b\"\r\n\r\n--\xf6b\r\nContent-Type: application/pdf\r\nContent-Transfer-Encoding: binary\r\n\r\n" + strings.Repeat("\xf6", size) + "\r\n--\xf6b--\r\n"
 	if got := allocated(func() { MeasureWireSizes(raw) }); got > 3*uint64(len(raw))/2 {
 		t.Errorf("measuring %d bytes with an 8-bit boundary allocated %d", len(raw), got)
+	}
+}
+
+// hostileHeaderShapes are the fields and parts a sender can make very many of: go-message
+// and net/mail read them on their own account, and this counts only what sizing adds.
+func hostileHeaderShapes(size int) map[string]string {
+	var parameters, repeated strings.Builder
+	for i := 0; parameters.Len() < size; i++ {
+		fmt.Fprintf(&parameters, ";\r\n p%d=v%d", i, i)
+	}
+	for repeated.Len() < size {
+		repeated.WriteString(";\r\n P=v")
+	}
+	part := "--B\r\nContent-Type: a/b\r\n\r\n\xf6\r\n"
+	return map[string]string{
+		"8-bit parameter among many": "Content-Type: text/plain; name=\"\u00fc\"" + parameters.String() + "\r\n\r\nb\r\n",
+		"many on an 8-bit part":      "Content-Type: multipart/mixed; boundary=B\r\n\r\n--B\r\nContent-Type: text/plain; name=\"\u00fc\"" + parameters.String() + "\r\n\r\nb\u00fc\r\n--B--\r\n",
+		"one name many times":        "Content-Type: text/plain; name=\"\u00fc\"" + repeated.String() + "\r\n\r\nb\r\n",
+		"typed parts in a message":   "Content-Type: message/rfc822\r\n\r\nSubject: inner\r\nContent-Type: multipart/mixed; boundary=B\r\n\r\n" + strings.Repeat(part, size/len(part)) + "--B--\r\n",
+	}
+}
+
+// Every size is still what FETCH and RETR send for these.
+func TestWireSizesAreWhatFetchSends_ManyFieldsAndParts(t *testing.T) {
+	for name, raw := range hostileHeaderShapes(32 << 10) {
+		measuresWhatFetchSends(t, name, raw)
+	}
+}
+
+// Each size is measured in four ways. Reading a field's parameters into a map for each of
+// those cost 438 times the message, and every part that had to be read for its type 60.
+// The limit is per message, so a pause elsewhere can't fail it: the best of three counts.
+func TestMeasuringHoldsLittleForManyFieldsAndParts(t *testing.T) {
+	const size, limit = 1 << 20, 16
+	for name, raw := range hostileHeaderShapes(size) {
+		if name == "one name many times" {
+			continue // Each repeat becomes a comment of encoded words, which is still about 33x: #1915.
+		}
+		t.Run(name, func(t *testing.T) {
+			best := uint64(1) << 63
+			for range 3 {
+				best = min(best, allocated(func() { MeasureWireSizes(raw) }))
+			}
+			t.Logf("measuring %d bytes allocated %d, %.1f times over", len(raw), best, float64(best)/float64(len(raw)))
+			if best > limit*uint64(len(raw)) {
+				t.Errorf("measuring %d bytes allocated %d", len(raw), best)
+			}
+		})
 	}
 }

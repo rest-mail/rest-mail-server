@@ -130,11 +130,7 @@ func writeDowngradedField(w wordSink, span string, bare bool) {
 // its text only ever counts. ok is false when a blank line in the block ends the header
 // early, so that text is the body, and counts for what it says.
 func measuredBlock(header, sep string) (block string, dropped int, ok bool) {
-	var size headerSink
-	writeMeasuredBlock(&size, header, sep, &dropped)
 	var b strings.Builder
-	b.Grow(int(size))
-	dropped = 0
 	writeMeasuredBlock(&b, header, sep, &dropped)
 	block = b.String()
 	if strings.HasPrefix(block, "\r\n") || strings.Index(block, "\r\n\r\n") != len(block)-4 {
@@ -234,8 +230,7 @@ func downgradeField(w wordSink, name, folded string) {
 		writeEncodedText(w, value)
 		return
 	case key == "content-type" || key == "content-disposition":
-		if field, ok := wireform.ParameterField(name, value); ok {
-			_, _ = w.WriteString(field)
+		if wireform.WriteParameterField(w, name, value) {
 			return
 		}
 	}

@@ -62,3 +62,12 @@ func WriteEncodedWords(w interface {
 func ParameterField(name, value string) (field string, ok bool) {
 	return message.ParameterField(name, value)
 }
+
+// WriteParameterField is [ParameterField] into w, holding one parameter at a time. It
+// writes nothing when ok would be false.
+func WriteParameterField(w interface {
+	io.Writer
+	io.StringWriter
+}, name, value string) (ok bool) {
+	return message.WriteParameterField(w, name, value)
+}

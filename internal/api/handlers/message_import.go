@@ -221,7 +221,7 @@ func (h *MessageImportHandler) storeImportedMessage(r *http.Request, accountID u
 				return err
 			}
 			// The text columns keep a part's whole text, so no part is cut short here.
-			parsed, err := rmime.ParseStream(ctx, reader, rmime.StreamOptions{Store: h.storeAttachmentPart, MaxText: math.MaxInt64})
+			parsed, err := rmime.ParseStream(ctx, reader, rmime.StreamOptions{Store: h.storeAttachmentPart, MaxText: math.MaxInt64, SourceSize: source.size})
 			if errors.Is(err, rmime.ErrStructureLimit) {
 				// Imported mail is held to the same MIME limits as arriving mail (#1641). Its
 				// Received: fields are not counted: old mail may carry any number, and storing
