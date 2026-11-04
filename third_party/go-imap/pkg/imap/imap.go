@@ -332,6 +332,26 @@ type FolderMailbox interface {
 	RenameFolder(from, to string) error
 }
 
+// NameNormalizer is the optional interface a [Mailbox] implements when its store
+// keeps mailbox names in one normal form. RFC 9051 §5.1 asks for Net-Unicode,
+// whose form is NFC, and lets a server "accept a denormalized UTF-8 mailbox
+// name and convert it". This module has no dependency that knows Unicode
+// normalization, so the store supplies it.
+//
+// When a Mailbox implements it, every mailbox name a command carries goes through
+// NormalizeName before anything uses it, and a LIST pattern is converted the same
+// way, so a client's other spelling reaches the same folder. SELECT, EXAMINE,
+// CREATE, DELETE, RENAME and APPEND report a name that changed with an untagged
+// LIST holding the OLDNAME extended data item (RFC 9051 §6.3.9.7).
+//
+// A Mailbox that does not implement it keeps every name as the client spelled it.
+type NameNormalizer interface {
+	// NormalizeName returns name in the store's normal form. Calling it again on
+	// the result returns the same name. It leaves the case of INBOX alone, which
+	// the server folds itself and does not report.
+	NormalizeName(name string) string
+}
+
 // UTF8Mailbox is the optional interface a [Mailbox] may also implement to
 // support internationalized email in IMAP ([RFC 6855] UTF8=ACCEPT). When the
 // authenticated Mailbox satisfies it, the server advertises UTF8=ACCEPT and

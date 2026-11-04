@@ -13,8 +13,9 @@ import (
 
 // createFolder answers CREATE of name, a validated store name other than
 // INBOX. A trailing delimiter only declares that inferiors will follow, and any
-// superior the name needs is created first (RFC 9051 §6.3.4).
-func (s *Session) createFolder(tag string, fm imap.FolderMailbox, name string) {
+// superior the name needs is created first (RFC 9051 §6.3.4). supplied is the
+// name as the command carried it, for OLDNAME.
+func (s *Session) createFolder(tag string, fm imap.FolderMailbox, name, supplied string) {
 	name = strings.TrimRight(name, "/")
 	if name == "" || strings.EqualFold(name, "INBOX") {
 		s.tagged(tag, "NO", "Invalid folder name")
@@ -41,6 +42,7 @@ func (s *Session) createFolder(tag string, fm imap.FolderMailbox, name string) {
 		s.tagged(tag, "NO", "CREATE failed")
 		return
 	}
+	s.announceOldName(name, false, supplied)
 	s.tagged(tag, "OK", "CREATE completed")
 }
 
@@ -67,7 +69,8 @@ func (s *Session) createSuperiors(fm imap.FolderMailbox, folders []imap.Folder, 
 // deleteFolder answers DELETE of name, a store name that is not a standard
 // folder. A folder with inferiors is deleted and they stay; a name that is not
 // a mailbox but has inferiors is refused with HASCHILDREN (RFC 9051 §6.3.5).
-func (s *Session) deleteFolder(tag string, fm imap.FolderMailbox, name string) {
+// supplied is the name as the command carried it, for OLDNAME.
+func (s *Session) deleteFolder(tag string, fm imap.FolderMailbox, name, supplied string) {
 	folders, err := s.mailbox.Folders()
 	if err != nil {
 		s.tagged(tag, "NO", "DELETE failed")
@@ -89,14 +92,16 @@ func (s *Session) deleteFolder(tag string, fm imap.FolderMailbox, name string) {
 		s.tagged(tag, "NO", "DELETE failed")
 		return
 	}
+	s.announceOldName(name, true, supplied)
 	s.tagged(tag, "OK", "DELETE completed")
 }
 
 // renameFolder answers RENAME of from to to, store names with from not a
 // standard folder other than INBOX. Renaming INBOX moves its messages into the
 // new folder and leaves INBOX empty, its inferiors untouched; renaming any
-// other folder renames its inferiors with it (RFC 9051 §6.3.6).
-func (s *Session) renameFolder(tag string, fm imap.FolderMailbox, from, to string) {
+// other folder renames its inferiors with it (RFC 9051 §6.3.6). suppliedFrom and
+// suppliedTo are the names as the command carried them, for OLDNAME.
+func (s *Session) renameFolder(tag string, fm imap.FolderMailbox, from, to, suppliedFrom, suppliedTo string) {
 	to = strings.TrimRight(to, "/")
 	if to == "" {
 		s.tagged(tag, "NO", "Invalid folder name")
@@ -164,5 +169,6 @@ func (s *Session) renameFolder(tag string, fm imap.FolderMailbox, from, to strin
 			return
 		}
 	}
+	s.announceOldName(to, false, suppliedFrom, suppliedTo)
 	s.tagged(tag, "OK", "RENAME completed")
 }

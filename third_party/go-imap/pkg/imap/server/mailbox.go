@@ -18,8 +18,18 @@ var errInvalidMailboxName = errors.New("imap: invalid mailbox name")
 // the client has enabled UTF8=ACCEPT the name is already UTF-8. Before, it is
 // modified UTF-7, decoded here; a UTF8=ACCEPT server also takes a UTF-8 name
 // then, as RFC 6855 §3 requires. ok is false for a name that is neither, which
-// names no folder.
+// names no folder. A store's normal form applies to the result; see
+// [imap.NameNormalizer].
 func (s *Session) mailboxName(encoded string) (string, bool) {
+	name, ok := s.decodedName(encoded)
+	if !ok {
+		return name, false
+	}
+	return s.normalizedName(name), true
+}
+
+// decodedName is the mailbox name a command carries as the client spelled it.
+func (s *Session) decodedName(encoded string) (string, bool) {
 	switch {
 	case s.utf8:
 		return encoded, true
@@ -28,6 +38,46 @@ func (s *Session) mailboxName(encoded string) (string, bool) {
 	default:
 		return mutf7.Decode(encoded)
 	}
+}
+
+// normalizedName is name in the store's normal form, or name itself for a store
+// that has none.
+func (s *Session) normalizedName(name string) string {
+	if n, ok := s.mailbox.(imap.NameNormalizer); ok {
+		return n.NormalizeName(name)
+	}
+	return name
+}
+
+// announceOldName sends the untagged LIST that says the store used another
+// spelling of a name the command carried: name is the name now in use, and
+// OLDNAME is the first of supplied, as the client sent it. It sends nothing when
+// every one of supplied is already in the normal form. A deleted mailbox is
+// \NonExistent (RFC 9051 §§6.3.5, 6.3.9.7); any other carries its role, because
+// the attributes must be accurate (§6.3.2). Only a changed name is reported, so a
+// client that spells its names in NFC never sees this response.
+func (s *Session) announceOldName(name string, deleted bool, supplied ...string) {
+	changed := false
+	for _, encoded := range supplied {
+		decoded, ok := s.decodedName(encoded)
+		changed = changed || ok && s.normalizedName(decoded) != decoded
+	}
+	if !changed {
+		return
+	}
+	old, _ := s.decodedName(supplied[0])
+	attrs := ""
+	if deleted {
+		attrs = `\NonExistent`
+	} else if folders, err := s.mailbox.Folders(); err == nil {
+		for _, f := range folders {
+			if f.Name == name && specialUses[f.SpecialUse] {
+				attrs = f.SpecialUse
+			}
+		}
+	}
+	s.send(`* LIST (%s) "/" %s ("OLDNAME" (%s))`, attrs,
+		wire.EncodeMailboxName(s.wireName(name)), wire.EncodeMailboxName(s.wireName(old)))
 }
 
 // folderName is mailboxName with INBOX, in any case, folded to INBOX (RFC 3501
@@ -104,6 +154,7 @@ func (s *Session) handleCreate(tag, args string) {
 		s.tagged(tag, "NO", "Missing folder name")
 		return
 	}
+	supplied := folder
 	// A name with "&" must be modified UTF-7 without superfluous shifts or
 	// encoded ASCII (RFC 3501 §5.1.3), and an 8-bit name is refused unless the
 	// server takes UTF-8 (§5.1, RFC 6855 §3).
@@ -135,11 +186,12 @@ func (s *Session) handleCreate(tag, args string) {
 	}
 
 	if fm, ok := s.mailbox.(imap.FolderMailbox); ok {
-		s.createFolder(tag, fm, folder)
+		s.createFolder(tag, fm, folder, supplied)
 		return
 	}
 	// Folders are implicit — they exist once a message is moved into them.
 	// CREATE just validates and acknowledges.
+	s.announceOldName(folder, false, supplied)
 	s.tagged(tag, "OK", "CREATE completed")
 }
 
@@ -154,6 +206,7 @@ func (s *Session) handleDelete(tag, args string) {
 		s.tagged(tag, "NO", "Missing folder name")
 		return
 	}
+	supplied := folder
 	// "INBOX" is case-insensitive (RFC 3501 §5.1): fold to canonical so any-case
 	// spelling ("inbox", "InBoX") hits the standard-folder guard below rather
 	// than bypassing it. Other standard names stay case-sensitive.
@@ -171,7 +224,7 @@ func (s *Session) handleDelete(tag, args string) {
 	}
 
 	if fm, ok := s.mailbox.(imap.FolderMailbox); ok {
-		s.deleteFolder(tag, fm, folder)
+		s.deleteFolder(tag, fm, folder, supplied)
 		return
 	}
 
@@ -189,6 +242,7 @@ func (s *Session) handleDelete(tag, args string) {
 		}
 	}
 
+	s.announceOldName(folder, true, supplied)
 	s.tagged(tag, "OK", "DELETE completed")
 }
 
@@ -211,6 +265,7 @@ func (s *Session) handleRename(tag, args string) {
 		s.tagged(tag, "BAD", "RENAME requires old and new name")
 		return
 	}
+	suppliedOld, suppliedNew := oldName, newName
 	var oldOK, newOK bool
 	oldName, oldOK = s.mailboxName(oldName)
 	newName, newOK = s.mailboxName(newName)
@@ -235,7 +290,7 @@ func (s *Session) handleRename(tag, args string) {
 	// A store that renames folders itself renames INBOX by moving its messages
 	// to the new name (RFC 9051 §6.3.6).
 	if fm, ok := s.mailbox.(imap.FolderMailbox); ok {
-		s.renameFolder(tag, fm, oldName, newName)
+		s.renameFolder(tag, fm, oldName, newName, suppliedOld, suppliedNew)
 		return
 	}
 	if oldName == "INBOX" {
@@ -261,5 +316,6 @@ func (s *Session) handleRename(tag, args string) {
 		}
 	}
 
+	s.announceOldName(newName, false, suppliedOld, suppliedNew)
 	s.tagged(tag, "OK", "RENAME completed")
 }

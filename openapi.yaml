@@ -14423,7 +14423,10 @@ paths:
         (10 MiB by default); the general API body limit may be stricter. Deleted state
         and up to 100 case-insensitive keywords of 1-255 ASCII bytes are preserved.
         Keywords must be RFC 3501 atoms without backslash. Deleted messages use
-        IMAP deletion state, not API tombstones; EXPUNGE removes them.
+        IMAP deletion state, not API tombstones; EXPUNGE removes them. A folder name
+        is saved in Unicode Normalization Form C. A name that had to be converted and
+        matches an existing folder that does not hold this message goes to "name (2)"
+        or the next free number, and the answer's folder says which.
       operationId: importMessage
       parameters:
       - example: 1
