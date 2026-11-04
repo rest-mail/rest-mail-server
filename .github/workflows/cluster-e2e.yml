@@ -7,8 +7,14 @@ name: Cluster Install Check
 # ports, NetworkPolicies, mTLS wiring, migrations at start-up, files missing
 # from the production images.
 #
-# Daily and by hand only, never on a pull request: it builds seven images and
-# takes several minutes. It gates nothing.
+# Then stage 1 of the installed-cluster check (#1750), scripts/cluster_e2e.py:
+# the bootstrap admin signs in through the API, an SMTP RCPT through the
+# installed gateway, an IMAP sign-in and SELECT INBOX, and a JavaScript filter
+# validated by the js-filter sidecar. Locally, against any cluster with the
+# chart installed: `chore cluster:e2e`, the same script.
+#
+# Daily, on every v* tag, and by hand, never on a pull request: it builds seven
+# images and takes several minutes. It gates nothing.
 #
 # Run by hand: Actions → Cluster Install Check → Run workflow, or
 #   gh workflow run cluster-e2e.yml --ref <branch>
@@ -17,6 +23,8 @@ on:
   schedule:
     # Daily at 05:00 UTC, an hour before scheduled.yml.
     - cron: "0 5 * * *"
+  push:
+    tags: ["v*"]
   workflow_dispatch:
 
 permissions:
@@ -126,26 +134,11 @@ jobs:
             exit 1
           fi
 
-      - name: Request the API through a port-forward
-        run: |
-          mkdir -p "$REPORT_DIR"
-          kubectl -n "$NAMESPACE" port-forward "svc/$RELEASE-api" 18080:8080 \
-            > "$REPORT_DIR/port-forward.log" 2>&1 &
-          for _ in $(seq 1 30); do
-            curl -fsS -o /dev/null http://127.0.0.1:18080/api/health && break
-            sleep 2
-          done
-          for path in /api/health /api/docs/openapi.json; do
-            out="$REPORT_DIR/$(basename "$path")"
-            status="$(curl -sS -o "$out" -w '%{http_code}' "http://127.0.0.1:18080$path")"
-            echo "$path -> $status"
-            if [ "$status" != "200" ]; then
-              echo "::error::GET $path answered $status, not 200"
-              cat "$out"
-              exit 1
-            fi
-          done
-          jq -e '.openapi' "$REPORT_DIR/openapi.json"
+      # Port-forwards the API and the gateways itself and prints one receipt
+      # line per step (commit, images, step, result) to the log and to
+      # cluster-report/receipts.txt.
+      - name: Stage 1 against the install
+        run: python3 -B scripts/cluster_e2e.py --namespace "$NAMESPACE" --release "$RELEASE" --report-dir "$REPORT_DIR" --commit "$GITHUB_SHA"
 
       # Always, and most of all on a failure: everything needed to see why a
       # pod did not come up, without re-running the job.
