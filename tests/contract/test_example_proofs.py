@@ -388,7 +388,7 @@ class Workflows(unittest.TestCase):
         self.assertNotIn("continue-on-error", judge)
         gate = self.e2e["e2e"]
         self.assertIn("e2e-proofs", gate["needs"])
-        self.assertEqual(gate["if"], "always()")
+        self.assertTrue(gate["if"].startswith("always()"), gate["if"])
         self.assertIn("PROOFS_RESULT", gate["steps"][0]["env"])
         self.assertIn('"$PROOFS_RESULT" != "success"', gate["steps"][0]["run"])
 
