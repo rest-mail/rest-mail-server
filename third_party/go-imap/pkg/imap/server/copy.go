@@ -230,17 +230,10 @@ func (s *Session) moveMessages(tag, cmdName string, seqNums []int, dest string) 
 
 	// Expunge from the cached view in descending order so earlier sequence
 	// numbers stay valid as later messages are removed.
+	// A session that enabled QRESYNC is told with VANISHED (RFC 6851 §4.4,
+	// RFC 7162 §3.2.10).
 	sort.Sort(sort.Reverse(sort.IntSlice(doneSeq)))
-	for _, seq := range doneSeq {
-		if seq < 1 || seq > len(s.messages) {
-			continue
-		}
-		s.send("* %d EXPUNGE", seq)
-		s.messages = append(s.messages[:seq-1], s.messages[seq:]...)
-	}
-	if s.selected != nil {
-		s.selected.total = int64(len(s.messages))
-	}
+	s.removeMessages(doneSeq)
 	if moveErr != nil {
 		s.tagged(tag, "NO", failText(moveErr, cmdName+" failed"))
 		return

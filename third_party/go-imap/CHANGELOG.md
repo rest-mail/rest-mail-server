@@ -8,6 +8,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- CONDSTORE and QRESYNC (RFC 7162): a Mailbox that implements the new optional
+  `imap.ModSeqMailbox` interface reports HIGHESTMODSEQ and each message's
+  `Message.ModSeq`, and stores flags through `StoreModSeq`, which applies
+  UNCHANGEDSINCE atomically. The server then advertises CONDSTORE and supports
+  ENABLE CONDSTORE, SELECT/EXAMINE (CONDSTORE) with HIGHESTMODSEQ, or NOMODSEQ
+  when the store answers 0, STATUS HIGHESTMODSEQ, FETCH MODSEQ and
+  CHANGEDSINCE, STORE UNCHANGEDSINCE with MODIFIED, and SEARCH MODSEQ; every
+  untagged FETCH carries UID and MODSEQ once a client has turned it on. One
+  that also implements `imap.VanishedMailbox` remembers expunged UIDs and
+  turns on QRESYNC: ENABLE QRESYNC, SELECT/EXAMINE (QRESYNC ...), UID FETCH
+  (CHANGEDSINCE n VANISHED), and VANISHED instead of EXPUNGE once enabled. A
+  server advertising either sends CLOSED when a SELECT replaces a selection.
 - UIDNEXT kept by the store (RFC 3501 §2.3.1.1, RFC 9051 §2.3.1.1): a Mailbox
   that implements the new optional `imap.UIDNextMailbox` interface reports a
   folder's UIDNEXT from the UIDs it has assigned, and SELECT, EXAMINE and

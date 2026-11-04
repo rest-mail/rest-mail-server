@@ -2,6 +2,7 @@ package server
 
 import (
 	"net/mail"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -68,9 +69,12 @@ func (s *Session) search(tag, args string, uid bool) {
 	}
 
 	var found, uids []uint32
+	var modSeqs []uint64 // of each found message, when MODSEQ was a key
+	withModSeq := usesModSeq(criteria)
 	for i, msg := range s.messages {
 		if s.matchesCriteria(msg, criteria, s.rawLoader(msg)) {
 			uids = append(uids, msg.UID)
+			modSeqs = append(modSeqs, msg.ModSeq)
 			if uid {
 				found = append(found, msg.UID)
 			} else {
@@ -92,12 +96,21 @@ func (s *Session) search(tag, args string, uid bool) {
 		for _, n := range found {
 			b.WriteString(" " + strconv.FormatUint(uint64(n), 10))
 		}
+		// With a MODSEQ key, a non-empty result ends with the highest
+		// mod-sequence of the messages returned (RFC 7162 §3.1.6).
+		if withModSeq && len(found) > 0 {
+			b.WriteString(" (MODSEQ " + strconv.FormatUint(slices.Max(modSeqs), 10) + ")")
+		}
 		s.send("%s", b.String())
 		s.tagged(tag, "OK", completed)
 		return
 	}
 	if esearchWanted(returns) {
-		s.send("%s", esearchResponse(tag, uid, returns, found))
+		response := esearchResponse(tag, uid, returns, found)
+		if withModSeq && len(found) > 0 {
+			response += " MODSEQ " + strconv.FormatUint(esearchModSeq(returns, modSeqs), 10)
+		}
+		s.send("%s", response)
 	}
 	s.tagged(tag, "OK", completed)
 }
@@ -155,6 +168,15 @@ func (s *Session) parseSearchCriteria(args string) ([]searchCriterion, *searchEr
 		}
 		criteria = append(criteria, c)
 		idx = newIdx
+	}
+
+	// MODSEQ needs the selected mailbox's mod-sequences and turns CONDSTORE
+	// on (RFC 7162 §§3.1, 3.1.2.2).
+	if usesModSeq(criteria) {
+		if !s.modSeqs() {
+			return nil, badSearch("MODSEQ needs a mailbox with mod-sequences")
+		}
+		s.enableCondstore()
 	}
 
 	// Resolve any bare sequence-set keys against the current message list once,
@@ -327,6 +349,8 @@ func parseSingleCriterion(tokens []string, idx int, maxUID uint32) (searchCriter
 			return searchCriterion{}, idx, badSearch("HEADER requires a field name")
 		}
 		return searchCriterion{kind: "header", field: field, value: wire.Unquote(tokens[idx+2])}, idx + 3, nil
+	case "MODSEQ":
+		return parseModSeqCriterion(tokens, idx)
 	case "LARGER", "SMALLER":
 		if idx+1 >= len(tokens) {
 			return searchCriterion{}, idx, badSearch(keyword + " requires a number")
@@ -387,6 +411,47 @@ func parseSingleCriterion(tokens []string, idx int, maxUID uint32) (searchCriter
 	}
 }
 
+// parseModSeqCriterion parses RFC 7162 §3.1.5's search key, tokens[idx]
+// being "MODSEQ": MODSEQ [entry-name entry-type-req] mod-sequence-valzer.
+// The store keeps one mod-sequence per message, so the entry name and type
+// are checked and then ignored, as the RFC requires.
+func parseModSeqCriterion(tokens []string, idx int) (searchCriterion, int, *searchError) {
+	next := idx + 1
+	if next < len(tokens) && strings.HasPrefix(tokens[next], `"`) {
+		if next+2 >= len(tokens) {
+			return searchCriterion{}, idx, badSearch("MODSEQ requires a mod-sequence")
+		}
+		entry := wire.Unquote(tokens[next])
+		if !strings.HasPrefix(entry, "/flags/") || len(entry) == len("/flags/") {
+			return searchCriterion{}, idx, badSearch("invalid MODSEQ entry name")
+		}
+		switch strings.ToLower(tokens[next+1]) {
+		case "priv", "shared", "all":
+		default:
+			return searchCriterion{}, idx, badSearch("invalid MODSEQ entry type")
+		}
+		next += 2
+	}
+	if next >= len(tokens) {
+		return searchCriterion{}, idx, badSearch("MODSEQ requires a mod-sequence")
+	}
+	v, ok := parseModSeq(tokens[next], false)
+	if !ok {
+		return searchCriterion{}, idx, badSearch("invalid MODSEQ mod-sequence")
+	}
+	return searchCriterion{kind: "modseq", size: v}, next + 1, nil
+}
+
+// usesModSeq reports whether any criterion, however nested, is MODSEQ.
+func usesModSeq(criteria []searchCriterion) bool {
+	for _, c := range criteria {
+		if c.kind == "modseq" || usesModSeq(c.sub) {
+			return true
+		}
+	}
+	return false
+}
+
 // parseSearchGroup parses a parenthesized key group "( key key ... )", which is
 // the AND of the enclosed keys (RFC 3501 §6.4.4). tokens[idx] is the "(". A
 // missing closing ")" is a tagged BAD.
@@ -443,6 +508,9 @@ func (s *Session) matchOne(msg imap.Message, c searchCriterion, loadRaw func() (
 	switch c.kind {
 	case "all":
 		return true
+	case "modseq":
+		// "equal to or greater than" (RFC 7162 §3.1.5).
+		return msg.ModSeq >= c.size
 	case "answered":
 		return msg.Answered
 	case "unanswered":

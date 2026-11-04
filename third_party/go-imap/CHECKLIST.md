@@ -597,7 +597,7 @@ messages. They do not prove a real store moves each message atomically.
 | IMAP-MOVE-10 | RFC 6851 §3.3 | SHOULD | Each message is either moved or unaffected, never left in both mailboxes; no message is lost. | n/a: backend responsibility; the base `Mailbox.Move` fallback and `Mover.MoveUID` are trusted per message and not verified by these dispatch fixtures. Tracked in rest-mail/rest-mail-server#374. |
 | IMAP-MOVE-11 | RFC 6851 §3.3; RFC 3501 §6.4.7 | MUST | Refuse nonexistent destinations without auto-creation and prefix NO with TRYCREATE unless creation is known impossible. | TestTryCreateMissingDestination |
 | IMAP-MOVE-12 | RFC 6851 §3.1; RFC 3501 §9 | Normative | Reject invalid sequence sets and mailbox argument syntax with BAD. | TestMoveInvalidArguments |
-| IMAP-MOVE-13 | RFC 6851 §4 | Normative | With QRESYNC enabled, report moved messages with VANISHED instead of EXPUNGE; other sessions selecting the source learn of the removal. | n/a: the QRESYNC half does not apply: QRESYNC is neither advertised nor enabled, so VANISHED is never due. Telling other sessions on the source mailbox about moved messages needs cross-session notification, which the engine does not have. Tracked in rest-mail/rest-mail-server#374. |
+| IMAP-MOVE-13 | RFC 6851 §4 | Normative | With QRESYNC enabled, report moved messages with VANISHED instead of EXPUNGE; other sessions selecting the source learn of the removal. | TestQresyncExpungeVanished |
 | IMAP-MOVE-14 | RFC 4315 §§3, 4 | Normative | COPYUID contains only valid nonzero destination UIDs, with no extraneous or repeated UIDs. | TestMoveUIDInvalidBackendUIDs |
 
 A refused move stops at the failing message and reports only what the backend
@@ -746,7 +746,8 @@ extension inventory. [RFC 3691](https://www.rfc-editor.org/rfc/rfc3691),
 [RFC 5161](https://www.rfc-editor.org/rfc/rfc5161) and
 [RFC 2177](https://www.rfc-editor.org/rfc/rfc2177) define the exchanges below.
 The UNSELECT test uses §2's A341 tag; the ENABLE fixture uses
-§3.1's CONDSTORE/X-GOOD-IDEA names, both unsupported by this server.
+§3.1's CONDSTORE/X-GOOD-IDEA names with a store that keeps no mod-sequences,
+so neither is enabled; CONDSTORE itself is covered under RFC 7162 below.
 The IDLE test follows §3's A002/DONE sequence and pipelines a following NOOP.
 
 | ID | Section | Level | Requirement | Tests |
@@ -766,7 +767,8 @@ The IDLE test follows §3's A002/DONE sequence and pipelines a following NOOP.
 | IMAP-IDLE-02 | RFC 2177 §3 | MUST | Request a continuation, consume DONE, then immediately complete the original IDLE tag and process the following command; repeated IDLE exchanges preserve framing. | TestIdleDoneAndNextCommand |
 
 The ENABLED list's newly-enabled-only behavior is a SHOULD in RFC 5161 §3.1;
-its presence on success is a MUST. ENABLE does not implement CONDSTORE.
+its presence on success is a MUST. ENABLE CONDSTORE and ENABLE QRESYNC are
+covered under RFC 7162 below.
 The supported UTF8 mode belongs to the session's backend; this proof observes
 its enable callback, not a complete RFC 6855 audit. IDLE polling notifications,
 concurrent mailbox changes, timeout policy, RFC 9051 IMAP4rev2 differences and
@@ -1030,6 +1032,34 @@ or separate unlimited marker. Read-side proofs below do not claim those features
 | IMAP-NAMESPACE-01 | RFC 2342 §§4, 5 | Normative | NAMESPACE is advertised, and answers one untagged NAMESPACE before OK: the personal namespace with prefix "" and the hierarchy delimiter LIST gives ("/"), and NIL for the other users' and shared classes, which the server does not have (example 5.1), in the authenticated and selected states. | TestNamespace |
 | IMAP-NAMESPACE-02 | RFC 2342 §5 | Normative | NAMESPACE takes no arguments (BAD otherwise), and before authentication answers NO with no NAMESPACE response. | TestNamespace, TestNamespaceNoArguments |
 
+## RFC 7162: CONDSTORE and QRESYNC
+
+Both need a store that implements `imap.ModSeqMailbox` (CONDSTORE) and, for
+QRESYNC, `imap.VanishedMailbox` too; without them neither is advertised. The
+tests replay the RFC's examples with the fixture's own mod-sequence values.
+The store keeps one mod-sequence per message, so SEARCH MODSEQ's entry name
+and type are checked and ignored (§3.1.5). SORT, THREAD and ESORT are not
+implemented, so §§3.1.9-3.1.10's SORT rules have nothing to apply to.
+
+| ID | Section | Level | Requirement | Tests |
+|----|---------|-------|-------------|-------|
+| IMAP-CONDSTORE-01 | RFC 7162 §§3.1.1, 3.2.3 | Normative | Advertise CONDSTORE, and QRESYNC, only when the store keeps what they need; without them HIGHESTMODSEQ, MODSEQ and the SELECT parameter are BAD. | TestCondstoreCapability |
+| IMAP-CONDSTORE-02 | RFC 7162 §§3.1, 3.1.2.1, 3.1.8 | MUST | After a CONDSTORE enabling command, every successful SELECT and EXAMINE sends OK [HIGHESTMODSEQ]; SELECT (CONDSTORE) is one; none is sent before; malformed select parameters are BAD. | TestCondstoreSelectHighestModSeq |
+| IMAP-CONDSTORE-03 | RFC 7162 §§3.1.2.2, 3.1.7 | MUST | A mailbox without mod-sequences answers NOMODSEQ, STATUS HIGHESTMODSEQ 0, and BAD to FETCH MODSEQ, CHANGEDSINCE, STORE UNCHANGEDSINCE and SEARCH MODSEQ while selected. | TestCondstoreNoModSeq |
+| IMAP-CONDSTORE-04 | RFC 7162 §3.1.3 | MUST | STORE and UID STORE UNCHANGEDSINCE change only messages not modified since, send FETCH with MODSEQ for each even with .SILENT, and list the rest in MODIFIED (sequence numbers, or UIDs for UID STORE); UNCHANGEDSINCE 0 always fails. | TestCondstoreStoreUnchangedSince |
+| IMAP-CONDSTORE-05 | RFC 7162 §§3.1, 7 | MUST | The first enabling command with a mailbox selected reports its HIGHESTMODSEQ before the command's FETCH responses; a malformed or unknown STORE modifier, or a mod-sequence over 2^63-1, is BAD. | TestCondstoreStoreUnchangedSince |
+| IMAP-CONDSTORE-06 | RFC 7162 §§3.1, 3.1.3, 3.2.4 | MUST | Once enabled, every untagged FETCH from STORE, an implicit \Seen or a change made elsewhere carries UID and MODSEQ. | TestCondstoreStoreReportsModSeq |
+| IMAP-CONDSTORE-07 | RFC 7162 §3.1.4 | MUST | FETCH MODSEQ returns each message's mod-sequence; CHANGEDSINCE returns only messages changed since and adds MODSEQ; malformed modifiers, and VANISHED outside UID FETCH, are BAD. | TestCondstoreFetch |
+| IMAP-CONDSTORE-08 | RFC 7162 §§3.1.5, 3.1.6, 3.1.10 | MUST | SEARCH MODSEQ matches mod-sequences equal to or above the value, and a non-empty result ends with (MODSEQ n), the highest returned; ESEARCH carries MODSEQ n. | TestCondstoreSearchModSeq |
+| IMAP-CONDSTORE-09 | RFC 7162 §3.1.7 | MUST | STATUS HIGHESTMODSEQ reports the folder's HIGHESTMODSEQ. | TestCondstoreStatus |
+| IMAP-CONDSTORE-10 | RFC 7162 §3.1; RFC 5161 §3.1 | MUST | ENABLE CONDSTORE answers ENABLED CONDSTORE once and, with a mailbox selected, reports its HIGHESTMODSEQ. | TestCondstoreEnable |
+| IMAP-CONDSTORE-11 | RFC 7162 §3.2.11 | MUST | A server advertising CONDSTORE sends OK [CLOSED] when SELECT or EXAMINE closes the selected mailbox, enabled or not. | TestCondstoreSelectHighestModSeq |
+| IMAP-QRESYNC-01 | RFC 7162 §3.2.3 | MUST | ENABLE QRESYNC answers ENABLED QRESYNC and turns CONDSTORE on. | TestCondstoreEnable |
+| IMAP-QRESYNC-02 | RFC 7162 §§3.2.3, 3.2.5 | MUST | SELECT/EXAMINE (QRESYNC ...) before ENABLE QRESYNC, or with a malformed parameter, is BAD and selects nothing. | TestQresyncSelect |
+| IMAP-QRESYNC-03 | RFC 7162 §3.2.5.1 | MUST | SELECT (QRESYNC ...) with a matching UIDVALIDITY sends, after the usual responses, VANISHED (EARLIER) for known UIDs expunged since the mod-sequence and a FETCH with UID, FLAGS and MODSEQ for each known message changed since; a mismatch sends neither. | TestQresyncSelect |
+| IMAP-QRESYNC-04 | RFC 7162 §3.2.6 | MUST | UID FETCH (CHANGEDSINCE n VANISHED) sends VANISHED (EARLIER) for the set's UIDs expunged since n before any FETCH; it is BAD without ENABLE QRESYNC. | TestQresyncUIDFetchVanished |
+| IMAP-QRESYNC-05 | RFC 7162 §3.2.10 | MUST | Once QRESYNC is enabled, EXPUNGE, MOVE and expunges seen by NOOP are reported with VANISHED, without EARLIER, and never EXPUNGE. | TestQresyncExpungeVanished |
+
 ## RFC 7888: LITERAL-, non-synchronizing literals up to 4096 octets
 
 | ID | Section | Level | Requirement | Tests |
@@ -1119,7 +1149,7 @@ commentary is corrected with the canonical source evidence.
 | IMAP-BINARY-12 | RFC 3516 §6 | MUST | Describe binary-stored content using a base-IMAP-compatible BODYSTRUCTURE CTE and return BODY content matching that description. | n/a: the library preserves host message representations and does not downgrade or re-encode binary bodies for base clients. This deliberately unsupported rewriting is not inferred from BINARY decoding tests; rest-mail/rest-mail-server#374. |
 | IMAP-BINARY-13 | RFC 3516 §§4.4, 6 | MUST NOT | Lose data when rewriting the CTE of an accepted binary APPEND; avoid gratuitous rewrites that invalidate signatures. | n/a: binary APPEND storage and CTE rewriting are not offered. The permitted refusal path is IMAP-BINARY-07; no lossless binary storage or rewriting claim is added. |
 | IMAP-BINARY-14 | RFC 3516 §6 | SHOULD | Clients retain their own content-transfer decoding fallback and avoid unnecessary expensive size requests. | n/a: client-only decoding and request-selection guidance; this package implements the server. |
-| IMAP-ESEARCH-06 | RFC 4731 §3.2 | MUST | With CONDSTORE, return the appropriate MODSEQ value with ESEARCH MIN/MAX/ALL/COUNT combinations. | n/a: CONDSTORE and modification sequences are not implemented or advertised; tracked by rest-mail/go-imap#162. No partial result-option support implies MODSEQ support. |
+| IMAP-ESEARCH-06 | RFC 4731 §3.2 | MUST | With CONDSTORE, return the appropriate MODSEQ value with ESEARCH MIN/MAX/ALL/COUNT combinations. | TestCondstoreSearchModSeq |
 | IMAP-ESEARCH-07 | RFC 4731 §3.1 | MUST NOT | Clients assume a particular message/UID order in an ESEARCH ALL sequence set. | n/a: client-only response interpretation. The engine currently returns the host snapshot order, assuming the backend ascending-UID contract; that assumption is not independently enforced. |
 | IMAP-ESEARCH-08 | RFC 4731 §5 | Normative | Bound expensive search work and optionally optimize MIN/MAX without changing ALL/COUNT semantics. | n/a: a search scans the selected host snapshot and may load complete messages. Host storage/resource budgets and indexed execution are outside this wire inventory; no global denial-of-service or optimization claim is made. |
 | IMAP-SEARCHRES-07 | RFC 5182 §§2.1–2.3; RFC 4315 §2.1 | MUST | Execute dependent SAVE/COPY/STORE/UID EXPUNGE in arrival order, using the saved identities, removing only saved Deleted messages and preserving unrelated deletion marks. | TestSearchResPipelineThroughUIDExpunge |
@@ -1132,7 +1162,7 @@ commentary is corrected with the canonical source evidence.
 | IMAP-MOVE-15 | RFC 6851 §3.3 | MUST NOT | Synthesize STORE responses or set Deleted as a MOVE side effect; preserve unrelated deletion marks and emit UIDPLUS mapping before EXPUNGE. | TestMoveDoesNotSynthesizeStore |
 | IMAP-MOVE-16 | RFC 6851 §§4.1, 6 | Normative | Apply quota and target security/scanning policy correctly when a same-root MOVE differs from COPY. | n/a: Mailbox.Move/Mover.MoveUID own storage, quotas and scanning/auditing. The engine cannot infer temporary quota suspension or target security policy; no host policy is silently changed. |
 | IMAP-MOVE-17 | RFC 6851 §4.2 | Normative | Enforce the union of UID STORE, UID COPY and UID EXPUNGE ACL rights for MOVE. | n/a: ACL is not implemented or advertised and the backend owns authorization. The engine has no ACL-rights query or independent union check. |
-| IMAP-MOVE-18 | RFC 6851 §4.4 | MUST | With QRESYNC/modification-sequence support, emit VANISHED and update source/target mod-sequences and HIGHESTMODSEQ as required. | n/a: QRESYNC/CONDSTORE and modification sequences are not implemented; rest-mail/go-imap#162. Existing EXPUNGE dispatch is not proof of these conditional obligations. |
+| IMAP-MOVE-18 | RFC 6851 §4.4 | MUST | With QRESYNC/modification-sequence support, emit VANISHED and update source/target mod-sequences and HIGHESTMODSEQ as required. | TestQresyncExpungeVanished |
 | IMAP-MOVE-19 | RFC 6851 §4.5 | Normative | Apply IMAP Sieve COPY events to MOVE without producing a FLAG event. | n/a: IMAP Sieve event hooks are not part of the backend or engine. Per-message movement and host event integration remain separate responsibilities. |
 | IMAP-UTF8-06 | RFC 6855 §§3, 6, 9 | MUST NOT | Emit UTF-8 mailbox names before client opt-in: LIST/LSUB retain modified UTF-7 until ENABLE and then return counted UTF-8 names; advertise ACCEPT without ONLY or obsolete UTF8 capabilities. | TestUTF8MailboxOutputRequiresEnable |
 | IMAP-UTF8-07 | RFC 6855 §6 | Normative | In UTF8=ONLY mode, require ENABLE before commands needing UTF-8 and reject them with NO [CANNOT]; never advertise ONLY and ACCEPT together. | n/a: UTF8=ONLY is not implemented or advertised. The offered optional ACCEPT mode and its capability boundary are proved separately. |
@@ -1580,7 +1610,9 @@ rev1 extension test to proof of a complete rev2 implementation.
 8. Missing COPY/MOVE destinations have IMAP2-CMD-157/163; arbitrary backend
    creation/preservation guarantees remain the explicit COPY/MOVE gaps.
 9. CLOSED on replacement selection is built for rev2 sessions and waits on
-   ENABLE IMAP4rev2 (IMAP2-CMD-74); rev1 sessions get none (IMAP-CLOSED-01).
+   ENABLE IMAP4rev2 (IMAP2-CMD-74); rev1 sessions get it only from a store
+   with mod-sequences, which advertises CONDSTORE (IMAP-CONDSTORE-11), and
+   otherwise none (IMAP-CLOSED-01).
 10. Selected-mailbox LIST and normalized OLDNAME remain IMAP2-CMD-73.
 11. Rev2 deprecation of SELECT/EXAMINE UNSEEN requires mode-specific replies;
     the current rev1 engine still emits it (IMAP2-SEC-217/225).
@@ -1627,7 +1659,7 @@ rev1 extension test to proof of a complete rev2 implementation.
 | ID | Section | Level | Requirement | Tests |
 |----|---------|-------|-------------|-------|
 | IMAP2-DELTA-03 | RFC 9051 §6.3.11 | Normative | Return the number of messages marked Deleted for STATUS DELETED, alongside the other requested status items. | TestStatusDeleted |
-| IMAP-CLOSED-01 | RFC 3501 §7.1; RFC 7162 §3.2.11 | SHOULD | Send an IMAP4rev1 session no CLOSED response code: it is neither in RFC 3501 nor X-prefixed, and RFC 7162 requires it only of a server advertising CONDSTORE or QRESYNC, which this engine does not. Rev2 sessions get it (IMAP2-CMD-74). | TestSelectNoClosedForRev1 |
+| IMAP-CLOSED-01 | RFC 3501 §7.1; RFC 7162 §3.2.11 | SHOULD | Send an IMAP4rev1 session no CLOSED response code: it is neither in RFC 3501 nor X-prefixed, and RFC 7162 requires it only of a server advertising CONDSTORE or QRESYNC, which this engine does only for a store with mod-sequences (IMAP-CONDSTORE-11). Rev2 sessions get it (IMAP2-CMD-74). | TestSelectNoClosedForRev1 |
 
 ## RFC 9051 first-pass audit record
 

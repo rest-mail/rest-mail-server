@@ -99,7 +99,8 @@ func ParseFetchItems(s string) ([]string, bool) {
 			item := s[start:i]
 			switch up := strings.ToUpper(item); up {
 			case "FLAGS", "UID", "INTERNALDATE", "ENVELOPE", "BODY", "BODYSTRUCTURE",
-				"RFC822", "RFC822.HEADER", "RFC822.TEXT", "RFC822.SIZE":
+				"RFC822", "RFC822.HEADER", "RFC822.TEXT", "RFC822.SIZE",
+				"MODSEQ": // RFC 7162 §3.1.4.2; the session refuses it without CONDSTORE
 			default:
 				if !strings.HasPrefix(up, "BODY[") && !strings.HasPrefix(up, "BODY.PEEK[") && !BinaryItem(up) {
 					return nil, false

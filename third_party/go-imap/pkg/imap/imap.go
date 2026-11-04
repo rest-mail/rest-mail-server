@@ -39,7 +39,9 @@
 // options ([RFC 5258]). One that implements [RightsMailbox] tells the server
 // what the user may do with each mailbox, for read-only selections, TRYCREATE
 // and keeping APPENDUID and COPYUID from callers who cannot read the
-// destination ([RFC 9051] §§6.3.2, 6.3.12, 11.4). The advertised CAPABILITY list reflects only the
+// destination ([RFC 9051] §§6.3.2, 6.3.12, 11.4). One that implements
+// [ModSeqMailbox] turns on CONDSTORE ([RFC 7162]), and one that also
+// implements [VanishedMailbox] turns on QRESYNC. The advertised CAPABILITY list reflects only the
 // optional interfaces the concrete Mailbox satisfies, so a backend implementing
 // just [Mailbox] is unaffected and the list never over-promises.
 //
@@ -49,6 +51,7 @@
 // [RFC 6855]: https://www.rfc-editor.org/rfc/rfc6855
 // [RFC 5258]: https://www.rfc-editor.org/rfc/rfc5258
 // [RFC 9051]: https://www.rfc-editor.org/rfc/rfc9051
+// [RFC 7162]: https://www.rfc-editor.org/rfc/rfc7162
 package imap
 
 import (
@@ -90,6 +93,11 @@ type Message struct {
 	// To is the message's recipient list as a single string; SEARCH TO does a
 	// case-insensitive substring match against it, with encoded words decoded.
 	To string
+	// ModSeq is the message's mod-sequence (RFC 7162 §3.1): a positive value
+	// the store raises on every change to the message's flags. It backs FETCH
+	// MODSEQ, CHANGEDSINCE and SEARCH MODSEQ, and is read only when the
+	// Mailbox implements [ModSeqMailbox].
+	ModSeq uint64
 }
 
 // Folder is one mailbox folder reported by LIST/LSUB.
@@ -224,6 +232,58 @@ type UIDNextMailbox interface {
 	// larger of it and the highest UID present plus one, so 0 means
 	// "unknown". An error makes SELECT, EXAMINE and STATUS answer NO.
 	UIDNext(folder string) (uint32, error)
+}
+
+// ErrModified is the error [ModSeqMailbox.StoreModSeq] returns, possibly
+// wrapped, when the message's mod-sequence is above the UNCHANGEDSINCE value
+// it was given, so nothing was changed (RFC 7162 §3.1.3).
+var ErrModified = errors.New("imap: message modified since")
+
+// ModSeqMailbox is the optional interface a [Mailbox] may also implement to
+// keep mod-sequences, which turns on CONDSTORE ([RFC 7162] §3.1). The store
+// gives every message a mod-sequence ([Message.ModSeq]) and every folder a
+// HIGHESTMODSEQ, and raises both on every change to a message's flags; two
+// changes that complete one after the other must get rising values. With it
+// the server advertises CONDSTORE and supports ENABLE CONDSTORE, SELECT and
+// EXAMINE (CONDSTORE), STATUS HIGHESTMODSEQ, FETCH MODSEQ and CHANGEDSINCE,
+// STORE UNCHANGEDSINCE with the MODIFIED response code, and SEARCH MODSEQ.
+// Once a client has issued any of those, every untagged FETCH carries MODSEQ.
+//
+// A Mailbox that does not implement it advertises neither CONDSTORE nor
+// QRESYNC, and those commands keep their RFC 3501 meaning.
+//
+// [RFC 7162]: https://www.rfc-editor.org/rfc/rfc7162
+type ModSeqMailbox interface {
+	// HighestModSeq returns folder's HIGHESTMODSEQ: at least the largest
+	// [Message.ModSeq] of its messages, and never lower than any value it
+	// returned before. 0 says the folder keeps no mod-sequences, and SELECT
+	// then answers NOMODSEQ (RFC 7162 §3.1.2.2). An error fails the command
+	// that asked.
+	HighestModSeq(folder string) (uint64, error)
+	// StoreModSeq applies f to the message named by uid exactly like
+	// [Mailbox.Store] and returns the message's mod-sequence afterwards. When
+	// unchangedSince is not 0 the change is made only if the message's
+	// mod-sequence is at most unchangedSince, checked and applied atomically;
+	// otherwise nothing changes and it returns the current mod-sequence with
+	// [ErrModified].
+	StoreModSeq(uid uint32, f FlagUpdate, unchangedSince uint64) (modSeq uint64, err error)
+}
+
+// VanishedMailbox is the optional interface a [ModSeqMailbox] may also
+// implement to remember the mod-sequence at which each message left a folder,
+// which turns on QRESYNC ([RFC 7162] §3.2). With it the server advertises
+// QRESYNC, takes ENABLE QRESYNC, SELECT and EXAMINE (QRESYNC ...) and UID
+// FETCH (CHANGEDSINCE n VANISHED), and reports expunges to a client that
+// enabled QRESYNC with VANISHED instead of EXPUNGE.
+//
+// Expunging a message, or moving it out of a folder, must raise the folder's
+// HIGHESTMODSEQ and record the message's UID with the new value.
+//
+// [RFC 7162]: https://www.rfc-editor.org/rfc/rfc7162
+type VanishedMailbox interface {
+	// Vanished returns, in ascending order, the UIDs of the messages that
+	// left folder at a mod-sequence above since.
+	Vanished(folder string, since uint64) ([]uint32, error)
 }
 
 // Subscriber is the optional interface a [Mailbox] may also implement to keep

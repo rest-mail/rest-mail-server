@@ -18,8 +18,13 @@ func (s *Session) handleStore(tag, args string) {
 		return
 	}
 
-	// Parse: STORE <seq> (FLAGS|+FLAGS|-FLAGS)[.SILENT] (<flags>)
-	parts := strings.SplitN(args, " ", 3)
+	// Parse: STORE <seq> [(UNCHANGEDSINCE n)] (FLAGS|+FLAGS|-FLAGS)[.SILENT] (<flags>)
+	seqSet, rest, _ := strings.Cut(args, " ")
+	rest, cond, ok := s.storeModifier(tag, rest)
+	if !ok {
+		return
+	}
+	parts := append([]string{seqSet}, strings.SplitN(rest, " ", 2)...)
 	if len(parts) < 3 {
 		s.tagged(tag, "BAD", "STORE requires sequence, action, and flags")
 		return
@@ -53,18 +58,42 @@ func (s *Session) handleStore(tag, args string) {
 	}
 
 	seqNums := s.seqNumbers(parts[0])
+	if cond.set {
+		s.enableCondstore()
+	}
 
+	var modified []uint32
 	for _, seq := range seqNums {
 		if seq < 1 || seq > len(s.messages) {
 			continue
 		}
-		if err := s.applyStore(seq, mode, flags, silent, false); err != nil {
+		if err := s.applyStore(seq, mode, flags, silent, false, cond); err != nil {
+			if isModified(err) {
+				modified = append(modified, uint32(seq))
+				continue
+			}
 			s.tagged(tag, "NO", storeRefusal(err, "STORE failed: "+err.Error()))
 			return
 		}
 	}
+	if len(modified) > 0 {
+		s.tagged(tag, "OK", modifiedResponse(modified))
+		return
+	}
 
 	s.tagged(tag, "OK", "STORE completed")
+}
+
+// storeModifier splits STORE's UNCHANGEDSINCE modifier (RFC 7162 §3.1.3) off
+// rest and answers BAD, with ok false, when it is malformed or the selected
+// mailbox keeps no mod-sequences (§3.1.2.2).
+func (s *Session) storeModifier(tag, rest string) (string, storeCondition, bool) {
+	after, since, set, ok := splitStoreModifier(rest)
+	if !ok || (set && !s.modSeqs()) {
+		s.tagged(tag, "BAD", "Invalid STORE modifier")
+		return "", storeCondition{}, false
+	}
+	return after, storeCondition{set: set, since: since}, true
 }
 
 // storeKeywords is the flags a STORE applies once the store's keyword support
@@ -143,7 +172,12 @@ func parseStoreAction(action string) (mode storeMode, silent bool, ok bool) {
 // flags. When withUID is true the FETCH also reports the UID (UID STORE). If
 // the backend refuses the write, the message's session state is restored and
 // the error returned, so the caller can answer NO (RFC 3501 §6.4.6).
-func (s *Session) applyStore(seq int, mode storeMode, flags []string, silent, withUID bool) error {
+//
+// With cond set, the change is made only when the message is unchanged since
+// cond.since; otherwise its state is restored and [imap.ErrModified] returned
+// (RFC 7162 §3.1.3). Once CONDSTORE is on, a FETCH with UID and MODSEQ is sent
+// even for .SILENT.
+func (s *Session) applyStore(seq int, mode storeMode, flags []string, silent, withUID bool, cond storeCondition) error {
 	msg := &s.messages[seq-1]
 	before, wasDeleted := *msg, s.deleted[msg.UID]
 	var requestedKeywords []string
@@ -174,21 +208,24 @@ func (s *Session) applyStore(seq int, mode storeMode, flags []string, silent, wi
 	}
 
 	if update.Seen != nil || update.Answered != nil || update.Flagged != nil || update.Draft != nil || update.Deleted != nil || update.KeywordsSet {
-		if err := s.mailbox.Store(msg.UID, update); err != nil {
+		if err := s.storeFlags(seq, update, cond); err != nil {
+			modSeq := msg.ModSeq
 			*msg = before
+			msg.ModSeq = max(modSeq, before.ModSeq)
 			s.applyDeleted(msg.UID, storeReplace, wasDeleted)
 			return err
 		}
+	} else if cond.set && (cond.since == 0 || msg.ModSeq > cond.since) {
+		// Nothing to write, but the test still applies (RFC 7162 §3.1.3).
+		*msg = before
+		s.applyDeleted(msg.UID, storeReplace, wasDeleted)
+		return imap.ErrModified
 	}
 
-	if silent {
+	if silent && !s.condstore {
 		return nil
 	}
-	if withUID {
-		s.send("* %d FETCH (UID %d FLAGS (%s))", seq, msg.UID, s.flagString(*msg))
-	} else {
-		s.send("* %d FETCH (FLAGS (%s))", seq, s.flagString(*msg))
-	}
+	s.send("* %d FETCH (%s)", seq, s.storeFetch(*msg, !silent, withUID))
 	return nil
 }
 
@@ -320,8 +357,13 @@ func (s *Session) handleUIDStore(tag, args string) {
 	if s.refuseReadOnly(tag) {
 		return
 	}
-	parts := strings.SplitN(args, " ", 2)
-	if len(parts) < 2 {
+	uidSet, rest, _ := strings.Cut(args, " ")
+	rest, cond, ok := s.storeModifier(tag, rest)
+	if !ok {
+		return
+	}
+	parts := []string{uidSet, rest}
+	if rest == "" {
 		s.tagged(tag, "BAD", "UID STORE requires uid set and flags")
 		return
 	}
@@ -358,14 +400,26 @@ func (s *Session) handleUIDStore(tag, args string) {
 	}
 
 	seqNums := s.parseUIDSet(parts[0])
+	if cond.set {
+		s.enableCondstore()
+	}
+	var modified []uint32
 	for _, seq := range seqNums {
 		if seq < 1 || seq > len(s.messages) {
 			continue
 		}
-		if err := s.applyStore(seq, mode, flags, silent, true); err != nil {
+		if err := s.applyStore(seq, mode, flags, silent, true, cond); err != nil {
+			if isModified(err) {
+				modified = append(modified, s.messages[seq-1].UID)
+				continue
+			}
 			s.tagged(tag, "NO", storeRefusal(err, "UID STORE failed"))
 			return
 		}
+	}
+	if len(modified) > 0 {
+		s.tagged(tag, "OK", modifiedResponse(modified))
+		return
 	}
 
 	s.tagged(tag, "OK", "UID STORE completed")

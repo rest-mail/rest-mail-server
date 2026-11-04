@@ -466,7 +466,7 @@
             "IMAP-ENABLE-07",
             "IMAP-ENABLE-08"
           ],
-          "note": "Ignore unknown/non-enable-able names; persistent additive mode, response/capability invariants, state, pipelining and client duties. CONDSTORE example is unsupported and ignored."
+          "note": "Ignore unknown/non-enable-able names; persistent additive mode, response/capability invariants, state, pipelining and client duties. CONDSTORE is enabled only with a store that keeps mod-sequences (RFC 7162 rows)."
         },
         {
           "section": "3.2",
