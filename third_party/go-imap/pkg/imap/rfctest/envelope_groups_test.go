@@ -42,15 +42,17 @@ func TestEnvelopeGroups(t *testing.T) {
 	}
 }
 
-// TestEnvelopeMalformedGroups rejects the complete malformed list rather than
-// emitting unmatched IMAP group sentinels or only the valid prefix addresses.
+// TestEnvelopeMalformedGroups rejects a list whose group structure is
+// malformed rather than emitting unmatched IMAP group sentinels or only the
+// valid prefix addresses. A well-formed group whose member is refused keeps
+// its other addresses (TestEnvelopeObsoleteAddresses).
 //
 // checklist: IMAP-ENV-10
 func TestEnvelopeMalformedGroups(t *testing.T) {
 	for _, value := range []string{
 		"Friends: a@example.com", "Friends: Nested: a@example.com;;",
 		"a@example.com;", "Friends: a@example.com; broken",
-		"a@example.com, Friends: not an address;",
+		"Friends: a@example.com, Other: b@example.com;", "a@example.com; b@example.com",
 	} {
 		t.Run(value, func(t *testing.T) {
 			requireEnvelope(t, "To: "+value+"\r\n\r\nx", `(NIL NIL NIL NIL NIL NIL NIL NIL NIL NIL)`)

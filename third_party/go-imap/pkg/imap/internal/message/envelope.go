@@ -2,6 +2,7 @@ package message
 
 import (
 	"fmt"
+	"mime"
 	"net/mail"
 	"strings"
 
@@ -89,13 +90,14 @@ func headerValue(hdr mail.Header, name string) string {
 // (RFC 3501 §7.4.2). It is the inner element of the parenthesized address lists
 // that make up the from/sender/reply-to/to/cc/bcc envelope fields.
 func addressPart(name, email string) string {
-	parts := strings.SplitN(email, "@", 2)
-	user := parts[0]
-	host := ""
-	if len(parts) > 1 {
-		host = parts[1]
-	}
-	return fmt.Sprintf("(%s NIL %s %s)", wire.QuoteString(name), wire.QuoteString(user), wire.QuoteString(host))
+	user, host, _ := strings.Cut(email, "@")
+	return mailboxPart(name, user, host)
+}
+
+// mailboxPart is addressPart for a mailbox whose local part and domain are
+// already separated.
+func mailboxPart(name, local, domain string) string {
+	return fmt.Sprintf("(%s NIL %s %s)", wire.QuoteString(name), wire.QuoteString(local), wire.QuoteString(domain))
 }
 
 // buildAddress wraps a single address in the parenthesized address-list form an
@@ -109,56 +111,61 @@ func buildAddress(name, email string) string {
 
 // buildAddressList parses an RFC 5322 address-list header value (e.g.
 // "Bob <bob@example.org>, carol@example.com") into the parenthesized list of
-// address structures an envelope field requires. An empty or unparseable value
-// yields NIL, matching the RFC's treatment of an absent header.
+// address structures an envelope field requires. An empty value, a malformed
+// group structure, or a list with no readable mailbox yields NIL, matching the
+// RFC's treatment of an absent header. A mailbox that cannot be read is left
+// out without losing the others in the list.
 func buildAddressList(list string) string {
 	list = strings.TrimSpace(list)
 	if list == "" {
 		return "NIL"
 	}
-	// net/mail validates the complete grammar but flattens groups, including
-	// empty ones. Scan only structural delimiters here; keep address and phrase
-	// decoding with net/mail instead of implementing a second address parser.
-	addrs, err := mail.ParseAddressList(list)
-	if err != nil {
-		return "NIL"
-	}
 	var b strings.Builder
 	b.WriteByte('(')
-	if !strings.Contains(list, ":") {
-		for _, a := range addrs {
-			b.WriteString(addressPart(a.Name, a.Address))
-		}
-	} else if !appendAddressGroups(&b, list) {
-		return "NIL"
-	}
-	if b.Len() == 1 {
+	if !appendAddressGroups(&b, list) || b.Len() == 1 {
 		return "NIL"
 	}
 	b.WriteByte(')')
 	return b.String()
 }
 
-// appendAddressGroups preserves RFC 3501 §7.4.2 group-start/group-end
-// structures. list has already passed mail.ParseAddressList. Delimiters inside
-// quoted strings, nested comments, angle addresses and domain literals are data.
-func appendAddressGroups(b *strings.Builder, list string) bool {
-	appendMembers := func(value string) bool {
-		if strings.TrimSpace(stripComments(value)) == "" {
-			return true
-		}
-		members, err := mail.ParseAddressList(value)
-		if err != nil {
-			return false
-		}
-		for _, a := range members {
-			b.WriteString(addressPart(a.Name, a.Address))
-		}
-		return true
+// appendMailbox writes the address structure of one RFC 5322 mailbox. net/mail
+// reads the current syntax and decodes display names; the obsolete forms RFC
+// 5322 §4 has a reader accept, and RFC 5321 address literals that net/mail
+// tests as bare IPs, are read by parseObsMailbox. A blank member (obs-mbox-list
+// allows empty elements) writes nothing, as does a mailbox neither can read.
+func appendMailbox(b *strings.Builder, value string) {
+	if strings.TrimSpace(stripComments(value)) == "" {
+		return
 	}
+	if a, err := mail.ParseAddress(value); err == nil {
+		b.WriteString(addressPart(a.Name, a.Address))
+		return
+	}
+	if name, local, domain, ok := parseObsMailbox(value); ok {
+		b.WriteString(mailboxPart(name, local, domain))
+	}
+}
+
+// appendAddressGroups writes the address structures of an address list,
+// preserving RFC 3501 §7.4.2 group-start/group-end structures. Delimiters
+// inside quoted strings, nested comments, angle addresses and domain literals
+// are data. It reports false for a malformed group structure — a nested or
+// unterminated group, a group end outside a group, or text after a group end —
+// so no unmatched group sentinel is written.
+func appendAddressGroups(b *strings.Builder, list string) bool {
+	inGroup, closed := false, false
 	start, comments := 0, 0
 	quoted, angle, domain, escaped := false, false, false, false
-	for i := 0; i < len(list); i++ {
+	for i := 0; i <= len(list); i++ {
+		if i == len(list) {
+			// The final member, after the last delimiter.
+			if inGroup || (closed && strings.TrimSpace(stripComments(list[start:])) != "") {
+				return false
+			}
+			appendMailbox(b, list[start:])
+			break
+		}
 		c := list[i]
 		if escaped {
 			escaped = false
@@ -204,26 +211,216 @@ func appendAddressGroups(b *strings.Builder, list string) bool {
 			if angle {
 				continue
 			}
-			if c == ':' {
+			member := list[start:i]
+			if closed && strings.TrimSpace(stripComments(member)) != "" {
+				return false
+			}
+			closed = false
+			switch c {
+			case ':':
+				if inGroup {
+					return false
+				}
 				// Parse the group's display-name as a mailbox display-name so
 				// comments, quoted-pairs and encoded words share one decoder.
-				name, err := mail.ParseAddress(list[start:i] + " <group@invalid>")
+				name, err := mail.ParseAddress(member + " <group@invalid>")
 				if err != nil {
 					return false
 				}
 				fmt.Fprintf(b, "(NIL NIL %s NIL)", wire.EncodeMailboxName(name.Name))
-			} else {
-				if !appendMembers(list[start:i]) {
+				inGroup = true
+			case ',':
+				appendMailbox(b, member)
+			case ';':
+				if !inGroup {
 					return false
 				}
-				if c == ';' {
-					b.WriteString("(NIL NIL NIL NIL)")
-				}
+				appendMailbox(b, member)
+				b.WriteString("(NIL NIL NIL NIL)")
+				inGroup, closed = false, true
 			}
 			start = i + 1
 		}
 	}
-	return appendMembers(list[start:])
+	return true
+}
+
+// parseObsMailbox reads one mailbox — an addr-spec, or a display name and an
+// angle address — with the obsolete syntax RFC 5322 §4 has a reader accept:
+// a local part of dot-separated words where any word may be quoted (§4.4
+// obs-local-part, e.g. "a".b), CFWS around the dots of the local part and the
+// domain (§4.4, e.g. joe . q @ example . com), a period in the display name
+// (§4.1 obs-phrase) and a source route before the addr-spec (§4.4 obs-route),
+// which is skipped. A domain literal is any RFC 5322 dtext in brackets, kept
+// as written, so an RFC 5321 address literal such as [IPv6:2001:db8::1] is
+// read without an IP check. The local part is returned unquoted, as net/mail
+// returns it.
+func parseObsMailbox(value string) (name, local, domain string, ok bool) {
+	toks, ok := addressTokens(value)
+	if !ok {
+		return "", "", "", false
+	}
+	spec := toks
+	if lt := tokenIndex(toks, "<"); lt >= 0 {
+		if last := toks[len(toks)-1]; !last.special || last.text != ">" || tokenIndex(toks[lt+1:], "<") >= 0 {
+			return "", "", "", false
+		}
+		// obs-phrase: words and periods; a period keeps to the word before it.
+		var phrase strings.Builder
+		for i, t := range toks[:lt] {
+			if t.literal || (t.special && t.text != ".") {
+				return "", "", "", false
+			}
+			if i > 0 && t.text != "." {
+				phrase.WriteByte(' ')
+			}
+			phrase.WriteString(t.text)
+		}
+		name = decodePhrase(phrase.String())
+		spec = toks[lt+1 : len(toks)-1]
+		// obs-route: "@" domain *("," ["@" domain]) ":" before the addr-spec.
+		if colon := tokenIndex(spec, ":"); colon >= 0 && len(spec) > 0 && spec[0].text == "@" && spec[0].special {
+			spec = spec[colon+1:]
+		}
+	}
+	at := tokenIndex(spec, "@")
+	if at <= 0 || at == len(spec)-1 {
+		return "", "", "", false
+	}
+	local, ok = dottedWords(spec[:at], true)
+	if !ok {
+		return "", "", "", false
+	}
+	domainToks := spec[at+1:]
+	if len(domainToks) == 1 && domainToks[0].literal {
+		return name, local, domainToks[0].text, true
+	}
+	domain, ok = dottedWords(domainToks, false)
+	return name, local, domain, ok
+}
+
+// addressToken is one lexical token of an RFC 5322 address: an atom, a
+// quoted string (unquoted), a domain literal (as written) or a special.
+type addressToken struct {
+	text             string
+	special, literal bool
+	quoted           bool
+}
+
+// addressTokens splits an address into tokens, dropping CFWS. It reports false
+// for an unterminated quoted string, comment or domain literal, or a control
+// octet outside them.
+func addressTokens(s string) ([]addressToken, bool) {
+	var toks []addressToken
+	for i := 0; i < len(s); {
+		c := s[i]
+		switch {
+		case c == ' ' || c == '\t' || c == '\r' || c == '\n':
+			i++
+		case c == '(':
+			depth := 0
+			for ; i < len(s); i++ {
+				switch s[i] {
+				case '\\':
+					i++
+				case '(':
+					depth++
+				case ')':
+					depth--
+				}
+				if depth == 0 {
+					break
+				}
+			}
+			if depth != 0 {
+				return nil, false
+			}
+			i++
+		case c == '"':
+			var b strings.Builder
+			i++
+			for ; i < len(s) && s[i] != '"'; i++ {
+				if s[i] == '\\' && i+1 < len(s) {
+					i++
+				}
+				b.WriteByte(s[i])
+			}
+			if i >= len(s) {
+				return nil, false
+			}
+			i++
+			toks = append(toks, addressToken{text: b.String(), quoted: true})
+		case c == '[':
+			end := i + 1
+			for ; end < len(s) && s[end] != ']'; end++ {
+				if s[end] == '\\' {
+					end++
+				} else if s[end] == '[' {
+					return nil, false
+				}
+			}
+			if end >= len(s) {
+				return nil, false
+			}
+			toks = append(toks, addressToken{text: s[i : end+1], literal: true})
+			i = end + 1
+		case strings.IndexByte("<>@.,:;\\]", c) >= 0:
+			toks = append(toks, addressToken{text: s[i : i+1], special: true})
+			i++
+		case c < 0x20 || c == 0x7f:
+			return nil, false
+		default:
+			end := i
+			for end < len(s) && s[end] > 0x20 && s[end] != 0x7f && strings.IndexByte("()<>[]:;@\\,.\"", s[end]) < 0 {
+				end++
+			}
+			toks = append(toks, addressToken{text: s[i:end]})
+			i = end
+		}
+	}
+	return toks, true
+}
+
+// tokenIndex returns the index of the first special token text, or -1.
+func tokenIndex(toks []addressToken, text string) int {
+	for i, t := range toks {
+		if t.special && t.text == text {
+			return i
+		}
+	}
+	return -1
+}
+
+// dottedWords joins word *("." word) with periods. A word is an atom or, when
+// quotedOK (a local part), a quoted string.
+func dottedWords(toks []addressToken, quotedOK bool) (string, bool) {
+	if len(toks)%2 == 0 {
+		return "", false
+	}
+	var b strings.Builder
+	for i, t := range toks {
+		if i%2 == 1 {
+			if !t.special || t.text != "." {
+				return "", false
+			}
+			b.WriteByte('.')
+			continue
+		}
+		if t.special || t.literal || (t.quoted && !quotedOK) || (!t.quoted && t.text == "") {
+			return "", false
+		}
+		b.WriteString(t.text)
+	}
+	return b.String(), true
+}
+
+// decodePhrase decodes RFC 2047 encoded words in a display name, keeping the
+// text as written when it holds none or cannot be decoded.
+func decodePhrase(phrase string) string {
+	if decoded, err := new(mime.WordDecoder).DecodeHeader(phrase); err == nil {
+		return decoded
+	}
+	return phrase
 }
 
 // buildEncapsulatedEnvelope constructs the IMAP ENVELOPE (RFC 3501 §7.4.2) of a
