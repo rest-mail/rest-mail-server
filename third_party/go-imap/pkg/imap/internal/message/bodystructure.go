@@ -54,8 +54,7 @@ func parseContentType(value string) (string, map[string]string, error) {
 	if hasParameters {
 		base += ";" + parameters
 	}
-	mt, params, err := parseMediaType(base)
-	return mt, restoreNames(value, params), err
+	return parseMediaType(base)
 }
 
 // uncommentMIME replaces each RFC 822 §3.4.3 comment in a MIME header value
@@ -64,9 +63,6 @@ func parseContentType(value string) (string, map[string]string, error) {
 // parameter values (including parentheses and quoted-pairs) stay intact.
 // Unbalanced comments and unterminated quoted strings are errors.
 func uncommentMIME(value string) (string, error) {
-	if has8bit(value) {
-		return readableField(value), nil
-	}
 	text, _, err := splitComments(value)
 	return text, err
 }

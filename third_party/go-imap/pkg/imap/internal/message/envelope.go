@@ -45,7 +45,7 @@ func isKeptWord(word string) bool {
 		return false
 	}
 	charset, _, _ := strings.Cut(body, "?")
-	return charset != "" && !strings.EqualFold(charset, "UTF-8") && !strings.EqualFold(charset, "US-ASCII") && !isLatin1(charset)
+	return charset != "" && !decodableCharset(charset)
 }
 
 // addressNameText is metadataText for a personal or group name, which can hold both

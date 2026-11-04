@@ -340,6 +340,9 @@ The library:
   becomes RFC 2047 encoded words in charset `UTF-8`, or `UNKNOWN-8BIT` when it is
   not UTF-8; non-textual data goes out BASE64; text naming no charset goes out
   QUOTED-PRINTABLE; text naming a charset stays. BINARY sends the stored octets.
+- Keeps every Content-Type and Content-Disposition parameter, whatever its charset.
+  An RFC 2231 value in a charset it can't decode goes out as an encoded word naming
+  that charset, and converting a field changes only what holds an 8-bit octet.
 - Builds BODY and BODYSTRUCTURE from what FETCH sends and ENVELOPE from the stored
   octets, and bounds MIME nesting at depth 64.
 - Treats an unknown Content-Transfer-Encoding as `application/octet-stream`
@@ -347,7 +350,9 @@ The library:
 - Removes base64 and quoted-printable for BINARY, and answers
   `NO [UNKNOWN-CTE]` when it cannot.
 - Decodes encoded words, transfer encodings and ISO-8859-1 before SEARCH
-  compares text. It accepts the US-ASCII and UTF-8 charsets.
+  compares text, one encoded word at a time, so a word in another charset is compared
+  as stored and the words around it still decode. It accepts the US-ASCII and UTF-8
+  charsets.
 - Refuses to FETCH a message with a NUL in a header or in text, or whose decoded
   ENVELOPE and MIME strings hold one. A NUL in non-textual data goes out encoded.
 

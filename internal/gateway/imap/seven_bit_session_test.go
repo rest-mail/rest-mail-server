@@ -179,6 +179,36 @@ func TestFetchHeadersThroughTheGateway(t *testing.T) {
 	}
 }
 
+// The RFC 6857 downgrade of the top-level header keeps a parameter in a charset
+// neither it nor the engine can read, beside one it has to convert, and the size
+// RFC822.SIZE reports still counts what BODY[] sends.
+func TestParameterInOtherCharsetThroughTheGateway(t *testing.T) {
+	const raw = "Content-Type: application/x-y; name*=windows-1252''x%F6.bin; note=\"Gr\xc3\xbc\"\r\n" +
+		"Content-Disposition: attachment; filename*=iso-8859-2''%A3.txt; note=\"caf\xe9\"\r\n\r\ndata\r\n"
+	c := dialStore(t, raw)
+	c.do("a1", "LOGIN jorg@example.test pw")
+	c.do("a2", "SELECT INBOX")
+	_, header := fetchedLiteral(t, c.do("a3", "FETCH 1 BODY.PEEK[HEADER]"))
+	const want = "Content-Type: application/x-y;\r\n name*=windows-1252''x%F6.bin;\r\n note*=UTF-8''Gr%C3%BC\r\n" +
+		"Content-Disposition: attachment;\r\n filename*=iso-8859-2''%A3.txt;\r\n note*=UNKNOWN-8BIT''caf%E9\r\n\r\n"
+	if header != want {
+		t.Fatalf("HEADER = %q\n  want %q", header, want)
+	}
+	got := c.do("a4", "FETCH 1 BODYSTRUCTURE")
+	for _, want := range []string{
+		`("NAME" "=?windows-1252?Q?x=F6=2Ebin?=" "NOTE" "=?UTF-8?Q?Gr=C3=BC?=")`,
+		`("ATTACHMENT" ("FILENAME" "=?iso-8859-2?Q?=A3=2Etxt?=" "NOTE" "=?UNKNOWN-8BIT?Q?caf=E9?="))`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("%q lacks %q", got, want)
+		}
+	}
+	framing, whole := fetchedLiteral(t, c.do("a5", "FETCH 1 (RFC822.SIZE BODY.PEEK[])"))
+	if want := fmt.Sprintf("RFC822.SIZE %d ", len(whole)); !strings.Contains(framing, want) {
+		t.Fatalf("%q lacks %q; BODY[] sent %d octets", framing, want, len(whole))
+	}
+}
+
 // RFC 3516 BINARY is the way to the stored octets, whatever BODY sends.
 func TestBinaryKeepsStoredOctetsThroughTheGateway(t *testing.T) {
 	c := dialStore(t, sevenBitRaw)

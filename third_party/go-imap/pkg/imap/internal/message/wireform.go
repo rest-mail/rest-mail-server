@@ -373,9 +373,21 @@ func wireHeader(w wireSink, header string, sessionUTF8 bool, changes ...fieldCha
 func sevenBitField(w wireSink, field string) {
 	text, eol := strings.CutSuffix(field, "\r\n")
 	name, value, ok := strings.Cut(text, ":")
-	switch {
-	case !ok || has8bit(name):
-		WriteEncodedWords(w, unfoldHeader(text))
+	if !ok || has8bit(name) {
+		out := EncodeWords(unfoldHeader(text))
+		if eol {
+			out += "\r\n"
+		}
+		return out
+	}
+	var out string
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "content-type", "content-disposition":
+		if rewritten, ok := ParameterField(name, unfoldHeader(value)); ok {
+			out = rewritten
+			break
+		}
+		fallthrough
 	default:
 		written := false
 		switch strings.ToLower(strings.TrimSpace(name)) {

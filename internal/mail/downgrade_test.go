@@ -69,6 +69,24 @@ func TestDowngrade_HeaderBecomesASCII(t *testing.T) {
 	}
 }
 
+// A POP3 client gets the same downgrade as IMAP, so it keeps the same parameters.
+func TestDowngrade_KeepsParameterInOtherCharset(t *testing.T) {
+	raw := "Content-Type: application/x-y (Jörg); name*=windows-1252''x%F6.bin; note=\"Grü\"\r\n\r\nbody\r\n"
+	want := "Content-Type: application/x-y (=?UTF-8?Q?J=C3=B6rg?=);\r\n name*=windows-1252''x%F6.bin;\r\n note*=UTF-8''Gr%C3%BC\r\n\r\nbody\r\n"
+	if got := DowngradeHeaders(raw); got != want {
+		t.Fatalf("DowngradeHeaders = %q\n  want %q", got, want)
+	}
+}
+
+// A line that is not a field can't stay 8-bit, and its octets still reach the client.
+func TestDowngrade_KeepsLineThatIsNoField(t *testing.T) {
+	got := DowngradeHeaders("Subject: s\r\nGrüße ohne Doppelpunkt\r\n\r\nbody\r\n")
+	want := "Subject: s\r\n=?UTF-8?Q?Gr=C3=BC=C3=9Fe_ohne_Doppelpunkt?=\r\n\r\nbody\r\n"
+	if got != want {
+		t.Fatalf("DowngradeHeaders = %q\n  want %q", got, want)
+	}
+}
+
 func TestDowngrade_UnparseableAddressFieldRenamed(t *testing.T) {
 	got := DowngradeHeaders("To: ü@@broken\r\n\r\nx")
 	if !strings.HasPrefix(got, "Downgraded-To: =?utf-8?") || containsNonASCII(got) {

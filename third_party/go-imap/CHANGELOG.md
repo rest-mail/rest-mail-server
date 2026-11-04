@@ -155,6 +155,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   top-level or an encapsulated message. The name stays the encoded word it was sent
   as, in either session, so it still names its charset and no byte is guessed.
   `latin1`, `iso8859-1` and `l1` now decode as ISO-8859-1 here too.
+- BODY and BODYSTRUCTURE no longer lose an RFC 2231 parameter in a charset other
+  than UTF-8 or US-ASCII, such as a filename in `windows-1252`, or keep only the
+  later segments of a continued one. A charset go-imap can't decode stays named: the
+  value goes out as one encoded word in it, in either session. `ISO-8859-1` and its
+  aliases decode, and a value naming no charset or missing its quotes keeps its text.
+- Converting a Content-Type or Content-Disposition field changes only the parameter
+  that holds an 8-bit octet. The others stay as sent, in their order, including RFC
+  2231 text and comments, and an 8-bit comment becomes encoded words instead of going
+  missing.
+- SEARCH decodes a header one encoded word at a time. A word in a charset it can't
+  decode is compared as stored, and neither that nor a stray `=?` stops it decoding
+  the words around it, in TEXT, HEADER, SUBJECT, TO, FROM or an encapsulated message.
 - Binary data holding a NUL can be fetched: BODY sends it BASE64 and BINARY as a
   literal8. A NUL in a header or in text is still refused.
 - A SELECT or EXAMINE refused with BAD keeps the mailbox already selected, with
