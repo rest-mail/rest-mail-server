@@ -390,6 +390,7 @@ class OwnDataHooks(unittest.TestCase):
             "verifyDelivery": "the_last_free_operations_after_a_reset",
             "clearSuppression": "clear_a_suppression_made_after_the_reset",
             "getDmarcReport": "read_a_dmarc_report_delivered_after_the_reset",
+            "listDmarcReports": "list_a_dmarc_report_delivered_after_the_reset",
             "resetTestData": "the_test_data_operations_after_a_reset",
             "seedTestData": "the_test_data_operations_after_a_reset",
             "snapshotTestData": "the_test_data_operations_after_a_reset",

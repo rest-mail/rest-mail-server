@@ -1363,6 +1363,15 @@ reporter's SPF (`v=spf1 ip4:192.0.2.25 -all`) and DMARC (`v=DMARC1; p=reject`)
 records and answers `.invalid` NXDOMAIN itself (`local=/invalid/`), never
 forwarding it. The fixture hooks for both skip after a reset.
 
+`listDmarcReports` resets and seeds before each exchange too, refusals included,
+and each 200 gets a report delivered after the reset the same way. A listing's
+200 has the same shape with no rows, so `the_listing_holds_what_was_made` fails
+the exchange unless the answer lists that report, by its reporter and report id
+(#1785). The received example's `reporter=reporter.test` filter names the
+report's reporter instead; only its value changes. The other 200 filters by
+domain 4294967295, which no domain is, so its page is empty by design and its
+hook says it lists none of the report.
+
 `createAlias`, `getAlias`, `updateAlias` and `deleteAlias` reset and seed before
 each exchange too, refusals included. A create is sent as documented after its
 reset: no earlier probe's alias is left, and the seeded `restmail.test` hosts

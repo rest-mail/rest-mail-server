@@ -260,9 +260,9 @@ LAST_FREE = (
     "probeServices",
     "verifyDelivery",
 )
-# Clearing a suppression and reading a DMARC report: no link starts from or
-# reaches either.
-MADE_THROUGH_MAIL = ("clearSuppression", "getDmarcReport")
+# Clearing a suppression, and reading and listing DMARC reports: no link
+# starts from or reaches any of them.
+MADE_THROUGH_MAIL = ("clearSuppression", "getDmarcReport", "listDmarcReports")
 TEST_DATA = (
     "resetTestData",
     "seedTestData",

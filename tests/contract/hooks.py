@@ -1679,8 +1679,8 @@ def row_field(row, field):
 @hooks.after("listAliases")
 @hooks.after("listDKIMKeys")
 @hooks.after("listCertificates")
-@hooks.after("listCalendarEvents")
 @hooks.after("listDmarcReports")
+@hooks.after("listCalendarEvents")
 def the_listing_holds_what_was_made(transaction):
     # A listing's 200 has the same shape with no rows as with the one its
     # before hook made after the reset, so the status and the schema alone
