@@ -23,18 +23,25 @@ import (
 // value is still folded, and column is where it starts on its line. ok is false when
 // it doesn't read as an address list.
 func downgradeAddressField(column int, value string) (string, bool) {
-	tokens, ok := addressTokens(value)
+	var scan addressScan
+	return scan.field(column, value)
+}
+
+func (s *addressScan) field(column int, value string) (string, bool) {
+	tokens, ok := s.tokens(value)
 	if !ok || !readsAsAddressList(tokens) {
 		return "", false
 	}
 	w := &addressWriter{line: column}
 	for i := 0; i < len(tokens); {
 		end := nextSpecial(tokens, i)
+		s.steps += end - i
 		if end < len(tokens) && tokens[end].text == ":" {
 			closing := end + 1
 			for closing < len(tokens) && !(tokens[closing].kind == tokenSpecial && tokens[closing].text == ";") {
 				closing++
 			}
+			s.steps += closing - end
 			if closing == len(tokens) {
 				return "", false
 			}
@@ -116,9 +123,21 @@ func isFoldingSpace(c byte) bool {
 // '.' stay in their atom. ok is false when a quoted-string, comment or angle-addr never
 // closes, or a comment closes that never opened.
 func addressTokens(value string) (tokens []addressToken, ok bool) {
+	var scan addressScan
+	return scan.tokens(value)
+}
+
+// addressScan reads one address field. steps counts the octets and tokens it has looked
+// at, so a test can hold a scan to the size of its input, which a clock can't do on a
+// machine that's busy with something else.
+type addressScan struct {
+	steps int
+}
+
+func (s *addressScan) tokens(value string) (tokens []addressToken, ok bool) {
 	lastBracket := strings.LastIndexByte(value, ']')
 	for i := 0; i < len(value); {
-		kind, end := tokenAt(value, i, lastBracket)
+		kind, end := s.tokenAt(value, i, lastBracket)
 		if end < 0 {
 			return nil, false
 		}
@@ -131,21 +150,23 @@ func addressTokens(value string) (tokens []addressToken, ok bool) {
 // tokenAt finds the token at value[i], and where it ends, or -1 if it never closes or
 // closes what never opened. lastBracket is the offset of value's last ']', so a '[' with
 // none after it doesn't scan for one.
-func tokenAt(value string, i, lastBracket int) (tokenKind, int) {
+func (s *addressScan) tokenAt(value string, i, lastBracket int) (tokenKind, int) {
 	switch c := value[i]; {
 	case isFoldingSpace(c):
 		end := i + 1
 		for end < len(value) && isFoldingSpace(value[end]) {
+			s.steps++
 			end++
 		}
 		return tokenSpace, end
 	case c == '(':
-		return tokenComment, commentEnd(value, i)
+		return tokenComment, s.commentEnd(value, i)
 	case c == '"':
-		return tokenQuoted, quotedEnd(value, i)
+		return tokenQuoted, s.quotedEnd(value, i)
 	case c == '<':
-		return tokenAngle, angleEnd(value, i)
+		return tokenAngle, s.angleEnd(value, i)
 	case c == ',' || c == ':' || c == ';':
+		s.steps++
 		return tokenSpecial, i + 1
 	case c == ')':
 		return tokenAtom, -1
@@ -154,22 +175,26 @@ func tokenAt(value string, i, lastBracket int) (tokenKind, int) {
 	for end < len(value) && !isFoldingSpace(value[end]) && strings.IndexByte(`()"<,:;`, value[end]) < 0 {
 		if value[end] == '[' && end < lastBracket {
 			// A domain literal holds colons.
-			end += strings.IndexByte(value[end:], ']')
+			closing := strings.IndexByte(value[end:], ']')
+			s.steps += closing
+			end += closing
 		}
+		s.steps++
 		end++
 	}
 	return tokenAtom, end
 }
 
-func angleEnd(value string, i int) int {
+func (s *addressScan) angleEnd(value string, i int) int {
 	for i++; i >= 0 && i < len(value); {
+		s.steps++
 		switch value[i] {
 		case '>':
 			return i + 1
 		case '(':
-			i = commentEnd(value, i)
+			i = s.commentEnd(value, i)
 		case '"':
-			i = quotedEnd(value, i)
+			i = s.quotedEnd(value, i)
 		default:
 			i++
 		}
@@ -177,9 +202,10 @@ func angleEnd(value string, i int) int {
 	return -1
 }
 
-func commentEnd(value string, i int) int {
+func (s *addressScan) commentEnd(value string, i int) int {
 	depth := 0
 	for ; i < len(value); i++ {
+		s.steps++
 		switch value[i] {
 		case '\\':
 			i++
@@ -195,8 +221,9 @@ func commentEnd(value string, i int) int {
 	return -1
 }
 
-func quotedEnd(value string, i int) int {
+func (s *addressScan) quotedEnd(value string, i int) int {
 	for i++; i < len(value); i++ {
+		s.steps++
 		switch value[i] {
 		case '\\':
 			i++

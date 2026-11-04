@@ -4,61 +4,83 @@ import (
 	"runtime"
 	"strings"
 	"testing"
-	"time"
 )
 
-// TestDowngradeHeaders_IsLinear proves a downgrade costs no more than the header's
-// size, for each shape that could make an address or parameter scan repeat itself. A
-// linear scan takes about 4x as long on 4x the input and a quadratic one about 16x. It
-// compares two sizes instead of holding a time limit, so a slow machine doesn't fail it.
-func TestDowngradeHeaders_IsLinear(t *testing.T) {
-	fastest := func(raw string) time.Duration {
-		best := time.Duration(1<<63 - 1)
-		for range 5 {
-			runtime.GC()
-			start := time.Now()
-			DowngradeHeaders(raw)
-			took := time.Since(start)
-			best = min(best, took)
-			if took > time.Second {
-				break
-			}
-		}
-		return best
+// bytesAllocated is what one run allocates, the least of a few runs so that anything else
+// the process allocates in between doesn't count.
+func bytesAllocated(work func()) uint64 {
+	var before, after runtime.MemStats
+	best := ^uint64(0)
+	for range 3 {
+		runtime.ReadMemStats(&before)
+		work()
+		runtime.ReadMemStats(&after)
+		best = min(best, after.TotalAlloc-before.TotalAlloc)
 	}
-	const size, maxRatio = 32 << 10, 9
-	for name, field := range map[string]struct{ prefix, unit string }{
-		"unclosed domain literals":        {"To: J\xf6 ", "["},
-		"spaced unclosed domain literals": {"To: J\xf6 ", "[ "},
-		"addresses in unclosed literals":  {"To: J\xf6 ", "a@[ ,"},
-		"closed domain literals":          {"To: J\xf6 ", "[a]"},
-		"unclosed quotes":                 {"To: J\xf6 ", `\"`},
-		"unclosed angle addresses":        {"To: J\xf6 ", "< "},
-		"unclosed comments":               {"To: J\xf6 ", "( "},
-		"addresses":                       {"To: J\xf6 <a@example.com>, ", "a@example.com, "},
-		"8-bit addresses":                 {"To: ", "J\xf6 <j\xf6@example.com>, "},
-		"members of a group":              {"To: g:", "j\xf6@example.com, "},
-		"folded address field":            {"To: J\xf6 <a@example.com>", "\r\n "},
-		"parameters to quote":             {"Content-Type: text/plain; p=\"\xf6\"; ", "a=b c; "},
-		"unbalanced parameters":           {"Content-Type: text/plain; p=\"\xf6\"; ", `a="; `},
-		"repeated parameters":             {"Content-Type: text/plain; p=\"\xf6\"; ", "a=1; "},
-		"comments in a parameter":         {"Content-Type: text/plain; p=\"\xf6\" ", "(x)"},
-	} {
+	return best
+}
+
+// downgradeShapes are the shapes that could make an address or parameter scan repeat
+// itself.
+var downgradeShapes = map[string]struct{ prefix, unit string }{
+	"unclosed domain literals":        {"To: J\xf6 ", "["},
+	"spaced unclosed domain literals": {"To: J\xf6 ", "[ "},
+	"addresses in unclosed literals":  {"To: J\xf6 ", "a@[ ,"},
+	"closed domain literals":          {"To: J\xf6 ", "[a]"},
+	"unclosed quotes":                 {"To: J\xf6 ", `\"`},
+	"unclosed angle addresses":        {"To: J\xf6 ", "< "},
+	"unclosed comments":               {"To: J\xf6 ", "( "},
+	"addresses":                       {"To: J\xf6 <a@example.com>, ", "a@example.com, "},
+	"8-bit addresses":                 {"To: ", "J\xf6 <j\xf6@example.com>, "},
+	"members of a group":              {"To: g:", "j\xf6@example.com, "},
+	"folded address field":            {"To: J\xf6 <a@example.com>", "\r\n "},
+	"parameters to quote":             {"Content-Type: text/plain; p=\"\xf6\"; ", "a=b c; "},
+	"unbalanced parameters":           {"Content-Type: text/plain; p=\"\xf6\"; ", `a="; `},
+	"repeated parameters":             {"Content-Type: text/plain; p=\"\xf6\"; ", "a=1; "},
+	"comments in a parameter":         {"Content-Type: text/plain; p=\"\xf6\" ", "(x)"},
+}
+
+func downgradeShape(prefix, unit string, size int) string {
+	return prefix + strings.Repeat(unit, size/len(unit))
+}
+
+// TestDowngradeHeaders_IsLinear proves a downgrade allocates in proportion to the
+// header's size: about 4x on 4x the input, where building on all that came before would
+// be about 16x. It counts bytes, not time, because time on a shared machine also measures
+// what else is running: this conversion once read 10.5x against a limit of 9x by the clock
+// and then passed unchanged. Scans that allocate nothing are held by
+// TestAddressScan_LooksAtEachOctetOnce.
+func TestDowngradeHeaders_IsLinear(t *testing.T) {
+	const size, maxRatio = 32 << 10, 8
+	for name, field := range downgradeShapes {
 		t.Run(name, func(t *testing.T) {
-			message := func(size int) string {
-				return field.prefix + strings.Repeat(field.unit, size/len(field.unit)) + "\r\n\r\nbody\r\n"
+			allocated := func(size int) uint64 {
+				raw := downgradeShape(field.prefix, field.unit, size) + "\r\n\r\nbody\r\n"
+				return bytesAllocated(func() { DowngradeHeaders(raw) })
 			}
-			small, big := message(size), message(4*size)
-			var ratio float64
-			for range 3 {
-				before, after := fastest(small), fastest(big)
-				ratio = float64(after) / float64(max(before, time.Microsecond))
-				if ratio <= maxRatio || after > 2*time.Second {
-					break
-				}
+			small, big := allocated(size), allocated(4*size)
+			if ratio := float64(big) / float64(max(small, 1)); ratio > maxRatio {
+				t.Errorf("4x the input allocated %.1fx as much (%d, then %d bytes), want at most %dx", ratio, small, big, maxRatio)
 			}
-			if ratio > maxRatio {
-				t.Errorf("4x the input took %.1fx as long, want at most %dx", ratio, maxRatio)
+		})
+	}
+}
+
+// TestAddressScan_LooksAtEachOctetOnce counts what the address scan looks at, whatever
+// its input, since a scan repeating itself over an unclosed delimiter allocates nothing
+// and takes all the time.
+func TestAddressScan_LooksAtEachOctetOnce(t *testing.T) {
+	const size = 128 << 10
+	for name, field := range downgradeShapes {
+		value, isAddress := strings.CutPrefix(downgradeShape(field.prefix, field.unit, size), "To:")
+		if !isAddress {
+			continue
+		}
+		t.Run(name, func(t *testing.T) {
+			var scan addressScan
+			scan.field(len("To:"), value)
+			if limit := 2 * len(value); scan.steps > limit {
+				t.Errorf("scan took %d steps over %d octets, want at most %d", scan.steps, len(value), limit)
 			}
 		})
 	}
