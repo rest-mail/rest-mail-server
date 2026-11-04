@@ -57,3 +57,29 @@ func TestMessage_BeforeCreate_IsLinearOnHostileHeaders(t *testing.T) {
 		})
 	}
 }
+
+// TestMessage_BeforeCreate_DoesNotCopyTheSource proves measuring a stored message costs no
+// copy of it, whichever column holds the source.
+func TestMessage_BeforeCreate_DoesNotCopyTheSource(t *testing.T) {
+	raw := "Subject: big\r\nContent-Type: application/octet-stream\r\nContent-Transfer-Encoding: base64\r\n\r\n" + strings.Repeat(strings.Repeat("A", 76)+"\r\n", 1<<20/78)
+	for name, message := range map[string]*Message{
+		"text":   {RawMessage: raw, RawSize: len(raw)},
+		"octets": {RawOctets: []byte(raw), RawSize: len(raw)},
+	} {
+		t.Run(name, func(t *testing.T) {
+			var before, after runtime.MemStats
+			runtime.GC()
+			runtime.ReadMemStats(&before)
+			if err := message.BeforeCreate(nil); err != nil {
+				t.Fatal(err)
+			}
+			runtime.ReadMemStats(&after)
+			if got := after.TotalAlloc - before.TotalAlloc; got > uint64(len(raw))/2 {
+				t.Errorf("BeforeCreate of %d bytes allocated %d", len(raw), got)
+			}
+			if message.DowngradedSize != len(raw) || message.IMAPSize != len(raw) || message.IMAPUTF8Size != len(raw) {
+				t.Errorf("sizes %d %d %d, want %d", message.DowngradedSize, message.IMAPSize, message.IMAPUTF8Size, len(raw))
+			}
+		})
+	}
+}
