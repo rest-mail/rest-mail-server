@@ -193,7 +193,7 @@ func TestDowngrade_AddressFieldStillParses(t *testing.T) {
 // downgraded_size counts the converted field, which is what POP3 sends.
 func TestDowngradedSize_CountsTheConvertedAddressField(t *testing.T) {
 	const raw = "To: Grüppe: a@example.com, b@example.com;\r\n\r\nx"
-	if got, want := DowngradedSize(raw), len("To: =?UTF-8?Q?Gr=C3=BCppe?= : a@example.com, b@example.com;\r\n\r\nx"); got != want {
+	if got, want := DowngradedSize(raw), len("To: =?UTF-8?Q?Gr=C3=BCppe?= : a@example.com, b@example.com;\r\n\r\nx\r\n"); got != want {
 		t.Fatalf("DowngradedSize = %d, want %d", got, want)
 	}
 }

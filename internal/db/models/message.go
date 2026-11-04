@@ -102,12 +102,15 @@ type Message struct {
 	RawSize int `gorm:"not null;default:0" json:"raw_size"`
 	// DowngradedSize is the octet count a POP3 client that has not enabled UTF-8
 	// receives: the stored raw with its header block downgraded to ASCII (RFC
-	// 6857) and a top-level 8-bit boundary respelled, see rmail.DowngradeForPOP3.
-	// It equals RawSize when the headers are already ASCII. STAT and LIST report
-	// it to such a client, because the size must count the octets actually sent
-	// (RFC 1939 section 5). Zero means "not measured yet" (a row stored before this
-	// column existed and not yet backfilled); consumers fall back to RawSize.
+	// 6857) and a top-level 8-bit boundary respelled, see rmail.DowngradeForPOP3,
+	// with every line ending in CRLF as RETR sends it. POP3UTF8Size is the same
+	// count for a client that has enabled UTF-8, which gets the headers as stored.
+	// Both equal RawSize when the headers are already ASCII, every line ends in
+	// CRLF and the last line has one. STAT and LIST report them, because the size
+	// must count the octets actually sent (RFC 1939 section 5). Zero means "not
+	// measured yet" (a row not yet backfilled); consumers fall back to RawSize.
 	DowngradedSize int `gorm:"not null;default:0" json:"downgraded_size"`
+	POP3UTF8Size   int `gorm:"column:pop3_utf8_size;not null;default:0" json:"pop3_utf8_size"`
 	// IMAPSize and IMAPUTF8Size are the octet counts an IMAP FETCH of the whole
 	// message sends, without and with UTF-8 enabled: FETCH converts a message to
 	// 7-bit on the way out (RFC 3501 section 7.4.2) and RawMessage never changes.
@@ -165,14 +168,20 @@ func (Message) TableName() string { return "messages" }
 // BeforeCreate measures the sizes a gateway reports for a message stored with its
 // raw source, on every path that stores one, so no delivery path can forget them.
 func (m *Message) BeforeCreate(*gorm.DB) error {
-	if m.DowngradedSize == 0 && m.RawSize > 0 {
-		m.DowngradedSize = rmail.DowngradedSize(string(m.Source()))
-	}
-	if m.IMAPSize == 0 && m.RawSize > 0 {
-		m.IMAPSize = rmail.IMAPWireSize(string(m.Source()), false)
-	}
-	if m.IMAPUTF8Size == 0 && m.RawSize > 0 {
-		m.IMAPUTF8Size = rmail.IMAPWireSize(string(m.Source()), true)
+	if m.RawSize > 0 {
+		source := string(m.Source())
+		if m.DowngradedSize == 0 {
+			m.DowngradedSize = rmail.DowngradedSize(source)
+		}
+		if m.POP3UTF8Size == 0 {
+			m.POP3UTF8Size = rmail.POP3WireSize(source)
+		}
+		if m.IMAPSize == 0 {
+			m.IMAPSize = rmail.IMAPWireSize(source, false)
+		}
+		if m.IMAPUTF8Size == 0 {
+			m.IMAPUTF8Size = rmail.IMAPWireSize(source, true)
+		}
 	}
 	if m.PendingDraft || (m.IsDeleted && m.Sender == "system" && m.Subject == "" && m.BodyText == "" && m.BodyHTML == "" && m.RawMessage == "" && m.RawOctets == nil) {
 		m.SealedHash = ""

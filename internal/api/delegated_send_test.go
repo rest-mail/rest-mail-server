@@ -272,11 +272,11 @@ func TestDelegatedSendExamples(t *testing.T) {
 			assertExampleReceipt(t, data, raw, sent["sealed_hash"])
 			data["sealed_hash"] = want["data"]["sealed_hash"]
 			if data["id"] != float64(sent["id"].(int64)) || data["message_id"] != sent["message_id"] || data["thread_id"] != sent["thread_id"] ||
-				raw == "" || data["raw_size"] != float64(len(raw)) || data["downgraded_size"] != float64(len(raw)) ||
+				raw == "" || data["raw_size"] != float64(len(raw)) || data["downgraded_size"] != float64(len(raw)) || data["pop3_utf8_size"] != float64(len(raw)) ||
 				data["imap_size"] != float64(len(raw)) || data["imap_utf8_size"] != float64(len(raw)) {
 				t.Fatalf("response identity differs from the stored message: %s", rr.Body)
 			}
-			for _, key := range []string{"id", "message_id", "thread_id", "raw_size", "downgraded_size", "imap_size", "imap_utf8_size"} {
+			for _, key := range []string{"id", "message_id", "thread_id", "raw_size", "downgraded_size", "pop3_utf8_size", "imap_size", "imap_utf8_size"} {
 				data[key] = want["data"][key]
 			}
 			for _, key := range []string{"received_at", "created_at", "updated_at"} {

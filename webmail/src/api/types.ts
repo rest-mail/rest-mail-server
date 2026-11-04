@@ -3925,6 +3925,7 @@ export interface components {
             mailbox?: components["schemas"]["Mailbox"] | null;
             mailbox_id: number;
             message_id: string;
+            pop3_utf8_size: number;
             raw_size: number;
             /** Format: date-time */
             received_at: string;
@@ -4306,6 +4307,7 @@ export interface components {
             mailbox?: components["schemas"]["RestoreSnapshotMailbox"];
             mailbox_id?: number;
             message_id?: string;
+            pop3_utf8_size?: number;
             raw_size?: number;
             /** Format: date-time */
             received_at?: string;
@@ -4739,6 +4741,7 @@ export interface components {
             mailbox?: components["schemas"]["TestSnapshotMailbox"];
             mailbox_id: number;
             message_id: string;
+            pop3_utf8_size: number;
             raw_size: number;
             /** Format: date-time */
             received_at: string;
