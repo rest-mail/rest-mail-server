@@ -27,7 +27,7 @@ func TestAccountsEAI(t *testing.T) {
 	if err := db.Model(&fx.domain).Update("name", asciiDomain).Error; err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Model(&models.Grant{}).Where("holder_id = ?", fx.admin.ID).
+	if err := db.Model(&models.Grant{}).Where("holder_kind = ? AND holder_id = ?", models.GrantHolderAccount, fx.admin.ID).
 		Update("scope", grants.Domain(asciiDomain)).Error; err != nil {
 		t.Fatal(err)
 	}

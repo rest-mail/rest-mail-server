@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/rest-mail/rest-mail-server/internal/auth"
+	"github.com/rest-mail/rest-mail-server/internal/bootstrap"
 	"github.com/rest-mail/rest-mail-server/internal/config"
 	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
@@ -62,9 +63,21 @@ func testDBConfig() *config.Config {
 
 // connectTestDB is the shared pool, or why it could not be opened; a test
 // skips on the error, as the repo's depless-local / DB-in-CI convention has it.
+//
+// The pool opens on the schema and roles a server starts with, whichever test
+// comes first. Without them on an empty database there is no server ceiling, so
+// grants allow nothing, and a test only passed if an earlier one had left these
+// behind (#1868).
 func connectTestDB() (*gorm.DB, error) {
 	testDBOnce.Do(func() {
 		testDB, testDBErr = rmdb.Connect(testDBConfig())
+		if testDBErr != nil {
+			return
+		}
+		if testDBErr = rmdb.AutoMigrate(testDB); testDBErr != nil {
+			return
+		}
+		testDBErr = bootstrap.EnsureRBAC(testDB)
 	})
 	return testDB, testDBErr
 }
