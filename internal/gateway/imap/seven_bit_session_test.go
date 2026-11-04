@@ -324,6 +324,9 @@ func TestMalformedParameterThroughTheGateway(t *testing.T) {
 		{"8-bit name", `näme=x; other=keep`,
 			"n%C3%A4me=x;\r\n other=keep",
 			`("N%C3%A4ME" "x" "OTHER" "keep")`},
+		{"continued with no first segment", `name*1=Jö; other=keep`,
+			"name*1*=J%C3%B6;\r\n other=keep",
+			`("NAME" "=?UTF-8?Q?J=C3=B6?=" "OTHER" "keep")`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			c := dialStore(t, "Content-Type: application/pdf; "+tc.stored+"\r\n\r\ndata\r\n")
