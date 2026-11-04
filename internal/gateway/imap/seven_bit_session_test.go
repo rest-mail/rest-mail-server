@@ -268,6 +268,79 @@ func TestUnquotedParameterThroughTheGateway(t *testing.T) {
 	}
 }
 
+// An 8-bit boundary goes through the downgrade and the engine's conversion and still
+// splits: the header and the delimiter lines match in the octets sent, and RFC822.SIZE
+// counts them. A nested one and one that isn't UTF-8 do the same.
+func TestEightBitBoundaryThroughTheGateway(t *testing.T) {
+	const parts = "\r\nContent-Type: text/plain\r\n\r\nx\r\n--%[1]s\r\n" +
+		"Content-Type: application/pdf; name=a\r\nContent-Transfer-Encoding: base64\r\n\r\nQUJD\r\n--%[1]s--\r\n"
+	for _, tc := range []struct{ name, stored, delimiter, want string }{
+		{"quoted", `boundary="Jörg"`, "Jörg", "J=C3=B6rg"},
+		{"unquoted", "boundary=Jörg", "Jörg", "J=C3=B6rg"},
+		{"not UTF-8", "boundary=\"J\xf6\"", "J\xf6", "J=F6"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			raw := "Subject: Grüße\r\nContent-Type: multipart/mixed; " + tc.stored + "\r\n\r\n--" + tc.delimiter +
+				fmt.Sprintf(parts, tc.delimiter)
+			c := dialStore(t, raw)
+			c.do("a1", "LOGIN jorg@example.test pw")
+			c.do("a2", "SELECT INBOX")
+			_, whole := fetchedLiteral(t, c.do("a3", "FETCH 1 BODY.PEEK[]"))
+			for _, want := range []string{
+				"Content-Type: multipart/mixed;\r\n boundary=\"" + tc.want + "\"\r\n\r\n--" + tc.want + "\r\n",
+				"--" + tc.want + "--\r\n",
+			} {
+				if !strings.Contains(whole, want) {
+					t.Fatalf("BODY[] = %q lacks %q", whole, want)
+				}
+			}
+			got := c.do("a4", "FETCH 1 (RFC822.SIZE BODYSTRUCTURE)")
+			for _, want := range []string{
+				fmt.Sprintf("RFC822.SIZE %d", len(whole)),
+				`"APPLICATION" "PDF" ("NAME" "a") NIL NIL "BASE64" 4`,
+				`"BOUNDARY" "` + tc.want + `"`,
+			} {
+				if !strings.Contains(got, want) {
+					t.Fatalf("%q lacks %q", got, want)
+				}
+			}
+			if _, part := fetchedLiteral(t, c.do("a5", "FETCH 1 BODY.PEEK[2]")); part != "QUJD" {
+				t.Fatalf("part 2 = %q", part)
+			}
+		})
+	}
+}
+
+// A malformed parameter keeps its text and the real type through the downgrade of the
+// top-level header, and the field keeps its name.
+func TestMalformedParameterThroughTheGateway(t *testing.T) {
+	for _, tc := range []struct{ name, stored, header, structure string }{
+		{"parentheses", `name=Jörg (1).pdf; other=keep`,
+			"name*=UTF-8''J%C3%B6rg%20%281%29.pdf;\r\n other=keep",
+			`("NAME" "=?UTF-8?Q?J=C3=B6rg_=281=29=2Epdf?=" "OTHER" "keep")`},
+		{"unbalanced quote", `name=Jö"rg.pdf; other=keep`,
+			"name*=UTF-8''J%C3%B6%22rg.pdf;\r\n other=keep",
+			`("NAME" "=?UTF-8?Q?J=C3=B6=22rg=2Epdf?=" "OTHER" "keep")`},
+		{"8-bit name", `näme=x; other=keep`,
+			"n%C3%A4me=x;\r\n other=keep",
+			`("N%C3%A4ME" "x" "OTHER" "keep")`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := dialStore(t, "Content-Type: application/pdf; "+tc.stored+"\r\n\r\ndata\r\n")
+			c.do("a1", "LOGIN jorg@example.test pw")
+			c.do("a2", "SELECT INBOX")
+			_, header := fetchedLiteral(t, c.do("a3", "FETCH 1 BODY.PEEK[HEADER]"))
+			if want := "Content-Type: application/pdf;\r\n " + tc.header + "\r\n\r\n"; header != want {
+				t.Fatalf("HEADER = %q\n  want %q", header, want)
+			}
+			got := c.do("a4", "FETCH 1 BODYSTRUCTURE")
+			if want := `"APPLICATION" "PDF" ` + tc.structure; !strings.Contains(got, want) {
+				t.Fatalf("%q lacks %q", got, want)
+			}
+		})
+	}
+}
+
 // RFC 3516 BINARY is the way to the stored octets, whatever BODY sends.
 func TestBinaryKeepsStoredOctetsThroughTheGateway(t *testing.T) {
 	c := dialStore(t, sevenBitRaw)
