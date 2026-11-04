@@ -27,5 +27,5 @@ func (h *RestmailHandler) Register(rs endpoint.Routes, deliverBodyLimit endpoint
 			"recipient takes the message the answer is 422 undeliverable. Failed sender/recipient or inbound-policy " +
 			"lookups and corrupt stored policy defer with 503; recipient lookups finish before delivery side effects.",
 		Status: http.StatusCreated, Errors: []int{http.StatusForbidden, http.StatusServiceUnavailable},
-		Security: oapifly.Public, Middleware: []endpoint.Middleware{deliverBodyLimit}}, h.deliver)
+		Security: oapifly.Public, Middleware: []endpoint.Middleware{deliverBodyLimit}, DescribedRequest: restmailDeliverInput{}}, h.deliverSpooled)
 }

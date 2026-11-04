@@ -11,21 +11,24 @@ import (
 	"hash"
 	"io"
 	"io/fs"
+	"math"
 	"net/http"
 	"os"
 	"reflect"
 	"strings"
 	"sync"
+	"unicode"
+	"unicode/utf16"
 	"unicode/utf8"
 
 	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
 	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
 )
 
-// An import's request and the message in it go to files, and are read from there (#1437). The
-// binder keeps every rule and every word of every refusal: it is given the request with
-// raw_message replaced by a small value that it judges the same way (importBodyScan), while the
-// message itself decodes to a file of its own.
+// An import's request and the message in it go to files, and are read from there (#1437), as a
+// delivery's do (delivery_spool.go). The binder keeps every rule and every word of every refusal:
+// it is given the request with raw_message replaced by a small value that it judges the same way
+// (importBodyScan), while the message itself decodes to a file of its own.
 //
 // Some forms of request are still held whole, within the route's cap, because only the binder
 // can answer them and it reads from memory: raw_message sent more than once, or as an array of
@@ -33,7 +36,7 @@ import (
 
 // newImportSpool makes a temporary file, and a function that removes it, safe to call twice.
 func newImportSpool() (*os.File, func(), error) {
-	file, err := os.CreateTemp("", "restmail-import-*")
+	file, err := os.CreateTemp("", "restmail-spool-*")
 	if err != nil {
 		return nil, nil, err
 	}
@@ -62,44 +65,19 @@ func importSpoolFailure(err error) error {
 // however it answers, a panic included.
 func (h *MessageImportHandler) importSpooledMessage(r *http.Request, _ struct{}) (apitypes.ImportMessageResult, error) {
 	var result apitypes.ImportMessageResult
-	request, removeRequest, err := newImportSpool()
-	if err != nil {
-		return result, err
-	}
-	defer removeRequest()
-	if r.Body != nil {
-		if _, err := io.Copy(request, r.Body); err != nil {
-			return result, importSpoolFailure(err)
-		}
-		if _, err := request.Seek(0, io.SeekStart); err != nil {
-			return result, err
-		}
-	}
-
 	source, err := newImportSource(h.maxBytes)
 	if err != nil {
 		return result, err
 	}
 	defer source.remove()
 
-	scanned, err := scanImportBody(request, source)
+	scanned, err := readSpooledBody(r, &spooledBodySpec{source: source, declared: importDeclaredFields})
 	if err != nil {
 		return result, err
 	}
-	standIn := scanned.standIn
-	if scanned.bindWhole {
-		if _, err := request.Seek(0, io.SeekStart); err != nil {
-			return result, err
-		}
-		if standIn, err = io.ReadAll(request); err != nil {
-			return result, err
-		}
-	}
-	// What's left to read is the message, so the request needn't take up disk beside it.
-	removeRequest()
 
 	var in importMessageRequest
-	if err := endpoint.BindRequest(r, &in, standIn); err != nil {
+	if err := endpoint.BindRequest(r, &in, scanned.standIn); err != nil {
 		return result, err
 	}
 	if !scanned.streamed {
@@ -111,6 +89,34 @@ func (h *MessageImportHandler) importSpooledMessage(r *http.Request, _ struct{})
 	return h.storeImportedMessage(r, in.ID, in.Body, source)
 }
 
+// readSpooledBody copies the request's body to a file and reads it once from there. The size caps
+// refuse here, first, as they do for a bound body. Once this returns, what's left to read is in
+// the spec's files, so the request isn't taking up disk beside them.
+func readSpooledBody(r *http.Request, spec *spooledBodySpec) (importBodyScan, error) {
+	request, removeRequest, err := newImportSpool()
+	if err != nil {
+		return importBodyScan{}, err
+	}
+	defer removeRequest()
+	if r.Body != nil {
+		if _, err := io.Copy(request, r.Body); err != nil {
+			return importBodyScan{}, importSpoolFailure(err)
+		}
+		if _, err := request.Seek(0, io.SeekStart); err != nil {
+			return importBodyScan{}, err
+		}
+	}
+	scanned, err := scanSpooledBody(request, spec)
+	if err != nil || !scanned.bindWhole {
+		return scanned, err
+	}
+	if _, err := request.Seek(0, io.SeekStart); err != nil {
+		return scanned, err
+	}
+	scanned.standIn, err = io.ReadAll(request)
+	return scanned, err
+}
+
 // importSource is a decoded message in a file. Past the limit it counts and keeps nothing, for
 // the refusal that comes only after the rest of the request has been judged.
 type importSource struct {
@@ -118,8 +124,20 @@ type importSource struct {
 	remove   func()
 	limit    int64
 	size     int64
-	hash     hash.Hash
+	nul      bool      // a NUL byte was written
+	hash     hash.Hash // when set, finish records the checksum of what was written
 	checksum [sha256.Size]byte
+}
+
+// newSpooledText is a source with no limit and no checksum: nothing compares a delivery with what
+// is stored, and the route's body cap bounds it.
+func newSpooledText() (*importSource, error) {
+	source, err := newImportSource(math.MaxInt64)
+	if err != nil {
+		return nil, err
+	}
+	source.hash = nil
+	return source, nil
 }
 
 func newImportSource(limit int64) (*importSource, error) {
@@ -132,10 +150,13 @@ func newImportSource(limit int64) (*importSource, error) {
 
 func (s *importSource) write(data []byte) error {
 	s.size += int64(len(data))
+	s.nul = s.nul || bytes.IndexByte(data, 0) >= 0
 	if s.tooLarge() {
 		return nil
 	}
-	s.hash.Write(data)
+	if s.hash != nil {
+		s.hash.Write(data)
+	}
 	if _, err := s.file.Write(data); err != nil {
 		return fmt.Errorf("spool an imported message: %w", err)
 	}
@@ -145,7 +166,11 @@ func (s *importSource) write(data []byte) error {
 func (s *importSource) tooLarge() bool { return s.size > s.limit }
 
 // finish records the checksum of what was written.
-func (s *importSource) finish() { copy(s.checksum[:], s.hash.Sum(nil)) }
+func (s *importSource) finish() {
+	if s.hash != nil {
+		copy(s.checksum[:], s.hash.Sum(nil))
+	}
+}
 
 // replace makes the file hold data, for a message the binder decoded.
 func (s *importSource) replace(data []byte) error {
@@ -155,8 +180,10 @@ func (s *importSource) replace(data []byte) error {
 	if err := s.file.Truncate(0); err != nil {
 		return err
 	}
-	s.size = 0
-	s.hash.Reset()
+	s.size, s.nul = 0, false
+	if s.hash != nil {
+		s.hash.Reset()
+	}
 	if err := s.write(data); err != nil {
 		return err
 	}
@@ -176,20 +203,28 @@ func (s *importSource) reader() (io.Reader, error) {
 // can't: a message that isn't UTF-8, or has a NUL in it. The limit bounds it. Keeping a source
 // out of the row is what would remove this read.
 func (s *importSource) columns() (string, []byte, error) {
-	reader, err := s.reader()
+	text, err := s.text()
 	if err != nil {
 		return "", nil, err
 	}
-	var whole strings.Builder
-	whole.Grow(int(s.size))
-	if _, err := io.Copy(&whole, io.LimitReader(reader, s.limit)); err != nil {
-		return "", nil, fmt.Errorf("read a spooled import: %w", err)
-	}
-	text := whole.String()
 	if utf8.ValidString(text) && !strings.ContainsRune(text, 0) {
 		return text, nil, nil
 	}
 	return "", []byte(text), nil
+}
+
+// text reads the whole file into memory, for the step that can't do without it.
+func (s *importSource) text() (string, error) {
+	reader, err := s.reader()
+	if err != nil {
+		return "", err
+	}
+	var whole strings.Builder
+	whole.Grow(int(s.size))
+	if _, err := io.Copy(&whole, io.LimitReader(reader, s.limit)); err != nil {
+		return "", fmt.Errorf("read a spooled message: %w", err)
+	}
+	return whole.String(), nil
 }
 
 // importBodyScan is what reading a spooled request found.
@@ -210,6 +245,9 @@ const (
 	importRawEmpty   = `""`
 	importRawValid   = `"QQ=="`
 	importRawInvalid = `"!"`
+	// What the binder needs to know of a string held in a file.
+	importTextValue = `"x"`
+	importTextNUL   = `"\u0000"`
 	// A valid body whose top level isn't an object reads the same to the binder as any other.
 	importNotAnObject = `[]`
 	importNull        = `null`
@@ -219,10 +257,14 @@ const (
 )
 
 // importDeclaredFields are the fields of ImportMessageBody the binder reads, other than the
-// message. They are read from the type, so they can't come apart from it.
-var importDeclaredFields = func() map[string]bool {
+// message.
+var importDeclaredFields = declaredFieldsOf(apitypes.ImportMessageBody{})
+
+// declaredFieldsOf names the JSON fields of a body type, other than the message. They are read
+// from the type, so they can't come apart from it.
+func declaredFieldsOf(body any) map[string]bool {
 	fields := map[string]bool{}
-	t := reflect.TypeOf(apitypes.ImportMessageBody{})
+	t := reflect.TypeOf(body)
 	for i := 0; i < t.NumField(); i++ {
 		name, _, _ := strings.Cut(t.Field(i).Tag.Get("json"), ",")
 		if name != importRawField {
@@ -230,22 +272,35 @@ var importDeclaredFields = func() map[string]bool {
 		}
 	}
 	return fields
-}()
+}
 
-// scanImportBody reads a spooled request once, keeping nothing of raw_message. It says what
+// spooledBodySpec says how a route's request is read from its file.
+type spooledBodySpec struct {
+	// source receives raw_message.
+	source *importSource
+	// rawIsText says raw_message is a JSON string holding the message itself, not base64.
+	rawIsText bool
+	// declared are the fields the binder reads as they came.
+	declared map[string]bool
+	// texts are string fields that can be as large as the message. A string in one goes to a file
+	// of its own, here, under its name, and the binder is given a small value in its place.
+	texts map[string]*importSource
+}
+
+// scanSpooledBody reads a spooled request once, keeping nothing of raw_message. It says what
 // json.Valid says about the whole request, because only a body that passes reaches any other
 // rule. An error here is the server's own, never the request's.
-func scanImportBody(file io.Reader, source *importSource) (importBodyScan, error) {
+func scanSpooledBody(file io.Reader, spec *spooledBodySpec) (importBodyScan, error) {
 	s := &jsonScanner{src: bufio.NewReaderSize(file, 64<<10)}
-	scanned, err := s.importBody(source)
+	scanned, err := s.importBody(spec)
 	if errors.Is(err, errNotJSON) {
 		return importBodyScan{standIn: []byte(importNotJSON)}, nil
 	}
-	source.finish()
+	spec.source.finish()
 	return scanned, err
 }
 
-func (s *jsonScanner) importBody(source *importSource) (importBodyScan, error) {
+func (s *jsonScanner) importBody(spec *spooledBodySpec) (importBodyScan, error) {
 	first, err := s.skipSpace()
 	if errors.Is(err, errNotJSON) {
 		if s.read == 0 {
@@ -259,7 +314,7 @@ func (s *jsonScanner) importBody(source *importSource) (importBodyScan, error) {
 	var scanned importBodyScan
 	if first == '{' {
 		s.depth = 1
-		scanned, err = s.importFields(source)
+		scanned, err = s.importFields(spec)
 		if err != nil || scanned.bindWhole {
 			return scanned, err
 		}
@@ -282,11 +337,13 @@ func (s *jsonScanner) importBody(source *importSource) (importBodyScan, error) {
 }
 
 // importFields reads an object whose opening brace has been read, through its close.
-func (s *jsonScanner) importFields(source *importSource) (importBodyScan, error) {
+func (s *jsonScanner) importFields(spec *spooledBodySpec) (importBodyScan, error) {
+	source := spec.source
 	var scanned importBodyScan
 	var standIn bytes.Buffer
 	standIn.WriteByte('{')
 	seenRaw := false
+	seenText := map[string]bool{}
 	char, err := s.skipSpace()
 	if err != nil {
 		return scanned, err
@@ -322,11 +379,29 @@ func (s *jsonScanner) importFields(source *importSource) (importBodyScan, error)
 		if char, err = s.skipSpace(); err != nil {
 			return scanned, err
 		}
+		_, isText := spec.texts[name]
 		switch {
-		case name == importRawField && seenRaw:
+		case name == importRawField && seenRaw, isText && seenText[name]:
 			// Sent twice, the last one wins, and every earlier one can still be refused, in
 			// words that name a place in it. Only the binder on the whole request can say.
 			return importBodyScan{bindWhole: true}, nil
+		case name == importRawField && char == '"' && spec.rawIsText:
+			seenRaw, scanned.streamed = true, true
+			if err := s.textRest(source.write); err != nil {
+				return scanned, err
+			}
+			standIn.WriteString(importTextStandIn(source))
+		case isText && char == '"':
+			seenText[name] = true
+			field, err := newSpooledText()
+			if err != nil {
+				return scanned, err
+			}
+			spec.texts[name] = field
+			if err := s.textRest(field.write); err != nil {
+				return scanned, err
+			}
+			standIn.WriteString(importTextStandIn(field))
 		case name == importRawField && char == '"':
 			seenRaw, scanned.streamed = true, true
 			decoder := newBase64Stream(base64Chunk, source.write)
@@ -344,8 +419,9 @@ func (s *jsonScanner) importFields(source *importSource) (importBodyScan, error)
 			default:
 				standIn.WriteString(importRawValid)
 			}
-		case name == importRawField || importDeclaredFields[name]:
+		case name == importRawField || isText || spec.declared[name]:
 			seenRaw = seenRaw || name == importRawField
+			seenText[name] = isText
 			standIn.WriteByte(char)
 			s.keep = &standIn
 			err := s.value(char)
@@ -376,6 +452,18 @@ func (s *jsonScanner) importFields(source *importSource) (importBodyScan, error)
 			return scanned, errNotJSON
 		}
 	}
+}
+
+// importTextStandIn is what the binder is given for a string held in a file: empty or not, with
+// a NUL in it or not. Those are all a rule on a text field can ask of it.
+func importTextStandIn(text *importSource) string {
+	switch {
+	case text.nul:
+		return importTextNUL
+	case text.size == 0:
+		return importRawEmpty
+	}
+	return importTextValue
 }
 
 // errNotJSON says the input is not one JSON value, or ended before the value did.
@@ -585,6 +673,35 @@ func (s *jsonScanner) number(first byte) error {
 	return s.digits()
 }
 
+// jsonStringSpecial are the bytes a string can't simply pass over.
+const jsonStringSpecial = "\"\\\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f"
+
+// plainRun is what's buffered up to the next special byte, which may be nothing. It stays good
+// until the next read, and takeRun passes over it. A message is nearly all one long string, and
+// going through that a byte at a time is slow.
+func (s *jsonScanner) plainRun() ([]byte, error) {
+	if _, err := s.src.Peek(1); err != nil {
+		if errors.Is(err, io.EOF) {
+			return nil, errNotJSON
+		}
+		return nil, err
+	}
+	ahead, err := s.src.Peek(s.src.Buffered())
+	if err != nil {
+		return nil, err
+	}
+	if end := bytes.IndexAny(ahead, jsonStringSpecial); end >= 0 {
+		ahead = ahead[:end]
+	}
+	return ahead, nil
+}
+
+func (s *jsonScanner) takeRun(run []byte) {
+	// Discarding what is buffered can't fail.
+	_, _ = s.src.Discard(len(run))
+	s.read += int64(len(run))
+}
+
 // stringRest reads a string whose opening quote has been read, through its closing one. When
 // content is set it is given the string's bytes as encoding/json would unquote them, as far as
 // base64 can tell: anything past ASCII is one byte that base64 refuses, as all of it is.
@@ -596,6 +713,18 @@ func (s *jsonScanner) stringRest(content *base64Stream) error {
 		return content.add(char)
 	}
 	for {
+		if s.keep == nil {
+			run, err := s.plainRun()
+			if err != nil {
+				return err
+			}
+			if content != nil {
+				if err := content.addRun(run); err != nil {
+					return err
+				}
+			}
+			s.takeRun(run)
+		}
 		char, err := s.next()
 		if err != nil {
 			return err
@@ -642,27 +771,165 @@ func (s *jsonScanner) stringRest(content *base64Stream) error {
 // unicodeEscape reads the four hex digits of \uXXXX, and answers the byte it is if it is ASCII,
 // and otherwise a byte base64 refuses, whichever character it turns out to be part of.
 func (s *jsonScanner) unicodeEscape() (byte, error) {
-	code := 0
-	for range 4 {
-		char, err := s.next()
-		if err != nil {
-			return 0, err
-		}
-		switch {
-		case char >= '0' && char <= '9':
-			code = code<<4 | int(char-'0')
-		case char >= 'a' && char <= 'f':
-			code = code<<4 | int(char-'a'+10)
-		case char >= 'A' && char <= 'F':
-			code = code<<4 | int(char-'A'+10)
-		default:
-			return 0, errNotJSON
-		}
+	code, err := s.hex4()
+	if err != nil {
+		return 0, err
 	}
 	if code >= 0x80 {
 		return 0xFF, nil
 	}
 	return byte(code), nil
+}
+
+// hex4 reads the four hex digits of \uXXXX.
+func (s *jsonScanner) hex4() (rune, error) {
+	var code rune
+	for range 4 {
+		char, err := s.next()
+		if err != nil {
+			return 0, err
+		}
+		digit := hexDigit(char)
+		if digit < 0 {
+			return 0, errNotJSON
+		}
+		code = code<<4 | digit
+	}
+	return code, nil
+}
+
+func hexDigit(char byte) rune {
+	switch {
+	case char >= '0' && char <= '9':
+		return rune(char - '0')
+	case char >= 'a' && char <= 'f':
+		return rune(char-'a') + 10
+	case char >= 'A' && char <= 'F':
+		return rune(char-'A') + 10
+	}
+	return -1
+}
+
+// jsonTextChunk is how much decoded text is held before it is passed on.
+const jsonTextChunk = 32 << 10
+
+// textRest reads a string whose opening quote has been read, through its closing one, and passes
+// on its text in pieces, as encoding/json would decode it: an escape that isn't half of a pair of
+// surrogates is its character, and anything else that isn't UTF-8 is U+FFFD.
+func (s *jsonScanner) textRest(write func([]byte) error) error {
+	out := make([]byte, 0, jsonTextChunk+utf8.UTFMax)
+	// bytewise is how far the input is to be read a byte at a time, for text that isn't UTF-8.
+	var bytewise int64
+	for {
+		if len(out) >= jsonTextChunk {
+			if err := write(out); err != nil {
+				return err
+			}
+			out = out[:0]
+		}
+		if s.read >= bytewise {
+			run, err := s.plainRun()
+			if err != nil {
+				return err
+			}
+			switch {
+			case len(run) == 0:
+			case utf8.Valid(run):
+				if err := write(out); err != nil {
+					return err
+				}
+				out = out[:0]
+				if err := write(run); err != nil {
+					return err
+				}
+				s.takeRun(run)
+			default:
+				bytewise = s.read + int64(len(run))
+			}
+		}
+		char, err := s.next()
+		if err != nil {
+			return err
+		}
+		switch {
+		case char == '"':
+			return write(out)
+		case char < 0x20:
+			return errNotJSON
+		case char == '\\':
+			if out, err = s.textEscape(out); err != nil {
+				return err
+			}
+		case char < utf8.RuneSelf:
+			out = append(out, char)
+		default:
+			// A sequence cut short ends at the closing quote, which is read next as itself.
+			ahead, _ := s.src.Peek(utf8.UTFMax - 1)
+			held := [utf8.UTFMax]byte{char}
+			copy(held[1:], ahead)
+			r, size := utf8.DecodeRune(held[:1+len(ahead)])
+			if _, err := s.src.Discard(size - 1); err != nil {
+				return err
+			}
+			s.read += int64(size - 1)
+			out = utf8.AppendRune(out, r)
+		}
+	}
+}
+
+// textEscape reads an escape whose backslash has been read, and appends what it stands for.
+func (s *jsonScanner) textEscape(out []byte) ([]byte, error) {
+	char, err := s.next()
+	if err != nil {
+		return out, err
+	}
+	switch char {
+	case '"', '\\', '/':
+		return append(out, char), nil
+	case 'b':
+		return append(out, '\b'), nil
+	case 'f':
+		return append(out, '\f'), nil
+	case 'n':
+		return append(out, '\n'), nil
+	case 'r':
+		return append(out, '\r'), nil
+	case 't':
+		return append(out, '\t'), nil
+	case 'u':
+	default:
+		return out, errNotJSON
+	}
+	first, err := s.hex4()
+	if err != nil {
+		return out, err
+	}
+	if utf16.IsSurrogate(first) {
+		if pair := utf16.DecodeRune(first, s.peekEscape()); pair != unicode.ReplacementChar {
+			_, err := s.src.Discard(6)
+			s.read += 6
+			return utf8.AppendRune(out, pair), err
+		}
+		first = unicode.ReplacementChar
+	}
+	return utf8.AppendRune(out, first), nil
+}
+
+// peekEscape is the \uXXXX coming next, read without being taken, or -1 when none is.
+func (s *jsonScanner) peekEscape() rune {
+	ahead, _ := s.src.Peek(6)
+	if len(ahead) != 6 || ahead[0] != '\\' || ahead[1] != 'u' {
+		return -1
+	}
+	var code rune
+	for _, char := range ahead[2:] {
+		digit := hexDigit(char)
+		if digit < 0 {
+			return -1
+		}
+		code = code<<4 | digit
+	}
+	return code
 }
 
 // base64Chunk is how many symbols are decoded at a time, a whole number of quanta.
@@ -700,6 +967,28 @@ func (b *base64Stream) add(char byte) error {
 	b.symbols = append(b.symbols, char)
 	if len(b.symbols) == cap(b.symbols) {
 		return b.flush()
+	}
+	return nil
+}
+
+// addRun adds symbols that hold neither a line ending nor anything else add would pass over.
+func (b *base64Stream) addRun(run []byte) error {
+	for len(run) > 0 {
+		if b.invalid {
+			return nil
+		}
+		if b.padded {
+			b.invalid = true
+			return nil
+		}
+		taken := min(cap(b.symbols)-len(b.symbols), len(run))
+		b.symbols = append(b.symbols, run[:taken]...)
+		run = run[taken:]
+		if len(b.symbols) == cap(b.symbols) {
+			if err := b.flush(); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }

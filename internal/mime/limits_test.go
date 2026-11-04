@@ -2,6 +2,7 @@ package mime
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -48,7 +49,7 @@ func (c *countingReader) Read(p []byte) (int, error) {
 func parseBoth(t *testing.T, message string) (parseRead, streamRead int, parseErr, streamErr error) {
 	t.Helper()
 	direct := &countingReader{r: strings.NewReader(message)}
-	_, parseErr = parseFrom(direct)
+	_, parseErr = ParseReader(direct)
 	streamed := &countingReader{r: strings.NewReader(message)}
 	_, streamErr = ParseStream(context.Background(), streamed, StreamOptions{Store: (&memoryStore{}).put, MaxText: 1 << 20})
 	return direct.n, streamed.n, parseErr, streamErr
@@ -104,6 +105,56 @@ func TestParsersRefuseTooManyParts(t *testing.T) {
 	_, _, parseErr, streamErr = parseBoth(t, manyParts(31))
 	if !errors.Is(parseErr, ErrStructureLimit) || !errors.Is(streamErr, ErrStructureLimit) {
 		t.Fatalf("one part past the limit: Parse %v, ParseStream %v; want ErrStructureLimit", parseErr, streamErr)
+	}
+}
+
+// CheckStructure refuses what Parse refuses and only that, and stops reading where Parse stops.
+func TestCheckStructureAgreesWithParse(t *testing.T) {
+	withLimits(t, Limits{MaxNestingDepth: 20, MaxParts: 30})
+	const outer = "From: a@example.com\r\nContent-Type: multipart/mixed; boundary=x\r\n\r\n"
+	for name, message := range map[string]string{
+		"empty":                     "",
+		"not a message":             "this is not a header\r\nnor this\r\n\r\nbody\r\n",
+		"not multipart":             "From: a@example.com\r\n\r\nbody\r\n",
+		"multipart with no parts":   outer,
+		"multipart no boundary":     "Content-Type: multipart/mixed\r\n\r\nbody\r\n",
+		"nested at the limit":       nestedMessage(20),
+		"nested past the limit":     nestedMessage(21),
+		"nested far past the limit": nestedMessage(200),
+		"parts at the limit":        manyParts(30),
+		"parts past the limit":      manyParts(31),
+		"cut short at the limit":    strings.TrimSuffix(manyParts(30), "--x--\r\n"),
+		"cut short past the limit":  strings.TrimSuffix(manyParts(31), "--x--\r\n"),
+		"an unknown charset":        outer + "--x\r\nContent-Type: text/plain; charset=nonsense\r\n\r\nbody\r\n--x--\r\n",
+		"an unknown encoding":       outer + "--x\r\nContent-Transfer-Encoding: nonsense\r\n\r\nbody\r\n--x--\r\n",
+		"a part that won't decode":  outer + "--x\r\nContent-Transfer-Encoding: base64\r\n\r\n!!!\r\n--x\r\n\r\nbody\r\n--x--\r\n",
+		"a part with bad headers":   outer + "--x\r\nno colon here\r\n\r\nbody\r\n--x\r\n\r\nbody\r\n--x--\r\n",
+		"a nested part in base64": outer + "--x\r\nContent-Type: multipart/mixed; boundary=y\r\nContent-Transfer-Encoding: base64\r\n\r\n" +
+			base64.StdEncoding.EncodeToString([]byte("--y\r\n\r\nbody\r\n--y--\r\n")) + "\r\n--x--\r\n",
+		"nested with parts past the limit": outer + strings.Repeat("--x\r\nContent-Type: multipart/mixed; boundary=y\r\n\r\n--y\r\n\r\nbody\r\n--y--\r\n", 16) + "--x--\r\n",
+		"nested with parts at the limit":   outer + strings.Repeat("--x\r\nContent-Type: multipart/mixed; boundary=y\r\n\r\n--y\r\n\r\nbody\r\n--y--\r\n", 15) + "--x--\r\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			parsing := &countingReader{r: strings.NewReader(message)}
+			_, parseErr := ParseReader(parsing)
+			checking := &countingReader{r: strings.NewReader(message)}
+			checkErr := CheckStructure(checking)
+			if errors.Is(parseErr, ErrStructureLimit) != errors.Is(checkErr, ErrStructureLimit) {
+				t.Fatalf("Parse %v, CheckStructure %v", parseErr, checkErr)
+			}
+			if checkErr != nil && !errors.Is(checkErr, ErrStructureLimit) {
+				t.Fatalf("CheckStructure answered something other than the limit: %v", checkErr)
+			}
+			if errors.Is(checkErr, ErrStructureLimit) && checking.n > parsing.n {
+				t.Fatalf("CheckStructure read %d bytes to refuse it, Parse %d", checking.n, parsing.n)
+			}
+		})
+	}
+	if err := CheckStructure(strings.NewReader(nestedMessage(21))); !errors.Is(err, ErrStructureLimit) {
+		t.Fatalf("one past the limit: %v, want ErrStructureLimit", err)
+	}
+	if err := CheckStructure(strings.NewReader(manyParts(31))); !errors.Is(err, ErrStructureLimit) {
+		t.Fatalf("one part past the limit: %v, want ErrStructureLimit", err)
 	}
 }
 

@@ -26,10 +26,12 @@ import (
 // deeper or holding more parts than the Limits in force is an error wrapping ErrStructureLimit,
 // answered as soon as the limit is passed.
 func Parse(raw []byte) (*pipeline.EmailJSON, error) {
-	return parseFrom(bytes.NewReader(raw))
+	return ParseReader(bytes.NewReader(raw))
 }
 
-func parseFrom(source io.Reader) (*pipeline.EmailJSON, error) {
+// ParseReader is Parse from a reader, for a caller that holds the message in some other form and
+// has no need to copy it to parse it. What it builds is held whole, as Parse's is.
+func ParseReader(source io.Reader) (*pipeline.EmailJSON, error) {
 	// go-message returns a usable *Entity even when it reports an unknown charset
 	// or transfer encoding, so only a nil entity is a hard failure.
 	entity, err := gomessage.Read(source)
