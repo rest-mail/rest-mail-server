@@ -1158,8 +1158,8 @@ from or reaches any of them. The reset empties `server_limits`, so the limits ar
 back at their defaults, and puts the server capability ceiling back to every
 capability, so a ceiling one exchange narrows does not bound the next.
 
-`listDmarcReports`, `listTlsReports`, `listAuditEntries`, `verifyAuditLog`,
-`getDeliveryLogs`, `getDashboardStats` and the TLS report intake
+`listTlsReports`, `listAuditEntries`, `verifyAuditLog`, `getDeliveryLogs`,
+`getDashboardStats` and the TLS report intake
 `receiveTlsReport` reset and seed before each exchange too, refusals included
 (`report_and_audit_reads_after_a_reset`, registered ahead of their other
 hooks). A listing of TLS reports that succeeds gets a report of its own,
@@ -1167,8 +1167,8 @@ received after its reset on the seeded `restmail.test`; the intake hosts the
 domains its report names in its own hook, after the reset. The others need
 nothing made. The audit log is append-only and kept by the reset
 (`resetRetainedTables`), so its reads meet what is already in it. No link
-starts from or reaches any of them. `getDmarcReport` moves on its own, with a
-report delivered after its reset (below). A run with no reset changes nothing in
+starts from or reaches any of them. `getDmarcReport` and `listDmarcReports`
+move on their own, with a report delivered after their reset (below). A run with no reset changes nothing in
 this hook.
 
 `listFolders`, `listMessages` and `searchMessages`, the mailbox reads
@@ -1242,8 +1242,8 @@ found message by its subject. A documented 200 with nothing made for it fails to
 threads page after the example's cursor holds older threads only and is empty
 by design, so its hook notes that it lists none of it. Refusals and a run with
 no reset are left alone. The other moved listings have nothing an API call can
-make for them after a reset (`listDmarcReports`, `getDeliveryLogs`,
-`listPipelineLogs`, `listAuditEntries`), or list what the seed holds
+make for them after a reset (`getDeliveryLogs`, `listPipelineLogs`,
+`listAuditEntries`), or list what the seed holds
 (`listMailboxes`, `listGrants`, `listMyGrants`, `listContacts`), or list a
 domain or message of their own that holds no rows (`listSuppressions`,
 `listAllowlist`, `listBlocklist`, `listAttachments`).
@@ -1280,8 +1280,8 @@ them. `clearSuppression` moved separately (below).
 
 After a reset, the 200 of `listCustomFilters`, `listDomains`, `listAliases`,
 `listDKIMKeys` and `listCertificates` must list the row its before hook made
-(`the_listing_holds_what_was_made`, #1789), since the status and the schema
-alone pass on an empty list. The before hook notes the row in
+(`the_listing_holds_what_was_made`, #1785, #1789), since the status and the
+schema alone pass on an empty list. The before hook notes the row in
 `hooks.stash["listing_made"]`; a documented 200 with nothing noted fails too.
 Refusals and a run without a reset are left alone.
 
@@ -1362,6 +1362,15 @@ DNS: `chore contract:dns:register` (part of `chore e2e:up`) publishes
 reporter's SPF (`v=spf1 ip4:192.0.2.25 -all`) and DMARC (`v=DMARC1; p=reject`)
 records and answers `.invalid` NXDOMAIN itself (`local=/invalid/`), never
 forwarding it. The fixture hooks for both skip after a reset.
+
+`listDmarcReports` resets and seeds before each exchange too, refusals included,
+and each 200 gets a report delivered after the reset the same way. A listing's
+200 has the same shape with no rows, so `the_listing_holds_what_was_made` fails
+the exchange unless the answer lists that report, by its reporter and report id
+(#1785). The received example's `reporter=reporter.test` filter names the
+report's reporter instead; only its value changes. The other 200 filters by
+domain 4294967295, which no domain is, so its page is empty by design and its
+hook says it lists none of the report.
 
 `createAlias`, `getAlias`, `updateAlias` and `deleteAlias` reset and seed before
 each exchange too, refusals included. A create is sent as documented after its
