@@ -98,6 +98,8 @@ func TestMailRulesBindingBeforeDatabase(t *testing.T) {
 		{http.MethodDelete, "/api/v1/accounts/nope/sieve", "", "id"},
 		{http.MethodPut, "/api/v1/accounts/1/sieve", `{"active":true}`, "script"},
 		{http.MethodPut, "/api/v1/accounts/1/sieve", `{"script":7}`, "script"},
+		{http.MethodPut, "/api/v1/accounts/1/sieve", `{"script":null}`, "script"},
+		{http.MethodPost, "/api/v1/accounts/1/sieve/validate", `{"script":null}`, "script"},
 		{http.MethodPost, "/api/v1/accounts/1/sieve/validate", `{}`, "script"},
 	} {
 		t.Run(tc.method+tc.path+tc.body, func(t *testing.T) {
@@ -111,7 +113,6 @@ func TestMailRulesBindingBeforeDatabase(t *testing.T) {
 	// Bound, these reach the account check, which a request with no session fails.
 	for _, tc := range []struct{ method, path, body string }{
 		{http.MethodPut, "/api/v1/accounts/1/vacation", `{"enabled":null}`},
-		{http.MethodPut, "/api/v1/accounts/1/sieve", `{"script":null}`},
 		{http.MethodGet, "/api/v1/accounts/1/sieve", ""},
 	} {
 		t.Run("bound "+tc.method+tc.path+tc.body, func(t *testing.T) {

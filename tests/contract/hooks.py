@@ -1960,9 +1960,17 @@ def give_each_rename_probe_a_folder(transaction):
         },
         method="POST",
     )
-    with urllib.request.urlopen(request, timeout=10) as response:
-        if response.status != 201:
-            raise RuntimeError("could not create a folder for the rename probe")
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:
+            if response.status != 201:
+                raise RuntimeError("could not create a folder for the rename probe")
+    except urllib.error.HTTPError as error:
+        if error.code in (400, 403, 404):
+            # An account the run cannot reach, such as a generated ID no
+            # account has: the real probe answers that refusal itself, as
+            # createFolder's hook leaves it to (#1163).
+            return
+        raise
     transaction["fullPath"] = parent + "/" + folder
     # A rename onto a folder that exists is 409 already_exists (#757), and the
     # earlier probes left the destination behind: remove it, as createFolder's
