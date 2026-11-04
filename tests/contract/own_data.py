@@ -233,6 +233,9 @@ MOVED = (
     "listFolders",
     "listMessages",
     "searchMessages",
+    # The attachment download. No link reaches it. A read of an attachment
+    # that is there gets one of its own, with known bytes, after its reset.
+    "getAttachment",
 )
 
 

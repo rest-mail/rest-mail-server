@@ -1181,6 +1181,19 @@ subject holds the query's words. `0` and every documented 404 keep their ids.
 `listAccounts` is not selected, and no link starts from any of the three. A run
 with no reset changes nothing in this hook.
 
+`getAttachment` resets and seeds before each exchange too, refusals included
+(`on_an_attachment_of_its_own`). Its examples name attachment 1, which the reset
+does not make. A read of an attachment that is there (the whole file, the single
+and multiple ranges, the 304 and 412 conditionals and the 416 range) is sent to
+an attachment of its own: a message holding `ATTACHMENT_BYTES` as an attachment,
+imported into the seeded `admin@restmail.test` through the API after the reset,
+its attachment's id read back from `listAttachments`. Its after hook
+(`the_attachment_answers_its_bytes`) holds the answer to those bytes: the whole
+body, each requested range with its `Content-Range`, and the 416's
+`bytes */<length>`. Refusals keep their ids (`0`, missing's `2147483647` and the
+others' own). No link reaches it. A run with no reset changes nothing in either
+hook.
+
 A listing's 200 has the same shape with no rows as with the one made for it, so
 its status and schema alone pass on an empty list (#1785). After a reset,
 `listTlsReports`, `listPipelines`, `listThreads`, `listFolders`, `listMessages`
@@ -1343,7 +1356,12 @@ refusals included. The reset removes the message the link names, so an exchange
 aimed at a positive message id gets a message of its own, made after the reset
 (`on_a_message_of_its_own`): imported into the seeded `admin@restmail.test`,
 looked up by address, or for a trace sent from that address to itself, since
-only a send writes a trace. `getThread` reads the mailbox and thread of a
+only a send writes a trace. The trace is written in the background, so the
+hook asks for it until it is there (`a_traced_message`, up to 10 s). The API
+keeps a delivered message's trace only at `TRACE_SAMPLE_RATE`, 0.1 unless set,
+so a server the own-data phase runs against needs `TRACE_SAMPLE_RATE=1`, as
+`tasks/api.yml` sets for the topology; without it the hook names the setting.
+`getThread` reads the mailbox and thread of a
 message imported for it (`on_a_thread_of_its_own`). Missing's `2147483647`, a
 non-positive or undecodable id and every documented 404 keep their ids. One
 send per run is added, still far below the limit. No message id is carried
