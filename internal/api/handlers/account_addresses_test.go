@@ -134,8 +134,16 @@ func TestListAccountAddresses(t *testing.T) {
 		composeRoutes(mh).ServeHTTP(rr, authzRequest(http.MethodPost, "/api/v1/messages/send", fx.user.ID, nil, string(body)))
 		return rr
 	}
+	// A sender the caller can't reach at all answers 404, as for every account
+	// route; one it can reach but may not send as answers 403.
 	refusedSender := func(rr *httptest.ResponseRecorder) bool {
-		return rr.Code == http.StatusForbidden && strings.Contains(rr.Body.String(), "not authorized to send from this address")
+		switch rr.Code {
+		case http.StatusForbidden:
+			return strings.Contains(rr.Body.String(), "not authorized to send from this address")
+		case http.StatusNotFound:
+			return strings.Contains(rr.Body.String(), "Account not found")
+		}
+		return false
 	}
 	for _, mb := range []models.Mailbox{fx.user, fx.admin, shared, stranger} {
 		for _, onBehalf := range []bool{false, true} {
