@@ -22,7 +22,7 @@ pending a separate decision. The 403/404 decision remains open.
 ## Where it runs
 
 In the `E2E (full topology)` job (`.github/workflows/e2e-suite.yml`), after the
-14 stages pass, against the topology they ran on, as the fixture admin
+15 stages pass, against the topology they ran on, as the fixture admin
 (`admin@restmail.test`, from `cmd/seed`):
 
 | Phase | What it checks | In CI |
