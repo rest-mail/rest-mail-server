@@ -5,6 +5,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import textwrap
 import unittest
 from pathlib import Path
 
@@ -229,6 +230,383 @@ class ContractDiff(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
         self.assertIsNone(report)
         self.assertIn("comparison failed", summary)
+
+
+
+CI_WORKFLOW = ROOT / ".github/workflows/ci.yml"
+BRANCH_POINT_STEP = "Find where the PR branched from its base"
+
+
+def workflow_step(name):
+    """One step of ci.yml's contract job as text, without a YAML dependency.
+
+    The lint job discovers these tests before it installs pyyaml.
+    """
+    lines = CI_WORKFLOW.read_text().splitlines()
+    start = next(i for i, line in enumerate(lines) if line.strip() == f"- name: {name}")
+    indent = len(lines[start]) - len(lines[start].lstrip())
+    step = []
+    for line in lines[start + 1 :]:
+        if line.strip() and len(line) - len(line.lstrip()) <= indent:
+            break
+        step.append(line)
+    return "\n".join(step)
+
+
+def run_block(step):
+    """The shell a step's `run: |` block holds."""
+    return textwrap.dedent(step.split("run: |\n", 1)[1])
+
+
+class GitFixture:
+    """A real repository, so the workflow's own shell finds a real merge base.
+
+    Nothing from the running git's hooks or config reaches it: the tests may run
+    from a commit hook, where GIT_DIR names the outer repository.
+    """
+
+    def __init__(self, root):
+        self.root = Path(root)
+        self.origin = self.root / "origin"
+        self.clone = self.root / "clone"
+        self.temp = self.root / "runner"
+        self.temp.mkdir()
+        self.commits = 0
+        self.env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+        self.env.update(
+            GIT_CONFIG_GLOBAL=os.devnull,
+            GIT_CONFIG_NOSYSTEM="1",
+            GIT_AUTHOR_NAME="Fixture",
+            GIT_AUTHOR_EMAIL="fixture@example.test",
+            GIT_COMMITTER_NAME="Fixture",
+            GIT_COMMITTER_EMAIL="fixture@example.test",
+        )
+        self.origin.mkdir()
+        self.git("init", "--quiet", "--initial-branch=main")
+        self.git("config", "uploadpack.allowAnySHA1InWant", "true")
+
+    def git(self, *args, cwd=None):
+        return subprocess.run(
+            ["git", *args],
+            cwd=cwd or self.origin,
+            env=self.env,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+
+    def commit(self, spec):
+        (self.origin / "openapi.json").write_text(json.dumps(spec))
+        self.git("add", "openapi.json")
+        # Unique: two same-second commits with one parent and tree are one commit.
+        self.commits += 1
+        self.git("commit", "--quiet", "--allow-empty", "-m", f"change {self.commits}")
+        return self.git("rev-parse", "HEAD")
+
+    def branch(self, name, start):
+        self.git("checkout", "--quiet", "-b", name, start)
+
+    def spec_at(self, revision):
+        return json.loads(self.git("show", f"{revision}:openapi.json"))
+
+    def clone_origin(self):
+        self.git("clone", "--quiet", str(self.origin), str(self.clone), cwd=self.root)
+
+    def branch_point(self, base_tip, head):
+        """Run the workflow's own step; a missing clone is made from origin."""
+        if not self.clone.exists():
+            self.clone_origin()
+        output = self.temp / "output"
+        summary = self.temp / "summary"
+        result = subprocess.run(
+            ["bash", "-c", run_block(workflow_step(BRANCH_POINT_STEP))],
+            cwd=self.clone,
+            env=dict(
+                self.env,
+                BASE_SHA=base_tip,
+                HEAD_SHA=head,
+                RUNNER_TEMP=str(self.temp),
+                GITHUB_OUTPUT=str(output),
+                GITHUB_STEP_SUMMARY=str(summary),
+            ),
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=20,
+        )
+        outputs = output.read_text() if output.exists() else ""
+        resolved = outputs.split("sha=", 1)[1].strip() if "sha=" in outputs else None
+        return result, resolved, summary.read_text() if summary.exists() else ""
+
+
+class BranchPointStep(unittest.TestCase):
+    """The base the contract job compares from (#1752). Needs git, not oasdiff."""
+
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.git = GitFixture(directory.name)
+
+    def test_up_to_date_branch_compares_from_the_base_tip(self):
+        base_tip = self.git.commit(description())
+        self.git.branch("pr", base_tip)
+        head = self.git.commit(description())
+        result, resolved, _ = self.git.branch_point(base_tip, head)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(resolved, base_tip)
+
+    def test_stale_branch_compares_from_where_it_branched(self):
+        start = self.git.commit(description())
+        base_tip = self.git.commit(description())
+        self.git.branch("pr", start)
+        head = self.git.commit(description())
+        result, resolved, _ = self.git.branch_point(base_tip, head)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(resolved, start)
+
+    def test_the_exact_revisions_are_published(self):
+        start = self.git.commit(description())
+        base_tip = self.git.commit(description())
+        self.git.branch("pr", start)
+        head = self.git.commit(description())
+        _, _, summary = self.git.branch_point(base_tip, head)
+        comparison = json.loads(
+            (self.git.temp / "contract-diff/comparison.json").read_text()
+        )
+        self.assertEqual(
+            comparison,
+            {
+                "comparison": "merge-base",
+                "base_tip": base_tip,
+                "merge_base": start,
+                "head": head,
+                "base_commits_since_merge_base": 1,
+            },
+        )
+        for revision in (base_tip, start, head):
+            self.assertIn(revision, summary)
+
+    def test_a_base_tip_on_no_branch_is_fetched_by_its_exact_revision(self):
+        # A rerun keeps its event's base, which a force-pushed parent branch may
+        # no longer reach; checkout's full history then does not include it.
+        start = self.git.commit(description())
+        self.git.branch("pr", start)
+        head = self.git.commit(description())
+        self.git.branch("parent", start)
+        base_tip = self.git.commit(description())
+        self.git.git("checkout", "--quiet", "main")
+        self.git.clone_origin()
+        self.git.git("update-ref", "-d", "refs/heads/parent")
+        self.git.git(
+            "update-ref", "-d", "refs/remotes/origin/parent", cwd=self.git.clone
+        )
+        self.git.git("gc", "--quiet", "--prune=now", cwd=self.git.clone)
+        with self.assertRaises(subprocess.CalledProcessError):
+            self.git.git("cat-file", "-e", f"{base_tip}^{{commit}}", cwd=self.git.clone)
+        self.git.git("update-ref", "refs/fixture/keep", base_tip)
+        result, resolved, _ = self.git.branch_point(base_tip, head)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(resolved, start)
+
+    def test_unrelated_histories_fail_instead_of_comparing_from_the_tip(self):
+        base_tip = self.git.commit(description())
+        self.git.git("checkout", "--quiet", "--orphan", "pr")
+        head = self.git.commit(description())
+        result, resolved, _ = self.git.branch_point(base_tip, head)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIsNone(resolved)
+        self.assertIn("no single merge base", result.stderr)
+
+    def test_two_merge_bases_fail_instead_of_choosing_one(self):
+        start = self.git.commit(description())
+        self.git.branch("pr", start)
+        pr_side = self.git.commit(description())
+        self.git.git("checkout", "--quiet", "main")
+        main_side = self.git.commit(description())
+        self.git.git("merge", "--quiet", "--no-edit", "--no-ff", pr_side)
+        base_tip = self.git.git("rev-parse", "HEAD")
+        self.git.git("checkout", "--quiet", "pr")
+        self.git.git("merge", "--quiet", "--no-edit", "--no-ff", main_side)
+        head = self.git.git("rev-parse", "HEAD")
+        result, resolved, _ = self.git.branch_point(base_tip, head)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIsNone(resolved)
+        self.assertIn("no single merge base", result.stderr)
+
+    def test_the_job_checks_out_the_step_result_and_keeps_its_event(self):
+        head = workflow_step("Checkout the exact PR head")
+        self.assertIn("ref: ${{ github.event.pull_request.head.sha }}", head)
+        self.assertIn("fetch-depth: 0", head)
+        self.assertIn("persist-credentials: false", head)
+        step = workflow_step(BRANCH_POINT_STEP)
+        self.assertIn("id: branch-point", step)
+        self.assertIn("BASE_SHA: ${{ github.event.pull_request.base.sha }}", step)
+        self.assertIn("HEAD_SHA: ${{ github.event.pull_request.head.sha }}", step)
+        base = workflow_step("Checkout the comparison base")
+        self.assertIn("ref: ${{ steps.branch-point.outputs.sha }}", base)
+        self.assertIn("path: .cache/contract-diff-base", base)
+        self.assertIn("persist-credentials: false", base)
+        self.assertIn(
+            "cd .cache/contract-diff-base",
+            workflow_step("Generate the base and head descriptions"),
+        )
+        # A merge group has no pull request: the job stays skipped there, and the
+        # verdict accepts that, so the queue's result does not depend on this job.
+        text = CI_WORKFLOW.read_text()
+        job = text[text.index("  contract-diff:\n") :]
+        self.assertIn("if: github.event_name == 'pull_request'", job[:200])
+        self.assertIn("success | skipped) ;;", text)
+
+
+def base_only_change(spec):
+    """What main adds after a pull request branched: an operation and a field."""
+    spec["paths"]["/gadgets"] = {
+        "get": {
+            "operationId": "listGadgets",
+            "responses": {"204": {"description": "No content"}},
+        }
+    }
+    spec["paths"]["/widgets"]["post"]["responses"]["200"]["content"][
+        "application/json"
+    ]["schema"]["properties"]["colour"] = {"type": "string"}
+    return spec
+
+
+@unittest.skipUnless(
+    BINARY, "OASDIFF names the pinned binary; contract-diff CI installs it"
+)
+class StaleBranchComparison(unittest.TestCase):
+    """The whole path: the workflow's base, the real comparator, the gates (#1752)."""
+
+    run_diff = ContractDiff.run_diff
+
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.git = GitFixture(directory.name)
+
+    def compare(self, head_change, labels=()):
+        """A stale pull request making head_change, gated as CI gates it."""
+        start = self.git.commit(description())
+        base_tip = self.git.commit(base_only_change(description()))
+        self.git.branch("pr", start)
+        head = self.git.commit(head_change(description()))
+        step, resolved, _ = self.git.branch_point(base_tip, head)
+        self.assertEqual(step.returncode, 0, step.stderr)
+        self.assertEqual(resolved, start)
+        self.base_tip = base_tip
+        self.head = head
+        return self.run_diff(
+            self.git.spec_at(head), labels, base=self.git.spec_at(resolved)
+        )
+
+    def assert_names_nothing_from_main(self, report):
+        reported = json.dumps(report["changes"])
+        self.assertNotIn("gadgets", reported.lower())
+        self.assertNotIn("colour", reported)
+
+    def test_stale_branch_is_not_blamed_for_what_main_added(self):
+        result, report, summary = self.compare(lambda spec: spec)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(report["changes"], [])
+        self.assertEqual(report["missing_labels"], [])
+        self.assertIn("No consumer-visible contract change", summary)
+        # The fixture does reproduce #1752: from the base tip, the same unchanged
+        # head loses the operation and the field, and the gate asks for a label.
+        result, report, _ = self.run_diff(
+            self.git.spec_at(self.head), base=self.git.spec_at(self.base_tip)
+        )
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertEqual(report["missing_labels"], ["contract-change"])
+        self.assertIn("gadgets", json.dumps(report["changes"]).lower())
+        self.assertIn("colour", json.dumps(report["changes"]))
+
+    def test_stale_branch_reports_only_its_own_additions(self):
+        def add_operation(spec):
+            spec["paths"]["/widgets"]["get"] = {
+                "operationId": "listWidgets",
+                "responses": {"204": {"description": "No content"}},
+            }
+            return spec
+
+        result, report, _ = self.compare(add_operation)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            [(c["id"], c["classification"]) for c in report["changes"]],
+            [("endpoint-added", "additive")],
+        )
+        self.assert_names_nothing_from_main(report)
+
+    def test_stale_branch_field_removal_still_needs_contract_label(self):
+        def remove_field(spec):
+            del spec["paths"]["/widgets"]["post"]["responses"]["200"]["content"][
+                "application/json"
+            ]["schema"]["properties"]["label"]
+            return spec
+
+        result, report, summary = self.compare(remove_field)
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertEqual(report["missing_labels"], ["contract-change"])
+        self.assertIn("writeWidget", summary)
+        self.assert_names_nothing_from_main(report)
+        self.assertEqual(
+            self.run_diff(
+                self.git.spec_at(self.head),
+                ["contract-change"],
+                base=description(),
+            )[0].returncode,
+            0,
+        )
+
+    def test_stale_branch_operation_removal_still_needs_contract_label(self):
+        def remove_operation(spec):
+            del spec["paths"]["/widgets"]["post"]
+            return spec
+
+        result, report, _ = self.compare(remove_operation)
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertEqual(report["missing_labels"], ["contract-change"])
+        self.assertIn(
+            ("api-removed-without-deprecation", "breaking"),
+            [(c["id"], c["classification"]) for c in report["changes"]],
+        )
+        self.assert_names_nothing_from_main(report)
+
+    def test_stale_branch_security_change_still_needs_permission_label(self):
+        def allow_anonymous(spec):
+            spec["paths"]["/widgets"]["post"]["security"] = []
+            return spec
+
+        result, report, _ = self.compare(allow_anonymous, ["contract-change"])
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertEqual(report["missing_labels"], ["permission-change"])
+        self.assertTrue(
+            any(c["classification"] == "security" for c in report["changes"])
+        )
+        self.assert_names_nothing_from_main(report)
+        self.assertEqual(
+            self.run_diff(
+                self.git.spec_at(self.head),
+                ["permission-change"],
+                base=description(),
+            )[0].returncode,
+            0,
+        )
+
+    def test_rebased_branch_removing_what_main_added_is_its_own_removal(self):
+        self.git.commit(description())
+        base_tip = self.git.commit(base_only_change(description()))
+        self.git.branch("pr", base_tip)
+        head = self.git.commit(description())
+        step, resolved, _ = self.git.branch_point(base_tip, head)
+        self.assertEqual(step.returncode, 0, step.stderr)
+        self.assertEqual(resolved, base_tip)
+        result, report, _ = self.run_diff(
+            self.git.spec_at(head), base=self.git.spec_at(resolved)
+        )
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertEqual(report["missing_labels"], ["contract-change"])
+        self.assertIn("gadgets", json.dumps(report["changes"]).lower())
 
 
 if __name__ == "__main__":
