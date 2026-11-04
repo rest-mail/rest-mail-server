@@ -364,7 +364,7 @@ projects/           Dockerfiles for the gateways, js-filter sidecar, dnsmasq fra
 helm/               Helm chart for restmail
 monitoring/         Prometheus config, alerting rules, Grafana dashboards
 tasks/              Per-service task files (one per container) included from root chores.yml
-tests/e2e/          End-to-end test suite (14 stages)
+tests/e2e/          End-to-end test suite (15 stages)
 .workspace/         Sibling repos cloned on demand (testbed, reference-mailserver, website) — gitignored
 ```
 
@@ -454,7 +454,7 @@ chore test:limits
 chore test:all
 ```
 
-The e2e suite runs inside a container attached to the testbed mailnet with the testbed dnsmasq as its only resolver — it exercises the stack as just another user of the simulated internet. Its 14 stages cover infrastructure, traditional cross-domain mail, gateway inbound/outbound, protocol indistinguishability, the RESTMAIL upgrade, webmail and console flows, database consistency, email-auth verification, queue retry, bounce DSNs, IMAP IDLE, and app passwords.
+The e2e suite runs inside a container attached to the testbed mailnet with the testbed dnsmasq as its only resolver — it exercises the stack as just another user of the simulated internet. Its 15 stages cover infrastructure, traditional cross-domain mail, gateway inbound/outbound, protocol indistinguishability, the RESTMAIL upgrade, webmail and console flows, database consistency, email-auth verification, queue retry, bounce DSNs, IMAP IDLE, app passwords, and a receiving server's DKIM, SPF and DMARC verdict on mail REST Mail sends.
 
 ### Local Development
 
