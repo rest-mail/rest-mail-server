@@ -376,6 +376,10 @@ func TestAppendMalformedTerminator(t *testing.T) {
 			if !strings.HasPrefix(line, "A1 BAD ") {
 				t.Fatalf("invalid terminator: %q", line)
 			}
+			// The server closes with the BYE RFC 3501 §3.4 requires.
+			if line := c.line(); !strings.HasPrefix(line, "* BYE ") {
+				t.Fatalf("after invalid terminator: %q, want BYE", line)
+			}
 			if !c.closed() {
 				t.Fatal("invalid framing left connection open")
 			}

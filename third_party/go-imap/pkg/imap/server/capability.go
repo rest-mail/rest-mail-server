@@ -119,6 +119,11 @@ func (s *Session) utf8Accept() bool {
 // is never extended for UTF-8 credentials; AUTHENTICATE carries them instead.
 // Callers pass original line segments, never materialized literal contents.
 func (s *Session) commandTextError(text string) string {
+	// A CR or LF ends a line only as CRLF, and QUOTED-CHAR excludes both (RFC
+	// 3501 §§2.2, 9). readLine leaves any other CR or LF in the typed text.
+	if strings.ContainsAny(text, "\r\n") {
+		return "A command line ends in CRLF and holds no other CR or LF"
+	}
 	if s.utf8Accept() {
 		if !wire.ValidCommandUTF8(text) {
 			return "Invalid UTF-8 in command"

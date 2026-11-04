@@ -86,6 +86,13 @@ func (s *Session) handleAuthenticate(tag, args string) {
 		s.tagged(tag, "BAD", "AUTHENTICATE requires a mechanism name")
 		return
 	}
+	// auth-type is an atom (RFC 3501 §9), as a flag keyword is: a quoted, doubly
+	// spaced or otherwise malformed name is a syntax error, not a mechanism this
+	// server lacks.
+	if name, _, _ := strings.Cut(args, " "); !wire.ValidFlagKeyword(name) {
+		s.tagged(tag, "BAD", "AUTHENTICATE requires a mechanism name")
+		return
+	}
 
 	// Gate cleartext SASL the same way LOGIN is gated: when TLS is configured
 	// but not yet active, refuse before soliciting any credential so the base64

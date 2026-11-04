@@ -34,7 +34,9 @@ var listSelectionOptions = map[string]bool{"SUBSCRIBED": true, "REMOTE": true, "
 // command this server cannot take.
 func parseList(args, cmd string) (req listRequest, refusal string) {
 	req.selection, req.returns = map[string]bool{}, map[string]bool{}
-	args = strings.TrimSpace(args)
+	if !wire.ValidSeparators(args) {
+		return req, "Invalid " + cmd + " arguments"
+	}
 	if cmd == "LIST" && strings.HasPrefix(args, "(") {
 		end := strings.IndexByte(args, ')')
 		if end < 0 {
@@ -44,7 +46,7 @@ func parseList(args, cmd string) (req listRequest, refusal string) {
 		for _, opt := range strings.Fields(args[1:end]) {
 			opt = strings.ToUpper(opt)
 			if !listSelectionOptions[opt] {
-				return req, "Unsupported LIST selection option " + opt
+				return req, "Unsupported LIST selection option"
 			}
 			req.selection[opt] = true
 		}
@@ -56,25 +58,23 @@ func parseList(args, cmd string) (req listRequest, refusal string) {
 	}
 
 	parts := wire.ParseArgs(args)
-	req.reference, req.patterns = "", []string{"*"}
-	if len(parts) >= 1 {
-		last := parts[len(parts)-1]
-		if len(parts) >= 2 {
-			req.reference, last = wire.Unquote(parts[0]), parts[1]
+	// "LIST" SP mailbox SP list-mailbox, and LSUB the same (RFC 3501 §9).
+	if len(parts) < 2 || (cmd == "LSUB" && len(parts) > 2) {
+		return req, cmd + " requires a reference and a mailbox pattern"
+	}
+	req.reference = wire.Unquote(parts[0])
+	last := parts[1]
+	if cmd == "LIST" && strings.HasPrefix(last, "(") {
+		// Several patterns, any of which a name may match (RFC 5258 §3).
+		if len(last) < 2 || !strings.HasSuffix(last, ")") {
+			return req, "Unterminated LIST patterns"
 		}
-		if cmd == "LIST" && strings.HasPrefix(last, "(") {
-			// Several patterns, any of which a name may match (RFC 5258 §3).
-			if len(last) < 2 || !strings.HasSuffix(last, ")") {
-				return req, "Unterminated LIST patterns"
-			}
-			req.extended = true
-			req.patterns = nil
-			for _, p := range wire.ParseArgs(last[1 : len(last)-1]) {
-				req.patterns = append(req.patterns, wire.Unquote(p))
-			}
-		} else {
-			req.patterns = []string{wire.Unquote(last)}
+		req.extended = true
+		for _, p := range wire.ParseArgs(last[1 : len(last)-1]) {
+			req.patterns = append(req.patterns, wire.Unquote(p))
 		}
+	} else {
+		req.patterns = []string{wire.Unquote(last)}
 	}
 	if cmd == "LIST" && len(parts) > 2 {
 		ret := parts[2:]
@@ -128,7 +128,7 @@ func listReturnOptions(list string, returns map[string]bool) (status []string, r
 				}
 			}
 		default:
-			return nil, "Unsupported LIST return option " + opt
+			return nil, "Unsupported LIST return option"
 		}
 	}
 	return status, ""

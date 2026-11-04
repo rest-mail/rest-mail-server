@@ -69,7 +69,7 @@ func TestCoverageMailboxManagement(t *testing.T) {
 	for i, tc := range []struct{ cmd, reply string }{
 		{`CREATE ""`, "NO Missing folder name"},
 		{"CREATE " + strings.Repeat("x", 201), "NO Folder name too long"},
-		{"CREATE bad\x00name", "NO Invalid folder name"},
+		{"CREATE bad\x00name", "BAD CREATE requires one mailbox name"},
 		{`DELETE ""`, "NO Missing folder name"},
 		{"RENAME Old", "BAD RENAME requires old and new name"},
 		{`RENAME "" New`, "BAD RENAME requires old and new name"},
@@ -175,7 +175,15 @@ func TestCoverageListReplies(t *testing.T) {
 			if !reflect.DeepEqual(lines, []string{`* LIST (\Noselect) "/" ""`}) || st != "delimiter OK LIST completed" {
 				t.Fatalf("delimiter: %v / %s", lines, st)
 			}
-			for i, cmd := range []string{"LIST", `LIST "*"`, `LIST "" "*"`} {
+			// LIST takes a reference and a pattern (RFC 3501 §9).
+			for i, cmd := range []string{"LIST", `LIST "*"`} {
+				tag := fmt.Sprintf("b%d", i)
+				lines, st = h.command(tag, "%s", cmd)
+				if len(lines) != 0 || st != tag+" BAD LIST requires a reference and a mailbox pattern" {
+					t.Fatalf("%s: %v / %s", cmd, lines, st)
+				}
+			}
+			for i, cmd := range []string{`LIST "" "*"`} {
 				tag := fmt.Sprintf("l%d", i)
 				lines, st = h.command(tag, "%s", cmd)
 				if fail {
