@@ -192,6 +192,9 @@ func TestPublicDiscoveryExamplesWithVertrag(t *testing.T) {
 			})
 		}
 	}
+	t.Run("recipient_tarpit", func(t *testing.T) {
+		checkRestmailRecipientTarpitExamplesWithVertrag(t, binary)
+	})
 }
 
 // The live contract run sends only pairs with no requires, against its seeded
