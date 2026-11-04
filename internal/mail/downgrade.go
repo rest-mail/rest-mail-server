@@ -2,7 +2,6 @@ package mail
 
 import (
 	"mime"
-	netmail "net/mail"
 	"strings"
 	"unicode/utf8"
 
@@ -32,11 +31,13 @@ var unstructuredFields = map[string]bool{
 // for these clients.
 //
 //   - Subject, Comments and Keywords become RFC 2047 encoded-words.
-//   - In address fields an internationalized domain becomes its A-label. An
-//     address whose local part is non-ASCII cannot be expressed in ASCII, so it
-//     becomes an empty group whose encoded display name shows the original
-//     (RFC 6857 section 3.2.1): the client still sees who it was, and a reply
-//     cannot silently go to a different mailbox.
+//   - An address field changes only what holds an 8-bit octet, see
+//     downgradeAddressField: names, group names and comments become encoded-words,
+//     and an internationalized domain becomes its A-label. An address whose local
+//     part is non-ASCII cannot be expressed in ASCII, so it becomes an empty group
+//     whose encoded display name shows the original (RFC 6857 section 3.1.8): the
+//     client still sees who it was, and a reply cannot silently go to a different
+//     mailbox.
 //   - Content-Type and Content-Disposition keep their meaning: non-ASCII
 //     parameters become RFC 2231 parameters, and every other parameter stays as
 //     it was sent, including one in a charset nothing here can read.
@@ -66,7 +67,7 @@ func DowngradeHeaders(raw string) string {
 			b.WriteString("\r\n")
 			continue
 		}
-		b.WriteString(downgradeField(name, unfold(value)))
+		b.WriteString(downgradeField(name, value))
 		b.WriteString("\r\n")
 	}
 	b.WriteString(sep)
@@ -74,55 +75,25 @@ func DowngradeHeaders(raw string) string {
 	return b.String()
 }
 
-func downgradeField(name, value string) string {
-	value = strings.TrimSpace(value)
+// downgradeField converts one field; value is still folded.
+func downgradeField(name, folded string) string {
 	key := strings.ToLower(strings.TrimSpace(name))
+	if addressFields[key] {
+		if value, ok := downgradeAddressField(len(name)+1, folded); ok {
+			return name + ":" + value
+		}
+	}
+	// White space only: a no-break space at either end is text.
+	value := strings.Trim(unfold(folded), " \t")
 	switch {
 	case unstructuredFields[key]:
 		return name + ": " + encodeText(value)
-	case addressFields[key]:
-		if list, ok := downgradeAddressList(value); ok {
-			return name + ": " + list
-		}
 	case key == "content-type" || key == "content-disposition":
 		if field, ok := wireform.ParameterField(name, value); ok {
 			return field
 		}
 	}
 	return "Downgraded-" + strings.TrimSpace(name) + ": " + encodeText(value)
-}
-
-// downgradeAddressList renders each address with only ASCII. ok is false when
-// the value does not parse as an address list.
-func downgradeAddressList(value string) (string, bool) {
-	addrs, err := netmail.ParseAddressList(value)
-	if err != nil || len(addrs) == 0 {
-		return "", false
-	}
-	out := make([]string, 0, len(addrs))
-	for _, a := range addrs {
-		out = append(out, downgradeAddress(a))
-	}
-	return strings.Join(out, ", "), true
-}
-
-func downgradeAddress(a *netmail.Address) string {
-	at := strings.LastIndexByte(a.Address, '@')
-	local, domain := a.Address, ""
-	if at >= 0 {
-		local, domain = a.Address[:at], a.Address[at+1:]
-	}
-	if !containsNonASCII(local) {
-		if ascii, err := DomainASCII(domain); err == nil {
-			// String encodes a non-ASCII display name as an encoded-word.
-			return (&netmail.Address{Name: a.Name, Address: local + "@" + ascii}).String()
-		}
-	}
-	original := a.Address
-	if a.Name != "" {
-		original = a.Name + " <" + a.Address + ">"
-	}
-	return encodeText(original) + " :;"
 }
 
 // encodeText renders text as encoded-words when it is not plain ASCII. Octets
