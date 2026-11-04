@@ -133,7 +133,7 @@ func escalatingDelay(base, max time.Duration, n int) time.Duration {
 		return 0
 	}
 	steps := max / base
-	if steps <= 0 || time.Duration(n) >= steps {
+	if steps <= 0 || time.Duration(n) > steps {
 		return max
 	}
 	return base * time.Duration(n)

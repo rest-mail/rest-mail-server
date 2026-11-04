@@ -34,6 +34,13 @@ func TestTarpitDelay(t *testing.T) {
 		{"base zero disables", 5, soft, 0, max, 0},
 		{"max zero disables", 5, soft, base, 0, 0},
 		{"huge count no overflow", 1_000_000_000, soft, base, max, 15 * time.Second},
+		{"nonintegral first step", 3, soft, 2 * time.Second, 5 * time.Second, 2 * time.Second},
+		{"nonintegral below cap", 4, soft, 2 * time.Second, 5 * time.Second, 4 * time.Second},
+		{"nonintegral reaches cap", 5, soft, 2 * time.Second, 5 * time.Second, 5 * time.Second},
+		{"nonintegral stays capped", 6, soft, 2 * time.Second, 5 * time.Second, 5 * time.Second},
+		{"base exceeds cap", 3, soft, 6 * time.Second, 5 * time.Second, 5 * time.Second},
+		{"near duration limit", 3, soft, time.Duration(1 << 62), time.Duration(1<<63 - 1), time.Duration(1 << 62)},
+		{"multiplication would overflow", 4, soft, time.Duration(1 << 62), time.Duration(1<<63 - 1), time.Duration(1<<63 - 1)},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

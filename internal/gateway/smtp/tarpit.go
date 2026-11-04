@@ -70,10 +70,10 @@ func tarpitDelay(errCount, softLimit int, base, max time.Duration) time.Duration
 	}
 	over := errCount - softLimit
 	// Compare in whole base-steps to avoid overflowing time.Duration for large
-	// errCount: if the overage reaches the number of base-steps that fit in max,
-	// the delay is capped regardless of the exact product.
+	// errCount. Equality is safe to multiply and, for a non-integral cap, is
+	// still below max; only a larger overage needs capping before multiplication.
 	steps := max / base
-	if steps <= 0 || time.Duration(over) >= steps {
+	if steps <= 0 || time.Duration(over) > steps {
 		return max
 	}
 	return base * time.Duration(over)
