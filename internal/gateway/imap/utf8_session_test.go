@@ -36,7 +36,7 @@ func utf8API(t *testing.T) *apiclient.Client {
 		reply(w, `{"data":[{"name":"INBOX"}]}`)
 	})
 	mux.HandleFunc("/api/v1/accounts/1/folders/INBOX/messages", func(w http.ResponseWriter, r *http.Request) {
-		reply(w, fmt.Sprintf(`{"data":[{"id":7,"subject":"Grüße","raw_size":%d}]}`, len(utf8Raw)))
+		reply(w, fmt.Sprintf(`{"data":[{"id":7,"subject":"Grüße","raw_size":%d,"imap_utf8_size":%d}]}`, len(utf8Raw), len(utf8Raw)))
 	})
 	mux.HandleFunc("/api/v1/messages/7", func(w http.ResponseWriter, r *http.Request) {
 		reply(w, `{"data":{"id":7}}`)

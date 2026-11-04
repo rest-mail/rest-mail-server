@@ -15,6 +15,7 @@ import (
 
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/grants"
+	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
 )
 
 // These speak only to the route, so they hold on any way of reading a request. The rows wanted
@@ -97,6 +98,10 @@ func importedRow(t *testing.T, name, message, extra string) string {
 	var account models.Mailbox
 	if err := db.First(&account, fx.user.ID).Error; err != nil {
 		t.Fatal(err)
+	}
+	source := string(stored.Source())
+	if stored.IMAPSize != rmail.IMAPWireSize(source, false) || stored.IMAPUTF8Size != rmail.IMAPWireSize(source, true) {
+		t.Fatalf("imap_size %d and imap_utf8_size %d do not measure the stored source", stored.IMAPSize, stored.IMAPUTF8Size)
 	}
 	dated := ""
 	if stored.DateHeader != nil {
