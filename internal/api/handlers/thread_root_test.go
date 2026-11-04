@@ -31,6 +31,10 @@ func threadRootFixture(t *testing.T) (*gorm.DB, authzFixture, *MessageHandler) {
 	t.Cleanup(func() { tx.Rollback() })
 	fixture := seedAuthzFixture(t, tx)
 	seedReceiveFixture(t, tx, fixture.ownerMailbox, fixture.attackerMailbox)
+	// Mail is delivered only to a live domain's mailboxes (#1845).
+	if err := tx.Model(&models.Domain{}).Where("id IN ?", []uint{fixture.ownerMailbox.DomainID, fixture.attackerMailbox.DomainID}).Update("active", true).Error; err != nil {
+		t.Fatal(err)
+	}
 	if err := tx.Create(&[]models.QuotaUsage{{MailboxID: fixture.ownerMailbox.ID}, {MailboxID: fixture.attackerMailbox.ID}}).Error; err != nil {
 		t.Fatal(err)
 	}

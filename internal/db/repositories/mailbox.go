@@ -111,11 +111,32 @@ func RequireMailboxReceive(db *gorm.DB, mailbox *models.Mailbox) error {
 	return nil
 }
 
-// FindReceivingMailboxByAddress resolves identity before checking receive
-// grants. A known nonreceiving identity blocks alias/subaddress fallbacks.
+// FindReceivingMailboxByAddress is the one rule for whether a local mailbox takes
+// mail. The RCPT-time recipient checks (GET /api/mailboxes, GET /restmail/mailboxes)
+// and delivery (the recipient_check filter, RESTMAIL delivery) all call it, so a
+// recipient that delivery would refuse is refused at RCPT too (RFC 5321 §3.3, #1845).
+//
+// It resolves identity before checking receive grants. A known nonreceiving identity
+// blocks alias/subaddress fallbacks (ErrMailboxUnavailable).
+//
+// A domain that is not live is not served at all: it has no usable certificate, so
+// mail for it cannot be carried over TLS (issues #289, #290). Its mailboxes are
+// unknown here (plain gorm.ErrRecordNotFound), and mail addressed to them is refused
+// like any other unknown recipient.
 func FindReceivingMailboxByAddress(db *gorm.DB, address string, mailbox *models.Mailbox) error {
 	if err := FindActiveMailboxByAddress(db, address, mailbox); err != nil {
 		return err
 	}
-	return RequireMailboxReceive(db, mailbox)
+	if err := RequireMailboxReceive(db, mailbox); err != nil {
+		return err
+	}
+	var live int64
+	if err := db.Model(&models.Domain{}).Where("id = ? AND active", mailbox.DomainID).Count(&live).Error; err != nil {
+		return err
+	}
+	if live == 0 {
+		*mailbox = models.Mailbox{}
+		return gorm.ErrRecordNotFound
+	}
+	return nil
 }

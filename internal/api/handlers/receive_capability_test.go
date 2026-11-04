@@ -44,10 +44,14 @@ func seedReceiveFixture(t *testing.T, db *gorm.DB, mailboxes ...models.Mailbox) 
 	}
 }
 
-// The storage/policy fault drivers have receive-capable fixture accounts and
-// server ceilings. Their scripted steps continue to describe the dependency
-// whose failure the test exercises; authorization failures have separate tests.
+// The storage/policy fault drivers have receive-capable fixture accounts on a live
+// domain, and server ceilings. Their scripted steps continue to describe the
+// dependency whose failure the test exercises; authorization failures and domains
+// that are not live have separate tests.
 func receiveFixtureRows(query string) (driver.Rows, bool) {
+	if strings.Contains(query, `SELECT count(*) FROM "domains" WHERE id = $1 AND active`) {
+		return &deliveryReadRows{columns: []string{"count"}, values: []driver.Value{int64(1)}}, true
+	}
 	if strings.Contains(query, "FROM grants AS g") {
 		return &deliveryReadRows{columns: []string{"scope", "capability"}, values: []driver.Value{"*", models.CapMailReceive}}, true
 	}

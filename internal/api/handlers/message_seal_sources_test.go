@@ -147,6 +147,10 @@ func TestMessageSealImportPreservesBinaryAndDoesNotBackfillDuplicate(t *testing.
 func TestMessageSealRESTMAILAcceptance(t *testing.T) {
 	database := sealSourceTestDB(t)
 	fixture := seedMsgDeleteFixture(t, database, 0)
+	// Mail is delivered only to a live domain's mailboxes (#1845).
+	if err := database.Model(&models.Domain{}).Where("id = ?", fixture.mailbox.DomainID).Update("active", true).Error; err != nil {
+		t.Fatal(err)
+	}
 	handler := NewRestmailHandler(database, nil, nil, RestmailTarpitConfig{}, RestmailDeliverAuthConfig{})
 	delivered, failed := deliverRESTMAIL(t, handler, "sender@example.test", "From: sender@example.test\r\nSubject: RESTMAIL\r\n\r\nbody", fixture.mailbox.Address)
 	if len(delivered) != 1 || len(failed) != 0 {

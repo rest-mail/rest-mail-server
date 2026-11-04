@@ -328,8 +328,10 @@ type addressCheckQuery struct {
 func (h *MailboxHandler) RegisterAddressCheck(rs endpoint.Routes) {
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/mailboxes",
 		OperationID: "checkMailboxAddress", Summary: "Check whether an address is a mailbox here (protocol gateways)", Tags: []string{"Mailboxes"},
-		Description: "Machine to machine: no user token. An address that is not a mailbox here is 200 with exists " +
-			"false: the gateway then routes it outbound. A reserved alias that cannot route is 403 rejected, never an outbound recipient; the gateway answers its SMTP peer 550.",
+		Description: "Machine to machine: no user token. It applies the rule delivery applies: an address that is " +
+			"not a mailbox here, or is one that may not receive, or is on a domain that is not live, is 200 with " +
+			"exists false, so the gateway refuses it at RCPT (or, on authenticated submission, routes it outbound). " +
+			"A reserved alias that cannot route is 403 rejected, never an outbound recipient; the gateway answers its SMTP peer 550.",
 		Errors: []int{http.StatusUnprocessableEntity, http.StatusForbidden}, Security: oapifly.Public}, h.checkAddress)
 }
 
