@@ -157,6 +157,11 @@ keeps upstream behaviour.
     A plain 8-bit value beside an extended form of the same parameter becomes encoded
     words in its quoted-string, against RFC 2047 §5, because a second extended form
     would make the field unreadable. Readers take the extended form.
+  - An unquoted 8-bit parameter value reads as if it were quoted, for
+    rest-mail/rest-mail-server#1890, because `mime.ParseMediaType` refuses the whole
+    field for one and the entity would read as `text/plain`. The value runs to the
+    next `;`, white space included. A comment in it is still a comment, as anywhere
+    else in the field, and an unbalanced `"` or `(` still makes the field unusable.
 
 - SEARCH decodes a header one encoded word at a time, for
   rest-mail/rest-mail-server#1887, rather than through
