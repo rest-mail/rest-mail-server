@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	rmime "github.com/rest-mail/rest-mail-server/internal/mime"
 	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 )
@@ -101,7 +102,7 @@ func parseRawMessageLimited(data []byte) (subject, bodyText, bodyHTML, messageID
 		// Nothing parseable: keep whatever body text can be recovered rather
 		// than delivering an empty message. Headers stay empty, which is what
 		// an unparseable message can honestly report.
-		return "", recoverBody(data), "", "", "", "", "", nil, nil, "", nil
+		return "", models.ReadableText(recoverBody(data)), "", "", "", "", "", nil, nil, "", nil
 	}
 
 	h := email.Headers
@@ -122,6 +123,16 @@ func parseRawMessageLimited(data []byte) (subject, bodyText, bodyHTML, messageID
 	ccList = bareAddresses(h.Cc)
 
 	bodyText, bodyHTML = rmime.TextAndHTML(email.Body)
+	// These go in the API's text fields, and a message may hold any octets. Its source is what
+	// keeps them.
+	for _, text := range []*string{&subject, &bodyText, &bodyHTML, &messageID, &senderName, &inReplyTo, &references} {
+		*text = models.ReadableText(*text)
+	}
+	for _, list := range [][]string{toList, ccList} {
+		for i := range list {
+			list[i] = models.ReadableText(list[i])
+		}
+	}
 	return
 }
 

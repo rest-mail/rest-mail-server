@@ -16,10 +16,10 @@ import (
 	"reflect"
 	"strings"
 	"sync"
-	"unicode/utf8"
 
 	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
 	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
 )
 
 // An import's request and the message in it go to files, and are read from there (#1437). The
@@ -185,11 +185,8 @@ func (s *importSource) columns() (string, []byte, error) {
 	if _, err := io.Copy(&whole, io.LimitReader(reader, s.limit)); err != nil {
 		return "", nil, fmt.Errorf("read a spooled import: %w", err)
 	}
-	text := whole.String()
-	if utf8.ValidString(text) && !strings.ContainsRune(text, 0) {
-		return text, nil, nil
-	}
-	return "", []byte(text), nil
+	text, octets := models.SourceColumns(whole.String())
+	return text, octets, nil
 }
 
 // importBodyScan is what reading a spooled request found.

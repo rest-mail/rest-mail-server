@@ -127,7 +127,7 @@ type restmailDeliverBody struct {
 	InReplyTo  string                     `json:"in_reply_to,omitempty"`
 	References string                     `json:"references,omitempty"`
 	Headers    map[string]json.RawMessage `json:"headers,omitempty"`
-	RawMessage string                     `json:"raw_message,omitempty"`
+	RawMessage []byte                     `json:"raw_message,omitempty" description:"Full RFC 5322 message, base64-encoded so any octets arrive exactly as sent"`
 	Sender     string                     `json:"sender,omitempty"`
 	Recipients *[]string                  `json:"recipients,omitempty"`
 }
@@ -186,15 +186,15 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput) (Res
 	// Authentication-Results claiming this server's authserv-id did not come
 	// from this server: they are removed first, before anything parses,
 	// verifies or stores the message (RFC 8601 §5).
-	req.RawMessage = rmime.StripAuthResults(req.RawMessage, pipeline.AuthServID)
+	source := rmime.StripAuthResults(string(req.RawMessage), pipeline.AuthServID)
 	// A message from another server with more Received: fields than the hop limit is a mail
 	// loop (RFC 5321 §6.3, #1647), refused as the SMTP gateway refuses it.
-	if rmime.TooManyReceived([]byte(req.RawMessage)) {
+	if rmime.TooManyReceived([]byte(source)) {
 		return RestmailDelivery{}, endpoint.Refuse(http.StatusForbidden, "rejected", "Routing loop detected: too many Received headers")
 	}
 	var parsed *pipeline.EmailJSON
-	if req.RawMessage != "" {
-		p, err := rmime.Parse([]byte(req.RawMessage))
+	if source != "" {
+		p, err := rmime.Parse([]byte(source))
 		if errors.Is(err, rmime.ErrStructureLimit) {
 			// Nested deeper or holding more parts than the MIME limits allow (#1641).
 			return RestmailDelivery{}, endpoint.Refuse(http.StatusForbidden, "rejected", "Message structure too complex: too deeply nested or too many MIME parts")
@@ -249,6 +249,10 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput) (Res
 	if req.MessageID == "" {
 		req.MessageID = rmail.GenerateMessageID(rmail.DomainFromAddress(req.From))
 	}
+	// What was read from the message goes in text columns, and any octets may have come with it.
+	for _, text := range []*string{&req.Subject, &req.BodyText, &req.BodyHTML, &req.MessageID, &req.InReplyTo, &req.References} {
+		*text = models.ReadableText(*text)
+	}
 
 	if len(to) == 0 {
 		return RestmailDelivery{}, endpoint.Invalid(map[string]string{"to": "at least one recipient required"})
@@ -282,7 +286,7 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput) (Res
 	// external sender is accepted regardless of signature.
 	aligned := false
 	if !h.deliverAuth.trusted(clientIP) && (h.deliverAuth.strict || fromLocal) {
-		aligned = dkimAlignedWith(r.Context(), req.RawMessage, fromDomain)
+		aligned = dkimAlignedWith(r.Context(), source, fromDomain)
 	}
 	if ok, reason := h.deliverAuth.authorize(clientIP, fromDomain, fromLocal, aligned); !ok {
 		slog.Warn("restmail: delivery refused by delivery-auth gate (OSI-3)",
@@ -330,7 +334,7 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput) (Res
 	// discard or redirect must not turn refused recipients into acceptances.
 	to = accepted
 	if hasAlias {
-		return h.deliverResolvedRecipients(r.Context(), req, envelopeFrom, clientIP, accepted, refused, resolvedRecipients)
+		return h.deliverResolvedRecipients(r.Context(), req, source, envelopeFrom, clientIP, accepted, refused, resolvedRecipients)
 	}
 
 	delivered := []string{}
@@ -342,7 +346,7 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput) (Res
 		remaining := make([]string, 0, len(to))
 		for _, rcpt := range to {
 			if recipient, ok := recipients[rcpt]; ok {
-				consumed, err := h.tlsReports.receive(r.Context(), recipient.mailbox.Address, req.RawMessage)
+				consumed, err := h.tlsReports.receive(r.Context(), recipient.mailbox.Address, source)
 				if err != nil {
 					return RestmailDelivery{}, endpoint.Refuse(http.StatusServiceUnavailable, "deferred", "Message deferred, retry later")
 				}
@@ -367,7 +371,7 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput) (Res
 	// (with its real headers, including Headers.Raw) seeds the message so
 	// header-dependent filters see the actual headers, mirroring the SMTP inbound
 	// path; the structured request fields fill any gaps.
-	emailJSON := buildInboundEmail(parsed, envelopeFrom, req.From, to, req.Subject, req.Date, req.MessageID, req.BodyText, req.BodyHTML, req.RawMessage, restmailClientIP(r))
+	emailJSON := buildInboundEmail(parsed, envelopeFrom, req.From, to, req.Subject, req.Date, req.MessageID, req.BodyText, req.BodyHTML, source, restmailClientIP(r))
 
 	// Look up inbound pipeline for the recipient domain
 	var domainName string
@@ -465,7 +469,7 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput) (Res
 			// actually enqueued, so a redirect that cannot be honoured never loses
 			// the message.
 			forwarded := 0
-			for _, fwd := range buildRedirectForwards(result.FinalEmail, req.RawMessage, req.From, to, domainName, authResults) {
+			for _, fwd := range buildRedirectForwards(result.FinalEmail, source, req.From, to, domainName, authResults) {
 				row := fwd
 				if err := h.db.WithContext(r.Context()).Create(&row).Error; err != nil {
 					slog.Error("restmail: failed to enqueue sieve redirect",
@@ -493,7 +497,7 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput) (Res
 	// prepended). Previously the stored message had no raw form at all, so
 	// RESTMAIL-delivered mail lost its full MIME (attachments, headers) over
 	// IMAP/POP3 and couldn't be re-verified.
-	rawMessage := req.RawMessage
+	rawMessage := source
 	if rawMessage != "" {
 		rawMessage = pipeline.AuthResultsHeader(authResults) + rawMessage
 	}
@@ -554,7 +558,7 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput) (Res
 				continue
 			}
 			forwarded := 0
-			for _, fwd := range buildRedirectForwards(final, req.RawMessage, req.From, []string{rcpt}, domainName, authResults) {
+			for _, fwd := range buildRedirectForwards(final, source, req.From, []string{rcpt}, domainName, authResults) {
 				row := fwd
 				if err := h.db.WithContext(r.Context()).Create(&row).Error; err != nil {
 					slog.Error("restmail: failed to enqueue sieve redirect", "recipient", row.Recipient, "error", err)

@@ -307,7 +307,7 @@ func (h *MessageImportHandler) storeImportedMessage(r *http.Request, accountID u
 
 // importedText is a decoded header or body as a text column can hold it.
 func importedText(value string) string {
-	return strings.ToValidUTF8(strings.ReplaceAll(value, "\x00", "�"), "�")
+	return models.ReadableText(value)
 }
 
 // storeAttachmentPart stores one decoded part as it is read. The object store has to be told a

@@ -89,7 +89,8 @@ type Message struct {
 	// before this column existed, with no backfill, and when no rule assigned one.
 	RuleClass    string `gorm:"size:16;default:null" json:"-"`
 	PendingDraft bool   `gorm:"-" json:"-"`
-	// RawOctets preserves imported sources that PostgreSQL text cannot represent.
+	// RawOctets preserves sources that PostgreSQL text cannot represent. RawMessage is empty
+	// then: Source and SourceText read whichever holds the message.
 	RawOctets         []byte `gorm:"type:bytea" json:"-"`
 	CalendarEventsRaw JSONB  `gorm:"column:calendar_events;type:jsonb" json:"calendar_events,omitempty"`
 	SizeBytes         int    `gorm:"not null;default:0" json:"size_bytes"`
@@ -156,6 +157,15 @@ func (Message) TableName() string { return "messages" }
 // BeforeCreate measures the downgraded size of a message stored with its raw
 // source, on every path that stores one, so no delivery path can forget it.
 func (m *Message) BeforeCreate(*gorm.DB) error {
+	if m.RawOctets == nil {
+		m.RawMessage, m.RawOctets = SourceColumns(m.RawMessage)
+	}
+	for _, text := range []*string{&m.MsgID, &m.InReplyTo, &m.References, &m.ThreadID, &m.Sender, &m.SenderName, &m.Subject, &m.BodyText, &m.BodyHTML} {
+		*text = ReadableText(*text)
+	}
+	for _, list := range []*JSONB{&m.RecipientsTo, &m.RecipientsCc, &m.Headers, &m.CalendarEventsRaw} {
+		*list = readableJSON(*list)
+	}
 	if m.DowngradedSize == 0 && m.RawSize > 0 {
 		m.DowngradedSize = rmail.DowngradedSize(string(m.Source()))
 	}
@@ -168,10 +178,18 @@ func (m *Message) BeforeCreate(*gorm.DB) error {
 	return err
 }
 
-// Source returns original octets, including historical non-UTF-8 and NUL data.
+// Source returns original octets, including non-UTF-8 and NUL data.
 func (m Message) Source() []byte {
 	if m.RawOctets != nil {
 		return m.RawOctets
 	}
 	return []byte(m.RawMessage)
+}
+
+// SourceText is Source as a string, with no copy of a source stored as text.
+func (m Message) SourceText() string {
+	if m.RawOctets != nil {
+		return string(m.RawOctets)
+	}
+	return m.RawMessage
 }

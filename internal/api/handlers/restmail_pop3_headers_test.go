@@ -80,7 +80,7 @@ func TestRESTMAILStoredHeadersThroughPOP3RETR(t *testing.T) {
 			}
 			original := "From: sender@external.test\r\nSubject: Stored headers\r\nMessage-ID: <original@example.test>\r\n\r\nOriginal body.\r\n"
 			if withRaw {
-				payload["raw_message"] = original
+				payload["raw_message"] = []byte(original)
 			}
 			encoded, err := json.Marshal(payload)
 			if err != nil {
