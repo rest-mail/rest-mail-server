@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
-"""Stage 1 of the installed-cluster check (#1750): drive a fresh Helm install.
+"""Stages 1 and 2 of the installed-cluster check (#1750): drive a fresh Helm install.
 
 It runs against a cluster where helm/restmail is already installed, with the
-production images, and reaches it the way an operator would from outside: a
-kubectl port-forward to each Service. The same command runs in
-.github/workflows/cluster-e2e.yml and locally as `chore cluster:e2e`. It needs
-python3, kubectl, openssl and the cluster, and nothing else: no Go toolchain, no
-repository build. The API description it checks is the one the running install
-serves.
+production images. Stage 1 reaches it through a kubectl port-forward to each
+Service; stage 2 through the install's Ingress, the way a client outside the
+cluster does. The same command runs in .github/workflows/cluster-e2e.yml and
+locally as `chore cluster:e2e`. Stage 1 needs python3, kubectl, openssl and the
+cluster, and nothing else: no Go toolchain, no repository build. Stage 2 adds PyYAML and
+the pinned Vertrag (scripts/vertrag_pin.py installs it). The API description
+both check is the one the running install serves.
 
 Each step tests REST Mail's wiring, not the components' own behaviour:
 
@@ -27,6 +28,18 @@ Each step tests REST Mail's wiring, not the components' own behaviour:
   filter-validate
                 the API validates a JavaScript filter, which only the js-filter
                 sidecar can answer
+  contract-examples
+                stage 2: Vertrag's examples phase sent through the Ingress
+                (--ingress-url) against the description the install serves
+                there, which must be the one the pod served in `description`.
+                It is narrowed to what a fresh install answers without fixture
+                data or a credential: the operations the description marks
+                public, read-only (GET) and under the Ingress's API path, less
+                the gateways' machine routes, which are only on the internal
+                mTLS listener. The rest of the examples need the E2E seed
+                (fixture principals and data, tests/contract/fixtures), which a
+                production image does not carry. Reports (HTML, JUnit, JSON,
+                Markdown, HAR) go to <report-dir>/contract/.
 
 Every step prints one receipt line: the commit, the images the pods run, the
 step and its result. Receipts also go to <report-dir>/receipts.txt.
@@ -68,7 +81,14 @@ STEPS = (
     "smtp-rcpt",
     "imap-sign-in",
     "filter-validate",
+    "contract-examples",
 )
+
+ROOT = Path(__file__).resolve().parents[1]
+
+# The path the chart's API Ingress routes to the API (api.ingress.path), and
+# the prefix of every API path the description documents.
+API_PATH = "/api"
 
 # The Services the chart makes and the port each one is reached on.
 SERVICES = {"api": 8080, "smtp-gateway": 25, "imap-gateway": 993}
@@ -89,7 +109,7 @@ class StepFailed(Exception):
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="cluster_e2e.py",
-        description="Stage 1 of the installed-cluster check (#1750) against a running Helm install.",
+        description="Stages 1 and 2 of the installed-cluster check (#1750) against a running Helm install.",
     )
     parser.add_argument("--namespace", default=os.environ.get("NAMESPACE", "restmail"))
     parser.add_argument("--release", default=os.environ.get("RELEASE", "restmail"),
@@ -102,11 +122,20 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                         help="seconds to wait for each port-forward and for the API to answer")
     parser.add_argument("--only", action="append", choices=STEPS, metavar="STEP",
                         help="run only these steps (repeatable); later steps need earlier ones' state")
+    parser.add_argument("--ingress-url", default=os.environ.get("INGRESS_URL", ""),
+                        help="the install's API Ingress, e.g. https://mail.restmail-ci.test (contract-examples)")
+    parser.add_argument("--ingress-ca", default=os.environ.get("INGRESS_CA", ""),
+                        help="PEM certificate to trust for the Ingress's TLS, besides the system roots")
+    parser.add_argument("--vertrag", default=os.environ.get("CONTRACT_VERTRAG", ""),
+                        help="the Vertrag binary (default: the pinned one, from scripts/vertrag_pin.py ensure)")
     args = parser.parse_args(argv)
     if args.timeout <= 0:
         parser.error("--timeout must be positive")
     if not args.release or "/" in args.release:
         parser.error("--release must be a name")
+    if args.ingress_url and not re.match(r"https?://[^/]+$", args.ingress_url.rstrip("/")):
+        parser.error("--ingress-url must be a scheme and host, without a path")
+    args.ingress_url = args.ingress_url.rstrip("/")
     if not args.commit:
         args.commit = git_head()
     return args
@@ -248,8 +277,9 @@ def self_signed_certificate(domain: str) -> tuple[str, str]:
 
 
 class Api:
-    def __init__(self, base: str):
+    def __init__(self, base: str, ca: str = ""):
         self.base = base.rstrip("/")
+        self.context = ssl.create_default_context(cafile=ca or None) if base.startswith("https:") else None
 
     def call(self, method: str, path: str, body: dict | None = None, token: str = "") -> tuple[int, dict]:
         data = None if body is None else json.dumps(body).encode()
@@ -259,7 +289,7 @@ class Api:
         if token:
             request.add_header("Authorization", "Bearer " + token)
         try:
-            with urllib.request.urlopen(request, timeout=30) as response:
+            with urllib.request.urlopen(request, timeout=30, context=self.context) as response:
                 status, raw = response.status, response.read()
         except urllib.error.HTTPError as error:
             status, raw = error.code, error.read()
@@ -282,7 +312,93 @@ class Api:
         return self.call("POST", "/api/v1/auth/login", body)
 
 
-class Stage1:
+def contract_operations(description: dict, internal: set[str], api_path: str = API_PATH) -> list[str]:
+    """The operations a fresh install answers through its Ingress with no data.
+
+    Public (the operation's security, else the description's, is empty or
+    allows no credential), read-only (GET), and under the Ingress's API path.
+    The gateways' machine routes (internal) are left out: production serves
+    them only on the internal mTLS listener, which no Ingress reaches.
+    """
+    default = description.get("security") or []
+    chosen = set()
+    for path, item in (description.get("paths") or {}).items():
+        if path != api_path and not path.startswith(api_path + "/"):
+            continue
+        operation = item.get("get") if isinstance(item, dict) else None
+        if not isinstance(operation, dict) or not operation.get("operationId"):
+            continue
+        security = operation.get("security", default)
+        if security and {} not in security:
+            continue
+        if operation["operationId"] not in internal:
+            chosen.add(operation["operationId"])
+    return sorted(chosen)
+
+
+def internal_operations(config: dict) -> set[str]:
+    """The operations vertrag.yml sends to the internal listener (its endpoints)."""
+    names = set()
+    for entry in config.get("endpoints") or []:
+        ids = entry.get("operation-id") or []
+        names.update([ids] if isinstance(ids, str) else ids)
+    return names
+
+
+def contract_config(config: dict, configure, endpoint: str, spec: str, base: Path) -> dict:
+    """vertrag.yml as stage 2 runs it, through tests/contract/reports.py's configure.
+
+    The endpoint, the saved description and the report paths are set the way
+    `CONTRACT_ENDPOINT=... chore contract` sets them, narrowed (no surface gate:
+    it is about the whole API). What only the E2E topology has is taken out:
+    the fixture admin's sign-in and the hooks, which make and read fixture data
+    over docker exec. With no credential, there is nothing for the
+    ignored-auth check to re-send.
+    """
+    config = configure(dict(config), ROOT, base, narrowed=True, endpoint=endpoint, spec=spec)
+    for key in ("auth", "hookfiles", "language", "hooks-worker-timeout", "endpoints"):
+        config.pop(key, None)
+    config["checks"] = {**(config.get("checks") or {}), "ignored-auth": False}
+    config["unproven"] = str(Path(base).resolve().parent / "unproven.json")
+    return config
+
+
+def vertrag_command(binary: str, config: Path, operations: list[str], ca: str = "") -> list[str]:
+    """The examples phase, in the links' order, of the chosen operations only."""
+    command = [binary, "run", "--config", str(config), "--sequence", "--phases", "examples"]
+    if ca:
+        command += ["--ca-cert", ca]
+    for name in operations:
+        command += ["--operation-id", name]
+    return command
+
+
+def junit_counts(path: Path) -> tuple[int, int, int]:
+    """Transactions, failures (with errors) and skips in a JUnit report."""
+    import xml.etree.ElementTree as ElementTree
+    try:
+        root = ElementTree.parse(path).getroot()
+    except ElementTree.ParseError as error:
+        raise StepFailed(f"{path.name} is not a JUnit report: {error}") from error
+    suites = [root] if root.tag == "testsuite" else root.findall("testsuite")
+    total = failed = skipped = 0
+    for suite in suites:
+        total += int(suite.get("tests", 0))
+        failed += int(suite.get("failures", 0)) + int(suite.get("errors", 0))
+        skipped += int(suite.get("skipped", 0))
+    return total, failed, skipped
+
+
+def load_reports_module():
+    """tests/contract/reports.py, the contract run's own vertrag.yml writer."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("contract_reports", ROOT / "tests/contract/reports.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+class Stages:
     def __init__(self, args: argparse.Namespace, cluster: Cluster):
         self.args, self.cluster = args, cluster
         self.report_dir = Path(args.report_dir)
@@ -300,6 +416,7 @@ class Stage1:
         if status != 200 or "openapi" not in answer:
             raise StepFailed(f"GET /api/docs/openapi.json answered {status} without an openapi field")
         (self.report_dir / "openapi.json").write_text(json.dumps(answer, indent=1))
+        self.state["description"] = answer
         return f"openapi={answer['openapi']},paths={len(answer.get('paths', {}))}"
 
     def admin_sign_in(self) -> str:
@@ -411,6 +528,53 @@ class Stage1:
             raise StepFailed(f"the sidecar's verdicts were {verdicts}, want valid=True, broken=False")
         return "valid=true,broken=false"
 
+    def contract_examples(self) -> str:
+        if not self.args.ingress_url:
+            raise StepFailed("needs --ingress-url (INGRESS_URL), the install's API Ingress")
+        import yaml  # stage 2 only: stage 1 needs nothing past the standard library
+        out = self.report_dir / "contract"
+        out.mkdir(parents=True, exist_ok=True)
+        ingress = Api(self.args.ingress_url, self.args.ingress_ca)
+        deadline = time.monotonic() + self.args.timeout
+        while (status := ingress.call("GET", "/api/health")[0]) != 200:
+            if time.monotonic() > deadline:
+                raise StepFailed(f"GET {self.args.ingress_url}/api/health through the Ingress answered {status}")
+            time.sleep(2)
+        status, served = ingress.call("GET", "/api/docs/openapi.json")
+        if status != 200 or "openapi" not in served:
+            raise StepFailed(f"the Ingress answered {status} for /api/docs/openapi.json")
+        if "description" in self.state and served != self.state["description"]:
+            raise StepFailed("the Ingress serves a different description from the one the API pod served")
+        spec = out / "openapi.json"
+        spec.write_text(json.dumps(served, indent=1))
+        base = yaml.safe_load((ROOT / "vertrag.yml").read_text())
+        operations = contract_operations(served, internal_operations(base))
+        if not operations:
+            raise StepFailed("the description has no public read-only operation under " + API_PATH)
+        config = contract_config(base, load_reports_module().configure, self.args.ingress_url, str(spec),
+                                 out / "examples")
+        config_path = out / "vertrag-examples.yml"
+        config_path.write_text(yaml.safe_dump(config, sort_keys=False, allow_unicode=True))
+        binary = self.args.vertrag or self.pinned_vertrag()
+        command = vertrag_command(binary, config_path, operations, self.args.ingress_ca)
+        with open(out / "examples.log", "w") as log:
+            log.write("$ " + " ".join(command) + "\n")
+            log.flush()
+            code = subprocess.run(command, cwd=ROOT, stdout=log, stderr=subprocess.STDOUT).returncode
+        total, failed, skipped = junit_counts(out / "examples.xml") if (out / "examples.xml").exists() else (0, 0, 0)
+        detail = (f"operations={len(operations)},transactions={total},failed={failed},skipped={skipped},"
+                  f"report=contract/examples.html")
+        if code != 0 or failed or total == 0:
+            raise StepFailed(f"Vertrag exited {code}: {detail} (see contract/examples.log)")
+        return detail
+
+    def pinned_vertrag(self) -> str:
+        out = subprocess.run([sys.executable, "-B", str(ROOT / "scripts/vertrag_pin.py"), "ensure",
+                              str(ROOT / ".cache/bin")], capture_output=True, text=True)
+        if out.returncode != 0 or not out.stdout.strip():
+            raise StepFailed(f"the pinned Vertrag could not be installed: {out.stderr.strip()[-300:]}")
+        return out.stdout.strip().splitlines()[-1]
+
     # ── plumbing ─────────────────────────────────────────────────────────
     def need_api(self) -> Api:
         if self.api is None:
@@ -435,7 +599,7 @@ def main(argv: list[str] | None = None) -> int:
     report_dir = Path(args.report_dir)
     report_dir.mkdir(parents=True, exist_ok=True)
     cluster = Cluster(args.kubectl, args.namespace, args.release, report_dir)
-    stage = Stage1(args, cluster)
+    stage = Stages(args, cluster)
     try:
         images = image_summary(cluster.images())
     except StepFailed as error:
@@ -454,7 +618,7 @@ def main(argv: list[str] | None = None) -> int:
                     try:
                         detail = getattr(stage, step.replace("-", "_"))()
                         line = receipt(args.commit, images, step, "pass", detail)
-                    except (StepFailed, OSError, smtplib.SMTPException, KeyError) as error:
+                    except (StepFailed, OSError, smtplib.SMTPException, KeyError, ImportError) as error:
                         failed = True
                         line = receipt(args.commit, images, step, "fail", str(error))
                         print(f"::error::{step}: {error}", file=sys.stderr)

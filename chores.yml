@@ -612,9 +612,12 @@ tasks:
       - python3 scripts/vertrag_pin.py install .cache/bin
 
   cluster:e2e:
-    desc: 'Stage 1 of the installed-cluster check against a fresh helm/restmail install (kubectl context); the same script cluster-e2e.yml runs'
+    desc: 'Stages 1 and 2 of the installed-cluster check against a fresh helm/restmail install (kubectl context); the same script cluster-e2e.yml runs'
     cmds:
-      # Needs python3 and kubectl only. NAMESPACE, RELEASE and REPORT_DIR
+      # Stage 1 needs python3 and kubectl only; stage 2 (contract-examples)
+      # also PyYAML, the pinned Vertrag (installed into .cache/bin) and the
+      # install's API Ingress: INGRESS_URL, with INGRESS_CA for a certificate
+      # the system does not trust. NAMESPACE, RELEASE and REPORT_DIR
       # (defaults restmail, restmail, cluster-report) pick the install; extra
       # arguments go to the script, e.g. `chore cluster:e2e -- --only health`.
       - python3 -B scripts/cluster_e2e.py {{.CLI_ARGS}}
