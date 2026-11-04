@@ -55,25 +55,23 @@ func parseContentType(value string) (string, map[string]string, error) {
 	if hasParameters {
 		base += ";" + parameters
 	}
-	return parseMediaType(base)
+	mt, params, err := parseMediaType(base)
+	return mt, restoreNames(value, params), err
 }
 
 // uncommentMIME replaces each RFC 822 §3.4.3 comment in a MIME header value
 // (RFC 2045 §5.1, RFC 2183 §2) with a space for mime.ParseMediaType. Comments
 // separate tokens; deleting them must not join an invalid split token. Quoted
 // parameter values (including parentheses and quoted-pairs) stay intact.
-// Unbalanced comments and unterminated quoted strings are errors.
+// Unbalanced comments and unterminated quoted strings are errors, in a 7-bit field.
+// One holding an 8-bit octet is already malformed, and is read without refusing it,
+// see readField, because its text has no other home.
 func uncommentMIME(value string) (string, error) {
-	text, _, err := splitComments(value)
-	return text, err
-}
-
-// splitComments is uncommentMIME that also returns each comment it replaced, with
-// its delimiters.
-func splitComments(value string) (string, []string, error) {
+	if has8bit(value) {
+		return readableField(value), nil
+	}
 	var b strings.Builder
-	var comments []string
-	depth, start := 0, 0
+	depth := 0
 	quoted := false
 	for i := 0; i < len(value); i++ {
 		c := value[i]
@@ -86,9 +84,6 @@ func splitComments(value string) (string, []string, error) {
 				depth++
 			case ')':
 				depth--
-				if depth == 0 {
-					comments = append(comments, value[start:i+1])
-				}
 			}
 		case quoted:
 			b.WriteByte(c)
@@ -100,19 +95,18 @@ func splitComments(value string) (string, []string, error) {
 			}
 		case c == '(':
 			depth = 1
-			start = i
 			b.WriteByte(' ')
 		case c == ')':
-			return "", nil, mime.ErrInvalidMediaParameter
+			return "", mime.ErrInvalidMediaParameter
 		default:
 			b.WriteByte(c)
 			quoted = c == '"'
 		}
 	}
 	if depth != 0 || quoted {
-		return "", nil, mime.ErrInvalidMediaParameter
+		return "", mime.ErrInvalidMediaParameter
 	}
-	return b.String(), comments, nil
+	return b.String(), nil
 }
 
 // partStructure builds the body structure for one MIME entity given its header
@@ -282,6 +276,7 @@ func dispositionField(header textproto.MIMEHeader, sessionUTF8 bool) string {
 	if err != nil || disptype == "" || strings.Contains(disptype, "/") {
 		return "NIL"
 	}
+	params = restoreNames(cd, params)
 	return "(" + wire.EncodeMailboxName(strings.ToUpper(disptype)) + " " + paramList(params, sessionUTF8) + ")"
 }
 
@@ -353,12 +348,24 @@ func paramList(params map[string]string, sessionUTF8 bool) string {
 		if i > 0 {
 			b.WriteByte(' ')
 		}
-		b.WriteString(wire.EncodeMailboxName(strings.ToUpper(k)))
+		b.WriteString(wire.EncodeMailboxName(metadataText(upperASCII(k), sessionUTF8)))
 		b.WriteByte(' ')
 		b.WriteString(wire.EncodeMailboxName(metadataText(params[k], sessionUTF8)))
 	}
 	b.WriteByte(')')
 	return b.String()
+}
+
+// upperASCII is strings.ToUpper for ASCII only: a name may hold octets that aren't
+// UTF-8, which strings.ToUpper would replace.
+func upperASCII(s string) string {
+	b := []byte(s)
+	for i, c := range b {
+		if c >= 'a' && c <= 'z' {
+			b[i] = c - 'a' + 'A'
+		}
+	}
+	return string(b)
 }
 
 // countLines returns the number of text lines in body — the count RFC 3501's

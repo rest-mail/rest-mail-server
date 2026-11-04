@@ -197,3 +197,21 @@ func TestDowngradedSize_CountsTheConvertedAddressField(t *testing.T) {
 		t.Fatalf("DowngradedSize = %d, want %d", got, want)
 	}
 }
+
+// A malformed Content-Type stays a Content-Type through the downgrade with its text,
+// rather than being renamed, and the POP3 reader of an 8-bit boundary still decodes the
+// one the delimiter lines hold, because the body isn't touched.
+func TestDowngrade_MalformedParameterKeepsItsField(t *testing.T) {
+	for _, tc := range []struct{ stored, want string }{
+		{`Content-Type: application/pdf; name=Jörg (1).pdf`, "Content-Type: application/pdf;\r\n name*=UTF-8''J%C3%B6rg%20%281%29.pdf"},
+		{`Content-Type: application/pdf; name=Jö"rg.pdf`, "Content-Type: application/pdf;\r\n name*=UTF-8''J%C3%B6%22rg.pdf"},
+		{`Content-Type: application/pdf; näme=x`, "Content-Type: application/pdf;\r\n n%C3%A4me=x"},
+		{`Content-Disposition: attachment; filename=Jö(rg.pdf`, "Content-Disposition: attachment;\r\n filename*=UTF-8''J%C3%B6%28rg.pdf"},
+		{`Content-Type: multipart/mixed; boundary="Jö"`, "Content-Type: multipart/mixed;\r\n boundary*=UTF-8''J%C3%B6"},
+	} {
+		got := DowngradeHeaders(tc.stored + "\r\n\r\n--J\xc3\xb6\r\n")
+		if want := tc.want + "\r\n\r\n--J\xc3\xb6\r\n"; got != want {
+			t.Fatalf("%q:\n got %q\nwant %q", tc.stored, got, want)
+		}
+	}
+}
