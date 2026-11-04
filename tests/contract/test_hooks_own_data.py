@@ -1219,5 +1219,167 @@ class OwnDataHooks(unittest.TestCase):
         })
 
 
+class ListingsHoldWhatWasMade(OwnDataHooks):
+    """A listing's 200 after a reset must list what its before hook made (#1785)."""
+
+    LISTED_TLS = {"id": 7, "reporting_org": "Contract Reporter", "policy_domain": "restmail.test"}
+
+    def answered(self, transaction, rows, status=200):
+        transaction["real"] = {
+            "statusCode": str(status),
+            "body": json.dumps({"data": rows, "pagination": {"total": len(rows)}}),
+        }
+        return transaction
+
+    def noted(self, transaction, what, match):
+        self.stub.stash["listing_made"] = {
+            "name": transaction["name"], "what": what, "match": match,
+        }
+
+    def tls_listing(self, rows):
+        transaction = self.transaction(200, "/api/v1/admin/tls-reports?limit=20")
+        self.noted(transaction, "TLS report", {
+            "reporting_org": "Contract Reporter", "policy_domain": "restmail.test",
+        })
+        return self.answered(transaction, rows)
+
+    def test_the_three_listings_are_checked_after_they_answer(self):
+        source = (ROOT / "tests/contract/hooks.py").read_text()
+        self.assertIn(
+            '@hooks.after("listTlsReports")\n@hooks.after("listPipelines")\n'
+            '@hooks.after("listThreads")\ndef the_listing_holds_what_was_made(',
+            source,
+        )
+
+    def test_a_tls_report_listing_notes_the_report_it_received(self):
+        self.clean_starts_on()
+        transaction = self.transaction(200, "/api/v1/admin/tls-reports?limit=20")
+        self.hooks.report_and_audit_reads_after_a_reset(transaction)
+        self.assertEqual(self.stub.stash["listing_made"], {
+            "name": transaction["name"],
+            "what": "TLS report",
+            "match": {"reporting_org": "Contract Reporter", "policy_domain": "restmail.test"},
+        })
+
+    def test_a_pipeline_listing_notes_the_pipeline_it_made(self):
+        self.clean_starts_on()
+        self.hooks.a_domain_of_its_own = lambda transaction: 31
+        self.hooks.a_pipeline_of_its_own = lambda transaction, domain_id: 32
+        transaction = self.transaction(200, "/api/v1/admin/pipelines?limit=20")
+        self.hooks.pipeline_reads_after_a_reset(transaction)
+        self.assertEqual(self.stub.stash["listing_made"]["match"], {"id": 32})
+        self.assertEqual(self.stub.stash["listing_made"]["what"], "pipeline")
+
+    def test_the_awaiting_list_notes_the_subject_of_its_thread(self):
+        self.clean_starts_on()
+        self.hooks.mailbox_id = lambda origin, address: 4
+        transaction = self.transaction(200, "/api/v1/accounts/1/threads?state=awaiting&limit=1")
+        self.hooks.on_the_admins_mailbox_after_a_reset(transaction)
+        [(_, body)] = self.server.imports
+        raw = base64.b64decode(body["raw_message"]).decode()
+        subject = self.stub.stash["listing_made"]["match"]["last_message.subject"]
+        self.assertTrue(subject.startswith("Contract awaiting "))
+        self.assertIn(f"\r\nSubject: {subject}\r\n", raw)
+
+    def test_the_page_after_a_cursor_is_noted_as_holding_none_of_it(self):
+        self.clean_starts_on()
+        self.hooks.mailbox_id = lambda origin, address: 4
+        transaction = self.transaction(
+            200, "/api/v1/accounts/1/threads?state=awaiting&limit=1&cursor=eyJpZCI6NzJ9"
+        )
+        self.hooks.on_the_admins_mailbox_after_a_reset(transaction)
+        self.assertIsNone(self.stub.stash["listing_made"]["match"])
+        self.hooks.the_listing_holds_what_was_made(self.answered(transaction, []))
+        self.assertNotIn("fail", transaction)
+
+    def test_a_listing_that_holds_what_was_made_passes(self):
+        self.clean_starts_on()
+        transaction = self.tls_listing([
+            {"id": 3, "reporting_org": "Other", "policy_domain": "restmail.test"},
+            self.LISTED_TLS,
+        ])
+        self.hooks.the_listing_holds_what_was_made(transaction)
+        self.assertNotIn("fail", transaction)
+        self.assertNotIn("listing_made", self.stub.stash)
+
+    def test_a_nested_field_is_matched_in_its_object(self):
+        self.clean_starts_on()
+        transaction = self.transaction(200, "/api/v1/accounts/4/threads?state=awaiting")
+        self.noted(transaction, "thread", {"last_message.subject": "Contract awaiting 1"})
+        self.answered(transaction, [{"thread_id": "t", "last_message": {"subject": "Contract awaiting 1"}}])
+        self.hooks.the_listing_holds_what_was_made(transaction)
+        self.assertNotIn("fail", transaction)
+        self.noted(transaction, "thread", {"last_message.subject": "Contract awaiting 1"})
+        self.answered(transaction, [{"thread_id": "t", "last_message": {"subject": "Contract awaiting 2"}}])
+        self.hooks.the_listing_holds_what_was_made(transaction)
+        self.assertIn("does not hold the thread made for it", transaction["fail"])
+
+    def test_an_empty_listing_fails(self):
+        self.clean_starts_on()
+        transaction = self.tls_listing([])
+        self.hooks.the_listing_holds_what_was_made(transaction)
+        self.assertEqual(
+            transaction["fail"],
+            "the listing does not hold the TLS report made for it (reporting_org "
+            "'Contract Reporter', policy_domain 'restmail.test'): it answered 0 other rows",
+        )
+
+    def test_a_listing_of_something_else_fails(self):
+        self.clean_starts_on()
+        for row in (
+            {"id": 3, "reporting_org": "Other", "policy_domain": "restmail.test"},
+            {"id": 4, "reporting_org": "Contract Reporter", "policy_domain": "other.test"},
+        ):
+            with self.subTest(row=row):
+                transaction = self.tls_listing([row])
+                self.hooks.the_listing_holds_what_was_made(transaction)
+                self.assertIn("it answered 1 other row", transaction["fail"])
+        transaction = self.transaction(200, "/api/v1/admin/pipelines?limit=20")
+        self.noted(transaction, "pipeline", {"id": 32})
+        self.hooks.the_listing_holds_what_was_made(self.answered(transaction, [{"id": 31}, {"id": 33}]))
+        self.assertIn("pipeline made for it (id 32)", transaction["fail"])
+
+    def test_a_listing_with_nothing_made_for_it_fails(self):
+        self.clean_starts_on()
+        transaction = self.answered(
+            self.transaction(200, "/api/v1/admin/tls-reports"), [self.LISTED_TLS]
+        )
+        self.hooks.the_listing_holds_what_was_made(transaction)
+        self.assertIn("nothing made for it", transaction["fail"])
+
+    def test_another_exchanges_note_is_dropped_and_not_used(self):
+        self.clean_starts_on()
+        self.tls_listing([])
+        transaction = self.answered(
+            self.transaction(200, "/api/v1/admin/tls-reports", name="/y > Y"), [self.LISTED_TLS]
+        )
+        self.hooks.the_listing_holds_what_was_made(transaction)
+        self.assertIn("nothing made for it", transaction["fail"])
+        self.assertNotIn("listing_made", self.stub.stash)
+
+    def test_refusals_and_failed_statuses_are_left_to_their_own_checks(self):
+        self.clean_starts_on()
+        refused = self.answered(self.transaction(422, "/api/v1/admin/tls-reports?limit=0"), [], 422)
+        self.hooks.the_listing_holds_what_was_made(refused)
+        self.assertNotIn("fail", refused)
+        # A 200 that answered something else fails on its status, not here.
+        transaction = self.tls_listing([])
+        transaction["real"]["statusCode"] = "500"
+        self.hooks.the_listing_holds_what_was_made(transaction)
+        self.assertNotIn("fail", transaction)
+
+    def test_a_run_without_a_reset_is_left_alone(self):
+        for transaction in (
+            self.tls_listing([]),
+            self.answered(self.transaction(200, "/api/v1/admin/pipelines"), []),
+        ):
+            self.hooks.the_listing_holds_what_was_made(transaction)
+            self.assertNotIn("fail", transaction)
+        self.assertEqual(self.server.calls, [])
+        # Without the switch the before hooks note nothing either.
+        transaction = self.transaction(200, "/api/v1/admin/tls-reports")
+        self.hooks.report_and_audit_reads_after_a_reset(transaction)
+        self.assertNotIn("listing_made", self.stub.stash)
+
 if __name__ == "__main__":
     unittest.main()
