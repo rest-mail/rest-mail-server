@@ -88,6 +88,8 @@ class SelectedGate(unittest.TestCase):
                 "from pathlib import Path\n"
                 "print(Path(__file__).resolve().parents[1] / 'vertrag')\n"
             )
+            # The version receipt has its own tests (test_substrate_pins.py).
+            (work / "scripts/substrate_pins.py").write_text("")
             binary = work / "vertrag"
             binary.write_text(
                 "#!/usr/bin/env python3\n"
