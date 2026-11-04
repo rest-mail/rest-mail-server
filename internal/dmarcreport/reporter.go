@@ -11,11 +11,13 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"net/url"
 	"strings"
 	"time"
 
 	"github.com/rest-mail/go-dmarc/pkg/dmarc"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
 	"github.com/rest-mail/rest-mail-server/internal/version"
 	"gorm.io/gorm"
 )
@@ -247,17 +249,28 @@ func orDomain(recorded, result, reported string) string {
 
 // mailtoRUAs returns the addresses of the mailto: URIs in ruas, in order.
 // Other schemes are left out: REST Mail sends reports by mail only, and RFC
-// 9989 §4.7 has a receiver ignore a scheme it does not support.
+// 9989 §4.7 has a receiver ignore a scheme it does not support. An address is
+// percent-decoded (RFC 6068 §2) and must be one bare address that can go into
+// a To: header and an SMTP envelope (rmail.BareAddress, which applies
+// rmail.ValidateAddress); one that is not is skipped and logged. go-dmarc's
+// record parser refuses control characters only in the undecoded URI, so a
+// percent-encoded line break reaches here.
 func mailtoRUAs(ruas []string) []string {
 	var out []string
 	for _, u := range ruas {
 		if len(u) < len("mailto:") || !strings.EqualFold(u[:len("mailto:")], "mailto:") {
 			continue
 		}
-		addr, _, _ := strings.Cut(u[len("mailto:"):], "?")
-		if addr = strings.TrimSpace(addr); addr != "" {
-			out = append(out, addr)
+		to, _, _ := strings.Cut(u[len("mailto:"):], "?")
+		addr, err := url.PathUnescape(to)
+		if err == nil {
+			addr, err = rmail.BareAddress(addr)
 		}
+		if err != nil {
+			slog.Warn("dmarcreport: rua address skipped", "rua", u, "error", err)
+			continue
+		}
+		out = append(out, addr)
 	}
 	return out
 }

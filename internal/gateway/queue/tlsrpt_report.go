@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
 	"github.com/rest-mail/rest-mail-server/internal/outbound"
 	"gorm.io/gorm"
 )
@@ -193,9 +194,11 @@ func parseTLSRPTRecord(txts []string) []string {
 			}
 			switch strings.ToLower(parsed.Scheme) {
 			case "mailto":
-				if strings.Contains(parsed.Opaque, "@") {
-					ruas = append(ruas, u)
+				if _, err := tlsrptMailto(u); err != nil {
+					slog.Warn("queue: TLS-RPT rua address skipped", "rua", u, "error", err)
+					continue
 				}
+				ruas = append(ruas, u)
 			case "https":
 				if parsed.Host != "" {
 					ruas = append(ruas, u)
@@ -353,12 +356,8 @@ func (w *Worker) queueTLSReport(tx *gorm.DB, rua, submitter, domain, reportID, f
 		// reporting domain", and one without is ignored.
 		return fmt.Errorf("%s has no DKIM key to sign a report with", submitter)
 	}
-	u, err := url.Parse(rua)
+	to, err := tlsrptMailto(rua)
 	if err != nil {
-		return err
-	}
-	to, _, _ := strings.Cut(u.Opaque, "?")
-	if to, err = url.PathUnescape(to); err != nil {
 		return err
 	}
 	from := "tlsrpt@" + submitter
@@ -371,6 +370,24 @@ func (w *Worker) queueTLSReport(tx *gorm.DB, rua, submitter, domain, reportID, f
 		Status:        "pending",
 		TLSReport:     true,
 	}).Error
+}
+
+// tlsrptMailto returns the address of a mailto: rua URI: its to-field,
+// percent-decoded (RFC 6068 §2), which must be one bare address that can be
+// written into a To: header and an SMTP envelope (rmail.BareAddress, which
+// applies rmail.ValidateAddress). A
+// decoded address holding a line break, a list or a display name is refused,
+// so no report is queued that could only fail.
+func tlsrptMailto(rua string) (string, error) {
+	u, err := url.Parse(rua)
+	if err != nil {
+		return "", err
+	}
+	to, _, _ := strings.Cut(u.Opaque, "?")
+	if to, err = url.PathUnescape(to); err != nil {
+		return "", err
+	}
+	return rmail.BareAddress(to)
 }
 
 // tlsReportMessage is the report mail of RFC 8460 §5.3.
