@@ -88,6 +88,17 @@ const (
 
 func (OutboundQueue) TableName() string { return "outbound_queue" }
 
+// OutboundQueueSendingDomainSQL is, in SQL over an outbound_queue row, the hosted
+// domain the row is sent as: its SendingDomain, else the domain of its envelope
+// sender, lowercased to compare with domains.name.
+const OutboundQueueSendingDomainSQL = `lower(COALESCE(NULLIF(outbound_queue.sending_domain, ''), substring(outbound_queue.sender from '@([^@]*)$'), ''))`
+
+// OutboundQueueHeldSQL is true, in SQL over an outbound_queue row, while the
+// domain it is sent as has its outbound mail stopped (Domain.OutboundStoppedAt,
+// #1590): the worker does not claim such a row, so it stays queued, neither
+// delivered nor bounced, until the stop is lifted.
+const OutboundQueueHeldSQL = `EXISTS (SELECT 1 FROM domains WHERE domains.outbound_stopped_at IS NOT NULL AND domains.name = ` + OutboundQueueSendingDomainSQL + `)`
+
 // FailureCategory is the kind of a failed delivery attempt. A permanent one
 // bounces the message at once; a transient one is retried on a schedule of its
 // own (see the queue package's retry schedules).

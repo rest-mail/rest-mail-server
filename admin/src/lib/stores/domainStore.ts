@@ -6,6 +6,7 @@ import type { JsonResponse, RequestBody } from "../api-contract";
 type Domain = JsonResponse<"getDomain", 200>["data"];
 export type CreateDomainBody = RequestBody<"createDomain">;
 type UpdateDomainBody = RequestBody<"updateDomain">;
+type StopOutboundBody = RequestBody<"stopDomainOutbound">;
 
 interface DomainState {
   domains: Domain[];
@@ -19,6 +20,10 @@ interface DomainState {
   createDomain: (domain: CreateDomainBody) => Promise<void>;
   updateDomain: (id: string, domain: UpdateDomainBody) => Promise<void>;
   deleteDomain: (id: string) => Promise<void>;
+  // An operator's stop on a domain's outbound mail (#1590): its mail is queued and
+  // held until restarted; inbound mail is unaffected.
+  stopOutbound: (id: string, body: StopOutboundBody) => Promise<void>;
+  restartOutbound: (id: string) => Promise<void>;
   clearError: () => void;
   clearCurrentDomain: () => void;
 }
@@ -157,6 +162,66 @@ export const useDomainStore = create<DomainState>((set, get) => ({
       set({
         error:
           error instanceof Error ? error.message : "Failed to delete domain",
+        isLoading: false,
+      });
+      throw error;
+    }
+  },
+
+  stopOutbound: async (id, body) => {
+    set({ isLoading: true, error: null });
+
+    try {
+      const response = await apiV1.request(`/admin/domains/${id}/outbound-stop`, {
+        method: "PUT",
+        body: JSON.stringify(body),
+      });
+
+      const { data } = await readJSON<JsonResponse<"stopDomainOutbound", 200>>(
+        response,
+        "Failed to stop the domain's outbound mail",
+      );
+      set({
+        domains: get().domains.map((d) => (d.id === data.id ? data : d)),
+        currentDomain: data,
+        isLoading: false,
+        error: null,
+      });
+    } catch (error) {
+      set({
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to stop the domain's outbound mail",
+        isLoading: false,
+      });
+      throw error;
+    }
+  },
+
+  restartOutbound: async (id) => {
+    set({ isLoading: true, error: null });
+
+    try {
+      const response = await apiV1.request(`/admin/domains/${id}/outbound-stop`, {
+        method: "DELETE",
+      });
+
+      const { data } = await readJSON<
+        JsonResponse<"restartDomainOutbound", 200>
+      >(response, "Failed to restart the domain's outbound mail");
+      set({
+        domains: get().domains.map((d) => (d.id === data.id ? data : d)),
+        currentDomain: data,
+        isLoading: false,
+        error: null,
+      });
+    } catch (error) {
+      set({
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to restart the domain's outbound mail",
         isLoading: false,
       });
       throw error;

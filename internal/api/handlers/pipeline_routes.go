@@ -86,11 +86,18 @@ func messageTraceOf(row models.MessageTrace) (MessageTrace, error) {
 	}, nil
 }
 
+// pipelineDomainOf is the domain as a pipeline or filter names it: without its
+// outbound stop, which the domain's own answer carries.
+func pipelineDomainOf(d models.Domain) PipelineDomain {
+	domain := domainOf(d)
+	return PipelineDomain{ID: domain.ID, Name: domain.Name, ServerType: domain.ServerType, Active: domain.Active, DefaultQuotaBytes: domain.DefaultQuotaBytes, DKIMSelector: domain.DKIMSelector, SendingPolicy: domain.SendingPolicy, DMARCPolicy: domain.DMARCPolicy, CreatedAt: domain.CreatedAt, UpdatedAt: domain.UpdatedAt}
+}
+
 func pipelineOf(p models.Pipeline) Pipeline {
-	return Pipeline{ID: p.ID, DomainID: p.DomainID, Direction: p.Direction, Filters: p.Filters, Active: p.Active, CreatedAt: p.CreatedAt, UpdatedAt: p.UpdatedAt, Domain: PipelineDomain(domainOf(p.Domain))}
+	return Pipeline{ID: p.ID, DomainID: p.DomainID, Direction: p.Direction, Filters: p.Filters, Active: p.Active, CreatedAt: p.CreatedAt, UpdatedAt: p.UpdatedAt, Domain: pipelineDomainOf(p.Domain)}
 }
 func customFilterOf(f models.CustomFilter) CustomFilter {
-	return CustomFilter{ID: f.ID, DomainID: f.DomainID, Name: f.Name, Description: f.Description, FilterType: f.FilterType, Direction: f.Direction, Config: f.Config, Enabled: f.Enabled, CreatedAt: f.CreatedAt, UpdatedAt: f.UpdatedAt, Domain: PipelineDomain(domainOf(f.Domain))}
+	return CustomFilter{ID: f.ID, DomainID: f.DomainID, Name: f.Name, Description: f.Description, FilterType: f.FilterType, Direction: f.Direction, Config: f.Config, Enabled: f.Enabled, CreatedAt: f.CreatedAt, UpdatedAt: f.UpdatedAt, Domain: pipelineDomainOf(f.Domain)}
 }
 
 type deletedStatus struct {

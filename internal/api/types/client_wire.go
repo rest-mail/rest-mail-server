@@ -307,16 +307,27 @@ type Mailbox struct {
 }
 
 type Domain struct {
-	ID                uint      `json:"id"`
-	Name              string    `json:"name"`
-	ServerType        string    `json:"server_type" enums:"traditional,restmail"`
-	Active            bool      `json:"active"`
-	DefaultQuotaBytes int64     `json:"default_quota_bytes"`
-	DKIMSelector      string    `json:"dkim_selector"`
-	SendingPolicy     string    `json:"sending_policy" enums:",transactional,bulk"`
-	DMARCPolicy       string    `json:"dmarc_policy" enums:"none,quarantine,reject"`
-	CreatedAt         time.Time `json:"created_at"`
-	UpdatedAt         time.Time `json:"updated_at"`
+	ID                uint   `json:"id"`
+	Name              string `json:"name"`
+	ServerType        string `json:"server_type" enums:"traditional,restmail"`
+	Active            bool   `json:"active"`
+	DefaultQuotaBytes int64  `json:"default_quota_bytes"`
+	DKIMSelector      string `json:"dkim_selector"`
+	SendingPolicy     string `json:"sending_policy" enums:",transactional,bulk"`
+	DMARCPolicy       string `json:"dmarc_policy" enums:"none,quarantine,reject"`
+	// OutboundStop is present while an operator has stopped the domain's outbound
+	// mail (#1590), and left out otherwise.
+	OutboundStop *DomainOutboundStop `json:"outbound_stop,omitempty" description:"Present only while the domain's outbound mail is stopped"`
+	CreatedAt    time.Time           `json:"created_at"`
+	UpdatedAt    time.Time           `json:"updated_at"`
+}
+
+// DomainOutboundStop is an operator's stop on a domain's outbound mail: when it
+// was made, by whom (the account's address) and why. Its mail is queued and held.
+type DomainOutboundStop struct {
+	StoppedAt time.Time `json:"stopped_at"`
+	StoppedBy string    `json:"stopped_by"`
+	Reason    string    `json:"reason"`
 }
 
 type QuotaUsage struct {

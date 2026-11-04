@@ -7,6 +7,7 @@ import { DomainDNS } from "../../components/domains/DomainDNS";
 import { DmarcPolicyField } from "../../components/domains/DmarcPolicyField";
 import { DomainPolicySections } from "../../components/domains/DomainPolicySections";
 import type { DmarcPolicy } from "../../lib/domainPolicy";
+import { DomainOutboundStop } from "../../components/domains/DomainOutboundStop";
 
 export const Route = createFileRoute("/domains/$id")({
   component: DomainDetailsPage,
@@ -20,12 +21,17 @@ function DomainDetailsPage() {
     fetchDomain,
     updateDomain,
     deleteDomain,
+    stopOutbound,
+    restartOutbound,
     isLoading,
     error,
     clearError,
     clearCurrentDomain,
   } = useDomainStore();
-  const { accessToken, isAuthenticated } = useAuthStore();
+  const { accessToken, isAuthenticated, user } = useAuthStore();
+  const canManageQueue = (user?.capabilities ?? []).some(
+    (c) => c === "*" || c === "queue:manage",
+  );
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState<{
     active: boolean;
@@ -361,6 +367,19 @@ function DomainDetailsPage() {
               </div>
             </div>
           )}
+        </div>
+
+        {/* Outbound stop (#1590) */}
+        <div
+          className="border p-6"
+          style={{ borderColor: "var(--gray-border)" }}
+        >
+          <DomainOutboundStop
+            domain={currentDomain}
+            canManage={canManageQueue}
+            onStop={(reason) => stopOutbound(id, { reason })}
+            onRestart={() => restartOutbound(id)}
+          />
         </div>
 
         {/* DNS Configuration */}

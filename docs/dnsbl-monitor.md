@@ -98,3 +98,31 @@ the latest event for a pair: it is also the restart seed. Run one enabled DNSBL
 monitor for an instance; this slice does not coordinate multiple monitor owners.
 Alert delivery, an admin history view, a circuit breaker and keyed zones remain
 outside this feature.
+
+## When one domain is the cause: stop its outbound mail
+
+A listing, or a bounce or complaint spike, is often one hosted domain sending
+junk, while every domain on the server shares its sending IP. Stop only that
+domain's outbound mail (#1590):
+
+```
+PUT /api/v1/admin/domains/{id}/outbound-stop
+{"reason": "Spamhaus listing traced to a compromised mailbox"}
+```
+
+or **Stop outbound mail** on the domain's page in the admin UI. It needs
+`queue:manage` at the server's own scope, so a domain's administrators cannot
+lift a stop put on their domain. A reason is required.
+
+While stopped, mail the domain's mailboxes send is still accepted and queued,
+and the outbound worker holds it with the mail it had already queued: none of it
+is delivered, bounced or lost. Mail to the domain is delivered as before. Mail
+between domains on this server does not leave it, so it is not held. The domain
+answers with `outbound_stop` (when, by whom, why), and the stop is written to the
+audit log as `domain.outbound_stop` with its reason.
+
+Once the cause is fixed (the mailbox secured, the listing removed),
+`DELETE /api/v1/admin/domains/{id}/outbound-stop`, or **Restart outbound mail**,
+releases the held mail for normal delivery. The time it was held is added back to
+each message's queue lifetime, so holding mail never makes it expire. The restart
+is audited as `domain.outbound_restart`.

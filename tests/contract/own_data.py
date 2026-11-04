@@ -54,9 +54,11 @@ FOLLOWS_THE_CREATED_DOMAIN = (
     "mtaStsPolicyFile",
     "removeFromAllowlist",
     "removeFromBlocklist",
+    "restartDomainOutbound",
     "setDKIMKey",
     "setDKIMRotation",
     "setDomainRelay",
+    "stopDomainOutbound",
     "updateDomain",
 )
 
