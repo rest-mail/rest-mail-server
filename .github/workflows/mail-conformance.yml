@@ -1,0 +1,199 @@
+name: Mail conformance
+
+# Runs instantmailcheck (https://github.com/rest-mail/instantmailcheck) against
+# restmail.test on the testbed and compares each result with
+# scripts/mailcheck-baseline.json, so a regression in the SPF, DKIM or DMARC an
+# install publishes is caught (#1589).
+#
+# What this does not see: the tool reads what an install publishes and answers on
+# the wire, not a message it sent. Its round trip submits on 587 and fetches on the
+# MX host's 993, and an install has no 587 and runs IMAP on a host of its own, so
+# Header Analysis never runs against one (rest-mail/instantmailcheck#4). Stage 10 of
+# the e2e suite asserts dkim=pass on mail an install receives; #1589 tracks the rest.
+#
+# Weekly, and never on a pull request or in the merge queue: it builds the whole
+# instance, and runners are short.
+on:
+  schedule:
+    # Mondays at 05:30 UTC
+    - cron: "30 5 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: mail-conformance
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: read
+  # Opens the issue a failed comparison reports to, and closes it again.
+  issues: write
+
+jobs:
+  conformance:
+    name: instantmailcheck against restmail.test
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TITLE: "Mail conformance: results worse than the baseline"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.25.10"
+          cache: true
+
+      - name: Install chore (the newest release, attested)
+        # The repo is driven by chores.yml, whose tasks declare `args:`. go-task
+        # parses the file but ignores those declarations, so a task that takes a
+        # parameter silently runs with its default — CI has to use the same runner
+        # as a developer's machine or it is testing something else.
+        #
+        # So it installs what a developer would: the newest release. chores.yml
+        # names the oldest chore that can read it (chore_min_version), and CI
+        # refuses to run below that floor rather than fail on an unknown field.
+        #
+        # Do NOT pipe-execute an install script from the network — that is an
+        # arbitrary-code-execution supply-chain surface. The tarball must match
+        # its release's checksums.txt, and its build attestation must show that
+        # chore's own release pipeline built it, before it is installed.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="$(gh release view --repo antimatter-studios/chore --json tagName --jq .tagName)"
+          version="${tag#v}"
+          min="$(awk '$1 == "chore_min_version:" { print $2 }' chores.yml)"
+          test -n "$min" || { echo "::error::chores.yml has no chore_min_version" >&2; exit 1; }
+          if [ "$(printf '%s\n%s\n' "$min" "$version" | sort -V | head -n1)" != "$min" ]; then
+            echo "::error::the newest chore is $version; chores.yml needs at least $min" >&2
+            exit 1
+          fi
+          tmp="$(mktemp -d)"
+          asset="chore-${version}-linux-x86_64.tar.gz"
+          gh release download "$tag" --repo antimatter-studios/chore \
+            --pattern "$asset" --pattern checksums.txt --dir "$tmp"
+          (cd "$tmp" && awk -v a="$asset" '$2 == a' checksums.txt | sha256sum --check --strict -)
+          gh attestation verify "$tmp/$asset" --repo antimatter-studios/chore
+          tar -xzf "$tmp/$asset" -C "$tmp" chore
+          sudo install -m 0755 "$tmp/chore" /usr/local/bin/chore
+          rm -rf "$tmp"
+          echo "chores.yml needs chore $min or newer"
+          chore --version
+
+      - name: Populate Go module cache
+        run: go mod download
+
+      - name: Route git@github over HTTPS
+        run: git config --global url."https://github.com/".insteadOf "git@github.com:"
+
+      - name: Clone the testbed (pinned)
+        # Bump this with the pin in e2e-suite.yml; a test holds them equal.
+        env:
+          TESTBED_REF: 398d29cd40eb1a8553d710dc25491c2a4b727a37 # rest-mail/testbed @ master
+        run: |
+          set -euo pipefail
+          chore testbed:init
+          git -C .workspace/testbed fetch --quiet origin "$TESTBED_REF" || true
+          git -C .workspace/testbed checkout --quiet "$TESTBED_REF"
+          echo "testbed pinned @ $(git -C .workspace/testbed rev-parse --short HEAD)"
+
+      - name: Bring up restmail.test
+        # e2e:up without the reference mail servers, which this check never talks to.
+        run: |
+          set -euo pipefail
+          chore testbed:up
+          chore instance:certs:issue CONFIG=restmail.test
+          chore instance:mtls:issue CONFIG=restmail.test
+          chore instance:dns:register CONFIG=restmail.test
+          RESTMAIL_INTERNAL_MTLS=true chore instance:up CONFIG=restmail.test
+          chore instance:dkim CONFIG=restmail.test
+          chore instance:dkim:check CONFIG=restmail.test
+
+      - name: Install instantmailcheck (pinned + checksum-verified)
+        # v0.1.1 is commit 88e270577e1055e124ed0271e68928fb982161b5. A new version can
+        # change what the checks answer, so bump this with a new baseline; a test holds
+        # this version equal to the baseline's.
+        env:
+          IMC_VERSION: "0.1.1"
+          # sha256 of instantmailcheck_${IMC_VERSION}_linux_amd64.tar.gz, from that
+          # release's checksums.txt. Bump both together.
+          IMC_SHA256: b05daa128bc443ab78be9214ed099ec1e85ba71648ae56a167a29b751428e1a0
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/imc"
+          asset="instantmailcheck_${IMC_VERSION}_linux_amd64.tar.gz"
+          gh release download "v$IMC_VERSION" --repo rest-mail/instantmailcheck \
+            --pattern "$asset" --dir "$RUNNER_TEMP/imc"
+          (cd "$RUNNER_TEMP/imc" && echo "$IMC_SHA256  $asset" | sha256sum --check --strict -)
+          tar -xzf "$RUNNER_TEMP/imc/$asset" -C "$RUNNER_TEMP/imc" instantmailcheck
+
+      - name: Run instantmailcheck and compare with the baseline
+        id: compare
+        # On the mailnet, with the testbed's dnsmasq as the only resolver (see
+        # tasks/api.yml for why not --dns) and the testbed's CA as the only authority.
+        # Only the CA certificate is copied out: that volume also holds the CA key.
+        #
+        # A tool that breaks writes no report, and the comparison fails on that, so
+        # the two failures read the same and neither can read as a pass.
+        run: |
+          set -o pipefail
+          dir="$RUNNER_TEMP/imc"
+          printf 'nameserver 10.99.0.10\n' > "$dir/resolv.conf"
+          docker run --rm -v testbed_certs:/certs:ro alpine:3.20 cat /certs/ca.crt > "$dir/ca.crt" \
+            || echo "no testbed CA certificate: every TLS check will read worse"
+          docker run --rm --network testbed_mailnet \
+            -v "$dir/resolv.conf:/etc/resolv.conf:ro" \
+            -v "$dir/instantmailcheck:/imc:ro" \
+            -v "$dir/ca.crt:/ca.crt:ro" \
+            -e SSL_CERT_FILE=/ca.crt \
+            alpine:3.20 /imc --json --threshold 0 --dkim-selector default restmail.test \
+            > "$dir/report.json" || echo "instantmailcheck exited $?"
+          python3 -B scripts/mailcheck_baseline.py compare scripts/mailcheck-baseline.json "$dir/report.json" 2>&1 \
+            | tee "$dir/compare.txt"
+
+      - name: Keep the report
+        # Saving a new baseline starts from this file: mailcheck_baseline.py write.
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: mail-conformance
+          path: |
+            ${{ runner.temp }}/imc/report.json
+            ${{ runner.temp }}/imc/compare.txt
+          if-no-files-found: warn
+
+      - name: Open or update the issue
+        # Only for the comparison: a bring-up that fails is a broken run, not a
+        # regression, and shows as a red run without opening anything.
+        if: failure() && steps.compare.outcome == 'failure'
+        run: |
+          set -euo pipefail
+          {
+            echo "The scheduled run of \`instantmailcheck\` against \`restmail.test\` gave results worse than [the baseline]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/blob/main/scripts/mailcheck-baseline.json), or no result at all. Fix what changed, or save a new baseline if the change was meant. This issue closes itself once a run matches."
+            echo
+            echo '```'
+            cat "$RUNNER_TEMP/imc/compare.txt"
+            echo '```'
+            echo
+            echo "From [this run]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)."
+          } > "$RUNNER_TEMP/issue.md"
+          number=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --label bug --json number,title --jq ".[] | select(.title == \"$TITLE\") | .number" | head -1)
+          if [ -n "$number" ]; then
+            gh issue edit "$number" --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/issue.md"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$TITLE" --label bug --body-file "$RUNNER_TEMP/issue.md"
+          fi
+
+      - name: Close the issue once a run matches
+        if: success()
+        run: |
+          set -euo pipefail
+          number=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --label bug --json number,title --jq ".[] | select(.title == \"$TITLE\") | .number" | head -1)
+          if [ -n "$number" ]; then
+            gh issue close "$number" --repo "$GITHUB_REPOSITORY" --comment "A run matches the baseline again ([run]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID))."
+          fi
