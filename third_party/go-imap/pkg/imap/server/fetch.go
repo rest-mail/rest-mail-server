@@ -1,7 +1,6 @@
 package server
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"strings"
@@ -61,19 +60,33 @@ func (s *Session) handleFetch(tag, args string) {
 // response or phantom flags. Read-only selections never set or echo new \Seen.
 func (s *Session) fetchResponse(seq int, msg imap.Message, tokens []string) error {
 	marksSeen := false
-	// raw is loaded lazily: a metadata-only fetch (FLAGS, RFC822.SIZE, …) must
-	// never pull the body — that is the entire point of answering RFC822.SIZE
+	// The message is loaded lazily: a metadata-only fetch (FLAGS, RFC822.SIZE, …)
+	// must never pull the body — that is the entire point of answering RFC822.SIZE
 	// from the stored size rather than the message content.
-	var raw string
-	rawLoaded, rawOK := false, false
-	loadRaw := func() (string, bool) {
-		if !rawLoaded {
-			rawLoaded = true
-			if b, err := s.mailbox.Fetch(msg.UID); err == nil && bytes.IndexByte(b, 0) < 0 {
-				raw, rawOK = string(b), true
+	var stored, sent string
+	storedLoaded, storedOK, sentLoaded, sentOK := false, false, false, false
+	loadStored := func() (string, bool) {
+		if !storedLoaded {
+			storedLoaded = true
+			if b, err := s.mailbox.Fetch(msg.UID); err == nil {
+				stored, storedOK = string(b), true
 			}
 		}
-		return raw, rawOK
+		return stored, storedOK
+	}
+	// loadSent is the message as this response sends it (RFC 3501 §7.4.2): every
+	// section, partial offset and described size is taken from these octets. Only
+	// BINARY reads the stored ones (RFC 3516). A NUL that conversion left behind,
+	// in a header or in text, cannot be sent at all.
+	loadSent := func() (string, bool) {
+		if !sentLoaded {
+			sentLoaded = true
+			if raw, ok := loadStored(); ok {
+				sent = message.WireForm(raw, s.utf8)
+				sentOK = strings.IndexByte(sent, 0) < 0
+			}
+		}
+		return sent, sentOK
 	}
 
 	// plain holds non-literal "name value" fragments; lits holds body-content
@@ -107,36 +120,39 @@ func (s *Session) fetchResponse(seq int, msg imap.Message, tokens []string) erro
 			// message's own headers (RFC 3501 §7.4.2), so load the raw message.
 			// This is still metadata: loadRaw never sets \Seen. A load failure
 			// is reported before sending this message's response.
-			r, ok := loadRaw()
+			r, ok := loadStored()
+			if _, sendable := loadSent(); !sendable {
+				ok = false
+			}
 			plain = append(plain, "ENVELOPE "+message.BuildEnvelope(msg, r, ok))
 		case up == "BODYSTRUCTURE":
 			// Body structure is metadata (RFC 3501 §7.4.2): it must never set
 			// \Seen. It needs the raw message to describe the MIME layout.
-			if r, ok := loadRaw(); ok {
+			if r, ok := loadSent(); ok {
 				plain = append(plain, "BODYSTRUCTURE "+message.BuildBodyStructure(r, true))
 			}
 		case up == "BODY":
 			// The bare BODY item is the non-extensible form of BODYSTRUCTURE
 			// (no extension fields); likewise metadata, so no \Seen.
-			if r, ok := loadRaw(); ok {
+			if r, ok := loadSent(); ok {
 				plain = append(plain, "BODY "+message.BuildBodyStructure(r, false))
 			}
 		case up == "RFC822":
-			if r, ok := loadRaw(); ok {
+			if r, ok := loadSent(); ok {
 				lits = append(lits, litFrag{name: "RFC822", payload: r})
 				marksSeen = true
 			}
 		case up == "RFC822.HEADER": // defined as BODY.PEEK[HEADER]: no \Seen.
-			if r, ok := loadRaw(); ok {
+			if r, ok := loadSent(); ok {
 				lits = append(lits, litFrag{name: "RFC822.HEADER", payload: message.HeaderSection(r)})
 			}
 		case up == "RFC822.TEXT":
-			if r, ok := loadRaw(); ok {
+			if r, ok := loadSent(); ok {
 				lits = append(lits, litFrag{name: "RFC822.TEXT", payload: message.TextSection(r)})
 				marksSeen = true
 			}
 		case wire.BinaryItem(up):
-			name, data, size, peek, ok, err := message.BinarySection(item, loadRaw)
+			name, data, size, peek, ok, err := message.BinarySection(item, loadStored)
 			if err != nil {
 				return err
 			}
@@ -152,7 +168,7 @@ func (s *Session) fetchResponse(seq int, msg imap.Message, tokens []string) erro
 				marksSeen = true
 			}
 		case strings.HasPrefix(up, "BODY[") || strings.HasPrefix(up, "BODY.PEEK["):
-			name, payload, peek, ok := message.BodySection(item, loadRaw)
+			name, payload, peek, ok := message.BodySection(item, loadSent)
 			if !ok {
 				continue
 			}
@@ -165,14 +181,15 @@ func (s *Session) fetchResponse(seq int, msg imap.Message, tokens []string) erro
 		}
 	}
 
-	if rawLoaded && !rawOK {
+	if (storedLoaded && !storedOK) || (sentLoaded && !sentOK) {
 		return errors.New("cannot load message data")
 	}
 
 	// RFC 3501 CHAR8 excludes NUL. MIME/encoded-word decoders can produce
 	// one even when the raw message has none. Validate decoded metadata
 	// before any Seen write or response bytes, including nested envelopes.
-	// Body literals retain raw source octets, already checked in loadRaw.
+	// Body literals were already checked in loadSent, and BINARY sends a NUL as a
+	// literal8.
 	for _, field := range plain {
 		if strings.IndexByte(field, 0) >= 0 {
 			return errors.New("NUL in message metadata")

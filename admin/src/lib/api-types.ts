@@ -3946,6 +3946,8 @@ export interface components {
             /** Format: date-time */
             date_header: string | null;
             downgraded_size: number;
+            imap_size: number;
+            imap_utf8_size: number;
             /** Format: date-time */
             due?: string | null;
             /** @enum {string|null} */
@@ -4329,6 +4331,8 @@ export interface components {
             /** Format: date-time */
             date_header?: string | null;
             downgraded_size?: number;
+            imap_size?: number;
+            imap_utf8_size?: number;
             folder?: string;
             has_attachments?: boolean;
             headers?: unknown;
@@ -4760,6 +4764,8 @@ export interface components {
             /** Format: date-time */
             date_header: string | null;
             downgraded_size: number;
+            imap_size: number;
+            imap_utf8_size: number;
             folder: string;
             has_attachments: boolean;
             headers?: unknown;
