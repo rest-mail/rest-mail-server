@@ -218,16 +218,15 @@ MOVED = (
     "updateServerLimits",
     "getServerCapabilities",
     "updateServerCapabilities",
-    # The TLS report, audit and delivery reads, and the TLS report intake. No
-    # link starts from or reaches any of them. A list of TLS reports gets one
-    # of its own after its reset; the others need nothing made.
+    # The TLS report and audit reads, the dashboard, and the TLS report
+    # intake. No link starts from or reaches any of them. A list of TLS reports
+    # gets one of its own after its reset; the others need nothing made.
     # getDmarcReport and listDmarcReports move below, with a report delivered
-    # after their reset.
+    # after their reset, and getDeliveryLogs with a message sent after its.
     "listTlsReports",
     "receiveTlsReport",
     "listAuditEntries",
     "verifyAuditLog",
-    "getDeliveryLogs",
     "getDashboardStats",
     # The mailbox reads listAccounts' link reaches. listAccounts is not
     # selected, and no link starts from any of them. Each goes to the fixture
@@ -251,6 +250,9 @@ MOVED = (
     "restmailCapabilities",
     "restmailCheckMailbox",
     "restmailDeliver",
+    # The delivery log. No link starts from or reaches it. Its listing gets a
+    # message queued for a remote recipient of its own after the reset.
+    "getDeliveryLogs",
     # The rest of the filter operations. No link starts from or reaches any of
     # them. The list gets a custom filter of its own after its reset; the
     # preview and the validation need nothing made.

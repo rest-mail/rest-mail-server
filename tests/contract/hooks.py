@@ -1121,17 +1121,16 @@ OWN_TLS_REPORT = {
 @hooks.before("receiveTlsReport")
 @hooks.before("listAuditEntries")
 @hooks.before("verifyAuditLog")
-@hooks.before("getDeliveryLogs")
 @hooks.before("getDashboardStats")
 def report_and_audit_reads_after_a_reset(transaction):
-    # The TLS report, audit and delivery reads, and the TLS report intake,
-    # moved to a clean start: each exchange, refusals included, resets and
-    # seeds first. Registered before the other hooks of these operations, so
-    # they see the clean start. A listing of TLS reports that succeeds gets
+    # The TLS report and audit reads, the dashboard, and the TLS report
+    # intake, moved to a clean start: each exchange, refusals included, resets
+    # and seeds first. Registered before the other hooks of these operations,
+    # so they see the clean start. A listing of TLS reports that succeeds gets
     # one of its own, received after the reset, so it lists more than the
-    # seed. The rest need nothing made: the delivery log and the dashboard
-    # report what is there. The DMARC report list moves on its own, with a
-    # report delivered after its reset. The audit log is append-only and outlives
+    # seed. The rest need nothing made: the dashboard reports what is there.
+    # The DMARC report list and the delivery log move on their own, with a
+    # report delivered and a message sent after their reset. The audit log is append-only and outlives
     # the reset by design (resetRetainedTables), so its reads meet what is in
     # it. The intake hosts the domains its report names in its own hook, after
     # the reset. A run with no reset changes nothing here.
@@ -1175,6 +1174,8 @@ def row_field(row, field):
 @hooks.after("listCertificates")
 @hooks.after("listDmarcReports")
 @hooks.after("listCalendarEvents")
+@hooks.after("getDeliveryLogs")
+@hooks.after("listPipelineLogs")
 @hooks.after("listTlsReports")
 @hooks.after("listPipelines")
 @hooks.after("listThreads")
@@ -2162,9 +2163,10 @@ def pipeline_reads_after_a_reset(transaction):
     # The pipeline reads, moved to a clean start: each exchange, refusals
     # included, resets and seeds first. A listing of pipelines that succeeds
     # gets one of its own, inactive, on a domain of its own, made after the
-    # reset, so it lists more than the seed. The logs and the analytics need
-    # nothing made: nothing earlier is left for them to report. A run with no
-    # reset changes nothing here.
+    # reset, so it lists more than the seed. The logs get a send of their own
+    # in the_pipeline_log_holds_a_send; the analytics need nothing made:
+    # nothing earlier is left for them to report. A run with no reset changes
+    # nothing here.
     if not asked_for_a_clean_start():
         return
     start_clean(transaction)
@@ -2172,6 +2174,85 @@ def pipeline_reads_after_a_reset(transaction):
     if path == "/api/v1/admin/pipelines" and " > 200" in transaction.get("name", ""):
         pipeline = a_pipeline_of_its_own(transaction, a_domain_of_its_own(transaction))
         made_for_the_listing(transaction, "pipeline", {"id": pipeline})
+
+
+# The delivery log and the pipeline log (#1785). Each lists what a send wrote.
+# A message to a remote recipient is queued (outbound_queue, which the delivery
+# log reads); the recipient's domain is a .test name nothing hosts, so the
+# queue only defers it. A message to a local mailbox is delivered through the
+# inbound pipeline, whose trace (message_traces, which the pipeline log reads)
+# is what the documented 200 asks for: Vertrag sends the declared defaults,
+# direction=inbound, action=continue and outcome=delivered. The testbed keeps
+# every trace (TRACE_SAMPLE_RATE=1).
+OWN_LOG_DOMAIN = "contract-remote.test"
+
+
+def a_message_for_the_logs(transaction, recipient):
+    """Send one message from the fixture admin to recipient, after the reset,
+    and return the sent message."""
+    sent = fixture_call(
+        transaction,
+        "POST",
+        "/api/v1/messages/send",
+        {
+            "from": ADMIN,
+            "to": [recipient],
+            "subject": "Contract log",
+            "body_text": "Sent by the contract for the delivery and pipeline logs.",
+        },
+    )
+    if not isinstance(sent, dict) or not sent.get("message_id"):
+        raise RuntimeError("the fixture send returned no message")
+    return sent
+
+
+@hooks.before("getDeliveryLogs")
+def the_delivery_log_after_a_reset(transaction):
+    # getDeliveryLogs, moved to a clean start: each exchange, refusals
+    # included, resets and seeds first. A listing that succeeds gets a message
+    # queued for a remote recipient of its own after the reset, and
+    # the_listing_holds_what_was_made fails it unless the answer lists that
+    # recipient. A run with no reset changes nothing here.
+    if not asked_for_a_clean_start():
+        return
+    start_clean(transaction)
+    if " > 200" not in transaction.get("name", ""):
+        return
+    # The example documents limit=20 only; Vertrag adds the status enum's first
+    # value, pending. The topology's queue worker can claim the entry (and
+    # defer or bounce it) before the listing is sent, so the status is dropped:
+    # the queued row stays in the log whatever its status, as listQueue's hook
+    # does for the same race.
+    path, _, query = transaction["fullPath"].partition("?")
+    kept = [
+        (name, value)
+        for name, value in urllib.parse.parse_qsl(query, keep_blank_values=True)
+        if name != "status"
+    ]
+    transaction["fullPath"] = path + ("?" + urllib.parse.urlencode(kept) if kept else "")
+    recipient = f"contract-log-{time.time_ns():d}@{OWN_LOG_DOMAIN}"
+    a_message_for_the_logs(transaction, recipient)
+    made_for_the_listing(transaction, "queued message", {"recipient": recipient})
+
+
+@hooks.before("listPipelineLogs")
+def the_pipeline_log_holds_a_send(transaction):
+    # Registered after pipeline_reads_after_a_reset, which resets first. A
+    # listing that succeeds gets the inbound trace of a message the fixture
+    # admin sends itself after the reset, and the_listing_holds_what_was_made
+    # fails it unless the answer lists that trace, by its Message-ID. A run
+    # with no reset changes nothing here.
+    if not asked_for_a_clean_start() or " > 200" not in transaction.get("name", ""):
+        return
+    sent = a_message_for_the_logs(transaction, ADMIN)
+    # Traces are written in the background, a batch every 500 ms
+    # (internal/trace/recorder.go).
+    time.sleep(1)
+    made_for_the_listing(
+        transaction,
+        "delivery trace",
+        {"direction": "inbound", "rfc_message_id": sent["message_id"]},
+    )
 
 
 @hooks.before("createCustomFilter")
