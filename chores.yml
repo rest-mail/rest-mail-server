@@ -583,6 +583,14 @@ tasks:
     cmds:
       - python3 scripts/vertrag_pin.py install .cache/bin
 
+  cluster:e2e:
+    desc: 'Stage 1 of the installed-cluster check against a fresh helm/restmail install (kubectl context); the same script cluster-e2e.yml runs'
+    cmds:
+      # Needs python3 and kubectl only. NAMESPACE, RELEASE and REPORT_DIR
+      # (defaults restmail, restmail, cluster-report) pick the install; extra
+      # arguments go to the script, e.g. `chore cluster:e2e -- --only health`.
+      - python3 -B scripts/cluster_e2e.py {{.CLI_ARGS}}
+
   test:coverage:
     desc: Run unit tests with coverage report
     env:
