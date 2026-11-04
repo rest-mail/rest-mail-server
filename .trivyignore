@@ -1,0 +1,9 @@
+# Vulnerabilities the image scan in .github/workflows/docker.yml may ignore.
+#
+# Each entry needs, on the lines above it, a reason it does not apply or
+# cannot be fixed yet, and a link to the issue tracking its removal:
+#
+#   # Not reachable: <why>. Remove with <issue URL>.
+#   CVE-YYYY-NNNNN
+#
+# Keep this list empty unless an entry meets that bar.
