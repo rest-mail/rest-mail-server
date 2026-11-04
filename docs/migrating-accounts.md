@@ -2,7 +2,8 @@
 
 An operator with `accounts:write` on a hosted domain can create an account
 without resetting its password, one at a time or a whole Dovecot passwd-file at
-once. Aliases, forwarding and mail must still be moved separately.
+once. Then import aliases and hosted forwarding with `restmail import-aliases`
+as described below, and mail with the [mail migration guide](migrating-mail.md).
 
 Create the domain first. Making an account takes a person who proved a second
 factor, so an API key is refused with 403, whatever it holds. Sign in with
@@ -81,6 +82,87 @@ and sends nothing; `--json` prints one object listing every user by outcome.
 Hashes are never printed. Display names, quotas and Dovecot's extra fields are
 not imported.
 
-This does not yet move mail, or prove an
-imapsync cutover. Keep the source mailbox available while planning that part
-of the migration.
+## Aliases and hosted forwarding
+
+After creating the domains and destination accounts, import a text
+[Postfix `virtual(5)` map](https://www.postfix.org/virtual.5.html):
+
+```text
+# source address       destination addresses
+sales@example.com      alice@example.com
+bob@example.com        alice@example.com
+team@example.com       alice@example.com,
+                       bob@example.com
+```
+
+`sales` is an alias; the `bob` account's address is a hosted forwarding source.
+Both use the existing alias table, one active row per source/destination pair;
+there is no separate forwarding table or imported keep-a-copy setting.
+The command imports routing configuration, not delivery implementation. Alias
+delivery is tracked separately in [issue 1533](https://github.com/rest-mail/rest-mail-server/issues/1533)
+and [PR 1539](https://github.com/rest-mail/rest-mail-server/pull/1539); this
+importer does not depend on that branch or certify delivery on its own.
+
+```sh
+restmail import-aliases --server https://mail.example.com \
+  /etc/postfix/virtual
+```
+
+Set `RESTMAIL_API_KEY` to the administrator session used above, or a scoped API
+key with `accounts:read` and `accounts:write` on the source domains and
+`accounts:read` on each destination account. The CLI reads the existing
+configuration with `GET /api/v1/admin/mailboxes` and
+`GET /api/v1/admin/aliases`, including all pages. Each new pair is submitted to
+`POST /api/v1/admin/aliases` with `source_address` and `destination_address`.
+Normal API authorization, validation and duplicate constraints still apply;
+there are no direct database writes or special migration privileges.
+
+The issue specifies no alias-export format, so Postfix's existing plain text
+map is the interchange format, not a new bundle-specific format.
+[docker-mailserver's `postfix-virtual.cf`](https://docker-mailserver.github.io/docker-mailserver/latest/config/advanced/optional-config/)
+can be used directly for supported address-to-address mappings. Export equivalent
+explicit mappings from mailcow or Mailu into this format; their SQL databases,
+JSON backups and bundle configuration archives are not read automatically.
+Dovecot's [passwd-file](https://doc.dovecot.org/2.3/configuration_manual/authentication/passwd_file/)
+describes authentication/user fields, not a virtual alias map: continue using
+`import-passwd-file` for that file, and export routing from the associated MTA.
+
+Blank and comment lines (first non-whitespace character `#`) are ignored.
+Indented lines continue the preceding logical line. Destinations are
+comma-separated; repeated destinations in a line are collapsed. A bare user
+name on either side needs `--domain example.com`; explicit addresses keep
+their domain. Hosted identities use REST Mail's lowercase/NFC/IDNA account
+normalization. Only bare, unquoted addresses are supported.
+
+Every destination must already be an active, readable hosted mailbox. External
+forwarding is refused pending an owner policy decision on
+[issue 734](https://github.com/rest-mail/rest-mail-server/issues/734#issuecomment-6610152862):
+the alias API currently checks destination syntax but has no external-forward
+verification/authorization policy. An unreadable or inactive mailbox is also
+refused. Alias chains, catch-alls, domain patterns, self redirects, file/pipe
+destinations and Sieve or `.forward` programs are not translated. Such a line
+fails before any of its destinations are written; it is never partly converted
+into a different routing rule.
+
+Reruns report identical active rows as `existing` and add nothing. They never
+replace targets or reactivate an inactive rule. An existing source with targets
+outside the requested set, inactive rows or legacy noncanonical spellings is
+reported as conflicting and left alone. A partially imported fan-out may be
+completed on a later run if its existing rows are an active subset of that
+line's destinations. HTTP failures can leave earlier destinations imported;
+the API has no atomic multi-destination operation. Do not modify the same
+source's routing concurrently with migration; a conflicting create race is
+re-read, but the public API has no whole-source compare-and-swap operation.
+
+Failures include the starting physical line number and do not stop later
+lines. Exit status is 0 when all pairs were created/already present, 1 for
+failures and 2 for usage errors. `--json` groups pairs under `created`,
+`existing`, `would_create` and `failed`, with source, destination, ID and line
+where applicable. `--dry-run` performs syntax checks only and sends no API
+requests: it cannot certify destination existence, permissions, conflicts or
+forwarding policy. Input is limited to 16 MiB and each logical line to 64 KiB;
+an oversized file is refused before writing anything. Requests never follow
+redirects, and credentials and server diagnostic bodies are not printed.
+
+Keep the source server available while importing
+[mail](migrating-mail.md) and planning the final cutover.
