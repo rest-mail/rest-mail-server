@@ -10,6 +10,7 @@ import (
 
 	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/grants"
 	"github.com/rest-mail/rest-mail-server/internal/mailimport"
 )
 
@@ -24,6 +25,9 @@ func TestMessageImportMboxFlagOnlyRerunStoresNoCopy(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := db.Model(&models.Mailbox{}).Where("id = ?", fx.user.ID).Update("quota_bytes", 1<<30).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := grants.EnsureImport(db, &fx.user); err != nil {
 		t.Fatal(err)
 	}
 	h := NewMessageImportHandler(db, 1<<20, nil, nil)
