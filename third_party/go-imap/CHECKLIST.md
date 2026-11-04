@@ -1314,7 +1314,7 @@ RFC 2119 definitions in §1.2 are not protocol implementation requirements.
 | IMAP2-CORE-26 | RFC 9051 §4.3 | MUST NOT | Send non-synchronizing literals server-to-client; accept client non-synchronizing literals only within the 4096-octet baseline limit and send no continuation for them. | TestLiteralMinus, TestLiteralMinusLimit, TestFetchSizeMatchesBodyOctets |
 | IMAP2-CORE-29 | RFC 9051 §4.3 | MUST | Accept well-formed UTF-8 in quoted strings without NUL, CR or LF as a rev2 baseline rather than an optional extension. | n/a: IMAP4rev2 mode is not implemented (#718). Optional UTF8=ACCEPT is tested by IMAP-UTF8-01, but is not the rev2 baseline. Rev1 typed-text refusal and literal framing are proved by IMAP-SYNTAX-06 and IMAP-SYNTAX-07 (rest-mail/go-imap#150). |
 | IMAP2-CORE-30 | RFC 9051 §4.3.1 | MUST | Encode binary data outside BINARY/BINARY.PEEK literal8 responses into a textual transfer encoding before transmission. | n/a: transfer encoding belongs to the host message representation; the engine does not rewrite BODY[] content. Rev2 baseline and compatibility need rest-mail/rest-mail-server#718; existing BINARY rows cover only the offered extension. |
-| IMAP2-CORE-31 | RFC 9051 §5.1 | MUST | Require Net-Unicode mailbox names, rejecting invalid creation names or normalizing and consistently resolving accepted decomposed UTF-8 names. | n/a: rev2 naming is not implemented (#718); UTF8=ACCEPT validation is an optional rev1 extension and does not establish NFC normalization or rev2 default naming. |
+| IMAP2-CORE-31 | RFC 9051 §5.1 | MUST | Require Net-Unicode mailbox names, rejecting invalid creation names or normalizing and consistently resolving accepted decomposed UTF-8 names. | TestOldNameCreate, TestNormalizedNameReachesTheFolder, TestNoNormalizerKeepsTheSpelling |
 | IMAP2-CORE-32 | RFC 9051 §5.1.1 | MUST | Use a single ASCII hierarchy delimiter consistently in left-to-right hierarchical mailbox names. | TestListReference, TestNamespace |
 | IMAP2-CORE-33 | RFC 9051 §5.1.2 | MUST | Place INBOX in the personal namespace; normally expose only one personal namespace. | TestNamespace |
 | IMAP2-CORE-34 | RFC 9051 §5.1.2 | MUST | Require an explicit grant before exposing another user's personal namespace; normally expose at most one other-users namespace. | n/a: other-users namespaces are not offered. NAMESPACE reports NIL for that class (IMAP-NAMESPACE-01); authentication and mailbox access control belong to the host backend. |
@@ -1358,12 +1358,12 @@ corresponding command rows rather than counted as separate behavior.
 | IMAP2-CMD-69 | RFC 9051 §6.3.1 | SHOULD | Make successive ENABLE commands additive and report only extensions newly enabled by that command. | TestEnableAdditiveAndPersistent |
 | IMAP2-CMD-70 | RFC 9051 §6.3.1 | MUST NOT | Change the CAPABILITY list as a consequence of ENABLE. | TestEnableUnknownAndCapabilityStability, TestEnableAdditiveAndPersistent |
 | IMAP2-CMD-72 | RFC 9051 §6.3.2–6.3.3 | MUST | Before successful SELECT or EXAMINE return FLAGS, EXISTS, LIST, PERMANENTFLAGS, UIDNEXT and UIDVALIDITY. | n/a: rev1 selection returns the older required set without the rev2 LIST response. UID persistence also has the base-backend gap in IMAP-SELECT-09; rest-mail/rest-mail-server#718. |
-| IMAP2-CMD-73 | RFC 9051 §6.3.2 | MUST | Return accurate selected-mailbox LIST attributes, and OLDNAME when accepting a normalized form of the supplied UTF-8 name. | n/a: selected-mailbox LIST and OLDNAME normalization responses are not implemented; rest-mail/rest-mail-server#718. |
+| IMAP2-CMD-73 | RFC 9051 §6.3.2 | MUST | Return accurate selected-mailbox LIST attributes, and OLDNAME when accepting a normalized form of the supplied UTF-8 name. | n/a: OLDNAME is met for a store that normalizes (TestOldNameSelectExamine), but a selection does not yet send the LIST that §6.3.2 requires when no name changed, which waits on ENABLE IMAP4rev2; rest-mail/rest-mail-server#718. |
 | IMAP2-CMD-74 | RFC 9051 §6.3.2 | MUST | Deselect the old mailbox before attempting another SELECT, leaving no selection on failure, and announce closure with CLOSED. | n/a: the deselection/state behavior is tested by IMAP-SELECT-07. An IMAP4rev2 session is sent `* OK [CLOSED]` first when SELECT or EXAMINE, successful or not, replaces a selection, and not after CLOSE or UNSELECT (TestSelectClosedRev2, TestSelectClosedRev2OnFailure and TestSelectClosedRev2NotAfterClose in package server), but no command makes a session rev2 until ENABLE IMAP4rev2; rest-mail/rest-mail-server#718. Rev1 sessions are IMAP-CLOSED-01. |
 | IMAP2-CMD-75 | RFC 9051 §6.3.2 | SHOULD | Identify a successful writable SELECT with READ-WRITE in its tagged completion. | TestSelectionExamples |
 | IMAP2-CMD-76 | RFC 9051 §6.3.2 | MUST | When access permits reading but not writing, SELECT the mailbox read-only and announce READ-ONLY. | TestRightsSelectReadOnly |
 | IMAP2-CMD-78 | RFC 9051 §6.3.3 | MUST | Begin the successful EXAMINE tagged response text with READ-ONLY. | TestSelectionExamples |
-| IMAP2-CMD-79 | RFC 9051 §6.3.4 | MUST | Only acknowledge CREATE after creating a new mailbox; refuse extant names and invalid Net-Unicode, or normalize and report OLDNAME. | TestCreateMakesAnEmptyFolder |
+| IMAP2-CMD-79 | RFC 9051 §6.3.4 | MUST | Only acknowledge CREATE after creating a new mailbox; refuse extant names and invalid Net-Unicode, or normalize and report OLDNAME. | TestCreateMakesAnEmptyFolder, TestOldNameCreate |
 | IMAP2-CMD-80 | RFC 9051 §6.3.4 | MUST | Include Subscribed when an unsolicited LIST announces a newly created mailbox that was automatically subscribed. | n/a: the engine neither auto-subscribes created mailboxes nor sends unsolicited LIST responses. |
 | IMAP2-CMD-81 | RFC 9051 §6.3.4 | MUST | Treat a trailing hierarchy delimiter as a declaration and create the name without that delimiter. | TestCreateMakesAnEmptyFolder |
 | IMAP2-CMD-82 | RFC 9051 §6.3.4 | SHOULD | Create necessary superior hierarchy names during CREATE. | TestCreateMakesAnEmptyFolder |
@@ -1371,7 +1371,7 @@ corresponding command rows rather than counted as separate behavior.
 | IMAP2-CMD-84 | RFC 9051 §6.3.5 | MUST NOT | Remove inferior hierarchy names when deleting their parent; refuse deleting a Noselect parent that has inferiors. | TestDeleteRemovesTheFolder |
 | IMAP2-CMD-85 | RFC 9051 §6.3.5 | SHOULD | When refusing deletion because a mailbox has inferiors, return NO with HASCHILDREN. | TestDeleteHasChildren |
 | IMAP2-CMD-86 | RFC 9051 §6.3.5 | MUST | Preserve the deleted mailbox's highest UID or change UIDVALIDITY on recreation. | n/a: persistent UID allocation is a host-backend obligation (IMAP-DELETE-05); rest-mail/rest-mail-server#374. |
-| IMAP2-CMD-87 | RFC 9051 §6.3.5 | SHOULD | When normalizing a DELETE name, report the normalized mailbox and OLDNAME with NonExistent. | n/a: the engine does not normalize mailbox names or offer OLDNAME responses; rest-mail/rest-mail-server#718. |
+| IMAP2-CMD-87 | RFC 9051 §6.3.5 | SHOULD | When normalizing a DELETE name, report the normalized mailbox and OLDNAME with NonExistent. | TestOldNameDelete |
 | IMAP2-CMD-88 | RFC 9051 §6.3.6 | MUST | Rename the inferior hierarchy along with its parent, preserving unrelated prefix matches. | TestDeleteRenameHierarchy |
 | IMAP2-CMD-89 | RFC 9051 §6.3.6 | SHOULD | Create necessary superior hierarchy names for a RENAME target. | TestRenameMovesInferiors |
 | IMAP2-CMD-90 | RFC 9051 §6.3.6 | MUST | Preserve the old name's highest assigned UID when renaming, unless a later incarnation uses another UIDVALIDITY. | n/a: UID allocation is the host's persistent-store responsibility (IMAP-RENAME-04); rest-mail/rest-mail-server#374. |
@@ -1382,7 +1382,7 @@ Continuation through section 6.3.13. Client-only hierarchy-browser assumptions, 
 
 | ID | Section | Level | Requirement | Tests |
 |----|---------|-------|-------------|-------|
-| IMAP2-CMD-91 | RFC 9051 §6.3.6 | SHOULD | Report OLDNAME when RENAME normalizes either supplied name. | n/a: Unicode normalization and OLDNAME responses are not implemented; rest-mail/rest-mail-server#718. |
+| IMAP2-CMD-91 | RFC 9051 §6.3.6 | SHOULD | Report OLDNAME when RENAME normalizes either supplied name. | TestOldNameRename |
 | IMAP2-CMD-92 | RFC 9051 §6.3.6 | MUST | Include Subscribed in unsolicited LIST responses for renamed mailboxes that were automatically subscribed. | n/a: the engine does not auto-subscribe renamed mailboxes or send unsolicited rename LIST responses. |
 | IMAP2-CMD-93 | RFC 9051 §6.3.7 | SHOULD NOT | Remove a subscribed name merely because the corresponding mailbox no longer exists. | n/a: a durable subscription list is not implemented. Existing folders are treated as subscribed and SUBSCRIBE/UNSUBSCRIBE do not persist changes (IMAP-SUBSCRIBE-01); rest-mail/rest-mail-server#374. |
 | IMAP2-CMD-94 | RFC 9051 §6.3.9 | SHOULD | Avoid unnecessary message/count/content work for LIST when STATUS data was not requested. | TestListMetadataDoesNotReadMessages |
@@ -1404,7 +1404,7 @@ Continuation through section 6.3.13. Client-only hierarchy-browser assumptions, 
 | IMAP2-CMD-113 | RFC 9051 §6.3.9.6 | MUST NOT | Return CHILDINFO unless RECURSIVEMATCH was requested. | TestListExtendedRecursiveMatch, TestListExtendedChildren |
 | IMAP2-CMD-114 | RFC 9051 §6.3.9.6 | SHOULD | Use NonExistent with HasChildren for an absent parent of a matching descendant when CHILDINFO is unavailable. | TestListExtendedChildren |
 | IMAP2-CMD-115 | RFC 9051 §6.3.9.6 | SHOULD | Suppress redundant CHILDINFO when the matching child is itself returned. | TestListExtendedRecursiveMatch |
-| IMAP2-CMD-116 | RFC 9051 §6.3.9.7 | SHOULD | Return OLDNAME when a supplied mailbox name differs from the normalized name used by SELECT, EXAMINE, CREATE, RENAME or DELETE. | n/a: mailbox normalization and OLDNAME are not implemented; rest-mail/rest-mail-server#718. |
+| IMAP2-CMD-116 | RFC 9051 §6.3.9.7 | SHOULD | Return OLDNAME when a supplied mailbox name differs from the normalized name used by SELECT, EXAMINE, CREATE, RENAME or DELETE. | TestOldNameSelectExamine, TestOldNameCreate, TestOldNameDelete, TestOldNameRename, TestOldNameKeepsTheFolderRole, TestOldNameImplicitFolders, TestOldNameInUTF8 |
 | IMAP2-CMD-119 | RFC 9051 §6.3.10 | SHOULD | Use the authenticated user identifier as the hierarchy level beneath an other-users namespace prefix. | n/a: no other-users namespace is offered; NAMESPACE returns NIL for it, as tested in IMAP-NAMESPACE-01. |
 | IMAP2-CMD-120 | RFC 9051 §6.3.10 | SHOULD NOT | List other users whose personal mailboxes have not been shared with the authenticated user. | n/a: no other-users namespace or user-directory listing is offered; mailbox authorization is the backend's responsibility. |
 | IMAP2-CMD-122 | RFC 9051 §6.3.11 | MUST | Execute STATUS on the selected mailbox without disturbing its selection. | TestStatusPreservesSelection |
@@ -1416,7 +1416,7 @@ Continuation through section 6.3.13. Client-only hierarchy-browser assumptions, 
 | IMAP2-CMD-129 | RFC 9051 §6.3.12 | MUST | Refuse APPEND to a nonexistent mailbox without creating it, using TRYCREATE unless creation is known impossible. | TestRightsTryCreate |
 | IMAP2-CMD-130 | RFC 9051 §6.3.12 | MUST NOT | Disclose APPENDUID to a caller that can append but cannot read the destination. | TestRightsUIDDisclosure |
 | IMAP2-CMD-131 | RFC 9051 §6.3.12 | SHOULD | Notify a selected mailbox of newly appended mail using EXISTS. | TestAppendSelectedMailbox |
-| IMAP2-CMD-132 | RFC 9051 §6.3.12 | SHOULD | Report OLDNAME when APPEND normalizes the destination mailbox name. | n/a: mailbox normalization and OLDNAME are not implemented; rest-mail/rest-mail-server#718. |
+| IMAP2-CMD-132 | RFC 9051 §6.3.12 | SHOULD | Report OLDNAME when APPEND normalizes the destination mailbox name. | TestOldNameAppend |
 | IMAP2-CMD-133 | RFC 9051 §6.3.13 | MUST | Include UID in unsolicited FETCH updates sent during IDLE. | n/a: current IDLE flag updates contain FLAGS without UID. Rev2 unsolicited FETCH rules are not implemented; rest-mail/rest-mail-server#718. |
 
 ## RFC 9051: selected-state command inventory (first pass)
@@ -1483,7 +1483,7 @@ Server responses are checked independently of clients' caching, unknown-code han
 | IMAP2-RESP-187 | RFC 9051 §7.3.1 | MUST NOT | Combine Marked, Unmarked and Noselect attributes on one LIST result; omit unknown interest metadata. | TestListHierarchyLevels, TestListExtendedChildren |
 | IMAP2-RESP-188 | RFC 9051 §7.3.1 | MUST | Use the same hierarchy separator for all children of a top-level hierarchy node. | TestListReference, TestNamespace |
 | IMAP2-RESP-189 | RFC 9051 §7.3.1 | MUST | Return mailbox names that can be reused as unambiguous command arguments unless marked Noselect or NonExistent. | TestMailboxNamesAreWrittenInModifiedUTF7, TestMailboxNamesAreDecodedFromModifiedUTF7, TestMailboxNamedNIL |
-| IMAP2-RESP-190 | RFC 9051 §7.3.1 | MUST | Use registered LIST extended-data tags; clients must ignore unrecognized extended fields. | n/a: no private extended-data tag is defined. CHILDINFO is registered by RFC5258; OLDNAME is not implemented. Client unknown-field handling does not apply to the server engine. |
+| IMAP2-RESP-190 | RFC 9051 §7.3.1 | MUST | Use registered LIST extended-data tags; clients must ignore unrecognized extended fields. | n/a: no private extended-data tag is defined. CHILDINFO is registered by RFC5258 and OLDNAME by RFC 9051. Client unknown-field handling does not apply to the server engine. |
 | IMAP2-RESP-191 | RFC 9051 §7.3.4 | SHOULD | Return each ESEARCH result item only once, including when requested options repeat. | TestESearchDuplicateResultOptions |
 | IMAP2-RESP-192 | RFC 9051 §7.3.4 | MUST NOT | Include MIN on an empty ESEARCH result, but still send the response. | TestESearchNoMatches |
 | IMAP2-RESP-193 | RFC 9051 §7.3.4 | MUST NOT | Include MAX on an empty ESEARCH result, but still send the response. | TestESearchNoMatches |
@@ -1524,7 +1524,7 @@ The normative grammar notes and security requirements below are separate from a 
 | IMAP2-SEC-225 | RFC 9051 §9 | MUST | Advertise IMAP4rev2, include IMAP4rev1 when compatibility is offered, and put IMAP4 first if RFC1730 compatibility is offered. | n/a: no rev2 or RFC1730 mode is offered; current capabilities advertise only the rev1 baseline. Dual-mode grammar awaits rest-mail/rest-mail-server#718. |
 | IMAP2-SEC-226 | RFC 9051 §9 | MUST NOT | Generate undefined flag extensions, and preserve the distinction between rev2 flags and deprecated Recent. | n/a: current rev1 exposes Recent and does not negotiate the rev2 flag vocabulary. No private system flag is defined; rev2 compatibility awaits rest-mail/rest-mail-server#718. |
 | IMAP2-SEC-227 | RFC 9051 §9 | MUST | Interpret every ASCII case variant of INBOX as the distinguished inbox rather than an ordinary case-sensitive name. | TestSelectionMailboxAstrings, TestInboxCannotBeCreatedOrDeleted, TestStatusRequestedItems |
-| IMAP2-SEC-228 | RFC 9051 §9 | MUST | Format LIST extended-data tags as registered standard/vendor tag forms. | n/a: the only emitted extended tag is the standard CHILDINFO string. No vendor tag interface is offered; OLDNAME is not implemented. |
+| IMAP2-SEC-228 | RFC 9051 §9 | MUST | Format LIST extended-data tags as registered standard/vendor tag forms. | TestOldNameCreate |
 | IMAP2-SEC-229 | RFC 9051 §9 | MUST NOT | Change static FETCH data for one UID identity. | n/a: immutable content and metadata are host-backend obligations, not enforced against replacement data. See IMAP2-CORE-13 and IMAP2-CMD-150. |
 | IMAP2-SEC-230 | RFC 9051 §9 | MUST NOT | Use dot, slash, percent or star within a vendor name-component. | n/a: no vendor extension-name component is defined or accepted by this engine. |
 | IMAP2-SEC-231 | RFC 9051 §9 | MUST | Use an IANA-registered character-set name in the SEARCH CHARSET argument. | n/a: this is a client argument-selection/registration requirement; the server's unsupported-charset refusal is checked by IMAP2-CMD-144. |
@@ -1580,7 +1580,8 @@ rev1 extension test to proof of a complete rev2 implementation.
    creation/preservation guarantees remain the explicit COPY/MOVE gaps.
 9. CLOSED on replacement selection is built for rev2 sessions and waits on
    ENABLE IMAP4rev2 (IMAP2-CMD-74); rev1 sessions get none (IMAP-CLOSED-01).
-10. Selected-mailbox LIST and normalized OLDNAME remain IMAP2-CMD-73.
+10. Normalized OLDNAME is built (IMAP2-CMD-116); the selected-mailbox LIST sent
+    when no name changed remains IMAP2-CMD-73.
 11. Rev2 deprecation of SELECT/EXAMINE UNSEEN requires mode-specific replies;
     the current rev1 engine still emits it (IMAP2-SEC-217/225).
 12. Rev2 deprecation of RECENT, Recent, STATUS RECENT and SEARCH NEW also

@@ -62,6 +62,21 @@ advertised.
   `imap.RightsMailbox` interface reports them; a Mailbox without it keeps every
   right, so existing hosts see no change. DELETE of a \Noselect level with
   inferiors answers `NO [HASCHILDREN]` (§6.3.5) for every host.
+- Mailbox name normalization (RFC 9051 §§5.1, 6.3.9.7, go-imap#178,
+  rest-mail/rest-mail-server#1669). Upstream keeps every name as the client
+  spelled it and never sends `OLDNAME`, though §5.1 asks for Net-Unicode, whose
+  form is NFC. This module stays free of dependencies, so the optional
+  `imap.NameNormalizer` interface lets the store supply the form, and the gateway
+  gives it the same NFC the API saves names in. Every name a command carries goes
+  through it, a LIST pattern included, so a client's other spelling reaches the
+  same folder. SELECT, EXAMINE, CREATE, DELETE, RENAME and APPEND send the untagged
+  LIST with `OLDNAME` when a name changed, and only then. That includes an
+  IMAP4rev1 session: RFC 3501 §7 has a client accept any response at any time, and
+  it is drawn only by a client that sent a name in another form. STATUS, COPY, MOVE,
+  SUBSCRIBE and GETQUOTAROOT convert the name without reporting it, because §6.3.9.7
+  does not list them. INBOX in another case is folded as before and not reported;
+  the `select inbox` example in RFC 9051 Appendix B waits on ENABLE IMAP4rev2. A
+  Mailbox without the interface keeps every name as spelled.
 - Folder management (RFC 9051 §§6.3.4-6.3.6, go-imap#160). Upstream's
   folders are implicit, so CREATE answers OK without creating anything and the
   new folder vanishes from the next LIST, though "the server MUST NOT return

@@ -8,6 +8,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- Mailbox name normalization (RFC 9051 §§5.1, 6.3.9.7): a Mailbox that implements
+  the new optional `imap.NameNormalizer` interface has every mailbox name a command
+  carries, and each LIST pattern, converted to its normal form. SELECT, EXAMINE,
+  CREATE, DELETE, RENAME and APPEND report a name that changed with an untagged
+  LIST holding `OLDNAME`. A Mailbox without it sees no change.
 - Folder management (RFC 9051 §§6.3.4-6.3.6): a Mailbox that implements the new
   optional `imap.FolderMailbox` interface (`CreateFolder`, `DeleteFolder`,
   `RenameFolder`) keeps folders apart from their messages. CREATE then answers

@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -306,5 +307,24 @@ func TestIMAPEmptySourceAndChangedSnapshot(t *testing.T) {
 				t.Fatalf("incomplete snapshot acknowledged: calls=%d err=%v", calls, err)
 			}
 		})
+	}
+}
+
+// Two source folders that match only after conversion to NFC are both imported, each to its own
+// folder (#1669). The delimiter collision above is still refused.
+func TestIMAPConvertedFolderMatchIsNumbered(t *testing.T) {
+	f := &imapSourceFixture{raw: "Subject: source\r\n\r\nbody", count: 1,
+		folders: "* LIST () \"/\" \"Cafe&AwE-\"\r\n* LIST () \"/\" \"Caf&AOk-\"\r\n"}
+	var got []string
+	err := IMAP(context.Background(), newIMAPFixture(t, f), 1024, func(_ string, message apitypes.ImportMessageBody) error {
+		got = append(got, message.Folder)
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sort.Strings(got)
+	if want := []string{"Cafe\u0301", "Caf\u00e9 (2)"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("imported to %q, want %q", got, want)
 	}
 }

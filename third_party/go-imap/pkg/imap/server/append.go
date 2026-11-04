@@ -124,6 +124,7 @@ func (s *Session) handleAppend(tag, args string) (closeConn bool) {
 	}
 	// "INBOX" is case-insensitive (RFC 3501 §5.1): fold to canonical so an any-case
 	// destination delivers to the one real INBOX, not a phantom "inbox" mailbox.
+	supplied := folder
 	folder, ok = s.folderName(folder)
 	if !ok {
 		s.tagged(tag, "NO", "No such mailbox")
@@ -313,6 +314,7 @@ func (s *Session) handleAppend(tag, args string) (closeConn bool) {
 	// completion — including the APPENDUID branch below — so the EXISTS precedes
 	// the OK, as untagged responses must (RFC 3501 §7).
 	s.notifyAppendToSelected(folder)
+	s.announceOldName(folder, false, supplied)
 
 	// APPENDUID (RFC 4315) is emitted only for a UIDPLUS backend that reported a
 	// real UID, whether the store handled the append via AppendUID or the

@@ -177,7 +177,7 @@ func (s *Session) handleList(tag, args, cmd string) {
 		if req.reference != "" && !strings.HasPrefix(p, "/") {
 			p = req.reference + p
 		}
-		patterns = append(patterns, p)
+		patterns = append(patterns, s.normalizedPattern(p))
 	}
 
 	folders, err := s.mailbox.Folders()
@@ -321,6 +321,20 @@ func (s *Session) handleList(tag, args, cmd string) {
 		}
 	}
 	s.tagged(tag, "OK", cmd+" completed")
+}
+
+// normalizedPattern is a LIST pattern in the store's normal form, so that a
+// client's other spelling of a name matches it. A store with no normal form
+// compares the pattern as the client sent it.
+func (s *Session) normalizedPattern(pattern string) string {
+	if _, ok := s.mailbox.(imap.NameNormalizer); !ok {
+		return pattern
+	}
+	name, ok := s.mailboxName(pattern)
+	if !ok {
+		return pattern
+	}
+	return s.wireName(name)
 }
 
 // listEntries are the folders as this session writes their names, then the
