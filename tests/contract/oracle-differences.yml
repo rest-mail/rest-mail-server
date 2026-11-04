@@ -1212,11 +1212,6 @@
   reason: >-
     An account's address is the stored mailbox address, which may be internationalised
     (EAI). The API's account type does not claim the email format for it.
-- operation: linkAccount
-  difference: "request body application/json.properties.address.format: openapi.yaml \"email\", generated absent"
-  reason: >-
-    A wrong address is refused like a wrong password (403 invalid_credentials) so that linking
-    says nothing about which addresses exist.
 - operation: "*"
   difference: "request body application/json.properties.password.format: openapi.yaml \"password\", generated absent"
   reason: >-
@@ -1264,11 +1259,6 @@
   reason: >-
     The handler trims the name before counting its characters, so a name of 100 characters
     with surrounding blanks is accepted; it answers the documented 422 on name.
-- operation: createAppPassword
-  difference: "request body application/json.required: openapi.yaml [\"name\",\"password\"], generated [\"name\"]"
-  reason: >-
-    A missing current password is the documented 403 reauth_required, a refusal of the request
-    rather than a malformed body, which the mobile app shows as such.
 - operation: "*"
   difference: "response 201 application/json.properties.data.allOf: openapi.yaml *, generated absent"
   reason: >-
@@ -2502,16 +2492,6 @@
   reason: >-
     A browser's session is set, rotated and ended with cookies: restmail_access and
     restmail_refresh (httpOnly) and restmail_csrf. The oracle describes them in prose only.
-- operation: acceptInvitation
-  difference: "request body application/json.required: openapi.yaml [\"password\",\"token\"], generated [\"password\"]"
-  reason: >-
-    A missing token is refused as a bad one is, 401 invalid_token, which the handler checks;
-    required would make it a 422 first.
-- operation: acceptInvitation
-  difference: "request body application/json.properties.password.minLength: openapi.yaml 12, generated absent"
-  reason: >-
-    The password is 12 to 72 bytes, as every chosen password is; minLength counts characters,
-    and would refuse six two-byte characters the handler accepts.
 - operation: acceptInvitation
   difference: "response 200 header Set-Cookie: generated only"
   reason: >-

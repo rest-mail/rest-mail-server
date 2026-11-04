@@ -97,7 +97,7 @@ jobs:
 
       - name: Test contract tooling
         run: |
-          python3 -m pip install --quiet pyyaml
+          python3 -m pip install --quiet pyyaml 'jsonschema[format]'
           python3 -m unittest discover -s tests/contract -p 'test_*.py'
 
       - name: Set up Go
@@ -200,7 +200,7 @@ jobs:
       - name: Test the contract fault switch
         run: |
           set -euo pipefail
-          python3 -m pip install --quiet pyyaml
+          python3 -m pip install --quiet pyyaml 'jsonschema[format]'
           tags="$(python3 -B tests/contract/faults.py tags)"
           go vet -tags "$tags" ./cmd/api ./internal/faultinject
           go test -race -count=1 -tags "$tags" ./internal/faultinject
