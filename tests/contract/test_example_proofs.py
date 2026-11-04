@@ -4,6 +4,7 @@
 import importlib.util
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -308,45 +309,126 @@ class DeferLive(unittest.TestCase):
 
 
 class CIProofFetch(unittest.TestCase):
-    """scripts/ci_example_proofs.sh, against a stand-in for the gh command."""
+    """scripts/ci_example_proofs.sh, against a stand-in for gh that applies the real filters."""
 
-    def fetch(self, report):
+    RUNS = [{"databaseId": 7, "displayTitle": "fix: a thing"}]
+
+    @staticmethod
+    def view(report=None, run="in_progress"):
+        """What gh reports for a CI run; report is "status conclusion", None when it has no such job."""
+        jobs = [{"name": "Test", "status": "completed", "conclusion": "success"}]
+        if report:
+            status, conclusion = report.split()
+            jobs.append({"name": "Test report", "status": status, "conclusion": conclusion})
+        return {"status": run, "jobs": jobs}
+
+    def fetch(self, *views, runs=RUNS, early_runs=None, wait="0"):
+        """Runs the script; each read of the CI run takes the next view, then the last repeats.
+
+        The first listing of runs answers early_runs, when given. A script that keeps polling
+        past what it should hits the timeout, which fails the test.
+        """
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
+            (root / "runs.json").write_text(json.dumps(runs))
+            if early_runs is not None:
+                (root / "early.json").write_text(json.dumps(early_runs))
+            for index, view in enumerate(views):
+                (root / f"view{index}.json").write_text(json.dumps(view))
             gh = root / "gh"
             gh.write_text(
-                "#!/bin/sh\n"
-                'echo "$*" >> "$GH_CALLS"\n'
+                "#!/bin/bash\n"
+                'echo "$*" >> "$GH_ROOT/calls"\n'
+                'filter=""; args=("$@")\n'
+                'for i in "${!args[@]}"; do [ "${args[$i]}" = --jq ] && filter="${args[$((i + 1))]}"; done\n'
                 'case "$1 $2" in\n'
-                f"'run list') echo {'7' if report != 'no-run' else ''} ;;\n"
-                f"'run view') echo '{report}' ;;\n"
-                "'run download') exit 0 ;;\n"
+                "'run list')\n"
+                '  if [ -f "$GH_ROOT/early.json" ]; then jq -r "$filter" "$GH_ROOT/early.json"; rm "$GH_ROOT/early.json"\n'
+                '  else jq -r "$filter" "$GH_ROOT/runs.json"; fi ;;\n'
+                "'run view')\n"
+                '  read -r n < "$GH_ROOT/n" 2>/dev/null || n=0\n'
+                '  [ -f "$GH_ROOT/view$n.json" ] || n=$((n - 1))\n'
+                '  echo $((n + 1)) > "$GH_ROOT/n"\n'
+                '  jq -r "$filter" "$GH_ROOT/view$n.json" ;;\n'
                 "esac\n"
             )
             gh.chmod(0o755)
             calls = root / "calls"
             result = subprocess.run(
                 ["bash", str(ROOT / "scripts/ci_example_proofs.sh"), "abc", "merge_group", str(root / "out")],
-                capture_output=True, text=True, check=False,
-                env={**os.environ, "PATH": f"{root}:{os.environ['PATH']}", "GH_CALLS": str(calls),
-                     "CI_PROOFS_WAIT_SECONDS": "0", "CI_PROOFS_POLL_SECONDS": "0"},
+                capture_output=True, text=True, check=False, timeout=20,
+                env={**os.environ, "PATH": f"{root}:{os.environ['PATH']}", "GH_ROOT": str(root),
+                     "CI_PROOFS_WAIT_SECONDS": wait, "CI_PROOFS_POLL_SECONDS": "0"},
             )
             return result, calls.read_text() if calls.exists() else ""
 
+    def assert_refused(self, fetched, *named):
+        result, calls = fetched
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertIn("::error::", result.stderr)
+        for words in named:
+            self.assertIn(words, result.stderr)
+        self.assertNotIn("run download", calls)
+
     def test_downloads_once_the_test_report_passed(self):
-        result, calls = self.fetch("completed success")
+        result, calls = self.fetch(self.view("completed success"))
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("run list --workflow ci.yml --commit abc --event merge_group", calls)
         self.assertIn("run download 7 --pattern example-proofs-*", calls)
 
-    def test_refuses_anything_else(self):
-        for report in ("completed failure", "completed skipped", "completed cancelled",
-                       "in_progress null", "", "no-run"):
-            with self.subTest(report=report):
-                result, calls = self.fetch(report)
-                self.assertEqual(result.returncode, 1, result.stderr)
-                self.assertIn("::error::", result.stderr)
-                self.assertNotIn("run download", calls)
+    def test_a_report_that_finishes_later_is_waited_for(self):
+        result, calls = self.fetch(
+            self.view(),
+            self.view("queued null"),
+            self.view("in_progress null"),
+            self.view("completed success"),
+            wait="60",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(calls.count("run view"), 4)
+        self.assertIn("run download 7", calls)
+
+    def test_a_run_that_appears_later_is_waited_for(self):
+        result, calls = self.fetch(self.view("completed success"), early_runs=[], wait="60")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(calls.count("run list"), 2)
+        self.assertIn("run download 7", calls)
+
+    def test_a_newer_run_of_the_commit_replaces_the_one_it_was_reading(self):
+        # Marking a draft ready starts a CI run that cancels the older one, while this job runs on.
+        early = [{"databaseId": 6, "displayTitle": "fix: a thing"}]
+        result, calls = self.fetch(self.view("in_progress null"), self.view("completed success"),
+                                   early_runs=early, wait="60")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("run view 6", calls)
+        self.assertIn("run download 7", calls)
+
+    def test_an_ignored_edit_is_not_the_run_it_reads(self):
+        # A title or description edit starts a newer CI run with every job skipped.
+        runs = [{"databaseId": 9, "displayTitle": "CI (ignored edit)"}, *self.RUNS]
+        result, calls = self.fetch(self.view("completed success"), runs=runs)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("run view 7", calls)
+        self.assertNotIn("run view 9", calls)
+
+    def test_a_finished_report_that_did_not_pass_fails_at_once_and_says_how(self):
+        for conclusion, named in (("failure", "failed"), ("cancelled", "was cancelled"),
+                                  ("skipped", "was skipped"), ("timed_out", "timed_out")):
+            with self.subTest(conclusion=conclusion):
+                fetched = self.fetch(self.view(f"completed {conclusion}"), wait="3600")
+                self.assert_refused(fetched, "run 7", named)
+                self.assertEqual(fetched[1].count("run view"), 1)
+
+    def test_a_finished_run_without_a_report_fails_at_once(self):
+        fetched = self.fetch(self.view(run="completed"), wait="3600")
+        self.assert_refused(fetched, "run 7", "finished without a Test report")
+        self.assertEqual(fetched[1].count("run view"), 1)
+
+    def test_nothing_finished_by_the_bound_fails_and_says_what_was_missing(self):
+        self.assert_refused(self.fetch(self.view("in_progress null")), "run 7", "still 'in_progress", "0s")
+        self.assert_refused(self.fetch(self.view("queued null")), "run 7", "still 'queued", "0s")
+        self.assert_refused(self.fetch(self.view()), "run 7", "no Test report yet", "0s")
+        self.assert_refused(self.fetch(self.view(), runs=[]), "no CI run of abc (merge_group)", "0s")
 
 
 class Workflows(unittest.TestCase):
@@ -397,6 +479,11 @@ class Workflows(unittest.TestCase):
         judge = next(s for s in report if "scripts/example_proofs.py" in s.get("run", ""))
         self.assertIn("--defer-live", judge["run"])
         self.assertNotIn("--live ", judge["run"])
+
+    def test_the_union_can_outlast_the_scripts_own_bound(self):
+        script = (ROOT / "scripts/ci_example_proofs.sh").read_text()
+        bound = int(re.search(r"CI_PROOFS_WAIT_SECONDS:-(\d+)", script)[1])
+        self.assertGreater(self.e2e["e2e-proofs"]["timeout-minutes"] * 60, bound)
 
     def test_the_live_stage_is_the_chore_a_person_runs(self):
         tasks = yaml.safe_load((ROOT / "chores.yml").read_text())["tasks"]

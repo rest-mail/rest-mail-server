@@ -156,7 +156,7 @@ jobs:
     needs: [changes, e2e-run]
     if: needs.changes.outputs.run_e2e == 'true' && github.event_name != 'workflow_dispatch' && (github.event_name != 'pull_request' || (github.base_ref == 'main' && (github.event.action != 'edited' || github.event.changes.base.ref.from != '')))
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 70
     permissions:
       contents: read
       actions: read
