@@ -363,9 +363,10 @@ func (m *mailbox) Messages(folder string) ([]goimap.Message, error) {
 	out := make([]goimap.Message, 0, len(resp.Data))
 	for _, msg := range resp.Data {
 		item := toMessage(msg)
-		// FETCH sends the downgraded form to a session that has not enabled
-		// UTF-8, so RFC822.SIZE counts that form's octets.
-		item.Size = msg.WireSizeFor(m.utf8)
+		// FETCH sends the downgraded headers to a session that has not enabled
+		// UTF-8, and the engine converts both kinds of session to 7-bit where
+		// RFC 3501 section 7.4.2 requires it, so RFC822.SIZE counts those octets.
+		item.Size = msg.IMAPWireSizeFor(m.utf8)
 		out = append(out, item)
 	}
 	return out, nil
@@ -415,7 +416,8 @@ func (m *mailbox) SearchZone() (*time.Location, error) {
 // stored original when the server has one, otherwise a best-effort
 // reconstruction from the structured detail (for locally-composed items that
 // have no stored raw). Serving the stored original preserves attachments, To/Cc,
-// custom headers and any DKIM-Signature verbatim.
+// custom headers and any DKIM-Signature verbatim, in the store and through RFC
+// 3516 BINARY. The engine converts what FETCH BODY sends from these octets.
 func (m *mailbox) Fetch(uid uint32) ([]byte, error) {
 	detail, err := m.api.GetMessage(m.token, uint(uid))
 	if err != nil {

@@ -248,7 +248,9 @@ type Message struct {
 	CalendarEventsRaw json.RawMessage       `json:"calendar_events,omitempty"`
 	SizeBytes         int                   `json:"size_bytes"`
 	RawSize           int                   `json:"raw_size" description:"The exact octet count of the stored raw message; 0 when none is stored"`
-	DowngradedSize    int                   `json:"downgraded_size" description:"The octet count of the stored raw message with its headers downgraded to ASCII (RFC 6857), as sent to a POP3 or IMAP client that has not enabled UTF-8; 0 when not measured"`
+	DowngradedSize    int                   `json:"downgraded_size" description:"The octet count of the stored raw message with its headers downgraded to ASCII (RFC 6857), as sent to a POP3 client that has not enabled UTF-8; 0 when not measured"`
+	IMAPSize          int                   `json:"imap_size" description:"The octet count of the message as an IMAP FETCH sends it to a session that has not enabled UTF-8, with headers 7-bit and non-textual data transfer-encoded (RFC 3501 section 7.4.2); the stored message does not change; 0 when not measured"`
+	IMAPUTF8Size      int                   `json:"imap_utf8_size" description:"The octet count of the message as an IMAP FETCH sends it to a session that has enabled UTF-8; 0 when not measured"`
 	ReceivedTLS       *bool                 `json:"received_tls,omitempty" description:"For an inbound-MX delivery, whether it arrived encrypted"`
 	TLSVersion        string                `json:"tls_version,omitempty"`
 	HasAttachments    bool                  `json:"has_attachments"`
@@ -482,7 +484,7 @@ func (m Message) WireSize() int {
 	return m.SizeBytes
 }
 
-// WireSizeFor is the size a POP3 or IMAP session is sent: WireSize for a
+// WireSizeFor is the size a POP3 session is sent: WireSize for a
 // session that enabled UTF-8, and the downgraded size for one that did not.
 // A message whose downgraded size is not measured yet reports WireSize.
 func (m Message) WireSizeFor(utf8 bool) int {
@@ -490,6 +492,19 @@ func (m Message) WireSizeFor(utf8 bool) int {
 		return m.DowngradedSize
 	}
 	return m.WireSize()
+}
+
+// IMAPWireSizeFor is the size an IMAP session is sent by FETCH, which RFC822.SIZE
+// reports. A message whose IMAP size is not measured yet reports WireSizeFor.
+func (m Message) IMAPWireSizeFor(utf8 bool) int {
+	size := m.IMAPSize
+	if utf8 {
+		size = m.IMAPUTF8Size
+	}
+	if m.RawSize > 0 && size > 0 {
+		return size
+	}
+	return m.WireSizeFor(utf8)
 }
 
 // RestmailDiscovery is the unwrapped RESTMAIL protocol discovery document.
