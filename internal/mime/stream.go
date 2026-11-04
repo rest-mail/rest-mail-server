@@ -31,6 +31,12 @@ type StreamOptions struct {
 	Store func(ctx context.Context, part io.Reader) (StoredPart, error)
 	// MaxText is how much of each text part stays in memory. The rest is passed over.
 	MaxText int64
+	// TextPart, when set, takes each text/plain and text/html body part as it is decoded, so that
+	// none of those parts stays in memory and its body node has no content. Parts arrive in the
+	// order TextAndHTML walks the body tree. A failure reading part is that part's fault:
+	// the caller must keep nothing of it, and it is left out as Parse leaves it out. Any other
+	// failure the caller answers is an error, because the message must not be taken without it.
+	TextPart func(mediaType string, part io.Reader) error
 }
 
 // ParseHeaders reads a message's header block from source and nothing past it, for a caller that
@@ -65,6 +71,9 @@ func ParseStream(ctx context.Context, source io.Reader, options StreamOptions) (
 		if s.failed = s.budget.enter(1); s.failed == nil {
 			s.email.Body = s.walk(mr, mediaType, 1)
 		}
+	} else if s.wantsText(mediaType) {
+		s.email.Body = pipeline.Body{ContentType: mediaType}
+		s.textPart(mediaType, decodedSoFar{entity.Body})
 	} else {
 		content, _ := s.readText(entity.Body)
 		s.email.Body = pipeline.Body{ContentType: mediaType, Content: content}
@@ -133,6 +142,10 @@ func (s *streamParse) walk(mr gomessage.MultipartReader, mediaType string, depth
 			if stored, ok := s.store(part.Body); ok {
 				s.email.Attachments = append(s.email.Attachments, attachmentOf(filename, partType, "attachment", "", stored))
 			}
+		case s.wantsText(partType):
+			if s.textPart(partType, part.Body) {
+				body.Parts = append(body.Parts, pipeline.Body{ContentType: partType})
+			}
 		default:
 			content, err := s.readText(part.Body)
 			if err != nil {
@@ -170,6 +183,37 @@ func (s *streamParse) readText(part io.Reader) (string, error) {
 		s.email.Metadata[MetadataBodyTruncated] = strconv.FormatBool(true)
 	}
 	return text.String(), nil
+}
+
+// wantsText says whether a body part of this media type goes to the caller's TextPart.
+func (s *streamParse) wantsText(mediaType string) bool {
+	if s.options.TextPart == nil {
+		return false
+	}
+	media := MediaType(mediaType)
+	return media == "text/plain" || media == "text/html"
+}
+
+// textPart hands a part to TextPart, and answers whether the part was read whole.
+func (s *streamParse) textPart(mediaType string, part io.Reader) bool {
+	reading := &readProblem{source: part}
+	if err := s.options.TextPart(MediaType(mediaType), reading); err != nil && reading.err == nil {
+		s.failed = fmt.Errorf("store a text part: %w", err)
+		return false
+	}
+	return reading.err == nil
+}
+
+// decodedSoFar ends a message's only part where decoding it failed: it keeps what could be
+// decoded, as Parse keeps it.
+type decodedSoFar struct{ source io.Reader }
+
+func (d decodedSoFar) Read(p []byte) (int, error) {
+	n, err := d.source.Read(p)
+	if err != nil {
+		err = io.EOF
+	}
+	return n, err
 }
 
 func (s *streamParse) calendar(content string) {

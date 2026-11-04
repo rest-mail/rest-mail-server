@@ -1,6 +1,9 @@
 package smtp
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestValidateUTF8HeadersBoundaries(t *testing.T) {
 	for _, tc := range []struct {
@@ -16,7 +19,7 @@ func TestValidateUTF8HeadersBoundaries(t *testing.T) {
 		{"empty message", "", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if err := validateUTF8Headers([]byte(tc.raw), false); (err != nil) != tc.wantError {
+			if err := validateUTF8Headers(strings.NewReader(tc.raw), false); (err != nil) != tc.wantError {
 				t.Fatalf("validateUTF8Headers = %v, want error=%t", err, tc.wantError)
 			}
 		})

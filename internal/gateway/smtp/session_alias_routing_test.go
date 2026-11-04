@@ -35,11 +35,11 @@ func (backend *answeredAddressCheck) CheckMailbox(address string) (*apiclient.Ma
 
 type lateAliasRefusal struct{ *mockBackend }
 
-func (backend *lateAliasRefusal) DeliverMessage(request *apiclient.DeliverRequest) (*apiclient.DeliverResponse, error) {
+func (backend *lateAliasRefusal) DeliverMessageFrom(request *apiclient.DeliverRequest, content apiclient.DeliverContent) (*apiclient.DeliverResponse, error) {
 	if request.Address == "alias@local.test" {
 		return nil, &apiclient.APIError{StatusCode: 550, Body: aliasRefusedBody}
 	}
-	return backend.mockBackend.DeliverMessage(request)
+	return backend.mockBackend.DeliverMessageFrom(request, content)
 }
 
 func TestSMTPAliasFailureIsNotHiddenByPartialSuccess(t *testing.T) {
