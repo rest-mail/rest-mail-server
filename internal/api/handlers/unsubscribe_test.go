@@ -197,11 +197,12 @@ func TestUnsubscribeMailto_SendsThroughTheSendPath(t *testing.T) {
 		t.Fatalf("the URI's body is not in the message:\n%s", queued[0].RawMessage)
 	}
 
-	// The send path's own checks apply: a from the session may not send as is refused.
+	// The send path's own checks apply: a from the session can't reach answers 404, as
+	// for every account route.
 	req = httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/v1/messages/%d/unsubscribe/mailto", msg.ID), strings.NewReader(`{"from":"someone@elsewhere.test"}`))
 	rr = httptest.NewRecorder()
 	composeRoute(h)(rr, withClaims(req, claims))
-	if rr.Code != http.StatusForbidden {
+	if rr.Code != http.StatusNotFound || !strings.Contains(rr.Body.String(), "Account not found") {
 		t.Fatalf("unsubscribe from a foreign address: %d %s", rr.Code, rr.Body.String())
 	}
 }
