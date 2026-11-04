@@ -80,7 +80,7 @@ func TestPublicReadExamplesMatchRegisteredResponses(t *testing.T) {
 					t.Fatalf("not an OpenAPI YAML document: %v", err)
 				}
 			case "swaggerUI":
-				if !strings.HasPrefix(rr.Body.String(), "<!DOCTYPE html>") || !strings.Contains(rr.Body.String(), "SwaggerUIBundle({") || !strings.Contains(rr.Body.String(), "/api/docs/openapi.yaml") {
+				if !strings.HasPrefix(rr.Body.String(), "<!DOCTYPE html>") || !strings.Contains(rr.Body.String(), "SwaggerUIBundle({") || !strings.Contains(rr.Body.String(), "/api/docs/openapi.json") {
 					t.Fatal("the HTML does not load the served description")
 				}
 			case "prometheusMetrics":
