@@ -366,8 +366,10 @@ operation. A new operation or a larger count fails. A probe whose body a hook
 changes, or that a hook skips, is a line in `lost-probes.txt`, and a passing gate
 prints how many there were. The first two requests of each transaction are the
 documented ones, which a hook may rewrite: only a generated body is compared. The
-file says why each operation is there. A counted probe was not sent, so it proves
-nothing: the count is a limit, not a pass.
+file says why each operation is there. Normally a counted probe was not sent,
+so the count is a limit, not a pass. The explicit business-rule replays below
+are different: their original request is sent and verified before their duplicate
+engine send is ended, and each has a receipt in `replayed-probes.jsonl`.
 
 There are three ways to keep a probe:
 
@@ -486,11 +488,55 @@ can leave probe certificates on its disposable database without affecting gatewa
 hook removes what earlier probes put at `example.com`, and the first hook after its
 probes hosts that domain again through the fixture, so what follows finds it live.
 
-`createAppPassword` cannot be held this way. Its description lets a request leave
-out `password`, and the handler answers that with the documented 403
-`reauth_required`, which Vertrag calls a disagreement. So its probes the schema
-forbids reach the handler as drawn, and its well-formed ones are still given the
-password, and counted, until that disagreement is decided.
+### The owner-decided schema and business-state probes
+
+The 2026-11-03 decision on #1443 tightens the published descriptions, not binding.
+`linkAccount` declares an email address. `acceptInvitation` requires a nonblank
+token and a password of at least 12 characters, with the 72 UTF-8 byte ceiling
+stated explicitly (a character ceiling alone cannot enforce that byte ceiling).
+`createAppPassword` requires a nonempty current password and a nonblank name.
+Their `DescribedRequest` types are separate from the types the handlers bind:
+missing invitation tokens still answer 401, missing app-password proofs still
+answer 403, and malformed link proofs keep their existing refusals.
+
+`linkAccount` now draws the existing `someone@example.com` fixture. App-password
+probes use the already enrolled probe administrator, whose password is the drawn
+`x`, without a global password pin or a body rewrite. Invitation probes use
+`chore test:contract-invitation-fixture`: the guarded disposable fixture hashes
+the drawn token and attaches it to a fresh credential-free account before each
+valid request. Repeated token values never reuse a redeemed account. No token
+is logged or sent on the command line, and the real handler still consumes it
+once and installs the drawn password.
+
+`inviteAccount`'s positive-id schema remains honest: any positive id could name
+an eligible account. Its description now spells out the actual database rule:
+the account is active, has credential epoch zero, has no last password change,
+and has no credential. A schema cannot encode that state, so changing minimum
+id 1 to 2 would merely hide the credentialed fixture administrator.
+
+`receiveTlsReport` remains lenient, including optional `policy` and
+`policy-domain`. Vertrag 0.42 treats a legitimate business refusal of a valid
+shape as a finding. `probe_refusals.py` therefore sends those unchanged generated
+requests directly, rather than inventing a hosted policy. The published request
+schema, including date-time formats, decides the expected code: a valid report
+with no hosted domain must answer 422 `no_matching_domains`; an invalid report
+must answer 422 `validation_failed`. The exact status, code and published
+response schema must all match. The minimum-id invitation probe is sent the
+same way, requiring 409 `account_not_invitable`. Any mismatch fails the hook
+before it may end the engine send; no status is globally excused.
+
+In the narrowed local gate, hook-ended counts are 56 before and 33 after:
+`linkAccount` 10→0, `acceptInvitation` 8→0, `createAppPassword` 5→0,
+`receiveTlsReport` 32→32, `inviteAccount` 1→1. All remaining 33 were sent by the
+alternate sender: 23 invalid TLS reports, nine schema-valid domainless TLS
+reports, and the credentialed invitation target. Each receipt records the
+transaction, original body SHA-256, status, error code and explanation.
+The gate clears old receipts before coverage and checks that verified sends
+exactly match those operations' hook endings. Missing or extra receipts fail
+the run. CI retains both the receipts and hook-ending list as artifacts.
+They remain in the hook-ended counter because the engine's duplicate send is
+skipped after verification; none is an unsent probe. No baseline is raised.
+The narrowed gate passes with zero findings and zero skipped valid probes.
 
 ### Coverage keeps restmail.test unchanged
 

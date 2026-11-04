@@ -162,7 +162,8 @@
         "body": {
           "password": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
           "token": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-        }
+        },
+        "invalid": true
       },
       "response": {
         "status": 413,
@@ -5801,7 +5802,8 @@
     "created": {
       "request": {
         "body": {
-          "name": "iPhone Mail"
+          "name": "iPhone Mail",
+          "password": "x"
         }
       },
       "response": {
@@ -5830,7 +5832,8 @@
           "id": 1
         },
         "body": {
-          "name": "Thunderbird"
+          "name": "Thunderbird",
+          "password": "x"
         }
       },
       "response": {
@@ -5854,7 +5857,8 @@
           "id": 1
         },
         "body": {
-          "name": "iPhone Mail"
+          "name": "iPhone Mail",
+          "password": "x"
         }
       },
       "response": {
@@ -5898,7 +5902,8 @@
           "id": 2147483647
         },
         "body": {
-          "name": "Thunderbird"
+          "name": "Thunderbird",
+          "password": "x"
         }
       },
       "response": {
@@ -5915,7 +5920,8 @@
     "name_control": {
       "request": {
         "body": {
-          "name": "Mail\nClient"
+          "name": "Mail\nClient",
+          "password": "x"
         }
       },
       "response": {
@@ -5943,7 +5949,8 @@
           "id": 1
         },
         "body": {
-          "name": "iPhone Mail"
+          "name": "iPhone Mail",
+          "password": "x"
         }
       },
       "response": {
@@ -5967,7 +5974,8 @@
           "id": 1
         },
         "body": {
-          "name": "iPhone Mail"
+          "name": "iPhone Mail",
+          "password": "x"
         }
       },
       "response": {
@@ -5991,7 +5999,8 @@
           "id": 1
         },
         "body": {
-          "name": "iPhone Mail"
+          "name": "iPhone Mail",
+          "password": "x"
         }
       },
       "response": {
@@ -6015,7 +6024,8 @@
           "id": 1
         },
         "body": {
-          "name": "iPhone Mail"
+          "name": "iPhone Mail",
+          "password": "x"
         }
       },
       "response": {
@@ -6039,7 +6049,8 @@
           "id": 1
         },
         "body": {
-          "name": "iPhone Mail"
+          "name": "iPhone Mail",
+          "password": "x"
         }
       },
       "response": {
@@ -6064,7 +6075,8 @@
           "id": 1
         },
         "body": {
-          "name": "iPhone Mail"
+          "name": "iPhone Mail",
+          "password": "x"
         }
       },
       "response": {
@@ -6088,7 +6100,8 @@
           "id": 1
         },
         "body": {
-          "name": "iPhone Mail"
+          "name": "iPhone Mail",
+          "password": "x"
         }
       },
       "response": {

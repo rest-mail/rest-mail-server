@@ -3382,6 +3382,8 @@ paths:
               properties:
                 name:
                   type: string
+                  minLength: 1
+                  pattern: '\S'
                   maxLength: 100
                   example: iPhone Mail
                 expires_at:
@@ -3393,9 +3395,10 @@ paths:
                   format: password
                   writeOnly: true
                   description: The session's own current password, entered again.
+                  minLength: 1
             examples:
               created:
-                value: {name: iPhone Mail}
+                value: {name: iPhone Mail, password: x}
               name_missing:
                 value: {}
               name_empty:
@@ -24043,7 +24046,10 @@ paths:
   /api/v1/admin/mailboxes/{id}/invitation:
     post:
       summary: Invite an account to choose its first password
-      description: For an active account created without credentials. The invitation
+      description: Requires an active account that has never held credentials;
+        credential_epoch is zero, last_password_change is absent, and no credential
+        exists. Otherwise even a schema-valid id receives 409 account_not_invitable.
+        The invitation
         lasts 15 minutes; issuing another invalidates the previous one. Only a hash
         is stored. Authenticator enrollment and server encryption must be enabled before
         invitations can be issued.
@@ -24266,7 +24272,7 @@ paths:
   /api/v1/auth/invitation:
     post:
       summary: Choose your first password with an invitation
-      description: 'Redeems an invitation once, chooses a password of 12–72 bytes that
+      description: 'Redeems an invitation once, chooses a password of at least 12 characters and at most 72 UTF-8 bytes that
         is not too easy to guess and signs in. The session can only finish authenticator enrollment until it is confirmed.
         Owner reset tokens cannot be used here. Native clients send client: native;
         browsers receive httpOnly session cookies.'
@@ -24278,7 +24284,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/resetRequest'
+              $ref: '#/components/schemas/AcceptInvitationRequest'
             # Named, as are the responses they produce. A hook swaps the
             # accepted token for a fresh invitation; invalid_token's is unknown.
             examples:
@@ -26266,6 +26272,23 @@ components:
       - token
       - expires_at
       type: object
+    AcceptInvitationRequest:
+      additionalProperties: false
+      type: object
+      required: [token, password]
+      properties:
+        token:
+          type: string
+          minLength: 1
+          pattern: '\S'
+        password:
+          type: string
+          minLength: 12
+          maxLength: 72
+          description: At least 12 characters and at most 72 UTF-8 bytes; the byte limit is checked by the handler.
+        client:
+          type: string
+          enum: [native]
     resetRequest:
       additionalProperties: false
       properties:
