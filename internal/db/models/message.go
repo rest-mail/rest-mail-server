@@ -179,19 +179,19 @@ func (Message) TableName() string { return "messages" }
 // raw source, on every path that stores one, so no delivery path can forget them.
 func (m *Message) BeforeCreate(tx *gorm.DB) error {
 	returnStoredModSeq(tx)
-	if m.RawSize > 0 {
-		source := string(m.Source())
+	if m.RawSize > 0 && (m.DowngradedSize == 0 || m.POP3UTF8Size == 0 || m.IMAPSize == 0 || m.IMAPUTF8Size == 0) {
+		sizes := rmail.MeasureWireSizes(m.SourceView())
 		if m.DowngradedSize == 0 {
-			m.DowngradedSize = rmail.DowngradedSize(source)
+			m.DowngradedSize = sizes.Downgraded
 		}
 		if m.POP3UTF8Size == 0 {
-			m.POP3UTF8Size = rmail.POP3WireSize(source)
+			m.POP3UTF8Size = sizes.POP3UTF8
 		}
 		if m.IMAPSize == 0 {
-			m.IMAPSize = rmail.IMAPWireSize(source, false)
+			m.IMAPSize = sizes.IMAP
 		}
 		if m.IMAPUTF8Size == 0 {
-			m.IMAPUTF8Size = rmail.IMAPWireSize(source, true)
+			m.IMAPUTF8Size = sizes.IMAPUTF8
 		}
 	}
 	if m.PendingDraft || (m.IsDeleted && m.Sender == "system" && m.Subject == "" && m.BodyText == "" && m.BodyHTML == "" && m.RawMessage == "" && m.RawOctets == nil) {
@@ -203,9 +203,9 @@ func (m *Message) BeforeCreate(tx *gorm.DB) error {
 	return err
 }
 
-// sourceView is the source as a string without copying it, for reading it while nothing
+// SourceView is the source as a string without copying it, for reading it while nothing
 // else writes to it: measuring a message must not cost a copy of it. Nothing may keep it.
-func (m *Message) sourceView() string {
+func (m *Message) SourceView() string {
 	if m.RawOctets != nil {
 		return unsafe.String(unsafe.SliceData(m.RawOctets), len(m.RawOctets))
 	}
