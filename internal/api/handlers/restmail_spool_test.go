@@ -262,7 +262,6 @@ func postRestmail(routes http.Handler, body []byte) *httptest.ResponseRecorder {
 // RESTMAIL holds the store-path limit on what the federation client sends: its request is a file
 // until the message is read, once, and that one read parses it once and gives the row its text.
 // Every shape stores text, because the limit only means something if the text was stored too.
-// Long address lists and many parameters on one field are still over it, which #1915 records.
 func TestRestmailHoldsTheLimitOnHostileShapes(t *testing.T) {
 	const size = 1 << 20
 	const id = "From: old@example.test\r\nSubject: s\r\nDate: Thu, 02 Jan 2020 03:04:05 +0000\r\n"
@@ -276,6 +275,7 @@ func TestRestmailHoldsTheLimitOnHostileShapes(t *testing.T) {
 	// A message nested in another isn't that message's text, so the shapes with parts carry a text
 	// part beside them, of half the message.
 	mixed := "Content-Type: multipart/mixed; boundary=B\r\n\r\n--B\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n" + strings.Repeat("\u00f6", size/4) + "\r\n"
+	shapes := hostileFieldShapes(id)
 	for name, message := range map[string]string{
 		"plain ASCII":              id + "Content-Type: text/plain\r\n\r\n" + strings.Repeat("hello world\r\n", size/13),
 		"8-bit text, no charset":   id + "Content-Type: text/plain\r\n\r\n" + strings.Repeat("\u00f6", size/2) + "\r\n",
@@ -283,6 +283,9 @@ func TestRestmailHoldsTheLimitOnHostileShapes(t *testing.T) {
 		"1000 typed parts":         id + mixed + strings.Repeat("--B\r\nContent-Type: a/b\r\n\r\n\u00f6"+strings.Repeat("y", size/2000)+"\r\n", 999) + "--B--\r\n",
 		"typed parts in a message": id + mixed + "--B\r\nContent-Type: message/rfc822\r\n\r\nContent-Type: multipart/mixed; boundary=C\r\n\r\n" + strings.Repeat("--C\r\nContent-Type: a/b\r\n\r\nx\r\n", size/56) + "--C--\r\n--B--\r\n",
 	} {
+		shapes[name] = message
+	}
+	for name, message := range shapes {
 		t.Run(name, func(t *testing.T) {
 			// TotalAlloc counts the whole process, so a run gets another try before it fails: a
 			// message that really costs too much costs too much every time.
@@ -316,11 +319,14 @@ func TestRestmailHoldsTheLimitOnHostileShapes(t *testing.T) {
 				t.Fatalf("delivering %d bytes allocated %d", length, best)
 			}
 			stored := last(t)
-			if len(stored.BodyText) < size/4 {
+			if len(stored.BodyText) < size/4-64 {
 				t.Fatalf("stored %d bytes of text", len(stored.BodyText))
 			}
 			if stored.RawMessage != want {
 				t.Fatalf("stored %d bytes of source for %d", len(stored.RawMessage), len(want))
+			}
+			if digest, err := stored.SealDigest(); err != nil || digest != stored.SealedHash {
+				t.Fatalf("seal %q for %q (%v)", stored.SealedHash, digest, err)
 			}
 		})
 	}

@@ -332,6 +332,30 @@ func TestMessageImportStoredHoldsOnlyWhatTheRowKeeps(t *testing.T) {
 	}
 }
 
+// hostileFieldShapes are messages of one very long header field, which read once cost little of the
+// limit, each with text. Plain ASCII beside many parameters is on purpose: with an 8-bit octet
+// measuring the message also reads them in third_party/go-imap, which puts them over the limit when
+// that package's pool is cold, as #1915 records.
+func hostileFieldShapes(id string) map[string]string {
+	const size = 1 << 20
+	long := func(first, each string, end string) string {
+		var b strings.Builder
+		b.WriteString(first)
+		for i := 0; b.Len() < size*3/4; i++ {
+			fmt.Fprintf(&b, each, i, i)
+		}
+		return b.String() + end + "\r\n"
+	}
+	eightBit := strings.Repeat("\u00f6", size/8) + "\r\n"
+	ascii := strings.Repeat("hello world\r\n", size/52)
+	return map[string]string{
+		"address list, top level":   id + long("To: to@example.test", ",\r\n \"Name %d\" <a%d@example.test>", "") + "Content-Type: text/plain; charset=utf-8\r\n\r\n" + eightBit,
+		"parameters, top level":     id + long("Content-Type: text/plain; charset=utf-8", ";\r\n p%d=v%d", "") + "\r\n" + ascii,
+		"parameters, on a part":     id + "Content-Type: multipart/mixed; boundary=B\r\n\r\n--B\r\n" + long("Content-Type: text/plain; charset=utf-8", ";\r\n p%d=v%d", "") + "\r\n" + ascii + "--B--\r\n",
+		"parameters, on many parts": id + "Content-Type: multipart/mixed; boundary=B\r\n\r\n--B\r\nContent-Type: text/plain\r\n\r\n" + eightBit + strings.Repeat("--B\r\nContent-Type: a/b"+strings.Repeat("; p=v", size/5000)+"\r\n\r\nx\r\n", 750) + "--B--\r\n",
+	}
+}
+
 // The same limit holds for an attachment FETCH has to convert, because measuring what it would
 // send holds no copy of the message.
 func TestMessageImportStoredHoldsTheLimitOnHostileShapes(t *testing.T) {
@@ -355,6 +379,7 @@ func TestMessageImportStoredHoldsTheLimitOnHostileShapes(t *testing.T) {
 		fmt.Sprintf(`{"raw_message":"%s","internal_date":"2020-01-02T03:04:05Z"}`, base64.StdEncoding.EncodeToString([]byte("Message-ID: <warm@example.test>\r\nFrom: old@example.test\r\n\r\nb\r\n"))))
 	first.Header.Set("Content-Type", "application/json")
 	importMessageRoutes(warm).ServeHTTP(httptest.NewRecorder(), first)
+	shapes := hostileFieldShapes(id)
 	for name, message := range map[string]string{
 		"binary attachment":      id + "Subject: Gr\u00fc\u00dfe\r\nContent-Type: multipart/mixed; boundary=B\r\n\r\n--B\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nsm\u00e4ll\r\n--B\r\nContent-Type: application/octet-stream\r\nContent-Transfer-Encoding: binary\r\n\r\n" + strings.Repeat("\xf6", size) + "\r\n--B--\r\n",
 		"base64, stray octets":   id + "Subject: Gr\u00fc\u00dfe\r\nContent-Type: multipart/mixed; boundary=B\r\n\r\n--B\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nsm\u00e4ll\r\n--B\r\nContent-Type: application/octet-stream\r\nContent-Transfer-Encoding: base64\r\n\r\n" + strings.Repeat("AAAA\xf6", size/5) + "\r\n--B--\r\n",
@@ -362,6 +387,9 @@ func TestMessageImportStoredHoldsTheLimitOnHostileShapes(t *testing.T) {
 		"60 nested messages":     id + strings.Repeat("Content-Type: message/rfc822\r\n\r\n", 60) + "Subject: \xf6\r\n\r\n" + strings.Repeat("\xf6", size),
 		"1000 typed parts":       id + "Content-Type: multipart/mixed; boundary=B\r\n\r\n" + strings.Repeat("--B\r\nContent-Type: a/b\r\n\r\n\xf6"+strings.Repeat("y", size/1000)+"\r\n", 1000) + "--B--\r\n",
 	} {
+		shapes[name] = message
+	}
+	for name, message := range shapes {
 		t.Run(name, func(t *testing.T) {
 			h := NewMessageImportHandler(db, 2*size, nil, nil)
 			h.directory = t.TempDir()
@@ -392,14 +420,24 @@ func TestMessageImportStoredHoldsTheLimitOnHostileShapes(t *testing.T) {
 			if best > 8*uint64(length) {
 				t.Fatalf("storing %d bytes allocated %d", length, best)
 			}
+			// The limit only means something if the row holds what it should, however it was written.
+			var stored models.Message
+			if err := db.Where("mailbox_id = ?", fx.user.ID).Order("id DESC").First(&stored).Error; err != nil {
+				t.Fatal(err)
+			}
+			if name == "address list, top level" && strings.Count(string(stored.RecipientsTo), "@") < 1000 {
+				t.Fatalf("recipients %.100s", stored.RecipientsTo)
+			}
+			if digest, err := stored.SealDigest(); err != nil || digest != stored.SealedHash {
+				t.Fatalf("seal %q for %q (%v)", stored.SealedHash, digest, err)
+			}
 		})
 	}
 }
 
 // The gateway's next hop holds the same limit on what the gateway sends: its request is a file
 // until the message is read, once, and that one read parses it once and gives the row its text.
-// Non-UTF-8 octets through this route are #1921's, and long address lists and many parameters on
-// one field are still over it, which #1915 records.
+// Non-UTF-8 octets through this route are #1921's.
 func TestDeliverHoldsTheLimitOnHostileShapes(t *testing.T) {
 	const size = 1 << 20
 	const id = "From: old@example.test\r\nSubject: s\r\nDate: Thu, 02 Jan 2020 03:04:05 +0000\r\n"
@@ -439,6 +477,7 @@ func TestDeliverHoldsTheLimitOnHostileShapes(t *testing.T) {
 	// A message nested in another isn't that message's text, so the shapes with parts carry a text
 	// part beside them, of half the message.
 	mixed := "Content-Type: multipart/mixed; boundary=B\r\n\r\n--B\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n" + strings.Repeat("\u00f6", size/4) + "\r\n"
+	shapes := hostileFieldShapes(id)
 	for name, message := range map[string]string{
 		"plain ASCII":              id + "Content-Type: text/plain\r\n\r\n" + strings.Repeat("hello world\r\n", size/13),
 		"8-bit text, no charset":   id + "Content-Type: text/plain\r\n\r\n" + strings.Repeat("\u00f6", size/2) + "\r\n",
@@ -446,6 +485,9 @@ func TestDeliverHoldsTheLimitOnHostileShapes(t *testing.T) {
 		"1000 typed parts":         id + mixed + strings.Repeat("--B\r\nContent-Type: a/b\r\n\r\n\u00f6"+strings.Repeat("y", size/2000)+"\r\n", 999) + "--B--\r\n",
 		"typed parts in a message": id + mixed + "--B\r\nContent-Type: message/rfc822\r\n\r\nContent-Type: multipart/mixed; boundary=C\r\n\r\n" + strings.Repeat("--C\r\nContent-Type: a/b\r\n\r\nx\r\n", size/56) + "--C--\r\n--B--\r\n",
 	} {
+		shapes[name] = message
+	}
+	for name, message := range shapes {
 		t.Run(name, func(t *testing.T) {
 			// TotalAlloc counts the whole process, so a run gets another try before it fails: a
 			// message that really costs too much costs too much every time.
@@ -471,8 +513,11 @@ func TestDeliverHoldsTheLimitOnHostileShapes(t *testing.T) {
 			if err := db.Where("mailbox_id = ?", mailbox.ID).Order("id DESC").First(&stored).Error; err != nil {
 				t.Fatal(err)
 			}
-			if len(stored.BodyText) < size/4 {
+			if len(stored.BodyText) < size/4-64 {
 				t.Fatalf("stored %d bytes of text", len(stored.BodyText))
+			}
+			if digest, err := stored.SealDigest(); err != nil || digest != stored.SealedHash {
+				t.Fatalf("seal %q for %q (%v)", stored.SealedHash, digest, err)
 			}
 		})
 	}

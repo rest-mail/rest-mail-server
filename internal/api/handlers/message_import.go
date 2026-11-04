@@ -151,7 +151,7 @@ func (h *MessageImportHandler) storeImportedMessage(r *http.Request, accountID u
 	if err != nil {
 		return result, err
 	}
-	headers, err := rmime.ParseHeaders(reader)
+	headers, err := rmime.ParseSizedHeaders(reader, source.size)
 	if err != nil {
 		return result, endpoint.Invalid(map[string]string{"raw_message": "must be a parseable RFC 5322 message"})
 	}
@@ -174,12 +174,10 @@ func (h *MessageImportHandler) storeImportedMessage(r *http.Request, accountID u
 		for _, item := range items {
 			list = append(list, item.Address)
 		}
-		encoded, _ := json.Marshal(list)
-		return models.JSONB(encoded)
+		return models.JSONB(rmime.StringsJSON(list))
 	}
 	msg.RecipientsTo, msg.RecipientsCc = addresses(headers.To), addresses(headers.Cc)
-	encodedHeaders, _ := json.Marshal(headers.Raw)
-	msg.Headers = models.JSONB(encodedHeaders)
+	msg.Headers = models.JSONB(decodedHeadersColumn(headers.Raw))
 	if date, err := mail.ParseDate(headers.Date); err == nil {
 		msg.DateHeader = &date
 	}
@@ -221,7 +219,7 @@ func (h *MessageImportHandler) storeImportedMessage(r *http.Request, accountID u
 				return err
 			}
 			// The text columns keep a part's whole text, so no part is cut short here.
-			parsed, err := rmime.ParseStream(ctx, reader, rmime.StreamOptions{Store: h.storeAttachmentPart, MaxText: math.MaxInt64, SourceSize: source.size})
+			parsed, err := rmime.ParseStream(ctx, reader, rmime.StreamOptions{Store: h.storeAttachmentPart, MaxText: math.MaxInt64, SourceSize: source.size, HeadersRead: true})
 			if errors.Is(err, rmime.ErrStructureLimit) {
 				// Imported mail is held to the same MIME limits as arriving mail (#1641). Its
 				// Received: fields are not counted: old mail may carry any number, and storing
@@ -259,7 +257,7 @@ func (h *MessageImportHandler) storeImportedMessage(r *http.Request, accountID u
 			if msg.RawMessage, msg.RawOctets, err = source.columns(); err != nil {
 				return err
 			}
-			if err := tx.Create(&msg).Error; err != nil {
+			if err := createDeliveredMessage(tx, &msg); err != nil {
 				return err
 			}
 			msg.RawMessage, msg.RawOctets = "", nil // stored, so no longer held

@@ -19,7 +19,9 @@ func (j JSONB) Value() (driver.Value, error) {
 	if len(j) == 0 {
 		return "[]", nil
 	}
-	return string(j), nil
+	// A view, because the column can be as long as a header a sender wrote, and the driver only
+	// reads it while a statement runs, and nothing writes to a JSONB in that time.
+	return unsafe.String(unsafe.SliceData(j), len(j)), nil
 }
 
 func (j *JSONB) Scan(value interface{}) error {

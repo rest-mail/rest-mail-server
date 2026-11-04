@@ -253,7 +253,7 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput, spoo
 			}
 			// Preserve raw headers as JSON
 			if headers == nil && parsedHeaders.Raw != nil {
-				headers, _ = json.Marshal(parsedHeaders.Raw)
+				headers = decodedHeadersColumn(parsedHeaders.Raw)
 			}
 		}
 	}

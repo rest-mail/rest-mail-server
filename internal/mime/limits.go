@@ -1,7 +1,6 @@
 package mime
 
 import (
-	"bufio"
 	"bytes"
 	"errors"
 	"fmt"
@@ -82,6 +81,8 @@ type partBudget struct {
 	sourceSize int
 	// arena holds what's read of the parts. See readPart.
 	arena []byte
+	// fields reads the parts' headers, in the one buffer the message's header used.
+	fields *fieldReader
 }
 
 // partArenaLeast is the least an arena holds, for a message whose size isn't known.
@@ -108,7 +109,11 @@ func (b *partBudget) readPart(r io.Reader) ([]byte, error) {
 	for {
 		if len(b.arena) == cap(b.arena) {
 			held := len(b.arena) - start
-			next := make([]byte, held, max(2*held, b.sourceSize+bytes.MinRead, partArenaLeast))
+			next := b.fields.takeBuffer(max(2*held, fieldBufferDoubles))
+			if next == nil {
+				next = make([]byte, 0, max(2*held, b.sourceSize+bytes.MinRead, partArenaLeast))
+			}
+			next = next[:held]
 			copy(next, b.arena[start:])
 			b.arena, start = next, 0
 		}
@@ -189,10 +194,14 @@ func checkParts(mr gomessage.MultipartReader, depth int, budget *partBudget) err
 // first empty line. A folded field counts once.
 func ReceivedCount(raw []byte) int {
 	count := 0
-	scanner := bufio.NewScanner(bytes.NewReader(raw))
-	scanner.Buffer(make([]byte, 0, 4096), len(raw)+1)
-	for scanner.Scan() {
-		line := bytes.TrimRight(scanner.Bytes(), "\r")
+	for rest := raw; len(rest) != 0; {
+		line := rest
+		if end := bytes.IndexByte(rest, '\n'); end >= 0 {
+			line, rest = rest[:end], rest[end+1:]
+		} else {
+			rest = nil
+		}
+		line = bytes.TrimRight(line, "\r")
 		if len(line) == 0 {
 			break
 		}

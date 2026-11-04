@@ -8,8 +8,6 @@ import (
 	"strconv"
 	"strings"
 
-	gomessage "github.com/emersion/go-message"
-
 	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 )
 
@@ -40,17 +38,25 @@ type StreamOptions struct {
 	// SourceSize is how large the source is, when that is known. The text of a message that
 	// is one part is about that large, so it is read into one buffer of that size.
 	SourceSize int64
+	// HeadersRead says the caller has the message's headers from ParseHeaders, so the answer's
+	// Headers are left empty and the header block is only read for what opening the body needs.
+	HeadersRead bool
 }
 
 // ParseHeaders reads a message's header block from source and nothing past it, for a caller that
 // can decide something about a message before reading its parts. It fails for what Parse and
 // ParseStream fail for, because those can only fail on the header block.
 func ParseHeaders(source io.Reader) (pipeline.Headers, error) {
-	entity, err := gomessage.Read(source)
-	if entity == nil {
+	return ParseSizedHeaders(source, 0)
+}
+
+// ParseSizedHeaders is ParseHeaders for a source whose size is known.
+func ParseSizedHeaders(source io.Reader, size int64) (pipeline.Headers, error) {
+	fields, _, _, _, err := readTopFields(source, int(size))
+	if err != nil {
 		return pipeline.Headers{}, fmt.Errorf("parse message: %w", err)
 	}
-	return parseHeaders(entity.Header), nil
+	return parseHeaders(fields), nil
 }
 
 // ParseStream decomposes a message read from source, and keeps in memory only headers,
@@ -63,14 +69,29 @@ func ParseStream(ctx context.Context, source io.Reader, options StreamOptions) (
 	if options.Store == nil || options.MaxText <= 0 {
 		return nil, errors.New("parse message: a store and a text limit are required")
 	}
-	entity, err := gomessage.Read(source)
-	if entity == nil {
-		return nil, fmt.Errorf("parse message: %w", err)
+	email := &pipeline.EmailJSON{}
+	var opened *entity
+	var fields *fieldReader
+	var headerSize int64
+	if options.HeadersRead {
+		br, reader, kept, size, err := readTopForOpening(source, int(options.SourceSize))
+		if err != nil {
+			return nil, fmt.Errorf("parse message: %w", err)
+		}
+		opened, _ = kept.open(br)
+		fields, headerSize = reader, size
+	} else {
+		top, br, reader, size, err := readTopFields(source, int(options.SourceSize))
+		if err != nil {
+			return nil, fmt.Errorf("parse message: %w", err)
+		}
+		email.Headers = parseHeaders(top)
+		opened, _ = fieldsOpening(top).open(br)
+		fields, headerSize = reader, size
 	}
-	s := &streamParse{ctx: ctx, options: options, budget: newPartBudget(), email: &pipeline.EmailJSON{Headers: parseHeaders(entity.Header)}}
-	mediaType, _, _ := entity.Header.ContentType()
-	mediaType = strings.ToLower(mediaType)
-	if mr := entity.MultipartReader(); mr != nil {
+	s := &streamParse{ctx: ctx, options: options, budget: newPartBudget(), email: email, fields: fields}
+	mediaType := strings.ToLower(opened.mediaType)
+	if mr := opened.multipart(fields); mr != nil {
 		if s.failed = s.budget.enter(1); s.failed == nil {
 			s.email.Body = s.walk(mr, mediaType, 1)
 		}
@@ -78,7 +99,7 @@ func ParseStream(ctx context.Context, source io.Reader, options StreamOptions) (
 		s.email.Body = pipeline.Body{ContentType: mediaType}
 		s.textPart(mediaType, decodedSoFar{entity.Body})
 	} else {
-		content, _ := s.readSized(entity.Body, options.SourceSize)
+		content, _ := s.readSized(opened.body, max(options.SourceSize-headerSize, 0))
 		s.email.Body = pipeline.Body{ContentType: mediaType, Content: content}
 		if mediaType == "text/calendar" {
 			s.calendar(content)
@@ -99,6 +120,8 @@ type streamParse struct {
 	budget  *partBudget
 	email   *pipeline.EmailJSON
 	failed  error
+	// fields reads the parts' headers.
+	fields *fieldReader
 	// copying is the one buffer every text part is read through, because a message of many
 	// small parts would otherwise allocate a whole one for each.
 	copying []byte
@@ -106,46 +129,44 @@ type streamParse struct {
 
 // walk reads the parts of a multipart at depth, which the Limits in force bound as Parse's
 // parseMultipart bounds them.
-func (s *streamParse) walk(mr gomessage.MultipartReader, mediaType string, depth int) pipeline.Body {
+func (s *streamParse) walk(mr *multipartReader, mediaType string, depth int) pipeline.Body {
 	body := pipeline.Body{ContentType: mediaType}
 	for s.failed == nil {
-		part, err := mr.NextPart()
+		part, err := mr.nextPart()
 		if err == io.EOF {
 			break
 		}
-		if err != nil && !gomessage.IsUnknownCharset(err) && !gomessage.IsUnknownEncoding(err) {
+		if err != nil && !isUnknownCoding(err) {
 			break // a malformed boundary: nothing further can be read
 		}
 		if s.failed = s.budget.part(); s.failed != nil {
 			break
 		}
-		partType, _, _ := part.Header.ContentType()
-		partType = strings.ToLower(partType)
-		if nested := part.MultipartReader(); nested != nil {
+		partType := strings.ToLower(part.mediaType)
+		if nested := part.multipart(s.fields); nested != nil {
 			if s.failed = s.budget.enter(depth + 1); s.failed != nil {
 				break
 			}
 			body.Parts = append(body.Parts, s.walk(nested, partType, depth+1))
 			continue
 		}
-		disposition, _, _ := part.Header.ContentDisposition()
-		disposition = strings.ToLower(disposition)
-		filename := partFilename(part.Header)
-		contentID := part.Header.Get("Content-Id")
+		disposition := strings.ToLower(part.disposition)
+		filename := part.filename()
+		contentID := part.contentID
 		switch {
 		case partType == "text/calendar":
-			content, err := s.readText(part.Body)
+			content, err := s.readText(part.body)
 			if err != nil {
 				continue
 			}
 			s.calendar(content)
 			body.Parts = append(body.Parts, pipeline.Body{ContentType: partType, Content: content})
 		case disposition == "inline" && contentID != "":
-			if stored, ok := s.store(part.Body); ok {
+			if stored, ok := s.store(part.body); ok {
 				s.email.Inline = append(s.email.Inline, attachmentOf(filename, partType, "inline", contentID, stored))
 			}
 		case disposition == "attachment" || (filename != "" && !strings.HasPrefix(partType, "text/")):
-			if stored, ok := s.store(part.Body); ok {
+			if stored, ok := s.store(part.body); ok {
 				s.email.Attachments = append(s.email.Attachments, attachmentOf(filename, partType, "attachment", "", stored))
 			}
 		case s.wantsText(partType):
@@ -153,7 +174,7 @@ func (s *streamParse) walk(mr gomessage.MultipartReader, mediaType string, depth
 				body.Parts = append(body.Parts, pipeline.Body{ContentType: partType})
 			}
 		default:
-			content, err := s.readText(part.Body)
+			content, err := s.readText(part.body)
 			if err != nil {
 				continue
 			}

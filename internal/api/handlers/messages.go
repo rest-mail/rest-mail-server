@@ -2327,23 +2327,61 @@ func (h *MessageHandler) respondToCalendar(r *http.Request, in calendarReplyRequ
 	return CalendarReplied{Response: response, Status: "sent"}, nil
 }
 
-// deliveredTextOnItsOwnFrom is the size of a message's text from which it's written after the
-// row. The driver builds each statement's parameters into one buffer, growing it as it goes, so
-// a source and a text as large as it cost about 7x when written together and about 4.6x apart
-// (#1915). Below this it costs nothing worth a second statement.
-const deliveredTextOnItsOwnFrom = 64 << 10
+// deliveredColumnOnItsOwnFrom is the size of a message's text, or of one of its JSON columns, from
+// which it's written after the row. The driver builds each statement's parameters into one buffer,
+// growing it as it goes, so a source and a text as large as it cost about 7x when written together
+// and about 4.6x apart (#1915). Below this it costs nothing worth a second statement.
+const deliveredColumnOnItsOwnFrom = 64 << 10
 
-// createDeliveredMessage stores a delivered message, in the caller's transaction, so its row and
-// its text are written together or not at all. BeforeCreate seals the whole message either way.
+// decodedHeadersColumn is what the row keeps of a message's header fields beside its source, encoded.
+// Header fields as long as these stay only in the source, as all of a message's do on /deliver:
+// nothing is lost, and encoding them, sending them and sealing them again cost about 3x of them
+// (#1915). A reader of the message's class reads them from the source (messageClass).
+func decodedHeadersColumn(raw map[string][]string) []byte {
+	size := 0
+	for key, values := range raw {
+		size += len(key)
+		for _, value := range values {
+			size += len(value)
+		}
+	}
+	if size >= deliveredColumnOnItsOwnFrom {
+		return nil
+	}
+	return rmime.RawHeadersJSON(raw)
+}
+
+// createDeliveredMessage stores a message, in the caller's transaction, so its row and what's
+// written after it are written together or not at all. BeforeCreate seals the whole message either
+// way. A sender chooses how large the text and the header fields behind the JSON columns are.
 func createDeliveredMessage(tx *gorm.DB, msg *models.Message) error {
-	if len(msg.BodyText)+len(msg.BodyHTML) < deliveredTextOnItsOwnFrom {
+	var omit []string
+	var later []map[string]any
+	if len(msg.BodyText)+len(msg.BodyHTML) >= deliveredColumnOnItsOwnFrom {
+		omit = append(omit, "BodyText", "BodyHTML")
+		later = append(later, map[string]any{"body_text": msg.BodyText, "body_html": msg.BodyHTML})
+	}
+	for _, column := range []struct {
+		field, name string
+		value       models.JSONB
+	}{{"Headers", "headers", msg.Headers}, {"RecipientsTo", "recipients_to", msg.RecipientsTo}, {"RecipientsCc", "recipients_cc", msg.RecipientsCc}} {
+		if len(column.value) >= deliveredColumnOnItsOwnFrom {
+			omit = append(omit, column.field)
+			later = append(later, map[string]any{column.name: column.value})
+		}
+	}
+	if len(omit) == 0 {
 		return tx.Create(msg).Error
 	}
-	if err := tx.Omit("BodyText", "BodyHTML").Create(msg).Error; err != nil {
+	if err := tx.Omit(omit...).Create(msg).Error; err != nil {
 		return err
 	}
-	return tx.Model(&models.Message{}).Where("id = ?", msg.ID).
-		UpdateColumns(map[string]any{"body_text": msg.BodyText, "body_html": msg.BodyHTML}).Error
+	for _, columns := range later {
+		if err := tx.Model(&models.Message{}).Where("id = ?", msg.ID).UpdateColumns(columns).Error; err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // localDeliveryParams holds the information needed for local message delivery with
