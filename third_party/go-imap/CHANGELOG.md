@@ -22,6 +22,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   backend. The ban used to be read only after a failed attempt, so a correct
   password still signed in. The reply to the failure that earns the ban is now
   the same `* BYE` and `NO [UNAVAILABLE]`.
+- Converting a header for FETCH takes time in proportion to its size. A run of
+  `\"` in an 8-bit field, or a field folded many times, used to take quadratic
+  time, 16.6 s for a 156 KB Subject. The output doesn't change.
 - FETCH converts a message as it is sent, as RFC 3501 §7.4.2 requires, and what
   the mailbox returned does not change. HEADER and MIME sections and the header
   of an encapsulated message are 7-bit. Non-textual data goes out BASE64 and text

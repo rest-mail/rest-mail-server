@@ -265,10 +265,12 @@ func sevenBitParameter(segment string, extended map[string]bool) (string, bool) 
 	if !ok {
 		return "", false
 	}
+	var b strings.Builder
+	b.WriteString(out)
 	for _, comment := range comments {
-		out += " " + sevenBitComments(comment)
+		b.WriteString(" " + sevenBitComments(comment))
 	}
-	return out, true
+	return b.String(), true
 }
 
 // parameterValue spells key=value in 7 bits. mime.ParseMediaType refuses an 8-bit
