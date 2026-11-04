@@ -9,8 +9,24 @@ other's MX the way mail between two real domains does:
   reference.test     MX mail.reference.test     A  the reference's Service
   <mail domain>      MX <mail host>             A  the install's SMTP gateway Service
 
+With --peer-namespace, a second REST Mail install (same chart and images,
+values-ci-peer.yaml) gets a zone too. A peer finds its MX host on one address
+for SMTP (port 25, where the EHLO keyword RESTMAIL says it speaks REST) and
+HTTPS (443, /.well-known/restmail and /restmail/messages), so that address is
+a Service of this script's (<peer namespace>/mx) with no selector: its
+EndpointSlices send 25 to the peer's SMTP gateway pod and 443 to the ingress
+controller, which serves the peer's Ingress:
+
+  <peer domain>      MX <peer host>             A  <peer namespace>/mx
+
+The chart's NetworkPolicy lets the SMTP gateway reach port 25 anywhere; a
+pod-to-pod hop arrives on the peer gateway's container port, so a policy of
+this script's opens that one port from the first install's gateway to the
+peer's namespace. That stands in for the Internet between two servers.
+
 Then scripts/cluster_e2e.py sends mail both ways (steps mail-out, mail-in,
-pop3-retrieve). The reference is a fixed point to test REST Mail's wiring
+pop3-retrieve), publishes the first install's DKIM key in its zone
+(publish_records, step dkim-key) and delivers to the peer (restmail-peer). The reference is a fixed point to test REST Mail's wiring
 against, not a subject: its spam, DKIM, DMARC and SPF checks are off, so
 only REST Mail's sending, receiving and gateways decide a result.
 
@@ -90,7 +106,11 @@ def accounts_line(address: str, password: str) -> str:
     return f"{address}|{{PLAIN}}{password}\n"
 
 
-def zone_file(zone: str, mail_host: str, mail_ip: str) -> str:
+# Between these markers in a zone file are the records publish_records added.
+RECORDS_BEGIN, RECORDS_END = "; BEGIN published records", "; END published records"
+
+
+def zone_file(zone: str, mail_host: str, mail_ip: str, serial: int = 1) -> str:
     """A zone with an SOA, an MX to mail_host and mail_host's address.
 
     mail_host is inside the zone. CoreDNS's file plugin answers NXDOMAIN and
@@ -105,11 +125,40 @@ def zone_file(zone: str, mail_host: str, mail_ip: str) -> str:
     label = mail_host[: -len(zone) - 1]
     return (f"$ORIGIN {zone}.\n"
             f"$TTL 30\n"
-            f"@ IN SOA ns.{zone}. hostmaster.{zone}. 1 30 30 300 30\n"
+            f"@ IN SOA ns.{zone}. hostmaster.{zone}. {serial} 30 30 300 30\n"
             f"@ IN NS ns.{zone}.\n"
             f"@ IN MX 10 {mail_host}.\n"
             f"ns IN A {mail_ip}\n"
             f"{label} IN A {mail_ip}\n")
+
+
+def txt_rdata(value: str) -> str:
+    """A TXT record's data: the value in quoted strings of at most 255 bytes each.
+
+    A DKIM key is longer than one string may be (RFC 1035 3.3.14); a reader
+    joins the strings back together (RFC 6376 3.6.2.2).
+    """
+    if not value or not value.isascii() or any(c in value for c in '"\\\n'):
+        raise ValueError(f"not a TXT value this zone writer quotes: {value!r}")
+    return " ".join(f'"{value[i:i + 255]}"' for i in range(0, len(value), 255))
+
+
+def zone_with_records(text: str, records: dict[str, str]) -> str:
+    """The zone file with these TXT records (owner name relative to the zone,
+    value), replacing those added before, and its SOA serial one higher."""
+    kept = re.sub(rf"\n*{re.escape(RECORDS_BEGIN)}.*?{re.escape(RECORDS_END)}\n*", "\n", text,
+                  flags=re.S).rstrip("\n")
+    soa = re.search(r"^(@ IN SOA \S+ \S+ )(\d+)( .*)$", kept, flags=re.M)
+    if not soa:
+        raise ValueError("the zone file has no SOA this script wrote")
+    kept = kept[:soa.start()] + soa.group(1) + str(int(soa.group(2)) + 1) + soa.group(3) + kept[soa.end():]
+    lines = [RECORDS_BEGIN]
+    for name, value in sorted(records.items()):
+        if not re.fullmatch(r"[A-Za-z0-9_]([A-Za-z0-9_.-]*[A-Za-z0-9])?", name):
+            raise ValueError(f"not a relative owner name: {name!r}")
+        lines.append(f"{name} IN TXT {txt_rdata(value)}")
+    lines.append(RECORDS_END)
+    return kept + "\n" + "\n".join(lines) + "\n"
 
 
 def zone_key(zone: str) -> str:
@@ -199,6 +248,52 @@ def manifests(namespace: str, image: str = REFERENCE_IMAGE) -> dict:
     return {"apiVersion": "v1", "kind": "List", "items": [deployment, service]}
 
 
+PEER_SERVICE = "mx"
+PEER_POLICY = "cluster-e2e-peer-smtp"
+
+
+def peer_front(namespace: str, smtp_ip: str, smtp_port: int, https_ip: str, https_port: int = 443) -> dict:
+    """The peer's MX address: a Service with no selector, and an EndpointSlice
+    per port, 25 to the peer's SMTP gateway pod, 443 to the ingress controller."""
+    labels = {"app.kubernetes.io/part-of": "restmail-cluster-e2e"}
+    service = {
+        "apiVersion": "v1", "kind": "Service",
+        "metadata": {"name": PEER_SERVICE, "namespace": namespace, "labels": labels},
+        "spec": {"ports": [{"name": "smtp", "port": 25, "targetPort": smtp_port},
+                           {"name": "https", "port": 443, "targetPort": https_port}]},
+    }
+    slices = []
+    for name, ip, port in (("smtp", smtp_ip, smtp_port), ("https", https_ip, https_port)):
+        if not re.fullmatch(r"\d{1,3}(\.\d{1,3}){3}", ip):
+            raise ValueError(f"not an IPv4 address for {name}: {ip!r}")
+        slices.append({
+            "apiVersion": "discovery.k8s.io/v1", "kind": "EndpointSlice",
+            "metadata": {"name": f"{PEER_SERVICE}-{name}", "namespace": namespace,
+                         "labels": {**labels, "kubernetes.io/service-name": PEER_SERVICE}},
+            "addressType": "IPv4",
+            "ports": [{"name": name, "port": port, "protocol": "TCP"}],
+            "endpoints": [{"addresses": [ip], "conditions": {"ready": True}}],
+        })
+    return {"apiVersion": "v1", "kind": "List", "items": [service, *slices]}
+
+
+def peer_egress_policy(namespace: str, release: str, peer_namespace: str, port: int) -> dict:
+    """Lets the install's SMTP gateway reach the peer gateway's container port."""
+    return {
+        "apiVersion": "networking.k8s.io/v1", "kind": "NetworkPolicy",
+        "metadata": {"name": PEER_POLICY, "namespace": namespace,
+                     "labels": {"app.kubernetes.io/part-of": "restmail-cluster-e2e"}},
+        "spec": {
+            "podSelector": {"matchLabels": {"app.kubernetes.io/instance": release,
+                                            "app.kubernetes.io/component": "smtp-gateway"}},
+            "policyTypes": ["Egress"],
+            "egress": [{"to": [{"namespaceSelector": {"matchLabels": {
+                "kubernetes.io/metadata.name": peer_namespace}}}],
+                "ports": [{"protocol": "TCP", "port": port}]}],
+        },
+    }
+
+
 def secret_manifest(namespace: str, name: str, data: dict[str, str], kind: str = "Opaque") -> dict:
     return {"apiVersion": "v1", "kind": "Secret", "type": kind,
             "metadata": {"name": name, "namespace": namespace},
@@ -206,13 +301,13 @@ def secret_manifest(namespace: str, name: str, data: dict[str, str], kind: str =
 
 
 class Kubectl:
-    def __init__(self, binary: str):
-        self.binary = binary
+    def __init__(self, binary: str, error=SystemExit):
+        self.binary, self.error = binary, error
 
     def __call__(self, *args: str, stdin: str | None = None) -> str:
         out = subprocess.run([self.binary, *args], input=stdin, capture_output=True, text=True)
         if out.returncode != 0:
-            raise SystemExit(f"kubectl {' '.join(args)}: {out.stderr.strip()}")
+            raise self.error(f"kubectl {' '.join(args)}: {out.stderr.strip()}")
         return out.stdout
 
     def apply(self, manifest: dict) -> None:
@@ -221,8 +316,52 @@ class Kubectl:
     def cluster_ip(self, namespace: str, service: str) -> str:
         ip = self("-n", namespace, "get", "service", service, "-o", "jsonpath={.spec.clusterIP}").strip()
         if not re.fullmatch(r"\d{1,3}(\.\d{1,3}){3}", ip):
-            raise SystemExit(f"service {namespace}/{service} has no IPv4 ClusterIP ({ip!r})")
+            raise self.error(f"service {namespace}/{service} has no IPv4 ClusterIP ({ip!r})")
         return ip
+
+    def pod_ip(self, namespace: str, selector: str) -> str:
+        ip = self("-n", namespace, "get", "pods", "-l", selector, "--field-selector=status.phase=Running",
+                  "-o", "jsonpath={.items[0].status.podIP}").strip()
+        if not re.fullmatch(r"\d{1,3}(\.\d{1,3}){3}", ip):
+            raise self.error(f"no running pod in {namespace} matches {selector} ({ip!r})")
+        return ip
+
+
+def apply_coredns(kubectl: Kubectl, zones: dict[str, str], timeout: str = "300s") -> None:
+    """Serve these zone files (zone: text) from CoreDNS, and wait until it does.
+
+    Zones already served and not named keep their files. CoreDNS is restarted
+    rather than left to reload: the file plugin re-reads a zone only when its
+    serial grows, and only after the kubelet has synced the ConfigMap.
+    """
+    config_map = json.loads(kubectl("-n", "kube-system", "get", "configmap", "coredns", "-o", "json"))
+    data = config_map.setdefault("data", {})
+    served = re.findall(r"^(\S+?):53 \{\n    errors\n    file ", data.get("Corefile", ""), flags=re.M)
+    data["Corefile"] = corefile_with_zones(data.get("Corefile", ""), list(dict.fromkeys([*served, *zones])))
+    for zone, text in zones.items():
+        data[zone_key(zone)] = text
+        print(f"zone {zone}:\n{text}")
+    for key in ("resourceVersion", "uid", "creationTimestamp", "managedFields", "annotations"):
+        config_map["metadata"].pop(key, None)
+    kubectl.apply(config_map)
+    deployment = json.loads(kubectl("-n", "kube-system", "get", "deployment", "coredns", "-o", "json"))
+    patch = config_volume_patch(deployment)
+    if patch:
+        kubectl("-n", "kube-system", "patch", "deployment", "coredns", "--type=json", "-p", json.dumps(patch))
+    else:
+        kubectl("-n", "kube-system", "rollout", "restart", "deployment/coredns")
+    kubectl("-n", "kube-system", "rollout", "status", "deployment/coredns", f"--timeout={timeout}")
+
+
+def publish_records(kubectl: Kubectl, zone: str, records: dict[str, str], timeout: str = "300s") -> str:
+    """Add TXT records to a zone this script serves; return the new zone file."""
+    config_map = json.loads(kubectl("-n", "kube-system", "get", "configmap", "coredns", "-o", "json"))
+    text = (config_map.get("data") or {}).get(zone_key(zone))
+    if not text:
+        raise kubectl.error(f"CoreDNS serves no zone file for {zone}: run scripts/cluster_reference.py first")
+    text = zone_with_records(text, records)
+    apply_coredns(kubectl, {zone: text}, timeout)
+    return text
 
 
 def self_signed(host: str) -> tuple[str, str]:
@@ -243,9 +382,22 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--release", default=os.environ.get("RELEASE", "restmail"))
     parser.add_argument("--mail-domain", required=True, help="the install's mail domain (mailserver.domain)")
     parser.add_argument("--mail-host", required=True, help="the install's mail host (mailserver.hostname)")
+    parser.add_argument("--peer-namespace", default=os.environ.get("PEER_NAMESPACE", ""),
+                        help="where the second install runs (values-ci-peer.yaml); empty: none")
+    parser.add_argument("--peer-release", default=os.environ.get("PEER_RELEASE", "restmail"))
+    parser.add_argument("--peer-domain", default=os.environ.get("PEER_MAIL_DOMAIN", ""))
+    parser.add_argument("--peer-host", default=os.environ.get("PEER_MAIL_HOST", ""))
+    parser.add_argument("--peer-smtp-port", type=int, default=10025,
+                        help="the peer SMTP gateway's container port (smtpGateway.containerPorts.inbound)")
+    parser.add_argument("--ingress-namespace", default="ingress-nginx",
+                        help="where the ingress controller that serves the peer's Ingress runs")
+    parser.add_argument("--ingress-selector", default="app.kubernetes.io/component=controller")
     parser.add_argument("--kubectl", default=os.environ.get("KUBECTL", "kubectl"))
     parser.add_argument("--timeout", default="300s", help="how long to wait for each rollout")
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if args.peer_namespace and not (args.peer_domain and args.peer_host):
+        parser.error("--peer-namespace needs --peer-domain and --peer-host")
+    return args
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -268,26 +420,19 @@ def main(argv: list[str] | None = None) -> int:
         args.mail_domain: zone_file(args.mail_domain, args.mail_host,
                                     kubectl.cluster_ip(args.restmail_namespace, f"{args.release}-smtp-gateway")),
     }
-    config_map = json.loads(kubectl("-n", "kube-system", "get", "configmap", "coredns", "-o", "json"))
-    data = config_map.setdefault("data", {})
-    data["Corefile"] = corefile_with_zones(data.get("Corefile", ""), list(zones))
-    for zone, text in zones.items():
-        data[zone_key(zone)] = text
-        print(f"zone {zone}:\n{text}")
-    for key in ("resourceVersion", "uid", "creationTimestamp", "managedFields", "annotations"):
-        config_map["metadata"].pop(key, None)
-    kubectl.apply(config_map)
-    deployment = json.loads(kubectl("-n", "kube-system", "get", "deployment", "coredns", "-o", "json"))
-    patch = config_volume_patch(deployment)
-    if patch:
-        kubectl("-n", "kube-system", "patch", "deployment", "coredns", "--type=json", "-p", json.dumps(patch))
-    else:
-        # The reload plugin picks the Corefile up in its own time; a restart
-        # makes it now.
-        kubectl("-n", "kube-system", "rollout", "restart", "deployment/coredns")
-    kubectl("-n", "kube-system", "rollout", "status", "deployment/coredns", f"--timeout={args.timeout}")
+    if args.peer_namespace:
+        peer = args.peer_namespace
+        smtp_ip = kubectl.pod_ip(peer, f"app.kubernetes.io/instance={args.peer_release},"
+                                       "app.kubernetes.io/component=smtp-gateway")
+        https_ip = kubectl.pod_ip(args.ingress_namespace, args.ingress_selector)
+        kubectl.apply(peer_front(peer, smtp_ip, args.peer_smtp_port, https_ip))
+        kubectl.apply(peer_egress_policy(args.restmail_namespace, args.release, peer, args.peer_smtp_port))
+        zones[args.peer_domain] = zone_file(args.peer_domain, args.peer_host,
+                                            kubectl.cluster_ip(peer, PEER_SERVICE))
+    apply_coredns(kubectl, zones, args.timeout)
     kubectl("-n", ns, "rollout", "status", "deployment/reference-mail", f"--timeout={args.timeout}")
-    print(f"reference {address} at {REFERENCE_HOST}, {args.mail_domain} MX {args.mail_host}")
+    print(f"reference {address} at {REFERENCE_HOST}, {args.mail_domain} MX {args.mail_host}"
+          + (f", {args.peer_domain} MX {args.peer_host}" if args.peer_namespace else ""))
     return 0
 
 

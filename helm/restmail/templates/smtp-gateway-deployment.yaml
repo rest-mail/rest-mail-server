@@ -104,6 +104,14 @@ spec:
               value: {{ .Values.smtpGateway.logLevel | quote }}
             - name: ENVIRONMENT
               value: {{ .Values.smtpGateway.environment | quote }}
+            # The CA the trusted-ca volume holds (TRUSTED_CA_CERT); a Secret with
+            # no ca.crt leaves the file missing, and the system roots only.
+            - name: TRUSTED_CA_CERT
+              value: /etc/restmail-trusted-ca/ca.crt
+            {{- if .Values.smtpGateway.allowPrivateDestinations }}
+            - name: OUTBOUND_ALLOW_PRIVATE_DESTINATIONS
+              value: "true"
+            {{- end }}
             {{- include "restmail.apiCredsEnv" . | nindent 12 }}
             {{- include "restmail.srsEnv" . | nindent 12 }}
             {{- include "restmail.dbEnv" . | nindent 12 }}
@@ -118,6 +126,9 @@ spec:
             {{- if .Values.internalMtls.enabled }}
             {{- include "restmail.internalMtls.volumeMount" . | nindent 12 }}
             {{- end }}
+            - name: trusted-ca
+              mountPath: /etc/restmail-trusted-ca
+              readOnly: true
             - name: tmp
               mountPath: /tmp
           readinessProbe:
@@ -175,6 +186,16 @@ spec:
                 path: {{ .Values.tls.certFilename }}
               - key: tls.key
                 path: {{ .Values.tls.keyFilename }}
+        # Only the Secret's ca.crt, if it has one: the queue trusts that CA,
+        # besides the system roots, for the RESTMAIL discovery and delivery it
+        # always verifies, as the API does for its outbound HTTPS.
+        - name: trusted-ca
+          secret:
+            secretName: {{ .Values.tls.secretName }}
+            optional: true
+            items:
+              - key: ca.crt
+                path: ca.crt
         {{- if .Values.internalMtls.enabled }}
         {{- include "restmail.internalMtls.volume" (list . "client") | nindent 8 }}
         {{- end }}

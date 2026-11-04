@@ -37,6 +37,11 @@ Each step tests REST Mail's wiring, not the components' own behaviour:
                 (fixture principals and data, tests/contract/fixtures), which a
                 production image does not carry. Reports (HTML, JUnit, JSON,
                 Markdown, HAR) go to <report-dir>/contract/.
+  dkim-key      stage 3: the admin gives the mail domain a DKIM key through the API
+                (PUT /api/v1/admin/dkim/{id}); its public key is published in the
+                domain's zone in the cluster's DNS, and the API's DNS check
+                (GET /api/v1/admin/domains/{id}/dns) reads the same record back.
+                From here the install signs what it sends.
   mail-out      stage 3: the bootstrap admin sends a message through the API to
                 the reference mail server (scripts/cluster_reference.py,
                 --reference-namespace); it arrives in the reference mailbox,
@@ -48,6 +53,19 @@ Each step tests REST Mail's wiring, not the components' own behaviour:
                 REST Mail's IMAP gateway
   pop3-retrieve stage 3: that message is retrieved through REST Mail's POP3
                 gateway (USER/PASS, then RETR)
+  dkim-receive  stage 3: the message the reference received in mail-out carries a
+                DKIM signature by the mail domain, under dkim-key's selector, that
+                verifies (the pinned dkimpy) against the key the cluster's DNS
+                publishes, as the install's DNS check read it
+  restmail-peer stage 3: a second install (--peer-namespace, values-ci-peer.yaml)
+                signs its own bootstrap admin in and makes a mailbox; the first
+                install's admin sends to it through the API, and it is read back
+                over the second install's IMAP gateway. It went over RESTMAIL: the
+                first install's queue logged the RESTMAIL delivery to the peer's
+                /restmail/messages for that recipient, and nothing fell back to
+                SMTP; the message carries no Received field the peer's SMTP
+                gateway stamps. A peer identified as REST Mail is never
+                downgraded to SMTP (#291).
 
 Every step prints one receipt line: the commit, the images the pods run, the
 step and its result. Receipts also go to <report-dir>/receipts.txt.
@@ -89,9 +107,12 @@ STEPS = (
     "imap-sign-in",
     "filter-validate",
     "contract-examples",
+    "dkim-key",
     "mail-out",
     "mail-in",
     "pop3-retrieve",
+    "dkim-receive",
+    "restmail-peer",
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -107,6 +128,12 @@ SERVICES = {"api": 8080, "smtp-gateway": 25, "imap-gateway": 993, "pop3-gateway"
 # and the ports reached on it: submission with STARTTLS, and IMAP over TLS.
 REFERENCE_SECRET, REFERENCE_SERVICE = "reference-mail", "mail"
 REFERENCE_PORTS = {"submission": 587, "imaps": 993}
+
+# The first install's queue logs this line, with the url and the recipient,
+# when a RESTMAIL delivery succeeds (internal/gateway/queue/worker.go); and
+# this one when a RESTMAIL hop failed and the message goes over SMTP instead.
+RESTMAIL_DELIVERED = "queue: RESTMAIL delivery succeeded"
+RESTMAIL_FELL_BACK = "queue: RESTMAIL delivery failed, falling back to SMTP"
 
 # A recipient on a domain no install hosts (RFC 2606 reserves .invalid).
 UNHOSTED = "nobody@unhosted.invalid"
@@ -145,6 +172,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                         help="the Vertrag binary (default: the pinned one, from scripts/vertrag_pin.py ensure)")
     parser.add_argument("--reference-namespace", default=os.environ.get("REFERENCE_NAMESPACE", ""),
                         help="where scripts/cluster_reference.py deployed the reference mail server (stage 3)")
+    parser.add_argument("--peer-namespace", default=os.environ.get("PEER_NAMESPACE", ""),
+                        help="where the second install runs (restmail-peer)")
+    parser.add_argument("--peer-release", default=os.environ.get("PEER_RELEASE", "restmail"))
     parser.add_argument("--mail-timeout", type=int, default=240,
                         help="seconds to wait for a message to arrive on the other side (stage 3)")
     args = parser.parse_args(argv)
@@ -403,6 +433,27 @@ def junit_counts(path: Path) -> tuple[int, int, int]:
     return total, failed, skipped
 
 
+def load_reference_module():
+    """scripts/cluster_reference.py, which serves the zones in the cluster's DNS."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("cluster_reference", ROOT / "scripts/cluster_reference.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def dkimpy_version() -> str:
+    """The dkimpy release verifying: the workflow's pin (DKIMPY_VERSION), else
+    the installed distribution's."""
+    if os.environ.get("DKIMPY_VERSION"):
+        return os.environ["DKIMPY_VERSION"]
+    try:
+        from importlib.metadata import version
+        return version("dkimpy")
+    except Exception:  # an unpacked source tree has no metadata
+        return "unknown"
+
+
 def load_reports_module():
     """tests/contract/reports.py, the contract run's own vertrag.yml writer."""
     import importlib.util
@@ -442,6 +493,57 @@ def received_with(raw: bytes, subject: str, sender: str) -> dict[str, str]:
     if sender.lower() not in str(message.get("From", "")).lower():
         raise StepFailed(f"the message found is From {message.get('From')!r}, want {sender}")
     return {"received": " | ".join(" ".join(str(v).split()) for v in message.get_all("Received", []))}
+
+
+def bootstrap_session(api: "Api", cluster: "Cluster") -> tuple[str, str]:
+    """Sign the install's bootstrap admin in as a person does the first time: its
+    own password, an authenticator, then a full session. Returns the session's
+    token and the admin's address."""
+    address = cluster.admin_address()
+    if "@" not in address:
+        raise StepFailed("the API Deployment names no RESTMAIL_BOOTSTRAP_ADMIN_ADDRESS")
+    boot = cluster.admin_password()
+    status, answer = api.login(address, boot)
+    if status != 200:
+        raise StepFailed(f"bootstrap sign-in answered {status} (a second run on one install "
+                         f"finds the bootstrap password spent): {json.dumps(answer)[:200]}")
+    data = answer.get("data", {})
+    if data.get("setup_required") != ["password", "two_factor"]:
+        raise StepFailed(f"setup_required is {data.get('setup_required')!r}, want ['password', 'two_factor']")
+    chosen = secrets.token_urlsafe(24)
+    api.expect("2xx", "POST", "/api/v1/auth/password",
+               {"current_password": boot, "new_password": chosen}, data["access_token"])
+    status, answer = api.login(address, chosen)
+    if status != 200:
+        raise StepFailed(f"sign-in with the chosen password answered {status}")
+    token = answer["data"]["access_token"]
+    secret = api.expect("2xx", "POST", "/api/v1/auth/2fa/enroll", token=token)["data"]["secret"]
+    api.expect(204, "POST", "/api/v1/auth/2fa/confirm", {"totp_code": totp(secret)}, token)
+    # The confirming code may not be used twice: sign in with the next one.
+    time.sleep(30 - time.time() % 30 + 1)
+    status, answer = api.login(address, chosen, totp(secret))
+    if status != 200 or answer.get("data", {}).get("setup_required"):
+        raise StepFailed(f"full sign-in answered {status}: setup_required "
+                         f"{answer.get('data', {}).get('setup_required')!r}")
+    return answer["data"]["access_token"], address
+
+
+def imap_read(port: int, address: str, password: str, subject: str, what: str) -> bytes | None:
+    """The message with this Subject in address's INBOX over IMAP, else None."""
+    imap = imaplib.IMAP4_SSL("127.0.0.1", port, ssl_context=insecure_tls(), timeout=60)
+    try:
+        imap.login(address, password)
+        kind, data = imap.select("INBOX", readonly=True)
+        if kind != "OK":
+            raise StepFailed(f"{what}: SELECT INBOX answered {kind} {data!r}")
+        return imap_find(imap, subject)
+    except imaplib.IMAP4.error as error:
+        raise StepFailed(f"{what}: {error}") from error
+    finally:
+        try:
+            imap.logout()
+        except (imaplib.IMAP4.error, OSError):
+            pass
 
 
 def wait_for(probe, timeout: float, interval: float = 5, clock=time.monotonic, sleep=time.sleep):
@@ -496,6 +598,98 @@ def pop3_find(messages: list[bytes], subject: str) -> int | None:
     return found
 
 
+def dkim_keypair(bits: int = 2048) -> tuple[str, str]:
+    """A new RSA key from openssl: its PEM, and the DKIM TXT record of its
+    public key (RFC 6376 3.6.1)."""
+    key = subprocess.run(["openssl", "genpkey", "-algorithm", "RSA", "-pkeyopt", f"rsa_keygen_bits:{bits}"],
+                         capture_output=True, text=True, check=True).stdout
+    public = subprocess.run(["openssl", "pkey", "-pubout", "-outform", "DER"], input=key.encode(),
+                            capture_output=True, check=True).stdout
+    return key, "v=DKIM1; k=rsa; p=" + base64.b64encode(public).decode()
+
+
+def find_domain(domains: list, name: str) -> int:
+    """The id of the domain called name in the API's domain list."""
+    for entry in domains or []:
+        if isinstance(entry, dict) and str(entry.get("name", "")).lower() == name.lower():
+            return int(entry["id"])
+    raise StepFailed(f"the API lists no domain {name}")
+
+
+def dkim_record_check(check: dict, name: str) -> dict | None:
+    """The DNS check's DKIM entry for this owner name, if it found the record."""
+    for record in check.get("records") or []:
+        if (record.get("type") == "DKIM" and record.get("name", "").rstrip(".").lower() == name.lower()
+                and record.get("status") == "ok"):
+            return record
+    return None
+
+
+def dkim_tags(raw: bytes) -> dict[str, str]:
+    """The tags of the message's first DKIM-Signature field."""
+    from email import message_from_bytes, policy
+    field = message_from_bytes(raw, policy=policy.compat32).get("DKIM-Signature")
+    if not field:
+        raise StepFailed("the message has no DKIM-Signature field")
+    tags = {}
+    for part in re.sub(r"\s+", "", str(field)).split(";"):
+        if "=" in part:
+            key, value = part.split("=", 1)
+            tags[key] = value
+    return tags
+
+
+def dkim_verify(raw: bytes, owner: str, record: str, verify=None) -> bool:
+    """Whether raw's DKIM signature verifies with record as owner's TXT record.
+
+    The record is given, not looked up: the runner cannot ask the cluster's
+    DNS, so the record is the one the install's DNS check read from it. Any
+    other name gets no record. verify defaults to the pinned dkimpy's.
+    """
+    if verify is None:
+        try:
+            import dkim
+        except ImportError as error:
+            raise StepFailed("needs dkimpy (the workflow pins it): " + str(error)) from error
+        verify = dkim.verify
+    wanted = owner.rstrip(".").lower()
+
+    def lookup(name, timeout=5):
+        text = name.decode() if isinstance(name, bytes) else name
+        return record.encode() if text.rstrip(".").lower() == wanted else None
+
+    return bool(verify(raw, dnsfunc=lookup))
+
+
+def restmail_hops(log: str, recipient: str) -> tuple[list[str], list[str]]:
+    """The RESTMAIL deliveries to recipient (their urls) and the SMTP fallbacks
+    (their hosts) in the queue's JSON log lines."""
+    delivered, fell_back = [], []
+    for line in log.splitlines():
+        try:
+            entry = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("msg") == RESTMAIL_DELIVERED and str(entry.get("recipient", "")).lower() == recipient.lower():
+            delivered.append(str(entry.get("url", "")))
+        elif entry.get("msg") == RESTMAIL_FELL_BACK:
+            fell_back.append(str(entry.get("host", "")))
+    return delivered, fell_back
+
+
+def smtp_stamps(raw: bytes, host: str) -> list[str]:
+    """The Received fields that host's SMTP gateway stamped (by <host> ... with *SMTP*)."""
+    from email import message_from_bytes, policy
+    stamps = []
+    for value in message_from_bytes(raw, policy=policy.compat32).get_all("Received", []):
+        flat = " ".join(str(value).split())
+        if re.search(rf"\bby {re.escape(host)}\b", flat, flags=re.I) and re.search(r"\bwith \S*SMTP", flat, flags=re.I):
+            stamps.append(flat)
+    return stamps
+
+
 class Stages:
     def __init__(self, args: argparse.Namespace, cluster: Cluster):
         self.args, self.cluster = args, cluster
@@ -518,34 +712,8 @@ class Stages:
         return f"openapi={answer['openapi']},paths={len(answer.get('paths', {}))}"
 
     def admin_sign_in(self) -> str:
-        api = self.need_api()
-        address = self.cluster.admin_address()
-        if "@" not in address:
-            raise StepFailed("the API Deployment names no RESTMAIL_BOOTSTRAP_ADMIN_ADDRESS")
-        boot = self.cluster.admin_password()
-        status, answer = api.login(address, boot)
-        if status != 200:
-            raise StepFailed(f"bootstrap sign-in answered {status} (a second run on one install "
-                             f"finds the bootstrap password spent): {json.dumps(answer)[:200]}")
-        data = answer.get("data", {})
-        if data.get("setup_required") != ["password", "two_factor"]:
-            raise StepFailed(f"setup_required is {data.get('setup_required')!r}, want ['password', 'two_factor']")
-        chosen = secrets.token_urlsafe(24)
-        api.expect("2xx", "POST", "/api/v1/auth/password",
-                   {"current_password": boot, "new_password": chosen}, data["access_token"])
-        status, answer = api.login(address, chosen)
-        if status != 200:
-            raise StepFailed(f"sign-in with the chosen password answered {status}")
-        token = answer["data"]["access_token"]
-        secret = api.expect("2xx", "POST", "/api/v1/auth/2fa/enroll", token=token)["data"]["secret"]
-        api.expect(204, "POST", "/api/v1/auth/2fa/confirm", {"totp_code": totp(secret)}, token)
-        # The confirming code may not be used twice: sign in with the next one.
-        time.sleep(30 - time.time() % 30 + 1)
-        status, answer = api.login(address, chosen, totp(secret))
-        if status != 200 or answer.get("data", {}).get("setup_required"):
-            raise StepFailed(f"full sign-in answered {status}: setup_required "
-                             f"{answer.get('data', {}).get('setup_required')!r}")
-        self.state["token"] = answer["data"]["access_token"]
+        token, address = bootstrap_session(self.need_api(), self.cluster)
+        self.state["token"] = token
         self.state["domain"] = address.split("@", 1)[1]
         self.state["admin"] = address
         return f"admin={address},session=full"
@@ -648,6 +816,90 @@ class Stages:
             raise StepFailed(f"Vertrag exited {code}: {detail} (see contract/examples.log)")
         return detail
 
+    def dkim_key(self) -> str:
+        token, domain = self.need("token"), self.need("domain")
+        api = self.need_api()
+        domain_id = find_domain(api.expect(200, "GET", "/api/v1/admin/domains", token=token).get("data"), domain)
+        selector = "cluster" + secrets.token_hex(3)
+        key, record = dkim_keypair()
+        api.expect("2xx", "PUT", f"/api/v1/admin/dkim/{domain_id}", {"selector": selector, "private_key": key}, token)
+        owner = f"{selector}._domainkey.{domain}"
+        reference = load_reference_module()
+        reference.publish_records(reference.Kubectl(self.args.kubectl, StepFailed), domain,
+                                  {f"{selector}._domainkey": record}, f"{self.args.timeout * 5}s")
+
+        def probe():
+            check = api.expect(200, "GET", f"/api/v1/admin/domains/{domain_id}/dns", token=token).get("data", {})
+            return dkim_record_check(check, owner)
+
+        found, waited = wait_for(probe, self.args.mail_timeout)
+        if found is None:
+            raise StepFailed(f"the API's DNS check did not find {owner} within {self.args.mail_timeout}s")
+        if "".join(str(found.get("value", "")).split()) != "".join(record.split()):
+            raise StepFailed(f"the API's DNS check read {owner} as {found.get('value')!r}, not the published key")
+        self.state["dkim"] = {"selector": selector, "owner": owner, "record": found["value"]}
+        return f"domain={domain},selector={selector},record={owner},dns-check=ok,after={int(waited)}s"
+
+    def dkim_receive(self) -> str:
+        dkim = self.need("dkim")
+        raw = self.need("mail_out_raw")
+        domain = self.need("domain")
+        tags = dkim_tags(raw)
+        if tags.get("d", "").lower() != domain.lower() or tags.get("s") != dkim["selector"]:
+            raise StepFailed(f"the signature is d={tags.get('d')} s={tags.get('s')}, "
+                             f"want d={domain} s={dkim['selector']}")
+        if not dkim_verify(raw, dkim["owner"], dkim["record"]):
+            raise StepFailed(f"the DKIM signature on mail-out.eml does not verify against {dkim['owner']}")
+        return (f"message=mail-out.eml,d={tags['d']},s={tags['s']},a={tags.get('a', '?')},"
+                f"c={tags.get('c', 'simple/simple')},verified=dkimpy-{dkimpy_version()}")
+
+    def restmail_peer(self) -> str:
+        token, admin = self.need("token"), self.need("admin")
+        if not self.args.peer_namespace:
+            raise StepFailed("needs --peer-namespace (PEER_NAMESPACE), the second install")
+        ns, release = self.args.peer_namespace, self.args.peer_release
+        peer = Cluster(self.args.kubectl, ns, release, self.report_dir)
+        port = self.cluster.forward("peer-api", SERVICES["api"], self.args.timeout, ns, f"{release}-api")
+        peer_api = Api(f"http://127.0.0.1:{port}")
+        wait_for(lambda: True if peer_api.call("GET", "/api/health")[0] == 200 else None, self.args.timeout, 2)
+        peer_token, peer_admin = bootstrap_session(peer_api, peer)
+        peer_domain = peer_admin.split("@", 1)[1]
+        mailbox, password = f"cluster-e2e@{peer_domain}", secrets.token_urlsafe(18)
+        peer_api.expect(201, "POST", "/api/v1/accounts",
+                        {"address": mailbox, "password": password, "display_name": "Cluster E2E peer"}, peer_token)
+        peer_host = peer.run("get", f"configmap/{release}-api", "-o", "jsonpath={.data.GATEWAY_HOSTNAME}").strip()
+        if not peer_host:
+            raise StepFailed(f"configmap {ns}/{release}-api names no GATEWAY_HOSTNAME")
+        subject = mail_marker("peer")
+        since = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 5))
+        self.need_api().expect("2xx", "POST", "/api/v1/messages/send",
+                               {"from": admin, "to": [mailbox], "subject": subject,
+                                "body_text": "Sent by one REST Mail install to another (#1750 stage 3)."}, token)
+        imap_port = self.cluster.forward("peer-imap-gateway", SERVICES["imap-gateway"], self.args.timeout,
+                                         ns, f"{release}-imap-gateway")
+        raw, waited = wait_for(lambda: imap_read(imap_port, mailbox, password, subject, "the peer's IMAP"),
+                               self.args.mail_timeout)
+        if raw is None:
+            raise StepFailed(f"{mailbox} did not receive {subject!r} within {self.args.mail_timeout}s "
+                             f"(see the first install's smtp-gateway log)")
+        (self.report_dir / "restmail-peer.eml").write_bytes(raw)
+        received_with(raw, subject, admin)
+        log = self.cluster.run("logs", f"deployment/{self.args.release}-smtp-gateway", "--all-containers=true",
+                               f"--since-time={since}")
+        (self.report_dir / "restmail-peer-queue.log").write_text(log)
+        delivered, fell_back = restmail_hops(log, mailbox)
+        want = f"https://{peer_host}/restmail/messages"
+        if fell_back:
+            raise StepFailed(f"a RESTMAIL delivery fell back to SMTP (hosts {fell_back}): see restmail-peer-queue.log")
+        if want not in delivered:
+            raise StepFailed(f"the queue logged no RESTMAIL delivery to {want} for {mailbox} "
+                             f"(found {delivered}): see restmail-peer-queue.log")
+        stamps = smtp_stamps(raw, peer_host)
+        if stamps:
+            raise StepFailed(f"the peer's SMTP gateway stamped the message: {stamps[0][:200]}")
+        return (f"from={admin},to={mailbox},after={int(waited)}s,via=RESTMAIL,url={want},smtp-fallback=none,"
+                f"peer-smtp-received=none,read=peer-imap,message=restmail-peer.eml")
+
     def mail_out(self) -> str:
         token, admin = self.need("token"), self.need("admin")
         reference, password = self.reference_account()
@@ -664,6 +916,7 @@ class Stages:
                              f"(see the smtp-gateway's log for the queue)")
         evidence = received_with(raw, subject, admin)
         (self.report_dir / "mail-out.eml").write_bytes(raw)
+        self.state["mail_out_raw"] = raw
         return f"from={admin},to={reference},after={int(waited)}s,message=mail-out.eml,received={evidence['received'][:200]}"
 
     def mail_in(self) -> str:
@@ -746,20 +999,7 @@ class Stages:
         return self.state[key]
 
     def reference_inbox(self, port: int, address: str, password: str, subject: str) -> bytes | None:
-        imap = imaplib.IMAP4_SSL("127.0.0.1", port, ssl_context=insecure_tls(), timeout=60)
-        try:
-            imap.login(address, password)
-            kind, data = imap.select("INBOX", readonly=True)
-            if kind != "OK":
-                raise StepFailed(f"the reference's SELECT INBOX answered {kind} {data!r}")
-            return imap_find(imap, subject)
-        except imaplib.IMAP4.error as error:
-            raise StepFailed(f"the reference's IMAP: {error}") from error
-        finally:
-            try:
-                imap.logout()
-            except (imaplib.IMAP4.error, OSError):
-                pass
+        return imap_read(port, address, password, subject, "the reference's IMAP")
 
     def pinned_vertrag(self) -> str:
         out = subprocess.run([sys.executable, "-B", str(ROOT / "scripts/vertrag_pin.py"), "ensure",
