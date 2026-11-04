@@ -76,7 +76,7 @@ class LostProbeCountTests(unittest.TestCase):
         self.send('{"name":"x"}', skip=True)
         self.assertEqual(self.counted(), [OPERATION])
 
-    def test_quiet_hours_rewrites_are_counted_after_documented_requests(self):
+    def test_quiet_hours_changes_only_the_path_so_nothing_is_counted(self):
         count = self.hooks.named[0]
         with patch.dict(sys.modules, {"vertrag_hooks": self.hooks}):
             register = runpy.run_path(str(ROOT / "tests/contract/quiet_hours_hooks.py"))[
@@ -104,7 +104,7 @@ class LostProbeCountTests(unittest.TestCase):
             with patch("urllib.request.urlopen", return_value=response):
                 prepare(transaction)
             count(transaction)
-        self.assertEqual(self.counted(), ["setQuietHours"])
+        self.assertEqual(self.counted(), [])
 
     def test_each_transaction_has_its_own_documented_requests(self):
         self.documented()

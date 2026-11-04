@@ -18,6 +18,7 @@ in --no-pin=<name,name>; --no-pin alone holds nothing.
 Usage: probes.py <vertrag.yml> <out.yml> <report.xml> [--no-pin[=<name,name>]]
 """
 
+import base64
 import json
 import sys
 from pathlib import Path
@@ -48,6 +49,25 @@ EXPIRES_AT = "2099-01-01T10:00:00Z"
 # (mfa_admin.py). The named examples of createAPIKey and updateAPIKey prove the
 # refusals a pin stops sending.
 KEY_PERMISSIONS = [{"capability": "mail:read", "scope": "mailbox:contract-probe-admin@restmail.test"}]
+# A schema cannot say a value must be one the server can parse: an IANA zone, a
+# Sieve script, an RFC 5322 message. The generator draws "x" or base64 of "vertrag",
+# and a hook cannot supply them. Refusals of these fields are named pairs:
+# invalid_zone; invalid_syntax, script_missing, script_null; script_empty,
+# script_wrong_type; invalid_base64, missing_raw, raw_message_invalid, raw_message_nul.
+TIME_ZONE = "UTC"
+SCRIPT = "keep;"
+RAW_MESSAGE = base64.b64encode(
+    b"Message-ID: <contract-probe@example.test>\r\n"
+    b"From: Original <old@example.test>\r\n"
+    b"Subject: imported\r\n\r\nhistory\r\n"
+).decode()
+# raw_message also reaches restmailDeliver, whose field is the message itself and not
+# base64, so the handler cannot read a recipient or a Date from the value above. Only
+# restmailDeliver's body has these two fields: a delivery to a mailbox the run has,
+# on the documented date. Refusals: recipients_missing, recipients_wrong_type,
+# recipient_wrong_type, date_wrong_type.
+RECIPIENTS = ["eve@restmail.test"]
+DELIVERY_DATE = "Sat, 17 Oct 2026 12:00:00 +0000"
 # A schema cannot say a mailbox must exist either. Fuzz draws a mailbox_id or an
 # address that names nothing and reads the 404 as a disagreement, so the rest of
 # delivery is never reached. The fuzz run holds mailbox_id at the recipient the
@@ -77,6 +97,11 @@ def main(config_path, out_path, report_path, pin=True, unpinned=()):
             "scheduled_at": SCHEDULED_AT,
             "expires_at": EXPIRES_AT,
             "permissions": KEY_PERMISSIONS,
+            "time_zone": TIME_ZONE,
+            "script": SCRIPT,
+            "raw_message": RAW_MESSAGE,
+            "recipients": RECIPIENTS,
+            "date": DELIVERY_DATE,
         }
         if Path(report_path).stem == "fuzz":
             pins.update(fuzz_pins())

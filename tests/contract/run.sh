@@ -121,7 +121,7 @@ gate)
     --output "$out/browser-sessions.json"
   # 1 is a failed transaction (or a run that could not be carried out) and 3 an
   # operation not exercised and passing (the surface gate): either fails here,
-  # at once. 2 is a failed boundary probe, which the baseline judges below.
+  # at once.
   python3 -B tests/contract/reports.py "$out/vertrag-run.yml" "$out/vertrag-examples.yml" "$out/examples" "${narrowed[@]}"
   "$CONTRACT_VERTRAG" run --config "$out/vertrag-examples.yml" --sequence --phases examples "${select[@]}" 2>&1 | tee "$logs/contract-examples.log"
   if [ ${#select[@]} -eq 0 ]; then
@@ -136,27 +136,29 @@ gate)
   python3 -B tests/contract/reports.py "$out/vertrag-probes.yml" "$out/vertrag-probes.yml" "$out/coverage" "${narrowed[@]}"
   code=0
   # Probes a hook ends are in no report: the hook worker counts them (lost_probes.py).
+  # --fail-on-skipped-probes: valid probes not sent because an example failed are
+  # a failure, not a count. Vertrag's exit 2 now means that or a failed probe.
   export CONTRACT_LOST_PROBES="$PWD/$out/lost-probes.txt"
   : >"$CONTRACT_LOST_PROBES"
-  CONTRACT_COVERAGE=1 "$CONTRACT_VERTRAG" run --config "$out/vertrag-probes.yml" --sequence --phases coverage "${select[@]}" \
+  CONTRACT_COVERAGE=1 "$CONTRACT_VERTRAG" run --config "$out/vertrag-probes.yml" --sequence --phases coverage --fail-on-skipped-probes "${select[@]}" \
     2>&1 | tee "$logs/contract.log" || code=$?
   if drop_unmatched_pin "$logs/contract.log" "$out/coverage"; then
     code=0
     : >"$CONTRACT_LOST_PROBES"
-    CONTRACT_COVERAGE=1 "$CONTRACT_VERTRAG" run --config "$out/vertrag-probes.yml" --sequence --phases coverage "${select[@]}" \
+    CONTRACT_COVERAGE=1 "$CONTRACT_VERTRAG" run --config "$out/vertrag-probes.yml" --sequence --phases coverage --fail-on-skipped-probes "${select[@]}" \
       2>&1 | tee "$logs/contract.log" || code=$?
   fi
   echo "vertrag exited $code"
   if [ "$code" -ne 0 ] && [ "$code" -ne 2 ]; then exit "$code"; fi
   if [ ${#select[@]} -eq 0 ]; then
-    # The coverage baseline only shrinks.
+    # What Vertrag cannot see: the configuration, and the probes a hook ended.
     python3 -B tests/contract/gate.py "$CONTRACT_SPEC" vertrag.yml "$out/coverage.xml" tests/contract/coverage-baseline.txt \
-      tests/contract/skipped-probes-baseline.txt tests/contract/lost-probes-baseline.txt "$CONTRACT_LOST_PROBES"
+      --lost-probes tests/contract/lost-probes-baseline.txt "$CONTRACT_LOST_PROBES"
   else
     echo "a narrowed run: the coverage baseline is not applied"
-    # Without the whole-API ratchet, Vertrag's selected probe verdict is final.
-    exit "$code"
   fi
+  # Vertrag's verdict is final: a failed probe or a skipped valid probe fails here.
+  exit "$code"
   ;;
 authorization)
   # Examples always run first, then the matrix repeats destructive requests as

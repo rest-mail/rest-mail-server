@@ -4,6 +4,7 @@ an array body left alone, invitations, blocked senders, bans and drafts."""
 import base64
 import importlib.util
 import json
+import os
 import sys
 import threading
 import types
@@ -139,6 +140,34 @@ class ExampleStateHookTest(unittest.TestCase):
             "fullPath": path,
             "request": {"body": json.dumps(body) if body is not None else ""},
         }
+
+    def test_coverage_imports_where_there_is_room_and_changes_only_the_path(self):
+        success = "/api/v1/accounts/{id}/messages/import > Store a message the account already has > 200 > application/json"
+        refusal = success.replace(" > 200 > ", " > 422 > ")
+        body = {"raw_message": "held", "internal_date": "2020-01-02T03:04:05Z"}
+        documented = "/api/v1/accounts/12/messages/import"
+        with patch.object(self.hooks, "mailbox_id", return_value=7) as lookup:
+            with patch.dict(os.environ, {"CONTRACT_COVERAGE": "1"}):
+                moved = self.transaction(success, documented, body)
+                self.hooks.import_into_an_account_with_room(moved)
+                self.assertEqual(moved["fullPath"], "/api/v1/accounts/7/messages/import")
+                self.assertEqual(json.loads(moved["request"]["body"]), body)
+                # A refusal, and a probe that chose its own id, keep what they name.
+                for name, path in (
+                    (refusal, documented),
+                    (success, "/api/v1/accounts/1/messages/import"),
+                    (success, "/api/v1/accounts/0/messages/import"),
+                ):
+                    kept = self.transaction(name, path, body)
+                    self.hooks.import_into_an_account_with_room(kept)
+                    self.assertEqual(kept["fullPath"], path)
+            lookup.assert_called_once()
+            # The examples phase keeps the documented account.
+            with patch.dict(os.environ):
+                os.environ.pop("CONTRACT_COVERAGE", None)
+                kept = self.transaction(success, documented, body)
+                self.hooks.import_into_an_account_with_room(kept)
+                self.assertEqual(kept["fullPath"], documented)
 
     def test_an_array_body_has_no_password_to_confirm(self):
         transaction = self.transaction(
@@ -326,43 +355,18 @@ class ExampleStateHookTest(unittest.TestCase):
             ["DELETE /api/v1/admin/domains/7", "DELETE /api/v1/accounts/4/sieve"],
         )
 
-    def test_probe_values_no_schema_can_make_valid_are_replaced(self):
-        # A probe's Sieve script and raw message are generator strings; it
-        # sends usable ones and keeps the rest of its body.
+    def test_probe_values_no_schema_can_make_valid_are_left_to_the_pins(self):
+        # A probe's Sieve script and raw message are held by pins (probes.py). A
+        # hook that changed them would end the probe, so none does.
         sieve = "/api/v1/accounts/{id}/sieve > Create or replace the Sieve filter script > 201 > application/json"
         probe = self.transaction(
             sieve, "/api/v1/accounts/4/sieve", {"script": "x", "active": True}
         )
         self.hooks.install_a_sieve_script_where_there_is_none(probe)
         self.assertEqual(
-            json.loads(probe["request"]["body"]), {"script": "keep;", "active": True}
+            json.loads(probe["request"]["body"]), {"script": "x", "active": True}
         )
-
-        imported = "/api/v1/accounts/{id}/messages/import > Import one historical message > 200 > application/json"
-        probe = self.transaction(
-            imported,
-            "/api/v1/accounts/4/messages/import",
-            {
-                "raw_message": "dmVydHJhZw==",
-                "internal_date": "2020-01-02T03:04:05Z",
-                "folder": "Archive",
-            },
-        )
-        self.hooks.import_a_message_a_parser_can_read(probe)
-        body = json.loads(probe["request"]["body"])
-        raw = base64.b64decode(body["raw_message"])
-        self.assertIn(b"\r\n\r\n", raw)
-        self.assertIn(b"Message-ID: <contract-import-", raw)
-        self.assertEqual(body["folder"], "Archive")
-
-        documented = base64.b64encode(b"Subject: kept\r\n\r\nbody\r\n").decode()
-        probe = self.transaction(
-            imported, "/api/v1/accounts/4/messages/import", {"raw_message": documented}
-        )
-        self.hooks.import_a_message_a_parser_can_read(probe)
-        self.assertEqual(
-            json.loads(probe["request"]["body"])["raw_message"], documented
-        )
+        self.assertFalse(hasattr(self.hooks, "import_a_message_a_parser_can_read"))
 
     def test_an_invitation_probe_gets_a_token_and_a_password_it_can_redeem(self):
         # The token is optional in the schema and the 12-byte password rule is

@@ -11,6 +11,10 @@ import probes
 import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
+COVERAGE_PINS = [
+    "private_key", "snoozed_until", "scheduled_at", "expires_at", "permissions",
+    "time_zone", "script", "raw_message", "recipients", "date",
+]
 
 
 class ProbeConfig(unittest.TestCase):
@@ -27,7 +31,7 @@ class ProbeConfig(unittest.TestCase):
 
     def test_no_pin_leaves_the_pins_out(self):
         self.assertEqual(
-            self.config["fuzz"]["pin"].keys(), {"private_key", "snoozed_until", "scheduled_at", "expires_at", "permissions"}
+            self.config["fuzz"]["pin"].keys(), set(COVERAGE_PINS)
         )
         self.assertEqual(
             probes.main(self.source, self.output, self.report, pin=False), 0
@@ -43,7 +47,7 @@ class ProbeConfig(unittest.TestCase):
             0,
         )
         config = yaml.safe_load(self.output.read_text())
-        self.assertEqual(config["fuzz"]["pin"].keys(), {"private_key", "scheduled_at", "expires_at", "permissions"})
+        self.assertEqual(config["fuzz"]["pin"].keys(), set(COVERAGE_PINS) - {"snoozed_until"})
 
     def test_dropping_every_pin_leaves_no_pin_section_to_refuse(self):
         self.assertEqual(
@@ -51,7 +55,7 @@ class ProbeConfig(unittest.TestCase):
                 self.source,
                 self.output,
                 self.report,
-                unpinned=["private_key", "snoozed_until", "scheduled_at", "expires_at", "permissions"],
+                unpinned=COVERAGE_PINS,
             ),
             0,
         )
@@ -73,7 +77,7 @@ class ProbeConfig(unittest.TestCase):
         self.assertNotIn("mailbox_id", self.config["fuzz"]["pin"])
 
     def test_a_narrowed_fuzz_run_can_drop_each_pin_it_does_not_reach(self):
-        coverage_pins = ["private_key", "snoozed_until", "scheduled_at", "expires_at", "permissions"]
+        coverage_pins = COVERAGE_PINS
         config = self.fuzz_config(unpinned=coverage_pins)
         self.assertEqual(config["fuzz"]["pin"].keys(), {"mailbox_id"})
         config = self.fuzz_config(unpinned=["mailbox_id"])
@@ -153,6 +157,11 @@ class ProbeConfig(unittest.TestCase):
                     "scheduled_at": None,
                     "expires_at": probes.EXPIRES_AT,
                     "permissions": probes.KEY_PERMISSIONS,
+                    "time_zone": probes.TIME_ZONE,
+                    "script": probes.SCRIPT,
+                    "raw_message": probes.RAW_MESSAGE,
+                    "recipients": probes.RECIPIENTS,
+                    "date": probes.DELIVERY_DATE,
                 }
             },
         )

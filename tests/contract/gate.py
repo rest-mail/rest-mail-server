@@ -19,10 +19,12 @@ refusal (a transaction whose status is 4xx) is not judged: its request is the
 refused one, so a valid-mode probe built from it is refused too, which says
 nothing about the operation's validation (#386).
 
-Skipped valid probes have a separate per-operation count ratchet in
-skipped-probes-baseline.txt. Neither a new skipped operation nor a larger
-count can spend another operation's budget. A smaller count must shrink the
-baseline. The pinned tool exempts login's generated-credential probes itself.
+Skipped valid probes are Vertrag's to fail: run.sh passes
+--fail-on-skipped-probes, which also exempts login's generated-credential probes,
+and treats its exit 2 as final. So the gate no longer needs a skip count. A
+skipped result in a form Vertrag's flag does not produce still fails here. Given
+a skipped-probes baseline, this still holds each operation to its count, but
+run.sh gives it none and skipped-probes-baseline.txt is empty.
 
 Probes a hook ended (lost_probes.py) appear in no report, so the hook worker
 counts them and lost-probes-baseline.txt holds them, per operation. A new
@@ -30,7 +32,9 @@ operation or a larger count fails; a smaller count is noted, because only a
 whole-API topology run can measure it.
 
 Usage: gate.py <openapi.yaml> <vertrag.yml> <junit.xml> <coverage-baseline.txt>
-           [skipped-probes-baseline.txt [lost-probes-baseline.txt lost-probes.txt]]
+           [--lost-probes lost-probes-baseline.txt lost-probes.txt]
+       gate.py <openapi.yaml> <vertrag.yml> <junit.xml> <coverage-baseline.txt>
+           skipped-probes-baseline.txt [lost-probes-baseline.txt lost-probes.txt]
        gate.py --failing-probes <openapi.yaml> <junit.xml>
            prints the operations with a failing probe, in baseline form.
 """
@@ -221,9 +225,13 @@ def gate(spec_path, config_path, report_path, baseline_path, skipped_baseline_pa
         print(str(err))
         return 1
 
-    print("Coverage phase: %d valid probes skipped; the baseline holds %d (login probes are exempt)" % (
-        sum(counts.values()), sum(allowed.values())))
-    for operation in sorted(counts.keys() | allowed.keys()):
+    if skipped_baseline_path is None:
+        print("Coverage phase: %d valid probes skipped; --fail-on-skipped-probes decides (login probes are exempt)" % (
+            sum(counts.values())))
+    else:
+        print("Coverage phase: %d valid probes skipped; the baseline holds %d (login probes are exempt)" % (
+            sum(counts.values()), sum(allowed.values())))
+    for operation in sorted(counts.keys() | allowed.keys()) if skipped_baseline_path is not None else ():
         actual, limit = counts.get(operation, 0), allowed.get(operation, 0)
         if actual > limit:
             ok = False
@@ -262,6 +270,9 @@ def main(argv):
         for op in sorted(results(report_path, ops)[1]):
             print(op)
         return 0
+    if "--lost-probes" in argv:
+        at = argv.index("--lost-probes")
+        return gate(*argv[:at], None, *argv[at + 1:])
     return gate(*argv)
 
 

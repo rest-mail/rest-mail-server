@@ -30,7 +30,7 @@ var importScenarios = []importScenario{
 	{"api_key_holder_revoked", "denied", 404}, {"csrf", "", 403}, {"setup_pending", "setup", 403},
 	{"missing", "disappeared", 404}, {"mailbox_full", "full", 409},
 	{"decoded_too_large", "", 413}, {"request_too_large", "body_limit", 413},
-	{"missing_raw", "", 422}, {"missing_date", "", 422}, {"invalid_folder", "", 422},
+	{"missing_raw", "", 422}, {"raw_wrong_type", "", 422}, {"missing_date", "", 422}, {"invalid_folder", "", 422},
 	{"keywords", "", 200}, {"deleted", "", 200},
 	{"invalid_keyword", "", 422}, {"keyword_too_long", "", 422}, {"too_many_keywords", "", 422},
 	{"invalid_base64", "", 422}, {"invalid_id", "global", 422},
@@ -54,6 +54,8 @@ func importScenarioRequest(t *testing.T, tc importScenario) oapifly.ExampleReque
 		body["raw_message"] = bytes.Repeat([]byte("x"), 1025)
 	case "missing_raw":
 		delete(body, "raw_message")
+	case "raw_wrong_type":
+		body["raw_message"] = 12345
 	case "missing_date":
 		delete(body, "internal_date")
 	case "invalid_folder":
@@ -87,7 +89,7 @@ func importScenarioRequest(t *testing.T, tc importScenario) oapifly.ExampleReque
 	if tc.name == "body_array" {
 		payload = []byte("[]")
 	}
-	return oapifly.ExampleRequest{Path: map[string]any{"id": id}, Body: payload, MediaType: "application/json", Invalid: tc.name == "body_array" || tc.name == "missing_raw" || tc.name == "missing_date"}
+	return oapifly.ExampleRequest{Path: map[string]any{"id": id}, Body: payload, MediaType: "application/json", Invalid: tc.name == "body_array" || tc.name == "missing_raw" || tc.name == "raw_wrong_type" || tc.name == "missing_date"}
 }
 
 func prepareImportScenario(t *testing.T, tc importScenario, f *importFixture) {
