@@ -355,7 +355,7 @@ func (c *Client) listMessages(token string, accountID uint, folder string, inclu
 		path := fmt.Sprintf("/api/v1/accounts/%d/folders/%s/messages?limit=100",
 			accountID, url.PathEscape(folder))
 		if includeDeleted {
-			path += "&include_imap_deleted=true"
+			path += "&include_imap_deleted=true&include_snoozed=true"
 		}
 		if cursor != "" {
 			path += "&cursor=" + url.QueryEscape(cursor)
