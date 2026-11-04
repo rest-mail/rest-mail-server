@@ -77,6 +77,9 @@ func (c *mailRequirementConnection) QueryContext(ctx context.Context, q string, 
 			}
 		}
 		return importRows(map[string]any{"id": id, "domain_id": int64(1), "address": address, "active": true, "display_name": "Admin", "quota_bytes": int64(1 << 30)}), nil
+	case strings.Contains(q, `SELECT count(*) FROM "domains" WHERE id = $1 AND active`):
+		// restmail.test is live: only a live domain's mailboxes take mail (#1845).
+		return invitationRows([]string{"count"}, []driver.Value{int64(1)}), nil
 	case strings.Contains(q, `FROM "domains"`):
 		if c.name == "rejected" && strings.HasPrefix(q, `SELECT "id"`) {
 			return invitationRows([]string{"id"}, []driver.Value{int64(1)}), nil

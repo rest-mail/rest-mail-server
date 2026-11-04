@@ -87,6 +87,9 @@ func (c requirementConnection) QueryContext(_ context.Context, q string, args []
 		return invitationRows([]string{"address", "owner_id"}, []driver.Value{"admin@example.test", nil}), nil
 	case c.operation == "deliverMessage" && strings.Contains(q, `FROM "mailboxes"`):
 		return invitationRows([]string{"id", "domain_id", "address", "active"}, []driver.Value{int64(10), int64(1), "admin@restmail.test", true}), nil
+	case c.operation == "deliverMessage" && strings.Contains(q, `SELECT count(*) FROM "domains" WHERE id = $1 AND active`):
+		// The recipient's domain is live: only those take mail (#1845).
+		return invitationRows([]string{"count"}, []driver.Value{int64(1)}), nil
 	case c.operation == "deliverMessage" && strings.Contains(q, "JOIN role_capabilities"):
 		return invitationRows([]string{"scope", "capability", "expires_at", "activation_expires_at"}, []driver.Value{"mailbox:admin@restmail.test", "mail:receive", nil, nil}), nil
 	case c.operation == "login" && strings.Contains(q, `FROM "mailboxes"`):
