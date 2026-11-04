@@ -1,7 +1,9 @@
 package smtp
 
 import (
-	"bytes"
+	"bufio"
+	"io"
+	"log/slog"
 	"unicode/utf8"
 
 	gosmtp "github.com/rest-mail/go-smtp/pkg/smtp"
@@ -26,29 +28,41 @@ func validateUTF8Address(address string, enabled bool, code int) error {
 	return nil
 }
 
-// Validate only the top-level header block: body octets are governed by
-// 8BITMIME, not SMTPUTF8. Leave the original bytes intact for DKIM verification.
-func validateUTF8Headers(data []byte, enabled bool) error {
-	headers := data
-	for start := 0; start < len(data); {
-		nl := bytes.IndexByte(data[start:], '\n')
-		if nl < 0 {
+// Validate only the top-level header block, read from the message on disk: body octets are
+// governed by 8BITMIME, not SMTPUTF8. Leave the original bytes intact for DKIM verification.
+func validateUTF8Headers(message io.Reader, enabled bool) error {
+	reader := bufio.NewReader(message)
+	invalid, nonASCII, lineStart := false, false, true
+	for {
+		char, size, err := reader.ReadRune()
+		if err == io.EOF {
 			break
 		}
-		end := start + nl
-		if end == start || (end == start+1 && data[start] == '\r') {
-			headers = data[:start]
-			break
+		if err != nil {
+			slog.Error("smtp: error reading the message from disk", "error", err)
+			return messageDiskFailure()
 		}
-		start = end + 1
+		if lineStart {
+			if char == '\n' {
+				break
+			}
+			if char == '\r' {
+				if next, _ := reader.Peek(1); len(next) == 1 && next[0] == '\n' {
+					break
+				}
+			}
+		}
+		lineStart = char == '\n'
+		invalid = invalid || (char == utf8.RuneError && size == 1)
+		nonASCII = nonASCII || char >= utf8.RuneSelf
 	}
-	if !utf8.Valid(headers) {
+	if invalid {
 		return &gosmtp.SMTPError{
 			Code: 550, EnhancedCode: gosmtp.EnhancedCode{5, 6, 0},
 			Message: "Invalid UTF-8 in message headers",
 		}
 	}
-	if !enabled && containsNonASCII(headers) {
+	if !enabled && nonASCII {
 		return &gosmtp.SMTPError{
 			Code: 554, EnhancedCode: gosmtp.EnhancedCode{5, 6, 9},
 			Message: "Internationalized message headers require SMTPUTF8",

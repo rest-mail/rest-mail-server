@@ -1,7 +1,6 @@
 package smtp
 
 import (
-	"bytes"
 	"context"
 	"crypto/tls"
 	"encoding/json"
@@ -11,6 +10,7 @@ import (
 	"log/slog"
 	"net/mail"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/emersion/go-sasl"
@@ -475,7 +475,7 @@ func (s *session) authorizeFromHeader(fromAddr string) error {
 // from a bulk domain must carry a List-Unsubscribe header, and mail from a
 // transactional domain must not. A policy that cannot be read is a temporary
 // refusal, so the client retries rather than the rule being skipped.
-func (s *session) followSendingPolicy(fromAddr string, data []byte) error {
+func (s *session) followSendingPolicy(fromAddr string, message io.Reader) error {
 	policy, err := s.store.SendingPolicy(fromAddr)
 	if err != nil {
 		slog.Error("smtp: could not read the sending policy", "header_from", maskEmail(fromAddr), "error", err)
@@ -486,7 +486,9 @@ func (s *session) followSendingPolicy(fromAddr string, data []byte) error {
 		}
 	}
 	unsubscribe := false
-	if msg, perr := mail.ReadMessage(bytes.NewReader(data)); perr == nil {
+	// Reads the header block and no further. Only a message whose headers the MIME parser read
+	// reaches here, so the block is within the parser's own limit on it.
+	if msg, perr := mail.ReadMessage(message); perr == nil {
 		unsubscribe = strings.TrimSpace(msg.Header.Get("List-Unsubscribe")) != ""
 	}
 	switch {
@@ -630,7 +632,10 @@ func (s *session) Data(r io.Reader) error {
 		defer tc.disarm()
 	}
 
-	data, err := io.ReadAll(r)
+	// The message goes to a temporary file as it arrives, and is read from there. The reader stops
+	// with the 552 at the size cap, so the file never holds more than the cap. The file goes on
+	// every way out of this function.
+	message, err := spool(r)
 	if err != nil {
 		var smtpErr *gosmtp.SMTPError
 		if errors.As(err, &smtpErr) {
@@ -645,17 +650,23 @@ func (s *session) Data(r io.Reader) error {
 			Message:      "Error reading message data",
 		}
 	}
+	defer message.remove()
 
 	// Validate before parsing, rate accounting, or any delivery/queue write.
 	// The MIME body may contain arbitrary 8-bit data without SMTPUTF8.
-	if err := validateUTF8Headers(data, s.smtpUTF8); err != nil {
+	if err := validateUTF8Headers(message.reader(), s.smtpUTF8); err != nil {
 		return err
 	}
 
 	// Hop count (RFC 5321 §6.3): a message carrying more Received: fields than the limit,
 	// counting the one this server stamps below, is taken as a mail loop and refused for good,
 	// as Postfix's hopcount_limit refuses it (RFC 3463 5.4.6, routing loop detected).
-	if rmime.ReceivedCount(data)+1 > rmime.CurrentLimits().MaxReceived {
+	receivedCount, err := rmime.CountReceived(message.reader())
+	if err != nil {
+		slog.Error("smtp: error reading the message from disk", "remote", s.remoteAddr(), "error", err)
+		return messageDiskFailure()
+	}
+	if receivedCount+1 > rmime.CurrentLimits().MaxReceived {
 		slog.Warn("smtp: rejecting DATA: too many Received headers", "remote", s.remoteAddr(), "event", "smtp_hop_limit")
 		return &gosmtp.SMTPError{
 			Code:         554,
@@ -682,17 +693,23 @@ func (s *session) Data(r io.Reader) error {
 	}
 
 	// Parse the message and deliver to each recipient.
-	subject, bodyText, bodyHTML, messageID, senderName, inReplyTo, references, toList, ccList, fromAddr, limitErr := parseRawMessageLimited(data)
-	if limitErr != nil {
+	parsed, parseErr := parseSpooled(message)
+	if errors.Is(parseErr, rmime.ErrStructureLimit) {
 		// Nested deeper or holding more parts than the MIME limits allow (#1641): a media
 		// problem the sender must fix, so refused for good (RFC 3463 5.6.0).
-		slog.Warn("smtp: rejecting DATA: MIME structure over limit", "remote", s.remoteAddr(), "error", limitErr, "event", "smtp_mime_limit")
+		slog.Warn("smtp: rejecting DATA: MIME structure over limit", "remote", s.remoteAddr(), "error", parseErr, "event", "smtp_mime_limit")
 		return &gosmtp.SMTPError{
 			Code:         554,
 			EnhancedCode: gosmtp.EnhancedCode{5, 6, 0},
 			Message:      "Message structure too complex: too deeply nested or too many MIME parts",
 		}
 	}
+	if parseErr != nil {
+		slog.Error("smtp: error reading the message from disk", "remote", s.remoteAddr(), "error", parseErr)
+		return messageDiskFailure()
+	}
+	defer parsed.remove()
+	subject, messageID, senderName, inReplyTo, references, toList, ccList, fromAddr := parsed.subject, parsed.messageID, parsed.senderName, parsed.inReplyTo, parsed.references, parsed.toList, parsed.ccList, parsed.fromAddr
 
 	// #181: on the authenticated submission path the message From: header must
 	// belong to an identity the account may send as — mirroring the MAIL FROM
@@ -705,7 +722,7 @@ func (s *session) Data(r io.Reader) error {
 		if err := s.authorizeFromHeader(fromAddr); err != nil {
 			return err
 		}
-		if err := s.followSendingPolicy(fromAddr, data); err != nil {
+		if err := s.followSendingPolicy(fromAddr, message.reader()); err != nil {
 			return err
 		}
 		if persistentBudget {
@@ -751,7 +768,10 @@ func (s *session) Data(r io.Reader) error {
 		For:       singleRecipient(s.rcptTo),
 		Timestamp: time.Now(),
 	})
-	data = append([]byte(received), data...)
+	source := messageSource{head: received, body: message}
+	// What stores or signs the message whole reads it from the file once, when a recipient first
+	// needs it. A message that only reaches local mailboxes is never read into memory.
+	wholeMessage := sync.OnceValues(source.whole)
 
 	accepted := 0
 	failed := 0
@@ -774,7 +794,9 @@ func (s *session) Data(r io.Reader) error {
 	// message failed SPF and the domain's DMARC p=reject refused it (550),
 	// however the session had signed in. Prepared once, at the first local
 	// recipient.
-	localRaw, localClientIP, localHelo := data, extractIP(s.remoteAddr()), s.conn.Hostname()
+	localSource, localClientIP, localHelo := source, extractIP(s.remoteAddr()), s.conn.Hostname()
+	var preparedFile *spoolFile
+	defer func() { preparedFile.remove() }()
 	prepareLocal := s.isSubmission && s.authenticated
 	var localErr error
 	type recipientLookup struct {
@@ -797,14 +819,17 @@ func (s *session) Data(r io.Reader) error {
 	for _, rcpt := range s.rcptTo {
 		// A bounce to a valid SRS address goes on to the sender it carries.
 		if original, ok := s.srsRelays[rcpt]; ok {
-			err := s.store.RelayBounce(BounceRelay{
-				Recipient:       original,
-				SendingDomain:   rmail.DomainFromAddress(rcpt),
-				RawMessage:      string(data),
-				BodyType:        s.bodyType,
-				MaxPerRecipient: s.srsBounceMax,
-				Window:          s.srsWindow,
-			})
+			raw, err := wholeMessage()
+			if err == nil {
+				err = s.store.RelayBounce(BounceRelay{
+					Recipient:       original,
+					SendingDomain:   rmail.DomainFromAddress(rcpt),
+					RawMessage:      raw,
+					BodyType:        s.bodyType,
+					MaxPerRecipient: s.srsBounceMax,
+					Window:          s.srsWindow,
+				})
+			}
 			if err != nil {
 				slog.Error("smtp: failed to queue a bounce for an SRS address", "error", err)
 				failed++
@@ -856,19 +881,26 @@ func (s *session) Data(r io.Reader) error {
 				if len(ccList) > 0 {
 					ccJSON, _ = json.Marshal(ccList)
 				}
-				ref, perr := s.store.PersistSubmittedMessage(SubmittedMessage{
-					Sender:       s.mailFrom,
-					MessageID:    messageID,
-					SenderName:   senderName,
-					Subject:      subject,
-					BodyText:     bodyText,
-					BodyHTML:     bodyHTML,
-					InReplyTo:    inReplyTo,
-					References:   references,
-					RawMessage:   string(data),
-					RecipientsTo: toJSON,
-					RecipientsCc: ccJSON,
-				})
+				raw, perr := wholeMessage()
+				bodyText, textErr := parsed.text.whole()
+				bodyHTML, htmlErr := parsed.html.whole()
+				perr = errors.Join(perr, textErr, htmlErr)
+				var ref *uint
+				if perr == nil {
+					ref, perr = s.store.PersistSubmittedMessage(SubmittedMessage{
+						Sender:       s.mailFrom,
+						MessageID:    messageID,
+						SenderName:   senderName,
+						Subject:      subject,
+						BodyText:     bodyText,
+						BodyHTML:     bodyHTML,
+						InReplyTo:    inReplyTo,
+						References:   references,
+						RawMessage:   raw,
+						RecipientsTo: toJSON,
+						RecipientsCc: ccJSON,
+					})
+				}
 				if perr != nil {
 					slog.Warn("smtp: failed to persist submission reference for DSN provenance",
 						"from", s.mailFrom, "error", perr)
@@ -877,15 +909,19 @@ func (s *session) Data(r io.Reader) error {
 				}
 			}
 
-			if err := s.store.EnqueueOutbound(OutboundMessage{
-				Sender:     s.mailFrom,
-				Recipient:  rcpt,
-				Domain:     recipientDomain,
-				RawMessage: string(data),
-				BodyType:   s.bodyType,
-				MessageID:  submittedMsgID,
-				RequireTLS: s.requireTLS,
-			}); err != nil {
+			raw, err := wholeMessage()
+			if err == nil {
+				err = s.store.EnqueueOutbound(OutboundMessage{
+					Sender:     s.mailFrom,
+					Recipient:  rcpt,
+					Domain:     recipientDomain,
+					RawMessage: raw,
+					BodyType:   s.bodyType,
+					MessageID:  submittedMsgID,
+					RequireTLS: s.requireTLS,
+				})
+			}
+			if err != nil {
 				slog.Error("smtp: failed to queue message", "from", s.mailFrom, "to", rcpt, "error", err)
 				failed++
 				continue
@@ -898,7 +934,9 @@ func (s *session) Data(r io.Reader) error {
 		if prepareLocal {
 			prepareLocal = false
 			localClientIP, localHelo = "", ""
-			prepared, err := s.store.PrepareSubmitted(s.mailFrom, string(data))
+			// The signed copy goes back to disk, so what follows reads it as it reads any
+			// other message.
+			file, err := s.prepareSubmitted(wholeMessage)
 			if err != nil {
 				// A configured DKIM key could not be loaded: defer, as the queue
 				// worker does, rather than deliver the message unsigned.
@@ -906,7 +944,8 @@ func (s *session) Data(r io.Reader) error {
 					"from", s.mailFrom, "error", err)
 				localErr = err
 			} else {
-				localRaw = []byte(prepared)
+				preparedFile = file
+				localSource = messageSource{body: file}
 			}
 		}
 		if localErr != nil {
@@ -921,12 +960,9 @@ func (s *session) Data(r io.Reader) error {
 			Sender:     s.mailFrom,
 			SenderName: senderName,
 			Subject:    subject,
-			BodyText:   bodyText,
-			BodyHTML:   bodyHTML,
 			MessageID:  messageID,
 			InReplyTo:  inReplyTo,
 			References: references,
-			RawMessage: localRaw,
 			ClientIP:   localClientIP,
 			HeloName:   localHelo,
 			// Always-on inbound transport-security metrics (inbound-MX only).
@@ -944,7 +980,11 @@ func (s *session) Data(r io.Reader) error {
 			deliverReq.RecipientsCc = ccJSON
 		}
 
-		if _, err := s.api.DeliverMessage(deliverReq); err != nil {
+		if _, err := s.api.DeliverMessageFrom(deliverReq, apiclient.DeliverContent{
+			RawMessage: localSource.open,
+			BodyText:   parsed.text.opener(),
+			BodyHTML:   parsed.html.opener(),
+		}); err != nil {
 			if reason, refused := aliasRoutingRefusal(err); refused {
 				aliasFailure = reason
 			}
@@ -993,6 +1033,21 @@ func (s *session) Data(r io.Reader) error {
 			"from", s.mailFrom, "accepted", accepted, "failed", failed)
 	}
 	return nil
+}
+
+// prepareSubmitted applies the outbound transforms to a submission for a local mailbox, and
+// answers the result on disk. Signing is the one step of a local delivery that holds the whole
+// message, because the DKIM signer takes it whole.
+func (s *session) prepareSubmitted(whole func() (string, error)) (*spoolFile, error) {
+	raw, err := whole()
+	if err != nil {
+		return nil, err
+	}
+	prepared, err := s.store.PrepareSubmitted(s.mailFrom, raw)
+	if err != nil {
+		return nil, err
+	}
+	return spool(strings.NewReader(prepared))
 }
 
 // aliasRoutingRefusal recognises the API's permanent refusal of a reserved alias that

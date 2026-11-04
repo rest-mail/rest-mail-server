@@ -1,11 +1,8 @@
 package smtp
 
 import (
-	"bytes"
-	"errors"
 	"strings"
 
-	rmime "github.com/rest-mail/rest-mail-server/internal/mime"
 	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 )
 
@@ -67,85 +64,6 @@ func splitHostPort(addr string) (string, string, error) {
 		return addr, "", nil
 	}
 	return addr[:last], addr[last+1:], nil
-}
-
-// parseRawMessage extracts the fields a DeliverRequest needs from a raw RFC 5322
-// message. fromAddr is the bare address of the From header, used on the
-// authenticated submission path to bind the header From to an identity the
-// account is authorized to send as.
-//
-// The parsing itself is delegated to internal/mime, which wraps go-message:
-// RFC 2047 encoded-words, charset conversion, transfer-encoding decoding and
-// nested multipart structures all come from there. The REST ingest path already
-// parses with that package, so the same message now yields the same fields
-// whether it arrives over SMTP or over REST (issue #298).
-func parseRawMessage(data []byte) (subject, bodyText, bodyHTML, messageID, senderName, inReplyTo, references string, toList, ccList []string, fromAddr string) {
-	subject, bodyText, bodyHTML, messageID, senderName, inReplyTo, references, toList, ccList, fromAddr, _ = parseRawMessageLimited(data)
-	return
-}
-
-// parseRawMessageLimited is parseRawMessage that also answers a message nested deeper or holding
-// more parts than the MIME limits allow, which wraps rmime.ErrStructureLimit and is refused.
-func parseRawMessageLimited(data []byte) (subject, bodyText, bodyHTML, messageID, senderName, inReplyTo, references string, toList, ccList []string, fromAddr string, limitErr error) {
-	// An empty or whitespace-only message has nothing to parse. Handing it over
-	// would come back as a default text/plain body holding that whitespace.
-	if len(bytes.TrimSpace(data)) == 0 {
-		return "", "", "", "", "", "", "", nil, nil, "", nil
-	}
-
-	email, err := rmime.Parse(terminateHeaders(data))
-	if errors.Is(err, rmime.ErrStructureLimit) {
-		return "", "", "", "", "", "", "", nil, nil, "", err
-	}
-	if err != nil || email == nil {
-		// Nothing parseable: keep whatever body text can be recovered rather
-		// than delivering an empty message. Headers stay empty, which is what
-		// an unparseable message can honestly report.
-		return "", recoverBody(data), "", "", "", "", "", nil, nil, "", nil
-	}
-
-	h := email.Headers
-	subject = h.Subject
-	// The stored form is the bare id; the angle brackets are re-added wherever
-	// the message is rendered back into a header.
-	messageID = strings.Trim(h.MessageID, "<>")
-	inReplyTo = strings.Trim(h.InReplyTo, "<>")
-	// References stays the whitespace-separated list with brackets intact,
-	// matching the historical output contract.
-	references = strings.Join(h.References, " ")
-
-	if len(h.From) > 0 {
-		senderName = h.From[0].Name
-		fromAddr = h.From[0].Address
-	}
-	toList = bareAddresses(h.To)
-	ccList = bareAddresses(h.Cc)
-
-	bodyText, bodyHTML = rmime.TextAndHTML(email.Body)
-	return
-}
-
-// terminateHeaders ensures the header block ends with a blank line. A message
-// that is nothing but headers has no terminator, and the parser needs one to
-// treat the whole input as a header block rather than a truncated message.
-func terminateHeaders(data []byte) []byte {
-	if bytes.Contains(data, []byte("\r\n\r\n")) || bytes.Contains(data, []byte("\n\n")) {
-		return data
-	}
-	out := make([]byte, 0, len(data)+4)
-	out = append(out, data...)
-	return append(out, "\r\n\r\n"...)
-}
-
-// recoverBody returns the body of a message the parser could not read: whatever
-// follows the first blank line, or nothing when there is no body at all.
-func recoverBody(data []byte) string {
-	for _, sep := range []string{"\r\n\r\n", "\n\n"} {
-		if _, body, found := strings.Cut(string(data), sep); found {
-			return body
-		}
-	}
-	return ""
 }
 
 // bareAddresses reduces parsed addresses to their address strings, dropping any

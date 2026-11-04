@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"sync/atomic"
 )
 
@@ -116,6 +117,50 @@ func ReceivedCount(raw []byte) int {
 		}
 	}
 	return count
+}
+
+// CountReceived is ReceivedCount for a message read from src. It reads no further than the
+// header block, and holds no more than a buffer of it. The only error is a failure reading src.
+func CountReceived(src io.Reader) (int, error) {
+	const name = "received"
+	reader := bufio.NewReader(src)
+	count := 0
+	for {
+		first, onlyCR, continuation, decided, matched := true, true, false, false, 0
+		for {
+			c, err := reader.ReadByte()
+			if err == io.EOF {
+				return count, nil
+			}
+			if err != nil {
+				return count, err
+			}
+			if c == '\n' {
+				break
+			}
+			if c != '\r' {
+				onlyCR = false
+			}
+			if first {
+				first, continuation = false, c == ' ' || c == '\t'
+			}
+			switch {
+			case continuation || decided:
+			case c == ':':
+				decided = true
+				if matched == len(name) {
+					count++
+				}
+			case matched < len(name) && c|0x20 == name[matched]:
+				matched++
+			case matched < len(name) || (c != ' ' && c != '\t'):
+				decided = true
+			}
+		}
+		if onlyCR {
+			return count, nil
+		}
+	}
 }
 
 // TooManyReceived reports whether raw carries more Received: header fields than the limit in

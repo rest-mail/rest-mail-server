@@ -18,9 +18,9 @@ type nulDeliveryBackend struct {
 	requests chan *apiclient.DeliverRequest
 }
 
-func (backend *nulDeliveryBackend) DeliverMessage(request *apiclient.DeliverRequest) (*apiclient.DeliverResponse, error) {
-	backend.requests <- request
-	return backend.client.DeliverMessage(request)
+func (backend *nulDeliveryBackend) DeliverMessageFrom(request *apiclient.DeliverRequest, content apiclient.DeliverContent) (*apiclient.DeliverResponse, error) {
+	backend.requests <- wholeDelivery(request, content)
+	return backend.client.DeliverMessageFrom(request, content)
 }
 
 func TestSMTPNULDeliveryIsRefused(t *testing.T) {

@@ -17,8 +17,9 @@ type Backend interface {
 	SignIn(email, password, protocol string) (*apiclient.SignInResponse, error)
 	// CheckMailbox verifies a recipient address exists locally.
 	CheckMailbox(address string) (*apiclient.MailboxCheckResponse, error)
-	// DeliverMessage delivers a message to a local mailbox.
-	DeliverMessage(req *apiclient.DeliverRequest) (*apiclient.DeliverResponse, error)
+	// DeliverMessageFrom delivers a message to a local mailbox, reading its large
+	// fields from content as it sends them.
+	DeliverMessageFrom(req *apiclient.DeliverRequest, content apiclient.DeliverContent) (*apiclient.DeliverResponse, error)
 }
 
 // Store abstracts the two direct-database reaches the SMTP session makes, so the

@@ -278,6 +278,11 @@ func (c *Client) DeliverMessage(req *DeliverRequest) (*DeliverResponse, error) {
 	if err := c.postInternal(ctx, "/api/v1/messages/deliver", req, &wire); err != nil {
 		return nil, err
 	}
+	return decodeDelivered(wire)
+}
+
+// decodeDelivered reads what the API answers a delivery.
+func decodeDelivered(wire endpoint.Data[json.RawMessage]) (*DeliverResponse, error) {
 	var processed apitypes.DeliveryProcessed
 	if err := json.Unmarshal(wire.Data, &processed); err != nil {
 		return nil, fmt.Errorf("decode delivery response: %w", err)
