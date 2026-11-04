@@ -21949,6 +21949,25 @@
         "mediaType": "application/json"
       }
     },
+    "missing": {
+      "summary": "No domain has the ID",
+      "description": "The session holds domains:read at *, so the route reaches the handler, which looks the domain up before reading its allowlist. No domain has the ID, so it is not found rather than an empty list.",
+      "request": {
+        "path": {
+          "id": 2147483647
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Domain not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "outside_domain": {
       "summary": "A grant on another domain is refused",
       "description": "The setup-complete session holds domains:read only at domain:other.test. The real scope lookup resolves the requested domain1 to example.com, so permission middleware refuses access before listing data.",
@@ -22713,6 +22732,25 @@
                 "id": "must be a non-negative integer"
               }
             }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "summary": "No domain has the ID",
+      "description": "The session holds domains:read at *, so the route reaches the handler, which looks the domain up before reading its blocklist. No domain has the ID, so it is not found rather than an empty list.",
+      "request": {
+        "path": {
+          "id": 2147483647
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Domain not found"
           }
         },
         "mediaType": "application/json"
@@ -27097,6 +27135,25 @@
                 "id": "must be a non-negative integer"
               }
             }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "summary": "No domain has the ID",
+      "description": "The session holds domains:read at *, so the route reaches the handler, which looks the domain up before reading its suppressions. No domain has the ID, so it is not found rather than an empty list.",
+      "request": {
+        "path": {
+          "id": 2147483647
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Domain not found"
           }
         },
         "mediaType": "application/json"

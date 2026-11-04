@@ -10529,6 +10529,19 @@ paths:
         - BearerAuth: [domains:read]
         - APIKeyAuth: [domains:read]
       summary: List allowlist entries for a domain
+      # Links fill the successful lookup; this named ID stays absent.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+          examples:
+            available:
+              value: 1
+            missing:
+              value: 2147483647
       responses:
         "200":
           description: Allowlist entries
@@ -10542,6 +10555,18 @@ paths:
                     type: array
                     items:
                       $ref: "#/components/schemas/DomainSenderRule"
+        "404":
+          description: Domain not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                missing:
+                  value:
+                    error:
+                      code: not_found
+                      message: Domain not found
     post:
       operationId: addToAllowlist
       tags: ["Admin: Sender Rules"]
@@ -10648,6 +10673,19 @@ paths:
         - BearerAuth: [domains:read]
         - APIKeyAuth: [domains:read]
       summary: List blocklist entries for a domain
+      # Links fill the successful lookup; this named ID stays absent.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+          examples:
+            available:
+              value: 1
+            missing:
+              value: 2147483647
       responses:
         "200":
           description: Blocklist entries
@@ -10661,6 +10699,18 @@ paths:
                     type: array
                     items:
                       $ref: "#/components/schemas/DomainSenderRule"
+        "404":
+          description: Domain not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                missing:
+                  value:
+                    error:
+                      code: not_found
+                      message: Domain not found
     post:
       operationId: addToBlocklist
       tags: ["Admin: Sender Rules"]
@@ -13074,6 +13124,19 @@ paths:
         domain, does not exist. A message to one is bounced at once, with a
         DSN to its sender, until the suppression expires (SUPPRESSION_TTL,
         90 days by default). Expired suppressions are not listed.
+      # Links fill the successful lookup; this named ID stays absent.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+          examples:
+            available:
+              value: 1
+            missing:
+              value: 2147483647
       responses:
         "200":
           description: Suppressions, most recently updated first
@@ -13087,6 +13150,18 @@ paths:
                     type: array
                     items:
                       $ref: "#/components/schemas/Suppression"
+        "404":
+          description: Domain not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                missing:
+                  value:
+                    error:
+                      code: not_found
+                      message: Domain not found
 
   /api/v1/admin/domains/{id}/suppressions/{sid}:
     parameters:

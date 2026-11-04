@@ -138,13 +138,13 @@ func TestDomainMailPolicyIsDescribed(t *testing.T) {
 		path, method, id, capability string
 		statuses                     []string
 	}{
-		{"/api/v1/admin/domains/{id}/allowlist", "get", "listAllowlist", "domains:read", []string{"200"}},
+		{"/api/v1/admin/domains/{id}/allowlist", "get", "listAllowlist", "domains:read", []string{"200", "404"}},
 		{"/api/v1/admin/domains/{id}/allowlist", "post", "addToAllowlist", "domains:write", []string{"201", "400", "404", "409"}},
 		{"/api/v1/admin/domains/{id}/allowlist/{eid}", "delete", "removeFromAllowlist", "domains:write", []string{"204", "404"}},
-		{"/api/v1/admin/domains/{id}/blocklist", "get", "listBlocklist", "domains:read", []string{"200"}},
+		{"/api/v1/admin/domains/{id}/blocklist", "get", "listBlocklist", "domains:read", []string{"200", "404"}},
 		{"/api/v1/admin/domains/{id}/blocklist", "post", "addToBlocklist", "domains:write", []string{"201", "400", "404", "409"}},
 		{"/api/v1/admin/domains/{id}/blocklist/{eid}", "delete", "removeFromBlocklist", "domains:write", []string{"204", "404"}},
-		{"/api/v1/admin/domains/{id}/suppressions", "get", "listSuppressions", "domains:read", []string{"200"}},
+		{"/api/v1/admin/domains/{id}/suppressions", "get", "listSuppressions", "domains:read", []string{"200", "404"}},
 		{"/api/v1/admin/domains/{id}/suppressions/{sid}", "delete", "clearSuppression", "domains:write", []string{"204", "404"}},
 		{"/api/v1/admin/domains/{id}/mta-sts", "get", "getMtaStsPolicy", "domains:read", []string{"200", "404"}},
 		{"/api/v1/admin/domains/{id}/mta-sts", "put", "setMtaStsPolicy", "domains:write", []string{"200", "201", "400", "404"}},

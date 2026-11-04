@@ -151,13 +151,13 @@ var domainPolicyFaultRoutes = []struct {
 func domainPolicySteps(index int) []domainPolicySQLStep {
 	switch index {
 	case 0, 3:
-		return []domainPolicySQLStep{domainPolicyRuleStep(map[int]string{0: "allow", 3: "block"}[index])}
+		return []domainPolicySQLStep{domainPolicyDomainStep(), domainPolicyRuleStep(map[int]string{0: "allow", 3: "block"}[index])}
 	case 1, 4:
 		return []domainPolicySQLStep{domainPolicyDomainStep(), domainPolicyInsert("domain_sender_rules")}
 	case 2, 5:
 		return []domainPolicySQLStep{domainPolicyRuleStep(map[int]string{2: "allow", 5: "block"}[index]), {match: `DELETE FROM "domain_sender_rules"`, affected: 1}}
 	case 6:
-		return []domainPolicySQLStep{{match: `FROM "suppressions"`, columns: []string{"id", "domain_id", "address"}, values: []driver.Value{int64(8), int64(7), "recipient@example.test"}}}
+		return []domainPolicySQLStep{domainPolicyDomainStep(), {match: `FROM "suppressions"`, columns: []string{"id", "domain_id", "address"}, values: []driver.Value{int64(8), int64(7), "recipient@example.test"}}}
 	case 7:
 		return []domainPolicySQLStep{{match: `DELETE FROM "suppressions"`, affected: 1}}
 	case 8:
@@ -293,7 +293,7 @@ func TestDomainPolicyAbsenceAndExplicitZerosStayStable(t *testing.T) {
 			status := 200
 			switch index {
 			case 0, 3, 6:
-				steps[0].values = nil
+				steps[1].values = nil
 			case 8:
 				steps[1].values = nil
 				status = 404
@@ -459,7 +459,9 @@ func TestDomainPolicyRelayPasswordRemainsWriteOnly(t *testing.T) {
 }
 
 func TestDomainPolicyMissingDomainsKeepExistingRefusals(t *testing.T) {
-	for _, index := range []int{1, 4, 8, 9, 11, 12} {
+	// The lists look the domain up before reading by domain_id, so a missing one
+	// is not an empty list (#1746).
+	for _, index := range []int{0, 3, 6, 1, 4, 8, 9, 11, 12} {
 		t.Run(domainPolicyFaultRoutes[index].name, func(t *testing.T) {
 			steps := domainPolicySteps(index)[:1]
 			steps[0].values = nil
