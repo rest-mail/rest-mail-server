@@ -194,6 +194,146 @@ def account_links_and_the_token_exchange_after_a_reset(transaction):
         start_clean(transaction)
 
 
+# The password of the accounts made for a sign-in exchange after its reset.
+# Never the fixture admin's or the two-factor administrator's.
+SIGN_IN_PASSWORD = "contract-sign-in-account"
+
+
+@hooks.before("login")
+@hooks.before("logout")
+@hooks.before("refreshToken")
+@hooks.before("protocolSignIn")
+@hooks.before("resetAdmin")
+@hooks.before("recoverAccount")
+@hooks.before("ownerChallenge")
+@hooks.before("ownerToken")
+@hooks.before("ownerStatus")
+@hooks.before("getTwoFactorStatus")
+@hooks.before("enrollTwoFactor")
+@hooks.before("confirmTwoFactor")
+@hooks.before("disableTwoFactor")
+@hooks.before("changeOwnPassword")
+@hooks.before("requestRecoveryEmail")
+@hooks.before("redeemRecoveryEmail")
+@hooks.before("getRecoveryEmail")
+@hooks.before("registerRecoveryEmail")
+@hooks.before("recoveryEmailLink")
+@hooks.before("verifyRecoveryEmail")
+def sign_in_and_recovery_after_a_reset(transaction):
+    # The sign-in and recovery operations, moved to a clean start: each
+    # exchange, refusals included, resets and seeds first. Refusals keep their
+    # bodies and tokens. A success that ends a session, rotates one or starts a
+    # second factor acts on an account made for it after the reset, never on a
+    # session or credential the run uses:
+    # - logout's 204 ends a session of that account (the_session_it_ended_is_over
+    #   checks it is over);
+    # - refreshToken's 200 rotates that account's refresh token;
+    # - enrollTwoFactor's 200 starts that account's enrollment.
+    # protocolSignIn's credential is an app password of an account made for
+    # it: the reset removed the principal sign_in_a_mail_client names. The
+    # other successes read (getTwoFactorStatus, getRecoveryEmail,
+    # recoveryEmailLink), sign the fixture admin in (login), or ask about an
+    # address no account holds (requestRecoveryEmail), and need nothing made.
+    # Registered ahead of every other hook of these operations. A run with no
+    # reset changes nothing here.
+    if not asked_for_a_clean_start():
+        return
+    start_clean(transaction)
+    name = transaction.get("name", "")
+    path = transaction["fullPath"].partition("?")[0]
+    if path == "/api/v1/auth/protocol-sign-in":
+        if any(f" > {status} > " in name for status in ("200", "400", "422")):
+            address, secret = an_app_password_of_its_own(transaction)
+            transaction["request"]["headers"]["Authorization"] = basic(address, secret)
+        return
+    if path == "/api/v1/auth/logout" and " > 204" in name:
+        refresh_token = a_session_of_its_own(transaction)["refresh_token"]
+        body = hooks.get_json(transaction)
+        if isinstance(body, dict) and "refresh_token" in body:
+            body["refresh_token"] = refresh_token
+            hooks.set_json(transaction, body)
+            hooks.stash["ended_refresh_token"] = {"name": name, "token": refresh_token}
+        return
+    if path == "/api/v1/auth/refresh" and " > 200 > " in name:
+        body = hooks.get_json(transaction)
+        if isinstance(body, dict) and body.get("refresh_token") == "fixture-refresh-token":
+            body["refresh_token"] = a_session_of_its_own(transaction)["refresh_token"]
+            hooks.set_json(transaction, body)
+        return
+    if path == "/api/v1/auth/2fa/enroll" and " > 200 > " in name:
+        session = a_session_of_its_own(transaction)
+        transaction["request"]["headers"]["Authorization"] = "Bearer " + session["access_token"]
+
+
+def a_session_of_its_own(transaction):
+    """A native session of an account made for this exchange, after its reset:
+    its access and refresh tokens."""
+    origin = origin_of(transaction)
+    address = a_made_account(origin, "contract-sign-in", SIGN_IN_PASSWORD)["address"]
+    pace_auth_requests(None)
+    request = urllib.request.Request(
+        origin + "/api/v1/auth/login",
+        data=json.dumps({"email": address, "password": SIGN_IN_PASSWORD, "client": "native"}).encode(),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        data = json.load(response).get("data") or {}
+    if not data.get("access_token") or not data.get("refresh_token"):
+        raise RuntimeError("the account made for this exchange signed in without its tokens")
+    # The setup sign-in and the exchange share the auth rate bucket.
+    pace_auth_requests(None)
+    return data
+
+
+
+
+def an_app_password_of_its_own(transaction):
+    """An app password of an account made for this exchange, after its reset,
+    minted by the two-factor administrator as the principals' one was."""
+    origin = origin_of(transaction)
+    account = a_made_account(origin, "contract-mail-client", SIGN_IN_PASSWORD)
+    request = urllib.request.Request(
+        origin + f"/api/v1/accounts/{account['id']:d}/credentials",
+        data=json.dumps({"name": "Contract mail client", "password": mfa_admin.PASSWORD}).encode(),
+        headers={"Content-Type": "application/json", "Authorization": "Bearer " + mfa_admin_token(origin)},
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        secret = json.load(response)["data"]["password"]
+    return account["address"], secret
+
+
+@hooks.after("logout")
+def the_session_it_ended_is_over(transaction):
+    # After a reset, logout's 204 ends a session made for it. Its refresh
+    # token must be refused afterwards, or the exchange fails: an answer of 204
+    # alone is given for a token that ends nothing too. Refusals and a run with
+    # no reset are left alone.
+    ended = hooks.stash.pop("ended_refresh_token", None)
+    name = transaction.get("name", "")
+    real = transaction.get("real") or {}
+    if not asked_for_a_clean_start() or " > 204" not in name or str(real.get("statusCode")) != "204":
+        return
+    if ended is None or ended["name"] != name:
+        transaction["fail"] = "the sign-out had no session made for it to end"
+        return
+    pace_auth_requests(None)
+    request = urllib.request.Request(
+        origin_of(transaction) + "/api/v1/auth/refresh",
+        data=json.dumps({"refresh_token": ended["token"]}).encode(),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:
+            status = response.status
+    except urllib.error.HTTPError as error:
+        status = error.code
+    if status != 401:
+        transaction["fail"] = f"the session made for it was not ended: its refresh token answered {status:d}, not 401"
+
+
 @hooks.before("domainDNSCheck")
 @hooks.before("getDomainRelay")
 @hooks.before("listSuppressions")
@@ -3183,6 +3323,10 @@ def a_folder_to_delete_of_its_own(transaction):
 @hooks.before("/api/v1/auth/protocol-sign-in > * > 400 > application/json")
 @hooks.before("/api/v1/auth/protocol-sign-in > * > 422 > application/json")
 def sign_in_a_mail_client(transaction):
+    # After a reset the principal is gone: sign_in_and_recovery_after_a_reset
+    # gives the exchange an app password of an account made for it.
+    if asked_for_a_clean_start():
+        return
     app = principals()["app_password"]
     transaction["request"]["headers"]["Authorization"] = basic(
         app["address"], app["secret"]
@@ -3940,6 +4084,11 @@ def an_account_of_its_own(origin, prefix, password=None):
     Its address is named by the time it is made, not by a count kept in the
     stash, so nothing is carried between exchanges. restmail.test is seeded, so
     it is there after a reset too. Making one takes a two-factor session."""
+    return a_made_account(origin, prefix, password)["id"]
+
+
+def a_made_account(origin, prefix, password=None):
+    """an_account_of_its_own, answering the account as made: its id and address."""
     body = {"address": f"{prefix}-{time.time_ns():d}@restmail.test", "display_name": "Invited"}
     if password is not None:
         body["password"] = password
@@ -3953,7 +4102,7 @@ def an_account_of_its_own(origin, prefix, password=None):
         method="POST",
     )
     with urllib.request.urlopen(request, timeout=10) as response:
-        return json.load(response)["data"]["id"]
+        return json.load(response)["data"]
 
 
 # The recipient each delivery and mailbox check success names, by operation:

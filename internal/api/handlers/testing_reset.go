@@ -150,6 +150,13 @@ func cleanResetData(tx *gorm.DB) error {
 	}
 	statements := []string{
 		"DELETE FROM credentials WHERE " + resetCredentialsCleared(),
+		// A retained administrator keeps its sign-in and its confirmed second
+		// factor, but not an enrollment it never confirmed, nor recovery codes
+		// that belong to no confirmed authenticator: a pending enrollment started
+		// before the reset would come back with the administrator (#1385).
+		"DELETE FROM credentials WHERE kind = 'totp' AND confirmed_at IS NULL",
+		"DELETE FROM credentials WHERE kind = 'recovery_code' AND account_id NOT IN " +
+			"(SELECT account_id FROM credentials WHERE kind = 'totp' AND confirmed_at IS NOT NULL AND revoked_at IS NULL)",
 		"DELETE FROM grants WHERE NOT ((holder_kind = 'account' AND holder_id IN " + resetAdmins +
 			" AND (scope NOT LIKE 'mailbox:%' OR scope = (SELECT 'mailbox:' || address FROM mailboxes WHERE id = holder_id))) OR holder_kind = 'server')",
 		"DELETE FROM mailboxes WHERE id NOT IN " + resetAdmins,
