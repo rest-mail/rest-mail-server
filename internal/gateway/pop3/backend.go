@@ -117,11 +117,10 @@ func (m *mailbox) Messages() ([]gopop3.Message, error) {
 	for _, msg := range resp.Data {
 		out = append(out, gopop3.Message{
 			UID: strconv.FormatUint(uint64(msg.ID), 10),
-			// WireSizeFor: exact stored-raw octet count when the server has one
-			// (POP3 STAT/LIST must report the transmitted size exactly), or
-			// its downgraded size when this session did not send UTF8 and
-			// RETR sends the downgraded form; size_bytes for messages without
-			// a stored raw.
+			// WireSizeFor: the octets RETR sends this session when the server
+			// has a stored raw (POP3 STAT/LIST must report the transmitted size
+			// exactly), which the API measures as the library sends it, with
+			// every line ending in CRLF; size_bytes for messages without one.
 			Size: msg.WireSizeFor(m.utf8),
 			Seen: msg.IsRead,
 		})
