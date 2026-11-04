@@ -107,7 +107,7 @@ type ForwardRefusalBody struct {
 // quarantine (403), the sender domain's policy or a bad scheduled_at (422), the account's send
 // rate (429, with Retry-After) and a deferral (503).
 var sendRefusals = []int{http.StatusBadRequest, http.StatusUnauthorized, http.StatusForbidden,
-	http.StatusTooManyRequests, http.StatusServiceUnavailable}
+	http.StatusTooManyRequests, http.StatusServiceUnavailable, http.StatusNotFound}
 
 // CalendarReplied is the answer to replying to an invitation.
 type CalendarReplied struct {
@@ -223,7 +223,7 @@ func (h *MessageHandler) RegisterCompose(rs endpoint.Routes, audit ...func(strin
 			"internationalized or not; the handler also accepts an RFC 5322 display name around one. scheduled_at must be at least a minute " +
 			"ahead and within a year; null or omitted sends at once. " + delegatedSendingDescription,
 		Status: http.StatusCreated, SuccessStatuses: []int{http.StatusOK, http.StatusAccepted},
-		Responses: append(append([]oapifly.EndpointResponse{}, sendOutcomes...), oapifly.EndpointResponse{Status: http.StatusUnprocessableEntity, Description: "Binding validation, sender policy or scheduling refusal", Type: oapifly.TypeOf[ForwardRefusalResponse]()}),
+		Responses: append(append([]oapifly.EndpointResponse{}, sendOutcomes...), oapifly.EndpointResponse{Status: http.StatusUnprocessableEntity, Description: "validation_failed with details.fields for binding, sender policy or scheduling rules", Type: oapifly.TypeOf[respond.ValidationErrorResponse]()}),
 		Errors:    sendRefusals, Security: delegatedSendSecurity(), Middleware: sendAudit("mail.send")}, h.sendMessage)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/messages/draft/{id}/send",
 		OperationID: "sendDraft", Summary: "Send a draft", Tags: []string{"Drafts"},

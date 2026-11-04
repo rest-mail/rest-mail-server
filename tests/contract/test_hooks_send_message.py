@@ -142,6 +142,10 @@ class SendMessageProbes(unittest.TestCase):
         self.assertNotIn("POST /api/v1/accounts", calls)
         self.assertFalse([c for c in calls if c.startswith("PUT ")])
 
+    def test_an_unlinked_sender_404_is_not_changed_into_a_known_sender(self):
+        self.send({"from": "someone@other.test", "to": ["recipient@example.net"]})
+        self.assertEqual(self.server.state["calls"], [])
+
     def test_a_generated_recipient_on_another_domain_stays_inside(self):
         # A recipient with no mailbox here would be queued for the outside world.
         self.send({"from": "someone@example.com", "to": ["a@elsewhere.example"], "cc": ["b@elsewhere.example"],

@@ -24,6 +24,8 @@ The owner's words:
 
 A registered route gets this from `endpoint.Register`: state the rule on the request type and binding answers for you. Return `endpoint.Invalid` for a rule only the handler can check. [#692](https://github.com/rest-mail/rest-mail-server/pull/692) and [#1232](https://github.com/rest-mail/rest-mail-server/pull/1232) built it.
 
+Sender-policy and scheduling refusals follow the same field-bearing error shape: `list_unsubscribe`, `list_unsubscribe.https` or `scheduled_at`. A TLS report with no hosted policy domain names `policies`. The checks that require database state still run in the handler; they do not become schema constraints.
+
 ### Refusals: 403 or 404
 
 The owner's words:
@@ -31,6 +33,8 @@ The owner's words:
 > If the caller is allowed to know the thing exists, a refusal is 403. If not, it is 404.
 
 The 404 stops a stranger learning which accounts are hosted, because the answer is the same whether or not the account exists. RFC 9110 section 15.5.4 permits it, as the decision notes. For a route on a mailbox, call `mayReach`. It refuses with `errNoAccess`, which your route answers as its 404, or `errNotAllowed`, which is already the 403. [#1431](https://github.com/rest-mail/rest-mail-server/pull/1431) built it.
+
+Composing, forwarding, sending a draft and releasing held mail preserve that distinction when resolving the sender too. An unknown sender and one with no link to the caller both answer the identical `404 not_found` account error. A visible sender without the selected sending capability still answers 403. `TestSendingRefusalsHideUnknownSendersButExplainVisibleOnes` proves the byte equality and keeps refused drafts and holds intact.
 
 ### Lists: never null
 
@@ -57,11 +61,8 @@ These were found while writing this file, by reading the handlers' 400, 403 and 
 
 **A 422 that is not `validation_failed`, or has no fields.** The decision says 422 `validation_failed`, with the failing fields. These answer otherwise:
 
-- `list_unsubscribe_required`, `list_unsubscribe_not_allowed` and `dkim_required`, from `sendMessage`
 - `mailbox_full`, from `deliverMessage` and `forwardMessage`
 - `undeliverable`, from `restmailDeliver`
-- `no_matching_domains`, from `receiveTlsReport`
-- `validation_failed` with a message and no fields, for `scheduled_at` on `sendMessage`
 
 Some of these turn on stored state, which may place them under the stored-state question below.
 
@@ -76,9 +77,9 @@ Some of these turn on stored state, which may place them under the stored-state 
 
 **A domain-scoped admin outside its domain.** `RequireCapability` answers 403 for a mailbox or domain outside the admin's scope, and for a target that does not exist (`TestRequireCapability_ScopedGrantCoversItsTargetOnly`). `createAlias`, `createAccount` and the pipeline routes refuse the same way in the handler. The decision has a 404 row for an account with no link to the caller and a 403 row for an admin route without the role, and does not say which applies here.
 
-**Sending from an address.** A send, draft or calendar reply from an address the caller cannot use answers 403, and so does one from an address that does not exist (`TestAppPasswords_ReachOnlyTheirOwnMailbox`, `TestMailStateRequirementExamples/saveDraft/foreign_sender`). [#1431](https://github.com/rest-mail/rest-mail-server/pull/1431) kept this because it is about the action and the same answer goes to an unknown address. That reasoning is the pull request's. The owner's decision does not mention sending.
+**Draft edits and calendar replies.** `saveDraft`, `updateDraft` and `respondToCalendar` still collapse an unknown or unlinked sender and a visible sender lacking the action into 403. The first two overlap the open draft-description PR #1560, and the calendar reply overlaps #1610. They are left for those routes' owners to reconcile with the 2026-11-01 decision; composing, forwarding and sending a draft no longer collapse the two refusals.
 
-**Stale text.** `openapi.yaml` and `admin/src/lib/api-types.ts` still describe `accountEvents` with "missing or inaccessible accounts retain 403". The route answers 404 for those (`TestMailStateRequirementExamples/accountEvents/inaccessible`).
+The legacy `openapi.yaml` description and regenerated client comments for `accountEvents` now agree with its existing 404 for a missing or inaccessible account, and 403 when the caller can see the account without mail:read (`TestMailStateRequirementExamples/accountEvents/inaccessible`).
 
 ## Still open
 

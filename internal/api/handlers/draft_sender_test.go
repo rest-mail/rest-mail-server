@@ -95,8 +95,8 @@ func TestSendDraft_RefusesAStoredSenderTheCallerMayNotSendAs(t *testing.T) {
 	rr := httptest.NewRecorder()
 	composeRoute(h)(rr, sendingAs(httptest.NewRequest(http.MethodPost,
 		"/api/v1/messages/draft/"+uintToStr(draft.ID)+"/send", nil), fx.attackerMailbox.ID))
-	if rr.Code != http.StatusForbidden {
-		t.Fatalf("expected 403, got %d (%s)", rr.Code, rr.Body.String())
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d (%s)", rr.Code, rr.Body.String())
 	}
 	if err := tx.Where("id = ? AND is_draft = ?", draft.ID, true).First(&models.Message{}).Error; err != nil {
 		t.Fatalf("refused send removed the draft: %v", err)

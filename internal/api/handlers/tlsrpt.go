@@ -110,28 +110,17 @@ type tlsReportStored struct {
 	Stored int `json:"stored" description:"Number of policy entries persisted"`
 }
 
-// A structurally valid report may name no hosted domain. That refusal has no
-// validation fields; binding failures carry the same typed field details as before.
-type tlsReportUnprocessable struct {
-	Error tlsReportUnprocessableError `json:"error"`
-}
-
-type tlsReportUnprocessableError struct {
-	Code    string                    `json:"code" enums:"validation_failed,no_matching_domains"`
-	Message string                    `json:"message"`
-	Details respond.ValidationDetails `json:"details,omitempty"`
-}
-
 // RegisterReceive registers report ingestion (RFC 8460 §5.4) behind the per-IP throttle.
 func (h *TLSReportHandler) RegisterReceive(rs endpoint.Routes, throttle endpoint.Middleware) {
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/.well-known/smtp-tlsrpt",
 		OperationID: "receiveTlsReport", Summary: "TLS-RPT report ingestion (RFC 8460)", Tags: []string{"System"},
 		Description: "Receives TLS-RPT reports from external MTAs, as JSON or gzip-compressed. No auth by design. " +
-			"A body sent with Content-Encoding: gzip, or gzip-compressed under a JSON media type, is inflated first.",
+			"A body sent with Content-Encoding: gzip, or gzip-compressed under a JSON media type, is inflated first. " +
+			"Parsed reports that break a rule return 422 validation_failed with details.fields; if no policy domain is hosted, the failing field is policies.",
 		Status: http.StatusCreated, Security: oapifly.Public, DescribedRequest: receiveTLSReportInput{},
 		Responses: []oapifly.EndpointResponse{{Status: http.StatusUnprocessableEntity,
 			Description: "Invalid report fields, or no policy domain hosted by this server",
-			Type:        oapifly.TypeOf[tlsReportUnprocessable]()}},
+			Type:        oapifly.TypeOf[respond.ValidationErrorResponse]()}},
 		Middleware: []endpoint.Middleware{throttle, {Wrap: inflateReport}},
 	}, h.receiveSpooledReport)
 }
@@ -256,8 +245,7 @@ func (h *TLSReportHandler) storeReport(report *TLSRPTReport, raw func() ([]byte,
 	}
 
 	if stored == 0 {
-		return tlsReportStored{}, endpoint.Refuse(http.StatusUnprocessableEntity, "no_matching_domains",
-			"None of the policy domains in the report match a known domain")
+		return tlsReportStored{}, endpoint.Invalid(map[string]string{"policies": "None of the policy domains in the report match a known domain"})
 	}
 	return tlsReportStored{Stored: stored}, nil
 }

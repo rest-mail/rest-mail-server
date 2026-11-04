@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -94,8 +95,8 @@ func TestSendMessage_DomainSendingPolicy(t *testing.T) {
 	for _, tc := range []struct {
 		policy, refusedBody, refusedCode, sentBody, sentList string
 	}{
-		{models.SendingPolicyBulk, "", "list_unsubscribe_required", `{"mailto":"unsub@%s"}`, "<mailto:unsub@%s>"},
-		{models.SendingPolicyTransactional, `{"mailto":"unsub@%s"}`, "list_unsubscribe_not_allowed", "", ""},
+		{models.SendingPolicyBulk, "", "validation_failed", `{"mailto":"unsub@%s"}`, "<mailto:unsub@%s>"},
+		{models.SendingPolicyTransactional, `{"mailto":"unsub@%s"}`, "validation_failed", "", ""},
 	} {
 		t.Run(tc.policy, func(t *testing.T) {
 			domain := fmt.Sprintf("policy-%s-%d.test", tc.policy, time.Now().UnixNano())
@@ -114,6 +115,9 @@ func TestSendMessage_DomainSendingPolicy(t *testing.T) {
 			rr := sendAs(h, claims, sendBody(sender.Address, withDomain(tc.refusedBody)))
 			if rr.Code != http.StatusUnprocessableEntity || errorCodeOf(rr) != tc.refusedCode {
 				t.Fatalf("status = %d, body %s; want 422 %s", rr.Code, rr.Body.String(), tc.refusedCode)
+			}
+			if !strings.Contains(rr.Body.String(), `"fields":{"list_unsubscribe":`) {
+				t.Fatalf("sending policy refusal must name list_unsubscribe: %s", rr.Body)
 			}
 			var queued int64
 			h.db.Model(&models.OutboundQueue{}).Where("sender = ?", sender.Address).Count(&queued)

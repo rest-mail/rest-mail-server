@@ -3007,12 +3007,6 @@
   reason: >-
     The handler accepts an internationalized address, so the description says so; the oracle's
     format is ASCII only.
-- operation: sendMessage
-  difference: 'response 422 application/json.properties.error.properties.details.type: openapi.yaml "object", generated ["null","object"]'
-  reason: >-
-    A send's existing policy and scheduling refusals omit details, while binding validation
-    includes details.fields. The shared refusal response uses an optional pointer to describe
-    both shapes; no runtime error body or validation/authorization order changes.
 - operation: forwardMessage
   difference: "request body application/json.properties.from.format: openapi.yaml \"email\", generated absent"
   reason: >-
@@ -3135,7 +3129,7 @@
   reason: >-
     One policy entry cannot cost a report its others: an entry with no policy, or whose
     policy-domain this server does not host, is skipped, not refused. A report with nothing
-    left to store is 422 no_matching_domains.
+    left to store is 422 validation_failed on policies.
 - operation: receiveTlsReport
   difference: "request body application/json.properties.policies.items.properties.policy.required: openapi.yaml [\"policy-domain\"], generated absent"
   reason: >-
