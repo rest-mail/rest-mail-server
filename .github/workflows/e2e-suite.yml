@@ -11,7 +11,7 @@ on:
       contract-phases:
         description: >-
           "gate" runs the examples and coverage gates, then the authorization
-          matrix report-only; "fuzz" runs the fuzz phase, reports what it
+          matrix and the live requirement proofs report-only; "fuzz" runs the fuzz phase, reports what it
           finds as an artifact, and fails nothing; "faults" builds the API
           with each fault in tests/contract/faults.yml and fails unless the
           phase each one names turns red.
@@ -30,7 +30,8 @@ jobs:
   suite:
     name: topology
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # The suite took 52 minutes before the live proofs, which may take up to 25.
+    timeout-minutes: 85
     env:
       # Flip "stack not reachable" preconditions (no admin token, gateway not
       # dialable, …) from t.Skip into t.Fatal inside the suite — see
@@ -238,6 +239,35 @@ jobs:
           if [ -f .cache/contract/api-coverage/summary.md ]; then
             cat .cache/contract/api-coverage/summary.md >> "$GITHUB_STEP_SUMMARY"
           fi
+
+      - name: Contract live proofs (anonymous, over-cap and real principals; report only)
+        # Real exchanges for the examples that need setup, against the topology the
+        # gate just passed on (#1237). Before the limits suite, which spends the API's
+        # buckets, and the teardown, which clears these principals. What each runner
+        # proved joins the union in e2e.yml, the required check. A failing runner only
+        # proves less here: whether it should turn the run red is the owner's call.
+        if: inputs.contract-phases == 'gate'
+        continue-on-error: true
+        timeout-minutes: 25
+        env:
+          CONTRACT_ENDPOINT: http://10.99.0.20:8080
+          CONTRACT_LIVE_PROOFS: ${{ runner.temp }}/live-proofs
+        run: chore test:contract-live-proofs
+
+      - name: Upload the live proofs
+        if: always() && inputs.contract-phases == 'gate'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: live-example-proofs
+          # A runner stopped by the timeout leaves its temporary configuration behind,
+          # with the session it was sending.
+          path: |
+            ${{ runner.temp }}/live-proofs
+            !${{ runner.temp }}/live-proofs/**/vertrag.yml
+          retention-days: 1
+          # The union counts a missing result for nothing, and says so.
+          if-no-files-found: warn
+          overwrite: true
 
       - name: Limits suite
         # Every limit the API declares, spent on a restarted API so its buckets

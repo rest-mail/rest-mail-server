@@ -191,3 +191,79 @@ class LiveRequirementTests(unittest.TestCase):
                 ),
                 1,
             )
+
+    def test_cases_side_by_side_prove_the_same_as_one_at_a_time(self):
+        pairs = {
+            f"case{index}": {**PAIR, "requires": {"body": "over_cap"}}
+            for index in range(8)
+        }
+        document = copy.deepcopy(DOCUMENT)
+        media = document["paths"]["/things/{id}"]["get"]["responses"]["401"]["content"]
+        media["application/json"]["examples"] = {
+            name: {"value": {"error": name}, "x-requires": {"body": "over_cap"}}
+            for name in pairs
+        }
+        renewals, seen = [], set()
+
+        def run(command, **kwargs):
+            config_path = Path(command[command.index("--config") + 1])
+            # No case shares another's files, and only one of them fails.
+            self.assertNotIn(config_path, seen)
+            seen.add(config_path)
+            failing = "case3" in config_path.parent.name
+            report = copy.deepcopy(REPORT)
+            if failing:
+                report["results"][0]["status"] = "fail"
+            (config_path.parent / "report.json").write_text(json.dumps(report))
+            return types.SimpleNamespace(returncode=0)
+
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch.object(live_requirements.subprocess, "run", side_effect=run),
+        ):
+            code = live_requirements.prove(
+                "vertrag",
+                "http://localhost",
+                document,
+                {"getThing": pairs},
+                "over-cap",
+                directory,
+                "a-session",
+                renew_token=lambda: renewals.append(1) or "renewed",
+                workers=4,
+            )
+            proofs = json.loads((Path(directory) / "over-cap-proofs.json").read_text())
+            unproven = json.loads(
+                (Path(directory) / "over-cap-unproven.json").read_text()
+            )
+        self.assertEqual(code, 1)
+        self.assertEqual(len(seen), 8)
+        self.assertEqual(proofs["getThing"], sorted(set(pairs) - {"case3"}))
+        self.assertEqual([item["example"] for item in unproven], ["case3"])
+        self.assertEqual(renewals, [])
+
+    def test_an_empty_report_is_unproven_and_names_the_exit(self):
+        def run(command, **kwargs):
+            config_path = Path(command[command.index("--config") + 1])
+            (config_path.parent / "report.json").write_text("")
+            return types.SimpleNamespace(returncode=70)
+
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch.object(live_requirements.subprocess, "run", side_effect=run),
+        ):
+            code = live_requirements.prove(
+                "vertrag",
+                "http://localhost",
+                DOCUMENT,
+                {"getThing": {"unauthenticated": PAIR}},
+                "anonymous",
+                directory,
+            )
+            unproven = json.loads(
+                (Path(directory) / "anonymous-unproven.json").read_text()
+            )
+            proofs = json.loads((Path(directory) / "anonymous-proofs.json").read_text())
+        self.assertEqual(code, 1)
+        self.assertEqual(proofs, {})
+        self.assertIn("vertrag exit 70", unproven[0]["reason"])

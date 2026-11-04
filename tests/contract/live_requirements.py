@@ -13,8 +13,10 @@ import json
 import os
 import subprocess
 import tempfile
+import threading
 import time
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import yaml
@@ -112,6 +114,7 @@ def prove(
     header="",
     path_values=None,
     renew_token=None,
+    workers=1,
 ):
     requirement = REQUIREMENTS[kind] if requirement is None else requirement
     output = Path(output).resolve()
@@ -120,114 +123,129 @@ def prove(
     proof_path.write_text("{}\n")
     proven, unproven = {}, []
     refreshed = time.monotonic()
-    with tempfile.TemporaryDirectory(prefix=f"{kind}-", dir=output) as temporary:
+    session = threading.Lock()
+
+    def current_token():
+        nonlocal token, refreshed
+        with session:
+            if renew_token and time.monotonic() - refreshed >= 600:
+                token = renew_token()
+                refreshed = time.monotonic()
+            return token
+
+    def prove_case(case):
+        operation_id, name, pair = case
+        reason = ""
+        case_report = output / f"{kind}-{operation_id}-{name}.json"
+        case_report.unlink(missing_ok=True)
+        try:
+            selected = select_pair(document, operation_id, name, pair, path_values)
+            # A directory for each case: cases can run side by side.
+            case_work = work / f"{operation_id}-{name}"
+            case_work.mkdir()
+            spec = case_work / "openapi.json"
+            spec.write_text(json.dumps(selected))
+            report = case_work / "report.json"
+            config = {
+                "spec": str(spec),
+                "endpoint": endpoint,
+                "provides": {key: [value] for key, value in requirement.items()},
+                "checks": {"header-schema": True},
+                "reporter": ["json"],
+                "output": [str(report)],
+            }
+            if "principal" in requirement:
+                principal = {"name": requirement["principal"]}
+                if header:
+                    principal["auth"] = {"header": header}
+                config["principals"] = [principal]
+            elif header:
+                config["header"] = [header]
+            if kind == "over-cap":
+                session_token = current_token()
+                if not session_token:
+                    raise ValueError(
+                        "over-cap proofs require a current real MFA session"
+                    )
+                config["header"] = ["Authorization: Bearer " + session_token]
+                config["hookfiles"] = str(
+                    Path(__file__).with_name("live_requirement_hooks.py")
+                )
+                config["language"] = "python"
+            config_path = case_work / "vertrag.yml"
+            descriptor = os.open(
+                config_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600
+            )
+            with os.fdopen(descriptor, "w") as stream:
+                yaml.safe_dump(config, stream)
+            environment = {
+                **os.environ,
+                "CONTRACT_OVER_CAP_BYTES": str(body_bytes),
+            }
+            run = subprocess.run(
+                [
+                    binary,
+                    "run",
+                    "--config",
+                    str(config_path),
+                    "--phases",
+                    "examples",
+                ],
+                check=False,
+                capture_output=True,
+                timeout=120,
+                env=environment,
+            )
+            # A run that stopped early can leave an empty report: say how it exited.
+            written = report.read_text() if report.exists() else ""
+            verdict = json.loads(written) if written else {}
+            if run.returncode or not passed(verdict, pair["response"]["status"]):
+                results = verdict.get("results", [])
+                reason = (
+                    f"vertrag exit {run.returncode}; expected {pair['response']['status']}; "
+                    + "; ".join(
+                        f"{result.get('status')}: HTTP {result.get('actual', 'unsent')} "
+                        + ", ".join(result.get("errors", []))
+                        for result in results
+                    )
+                )
+            case_report.write_text(json.dumps(verdict, indent=2) + "\n")
+        except (
+            KeyError,
+            ValueError,
+            OSError,
+            subprocess.TimeoutExpired,
+        ) as error:
+            reason = str(error)
+        return operation_id, name, reason
+
+    cases = [
+        (operation_id, name, pair)
+        for operation_id, pairs in sorted(examples.items())
+        if not operations or operation_id in operations
+        for name, pair in sorted(pairs.items())
+        if pair.get("requires", {}) == requirement
+    ]
+    with (
+        tempfile.TemporaryDirectory(prefix=f"{kind}-", dir=output) as temporary,
+        ThreadPoolExecutor(max_workers=workers) as pool,
+    ):
         work = Path(temporary)
-        for operation_id, pairs in sorted(examples.items()):
-            if operations and operation_id not in operations:
-                continue
-            for name, pair in sorted(pairs.items()):
-                if pair.get("requires", {}) != requirement:
-                    continue
-                case = f"{operation_id}/{name}"
-                reason = ""
-                case_report = output / f"{kind}-{operation_id}-{name}.json"
-                case_report.unlink(missing_ok=True)
-                try:
-                    selected = select_pair(
-                        document, operation_id, name, pair, path_values
-                    )
-                    spec = work / "openapi.json"
-                    spec.write_text(json.dumps(selected))
-                    report = work / "report.json"
-                    report.unlink(missing_ok=True)
-                    config = {
-                        "spec": str(spec),
-                        "endpoint": endpoint,
-                        "provides": {
-                            key: [value] for key, value in requirement.items()
-                        },
-                        "checks": {"header-schema": True},
-                        "reporter": ["json"],
-                        "output": [str(report)],
+        for operation_id, name, reason in pool.map(prove_case, cases):
+            case = f"{operation_id}/{name}"
+            if reason:
+                unproven.append(
+                    {
+                        "operation": operation_id,
+                        "example": name,
+                        "requires": requirement,
+                        "reason": reason,
                     }
-                    if "principal" in requirement:
-                        principal = {"name": requirement["principal"]}
-                        if header:
-                            principal["auth"] = {"header": header}
-                        config["principals"] = [principal]
-                    elif header:
-                        config["header"] = [header]
-                    if kind == "over-cap":
-                        if renew_token and time.monotonic() - refreshed >= 600:
-                            token = renew_token()
-                            refreshed = time.monotonic()
-                        if not token:
-                            raise ValueError(
-                                "over-cap proofs require a current real MFA session"
-                            )
-                        config["header"] = ["Authorization: Bearer " + token]
-                        config["hookfiles"] = str(
-                            Path(__file__).with_name("live_requirement_hooks.py")
-                        )
-                        config["language"] = "python"
-                    config_path = work / "vertrag.yml"
-                    descriptor = os.open(
-                        config_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600
-                    )
-                    with os.fdopen(descriptor, "w") as stream:
-                        yaml.safe_dump(config, stream)
-                    environment = {
-                        **os.environ,
-                        "CONTRACT_OVER_CAP_BYTES": str(body_bytes),
-                    }
-                    run = subprocess.run(
-                        [
-                            binary,
-                            "run",
-                            "--config",
-                            str(config_path),
-                            "--phases",
-                            "examples",
-                        ],
-                        check=False,
-                        capture_output=True,
-                        timeout=120,
-                        env=environment,
-                    )
-                    verdict = json.loads(report.read_text()) if report.exists() else {}
-                    if run.returncode or not passed(
-                        verdict, pair["response"]["status"]
-                    ):
-                        results = verdict.get("results", [])
-                        reason = (
-                            f"vertrag exit {run.returncode}; expected {pair['response']['status']}; "
-                            + "; ".join(
-                                f"{result.get('status')}: HTTP {result.get('actual', 'unsent')} "
-                                + ", ".join(result.get("errors", []))
-                                for result in results
-                            )
-                        )
-                    case_report.write_text(json.dumps(verdict, indent=2) + "\n")
-                except (
-                    KeyError,
-                    ValueError,
-                    OSError,
-                    subprocess.TimeoutExpired,
-                ) as error:
-                    reason = str(error)
-                if reason:
-                    unproven.append(
-                        {
-                            "operation": operation_id,
-                            "example": name,
-                            "requires": requirement,
-                            "reason": reason,
-                        }
-                    )
-                    print(f"UNPROVEN {case}: {reason}", flush=True)
-                else:
-                    proven.setdefault(operation_id, []).append(name)
-                    print(f"PROVEN {case}", flush=True)
+                )
+                print(f"UNPROVEN {case}: {reason}", flush=True)
+            else:
+                proven.setdefault(operation_id, []).append(name)
+                print(f"PROVEN {case}", flush=True)
     proof_path.write_text(json.dumps(proven, indent=2) + "\n")
     (output / f"{kind}-unproven.json").write_text(json.dumps(unproven, indent=2) + "\n")
     count = sum(map(len, proven.values()))
@@ -261,9 +279,14 @@ def main():
     parser.add_argument("--examples", default="openapi-example.json")
     parser.add_argument("--body-bytes", type=int, default=32 * 1024 * 1024 + 1)
     parser.add_argument("--operation-id", action="append", default=[])
+    # A 33 MB body costs about 10 s of CPU in Vertrag's hook worker, nearly all of a
+    # case's time, so the over-cap inventory takes most of an hour one at a time.
+    parser.add_argument("--workers", type=int, default=1)
     args = parser.parse_args()
     if args.body_bytes <= 0:
         parser.error("--body-bytes must be positive")
+    if args.workers <= 0:
+        parser.error("--workers must be positive")
     with urllib.request.urlopen(
         args.endpoint.rstrip("/") + "/api/docs/openapi.json", timeout=30
     ) as response:
@@ -286,6 +309,7 @@ def main():
         args.body_bytes,
         args.operation_id,
         renew_token=renew_token,
+        workers=args.workers,
     )
 
 

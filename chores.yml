@@ -778,6 +778,25 @@ tasks:
         sed -n 's/^API_KEY_FIXTURE=//p' .cache/contract/api-key-fixture.log > .cache/contract/api-key-fixture.json
         python3 tests/contract/api_keys_live.py "${CONTRACT_ENDPOINT:-http://10.99.0.20:8080}" --fixture .cache/contract/api-key-fixture.json
 
+  test:contract-live-proofs:
+    desc: 'The live anonymous, over-cap and real-principal proofs against a running topology, after the gate; fails when a runner proved less than it selected (#1237)'
+    env:
+      CONTRACT_FIXTURE_CONFIG: '{{.CONFIG}}'
+      CONTRACT_FIXTURE_PROJECT: '{{.RESTMAIL_PROJECT}}'
+    cmds:
+      - |
+        set -eu
+        if [ "$CONTRACT_FIXTURE_CONFIG" != "restmail.test" ] || [ -z "$CONTRACT_FIXTURE_PROJECT" ]; then
+          echo "contract fixtures require the disposable restmail.test config" >&2
+          exit 1
+        fi
+        # A fixture is good for one run, and an earlier run's results are not this one's.
+        rm -rf "${CONTRACT_LIVE_PROOFS:-.cache/contract/live-proofs}"
+        mkdir -p .cache/contract
+        docker exec -- "${CONTRACT_FIXTURE_PROJECT}-api" go run ./tests/contract/fixtures --test-domain=restmail.test --api-keys > .cache/contract/live-proofs-api-key.log
+        sed -n 's/^API_KEY_FIXTURE=//p' .cache/contract/live-proofs-api-key.log > .cache/contract/live-proofs-api-key.json
+        tests/contract/live_proofs.sh .cache/contract/live-proofs-api-key.json
+
   test:contract-mfa-admin:
     desc: Prepare the administrator the contract hooks enroll in real MFA for setup that takes 2FA
     env:

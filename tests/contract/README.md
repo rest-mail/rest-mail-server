@@ -8,8 +8,8 @@ status, headers and body schema (#376). Every phase uses the generated
 
 The additional [live requirement proofs](#live-requirement-proofs-1237) exercise
 anonymous callers, real over-cap bodies and a bounded real-principal matrix
-with the pinned Vertrag. They are local evidence, separate from the in-process
-proof union and from full-topology acceptance, which #1237 tracks.
+with the pinned Vertrag. The E2E suite runs them as a report, and what they prove
+joins the in-process proof union. #1237 tracks full-topology acceptance.
 
 Bad input follows the owner's decision on #672 (2026-10-28). A body that is not
 valid JSON, or is not the declared media type, gets 400 `bad_request`. Parsed
@@ -33,6 +33,7 @@ In the `E2E (full topology)` job (`.github/workflows/e2e-suite.yml`), after the
 | `ignored-auth` check | Every authenticated request, sent again with no credential, is refused. | Gate |
 | `authorization` | Every selected operation as each configured principal, checked against the spec's security roles. A signed-in caller refused an object the path names may get the 404 that hides it (#672); `authorization_refusals.py` names any 404 outside that, so an admin route stays 403 and no credential stays 401. | Report only, after the gates |
 | `ownership` | Each account tenant's principals sent the other tenant's account id, on the operations they are entitled to; every answer must be 403 or 404. | Report only, after authorization |
+| live proofs | Named `principal: anonymous` and `body: over_cap` examples, and a bounded matrix of real principals (`chore test:contract-live-proofs`). What they prove joins the in-process proofs; the union is a gate, a failing runner is not ([details](#live-requirement-proofs-1237)). | Report only, after the gates |
 | `fuzz` | Values drawn from each schema, shrunk to the smallest failing input, with a replayable seed. | Nightly (`contract-fuzz.yml`), never blocks |
 | `own-data` | The operations moved to a clean start, each exchange after a reset and seed, with what follows `createDomain`'s links ([Moved to a clean start](#moved-to-a-clean-start-part-of-1385)). | Gate, before the teardown |
 | faults | The API built with each fault in `faults.yml`, and the phase the fault names run on its operation: it must turn red ([Fault catalogue](#fault-catalogue-654)). | Nightly (`contract-faults.yml`), fails on a fault not caught |
@@ -1667,6 +1668,30 @@ python3 -B tests/contract/live_principals.py "$CONTRACT_ENDPOINT" "$work/princip
   three APNs settings. These refusals send no notification.
 - The owner refusals need one registered owner key (`restmail-api owner-key add`).
   Without one, the API correctly answers 409 before checking the challenge.
+- `--workers` runs over-cap cases side by side. A 33 MB body costs about 10 seconds
+  of CPU in Vertrag's hook worker, so one at a time takes most of an hour.
+
+Each runner writes a per-exchange Vertrag verdict, a compatible
+`{operation: [example, ...]}` proof list, and an explicit unproven list.
+
+The E2E suite runs the three runners after the gate, before the limits suite
+(`chore test:contract-live-proofs`, `tests/contract/live_proofs.sh`), and uploads
+their results. That stage is a report: a failing runner does not turn the run red.
+Then the `E2E (every example is proven)` job in `e2e.yml` joins them with CI's
+in-process proofs for the same commit and runs `scripts/example_proofs.py --live`.
+It fails on any example no runner proved, and the required `E2E (full topology)`
+check needs it.
+
+A live pair counts only with a finished run, a proof list that agrees with the
+run's inventory, the requirement the run provided, and that pair's own passing
+Vertrag verdict. A missing, empty, malformed, failed, skipped or tool-error result
+counts for nothing and is named in the output. One failed pair does not take the
+runner's other proofs with it. Only the merge queue proves this in the topology;
+local evidence must not be described as a CI result.
+
+CI's `Test report` has no live results to read, so `--defer-live` leaves it the
+pairs a live runner selects, and they are judged in the merge queue instead. Every
+other pair still fails there.
 
 ### In-process example proofs
 

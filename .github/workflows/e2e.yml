@@ -21,6 +21,8 @@ name: E2E
 #                  the required context is satisfied on main PRs — code or docs.
 # Stacked PRs report skipped checks; retargeting to main runs the usual checks.
 # Metadata-only edits allocate no runners and cannot replace a required verdict.
+#   * `e2e-proofs` — after the heavy suite, every example that needs setup is proven
+#                  by an in-process test or a live runner; the gate needs it too.
 on:
   push:
     branches: [main]
@@ -145,6 +147,49 @@ jobs:
       contract-phases: gate
       description-mode: ${{ inputs.description-mode || 'saved' }}
 
+  e2e-proofs:
+    # The whole proof union (#1237): CI's in-process proofs and the live proofs of the
+    # suite above, for the same commit. Fails on any example no runner proved, as CI's
+    # Test report does. The live runners can only add to it: what they failed at, or
+    # never wrote, counts for nothing. A dispatched run has no CI run to join.
+    name: E2E (every example is proven)
+    needs: [changes, e2e-run]
+    if: needs.changes.outputs.run_e2e == 'true' && github.event_name != 'workflow_dispatch' && (github.event_name != 'pull_request' || (github.base_ref == 'main' && (github.event.action != 'edited' || github.event.changes.base.ref.from != '')))
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Download the live proofs
+        continue-on-error: true
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: live-example-proofs
+          path: ${{ runner.temp }}/live-proofs
+
+      - name: Download this commit's in-process proofs from CI
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: scripts/ci_example_proofs.sh "$COMMIT" "$EVENT_NAME" "$RUNNER_TEMP/proofs"
+
+      - name: Every example that needs setup is proven by some runner
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet pyyaml
+          mapfile -t proofs < <(find "$RUNNER_TEMP/proofs" -name '*.json' | sort)
+          if [ "${#proofs[@]}" -lt 4 ]; then
+            echo "::error::expected example proofs from all 4 internal/api shards, found ${#proofs[@]} files" >&2
+            exit 1
+          fi
+          python3 scripts/example_proofs.py --live "$RUNNER_TEMP/live-proofs" openapi-example.json "${proofs[@]}" \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+
   e2e:
     # Required-check anchor. Branch protection requires the context
     # `E2E (full topology)`, which is THIS job's name except on ignored edits.
@@ -152,7 +197,7 @@ jobs:
     # (code PR) or was intentionally skipped (docs-only PR). This is what keeps
     # a docs-only PR from being stranded on a never-reported required check.
     name: ${{ github.event_name == 'pull_request' && github.event.action == 'edited' && github.event.changes.base.ref.from == '' && 'E2E (ignored edit)' || 'E2E (full topology)' }}
-    needs: [changes, e2e-run]
+    needs: [changes, e2e-run, e2e-proofs]
     if: always() && (github.event_name != 'pull_request' || (github.base_ref == 'main' && (github.event.action != 'edited' || github.event.changes.base.ref.from != '')))
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -162,17 +207,26 @@ jobs:
           CHANGES_RESULT: ${{ needs.changes.result }}
           RUN_E2E: ${{ needs.changes.outputs.run_e2e }}
           E2E_RESULT: ${{ needs.e2e-run.result }}
+          PROOFS_RESULT: ${{ needs.e2e-proofs.result }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
           echo "classify job result : $CHANGES_RESULT"
           echo "run_e2e decision    : $RUN_E2E"
           echo "heavy e2e result    : $E2E_RESULT"
+          echo "proof union result  : $PROOFS_RESULT"
 
           # Classifier succeeded and chose to skip the heavy job: a pull request or
           # push (the merge queue runs it), or a docs-only merge group.
           if [ "$CHANGES_RESULT" = "success" ] && [ "$RUN_E2E" != "true" ]; then
             echo "full e2e intentionally skipped here (see the classify step). Reporting success."
             exit 0
+          fi
+
+          # A dispatched run has no CI run to join, so nothing judged the union.
+          if [ "$EVENT_NAME" != "workflow_dispatch" ] && [ "$PROOFS_RESULT" != "success" ]; then
+            echo "::error::E2E gate failing — heavy=$E2E_RESULT proof union=$PROOFS_RESULT"
+            exit 1
           fi
 
           # Otherwise the heavy suite must have actually run and passed.
