@@ -229,13 +229,21 @@ class APIWarningIssues(unittest.TestCase):
         self.assertEqual(github.calls, [])
 
     def test_checked_in_area_map_assigns_each_operation_exactly_once(self):
-        areas = json.loads(
-            (Path(__file__).parents[2] / "tests/contract/api-areas.json").read_text()
-        )
+        root = Path(__file__).parents[2]
+        areas = json.loads((root / "tests/contract/api-areas.json").read_text())
         self.assertEqual(set(areas), {str(number) for number in range(630, 653)})
         ids = [op for operations in areas.values() for op in operations]
         self.assertEqual(len(ids), len(set(ids)))
-        self.assertEqual(len(ids), 211)
+        # openapi-example.json is keyed by the operation ids of the description the
+        # API generates from its registrations (#625), so the map must name exactly
+        # those: adding an operation with its area entry needs no edit here (#1624).
+        described = set(json.loads((root / "openapi-example.json").read_text()))
+        self.assertEqual(
+            sorted(described - set(ids)), [], "operations without an area"
+        )
+        self.assertEqual(
+            sorted(set(ids) - described), [], "areas name undescribed operations"
+        )
 
 
 if __name__ == "__main__":
