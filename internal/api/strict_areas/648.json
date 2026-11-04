@@ -8,6 +8,7 @@
     "getMailbox",
     "importMessage",
     "inviteAccount",
+    "listAdminAPIKeys",
     "listAliases",
     "listMailboxes",
     "updateAlias",
