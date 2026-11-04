@@ -578,6 +578,69 @@ def report_and_audit_reads_after_a_reset(transaction):
     if path == "/api/v1/admin/tls-reports" and " > 200" in transaction.get("name", ""):
         # The reset has just refilled the intake's rate limit.
         fixture_call(transaction, "POST", "/.well-known/smtp-tlsrpt", OWN_TLS_REPORT)
+        # The intake answers only how many entries it stored, so the report is
+        # known in the listing by its reporter and policy domain.
+        made_for_the_listing(transaction, "TLS report", {
+            "reporting_org": OWN_TLS_REPORT["organization-name"],
+            "policy_domain": OWN_TLS_REPORT["policies"][0]["policy"]["policy-domain"],
+        })
+
+
+def made_for_the_listing(transaction, what, match):
+    """Note what a listing's before hook made after its reset, for
+    the_listing_holds_what_was_made: a row whose fields hold every value in
+    match (a dotted field reads a nested object) is the one made. match None
+    says the page is not meant to list it."""
+    hooks.stash["listing_made"] = {
+        "name": transaction.get("name", ""),
+        "what": what,
+        "match": match,
+    }
+
+
+def row_field(row, field):
+    for key in field.split("."):
+        row = row.get(key) if isinstance(row, dict) else None
+    return row
+
+
+@hooks.after("listTlsReports")
+@hooks.after("listPipelines")
+@hooks.after("listThreads")
+def the_listing_holds_what_was_made(transaction):
+    # A listing's 200 has the same shape with no rows as with the one its
+    # before hook made after the reset, so the status and the schema alone
+    # pass on an empty list (#1785). After a reset the answer must list what
+    # was made for it, or the exchange fails. A documented 200 with nothing
+    # made for it fails too: it would prove only the shape again. Refusals and
+    # a run with no reset are left alone.
+    made = hooks.stash.pop("listing_made", None)
+    if made is not None and made["name"] != transaction.get("name", ""):
+        made = None
+    real = transaction.get("real") or {}
+    if (
+        not asked_for_a_clean_start()
+        or " > 200" not in transaction.get("name", "")
+        or str(real.get("statusCode")) != "200"  # The status check fails it.
+    ):
+        return
+    if made is None:
+        transaction["fail"] = "the listing had nothing made for it to list (#1785)"
+        return
+    if made["match"] is None:  # Its before hook says this page lists none of it.
+        return
+    rows = (hooks.get_json(transaction, "real") or {}).get("data")
+    rows = rows if isinstance(rows, list) else []
+    if any(
+        all(row_field(row, field) == value for field, value in made["match"].items())
+        for row in rows
+    ):
+        return
+    wanted = ", ".join(f"{field} {value!r}" for field, value in made["match"].items())
+    transaction["fail"] = (
+        f"the listing does not hold the {made['what']} made for it ({wanted}): "
+        f"it answered {len(rows):d} other row{'' if len(rows) == 1 else 's'}"
+    )
 
 
 @hooks.before("listAPIKeys")
@@ -1415,7 +1478,8 @@ def pipeline_reads_after_a_reset(transaction):
     start_clean(transaction)
     path = transaction["fullPath"].partition("?")[0]
     if path == "/api/v1/admin/pipelines" and " > 200" in transaction.get("name", ""):
-        a_pipeline_of_its_own(transaction, a_domain_of_its_own(transaction))
+        pipeline = a_pipeline_of_its_own(transaction, a_domain_of_its_own(transaction))
+        made_for_the_listing(transaction, "pipeline", {"id": pipeline})
 
 
 @hooks.before("createCustomFilter")
@@ -2277,13 +2341,15 @@ def on_a_thread_of_its_own(transaction):
 
 def a_thread_awaiting_a_reply(transaction, account):
     """A message from the fixture admin, imported into its Sent folder, so the
-    account has a thread whose last message is its own."""
+    account has a thread whose last message is its own. Answers its subject,
+    which names it by the time it is made."""
+    subject = f"Contract awaiting {time.time_ns():d}"
     raw = (
         f"Message-ID: <awaiting-{time.time_ns()}@restmail.test>\r\n"
         f"From: {ADMIN}\r\n"
         "To: someone@example.test\r\n"
         f"Date: {formatdate(usegmt=True)}\r\n"
-        "Subject: Contract awaiting\r\n\r\nWaiting for a reply.\r\n"
+        f"Subject: {subject}\r\n\r\nWaiting for a reply.\r\n"
     ).encode()
     fixture_call(
         transaction,
@@ -2295,6 +2361,7 @@ def a_thread_awaiting_a_reply(transaction, account):
             "internal_date": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         },
     )
+    return subject
 
 
 @hooks.before("listThreads")
@@ -2326,7 +2393,13 @@ def on_the_admins_mailbox_after_a_reset(transaction):
     parts[4] = str(account)
     transaction["fullPath"] = "/".join(parts) + separator + query
     if parts[-1] == "threads" and " > 200" in transaction.get("name", ""):
-        a_thread_awaiting_a_reply(transaction, account)
+        subject = a_thread_awaiting_a_reply(transaction, account)
+        if "cursor" in urllib.parse.parse_qs(query):
+            # The page after the example's cursor holds older threads only,
+            # and is empty by design: the thread made now is not on it.
+            made_for_the_listing(transaction, "nothing past the cursor", None)
+        else:
+            made_for_the_listing(transaction, "thread", {"last_message.subject": subject})
 
 
 @hooks.before("updateDraft")

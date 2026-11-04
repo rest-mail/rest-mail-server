@@ -1169,6 +1169,22 @@ needs the received DMARC report the Go fixtures make, and no API call makes one,
 since a report arrives only in mail with an aligned DMARC pass. A run with no
 reset changes nothing in this hook.
 
+A listing's 200 has the same shape with no rows as with the one made for it, so
+its status and schema alone pass on an empty list (#1785). After a reset,
+`listTlsReports`, `listPipelines` and `listThreads` must list what their before
+hook made, or the exchange fails (`the_listing_holds_what_was_made`, through the
+transaction's `fail` field): the TLS report by its reporter and policy domain,
+the pipeline by its id, the awaiting thread by its subject, which names it by
+the time it is made. A documented 200 with nothing made for it fails too. The
+threads page after the example's cursor holds older threads only and is empty
+by design, so its hook notes that it lists none of it. Refusals and a run with
+no reset are left alone. The other moved listings have nothing an API call can
+make for them after a reset (`listDmarcReports`, `getDeliveryLogs`,
+`listPipelineLogs`, `listAuditEntries`), or list what the seed holds
+(`listMailboxes`, `listGrants`, `listMyGrants`, `listContacts`), or list a
+domain or message of their own that holds no rows (`listSuppressions`,
+`listAllowlist`, `listBlocklist`, `listAttachments`).
+
 `createAlias`, `getAlias`, `updateAlias` and `deleteAlias` reset and seed before
 each exchange too, refusals included. A create is sent as documented after its
 reset: no earlier probe's alias is left, and the seeded `restmail.test` hosts
