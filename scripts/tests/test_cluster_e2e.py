@@ -1,18 +1,23 @@
-"""Stage 1 of the installed-cluster check (#1750), without a cluster.
+"""Stages 1 and 2 of the installed-cluster check (#1750), without a cluster.
 
 The steps themselves need an install (cluster-e2e.yml runs them); these test
 what does not: the arguments, the receipt lines, the TOTP the admin signs in
 with, reading kubectl's port-forward line, what a failed step does to the rest,
-and that the workflow and `chore cluster:e2e` run the same script.
+stage 2's selection, Vertrag configuration and verdict (against a local HTTP
+server standing in for the Ingress and a stand-in Vertrag), and that the
+workflow and `chore cluster:e2e` run the same script.
 """
 
+import http.server
 import importlib.util
 import io
+import json
 import os
 from pathlib import Path
 import stat
 import tempfile
 import textwrap
+import threading
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from unittest.mock import patch
@@ -37,10 +42,15 @@ class ArgumentTests(unittest.TestCase):
         self.assertEqual((args.namespace, args.release, args.report_dir, args.kubectl, args.timeout),
                          ("restmail", "restmail", "cluster-report", "kubectl", 60))
         self.assertIsNone(args.only)
+        self.assertEqual((args.ingress_url, args.ingress_ca, args.vertrag), ("", "", ""))
 
     def test_environment_supplies_what_the_workflow_sets(self):
         args = self.parse(env={"NAMESPACE": "ns", "RELEASE": "rel", "REPORT_DIR": "/r", "GITHUB_SHA": "deadbeef"})
         self.assertEqual((args.namespace, args.release, args.report_dir, args.commit), ("ns", "rel", "/r", "deadbeef"))
+        args = self.parse("--commit", "c", env={"INGRESS_URL": "https://mail.example.test/", "INGRESS_CA": "/ca.pem",
+                                                "CONTRACT_VERTRAG": "/bin/vertrag"})
+        self.assertEqual((args.ingress_url, args.ingress_ca, args.vertrag),
+                         ("https://mail.example.test", "/ca.pem", "/bin/vertrag"))
 
     def test_commit_falls_back_to_git_head(self):
         with patch.object(cluster_e2e, "git_head", return_value="fromgit"):
@@ -49,15 +59,17 @@ class ArgumentTests(unittest.TestCase):
     def test_only_takes_known_steps(self):
         args = self.parse("--commit", "c", "--only", "health", "--only", "smtp-rcpt")
         self.assertEqual(args.only, ["health", "smtp-rcpt"])
-        for bad in (["--only", "nope"], ["--timeout", "0"], ["--release", "a/b"]):
+        for bad in (["--only", "nope"], ["--timeout", "0"], ["--release", "a/b"],
+                    ["--ingress-url", "https://mail.example.test/api"], ["--ingress-url", "mail.example.test"]):
             with self.subTest(bad=bad), redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
                 self.parse("--commit", "c", *bad)
 
-    def test_every_stage1_check_is_a_step(self):
+    def test_every_check_is_a_step_and_stage_2_comes_last(self):
         self.assertEqual(cluster_e2e.STEPS, ("health", "description", "admin-sign-in", "mailbox",
-                                             "smtp-rcpt", "imap-sign-in", "filter-validate"))
+                                             "smtp-rcpt", "imap-sign-in", "filter-validate",
+                                             "contract-examples"))
         for step in cluster_e2e.STEPS:
-            self.assertTrue(callable(getattr(cluster_e2e.Stage1, step.replace("-", "_"))), step)
+            self.assertTrue(callable(getattr(cluster_e2e.Stages, step.replace("-", "_"))), step)
 
 
 class ReceiptTests(unittest.TestCase):
@@ -140,6 +152,176 @@ class MainTests(unittest.TestCase):
             self.assertIn("not found", (report / "port-forward-api.log").read_text())
 
 
+def operation(operation_id, **extra):
+    return {"operationId": operation_id, "responses": {"200": {"description": "ok"}}, **extra}
+
+
+DESCRIPTION = {
+    "openapi": "3.1.0",
+    "security": [{"BearerAuth": []}],
+    "paths": {
+        "/api/health": {"get": operation("getHealth", security=[])},
+        "/api": {"get": operation("apiRoot", security=[])},
+        "/api/v1/server": {"get": operation("describeServer", security=[{}, {"BearerAuth": []}])},
+        "/api/v1/domains": {"get": operation("listDomains"), "post": operation("createDomain")},
+        "/api/v1/auth/login": {"post": operation("login", security=[])},
+        "/api/mailboxes": {"get": operation("checkMailboxAddress", security=[])},
+        "/apiary": {"get": operation("notTheApi", security=[])},
+        "/.well-known/restmail": {"get": operation("restmailDiscover", security=[])},
+        "/api/docs": {"parameters": [], "get": {"responses": {}}},
+    },
+}
+
+
+class SelectionTests(unittest.TestCase):
+    def test_public_reads_under_the_api_path_less_the_internal_routes(self):
+        self.assertEqual(cluster_e2e.contract_operations(DESCRIPTION, {"checkMailboxAddress"}),
+                         ["apiRoot", "describeServer", "getHealth"])
+
+    def test_no_default_security_makes_every_read_public(self):
+        description = {**DESCRIPTION, "security": []}
+        self.assertIn("listDomains", cluster_e2e.contract_operations(description, set()))
+
+    def test_the_internal_routes_are_vertrag_yml_endpoints(self):
+        config = yaml.safe_load((ROOT / "vertrag.yml").read_text())
+        self.assertEqual(cluster_e2e.internal_operations(config), {"checkMailboxAddress", "deliverMessage"})
+        self.assertEqual(cluster_e2e.internal_operations({"endpoints": [{"operation-id": "one"}]}), {"one"})
+        self.assertEqual(cluster_e2e.internal_operations({}), set())
+
+
+class ContractConfigTests(unittest.TestCase):
+    def test_the_contract_runs_configuration_without_the_topologys_fixtures(self):
+        base = yaml.safe_load((ROOT / "vertrag.yml").read_text())
+        configure = cluster_e2e.load_reports_module().configure
+        with tempfile.TemporaryDirectory() as directory:
+            out = Path(directory) / "contract"
+            config = cluster_e2e.contract_config(base, configure, "https://mail.example.test",
+                                                 str(out / "openapi.json"), out / "examples")
+        for gone in ("auth", "hookfiles", "language", "hooks-worker-timeout", "endpoints", "surface"):
+            self.assertNotIn(gone, config)
+        self.assertEqual(config["endpoint"], "https://mail.example.test")
+        self.assertEqual(config["spec"], str((out / "openapi.json").resolve()))
+        self.assertEqual(config["checks"], {"header-schema": True, "ignored-auth": False})
+        self.assertIn(str((out / "examples.html").resolve()), config["output"])
+        self.assertIn("html", config["reporter"])
+        self.assertEqual(config["unproven"], str((out / "unproven.json").resolve()))
+        # What is never sent stays never sent.
+        self.assertEqual(config["exclude-operation-id"], base["exclude-operation-id"])
+        # vertrag.yml itself is untouched.
+        self.assertIn("auth", base)
+
+    def test_vertrag_runs_the_examples_phase_of_the_chosen_operations(self):
+        self.assertEqual(
+            cluster_e2e.vertrag_command("/v", Path("/c.yml"), ["a", "b"], "/ca.pem"),
+            ["/v", "run", "--config", "/c.yml", "--sequence", "--phases", "examples",
+             "--ca-cert", "/ca.pem", "--operation-id", "a", "--operation-id", "b"])
+        self.assertNotIn("--ca-cert", cluster_e2e.vertrag_command("/v", Path("/c.yml"), ["a"]))
+
+
+class JunitTests(unittest.TestCase):
+    def counts(self, xml):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "examples.xml"
+            path.write_text(xml)
+            return cluster_e2e.junit_counts(path)
+
+    def test_counts_every_suite(self):
+        self.assertEqual(self.counts(
+            '<testsuites><testsuite tests="5" failures="1" errors="1" skipped="2"/>'
+            '<testsuite tests="3" failures="0" skipped="1"/></testsuites>'), (8, 2, 3))
+        self.assertEqual(self.counts('<testsuite tests="4" failures="0"/>'), (4, 0, 0))
+
+    def test_a_broken_report_fails_the_step(self):
+        with self.assertRaises(cluster_e2e.StepFailed):
+            self.counts("<testsuites")
+
+
+# Writes the JUnit report named in its --config, as Vertrag would, with the
+# verdict FAKE_FAILURES asks for, and records its arguments.
+FAKE_VERTRAG = textwrap.dedent('''\
+    #!/usr/bin/env python3
+    import os, sys, yaml
+    args = sys.argv[1:]
+    with open(os.environ["CALLS"], "a") as calls:
+        calls.write(" ".join(args) + "\\n")
+    config = yaml.safe_load(open(args[args.index("--config") + 1]))
+    junit = [path for path in config["output"] if path.endswith(".xml")][0]
+    failures = int(os.environ.get("FAKE_FAILURES", "0"))
+    open(junit, "w").write(f'<testsuites><testsuite tests="3" failures="{failures}" skipped="0"/></testsuites>')
+    sys.exit(1 if failures else 0)
+''')
+
+
+class Ingress(http.server.BaseHTTPRequestHandler):
+    description = DESCRIPTION
+
+    def do_GET(self):
+        body = {"/api/health": b'{"status":"ok"}',
+                "/api/docs/openapi.json": json.dumps(self.description).encode()}.get(self.path)
+        self.send_response(200 if body else 404)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        self.wfile.write(body or b"{}")
+
+    def log_message(self, *args):
+        pass
+
+
+class ContractStepTests(unittest.TestCase):
+    def setUp(self):
+        self.server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Ingress)
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+        self.addCleanup(self.server.server_close)
+        self.addCleanup(self.server.shutdown)
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.work = Path(directory.name)
+        self.vertrag = self.work / "vertrag"
+        self.vertrag.write_text(FAKE_VERTRAG)
+        self.vertrag.chmod(self.vertrag.stat().st_mode | stat.S_IEXEC)
+
+    def stage(self, **state):
+        args = cluster_e2e.parse_args([
+            "--commit", "c", "--report-dir", str(self.work / "report"), "--timeout", "5",
+            "--ingress-url", f"http://127.0.0.1:{self.server.server_address[1]}", "--vertrag", str(self.vertrag)])
+        stage = cluster_e2e.Stages(args, cluster=None)
+        stage.state.update(state)
+        return stage
+
+    def run_step(self, failures=0, **state):
+        env = {"CALLS": str(self.work / "calls"), "FAKE_FAILURES": str(failures)}
+        with patch.dict(os.environ, env):
+            return self.stage(**state).contract_examples()
+
+    def test_sends_the_public_reads_through_the_ingress_and_reports_them(self):
+        detail = self.run_step(description=DESCRIPTION)
+        self.assertEqual(detail, "operations=3,transactions=3,failed=0,skipped=0,report=contract/examples.html")
+        call = (self.work / "calls").read_text().split()
+        self.assertEqual([call[i + 1] for i, a in enumerate(call) if a == "--operation-id"],
+                         ["apiRoot", "describeServer", "getHealth"])
+        self.assertEqual(call[call.index("--phases") + 1], "examples")
+        out = self.work / "report/contract"
+        config = yaml.safe_load((out / "vertrag-examples.yml").read_text())
+        self.assertEqual(config["endpoint"], f"http://127.0.0.1:{self.server.server_address[1]}")
+        self.assertEqual(json.loads((out / "openapi.json").read_text()), DESCRIPTION)
+        self.assertTrue((out / "examples.log").read_text().startswith("$ " + str(self.vertrag)))
+
+    def test_a_failed_transaction_fails_the_step(self):
+        with self.assertRaisesRegex(cluster_e2e.StepFailed, "Vertrag exited 1: .*failed=1"):
+            self.run_step(failures=1)
+
+    def test_the_ingress_must_serve_the_pods_description(self):
+        with self.assertRaisesRegex(cluster_e2e.StepFailed, "different description"):
+            self.run_step(description={**DESCRIPTION, "openapi": "3.0.0"})
+        self.assertFalse((self.work / "calls").exists())
+
+    def test_without_an_ingress_url_the_step_fails_and_says_what_it_needs(self):
+        stage = self.stage()
+        stage.args.ingress_url = ""
+        with self.assertRaisesRegex(cluster_e2e.StepFailed, "--ingress-url"):
+            stage.contract_examples()
+
+
 class EntryPointTests(unittest.TestCase):
     COMMAND = "scripts/cluster_e2e.py"
 
@@ -160,6 +342,8 @@ class EntryPointTests(unittest.TestCase):
         self.assertLess(names.index(runs[0]["name"]), names.index("Collect pod logs, descriptions and events"))
         self.assertIn('--commit "$GITHUB_SHA"', runs[0]["run"])
         self.assertIn('--report-dir "$REPORT_DIR"', runs[0]["run"])
+        self.assertIn('--ingress-url "https://$INGRESS_HOST"', runs[0]["run"])
+        self.assertIn('--ingress-ca "$RUNNER_TEMP/tls.crt"', runs[0]["run"])
         # The old inline two-request smoke is gone: the script owns it now.
         self.assertNotIn("Request the API through a port-forward", names)
 
@@ -168,6 +352,22 @@ class EntryPointTests(unittest.TestCase):
         self.assertEqual(set(triggers), {"schedule", "push", "workflow_dispatch"})
         self.assertEqual(triggers["push"], {"tags": ["v*"]})
         self.assertEqual(triggers["schedule"], [{"cron": "0 5 * * *"}])
+
+    def test_the_ingress_serves_the_ci_host_with_the_ci_certificate(self):
+        workflow = self.workflow()
+        host = workflow["env"]["INGRESS_HOST"]
+        values = yaml.safe_load((ROOT / "helm/restmail/values-ci.yaml").read_text())["api"]["ingress"]
+        self.assertEqual(values, {"enabled": True, "className": "nginx", "host": host,
+                                  "tls": {"enabled": True, "secretName": "restmail-ci-tls"}})
+        steps = {step["name"]: step.get("run", "") for step in workflow["jobs"]["install"]["steps"]}
+        self.assertIn(f"DNS:{host}", steps["Create the self-signed TLS Secret"])
+        controller = steps["Install the ingress controller"]
+        self.assertIn('sha256sum -c -', controller)
+        self.assertRegex(workflow["env"]["INGRESS_NGINX_SHA256"], r"^[0-9a-f]{64}$")
+        self.assertRegex(workflow["env"]["INGRESS_NGINX_MANIFEST"], r"/controller-v[0-9.]+/deploy/static/provider/kind/")
+        self.assertIn("hostPort: 443", steps["Create the cluster"])
+        names = list(steps)
+        self.assertLess(names.index("Install the ingress controller"), names.index("Install the chart"))
 
     def test_script_needs_no_go_toolchain(self):
         source = SCRIPT.read_text()
