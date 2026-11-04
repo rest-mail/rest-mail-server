@@ -165,6 +165,27 @@ def to_domain(transaction, domain_id):
     transaction["fullPath"] = "/".join(parts) + separator + query
 
 
+@hooks.before("linkAccount")
+@hooks.before("unlinkAccount")
+@hooks.before("listClientSecrets")
+@hooks.before("createClientSecret")
+@hooks.before("revokeClientSecret")
+@hooks.before("issueClientCredentialsToken")
+def account_links_and_client_secrets_after_a_reset(transaction):
+    # The account link and client secret operations, moved to a clean start:
+    # each exchange, refusals included, resets and seeds first. None needs
+    # anything made. The link's 201 links the seeded eve@restmail.test, which
+    # the reset puts back unlinked, with the seed's password; the refusals keep
+    # their ids and bodies: 0 and missing's 2147483647 need nothing to exist,
+    # and a body the schema refuses is refused before any lookup. The requests
+    # are still sent as the two-factor administrator, which the reset keeps
+    # with its credentials, and nothing here revokes or ends that session.
+    # Registered ahead of every other hook of these operations. A run with no
+    # reset changes nothing here.
+    if asked_for_a_clean_start():
+        start_clean(transaction)
+
+
 @hooks.before("domainDNSCheck")
 @hooks.before("getDomainRelay")
 @hooks.before("listSuppressions")
@@ -1006,6 +1027,10 @@ def link_a_seeded_account(transaction):
     ):
         body["address"], body["password"] = "someone@example.com", "x"
         hooks.set_json(transaction, body)
+    # After a reset nothing is linked: the reset put the seeded account back
+    # unlinked, so there is no earlier link to undo.
+    if asked_for_a_clean_start():
+        return
     # Each successful link consumes the unlinked state. Restore only that
     # state before a fixture's valid proof; do not alter generated body bytes,
     # malformed values, wrong passwords, or the transaction's principal.

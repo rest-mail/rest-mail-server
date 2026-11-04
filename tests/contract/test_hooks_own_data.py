@@ -243,6 +243,12 @@ class OwnDataHooks(unittest.TestCase):
             "createCertificate": "domain_administration_after_a_reset",
             "getCertificate": "domain_administration_after_a_reset",
             "deleteCertificate": "domain_administration_after_a_reset",
+            "linkAccount": "account_links_and_client_secrets_after_a_reset",
+            "unlinkAccount": "account_links_and_client_secrets_after_a_reset",
+            "listClientSecrets": "account_links_and_client_secrets_after_a_reset",
+            "createClientSecret": "account_links_and_client_secrets_after_a_reset",
+            "revokeClientSecret": "account_links_and_client_secrets_after_a_reset",
+            "issueClientCredentialsToken": "account_links_and_client_secrets_after_a_reset",
         }
         # entrypoint.py registers setDomainRelay's (below).
         self.assertEqual(set(hooks) | {"setDomainRelay"}, set(own_data.MOVED))

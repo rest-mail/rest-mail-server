@@ -182,6 +182,17 @@ MOVED = (
     "createCertificate",
     "getCertificate",
     "deleteCertificate",
+    # The account link and client secret operations. linkAccount's link
+    # reaches only unlinkAccount, and no other link starts from or reaches any
+    # of them. None needs anything made: the link's 201 links the seeded
+    # eve@restmail.test, which the reset puts back unlinked, and the rest are
+    # refusals.
+    "linkAccount",
+    "unlinkAccount",
+    "listClientSecrets",
+    "createClientSecret",
+    "revokeClientSecret",
+    "issueClientCredentialsToken",
 )
 
 

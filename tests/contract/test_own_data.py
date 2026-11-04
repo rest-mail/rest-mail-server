@@ -134,6 +134,16 @@ DOMAIN_LISTS = ("listDomains", "listAliases", "listDKIMKeys", "listCertificates"
 # The certificate operations: createCertificate's link reaches the read, and
 # the read's the delete.
 CERTIFICATES = ("createCertificate", "getCertificate", "deleteCertificate")
+# The account link operations: linkAccount's link reaches the unlink.
+ACCOUNT_LINKS = ("linkAccount", "unlinkAccount")
+# The client secret operations and the token exchange, which no link starts
+# from or reaches.
+CLIENT_SECRETS = (
+    "listClientSecrets",
+    "createClientSecret",
+    "revokeClientSecret",
+    "issueClientCredentialsToken",
+)
 FOLLOWS_THE_SENT_MESSAGE = {
     "getMessage",
     "updateMessage",
@@ -217,7 +227,9 @@ class Selection(unittest.TestCase):
             - set(FILTERS)
             - set(PUBLIC_READS)
             - set(DOMAIN_LISTS)
-            - set(CERTIFICATES),
+            - set(CERTIFICATES)
+            - set(ACCOUNT_LINKS)
+            - set(CLIENT_SECRETS),
             link_followers(description, "createDomain") | {"createDomain"},
         )
 
@@ -232,13 +244,25 @@ class Selection(unittest.TestCase):
 
     def test_the_pipeline_reads_have_moved_and_no_link_touches_them(self):
         description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
-        for operation in PIPELINE_READS + FILTERS + PUBLIC_READS + DOMAIN_LISTS:
+        for operation in PIPELINE_READS + FILTERS + PUBLIC_READS + DOMAIN_LISTS + CLIENT_SECRETS:
             self.assertEqual(link_followers(description, operation), set())
             for start in description_operations(description):
                 self.assertNotIn(operation, link_followers(description, start), start)
         self.assertLessEqual(
-            set(PIPELINE_READS + FILTERS + PUBLIC_READS + DOMAIN_LISTS), set(own_data.MOVED)
+            set(PIPELINE_READS + FILTERS + PUBLIC_READS + DOMAIN_LISTS + CLIENT_SECRETS),
+            set(own_data.MOVED),
         )
+
+    def test_it_selects_every_account_link_operation_and_its_links(self):
+        description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
+        self.assertEqual(
+            link_followers(description, "linkAccount") | {"linkAccount"},
+            set(ACCOUNT_LINKS),
+        )
+        for start in description_operations(description):
+            if start not in ACCOUNT_LINKS:
+                self.assertFalse(set(ACCOUNT_LINKS) & link_followers(description, start), start)
+        self.assertLessEqual(set(ACCOUNT_LINKS), set(own_data.MOVED))
 
     def test_it_selects_every_certificate_operation_and_its_links(self):
         description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
