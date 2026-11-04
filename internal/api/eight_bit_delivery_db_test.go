@@ -171,7 +171,7 @@ func (s *eightBitServer) deliver(from, to, message string) (string, []int, strin
 	if err != nil {
 		s.t.Fatal(err)
 	}
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 	if err := c.Hello("mx.remote.test"); err != nil {
 		s.t.Fatal(err)
 	}
