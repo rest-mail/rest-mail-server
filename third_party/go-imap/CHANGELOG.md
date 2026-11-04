@@ -37,6 +37,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - STATUS and LIST no longer echo an unknown item, and STORE no longer sends the
   host's error text, so neither a literal nor a host error can break response
   text (RFC 3501 §9).
+- ENVELOPE keeps a source route. An address such as `<@a.example:joe@c.example>`
+  used to make the whole header NIL, and now gives addr-adl its route (RFC 3501
+  §9). A quoted local part holding `@` stays in addr-mailbox: `"a@b"@example.com`
+  used to report mailbox `a` at host `b@example.com`.
 
 ## [0.13.2] - 2026-10-27
 
