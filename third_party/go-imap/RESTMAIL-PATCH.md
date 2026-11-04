@@ -139,6 +139,12 @@ keeps upstream behaviour.
     mailbox has no 7-bit form, so its whole field reads NIL, at the top of a
     message and in an encapsulated one alike. After `ENABLE UTF8=ACCEPT`, valid
     UTF-8 goes out as a literal, as before.
+  - An address name in a charset go-imap has no reader for stays the encoded word
+    it was sent as, in either session, for rest-mail/rest-mail-server#1885. It
+    already names its charset, so no byte is guessed, and the address stays. The
+    module has no dependencies, so that is every charset but UTF-8, US-ASCII and
+    ISO-8859-1. This relies on `net/mail` keeping a word whose charset reader
+    fails on read, which the session tests would catch if it changed.
 
 ## RFC 9051 additions
 
