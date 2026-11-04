@@ -255,6 +255,19 @@ MOVED = (
     "testFilter",
     "listCustomFilters",
     "validateCustomFilter",
+    # The public reads and the mail client discovery reads. No link starts from
+    # or reaches any of them. The public reads need nothing made; a discovery
+    # read gets its address's domain activated after the reset.
+    "getHealth",
+    "describeServer",
+    "apiRoot",
+    "swaggerUI",
+    "openapiSpec",
+    "openapiDocument",
+    "prometheusMetrics",
+    "mozillaAutoconfig",
+    "mozillaAutoconfigWellKnown",
+    "microsoftAutodiscover",
 )
 
 
