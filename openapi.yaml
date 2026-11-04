@@ -16272,9 +16272,23 @@ components:
           type: integer
           description: >-
             Octet count of the stored raw message with its headers downgraded
-            to ASCII (RFC 6857), as sent to a POP3 or IMAP client that has not
-            enabled UTF-8. Equals raw_size when the headers are already ASCII.
-            0 when not measured; consumers should fall back to raw_size.
+            to ASCII (RFC 6857), as sent to a POP3 client that has not enabled
+            UTF-8. Equals raw_size when the headers are already ASCII. 0 when
+            not measured; consumers should fall back to raw_size.
+        imap_size:
+          type: integer
+          description: >-
+            Octet count of the message as an IMAP FETCH sends it to a session
+            that has not enabled UTF-8, with headers 7-bit and non-textual data
+            transfer-encoded (RFC 3501 section 7.4.2). The stored message does
+            not change. Equals raw_size when the message is already 7-bit. 0
+            when not measured; consumers should fall back to downgraded_size.
+        imap_utf8_size:
+          type: integer
+          description: >-
+            Octet count of the message as an IMAP FETCH sends it to a session
+            that has enabled UTF-8. 0 when not measured; consumers should fall
+            back to raw_size.
         auth_results:
           type: array
           items:

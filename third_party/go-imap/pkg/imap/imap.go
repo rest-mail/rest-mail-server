@@ -15,8 +15,9 @@
 // the authenticated account's view of its mail, every method scoped to that user.
 // The server caches the slice [Mailbox.Messages] returns for the selected folder
 // and derives sequence numbers, UIDs, flags, ENVELOPE and SEARCH results from it,
-// calling [Mailbox.Fetch] only when a body is requested — and FETCH BODY[] then
-// serves whatever Fetch returns, byte-for-byte. Folders are implicit: there is no
+// calling [Mailbox.Fetch] only when a body is requested. FETCH BODY[] then serves
+// what Fetch returned, byte-for-byte when it is already 7-bit; otherwise it is
+// converted as it is sent, and only BINARY sends the octets as Fetch returned them. Folders are implicit: there is no
 // folder-management method, so a folder exists once a message names it, and
 // deleting or renaming one is composed from [Mailbox.Messages] and [Mailbox.Move].
 // The store holds no assumptions about where mail lives: a Backend can be a
@@ -62,8 +63,11 @@ type Message struct {
 	// ascends with arrival order within the mailbox. The Server also passes it to
 	// the Backend to name this message.
 	UID uint32
-	// Size is the nonnegative RFC822.SIZE octet count of the complete message,
-	// including headers. It backs FETCH RFC822.SIZE and SEARCH LARGER/SMALLER.
+	// Size is the nonnegative RFC822.SIZE octet count of the complete message as
+	// FETCH sends it, including headers, which [wireform.Convert] measures. It
+	// backs FETCH RFC822.SIZE and SEARCH LARGER/SMALLER.
+	//
+	// [wireform.Convert]: https://pkg.go.dev/github.com/rest-mail/go-imap/pkg/imap/wireform#Convert
 	Size int
 	// Seen, Answered, Flagged, Draft and Deleted are the persistent system
 	// flags IMAP reports; Keywords holds the message's flag-keyword atoms.

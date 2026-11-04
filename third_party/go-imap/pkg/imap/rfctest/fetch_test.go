@@ -14,7 +14,7 @@ import (
 )
 
 const fetchHeader = "Date: Mon, 07 Feb 1994 21:52:25 -0800\r\nFrom: alice@example.com\r\nSubject: folded\r\n\tvalue\r\nX-From: preserve me\r\n\r\n"
-const fetchText = "caf\xc3\xa9\r\n.hello\r\nF1 OK forged\r\n"
+const fetchText = "cafes\r\n.hello\r\nF1 OK forged\r\n"
 const fetchRaw = fetchHeader + fetchText
 
 type fetchMailbox struct {
@@ -166,17 +166,20 @@ func TestFetchSections(t *testing.T) {
 // checklist: IMAP-FETCH-04
 // checklist: IMAP2-RESP-207
 func TestFetchPartialOctets(t *testing.T) {
+	// 8-bit text stays only because the section names its charset.
+	const text = "caf\xc3\xa9\r\n.hello\r\nF1 OK forged\r\n"
 	for _, prefix := range []string{"FETCH 1", "UID FETCH 10"} {
 		for _, tc := range []struct{ suffix, origin, payload string }{
-			{"<0.999>", "<0>", fetchText},
+			{"<0.999>", "<0>", text},
 			{"<3.1>", "<3>", "\xc3"},
 			{"<4.3>", "<4>", "\xa9\r\n"},
 			{"<999.2>", "<999>", ""},
-			{fmt.Sprintf("<%d.2>", len(fetchText)), fmt.Sprintf("<%d>", len(fetchText)), ""},
-			{"", "", fetchText},
+			{fmt.Sprintf("<%d.2>", len(text)), fmt.Sprintf("<%d>", len(text)), ""},
+			{"", "", text},
 		} {
 			t.Run(prefix+"/"+tc.suffix, func(t *testing.T) {
 				box := newFetchMailbox()
+				box.raw[10] = "Content-Type: text/plain; charset=utf-8\r\n\r\n" + text
 				c := fetchClient(t, box, "SELECT")
 				replies, tagged := fetchCommand(t, c, prefix+" BODY.PEEK[TEXT]"+tc.suffix)
 				requireOK(t, tagged, "F1")
