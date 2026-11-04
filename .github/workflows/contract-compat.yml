@@ -1,0 +1,89 @@
+name: API compatibility
+
+# `API contract changes` (ci.yml) reports a pull request's own change, measured
+# from where it branched, and does not see what main gained since. This compares
+# main's tip with the merge queue's prospective merged result instead (#1774), so
+# a branch compatible with its merge base but not with the newest main is caught.
+#
+# It runs only on `merge_group`: once per merge attempt, on the exact result the
+# queue would land, and it starts no other job. It reports: its name is not a
+# required check, so the queue does not wait for it. Making it block is the
+# owner's call, by adding "API compatibility with newest main" to main's required
+# checks.
+on:
+  merge_group:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  newest-main:
+    name: API compatibility with newest main
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      # Full history: the squashed entries between main's tip and the group's
+      # head name the pull requests whose labels can accept a change.
+      - name: Checkout the prospective merged result
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.merge_group.head_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Checkout main's tip
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.merge_group.base_sha }}
+          path: .cache/contract-compat-base
+          persist-credentials: false
+
+      - name: Set up Go for both generated descriptions
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.10"
+          cache: true
+
+      - name: Install the pinned OpenAPI 3.1 comparator
+        run: python3 scripts/oasdiff_pin.py install "$RUNNER_TEMP/bin"
+
+      - name: Prove the check with the real comparator
+        env:
+          OASDIFF: ${{ runner.temp }}/bin/oasdiff
+        run: python3 -m unittest discover -s scripts/tests -p test_contract_compat.py -v
+
+      - name: Generate main's and the merged result's descriptions
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/contract-compat"
+          (
+            cd .cache/contract-compat-base
+            RESTMAIL_OPENAPI_OUTPUT="$RUNNER_TEMP/contract-compat/main.json" \
+              go test -mod=readonly ./internal/api/ -run '^TestTheGeneratedDescriptionIsServed$' -count=1
+          )
+          RESTMAIL_OPENAPI_OUTPUT="$RUNNER_TEMP/contract-compat/merged.json" \
+            go test -mod=readonly ./internal/api/ -run '^TestTheGeneratedDescriptionIsServed$' -count=1
+
+      - name: Compare with newest main and require deliberate labels
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE_SHA: ${{ github.event.merge_group.base_sha }}
+          HEAD_SHA: ${{ github.event.merge_group.head_sha }}
+          HEAD_REF: ${{ github.event.merge_group.head_ref }}
+        run: |
+          python3 scripts/contract_compat.py \
+            "$RUNNER_TEMP/contract-compat/main.json" "$RUNNER_TEMP/contract-compat/merged.json" \
+            --oasdiff "$RUNNER_TEMP/bin/oasdiff" \
+            --base-sha "$BASE_SHA" --head-sha "$HEAD_SHA" --head-ref "$HEAD_REF" \
+            --repository "$GITHUB_REPOSITORY" \
+            --output "$RUNNER_TEMP/contract-compat"
+
+      - name: Publish the comparison and generated descriptions
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: api-compatibility-newest-main
+          path: ${{ runner.temp }}/contract-compat
+          retention-days: 7
+          if-no-files-found: warn
