@@ -26,6 +26,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   backend. The ban used to be read only after a failed attempt, so a correct
   password still signed in. The reply to the failure that earns the ban is now
   the same `* BYE` and `NO [UNAVAILABLE]`.
+- A repeated parameter name in a 7-bit Content-Type or Content-Disposition no longer
+  costs the real type. RFC 2045 §5.1 doesn't make it a syntax error, so
+  `application/pdf; a=1; a=2` reads as `"APPLICATION" "PDF" ("A" "1")`, where it used
+  to read as `text/plain`, and `Content-Disposition` no longer reads NIL. The first value
+  stands, as it does in a field holding an 8-bit octet.
+- BODY and BODYSTRUCTURE keep the text after a gap in a continued parameter.
+  `name*0=a; name*2=c` used to read `"a"`, and now reads `"ac"`. A multipart's boundary
+  with a gap reads as absent, since it is only part of one.
+- BODY and BODYSTRUCTURE keep a parameter with a `*` in its name that isn't RFC 2231
+  form. `name*x=y` used to be dropped, and now reads `"NAME*X" "y"`.
+- Converting a Content-Type with hundreds of thousands of comments or parameters costs
+  much less. Its cost stays linear, with a smaller constant.
 - BODY and BODYSTRUCTURE keep a continued parameter with no first segment.
   `name*1=x; other=keep` used to read as `("OTHER" "keep")`, and now reads as
   `("NAME" "x" "OTHER" "keep")`, in segment order and naming no charset. A plain value

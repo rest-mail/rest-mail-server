@@ -102,12 +102,20 @@ found by the RFC 3501 inventory in rest-mail/rest-mail-server#374.
     conversion would make collide, takes a suffix hashed from the converted body when
     a line there would otherwise match, so the parts stay where the stored message has
     them, and every FETCH and size measurement gets the same octets.
-  - `parseMediaType` keeps a continued parameter with no first segment, for
-    rest-mail/rest-mail-server#1897, where `mime.ParseMediaType` and `extendedValue`
-    both stop at a missing `*0`. `laterSegments` joins what came in segment order, with
-    no charset, since only a first segment can name one (RFC 2231 §4.1). A plain value
-    of the same name stands instead, and a multipart's boundary stays absent, because
-    delimiter lines match a whole value (IMAP-BS-11).
+  - `parseMediaType` keeps every segment of a continued parameter, for
+    rest-mail/rest-mail-server#1897, where `mime.ParseMediaType` stops at a missing
+    segment. `extendedValue` joins what came in segment order, and only a first segment
+    names a charset (RFC 2231 §4.1). With no first segment, a plain value of the same
+    name stands instead. A multipart's boundary with a segment missing reads as absent,
+    because delimiter lines match a whole value (IMAP-BS-11).
+  - `parseMediaType` reads a repeated name and a `*` that isn't RFC 2231 form, for the
+    same issue. Neither is a syntax error under RFC 2045 §5.1, so §5.2's default doesn't
+    apply, though `mime.ParseMediaType` refuses the first and drops the second. The first
+    value of a repeated name stands, as `readableField` already had it. Other malformed
+    7-bit fields keep §5.2's default (IMAP-BS-21, IMAP-BS-23, IMAP-CDP-03).
+  - `commentClosers` is a walk over sorted positions rather than a map, and
+    `parameterField` asks `hasReadableType` rather than parsing every parameter again, so
+    a very long field costs less to convert. Neither changes the output.
   - `SevenBitBoundary` is new and exported through `wireform`, for the same issue. FETCH
     doesn't use it. It gives a host that sends the body as stored, as a POP3 server does,
     what `wireMultipart` gives FETCH for a top-level 8-bit boundary: one spelling in
