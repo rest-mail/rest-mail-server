@@ -30,8 +30,8 @@ func downgradedWireSize(header, sep, body string) int {
 
 // WireSizes are the octet counts a gateway reports for a stored message.
 type WireSizes struct {
-	// Downgraded is DowngradedSize.
-	Downgraded int
+	// Downgraded is DowngradedSize, and POP3UTF8 is POP3WireSize.
+	Downgraded, POP3UTF8 int
 	// IMAP and IMAPUTF8 are IMAPWireSize without and with UTF-8.
 	IMAP, IMAPUTF8 int
 }
@@ -40,6 +40,7 @@ type WireSizes struct {
 func MeasureWireSizes(raw string) WireSizes {
 	return WireSizes{
 		Downgraded: DowngradedSize(raw),
+		POP3UTF8:   POP3WireSize(raw),
 		IMAP:       IMAPWireSize(raw, false),
 		IMAPUTF8:   IMAPWireSize(raw, true),
 	}

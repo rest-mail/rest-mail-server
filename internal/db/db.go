@@ -296,7 +296,7 @@ func BackfillPOP3Sizes(db *gorm.DB) error {
 			break
 		}
 		for _, row := range rows {
-			source := string(row.Source())
+			source := row.SourceView()
 			if err := db.Model(&models.Message{}).Where("id = ?", row.ID).
 				UpdateColumns(map[string]any{
 					"downgraded_size": rmail.DowngradedSize(source),
