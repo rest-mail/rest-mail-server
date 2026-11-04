@@ -326,7 +326,7 @@ func TestCleanResetDrainsAndTimesOut(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer timeoutPool.Close()
+	defer func() { _ = timeoutPool.Close() }()
 	called := false
 	err = testreset.Reset(t.Context(), timeoutDB, func(*gorm.DB) error { called = true; return nil })
 	var timeoutErr *pgconn.PgError
