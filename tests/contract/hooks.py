@@ -401,7 +401,9 @@ def the_last_free_operations_after_a_reset(transaction):
 # A recipient is suppressed only when mail to it hard-bounces (the queue
 # worker's suppress, internal/gateway/queue/suppression.go): a domain that does
 # not exist is one (mxHosts answers 550 5.1.2, a bad domain). .invalid never
-# exists (RFC 6761), so mail to it bounces on the first try.
+# exists (RFC 6761), so mail to it bounces on the first try. The testbed's
+# DNS answers .invalid NXDOMAIN itself (tests/contract/dnsmasq.conf), never
+# asking a resolver outside it.
 OWN_SUPPRESSED_DOMAIN = "nowhere.invalid"
 # The queue worker polls every 5 seconds by default (QUEUE_POLL_INTERVAL) and
 # bounces on its first try, so this is many polls.
@@ -458,12 +460,12 @@ def clear_a_suppression_made_after_the_reset(transaction):
 # passes DMARC aligned, addressed to postmaster@ the report's domain
 # (internal/pipeline/filters/dmarc_reports_received.go). The gateway hands
 # inbound mail to deliverMessage with the client's address, so a report is
-# delivered as one from a Google mail host would be: SPF passes for gmail.com
-# from 209.85.220.41 (its record includes 209.85.128.0/17), aligned with the
-# From domain, which publishes a DMARC record. The API's DNS answers both, on
-# the testbed through its forwarders.
-OWN_DMARC_REPORTER = "gmail.com"
-OWN_DMARC_CLIENT = ("209.85.220.41", "mail-sor-f41.google.com")
+# delivered as one from the reporter's mail host would be: SPF passes for the
+# reporter from its one permitted address, aligned with the From domain, which
+# publishes a DMARC record. The testbed's DNS serves both records
+# (tests/contract/dnsmasq.conf), so no third party's DNS decides the result.
+OWN_DMARC_REPORTER = "dmarc-sender.test"
+OWN_DMARC_CLIENT = ("192.0.2.25", "mail.dmarc-sender.test")
 OWN_DMARC_REPORT_ID = "contract-own-report"
 
 

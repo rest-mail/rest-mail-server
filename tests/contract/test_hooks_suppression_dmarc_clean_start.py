@@ -266,5 +266,45 @@ class DmarcReportCleanStart(unittest.TestCase):
         self.assertEqual(sent["fullPath"], REPORT_PATH)
 
 
+FRAGMENT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dnsmasq.conf")
+
+
+class OwnDNS(unittest.TestCase):
+    """The hooks' mail names are answered by the testbed's DNS, from the
+    fragment chore contract:dns:register publishes, never by a third party's."""
+
+    def setUp(self):
+        self.globals = load_hooks().read_a_dmarc_report_delivered_after_the_reset.__globals__
+        with open(FRAGMENT) as f:
+            self.lines = [line.strip() for line in f
+                          if line.strip() and not line.lstrip().startswith("#")]
+
+    def txt(self, name):
+        prefix = "txt-record={},".format(name)
+        return [line[len(prefix):].strip('"') for line in self.lines if line.startswith(prefix)]
+
+    def test_the_reporter_is_a_testbed_name(self):
+        self.assertTrue(self.globals["OWN_DMARC_REPORTER"].endswith(".test"))
+        self.assertTrue(self.globals["OWN_DMARC_CLIENT"][1].endswith("." + self.globals["OWN_DMARC_REPORTER"]))
+
+    def test_the_reporter_passes_spf_only_from_the_client_it_delivers_as(self):
+        reporter = self.globals["OWN_DMARC_REPORTER"]
+        self.assertEqual(self.txt(reporter),
+                         ["v=spf1 ip4:{} -all".format(self.globals["OWN_DMARC_CLIENT"][0])])
+
+    def test_the_reporter_publishes_a_dmarc_policy(self):
+        self.assertEqual(self.txt("_dmarc." + self.globals["OWN_DMARC_REPORTER"]),
+                         ["v=DMARC1; p=reject"])
+
+    def test_the_suppressed_domain_is_answered_nxdomain_by_the_testbed(self):
+        domain = self.globals["OWN_SUPPRESSED_DOMAIN"]
+        local = [line[len("local=/"):].rstrip("/") for line in self.lines if line.startswith("local=/")]
+        self.assertTrue(any(domain == zone or domain.endswith("." + zone) for zone in local),
+                        "{} is not answered by the testbed itself".format(domain))
+
+    def test_no_name_is_forwarded_to_a_resolver_outside_the_testbed(self):
+        self.assertFalse([line for line in self.lines if line.startswith("server=")])
+
+
 if __name__ == "__main__":
     unittest.main()

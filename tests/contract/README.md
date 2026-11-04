@@ -1354,11 +1354,14 @@ the hook waits for the suppression to be listed (at most 90 seconds) and clears
 it. The read's 200 gives `restmail.test` an inbound pipeline of its own
 (`spf_check`, `dkim_verify`, `dmarc_check`; the default one greylists a first
 delivery) and delivers an aggregate report to `postmaster@restmail.test` through
-`deliverMessage` as one from a Google mail host (`gmail.com`, client
-209.85.220.41): SPF passes aligned with the From domain, so DMARC passes and
-the report is stored, and the hook reads it. Both depend on the API's and the
-gateway's DNS answering for names outside the testbed, which the testbed's
-forwarders do. The fixture hooks for both skip after a reset.
+`deliverMessage` as one from the reporter's mail host (`dmarc-sender.test`,
+client 192.0.2.25): SPF passes aligned with the From domain, so DMARC passes and
+the report is stored, and the hook reads it. Neither depends on a third party's
+DNS: `chore contract:dns:register` (part of `chore e2e:up`) publishes
+`tests/contract/dnsmasq.conf` to the testbed dnsmasq, which serves the
+reporter's SPF (`v=spf1 ip4:192.0.2.25 -all`) and DMARC (`v=DMARC1; p=reject`)
+records and answers `.invalid` NXDOMAIN itself (`local=/invalid/`), never
+forwarding it. The fixture hooks for both skip after a reset.
 
 `createAlias`, `getAlias`, `updateAlias` and `deleteAlias` reset and seed before
 each exchange too, refusals included. A create is sent as documented after its
