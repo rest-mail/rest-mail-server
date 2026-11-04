@@ -8,18 +8,21 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/dns"
+	"gorm.io/gorm"
 )
 
 // The DNS check looks for DKIM under the selector the domain signs with, not
 // under "default" (#358). A domain with no DKIM key has nothing to publish, and
 // the check says so.
 func TestDNSCheck_DKIMUsesTheDomainsSelector(t *testing.T) {
-	gdb := openAuthzTestDB(t)
+	gdb := openDNSCheckDB(t)
 
 	cases := []struct {
 		name               string
@@ -28,8 +31,8 @@ func TestDNSCheck_DKIMUsesTheDomainsSelector(t *testing.T) {
 		wantStatus         string
 		publishedSelectors []string
 	}{
-		{"own selector published", "rm2026", "-- key --", "rm2026._domainkey.%s", "ok", []string{"rm2026"}},
-		{"own selector missing", "rm2026", "-- key --", "rm2026._domainkey.%s", "missing", []string{"default"}},
+		{"own selector published", "rm2026", dnsCheckKeyPEM(t), "rm2026._domainkey.%s", "ok", []string{"rm2026"}},
+		{"own selector missing", "rm2026", dnsCheckKeyPEM(t), "rm2026._domainkey.%s", "missing", []string{"default"}},
 		{"no key", "", "", "%s", "missing", []string{"default"}},
 	}
 	for _, tc := range cases {
@@ -47,19 +50,11 @@ func TestDNSCheck_DKIMUsesTheDomainsSelector(t *testing.T) {
 			}
 			published := map[string][]string{}
 			for _, sel := range tc.publishedSelectors {
-				published[sel+"._domainkey."+domain.Name] = []string{"v=DKIM1; k=rsa; p=MIIB"}
+				published[sel+"._domainkey."+domain.Name] = []string{checkDKIMRecord}
 			}
 
 			h := NewDomainHandler(tx, nil)
-			h.lookupMX = func(_ context.Context, name string) ([]*net.MX, error) {
-				return nil, &net.DNSError{Err: "no such host", Name: name, IsNotFound: true}
-			}
-			h.lookupTXT = func(_ context.Context, name string) ([]string, error) {
-				if txts, ok := published[name]; ok {
-					return txts, nil
-				}
-				return nil, &net.DNSError{Err: "no such host", Name: name, IsNotFound: true}
-			}
+			publishedZone{txt: published}.install(h)
 
 			req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/v1/admin/domains/%d/dns", domain.ID), nil)
 			rctx := chi.NewRouteContext()
@@ -103,7 +98,7 @@ func TestDNSCheck_DKIMUsesTheDomainsSelector(t *testing.T) {
 // form, while the response keeps the stored name. A stored name that is not a
 // valid DNS name is reported, never looked up.
 func TestDNSCheck_IDNLooksUpALabels(t *testing.T) {
-	gdb := openAuthzTestDB(t)
+	gdb := openDNSCheckDB(t)
 
 	t.Run("unicode name", func(t *testing.T) {
 		tx := gdb.Begin()
@@ -112,32 +107,30 @@ func TestDNSCheck_IDNLooksUpALabels(t *testing.T) {
 		n := time.Now().UnixNano()
 		stored := fmt.Sprintf("Bücher.D%d.Test", n)
 		ascii := fmt.Sprintf("xn--bcher-kva.d%d.test", n)
-		domain := models.Domain{Name: stored, DKIMSelector: "rm2026", DKIMPrivateKey: "-- key --"}
+		domain := models.Domain{Name: stored, DKIMSelector: "rm2026", DKIMPrivateKey: dnsCheckKeyPEM(t)}
 		if err := tx.Create(&domain).Error; err != nil {
 			t.Fatalf("create domain: %v", err)
 		}
-		published := map[string][]string{
-			ascii:                        {"v=spf1 mx -all"},
-			"_dmarc." + ascii:            {"v=DMARC1; p=reject"},
-			"rm2026._domainkey." + ascii: {"v=DKIM1; k=rsa; p=MIIB"},
-			"_mta-sts." + ascii:          {"v=STSv1; id=1"},
-			"_smtp._tls." + ascii:        {"v=TLSRPTv1; rua=mailto:tls@" + ascii},
-		}
+		zone := aCorrectZone(ascii)
+		zone.txt["_mta-sts."+ascii] = []string{"v=STSv1; id=1"}
 		var queried []string
 		h := NewDomainHandler(tx, nil)
-		h.lookupMX = func(_ context.Context, name string) ([]*net.MX, error) {
+		h.SetMailServer(checkMailHost, "", dns.ClientPorts{Submission: 465, IMAP: 993, POP3: 995})
+		zone.install(h)
+		var mu sync.Mutex
+		lookupTXT := h.lookupTXT
+		h.lookupTXT = func(ctx context.Context, name string) ([]string, error) {
+			mu.Lock()
 			queried = append(queried, name)
-			if name == ascii {
-				return []*net.MX{{Host: "mx." + ascii + ".", Pref: 10}}, nil
-			}
-			return nil, &net.DNSError{Err: "no such host", Name: name, IsNotFound: true}
+			mu.Unlock()
+			return lookupTXT(ctx, name)
 		}
-		h.lookupTXT = func(_ context.Context, name string) ([]string, error) {
+		lookupSRV := h.lookupSRV
+		h.lookupSRV = func(ctx context.Context, name string) ([]*net.SRV, error) {
+			mu.Lock()
 			queried = append(queried, name)
-			if txts, ok := published[name]; ok {
-				return txts, nil
-			}
-			return nil, &net.DNSError{Err: "no such host", Name: name, IsNotFound: true}
+			mu.Unlock()
+			return lookupSRV(ctx, name)
 		}
 
 		resp := runDNSCheck(t, h, domain.ID)
@@ -149,12 +142,18 @@ func TestDNSCheck_IDNLooksUpALabels(t *testing.T) {
 		if resp.Domain != stored {
 			t.Errorf("domain = %q, want the stored %q", resp.Domain, stored)
 		}
-		if len(resp.Records) != 6 {
-			t.Fatalf("got %d records (%+v), want 6", len(resp.Records), resp.Records)
+		if len(resp.Records) != 16 {
+			t.Fatalf("got %d records (%+v), want 16", len(resp.Records), resp.Records)
 		}
 		for _, rec := range resp.Records {
-			if rec.Status != "ok" || (rec.Name != ascii && !strings.HasSuffix(rec.Name, "."+ascii)) {
-				t.Errorf("%s check = %s %s (%s), want ok under %s", rec.Type, rec.Name, rec.Status, rec.Message, ascii)
+			if rec.Type == "A" || rec.Type == "PTR" {
+				continue // the mail host's, not the domain's
+			}
+			if rec.Name != ascii && !strings.HasSuffix(rec.Name, "."+ascii) {
+				t.Errorf("%s check = %s, want a name under %s", rec.Type, rec.Name, ascii)
+			}
+			if rec.Type != "MTA-STS" && rec.Status != "ok" {
+				t.Errorf("%s check = %s %s (%s), want ok", rec.Type, rec.Name, rec.Status, rec.Message)
 			}
 		}
 	})
@@ -185,6 +184,16 @@ func TestDNSCheck_IDNLooksUpALabels(t *testing.T) {
 			t.Errorf("summary = %q", resp.Summary)
 		}
 	})
+}
+
+// openDNSCheckDB has the tables the DNS check reads beside the domain's own.
+func openDNSCheckDB(t *testing.T) *gorm.DB {
+	t.Helper()
+	gdb := openAuthzTestDB(t)
+	if err := gdb.AutoMigrate(&models.MTASTSPolicy{}, &models.DKIMRotationKey{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	return gdb
 }
 
 type dnsCheckResponse struct {

@@ -13181,7 +13181,7 @@ paths:
         - CookieAuth: [domains:read]
         - BearerAuth: [domains:read]
         - APIKeyAuth: [domains:read]
-      summary: Live DNS record check (MX, SPF, DMARC, DKIM, MTA-STS, TLS-RPT) for a domain
+      summary: The DNS records a domain must publish, compared with a live lookup of each
       # Links fill the successful lookup; this named ID stays absent.
       parameters:
         - name: id
@@ -18618,8 +18618,10 @@ components:
                 type: string
               status:
                 type: string
-                enum: [ok, missing, error]
+                enum: [ok, missing, different, error]
               value:
+                type: string
+              expected:
                 type: string
               message:
                 type: string

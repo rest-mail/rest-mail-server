@@ -192,6 +192,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	twofaH := handlers.NewTwoFactorHandler(db, cfg.MasterKey, cfg.TOTP2FAEnabled, sessions)
 	domainH := handlers.NewDomainHandler(db, dnsProvider, grantCache)
 	domainH.SetMasterKey(cfg.MasterKey)
+	domainH.SetMailServer(cfg.GatewayHostname, cfg.MasterKey, dns.ClientPorts{Submission: cfg.SMTPPortSubmissionTLS, IMAP: cfg.IMAPTLSPort, POP3: cfg.POP3TLSPort})
 	mailboxH := handlers.NewMailboxHandler(db, grantCache, sessions)
 	aliasH := handlers.NewAliasHandler(db)
 	broker := handlers.NewSSEBroker()

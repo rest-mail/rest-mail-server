@@ -1,9 +1,7 @@
 package handlers
 
 import (
-	"context"
 	"fmt"
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -53,12 +51,7 @@ func TestDomainLookups_DocumentedMissingExamples(t *testing.T) {
 		}},
 		{"/api/v1/admin/domains/{id}/dns", "domainDNSCheck", "domain_not_found", func(db *gorm.DB) http.Handler {
 			h := NewDomainHandler(db, nil)
-			h.lookupMX = func(_ context.Context, name string) ([]*net.MX, error) {
-				return nil, &net.DNSError{Err: "no such host", Name: name, IsNotFound: true}
-			}
-			h.lookupTXT = func(_ context.Context, name string) ([]string, error) {
-				return nil, &net.DNSError{Err: "no such host", Name: name, IsNotFound: true}
-			}
+			publishedZone{}.install(h)
 			return domainRoutes(h)
 		}},
 		{"/api/v1/admin/domains/{id}/mta-sts", "getMtaStsPolicy", "not_found", func(db *gorm.DB) http.Handler {

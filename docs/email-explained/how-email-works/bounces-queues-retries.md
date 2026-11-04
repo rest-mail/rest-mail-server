@@ -188,9 +188,10 @@ A queue that keeps growing is a symptom, never the problem: read the errors.
   good, the original sender is told by mail: a DSN with a null reverse path,
   queued like any outbound message and limited per recipient as a local bounce
   is ([#715](https://github.com/rest-mail/rest-mail-server/issues/715)).
-- **Not yet compliant:** the vacation responder can answer a bounce and sends
-  from the user's address rather than `<>`
-  ([#716](https://github.com/rest-mail/rest-mail-server/issues/716)).
+- **The vacation responder does not answer a bounce,** and sends its own replies
+  from `<>`, so a reply that fails makes no more mail
+  ([`vacation.go`](../../../internal/pipeline/filters/vacation.go),
+  [#716](https://github.com/rest-mail/rest-mail-server/issues/716)).
 - **Hard bounces are remembered.** An address that bounces with "no such
   mailbox" is suppressed for 90 days, so REST Mail does not keep sending to it
   ([`suppression.go`](../../../internal/gateway/queue/suppression.go), #141).

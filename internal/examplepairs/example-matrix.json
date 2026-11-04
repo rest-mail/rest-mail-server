@@ -13274,40 +13274,115 @@
                 "type": "MX",
                 "name": "example.com",
                 "status": "ok",
-                "value": "mx.example.com. (pri 10)"
+                "value": "10 mail.example.net",
+                "expected": "10 mail.example.net"
               },
               {
                 "type": "SPF",
                 "name": "example.com",
                 "status": "ok",
-                "value": "v=spf1 mx -all"
+                "value": "v=spf1 mx -all",
+                "expected": "v=spf1 mx -all"
               },
               {
                 "type": "DMARC",
                 "name": "_dmarc.example.com",
                 "status": "ok",
-                "value": "v=DMARC1; p=reject"
+                "value": "v=DMARC1; p=none; rua=mailto:postmaster@example.com",
+                "expected": "v=DMARC1; p=none; rua=mailto:postmaster@example.com"
               },
               {
                 "type": "DKIM",
                 "name": "rm2026._domainkey.example.com",
                 "status": "ok",
-                "value": "v=DKIM1; k=ed25519; p=11qYAYKxCrfVS/7TyWfjK7u4WCd4JfWHGw4RzZC0P0Y="
-              },
-              {
-                "type": "MTA-STS",
-                "name": "_mta-sts.example.com",
-                "status": "ok",
-                "value": "v=STSv1; id=fixture"
+                "value": "v=DKIM1; k=ed25519; p=11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=",
+                "expected": "v=DKIM1; k=ed25519; p=11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo="
               },
               {
                 "type": "TLS-RPT",
                 "name": "_smtp._tls.example.com",
                 "status": "ok",
-                "value": "v=TLSRPTv1; rua=mailto:tls@example.com"
+                "value": "v=TLSRPTv1; rua=https://mail.example.net/.well-known/smtp-tlsrpt",
+                "expected": "v=TLSRPTv1; rua=https://mail.example.net/.well-known/smtp-tlsrpt"
+              },
+              {
+                "type": "SRV",
+                "name": "_submissions._tcp.example.com",
+                "status": "ok",
+                "value": "0 1 465 mail.example.net",
+                "expected": "0 1 465 mail.example.net"
+              },
+              {
+                "type": "SRV",
+                "name": "_imaps._tcp.example.com",
+                "status": "ok",
+                "value": "0 1 993 mail.example.net",
+                "expected": "0 1 993 mail.example.net"
+              },
+              {
+                "type": "SRV",
+                "name": "_pop3s._tcp.example.com",
+                "status": "ok",
+                "value": "0 1 995 mail.example.net",
+                "expected": "0 1 995 mail.example.net"
+              },
+              {
+                "type": "SRV",
+                "name": "_submission._tcp.example.com",
+                "status": "ok",
+                "value": "0 0 0 .",
+                "expected": "0 0 0 ."
+              },
+              {
+                "type": "SRV",
+                "name": "_imap._tcp.example.com",
+                "status": "ok",
+                "value": "0 0 0 .",
+                "expected": "0 0 0 ."
+              },
+              {
+                "type": "SRV",
+                "name": "_pop3._tcp.example.com",
+                "status": "ok",
+                "value": "0 0 0 .",
+                "expected": "0 0 0 ."
+              },
+              {
+                "type": "CNAME",
+                "name": "autoconfig.example.com",
+                "status": "ok",
+                "value": "mail.example.net",
+                "expected": "mail.example.net"
+              },
+              {
+                "type": "CNAME",
+                "name": "autodiscover.example.com",
+                "status": "ok",
+                "value": "mail.example.net",
+                "expected": "mail.example.net"
+              },
+              {
+                "type": "MTA-STS",
+                "name": "_mta-sts.example.com",
+                "status": "missing",
+                "message": "No MTA-STS TXT record found. It is optional, and this domain has no active policy yet."
+              },
+              {
+                "type": "A",
+                "name": "mail.example.net",
+                "status": "ok",
+                "value": "203.0.113.25",
+                "message": "REST Mail does not know its own public address, so this shows only that the mail host has one. The person who runs the server publishes it."
+              },
+              {
+                "type": "PTR",
+                "name": "203.0.113.25",
+                "status": "ok",
+                "value": "mail.example.net",
+                "expected": "mail.example.net"
               }
             ],
-            "summary": "6/6 records verified"
+            "summary": "15/16 records verified"
           }
         }
       }
@@ -13330,40 +13405,115 @@
                 "type": "MX",
                 "name": "example.com",
                 "status": "ok",
-                "value": "mx.example.com. (pri 10)"
+                "value": "10 mail.example.net",
+                "expected": "10 mail.example.net"
               },
               {
                 "type": "SPF",
                 "name": "example.com",
                 "status": "ok",
-                "value": "v=spf1 mx -all"
+                "value": "v=spf1 mx -all",
+                "expected": "v=spf1 mx -all"
               },
               {
                 "type": "DMARC",
                 "name": "_dmarc.example.com",
                 "status": "ok",
-                "value": "v=DMARC1; p=reject"
+                "value": "v=DMARC1; p=none; rua=mailto:postmaster@example.com",
+                "expected": "v=DMARC1; p=none; rua=mailto:postmaster@example.com"
               },
               {
                 "type": "DKIM",
                 "name": "rm2026._domainkey.example.com",
                 "status": "ok",
-                "value": "v=DKIM1; k=ed25519; p=11qYAYKxCrfVS/7TyWfjK7u4WCd4JfWHGw4RzZC0P0Y="
-              },
-              {
-                "type": "MTA-STS",
-                "name": "_mta-sts.example.com",
-                "status": "ok",
-                "value": "v=STSv1; id=fixture"
+                "value": "v=DKIM1; k=ed25519; p=11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=",
+                "expected": "v=DKIM1; k=ed25519; p=11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo="
               },
               {
                 "type": "TLS-RPT",
                 "name": "_smtp._tls.example.com",
                 "status": "ok",
-                "value": "v=TLSRPTv1; rua=mailto:tls@example.com"
+                "value": "v=TLSRPTv1; rua=https://mail.example.net/.well-known/smtp-tlsrpt",
+                "expected": "v=TLSRPTv1; rua=https://mail.example.net/.well-known/smtp-tlsrpt"
+              },
+              {
+                "type": "SRV",
+                "name": "_submissions._tcp.example.com",
+                "status": "ok",
+                "value": "0 1 465 mail.example.net",
+                "expected": "0 1 465 mail.example.net"
+              },
+              {
+                "type": "SRV",
+                "name": "_imaps._tcp.example.com",
+                "status": "ok",
+                "value": "0 1 993 mail.example.net",
+                "expected": "0 1 993 mail.example.net"
+              },
+              {
+                "type": "SRV",
+                "name": "_pop3s._tcp.example.com",
+                "status": "ok",
+                "value": "0 1 995 mail.example.net",
+                "expected": "0 1 995 mail.example.net"
+              },
+              {
+                "type": "SRV",
+                "name": "_submission._tcp.example.com",
+                "status": "ok",
+                "value": "0 0 0 .",
+                "expected": "0 0 0 ."
+              },
+              {
+                "type": "SRV",
+                "name": "_imap._tcp.example.com",
+                "status": "ok",
+                "value": "0 0 0 .",
+                "expected": "0 0 0 ."
+              },
+              {
+                "type": "SRV",
+                "name": "_pop3._tcp.example.com",
+                "status": "ok",
+                "value": "0 0 0 .",
+                "expected": "0 0 0 ."
+              },
+              {
+                "type": "CNAME",
+                "name": "autoconfig.example.com",
+                "status": "ok",
+                "value": "mail.example.net",
+                "expected": "mail.example.net"
+              },
+              {
+                "type": "CNAME",
+                "name": "autodiscover.example.com",
+                "status": "ok",
+                "value": "mail.example.net",
+                "expected": "mail.example.net"
+              },
+              {
+                "type": "MTA-STS",
+                "name": "_mta-sts.example.com",
+                "status": "missing",
+                "message": "No MTA-STS TXT record found. It is optional, and this domain has no active policy yet."
+              },
+              {
+                "type": "A",
+                "name": "mail.example.net",
+                "status": "ok",
+                "value": "203.0.113.25",
+                "message": "REST Mail does not know its own public address, so this shows only that the mail host has one. The person who runs the server publishes it."
+              },
+              {
+                "type": "PTR",
+                "name": "203.0.113.25",
+                "status": "ok",
+                "value": "mail.example.net",
+                "expected": "mail.example.net"
               }
             ],
-            "summary": "6/6 records verified"
+            "summary": "15/16 records verified"
           }
         },
         "mediaType": "application/json"
@@ -13456,40 +13606,115 @@
                 "type": "MX",
                 "name": "example.com",
                 "status": "ok",
-                "value": "mx.example.com. (pri 10)"
+                "value": "10 mail.example.net",
+                "expected": "10 mail.example.net"
               },
               {
                 "type": "SPF",
                 "name": "example.com",
                 "status": "ok",
-                "value": "v=spf1 mx -all"
+                "value": "v=spf1 mx -all",
+                "expected": "v=spf1 mx -all"
               },
               {
                 "type": "DMARC",
                 "name": "_dmarc.example.com",
                 "status": "ok",
-                "value": "v=DMARC1; p=reject"
+                "value": "v=DMARC1; p=none; rua=mailto:postmaster@example.com",
+                "expected": "v=DMARC1; p=none; rua=mailto:postmaster@example.com"
               },
               {
                 "type": "DKIM",
                 "name": "rm2026._domainkey.example.com",
                 "status": "ok",
-                "value": "v=DKIM1; k=ed25519; p=11qYAYKxCrfVS/7TyWfjK7u4WCd4JfWHGw4RzZC0P0Y="
-              },
-              {
-                "type": "MTA-STS",
-                "name": "_mta-sts.example.com",
-                "status": "ok",
-                "value": "v=STSv1; id=fixture"
+                "value": "v=DKIM1; k=ed25519; p=11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=",
+                "expected": "v=DKIM1; k=ed25519; p=11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo="
               },
               {
                 "type": "TLS-RPT",
                 "name": "_smtp._tls.example.com",
                 "status": "ok",
-                "value": "v=TLSRPTv1; rua=mailto:tls@example.com"
+                "value": "v=TLSRPTv1; rua=https://mail.example.net/.well-known/smtp-tlsrpt",
+                "expected": "v=TLSRPTv1; rua=https://mail.example.net/.well-known/smtp-tlsrpt"
+              },
+              {
+                "type": "SRV",
+                "name": "_submissions._tcp.example.com",
+                "status": "ok",
+                "value": "0 1 465 mail.example.net",
+                "expected": "0 1 465 mail.example.net"
+              },
+              {
+                "type": "SRV",
+                "name": "_imaps._tcp.example.com",
+                "status": "ok",
+                "value": "0 1 993 mail.example.net",
+                "expected": "0 1 993 mail.example.net"
+              },
+              {
+                "type": "SRV",
+                "name": "_pop3s._tcp.example.com",
+                "status": "ok",
+                "value": "0 1 995 mail.example.net",
+                "expected": "0 1 995 mail.example.net"
+              },
+              {
+                "type": "SRV",
+                "name": "_submission._tcp.example.com",
+                "status": "ok",
+                "value": "0 0 0 .",
+                "expected": "0 0 0 ."
+              },
+              {
+                "type": "SRV",
+                "name": "_imap._tcp.example.com",
+                "status": "ok",
+                "value": "0 0 0 .",
+                "expected": "0 0 0 ."
+              },
+              {
+                "type": "SRV",
+                "name": "_pop3._tcp.example.com",
+                "status": "ok",
+                "value": "0 0 0 .",
+                "expected": "0 0 0 ."
+              },
+              {
+                "type": "CNAME",
+                "name": "autoconfig.example.com",
+                "status": "ok",
+                "value": "mail.example.net",
+                "expected": "mail.example.net"
+              },
+              {
+                "type": "CNAME",
+                "name": "autodiscover.example.com",
+                "status": "ok",
+                "value": "mail.example.net",
+                "expected": "mail.example.net"
+              },
+              {
+                "type": "MTA-STS",
+                "name": "_mta-sts.example.com",
+                "status": "missing",
+                "message": "No MTA-STS TXT record found. It is optional, and this domain has no active policy yet."
+              },
+              {
+                "type": "A",
+                "name": "mail.example.net",
+                "status": "ok",
+                "value": "203.0.113.25",
+                "message": "REST Mail does not know its own public address, so this shows only that the mail host has one. The person who runs the server publishes it."
+              },
+              {
+                "type": "PTR",
+                "name": "203.0.113.25",
+                "status": "ok",
+                "value": "mail.example.net",
+                "expected": "mail.example.net"
               }
             ],
-            "summary": "6/6 records verified"
+            "summary": "15/16 records verified"
           }
         }
       }
@@ -13526,40 +13751,115 @@
                 "type": "MX",
                 "name": "example.com",
                 "status": "ok",
-                "value": "mx.example.com. (pri 10)"
+                "value": "10 mail.example.net",
+                "expected": "10 mail.example.net"
               },
               {
                 "type": "SPF",
                 "name": "example.com",
                 "status": "ok",
-                "value": "v=spf1 mx -all"
+                "value": "v=spf1 mx -all",
+                "expected": "v=spf1 mx -all"
               },
               {
                 "type": "DMARC",
                 "name": "_dmarc.example.com",
                 "status": "ok",
-                "value": "v=DMARC1; p=reject"
+                "value": "v=DMARC1; p=none; rua=mailto:postmaster@example.com",
+                "expected": "v=DMARC1; p=none; rua=mailto:postmaster@example.com"
               },
               {
                 "type": "DKIM",
                 "name": "rm2026._domainkey.example.com",
                 "status": "ok",
-                "value": "v=DKIM1; k=ed25519; p=11qYAYKxCrfVS/7TyWfjK7u4WCd4JfWHGw4RzZC0P0Y="
-              },
-              {
-                "type": "MTA-STS",
-                "name": "_mta-sts.example.com",
-                "status": "ok",
-                "value": "v=STSv1; id=fixture"
+                "value": "v=DKIM1; k=ed25519; p=11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=",
+                "expected": "v=DKIM1; k=ed25519; p=11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo="
               },
               {
                 "type": "TLS-RPT",
                 "name": "_smtp._tls.example.com",
                 "status": "ok",
-                "value": "v=TLSRPTv1; rua=mailto:tls@example.com"
+                "value": "v=TLSRPTv1; rua=https://mail.example.net/.well-known/smtp-tlsrpt",
+                "expected": "v=TLSRPTv1; rua=https://mail.example.net/.well-known/smtp-tlsrpt"
+              },
+              {
+                "type": "SRV",
+                "name": "_submissions._tcp.example.com",
+                "status": "ok",
+                "value": "0 1 465 mail.example.net",
+                "expected": "0 1 465 mail.example.net"
+              },
+              {
+                "type": "SRV",
+                "name": "_imaps._tcp.example.com",
+                "status": "ok",
+                "value": "0 1 993 mail.example.net",
+                "expected": "0 1 993 mail.example.net"
+              },
+              {
+                "type": "SRV",
+                "name": "_pop3s._tcp.example.com",
+                "status": "ok",
+                "value": "0 1 995 mail.example.net",
+                "expected": "0 1 995 mail.example.net"
+              },
+              {
+                "type": "SRV",
+                "name": "_submission._tcp.example.com",
+                "status": "ok",
+                "value": "0 0 0 .",
+                "expected": "0 0 0 ."
+              },
+              {
+                "type": "SRV",
+                "name": "_imap._tcp.example.com",
+                "status": "ok",
+                "value": "0 0 0 .",
+                "expected": "0 0 0 ."
+              },
+              {
+                "type": "SRV",
+                "name": "_pop3._tcp.example.com",
+                "status": "ok",
+                "value": "0 0 0 .",
+                "expected": "0 0 0 ."
+              },
+              {
+                "type": "CNAME",
+                "name": "autoconfig.example.com",
+                "status": "ok",
+                "value": "mail.example.net",
+                "expected": "mail.example.net"
+              },
+              {
+                "type": "CNAME",
+                "name": "autodiscover.example.com",
+                "status": "ok",
+                "value": "mail.example.net",
+                "expected": "mail.example.net"
+              },
+              {
+                "type": "MTA-STS",
+                "name": "_mta-sts.example.com",
+                "status": "missing",
+                "message": "No MTA-STS TXT record found. It is optional, and this domain has no active policy yet."
+              },
+              {
+                "type": "A",
+                "name": "mail.example.net",
+                "status": "ok",
+                "value": "203.0.113.25",
+                "message": "REST Mail does not know its own public address, so this shows only that the mail host has one. The person who runs the server publishes it."
+              },
+              {
+                "type": "PTR",
+                "name": "203.0.113.25",
+                "status": "ok",
+                "value": "mail.example.net",
+                "expected": "mail.example.net"
               }
             ],
-            "summary": "6/6 records verified"
+            "summary": "15/16 records verified"
           }
         }
       }
@@ -13596,6 +13896,123 @@
         }
       }
     },
+    "mail_host_unconfigured": {
+      "summary": "With no mail host set, its records have no value to compare",
+      "description": "GATEWAY_HOSTNAME is not fully qualified. The records that would name the mail host show what was found and say why they cannot be compared, and the check does not call them verified. The records that do not name it are still compared.",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "domain": "example.com",
+            "records": [
+              {
+                "type": "MX",
+                "name": "example.com",
+                "status": "error",
+                "value": "10 mail.example.net",
+                "message": "GATEWAY_HOSTNAME is not a full host name on this server, so there is no value to compare this record with. Ask the person who runs the server to set it."
+              },
+              {
+                "type": "SPF",
+                "name": "example.com",
+                "status": "ok",
+                "value": "v=spf1 mx -all",
+                "expected": "v=spf1 mx -all"
+              },
+              {
+                "type": "DMARC",
+                "name": "_dmarc.example.com",
+                "status": "ok",
+                "value": "v=DMARC1; p=none; rua=mailto:postmaster@example.com",
+                "expected": "v=DMARC1; p=none; rua=mailto:postmaster@example.com"
+              },
+              {
+                "type": "DKIM",
+                "name": "rm2026._domainkey.example.com",
+                "status": "ok",
+                "value": "v=DKIM1; k=ed25519; p=11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=",
+                "expected": "v=DKIM1; k=ed25519; p=11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo="
+              },
+              {
+                "type": "TLS-RPT",
+                "name": "_smtp._tls.example.com",
+                "status": "error",
+                "value": "v=TLSRPTv1; rua=https://mail.example.net/.well-known/smtp-tlsrpt",
+                "message": "GATEWAY_HOSTNAME is not a full host name on this server, so there is no value to compare this record with. Ask the person who runs the server to set it."
+              },
+              {
+                "type": "SRV",
+                "name": "_submissions._tcp.example.com",
+                "status": "error",
+                "value": "0 1 465 mail.example.net",
+                "message": "GATEWAY_HOSTNAME is not a full host name on this server, so there is no value to compare this record with. Ask the person who runs the server to set it."
+              },
+              {
+                "type": "SRV",
+                "name": "_imaps._tcp.example.com",
+                "status": "error",
+                "value": "0 1 993 mail.example.net",
+                "message": "GATEWAY_HOSTNAME is not a full host name on this server, so there is no value to compare this record with. Ask the person who runs the server to set it."
+              },
+              {
+                "type": "SRV",
+                "name": "_pop3s._tcp.example.com",
+                "status": "error",
+                "value": "0 1 995 mail.example.net",
+                "message": "GATEWAY_HOSTNAME is not a full host name on this server, so there is no value to compare this record with. Ask the person who runs the server to set it."
+              },
+              {
+                "type": "SRV",
+                "name": "_submission._tcp.example.com",
+                "status": "ok",
+                "value": "0 0 0 .",
+                "expected": "0 0 0 ."
+              },
+              {
+                "type": "SRV",
+                "name": "_imap._tcp.example.com",
+                "status": "ok",
+                "value": "0 0 0 .",
+                "expected": "0 0 0 ."
+              },
+              {
+                "type": "SRV",
+                "name": "_pop3._tcp.example.com",
+                "status": "ok",
+                "value": "0 0 0 .",
+                "expected": "0 0 0 ."
+              },
+              {
+                "type": "CNAME",
+                "name": "autoconfig.example.com",
+                "status": "error",
+                "value": "mail.example.net",
+                "message": "GATEWAY_HOSTNAME is not a full host name on this server, so there is no value to compare this record with. Ask the person who runs the server to set it."
+              },
+              {
+                "type": "CNAME",
+                "name": "autodiscover.example.com",
+                "status": "error",
+                "value": "mail.example.net",
+                "message": "GATEWAY_HOSTNAME is not a full host name on this server, so there is no value to compare this record with. Ask the person who runs the server to set it."
+              },
+              {
+                "type": "MTA-STS",
+                "name": "_mta-sts.example.com",
+                "status": "missing",
+                "message": "No MTA-STS TXT record found. It is optional, and this domain has no active policy yet."
+              }
+            ],
+            "summary": "6/14 records verified"
+          }
+        }
+      }
+    },
     "mailbox_scope": {
       "request": {
         "path": {
@@ -13628,19 +14045,85 @@
                 "type": "MX",
                 "name": "example.com",
                 "status": "ok",
-                "value": "mx.example.com. (pri 10)"
+                "value": "10 mail.example.net",
+                "expected": "10 mail.example.net"
               },
               {
                 "type": "SPF",
                 "name": "example.com",
                 "status": "ok",
-                "value": "v=spf1 mx -all"
+                "value": "v=spf1 mx -all",
+                "expected": "v=spf1 mx -all"
               },
               {
                 "type": "DMARC",
                 "name": "_dmarc.example.com",
                 "status": "ok",
-                "value": "v=DMARC1; p=reject"
+                "value": "v=DMARC1; p=none; rua=mailto:postmaster@example.com",
+                "expected": "v=DMARC1; p=none; rua=mailto:postmaster@example.com"
+              },
+              {
+                "type": "TLS-RPT",
+                "name": "_smtp._tls.example.com",
+                "status": "ok",
+                "value": "v=TLSRPTv1; rua=https://mail.example.net/.well-known/smtp-tlsrpt",
+                "expected": "v=TLSRPTv1; rua=https://mail.example.net/.well-known/smtp-tlsrpt"
+              },
+              {
+                "type": "SRV",
+                "name": "_submissions._tcp.example.com",
+                "status": "ok",
+                "value": "0 1 465 mail.example.net",
+                "expected": "0 1 465 mail.example.net"
+              },
+              {
+                "type": "SRV",
+                "name": "_imaps._tcp.example.com",
+                "status": "ok",
+                "value": "0 1 993 mail.example.net",
+                "expected": "0 1 993 mail.example.net"
+              },
+              {
+                "type": "SRV",
+                "name": "_pop3s._tcp.example.com",
+                "status": "ok",
+                "value": "0 1 995 mail.example.net",
+                "expected": "0 1 995 mail.example.net"
+              },
+              {
+                "type": "SRV",
+                "name": "_submission._tcp.example.com",
+                "status": "ok",
+                "value": "0 0 0 .",
+                "expected": "0 0 0 ."
+              },
+              {
+                "type": "SRV",
+                "name": "_imap._tcp.example.com",
+                "status": "ok",
+                "value": "0 0 0 .",
+                "expected": "0 0 0 ."
+              },
+              {
+                "type": "SRV",
+                "name": "_pop3._tcp.example.com",
+                "status": "ok",
+                "value": "0 0 0 .",
+                "expected": "0 0 0 ."
+              },
+              {
+                "type": "CNAME",
+                "name": "autoconfig.example.com",
+                "status": "ok",
+                "value": "mail.example.net",
+                "expected": "mail.example.net"
+              },
+              {
+                "type": "CNAME",
+                "name": "autodiscover.example.com",
+                "status": "ok",
+                "value": "mail.example.net",
+                "expected": "mail.example.net"
               },
               {
                 "type": "DKIM",
@@ -13651,17 +14134,25 @@
               {
                 "type": "MTA-STS",
                 "name": "_mta-sts.example.com",
-                "status": "ok",
-                "value": "v=STSv1; id=fixture"
+                "status": "missing",
+                "message": "No MTA-STS TXT record found. It is optional, and this domain has no active policy yet."
               },
               {
-                "type": "TLS-RPT",
-                "name": "_smtp._tls.example.com",
+                "type": "A",
+                "name": "mail.example.net",
                 "status": "ok",
-                "value": "v=TLSRPTv1; rua=mailto:tls@example.com"
+                "value": "203.0.113.25",
+                "message": "REST Mail does not know its own public address, so this shows only that the mail host has one. The person who runs the server publishes it."
+              },
+              {
+                "type": "PTR",
+                "name": "203.0.113.25",
+                "status": "ok",
+                "value": "mail.example.net",
+                "expected": "mail.example.net"
               }
             ],
-            "summary": "5/6 records verified"
+            "summary": "14/16 records verified"
           }
         }
       }
@@ -13683,6 +14174,139 @@
         "mediaType": "application/json"
       }
     },
+    "published_differs": {
+      "summary": "A published record differs from the one to publish",
+      "description": "customer.example's MX still names its old provider, and it publishes p=none while its stored DMARC policy is quarantine. The check names both, with what it found and the value to publish.",
+      "request": {
+        "path": {
+          "id": 6
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "domain": "customer.example",
+            "records": [
+              {
+                "type": "MX",
+                "name": "customer.example",
+                "status": "different",
+                "value": "10 old.provider.example",
+                "expected": "10 mail.example.net",
+                "message": "Mail for this domain goes to old.provider.example, not to this server."
+              },
+              {
+                "type": "SPF",
+                "name": "customer.example",
+                "status": "ok",
+                "value": "v=spf1 mx -all",
+                "expected": "v=spf1 mx -all"
+              },
+              {
+                "type": "DMARC",
+                "name": "_dmarc.customer.example",
+                "status": "different",
+                "value": "v=DMARC1; p=none; rua=mailto:postmaster@customer.example",
+                "expected": "v=DMARC1; p=quarantine; rua=mailto:postmaster@customer.example",
+                "message": "The published value differs from the value to publish."
+              },
+              {
+                "type": "DKIM",
+                "name": "rm2026._domainkey.customer.example",
+                "status": "ok",
+                "value": "v=DKIM1; k=ed25519; p=11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=",
+                "expected": "v=DKIM1; k=ed25519; p=11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo="
+              },
+              {
+                "type": "TLS-RPT",
+                "name": "_smtp._tls.customer.example",
+                "status": "ok",
+                "value": "v=TLSRPTv1; rua=https://mail.example.net/.well-known/smtp-tlsrpt",
+                "expected": "v=TLSRPTv1; rua=https://mail.example.net/.well-known/smtp-tlsrpt"
+              },
+              {
+                "type": "SRV",
+                "name": "_submissions._tcp.customer.example",
+                "status": "ok",
+                "value": "0 1 465 mail.example.net",
+                "expected": "0 1 465 mail.example.net"
+              },
+              {
+                "type": "SRV",
+                "name": "_imaps._tcp.customer.example",
+                "status": "ok",
+                "value": "0 1 993 mail.example.net",
+                "expected": "0 1 993 mail.example.net"
+              },
+              {
+                "type": "SRV",
+                "name": "_pop3s._tcp.customer.example",
+                "status": "ok",
+                "value": "0 1 995 mail.example.net",
+                "expected": "0 1 995 mail.example.net"
+              },
+              {
+                "type": "SRV",
+                "name": "_submission._tcp.customer.example",
+                "status": "ok",
+                "value": "0 0 0 .",
+                "expected": "0 0 0 ."
+              },
+              {
+                "type": "SRV",
+                "name": "_imap._tcp.customer.example",
+                "status": "ok",
+                "value": "0 0 0 .",
+                "expected": "0 0 0 ."
+              },
+              {
+                "type": "SRV",
+                "name": "_pop3._tcp.customer.example",
+                "status": "ok",
+                "value": "0 0 0 .",
+                "expected": "0 0 0 ."
+              },
+              {
+                "type": "CNAME",
+                "name": "autoconfig.customer.example",
+                "status": "ok",
+                "value": "mail.example.net",
+                "expected": "mail.example.net"
+              },
+              {
+                "type": "CNAME",
+                "name": "autodiscover.customer.example",
+                "status": "ok",
+                "value": "mail.example.net",
+                "expected": "mail.example.net"
+              },
+              {
+                "type": "MTA-STS",
+                "name": "_mta-sts.customer.example",
+                "status": "missing",
+                "message": "No MTA-STS TXT record found. It is optional, and this domain has no active policy yet."
+              },
+              {
+                "type": "A",
+                "name": "mail.example.net",
+                "status": "ok",
+                "value": "203.0.113.25",
+                "message": "REST Mail does not know its own public address, so this shows only that the mail host has one. The person who runs the server publishes it."
+              },
+              {
+                "type": "PTR",
+                "name": "203.0.113.25",
+                "status": "ok",
+                "value": "mail.example.net",
+                "expected": "mail.example.net"
+              }
+            ],
+            "summary": "13/16 records verified"
+          }
+        }
+      }
+    },
     "read_only": {
       "request": {
         "path": {
@@ -13699,40 +14323,115 @@
                 "type": "MX",
                 "name": "example.com",
                 "status": "ok",
-                "value": "mx.example.com. (pri 10)"
+                "value": "10 mail.example.net",
+                "expected": "10 mail.example.net"
               },
               {
                 "type": "SPF",
                 "name": "example.com",
                 "status": "ok",
-                "value": "v=spf1 mx -all"
+                "value": "v=spf1 mx -all",
+                "expected": "v=spf1 mx -all"
               },
               {
                 "type": "DMARC",
                 "name": "_dmarc.example.com",
                 "status": "ok",
-                "value": "v=DMARC1; p=reject"
+                "value": "v=DMARC1; p=none; rua=mailto:postmaster@example.com",
+                "expected": "v=DMARC1; p=none; rua=mailto:postmaster@example.com"
               },
               {
                 "type": "DKIM",
                 "name": "rm2026._domainkey.example.com",
                 "status": "ok",
-                "value": "v=DKIM1; k=ed25519; p=11qYAYKxCrfVS/7TyWfjK7u4WCd4JfWHGw4RzZC0P0Y="
-              },
-              {
-                "type": "MTA-STS",
-                "name": "_mta-sts.example.com",
-                "status": "ok",
-                "value": "v=STSv1; id=fixture"
+                "value": "v=DKIM1; k=ed25519; p=11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=",
+                "expected": "v=DKIM1; k=ed25519; p=11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo="
               },
               {
                 "type": "TLS-RPT",
                 "name": "_smtp._tls.example.com",
                 "status": "ok",
-                "value": "v=TLSRPTv1; rua=mailto:tls@example.com"
+                "value": "v=TLSRPTv1; rua=https://mail.example.net/.well-known/smtp-tlsrpt",
+                "expected": "v=TLSRPTv1; rua=https://mail.example.net/.well-known/smtp-tlsrpt"
+              },
+              {
+                "type": "SRV",
+                "name": "_submissions._tcp.example.com",
+                "status": "ok",
+                "value": "0 1 465 mail.example.net",
+                "expected": "0 1 465 mail.example.net"
+              },
+              {
+                "type": "SRV",
+                "name": "_imaps._tcp.example.com",
+                "status": "ok",
+                "value": "0 1 993 mail.example.net",
+                "expected": "0 1 993 mail.example.net"
+              },
+              {
+                "type": "SRV",
+                "name": "_pop3s._tcp.example.com",
+                "status": "ok",
+                "value": "0 1 995 mail.example.net",
+                "expected": "0 1 995 mail.example.net"
+              },
+              {
+                "type": "SRV",
+                "name": "_submission._tcp.example.com",
+                "status": "ok",
+                "value": "0 0 0 .",
+                "expected": "0 0 0 ."
+              },
+              {
+                "type": "SRV",
+                "name": "_imap._tcp.example.com",
+                "status": "ok",
+                "value": "0 0 0 .",
+                "expected": "0 0 0 ."
+              },
+              {
+                "type": "SRV",
+                "name": "_pop3._tcp.example.com",
+                "status": "ok",
+                "value": "0 0 0 .",
+                "expected": "0 0 0 ."
+              },
+              {
+                "type": "CNAME",
+                "name": "autoconfig.example.com",
+                "status": "ok",
+                "value": "mail.example.net",
+                "expected": "mail.example.net"
+              },
+              {
+                "type": "CNAME",
+                "name": "autodiscover.example.com",
+                "status": "ok",
+                "value": "mail.example.net",
+                "expected": "mail.example.net"
+              },
+              {
+                "type": "MTA-STS",
+                "name": "_mta-sts.example.com",
+                "status": "missing",
+                "message": "No MTA-STS TXT record found. It is optional, and this domain has no active policy yet."
+              },
+              {
+                "type": "A",
+                "name": "mail.example.net",
+                "status": "ok",
+                "value": "203.0.113.25",
+                "message": "REST Mail does not know its own public address, so this shows only that the mail host has one. The person who runs the server publishes it."
+              },
+              {
+                "type": "PTR",
+                "name": "203.0.113.25",
+                "status": "ok",
+                "value": "mail.example.net",
+                "expected": "mail.example.net"
               }
             ],
-            "summary": "6/6 records verified"
+            "summary": "15/16 records verified"
           }
         }
       }
@@ -13770,40 +14469,115 @@
                 "type": "MX",
                 "name": "xn--bcher-kva.test",
                 "status": "ok",
-                "value": "mx.xn--bcher-kva.test. (pri 10)"
+                "value": "10 mail.example.net",
+                "expected": "10 mail.example.net"
               },
               {
                 "type": "SPF",
                 "name": "xn--bcher-kva.test",
                 "status": "ok",
-                "value": "v=spf1 mx -all"
+                "value": "v=spf1 mx -all",
+                "expected": "v=spf1 mx -all"
               },
               {
                 "type": "DMARC",
                 "name": "_dmarc.xn--bcher-kva.test",
                 "status": "ok",
-                "value": "v=DMARC1; p=reject"
+                "value": "v=DMARC1; p=none; rua=mailto:postmaster@xn--bcher-kva.test",
+                "expected": "v=DMARC1; p=none; rua=mailto:postmaster@xn--bcher-kva.test"
               },
               {
                 "type": "DKIM",
                 "name": "rm2026._domainkey.xn--bcher-kva.test",
                 "status": "ok",
-                "value": "v=DKIM1; k=ed25519; p=11qYAYKxCrfVS/7TyWfjK7u4WCd4JfWHGw4RzZC0P0Y="
-              },
-              {
-                "type": "MTA-STS",
-                "name": "_mta-sts.xn--bcher-kva.test",
-                "status": "ok",
-                "value": "v=STSv1; id=fixture"
+                "value": "v=DKIM1; k=ed25519; p=11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=",
+                "expected": "v=DKIM1; k=ed25519; p=11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo="
               },
               {
                 "type": "TLS-RPT",
                 "name": "_smtp._tls.xn--bcher-kva.test",
                 "status": "ok",
-                "value": "v=TLSRPTv1; rua=mailto:tls@xn--bcher-kva.test"
+                "value": "v=TLSRPTv1; rua=https://mail.example.net/.well-known/smtp-tlsrpt",
+                "expected": "v=TLSRPTv1; rua=https://mail.example.net/.well-known/smtp-tlsrpt"
+              },
+              {
+                "type": "SRV",
+                "name": "_submissions._tcp.xn--bcher-kva.test",
+                "status": "ok",
+                "value": "0 1 465 mail.example.net",
+                "expected": "0 1 465 mail.example.net"
+              },
+              {
+                "type": "SRV",
+                "name": "_imaps._tcp.xn--bcher-kva.test",
+                "status": "ok",
+                "value": "0 1 993 mail.example.net",
+                "expected": "0 1 993 mail.example.net"
+              },
+              {
+                "type": "SRV",
+                "name": "_pop3s._tcp.xn--bcher-kva.test",
+                "status": "ok",
+                "value": "0 1 995 mail.example.net",
+                "expected": "0 1 995 mail.example.net"
+              },
+              {
+                "type": "SRV",
+                "name": "_submission._tcp.xn--bcher-kva.test",
+                "status": "ok",
+                "value": "0 0 0 .",
+                "expected": "0 0 0 ."
+              },
+              {
+                "type": "SRV",
+                "name": "_imap._tcp.xn--bcher-kva.test",
+                "status": "ok",
+                "value": "0 0 0 .",
+                "expected": "0 0 0 ."
+              },
+              {
+                "type": "SRV",
+                "name": "_pop3._tcp.xn--bcher-kva.test",
+                "status": "ok",
+                "value": "0 0 0 .",
+                "expected": "0 0 0 ."
+              },
+              {
+                "type": "CNAME",
+                "name": "autoconfig.xn--bcher-kva.test",
+                "status": "ok",
+                "value": "mail.example.net",
+                "expected": "mail.example.net"
+              },
+              {
+                "type": "CNAME",
+                "name": "autodiscover.xn--bcher-kva.test",
+                "status": "ok",
+                "value": "mail.example.net",
+                "expected": "mail.example.net"
+              },
+              {
+                "type": "MTA-STS",
+                "name": "_mta-sts.xn--bcher-kva.test",
+                "status": "missing",
+                "message": "No MTA-STS TXT record found. It is optional, and this domain has no active policy yet."
+              },
+              {
+                "type": "A",
+                "name": "mail.example.net",
+                "status": "ok",
+                "value": "203.0.113.25",
+                "message": "REST Mail does not know its own public address, so this shows only that the mail host has one. The person who runs the server publishes it."
+              },
+              {
+                "type": "PTR",
+                "name": "203.0.113.25",
+                "status": "ok",
+                "value": "mail.example.net",
+                "expected": "mail.example.net"
               }
             ],
-            "summary": "6/6 records verified"
+            "summary": "15/16 records verified"
           }
         }
       }

@@ -3,10 +3,15 @@ package api
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
+	"crypto/x509"
 	"database/sql"
 	"database/sql/driver"
+	"encoding/hex"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
+	"fmt"
 	"github.com/rest-mail/rest-mail-server/internal/examplepairs"
 	"net"
 	"net/http"
@@ -30,11 +35,35 @@ import (
 
 const domainDNSCheckPath = "/api/v1/admin/domains/{id}/dns"
 
-const domainDNSPublicKey = "v=DKIM1; k=ed25519; p=11qYAYKxCrfVS/7TyWfjK7u4WCd4JfWHGw4RzZC0P0Y="
+// domainDNSPublicKey is the DKIM record of domainDNSPrivateKey, which is the RFC 8032 §7.1 test key.
+const domainDNSPublicKey = "v=DKIM1; k=ed25519; p=11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo="
+
+const (
+	domainDNSMailHost    = "mail.example.net"
+	domainDNSReverseName = "25.113.0.203.in-addr.arpa"
+	domainDNSOldHost     = "old.provider.example"
+	domainDNSDiffering   = "customer.example"
+)
+
+func domainDNSPrivateKey(t *testing.T) string {
+	t.Helper()
+	seed, err := hex.DecodeString("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60")
+	if err != nil {
+		t.Fatal(err)
+	}
+	der, err := x509.MarshalPKCS8PrivateKey(ed25519.NewKeyFromSeed(seed))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der}))
+}
 
 type domainDNSCheckContextKey struct{}
 
-type domainDNSCheckConnection struct{ domainMutationConnection }
+type domainDNSCheckConnection struct {
+	domainMutationConnection
+	signingKey string
+}
 
 func (c *domainDNSCheckConnection) Connect(context.Context) (driver.Conn, error) { return c, nil }
 
@@ -43,6 +72,11 @@ func (c *domainDNSCheckConnection) Driver() driver.Driver { return c }
 func (c *domainDNSCheckConnection) Open(string) (driver.Conn, error) { return c, nil }
 
 func (c *domainDNSCheckConnection) QueryContext(ctx context.Context, q string, args []driver.NamedValue) (driver.Rows, error) {
+	// No fixture domain has an active MTA-STS policy or a rotation under way.
+	if strings.Contains(q, `FROM "mtasts_policies"`) || strings.Contains(q, `FROM "dkim_rotation_keys"`) {
+		c.record(q, args)
+		return &authReadSnapshotRows{columns: []string{"id"}}, nil
+	}
 	if strings.Contains(q, `FROM "domains"`) {
 		c.record(q, args)
 		if len(args) == 0 {
@@ -55,6 +89,9 @@ func (c *domainDNSCheckConnection) QueryContext(ctx context.Context, q string, a
 		}
 		if id == 5 {
 			name = "Bücher.Test"
+		}
+		if id == 6 {
+			name = domainDNSDiffering
 		}
 		if strings.Contains(q, `SELECT "name"`) {
 			if len(args) != 1 || !strings.Contains(q, "id =") {
@@ -76,14 +113,17 @@ func (c *domainDNSCheckConnection) QueryContext(ctx context.Context, q string, a
 		if id == 3 {
 			return nil, errors.New("private DNS domain lookup detail")
 		}
-		r := &authReadSnapshotRows{columns: []string{"id", "name", "dkim_selector", "dkim_private_key"}}
+		r := &authReadSnapshotRows{columns: []string{"id", "name", "dkim_selector", "dkim_private_key", "dmarc_policy"}}
 		if id != 2147483647 {
-			selector, key := "rm2026", "fixture-key-marker"
+			selector, key, policy := "rm2026", c.signingKey, models.DMARCPolicyNone
 			if id == 2 {
 				selector = ""
 				key = ""
 			}
-			r.rows = [][]driver.Value{{id, name, selector, key}}
+			if id == 6 {
+				policy = models.DMARCPolicyQuarantine
+			}
+			r.rows = [][]driver.Value{{id, name, selector, key, policy}}
 		}
 		return r, nil
 	}
@@ -138,30 +178,13 @@ func newDomainDNSCheckScenarios(t *testing.T) (map[string]bulkQueueExampleScenar
 				calls.questions = append(calls.questions, q.Type.String()+" "+name)
 				calls.mu.Unlock()
 				header := dnsmessage.ResourceHeader{Name: q.Name, Type: q.Type, Class: dnsmessage.ClassINET, TTL: 60}
-				var body dnsmessage.ResourceBody
-				switch q.Type {
-				case dnsmessage.TypeMX:
-					host, e := dnsmessage.NewName("mx." + name + ".")
-					if e != nil {
-						t.Error(e)
-						return
-					}
-					body = &dnsmessage.MXResource{Pref: 10, MX: host}
-				case dnsmessage.TypeTXT:
-					value := "v=spf1 mx -all"
-					switch {
-					case strings.HasPrefix(name, "_dmarc."):
-						value = "v=DMARC1; p=reject"
-					case strings.Contains(name, "._domainkey."):
-						value = domainDNSPublicKey
-					case strings.HasPrefix(name, "_mta-sts."):
-						value = "v=STSv1; id=fixture"
-					case strings.HasPrefix(name, "_smtp._tls."):
-						value = "v=TLSRPTv1; rua=mailto:tls@" + strings.TrimPrefix(name, "_smtp._tls.")
-					}
-					body = &dnsmessage.TXTResource{TXT: []string{value}}
-				default:
-					t.Errorf("unexpected DNS type%v", q.Type)
+				if strings.HasPrefix(name, "_mta-sts.") {
+					response.RCode = dnsmessage.RCodeNameError
+					continue
+				}
+				body, e := domainDNSAnswer(q.Type, name)
+				if e != nil {
+					t.Error(e)
 					return
 				}
 				response.Answers = append(response.Answers, dnsmessage.Resource{Header: header, Body: body})
@@ -194,6 +217,67 @@ func newDomainDNSCheckScenarios(t *testing.T) (map[string]bulkQueueExampleScenar
 	return newDomainDNSCheckRouters(t, resolver), calls
 }
 
+// domainDNSAnswer publishes what a domain must, on domainDNSMailHost, except that
+// domainDNSDiffering's MX still names its old provider.
+func domainDNSAnswer(typ dnsmessage.Type, name string) (dnsmessage.ResourceBody, error) {
+	domainOf := func(prefix string) string { return strings.TrimPrefix(name, prefix) }
+	target := func(host string) (dnsmessage.Name, error) { return dnsmessage.NewName(host + ".") }
+	if strings.HasPrefix(name, "autoconfig.") || strings.HasPrefix(name, "autodiscover.") {
+		host, err := target(domainDNSMailHost)
+		if err != nil {
+			return nil, err
+		}
+		return &dnsmessage.CNAMEResource{CNAME: host}, nil
+	}
+	switch typ {
+	case dnsmessage.TypeMX:
+		host := domainDNSMailHost
+		if name == domainDNSDiffering {
+			host = domainDNSOldHost
+		}
+		mx, err := target(host)
+		if err != nil {
+			return nil, err
+		}
+		return &dnsmessage.MXResource{Pref: 10, MX: mx}, nil
+	case dnsmessage.TypeTXT:
+		value := "v=spf1 mx -all"
+		switch {
+		case strings.HasPrefix(name, "_dmarc."):
+			value = "v=DMARC1; p=none; rua=mailto:postmaster@" + domainOf("_dmarc.")
+		case strings.Contains(name, "._domainkey."):
+			value = domainDNSPublicKey
+		case strings.HasPrefix(name, "_smtp._tls."):
+			value = "v=TLSRPTv1; rua=https://" + domainDNSMailHost + "/.well-known/smtp-tlsrpt"
+		}
+		return &dnsmessage.TXTResource{TXT: []string{value}}, nil
+	case dnsmessage.TypeSRV:
+		for service, port := range map[string]uint16{"_submissions": 465, "_imaps": 993, "_pop3s": 995} {
+			if strings.HasPrefix(name, service+"._tcp.") {
+				host, err := target(domainDNSMailHost)
+				if err != nil {
+					return nil, err
+				}
+				return &dnsmessage.SRVResource{Weight: 1, Port: port, Target: host}, nil
+			}
+		}
+		root, err := dnsmessage.NewName(".")
+		if err != nil {
+			return nil, err
+		}
+		return &dnsmessage.SRVResource{Target: root}, nil
+	case dnsmessage.TypeA:
+		return &dnsmessage.AResource{A: [4]byte{203, 0, 113, 25}}, nil
+	case dnsmessage.TypePTR:
+		host, err := target(domainDNSMailHost)
+		if err != nil {
+			return nil, err
+		}
+		return &dnsmessage.PTRResource{PTR: host}, nil
+	}
+	return nil, fmt.Errorf("unexpected DNS type %v", typ)
+}
+
 func newDomainDNSCheckRouters(t *testing.T, resolver *net.Resolver) map[string]bulkQueueExampleScenario {
 	t.Helper()
 	unavailable, _, _, jwt := authReadBatchRouters(t)
@@ -223,6 +307,11 @@ func newDomainDNSCheckRouters(t *testing.T, resolver *net.Resolver) map[string]b
 	}
 	previous := heldGrants
 	defer func() { heldGrants = previous }()
+	signingKey := domainDNSPrivateKey(t)
+	cfg := config.Config{
+		Environment: "test", APIMaxBodyBytes: 512, GatewayHostname: domainDNSMailHost,
+		SMTPPortSubmissionTLS: 465, IMAPTLSPort: 993, POP3TLSPort: 995,
+	}
 	makeRouter := func(entries []grants.Entry, fail, limited bool) bulkQueueExampleScenario {
 		heldGrants = func(*grants.Cache) middleware.HeldGrants {
 			return func(uint) (grants.Held, error) {
@@ -233,7 +322,7 @@ func newDomainDNSCheckRouters(t *testing.T, resolver *net.Resolver) map[string]b
 			}
 		}
 		store := &bulkQueueExampleStore{}
-		c := &domainDNSCheckConnection{domainMutationConnection: domainMutationConnection{accountCredentialListConnection: accountCredentialListConnection{mode: "normal", keys: keys}, store: store}}
+		c := &domainDNSCheckConnection{signingKey: signingKey, domainMutationConnection: domainMutationConnection{accountCredentialListConnection: accountCredentialListConnection{mode: "normal", keys: keys}, store: store}}
 		pool := sql.OpenDB(c)
 		pool.SetMaxOpenConns(1)
 		t.Cleanup(func() { _ = pool.Close() })
@@ -244,7 +333,8 @@ func newDomainDNSCheckRouters(t *testing.T, resolver *net.Resolver) map[string]b
 			previousResolver := net.DefaultResolver
 			net.DefaultResolver = resolver
 			defer func() { net.DefaultResolver = previousResolver }()
-			return NewRouters(db, jwt, &config.Config{Environment: "test", APIMaxBodyBytes: 512}, nil)
+			routerConfig := cfg
+			return NewRouters(db, jwt, &routerConfig, nil)
 		}()
 		t.Cleanup(r.Close)
 		return bulkQueueExampleScenario{accountReadScenario{http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
@@ -297,6 +387,9 @@ func newDomainDNSCheckRouters(t *testing.T, resolver *net.Resolver) map[string]b
 			normal.handler.ServeHTTP(w, r)
 		}), ""}, normal.store}
 	}
+	cfg.GatewayHostname = "localhost"
+	out["mail_host_unconfigured"] = makeRouter(wild, false, false)
+	cfg.GatewayHostname = domainDNSMailHost
 	out["wrong_domain"] = makeRouter([]grants.Entry{{Capability: middleware.CapDomainsRead, Scope: grants.Domain("other.test")}}, false, false)
 
 	out["scope_lookup_unavailable"] = out["domain_scope"]
@@ -341,9 +434,21 @@ func TestDomainDNSCheckExamples(t *testing.T) {
 				if name == "unicode_domain" {
 					domain = "xn--bcher-kva.test"
 				}
+				if name == "published_differs" {
+					domain = domainDNSDiffering
+				}
 				want = []string{"TypeMX " + domain, "TypeTXT " + domain, "TypeTXT _dmarc." + domain, "TypeTXT _mta-sts." + domain, "TypeTXT _smtp._tls." + domain}
+				for _, service := range []string{"_submissions", "_imaps", "_pop3s", "_submission", "_imap", "_pop3"} {
+					want = append(want, "TypeSRV "+service+"._tcp."+domain)
+				}
+				for _, host := range []string{"autoconfig.", "autodiscover."} {
+					want = append(want, "TypeA "+host+domain, "TypeAAAA "+host+domain, "TypeCNAME "+host+domain)
+				}
 				if name != "no_signing_key" {
 					want = append(want, "TypeTXT rm2026._domainkey."+domain)
+				}
+				if name != "mail_host_unconfigured" {
+					want = append(want, "TypeA "+domainDNSMailHost, "TypePTR "+domainDNSReverseName)
 				}
 			}
 			sort.Strings(want)
