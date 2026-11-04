@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/rest-mail/go-imap/actions/workflows/ci.yml/badge.svg)](https://github.com/rest-mail/go-imap/actions/workflows/ci.yml)
 [![Coverage gate: >=95%](https://img.shields.io/badge/coverage%20gate-%3E%3D95%25-brightgreen)](COVERAGE.md)
-[![Partial checklist: 530/793 mapped](https://img.shields.io/badge/partial%20checklist-530%2F793%20mapped-blue)](CHECKLIST.md)
+[![Partial checklist: 543/794 mapped](https://img.shields.io/badge/partial%20checklist-543%2F794%20mapped-blue)](CHECKLIST.md)
 [![Go Reference](https://pkg.go.dev/badge/github.com/rest-mail/go-imap.svg)](https://pkg.go.dev/github.com/rest-mail/go-imap/pkg/imap/server)
 [![Go Report Card](https://goreportcard.com/badge/github.com/rest-mail/go-imap)](https://goreportcard.com/report/github.com/rest-mail/go-imap)
 
@@ -410,7 +410,7 @@ reason.
 | `\Recent` | Not tracked: RECENT, NEW and OLD approximate it with unseen. | IMAP4rev2 (RFC 9051) removes `\Recent`. |
 | Subscriptions | No subscription store: every folder counts as subscribed. | Clients show every folder anyway; a second list of folders would only go stale. |
 | UIDs | Without `UIDPlusMailbox`, UIDVALIDITY is 1 and UIDNEXT is the highest UID plus one. UIDNOTSTICKY is never reported. | A backend that has real values implements `UIDPlusMailbox`; UIDs are expected to persist. |
-| ENVELOPE | Source routes are always NIL, and obsolete address syntax that `net/mail` rejects gives NIL. | Source routes are obsolete. |
+| ENVELOPE | Obsolete address syntax that `net/mail` rejects, other than a source route, gives NIL for the whole header. | Reading it needs an address parser of our own: rest-mail/rest-mail-server#1862. |
 
 #### Not planned
 

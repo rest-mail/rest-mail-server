@@ -59,6 +59,17 @@ found by the RFC 3501 inventory in rest-mail/rest-mail-server#374.
     LIST no longer echo an unknown item, which a literal could fill with CR, LF
     and 8-bit octets, and STORE gives the fixed text UID STORE already did. The
     host's error goes to the log.
+- ENVELOPE addresses, in top-level and encapsulated envelopes alike:
+  - A source route is kept, because addr-adl "Holds route from [RFC-2822]
+    route-addr if non-NIL" (RFC 3501 §9). `net/mail` refuses a route, which made
+    the whole header NIL, so the route is taken out before `net/mail` reads the
+    list and put back by address. Worth sending upstream. It goes no further than
+    routes: other legal obsolete forms that `net/mail` refuses are
+    rest-mail/rest-mail-server#1862.
+  - A local part ends at the last `@`, because addr-mailbox holds the "local-part
+    after removing [RFC-2822] quoting" (§9). `net/mail` removes that quoting, so
+    `"a@b"@example.com` reaches the engine as `a@b@example.com`, which it used to
+    split at the first `@`. Worth sending upstream.
 
 ## RFC 9051 additions
 
