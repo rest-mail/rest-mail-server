@@ -12771,6 +12771,20 @@
                 "expected": "0 0 0 ."
               },
               {
+                "type": "CNAME",
+                "name": "autoconfig.example.com",
+                "status": "ok",
+                "value": "mail.example.net",
+                "expected": "mail.example.net"
+              },
+              {
+                "type": "CNAME",
+                "name": "autodiscover.example.com",
+                "status": "ok",
+                "value": "mail.example.net",
+                "expected": "mail.example.net"
+              },
+              {
                 "type": "MTA-STS",
                 "name": "_mta-sts.example.com",
                 "status": "missing",
@@ -12791,7 +12805,7 @@
                 "expected": "mail.example.net"
               }
             ],
-            "summary": "13/14 records verified"
+            "summary": "15/16 records verified"
           }
         }
       }

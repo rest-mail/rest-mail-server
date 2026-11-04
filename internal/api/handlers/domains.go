@@ -408,7 +408,7 @@ type DomainDNSCheck struct {
 
 // DNSRecordCheck is one record the domain must publish, and what the check found there.
 type DNSRecordCheck struct {
-	// Type is DOMAIN, MX, SPF, DMARC, DKIM, MTA-STS, CNAME (MTA-STS's policy host), TLS-RPT,
+	// Type is DOMAIN, MX, SPF, DMARC, DKIM, MTA-STS, CNAME (the mail app discovery names and MTA-STS's policy host), TLS-RPT,
 	// SRV, A or PTR.
 	Type string `json:"type"`
 	Name string `json:"name"`

@@ -222,6 +222,13 @@ func newDomainDNSCheckScenarios(t *testing.T) (map[string]bulkQueueExampleScenar
 func domainDNSAnswer(typ dnsmessage.Type, name string) (dnsmessage.ResourceBody, error) {
 	domainOf := func(prefix string) string { return strings.TrimPrefix(name, prefix) }
 	target := func(host string) (dnsmessage.Name, error) { return dnsmessage.NewName(host + ".") }
+	if strings.HasPrefix(name, "autoconfig.") || strings.HasPrefix(name, "autodiscover.") {
+		host, err := target(domainDNSMailHost)
+		if err != nil {
+			return nil, err
+		}
+		return &dnsmessage.CNAMEResource{CNAME: host}, nil
+	}
 	switch typ {
 	case dnsmessage.TypeMX:
 		host := domainDNSMailHost
@@ -433,6 +440,9 @@ func TestDomainDNSCheckExamples(t *testing.T) {
 				want = []string{"TypeMX " + domain, "TypeTXT " + domain, "TypeTXT _dmarc." + domain, "TypeTXT _mta-sts." + domain, "TypeTXT _smtp._tls." + domain}
 				for _, service := range []string{"_submissions", "_imaps", "_pop3s", "_submission", "_imap", "_pop3"} {
 					want = append(want, "TypeSRV "+service+"._tcp."+domain)
+				}
+				for _, host := range []string{"autoconfig.", "autodiscover."} {
+					want = append(want, "TypeA "+host+domain, "TypeAAAA "+host+domain, "TypeCNAME "+host+domain)
 				}
 				if name != "no_signing_key" {
 					want = append(want, "TypeTXT rm2026._domainkey."+domain)

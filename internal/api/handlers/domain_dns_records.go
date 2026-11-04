@@ -173,7 +173,7 @@ func (h *DomainHandler) checkPublishedRecords(ctx context.Context, domain models
 	}
 	if len(policies) == 0 {
 		work = append(work, func() DNSRecordCheck { return h.checkMTASTSWithoutPolicy(ctx, name) })
-	} else if !listsType(list.Records, "CNAME") {
+	} else if !listsName(list.Records, "mta-sts."+name) {
 		work = append(work, func() DNSRecordCheck {
 			return DNSRecordCheck{Type: "MTA-STS", Name: "_mta-sts." + name, Status: statusError,
 				Message: "The domain's MTA-STS policy cannot be served, so it has no record to publish."}
@@ -204,9 +204,9 @@ func listsSigningKey(records []dns.DNSRecord, domain string) bool {
 	return false
 }
 
-func listsType(records []dns.DNSRecord, typ string) bool {
+func listsName(records []dns.DNSRecord, name string) bool {
 	for _, r := range records {
-		if r.Type == typ {
+		if r.Name == name {
 			return true
 		}
 	}
@@ -372,7 +372,7 @@ func (h *DomainHandler) checkCNAME(ctx context.Context, record dns.DNSRecord) DN
 	}
 	// With no CNAME, a resolver answers with the name itself, when it has an address.
 	if err != nil || dnsName(found) == record.Name {
-		check.Status, check.Message = statusMissing, "No CNAME record found for the MTA-STS policy host"
+		check.Status, check.Message = statusMissing, "No CNAME record found at "+record.Name
 		return check
 	}
 	check.Value = dnsName(found)

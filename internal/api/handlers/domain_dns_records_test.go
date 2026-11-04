@@ -127,6 +127,10 @@ func aCorrectZone(domain string) publishedZone {
 		},
 		ipv4: map[string][]net.IP{checkMailHost: {net.ParseIP(checkMailIP)}},
 		ptr:  map[string][]string{checkMailIP: {checkMailHost + "."}},
+		cname: map[string]string{
+			"autoconfig." + domain:   checkMailHost + ".",
+			"autodiscover." + domain: checkMailHost + ".",
+		},
 	}
 }
 
@@ -201,8 +205,8 @@ func TestDNSCheck_ListsEveryRecordToPublish(t *testing.T) {
 	got := checkDomainDNS(t, h, domain.ID)
 
 	want := dns.MailRecords(domain.Name, checkMailHost, "", "rm2026", checkDKIMRecord, "none", dns.ClientPorts{Submission: 465, IMAP: 993, POP3: 995})
-	if len(want) != 11 {
-		t.Fatalf("MailRecords lists %d, want 11", len(want))
+	if len(want) != 13 {
+		t.Fatalf("MailRecords lists %d, want 13", len(want))
 	}
 	for _, r := range want {
 		found := false
@@ -414,6 +418,37 @@ func TestDNSCheck_IgnoresFormattingThatChangesNothing(t *testing.T) {
 		if r := got.record(t, c.typ, c.name); r.Status != "ok" {
 			t.Errorf("%s = %+v, want ok", c.typ, r)
 		}
+	}
+}
+
+// An active policy that cannot be served has no record to publish, and the check says so, even
+// though the mail app discovery names mean the list always holds a CNAME.
+func TestDNSCheck_UnservablePolicyIsReported(t *testing.T) {
+	tx, domain, h := dnsCheckFixture(t)
+	policy := models.MTASTSPolicy{DomainID: domain.ID, Mode: "testing", MXHosts: "not a host!", MaxAge: 604800, Active: true}
+	if err := tx.Create(&policy).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := policy.RecordID(); err == nil {
+		t.Fatal("the fixture's policy can be served; this test needs one that cannot")
+	}
+	aCorrectZone(domain.Name).install(h)
+	r := checkDomainDNS(t, h, domain.ID).record(t, "MTA-STS", "_mta-sts."+domain.Name)
+	if r.Status != statusError || !strings.Contains(r.Message, "cannot be served") {
+		t.Errorf("unservable policy = %+v", r)
+	}
+}
+
+// A missing discovery name is reported under its own name, not as the MTA-STS policy host.
+func TestDNSCheck_MissingCNAMENamesItsHost(t *testing.T) {
+	_, domain, h := dnsCheckFixture(t)
+	zone := aCorrectZone(domain.Name)
+	delete(zone.cname, "autoconfig."+domain.Name)
+	zone.install(h)
+	name := "autoconfig." + domain.Name
+	r := checkDomainDNS(t, h, domain.ID).record(t, "CNAME", name)
+	if r.Status != statusMissing || !strings.Contains(r.Message, name) || strings.Contains(r.Message, "MTA-STS") {
+		t.Errorf("missing discovery name = %+v", r)
 	}
 }
 

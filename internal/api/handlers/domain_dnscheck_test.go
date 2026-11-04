@@ -142,8 +142,8 @@ func TestDNSCheck_IDNLooksUpALabels(t *testing.T) {
 		if resp.Domain != stored {
 			t.Errorf("domain = %q, want the stored %q", resp.Domain, stored)
 		}
-		if len(resp.Records) != 14 {
-			t.Fatalf("got %d records (%+v), want 14", len(resp.Records), resp.Records)
+		if len(resp.Records) != 16 {
+			t.Fatalf("got %d records (%+v), want 16", len(resp.Records), resp.Records)
 		}
 		for _, rec := range resp.Records {
 			if rec.Type == "A" || rec.Type == "PTR" {

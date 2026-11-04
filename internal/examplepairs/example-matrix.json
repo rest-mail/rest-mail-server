@@ -13358,6 +13358,20 @@
                 "expected": "0 0 0 ."
               },
               {
+                "type": "CNAME",
+                "name": "autoconfig.example.com",
+                "status": "ok",
+                "value": "mail.example.net",
+                "expected": "mail.example.net"
+              },
+              {
+                "type": "CNAME",
+                "name": "autodiscover.example.com",
+                "status": "ok",
+                "value": "mail.example.net",
+                "expected": "mail.example.net"
+              },
+              {
                 "type": "MTA-STS",
                 "name": "_mta-sts.example.com",
                 "status": "missing",
@@ -13378,7 +13392,7 @@
                 "expected": "mail.example.net"
               }
             ],
-            "summary": "13/14 records verified"
+            "summary": "15/16 records verified"
           }
         }
       }
@@ -13475,6 +13489,20 @@
                 "expected": "0 0 0 ."
               },
               {
+                "type": "CNAME",
+                "name": "autoconfig.example.com",
+                "status": "ok",
+                "value": "mail.example.net",
+                "expected": "mail.example.net"
+              },
+              {
+                "type": "CNAME",
+                "name": "autodiscover.example.com",
+                "status": "ok",
+                "value": "mail.example.net",
+                "expected": "mail.example.net"
+              },
+              {
                 "type": "MTA-STS",
                 "name": "_mta-sts.example.com",
                 "status": "missing",
@@ -13495,7 +13523,7 @@
                 "expected": "mail.example.net"
               }
             ],
-            "summary": "13/14 records verified"
+            "summary": "15/16 records verified"
           }
         },
         "mediaType": "application/json"
@@ -13662,6 +13690,20 @@
                 "expected": "0 0 0 ."
               },
               {
+                "type": "CNAME",
+                "name": "autoconfig.example.com",
+                "status": "ok",
+                "value": "mail.example.net",
+                "expected": "mail.example.net"
+              },
+              {
+                "type": "CNAME",
+                "name": "autodiscover.example.com",
+                "status": "ok",
+                "value": "mail.example.net",
+                "expected": "mail.example.net"
+              },
+              {
                 "type": "MTA-STS",
                 "name": "_mta-sts.example.com",
                 "status": "missing",
@@ -13682,7 +13724,7 @@
                 "expected": "mail.example.net"
               }
             ],
-            "summary": "13/14 records verified"
+            "summary": "15/16 records verified"
           }
         }
       }
@@ -13793,6 +13835,20 @@
                 "expected": "0 0 0 ."
               },
               {
+                "type": "CNAME",
+                "name": "autoconfig.example.com",
+                "status": "ok",
+                "value": "mail.example.net",
+                "expected": "mail.example.net"
+              },
+              {
+                "type": "CNAME",
+                "name": "autodiscover.example.com",
+                "status": "ok",
+                "value": "mail.example.net",
+                "expected": "mail.example.net"
+              },
+              {
                 "type": "MTA-STS",
                 "name": "_mta-sts.example.com",
                 "status": "missing",
@@ -13813,7 +13869,7 @@
                 "expected": "mail.example.net"
               }
             ],
-            "summary": "13/14 records verified"
+            "summary": "15/16 records verified"
           }
         }
       }
@@ -13942,13 +13998,27 @@
                 "expected": "0 0 0 ."
               },
               {
+                "type": "CNAME",
+                "name": "autoconfig.example.com",
+                "status": "error",
+                "value": "mail.example.net",
+                "message": "GATEWAY_HOSTNAME is not a full host name on this server, so there is no value to compare this record with. Ask the person who runs the server to set it."
+              },
+              {
+                "type": "CNAME",
+                "name": "autodiscover.example.com",
+                "status": "error",
+                "value": "mail.example.net",
+                "message": "GATEWAY_HOSTNAME is not a full host name on this server, so there is no value to compare this record with. Ask the person who runs the server to set it."
+              },
+              {
                 "type": "MTA-STS",
                 "name": "_mta-sts.example.com",
                 "status": "missing",
                 "message": "No MTA-STS TXT record found. It is optional, and this domain has no active policy yet."
               }
             ],
-            "summary": "6/12 records verified"
+            "summary": "6/14 records verified"
           }
         }
       }
@@ -14052,6 +14122,20 @@
                 "expected": "0 0 0 ."
               },
               {
+                "type": "CNAME",
+                "name": "autoconfig.example.com",
+                "status": "ok",
+                "value": "mail.example.net",
+                "expected": "mail.example.net"
+              },
+              {
+                "type": "CNAME",
+                "name": "autodiscover.example.com",
+                "status": "ok",
+                "value": "mail.example.net",
+                "expected": "mail.example.net"
+              },
+              {
                 "type": "DKIM",
                 "name": "example.com",
                 "status": "missing",
@@ -14078,7 +14162,7 @@
                 "expected": "mail.example.net"
               }
             ],
-            "summary": "12/14 records verified"
+            "summary": "14/16 records verified"
           }
         }
       }
@@ -14194,6 +14278,20 @@
                 "expected": "0 0 0 ."
               },
               {
+                "type": "CNAME",
+                "name": "autoconfig.customer.example",
+                "status": "ok",
+                "value": "mail.example.net",
+                "expected": "mail.example.net"
+              },
+              {
+                "type": "CNAME",
+                "name": "autodiscover.customer.example",
+                "status": "ok",
+                "value": "mail.example.net",
+                "expected": "mail.example.net"
+              },
+              {
                 "type": "MTA-STS",
                 "name": "_mta-sts.customer.example",
                 "status": "missing",
@@ -14214,7 +14312,7 @@
                 "expected": "mail.example.net"
               }
             ],
-            "summary": "11/14 records verified"
+            "summary": "13/16 records verified"
           }
         }
       }
@@ -14309,6 +14407,20 @@
                 "expected": "0 0 0 ."
               },
               {
+                "type": "CNAME",
+                "name": "autoconfig.example.com",
+                "status": "ok",
+                "value": "mail.example.net",
+                "expected": "mail.example.net"
+              },
+              {
+                "type": "CNAME",
+                "name": "autodiscover.example.com",
+                "status": "ok",
+                "value": "mail.example.net",
+                "expected": "mail.example.net"
+              },
+              {
                 "type": "MTA-STS",
                 "name": "_mta-sts.example.com",
                 "status": "missing",
@@ -14329,7 +14441,7 @@
                 "expected": "mail.example.net"
               }
             ],
-            "summary": "13/14 records verified"
+            "summary": "15/16 records verified"
           }
         }
       }
@@ -14441,6 +14553,20 @@
                 "expected": "0 0 0 ."
               },
               {
+                "type": "CNAME",
+                "name": "autoconfig.xn--bcher-kva.test",
+                "status": "ok",
+                "value": "mail.example.net",
+                "expected": "mail.example.net"
+              },
+              {
+                "type": "CNAME",
+                "name": "autodiscover.xn--bcher-kva.test",
+                "status": "ok",
+                "value": "mail.example.net",
+                "expected": "mail.example.net"
+              },
+              {
                 "type": "MTA-STS",
                 "name": "_mta-sts.xn--bcher-kva.test",
                 "status": "missing",
@@ -14461,7 +14587,7 @@
                 "expected": "mail.example.net"
               }
             ],
-            "summary": "13/14 records verified"
+            "summary": "15/16 records verified"
           }
         }
       }
