@@ -180,7 +180,7 @@ const mfaAdminAddress, mfaAdminPassword = "contract-mfa-admin@restmail.test", "c
 
 // prepareDeliveryRecipient makes the mailbox a generated delivery reaches. A
 // generated body has no Date or Message-ID, so the default inbound pipeline rightly
-// refuses it with a 550 before delivery is reached. Its domain therefore stores an
+// refuses it with a 403 before delivery is reached. Its domain therefore stores an
 // inbound pipeline with no filters, and the rest of delivery runs: the recipient's
 // receive grant, its quota, storing the message and the answer. Only this domain
 // has that policy. Every row names its id, so no sequence moves and no literal id
