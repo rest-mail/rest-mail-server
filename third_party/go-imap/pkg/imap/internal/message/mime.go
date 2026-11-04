@@ -90,7 +90,16 @@ var noParameters = map[string]string{}
 // namesContentField reports whether a header block may hold a Content-Type or a
 // Content-Transfer-Encoding, so a part with neither doesn't pay to parse its header.
 func namesContentField(header string) bool {
-	const prefix = "content-t"
+	return holdsFold(header, "content-t")
+}
+
+// namesTransferEncoding reports whether a header block may hold a Content-Transfer-Encoding.
+func namesTransferEncoding(header string) bool {
+	return holdsFold(header, "content-transfer-encoding")
+}
+
+// holdsFold reports whether header holds prefix, which is in lower case, in any case.
+func holdsFold(header, prefix string) bool {
 	for i := 0; i+len(prefix) <= len(header); i++ {
 		if header[i]|0x20 != 'c' {
 			continue
@@ -127,6 +136,11 @@ func usableContentType(mt string, params map[string]string, err error) bool {
 // is not a message that can be parsed as stored. BODYSTRUCTURE, sections and
 // SEARCH all use this, so they agree on where the structure stops.
 func opaqueEntity(mt string, params map[string]string, cte string, depth int) bool {
+	return opaqueType(mt, params["boundary"], cte, depth)
+}
+
+// opaqueType is opaqueEntity given the only parameter it reads.
+func opaqueType(mt, boundary, cte string, depth int) bool {
 	if mt == "message/rfc822" {
 		switch transferEncoding(cte) {
 		case "7BIT", "8BIT", "BINARY":
@@ -134,7 +148,7 @@ func opaqueEntity(mt string, params map[string]string, cte string, depth int) bo
 			return true
 		}
 	}
-	nests := (strings.HasPrefix(mt, "multipart/") && params["boundary"] != "") || mt == "message/rfc822"
+	nests := (strings.HasPrefix(mt, "multipart/") && boundary != "") || mt == "message/rfc822"
 	return nests && depth >= maxMIMEDepth
 }
 
@@ -204,12 +218,23 @@ func multipartDelimiters(body, boundary string) []multipartDelimiter {
 	return scan.delimiters(body, boundary)
 }
 
+// appendDelimiters is multipartDelimiters appending to delimiters.
+func appendDelimiters(delimiters []multipartDelimiter, body, boundary string) []multipartDelimiter {
+	var scan boundaryScan
+	return scan.appendDelimiters(delimiters, body, boundary)
+}
+
 // boundaryScan looks for a boundary's lines and counts the octets it looks at. A search
 // repeated from every line allocates nothing, so only this count shows it
 // (TestSevenBitBoundary_ScansInProportion).
 type boundaryScan struct{ steps int }
 
 func (s *boundaryScan) delimiters(body, boundary string) []multipartDelimiter {
+	s.steps += len(body)
+	return s.appendDelimiters(make([]multipartDelimiter, 0, strings.Count(body, "--"+boundary)), body, boundary)
+}
+
+func (s *boundaryScan) appendDelimiters(delimiters []multipartDelimiter, body, boundary string) []multipartDelimiter {
 	delim := "--" + boundary
 	// next finds the next delimiter line at or after from.
 	next := func(from int) (multipartDelimiter, bool) {
@@ -248,8 +273,6 @@ func (s *boundaryScan) delimiters(body, boundary string) []multipartDelimiter {
 		return multipartDelimiter{}, false
 	}
 
-	s.steps += len(body)
-	delimiters := make([]multipartDelimiter, 0, strings.Count(body, delim))
 	for from := 0; ; {
 		d, found := next(from)
 		if !found {
@@ -267,7 +290,11 @@ func (s *boundaryScan) delimiters(body, boundary string) []multipartDelimiter {
 // starts and ends. The CRLF before a delimiter is part of it, and an unterminated last
 // part runs to the end of the body.
 func partSpans(body string, delimiters []multipartDelimiter) [][2]int {
-	spans := make([][2]int, 0, len(delimiters))
+	return appendPartSpans(make([][2]int, 0, len(delimiters)), body, delimiters)
+}
+
+// appendPartSpans is partSpans appending to spans.
+func appendPartSpans(spans [][2]int, body string, delimiters []multipartDelimiter) [][2]int {
 	for i, d := range delimiters {
 		if d.closing {
 			break

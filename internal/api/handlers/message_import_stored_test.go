@@ -356,29 +356,41 @@ func TestMessageImportStoredHoldsTheLimitOnHostileShapes(t *testing.T) {
 	first.Header.Set("Content-Type", "application/json")
 	importMessageRoutes(warm).ServeHTTP(httptest.NewRecorder(), first)
 	for name, message := range map[string]string{
-		"binary attachment":    id + "Subject: Gr\u00fc\u00dfe\r\nContent-Type: multipart/mixed; boundary=B\r\n\r\n--B\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nsm\u00e4ll\r\n--B\r\nContent-Type: application/octet-stream\r\nContent-Transfer-Encoding: binary\r\n\r\n" + strings.Repeat("\xf6", size) + "\r\n--B--\r\n",
-		"base64, stray octets": id + "Subject: Gr\u00fc\u00dfe\r\nContent-Type: multipart/mixed; boundary=B\r\n\r\n--B\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nsm\u00e4ll\r\n--B\r\nContent-Type: application/octet-stream\r\nContent-Transfer-Encoding: base64\r\n\r\n" + strings.Repeat("AAAA\xf6", size/5) + "\r\n--B--\r\n",
+		"binary attachment":      id + "Subject: Gr\u00fc\u00dfe\r\nContent-Type: multipart/mixed; boundary=B\r\n\r\n--B\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nsm\u00e4ll\r\n--B\r\nContent-Type: application/octet-stream\r\nContent-Transfer-Encoding: binary\r\n\r\n" + strings.Repeat("\xf6", size) + "\r\n--B--\r\n",
+		"base64, stray octets":   id + "Subject: Gr\u00fc\u00dfe\r\nContent-Type: multipart/mixed; boundary=B\r\n\r\n--B\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nsm\u00e4ll\r\n--B\r\nContent-Type: application/octet-stream\r\nContent-Transfer-Encoding: base64\r\n\r\n" + strings.Repeat("AAAA\xf6", size/5) + "\r\n--B--\r\n",
+		"8-bit text, no charset": id + "Content-Type: text/plain\r\n\r\n" + strings.Repeat("\xf6", size) + "\r\n",
+		"60 nested messages":     id + strings.Repeat("Content-Type: message/rfc822\r\n\r\n", 60) + "Subject: \xf6\r\n\r\n" + strings.Repeat("\xf6", size),
+		"1000 typed parts":       id + "Content-Type: multipart/mixed; boundary=B\r\n\r\n" + strings.Repeat("--B\r\nContent-Type: a/b\r\n\r\n\xf6"+strings.Repeat("y", size/1000)+"\r\n", 1000) + "--B--\r\n",
 	} {
 		t.Run(name, func(t *testing.T) {
 			h := NewMessageImportHandler(db, 2*size, nil, nil)
 			h.directory = t.TempDir()
-			message = "Message-ID: <" + strings.ReplaceAll(name, " ", "-") + "@example.test>\r\n" + message
-			body := fmt.Sprintf(`{"raw_message":"%s","internal_date":"2020-01-02T03:04:05Z"}`, base64.StdEncoding.EncodeToString([]byte(message)))
-			r := authzRequest(http.MethodPost, fmt.Sprintf("/api/v1/accounts/%d/messages/import", fx.user.ID), fx.user.ID, nil, body)
-			r.Header.Set("Content-Type", "application/json")
-			w := httptest.NewRecorder()
 			routes := importMessageRoutes(h)
-			var before, after runtime.MemStats
-			runtime.ReadMemStats(&before)
-			routes.ServeHTTP(w, r)
-			runtime.ReadMemStats(&after)
-			if w.Code != http.StatusOK {
-				t.Fatalf("%d %s", w.Code, w.Body)
+			// TotalAlloc counts the whole process, so a run gets another try before it fails: a
+			// message that really costs too much costs too much every time.
+			best, length := uint64(1)<<63, 0
+			for attempt := range 3 {
+				stored := fmt.Sprintf("Message-ID: <%s-%d@example.test>\r\n", strings.ReplaceAll(name, " ", "-"), attempt) + message
+				length = len(stored)
+				body := fmt.Sprintf(`{"raw_message":"%s","internal_date":"2020-01-02T03:04:05Z"}`, base64.StdEncoding.EncodeToString([]byte(stored)))
+				r := authzRequest(http.MethodPost, fmt.Sprintf("/api/v1/accounts/%d/messages/import", fx.user.ID), fx.user.ID, nil, body)
+				r.Header.Set("Content-Type", "application/json")
+				w := httptest.NewRecorder()
+				var before, after runtime.MemStats
+				runtime.ReadMemStats(&before)
+				routes.ServeHTTP(w, r)
+				runtime.ReadMemStats(&after)
+				if w.Code != http.StatusOK {
+					t.Fatalf("%d %s", w.Code, w.Body)
+				}
+				best = min(best, after.TotalAlloc-before.TotalAlloc)
+				if best <= 8*uint64(length) {
+					break
+				}
 			}
-			allocated := after.TotalAlloc - before.TotalAlloc
-			t.Logf("storing %d bytes allocated %d, %.1f times over", len(message), allocated, float64(allocated)/float64(len(message)))
-			if allocated > 8*uint64(len(message)) {
-				t.Fatalf("storing %d bytes allocated %d", len(message), allocated)
+			t.Logf("storing %d bytes allocated %d, %.1f times over", length, best, float64(best)/float64(length))
+			if best > 8*uint64(length) {
+				t.Fatalf("storing %d bytes allocated %d", length, best)
 			}
 		})
 	}

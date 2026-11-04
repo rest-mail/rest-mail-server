@@ -37,6 +37,9 @@ type StreamOptions struct {
 	// the caller must keep nothing of it, and it is left out as Parse leaves it out. Any other
 	// failure the caller answers is an error, because the message must not be taken without it.
 	TextPart func(mediaType string, part io.Reader) error
+	// SourceSize is how large the source is, when that is known. The text of a message that
+	// is one part is about that large, so it is read into one buffer of that size.
+	SourceSize int64
 }
 
 // ParseHeaders reads a message's header block from source and nothing past it, for a caller that
@@ -75,7 +78,7 @@ func ParseStream(ctx context.Context, source io.Reader, options StreamOptions) (
 		s.email.Body = pipeline.Body{ContentType: mediaType}
 		s.textPart(mediaType, decodedSoFar{entity.Body})
 	} else {
-		content, _ := s.readText(entity.Body)
+		content, _ := s.readSized(entity.Body, options.SourceSize)
 		s.email.Body = pipeline.Body{ContentType: mediaType, Content: content}
 		if mediaType == "text/calendar" {
 			s.calendar(content)
@@ -96,6 +99,9 @@ type streamParse struct {
 	budget  *partBudget
 	email   *pipeline.EmailJSON
 	failed  error
+	// copying is the one buffer every text part is read through, because a message of many
+	// small parts would otherwise allocate a whole one for each.
+	copying []byte
 }
 
 // walk reads the parts of a multipart at depth, which the Limits in force bound as Parse's
@@ -168,8 +174,17 @@ func attachmentOf(filename, contentType, disposition, contentID string, stored S
 // read for the next part to be found. When reading fails it answers what it read as well as the
 // error: a message's only part keeps what could be decoded, as Parse keeps it.
 func (s *streamParse) readText(part io.Reader) (string, error) {
+	return s.readSized(part, 0)
+}
+
+// readSized is readText when the text is likely to be about size.
+func (s *streamParse) readSized(part io.Reader, size int64) (string, error) {
 	var text doublingBuilder
-	if _, err := io.Copy(&text, io.LimitReader(part, s.options.MaxText)); err != nil {
+	text.Grow(int(min(size, s.options.MaxText)))
+	if s.copying == nil {
+		s.copying = make([]byte, 32<<10)
+	}
+	if _, err := io.CopyBuffer(&text, io.LimitReader(part, s.options.MaxText), s.copying); err != nil {
 		return text.String(), err
 	}
 	rest, err := io.Copy(io.Discard, part)
