@@ -4,6 +4,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
 )
 
 // localSubmissionBody is a message from alice to a local mailbox, with a Bcc
@@ -121,6 +123,42 @@ func TestSMTP_SubmissionThatCannotBeSignedIsDeferred(t *testing.T) {
 	}
 	if got := back.deliveredTo(); len(got) != 0 {
 		t.Errorf("delivered to %v, want nothing", got)
+	}
+}
+
+// TestSMTP_SubmissionRecordsLocalRefusals: a submission that reaches a remote
+// recipient is answered 250, so its sender can learn a local refusal only from the
+// recipient status. The refusal is recorded whichever recipient came first, and
+// each refusal keeps its own kind (#1899).
+func TestSMTP_SubmissionRecordsLocalRefusals(t *testing.T) {
+	back := newMockBackend()
+	back.local["bob@example.com"] = true
+	back.local["carol@example.com"] = true
+	back.local["dave@example.com"] = true
+	back.deliverStatus["bob@example.com"] = 422
+	back.deliverStatus["carol@example.com"] = 550
+	store := newMockStore()
+	h := newSMTPHarness(t, back, store, true)
+	h.ehlo()
+	if r := h.authPlain(back.user, back.pass); replyCode(r) != "235" {
+		t.Fatalf("AUTH = %q", r)
+	}
+	h.cmd("MAIL FROM:<alice@example.com>")
+	for _, recipient := range []string{"bob@example.com", "far@remote.test", "carol@example.com", "dave@example.com"} {
+		if r := h.cmd("RCPT TO:<" + recipient + ">"); replyCode(r) != "250" {
+			t.Fatalf("RCPT %s = %q", recipient, r)
+		}
+	}
+	if final := h.dataBody(localSubmissionBody); replyCode(final) != "250" {
+		t.Fatalf("DATA = %q", final)
+	}
+	got := store.recordedRefusals(store.lastPersistedID())
+	want := []models.LocalRefusal{
+		{Address: "bob@example.com", Category: models.FailureMailboxFull},
+		{Address: "carol@example.com", Category: models.FailurePolicy},
+	}
+	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Fatalf("recorded refusals = %+v, want %+v", got, want)
 	}
 }
 

@@ -198,7 +198,7 @@ func (h *MessageHandler) RegisterMessages(rs endpoint.Routes) {
 		Errors:      []int{http.StatusForbidden, http.StatusNotFound}, Security: reads}, h.verifyMessageSeal)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/messages/{id}/recipients",
 		OperationID: "listMessageRecipients", Summary: "What happened to a sent message, recipient by recipient", Tags: tags,
-		Description: "For a message this account sent: each recipient's state (queued, retrying, delivered, failed, or unknown when no delivery record was kept), the reason in a sentence derived from the failure category, the attempts made and when the last one was. A remote recipient is read from its outbound queue row; a local one from the copy the send put in that mailbox. The remote server's own reply is never returned, only the category's reason. A message this account did not send has no recipients. Uses the same mail:read authorization as reading the message; another account's message is 404.",
+		Description: "For a message this account sent: each recipient's state (queued, retrying, delivered, failed, or unknown when no delivery record was kept), the reason in a sentence derived from the failure category, the attempts made and when the last one was. A remote recipient is read from its outbound queue row; a local one from the copy the send put in that mailbox, or from the refusal recorded when that mailbox refused it, which is failed and is not tried again. The remote server's own reply is never returned, only the category's reason. A message this account did not send has no recipients. Uses the same mail:read authorization as reading the message; another account's message is 404.",
 		Errors:      []int{http.StatusForbidden, http.StatusNotFound}, Security: reads}, h.listMessageRecipients)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPatch, Path: "/api/v1/messages/{id}",
 		OperationID: "updateMessage", Summary: "Update message flags or move to a folder", Tags: tags,
@@ -1095,6 +1095,7 @@ func (h *MessageHandler) sendComposedMessage(r *http.Request, req sendMessageReq
 		}
 	}
 
+	var refusals []models.LocalRefusal
 	for _, local := range locals {
 		// Local delivery with full inbound pipeline
 		_, deliverErr := h.deliverToLocal(r.Context(), localDeliveryParams{
@@ -1117,8 +1118,10 @@ func (h *MessageHandler) sendComposedMessage(r *http.Request, req sendMessageReq
 			if h.draftSend != nil {
 				return zero, endpoint.Refuse(http.StatusServiceUnavailable, "deferred", "Try again later")
 			}
+			refusals = append(refusals, models.LocalRefusal{Address: local.address, Category: localRefusalCategory(deliverErr)})
 		}
 	}
+	h.recordLocalRefusals(r.Context(), sentMsg.ID, refusals)
 
 	// Publish SSE event for sent message
 	if h.broker != nil {
@@ -2293,6 +2296,7 @@ func (h *MessageHandler) respondToCalendar(r *http.Request, in calendarReplyRequ
 		})
 		if deliverErr != nil {
 			slog.Warn("calendar reply local delivery failed", "recipient", organizer, "error", deliverErr)
+			h.recordLocalRefusals(r.Context(), sentMsg.ID, []models.LocalRefusal{{Address: organizer, Category: localRefusalCategory(deliverErr)}})
 		}
 	} else {
 		// Remote delivery: the Sent copy and its queue entry commit together,

@@ -823,6 +823,9 @@ func (s *session) Data(r io.Reader) (err error) {
 	// to that reference, so a later bounce/DSN can be authenticated back to the
 	// submitting mailbox. submittedMsgID stays nil when nothing was persisted.
 	var submittedMsgID *uint
+	// localRefusals are the local recipients this submission could not deliver to, kept
+	// on the Sent copy for the sender to read in the message's recipient status (#1899).
+	var localRefusals []models.LocalRefusal
 	submittedOnce := false
 
 	// What a local recipient is delivered. Inbound, it is the message as
@@ -991,6 +994,7 @@ func (s *session) Data(r io.Reader) (err error) {
 		}
 		if localErr != nil {
 			failCode, failEnhanced, failMsg = 451, gosmtp.EnhancedCode{4, 3, 0}, "Temporary delivery failure"
+			localRefusals = append(localRefusals, models.LocalRefusal{Address: rcpt, Category: models.FailureOtherTransient})
 			failed++
 			continue
 		}
@@ -1030,6 +1034,7 @@ func (s *session) Data(r io.Reader) (err error) {
 				aliasFailure = reason
 			}
 			slog.Error("smtp: delivery failed", "from", s.mailFrom, "to", rcpt, "error", err)
+			localRefusals = append(localRefusals, models.LocalRefusal{Address: rcpt, Category: localRefusalCategory(err)})
 			// Remember a representative reply for the all-failed case.
 			var apiErr *apiclient.APIError
 			if errors.As(err, &apiErr) {
@@ -1062,6 +1067,13 @@ func (s *session) Data(r io.Reader) (err error) {
 		accepted++
 	}
 
+	// A submission with only local recipients keeps no Sent copy: its client gets the reply.
+	if submittedMsgID != nil {
+		if err := s.store.RecordLocalRefusals(*submittedMsgID, localRefusals); err != nil {
+			slog.Error("smtp: could not record local delivery refusals", "from", s.mailFrom, "error", err)
+		}
+	}
+
 	if aliasFailure != "" {
 		return &gosmtp.SMTPError{Code: 550, EnhancedCode: gosmtp.EnhancedCode{5, 1, 1}, Message: aliasFailure}
 	}
@@ -1089,6 +1101,22 @@ func (s *session) prepareSubmitted(whole func() (string, error)) (*spoolFile, er
 		return nil, err
 	}
 	return spool(strings.NewReader(prepared))
+}
+
+// localRefusalCategory is the kind of refusal the API's answer to a local delivery was.
+func localRefusalCategory(err error) models.FailureCategory {
+	var apiError *apiclient.APIError
+	if errors.As(err, &apiError) {
+		switch apiError.StatusCode {
+		case 404:
+			return models.FailureBadMailbox
+		case 403, 550:
+			return models.FailurePolicy
+		case 422:
+			return models.FailureMailboxFull
+		}
+	}
+	return models.FailureOtherTransient
 }
 
 // aliasRoutingRefusal recognises the API's permanent refusal of a reserved alias that

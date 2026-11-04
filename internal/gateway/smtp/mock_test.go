@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/connlimiter"
 	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
@@ -162,6 +163,8 @@ func (m *mockBackend) lastDeliverReq() *apiclient.DeliverRequest {
 type mockStore struct {
 	mu sync.Mutex
 
+	localRefusals map[uint][]models.LocalRefusal // RecordLocalRefusals calls, by message id
+
 	authorized map[string]bool // MAIL FROM address -> allowed for the account
 	authErr    error           // forced SenderAuthorized error
 	// identities maps submitted spellings to resolved mailbox IDs.
@@ -273,6 +276,22 @@ func (s *mockStore) PersistSubmittedMessage(msg SubmittedMessage) (*uint, error)
 	s.nextMsgID++
 	id := s.nextMsgID
 	return &id, nil
+}
+
+func (s *mockStore) RecordLocalRefusals(messageID uint, refusals []models.LocalRefusal) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.localRefusals == nil {
+		s.localRefusals = map[uint][]models.LocalRefusal{}
+	}
+	s.localRefusals[messageID] = append(s.localRefusals[messageID], refusals...)
+	return nil
+}
+
+func (s *mockStore) recordedRefusals(messageID uint) []models.LocalRefusal {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]models.LocalRefusal(nil), s.localRefusals[messageID]...)
 }
 
 func (s *mockStore) persistedSubmissions() []SubmittedMessage {
