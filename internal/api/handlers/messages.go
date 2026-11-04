@@ -2257,6 +2257,8 @@ func (h *MessageHandler) respondToCalendar(r *http.Request, in calendarReplyRequ
 		RecipientsCc: models.JSONB([]byte("[]")),
 		Subject:      subject,
 		BodyText:     note,
+		RawMessage:   rawMessage,
+		RawSize:      len(rawMessage),
 		IsRead:       true,
 		SizeBytes:    len(rawMessage),
 		ReceivedAt:   now,
