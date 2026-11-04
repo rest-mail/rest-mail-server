@@ -144,7 +144,7 @@ enforces the waits and verifies propagation before activation.
 Private material uses the existing `dkim:v1:` encryption helpers and is excluded
 from JSON. The model's `SetPrivateKey` helper follows the current key's
 `MASTER_KEY` policy, including the existing development mode without encryption.
-The `rotate-key` command re-encrypts both slots along with current DKIM keys,
+The [`rotate-key` command](runbooks/rotating-the-master-key.md) re-encrypts both slots along with current DKIM keys,
 preserving lifecycle metadata and leaving undecryptable rows untouched while
 reporting a failure count. An explicit cascading foreign key removes the slots
 when their domain is deleted. No existing domain or key is backfilled or

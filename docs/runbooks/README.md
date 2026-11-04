@@ -13,6 +13,7 @@ how to check the fix, and when to escalate.
 | [The API is slow](api-slow.md) | The webmail, the app or the admin webmail are slow to answer |
 | [Spam is reaching a customer's inbox](spam-reaching-inbox.md) | A customer forwards spam that got through |
 | [A customer reports bouncing mail](customer-bounce.md) | A customer got a bounce, or a recipient says mail never came |
+| [Rotating the master key](rotating-the-master-key.md) | You are replacing `MASTER_KEY`, it may have leaked, or a rotation went wrong |
 
 ## REST Mail runs in one region
 

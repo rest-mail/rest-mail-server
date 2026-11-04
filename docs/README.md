@@ -29,7 +29,7 @@ code changes.
 | [`dns-providers.md`](dns-providers.md) | Configuring the DNS provider integration. |
 | [`fail2ban-setup.md`](fail2ban-setup.md) | The two-layer IP ban system (in-memory connlimiter + DB `bans` table) and external fail2ban integration. |
 | [`proxy-protocol.md`](proxy-protocol.md) | PROXY protocol support for running behind HAProxy/nginx. |
-| [`runbooks/`](runbooks/README.md) | **Operator runbooks**: what to do when mail queues, an IP is blocklisted, the database is lost, certificates expire, the API is slow, spam gets through or a customer's mail bounces. Also says REST Mail runs in one region. |
+| [`runbooks/`](runbooks/README.md) | **Operator runbooks**: what to do when mail queues, an IP is blocklisted, the database is lost, certificates expire, the API is slow, spam gets through or a customer's mail bounces, and how to rotate the master key. Also says REST Mail runs in one region. |
 | [`email-explained/`](email-explained/README.md) | **Email, explained**: the public guide to how email works, why servers go wrong, and how REST Mail fixes it. The guide on rest-mail.com is built from it. Every claim is sourced; see [its writing rules](email-explained/WRITING.md). |
 
 ## Dated snapshots (point-in-time — not maintained)
