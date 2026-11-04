@@ -2244,6 +2244,27 @@ def an_active_domain_for_autoconfig(transaction):
     local, name = address.split("@")
     if not local or "." not in name:
         return  # Leave malformed addresses to the actual probe.
+    an_active_domain(transaction, name)
+
+
+@hooks.before("restmailDiscover")
+def an_active_domain_for_discovery_coverage(transaction):
+    # Coverage's valid probe generates a domain from the schema and reads any 4xx
+    # as a disagreement, but a schema cannot say which domains are hosted. Host the
+    # generated one without changing the query. Only coverage: fuzz draws its own
+    # names, and hosting them would hide what it finds.
+    if not in_the_coverage_process():
+        return
+    query = urllib.parse.parse_qs(urllib.parse.urlsplit(transaction["fullPath"]).query)
+    name = query.get("domain", [""])[0]
+    if "." not in name:
+        return  # Leave what the schema forbids to the actual probe.
+    an_active_domain(transaction, name)
+
+
+def an_active_domain(transaction, name):
+    """Host the domain called name and make it active, unless the server will not
+    host it, which is left to the probe."""
     origin = "{}//{}:{}".format(
         transaction["protocol"],
         transaction["host"],

@@ -4,6 +4,7 @@ import copy
 import importlib.util
 import io
 import json
+import os
 from pathlib import Path
 import sys
 import types
@@ -112,6 +113,34 @@ class AutoconfigFixtureTests(unittest.TestCase):
         before = copy.deepcopy(transaction)
         self.registered[operation](transaction)
         self.assertEqual(transaction, before)
+
+    def discover(self, domain):
+        transaction = {
+            "protocol": "http:", "host": "fixture.test", "port": "8080",
+            "fullPath": "/.well-known/restmail?" + urllib.parse.urlencode({"domain": domain}),
+            "request": {"headers": {}, "body": ""},
+        }
+        before = copy.deepcopy(transaction)
+        self.registered["restmailDiscover"](transaction)
+        self.assertEqual(transaction, before)
+
+    def test_coverage_hosts_the_domain_restmail_discovery_generates(self):
+        with patch.dict(os.environ, {"CONTRACT_COVERAGE": "1"}):
+            self.discover("example.com")
+        self.assertTrue(self.domains[1]["active"])
+
+    def test_restmail_discovery_leaves_what_the_schema_forbids_to_the_probe(self):
+        with patch.dict(os.environ, {"CONTRACT_COVERAGE": "1"}):
+            for domain in ("vertrag does not match", "1", "a", ""):
+                self.discover(domain)
+        self.assertEqual(len(self.domains), 2)
+        self.assertFalse(self.domains[1]["active"])
+
+    def test_restmail_discovery_prepares_nothing_outside_coverage(self):
+        with patch.dict(os.environ, {"CONTRACT_COVERAGE": "0"}):
+            self.discover("example.com")
+        self.assertFalse(self.domains[1]["active"])
+        self.assertEqual(self.cert_bodies, [])
 
     def test_both_discovery_paths_prepare_the_generated_domain(self):
         for operation in ("mozillaAutoconfig", "mozillaAutoconfigWellKnown"):

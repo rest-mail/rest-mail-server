@@ -5771,6 +5771,7 @@ export interface operations {
     restmailDiscover: {
         parameters: {
             query: {
+                /** @description Exactly one fully-qualified recipient domain, never a single label or a mailbox address. Case, a trailing dot and internationalized names are normalized as for domain creation; a name IDNA refuses is 422 validation_failed even when it matches this pattern. */
                 domain: string;
             };
             header?: never;

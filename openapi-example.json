@@ -34171,7 +34171,7 @@
         "body": {
           "error": {
             "code": "validation_failed",
-            "message": "Request body failed validation",
+            "message": "Query parameters failed validation",
             "details": {
               "fields": {
                 "domain": "Invalid domain query parameter"
@@ -34251,6 +34251,30 @@
             "details": {
               "fields": {
                 "domain": "required"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "single_label_domain": {
+      "summary": "A single-label name is not a fully-qualified domain",
+      "request": {
+        "query": {
+          "domain": "a"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Query parameters failed validation",
+            "details": {
+              "fields": {
+                "domain": "Invalid domain query parameter"
               }
             }
           }
