@@ -185,6 +185,9 @@ REPORTS_AND_AUDIT = (
     "getDeliveryLogs",
     "getDashboardStats",
 )
+# The mailbox reads: listAccounts' link reaches them, and no link starts from
+# any of them.
+MAILBOX_READS = ("listFolders", "listMessages", "searchMessages")
 FOLLOWS_THE_SENT_MESSAGE = {
     "getMessage",
     "updateMessage",
@@ -269,7 +272,8 @@ class Selection(unittest.TestCase):
             - set(CREDENTIALS_AND_BANS)
             - set(PIPELINE_READS)
             - set(SERVER_SETTINGS)
-            - set(REPORTS_AND_AUDIT),
+            - set(REPORTS_AND_AUDIT)
+            - set(MAILBOX_READS),
             link_followers(description, "createDomain") | {"createDomain"},
         )
 
@@ -307,6 +311,19 @@ class Selection(unittest.TestCase):
         self.assertLessEqual(set(REPORTS_AND_AUDIT), set(own_data.MOVED))
         # Its success needs the DMARC fixture, which no API call makes.
         self.assertNotIn("getDmarcReport", own_data.MOVED)
+
+    def test_the_mailbox_reads_have_moved_and_only_listaccounts_reaches_them(self):
+        description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
+        for operation in MAILBOX_READS:
+            self.assertEqual(link_followers(description, operation), set())
+            linking = {
+                start
+                for start in description_operations(description)
+                if operation in link_followers(description, start)
+            }
+            self.assertEqual(linking, {"listAccounts"}, operation)
+        self.assertNotIn("listAccounts", own_data.configure({})["operation-id"])
+        self.assertLessEqual(set(MAILBOX_READS), set(own_data.MOVED))
 
     def test_it_selects_every_alias_operation_and_its_links(self):
         description = yaml.safe_load((ROOT / "openapi.yaml").read_text())

@@ -607,6 +607,9 @@ def row_field(row, field):
 @hooks.after("listTlsReports")
 @hooks.after("listPipelines")
 @hooks.after("listThreads")
+@hooks.after("listFolders")
+@hooks.after("listMessages")
+@hooks.after("searchMessages")
 def the_listing_holds_what_was_made(transaction):
     # A listing's 200 has the same shape with no rows as with the one its
     # before hook made after the reset, so the status and the schema alone
@@ -2344,12 +2347,19 @@ def a_thread_awaiting_a_reply(transaction, account):
     account has a thread whose last message is its own. Answers its subject,
     which names it by the time it is made."""
     subject = f"Contract awaiting {time.time_ns():d}"
+    a_message_in(transaction, account, "Sent", ADMIN, subject, "Waiting for a reply.")
+    return subject
+
+
+def a_message_in(transaction, account, folder, sender, subject, body):
+    """Import a message from sender with that subject and body into the
+    account's folder, through the API."""
     raw = (
-        f"Message-ID: <awaiting-{time.time_ns()}@restmail.test>\r\n"
-        f"From: {ADMIN}\r\n"
-        "To: someone@example.test\r\n"
+        f"Message-ID: <contract-{time.time_ns()}@restmail.test>\r\n"
+        f"From: {sender}\r\n"
+        f"To: {ADMIN if sender != ADMIN else 'someone@example.test'}\r\n"
         f"Date: {formatdate(usegmt=True)}\r\n"
-        f"Subject: {subject}\r\n\r\nWaiting for a reply.\r\n"
+        f"Subject: {subject}\r\n\r\n{body}\r\n"
     ).encode()
     fixture_call(
         transaction,
@@ -2357,11 +2367,10 @@ def a_thread_awaiting_a_reply(transaction, account):
         f"/api/v1/accounts/{account:d}/messages/import",
         {
             "raw_message": base64.b64encode(raw).decode(),
-            "folder": "Sent",
+            "folder": folder,
             "internal_date": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         },
     )
-    return subject
 
 
 @hooks.before("listThreads")
@@ -2400,6 +2409,50 @@ def on_the_admins_mailbox_after_a_reset(transaction):
             made_for_the_listing(transaction, "nothing past the cursor", None)
         else:
             made_for_the_listing(transaction, "thread", {"last_message.subject": subject})
+
+
+@hooks.before("listFolders")
+@hooks.before("listMessages")
+@hooks.before("searchMessages")
+def a_mailbox_read_after_a_reset(transaction):
+    # The mailbox reads listAccounts' link reaches, moved to a clean start:
+    # each exchange, refusals included, resets and seeds first. Their examples
+    # name account 1, the fixture admin's mailbox, which the reset seeds again
+    # under another id; an exchange aimed at a positive account other than
+    # missing's 2147483647 goes to that mailbox, looked up by address. A
+    # listing that succeeds gets something of its own to list, made after the
+    # reset: the folder list a folder, the folder's messages a message in it,
+    # and a search a message its query finds. 0, an undecodable id and every
+    # documented 404 keep their ids. A run with no reset changes nothing here.
+    if not asked_for_a_clean_start():
+        return
+    start_clean(transaction)
+    path, separator, query = transaction["fullPath"].partition("?")
+    parts = path.split("/")
+    if len(parts) < 5 or not positive_id(parts[4]) or parts[4] == "2147483647":
+        return
+    if " > 404" in transaction.get("name", ""):
+        return
+    account = mailbox_id(origin_of(transaction), ADMIN)
+    parts[4] = str(account)
+    transaction["fullPath"] = "/".join(parts) + separator + query
+    if " > 200" not in transaction.get("name", ""):
+        return
+    if parts[-1] == "folders":
+        name = f"Contract own folder {time.time_ns():d}"
+        fixture_call(transaction, "POST", f"/api/v1/accounts/{account:d}/folders", {"name": name})
+        made_for_the_listing(transaction, "folder", {"name": name})
+    elif parts[-1] == "messages" and len(parts) > 6:
+        folder = urllib.parse.unquote(parts[6])
+        subject = f"Contract listed {time.time_ns():d}"
+        a_message_in(transaction, account, folder, "sender@example.test", subject, "Listed.")
+        made_for_the_listing(transaction, "message", {"subject": subject, "folder": folder})
+    elif parts[-1] == "search":
+        # The query's words in the subject, so the full-text search finds it.
+        words = urllib.parse.parse_qs(query).get("q", [""])[0]
+        subject = f"{words} contract found {time.time_ns():d}".strip()
+        a_message_in(transaction, account, "INBOX", "sender@example.test", subject, "Found.")
+        made_for_the_listing(transaction, "message", {"subject": subject})
 
 
 @hooks.before("updateDraft")
