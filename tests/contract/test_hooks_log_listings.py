@@ -67,7 +67,7 @@ class LogListings(unittest.TestCase):
 
         def fixture_call(transaction, method, path, body=None, expect=(200, 201, 204)):
             self.made.append((method, path, body))
-            return {"id": 9}
+            return {"id": 9, "message_id": "<made@restmail.test>"}
 
         names["fixture_call"] = fixture_call
         sleep = patch.object(self.globals["time"], "sleep")
@@ -94,7 +94,6 @@ class LogListings(unittest.TestCase):
         self.assertEqual((method, path), ("POST", "/api/v1/messages/send"))
         self.assertEqual(body["from"], self.globals["ADMIN"])
         [recipient] = body["to"]
-        self.assertTrue(recipient.endswith("@" + self.globals["OWN_LOG_DOMAIN"]))
         return recipient
 
     def test_the_after_hook_checks_both_listings(self):
@@ -113,6 +112,9 @@ class LogListings(unittest.TestCase):
         self.before("getDeliveryLogs", sent)
         self.start_clean.assert_called_once_with(sent)
         recipient = self.the_send()
+        # A remote recipient of its own, so the send is queued.
+        self.assertTrue(recipient.startswith("contract-log-"))
+        self.assertTrue(recipient.endswith("@" + self.globals["OWN_LOG_DOMAIN"]))
         self.after(answered(sent, 200, [{"id": 3, "recipient": "other@x.test"}, {"id": 4, "recipient": recipient}]))
         self.assertNotIn("fail", sent)
 
@@ -122,26 +124,41 @@ class LogListings(unittest.TestCase):
         self.after(answered(sent, 200, []))
         self.assertIn("does not hold the queued message made for it (recipient 'contract-log-", sent["fail"])
 
-    def test_the_pipeline_log_lists_the_outbound_trace(self):
+    def test_the_pipeline_log_lists_the_delivery_trace(self):
+        # The documented 200 asks for direction=inbound, action=continue and
+        # outcome=delivered, so the send goes to a local mailbox: the fixture
+        # admin's own.
         sent = transaction(PIPELINE, 200)
         self.before("listPipelineLogs", sent)
         self.start_clean.assert_called_once_with(sent)
-        recipient = self.the_send()
+        self.assertEqual(self.the_send(), self.globals["ADMIN"])
         self.sleep.assert_called_once_with(1)
         rows = [
-            {"direction": "inbound", "rcpt_to": recipient},
-            {"direction": "outbound", "rcpt_to": recipient, "outcome": "queued"},
+            {"direction": "outbound", "rfc_message_id": "<made@restmail.test>"},
+            {"direction": "inbound", "rfc_message_id": "<made@restmail.test>", "outcome": "delivered"},
         ]
         self.after(answered(sent, 200, rows))
         self.assertNotIn("fail", sent)
 
-    def test_a_pipeline_log_with_only_an_inbound_trace_fails(self):
+    def test_a_pipeline_log_with_only_another_trace_fails(self):
         sent = transaction(PIPELINE, 200)
         self.before("listPipelineLogs", sent)
-        recipient = self.the_send()
-        self.after(answered(sent, 200, [{"direction": "inbound", "rcpt_to": recipient}]))
-        self.assertIn("does not hold the outbound trace made for it", sent["fail"])
-        self.assertIn("it answered 1 other row", sent["fail"])
+        rows = [
+            {"direction": "outbound", "rfc_message_id": "<made@restmail.test>"},
+            {"direction": "inbound", "rfc_message_id": "<other@restmail.test>"},
+        ]
+        self.after(answered(sent, 200, rows))
+        self.assertIn(
+            "does not hold the delivery trace made for it "
+            "(direction 'inbound', rfc_message_id '<made@restmail.test>')",
+            sent["fail"],
+        )
+        self.assertIn("it answered 2 other rows", sent["fail"])
+
+    def test_a_send_without_a_message_id_is_an_error(self):
+        self.globals["fixture_call"] = lambda *a, **k: {"id": 9}
+        with self.assertRaises(RuntimeError):
+            self.before("listPipelineLogs", transaction(PIPELINE, 200))
 
     def test_a_listing_with_nothing_made_fails(self):
         # The control: a 200 whose before hook made nothing.

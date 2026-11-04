@@ -1152,15 +1152,18 @@ hooks.
 
 `getDeliveryLogs` resets and seeds before each exchange too, refusals included
 (`the_delivery_log_after_a_reset`, its first hook). The 200s of the delivery log
-and the pipeline log each get a message the fixture admin sends to a remote
-recipient of their own (`contract-log-<time>@contract-remote.test`) after the
-reset (#1785). The send queues it, which is what the delivery log reads, and
-records its outbound trace, which is what the pipeline log reads
-(`the_pipeline_log_holds_a_send`, after `pipeline_reads_after_a_reset`; it waits
-a second for the background trace writer). The delivery log must list that
-recipient and the pipeline log an outbound trace to it
-(`the_listing_holds_what_was_made`). No link starts from or reaches the
-delivery log.
+and the pipeline log each get a message the fixture admin sends after the reset
+(#1785). For the delivery log it goes to a remote recipient of its own
+(`contract-log-<time>@contract-remote.test`), so the send queues it, which is
+what the delivery log reads; the log must list that recipient. For the pipeline
+log it goes to the fixture admin's own mailbox (`the_pipeline_log_holds_a_send`,
+after `pipeline_reads_after_a_reset`), because Vertrag sends the documented
+listing with the declared defaults `direction=inbound`, `action=continue` and
+`outcome=delivered`: the local delivery's inbound trace is what it asks for. It
+waits a second for the background trace writer, and the log must list an
+inbound trace with the sent message's Message-ID. Both checks are
+`the_listing_holds_what_was_made`. No link starts from or reaches the delivery
+log.
 
 The server settings, `listRoles`, `listCapabilities`, `getServerLimits`,
 `updateServerLimits`, `getServerCapabilities` and `updateServerCapabilities`,

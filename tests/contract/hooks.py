@@ -2176,20 +2176,21 @@ def pipeline_reads_after_a_reset(transaction):
         made_for_the_listing(transaction, "pipeline", {"id": pipeline})
 
 
-# The delivery log and the pipeline log (#1785). Each lists what a send wrote:
-# a message to a remote recipient is queued (outbound_queue, which the
-# delivery log reads) and its outbound pipeline trace is recorded
-# (message_traces, which the pipeline log reads; the testbed keeps every trace,
-# TRACE_SAMPLE_RATE=1). The recipient's domain is a .test name nothing hosts,
-# so the queue only defers it.
+# The delivery log and the pipeline log (#1785). Each lists what a send wrote.
+# A message to a remote recipient is queued (outbound_queue, which the delivery
+# log reads); the recipient's domain is a .test name nothing hosts, so the
+# queue only defers it. A message to a local mailbox is delivered through the
+# inbound pipeline, whose trace (message_traces, which the pipeline log reads)
+# is what the documented 200 asks for: Vertrag sends the declared defaults,
+# direction=inbound, action=continue and outcome=delivered. The testbed keeps
+# every trace (TRACE_SAMPLE_RATE=1).
 OWN_LOG_DOMAIN = "contract-remote.test"
 
 
-def a_message_for_the_logs(transaction):
-    """Send one message from the fixture admin to a remote recipient of its
-    own, after the reset, and return that recipient."""
-    recipient = f"contract-log-{time.time_ns():d}@{OWN_LOG_DOMAIN}"
-    fixture_call(
+def a_message_for_the_logs(transaction, recipient):
+    """Send one message from the fixture admin to recipient, after the reset,
+    and return the sent message."""
+    sent = fixture_call(
         transaction,
         "POST",
         "/api/v1/messages/send",
@@ -2200,7 +2201,9 @@ def a_message_for_the_logs(transaction):
             "body_text": "Sent by the contract for the delivery and pipeline logs.",
         },
     )
-    return recipient
+    if not isinstance(sent, dict) or not sent.get("message_id"):
+        raise RuntimeError("the fixture send returned no message")
+    return sent
 
 
 @hooks.before("getDeliveryLogs")
@@ -2215,25 +2218,28 @@ def the_delivery_log_after_a_reset(transaction):
     start_clean(transaction)
     if " > 200" not in transaction.get("name", ""):
         return
-    recipient = a_message_for_the_logs(transaction)
+    recipient = f"contract-log-{time.time_ns():d}@{OWN_LOG_DOMAIN}"
+    a_message_for_the_logs(transaction, recipient)
     made_for_the_listing(transaction, "queued message", {"recipient": recipient})
 
 
 @hooks.before("listPipelineLogs")
 def the_pipeline_log_holds_a_send(transaction):
     # Registered after pipeline_reads_after_a_reset, which resets first. A
-    # listing that succeeds gets the outbound trace of a message sent to a
-    # remote recipient of its own after the reset, and
-    # the_listing_holds_what_was_made fails it unless the answer lists that
-    # trace. A run with no reset changes nothing here.
+    # listing that succeeds gets the inbound trace of a message the fixture
+    # admin sends itself after the reset, and the_listing_holds_what_was_made
+    # fails it unless the answer lists that trace, by its Message-ID. A run
+    # with no reset changes nothing here.
     if not asked_for_a_clean_start() or " > 200" not in transaction.get("name", ""):
         return
-    recipient = a_message_for_the_logs(transaction)
+    sent = a_message_for_the_logs(transaction, ADMIN)
     # Traces are written in the background, a batch every 500 ms
     # (internal/trace/recorder.go).
     time.sleep(1)
     made_for_the_listing(
-        transaction, "outbound trace", {"direction": "outbound", "rcpt_to": recipient}
+        transaction,
+        "delivery trace",
+        {"direction": "inbound", "rfc_message_id": sent["message_id"]},
     )
 
 
