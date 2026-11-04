@@ -30,6 +30,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   them. A message already 7-bit goes out byte for byte, and BINARY still sends
   the stored octets. `Message.Size` must now be the converted length, which the
   new `wireform` package measures.
+- ENVELOPE and BODYSTRUCTURE strings carry no 8-bit text in a session without
+  UTF8=ACCEPT (RFC 3501 §4.3.1). A personal or group name decoded from an encoded
+  word and a parameter decoded from RFC 2231 go out as encoded words, and ENVELOPE
+  reads the converted header, so an address field with an 8-bit mailbox reads NIL.
+  After ENABLE UTF8=ACCEPT, valid UTF-8 still goes out as a literal.
 - Binary data holding a NUL can be fetched: BODY sends it BASE64 and BINARY as a
   literal8. A NUL in a header or in text is still refused.
 - A SELECT or EXAMINE refused with BAD keeps the mailbox already selected, with

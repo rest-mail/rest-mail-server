@@ -117,25 +117,22 @@ func (s *Session) fetchResponse(seq int, msg imap.Message, tokens []string) erro
 			plain = append(plain, fmt.Sprintf("INTERNALDATE %q", msg.Date.Format("02-Jan-2006 15:04:05 -0700")))
 		case up == "ENVELOPE":
 			// ENVELOPE's recipient/reference fields and its date come from the
-			// message's own headers (RFC 3501 §7.4.2), so load the raw message.
-			// This is still metadata: loadRaw never sets \Seen. A load failure
-			// is reported before sending this message's response.
-			r, ok := loadStored()
-			if _, sendable := loadSent(); !sendable {
-				ok = false
-			}
-			plain = append(plain, "ENVELOPE "+message.BuildEnvelope(msg, r, ok))
+			// message's own headers (RFC 3501 §7.4.2), so load the message. This
+			// is still metadata: loadSent never sets \Seen. A load failure is
+			// reported before sending this message's response.
+			r, ok := loadSent()
+			plain = append(plain, "ENVELOPE "+message.BuildEnvelope(msg, r, ok, s.utf8))
 		case up == "BODYSTRUCTURE":
 			// Body structure is metadata (RFC 3501 §7.4.2): it must never set
 			// \Seen. It needs the raw message to describe the MIME layout.
 			if r, ok := loadSent(); ok {
-				plain = append(plain, "BODYSTRUCTURE "+message.BuildBodyStructure(r, true))
+				plain = append(plain, "BODYSTRUCTURE "+message.BuildBodyStructure(r, true, s.utf8))
 			}
 		case up == "BODY":
 			// The bare BODY item is the non-extensible form of BODYSTRUCTURE
 			// (no extension fields); likewise metadata, so no \Seen.
 			if r, ok := loadSent(); ok {
-				plain = append(plain, "BODY "+message.BuildBodyStructure(r, false))
+				plain = append(plain, "BODY "+message.BuildBodyStructure(r, false, s.utf8))
 			}
 		case up == "RFC822":
 			if r, ok := loadSent(); ok {
