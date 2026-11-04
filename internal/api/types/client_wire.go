@@ -359,6 +359,12 @@ type VanishedUID struct {
 	ModSeq uint64 `json:"mod_seq" minimum:"1" description:"The folder's mod-sequence when the message left it"`
 }
 
+// AccountTimeZone is the account's own time zone, which IMAP SEARCH's calendar
+// days follow. Null means none is set.
+type AccountTimeZone struct {
+	TimeZone *string `json:"time_zone" format:"iana-time-zone" example:"Europe/Berlin" description:"An IANA time zone name; null means none is set, and IMAP uses UTC"`
+}
+
 type Quota struct {
 	MessageCount   int64   `json:"message_count"`
 	PercentUsed    float64 `json:"percent_used"`

@@ -46,20 +46,21 @@ func TestServer_AppendWithDateTime_KeepsInternalDate(t *testing.T) {
 	if len(req.Flags) != 1 || req.Flags[0] != `\Seen` {
 		t.Errorf("import flags = %v, want [\\Seen]", req.Flags)
 	}
-	// The stored message answers FETCH INTERNALDATE with the client's instant and
-	// falls on that day for SEARCH ON / BEFORE / SINCE.
+	// The stored message answers FETCH INTERNALDATE with the client's instant, in
+	// UTC, and with no account zone SEARCH ON / BEFORE / SINCE use that UTC day
+	// (#1557).
 	if _, st := h.command("a3", "SELECT INBOX"); !strings.Contains(st, "OK") {
 		t.Fatalf("SELECT status = %q", st)
 	}
 	unt, st := h.command("a4", "FETCH 1 INTERNALDATE")
-	if !strings.Contains(st, "OK") || !strings.Contains(strings.Join(unt, "\n"), `INTERNALDATE "07-Feb-1994 22:43:04 -0800"`) {
-		t.Errorf("FETCH INTERNALDATE = %q / %q, want the client's date-time", unt, st)
+	if !strings.Contains(st, "OK") || !strings.Contains(strings.Join(unt, "\n"), `INTERNALDATE "08-Feb-1994 06:43:04 +0000"`) {
+		t.Errorf("FETCH INTERNALDATE = %q / %q, want the client's date-time in UTC", unt, st)
 	}
 	for _, c := range []struct{ criteria, want string }{
-		{"ON 7-Feb-1994", "* SEARCH 1"},
-		{"BEFORE 8-Feb-1994", "* SEARCH 1"},
-		{"SINCE 8-Feb-1994", "* SEARCH"},
-		{"BEFORE 7-Feb-1994", "* SEARCH"},
+		{"ON 8-Feb-1994", "* SEARCH 1"},
+		{"BEFORE 9-Feb-1994", "* SEARCH 1"},
+		{"SINCE 9-Feb-1994", "* SEARCH"},
+		{"BEFORE 8-Feb-1994", "* SEARCH"},
 	} {
 		unt, st := h.command("a5", "SEARCH %s", c.criteria)
 		if !strings.Contains(st, "OK") || len(unt) != 1 || strings.TrimSpace(unt[0]) != c.want {

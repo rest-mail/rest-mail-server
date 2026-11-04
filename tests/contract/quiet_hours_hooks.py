@@ -13,14 +13,17 @@ import urllib.request
 import vertrag_hooks as hooks
 
 
-def register_quiet_hours_hooks(admin_token, asked_for_a_clean_start):
+def register_quiet_hours_hooks(
+    admin_token, asked_for_a_clean_start=lambda: False,
+    route="quiet-hours", operations=("getQuietHours", "setQuietHours")
+):
     def prepare_quiet_hours(transaction):
         if " as " in transaction.get("name", "") or not str(
             transaction.get("expected", {}).get("statusCode", "")
         ).startswith("2"):
             return
         path = transaction.get("fullPath", "")
-        if path != "/api/v1/accounts/1/quiet-hours":
+        if path != f"/api/v1/accounts/1/{route}":
             return
         headers = transaction.get("request", {}).get("headers") or {}
         if not any(
@@ -28,6 +31,16 @@ def register_quiet_hours_hooks(admin_token, asked_for_a_clean_start):
             for key, value in headers.items()
         ):
             return
+        if route == "time-zone":
+            body = transaction.get("request", {}).get("body")
+            if transaction.get("request", {}).get("method") == "PUT" and body:
+                try:
+                    setting = json.loads(body)
+                except (TypeError, ValueError):
+                    setting = None
+                if isinstance(setting, dict) and setting.get("time_zone") == "x":
+                    setting["time_zone"] = "UTC"
+                    transaction["request"]["body"] = json.dumps(setting)
         if not asked_for_a_clean_start():
             a_live_account(transaction)
 
@@ -43,11 +56,11 @@ def register_quiet_hours_hooks(admin_token, asked_for_a_clean_start):
             accounts = json.load(response).get("data") or []
         account_id = accounts[0].get("id") if accounts else None
         if type(account_id) is not int or account_id < 1:
-            raise RuntimeError("quiet-hours fixture has no live account")
+            raise RuntimeError(f"{route} fixture has no live account")
         # Only the path. A run using this hook holds time_zone with a pin: probes.py,
         # and TestQuietHoursCoverageWithVertrag's own vertrag.yml.
-        transaction["fullPath"] = f"/api/v1/accounts/{account_id}/quiet-hours"
+        transaction["fullPath"] = f"/api/v1/accounts/{account_id}/{route}"
 
-    for operation in ("getQuietHours", "setQuietHours"):
+    for operation in operations:
         hooks.before(operation)(prepare_quiet_hours)
     return prepare_quiet_hours

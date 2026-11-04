@@ -57,12 +57,15 @@ type patchRecord struct {
 }
 
 type fakeAPI struct {
-	mu      sync.Mutex
-	nextID  uint
-	msgs    map[uint]*fakeMsg
-	patches []patchRecord
-	deletes []uint
-	imports []apiclient.ImportRequest
+	timeZone      *string
+	timeZoneFails bool
+	timeZoneReads int
+	mu            sync.Mutex
+	nextID        uint
+	msgs          map[uint]*fakeMsg
+	patches       []patchRecord
+	deletes       []uint
+	imports       []apiclient.ImportRequest
 	// marks is the highest ID each folder held before a delete removed it,
 	// so the folder listing's uid_next does not fall, as the API keeps it.
 	marks map[string]uint
@@ -182,6 +185,7 @@ var fakeReceivedAt = time.Date(2025, 3, 15, 10, 0, 0, 0, time.UTC)
 
 func (f *fakeAPI) handler() http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/v1/accounts/{acct}/time-zone", f.accountTimeZone)
 	mux.HandleFunc("POST /api/v1/gateway-sessions", f.login)
 	mux.HandleFunc("DELETE /api/v1/gateway-sessions/current", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
 	mux.HandleFunc("GET /api/v1/accounts/{acct}/folders", f.listFolders)
@@ -215,6 +219,18 @@ func (f *fakeAPI) login(w http.ResponseWriter, _ *http.Request) {
 	lr.Data.CredentialID, lr.Data.CredentialKind = 1, "password"
 	lr.Data.User.Email = "alice@example.com"
 	writeJSON(w, lr)
+}
+
+// accountTimeZone answers as the API does: the zone set on the account, or null.
+func (f *fakeAPI) accountTimeZone(w http.ResponseWriter, _ *http.Request) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.timeZoneReads++
+	if f.timeZoneFails {
+		http.Error(w, `{"error":{"code":"internal_error","message":"Internal server error"}}`, http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, map[string]any{"data": map[string]any{"time_zone": f.timeZone}})
 }
 
 func (f *fakeAPI) listMessages(w http.ResponseWriter, r *http.Request) {

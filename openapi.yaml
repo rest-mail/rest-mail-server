@@ -2656,6 +2656,14 @@ paths:
               operationId: getAccount
               parameters:
                 id: '$response.body#/data/0/id'
+            getAccountTimeZone:
+              operationId: getAccountTimeZone
+              parameters:
+                id: '$response.body#/data/0/id'
+            setAccountTimeZone:
+              operationId: setAccountTimeZone
+              parameters:
+                id: '$response.body#/data/0/id'
             listCredentials:
               operationId: listCredentials
               parameters:
@@ -10205,6 +10213,93 @@ paths:
   # ═══════════════════════════════════════════════════════════════
   # Contacts
   # ═══════════════════════════════════════════════════════════════
+  /api/v1/accounts/{id}/time-zone:
+    parameters:
+      - $ref: "#/components/parameters/AccountId"
+    get:
+      operationId: getAccountTimeZone
+      tags: [Accounts]
+      security:
+        - CookieAuth: [mail:read]
+        - BearerAuth: [mail:read]
+        - APIKeyAuth: [mail:read]
+        - BasicAuth: [mail:read]
+      summary: Get the account's time zone
+      description: The IANA time zone whose calendar days IMAP SEARCH ON, BEFORE and SINCE compare for this account. Null when none is set, and IMAP then uses UTC. Timestamps are stored and returned in UTC whatever this says.
+      responses:
+        "200":
+          description: The account's time zone
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/AccountTimeZone"
+        "403":
+          description: Access denied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          description: Too many requests
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      operationId: setAccountTimeZone
+      tags: [Accounts]
+      security:
+        - CookieAuth: [mail:write]
+        - BearerAuth: [mail:write]
+        - APIKeyAuth: [mail:write]
+        - BasicAuth: [mail:write]
+      summary: Set the account's time zone
+      description: Set the IANA time zone whose calendar days IMAP SEARCH ON, BEFORE and SINCE compare for this account, or null to clear it and use UTC. It applies to the next SEARCH, including on connections already open. An unknown name is refused. Stored timestamps do not change, and IMAP INTERNALDATE is still rendered in UTC.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccountTimeZone"
+      responses:
+        "400":
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "200":
+          description: The saved time zone
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/AccountTimeZone"
+        "403":
+          description: Access denied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          description: Too many requests
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/v1/accounts/{id}/quiet-hours:
     parameters:
       - $ref: "#/components/parameters/AccountId"
@@ -27792,6 +27887,16 @@ components:
     # ─────────────────────────────────────────────────────────────
     # Contact
     # ─────────────────────────────────────────────────────────────
+    AccountTimeZone:
+      type: object
+      required: [time_zone]
+      properties:
+        time_zone:
+          type: [string, "null"]
+          format: iana-time-zone
+          example: Europe/Berlin
+          description: An IANA time zone name; null means none is set, and IMAP uses UTC
+
     QuietHoursSetting:
       type: object
       required: [enabled, start, end, time_zone]
