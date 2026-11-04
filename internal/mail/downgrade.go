@@ -1,8 +1,7 @@
 package mail
 
 import (
-	"io"
-	netmail "net/mail"
+	"mime"
 	"strings"
 	"unicode/utf8"
 
@@ -32,11 +31,13 @@ var unstructuredFields = map[string]bool{
 // for these clients.
 //
 //   - Subject, Comments and Keywords become RFC 2047 encoded-words.
-//   - In address fields an internationalized domain becomes its A-label. An
-//     address whose local part is non-ASCII cannot be expressed in ASCII, so it
-//     becomes an empty group whose encoded display name shows the original
-//     (RFC 6857 section 3.2.1): the client still sees who it was, and a reply
-//     cannot silently go to a different mailbox.
+//   - An address field changes only what holds an 8-bit octet, see
+//     downgradeAddressField: names, group names and comments become encoded-words,
+//     and an internationalized domain becomes its A-label. An address whose local
+//     part is non-ASCII cannot be expressed in ASCII, so it becomes an empty group
+//     whose encoded display name shows the original (RFC 6857 section 3.1.8): the
+//     client still sees who it was, and a reply cannot silently go to a different
+//     mailbox.
 //   - Content-Type and Content-Disposition keep their meaning: non-ASCII
 //     parameters become RFC 2231 parameters, and every other parameter stays as
 //     it was sent, including one in a charset nothing here can read.
@@ -68,7 +69,7 @@ func DowngradeHeaders(raw string) string {
 			b.WriteString("\r\n")
 			continue
 		}
-		b.WriteString(downgradeField(name, unfold(value)))
+		b.WriteString(downgradeField(name, value))
 		b.WriteString("\r\n")
 	}
 	b.WriteString(sep)
@@ -76,179 +77,19 @@ func DowngradeHeaders(raw string) string {
 	return b.String()
 }
 
-// downgradedBlock is what DowngradeHeaders puts before the body of a message whose
-// header holds an 8-bit octet.
-func downgradedBlock(header, sep string) string {
-	var size headerSink
-	writeDowngraded(&size, header, sep)
-	var b strings.Builder
-	b.Grow(int(size))
-	writeDowngraded(&b, header, sep)
-	return b.String()
-}
-
-// wordSink takes a downgraded header block as it is made: a strings.Builder to send it,
-// a headerSink to measure it.
-type wordSink interface {
-	io.Writer
-	io.StringWriter
-}
-
-// headerSink is a wordSink that keeps only the count.
-type headerSink int
-
-func (c *headerSink) Write(p []byte) (int, error) {
-	*c += headerSink(len(p))
-	return len(p), nil
-}
-
-func (c *headerSink) WriteString(s string) (int, error) {
-	*c += headerSink(len(s))
-	return len(s), nil
-}
-
-// writeDowngraded writes the header block of DowngradeHeaders, field by field.
-func writeDowngraded(w wordSink, header, sep string) {
-	eachHeaderField(header, func(span string, bare bool) {
-		writeDowngradedField(w, span, bare)
-	})
-	_, _ = w.WriteString(sep)
-}
-
-func writeDowngradedField(w wordSink, span string, bare bool) {
-	if !containsNonASCII(span) {
-		writeFolded(w, span, bare)
-		_, _ = w.WriteString("\r\n")
-		return
-	}
-	// A NUL is a space on its way to a client, so no encoded word spells one (#1921).
-	span = strings.ReplaceAll(span, "\x00", " ")
-	field := span
-	if bare {
-		var b strings.Builder
-		b.Grow(len(span) + len(span)/4)
-		writeFolded(&b, span, true)
-		field = b.String()
-	}
-	name, value, ok := strings.Cut(field, ":")
-	if !ok {
-		// Not a header field at all. Keeping non-ASCII is not an option, and
-		// neither is losing it, so it is encoded whole, as the IMAP engine does:
-		// its octets survive, and a reader still finds no field in it.
-		wireform.WriteEncodedWords(w, unfold(field))
-		_, _ = w.WriteString("\r\n")
-		return
-	}
-	downgradeField(w, name, unfold(value))
-	_, _ = w.WriteString("\r\n")
-}
-
-// measuredBlock stands in for a downgraded header block when measuring: it reads the
-// same to the conversion that follows, so the conversion's count plus dropped is that of
-// the real block. A field rewritten to carry no 8-bit octet keeps only its name, since
-// its text only ever counts. ok is false when a blank line in the block ends the header
-// early, so that text is the body, and counts for what it says.
-func measuredBlock(header, sep string) (block string, dropped int, ok bool) {
-	var size headerSink
-	writeMeasuredBlock(&size, header, sep, &dropped)
-	var b strings.Builder
-	b.Grow(int(size))
-	dropped = 0
-	writeMeasuredBlock(&b, header, sep, &dropped)
-	block = b.String()
-	if strings.HasPrefix(block, "\r\n") || strings.Index(block, "\r\n\r\n") != len(block)-4 {
-		return "", 0, false
-	}
-	return block, dropped, true
-}
-
-func writeMeasuredBlock(w wordSink, header, sep string, dropped *int) {
-	names := &nameOnly{w: w}
-	eachHeaderField(header, func(span string, bare bool) {
-		if !containsNonASCII(span) || keptWhenMeasured(span) {
-			writeDowngradedField(w, span, bare)
-			return
-		}
-		names.named, names.dropped = false, 0
-		writeDowngradedField(names, span, bare)
-		_, _ = w.WriteString("\r\n")
-		*dropped += names.dropped - len("\r\n")
-	})
-	_, _ = w.WriteString(sep)
-}
-
-// keptWhenMeasured reports whether the conversion reads more of a downgraded 8-bit field
-// than its name: a Content-Type, or a name still 8-bit, which encodes the whole field.
-// A line with no name is encoded whole, so it stays too.
-func keptWhenMeasured(span string) bool {
-	name, _, ok := strings.Cut(span, ":")
-	return !ok || containsNonASCII(name) || strings.EqualFold(strings.TrimSpace(name), "Content-Type")
-}
-
-// nameOnly passes on what a field says up to and including its colon.
-type nameOnly struct {
-	w       wordSink
-	named   bool
-	dropped int
-}
-
-func (n *nameOnly) Write(p []byte) (int, error) {
-	if n.named {
-		n.dropped += len(p)
-		return len(p), nil
-	}
-	return n.WriteString(string(p))
-}
-
-func (n *nameOnly) WriteString(s string) (int, error) {
-	if !n.named {
-		at := strings.IndexByte(s, ':')
-		if at < 0 {
-			return n.w.WriteString(s)
-		}
-		n.named = true
-		_, _ = n.w.WriteString(s[:at+1])
-		n.dropped += len(s) - at - 1
-		return len(s), nil
-	}
-	n.dropped += len(s)
-	return len(s), nil
-}
-
-// writeFolded writes a field's lines, each break a CRLF. bare says some aren't yet.
-func writeFolded(w wordSink, span string, bare bool) {
-	if !bare {
-		_, _ = w.WriteString(span)
-		return
-	}
-	for {
-		i := strings.IndexByte(span, '\n')
-		if i < 0 {
-			_, _ = w.WriteString(span)
-			return
-		}
-		_, _ = w.WriteString(strings.TrimSuffix(span[:i], "\r"))
-		_, _ = w.WriteString("\r\n")
-		span = span[i+1:]
-	}
-}
-
-func downgradeField(w wordSink, name, value string) {
-	value = strings.TrimSpace(value)
+// downgradeField converts one field; value is still folded.
+func downgradeField(name, folded string) string {
 	key := strings.ToLower(strings.TrimSpace(name))
+	if addressFields[key] {
+		if value, ok := downgradeAddressField(len(name)+1, folded); ok {
+			return name + ":" + value
+		}
+	}
+	// White space only: a no-break space at either end is text.
+	value := strings.Trim(unfold(folded), " \t")
 	switch {
 	case unstructuredFields[key]:
-		_, _ = w.WriteString(name)
-		_, _ = w.WriteString(": ")
-		writeEncodedText(w, value)
-		return
-	case addressFields[key]:
-		if list, ok := downgradeAddressList(value); ok {
-			_, _ = w.WriteString(name)
-			_, _ = w.WriteString(": ")
-			_, _ = w.WriteString(list)
-			return
-		}
+		return name + ": " + encodeText(value)
 	case key == "content-type" || key == "content-disposition":
 		if field, ok := wireform.ParameterField(name, value); ok {
 			return field
@@ -258,39 +99,6 @@ func downgradeField(w wordSink, name, value string) {
 	_, _ = w.WriteString(strings.TrimSpace(name))
 	_, _ = w.WriteString(": ")
 	writeEncodedText(w, value)
-}
-
-// downgradeAddressList renders each address with only ASCII. ok is false when
-// the value does not parse as an address list.
-func downgradeAddressList(value string) (string, bool) {
-	addrs, err := netmail.ParseAddressList(value)
-	if err != nil || len(addrs) == 0 {
-		return "", false
-	}
-	out := make([]string, 0, len(addrs))
-	for _, a := range addrs {
-		out = append(out, downgradeAddress(a))
-	}
-	return strings.Join(out, ", "), true
-}
-
-func downgradeAddress(a *netmail.Address) string {
-	at := strings.LastIndexByte(a.Address, '@')
-	local, domain := a.Address, ""
-	if at >= 0 {
-		local, domain = a.Address[:at], a.Address[at+1:]
-	}
-	if !containsNonASCII(local) {
-		if ascii, err := DomainASCII(domain); err == nil {
-			// String encodes a non-ASCII display name as an encoded-word.
-			return (&netmail.Address{Name: a.Name, Address: local + "@" + ascii}).String()
-		}
-	}
-	original := a.Address
-	if a.Name != "" {
-		original = a.Name + " <" + a.Address + ">"
-	}
-	return encodeText(original) + " :;"
 }
 
 // encodeText renders text as encoded-words when it is not plain ASCII. Octets

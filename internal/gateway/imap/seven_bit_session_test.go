@@ -209,6 +209,65 @@ func TestParameterInOtherCharsetThroughTheGateway(t *testing.T) {
 	}
 }
 
+// The RFC 6857 downgrade of an address field keeps group names and comments, so a
+// session without UTF-8 reads them in the header and in ENVELOPE, and the size
+// RFC822.SIZE reports counts the converted field. After UTF8=ACCEPT the field is as
+// stored.
+func TestAddressTextThroughTheGateway(t *testing.T) {
+	const raw = "From: Jörg <j@example.com> (Büro)\r\n" +
+		"To: Grüppe: a@example.com, b@example.com;\r\n" +
+		"Cc: Ann <a@example.com> (kept), Jörg <j@example.com>\r\n\r\nHallo\r\n"
+	const want = "From: =?UTF-8?Q?J=C3=B6rg?= <j@example.com> (=?UTF-8?Q?B=C3=BCro?=)\r\n" +
+		"To: =?UTF-8?Q?Gr=C3=BCppe?= : a@example.com, b@example.com;\r\n" +
+		"Cc: Ann <a@example.com> (kept), =?UTF-8?Q?J=C3=B6rg?= <j@example.com>\r\n\r\n"
+	c := dialStore(t, raw)
+	c.do("a1", "LOGIN jorg@example.test pw")
+	c.do("a2", "SELECT INBOX")
+	if _, got := fetchedLiteral(t, c.do("a3", "FETCH 1 BODY.PEEK[HEADER]")); got != want {
+		t.Fatalf("HEADER:\n got %q\nwant %q", got, want)
+	}
+	envelope := c.do("a4", "FETCH 1 ENVELOPE")
+	for _, part := range []string{
+		`(NIL NIL "=?UTF-8?Q?Gr=C3=BCppe?=" NIL)`,
+		`(NIL NIL "a" "example.com")`,
+		`(NIL NIL "b" "example.com")`,
+		`(("=?UTF-8?Q?J=C3=B6rg?=" NIL "j" "example.com"))`,
+	} {
+		if !strings.Contains(envelope, part) {
+			t.Fatalf("%q lacks %q", envelope, part)
+		}
+	}
+	framing, whole := fetchedLiteral(t, c.do("a5", "FETCH 1 (RFC822.SIZE BODY.PEEK[])"))
+	if wantSize := fmt.Sprintf("RFC822.SIZE %d ", len(whole)); !strings.Contains(framing, wantSize) {
+		t.Fatalf("%q lacks %q; BODY[] sent %d octets", framing, wantSize, len(whole))
+	}
+
+	c = dialStore(t, raw)
+	c.do("a1", "LOGIN jorg@example.test pw")
+	c.do("a2", "ENABLE UTF8=ACCEPT")
+	c.do("a3", "SELECT INBOX")
+	if _, got := fetchedLiteral(t, c.do("a4", "FETCH 1 BODY.PEEK[]")); got != raw {
+		t.Fatalf("BODY[] after UTF8=ACCEPT:\n got %q\nwant %q", got, raw)
+	}
+}
+
+// An unquoted 8-bit parameter survives the downgrade of the top-level header: the
+// field keeps its name, type and other parameters, and BODYSTRUCTURE agrees.
+func TestUnquotedParameterThroughTheGateway(t *testing.T) {
+	const raw = "Content-Type: application/pdf; name=Jörg.pdf; other=keep\r\n\r\ndata\r\n"
+	c := dialStore(t, raw)
+	c.do("a1", "LOGIN jorg@example.test pw")
+	c.do("a2", "SELECT INBOX")
+	_, header := fetchedLiteral(t, c.do("a3", "FETCH 1 BODY.PEEK[HEADER]"))
+	if want := "Content-Type: application/pdf;\r\n name*=UTF-8''J%C3%B6rg.pdf;\r\n other=keep\r\n\r\n"; header != want {
+		t.Fatalf("HEADER = %q\n  want %q", header, want)
+	}
+	got := c.do("a4", "FETCH 1 BODYSTRUCTURE")
+	if want := `"APPLICATION" "PDF" ("NAME" "=?UTF-8?Q?J=C3=B6rg=2Epdf?=" "OTHER" "keep")`; !strings.Contains(got, want) {
+		t.Fatalf("%q lacks %q", got, want)
+	}
+}
+
 // RFC 3516 BINARY is the way to the stored octets, whatever BODY sends.
 func TestBinaryKeepsStoredOctetsThroughTheGateway(t *testing.T) {
 	c := dialStore(t, sevenBitRaw)
