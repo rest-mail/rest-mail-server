@@ -156,5 +156,76 @@ class ManifestTests(unittest.TestCase):
         self.assertTrue(re.fullmatch(r"[a-z0-9-]+", reference.TLS_SECRET))
 
 
+class PublishedRecordTests(unittest.TestCase):
+    ZONE = reference.zone_file("restmail-ci.test", "mail.restmail-ci.test", "10.96.4.5")
+
+    def test_records_are_added_and_the_serial_grows(self):
+        key = "v=DKIM1; k=rsa; p=" + "A" * 400
+        text = reference.zone_with_records(self.ZONE, {"sel._domainkey": key})
+        self.assertRegex(text, r"(?m)^@ IN SOA ns\.restmail-ci\.test\. hostmaster\.restmail-ci\.test\. 2 ")
+        line = next(l for l in text.splitlines() if l.startswith("sel._domainkey IN TXT "))
+        parts = re.findall(r'"([^"]*)"', line)
+        self.assertEqual("".join(parts), key)
+        self.assertTrue(all(len(part) <= 255 for part in parts))
+        self.assertIn("mail IN A 10.96.4.5\n", text)
+
+    def test_publishing_again_replaces_the_records_and_bumps_again(self):
+        once = reference.zone_with_records(self.ZONE, {"a._domainkey": "v=DKIM1; p=A"})
+        twice = reference.zone_with_records(once, {"b._domainkey": "v=DKIM1; p=B"})
+        self.assertEqual(twice.count(reference.RECORDS_BEGIN), 1)
+        self.assertNotIn("a._domainkey", twice)
+        self.assertIn('b._domainkey IN TXT "v=DKIM1; p=B"', twice)
+        self.assertRegex(twice, r"(?m)^@ IN SOA \S+ \S+ 3 ")
+
+    def test_refuses_what_would_break_the_zone(self):
+        for name, value in (("a b", "v"), ("a._domainkey", 'say "hi"'), ("a._domainkey", ""), ("../x", "v")):
+            with self.subTest(name=name, value=value), self.assertRaises(ValueError):
+                reference.zone_with_records(self.ZONE, {name: value})
+        with self.assertRaises(ValueError):
+            reference.zone_with_records("$ORIGIN x.test.\n", {"a": "v"})
+
+
+class PeerTests(unittest.TestCase):
+    def test_the_peers_mx_is_one_address_for_smtp_and_https(self):
+        items = reference.peer_front("restmail-peer", "10.244.0.20", 10025, "10.244.0.7")["items"]
+        service, *slices = items
+        self.assertEqual(service["kind"], "Service")
+        self.assertNotIn("selector", service["spec"])
+        self.assertEqual({(p["name"], p["port"], p["targetPort"]) for p in service["spec"]["ports"]},
+                         {("smtp", 25, 10025), ("https", 443, 443)})
+        by_port = {s["ports"][0]["name"]: s for s in slices}
+        self.assertEqual(by_port["smtp"]["endpoints"][0]["addresses"], ["10.244.0.20"])
+        self.assertEqual(by_port["smtp"]["ports"][0]["port"], 10025)
+        self.assertEqual(by_port["https"]["endpoints"][0]["addresses"], ["10.244.0.7"])
+        for endpoint_slice in slices:
+            self.assertEqual(endpoint_slice["metadata"]["labels"]["kubernetes.io/service-name"], service["metadata"]["name"])
+        with self.assertRaises(ValueError):
+            reference.peer_front("p", "", 10025, "10.0.0.1")
+
+    def test_the_policy_opens_only_the_peer_gateways_port_from_the_first_gateway(self):
+        policy = reference.peer_egress_policy("restmail", "restmail", "restmail-peer", 10025)
+        self.assertEqual(policy["metadata"]["namespace"], "restmail")
+        self.assertEqual(policy["spec"]["podSelector"]["matchLabels"],
+                         {"app.kubernetes.io/instance": "restmail", "app.kubernetes.io/component": "smtp-gateway"})
+        self.assertEqual(policy["spec"]["policyTypes"], ["Egress"])
+        rule = policy["spec"]["egress"][0]
+        self.assertEqual(rule["ports"], [{"protocol": "TCP", "port": 10025}])
+        self.assertEqual(rule["to"][0]["namespaceSelector"]["matchLabels"], {"kubernetes.io/metadata.name": "restmail-peer"})
+
+    def test_the_peer_port_is_the_charts_container_port(self):
+        import yaml
+        values = yaml.safe_load((ROOT / "helm/restmail/values.yaml").read_text())
+        args = reference.parse_args(["--mail-domain", "d.test", "--mail-host", "mail.d.test"])
+        self.assertEqual(args.peer_smtp_port, values["smtpGateway"]["containerPorts"]["inbound"])
+        import contextlib, io
+        with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
+            reference.parse_args(["--mail-domain", "d.test", "--mail-host", "mail.d.test", "--peer-namespace", "p"])
+
+    def test_corefile_zones_already_served_are_kept(self):
+        once = reference.corefile_with_zones(KIND_COREFILE, ["a.test", "b.test"])
+        served = re.findall(r"^(\S+?):53 \{\n    errors\n    file ", once, flags=re.M)
+        self.assertEqual(served, ["a.test", "b.test"])
+
+
 if __name__ == "__main__":
     unittest.main()

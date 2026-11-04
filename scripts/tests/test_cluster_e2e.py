@@ -78,7 +78,8 @@ class ArgumentTests(unittest.TestCase):
     def test_every_check_is_a_step_and_stage_3_comes_last(self):
         self.assertEqual(cluster_e2e.STEPS, ("health", "description", "admin-sign-in", "mailbox",
                                              "domain-live", "smtp-rcpt", "imap-sign-in", "filter-validate",
-                                             "contract-examples", "mail-out", "mail-in", "pop3-retrieve"))
+                                             "contract-examples", "dkim-key", "mail-out", "mail-in",
+                                             "pop3-retrieve", "dkim-receive", "restmail-peer"))
         for step in cluster_e2e.STEPS:
             self.assertTrue(callable(getattr(cluster_e2e.Stages, step.replace("-", "_"))), step)
 
@@ -653,8 +654,9 @@ class EntryPointTests(unittest.TestCase):
         self.assertIn('--commit "$GITHUB_SHA"', runs[0]["run"])
         self.assertIn('--report-dir "$REPORT_DIR"', runs[0]["run"])
         self.assertIn('--ingress-url "https://$INGRESS_HOST"', runs[0]["run"])
-        self.assertIn('--ingress-ca "$RUNNER_TEMP/tls.crt"', runs[0]["run"])
+        self.assertIn('--ingress-ca "$RUNNER_TEMP/ca.crt"', runs[0]["run"])
         self.assertIn('--reference-namespace "$REFERENCE_NAMESPACE"', runs[0]["run"])
+        self.assertIn('--peer-namespace "$PEER_NAMESPACE" --peer-release "$RELEASE"', runs[0]["run"])
         # The old inline two-request smoke is gone: the script owns it now.
         self.assertNotIn("Request the API through a port-forward", names)
 
@@ -671,7 +673,8 @@ class EntryPointTests(unittest.TestCase):
         self.assertEqual(values, {"enabled": True, "className": "nginx", "host": host,
                                   "tls": {"enabled": True, "secretName": "restmail-ci-tls"}})
         steps = {step["name"]: step.get("run", "") for step in workflow["jobs"]["install"]["steps"]}
-        self.assertIn(f"DNS:{host}", steps["Create the self-signed TLS Secret"])
+        self.assertIn('issue "$NAMESPACE" restmail-ci-tls "$INGRESS_HOST"', steps["Create the TLS Secrets"])
+        self.assertIn("subjectAltName=DNS:$3", steps["Create the TLS Secrets"])
         controller = steps["Install the ingress controller"]
         self.assertIn('sha256sum -c -', controller)
         self.assertRegex(workflow["env"]["INGRESS_NGINX_SHA256"], r"^[0-9a-f]{64}$")
@@ -702,6 +705,141 @@ class EntryPointTests(unittest.TestCase):
         for needle in ("go run", "go build", "go test", "GOTOOLCHAIN"):
             self.assertNotIn(needle, source)
         self.assertTrue(os.access(SCRIPT, os.X_OK))
+
+
+class DkimTests(unittest.TestCase):
+    def test_a_new_key_and_the_txt_record_of_its_public_half(self):
+        key, record = cluster_e2e.dkim_keypair(1024)
+        self.assertIn("-----BEGIN PRIVATE KEY-----", key)
+        self.assertRegex(record, r"^v=DKIM1; k=rsa; p=[A-Za-z0-9+/]+=*$")
+        import base64, subprocess
+        public = subprocess.run(["openssl", "pkey", "-pubout", "-outform", "DER"], input=key.encode(),
+                                capture_output=True, check=True).stdout
+        self.assertEqual(record.split("p=", 1)[1], base64.b64encode(public).decode())
+
+    def test_the_domain_id_comes_from_the_list(self):
+        domains = [{"id": 3, "name": "other.test"}, {"id": 7, "name": "Restmail-CI.test"}]
+        self.assertEqual(cluster_e2e.find_domain(domains, "restmail-ci.test"), 7)
+        with self.assertRaisesRegex(cluster_e2e.StepFailed, "no domain"):
+            cluster_e2e.find_domain(domains, "missing.test")
+
+    def test_only_a_found_dkim_record_under_the_owner_counts(self):
+        check = {"records": [
+            {"type": "DKIM", "name": "old._domainkey.restmail-ci.test", "status": "ok", "value": "v=DKIM1; p=A"},
+            {"type": "DKIM", "name": "s1._domainkey.restmail-ci.test", "status": "missing"},
+            {"type": "MX", "name": "restmail-ci.test", "status": "ok"}]}
+        self.assertIsNone(cluster_e2e.dkim_record_check(check, "s1._domainkey.restmail-ci.test"))
+        check["records"][1].update(status="ok", value="v=DKIM1; p=B")
+        self.assertEqual(cluster_e2e.dkim_record_check(check, "s1._domainkey.restmail-ci.test")["value"],
+                         "v=DKIM1; p=B")
+
+    def test_the_signature_tags_are_read_through_folding(self):
+        raw = (b"DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed;\r\n\td=restmail-ci.test; s=sel;\r\n"
+               b"\tb=abc\r\n def==\r\nFrom: a@restmail-ci.test\r\n\r\nbody\r\n")
+        tags = cluster_e2e.dkim_tags(raw)
+        self.assertEqual((tags["d"], tags["s"], tags["a"], tags["b"]), ("restmail-ci.test", "sel", "rsa-sha256", "abcdef=="))
+        with self.assertRaisesRegex(cluster_e2e.StepFailed, "no DKIM-Signature"):
+            cluster_e2e.dkim_tags(b"From: a@b.test\r\n\r\nx\r\n")
+
+    def test_verification_gets_the_published_record_for_the_owner_only(self):
+        asked = []
+
+        def verify(raw, dnsfunc):
+            asked.append(dnsfunc(b"sel._domainkey.restmail-ci.test.", timeout=5))
+            asked.append(dnsfunc(b"other._domainkey.restmail-ci.test."))
+            return True
+        self.assertTrue(cluster_e2e.dkim_verify(b"m", "sel._domainkey.restmail-ci.test", "v=DKIM1; p=K", verify))
+        self.assertEqual(asked, [b"v=DKIM1; p=K", None])
+
+    def test_dkim_receive_needs_the_signature_of_the_domain_under_the_selector(self):
+        args = cluster_e2e.parse_args(["--commit", "c"])
+        stage = cluster_e2e.Stages(args, cluster=None)
+        raw = b"DKIM-Signature: v=1; a=rsa-sha256; d=other.test; s=sel; b=x\r\nFrom: a@restmail-ci.test\r\n\r\nb\r\n"
+        stage.state.update(domain="restmail-ci.test", mail_out_raw=raw,
+                           dkim={"selector": "sel", "owner": "sel._domainkey.restmail-ci.test", "record": "v=DKIM1; p=K"})
+        with self.assertRaisesRegex(cluster_e2e.StepFailed, "want d=restmail-ci.test s=sel"):
+            stage.dkim_receive()
+        stage.state["mail_out_raw"] = raw.replace(b"d=other.test", b"d=restmail-ci.test")
+        with patch.object(cluster_e2e, "dkim_verify", return_value=False), \
+                self.assertRaisesRegex(cluster_e2e.StepFailed, "does not verify"):
+            stage.dkim_receive()
+        with patch.object(cluster_e2e, "dkim_verify", return_value=True), \
+                patch.dict(os.environ, {"DKIMPY_VERSION": "1.1.8"}):
+            self.assertIn("verified=dkimpy-1.1.8", stage.dkim_receive())
+
+    def test_a_signature_the_pinned_dkimpy_makes_verifies_and_a_changed_body_does_not(self):
+        try:
+            import dkim
+        except ImportError:
+            self.skipTest("dkimpy is not on the path (the workflow pins it)")
+        key, record = cluster_e2e.dkim_keypair(1024)
+        message = b"From: a@restmail-ci.test\r\nTo: b@x.test\r\nSubject: s\r\n\r\nbody\r\n"
+        signed = dkim.sign(message, b"sel", b"restmail-ci.test", key.encode()) + message
+        self.assertTrue(cluster_e2e.dkim_verify(signed, "sel._domainkey.restmail-ci.test", record))
+        self.assertFalse(cluster_e2e.dkim_verify(signed.replace(b"body", b"bodx"),
+                                                 "sel._domainkey.restmail-ci.test", record))
+
+
+class RestmailPeerTests(unittest.TestCase):
+    URL = "https://mail.restmail-ci2.test/restmail/messages"
+
+    def log(self, *entries):
+        return "\n".join(["not json", *(json.dumps(e) for e in entries)])
+
+    def test_the_restmail_delivery_to_the_recipient_is_found(self):
+        log = self.log({"msg": cluster_e2e.RESTMAIL_DELIVERED, "url": self.URL, "recipient": "Cluster-E2E@restmail-ci2.test"},
+                       {"msg": cluster_e2e.RESTMAIL_DELIVERED, "url": "https://x/restmail/messages", "recipient": "o@x.test"},
+                       {"msg": "queue: RESTMAIL capability detected", "host": "mail.restmail-ci2.test"})
+        self.assertEqual(cluster_e2e.restmail_hops(log, "cluster-e2e@restmail-ci2.test"), ([self.URL], []))
+
+    def test_a_fallback_to_smtp_is_reported(self):
+        log = self.log({"msg": cluster_e2e.RESTMAIL_FELL_BACK, "host": "mail.restmail-ci2.test", "error": "x"})
+        self.assertEqual(cluster_e2e.restmail_hops(log, "a@b.test"), ([], ["mail.restmail-ci2.test"]))
+
+    def test_the_log_lines_are_the_ones_the_queue_writes(self):
+        worker = (ROOT / "internal/gateway/queue/worker.go").read_text()
+        self.assertIn(f'"{cluster_e2e.RESTMAIL_DELIVERED}", "url", messagesURL, "recipient"', worker)
+        self.assertIn(f'"{cluster_e2e.RESTMAIL_FELL_BACK}"', worker)
+
+    def test_only_the_peers_smtp_stamp_counts(self):
+        raw = (b"Received: from mail.restmail-ci.test by mail.reference.test with ESMTPS id 1;\r\n Wed, 4 Nov 2026\r\n"
+               b"Received: from x by mail.restmail-ci2.test with HTTPS;\r\n Wed, 4 Nov 2026\r\n"
+               b"Subject: s\r\n\r\nb\r\n")
+        self.assertEqual(cluster_e2e.smtp_stamps(raw, "mail.restmail-ci2.test"), [])
+        stamped = b"Received: from mail.restmail-ci.test (10.0.0.1)\r\n by mail.restmail-ci2.test with ESMTPS id 2;\r\n x\r\n" + raw
+        self.assertEqual(len(cluster_e2e.smtp_stamps(stamped, "mail.restmail-ci2.test")), 1)
+
+    def test_without_a_peer_namespace_the_step_says_what_it_needs(self):
+        args = cluster_e2e.parse_args(["--commit", "c"])
+        stage = cluster_e2e.Stages(args, cluster=None)
+        stage.state.update(token="t", admin="admin@restmail-ci.test")
+        with self.assertRaisesRegex(cluster_e2e.StepFailed, "--peer-namespace"):
+            stage.restmail_peer()
+
+    def test_the_new_steps_run_in_order_after_the_mail_they_check(self):
+        steps = list(cluster_e2e.STEPS)
+        self.assertLess(steps.index("contract-examples"), steps.index("dkim-key"))
+        self.assertLess(steps.index("dkim-key"), steps.index("mail-out"))
+        self.assertLess(steps.index("mail-out"), steps.index("dkim-receive"))
+        self.assertLess(steps.index("dkim-key"), steps.index("restmail-peer"))
+
+    def test_the_peer_install_has_its_own_names_and_a_trusted_ca(self):
+        base = yaml.safe_load((ROOT / "helm/restmail/values-ci.yaml").read_text())
+        peer = yaml.safe_load((ROOT / "helm/restmail/values-ci-peer.yaml").read_text())
+        env = yaml.safe_load((ROOT / ".github/workflows/cluster-e2e.yml").read_text())["env"]
+        self.assertEqual(peer["mailserver"], {"hostname": env["PEER_MAIL_HOST"], "domain": env["PEER_MAIL_DOMAIN"]})
+        self.assertNotEqual(peer["mailserver"]["domain"], base["mailserver"]["domain"])
+        self.assertEqual(peer["api"]["ingress"]["host"], env["PEER_MAIL_HOST"])
+        self.assertEqual(peer["tls"]["secretName"], peer["api"]["ingress"]["tls"]["secretName"])
+        self.assertTrue(base["smtpGateway"]["allowPrivateDestinations"])
+        steps = {s["name"]: s.get("run", "") for s in
+                 yaml.safe_load((ROOT / ".github/workflows/cluster-e2e.yml").read_text())["jobs"]["install"]["steps"]}
+        self.assertIn('issue "$PEER_NAMESPACE" restmail-ci2-tls "$PEER_MAIL_HOST"', steps["Create the TLS Secrets"])
+        self.assertIn("--from-file=ca.crt=ca.crt", steps["Create the TLS Secrets"])
+        self.assertIn("values-ci-peer.yaml", steps["Install the chart"])
+        self.assertIn('--peer-namespace "$PEER_NAMESPACE"', steps["Deploy the reference mail server"])
+        self.assertIn('sha256sum -c -', steps["Stages 1 to 3 against the install"])
+        self.assertRegex(env["DKIMPY_SHA256"], r"^[0-9a-f]{64}$")
 
 
 if __name__ == "__main__":
