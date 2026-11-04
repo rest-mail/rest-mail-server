@@ -233,6 +233,20 @@ def a_live_domain_for_the_link(transaction):
             )
 
 
+@hooks.before("domainDNSCheck")
+def the_stale_key_example_on_a_live_domain(transaction):
+    # dkim_record_differs names stale.test, id 7, which only the in-process test
+    # builds (TestDomainDNSCheckExamples proves its body). The live suite has no
+    # such domain, so its valid probes would be lost to a 404. Here the exchange
+    # goes to the fixture domain that "found" uses, as a 200 on the same route.
+    path, separator, query = transaction.get("fullPath", "").partition("?")
+    if path != "/api/v1/admin/domains/7/dns":
+        return
+    if str(transaction.get("expected", {}).get("statusCode")) != "200":
+        return
+    transaction["fullPath"] = "/api/v1/admin/domains/1/dns" + (separator + query if separator else "")
+
+
 @hooks.before("getDomain")
 def get_a_domain_of_its_own(transaction):
     if not asked_for_a_clean_start():

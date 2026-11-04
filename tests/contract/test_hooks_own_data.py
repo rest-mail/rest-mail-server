@@ -274,6 +274,19 @@ class OwnDataHooks(unittest.TestCase):
         self.assertEqual(set(self.stub.stash), set(self.hooks.SURVIVES_A_RESET))
         self.assertEqual(self.stub.stash["clean_starts"], 1)
 
+    def test_the_stale_key_example_runs_on_a_live_domain(self):
+        transaction = self.transaction(200, "/api/v1/admin/domains/7/dns?x=1")
+        self.hooks.the_stale_key_example_on_a_live_domain(transaction)
+        self.assertEqual(transaction["fullPath"], "/api/v1/admin/domains/1/dns?x=1")
+        for status, path in (
+            (404, "/api/v1/admin/domains/7/dns"),
+            (200, "/api/v1/admin/domains/7/relay"),
+            (200, "/api/v1/admin/domains/6/dns"),
+        ):
+            transaction = self.transaction(status, path)
+            self.hooks.the_stale_key_example_on_a_live_domain(transaction)
+            self.assertEqual(transaction["fullPath"], path)
+
     def test_a_link_gets_one_stand_in_per_reset_and_other_ids_stay(self):
         self.clean_starts_on()
         self.the_run_created_its_domain()
