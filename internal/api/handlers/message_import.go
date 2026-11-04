@@ -75,7 +75,7 @@ func (h *MessageImportHandler) Register(rs endpoint.Routes) {
 	}}
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/accounts/{id}/messages/import",
 		OperationID: "importMessage", Summary: "Store a message the account already has", Tags: []string{"Messages"},
-		Description: "Stores original message octets, folder, supported system flags and required internal_date without delivery rules or push notifications. Requires mail:import on the destination, which every account is granted on its own mailbox by the importer role; an owner can revoke that grant, and the account is then refused with 403. A message whose Message-ID and exact octets are already in that account and folder is skipped without changing its flags or date; the same Message-ID with different octets is stored as another message. With always_store true no such check is made: a new message is stored with its own id, flags and date, and the one already there is left as it was. With match_submission true and folder Sent, a message whose Message-ID is on one authenticated SMTP submission saved in that account's Sent in the last 5 minutes is not stored, whatever always_store says, and the answer names the saved message with imported false. Messages without Message-ID use a deterministic SHA-256 import identity; the raw source remains unchanged. The one exception is a leading mbox From_ separator line (RFC 4155), which is dropped so the message starts at its first header, and counted as mbox_separator_stripped; any other header block that does not parse is refused. Every attempt the route can read is audited in a messages.import summary, never one entry per message of a session. With import_session (from createImportSession) it is counted in that session's summary, written once when the session closes; without it, it is written at once as a summary of its one message. A summary counts, per folder, messages imported (in the same transaction as the message), deduplicated (a copy matched to its submission included) and refused (stored nothing, including server failures), and the bytes imported. A request over the body limit, or one that cannot be read as this request, is refused before it is counted. An unknown, closed or other opener's import_session is refused as import_session_not_found. The decoded message is bounded by SMTP_MAX_MESSAGE_SIZE (10 MiB by default); the general API body limit may be stricter. Deleted state and up to 100 case-insensitive keywords of 1–255 ASCII bytes are preserved. Keywords must be RFC 3501 atoms without backslash. Deleted messages use IMAP deletion state, not API tombstones; EXPUNGE removes them.",
+		Description: "Stores original message octets, folder, supported system flags and required internal_date without delivery rules or push notifications. Requires mail:import on the destination, which every account is granted on its own mailbox by the importer role; an owner can revoke that grant, and the account is then refused with 403. A message whose Message-ID and exact octets are already in that account and folder is skipped without changing its flags or date; the same Message-ID with different octets is stored as another message. With always_store true no such check is made: a new message is stored with its own id, flags and date, and the one already there is left as it was. With match_submission true and folder Sent, a message whose Message-ID is on one authenticated SMTP submission saved in that account's Sent in the last 5 minutes is not stored, whatever always_store says, and the answer names the saved message with imported false. Messages without Message-ID use a deterministic SHA-256 import identity; the raw source remains unchanged. The one exception is a leading mbox From_ separator line (RFC 4155), which is dropped so the message starts at its first header, and counted as mbox_separator_stripped; any other header block that does not parse is refused. Every attempt the route can read is audited in a messages.import summary, never one entry per message of a session. With import_session (from createImportSession) it is counted in that session's summary, written once when the session closes; without it, it is written at once as a summary of its one message. A summary counts, per folder, messages imported (in the same transaction as the message), deduplicated (a copy matched to its submission included) and refused (stored nothing, including server failures), and the bytes imported. A request over the body limit, or one that cannot be read as this request, is refused before it is counted. An unknown, closed or other opener's import_session is refused as import_session_not_found. The decoded message is bounded by SMTP_MAX_MESSAGE_SIZE (10 MiB by default); the general API body limit may be stricter. Deleted state and up to 100 case-insensitive keywords of 1–255 ASCII bytes are preserved. Keywords must be RFC 3501 atoms without backslash. Deleted messages use IMAP deletion state, not API tombstones; EXPUNGE removes them. A folder name is saved in Unicode Normalization Form C. A name that had to be converted and matches an existing folder that does not hold this message goes to \"name (2)\" or the next free number, and the answer's folder says which.",
 		Errors:      []int{http.StatusForbidden, http.StatusNotFound, http.StatusConflict, http.StatusRequestEntityTooLarge},
 		Security:    handlerChecked(models.CapMailImport, folderSchemes...),
 		Middleware:  []endpoint.Middleware{cap}, DescribedRequest: importMessageRequest{}}, h.importSpooledMessage)
@@ -151,13 +151,16 @@ func (h *MessageImportHandler) storeImportedMessage(r *http.Request, accountID u
 	if source.tooLarge() {
 		return result, endpoint.Refuse(http.StatusRequestEntityTooLarge, "message_too_large", "The decoded message exceeds the import size limit")
 	}
-	if body.Folder == "" || strings.EqualFold(body.Folder, "INBOX") {
+	if body.Folder == "" {
 		body.Folder = "INBOX"
 	}
 	problems := map[string]string{}
 	if problem := rmail.FolderNameProblem(body.Folder); problem != "" {
 		problems["folder"] = problem
 	}
+	// A name in another form is converted, and then may not be free: importFolder decides.
+	converted := rmail.NormalizeFolderName(body.Folder) != body.Folder
+	body.Folder = rmail.CanonicalFolder(body.Folder)
 	if source.size == 0 {
 		problems["raw_message"] = "required: a complete RFC 5322 message"
 	}
@@ -236,6 +239,12 @@ func (h *MessageImportHandler) storeImportedMessage(r *http.Request, accountID u
 	}
 	ctx := r.Context()
 	err = h.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if converted {
+			if err := importFolder(tx, accountID, &msg, source.checksum); err != nil {
+				return err
+			}
+			body.Folder = msg.Folder
+		}
 		// Serialize only imports sharing this exact destination/identity. Do
 		// not add a global Message-ID uniqueness rule to ordinary delivery.
 		key := sha256.Sum256([]byte(fmt.Sprintf("restmail/import/%d/%s/%s", accountID, body.Folder, msg.MsgID)))
@@ -374,6 +383,50 @@ func (h *MessageImportHandler) storeImportedMessage(r *http.Request, accountID u
 		}})
 	}
 	return result, nil
+}
+
+// storedImportCopy is the copy of a message already in folder: the same Message-ID with the same
+// octets. It is nil when folder holds none.
+func storedImportCopy(tx *gorm.DB, accountID uint32, folder, msgID string, checksum [sha256.Size]byte) (*storedImportSource, error) {
+	var sameID []storedImportSource
+	err := tx.Model(&models.Message{}).Select(storedImportSourceColumns).
+		Where("mailbox_id = ? AND folder = ? AND message_id IN ?", accountID, folder,
+			[]string{msgID, strings.Trim(msgID, "<>")}).Order("id").Find(&sameID).Error
+	if err != nil {
+		return nil, err
+	}
+	return sameContent(sameID, checksum), nil
+}
+
+// importFolder chooses msg's folder when the name the import gave had to be converted to NFC, so
+// it may now match a folder that already exists. A folder is refused to any other client, but
+// imported mail is neither refused nor mixed with what is there: it goes in "name (2)", or the
+// next free number. A folder that holds this very message is where an earlier run put it, so a
+// rerun skips the message there and adds nothing. An importer sends the rest of the source folder
+// to the folder the first message's answer names, or a folder would split at its second message.
+func importFolder(tx *gorm.DB, accountID uint32, msg *models.Message, checksum [sha256.Size]byte) error {
+	name := msg.Folder
+	key := sha256.Sum256([]byte(fmt.Sprintf("restmail/import-folder/%d/%s", accountID, name)))
+	if err := tx.Exec("SELECT pg_advisory_xact_lock(?)", int64(binary.BigEndian.Uint64(key[:8]))).Error; err != nil {
+		return err
+	}
+	for n := 2; ; n++ {
+		var held int64
+		if err := tx.Model(&models.Message{}).Where("mailbox_id = ? AND folder = ?", accountID, msg.Folder).Count(&held).Error; err != nil {
+			return err
+		}
+		if held == 0 {
+			return nil
+		}
+		existing, err := storedImportCopy(tx, accountID, msg.Folder, msg.MsgID, checksum)
+		if err != nil {
+			return err
+		}
+		if existing != nil {
+			return nil
+		}
+		msg.Folder = rmail.NumberedFolder(name, n)
+	}
 }
 
 // importedText is a decoded header or body as a text column can hold it.

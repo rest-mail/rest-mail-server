@@ -298,8 +298,9 @@ The host:
 - Creates a folder when a message first names it, or returns
   `imap.ErrNoSuchMailbox` (wrapped is fine) from `Append`, `Copy` or `Move`, which
   the server answers with `NO [TRYCREATE]` so the client can CREATE and retry.
-- Applies Unicode normalisation (NFC) to UTF-8 names if it wants it; the library
-  has no normalisation tables.
+- Supplies Unicode normalisation (NFC) through `imap.NameNormalizer` if it wants
+  it, since the library has no normalisation tables. The library then uses the
+  normal form for every name and reports a changed one with `OLDNAME`.
 
 ### Messages, UIDs and flags
 

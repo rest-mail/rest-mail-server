@@ -6,7 +6,7 @@ import (
 	"github.com/rest-mail/go-imap/pkg/imap"
 )
 
-func (s *Session) createFolder(tag string, creator imap.FolderCreator, name string) {
+func (s *Session) createFolder(tag string, creator imap.FolderCreator, name, supplied string) {
 	name = strings.TrimRight(name, "/")
 	if name == "" || strings.EqualFold(name, "INBOX") {
 		s.tagged(tag, "NO", "Invalid folder name")
@@ -33,6 +33,7 @@ func (s *Session) createFolder(tag string, creator imap.FolderCreator, name stri
 		s.tagged(tag, "NO", "CREATE failed")
 		return
 	}
+	s.announceOldName(name, false, supplied)
 	s.tagged(tag, "OK", "CREATE completed")
 }
 

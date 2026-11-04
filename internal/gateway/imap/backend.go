@@ -166,6 +166,10 @@ type mailbox struct {
 }
 
 var _ goimap.MailboxCloser = (*mailbox)(nil)
+var (
+	_ goimap.Mailbox        = (*mailbox)(nil)
+	_ goimap.NameNormalizer = (*mailbox)(nil)
+)
 
 // The mailbox also satisfies the library's optional UIDPLUS (RFC 4315) and atomic
 // MOVE (RFC 6851) interfaces, so the server advertises UIDPLUS and emits

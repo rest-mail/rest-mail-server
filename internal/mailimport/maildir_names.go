@@ -58,7 +58,7 @@ func maildirFolder(directory string) (folder, reason string) {
 			}
 		}
 	}
-	folder = rmail.CanonicalFolder(strings.Join(levels, "/"))
+	folder = foldInbox(strings.Join(levels, "/"))
 	if problem := rmail.FolderNameProblem(folder); problem != "" {
 		folder = safeFolder(folder)
 		if reason == "" {

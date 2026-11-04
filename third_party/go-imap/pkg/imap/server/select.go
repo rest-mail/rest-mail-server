@@ -87,6 +87,7 @@ func (s *Session) handleSelect(tag, args string, readOnly bool) {
 		s.send("* OK [CLOSED] Previous mailbox is now closed")
 	}
 
+	supplied := folder
 	folder, ok = s.folderName(folder)
 	if !ok {
 		s.tagged(tag, "NO", "No such mailbox")
@@ -190,6 +191,7 @@ func (s *Session) handleSelect(tag, args string, readOnly bool) {
 	}
 	available := s.availableFlags(messages)
 	s.send("* FLAGS (%s)", available)
+	s.announceOldName(folder, false, supplied)
 	if readOnly {
 		// A read-only mailbox permits no permanent flag changes (RFC 3501 §6.3.2).
 		s.send("* OK [PERMANENTFLAGS ()] No permanent flags permitted")

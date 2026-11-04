@@ -120,7 +120,7 @@ func IMAP(ctx context.Context, options IMAPOptions, maxBytes int64, visit Visit)
 		if folder.Delim != 0 && folder.Delim != '/' {
 			name = strings.ReplaceAll(name, string(folder.Delim), "/")
 		}
-		name = rmail.CanonicalFolder(name)
+		name = foldInbox(name)
 		reason := ""
 		if problem := rmail.FolderNameProblem(name); problem != "" {
 			name, reason = safeFolder(name), "not a valid folder name ("+problem+")"
