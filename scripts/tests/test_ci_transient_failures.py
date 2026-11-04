@@ -1,5 +1,6 @@
 """CI survives a registry hiccup, and only that (#1847)."""
 
+import fnmatch
 import os
 import re
 import stat
@@ -224,6 +225,118 @@ class WorkflowWiringTests(unittest.TestCase):
         minutes = re.search(r"(?m)^    timeout-minutes: (\d+)$", job)
         self.assertIsNotNone(minutes, "a hung build would hold a runner for six hours")
         self.assertLess(int(minutes.group(1)), 60)
+
+
+# upload-artifact does not retry a dropped connection, so each use decides what one
+# does to its job (#1896). Add a new artifact to one of these sets.
+SECOND_TRY = " (second try)"
+READ_BY_PEOPLE = {
+    "api-contract-changes",
+    "api-compatibility-newest-main",
+    "mail-conformance",
+    "coverage-report",
+    "e2e-container-logs",
+    "cluster-report",
+    "api-gap-report",
+    "load-results",
+}
+READ_BY_A_LATER_JOB = {
+    "example-proofs-rest",
+    "coverage-part-rest",
+    "example-proofs-api-${{ matrix.shard }}",
+    "coverage-part-api-${{ matrix.shard }}",
+    "live-example-proofs",
+}
+
+
+def steps(job):
+    """A job's steps as text, each with its first field indented like the others."""
+    found = re.split(r"(?m)^      - ", job)[1:]
+    return ["        " + step for step in found]
+
+
+def step_field(step, name):
+    match = re.search(rf"(?m)^        {re.escape(name)}: (.+)$", step)
+    return match.group(1) if match else ""
+
+
+def step_with(step):
+    return step[step.index("        with:\n") :].rstrip()
+
+
+def artifact(step):
+    return re.search(r"(?m)^          name: (.+)$", step).group(1)
+
+
+def uploads():
+    """Every first try at an upload as (workflow:job, its step, the step after it)."""
+    found = []
+    for workflow in sorted(WORKFLOWS.glob("*.yml")):
+        for name, job in jobs(workflow).items():
+            listed = steps(job) + [""]
+            for step, following in zip(listed, listed[1:]):
+                if "uses: actions/upload-artifact@" not in step:
+                    continue
+                if not step_field(step, "name").endswith(SECOND_TRY):
+                    found.append((f"{workflow.name}:{name}", step, following))
+    return found
+
+
+class ArtifactUploadTests(unittest.TestCase):
+    def test_each_upload_says_who_reads_it(self):
+        names = [artifact(step) for _, step, _ in uploads()]
+        self.assertTrue(names)
+        self.assertEqual(set(names), READ_BY_PEOPLE | READ_BY_A_LATER_JOB)
+
+    def test_no_first_try_can_fail_its_job(self):
+        for where, step, _ in uploads():
+            with self.subTest(where=where, artifact=artifact(step)):
+                self.assertEqual(step_field(step, "continue-on-error"), "true")
+
+    def test_an_upload_only_people_read_is_not_tried_again(self):
+        for where, step, following in uploads():
+            if artifact(step) in READ_BY_PEOPLE:
+                with self.subTest(where=where, artifact=artifact(step)):
+                    self.assertFalse(step_field(following, "name").endswith(SECOND_TRY))
+
+    def test_an_upload_a_later_job_reads_is_tried_again_and_then_fails_the_job(self):
+        for where, step, following in uploads():
+            if artifact(step) not in READ_BY_A_LATER_JOB:
+                continue
+            with self.subTest(where=where, artifact=artifact(step)):
+                self.assertEqual(
+                    step_field(following, "name"),
+                    f"{step_field(step, 'name')}{SECOND_TRY}",
+                )
+                self.assertEqual(step_field(following, "continue-on-error"), "")
+                condition = step_field(following, "if")
+                self.assertIn(
+                    f"steps.{step_field(step, 'id')}.outcome == 'failure'", condition
+                )
+                self.assertIn(step_field(step, "if"), condition)
+                self.assertEqual(step_field(following, "uses"), step_field(step, "uses"))
+                self.assertEqual(step_with(following), step_with(step))
+                # The reset can come after the artifact finalized.
+                self.assertIn("          overwrite: true", step_with(step))
+
+    def test_a_job_downloads_only_what_is_tried_again(self):
+        wanted = re.findall(
+            r"--pattern '([^']+)'", (ROOT / "scripts/ci_example_proofs.sh").read_text()
+        )
+        for workflow in sorted(WORKFLOWS.glob("*.yml")):
+            for job in jobs(workflow).values():
+                for step in steps(job):
+                    if "uses: actions/download-artifact@" in step:
+                        wanted += re.findall(
+                            r"(?m)^          (?:name|pattern): (.+)$", step
+                        )
+        self.assertEqual(
+            set(wanted), {"example-proofs-*", "coverage-part-*", "live-example-proofs"}
+        )
+        for pattern in wanted:
+            with self.subTest(pattern=pattern):
+                self.assertTrue(fnmatch.filter(READ_BY_A_LATER_JOB, pattern))
+                self.assertFalse(fnmatch.filter(READ_BY_PEOPLE, pattern))
 
 
 if __name__ == "__main__":
