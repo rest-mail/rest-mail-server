@@ -158,5 +158,74 @@ class AuthorizationCellHooks(unittest.TestCase):
                 self.assertEqual(request, before)
 
 
+class ProtocolSignInAuthorizationHooks(unittest.TestCase):
+    def setUp(self):
+        self.module, self.stub, self.registered = load_hooks()
+        self.app = {"address": "ordinary@restmail.test", "secret": "app:fixture"}
+
+    def request(self, credential, status):
+        request = transaction(
+            "/api/v1/auth/protocol-sign-in",
+            credential,
+            json.dumps({200: {"protocol": "imap"}, 400: [], 422: {}}[status]),
+        )
+        request["expected"] = {"statusCode": str(status)}
+        request["name"] = (
+            f"/api/v1/auth/protocol-sign-in > Sign a mail client in (protocol gateways) > {status} > application/json"
+        )
+        return request
+
+    def test_registered_for_success_and_refusal_examples(self):
+        for status in (200, 400, 422):
+            pattern = f"/api/v1/auth/protocol-sign-in > * > {status} > application/json"
+            self.assertIn("sign_in_a_mail_client", self.registered[pattern])
+
+    def test_authorization_cells_keep_every_principals_own_credential(self):
+        credentials = {
+            "none": None,
+            "admin": session(self.module.ADMIN),
+            "two-factor-admin": session(self.module.mfa_admin.ADDRESS),
+            "ordinary": session(self.app["address"]),
+            "app-password": self.module.basic(self.app["address"], self.app["secret"]),
+        }
+        with (
+            patch.dict(os.environ, {"CONTRACT_AUTHORIZATION": "1"}),
+            patch.object(self.module, "principals", return_value={"app_password": self.app}) as fixture,
+        ):
+            for principal, credential in credentials.items():
+                for status in (200, 400, 422):
+                    with self.subTest(principal=principal, status=status):
+                        request = self.request(credential, status)
+                        before = copy.deepcopy(request)
+                        self.module.sign_in_a_mail_client(request)
+                        self.assertEqual(request, before)
+            fixture.assert_not_called()
+
+    def test_other_phases_still_use_the_app_password(self):
+        phases = (
+            {},
+            {"CONTRACT_COVERAGE": "1"},
+            {"CONTRACT_OWNERSHIP": "1"},
+            {"CONTRACT_RESET_SEED": "1"},
+            {"CONTRACT_AUTHORIZATION": ""},
+            {"CONTRACT_AUTHORIZATION": "0"},
+        )
+        for phase in phases:
+            with (
+                self.subTest(phase=phase),
+                patch.dict(os.environ, phase, clear=True),
+                patch.object(self.module, "principals", return_value={"app_password": self.app}),
+            ):
+                for credential in (None, session(self.module.ADMIN)):
+                    for status in (200, 400, 422):
+                        request = self.request(credential, status)
+                        expected = copy.deepcopy(request)
+                        expected["request"]["headers"]["Authorization"] = self.module.basic(
+                            self.app["address"], self.app["secret"]
+                        )
+                        self.module.sign_in_a_mail_client(request)
+                        self.assertEqual(request, expected)
+
+
 if __name__ == "__main__":
     unittest.main()

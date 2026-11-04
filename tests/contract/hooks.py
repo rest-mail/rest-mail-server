@@ -4406,7 +4406,7 @@ def sign_in_a_mail_client(transaction):
     is sent (#1586). The pair's protocol stays, so 422 still names another."""
     # After a reset the principal is gone: sign_in_and_recovery_after_a_reset
     # gives the exchange an app password of an account made for it.
-    if asked_for_a_clean_start():
+    if os.environ.get("CONTRACT_AUTHORIZATION") == "1" or asked_for_a_clean_start():
         return
     app = principals()["app_password"]
     body = hooks.get_json(transaction)
