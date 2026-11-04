@@ -398,6 +398,175 @@ def the_last_free_operations_after_a_reset(transaction):
         made_for_the_listing(transaction, "invitation", {"uid": OWN_INVITATION_UID})
 
 
+# A recipient is suppressed only when mail to it hard-bounces (the queue
+# worker's suppress, internal/gateway/queue/suppression.go): a domain that does
+# not exist is one (mxHosts answers 550 5.1.2, a bad domain). .invalid never
+# exists (RFC 6761), so mail to it bounces on the first try.
+OWN_SUPPRESSED_DOMAIN = "nowhere.invalid"
+# The queue worker polls every 5 seconds by default (QUEUE_POLL_INTERVAL) and
+# bounces on its first try, so this is many polls.
+SUPPRESSION_WAIT = 90
+
+
+@hooks.before("clearSuppression")
+def clear_a_suppression_made_after_the_reset(transaction):
+    # clearSuppression, moved to a clean start: each exchange, refusals
+    # included, resets and seeds first, and refusals keep their ids. The 204
+    # clears a suppression made after the reset: the fixture admin sends a
+    # message to an address at a domain that does not exist, the gateway's
+    # queue worker bounces it and suppresses the address for the fixture
+    # domain, and the exchange clears that suppression. No link reaches it.
+    # Registered ahead of every other clearSuppression hook, whose fixture
+    # suppression the reset removed. A run with no reset changes nothing here.
+    if not asked_for_a_clean_start():
+        return
+    start_clean(transaction)
+    # A 204 names no media type: its name ends at the status.
+    if not transaction.get("name", "").endswith(" > 204"):
+        return
+    domain = next(
+        (d for d in fixture_call(transaction, "GET", "/api/v1/admin/domains") or []
+         if d.get("name") == FIXTURE_PLAN["domain"]),
+        None,
+    )
+    if domain is None:
+        raise RuntimeError("the seed hosts no {}".format(FIXTURE_PLAN["domain"]))
+    address = "contract-suppressed-{}@{}".format(time.time_ns(), OWN_SUPPRESSED_DOMAIN)
+    fixture_call(transaction, "POST", "/api/v1/messages/send", {
+        "from": ADMIN,
+        "to": [address],
+        "subject": "Contract suppression",
+        "body_text": "Sent after the reset to a domain that does not exist, so it bounces.",
+    })
+    collection = "/api/v1/admin/domains/{}/suppressions".format(domain["id"])
+    deadline = time.monotonic() + SUPPRESSION_WAIT
+    while True:
+        suppressed = [s for s in fixture_call(transaction, "GET", collection) or []
+                      if s.get("address") == address]
+        if suppressed:
+            break
+        if time.monotonic() >= deadline:
+            raise RuntimeError(
+                "{} was not suppressed within {}s: the gateway's queue worker did not "
+                "bounce the message sent to it".format(address, SUPPRESSION_WAIT))
+        time.sleep(1)
+    query = transaction["fullPath"].partition("?")[2]
+    transaction["fullPath"] = collection + "/" + str(suppressed[0]["id"]) + ("?" + query if query else "")
+
+
+# A DMARC aggregate report is stored only from inbound mail whose From domain
+# passes DMARC aligned, addressed to postmaster@ the report's domain
+# (internal/pipeline/filters/dmarc_reports_received.go). The gateway hands
+# inbound mail to deliverMessage with the client's address, so a report is
+# delivered as one from a Google mail host would be: SPF passes for gmail.com
+# from 209.85.220.41 (its record includes 209.85.128.0/17), aligned with the
+# From domain, which publishes a DMARC record. The API's DNS answers both, on
+# the testbed through its forwarders.
+OWN_DMARC_REPORTER = "gmail.com"
+OWN_DMARC_CLIENT = ("209.85.220.41", "mail-sor-f41.google.com")
+OWN_DMARC_REPORT_ID = "contract-own-report"
+
+
+def a_dmarc_report_message(domain, stamp):
+    """A whole aggregate report mail for domain, as deliverMessage takes it."""
+    sender = "noreply-dmarc-support@" + OWN_DMARC_REPORTER
+    report = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n<feedback>'
+        "<report_metadata><org_name>Contract</org_name><email>{sender}</email>"
+        "<report_id>{report_id}</report_id>"
+        "<date_range><begin>1793577600</begin><end>1793663999</end></date_range>"
+        "</report_metadata><policy_published><domain>{domain}</domain>"
+        "<adkim>r</adkim><aspf>r</aspf><p>none</p></policy_published>"
+        "<record><row><source_ip>192.0.2.1</source_ip><count>12</count>"
+        "<policy_evaluated><disposition>none</disposition><dkim>pass</dkim>"
+        "<spf>fail</spf></policy_evaluated></row>"
+        "<identifiers><header_from>{domain}</header_from></identifiers>"
+        "<auth_results><dkim><domain>{domain}</domain><selector>mail</selector>"
+        "<result>pass</result></dkim><spf><domain>{domain}</domain>"
+        "<result>fail</result></spf></auth_results></record></feedback>\n"
+    ).format(sender=sender, report_id=OWN_DMARC_REPORT_ID, domain=domain)
+    attachment = base64.encodebytes(report.encode()).decode().replace("\n", "\r\n")
+    postmaster = "postmaster@" + domain
+    message = (
+        f"From: {sender}\r\nTo: {postmaster}\r\n"
+        f"Subject: Report domain: {domain}\r\n"
+        f"Date: {formatdate(localtime=False)}\r\n"
+        f"Message-ID: <contract-dmarc-{stamp}@{OWN_DMARC_REPORTER}>\r\n"
+        "MIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary=report\r\n\r\n"
+        "--report\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nA report.\r\n"
+        "--report\r\nContent-Type: text/xml\r\n"
+        "Content-Disposition: attachment; filename=report.xml\r\n"
+        "Content-Transfer-Encoding: base64\r\n\r\n"
+        f"{attachment}--report--\r\n"
+    )
+    return {
+        "address": postmaster,
+        "sender": sender,
+        "recipients_to": [postmaster],
+        "subject": f"Report domain: {domain}",
+        "client_ip": OWN_DMARC_CLIENT[0],
+        "helo_name": OWN_DMARC_CLIENT[1],
+        "raw_message": base64.b64encode(message.encode()).decode(),
+    }
+
+
+@hooks.before("getDmarcReport")
+def read_a_dmarc_report_delivered_after_the_reset(transaction):
+    # getDmarcReport, moved to a clean start: each exchange, refusals
+    # included, resets and seeds first, and refusals keep their ids. The 200
+    # reads a report delivered after the reset: the fixture domain gets an
+    # inbound pipeline of its own that checks SPF, DKIM and DMARC and does
+    # not greylist (the default one defers a first delivery), and the report
+    # mail is delivered to its postmaster through deliverMessage. No link
+    # reaches it. Registered ahead of the fixture report's hook, whose report
+    # the reset removed. A run with no reset changes nothing here.
+    if not asked_for_a_clean_start():
+        return
+    start_clean(transaction)
+    if " > 200 > " not in transaction.get("name", ""):
+        return
+    domain = next(
+        (d for d in fixture_call(transaction, "GET", "/api/v1/admin/domains") or []
+         if d.get("name") == FIXTURE_PLAN["domain"]),
+        None,
+    )
+    if domain is None:
+        raise RuntimeError("the seed hosts no {}".format(FIXTURE_PLAN["domain"]))
+    fixture_call(transaction, "POST", "/api/v1/admin/pipelines", {
+        "domain_id": domain["id"],
+        "direction": "inbound",
+        "active": True,
+        "filters": [
+            {"name": "spf_check", "type": "action", "enabled": True},
+            {"name": "dkim_verify", "type": "transform", "enabled": True},
+            {"name": "dmarc_check", "type": "action", "enabled": True},
+        ],
+    })
+    # The gateway's route takes no credential: never a user's session.
+    delivery = urllib.request.Request(
+        origin_of(transaction) + "/api/v1/messages/deliver",
+        data=json.dumps(a_dmarc_report_message(domain["name"], time.time_ns())).encode(),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(delivery, timeout=30) as response:
+        if response.status != 201:
+            raise RuntimeError("the report mail was not delivered: {}".format(response.status))
+    reports = [
+        r for r in fixture_call(
+            transaction, "GET",
+            "/api/v1/admin/dmarc-reports?reporter=" + OWN_DMARC_REPORTER) or []
+        if r.get("report_id") == OWN_DMARC_REPORT_ID
+    ]
+    if len(reports) != 1:
+        raise RuntimeError(
+            "the report delivered from {} was not stored: its DMARC did not pass "
+            "aligned".format(OWN_DMARC_REPORTER))
+    query = transaction["fullPath"].partition("?")[2]
+    transaction["fullPath"] = "/api/v1/admin/dmarc-reports/{}".format(reports[0]["id"]) + (
+        "?" + query if query else "")
+
+
 # The test data operations (#1334). resetTestData's and restoreTestSnapshot's
 # successes wipe the data, so their examples require disposable_data, which
 # only this run provides: each exchange resets and seeds first, so the wipe
@@ -4558,7 +4727,7 @@ def delete_the_fixture_quarantined_message(transaction):
 
 @hooks.before("clearSuppression")
 def clear_the_fixture_suppression(transaction):
-    if os.environ.get("CONTRACT_COVERAGE") == "1":
+    if os.environ.get("CONTRACT_COVERAGE") == "1" or asked_for_a_clean_start():
         return
     # found names suppression 1 of domain 1. A recipient is suppressed only
     # when mail to it hard-bounces, which the run does not send, so the

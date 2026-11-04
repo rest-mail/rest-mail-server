@@ -1167,10 +1167,9 @@ received after its reset on the seeded `restmail.test`; the intake hosts the
 domains its report names in its own hook, after the reset. The others need
 nothing made. The audit log is append-only and kept by the reset
 (`resetRetainedTables`), so its reads meet what is already in it. No link
-starts from or reaches any of them. `getDmarcReport` has not moved: its success
-needs the received DMARC report the Go fixtures make, and no API call makes one,
-since a report arrives only in mail with an aligned DMARC pass. A run with no
-reset changes nothing in this hook.
+starts from or reaches any of them. `getDmarcReport` moves on its own, with a
+report delivered after its reset (below). A run with no reset changes nothing in
+this hook.
 
 `listFolders`, `listMessages` and `searchMessages`, the mailbox reads
 `listAccounts`' link reaches, reset and seed before each exchange too, refusals
@@ -1277,8 +1276,7 @@ a positive id other than missing's gets a certificate of its own, since the one
 createCertificate's link names is gone. The create needs nothing made: its
 `domain_id` 1 is the seeded `restmail.test`. createCertificate's link reaches the
 read, and the read's the delete; no other link starts from or reaches any of
-them. `clearSuppression` is not moved: a suppression is made only by the Go
-fixtures, which the reset does not run.
+them. `clearSuppression` moved separately (below).
 
 After a reset, the 200 of `listCustomFilters`, `listDomains`, `listAliases`,
 `listDKIMKeys` and `listCertificates` must list the row its before hook made
@@ -1345,8 +1343,22 @@ no wait, and is answered `found: false` (#388); `probeServices`' 200 probes the
 database. Neither needs anything made. What is still not moved, and why,
 is on #1385: the quarantine operations and `listAccounts` (whose link reaches
 `listQuarantine`) wait on #1163; the reset, seed and snapshot operations can
-never start clean; the push device and ACME routes are not in the topology;
-`clearSuppression` and `getDmarcReport` need state only the Go fixtures make.
+never start clean; the push device and ACME routes are not in the topology.
+
+`clearSuppression` and `getDmarcReport` reset and seed before each exchange too,
+refusals included, and their successes make their state through mail after the
+reset. The clear's 204 has the fixture admin send a message to an address at
+`nowhere.invalid`: the gateway's queue worker finds no mail host, bounces it
+(550 5.1.2, a bad domain) and suppresses the address for `restmail.test`, and
+the hook waits for the suppression to be listed (at most 90 seconds) and clears
+it. The read's 200 gives `restmail.test` an inbound pipeline of its own
+(`spf_check`, `dkim_verify`, `dmarc_check`; the default one greylists a first
+delivery) and delivers an aggregate report to `postmaster@restmail.test` through
+`deliverMessage` as one from a Google mail host (`gmail.com`, client
+209.85.220.41): SPF passes aligned with the From domain, so DMARC passes and
+the report is stored, and the hook reads it. Both depend on the API's and the
+gateway's DNS answering for names outside the testbed, which the testbed's
+forwarders do. The fixture hooks for both skip after a reset.
 
 `createAlias`, `getAlias`, `updateAlias` and `deleteAlias` reset and seed before
 each exchange too, refusals included. A create is sent as documented after its
@@ -2251,8 +2263,8 @@ entrypoint.
 The fixture command seeds one typed received report for `restmail.test` with
 authenticated reporter `reporter.test` and report ID `daily-1`. Repeating setup
 keeps the same row through the production `(reporter, report_id)` unique index.
-There is no HTTP report intake to call for setup: SMTP ingestion is proven by
-the server's mail-delivery tests instead.
+The primary run reads it. The own-data run, whose reset removes it, delivers a
+report of its own through `deliverMessage` instead (above).
 
 Domain-grant variants live in `internal/examplepairs/example-matrix.json`.
 Published credential refusals declare their principal prerequisites, so an

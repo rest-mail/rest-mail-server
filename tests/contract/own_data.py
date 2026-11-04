@@ -221,7 +221,7 @@ MOVED = (
     # The DMARC and TLS report, audit and delivery reads, and the TLS report
     # intake. No link starts from or reaches any of them. A list of TLS reports
     # gets one of its own after its reset; the others need nothing made.
-    # getDmarcReport stays: no API call makes a received DMARC report.
+    # getDmarcReport moves below, with a report delivered after its reset.
     "listDmarcReports",
     "listTlsReports",
     "receiveTlsReport",
@@ -329,6 +329,13 @@ MOVED = (
     "accountEvents",
     "probeServices",
     "verifyDelivery",
+    # Clearing a suppression and reading a DMARC report. No link starts from
+    # or reaches either. The clear's success clears a suppression made after
+    # its reset (a message sent to a domain that does not exist, which the
+    # gateway's queue worker bounces), and the read's reads a report delivered
+    # after its reset through deliverMessage.
+    "clearSuppression",
+    "getDmarcReport",
     # The test data operations (#1334). No link starts from or reaches any of
     # them. Each exchange resets and seeds first; the reset's own just runs
     # after it. The restore restores a snapshot taken through the API after

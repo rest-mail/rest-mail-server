@@ -48,6 +48,15 @@ class DMARCReportFixtureTests(unittest.TestCase):
             send.assert_not_called()
             self.assertEqual(transaction, original)
 
+    def test_after_a_reset_the_fixture_report_is_not_looked_for(self):
+        # The own-data run's reset removed it; hooks.py delivers one first.
+        original = copy.deepcopy(self.transaction)
+        with patch.dict("os.environ", {"CONTRACT_RESET_SEED": "1"}), \
+                patch("urllib.request.urlopen") as send:
+            self.prepare(self.transaction)
+        send.assert_not_called()
+        self.assertEqual(self.transaction, original)
+
     def test_missing_fixture_fails_instead_of_skipping(self):
         with patch("urllib.request.urlopen", return_value=io.BytesIO(b'{"data":[]}')):
             with self.assertRaisesRegex(RuntimeError, "fixture is missing"):
