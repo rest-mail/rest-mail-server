@@ -1,9 +1,11 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -16,7 +18,8 @@ import (
 // Recipient delivery states, the small set a sender is told (#1568). The queue's own
 // statuses map onto them: pending and delivering are queued (retrying once an attempt
 // has failed), deferred is retrying, delivered is delivered, and bounced and expired are
-// failed. unknown is a recipient this server kept no delivery record for.
+// failed. A local recipient that refused the message is failed too, as nothing tries it
+// again. unknown is a recipient this server kept no delivery record for.
 const (
 	recipientQueued    = "queued"
 	recipientRetrying  = "retrying"
@@ -37,7 +40,7 @@ type MessageRecipients struct {
 type RecipientStatus struct {
 	Address       string     `json:"address" example:"bob@example.com"`
 	Delivery      string     `json:"delivery" enums:"remote,local" description:"remote: sent to another server through the outbound queue; local: a mailbox on this server"`
-	State         string     `json:"state" enums:"queued,retrying,delivered,failed,unknown" description:"queued: waiting for its first attempt; retrying: an attempt failed and it will be tried again; delivered: the recipient's server (or this one) accepted it; failed: it bounced or expired and will not be tried again; unknown: no delivery record was kept"`
+	State         string     `json:"state" enums:"queued,retrying,delivered,failed,unknown" description:"queued: waiting for its first attempt; retrying: an attempt failed and it will be tried again; delivered: the recipient's server (or this one) accepted it; failed: it bounced, expired or was refused by a mailbox on this server, and will not be tried again; unknown: no delivery record was kept"`
 	Reason        string     `json:"reason,omitempty" description:"Why it is retrying, failed or unknown, in a sentence derived from the failure category, never the remote server's own reply"`
 	Category      string     `json:"category,omitempty" enums:"bad_mailbox,bad_domain,policy,other_permanent,mailbox_full,greylisted,rate_limited,connection,tls,dns,other_transient" description:"The kind of failure of the last attempt, when one failed"`
 	Attempts      int        `json:"attempts" description:"Delivery attempts made so far; 0 for a local recipient"`
@@ -45,10 +48,10 @@ type RecipientStatus struct {
 }
 
 // listMessageRecipients answers, for a message the account sent, what happened to each
-// recipient: from its outbound queue row for a remote one, and from the copy delivered
-// into the mailbox for a local one.
+// recipient: from its outbound queue row for a remote one, and for a local one from the
+// copy delivered into the mailbox or the refusal recorded on the Sent copy.
 func (h *MessageHandler) listMessageRecipients(r *http.Request, in messagePath) (MessageRecipients, error) {
-	msg, err := h.ownedMessage(r, in.ID, models.CapMailRead, "id", "mailbox_id", "folder", "message_id", "sender", "recipients_to", "recipients_cc", "received_at")
+	msg, err := h.ownedMessage(r, in.ID, models.CapMailRead, "id", "mailbox_id", "folder", "message_id", "sender", "recipients_to", "recipients_cc", "received_at", "local_refusals")
 	if err != nil {
 		return MessageRecipients{}, err
 	}
@@ -62,8 +65,13 @@ func (h *MessageHandler) listMessageRecipients(r *http.Request, in messagePath) 
 		Where("message_id = ?", msg.ID).Order("id").Find(&queued).Error; err != nil {
 		return MessageRecipients{}, fmt.Errorf("load message recipients: %w", err)
 	}
-	if len(queued) == 0 && msg.Folder != "Sent" {
+	refusals := localRefusalsOf(msg.LocalRefusals)
+	if len(queued) == 0 && len(refusals) == 0 && msg.Folder != "Sent" {
 		return result, nil
+	}
+	refused := map[string]models.FailureCategory{}
+	for _, refusal := range refusals {
+		refused[strings.ToLower(refusal.Address)] = refusal.Category
 	}
 	remote := map[string]models.OutboundQueue{}
 	for _, row := range queued {
@@ -90,9 +98,14 @@ func (h *MessageHandler) listMessageRecipients(r *http.Request, in messagePath) 
 		if err != nil {
 			return MessageRecipients{}, err
 		}
+		// A copy in the mailbox outranks a refusal: an address listed twice can have both.
+		if category, ok := refused[key]; ok && status.State != recipientDelivered {
+			status = refusedRecipient(address, category)
+		}
 		result.Recipients = append(result.Recipients, status)
 	}
-	// A Bcc recipient is not in the Sent copy's headers; a remote one has its queue row.
+	// A Bcc recipient is not in the Sent copy's headers; a remote one has its queue row,
+	// and a local one that refused the message has its refusal.
 	for _, row := range queued {
 		key := strings.ToLower(row.Recipient)
 		if seen[key] {
@@ -101,7 +114,56 @@ func (h *MessageHandler) listMessageRecipients(r *http.Request, in messagePath) 
 		seen[key] = true
 		result.Recipients = append(result.Recipients, remoteRecipient(remote[key]))
 	}
+	for _, refusal := range refusals {
+		key := strings.ToLower(refusal.Address)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		result.Recipients = append(result.Recipients, refusedRecipient(refusal.Address, refusal.Category))
+	}
 	return result, nil
+}
+
+// refusedRecipient is a local recipient that refused the message. Only the category's
+// reason reaches the sender, never what the refusing filter said.
+func refusedRecipient(address string, category models.FailureCategory) RecipientStatus {
+	return RecipientStatus{Address: address, Delivery: "local", State: recipientFailed, Category: string(category), Reason: category.Description()}
+}
+
+// localRefusalCategory is the kind of refusal a failed local delivery was. Anything other
+// than a full mailbox, a rejection or a mailbox that cannot receive is a failure on this
+// server's side. The message was still not delivered, and a send does not retry it.
+func localRefusalCategory(err error) models.FailureCategory {
+	switch message := err.Error(); {
+	case errors.Is(err, repositories.ErrMailboxUnavailable):
+		return models.FailureBadMailbox
+	case strings.HasPrefix(message, "mailbox_full:"):
+		return models.FailureMailboxFull
+	case strings.HasPrefix(message, "rejected:"):
+		return models.FailurePolicy
+	}
+	return models.FailureOtherTransient
+}
+
+// recordLocalRefusals keeps the refusals of a send for its sender to read. The message
+// has already gone to its other recipients, so failing to record them is only logged.
+// A request that ended during the send still records what happened to it.
+func (h *MessageHandler) recordLocalRefusals(ctx context.Context, messageID uint, refusals []models.LocalRefusal) {
+	db := h.db.WithContext(context.WithoutCancel(ctx))
+	if err := repositories.RecordLocalRefusals(db, messageID, refusals); err != nil {
+		slog.Error("could not record local delivery refusals", "message_id", messageID, "error", err)
+	}
+}
+
+// localRefusalsOf reads a local_refusals column. Anything other than a JSON array of
+// refusals is no refusals.
+func localRefusalsOf(raw models.JSONB) []models.LocalRefusal {
+	var refusals []models.LocalRefusal
+	if len(raw) == 0 || json.Unmarshal(raw, &refusals) != nil {
+		return nil
+	}
+	return refusals
 }
 
 // remoteRecipient is a queue row as the sender sees it: its state and the category's

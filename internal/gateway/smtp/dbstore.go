@@ -134,6 +134,11 @@ func (s *dbStore) PersistSubmittedMessage(msg SubmittedMessage) (*uint, error) {
 	return &row.ID, nil
 }
 
+// RecordLocalRefusals keeps on a Sent copy the local recipients that refused it.
+func (s *dbStore) RecordLocalRefusals(messageID uint, refusals []models.LocalRefusal) error {
+	return repositories.RecordLocalRefusals(s.db, messageID, refusals)
+}
+
 // CredentialUsable checks the credentials table directly, as SenderAuthorized
 // reads grants.
 func (s *dbStore) CredentialUsable(credentialID uint) (bool, error) {

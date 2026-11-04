@@ -3,6 +3,7 @@ package smtp
 import (
 	"time"
 
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 )
 
@@ -53,6 +54,10 @@ type Store interface {
 	// local mailbox to attribute the message to; a returned error must not fail
 	// the submission (delivery proceeds without a linked reference).
 	PersistSubmittedMessage(msg SubmittedMessage) (*uint, error)
+	// RecordLocalRefusals keeps on a persisted submission the local recipients
+	// that refused it, for its sender to read in the recipient status. No
+	// refusals writes nothing, and an error must not fail the submission.
+	RecordLocalRefusals(messageID uint, refusals []models.LocalRefusal) error
 	// EnqueueOutbound appends a message to the outbound delivery queue for the
 	// queue worker to deliver to a remote MX.
 	EnqueueOutbound(msg OutboundMessage) error
