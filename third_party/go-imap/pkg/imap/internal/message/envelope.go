@@ -85,17 +85,164 @@ func headerValue(hdr mail.Header, name string) string {
 	return strings.TrimSpace(hdr.Get(name))
 }
 
-// addressPart constructs a single IMAP address structure "(name NIL mailbox
-// host)" — personal name, source-route (always NIL), mailbox name and host name
-// (RFC 3501 §7.4.2). It is the inner element of the parenthesized address lists
-// that make up the from/sender/reply-to/to/cc/bcc envelope fields.
-func addressPart(name, email string) string {
-	user, host, _ := strings.Cut(email, "@")
-	return mailboxPart(name, user, host)
+// addressPart constructs a single IMAP address structure "(name route mailbox
+// host)" — personal name, source route, mailbox name and host name (RFC 3501
+// §7.4.2). It is the inner element of the parenthesized address lists that make
+// up the from/sender/reply-to/to/cc/bcc envelope fields. email is net/mail's
+// form, with the local part's quoting removed, so the local part may hold "@"
+// and only the last one starts the host. route is empty for an address without
+// one, and encodes as NIL.
+func addressPart(name, route, email string) string {
+	user, host := email, ""
+	if at := strings.LastIndexByte(email, '@'); at >= 0 {
+		user, host = email[:at], email[at+1:]
+	}
+	return fmt.Sprintf("(%s %s %s %s)", wire.QuoteString(name), wire.QuoteString(route), wire.QuoteString(user), wire.QuoteString(host))
 }
 
-// mailboxPart is addressPart for a mailbox whose local part and domain are
-// already separated.
+// sourceRoutes holds the routes taken out of an address list, by the address
+// each one leads to and in the order they came. Two uses of one address with
+// different routes keep that order among themselves.
+type sourceRoutes map[string][]string
+
+// take returns the next route of email, or "" when it has none left.
+func (r sourceRoutes) take(email string) string {
+	routes := r[email]
+	if len(routes) == 0 {
+		return ""
+	}
+	r[email] = routes[1:]
+	return routes[0]
+}
+
+// extractSourceRoutes removes the obs-route of each angle-addr in an RFC 5322
+// address list, because net/mail refuses the whole list when one is present,
+// and returns what is left with the routes it found. RFC 5322 §4.4 still has a
+// reader accept a route, and RFC 3501 §9's addr-adl "Holds route from
+// [RFC-2822] route-addr". Delimiters inside quoted strings, comments and domain
+// literals are data, as in appendAddressGroups. Text that only starts like a
+// route is left for net/mail to refuse. The scan is linear in the header's size,
+// since a sender chooses the header: each attempt at a route stops at the next
+// "<" that is not data, and everything else is passed over once.
+func extractSourceRoutes(list string) (string, sourceRoutes) {
+	routes := sourceRoutes{}
+	if !strings.Contains(list, "<") || !strings.Contains(list, ":") {
+		return list, routes
+	}
+	var kept strings.Builder
+	comments := 0
+	quoted, domain, escaped := false, false, false
+	for i := 0; i < len(list); i++ {
+		c := list[i]
+		kept.WriteByte(c)
+		switch {
+		case escaped:
+			escaped = false
+		case c == '\\' && (quoted || comments > 0 || domain):
+			escaped = true
+		case comments > 0:
+			switch c {
+			case '(':
+				comments++
+			case ')':
+				comments--
+			}
+		case quoted:
+			quoted = c != '"'
+		case domain:
+			domain = c != ']'
+		case c == '"':
+			quoted = true
+		case c == '(':
+			comments = 1
+		case c == '[':
+			domain = true
+		case c == '<':
+			route, spec, end, ok := readSourceRoute(list[i+1:])
+			if !ok {
+				continue
+			}
+			if address, err := mail.ParseAddress("<" + spec + ">"); err == nil {
+				routes[address.Address] = append(routes[address.Address], route)
+				kept.WriteString(spec)
+				i += end
+			}
+		}
+	}
+	return kept.String(), routes
+}
+
+// readSourceRoute reads obs-route and the addr-spec after it from text, which
+// starts just after "<". It returns the route with its comments and folding
+// white space removed, the addr-spec as written, and the offset of the ">" that
+// closes them. ok is false when text does not start with a route.
+func readSourceRoute(text string) (route, spec string, end int, ok bool) {
+	comments := 0
+	domain := false
+	colon := -1
+scan:
+	for i := 0; i < len(text); i++ {
+		c := text[i]
+		switch {
+		case comments > 0:
+			switch c {
+			case '\\':
+				i++
+			case '(':
+				comments++
+			case ')':
+				comments--
+			}
+		case domain:
+			domain = c != ']'
+		case c == '(':
+			comments = 1
+		case c == '[':
+			domain = true
+		case c == ':':
+			colon = i
+			break scan
+		case c == '<' || c == '>' || c == '"':
+			return "", "", 0, false
+		}
+	}
+	if colon < 0 {
+		return "", "", 0, false
+	}
+	var hops []string
+	for _, hop := range strings.Split(stripComments(text[:colon]), ",") {
+		if hop = strings.Join(strings.Fields(hop), ""); hop != "" {
+			if hop[0] != '@' || len(hop) == 1 {
+				return "", "", 0, false
+			}
+			hops = append(hops, hop)
+		}
+	}
+	if len(hops) == 0 {
+		return "", "", 0, false
+	}
+	closing := -1
+	quoted := false
+closeScan:
+	for i := colon + 1; i < len(text); i++ {
+		switch c := text[i]; {
+		case quoted && c == '\\':
+			i++
+		case c == '"':
+			quoted = !quoted
+		case c == '>' && !quoted:
+			closing = i
+			break closeScan
+		case c == '<' && !quoted:
+			return "", "", 0, false
+		}
+	}
+	if closing < 0 {
+		return "", "", 0, false
+	}
+	return strings.Join(hops, ","), text[colon+1 : closing], closing, true
+}
+
 func mailboxPart(name, local, domain string) string {
 	return fmt.Sprintf("(%s NIL %s %s)", wire.QuoteString(name), wire.QuoteString(local), wire.QuoteString(domain))
 }
@@ -106,7 +253,7 @@ func buildAddress(name, email string) string {
 	if email == "" {
 		return "NIL"
 	}
-	return "(" + addressPart(name, email) + ")"
+	return "(" + addressPart(name, "", email) + ")"
 }
 
 // buildAddressList parses an RFC 5322 address-list header value (e.g.
@@ -120,9 +267,10 @@ func buildAddressList(list string) string {
 	if list == "" {
 		return "NIL"
 	}
+	list, routes := extractSourceRoutes(list)
 	var b strings.Builder
 	b.WriteByte('(')
-	if !appendAddressGroups(&b, list) || b.Len() == 1 {
+	if !appendAddressGroups(&b, list, routes) || b.Len() == 1 {
 		return "NIL"
 	}
 	b.WriteByte(')')
@@ -134,12 +282,12 @@ func buildAddressList(list string) string {
 // 5322 §4 has a reader accept, and RFC 5321 address literals that net/mail
 // tests as bare IPs, are read by parseObsMailbox. A blank member (obs-mbox-list
 // allows empty elements) writes nothing, as does a mailbox neither can read.
-func appendMailbox(b *strings.Builder, value string) {
+func appendMailbox(b *strings.Builder, value string, routes sourceRoutes) {
 	if strings.TrimSpace(stripComments(value)) == "" {
 		return
 	}
 	if a, err := mail.ParseAddress(value); err == nil {
-		b.WriteString(addressPart(a.Name, a.Address))
+		b.WriteString(addressPart(a.Name, routes.take(a.Address), a.Address))
 		return
 	}
 	if name, local, domain, ok := parseObsMailbox(value); ok {
@@ -153,7 +301,7 @@ func appendMailbox(b *strings.Builder, value string) {
 // are data. It reports false for a malformed group structure — a nested or
 // unterminated group, a group end outside a group, or text after a group end —
 // so no unmatched group sentinel is written.
-func appendAddressGroups(b *strings.Builder, list string) bool {
+func appendAddressGroups(b *strings.Builder, list string, routes sourceRoutes) bool {
 	inGroup, closed := false, false
 	start, comments := 0, 0
 	quoted, angle, domain, escaped := false, false, false, false
@@ -163,7 +311,7 @@ func appendAddressGroups(b *strings.Builder, list string) bool {
 			if inGroup || (closed && strings.TrimSpace(stripComments(list[start:])) != "") {
 				return false
 			}
-			appendMailbox(b, list[start:])
+			appendMailbox(b, list[start:], routes)
 			break
 		}
 		c := list[i]
@@ -230,12 +378,12 @@ func appendAddressGroups(b *strings.Builder, list string) bool {
 				fmt.Fprintf(b, "(NIL NIL %s NIL)", wire.EncodeMailboxName(name.Name))
 				inGroup = true
 			case ',':
-				appendMailbox(b, member)
+				appendMailbox(b, member, routes)
 			case ';':
 				if !inGroup {
 					return false
 				}
-				appendMailbox(b, member)
+				appendMailbox(b, member, routes)
 				b.WriteString("(NIL NIL NIL NIL)")
 				inGroup, closed = false, true
 			}
