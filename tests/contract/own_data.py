@@ -333,9 +333,11 @@ MOVED = (
     # or reaches either. The clear's success clears a suppression made after
     # its reset (a message sent to a domain that does not exist, which the
     # gateway's queue worker bounces), and the read's reads a report delivered
-    # after its reset through deliverMessage.
+    # after its reset through deliverMessage. The DMARC report list's success
+    # lists such a report, made for it after its reset.
     "clearSuppression",
     "getDmarcReport",
+    "listDmarcReports",
     # The test data operations (#1334). No link starts from or reaches any of
     # them. Each exchange resets and seeds first; the reset's own just runs
     # after it. The restore restores a snapshot taken through the API after
