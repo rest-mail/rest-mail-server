@@ -36,6 +36,7 @@ const topUsage = `restmail — run a rest-mail server
   restmail export-maildir export an account's mail as a Maildir through the public API
   restmail tlsa-records   prepare SMTP TLSA records from public certificates
   restmail export-settings export an account's settings as JSON through the public API
+  restmail mail-queue     inspect, retry, bounce and purge the outbound mail queue
   restmail version       print the version
   restmail [flags]       the interactive admin console (-api, -user, -pass)
 
@@ -137,6 +138,8 @@ func runSubcommand(args []string, stdout, stderr io.Writer) (code int, handled b
 		return runImportIMAP(ctx, args[2:], os.Getenv("RESTMAIL_API_KEY"), os.Getenv("RESTMAIL_IMAP_PASSWORD"), os.Getenv("RESTMAIL_IMAP_ACCESS_TOKEN"), client, stdout, stderr), true
 	case "import-mbox":
 		return runImportMail(context.Background(), "mbox", args[2:], os.Getenv("RESTMAIL_API_KEY"), client, stdout, stderr), true
+	case "mail-queue":
+		return runMailQueue(context.Background(), args[2:], os.Getenv("RESTMAIL_API_KEY"), os.Stdin, client, stdout, stderr), true
 	case "tlsa-records":
 		return runTLSARecords(args[2:], stdout, stderr), true
 	case "export-settings":

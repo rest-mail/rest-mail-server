@@ -19,8 +19,8 @@ The `QueueBacklogHigh` and `QueueWorkerStalled` alerts depend on
 
 ## Confirm
 
-1. Count the queue by status. Admin webmail: Queue (`/queue`). API
-   (`queue:read`):
+1. Count the queue by status. Admin webmail: Queue (`/queue`). Terminal:
+   `restmail mail-queue stats --server "$API"`. API (`queue:read`):
 
    ```bash
    curl -sS -H "Authorization: Bearer $RESTMAIL_TOKEN" "$API/api/v1/admin/queue/stats"
@@ -28,7 +28,8 @@ The `QueueBacklogHigh` and `QueueWorkerStalled` alerts depend on
 
    A growing `pending` + `deferred` count with a flat `delivered` count means
    nothing is going out.
-2. Look at the entries that are waiting, and read why:
+2. Look at the entries that are waiting, and read why
+   (`restmail mail-queue list --server "$API" --status deferred`, or):
 
    ```bash
    curl -sS -H "Authorization: Bearer $RESTMAIL_TOKEN" \
@@ -107,7 +108,7 @@ curl -sS -X POST -H "Authorization: Bearer $RESTMAIL_TOKEN" -H 'Content-Type: ap
 curl -sS -X POST -H "Authorization: Bearer $RESTMAIL_TOKEN" "$API/api/v1/admin/queue/123/bounce"
 
 # purge entries that have already bounced
-curl -sS -X POST -H "Authorization: Bearer $RESTMAIL_TOKEN" -H 'Content-Type: application/json' \
+curl -sS -X DELETE -H "Authorization: Bearer $RESTMAIL_TOKEN" -H 'Content-Type: application/json' \
   -d '{"filter":{"status":"bounced"}}' \
   "$API/api/v1/admin/queue/bulk-delete"
 ```
@@ -117,8 +118,25 @@ selects every entry the action applies to, so always name a status or a
 domain. Deleting an entry drops the message without telling its sender; bounce
 it instead when the sender should know.
 
-A queue command for the terminal, so this does not need `curl`: not available
-yet (#1627).
+From a terminal, `restmail mail-queue` does the same through the public API,
+with the token in `RESTMAIL_API_KEY`:
+
+```bash
+export RESTMAIL_API_KEY=$RESTMAIL_TOKEN
+restmail mail-queue stats   --server "$API"
+restmail mail-queue list    --server "$API" --status deferred --domain example.org
+restmail mail-queue show    --server "$API" 123
+restmail mail-queue retry   --server "$API" 123
+restmail mail-queue retry   --server "$API" --status deferred --domain example.org
+restmail mail-queue bounce  --server "$API" 123
+restmail mail-queue purge   --server "$API" --status bounced
+```
+
+`retry`, `bounce` and `purge` with a filter first say how many entries they
+will touch and ask; `--yes` skips the question in a script. They refuse an
+empty filter: name a status, domain, sender or recipient, or give `--all`.
+`list` shows each entry's `attempts`, `next_attempt`, `failure_category` and
+`last_error`; add `--json` to any command for the API's own fields.
 
 ## Verify
 

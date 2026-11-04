@@ -95,8 +95,11 @@ a bounce.
   sending. Check the customer's Sent folder, and their client's own error.
   Mail between two mailboxes on this server does not go through the queue.
 
-A command for the terminal to inspect and retry the queue without `curl`:
-not available yet (#1627).
+From a terminal (`RESTMAIL_API_KEY` set to a token with `queue:read`, or
+`queue:manage` to retry): `restmail mail-queue list --server "$API" --recipient
+someone@example.org` finds the entry, `restmail mail-queue show --server "$API"
+<id>` shows its last error, and `restmail mail-queue retry --server "$API" <id>`
+retries it now.
 
 ## Verify
 
