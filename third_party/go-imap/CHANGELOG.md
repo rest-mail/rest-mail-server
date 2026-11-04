@@ -35,6 +35,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   word and a parameter decoded from RFC 2231 go out as encoded words, and ENVELOPE
   reads the converted header, so an address field with an 8-bit mailbox reads NIL.
   After ENABLE UTF8=ACCEPT, valid UTF-8 still goes out as a literal.
+- An ENVELOPE address list no longer reads NIL because a name is an encoded word
+  in a charset go-imap can't decode, such as `windows-1252` or `ISO-8859-2`, in a
+  top-level or an encapsulated message. The name stays the encoded word it was sent
+  as, in either session, so it still names its charset and no byte is guessed.
+  `latin1`, `iso8859-1` and `l1` now decode as ISO-8859-1 here too.
 - Binary data holding a NUL can be fetched: BODY sends it BASE64 and BINARY as a
   literal8. A NUL in a header or in text is still refused.
 - A SELECT or EXAMINE refused with BAD keeps the mailbox already selected, with
