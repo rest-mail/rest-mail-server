@@ -260,6 +260,9 @@ LAST_FREE = (
     "probeServices",
     "verifyDelivery",
 )
+# Clearing a suppression and reading a DMARC report: no link starts from or
+# reaches either.
+MADE_THROUGH_MAIL = ("clearSuppression", "getDmarcReport")
 TEST_DATA = (
     "resetTestData",
     "seedTestData",
@@ -425,7 +428,8 @@ class Selection(unittest.TestCase):
             - set(TOKEN_EXCHANGE)
             - set(SIGN_IN_AND_RECOVERY)
             - set(LAST_FREE)
-            - set(TEST_DATA),
+            - set(TEST_DATA)
+            - set(MADE_THROUGH_MAIL),
             link_followers(description, "createDomain") | {"createDomain"},
         )
 
@@ -473,6 +477,14 @@ class Selection(unittest.TestCase):
         self.assertLessEqual(set(TEST_DATA), set(own_data.MOVED))
         self.assertEqual(set(TEST_DATA) & set(own_data.MOVED[:-len(TEST_DATA)]), set())
 
+    def test_the_suppression_clear_and_dmarc_read_have_moved_and_no_link_reaches_them(self):
+        description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
+        for operation in MADE_THROUGH_MAIL:
+            self.assertEqual(link_followers(description, operation), set())
+        for start in description_operations(description):
+            self.assertFalse(set(MADE_THROUGH_MAIL) & link_followers(description, start), start)
+        self.assertLessEqual(set(MADE_THROUGH_MAIL), set(own_data.MOVED))
+
     def test_it_selects_every_account_link_operation_and_its_links(self):
         description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
         self.assertEqual(
@@ -510,8 +522,6 @@ class Selection(unittest.TestCase):
             for start in description_operations(description):
                 self.assertNotIn(operation, link_followers(description, start), start)
         self.assertLessEqual(set(REPORTS_AND_AUDIT), set(own_data.MOVED))
-        # Its success needs the DMARC fixture, which no API call makes.
-        self.assertNotIn("getDmarcReport", own_data.MOVED)
 
     def test_the_mailbox_reads_have_moved_and_only_listaccounts_reaches_them(self):
         description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
