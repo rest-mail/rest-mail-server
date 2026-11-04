@@ -363,7 +363,8 @@ func (s *Session) notifyAppendToSelected(folder string) {
 		}
 	}
 	s.announceKeywords(messages)
+	s.send("* %d EXISTS", len(messages))
+	s.noteArrivals(messages)
 	s.messages = messages
 	s.selected.total = int64(len(messages))
-	s.send("* %d EXISTS", len(messages))
 }

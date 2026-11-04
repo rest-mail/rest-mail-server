@@ -34,12 +34,14 @@ type Backend struct {
 	// per-IP tracker cannot see a distributed attack that rotates source IPs
 	// against one account. A nil limiter disables per-account throttling.
 	limiter *connlimiter.Limiter
+	// recent is the \Recent state every session this Backend serves shares.
+	recent *recentMarks
 }
 
 // NewBackend creates a Backend over the given API client. limiter enables
 // per-account brute-force throttling (pass nil to disable it).
 func NewBackend(api *apiclient.Client, limiter *connlimiter.Limiter) *Backend {
-	return &Backend{api: api, limiter: limiter}
+	return &Backend{api: api, limiter: limiter, recent: newRecentMarks()}
 }
 
 var _ goimap.Backend = (*Backend)(nil)
@@ -85,6 +87,7 @@ func (b *Backend) Authenticate(user, pass string) (goimap.Mailbox, error) {
 		email:     user,
 		token:     resp.AccessToken,
 		accountID: resp.Data.User.ID,
+		recent:    b.recent,
 	}, nil
 }
 
@@ -94,6 +97,7 @@ type mailbox struct {
 	email     string
 	token     string
 	accountID uint
+	recent    *recentMarks
 	// utf8 is set once the client has sent ENABLE UTF8=ACCEPT (RFC 6855 §3):
 	// from then on it takes raw UTF-8 header fields, so FETCH stops
 	// downgrading them.

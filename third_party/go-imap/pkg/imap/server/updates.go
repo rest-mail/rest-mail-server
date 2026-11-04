@@ -85,10 +85,52 @@ func (s *Session) reconcile(messages []imap.Message) {
 	// convey the smaller mailbox.
 	if len(messages) > len(survivors) {
 		s.send("* %d EXISTS", len(messages))
+		s.noteArrivals(messages)
 	}
 
 	// Replace the cache with the authoritative fresh set.
 	s.announceKeywords(messages)
 	s.messages = messages
 	s.selected.total = int64(len(messages))
+}
+
+// noteArrivals adds the messages this session has just been told of to its
+// \Recent set, and sends the new "* n RECENT" (RFC 3501 §7.3.2) when any of
+// them is recent to it. A read-write session is the first told of an arrival
+// unless another claimed it first, so it claims them; a read-only one only
+// reads the mark (§2.3.2). When the store cannot answer, the arrivals are
+// recent: "that message SHOULD be considered recent".
+func (s *Session) noteArrivals(messages []imap.Message) {
+	known := make(map[uint32]bool, len(s.messages))
+	for _, m := range s.messages {
+		known[m.UID] = true
+	}
+	var arrivals []imap.Message
+	for _, m := range messages {
+		if !known[m.UID] {
+			arrivals = append(arrivals, m)
+		}
+	}
+	recent, err := s.recentOf(s.selected.name, arrivals, !s.readOnly)
+	if s.recent == nil {
+		s.recent = make(map[uint32]bool)
+	}
+	added := false
+	for _, m := range arrivals {
+		if err != nil || recent[m.UID] {
+			s.recent[m.UID] = true
+			added = true
+		}
+	}
+	// Arrivals another session already claimed leave the count as it was.
+	if !added {
+		return
+	}
+	count := 0
+	for _, m := range messages {
+		if s.recent[m.UID] {
+			count++
+		}
+	}
+	s.send("* %d RECENT", count)
 }

@@ -39,6 +39,7 @@ func (s *Session) deselect() {
 	s.saved = nil
 	s.noModSeq = false
 	s.deleted = make(map[uint32]bool)
+	s.recent = nil
 	s.keywordNames = make(map[string]string)
 }
 
@@ -141,26 +142,33 @@ func (s *Session) handleSelect(tag, args string, readOnly bool) {
 			s.deleted[message.UID] = true
 		}
 	}
+	// A read-write selection claims the messages no session has been told of
+	// yet; a read-only one reports them and leaves them for the next
+	// (RFC 3501 §§2.3.2, 6.3.2).
+	recent, err := s.recentOf(folder, messages, !readOnly)
+	if err != nil {
+		s.deselect()
+		s.tagged(tag, "NO", "Failed to select folder")
+		return
+	}
+	s.recent = recent
 	total := int64(len(s.messages))
-	var unread int64
 	var firstUnseen int
 	for i, m := range s.messages {
 		if !m.Seen {
-			unread++
-			if firstUnseen == 0 {
-				firstUnseen = i + 1
-			}
+			firstUnseen = i + 1
+			break
 		}
 	}
 
 	s.selected = &selectedMailbox{
-		name:   folder,
-		total:  total,
-		unread: unread,
+		name:  folder,
+		total: total,
 	}
 
 	s.send("* %d EXISTS", total)
-	s.send("* %d RECENT", unread)
+	// "The number of messages with the \Recent flag set" (RFC 3501 §7.3.2).
+	s.send("* %d RECENT", len(recent))
 	// Each response code below is followed by text: RFC 3501 §9's resp-text is
 	// ["[" resp-text-code "]" SP] text, and text is one or more characters.
 	// SELECT/EXAMINE UNSEEN is the first unseen sequence number, unlike
@@ -325,9 +333,13 @@ func (s *Session) statusData(folder string, items []string) (string, error) {
 		case "MESSAGES":
 			fmt.Fprintf(&b, "MESSAGES %d", total)
 		case "RECENT":
-			// This engine models no \Recent flag; it reports the unseen count as
-			// RECENT, consistent with the "* n RECENT" line SELECT/EXAMINE send.
-			fmt.Fprintf(&b, "RECENT %d", unseen)
+			// STATUS reads the folder's \Recent state and does not consume it
+			// (RFC 3501 §§2.3.2, 6.3.10).
+			recent, err := s.recentOf(folder, messages, false)
+			if err != nil {
+				return "", err
+			}
+			fmt.Fprintf(&b, "RECENT %d", len(recent))
 		case "UNSEEN":
 			fmt.Fprintf(&b, "UNSEEN %d", unseen)
 		case "UIDNEXT":
@@ -417,6 +429,43 @@ func (s *Session) handleUnselect(tag string) {
 	s.messages = nil
 	s.saved = nil
 	s.deleted = make(map[uint32]bool)
+	s.recent = nil
 	s.keywordNames = make(map[string]string)
 	s.tagged(tag, "OK", "UNSELECT completed")
+}
+
+// recentOf returns the UIDs among messages, all in folder, that are \Recent to
+// this session (RFC 3501 §2.3.2). With claim it claims them from an
+// [imap.RecentMailbox], as a read-write session does, so no later session sees
+// them as recent; without it the mark is only read, as EXAMINE and STATUS do.
+// A Mailbox that keeps no \Recent state cannot say which session saw a message
+// first, and then every message is recent: "that message SHOULD be considered
+// recent".
+func (s *Session) recentOf(folder string, messages []imap.Message, claim bool) (map[uint32]bool, error) {
+	recent := make(map[uint32]bool)
+	if len(messages) == 0 {
+		return recent, nil
+	}
+	var mark uint32
+	if store, ok := s.mailbox.(imap.RecentMailbox); ok {
+		var highest uint32
+		for _, m := range messages {
+			highest = max(highest, m.UID)
+		}
+		var err error
+		if claim {
+			mark, err = store.ClaimRecent(folder, highest)
+		} else {
+			mark, err = store.RecentMark(folder)
+		}
+		if err != nil {
+			return nil, err
+		}
+	}
+	for _, m := range messages {
+		if m.UID > mark {
+			recent[m.UID] = true
+		}
+	}
+	return recent, nil
 }
