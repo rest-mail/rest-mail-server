@@ -249,6 +249,12 @@ MOVED = (
     "restmailCapabilities",
     "restmailCheckMailbox",
     "restmailDeliver",
+    # The rest of the filter operations. No link starts from or reaches any of
+    # them. The list gets a custom filter of its own after its reset; the
+    # preview and the validation need nothing made.
+    "testFilter",
+    "listCustomFilters",
+    "validateCustomFilter",
 )
 
 

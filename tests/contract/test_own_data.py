@@ -201,6 +201,8 @@ DELIVERY = (
     "restmailCheckMailbox",
     "restmailDeliver",
 )
+# The rest of the filter operations, which no link starts from or reaches.
+FILTERS = ("testFilter", "listCustomFilters", "validateCustomFilter")
 FOLLOWS_THE_SENT_MESSAGE = {
     "getMessage",
     "updateMessage",
@@ -288,7 +290,8 @@ class Selection(unittest.TestCase):
             - set(REPORTS_AND_AUDIT)
             - set(MAILBOX_READS)
             - set(ATTACHMENTS)
-            - set(DELIVERY),
+            - set(DELIVERY)
+            - set(FILTERS),
             link_followers(description, "createDomain") | {"createDomain"},
         )
 
@@ -303,11 +306,11 @@ class Selection(unittest.TestCase):
 
     def test_the_pipeline_reads_have_moved_and_no_link_touches_them(self):
         description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
-        for operation in PIPELINE_READS:
+        for operation in PIPELINE_READS + FILTERS:
             self.assertEqual(link_followers(description, operation), set())
             for start in description_operations(description):
                 self.assertNotIn(operation, link_followers(description, start), start)
-        self.assertLessEqual(set(PIPELINE_READS), set(own_data.MOVED))
+        self.assertLessEqual(set(PIPELINE_READS + FILTERS), set(own_data.MOVED))
 
     def test_the_server_settings_have_moved_and_no_link_touches_them(self):
         description = yaml.safe_load((ROOT / "openapi.yaml").read_text())

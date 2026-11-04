@@ -339,6 +339,9 @@ class OwnDataHooks(unittest.TestCase):
             "restmailCapabilities": "delivery_after_a_reset",
             "restmailCheckMailbox": "delivery_after_a_reset",
             "restmailDeliver": "delivery_after_a_reset",
+            "testFilter": "filter_requests_after_a_reset",
+            "listCustomFilters": "filter_requests_after_a_reset",
+            "validateCustomFilter": "filter_requests_after_a_reset",
         }
         # entrypoint.py registers setDomainRelay's and the quiet hours' (below).
         self.assertEqual(
