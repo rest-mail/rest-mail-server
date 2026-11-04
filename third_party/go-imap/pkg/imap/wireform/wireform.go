@@ -15,6 +15,15 @@ func Convert(raw string, utf8 bool) string {
 	return message.WireForm(raw, utf8)
 }
 
+// SevenBitBoundary is raw for a host that downgrades only the top-level header and
+// sends the body as stored, as POP3 does. A top-level multipart's 8-bit boundary takes
+// the 7-bit spelling [Convert] gives it, in Content-Type and on its delimiter lines, so
+// a client can split the parts without decoding anything. Any other message comes back
+// as it is. It doesn't make the rest of the header 7-bit.
+func SevenBitBoundary(raw string) string {
+	return message.SevenBitBoundary(raw)
+}
+
 // EncodeWords renders text as RFC 2047 encoded words: charset UTF-8 when it is
 // valid UTF-8, and UNKNOWN-8BIT otherwise, so the octets survive and no charset
 // is guessed.

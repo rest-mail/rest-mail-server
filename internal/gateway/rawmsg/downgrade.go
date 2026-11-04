@@ -10,3 +10,9 @@ import rmail "github.com/rest-mail/rest-mail-server/internal/mail"
 func Downgrade(raw string) string {
 	return rmail.DowngradeHeaders(raw)
 }
+
+// DowngradeForPOP3 is Downgrade plus a top-level 8-bit boundary in a spelling a client
+// can match, because POP3 sends the body as stored. See rmail.DowngradeForPOP3.
+func DowngradeForPOP3(raw string) string {
+	return rmail.DowngradeForPOP3(raw)
+}

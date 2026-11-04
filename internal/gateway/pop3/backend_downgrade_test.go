@@ -44,7 +44,7 @@ func TestRetrieve_DowngradesUTF8Headers(t *testing.T) {
 // told the downgraded size, one that did is told the stored size.
 func TestMessages_SizeCountsDowngradedOctets(t *testing.T) {
 	const raw = "From: Jörg <joerg@bücher.example>\r\nSubject: Grüße\r\n\r\nHallo, Jörg.\r\n"
-	downgraded := rawmsg.Downgrade(raw)
+	downgraded := rawmsg.DowngradeForPOP3(raw)
 	list := fmt.Sprintf(`{"data":[{"id":7,"raw_size":%d,"downgraded_size":%d}]}`, len(raw), len(downgraded))
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/accounts/0/folders/INBOX/messages", func(w http.ResponseWriter, r *http.Request) {
