@@ -525,6 +525,61 @@ def server_settings_after_a_reset(transaction):
         start_clean(transaction)
 
 
+# A TLS report of its own, the receiveTlsReport example's stored report on the
+# seeded restmail.test.
+OWN_TLS_REPORT = {
+    "organization-name": "Contract Reporter",
+    "contact-info": "tlsrpt@reporter.example.com",
+    "report-id": "contract-own-tls-report",
+    "date-range": {
+        "start-datetime": "2026-10-16T00:00:00Z",
+        "end-datetime": "2026-10-16T23:59:59Z",
+    },
+    "policies": [
+        {
+            "policy": {
+                "policy-type": "sts",
+                "policy-string": ["version: STSv1", "mode: testing"],
+                "policy-domain": "restmail.test",
+                "mx-host": ["mail.restmail.test"],
+            },
+            "summary": {
+                "total-successful-session-count": 12,
+                "total-failure-session-count": 1,
+            },
+        }
+    ],
+}
+
+
+@hooks.before("listDmarcReports")
+@hooks.before("listTlsReports")
+@hooks.before("receiveTlsReport")
+@hooks.before("listAuditEntries")
+@hooks.before("verifyAuditLog")
+@hooks.before("getDeliveryLogs")
+@hooks.before("getDashboardStats")
+def report_and_audit_reads_after_a_reset(transaction):
+    # The DMARC and TLS report, audit and delivery reads, and the TLS report
+    # intake, moved to a clean start: each exchange, refusals included, resets
+    # and seeds first. Registered before the other hooks of these operations,
+    # so they see the clean start. A listing of TLS reports that succeeds gets
+    # one of its own, received after the reset, so it lists more than the
+    # seed. The rest need nothing made: a received DMARC report comes only
+    # from mail with an aligned DMARC pass, and the delivery log and the
+    # dashboard report what is there. The audit log is append-only and outlives
+    # the reset by design (resetRetainedTables), so its reads meet what is in
+    # it. The intake hosts the domains its report names in its own hook, after
+    # the reset. A run with no reset changes nothing here.
+    if not asked_for_a_clean_start():
+        return
+    start_clean(transaction)
+    path = transaction["fullPath"].partition("?")[0]
+    if path == "/api/v1/admin/tls-reports" and " > 200" in transaction.get("name", ""):
+        # The reset has just refilled the intake's rate limit.
+        fixture_call(transaction, "POST", "/.well-known/smtp-tlsrpt", OWN_TLS_REPORT)
+
+
 @hooks.before("listAPIKeys")
 @hooks.before("revokeAPIKey")
 @hooks.before("updateServerLimits")

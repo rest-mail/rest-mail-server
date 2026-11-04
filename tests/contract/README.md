@@ -1155,6 +1155,20 @@ from or reaches any of them. The reset empties `server_limits`, so the limits ar
 back at their defaults, and puts the server capability ceiling back to every
 capability, so a ceiling one exchange narrows does not bound the next.
 
+`listDmarcReports`, `listTlsReports`, `listAuditEntries`, `verifyAuditLog`,
+`getDeliveryLogs`, `getDashboardStats` and the TLS report intake
+`receiveTlsReport` reset and seed before each exchange too, refusals included
+(`report_and_audit_reads_after_a_reset`, registered ahead of their other
+hooks). A listing of TLS reports that succeeds gets a report of its own,
+received after its reset on the seeded `restmail.test`; the intake hosts the
+domains its report names in its own hook, after the reset. The others need
+nothing made. The audit log is append-only and kept by the reset
+(`resetRetainedTables`), so its reads meet what is already in it. No link
+starts from or reaches any of them. `getDmarcReport` has not moved: its success
+needs the received DMARC report the Go fixtures make, and no API call makes one,
+since a report arrives only in mail with an aligned DMARC pass. A run with no
+reset changes nothing in this hook.
+
 `createAlias`, `getAlias`, `updateAlias` and `deleteAlias` reset and seed before
 each exchange too, refusals included. A create is sent as documented after its
 reset: no earlier probe's alias is left, and the seeded `restmail.test` hosts
