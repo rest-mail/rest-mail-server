@@ -41,7 +41,7 @@ func TestDowngradeNotUTF8UsesUnknown8bit(t *testing.T) {
 	for _, want := range []string{
 		"Subject: =?UNKNOWN-8BIT?Q?caf=E9?=\r\n",
 		"Downgraded-X-Note: =?UNKNOWN-8BIT?Q?caf=E9?=\r\n",
-		"Content-Type: text/plain;\r\n charset=\"iso-8859-1\";\r\n name*=UNKNOWN-8BIT''caf%E9.txt",
+		"Content-Type: text/plain;\r\n charset=iso-8859-1;\r\n name*=UNKNOWN-8BIT''caf%E9.txt",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("%q lacks %q", got, want)

@@ -38,7 +38,8 @@ var unstructuredFields = map[string]bool{
 //     (RFC 6857 section 3.2.1): the client still sees who it was, and a reply
 //     cannot silently go to a different mailbox.
 //   - Content-Type and Content-Disposition keep their meaning: non-ASCII
-//     parameters become RFC 2231 parameters.
+//     parameters become RFC 2231 parameters, and every other parameter stays as
+//     it was sent, including one in a charset nothing here can read.
 //   - Any other field, or one of the above that cannot be parsed, is renamed
 //     Downgraded-<name> with its value as encoded-words (RFC 6857 section 3.1),
 //     so nothing the client might interpret carries altered content.
@@ -58,8 +59,11 @@ func DowngradeHeaders(raw string) string {
 		}
 		name, value, ok := strings.Cut(field, ":")
 		if !ok {
-			// Not a header field at all. Keeping non-ASCII is not an option,
-			// so drop the line rather than invent a name for it.
+			// Not a header field at all. Keeping non-ASCII is not an option, and
+			// neither is losing it, so it is encoded whole, as the IMAP engine does:
+			// its octets survive, and a reader still finds no field in it.
+			b.WriteString(wireform.EncodeWords(unfold(field)))
+			b.WriteString("\r\n")
 			continue
 		}
 		b.WriteString(downgradeField(name, unfold(value)))
@@ -81,14 +85,8 @@ func downgradeField(name, value string) string {
 			return name + ": " + list
 		}
 	case key == "content-type" || key == "content-disposition":
-		if mediaType, params, err := mime.ParseMediaType(value); err == nil && !containsNonASCII(mediaType) {
-			if !utf8.ValidString(value) {
-				// RFC 2231 parameters that name no charset they are not in.
-				return strings.TrimSuffix(wireform.Convert(name+": "+value+"\r\n\r\n", false), "\r\n\r\n")
-			}
-			if formatted := mime.FormatMediaType(mediaType, params); formatted != "" && !containsNonASCII(formatted) {
-				return name + ": " + formatted
-			}
+		if field, ok := wireform.ParameterField(name, value); ok {
+			return field
 		}
 	}
 	return "Downgraded-" + strings.TrimSpace(name) + ": " + encodeText(value)

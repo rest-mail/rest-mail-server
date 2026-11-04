@@ -12,7 +12,8 @@ import (
 )
 
 // searchHeaderDecoder decodes RFC 2047 encoded words in the charsets SEARCH
-// can compare: UTF-8 and US-ASCII natively, ISO-8859-1 by conversion.
+// can compare: UTF-8 and US-ASCII natively, ISO-8859-1 by conversion. It reads one
+// word at a time, see DecodeSearchHeader.
 var searchHeaderDecoder = &mime.WordDecoder{
 	CharsetReader: func(charset string, input io.Reader) (io.Reader, error) {
 		if !isLatin1(charset) {
@@ -23,16 +24,93 @@ var searchHeaderDecoder = &mime.WordDecoder{
 }
 
 // DecodeSearchHeader decodes the encoded words in a header value or block for
-// SEARCH (RFC 3501 §6.4.4). Text that cannot be decoded is compared as stored.
+// SEARCH (RFC 3501 §6.4.4), one word at a time, because mime.WordDecoder.DecodeHeader
+// gives up on everything when it meets a charset with no reader, or a "=?" that opens
+// no word. A word that can't be decoded is compared as stored, and the words around
+// it still decode. White space between two decoded words isn't text (RFC 2047 §6.2);
+// beside a word left as stored, it stays.
 func DecodeSearchHeader(s string) string {
 	if !strings.Contains(s, "=?") {
 		return s
 	}
-	d, err := searchHeaderDecoder.DecodeHeader(s)
-	if err != nil {
-		return s
+	var b strings.Builder
+	b.Grow(len(s))
+	written, at, lineEnd := 0, 0, 0
+	afterDecoded := false
+	for {
+		i := strings.Index(s[at:], "=?")
+		if i < 0 {
+			break
+		}
+		start := at + i
+		if start >= lineEnd {
+			lineEnd = len(s)
+			if j := strings.IndexAny(s[start:], "\r\n"); j >= 0 {
+				lineEnd = start + j
+			}
+		}
+		size, skip := encodedWordAt(s[start:lineEnd])
+		if size == 0 {
+			at = start + skip
+			continue
+		}
+		word := s[start : start+size]
+		decoded, err := searchHeaderDecoder.DecodeHeader(word)
+		if err != nil {
+			decoded = word
+		}
+		isDecoded := decoded != word
+		if !isDecoded || !afterDecoded || strings.Trim(s[written:start], " \t\r\n") != "" {
+			b.WriteString(s[written:start])
+		}
+		b.WriteString(decoded)
+		written = start + size
+		at = written
+		afterDecoded = isDecoded
 	}
-	return d
+	b.WriteString(s[written:])
+	return b.String()
+}
+
+// encodedWordAt finds the encoded word that line starts with, line beginning "=?" and
+// ending where its line does: a word never spans lines (RFC 2047 §2). It returns the
+// word's size, or 0 and how far on the next one can start, so a line full of "=?" is
+// read once. It reads a word in a charset SEARCH decodes as loosely as
+// mime.WordDecoder, which then decides whether the encoding and text are valid. A
+// word it will leave as stored ends at white space, so it can't swallow a real word
+// later on the line.
+func encodedWordAt(line string) (size, skip int) {
+	q := strings.IndexByte(line[2:], '?')
+	if q < 0 {
+		return 0, len(line)
+	}
+	charset := line[2 : 2+q]
+	at := 2 + q + 1
+	if at+1 >= len(line) || line[at+1] != '?' {
+		return 0, 2
+	}
+	at += 2
+	if decodableCharset(charset) {
+		end := strings.Index(line[at:], "?=")
+		if end < 0 {
+			return 0, len(line)
+		}
+		return at + end + 2, 0
+	}
+	for i := at; i < len(line); i++ {
+		switch {
+		case line[i] == ' ' || line[i] == '\t':
+			return 0, i
+		case line[i] == '?' && i+1 < len(line) && line[i+1] == '=':
+			return i + 2, 0
+		}
+	}
+	return 0, len(line)
+}
+
+// decodableCharset reports whether go-imap has a reader for charset.
+func decodableCharset(charset string) bool {
+	return strings.EqualFold(charset, "UTF-8") || strings.EqualFold(charset, "US-ASCII") || isLatin1(charset)
 }
 
 // SearchMessageText is the decoded text of a whole message for SEARCH TEXT:
