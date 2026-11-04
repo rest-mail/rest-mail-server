@@ -176,10 +176,9 @@ SERVER_SETTINGS = (
     "getServerCapabilities",
     "updateServerCapabilities",
 )
-# The DMARC and TLS report, audit and delivery reads, and the TLS report
-# intake, which no link starts from or reaches.
+# The TLS report, audit and delivery reads, and the TLS report intake, which
+# no link starts from or reaches.
 REPORTS_AND_AUDIT = (
-    "listDmarcReports",
     "listTlsReports",
     "receiveTlsReport",
     "listAuditEntries",

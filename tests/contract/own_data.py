@@ -218,11 +218,11 @@ MOVED = (
     "updateServerLimits",
     "getServerCapabilities",
     "updateServerCapabilities",
-    # The DMARC and TLS report, audit and delivery reads, and the TLS report
-    # intake. No link starts from or reaches any of them. A list of TLS reports
-    # gets one of its own after its reset; the others need nothing made.
-    # getDmarcReport moves below, with a report delivered after its reset.
-    "listDmarcReports",
+    # The TLS report, audit and delivery reads, and the TLS report intake. No
+    # link starts from or reaches any of them. A list of TLS reports gets one
+    # of its own after its reset; the others need nothing made.
+    # getDmarcReport and listDmarcReports move below, with a report delivered
+    # after their reset.
     "listTlsReports",
     "receiveTlsReport",
     "listAuditEntries",

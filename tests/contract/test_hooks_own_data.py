@@ -322,7 +322,6 @@ class OwnDataHooks(unittest.TestCase):
             "updateServerLimits": "server_settings_after_a_reset",
             "getServerCapabilities": "server_settings_after_a_reset",
             "updateServerCapabilities": "server_settings_after_a_reset",
-            "listDmarcReports": "report_and_audit_reads_after_a_reset",
             "listTlsReports": "report_and_audit_reads_after_a_reset",
             "receiveTlsReport": "report_and_audit_reads_after_a_reset",
             "listAuditEntries": "report_and_audit_reads_after_a_reset",
@@ -467,7 +466,6 @@ class OwnDataHooks(unittest.TestCase):
         # Ahead of the two-factor administrator's, the TLS report pacing and
         # the hosting of the reported domains, so they see the clean start.
         for operation in (
-            "listDmarcReports",
             "listTlsReports",
             "receiveTlsReport",
             "listAuditEntries",
