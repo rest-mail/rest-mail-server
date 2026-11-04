@@ -65,6 +65,7 @@ func messageOf(m models.Message) Message {
 		SizeBytes:         m.SizeBytes,
 		RawSize:           m.RawSize,
 		DowngradedSize:    m.DowngradedSize,
+		POP3UTF8Size:      m.POP3UTF8Size,
 		IMAPSize:          m.IMAPSize,
 		IMAPUTF8Size:      m.IMAPUTF8Size,
 		ReceivedTLS:       m.ReceivedTLS,

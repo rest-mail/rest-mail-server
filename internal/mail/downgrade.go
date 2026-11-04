@@ -395,11 +395,24 @@ func containsNonASCII(s string) bool {
 // IMAP client that has not enabled UTF-8 receives. It equals len(raw) when the
 // header block is already ASCII. Nothing is built to measure it.
 func DowngradedSize(raw string) int {
-	header, sep, body := splitHeader(raw)
-	if !containsNonASCII(header) {
-		return len(raw)
+	return POP3WireSize(DowngradeHeaders(raw))
+}
+
+// POP3WireSize is the octet count RETR sends for raw, which STAT and LIST must report
+// (RFC 1939 section 5 and 11). RETR sends every line ending in CRLF, because a bare LF
+// could otherwise hide a line from dot-stuffing: a bare LF goes out as CRLF, a message
+// that doesn't end in a line break gets one, a bare CR stays, and an empty message stays
+// empty. Dot-stuffing and the final terminator are framing, so they aren't counted.
+//
+// This is pop3.OctetCount from go-pop3, which builds the wire form to measure it. Counting
+// instead keeps a large message from being copied twice more when it is stored.
+func POP3WireSize(raw string) int {
+	if raw == "" {
+		return 0
 	}
-	var size headerSink
-	writeDowngraded(&size, header, sep)
-	return int(size) + len(body)
+	size := len(raw) + strings.Count(raw, "\n") - strings.Count(raw, "\r\n")
+	if raw[len(raw)-1] != '\n' {
+		size += 2
+	}
+	return size
 }
