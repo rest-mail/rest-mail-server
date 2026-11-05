@@ -3,10 +3,12 @@ package mail
 import (
 	"io"
 	"mime"
-	netmail "net/mail"
 	"strings"
+	"unsafe"
 
 	"github.com/rest-mail/go-imap/pkg/imap/wireform"
+
+	"github.com/rest-mail/rest-mail-server/internal/mailaddr"
 )
 
 // downgradeAddressField makes an address field 7-bit by changing only what holds an
@@ -24,56 +26,115 @@ import (
 // it doesn't read as an address list.
 func downgradeAddressField(column int, value string) (string, bool) {
 	var scan addressScan
-	return scan.field(column, value)
-}
-
-func (s *addressScan) field(column int, value string) (string, bool) {
-	tokens, ok := s.tokens(value)
-	if !ok || !readsAsAddressList(tokens) {
+	var b strings.Builder
+	b.Grow(len(value))
+	if !scan.field(&b, column, value) {
 		return "", false
 	}
-	w := &addressWriter{line: column}
-	for i := 0; i < len(tokens); {
-		end := nextSpecial(tokens, i)
-		s.steps += end - i
-		if end < len(tokens) && tokens[end].text == ":" {
-			closing := end + 1
-			for closing < len(tokens) && !(tokens[closing].kind == tokenSpecial && tokens[closing].text == ";") {
-				closing++
-			}
-			s.steps += closing - end
-			if closing == len(tokens) {
-				return "", false
-			}
-			w.group(tokens[i:end], tokens[end+1:closing])
-			i = closing + 1
-			continue
-		}
-		w.mailbox(tokens[i:end])
-		if end < len(tokens) {
-			w.write(tokens[end].text)
-		}
-		i = end + 1
-	}
-	return w.b.String(), true
+	return b.String(), true
 }
 
-// readsAsAddressList asks net/mail about the shape of the tokens, so that what fails
-// to parse goes on being renamed. It can't read the value itself: it refuses octets
-// that aren't UTF-8, a charset it has no reader for and a comment before a name or in
-// an angle-addr, none of which changes the shape. Masking keeps every delimiter where it was.
-func readsAsAddressList(tokens []addressToken) bool {
-	masked := []byte(unfold(withoutComments(tokens, " ")))
-	for i, c := range masked {
-		if c >= 0x80 {
-			masked[i] = 'x'
+// field writes the downgraded value to out, or nothing and false when it doesn't read as a list. Only
+// one mailbox's or group's tokens are held at a time, because a list of very many names would
+// otherwise hold several times its size in tokens each time it's measured.
+func (s *addressScan) field(out wordSink, column int, value string) bool {
+	if !s.readsAsList(value, strings.LastIndexByte(value, ']')) {
+		return false
+	}
+	s.write(out, column, value)
+	return true
+}
+
+// write writes a value that reads as a list.
+func (s *addressScan) write(out wordSink, column int, value string) {
+	lastBracket := strings.LastIndexByte(value, ']')
+	w := &addressWriter{out: out, line: column}
+	var item []addressToken
+	// next reads tokens onto item up to the next that's one of the specials, which it answers with.
+	next := func(i int, specials string) (int, string) {
+		for i < len(value) {
+			kind, end := s.tokenAt(value, i, lastBracket)
+			text := value[i:end]
+			i = end
+			if kind == tokenSpecial && strings.Contains(specials, text) {
+				return i, text
+			}
+			item = append(item, addressToken{kind, text})
+		}
+		return i, ""
+	}
+	for i := 0; i < len(value); {
+		item = item[:0]
+		var special string
+		i, special = next(i, ",:;")
+		s.steps += len(item)
+		if special == ":" {
+			name := len(item)
+			i, _ = next(i, ";")
+			s.steps += len(item) - name
+			w.group(item[:name], item[name:])
+			continue
+		}
+		w.mailbox(item)
+		if special != "" {
+			w.write(special)
 		}
 	}
-	parser := netmail.AddressParser{WordDecoder: &mime.WordDecoder{
-		CharsetReader: func(_ string, input io.Reader) (io.Reader, error) { return input, nil },
-	}}
-	_, err := parser.ParseList(string(masked))
-	return err == nil
+}
+
+// passThroughCharset leaves what an encoded-word names to whatever reads the value later: it's only
+// the shape of a list that's asked about.
+var passThroughCharset = &mime.WordDecoder{
+	CharsetReader: func(_ string, input io.Reader) (io.Reader, error) { return input, nil },
+}
+
+// readsAsList asks about the shape of a value, so that what fails to parse goes on being renamed. It
+// can't read the value itself: it refuses octets that aren't UTF-8, a charset it has no reader for and
+// a comment before a name or in an angle-addr, none of which changes the shape. Masking keeps every
+// delimiter where it was. A group also has to close, for field to find its end.
+func (s *addressScan) readsAsList(value string, lastBracket int) bool {
+	masked := make([]byte, 0, len(value))
+	open := false
+	for i := 0; i < len(value); {
+		kind, end := s.tokenAt(value, i, lastBracket)
+		if end < 0 {
+			return false
+		}
+		text := value[i:end]
+		i = end
+		switch {
+		case kind == tokenComment:
+			masked = append(masked, ' ')
+			continue
+		case kind == tokenAngle && strings.IndexByte(text, '(') >= 0:
+			inner, _ := addressTokens(text[1 : len(text)-1])
+			text = "<" + withoutComments(inner, "") + ">"
+		case kind == tokenSpecial && text == ":":
+			open = true
+		case kind == tokenSpecial && text == ";":
+			open = false
+		}
+		masked = appendMasked(masked, text)
+	}
+	if open {
+		return false
+	}
+	_, ok := mailaddr.Valid(unsafe.String(unsafe.SliceData(masked), len(masked)), passThroughCharset)
+	return ok
+}
+
+// appendMasked appends text unfolded, with an 'x' in place of each 8-bit octet.
+func appendMasked(to []byte, text string) []byte {
+	for i := 0; i < len(text); i++ {
+		switch c := text[i]; {
+		case c == '\n', c == '\r' && i+1 < len(text) && text[i+1] == '\n':
+		case c >= 0x80:
+			to = append(to, 'x')
+		default:
+			to = append(to, c)
+		}
+	}
+	return to
 }
 
 // withoutComments joins the tokens with gap in place of each comment. A comment in an
@@ -245,7 +306,8 @@ func nextSpecial(tokens []addressToken, i int) int {
 // is next to it (RFC 2047 section 5(3)), and starts a new line for one that would
 // pass 76 characters (section 2).
 type addressWriter struct {
-	b         strings.Builder
+	out       wordSink
+	words     wordBytes
 	line      int
 	afterWord bool // the last thing written was an encoded-word
 	lastSpace bool // the last thing written was white space
@@ -264,7 +326,7 @@ func (w *addressWriter) write(s string) {
 }
 
 func (w *addressWriter) raw(s string) {
-	w.b.WriteString(s)
+	_, _ = w.out.WriteString(s)
 	if i := strings.LastIndex(s, "\r\n"); i >= 0 {
 		w.line = len(s) - i - 2
 	} else {
@@ -279,12 +341,33 @@ func (w *addressWriter) word(open, text, closing string) {
 		w.raw(" ")
 		w.afterWord = false
 	}
-	words := wireform.EncodeWords(text)
+	w.words = w.words[:0]
+	wireform.WriteEncodedWords(&w.words, text)
+	words := unsafe.String(unsafe.SliceData(w.words), len(w.words))
 	first, _, _ := strings.Cut(words, "\r\n")
 	if w.line+len(open)+len(first)+len(closing) > 76 && w.line > 1 {
 		w.raw("\r\n ")
 	}
-	w.raw(open + words + closing)
+	if open != "" {
+		w.raw(open)
+	}
+	w.raw(words)
+	if closing != "" {
+		w.raw(closing)
+	}
+}
+
+// wordBytes holds one run of encoded-words, again and again.
+type wordBytes []byte
+
+func (b *wordBytes) Write(p []byte) (int, error) {
+	*b = append(*b, p...)
+	return len(p), nil
+}
+
+func (b *wordBytes) WriteString(s string) (int, error) {
+	*b = append(*b, s...)
+	return len(s), nil
 }
 
 // comment writes a comment; one holding an 8-bit octet has its text encoded, and any
@@ -365,6 +448,9 @@ func wordEnd(tokens []addressToken, i int) int {
 }
 
 func joinTokens(tokens []addressToken) string {
+	if len(tokens) == 1 {
+		return tokens[0].text
+	}
 	var b strings.Builder
 	for _, t := range tokens {
 		b.WriteString(t.text)
@@ -374,6 +460,15 @@ func joinTokens(tokens []addressToken) string {
 
 // phraseText is the text a word displays: a quoted-string loses its quotes and pairs.
 func phraseText(tokens []addressToken) string {
+	if len(tokens) == 1 {
+		text := tokens[0].text
+		if tokens[0].kind != tokenQuoted {
+			return text
+		}
+		if strings.IndexByte(text, '\\') < 0 {
+			return text[1 : len(text)-1]
+		}
+	}
 	var b strings.Builder
 	for _, t := range tokens {
 		if t.kind != tokenQuoted {

@@ -21,7 +21,12 @@ func IMAPWireSize(raw string, utf8Session bool) int {
 
 // downgradedWireSize is the conversion's count of the downgraded header and the body.
 func downgradedWireSize(header, sep, body string) int {
-	block, dropped, ok := measuredBlock(header, sep)
+	return downgradedWireSizeAlso(header, sep, body, nil)
+}
+
+// downgradedWireSizeAlso is downgradedWireSize, with also told the downgraded header on the way.
+func downgradedWireSizeAlso(header, sep, body string, also wordSink) int {
+	block, dropped, ok := measuredBlock(header, sep, also)
 	if !ok {
 		return wireform.JoinedSize(downgradedBlock(header, sep), body, false)
 	}
@@ -38,10 +43,23 @@ type WireSizes struct {
 
 // MeasureWireSizes is every count at once.
 func MeasureWireSizes(raw string) WireSizes {
-	return WireSizes{
-		Downgraded: DowngradedSize(raw),
-		POP3UTF8:   POP3WireSize(raw),
-		IMAP:       IMAPWireSize(raw, false),
-		IMAPUTF8:   IMAPWireSize(raw, true),
+	sizes := WireSizes{POP3UTF8: POP3WireSize(raw), IMAPUTF8: IMAPWireSize(raw, true)}
+	header, sep, body := splitHeader(raw)
+	if !containsNonASCII(header) {
+		sizes.Downgraded, sizes.IMAP = DowngradedSize(raw), wireform.Size(raw, false)
+		return sizes
 	}
+	if respelled := wireform.SevenBitBoundary(raw); respelled != raw {
+		sizes.Downgraded, sizes.IMAP = downgradedSizeOf(respelled), downgradedWireSize(header, sep, body)
+		return sizes
+	}
+	// The two counts of a downgraded header come from one reading of it, because a field of very many
+	// names costs more than the rest of the message.
+	var block pop3Counter
+	sizes.IMAP = downgradedWireSizeAlso(header, sep, body, &block)
+	sizes.Downgraded = block.size()
+	if body != "" {
+		sizes.Downgraded += POP3WireSize(body)
+	}
+	return sizes
 }
