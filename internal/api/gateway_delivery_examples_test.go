@@ -31,7 +31,7 @@ var gatewayDeliveryExamples = []string{
 	"address_empty", "mailbox_id_zero", "recipient_missing", "no_mailbox_by_id",
 	"recipients_nested_nul", "address_nul", "sender_nul", "sender_name_nul", "subject_nul", "body_text_nul", "body_html_nul",
 	"message_id_nul", "in_reply_to_nul", "references_nul", "client_ip_nul", "helo_name_nul", "tls_version_nul",
-	"raw_message_nul", "recipients_to_nul", "recipients_cc_nul",
+	"recipients_to_nul", "recipients_cc_nul",
 }
 
 func TestGatewayDeliveryExamples(t *testing.T) {

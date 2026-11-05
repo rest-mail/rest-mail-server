@@ -39,7 +39,7 @@ func deliverRESTMAIL(t *testing.T, h *RestmailHandler, from, rawMessage string, 
 		"to":          to,
 		"subject":     "Hi",
 		"body_text":   "hello body",
-		"raw_message": rawMessage,
+		"raw_message": []byte(rawMessage),
 	})
 	req := httptest.NewRequest(http.MethodPost, "/restmail/messages", bytes.NewReader(body))
 	req.RemoteAddr = "203.0.113.9:5000"

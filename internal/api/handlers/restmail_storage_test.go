@@ -43,7 +43,7 @@ func restmailStorageRequest(t *testing.T, db *gorm.DB, ctx context.Context, to [
 	t.Helper()
 	body, err := json.Marshal(map[string]any{
 		"from": "sender@external.test", "to": to, "subject": "storage", "body_text": "héllo", "body_html": "<p>héllo</p>",
-		"message_id": "<storage@external.test>", "raw_message": "From: sender@external.test\r\nSubject: storage\r\n\r\nhéllo",
+		"message_id": "<storage@external.test>", "raw_message": []byte("From: sender@external.test\r\nSubject: storage\r\n\r\nhéllo"),
 	})
 	if err != nil {
 		t.Fatal(err)

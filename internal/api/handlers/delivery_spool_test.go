@@ -161,7 +161,7 @@ func gatewayBody(message string, extra map[string]any) []byte {
 }
 
 func restmailBody(message string, extra map[string]any) []byte {
-	body := map[string]any{"from": "someone@remote.test", "to": []string{"owner@spool.test"}, "raw_message": message}
+	body := map[string]any{"from": "someone@remote.test", "to": []string{"owner@spool.test"}, "raw_message": spoolBase64(message)}
 	for key, value := range extra {
 		if value == nil {
 			delete(body, key)
@@ -232,12 +232,6 @@ func TestDeliveryRefusalsDoNotHoldTheMessage(t *testing.T) {
 			status int
 		}{"gateway " + c.name, gatewayBody(message, c.extra), gateway, c.status})
 	}
-	cases = append(cases, struct {
-		name   string
-		body   []byte
-		serve  func(w http.ResponseWriter, body io.Reader)
-		status int
-	}{"gateway NUL in the message", gatewayBody(message+"\x00", nil), gateway, 422})
 	for _, c := range []struct {
 		name   string
 		extra  map[string]any
