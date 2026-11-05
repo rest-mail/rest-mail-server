@@ -254,6 +254,8 @@ jobs:
     name: Lint
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.base_ref == 'main' && (github.event.action != 'edited' || github.event.changes.base.ref.from != '')))
     runs-on: ubuntu-latest
+    outputs:
+      go_imap_changed: ${{ steps.go-imap.outputs.go_imap_changed }}
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -288,6 +290,36 @@ jobs:
           # `config verify` downloads its JSON schema from golangci-lint.run
           # and fails the job when that fetch times out (#508, #521). The
           # run itself still rejects an invalid config.
+          verify: false
+
+      # The vendored go-imap is a module of its own, so the steps above do not reach
+      # it, and GitHub runs only the workflows at a repository's root. Its gates live
+      # here and in the Test job, and run when it can have changed (#1925).
+      - name: Decide whether the vendored IMAP module's gates run
+        id: go-imap
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+        run: scripts/ci/go-imap-changed
+
+      - name: Check the IMAP coverage gate's fixtures
+        if: steps.go-imap.outputs.go_imap_changed != 'false'
+        working-directory: third_party/go-imap
+        run: python3 -B -m unittest discover -s .github/tests -v
+
+      - name: Run go vet on the IMAP module
+        if: steps.go-imap.outputs.go_imap_changed != 'false'
+        working-directory: third_party/go-imap
+        run: go vet ./...
+
+      # --no-config: the module's lint has no config of its own, and golangci-lint
+      # would otherwise take the server's from a parent directory, with its exclusions.
+      - name: Run golangci-lint on the IMAP module
+        if: steps.go-imap.outputs.go_imap_changed != 'false'
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.11.4
+          working-directory: third_party/go-imap
+          args: --timeout=5m --no-config
           verify: false
 
   test:
@@ -363,22 +395,51 @@ jobs:
           # Full random inputs for the import route's spool tests (#1437).
           RESTMAIL_IMPORT_LONG_PROOF: "1"
 
-      # third_party/go-imap is a module of its own: its own go.mod and go.sum, and nothing
-      # from this repository. So its result can only change with those files or with the
-      # Go version named in this workflow, and 4.5 minutes of tests can wait for that (#1896).
-      # In the queue the base is the commit this group sits on, which is main or a group
-      # ahead of it, and the ruleset's ALLGREEN needs that group green as well. The push to
-      # main and a dispatch have no base, so they always run it, as does anything unclear.
-      - name: Has the local IMAP module changed?
-        id: imap-module
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
-        run: scripts/ci/paths-changed "$BASE_SHA" third_party/go-imap .github/workflows/ci.yml scripts/ci/paths-changed
-
-      - name: Test the local IMAP compatibility module
-        if: steps.imap-module.outputs.changed != 'false'
+      # The module's tests take 4.5 minutes, and its result moves only with its own files or
+      # the Go version named here (#1896), so they run with the gates below, under -race and
+      # with coverage. The Lint job decides, and a missing answer runs them.
+      # A signed 32-bit int cannot hold every valid IMAP sequence endpoint. Run the
+      # actual wire proofs on 386; amd64-only tests hide this bug.
+      - name: Check the IMAP module's 32-bit sequence dispatch
+        if: needs.lint.outputs.go_imap_changed != 'false'
         working-directory: third_party/go-imap
-        run: go test -race -count=1 -timeout=10m ./...
+        env:
+          GOARCH: "386"
+          CGO_ENABLED: "0"
+        run: go test -count=1 -run '^(TestParseSequenceSet.*|TestResolveSeqNum.*|TestWideSequenceDispatch|TestSearchValidSequenceSet)$' ./pkg/imap/internal/wire ./pkg/imap/rfctest
+
+      - name: Validate the IMAP module's RFC checklist
+        if: needs.lint.outputs.go_imap_changed != 'false'
+        working-directory: third_party/go-imap
+        run: go run ./internal/checklist pkg/imap/rfctest
+
+      # The wire proofs in pkg/imap/rfctest exercise the public library from a separate
+      # package. Instrument all packages so those proofs count too.
+      - name: Test the local IMAP compatibility module with coverage
+        if: needs.lint.outputs.go_imap_changed != 'false'
+        working-directory: third_party/go-imap
+        run: go test -race -count=1 -timeout=10m -covermode=atomic -coverpkg=./... -coverprofile=coverage.out ./...
+
+      - name: Require at least 95% statement coverage
+        if: needs.lint.outputs.go_imap_changed != 'false'
+        working-directory: third_party/go-imap
+        shell: bash
+        run: |
+          set -euo pipefail
+          go tool cover -func=coverage.out | tee coverage.txt | python3 -B .github/scripts/check_coverage.py
+
+      - name: Upload IMAP coverage evidence
+        if: ${{ !cancelled() && needs.lint.outputs.go_imap_changed != 'false' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: go-imap-statement-coverage
+          path: |
+            third_party/go-imap/coverage.out
+            third_party/go-imap/coverage.txt
+          retention-days: 7
+          if-no-files-found: ignore
+          overwrite: true
 
       - name: Test contract fixtures against an empty database
         run: |

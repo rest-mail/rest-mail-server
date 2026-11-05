@@ -353,9 +353,10 @@ func addressTokens(s string) ([]addressToken, bool) {
 		case c == '[':
 			end := i + 1
 			for ; end < len(s) && s[end] != ']'; end++ {
-				if s[end] == '\\' {
+				switch s[end] {
+				case '\\':
 					end++
-				} else if s[end] == '[' {
+				case '[':
 					return nil, false
 				}
 			}

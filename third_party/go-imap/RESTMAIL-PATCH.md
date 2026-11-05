@@ -13,6 +13,16 @@ Keyword STORE is included only because imapsync filters out keywords before
 APPEND unless this wildcard is advertised, and RFC 3501 requires the advertised
 capability to work. The same syntax, count and length bounds apply to STORE.
 
+## CI
+
+GitHub runs only the workflows at a repository's root, so this copy's gates run
+from the server's: coverage, the 32-bit check, the checklist, `go vet` and
+`golangci-lint` in `.github/workflows/ci.yml`, whenever this directory or that
+workflow changes, and the fuzz targets nightly in
+`.github/workflows/scheduled.yml`. This copy has no `.github/workflows/`, because
+one here would never run. `.github/scripts/check_coverage.py` and `.github/tests`
+stay: those steps run them, and `TestReadmeCoverageBadge` reads the gate.
+
 ## RFC 3501 corrections
 
 These change protocol behaviour from go-imap v0.13.2, and each corrects a defect

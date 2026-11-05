@@ -8,7 +8,6 @@ import textwrap
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
-PATHS_CHANGED = ROOT / "scripts/ci/paths-changed"
 DEV_GOCACHE = ROOT / "tasks/dev-gocache.sh"
 
 
@@ -17,72 +16,6 @@ def git(directory, *args):
         ["git", "-c", "user.name=t", "-c", "user.email=t@example.test", *args],
         cwd=directory, check=True, capture_output=True, text=True, timeout=30,
     )
-
-
-class PathsChanged(unittest.TestCase):
-    def setUp(self):
-        temporary = tempfile.TemporaryDirectory()
-        self.addCleanup(temporary.cleanup)
-        self.root = Path(temporary.name)
-        self.origin = self.root / "origin"
-        self.origin.mkdir()
-        git(self.origin, "init", "--quiet", "--initial-branch=main")
-        (self.origin / "module").mkdir()
-        (self.origin / "module/go.mod").write_text("module a\n")
-        (self.origin / "other").write_text("one\n")
-        git(self.origin, "add", ".")
-        git(self.origin, "commit", "--quiet", "-m", "base")
-        self.base = subprocess.run(
-            ["git", "rev-parse", "HEAD"], cwd=self.origin, check=True, capture_output=True, text=True, timeout=30,
-        ).stdout.strip()
-        git(self.origin, "branch", "base-tip")
-
-    def checkout(self):
-        # As the workflow's checkout leaves it: one commit, without the base.
-        checkout = self.root / "checkout"
-        git(self.root, "clone", "--quiet", "--depth=1", self.origin.as_uri(), str(checkout))
-        return checkout
-
-    def commit(self, path, text):
-        target = self.origin / path
-        target.write_text(text)
-        git(self.origin, "add", ".")
-        git(self.origin, "commit", "--quiet", "-m", "change")
-
-    def answer(self, base, *paths):
-        output = self.root / "output"
-        output.unlink(missing_ok=True)
-        result = subprocess.run(
-            [str(PATHS_CHANGED), base, *(paths or ("module",))], cwd=self.checkout_dir,
-            env=dict(os.environ, GITHUB_OUTPUT=str(output)), capture_output=True, text=True, timeout=30,
-        )
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        return output.read_text().strip()
-
-    def test_another_path_changing_skips(self):
-        self.commit("other", "two\n")
-        self.checkout_dir = self.checkout()
-        self.assertEqual(self.answer(self.base), "changed=false")
-
-    def test_the_path_changing_runs(self):
-        self.commit("module/go.mod", "module b\n")
-        self.checkout_dir = self.checkout()
-        self.assertEqual(self.answer(self.base), "changed=true")
-
-    def test_any_named_path_changing_runs(self):
-        self.commit("other", "two\n")
-        self.checkout_dir = self.checkout()
-        self.assertEqual(self.answer(self.base, "module", "other"), "changed=true")
-
-    def test_no_base_runs(self):
-        self.commit("other", "two\n")
-        self.checkout_dir = self.checkout()
-        self.assertEqual(self.answer(""), "changed=true")
-
-    def test_a_base_that_cannot_be_fetched_runs(self):
-        self.commit("other", "two\n")
-        self.checkout_dir = self.checkout()
-        self.assertEqual(self.answer("0" * 40), "changed=true")
 
 
 class DevGoCache(unittest.TestCase):
@@ -126,14 +59,6 @@ class DevGoCache(unittest.TestCase):
     def test_it_needs_a_user_and_a_volume(self):
         self.assertEqual(self.run_script().returncode, 2)
         self.assertNotEqual(self.run_script("0", volume="").returncode, 0)
-
-
-class Workflow(unittest.TestCase):
-    def test_the_imap_step_runs_unless_told_it_did_not_change(self):
-        # A missing output must run the tests, not skip them.
-        workflow = (ROOT / ".github/workflows/ci.yml").read_text()
-        step = workflow.split("- name: Test the local IMAP compatibility module\n", 1)[1]
-        self.assertIn("if: steps.imap-module.outputs.changed != 'false'\n", step.split("run:", 1)[0])
 
 
 if __name__ == "__main__":

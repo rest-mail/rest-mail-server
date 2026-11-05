@@ -1,8 +1,10 @@
-"""Offline gate and workflow fixtures; these never invoke Go or run its suite."""
+"""Offline gate fixtures; these never invoke Go or run its suite.
+
+That the gate runs at all is proved at the repository root, in
+scripts/tests/test_go_imap_gates.py, beside the workflow that runs it.
+"""
 
 import importlib.util
-import os
-import re
 import subprocess
 import sys
 import unittest
@@ -10,7 +12,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / ".github/scripts/check_coverage.py"
-WORKFLOW = (ROOT / ".github/workflows/ci.yml").read_text()
 spec = importlib.util.spec_from_file_location("check_coverage", SCRIPT)
 gate = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(gate)
@@ -70,89 +71,6 @@ class CoverageGateFixtures(unittest.TestCase):
                 else:
                     self.assertTrue(result.stderr)
                     self.assertEqual(result.stdout, "")
-
-
-class WorkflowFixtures(unittest.TestCase):
-    def test_race_coverage_includes_external_wire_proofs(self):
-        self.assertIn(
-            "run: go test -race -count=1 -covermode=atomic "
-            "-coverpkg=./... -coverprofile=coverage.out ./...\n",
-            WORKFLOW,
-        )
-        self.assertLess(
-            WORKFLOW.index("-coverprofile=coverage.out"),
-            WORKFLOW.index("go tool cover -func=coverage.out"),
-        )
-        self.assertNotIn("continue-on-error", WORKFLOW)
-        self.assertEqual(WORKFLOW.count("name: Build & Test"), 1)
-
-    def test_gate_is_required_and_pipeline_fails_closed(self):
-        block = WORKFLOW.split(
-            "      - name: Require at least 95% statement coverage\n", 1
-        )[1]
-        block = block.split("      - name: Upload coverage evidence", 1)[0]
-        self.assertEqual(
-            block.strip(),
-            """shell: bash
-        run: |
-          set -euo pipefail
-          go tool cover -func=coverage.out | tee coverage.txt | python3 -B .github/scripts/check_coverage.py""",
-        )
-        # A failed coverage producer must fail even if its output looks valid.
-        command = "(printf 'total: (statements) 100.0%%\\n'; exit 1) | "
-        result = subprocess.run(
-            ["bash", "-euo", "pipefail", "-c", command + '"$PYTHON" -B "$GATE"'],
-            env={**os.environ, "PYTHON": sys.executable, "GATE": str(SCRIPT)},
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        self.assertNotEqual(result.returncode, 0)
-
-    def test_failed_gate_keeps_coverage_evidence(self):
-        self.assertIn(
-            """      - name: Upload coverage evidence
-        if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: statement-coverage
-          path: |
-            coverage.out
-            coverage.txt
-          if-no-files-found: ignore
-""",
-            WORKFLOW,
-        )
-
-    def test_fixtures_and_checklist_still_run(self):
-        self.assertIn(
-            "run: python3 -B -m unittest discover -s .github/tests -v\n", WORKFLOW
-        )
-        self.assertIn("run: go run ./internal/checklist pkg/imap/rfctest\n", WORKFLOW)
-
-    def test_execution_bounded_fuzz_inventory_is_preserved(self):
-        # Each target must run from the package directory that declares it.
-        actual = re.findall(
-            r"run: go test -run=(?:\^\$|'\^\$') "
-            r"-fuzz=(?:\^(Fuzz\w+)\$|'\^(Fuzz\w+)\$') "
-            r"-fuzztime=500000x \./(\S+)\s*$",
-            WORKFLOW,
-            re.MULTILINE,
-        )
-        targets = [(a or b, pkg) for a, b, pkg in actual]
-        declared = []
-        for path in ROOT.rglob("*_test.go"):
-            pkg = path.parent.relative_to(ROOT).as_posix()
-            declared.extend(
-                (name, pkg)
-                for name in re.findall(
-                    r"^func (Fuzz\w+)\(\w+ \*testing\.F\)",
-                    path.read_text(),
-                    re.MULTILINE,
-                )
-            )
-        self.assertEqual(len(targets), 9)
-        self.assertCountEqual(targets, declared)
 
 
 if __name__ == "__main__":

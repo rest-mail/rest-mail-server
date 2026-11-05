@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# Fuzz every target the vendored go-imap module declares, from that module's
+# directory (#1925). The targets are found rather than listed, so a new one cannot
+# be left out. One target's failure does not stop the others: the night's run
+# reports all of them.
+#
+# Each run is bounded by executions: duration limits can fail at normal shutdown
+# with "context deadline exceeded" (golang/go#75804). FUZZ_TARGET_TIMEOUT only
+# stops a target that hangs, and counts as a failure.
+#
+# Writes one log per target to FUZZ_LOG_DIR, and failed.txt listing the failures.
+# Go writes a failing input to the package's testdata/fuzz/<target>.
+set -euo pipefail
+
+: "${FUZZ_LOG_DIR:?FUZZ_LOG_DIR must name a directory for the logs}"
+fuzztime=${FUZZTIME:-500000x}
+limit=${FUZZ_TARGET_TIMEOUT:-10m}
+
+mkdir -p "$FUZZ_LOG_DIR"
+: > "$FUZZ_LOG_DIR/failed.txt"
+
+ran=0
+packages=$(go list ./...)
+for package in $packages; do
+  listed=$(go test -list '^Fuzz' "$package")
+  for target in $(printf '%s\n' "$listed" | grep -E '^Fuzz' || true); do
+    ran=$((ran + 1))
+    log="$FUZZ_LOG_DIR/$target.log"
+    echo "::group::$target ($package)"
+    if timeout "$limit" go test -run='^$' -fuzz="^$target\$" -fuzztime="$fuzztime" "$package" 2>&1 | tee "$log"; then
+      echo "::endgroup::"
+    else
+      echo "::endgroup::"
+      echo "::error::$target ($package) failed"
+      echo "$target $package" >> "$FUZZ_LOG_DIR/failed.txt"
+    fi
+  done
+done
+
+# No targets means the search broke, not that there is nothing to fuzz.
+if [ "$ran" -eq 0 ]; then
+  echo "::error::found no fuzz targets"
+  exit 1
+fi
+
+failures=$(wc -l < "$FUZZ_LOG_DIR/failed.txt")
+echo "$ran fuzz target(s) ran $fuzztime each, $failures failed"
+[ "$failures" -eq 0 ]
