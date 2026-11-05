@@ -162,6 +162,8 @@ jobs:
       - name: Keep the report
         # Saving a new baseline starts from this file: mailcheck_baseline.py write.
         if: always()
+        # Only people read this, so losing it must not fail the job.
+        continue-on-error: true
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: mail-conformance

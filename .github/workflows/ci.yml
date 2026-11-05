@@ -241,6 +241,8 @@ jobs:
 
       - name: Publish the comparison and generated descriptions
         if: always()
+        # Only people read this, so losing it must not fail the job.
+        continue-on-error: true
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: api-contract-changes
@@ -403,7 +405,22 @@ jobs:
           go test -race -count=1 -tags "$tags" ./internal/faultinject
 
       # Today only internal/api writes proofs; the report reads whatever is here.
+      # Test report needs these uploads, and upload-artifact gives up on a dropped
+      # connection at its first ECONNRESET (#1896), so each gets a second try. If that
+      # fails too, the job fails. overwrite replaces an artifact that did finalize.
       - name: Upload example proofs
+        id: upload-proofs
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: example-proofs-rest
+          path: ${{ runner.temp }}/proofs
+          retention-days: 1
+          if-no-files-found: ignore
+          overwrite: true
+
+      - name: Upload example proofs (second try)
+        if: steps.upload-proofs.outcome == 'failure'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: example-proofs-rest
@@ -413,6 +430,18 @@ jobs:
           overwrite: true
 
       - name: Upload coverage
+        id: upload-coverage
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: coverage-part-rest
+          path: coverage-rest.out
+          retention-days: 1
+          if-no-files-found: error
+          overwrite: true
+
+      - name: Upload coverage (second try)
+        if: steps.upload-coverage.outcome == 'failure'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coverage-part-rest
@@ -507,7 +536,20 @@ jobs:
           RESTMAIL_EXAMPLE_PROOFS: ${{ runner.temp }}/proofs/example-proofs-api-${{ matrix.shard }}.json
 
       # TestMain writes the file whenever the variable is set, so a missing file is an error.
+      # A second try for these as in the Test job: a missing file fails both tries.
       - name: Upload example proofs
+        id: upload-proofs
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: example-proofs-api-${{ matrix.shard }}
+          path: ${{ runner.temp }}/proofs
+          retention-days: 1
+          if-no-files-found: error
+          overwrite: true
+
+      - name: Upload example proofs (second try)
+        if: steps.upload-proofs.outcome == 'failure'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: example-proofs-api-${{ matrix.shard }}
@@ -517,6 +559,18 @@ jobs:
           overwrite: true
 
       - name: Upload coverage
+        id: upload-coverage
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: coverage-part-api-${{ matrix.shard }}
+          path: coverage-api-${{ matrix.shard }}.out
+          retention-days: 1
+          if-no-files-found: error
+          overwrite: true
+
+      - name: Upload coverage (second try)
+        if: steps.upload-coverage.outcome == 'failure'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coverage-part-api-${{ matrix.shard }}
@@ -580,6 +634,8 @@ jobs:
           echo "merged ${#profiles[@]} profiles, $(wc -l < coverage.out) lines"
 
       - name: Upload coverage report
+        # Only people read this, so losing it must not fail the job.
+        continue-on-error: true
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coverage-report

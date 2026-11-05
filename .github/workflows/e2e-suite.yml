@@ -259,8 +259,13 @@ jobs:
           CONTRACT_LIVE_PROOFS: ${{ runner.temp }}/live-proofs
         run: chore test:contract-live-proofs
 
+      # The proof union needs this upload, and upload-artifact gives up on a dropped
+      # connection at its first ECONNRESET (#1896), so it gets a second try. If that
+      # fails too, the job fails. overwrite replaces an artifact that did finalize.
       - name: Upload the live proofs
+        id: upload-live-proofs
         if: always() && inputs.contract-phases == 'gate'
+        continue-on-error: true
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: live-example-proofs
@@ -271,6 +276,18 @@ jobs:
             !${{ runner.temp }}/live-proofs/**/vertrag.yml
           retention-days: 1
           # The union counts a missing result for nothing, and says so.
+          if-no-files-found: warn
+          overwrite: true
+
+      - name: Upload the live proofs (second try)
+        if: always() && inputs.contract-phases == 'gate' && steps.upload-live-proofs.outcome == 'failure'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: live-example-proofs
+          path: |
+            ${{ runner.temp }}/live-proofs
+            !${{ runner.temp }}/live-proofs/**/vertrag.yml
+          retention-days: 1
           if-no-files-found: warn
           overwrite: true
 
@@ -357,6 +374,8 @@ jobs:
 
       - name: Upload container logs
         if: always()
+        # Only people read this, so losing it must not fail the job.
+        continue-on-error: true
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: e2e-container-logs
