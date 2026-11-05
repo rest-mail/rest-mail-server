@@ -164,7 +164,9 @@ func (s *Session) handleStatus(tag, args string) {
 	// error before any untagged response is emitted.
 	for _, item := range items {
 		if !statusItems[item] {
-			s.tagged(tag, "BAD", "Unknown STATUS item: "+item)
+			// A literal can put any octets in item, and response text is 7-bit
+			// with no CR or LF (RFC 3501 §9), so it is not echoed.
+			s.tagged(tag, "BAD", "Unknown STATUS item")
 			return
 		}
 	}

@@ -186,7 +186,12 @@ func TestPlainBase64Alphabet(t *testing.T) {
 				} else {
 					tagged = c.authenticate("A1", "PLAIN", encoded)
 				}
-				if !strings.HasPrefix(tagged, "A1 NO ") || b.calls != 0 {
+				want := "A1 NO "
+				if initial && strings.Contains(encoded, "\r") {
+					// A CR on the command line itself is a syntax error (RFC 3501 §2.2).
+					want = "A1 BAD "
+				}
+				if !strings.HasPrefix(tagged, want) || b.calls != 0 {
 					t.Fatalf("invalid base64: reply=%q backend calls=%d", tagged, b.calls)
 				}
 				_, retry := c.command("A2", "AUTHENTICATE PLAIN %s", valid)

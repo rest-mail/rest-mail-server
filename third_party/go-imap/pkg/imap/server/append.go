@@ -94,6 +94,7 @@ func (s *Session) handleAppend(tag, args string) (closeConn bool) {
 		_, _, synchronizing, literal = wire.SplitTrailingLiteral(cont)
 		rejectNonSync = literal && !synchronizing
 		if reason := s.commandTextError(cont); reason != "" {
+			rejectNonSync = rejectNonSync || endsNonSyncLiteral([]byte(cont))
 			s.tagged(tag, "BAD", reason)
 			return
 		}
@@ -144,6 +145,10 @@ func (s *Session) handleAppend(tag, args string) (closeConn bool) {
 			return
 		}
 		appendFlags = wire.ParseFlags(rest[:end+1])
+		if namesRecent(appendFlags) {
+			s.tagged(tag, "BAD", `APPEND cannot name \Recent`)
+			return
+		}
 		if rest, ok = wire.CutSingleSP(rest[end+1:]); !ok {
 			s.tagged(tag, "BAD", "Invalid argument separator")
 			return
@@ -261,6 +266,9 @@ func (s *Session) handleAppend(tag, args string) (closeConn bool) {
 	}
 	if string(terminator) != want {
 		s.tagged(tag, "BAD", "Expected CRLF after message literal")
+		// The next command's boundary is lost, so the session ends, and it says
+		// why (RFC 3501 §3.4).
+		s.send("* BYE Command literal rejected; stream cannot be reused")
 		return true
 	}
 	// RFC 3501 §9 literal payloads are CHAR8 (%x01-ff). After the counted

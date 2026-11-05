@@ -21,6 +21,35 @@ func ParseCommand(line string) (tag, cmd, args string) {
 	return
 }
 
+// ValidSeparators reports whether every SP in args, outside quoted strings,
+// separates two arguments: none leads or trails, none doubles, none follows "("
+// and none precedes ")" (RFC 3501 §§2.2.2, 9). An unterminated quoted string is
+// left for the command's own parser to refuse.
+func ValidSeparators(args string) bool {
+	var prev byte
+	for i := 0; i < len(args); i++ {
+		c := args[i]
+		switch c {
+		case '"':
+			end := QuotedStringEnd(args[i:])
+			if end < 0 {
+				return true
+			}
+			i += end
+		case ' ':
+			if i == 0 || prev == ' ' || prev == '(' {
+				return false
+			}
+		case ')':
+			if prev == ' ' {
+				return false
+			}
+		}
+		prev = c
+	}
+	return prev != ' '
+}
+
 // NoArguments are the commands whose grammar ends at the command name (RFC 3501
 // §9's command-any, command-nonauth and command-select, RFC 2177 IDLE, RFC 3691
 // UNSELECT, RFC 2342 NAMESPACE). STARTTLS starts no negotiation the client may

@@ -51,6 +51,10 @@ func (s *Session) handleSearch(tag, args string) {
 // an untagged SEARCH, or with RETURN result options in one untagged ESEARCH
 // (RFC 4731 §3.1).
 func (s *Session) search(tag, args string, uid bool) {
+	if !wire.ValidSeparators(args) {
+		s.tagged(tag, "BAD", "SEARCH arguments are separated by exactly one SP")
+		return
+	}
 	returns, args, ok := parseSearchReturn(args)
 	if !ok {
 		s.tagged(tag, "BAD", "Invalid SEARCH RETURN options")
@@ -259,6 +263,12 @@ func tokenizeSearch(args string) ([]string, bool) {
 // *searchError for a malformed key (unknown keyword, missing argument, bad date
 // or unbalanced parenthesis) rather than degrading to a match-ALL criterion.
 func parseSingleCriterion(tokens []string, idx int, maxUID uint32) (searchCriterion, int, *searchError) {
+	return parseSearchCriterion(tokens, idx, maxUID, nil)
+}
+
+// parseSearchCriterion is shared by normal parsing and literal-position probes.
+// The probe records string slots without replacing the recursive grammar.
+func parseSearchCriterion(tokens []string, idx int, maxUID uint32, probe *searchLiteralProbe) (searchCriterion, int, *searchError) {
 	if idx >= len(tokens) {
 		return searchCriterion{}, idx, badSearch("missing search key")
 	}
@@ -268,7 +278,7 @@ func parseSingleCriterion(tokens []string, idx int, maxUID uint32) (searchCriter
 
 	switch keyword {
 	case "(":
-		return parseSearchGroup(tokens, idx, maxUID)
+		return parseSearchGroup(tokens, idx, maxUID, probe)
 	case ")":
 		return searchCriterion{}, idx, badSearch("unbalanced parentheses in SEARCH")
 	case "ALL":
@@ -310,6 +320,7 @@ func parseSingleCriterion(tokens []string, idx int, maxUID uint32) (searchCriter
 		if idx+1 >= len(tokens) {
 			return searchCriterion{}, idx, badSearch(keyword + " requires a string argument")
 		}
+		probe.stringOperand(idx + 1)
 		return searchCriterion{kind: strings.ToLower(keyword), value: wire.Unquote(tokens[idx+1])}, idx + 2, nil
 	case "CC", "BCC":
 		// CC/BCC search the message's own Cc/Bcc header fields, the source of
@@ -317,8 +328,12 @@ func parseSingleCriterion(tokens []string, idx int, maxUID uint32) (searchCriter
 		if idx+1 >= len(tokens) {
 			return searchCriterion{}, idx, badSearch(keyword + " requires a string argument")
 		}
+		probe.stringOperand(idx + 1)
 		return searchCriterion{kind: "header", field: keyword, value: wire.Unquote(tokens[idx+1])}, idx + 2, nil
 	case "HEADER":
+		// The first astring can end at a literal boundary before the second
+		// one exists. Semantic field-name checks still run on the full input.
+		probe.stringOperand(idx + 1)
 		if idx+2 >= len(tokens) {
 			return searchCriterion{}, idx, badSearch("HEADER requires a field name and a string")
 		}
@@ -326,6 +341,7 @@ func parseSingleCriterion(tokens []string, idx int, maxUID uint32) (searchCriter
 		if field == "" || field == "(" || field == ")" {
 			return searchCriterion{}, idx, badSearch("HEADER requires a field name")
 		}
+		probe.stringOperand(idx + 2)
 		return searchCriterion{kind: "header", field: field, value: wire.Unquote(tokens[idx+2])}, idx + 3, nil
 	case "LARGER", "SMALLER":
 		if idx+1 >= len(tokens) {
@@ -361,17 +377,17 @@ func parseSingleCriterion(tokens []string, idx int, maxUID uint32) (searchCriter
 		if idx+1 >= len(tokens) {
 			return searchCriterion{}, idx, badSearch("NOT requires a search key")
 		}
-		sub, newIdx, err := parseSingleCriterion(tokens, idx+1, maxUID)
+		sub, newIdx, err := parseSearchCriterion(tokens, idx+1, maxUID, probe)
 		if err != nil {
 			return searchCriterion{}, idx, err
 		}
 		return searchCriterion{kind: "not", sub: []searchCriterion{sub}}, newIdx, nil
 	case "OR":
-		sub1, newIdx1, err := parseSingleCriterion(tokens, idx+1, maxUID)
+		sub1, newIdx1, err := parseSearchCriterion(tokens, idx+1, maxUID, probe)
 		if err != nil {
 			return searchCriterion{}, idx, err
 		}
-		sub2, newIdx2, err := parseSingleCriterion(tokens, newIdx1, maxUID)
+		sub2, newIdx2, err := parseSearchCriterion(tokens, newIdx1, maxUID, probe)
 		if err != nil {
 			return searchCriterion{}, idx, err
 		}
@@ -390,11 +406,11 @@ func parseSingleCriterion(tokens []string, idx int, maxUID uint32) (searchCriter
 // parseSearchGroup parses a parenthesized key group "( key key ... )", which is
 // the AND of the enclosed keys (RFC 3501 §6.4.4). tokens[idx] is the "(". A
 // missing closing ")" is a tagged BAD.
-func parseSearchGroup(tokens []string, idx int, maxUID uint32) (searchCriterion, int, *searchError) {
+func parseSearchGroup(tokens []string, idx int, maxUID uint32, probe *searchLiteralProbe) (searchCriterion, int, *searchError) {
 	var group []searchCriterion
 	j := idx + 1
 	for j < len(tokens) && tokens[j] != ")" {
-		sub, newIdx, err := parseSingleCriterion(tokens, j, maxUID)
+		sub, newIdx, err := parseSearchCriterion(tokens, j, maxUID, probe)
 		if err != nil {
 			return searchCriterion{}, idx, err
 		}

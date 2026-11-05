@@ -1,6 +1,7 @@
 package server
 
 import (
+	"log/slog"
 	"slices"
 	"strings"
 
@@ -11,9 +12,6 @@ import (
 func (s *Session) handleStore(tag, args string) {
 	if s.selected == nil {
 		s.tagged(tag, "NO", "No mailbox selected")
-		return
-	}
-	if s.refuseReadOnly(tag) {
 		return
 	}
 
@@ -45,6 +43,11 @@ func (s *Session) handleStore(tag, args string) {
 		s.tagged(tag, "BAD", recentRefusal)
 		return
 	}
+	// After the syntax checks: a malformed STORE is BAD on any selection
+	// (RFC 3501 §2.2.2).
+	if s.refuseReadOnly(tag) {
+		return
+	}
 
 	seqNums := s.seqNumbers(parts[0])
 
@@ -53,7 +56,10 @@ func (s *Session) handleStore(tag, args string) {
 			continue
 		}
 		if err := s.applyStore(seq, mode, flags, silent, false); err != nil {
-			s.tagged(tag, "NO", "STORE failed: "+err.Error())
+			// The error is the host's: private, and not known to fit response
+			// text (RFC 3501 §9). UID STORE gives no more either.
+			slog.Warn("imap: STORE failed", "error", err)
+			s.tagged(tag, "NO", "STORE failed")
 			return
 		}
 	}
@@ -279,9 +285,6 @@ func (s *Session) flagString(msg imap.Message) string {
 }
 
 func (s *Session) handleUIDStore(tag, args string) {
-	if s.refuseReadOnly(tag) {
-		return
-	}
 	parts := strings.SplitN(args, " ", 2)
 	if len(parts) < 2 {
 		s.tagged(tag, "BAD", "UID STORE requires uid set and flags")
@@ -311,6 +314,10 @@ func (s *Session) handleUIDStore(tag, args string) {
 	flags := wire.ParseFlags(flagParts[1])
 	if namesRecent(flags) {
 		s.tagged(tag, "BAD", recentRefusal)
+		return
+	}
+	// After the syntax checks, as in handleStore.
+	if s.refuseReadOnly(tag) {
 		return
 	}
 

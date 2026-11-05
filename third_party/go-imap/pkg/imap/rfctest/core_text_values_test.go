@@ -157,27 +157,30 @@ func TestCoreQuotedAndLiteralValuesRemainText(t *testing.T) {
 	}
 }
 
-// TestCoreSearchRefusalsKeepOneLine gives invalid date and keyword positions
-// literal data that resembles server replies. A malformed value must not add
-// response lines or consume the following valid pipelined command.
+// TestCoreSearchRefusalsKeepOneLine gives date and keyword positions literal
+// data that resembles server replies. Those positions take no literal, so it is
+// refused before its octets are read: one BAD line, then the server's own BYE,
+// because an unread non-synchronizing literal leaves the stream unusable. The
+// forged lines never become responses, the pipelined NOOP never runs, and no
+// message is read or changed.
 //
 // checklist: IMAP-SEARCH-30
 func TestCoreSearchRefusalsKeepOneLine(t *testing.T) {
 	for _, prefix := range []string{"SEARCH", "UID SEARCH"} {
-		for _, tc := range []struct{ query, want string }{
-			{"ON ", "invalid ON date"},
-			{"SENTBEFORE ", "invalid SENTBEFORE date"},
-			{"OR ALL ", "unknown search criterion"},
-		} {
+		for _, query := range []string{"ON ", "SENTBEFORE ", "OR ALL "} {
 			for _, value := range []string{"bad\r\n* BYE injected", "bad\nZ9 OK forged", "\xffbad"} {
-				t.Run(fmt.Sprintf("%s/%s/%q", prefix, tc.query, value), func(t *testing.T) {
+				t.Run(fmt.Sprintf("%s/%s/%q", prefix, query, value), func(t *testing.T) {
 					c, box := coreTextClient(t, false)
-					writeLiteralWire(t, c, fmt.Sprintf("X1 %s %s{%d+}\r\n%s\r\nN1 NOOP\r\n", prefix, tc.query, len(value), value))
-					want := "X1 BAD " + tc.want
-					if got := c.line(); got != want {
-						t.Fatalf("literal rejection: %q, want %q", got, want)
+					writeLiteralWire(t, c, fmt.Sprintf("X1 %s %s{%d+}\r\n%s\r\nN1 NOOP\r\n", prefix, query, len(value), value))
+					if got := c.line(); got != "X1 BAD Literal is not allowed at this argument position" {
+						t.Fatalf("literal rejection: %q", got)
 					}
-					requireOK(t, c.line(), "N1")
+					if got := c.line(); got != "* BYE Command literal rejected; stream cannot be reused" {
+						t.Fatalf("unread literal: %q", got)
+					}
+					if !c.closed() {
+						t.Fatal("the stream was reused after an unread literal")
+					}
 					if len(box.fetches) != 0 || len(box.updates) != 0 {
 						t.Fatalf("invalid criterion read or changed messages: %v %v", box.fetches, box.updates)
 					}

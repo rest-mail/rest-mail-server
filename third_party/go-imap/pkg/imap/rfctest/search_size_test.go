@@ -136,7 +136,9 @@ func TestSearchInvalidSize(t *testing.T) {
 			}
 			c := fetchClient(t, box, "SELECT")
 			for _, key := range []string{"LARGER", "SMALLER"} {
-				for _, operand := range []string{"", "+1", "-1", "1.0", "0x10", "1e2", "1_000", "1a", "*", "1:2", "4294967296", "999999999999999999999999999999999999", `"1"`, `""`, "１２", "1\t", "{1+}\r\n1"} {
+				// A literal size is refused before its octets are read and ends the
+				// session (literal_types_test.go), so this shared client has none.
+				for _, operand := range []string{"", "+1", "-1", "1.0", "0x10", "1e2", "1_000", "1a", "*", "1:2", "4294967296", "999999999999999999999999999999999999", `"1"`, `""`, "１２", "1\t"} {
 					for _, form := range []string{"%s", "NOT %s", "OR ALL %s", "(ALL %s)", `BODY "hello" %s`} {
 						query := fmt.Sprintf(form, strings.TrimRight(key+" "+operand, " "))
 						t.Run(fmt.Sprintf("%s/empty=%t/%s", prefix, empty, query), func(t *testing.T) {

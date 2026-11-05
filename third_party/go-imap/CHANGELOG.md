@@ -49,6 +49,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   RFC 3501 §9 `flag` production excludes it. They used to answer OK and ignore
   it. `TestStoreLeavesRecentAlone` required the old behaviour and now requires
   this one.
+- Command syntax is enforced as RFC 3501 §§2.2.2 and 9 say, each with a wire test
+  named in the checklist. These answer BAD and do not run: a line that does not
+  end in CRLF or holds another CR; an extra, missing or doubled argument or space
+  in CREATE, DELETE, RENAME, SUBSCRIBE, UNSUBSCRIBE, LIST, LSUB, SEARCH and UID
+  SEARCH; a literal in a SEARCH date, keyword, number or key position, or holding
+  NUL; a mechanism that is not an atom; APPEND naming `\Recent`; and a malformed
+  STORE under EXAMINE, which used to answer the read-only NO first. An empty line
+  answers `* BAD`, as it used to get no answer. `RENAME "a b" c` reads its quoted
+  name whole. APPEND says BYE before it closes on a broken message framing.
+- STATUS and LIST no longer echo an unknown item, and STORE no longer sends the
+  host's error text, so neither a literal nor a host error can break response
+  text (RFC 3501 §9).
 
 ## [0.13.2] - 2026-10-27
 
