@@ -23,6 +23,8 @@ createCustomFilter 20
 createPipeline 12
 # The served address has no format, so the generator draws "!", which no account has.
 linkAccount 10
+# Also an address with no format, and a mail client's password only the fixture holds.
+openGatewaySession 14
 # A report must name a hosted policy domain, and the served schema lets an entry omit it.
 receiveTlsReport 32
 # filter_name must name a filter. Its body refers to sampleEmail, so a pin cannot engage.
