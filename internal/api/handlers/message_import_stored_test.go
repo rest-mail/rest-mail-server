@@ -372,26 +372,25 @@ var fieldShapesStillOver = map[string]stillOverCost{
 	"8-bit, a line break in each charset*N": {importing: 13, delivering: 12, restmail: 13},
 	"8-bit names, on many parts":            {importing: 9},
 	"comments on name*N":                    {restmail: 9},
-	"name*N on a part":                      {restmail: 9},
 	// A part costs what it costs however little it holds: its file and row on import, and its fields and
 	// a place in what filters read on every route. That's about 3 KiB a part on import and under 2 KiB on
 	// the others, bounded by the limit of a thousand parts (#1641), so what's over 8x here comes from how
 	// little a part has to hold and not from its size. At 339 bytes a part, 8x is 2.7 KiB for all of it,
 	// the message's own copies included. Import was 135x and about 50x on these, on a buffer for each part.
-	"999 small attachments":                        {importing: 20, delivering: 12, restmail: 13},
-	"attachments, base64, on many parts":           {importing: 11, delivering: 10, restmail: 10},
-	"attachments, quoted-printable, on many parts": {importing: 11, delivering: 10, restmail: 10},
-	"attachments, no encoding, on many parts":      {importing: 11, delivering: 10, restmail: 11},
+	"999 small attachments":                        {importing: 20, delivering: 11, restmail: 12},
+	"attachments, base64, on many parts":           {importing: 11, delivering: 9, restmail: 9},
+	"attachments, quoted-printable, on many parts": {importing: 11, delivering: 9, restmail: 9},
+	"attachments, no encoding, on many parts":      {importing: 11, delivering: 9, restmail: 11},
 	// RESTMAIL's structure check holds the long field a second time. The filename beside it isn't a field
 	// that check reads, so it's under 8x.
 	"a long quoted name": {restmail: 9},
 	// These are 58 octets for each part, so the multiple says little. What matters is what a part costs,
-	// about 2 KiB with a charset and 2.4 KiB with a word on /deliver and RESTMAIL, counting what the message
-	// costs whatever its parts, and what bounds that is the limit on parts (rmime.DefaultMaxParts): 2 to
-	// 2.4 MB, whatever the message's size. Import's 730x with a word is the 32 KiB copy buffer for each
-	// attachment it stores, which #1975 removes, so that ceiling comes down with that PR.
-	"999 parts, a charset on each":   {importing: 36, delivering: 34, restmail: 37},
-	"999 parts, a word in each name": {importing: 745, delivering: 44, restmail: 46},
+	// about 1.7 KiB with a charset and 2.1 KiB with a word on /deliver and RESTMAIL, counting what the message
+	// costs whatever its parts, and what bounds that is the limit on parts (rmime.DefaultMaxParts): 1.7 to
+	// 2.1 MB, whatever the message's size. Import stores a named part as a file and a row, about 5.2 KiB with
+	// a word, so 5.2 MB. It was 730x on a 32 KiB copy buffer for each attachment, before #1975.
+	"999 parts, a charset on each":   {importing: 29, delivering: 28, restmail: 31},
+	"999 parts, a word in each name": {importing: 93, delivering: 35, restmail: 38},
 }
 
 // shapesUnderTheLimit are the shapes a route holds to 8x, which is every one cost doesn't name for it.
