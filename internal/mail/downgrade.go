@@ -366,8 +366,9 @@ func containsNonASCII(s string) bool {
 // 7-bit header can name those: RFC 2231 only moves the problem to a reader that decodes
 // it, in a charset it knows. So the Content-Type and the delimiter lines take one 7-bit
 // spelling, the one IMAP FETCH sends, and no other octet of the body changes. Every line
-// stays a line, and DowngradedSize measures this form, so TOP and LIST stay right. IMAP
-// doesn't come here, because its engine converts the whole message, boundary included.
+// stays a line, and DowngradedSize measures what this form puts on the wire, so TOP and
+// LIST stay right. IMAP doesn't come here, because its engine converts the whole message,
+// boundary included.
 func DowngradeForPOP3(raw string) string {
 	if header, _, _ := splitHeader(raw); !containsNonASCII(header) {
 		return raw
@@ -375,19 +376,75 @@ func DowngradeForPOP3(raw string) string {
 	return DowngradeHeaders(wireform.SevenBitBoundary(raw))
 }
 
-// DowngradedSize is the octet count of DowngradeForPOP3(raw): what a POP3 client that
-// has not enabled UTF-8 receives. It equals len(raw) when the header block is already
-// ASCII. Nothing is built to measure it, but a body whose top-level 8-bit boundary has
-// to change.
+// DowngradedSize is what a POP3 client that has not enabled UTF-8 receives:
+// POP3WireSize of DowngradeForPOP3(raw). Nothing is built to measure it, but a body whose
+// top-level 8-bit boundary has to change.
 func DowngradedSize(raw string) int {
 	header, sep, body := splitHeader(raw)
 	if !containsNonASCII(header) {
-		return len(raw)
+		return POP3WireSize(raw)
 	}
 	if respelled := wireform.SevenBitBoundary(raw); respelled != raw {
 		header, sep, body = splitHeader(respelled)
 	}
-	var size headerSink
-	writeDowngraded(&size, header, sep)
-	return int(size) + len(body)
+	var block pop3Counter
+	writeDowngraded(&block, header, sep)
+	// The block ends in a line break, so the body can't add to a line of it, and it is
+	// the body's last line that decides whether the message needs a final one.
+	size := block.size()
+	if body != "" {
+		size += POP3WireSize(body)
+	}
+	return size
+}
+
+// pop3Counter is a wordSink counting what POP3WireSize counts of what it is given.
+type pop3Counter struct {
+	octets, bareFeeds int
+	afterCR           bool
+}
+
+func (c *pop3Counter) Write(p []byte) (int, error) {
+	c.octets += len(p)
+	for _, b := range p {
+		if b == '\n' && !c.afterCR {
+			c.bareFeeds++
+		}
+		c.afterCR = b == '\r'
+	}
+	return len(p), nil
+}
+
+func (c *pop3Counter) WriteString(s string) (int, error) {
+	c.octets += len(s)
+	for i := range len(s) {
+		if s[i] == '\n' && !c.afterCR {
+			c.bareFeeds++
+		}
+		c.afterCR = s[i] == '\r'
+	}
+	return len(s), nil
+}
+
+func (c *pop3Counter) size() int {
+	return c.octets + c.bareFeeds
+}
+
+// POP3WireSize is the octet count RETR sends for raw, which STAT and LIST must report
+// (RFC 1939 section 5 and 11). RETR sends every line ending in CRLF, because a bare LF
+// could otherwise hide a line from dot-stuffing: a bare LF goes out as CRLF, a message
+// that doesn't end in a line break gets one, a bare CR stays, and an empty message stays
+// empty. Dot-stuffing and the final terminator are framing, so they aren't counted.
+//
+// This is pop3.OctetCount from go-pop3, which builds the wire form to measure it. Counting
+// allocates nothing, however large the message (TestPOP3Size_HoldsNoCopy).
+func POP3WireSize(raw string) int {
+	if raw == "" {
+		return 0
+	}
+	size := len(raw) + strings.Count(raw, "\n") - strings.Count(raw, "\r\n")
+	if raw[len(raw)-1] != '\n' {
+		size += 2
+	}
+	return size
 }
