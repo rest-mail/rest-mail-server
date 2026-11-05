@@ -13,6 +13,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - The CLOSED response code (RFC 9051 §§6.3.2, 7.1): SELECT or EXAMINE that
   replaces a selection sends `* OK [CLOSED]` first, to IMAP4rev2 sessions only.
   Nothing enables IMAP4rev2 yet, so IMAP4rev1 sessions see no change.
+- `wireform.SevenBitBoundary`, for a host that downgrades only the top-level header
+  and sends the body as stored, as POP3 does. A top-level multipart's 8-bit boundary
+  takes the spelling FETCH gives it, in Content-Type and on its delimiter lines, and
+  nothing else changes. FETCH doesn't use it.
 
 ### Fixed
 
@@ -22,6 +26,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   backend. The ban used to be read only after a failed attempt, so a correct
   password still signed in. The reply to the failure that earns the ban is now
   the same `* BYE` and `NO [UNAVAILABLE]`.
+- BODY and BODYSTRUCTURE keep a continued parameter with no first segment.
+  `name*1=x; other=keep` used to read as `("OTHER" "keep")`, and now reads as
+  `("NAME" "x" "OTHER" "keep")`, in segment order and naming no charset. A plain value
+  of the same name stands instead. A multipart with only part of a boundary still reads
+  as having none. `charset*1=x` now reads as `("CHARSET" "x")`, so 8-bit text under it
+  counts as naming a charset and keeps its 8-bit data.
 - Converting a header for FETCH takes time in proportion to its size. A run of
   `\"` in an 8-bit field, or a field folded many times, used to take quadratic
   time, 16.6 s for a 156 KB Subject. The output doesn't change.
@@ -54,6 +64,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   that holds an 8-bit octet. The others stay as sent, in their order, including RFC
   2231 text and comments, and an 8-bit comment becomes encoded words instead of going
   missing.
+- A Content-Type or Content-Disposition holding an unquoted 8-bit value, such as
+  `name=Jörg.pdf`, no longer fails to parse. The value reads as if it were quoted,
+  so the entity keeps its real type and its other parameters in BODY, BODYSTRUCTURE
+  and sections, at every part level, instead of reading as `text/plain` with a NIL
+  disposition. Its 8-bit data is converted for that real type.
+- A Content-Type or Content-Disposition holding an 8-bit octet no longer fails to
+  parse over any other malformed spelling either, so the entity keeps its real type
+  and every parameter's text. `name=Jörg (1).pdf` keeps `(1)` in the value, an
+  unbalanced `"` or `(` is text, and `näme=x` goes out as `n%C3%A4me=x`. A field with
+  no 8-bit octet is unchanged, and still takes the default if it is malformed.
+- An 8-bit boundary splits after FETCH converts it. The header and every delimiter
+  line now spell it the same 7-bit way in the octets sent, as in `boundary="J=C3=B6"`
+  and `--J=C3=B6`, at every level of a message, so parts keep their real type and
+  size in BODYSTRUCTURE. If that spelling, or a 7-bit boundary, would match another
+  line of the converted body, the boundary takes a suffix so the parts stay where the
+  stored message has them. After `ENABLE UTF8=ACCEPT`, valid UTF-8 stays as stored.
 - SEARCH decodes a header one encoded word at a time. A word in a charset it can't
   decode is compared as stored, and neither that nor a stray `=?` stops it decoding
   the words around it, in TEXT, HEADER, SUBJECT, TO, FROM or an encapsulated message.
@@ -63,7 +89,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   into an ENVELOPE or MIME string, so one message can't stop a fetch of a range. It
   sends a space for each, one octet for one. BINARY sends the exact octets and the
   stored message doesn't change. `wireform.SpaceNUL` does the same for a host whose
-  protocol has no BINARY, leaving data as it is.
+  protocol has no BINARY, leaving data as it is. A boundary holding a NUL takes the
+  same 7-bit spelling as an 8-bit one, in the field and on its delimiter lines.
 - A SELECT or EXAMINE refused with BAD keeps the mailbox already selected, with
   its read-only mode and deletion marks: a rejected command never changes state
   (RFC 3501 §6). Only a well-formed selection attempt that fails with NO

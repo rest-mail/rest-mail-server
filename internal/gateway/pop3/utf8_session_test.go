@@ -14,13 +14,14 @@ import (
 	pop3server "github.com/rest-mail/go-pop3/pkg/pop3/server"
 
 	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
+	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
 )
 
 const utf8Raw = "From: Jörg <joerg@bücher.example>\r\nSubject: Grüße\r\n\r\nHallo, Jörg.\r\n"
 
-// utf8API answers the calls a POP3 session makes for one account whose INBOX
-// holds one message with raw UTF-8 headers.
-func utf8API(t *testing.T) *apiclient.Client {
+// storeAPI answers the calls a POP3 session makes for one account whose INBOX
+// holds raw.
+func storeAPI(t *testing.T, raw string) *apiclient.Client {
 	t.Helper()
 	mux := http.NewServeMux()
 	reply := func(w http.ResponseWriter, body string) {
@@ -31,14 +32,14 @@ func utf8API(t *testing.T) *apiclient.Client {
 		reply(w, `{"data":{"access_token":"tok","user":{"id":1,"email":"jorg@example.test"}}}`)
 	})
 	mux.HandleFunc("/api/v1/accounts/1/folders/INBOX/messages", func(w http.ResponseWriter, r *http.Request) {
-		reply(w, fmt.Sprintf(`{"data":[{"id":7,"raw_size":%d}]}`, len(utf8Raw)))
+		reply(w, fmt.Sprintf(`{"data":[{"id":7,"raw_size":%d,"downgraded_size":%d}]}`, len(raw), rmail.DowngradedSize(raw)))
 	})
 	mux.HandleFunc("/api/v1/messages/7", func(w http.ResponseWriter, r *http.Request) {
 		reply(w, `{"data":{"id":7}}`)
 	})
 	mux.HandleFunc("/api/v1/messages/7/raw", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "message/rfc822")
-		_, _ = io.WriteString(w, utf8Raw)
+		_, _ = io.WriteString(w, raw)
 	})
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
@@ -53,8 +54,13 @@ type pop3Client struct {
 
 func dialUTF8(t *testing.T) *pop3Client {
 	t.Helper()
+	return dialStore(t, utf8Raw)
+}
+
+func dialStore(t *testing.T, raw string) *pop3Client {
+	t.Helper()
 	client, server := net.Pipe()
-	sess := pop3server.NewSession(server, NewBackend(utf8API(t), nil), nil, nil)
+	sess := pop3server.NewSession(server, NewBackend(storeAPI(t, raw), nil), nil, nil)
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
@@ -133,5 +139,34 @@ func TestUTF8ThroughTheSession(t *testing.T) {
 	}
 	if got := eai.multi("RETR 1"); got != utf8Raw {
 		t.Fatalf("RETR after UTF8 served:\n%q\nwant the stored message\n%q", got, utf8Raw)
+	}
+}
+
+// RETR without UTF8 keeps what the RFC 6857 downgrade used to drop or rename: group
+// names and comments in an address field, and an unquoted 8-bit parameter, which keeps
+// the real type beside it. The body stays, and after UTF8 the message is as stored.
+func TestRetrKeepsAddressTextAndParameters(t *testing.T) {
+	const raw = "From: Jörg <j@example.com> (Büro)\r\n" +
+		"To: Grüppe: a@example.com, b@example.com;\r\n" +
+		"Cc: Ann <a@example.com> (kept), Jörg <j@example.com>\r\n" +
+		"Content-Type: application/pdf; name=Jörg.pdf; other=keep\r\n\r\nHallo\r\n"
+	const want = "From: =?UTF-8?Q?J=C3=B6rg?= <j@example.com> (=?UTF-8?Q?B=C3=BCro?=)\r\n" +
+		"To: =?UTF-8?Q?Gr=C3=BCppe?= : a@example.com, b@example.com;\r\n" +
+		"Cc: Ann <a@example.com> (kept), =?UTF-8?Q?J=C3=B6rg?= <j@example.com>\r\n" +
+		"Content-Type: application/pdf;\r\n name*=UTF-8''J%C3%B6rg.pdf;\r\n other=keep\r\n\r\nHallo\r\n"
+
+	plain := dialStore(t, raw)
+	plain.do("USER jorg@example.test")
+	plain.do("PASS pw")
+	if got := plain.multi("RETR 1"); got != want {
+		t.Fatalf("RETR without UTF8:\n got %q\nwant %q", got, want)
+	}
+
+	eai := dialStore(t, raw)
+	eai.do("UTF8")
+	eai.do("USER jorg@example.test")
+	eai.do("PASS pw")
+	if got := eai.multi("RETR 1"); got != raw {
+		t.Fatalf("RETR after UTF8:\n got %q\nwant %q", got, raw)
 	}
 }

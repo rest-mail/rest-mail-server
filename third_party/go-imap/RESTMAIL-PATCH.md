@@ -77,6 +77,41 @@ found by the RFC 3501 inventory in rest-mail/rest-mail-server#374.
     A plain 8-bit value beside an extended form of the same parameter becomes encoded
     words in its quoted-string, against RFC 2047 §5, because a second extended form
     would make the field unreadable. Readers take the extended form.
+  - A Content-Type or Content-Disposition holding an 8-bit octet is read without
+    refusing it, for rest-mail/rest-mail-server#1890 and #1894, because
+    `mime.ParseMediaType` refuses the whole field and the entity would read as
+    `text/plain`. `readField` splits it at each `;` outside a quoted-string or comment
+    that closes, in time linear in the field. A `"` or `(` that never closes and a
+    stray `)` are text. A value runs from its first character that isn't white space
+    or a comment to its last, so a comment with value text on both sides is that text,
+    and one around the value is still a comment. A field with no 8-bit octet keeps the
+    strict reading (IMAP-BS-21, IMAP-BS-23, IMAP-CDP-03).
+  - RFC 2045 has no spelling for an 8-bit parameter name, and neither RFC 2231 nor an
+    encoded word reaches one, so it goes out as a token with `%XX`, as in
+    `n%C3%A4me=x`. BODYSTRUCTURE reads that too, or the UTF-8 name after UTF8=ACCEPT.
+    Conversion rewrites a 7-bit parameter only when the 7-bit result couldn't be read
+    otherwise, because such a field no longer gets the lenient reading: a malformed
+    value becomes a quoted-string. A repeated name, and an unbalanced delimiter after
+    the type, go in a comment as an encoded word, because a second value would make
+    the field unreadable.
+  - A boundary is octets that delimiter lines match, so `keptValue` no longer decodes
+    an 8-bit one, whatever charset its RFC 2231 form names. `wireMultipart` gives the
+    header and every delimiter line one spelling for a boundary that can't go out as
+    stored, for rest-mail/rest-mail-server#1893: each octet outside RFC 2046 §5.1.1's
+    characters is `=XX`, in at most 70 characters. That spelling, or a 7-bit boundary
+    conversion would make collide, takes a suffix hashed from the converted body when
+    a line there would otherwise match, so the parts stay where the stored message has
+    them, and every FETCH and size measurement gets the same octets.
+  - `parseMediaType` keeps a continued parameter with no first segment, for
+    rest-mail/rest-mail-server#1897, where `mime.ParseMediaType` and `extendedValue`
+    both stop at a missing `*0`. `laterSegments` joins what came in segment order, with
+    no charset, since only a first segment can name one (RFC 2231 §4.1). A plain value
+    of the same name stands instead, and a multipart's boundary stays absent, because
+    delimiter lines match a whole value (IMAP-BS-11).
+  - `SevenBitBoundary` is new and exported through `wireform`, for the same issue. FETCH
+    doesn't use it. It gives a host that sends the body as stored, as a POP3 server does,
+    what `wireMultipart` gives FETCH for a top-level 8-bit boundary: one spelling in
+    Content-Type and on the delimiter lines. Other octets stay. It adds no dependency.
 
 - SEARCH decodes a header one encoded word at a time, for
   rest-mail/rest-mail-server#1887, rather than through
@@ -130,6 +165,9 @@ chose on rest-mail/rest-mail-server#1921 to send a space instead:
 - A NUL in a header or a textual leaf goes out as a space, one octet for one, and so
   does one decoded into an ENVELOPE or BODYSTRUCTURE string. In an 8-bit field the
   space comes first, so no encoded word spells the NUL.
+- A NUL in a multipart's boundary can't be a space, which could end the boundary or
+  spell another line, so the field and the delimiter lines take the 7-bit spelling an
+  8-bit boundary gets (`wireBoundary`).
 - Where a NUL is data, a space would corrupt it, so it is encoded. That covers
   non-textual leaves, an encoding nobody can remove, and text in a charset with NUL
   octets (`utf-16`, `utf-32`, `ucs-2`, `ucs-4`).

@@ -40,6 +40,15 @@ func JoinedSize(block, body string, utf8 bool) int {
 	return message.WireFormJoinedSize(block, body, utf8)
 }
 
+// SevenBitBoundary is raw for a host that downgrades only the top-level header and
+// sends the body as stored, as POP3 does. A top-level multipart's 8-bit boundary takes
+// the 7-bit spelling [Convert] gives it, in Content-Type and on its delimiter lines, so
+// a client can split the parts without decoding anything. Any other message comes back
+// as it is. It doesn't make the rest of the header 7-bit.
+func SevenBitBoundary(raw string) string {
+	return message.SevenBitBoundary(raw)
+}
+
 // EncodeWords renders text as RFC 2047 encoded words: charset UTF-8 when it is
 // valid UTF-8, and UNKNOWN-8BIT otherwise, so the octets survive and no charset
 // is guessed.
@@ -56,8 +65,9 @@ func WriteEncodedWords(w interface {
 }
 
 // ParameterField renders a Content-Type or Content-Disposition field 7-bit, changing
-// only what holds an 8-bit octet, so a parameter in any charset keeps its text. ok is
-// false when the value does not parse, or the type itself is 8-bit.
+// only what holds an 8-bit octet or couldn't be read once 7-bit, so a parameter in any
+// charset or spelling keeps its text. ok is false when the value holds no readable
+// type, or the type itself is 8-bit.
 func ParameterField(name, value string) (field string, ok bool) {
 	return message.ParameterField(name, value)
 }

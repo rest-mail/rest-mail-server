@@ -3,6 +3,7 @@ package message
 import (
 	"reflect"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -77,6 +78,57 @@ func TestWireForm_HeaderConversionIsLinear(t *testing.T) {
 			assertLinear(t, input, func(raw string) { WireForm(raw, false) })
 		})
 	}
+}
+
+// sevenBitBoundaryHead and sevenBitBoundaryUnits are what POP3 adds to a downgrade: many
+// delimiter lines, lines that only look like one, lines holding the new spelling, bare
+// LFs, and delimiters with no line to stand on.
+const sevenBitBoundaryHead = "Content-Type: multipart/mixed; boundary=\"\xf6\"\r\n\r\n"
+
+var sevenBitBoundaryUnits = map[string]string{
+	"delimiters":      "--\xf6\r\n\r\nx\r\n",
+	"near misses":     "--\xf6x\r\n",
+	"new spelling":    "--=F6\r\n",
+	"bare line feeds": "--\xf6\nx\n",
+	"no line breaks":  "--\xf6",
+}
+
+func TestSevenBitBoundary_IsLinear(t *testing.T) {
+	for name, unit := range sevenBitBoundaryUnits {
+		t.Run(name, func(t *testing.T) {
+			assertLinear(t, func(size int) string { return sevenBitBoundaryHead + repeated(unit, size) }, func(raw string) { SevenBitBoundary(raw) })
+		})
+	}
+}
+
+// TestSevenBitBoundary_ScansInProportion counts the octets a rewrite looks at. Searching
+// the body again from each delimiter would allocate nothing and look at all of it each
+// time, which assertLinear can't see.
+func TestSevenBitBoundary_ScansInProportion(t *testing.T) {
+	const size = 32 << 10
+	for name, unit := range sevenBitBoundaryUnits {
+		t.Run(name, func(t *testing.T) {
+			raw := sevenBitBoundaryHead + repeated(unit, size)
+			var scan boundaryScan
+			scan.sevenBitBoundary(raw)
+			if low, limit := len(raw)/2, 6*len(raw); scan.steps < low || scan.steps > limit {
+				t.Errorf("rewrite took %d steps over %d octets, want %d to %d", scan.steps, len(raw), low, limit)
+			}
+		})
+	}
+}
+
+// TestParameterWithoutFirstSegment_IsLinear: laterSegments sorts each parameter's
+// segments once, and looks at nothing else.
+func TestParameterWithoutFirstSegment_IsLinear(t *testing.T) {
+	assertLinear(t, func(size int) string {
+		var b strings.Builder
+		b.WriteString("Content-Type: application/pdf; a=\xf6")
+		for n := 1; b.Len() < size; n++ {
+			b.WriteString("; name*" + strconv.Itoa(n) + "=x")
+		}
+		return b.String() + "\r\n\r\nbody\r\n"
+	}, func(raw string) { WireForm(raw, false) })
 }
 
 // TestParameterField_IsLinear covers what a downgrade reaches without WireForm.

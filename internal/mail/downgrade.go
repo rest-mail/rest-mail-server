@@ -2,7 +2,6 @@ package mail
 
 import (
 	"io"
-	netmail "net/mail"
 	"strings"
 	"unicode/utf8"
 
@@ -29,14 +28,16 @@ var unstructuredFields = map[string]bool{
 // (RFC 6856 section 3, RFC 6855 section 3, downgrading per RFC 6857 and
 // RFC 6858). A message whose header block is already ASCII is returned
 // unchanged, byte for byte. The body is never touched: 8-bit bodies are legal
-// for these clients.
+// for these clients. See DowngradeForPOP3 for the one thing POP3 adds.
 //
 //   - Subject, Comments and Keywords become RFC 2047 encoded-words.
-//   - In address fields an internationalized domain becomes its A-label. An
-//     address whose local part is non-ASCII cannot be expressed in ASCII, so it
-//     becomes an empty group whose encoded display name shows the original
-//     (RFC 6857 section 3.2.1): the client still sees who it was, and a reply
-//     cannot silently go to a different mailbox.
+//   - An address field changes only what holds an 8-bit octet, see
+//     downgradeAddressField: names, group names and comments become encoded-words,
+//     and an internationalized domain becomes its A-label. An address whose local
+//     part is non-ASCII cannot be expressed in ASCII, so it becomes an empty group
+//     whose encoded display name shows the original (RFC 6857 section 3.1.8): the
+//     client still sees who it was, and a reply cannot silently go to a different
+//     mailbox.
 //   - Content-Type and Content-Disposition keep their meaning: non-ASCII
 //     parameters become RFC 2231 parameters, and every other parameter stays as
 //     it was sent, including one in a charset nothing here can read.
@@ -121,7 +122,7 @@ func writeDowngradedField(w wordSink, span string, bare bool) {
 		_, _ = w.WriteString("\r\n")
 		return
 	}
-	downgradeField(w, name, unfold(value))
+	downgradeField(w, name, value)
 	_, _ = w.WriteString("\r\n")
 }
 
@@ -215,22 +216,25 @@ func writeFolded(w wordSink, span string, bare bool) {
 	}
 }
 
-func downgradeField(w wordSink, name, value string) {
-	value = strings.TrimSpace(value)
+// downgradeField converts one field; value is still folded.
+func downgradeField(w wordSink, name, folded string) {
 	key := strings.ToLower(strings.TrimSpace(name))
+	if addressFields[key] {
+		if value, ok := downgradeAddressField(len(name)+1, folded); ok {
+			_, _ = w.WriteString(name)
+			_, _ = w.WriteString(":")
+			_, _ = w.WriteString(value)
+			return
+		}
+	}
+	// White space only: a no-break space at either end is text.
+	value := strings.Trim(unfold(folded), " \t")
 	switch {
 	case unstructuredFields[key]:
 		_, _ = w.WriteString(name)
 		_, _ = w.WriteString(": ")
 		writeEncodedText(w, value)
 		return
-	case addressFields[key]:
-		if list, ok := downgradeAddressList(value); ok {
-			_, _ = w.WriteString(name)
-			_, _ = w.WriteString(": ")
-			_, _ = w.WriteString(list)
-			return
-		}
 	case key == "content-type" || key == "content-disposition":
 		if field, ok := wireform.ParameterField(name, value); ok {
 			_, _ = w.WriteString(field)
@@ -243,48 +247,9 @@ func downgradeField(w wordSink, name, value string) {
 	writeEncodedText(w, value)
 }
 
-// downgradeAddressList renders each address with only ASCII. ok is false when
-// the value does not parse as an address list.
-func downgradeAddressList(value string) (string, bool) {
-	addrs, err := netmail.ParseAddressList(value)
-	if err != nil || len(addrs) == 0 {
-		return "", false
-	}
-	out := make([]string, 0, len(addrs))
-	for _, a := range addrs {
-		out = append(out, downgradeAddress(a))
-	}
-	return strings.Join(out, ", "), true
-}
-
-func downgradeAddress(a *netmail.Address) string {
-	at := strings.LastIndexByte(a.Address, '@')
-	local, domain := a.Address, ""
-	if at >= 0 {
-		local, domain = a.Address[:at], a.Address[at+1:]
-	}
-	if !containsNonASCII(local) {
-		if ascii, err := DomainASCII(domain); err == nil {
-			// String encodes a non-ASCII display name as an encoded-word.
-			return (&netmail.Address{Name: a.Name, Address: local + "@" + ascii}).String()
-		}
-	}
-	original := a.Address
-	if a.Name != "" {
-		original = a.Name + " <" + a.Address + ">"
-	}
-	return encodeText(original) + " :;"
-}
-
-// encodeText renders text as encoded-words when it is not plain ASCII. Octets
-// that are not UTF-8 go out as UNKNOWN-8BIT, so they survive and no charset is
-// guessed.
-func encodeText(s string) string {
-	var b strings.Builder
-	writeEncodedText(&b, s)
-	return b.String()
-}
-
+// writeEncodedText renders text as encoded-words when it is not plain ASCII.
+// Octets that are not UTF-8 go out as UNKNOWN-8BIT, so they survive and no
+// charset is guessed.
 func writeEncodedText(w wordSink, s string) {
 	switch {
 	case !containsNonASCII(s):
@@ -394,13 +359,33 @@ func containsNonASCII(s string) bool {
 	return false
 }
 
-// DowngradedSize is the octet count of DowngradeHeaders(raw): what a POP3 or
-// IMAP client that has not enabled UTF-8 receives. It equals len(raw) when the
-// header block is already ASCII. Nothing is built to measure it.
+// DowngradeForPOP3 is what RETR and TOP send a client that has not enabled UTF-8:
+// DowngradeHeaders, and a top-level 8-bit boundary in a spelling the client can match.
+//
+// POP3 sends the body as stored, so the delimiter lines hold the stored octets, and no
+// 7-bit header can name those: RFC 2231 only moves the problem to a reader that decodes
+// it, in a charset it knows. So the Content-Type and the delimiter lines take one 7-bit
+// spelling, the one IMAP FETCH sends, and no other octet of the body changes. Every line
+// stays a line, and DowngradedSize measures this form, so TOP and LIST stay right. IMAP
+// doesn't come here, because its engine converts the whole message, boundary included.
+func DowngradeForPOP3(raw string) string {
+	if header, _, _ := splitHeader(raw); !containsNonASCII(header) {
+		return raw
+	}
+	return DowngradeHeaders(wireform.SevenBitBoundary(raw))
+}
+
+// DowngradedSize is the octet count of DowngradeForPOP3(raw): what a POP3 client that
+// has not enabled UTF-8 receives. It equals len(raw) when the header block is already
+// ASCII. Nothing is built to measure it, but a body whose top-level 8-bit boundary has
+// to change.
 func DowngradedSize(raw string) int {
 	header, sep, body := splitHeader(raw)
 	if !containsNonASCII(header) {
 		return len(raw)
+	}
+	if respelled := wireform.SevenBitBoundary(raw); respelled != raw {
+		header, sep, body = splitHeader(respelled)
 	}
 	var size headerSink
 	writeDowngraded(&size, header, sep)
