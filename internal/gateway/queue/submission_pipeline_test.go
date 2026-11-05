@@ -9,6 +9,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -244,17 +245,31 @@ func openQueueTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		testdb.Unreachable(t, "submission-pipeline DB test skipped: no database reachable (%v)", err)
 	}
+	reuseConnections(t, gdb)
 	if err := gdb.AutoMigrate(&models.Domain{}); err != nil {
 		t.Skipf("submission-pipeline DB test skipped: migrate failed (%v)", err)
 	}
 	return gdb
 }
 
+// A real 2048-bit key each, made once: RSA generation is the slow part of these
+// fixtures, and every test seeds a single signing domain, so none needs a key unlike
+// another test's. The other signer stays a different key from the forwarder's.
+var (
+	signingDomainKey = sync.OnceValues(generateDKIMKey)
+	otherSignerKey   = sync.OnceValues(generateDKIMKey)
+)
+
+func generateDKIMKey() (string, error) {
+	private, _, err := dkim.GenerateKey(2048)
+	return private, err
+}
+
 // seedSignedDomain creates a domain whose DKIM key is encrypted at rest under
 // masterKey and returns the domain name.
 func seedSignedDomain(t *testing.T, tx *gorm.DB, masterKey string) string {
 	t.Helper()
-	priv, _, err := dkim.GenerateKey(2048)
+	priv, err := signingDomainKey()
 	if err != nil {
 		t.Fatalf("GenerateKey: %v", err)
 	}

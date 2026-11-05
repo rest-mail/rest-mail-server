@@ -30,6 +30,7 @@ func openTwoFactorTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		testdb.Unreachable(t, "two-factor repo test skipped: no database reachable (%v)", err)
 	}
+	reuseConnections(t, gdb)
 	if err := gdb.AutoMigrate(&models.Credential{}); err != nil {
 		t.Skipf("two-factor repo test skipped: migrate failed (%v)", err)
 	}

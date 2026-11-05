@@ -8,7 +8,6 @@ import (
 	dkim "github.com/rest-mail/go-dkim/pkg/dkim"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/dns"
-	"github.com/rest-mail/rest-mail-server/internal/outbound"
 )
 
 // An internationalized domain's records are published and checked under its
@@ -109,10 +108,7 @@ func TestAddMTASTSRecord(t *testing.T) {
 // and the previous key until it retires, under the A-label name and the DKIM TTL. A key this
 // server cannot read is left out (#728).
 func TestRotationRecords_StagedAndPreviousKeys(t *testing.T) {
-	private, public, err := dkim.GenerateKey(outbound.MinDKIMRSABits)
-	if err != nil {
-		t.Fatal(err)
-	}
+	private, public := sharedDKIMKey(t)
 	stored, err := models.EncryptDKIMPrivateKey(private, "rotation-records-master-key-0123456789")
 	if err != nil {
 		t.Fatal(err)

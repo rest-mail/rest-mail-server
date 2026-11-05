@@ -38,6 +38,9 @@ func scratchDatabase(t *testing.T) *gorm.DB {
 	cfg := config.Config{
 		DBHost: envOr("DB_HOST", "localhost"), DBPort: port,
 		DBName: envOr("DB_NAME", "restmail"), DBUser: envOr("DB_USER", "restmail"), DBPass: envOr("DB_PASS", "restmail"),
+		// Both pools close in the cleanup below. With no idle connections, every
+		// migration statement connects and authenticates all over again.
+		DBMaxIdleConns: 2,
 	}
 	admin, err := rmdb.Connect(&cfg)
 	if err != nil {
@@ -209,10 +212,16 @@ func TestMintToken_NothingElseOnTheRealStdout(t *testing.T) {
 // and the error is the one JSON object on stderr.
 func TestOperator_NothingOnStdoutWhileTheDatabaseIsUnreachable(t *testing.T) {
 	if os.Getenv("RESTMAIL_OPERATOR_SUBPROCESS") == "1" {
+		// Long enough for WaitForDB to fail, log and try again, which it does
+		// every 2 s: the retries are what could reach stdout.
+		operatorDatabaseWait = 3 * time.Second
 		os.Exit(runOperator([]string{"revoke-sessions"}, os.Stdout, os.Stderr))
 	}
 	if testing.Short() {
-		t.Skip("waits out the 30s database timeout")
+		t.Skip("waits out the database timeout")
+	}
+	if operatorDatabaseWait != 30*time.Second {
+		t.Errorf("operators wait %v for the database, want 30s", operatorDatabaseWait)
 	}
 	cmd := exec.Command(os.Args[0], "-test.run=^TestOperator_NothingOnStdoutWhileTheDatabaseIsUnreachable$")
 	cmd.Env = append(os.Environ(), "RESTMAIL_OPERATOR_SUBPROCESS=1", "ENVIRONMENT=development",

@@ -84,7 +84,7 @@ func TestAliasForwardDeliveryAndSigning(t *testing.T) {
 				}
 				raw := "From: author@original.test\r\nTo: " + source + "\r\nSubject: alias forward\r\nDate: Tue, 03 Nov 2026 05:00:00 +0000\r\nMessage-ID: <alias@original.test>\r\n\r\nalias body\r\n"
 				if senderKind == "already signed" {
-					keyPEM, _, err := dkim.GenerateKey(2048)
+					keyPEM, err := otherSignerKey()
 					if err != nil {
 						t.Fatal(err)
 					}

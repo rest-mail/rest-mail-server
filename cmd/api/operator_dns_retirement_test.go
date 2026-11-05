@@ -9,7 +9,6 @@ import (
 	dkim "github.com/rest-mail/go-dkim/pkg/dkim"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/dkimrotate"
-	"github.com/rest-mail/rest-mail-server/internal/outbound"
 )
 
 func TestDNSRecords_RevokeThenRemovePreviousSelector(t *testing.T) {
@@ -17,10 +16,7 @@ func TestDNSRecords_RevokeThenRemovePreviousSelector(t *testing.T) {
 	if err := database.AutoMigrate(&models.Domain{}, &models.MTASTSPolicy{}, &models.DKIMRotationKey{}); err != nil {
 		t.Fatal(err)
 	}
-	private, public, err := dkim.GenerateKey(outbound.MinDKIMRSABits)
-	if err != nil {
-		t.Fatal(err)
-	}
+	private, public := sharedDKIMKey(t)
 	value, err := dkim.RecordValue(public)
 	if err != nil {
 		t.Fatal(err)

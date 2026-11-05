@@ -123,10 +123,7 @@ func TestDKIMEnsure_CreatesEncryptedAndRetriesWithoutWrites(t *testing.T) {
 
 func TestDKIMEnsure_PreservesExistingCustomSelector(t *testing.T) {
 	database := dkimEnsureFixture(t)
-	private, public, err := dkim.GenerateKey(2048)
-	if err != nil {
-		t.Fatal(err)
-	}
+	private, public := sharedDKIMKey(t)
 	stored, err := models.EncryptDKIMPrivateKey(private, ensureTestMaster)
 	if err != nil {
 		t.Fatal(err)
@@ -161,10 +158,7 @@ func TestDKIMEnsure_AbsentLegacyFields(t *testing.T) {
 
 func TestDKIMEnsure_RefusesMaterialWithoutMutationOrLeak(t *testing.T) {
 	database := dkimEnsureFixture(t)
-	private, _, err := dkim.GenerateKey(2048)
-	if err != nil {
-		t.Fatal(err)
-	}
+	private, _ := sharedDKIMKey(t)
 	stored, err := models.EncryptDKIMPrivateKey(private, ensureTestMaster)
 	if err != nil {
 		t.Fatal(err)

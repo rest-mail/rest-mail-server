@@ -173,10 +173,7 @@ func TestDNSRecords_DerivesDKIMFromTheStoredKey(t *testing.T) {
 	masterKey := "a-master-key-long-enough-for-config"
 	t.Setenv("MASTER_KEY", masterKey)
 	migrate(t)
-	privPEM, pubPEM, err := dkim.GenerateKey(2048)
-	if err != nil {
-		t.Fatal(err)
-	}
+	privPEM, pubPEM := sharedDKIMKey(t)
 	stored, err := models.EncryptDKIMPrivateKey(privPEM, masterKey)
 	if err != nil {
 		t.Fatal(err)
