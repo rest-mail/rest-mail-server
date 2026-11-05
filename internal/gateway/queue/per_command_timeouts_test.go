@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"net"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -299,25 +300,80 @@ func TestDeliverSMTP_StalledQuitStillDelivers(t *testing.T) {
 
 // Each block has a timer of its own (RFC 5321 §4.5.3.2.5): a large message taken
 // slowly but steadily outlasts the block timer many times over and still arrives.
+//
+// The pace and the timer are on a clock of the connection's own, which a write
+// moves forward by how long the peer takes over those bytes. On the wall clock a
+// loaded machine starved the peer past one block's timer (#1942), so the test
+// decided nothing about the timer.
 func TestDeliverSMTP_EachDataBlockHasItsOwnTimer(t *testing.T) {
 	const blockTimeout = 300 * time.Millisecond
-	mx := newTimedMX(t, timedMXOptions{readPause: 40 * time.Millisecond})
+	mx := newTimedMX(t, timedMXOptions{})
 	timers := everyStep(time.Hour)
 	timers.DataBlock = blockTimeout
 	w := timedWorker(timers)
 	w.sendDeadline = func(int64) time.Duration { return blockTimeout } // the old cap, on the same scale
+	var paced *pacedConn
+	w.wrapSMTPConn = func(conn net.Conn) net.Conn {
+		paced = &pacedConn{Conn: conn, perMiB: 40 * time.Millisecond}
+		return paced
+	}
 	item := timedItem()
 	item.RawMessage += strings.Repeat("synthetic payload line\r\n", 700000) // about 16 MiB
-	started := time.Now()
 	if err := w.deliverSMTP(mx.addr(""), "127.0.0.1", item, nil, nil); err != nil {
 		t.Fatalf("a message read steadily must not time out: %v", err)
 	}
-	if took := time.Since(started); took <= blockTimeout {
+	if took := paced.elapsed(); took <= blockTimeout {
 		t.Fatalf("the transfer took %v, so it did not outlast one block's timer", took)
 	}
 	if got := mx.copiesReceived(); got != 1 {
 		t.Fatalf("copies = %d, want 1", got)
 	}
+}
+
+// pacedConn keeps a socket's deadline on a clock of its own: each write moves the
+// clock on by perMiB for each MiB written, as a peer taking the bytes at that pace
+// would. A write past the deadline fails, and from then on the real socket fails
+// too, reads included, as a socket past its deadline does. Until then the real
+// socket gets no deadline, so the wall clock decides nothing.
+type pacedConn struct {
+	net.Conn
+	perMiB time.Duration
+
+	mu       sync.Mutex
+	now      time.Duration
+	deadline time.Duration // on the conn's clock; zero is none
+}
+
+func (c *pacedConn) SetDeadline(t time.Time) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.deadline = 0
+	if !t.IsZero() {
+		c.deadline = c.now + time.Until(t)
+	}
+	return nil
+}
+
+func (c *pacedConn) SetWriteDeadline(t time.Time) error { return c.SetDeadline(t) }
+
+func (c *pacedConn) SetReadDeadline(time.Time) error { return nil }
+
+func (c *pacedConn) Write(p []byte) (int, error) {
+	c.mu.Lock()
+	c.now += time.Duration(len(p)) * c.perMiB / (1 << 20)
+	late := c.deadline != 0 && c.now > c.deadline
+	c.mu.Unlock()
+	if late {
+		_ = c.Conn.SetDeadline(time.Unix(1, 0))
+		return 0, &net.OpError{Op: "write", Net: "tcp", Err: os.ErrDeadlineExceeded}
+	}
+	return c.Conn.Write(p)
+}
+
+func (c *pacedConn) elapsed() time.Duration {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.now
 }
 
 func TestWriteDataBlocks_ArmsOncePerBlockAndForTheFlush(t *testing.T) {
