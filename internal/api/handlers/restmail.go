@@ -634,22 +634,46 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput, spoo
 			SizeBytes:    sizeBytes,
 			RawSize:      len(rcptRaw), // exact stored-raw octet count for IMAP/POP3 size reporting
 		}
+		var attachmentRows []models.Attachment
+		var attachmentBytes int64
+		if final != nil {
+			for _, group := range [][]pipeline.Attachment{final.Attachments, final.Inline} {
+				for _, attachment := range group {
+					if attachment.Ref == "" {
+						continue
+					}
+					attachmentRows = append(attachmentRows, models.Attachment{
+						Filename: attachment.Filename, ContentType: attachment.ContentType, SizeBytes: attachment.Size,
+						StorageType: attachment.Storage, StorageRef: attachment.Ref, Checksum: attachment.Checksum,
+					})
+					attachmentBytes += attachment.Size
+				}
+			}
+		}
+		msg.HasAttachments = len(attachmentRows) > 0
 
 		// A recipient is accepted only after its message and both quota
 		// charges commit together. A failed charge must not leave an inbox
 		// copy behind for the peer's retry, and HTTP cancellation must reach
 		// every write and the transaction's commit.
 		if err := h.db.WithContext(r.Context()).Transaction(func(tx *gorm.DB) error {
-			if err := repositories.ReserveStorage(tx, mailbox.ID, int64(sizeBytes)); err != nil {
+			if err := repositories.ReserveStorage(tx, mailbox.ID, int64(sizeBytes)+attachmentBytes); err != nil {
 				return err
 			}
 			if err := tx.Create(&msg).Error; err != nil {
 				return err
 			}
+			for _, attachment := range attachmentRows {
+				attachment.MessageID = msg.ID
+				if err := tx.Create(&attachment).Error; err != nil {
+					return err
+				}
+			}
 			return tx.Model(&models.QuotaUsage{}).Where("mailbox_id = ?", mailbox.ID).Updates(map[string]interface{}{
-				"subject_bytes": gorm.Expr("subject_bytes + ?", len(req.Subject)),
-				"body_bytes":    gorm.Expr("body_bytes + ?", len(req.BodyText)+len(req.BodyHTML)),
-				"message_count": gorm.Expr("message_count + 1"),
+				"subject_bytes":    gorm.Expr("subject_bytes + ?", len(req.Subject)),
+				"body_bytes":       gorm.Expr("body_bytes + ?", len(req.BodyText)+len(req.BodyHTML)),
+				"attachment_bytes": gorm.Expr("attachment_bytes + ?", attachmentBytes),
+				"message_count":    gorm.Expr("message_count + 1"),
 			}).Error
 		}); err != nil {
 			failed = append(failed, rcpt)
