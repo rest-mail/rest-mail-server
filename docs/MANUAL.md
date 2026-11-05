@@ -911,7 +911,7 @@ gateways: run the instance task before restarting a gateway with a broken pair.
 | `SRS_SECRET` | *(empty)* | Signs the SRS addresses forwards are sent with. **Required for the SMTP gateway in prod**, 32 bytes or more. Empty elsewhere: forwards keep their sender, and a bounce to an SRS address is refused. See [§7.10](#710-forwarding-and-the-srs-secret). |
 | `SRS_PREVIOUS_SECRET` | *(empty)* | The SRS secret before the last rotation, still accepted when checking an address. |
 | `QUEUE_WORKERS` | `4` | |
-| `QUEUE_POLL_INTERVAL` | `5s` | |
+| `QUEUE_POLL_INTERVAL` | `5s` | How long an idle queue worker waits before looking again. A worker with mail due goes on to the next message at once |
 | `QUEUE_SMTP_GREETING_TIMEOUT` | `5m` | Outbound SMTP: how long to wait for the 220 greeting (RFC 5321 §4.5.3.2). Go duration, like the five below; a malformed or non-positive value is a startup error |
 | `QUEUE_SMTP_MAIL_TIMEOUT` | `5m` | Outbound SMTP: the reply to MAIL |
 | `QUEUE_SMTP_RCPT_TIMEOUT` | `5m` | Outbound SMTP: the reply to RCPT |

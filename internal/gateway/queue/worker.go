@@ -543,16 +543,36 @@ func (w *Worker) processLoop(workerID int) {
 		case <-w.shutdown:
 			return
 		case <-ticker.C:
-			w.processOne(workerID)
+			w.drain(workerID)
 		}
 	}
 }
 
-func (w *Worker) processOne(workerID int) {
-	if !w.testReset {
-		w.processNext(workerID)
-		return
+// drain works through what is due, one message after another, until nothing is
+// or the worker is shut down. The poll interval is how long an idle worker waits
+// before looking again, not the pace of a backlog: taking one message per tick
+// held a whole gateway to QUEUE_WORKERS / QUEUE_POLL_INTERVAL, 0.8 messages a
+// second by default, however little each delivery took (#1583).
+//
+// It cannot spin on a message it just tried: a failed attempt leaves the row
+// deferred until a later time, bounced, or delivering, none of which is due. A
+// failed claim also ends it, so a database outage waits for the next tick.
+func (w *Worker) drain(workerID int) {
+	for w.processOne(workerID) {
+		select {
+		case <-w.shutdown:
+			return
+		default:
+		}
 	}
+}
+
+// processOne attempts the next message due, and reports whether there was one.
+func (w *Worker) processOne(workerID int) bool {
+	if !w.testReset {
+		return w.processNext(workerID)
+	}
+	claimed := false
 	if err := testreset.Delivery(w.db, func(conn *gorm.DB) {
 		delivery := &Worker{
 			db: conn, hostname: w.hostname,
@@ -568,22 +588,24 @@ func (w *Worker) processOne(workerID int) {
 			// holds the reset barrier, and a timed-out statement would close it.
 			heartbeatDB: w.db,
 		}
-		delivery.processNext(workerID)
+		claimed = delivery.processNext(workerID)
 	}); err != nil {
 		slog.Error("queue: test reset barrier failed", "error", err)
+		return false
 	}
+	return claimed
 }
 
 func (w *Worker) EnableTestReset(cfg *config.Config) {
 	w.testReset = !cfg.IsProduction()
 }
 
-func (w *Worker) processNext(workerID int) {
+func (w *Worker) processNext(workerID int) bool {
 	now := time.Now()
 	item, err := w.claim(now)
 	if err != nil {
 		// No items to process (or DB error)
-		return
+		return false
 	}
 
 	slog.Info("queue: processing",
@@ -596,7 +618,25 @@ func (w *Worker) processNext(workerID int) {
 	)
 
 	w.process(item, now)
+	return true
 }
+
+// claimSQL finds the next message due: its parameters are now, the time before
+// which a delivering row is stale, and now again. Delivered and bounced rows stay
+// in the table, and their next_attempt is the oldest there is, so
+// idx_outbound_queue_due (internal/db/db.go) covers only the rows it can return.
+// The first status test repeats what the rest says because Postgres does not work
+// that out from the OR, and would not use that index without it.
+const claimSQL = `SELECT * FROM outbound_queue
+	 WHERE status IN ('pending', 'deferred', 'delivering')
+	 AND (
+	     (status IN ('pending', 'deferred') AND next_attempt <= ?)
+	     OR (status = 'delivering' AND last_attempt < ?)
+	 ) AND expires_at > ?
+	 AND NOT ` + models.OutboundQueueHeldSQL + `
+	 ORDER BY next_attempt ASC
+	 LIMIT 1
+	 FOR UPDATE SKIP LOCKED`
 
 // claim takes the next message due for an attempt and marks it delivering, using
 // FOR UPDATE SKIP LOCKED so workers never claim the same row.
@@ -611,17 +651,7 @@ func (w *Worker) claim(now time.Time) (models.OutboundQueue, error) {
 	// lifted (#1590).
 	staleDelivering := now.Add(-w.reclaim)
 	err := w.db.Transaction(func(tx *gorm.DB) error {
-		result := tx.Raw(
-			`SELECT * FROM outbound_queue
-			 WHERE (
-			     (status IN ('pending', 'deferred') AND next_attempt <= ?)
-			     OR (status = 'delivering' AND last_attempt < ?)
-			 ) AND expires_at > ?
-			 AND NOT `+models.OutboundQueueHeldSQL+`
-			 ORDER BY next_attempt ASC
-			 LIMIT 1
-			 FOR UPDATE SKIP LOCKED`, now, staleDelivering, now,
-		).Scan(&item)
+		result := tx.Raw(claimSQL, now, staleDelivering, now).Scan(&item)
 
 		if result.Error != nil {
 			return result.Error

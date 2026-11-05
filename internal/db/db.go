@@ -217,6 +217,12 @@ func autoMigrate(db *gorm.DB) error {
 		slog.Warn("failed to create reply parent index", "error", err)
 	}
 
+	// What the queue worker claims from. Every message that has left stays in the table with
+	// the oldest next_attempt there is, so without this each claim walks past all of them.
+	if err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_outbound_queue_due ON outbound_queue(next_attempt) WHERE status IN ('pending', 'deferred', 'delivering')`).Error; err != nil {
+		slog.Warn("failed to create outbound queue due index", "error", err)
+	}
+
 	// Pipeline indexes
 	db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_contacts_mailbox_email ON contacts(mailbox_id, email)`)
 	db.Exec(`CREATE INDEX IF NOT EXISTS idx_contacts_trust_level ON contacts(mailbox_id, trust_level)`)
