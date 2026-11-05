@@ -52,6 +52,9 @@ vars:
   API_TRACE_SAMPLE_RATE: '{{.API_TRACE_SAMPLE_RATE | default "1"}}'
   API_LOG_LEVEL: '{{.API_LOG_LEVEL | default "debug"}}'
   API_ENVIRONMENT: '{{.API_ENVIRONMENT | default "development"}}'
+  # A testbed load run (#1583): every SMTP and IMAP sign-in reaches the API from
+  # the gateway's one address, and the throttle allows an address 1 a second.
+  API_LOAD_LIMITS_OFF: '{{.API_LOAD_LIMITS_OFF | default "false"}}'
   API_MAILNET_ONLY: '{{.API_MAILNET_ONLY | default "false"}}'
   API_PROXY_HOST: '{{.API_PROXY_HOST | default "restmail.localhost"}}'
   # Recovery links point at the HTTPS origin users reach the API through; the
@@ -236,6 +239,7 @@ tasks:
           -e TRACE_SAMPLE_RATE={{.API_TRACE_SAMPLE_RATE}} \
           --env-file "$SECRETS_ENV" \
           -e ENVIRONMENT={{.API_ENVIRONMENT}} \
+          {{if eq .API_LOAD_LIMITS_OFF "true"}}-e AUTH_RATE_LIMIT_ENABLED=false{{end}} \
           -e LOG_LEVEL={{.API_LOG_LEVEL}} \
           -e INTERNAL_MTLS_ENABLED={{.API_INTERNAL_MTLS}} \
           -e INTERNAL_MTLS_PORT={{.API_INTERNAL_MTLS_PORT}} \

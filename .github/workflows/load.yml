@@ -1,8 +1,9 @@
 name: Load
 
 # One load run against the e2e topology (#1583), started by hand: SMTP in,
-# SMTP out (submissions relayed to mail1.test), held IMAP connections and API
-# requests, at the targets given, for the duration given. The results
+# SMTP out (submissions accepted, and what the queue then delivered to a sink set
+# up as the recipient domain's MX), held IMAP connections and API requests, at the
+# targets given, for the duration given. The results
 # (results.json, results.txt and the raw generator output) are uploaded as an
 # artifact; compare two with `chore load:compare -- a/results.json b/results.json`.
 #
@@ -29,6 +30,9 @@ on:
       duration:
         description: Seconds each load runs
         default: "60"
+      delivery_drain:
+        description: Seconds after the last submission to wait for delivery
+        default: "300"
 
 concurrency:
   group: load
@@ -156,6 +160,10 @@ jobs:
           grep -nF 'alpine:3.20 chmod 644' "$f"
 
       - name: Bring up e2e topology
+        # The limits one load generator cannot pass, off on this testbed only:
+        # tests/load/README.md says which and why.
+        env:
+          RESTMAIL_LOAD_LIMITS_OFF: "true"
         run: chore e2e:up
 
       - name: Load run
@@ -166,6 +174,7 @@ jobs:
           LOAD_IMAP_CONNS: ${{ inputs.imap_conns }}
           LOAD_API_RATE: ${{ inputs.api_rate }}
           LOAD_DURATION: ${{ inputs.duration }}
+          LOAD_DELIVERY_DRAIN: ${{ inputs.delivery_drain }}
           LOAD_OUT: ${{ runner.temp }}/load
         run: chore test:load
 

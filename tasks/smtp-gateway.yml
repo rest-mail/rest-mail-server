@@ -65,6 +65,9 @@ vars:
   SMTP_GATEWAY_PORT_INBOUND: '{{.SMTP_GATEWAY_PORT_INBOUND | default "25"}}'
   SMTP_GATEWAY_PORT_SUBMISSION_TLS: '{{.SMTP_GATEWAY_PORT_SUBMISSION_TLS | default "465"}}'
   SMTP_GATEWAY_QUEUE_WORKERS: '{{.SMTP_GATEWAY_QUEUE_WORKERS | default "4"}}'
+  # A testbed load run (#1583): one account submits the outbound load, and the
+  # per-account send limits would refuse all but its first 20 messages a minute.
+  SMTP_GATEWAY_LOAD_LIMITS_OFF: '{{.SMTP_GATEWAY_LOAD_LIMITS_OFF | default "false"}}'
   # Outbound delivery-queue poll cadence + MTA-STS enforcement. Empty = server
   # defaults (5s poll, MTA-STS enforced). Set via the manifest `smtp:` block.
   SMTP_GATEWAY_QUEUE_POLL_INTERVAL: '{{.SMTP_GATEWAY_QUEUE_POLL_INTERVAL | default ""}}'
@@ -189,8 +192,13 @@ tasks:
         printf 'MASTER_KEY=%s\n' "{{.SMTP_GATEWAY_MASTER_KEY}}" >> "$SECRETS_ENV"
         printf 'SRS_SECRET=%s\n' "{{.SMTP_GATEWAY_SRS_SECRET}}" >> "$SECRETS_ENV"
         printf 'SRS_PREVIOUS_SECRET=%s\n' "{{.SMTP_GATEWAY_SRS_PREVIOUS_SECRET}}" >> "$SECRETS_ENV"
+        LOAD_LIMITS=""
+        if [ "{{.SMTP_GATEWAY_LOAD_LIMITS_OFF}}" = "true" ]; then
+          LOAD_LIMITS="-e API_SEND_RATE_LIMIT_PER_MINUTE=0 -e API_SEND_RATE_LIMIT_PER_HOUR=0 -e SEND_LIMIT_MESSAGES_PER_DAY=0 -e SEND_LIMIT_RECIPIENTS_PER_HOUR=0 -e SEND_LIMIT_RECIPIENTS_PER_DAY=0"
+        fi
         docker run -d --label "$RESTMAIL_LABEL" --name {{.SMTP_GATEWAY_CONTAINER_NAME}} \
           $HARDENING \
+          $LOAD_LIMITS \
           --hostname {{.SMTP_GATEWAY_RESTMAIL_HOSTNAME}} \
           --restart unless-stopped \
           --network {{.SMTP_GATEWAY_NETWORK}} \

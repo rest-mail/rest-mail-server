@@ -149,6 +149,7 @@ includes:
       API_JS_FILTER_TOKEN: '{{.RESTMAIL_JS_FILTER_TOKEN | default "dev-js-filter-token-change-in-production"}}'
       API_LOG_LEVEL: '{{.RESTMAIL_LOG_LEVEL}}'
       API_ENVIRONMENT: '{{.RESTMAIL_ENVIRONMENT}}'
+      API_LOAD_LIMITS_OFF: '{{.RESTMAIL_LOAD_LIMITS_OFF | default "false"}}'
       API_MAILNET_ONLY: '{{.RESTMAIL_MAILNET_ONLY}}'
       # Internal mTLS: driven by the per-instance RESTMAIL_INTERNAL_MTLS switch
       # (manifest `internal_mtls: true`). Defaults off — unchanged behavior.
@@ -203,6 +204,7 @@ includes:
       SMTP_GATEWAY_TRANSFER_GRACE_PERIOD: '{{.RESTMAIL_SMTP_TRANSFER_GRACE_PERIOD | default ""}}'
       SMTP_GATEWAY_TRANSFER_STALL_TIMEOUT: '{{.RESTMAIL_SMTP_TRANSFER_STALL_TIMEOUT | default ""}}'
       SMTP_GATEWAY_QUEUE_WORKERS: '{{.RESTMAIL_SMTP_QUEUE_WORKERS | default ""}}'
+      SMTP_GATEWAY_LOAD_LIMITS_OFF: '{{.RESTMAIL_LOAD_LIMITS_OFF | default "false"}}'
       SMTP_GATEWAY_QUEUE_POLL_INTERVAL: '{{.RESTMAIL_SMTP_QUEUE_POLL_INTERVAL | default ""}}'
       SMTP_GATEWAY_MTASTS_ENFORCE: '{{.RESTMAIL_SMTP_MTASTS_ENFORCE | default ""}}'
 
@@ -924,9 +926,11 @@ tasks:
       - python3 -B tests/load/compare.py {{.CLI_ARGS}}
 
   load:
-    desc: 'Bring up the e2e topology, run the load test (test:load), tear it down'
+    desc: 'Bring up the e2e topology with the limits a load cannot pass turned off, run the load test (test:load), tear it down'
     cmds:
-      - task: e2e:up
+      # In the environment of a new invocation, as e2e:up does for internal mTLS
+      # (#1339): the service tasks read it through their include mappings.
+      - RESTMAIL_LOAD_LIMITS_OFF=true "${CHORE_BIN:-chore}" e2e:up
       - defer: { task: e2e:down }
       - task: test:load
 

@@ -3,7 +3,8 @@
 
   python3 tests/load/compare.py before/results.json after/results.json [--threshold 10] [--fail-on-regression]
 
-For each load: achieved rate, p95 and p99 latency, and errors; for each service
+For each load: achieved rate, p95 and p99 latency, and errors (smtp_delivery,
+what arrived at the receiver, also shows the count delivered); for each service
 in both runs: max CPU and max memory. A load's change worse than --threshold
 percent (a lower rate, higher latency) or any new errors is a REGRESSION; a
 service using more is marked but not counted, since use moves with the load.
@@ -50,6 +51,8 @@ def compare(a: dict, b: dict, threshold: float) -> tuple[list[str], int]:
             row("p95 latency", la.get("latency_ms", {}).get("p95"), lb.get("latency_ms", {}).get("p95"), False, threshold, "ms"),
             row("p99 latency", la.get("latency_ms", {}).get("p99"), lb.get("latency_ms", {}).get("p99"), False, threshold, "ms"),
         ]
+        if "delivered" in la.get("extra", {}) and "delivered" in lb.get("extra", {}):
+            checks.append(row("delivered", la["extra"]["delivered"], lb["extra"]["delivered"], True, threshold))
         ea, eb = la.get("errors", 0), lb.get("errors", 0)
         checks.append((f"  {'errors':22} {ea:>12} -> {eb:>12}" + ("            REGRESSION" if eb > ea else ""), eb > ea))
         for line, worse in checks:

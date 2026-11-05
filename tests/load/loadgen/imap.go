@@ -21,6 +21,7 @@ type imapConfig struct {
 	pass        string
 	interval    time.Duration
 	timeout     time.Duration
+	sources     *sourcePool
 }
 
 // runIMAP opens conns authenticated IMAP connections, ramping at connectRate a
@@ -40,7 +41,12 @@ func runIMAP(args []string) error {
 	fs.StringVar(&cfg.pass, "pass", "password123", "password for -user")
 	fs.DurationVar(&cfg.interval, "interval", 10*time.Second, "time between commands on one connection")
 	fs.DurationVar(&cfg.timeout, "timeout", 30*time.Second, "per-command timeout")
+	sources := fs.String("source-ips", "", "connect from these local addresses in turn, as 10.99.203.1-56")
 	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	var err error
+	if cfg.sources, err = parseSources(*sources); err != nil {
 		return err
 	}
 	res := holdIMAP(context.Background(), cfg, *conns, *connectRate, *duration)
@@ -146,7 +152,7 @@ type imapConn struct {
 }
 
 func dialIMAP(cfg imapConfig) (*imapConn, error) {
-	d := &net.Dialer{Timeout: cfg.timeout}
+	d := cfg.sources.dialer(cfg.timeout)
 	var (
 		conn net.Conn
 		err  error
