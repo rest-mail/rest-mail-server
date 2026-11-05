@@ -192,13 +192,6 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput, spoo
 	if len(to) == 0 && req.Recipients != nil && len(*req.Recipients) > 0 {
 		to = *req.Recipients
 	}
-	// A source says what its headers are. A peer's own account of them is kept only when there's no
-	// source, or it could call a list's mail a person's (#1915).
-	var headers json.RawMessage
-	if req.Headers != nil && req.RawMessage == "" {
-		headers, _ = json.Marshal(req.Headers)
-	}
-
 	// When raw_message is provided, its headers fill the structured fields a request left empty.
 	//
 	// Authentication-Results claiming this server's authserv-id did not come
@@ -212,6 +205,12 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput, spoo
 	// loop (RFC 5321 §6.3, #1647), refused as the SMTP gateway refuses it.
 	if rmime.TooManyReceived(headerSection) {
 		return RestmailDelivery{}, endpoint.Refuse(http.StatusForbidden, "rejected", "Routing loop detected: too many Received headers")
+	}
+	// A source says what its headers are. A peer's own account of them is kept only when there's no
+	// source, or it could call a list's mail a person's (#1915).
+	var headers json.RawMessage
+	if req.Headers != nil && headerSection == "" {
+		headers, _ = json.Marshal(req.Headers)
 	}
 	if headerSection != "" {
 		// Nested deeper or holding more parts than the MIME limits allow (#1641). This passes over
