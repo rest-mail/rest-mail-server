@@ -101,8 +101,8 @@ func (f *rateLimitFilter) rateKey(email *pipeline.EmailJSON) string {
 		return "acct:" + acct
 	}
 	sender := email.Envelope.MailFrom
-	if sender == "" && len(email.Headers.From) > 0 {
-		sender = email.Headers.From[0].Address
+	if sender == "" && email.Headers.From.Len() > 0 {
+		sender = email.Headers.From.FirstAddress()
 	}
 	return "sender:" + sender
 }

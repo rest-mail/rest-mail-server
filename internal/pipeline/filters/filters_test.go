@@ -18,8 +18,8 @@ func validEmail() *pipeline.EmailJSON {
 			RcptTo:   []string{"recipient@example.com"},
 		},
 		Headers: pipeline.Headers{
-			From:      []pipeline.Address{{Address: "sender@example.com"}},
-			To:        []pipeline.Address{{Address: "recipient@example.com"}},
+			From:      pipeline.Addresses([]pipeline.Address{{Address: "sender@example.com"}}...),
+			To:        pipeline.Addresses([]pipeline.Address{{Address: "recipient@example.com"}}...),
 			Date:      "Mon, 17 Feb 2026 10:00:00 +0000",
 			MessageID: "<abc123@example.com>",
 			Subject:   "Test message",
@@ -55,7 +55,7 @@ func TestHeaderValidate_MissingFrom(t *testing.T) {
 	}
 
 	email := validEmail()
-	email.Headers.From = nil
+	email.Headers.From = pipeline.AddressList{}
 
 	result, err := f.Execute(context.Background(), email)
 	if err != nil {
@@ -116,7 +116,7 @@ func TestHeaderValidate_CustomConfig(t *testing.T) {
 	}
 
 	email := validEmail()
-	email.Headers.From = nil // Would normally be rejected
+	email.Headers.From = pipeline.AddressList{} // Would normally be rejected
 
 	result, err := f.Execute(context.Background(), email)
 	if err != nil {
@@ -330,7 +330,7 @@ func TestRateLimit_PersistsAcrossMessages(t *testing.T) {
 	// Unique sender so this test's counts never collide with any other test that
 	// shares the process-global DefaultRegistry limiter store.
 	email.Envelope.MailFrom = "persist-across-messages@example.com"
-	email.Headers.From = []pipeline.Address{{Address: "persist-across-messages@example.com"}}
+	email.Headers.From = pipeline.Addresses(pipeline.Address{Address: "persist-across-messages@example.com"})
 
 	var last pipeline.Action
 	for i := 0; i < 3; i++ {

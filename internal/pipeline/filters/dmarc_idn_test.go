@@ -50,8 +50,8 @@ func TestDMARC_IDNPolicyLookup(t *testing.T) {
 				if len(got) != 1 || got[0].Domain != tc.domain || got[0].Result != want {
 					t.Errorf("DMARC verdict = %+v, want %s for %s", got, want, tc.domain)
 				}
-				if email.Headers.From[0].Address != tc.from {
-					t.Errorf("original From changed to %q", email.Headers.From[0].Address)
+				if email.Headers.From.All()[0].Address != tc.from {
+					t.Errorf("original From changed to %q", email.Headers.From.All()[0].Address)
 				}
 			}
 		})

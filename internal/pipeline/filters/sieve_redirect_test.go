@@ -103,7 +103,7 @@ func TestRecipientDomains(t *testing.T) {
 	// Envelope wins.
 	got := recipientDomains(&pipeline.EmailJSON{
 		Envelope: pipeline.Envelope{RcptTo: []string{"a@corp.example", "b@corp.example"}},
-		Headers:  pipeline.Headers{To: []pipeline.Address{{Address: "c@other.example"}}},
+		Headers:  pipeline.Headers{To: pipeline.Addresses([]pipeline.Address{{Address: "c@other.example"}}...)},
 	})
 	if len(got) != 1 || got[0] != "corp.example" {
 		t.Fatalf("recipientDomains(envelope) = %v, want [corp.example]", got)
@@ -112,8 +112,8 @@ func TestRecipientDomains(t *testing.T) {
 	// Falls back to To/Cc headers when the envelope is empty.
 	got = recipientDomains(&pipeline.EmailJSON{
 		Headers: pipeline.Headers{
-			To: []pipeline.Address{{Address: "c@other.example"}},
-			Cc: []pipeline.Address{{Address: "d@cc.example"}},
+			To: pipeline.Addresses([]pipeline.Address{{Address: "c@other.example"}}...),
+			Cc: pipeline.Addresses([]pipeline.Address{{Address: "d@cc.example"}}...),
 		},
 	})
 	if len(got) != 2 || got[0] != "other.example" || got[1] != "cc.example" {

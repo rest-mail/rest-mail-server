@@ -36,14 +36,14 @@ var headerEncoder = stdmime.QEncoding
 func Serialize(email *pipeline.EmailJSON) ([]byte, error) {
 	var b strings.Builder
 
-	if len(email.Headers.From) > 0 {
-		writeHeader(&b, "From", formatAddresses(email.Headers.From))
+	if email.Headers.From.Len() > 0 {
+		writeHeader(&b, "From", formatAddresses(email.Headers.From.All()))
 	}
-	if len(email.Headers.To) > 0 {
-		writeHeader(&b, "To", formatAddresses(email.Headers.To))
+	if email.Headers.To.Len() > 0 {
+		writeHeader(&b, "To", formatAddresses(email.Headers.To.All()))
 	}
-	if len(email.Headers.Cc) > 0 {
-		writeHeader(&b, "Cc", formatAddresses(email.Headers.Cc))
+	if email.Headers.Cc.Len() > 0 {
+		writeHeader(&b, "Cc", formatAddresses(email.Headers.Cc.All()))
 	}
 	if email.Headers.Subject != "" {
 		// Sanitized before it is encoded: encoded, a line break would no longer
@@ -285,14 +285,14 @@ func wrapBase64(content string) string {
 // EnvelopeFromEmail extracts envelope information from the email headers.
 func EnvelopeFromEmail(email *pipeline.EmailJSON) pipeline.Envelope {
 	env := email.Envelope
-	if env.MailFrom == "" && len(email.Headers.From) > 0 {
-		env.MailFrom = email.Headers.From[0].Address
+	if env.MailFrom == "" && email.Headers.From.Len() > 0 {
+		env.MailFrom = email.Headers.From.FirstAddress()
 	}
 	if len(env.RcptTo) == 0 {
-		for _, to := range email.Headers.To {
+		for _, to := range email.Headers.To.All() {
 			env.RcptTo = append(env.RcptTo, to.Address)
 		}
-		for _, cc := range email.Headers.Cc {
+		for _, cc := range email.Headers.Cc.All() {
 			env.RcptTo = append(env.RcptTo, cc.Address)
 		}
 	}
@@ -303,7 +303,7 @@ func EnvelopeFromEmail(email *pipeline.EmailJSON) pipeline.Envelope {
 func EstimateSize(email *pipeline.EmailJSON) int64 {
 	var size int64
 	// Headers
-	for _, from := range email.Headers.From {
+	for _, from := range email.Headers.From.All() {
 		size += int64(len(from.Address) + len(from.Name) + 20)
 	}
 	size += int64(len(email.Headers.Subject) + 20)

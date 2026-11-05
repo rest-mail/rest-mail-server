@@ -295,9 +295,9 @@ func sieveMessage(email *pipeline.EmailJSON) *sieve.Message {
 	msg := &sieve.Message{
 		Headers: sieve.Headers{
 			Subject:    email.Headers.Subject,
-			From:       sieveAddresses(email.Headers.From),
-			To:         sieveAddresses(email.Headers.To),
-			Cc:         sieveAddresses(email.Headers.Cc),
+			From:       sieveAddresses(email.Headers.From.All()),
+			To:         sieveAddresses(email.Headers.To.All()),
+			Cc:         sieveAddresses(email.Headers.Cc.All()),
 			Bcc:        sieveAddresses(email.Headers.Bcc),
 			MessageID:  email.Headers.MessageID,
 			InReplyTo:  email.Headers.InReplyTo,
@@ -508,10 +508,10 @@ func recipientDomains(email *pipeline.EmailJSON) []string {
 		add(r)
 	}
 	if len(out) == 0 {
-		for _, a := range email.Headers.To {
+		for _, a := range email.Headers.To.All() {
 			add(a.Address)
 		}
-		for _, a := range email.Headers.Cc {
+		for _, a := range email.Headers.Cc.All() {
 			add(a.Address)
 		}
 	}

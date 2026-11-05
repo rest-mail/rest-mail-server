@@ -166,17 +166,10 @@ func (h *MessageImportHandler) storeImportedMessage(r *http.Request, accountID u
 	msg.Subject = importedText(headers.Subject)
 	msg.InReplyTo = importedText(rmail.CanonicalID(headers.InReplyTo))
 	msg.References = importedText(strings.Join(headers.References, " "))
-	if len(headers.From) != 0 {
-		msg.Sender, msg.SenderName = importedText(headers.From[0].Address), importedText(headers.From[0].Name)
+	if from, ok := headers.From.First(); ok {
+		msg.Sender, msg.SenderName = importedText(from.Address), importedText(from.Name)
 	}
-	addresses := func(items []pipeline.Address) models.JSONB {
-		list := make([]string, 0, len(items))
-		for _, item := range items {
-			list = append(list, item.Address)
-		}
-		return models.JSONB(rmime.StringsJSON(list))
-	}
-	msg.RecipientsTo, msg.RecipientsCc = addresses(headers.To), addresses(headers.Cc)
+	msg.RecipientsTo, msg.RecipientsCc = models.JSONB(rmime.AddressesJSON(headers.To)), models.JSONB(rmime.AddressesJSON(headers.Cc))
 	msg.Headers = models.JSONB(decodedHeadersColumn(headers.Raw))
 	if date, err := mail.ParseDate(headers.Date); err == nil {
 		msg.DateHeader = &date

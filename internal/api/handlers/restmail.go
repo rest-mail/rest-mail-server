@@ -227,12 +227,12 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput, spoo
 			// Fall through to use whatever structured fields were provided
 		} else {
 			parsedHeaders := parsed.Headers
-			if len(parsedHeaders.From) > 0 && req.From == "" {
-				req.From = parsedHeaders.From[0].Address
+			if parsedHeaders.From.Len() > 0 && req.From == "" {
+				req.From = parsedHeaders.From.FirstAddress()
 			}
-			if len(parsedHeaders.To) > 0 && len(to) == 0 {
-				addrs := make([]string, len(parsedHeaders.To))
-				for i, a := range parsedHeaders.To {
+			if parsedHeaders.To.Len() > 0 && len(to) == 0 {
+				addrs := make([]string, parsedHeaders.To.Len())
+				for i, a := range parsedHeaders.To.All() {
 					addrs[i] = a.Address
 				}
 				to = addrs
@@ -845,11 +845,11 @@ func buildInboundEmail(parsed *pipeline.EmailJSON, envelopeFrom, from string, to
 	}
 
 	// Fill any header the parse didn't populate from the structured request fields.
-	if len(emailJSON.Headers.From) == 0 {
-		emailJSON.Headers.From = []pipeline.Address{{Address: from}}
+	if emailJSON.Headers.From.Len() == 0 {
+		emailJSON.Headers.From = pipeline.Addresses(pipeline.Address{Address: from})
 	}
-	if len(emailJSON.Headers.To) == 0 {
-		emailJSON.Headers.To = toAddrs
+	if emailJSON.Headers.To.Len() == 0 {
+		emailJSON.Headers.To = pipeline.Addresses(toAddrs...)
 	}
 	if emailJSON.Headers.Subject == "" {
 		emailJSON.Headers.Subject = subject

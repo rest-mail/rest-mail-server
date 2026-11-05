@@ -762,9 +762,9 @@ func (h *MessageHandler) sendComposedMessage(r *http.Request, req sendMessageReq
 				Direction: "outbound",
 			},
 			Headers: pipeline.Headers{
-				From:    []pipeline.Address{{Name: senderMailbox.DisplayName, Address: req.From}},
-				To:      outToAddrs,
-				Cc:      outCcAddrs,
+				From:    pipeline.Addresses([]pipeline.Address{{Name: senderMailbox.DisplayName, Address: req.From}}...),
+				To:      pipeline.Addresses(outToAddrs...),
+				Cc:      pipeline.Addresses(outCcAddrs...),
 				Subject: req.Subject,
 			},
 			Body: pipeline.Body{
@@ -2571,14 +2571,14 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 		Direction: "inbound",
 	}
 	// Fill any header the parse didn't populate from the gateway-extracted params.
-	if len(emailJSON.Headers.From) == 0 {
-		emailJSON.Headers.From = []pipeline.Address{{Name: params.SenderName, Address: params.Sender}}
+	if emailJSON.Headers.From.Len() == 0 {
+		emailJSON.Headers.From = pipeline.Addresses(pipeline.Address{Name: params.SenderName, Address: params.Sender})
 	}
-	if len(emailJSON.Headers.To) == 0 {
-		emailJSON.Headers.To = toAddrs
+	if emailJSON.Headers.To.Len() == 0 {
+		emailJSON.Headers.To = pipeline.Addresses(toAddrs...)
 	}
-	if len(emailJSON.Headers.Cc) == 0 {
-		emailJSON.Headers.Cc = ccAddrs
+	if emailJSON.Headers.Cc.Len() == 0 {
+		emailJSON.Headers.Cc = pipeline.Addresses(ccAddrs...)
 	}
 	if emailJSON.Headers.Subject == "" {
 		emailJSON.Headers.Subject = params.Subject

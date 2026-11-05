@@ -72,7 +72,7 @@ func TestForwardAttachmentsPostgresPersistenceQuotaAndRollback(t *testing.T) {
 	h.SetForwardStorage(8192, nil)
 	data := []byte("invoice\xff\x00")
 	parts := []pipeline.Attachment{{Filename: "invoice.bin", ContentType: "application/octet-stream", Disposition: "attachment", Content: base64.StdEncoding.EncodeToString(data), Size: int64(len(data))}, {Filename: "empty.txt", ContentType: "text/plain", Disposition: "attachment", Size: 0}}
-	raw, err := rmime.Serialize(&pipeline.EmailJSON{Headers: pipeline.Headers{From: []pipeline.Address{{Address: "old@example.test"}}, Subject: "receipt"}, Body: pipeline.Body{ContentType: "text/plain", Content: "receipt"}, Attachments: parts})
+	raw, err := rmime.Serialize(&pipeline.EmailJSON{Headers: pipeline.Headers{From: pipeline.Addresses([]pipeline.Address{{Address: "old@example.test"}}...), Subject: "receipt"}, Body: pipeline.Body{ContentType: "text/plain", Content: "receipt"}, Attachments: parts})
 	if err != nil {
 		t.Fatal(err)
 	}
