@@ -567,6 +567,17 @@ tasks:
   # Test
   # ════════════════════════════════════════════════════════
 
+  ci:local:
+    desc: 'Fail-fast local CI before every push; --all, --merge-pr NUMBER or --stack via --'
+    dotenv: []
+    env:
+      # Where the run's own temporary directory goes. The wrapper removes it even after
+      # a SIGKILL (#1963). Set it to choose another place, off the SD card.
+      RESTMAIL_SCRATCH:
+        sh: 'echo "${RESTMAIL_SCRATCH:-$HOME/tmp/rest-mail-ci-local}"'
+    cmds:
+      - python3 -B scripts/scratch_run.py python3 -B scripts/ci_local.py {{.CLI_ARGS}}
+
   test:
     desc: Run unit tests
     env:
