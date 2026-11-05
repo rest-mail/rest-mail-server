@@ -335,9 +335,9 @@ func TestMessageImportStoredHoldsOnlyWhatTheRowKeeps(t *testing.T) {
 }
 
 // hostileFieldShapes are messages of one very long header field, which read once cost little of the
-// limit, each with text. Plain ASCII beside many parameters is on purpose: with an 8-bit octet
-// measuring the message also reads them in third_party/go-imap, which puts them over the limit when
-// that package's pool is cold, as #1915 records.
+// limit, each with text. Rows go over the limit on the routes fieldShapesStillOver names, from empty
+// pools, which is how every row is measured: a cold pool costs each long field's scratch and name table
+// once, and a warm one nothing.
 func hostileFieldShapes(id string) map[string]string {
 	shapes := allFieldShapes(id)
 	for name := range fieldShapesStillOver {
@@ -363,9 +363,14 @@ var fieldShapesStillOver = map[string]stillOverCost{
 	"8-bit name*N":                 {delivering: 9, restmail: 10},
 	"8-bit filename*N":             {delivering: 9, restmail: 9},
 	"8-bit comments on filename*N": {delivering: 9, restmail: 9},
-	"8-bit names, on many parts":   {importing: 9},
-	"comments on name*N":           {restmail: 9},
-	"name*N on a part":             {restmail: 9},
+	// A sender can put a line break inside a piece that's read, and then the field is built again without
+	// them for each reading, in a pooled buffer. That's one more buffer of the field from empty pools.
+	"8-bit, a line break in each parameter": {restmail: 9},
+	"8-bit, a line break in each name*N":    {importing: 9, delivering: 10, restmail: 11},
+	"8-bit, a line break in each charset*N": {importing: 13, delivering: 12, restmail: 13},
+	"8-bit names, on many parts":            {importing: 9},
+	"comments on name*N":                    {restmail: 9},
+	"name*N on a part":                      {restmail: 9},
 	// A part costs what it costs however little it holds: its file and row on import, and its fields and
 	// a place in what filters read on every route. That's about 3 KiB a part on import and under 2 KiB on
 	// the others, bounded by the limit of a thousand parts (#1641), so what's over 8x here comes from how
@@ -530,6 +535,9 @@ func allFieldShapes(id string) map[string]string {
 		"8-bit name*N":                                 onPart(long("Content-Type: application/x; x=\u00e9", ";\r\n name*%d=v%.0d", "")),
 		"8-bit filename*N":                             onPart(long("Content-Disposition: attachment; x=\u00e9", ";\r\n filename*%d=v%.0d", "")),
 		"8-bit charset*N, top level":                   id + long("Content-Type: text/plain; x=\u00e9", ";\r\n charset*%d=v%.0d", "") + "\r\n" + eightBit,
+		"8-bit, a line break in each parameter":        onPart(long("Content-Type: application/x; x=\u00e9", ";\r\n p%d=\r\n v%d", "")),
+		"8-bit, a line break in each name*N":           onPart(long("Content-Type: application/x; x=\u00e9", ";\r\n name*%d=\r\n v%.0d", "")),
+		"8-bit, a line break in each charset*N":        id + long("Content-Type: text/plain; x=\u00e9", ";\r\n charset*%d=\r\n v%.0d", "") + "\r\n" + eightBit,
 		"8-bit comments on filename*N":                 onPart(long("Content-Disposition: attachment; x=\u00e9", ";\r\n filename*%d=v (c%.0d)", "")),
 		"a multipart that reads as text":               id + "Content-Type: multipart/mixed; boundary=B; x=\"b\r\n\r\n--B\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n" + strings.Repeat("\u00f6", size/2) + "\r\n--B--\r\n",
 		"comments, on many parts":                      id + "Content-Type: multipart/mixed; boundary=B\r\n\r\n--B\r\nContent-Type: text/plain\r\n\r\n" + eightBit + strings.Repeat("--B\r\nContent-Type: a/b (c); x=n (c)\r\nContent-Disposition: inline (c); x=f (c)\r\n\r\n"+strings.Repeat("y", size/1400)+"\r\n", 999) + "--B--\r\n",

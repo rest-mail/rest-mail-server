@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"maps"
 	"math/rand"
+	"runtime/debug"
 	"strings"
 	"testing"
 )
@@ -19,7 +20,7 @@ func foldedFields(rng *rand.Rand, count int) []string {
 	fields := make([]string, 0, count)
 	for range count {
 		var b strings.Builder
-		b.WriteString([]string{"text/plain", "multipart/mixed", "text/é", "text\r\n /plain", "\r\n text/plain"}[rng.Intn(5)])
+		b.WriteString([]string{"text/plain", "multipart/mixed", "text/é", "text\r\n /plain", "\r\n text/plain", "text/\"é\r\n x"}[rng.Intn(6)])
 		b.WriteString("; x=é")
 		many := manyParameters + 1 + rng.Intn(20)
 		inside := rng.Intn(2) == 0
@@ -81,29 +82,77 @@ func TestFoldedFieldReadsAsItsUnfoldedField(t *testing.T) {
 	}
 }
 
+// scribbleOverScratches writes over the memory of every scratch the pool holds, where it stands. Taking
+// one with more room wouldn't, as it would leave that memory alone and allocate more.
+func scribbleOverScratches() {
+	taken := make([]*FieldScratch, 0, 8)
+	for range cap(taken) {
+		scratch := TakeFieldScratch(0)
+		whole := scratch.b[:cap(scratch.b)]
+		for i := range whole {
+			whole[i] = '#'
+		}
+		taken = append(taken, scratch)
+	}
+	for _, scratch := range taken {
+		scratch.Release()
+	}
+}
+
 // Nothing a reading answers stays a view of memory the next reading writes over.
 func TestWireTypeHoldsNothingOfItsScratch(t *testing.T) {
+	// A collection would empty the pool, and what was to be written over would be gone.
+	defer debug.SetGCPercent(debug.SetGCPercent(-1))
 	for _, value := range []string{
-		"multipart/mixed; x=é; boundary*=utf-8''keepme" + strings.Repeat("; p=v", manyParameters+1),
+		// Read as it's spelled, into what's kept.
 		"multipart/mixed; x=é;\r\n boundary*=utf-8''keepme" + strings.Repeat(";\r\n p=v", manyParameters+1),
-		"multipart/mixed; x=é;\r\n boundary=\"keep\r\n me\"" + strings.Repeat(";\r\n p=v", manyParameters+1),
-		"multipart/\r\n mixed;\r\n boundary=keepme",
+		"multipart/mixed; x=é;\r\n boundary=keepme;\r\n charset=keepme" + strings.Repeat(";\r\n p=v", manyParameters+1),
+		// Built again without its line breaks, then read.
+		"multipart/mixed;\r\n boundary=keepme",
+		"multipart/mixed;\r\n boundary=keepme;\r\n charset=keepme",
+		"multipart/mixed; x=é;\r\n boundary=\r\n keepme" + strings.Repeat(";\r\n p=v", manyParameters+1),
+		"multipart/mixed; x=\"a\";\r\n boundary*=utf-8''keepme" + strings.Repeat(";\r\n p=v", manyParameters+1),
 	} {
 		mt, params, err := readWireField(value)
 		if err != nil {
 			t.Fatalf("%q: %v", value, err)
 		}
-		wantType, want := strings.Clone(mt), maps.Clone(params)
-		for range 8 {
-			overwrite := TakeFieldScratch(4 * len(value))
-			_, _ = overwrite.WriteString(strings.Repeat("#", 4*len(value)))
-			defer overwrite.Release()
+		if params["boundary"] != "keepme" {
+			t.Fatalf("%q: read %q", value, params)
 		}
-		for range 8 {
-			_, _, _ = readWireField(strings.ReplaceAll(value, "keep", "gone"))
+		wantType, want := strings.Clone(mt), make(map[string]string, len(params))
+		for name, text := range params {
+			want[name] = strings.Clone(text)
 		}
+		scribbleOverScratches()
 		if mt != wantType || !maps.Equal(params, want) {
 			t.Fatalf("%q: read %q %q, now %q %q", value, wantType, want, mt, params)
+		}
+	}
+}
+
+// What a parameter is written as, stated outright: the other tests compare this with itself.
+func TestParameterValueSpellings(t *testing.T) {
+	extended := func(base string) bool { return base == "both" }
+	for _, c := range []struct{ key, value, want string }{
+		{"p", "v", "p=v"},
+		{"p", "a b", `p="a b"`},
+		{"p", "é", "p*=UTF-8''%C3%A9"},
+		{"p", `"aé"`, "p*=UTF-8''a%C3%A9"},
+		{"p", "a é;", "p*=UTF-8''a%20%C3%A9%3B"},
+		{"both", "é", `both="=?UTF-8?Q?=C3=A9?="`},
+		{"p*0", "é", "p*0*=UTF-8''%C3%A9"},
+		{"p*1", "é", "p*1*=%C3%A9"},
+		{"p*", "é", "p*=%C3%A9"},
+		{"p*0*", "é", "p*0*=%C3%A9"},
+	} {
+		var written strings.Builder
+		writeParameterValue(&written, c.key, c.value, extended)
+		if got := written.String(); got != c.want {
+			t.Errorf("%s=%s is written %s, not %s", c.key, c.value, got, c.want)
+		}
+		if got := parameterValue(c.key, c.value, extended); got != c.want {
+			t.Errorf("%s=%s is built %s, not %s", c.key, c.value, got, c.want)
 		}
 	}
 }

@@ -393,8 +393,8 @@ func readableKept(scratch *FieldScratch, value string, families []string, noBrea
 
 // pieceHasBreak says a line break stands inside what a piece reads as, not only around it.
 func pieceHasBreak(piece fieldPiece) bool {
-	return strings.IndexByte(piece.raw, '\n') >= 0 || strings.IndexByte(piece.key, '\n') >= 0 ||
-		strings.IndexByte(piece.value, '\n') >= 0 || strings.IndexByte(piece.broken, '\n') >= 0
+	// A piece's key and value are parts of raw.
+	return strings.IndexByte(piece.raw, '\n') >= 0 || strings.IndexByte(piece.broken, '\n') >= 0
 }
 
 // parseKept is parseUncommented of a field with no comments, when only its type, whether it can be
