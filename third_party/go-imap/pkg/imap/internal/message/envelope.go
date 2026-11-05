@@ -211,19 +211,28 @@ func appendMailbox(b *strings.Builder, value string, sessionUTF8 bool) {
 		return
 	}
 	if a, err := addressParser.Parse(value); err == nil {
-		if !holdsEncodedWord(a.Address) {
+		if !convertedAddrSpec(value, a.Address) {
 			b.WriteString(addressPart(a.Name, a.Address, sessionUTF8))
 		}
 		return
 	}
-	if name, local, domain, ok := parseObsMailbox(value); ok && !holdsEncodedWord(local+"@"+domain) {
+	if name, local, domain, ok := parseObsMailbox(value); ok && !convertedAddrSpec(value, local+"@"+domain) {
 		b.WriteString(mailboxPart(name, local, domain, sessionUTF8))
 	}
 }
 
-// holdsEncodedWord reports whether a word of an addr-spec is spelled as an encoded
-// word, which may not stand there (RFC 2047 §5). Only that is left of an 8-bit word
-// WireForm converted, so the mailbox has no 7-bit form and can't be read.
+// convertedAddrSpec reports whether addrSpec holds a word WireForm converted from
+// 8-bit text. Such a word may not stand there (RFC 2047 §5), so the mailbox has no
+// 7-bit form and can't be read. WireForm encodes all of a token, '@' and '.' too, so
+// a word it made has white space on any side where the addr-spec goes on. A word
+// spelled against its neighbours in the field was sent that way and is legal atext.
+// White space around a word that was sent that way reads the same, so that spelling
+// is left out too.
+func convertedAddrSpec(member, addrSpec string) bool {
+	return holdsEncodedWord(addrSpec) && !strings.Contains(strings.ReplaceAll(member, `"`, ""), addrSpec)
+}
+
+// holdsEncodedWord reports whether a word of an addr-spec is spelled as an encoded word.
 func holdsEncodedWord(addrSpec string) bool {
 	for _, word := range strings.FieldsFunc(addrSpec, func(c rune) bool { return c == '.' || c == '@' }) {
 		if strings.HasPrefix(word, "=?") && strings.HasSuffix(word, "?=") {
