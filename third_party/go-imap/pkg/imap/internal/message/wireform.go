@@ -506,9 +506,10 @@ func (t *headerTokens) at(start int) string {
 func (t *headerTokens) closingQuote(open int) int {
 	for j := open + 1; j < len(t.value); j++ {
 		t.steps++
-		if t.value[j] == '\\' {
+		switch t.value[j] {
+		case '\\':
 			j++
-		} else if t.value[j] == '"' {
+		case '"':
 			return j
 		}
 	}
