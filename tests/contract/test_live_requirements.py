@@ -3,10 +3,13 @@
 import copy
 import importlib.util
 import json
+import os
 import sys
 import tempfile
+import threading
 import types
 import unittest
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from unittest.mock import patch
 
@@ -115,6 +118,7 @@ class LiveRequirementTests(unittest.TestCase):
     def test_oversized_hook_sends_the_declared_number_of_actual_bytes(self):
         stub = types.ModuleType("vertrag_hooks")
         stub.before_each = lambda function: function
+        stub.before_each_validation = lambda function: function
         path = Path(live_requirements.__file__).with_name("live_requirement_hooks.py")
         spec = importlib.util.spec_from_file_location("live_body_hook", path)
         module = importlib.util.module_from_spec(spec)
@@ -126,6 +130,10 @@ class LiveRequirementTests(unittest.TestCase):
             transaction = {"request": {"body": "{}", "headers": {}}}
             module.oversized_body(transaction)
         self.assertEqual(len(transaction["request"]["body"].encode()), 8193)
+        self.assertEqual(transaction["request"]["headers"]["Content-Length"], "8193")
+        # Once sent, the bytes are not carried through the later hooks.
+        module.forget_the_sent_body(transaction)
+        self.assertEqual(transaction["request"]["body"], "")
         self.assertEqual(transaction["request"]["headers"]["Content-Length"], "8193")
 
     def test_only_one_passed_expected_exchange_counts(self):
@@ -267,3 +275,73 @@ class LiveRequirementTests(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertEqual(proofs, {})
         self.assertIn("vertrag exit 70", unproven[0]["reason"])
+
+
+@unittest.skipUnless(
+    os.environ.get("RESTMAIL_VERTRAG_BINARY"), "set RESTMAIL_VERTRAG_BINARY"
+)
+class RealOverCapExchange(unittest.TestCase):
+    def test_the_whole_body_is_on_the_wire_before_the_hook_forgets_it(self):
+        size = 1024 * 1024 + 1
+        received = []
+
+        class API(BaseHTTPRequestHandler):
+            def log_message(self, *args):
+                pass
+
+            def do_POST(self):
+                length = int(self.headers["Content-Length"])
+                received.append(len(self.rfile.read(length)))
+                reply = json.dumps({"error": "too large"}).encode()
+                self.send_response(413)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(reply)))
+                self.end_headers()
+                self.wfile.write(reply)
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), API)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        requires = {"body": "over_cap"}
+        example = {"value": {"error": "too large"}, "x-requires": requires}
+        request = {"schema": {"type": "object"}, "examples": {"too_big": {"value": {}}}}
+        document = {
+            "openapi": "3.1.0",
+            "info": {"title": "Proof", "version": "1"},
+            "paths": {
+                "/things": {
+                    "post": {
+                        "operationId": "postThing",
+                        "requestBody": {"content": {"application/json": request}},
+                        "responses": {
+                            "413": {
+                                "description": "Too large",
+                                "content": {
+                                    "application/json": {
+                                        "schema": SCHEMA,
+                                        "examples": {"too_big": example},
+                                    }
+                                },
+                            }
+                        },
+                    }
+                }
+            },
+        }
+        pair = {"requires": requires, "response": {"status": 413}}
+        with tempfile.TemporaryDirectory() as directory:
+            code = live_requirements.prove(
+                os.environ["RESTMAIL_VERTRAG_BINARY"],
+                f"http://127.0.0.1:{server.server_port}",
+                document,
+                {"postThing": {"too_big": pair}},
+                "over-cap",
+                directory,
+                "a-session",
+                body_bytes=size,
+            )
+            proofs = json.loads((Path(directory) / "over-cap-proofs.json").read_text())
+        self.assertEqual(code, 0)
+        self.assertEqual(proofs, {"postThing": ["too_big"]})
+        self.assertEqual(received, [size])

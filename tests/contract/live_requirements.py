@@ -279,8 +279,8 @@ def main():
     parser.add_argument("--examples", default="openapi-example.json")
     parser.add_argument("--body-bytes", type=int, default=32 * 1024 * 1024 + 1)
     parser.add_argument("--operation-id", action="append", default=[])
-    # A 33 MB body costs about 10 s of CPU in Vertrag's hook worker, nearly all of a
-    # case's time, so the over-cap inventory takes most of an hour one at a time.
+    # A 33 MB body costs about 5 s of CPU in Vertrag's hook worker, nearly all of a
+    # case's time, so the over-cap inventory is slow one at a time.
     parser.add_argument("--workers", type=int, default=1)
     args = parser.parse_args()
     if args.body_bytes <= 0:

@@ -238,6 +238,7 @@ READ_BY_PEOPLE = {
     "mail-conformance",
     "coverage-report",
     "e2e-container-logs",
+    "js-filter-isolation-logs",
     "cluster-report",
     "api-gap-report",
     "load-results",

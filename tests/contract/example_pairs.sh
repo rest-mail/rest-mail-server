@@ -6,7 +6,7 @@
 #
 # One process took about 25 minutes of exchanges, nearly all of it waiting on
 # vertrag. The test binary is built once and the matching tests run in shards side
-# by side (three by default); each shard has the 25-minute limit, and the step
+# by side (four by default); each shard has the 25-minute limit, and the step
 # fails when any shard does. RESTMAIL_VERTRAG_BINARY must name vertrag.
 # Anything else after the pattern is refused: go test flags such as -count=1
 # were once read as the shard count, which ran no shard and still exited 0.
@@ -20,7 +20,7 @@ fi
 usage() { echo "usage: $0 -run 'pattern' [shards]" >&2; exit 2; }
 [ "${1:-}" = "-run" ] && [ -n "${2:-}" ] && [ $# -le 3 ] || usage
 pattern=$2
-shards=${3:-3}
+shards=${3:-4}
 [[ $shards =~ ^[1-9][0-9]*$ ]] || usage
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT

@@ -1768,7 +1768,7 @@ in order:
 
 1. `chore contract:pairs`, the registered example-pair checks
    (`tests/contract/example_pairs.sh`). It builds the `internal/api` test binary
-   once and runs the matching tests in three parallel shards, each limited to 25
+   once and runs the matching tests in four parallel shards, each limited to 25
    minutes. A failure stops the run here, as it fails the CI job.
 2. `chore e2e:up`, unless `CONTRACT_ENDPOINT` names a running topology.
 3. The principal fixture, when it is absent (below).
@@ -2024,8 +2024,9 @@ python3 -B tests/contract/live_principals.py "$CONTRACT_ENDPOINT" "$work/princip
   three APNs settings. These refusals send no notification.
 - The owner refusals need one registered owner key (`restmail-api owner-key add`).
   Without one, the API correctly answers 409 before checking the challenge.
-- `--workers` runs over-cap cases side by side. A 33 MB body costs about 10 seconds
-  of CPU in Vertrag's hook worker, so one at a time takes most of an hour.
+- `--workers` runs over-cap cases side by side. Each message carrying a 33 MB body
+  costs about 5 seconds of CPU in Vertrag's hook worker. The hook file empties the
+  body once it has been sent, so a case pays for one such message, not three.
 
 Each runner writes a per-exchange Vertrag verdict, a compatible
 `{operation: [example, ...]}` proof list, and an explicit unproven list.
