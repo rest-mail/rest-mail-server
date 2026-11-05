@@ -1048,7 +1048,19 @@ jobs:
             -e NGINX_BASE_PATH=/ -p 127.0.0.1::8080 "restmail-$APP:smoke")
           trap 'docker logs "$container"; docker rm -f "$container" >/dev/null' EXIT
           origin="http://$(docker port "$container" 8080/tcp)"
-          curl --fail --silent --show-error --retry 30 --retry-connrefused --retry-delay 1 \
+          # The published port answers before nginx listens: docker-proxy accepts the
+          # connection and resets it. Ask nginx itself from inside the container, so
+          # that a reset from any request below is a fault and none of them retries.
+          ready=
+          for _ in $(seq 1 30); do
+            if docker exec "$container" wget -q -O /dev/null http://127.0.0.1:8080/; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          test -n "$ready"
+          curl --fail --silent --show-error \
             -D "$RUNNER_TEMP/headers" "$origin/" -o "$RUNNER_TEMP/index.html"
           grep -q '<base href="/">' "$RUNNER_TEMP/index.html"
           grep -qi "connect-src 'self'" "$RUNNER_TEMP/headers"

@@ -399,6 +399,16 @@ tasks:
       - scripts/am-queue {{.CLI_ARGS}}
 
   # ════════════════════════════════════════════════════════
+  # Image scan: the Docker Build & Push gate, run locally (#1947)
+  # ════════════════════════════════════════════════════════
+
+  image:scan:
+    desc: Build every published image and scan it as the Docker Build & Push job does
+    dotenv: []
+    cmds:
+      - python3 scripts/image_scan.py {{.CLI_ARGS}}
+
+  # ════════════════════════════════════════════════════════
   # Build (Go binaries — used for local development without Docker)
   # ════════════════════════════════════════════════════════
 
