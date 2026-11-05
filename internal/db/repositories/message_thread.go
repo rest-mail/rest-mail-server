@@ -61,7 +61,13 @@ func ResolveThreadID(db *gorm.DB, mailboxID uint, messageID, inReplyTo, referenc
 		}
 		return rmail.HeaderThreadID(parent.MsgID, parent.InReplyTo, parent.References), nil
 	}
-	return rmail.HeaderThreadID(messageID, inReplyTo, references), nil
+	thread := rmail.HeaderThreadID(messageID, inReplyTo, references)
+	if thread == "" && messageID != "" {
+		// A Message-ID of only "<>" names nothing. The message is a thread of its own, because
+		// getMessage links to its thread, and an empty id there is a request for /threads/.
+		return rmail.GenerateMessageID("rest-mail.invalid"), nil
+	}
+	return thread, nil
 }
 
 func ReferencesForReply(db *gorm.DB, mailboxID uint, inReplyTo string) (string, error) {

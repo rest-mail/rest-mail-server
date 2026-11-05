@@ -15,6 +15,9 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/api/respond"
 	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/db/repositories"
+	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
+	rmime "github.com/rest-mail/rest-mail-server/internal/mime"
 	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 	"github.com/rest-mail/rest-mail-server/internal/pipeline/filters"
 	"gorm.io/gorm"
@@ -871,6 +874,28 @@ func quarantinedMessageOf(m models.Quarantine) QuarantinedMessage {
 	}
 }
 
+// releasedMessageIdentity reads a held message's Message-ID and thread headers, so that it stays
+// in its conversation once released. Its source is whatever was sent, which an invalid value must
+// not stop: those columns hold 995 bytes of text, and a message whose Message-ID doesn't fit or
+// has none is given a generated one.
+func releasedMessageIdentity(raw string) (messageID, inReplyTo, references string) {
+	headers, err := rmime.ParseHeaders(strings.NewReader(raw))
+	if err == nil {
+		messageID = rmail.CanonicalID(importedText(headers.MessageID))
+		if inReplyTo = rmail.CanonicalID(importedText(headers.InReplyTo)); len(inReplyTo) > maxMessageIDColumn {
+			inReplyTo = ""
+		}
+		references = importedText(strings.Join(headers.References, " "))
+	}
+	if messageID == "" || len(messageID) > maxMessageIDColumn {
+		messageID = rmail.GenerateMessageID("rest-mail.invalid")
+	}
+	return messageID, inReplyTo, references
+}
+
+// maxMessageIDColumn is the size of the message_id and in_reply_to columns.
+const maxMessageIDColumn = 995
+
 // QuarantineReleased is the answer to releasing a held message: the id of the inbox message
 // it became, as a string, as it has always been written.
 type QuarantineReleased struct {
@@ -1004,7 +1029,19 @@ func (h *PipelineHandler) releaseQuarantine(r *http.Request, in quarantinePath) 
 				bodyText = item.RawMessage[headerEnd+2:]
 			}
 		}
+		messageID, inReplyTo, references := releasedMessageIdentity(item.RawMessage)
+		threadID, err := repositories.ResolveThreadID(tx, item.MailboxID, messageID, inReplyTo, references)
+		if err != nil {
+			return fmt.Errorf("look up the released message's thread: %w", err)
+		}
+		if len(threadID) > maxMessageIDColumn {
+			threadID = messageID
+		}
 		msg = models.Message{
+			MsgID:      messageID,
+			InReplyTo:  inReplyTo,
+			References: references,
+			ThreadID:   threadID,
 			MailboxID:  item.MailboxID,
 			Folder:     "INBOX",
 			Sender:     item.Sender,
