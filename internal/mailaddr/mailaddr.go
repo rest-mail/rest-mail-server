@@ -22,11 +22,25 @@ import (
 // ErrNotAddressList is what a field that doesn't read as an address list gets.
 var ErrNotAddressList = errors.New("mailaddr: not an address list")
 
+// Unread says of a charset that nothing reads it. A word in one is text like any other, whose address
+// is still read, and that takes no reader to find out. It may be nil.
+type Unread func(charset string) bool
+
+// WordCharset is the charset an encoded-word names, if word starts as one.
+func WordCharset(word string) (charset string, ok bool) {
+	rest, ok := strings.CutPrefix(word, "=?")
+	if !ok {
+		return "", false
+	}
+	charset, _, ok = strings.Cut(rest, "?")
+	return charset, ok
+}
+
 // Valid reports whether the field reads as an address list, and how many addresses that gives. An
-// encoded-word that dec can't read changes the answer, as it does for net/mail.
-func Valid(list string, dec *mime.WordDecoder) (int, bool) {
+// encoded-word that dec can't read and unread doesn't name changes the answer, as it does for net/mail.
+func Valid(list string, dec *mime.WordDecoder, unread Unread) (int, bool) {
 	count := 0
-	p := parser{s: list, count: &count}
+	p := parser{s: list, count: &count, unread: unread}
 	p.setDecoder(dec)
 	if p.parseAddressList() != nil {
 		return 0, false
@@ -35,16 +49,16 @@ func Valid(list string, dec *mime.WordDecoder) (int, bool) {
 }
 
 // EachAddress is Each with no name read, for a caller that wants only the addresses.
-func EachAddress(list string, dec *mime.WordDecoder, visit func(address string)) error {
-	p := parser{s: list, addresses: visit}
+func EachAddress(list string, dec *mime.WordDecoder, unread Unread, visit func(address string)) error {
+	p := parser{s: list, addresses: visit, unread: unread}
 	p.setDecoder(dec)
 	return p.parseAddressList()
 }
 
 // Each calls visit with the name and address of everything in the field, which has to be Valid: a
 // field that goes wrong partway has been visited as far as that. What it gets may be views of list.
-func Each(list string, dec *mime.WordDecoder, visit func(name, address string)) error {
-	p := parser{s: list, visit: visit}
+func Each(list string, dec *mime.WordDecoder, unread Unread, visit func(name, address string)) error {
+	p := parser{s: list, visit: visit, unread: unread}
 	p.setDecoder(dec)
 	return p.parseAddressList()
 }
@@ -59,6 +73,7 @@ type parser struct {
 	// is what went wrong.
 	dec           mime.WordDecoder
 	charsetFailed bool
+	unread        Unread
 }
 
 func (p *parser) setDecoder(dec *mime.WordDecoder) {
@@ -610,6 +625,11 @@ func (p *parser) decodeWord(s string) (word string, isEncoded bool, err error) {
 	// mime.WordDecoder refuses anything that doesn't start so, and that isn't an encoded-word.
 	if !strings.HasPrefix(s, "=?") {
 		return s, false, nil
+	}
+	if p.unread != nil {
+		if charset, ok := WordCharset(s); ok && p.unread(charset) {
+			return s, false, nil
+		}
 	}
 	if !p.building() {
 		if decodes, empty, known := qWordDecodes(s); known {

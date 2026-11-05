@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -222,5 +223,145 @@ func TestFieldFaultsReadTheSameEverywhere(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// A display name reads the same for a filter as for a mail client, and no name costs a filter the
+// addresses beside it, which is how a sender would hide from a rule. A client is sent the name's own
+// spelling where it can't be decoded here, and decodes any word it is sent, so a word in a quoted
+// string is read too, though RFC 2047 §5 doesn't allow one there. Each row is the exact ENVELOPE field
+// and the exact list a filter is handed.
+func TestAddressNamesReadTheSameEverywhere(t *testing.T) {
+	f := newCredentialFixtureWith(t, &config.Config{Environment: "test", SMTPMaxMessageSize: config.DefaultSMTPMaxMessageSize})
+	var domain models.Domain
+	if err := f.db.First(&domain, "name = ?", "example.test").Error; err != nil {
+		t.Fatal(err)
+	}
+	seen := &seenByFilters{}
+	pipeline.DefaultRegistry.Register("seen_by_filters", func([]byte) (pipeline.Filter, error) { return seen, nil })
+	if err := f.db.Create(&models.Pipeline{DomainID: domain.ID, Direction: "inbound", Filters: json.RawMessage(`[{"name":"seen_by_filters","type":"action","enabled":true}]`), Active: true}).Error; err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(f.router)
+	t.Cleanup(srv.Close)
+	imap := openIMAPSession(t, f, apiclient.New(srv.URL))
+	const aSent = `"a" "example.com"`
+	one := func(name string) string { return `((` + name + ` NIL ` + aSent + `))` }
+	listed := func(name string) string { return fmt.Sprintf("{%q a@example.com}", name) }
+	for _, row := range []struct {
+		name, from, envelope, filters string
+	}{
+		// A charset nobody here reads.
+		{"a name in a charset no one reads", `=?x-none?Q?ab?= <a@example.com>`, one(`"=?x-none?Q?ab?="`), listed("=?x-none?Q?ab?=")},
+		{"a NUL in a name in a charset no one reads", `=?x-none?Q?a=00b?= <a@example.com>`, one(`"=?x-none?Q?a_b?="`), listed("=?x-none?Q?a_b?=")},
+		{"a base64 name in a charset no one reads", `=?x-none?B?YWI=?= <a@example.com>`, one(`"=?x-none?B?YWI=?="`), listed("=?x-none?B?YWI=?=")},
+		{"the addresses after such a name", `=?x-none?Q?ab?= <a@example.com>, C <c@example.com>`, `(("=?x-none?Q?ab?=" NIL ` + aSent + `)("C" NIL "c" "example.com"))`, `{"=?x-none?Q?ab?=" a@example.com} {"C" c@example.com}`},
+		{"the addresses before such a name", `C <c@example.com>, =?x-none?Q?ab?= <a@example.com>`, `(("C" NIL "c" "example.com")("=?x-none?Q?ab?=" NIL ` + aSent + `))`, `{"C" c@example.com} {"=?x-none?Q?ab?=" a@example.com}`},
+		{"such a word after a word that's read", `=?utf-8?Q?x?= =?x-none?Q?ab?= <a@example.com>`, one(`"x =?x-none?Q?ab?="`), listed("x =?x-none?Q?ab?=")},
+		{"such a word before words that are read", `=?x-none?Q?ab?= =?utf-8?Q?x?= =?utf-8?Q?y?= <a@example.com>`, one(`"=?x-none?Q?ab?= xy"`), listed("=?x-none?Q?ab?= xy")},
+		{"such a word as a comment's name", `a@example.com (=?x-none?Q?ab?=)`, one(`"=?x-none?Q?ab?="`), listed("=?x-none?Q?ab?=")},
+		{"such a word as a group's name", `=?x-none?Q?ab?=: a@example.com;`, `((NIL NIL "=?x-none?Q?ab?=" NIL)(NIL NIL ` + aSent + `)(NIL NIL NIL NIL))`, listed("")},
+		// RFC 2231 §5 lets a language follow a word's charset, which neither side reads.
+		{"a language on a word's charset", `=?utf-8*en?Q?ab?= <a@example.com>`, one(`"=?utf-8*en?Q?ab?="`), listed("=?utf-8*en?Q?ab?=")},
+		// UTF-7 is no charset either side reads, and spells U+0000 in its own base64.
+		{"a NUL in a UTF-7 name stays spelled", `=?utf-7?Q?a+AAA-b?= <a@example.com>`, one(`"=?utf-7?Q?a+AAA-b?="`), listed("=?utf-7?Q?a+AAA-b?=")},
+		// A word in a quoted string, which a client decodes all the same.
+		{"a NUL in a quoted word", `"=?utf-8?Q?a=00b?=" <a@example.com>`, one(`"=?utf-8?Q?a_b?="`), listed("a b")},
+		{"a NUL in a quoted base64 word", `"=?utf-8?B?YQBi?=" <a@example.com>`, one(`"=?utf-8?B?YSBi?="`), listed("a b")},
+		{"a quoted word", `"=?utf-8?Q?ab?=" <a@example.com>`, one(`"=?utf-8?Q?ab?="`), listed("ab")},
+		{"a quoted word in Latin-1", `"=?iso-8859-1?Q?caf=E9?=" <a@example.com>`, one(`"=?iso-8859-1?Q?caf=E9?="`), listed("café")},
+		{"a quoted word in Windows-1252", `"=?windows-1252?Q?caf=E9?=" <a@example.com>`, one(`"=?windows-1252?Q?caf=E9?="`), listed("café")},
+		{"a quoted word among text", `"x =?utf-8?Q?a=00b?= y" <a@example.com>`, one(`"x =?utf-8?Q?a_b?= y"`), listed("x a b y")},
+		{"two quoted words", `"=?utf-8?Q?a?= =?utf-8?Q?b?=" <a@example.com>`, one(`"=?utf-8?Q?a?= =?utf-8?Q?b?="`), listed("ab")},
+		{"a quoted word in a charset no one reads", `"=?x-none?Q?a=00b?=" <a@example.com>`, one(`"=?x-none?Q?a_b?="`), listed("=?x-none?Q?a_b?=")},
+		{"a quoted word beside one in a charset no one reads", `"=?x-none?Q?a?= =?utf-8?Q?b?= =?utf-8?Q?c?=" <a@example.com>`, one(`"=?x-none?Q?a?= =?utf-8?Q?b?= =?utf-8?Q?c?="`), listed("=?x-none?Q?a?= bc")},
+		{"a word a word decodes to", `=?utf-8?Q?=3D=3Futf-8=3FQ=3Fab=3F=3D?= <a@example.com>`, one(`"=?utf-8?Q?ab?="`), listed("ab")},
+		// Names that were already read alike stay so.
+		{"a word that isn't quoted", `=?utf-8?Q?a=00b?= <a@example.com>`, one(`"a b"`), listed("a b")},
+		{"quoted text that isn't a word", `"=?utf-8?Q?a" <a@example.com>`, one(`"=?utf-8?Q?a"`), listed("=?utf-8?Q?a")},
+	} {
+		t.Run(row.name, func(t *testing.T) {
+			if err := f.db.Where("mailbox_id = ?", f.mailboxID).Delete(&models.Message{}).Error; err != nil {
+				t.Fatal(err)
+			}
+			message := "From: " + row.from + "\r\nTo: chris@example.test\r\nSubject: s\r\nDate: Thu, 02 Jan 2020 03:04:05 +0000\r\n\r\nbody\r\n"
+			payload, err := json.Marshal(map[string]any{"address": f.address, "sender": "sender@remote.test", "recipients_to": []string{f.address},
+				"client_ip": "192.0.2.1", "helo_name": "mail.remote.test", "received_tls": true, "raw_message": base64.StdEncoding.EncodeToString([]byte(message))})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if answer := f.do(http.MethodPost, "/api/v1/messages/deliver", "", string(payload)); answer.Code != http.StatusCreated {
+				t.Fatalf("refused: %d %s", answer.Code, answer.Body)
+			}
+			lastStored(t, f, message)
+			seen.mu.Lock()
+			headers := seen.email.Headers
+			seen.mu.Unlock()
+			var from []string
+			for _, address := range headers.From.All() {
+				from = append(from, fmt.Sprintf("{%q %s}", address.Name, address.Address))
+			}
+			if got := strings.Join(from, " "); got != row.filters {
+				t.Errorf("filters were handed From %s, want %s", got, row.filters)
+			}
+			imap.do("SELECT INBOX")
+			envelope := imap.do("FETCH 1 (ENVELOPE)")
+			want := `ENVELOPE ("Thu, 02 Jan 2020 03:04:05 +0000" "s" ` + row.envelope + ` ` + row.envelope + ` ` + row.envelope + ` ((NIL NIL "chris" "example.test")) NIL NIL NIL NIL)`
+			if !strings.Contains(envelope, want) {
+				t.Errorf("sent %s, want %s", envelope, want)
+			}
+		})
+	}
+}
+
+// Every field that holds addresses keeps them past such a name, and a UTF-7 Subject that spells a NUL
+// goes out and reads as it was written, since neither side reads that charset.
+func TestAddressFieldsKeepTheirAddressesPastAName(t *testing.T) {
+	f := newCredentialFixtureWith(t, &config.Config{Environment: "test", SMTPMaxMessageSize: config.DefaultSMTPMaxMessageSize})
+	var domain models.Domain
+	if err := f.db.First(&domain, "name = ?", "example.test").Error; err != nil {
+		t.Fatal(err)
+	}
+	seen := &seenByFilters{}
+	pipeline.DefaultRegistry.Register("seen_by_filters", func([]byte) (pipeline.Filter, error) { return seen, nil })
+	if err := f.db.Create(&models.Pipeline{DomainID: domain.ID, Direction: "inbound", Filters: json.RawMessage(`[{"name":"seen_by_filters","type":"action","enabled":true}]`), Active: true}).Error; err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(f.router)
+	t.Cleanup(srv.Close)
+	imap := openIMAPSession(t, f, apiclient.New(srv.URL))
+	message := "From: =?x-none?Q?f?= <from@example.com>\r\nTo: =?x-none?Q?t?= <to@example.com>, chris@example.test\r\nCc: =?x-none?Q?c?= <cc@example.com>\r\n" +
+		"Subject: =?utf-7?Q?a+AAA-b?=\r\nDate: Thu, 02 Jan 2020 03:04:05 +0000\r\n\r\nbody\r\n"
+	payload, err := json.Marshal(map[string]any{"address": f.address, "sender": "sender@remote.test", "recipients_to": []string{f.address},
+		"client_ip": "192.0.2.1", "helo_name": "mail.remote.test", "received_tls": true, "raw_message": base64.StdEncoding.EncodeToString([]byte(message))})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if answer := f.do(http.MethodPost, "/api/v1/messages/deliver", "", string(payload)); answer.Code != http.StatusCreated {
+		t.Fatalf("refused: %d %s", answer.Code, answer.Body)
+	}
+	seen.mu.Lock()
+	headers := seen.email.Headers
+	seen.mu.Unlock()
+	for _, field := range []struct {
+		name string
+		list pipeline.AddressList
+		want []pipeline.Address
+	}{
+		{"From", headers.From, []pipeline.Address{{Name: "=?x-none?Q?f?=", Address: "from@example.com"}}},
+		{"To", headers.To, []pipeline.Address{{Name: "=?x-none?Q?t?=", Address: "to@example.com"}, {Address: "chris@example.test"}}},
+		{"Cc", headers.Cc, []pipeline.Address{{Name: "=?x-none?Q?c?=", Address: "cc@example.com"}}},
+	} {
+		if got := field.list.All(); !reflect.DeepEqual(got, field.want) {
+			t.Errorf("filters were handed %s %+v, want %+v", field.name, got, field.want)
+		}
+	}
+	if want := "=?utf-7?Q?a+AAA-b?="; headers.Subject != want {
+		t.Errorf("filters were handed Subject %q, want %q", headers.Subject, want)
+	}
+	imap.do("SELECT INBOX")
+	const want = `ENVELOPE ("Thu, 02 Jan 2020 03:04:05 +0000" "=?utf-7?Q?a+AAA-b?=" (("=?x-none?Q?f?=" NIL "from" "example.com")) (("=?x-none?Q?f?=" NIL "from" "example.com")) (("=?x-none?Q?f?=" NIL "from" "example.com")) (("=?x-none?Q?t?=" NIL "to" "example.com")(NIL NIL "chris" "example.test")) (("=?x-none?Q?c?=" NIL "cc" "example.com")) NIL NIL NIL)`
+	if got := imap.do("FETCH 1 (ENVELOPE)"); !strings.Contains(got, want) {
+		t.Errorf("sent %s, want %s", got, want)
 	}
 }

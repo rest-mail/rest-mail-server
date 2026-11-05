@@ -5,6 +5,7 @@ import (
 	"mime"
 	"strings"
 
+	"github.com/rest-mail/go-imap/pkg/imap/wireform"
 	"github.com/rest-mail/rest-mail-server/internal/mailaddr"
 )
 
@@ -12,9 +13,10 @@ import (
 // and reads that when asked: a list of very short addresses would otherwise hold eight times its own
 // size as []Address on every route, whether or not anything reads it (#1915).
 type AddressList struct {
-	field string
-	dec   *mime.WordDecoder
-	given []Address
+	field  string
+	dec    *mime.WordDecoder
+	unread *mailaddr.Unread
+	given  []Address
 }
 
 // Addresses is a list of the addresses given.
@@ -26,12 +28,25 @@ func ParsedAddresses(field string, dec *mime.WordDecoder) AddressList {
 	return AddressList{field: field, dec: dec}
 }
 
+// ParsedAddressesKeeping is ParsedAddresses for a reader that leaves a word in a charset unread names as
+// it was sent, as a mail client is sent it, so that naming one can't hide a field's addresses (#1968).
+func ParsedAddressesKeeping(field string, dec *mime.WordDecoder, unread *mailaddr.Unread) AddressList {
+	return AddressList{field: field, dec: dec, unread: unread}
+}
+
+func (l AddressList) unreadCharset() mailaddr.Unread {
+	if l.unread == nil {
+		return nil
+	}
+	return *l.unread
+}
+
 // Len is how many addresses there are. It holds nothing for each one.
 func (l AddressList) Len() int {
 	if l.field == "" {
 		return len(l.given)
 	}
-	count, _ := mailaddr.Valid(l.field, l.dec)
+	count, _ := mailaddr.Valid(l.field, l.dec, l.unreadCharset())
 	return count
 }
 
@@ -68,11 +83,11 @@ func (l AddressList) Each(visit func(Address)) {
 		}
 		return
 	}
-	if _, ok := mailaddr.Valid(l.field, l.dec); !ok {
+	if _, ok := mailaddr.Valid(l.field, l.dec, l.unreadCharset()); !ok {
 		return
 	}
-	_ = mailaddr.Each(l.field, l.dec, func(name, address string) {
-		visit(Address{Name: addressName(name), Address: sanitizeHeaderValue(address)})
+	_ = mailaddr.Each(l.field, l.dec, l.unreadCharset(), func(name, address string) {
+		visit(Address{Name: l.name(name), Address: sanitizeHeaderValue(address)})
 	})
 }
 
@@ -83,8 +98,8 @@ func (l AddressList) Visit(visit func(Address)) bool {
 		l.Each(visit)
 		return true
 	}
-	return mailaddr.Each(l.field, l.dec, func(name, address string) {
-		visit(Address{Name: addressName(name), Address: sanitizeHeaderValue(address)})
+	return mailaddr.Each(l.field, l.dec, l.unreadCharset(), func(name, address string) {
+		visit(Address{Name: l.name(name), Address: sanitizeHeaderValue(address)})
 	}) == nil
 }
 
@@ -96,7 +111,7 @@ func (l AddressList) VisitAddresses(visit func(address string)) bool {
 		}
 		return true
 	}
-	return mailaddr.EachAddress(l.field, l.dec, func(address string) { visit(sanitizeHeaderValue(address)) }) == nil
+	return mailaddr.EachAddress(l.field, l.dec, l.unreadCharset(), func(address string) { visit(sanitizeHeaderValue(address)) }) == nil
 }
 
 // All is every address, or nil for none.
@@ -104,13 +119,13 @@ func (l AddressList) All() []Address {
 	if l.field == "" {
 		return l.given
 	}
-	count, ok := mailaddr.Valid(l.field, l.dec)
+	count, ok := mailaddr.Valid(l.field, l.dec, l.unreadCharset())
 	if !ok || count == 0 {
 		return nil
 	}
 	all := make([]Address, 0, count)
-	_ = mailaddr.Each(l.field, l.dec, func(name, address string) {
-		all = append(all, Address{Name: addressName(name), Address: sanitizeHeaderValue(address)})
+	_ = mailaddr.Each(l.field, l.dec, l.unreadCharset(), func(name, address string) {
+		all = append(all, Address{Name: l.name(name), Address: sanitizeHeaderValue(address)})
 	})
 	return all
 }
@@ -128,10 +143,66 @@ func (l *AddressList) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// addressName is a decoded display name as text, with a space for a NUL an encoded word spelled, as
-// it's sent to a mail client.
-func addressName(name string) string {
+// name is a display name as a mail client reads it, which is what a filter gets: a client decodes every
+// encoded word it's sent in ENVELOPE, so that includes a word the parser leaves as text because it stands
+// in a quoted string, against RFC 2047 §5, or because a word decoded to it. A NUL, spelled or decoded,
+// is the space a client is sent for it (#1968).
+func (l AddressList) name(name string) string {
+	if strings.Contains(name, "=?") {
+		name = l.readWords(wireform.SpaceWordNUL(name))
+	}
 	return sanitizeHeaderValue(strings.ReplaceAll(name, "\x00", " "))
+}
+
+// readWords is text with its encoded words decoded. A word in a charset nothing reads stays as it was
+// sent, as go-imap sends it, and the words around it are still read.
+func (l AddressList) readWords(text string) string {
+	if strings.IndexByte(text, ' ') < 0 && l.isKept(text) {
+		return text
+	}
+	if decoded, err := l.dec.DecodeHeader(text); err == nil {
+		return decoded
+	}
+	var out strings.Builder
+	out.Grow(len(text))
+	run, at := 0, 0
+	flush := func(end int) {
+		if end > run {
+			read := text[run:end]
+			if decoded, err := l.dec.DecodeHeader(read); err == nil {
+				read = decoded
+			}
+			out.WriteString(read)
+		}
+	}
+	for at <= len(text) {
+		end := len(text)
+		if space := strings.IndexByte(text[at:], ' '); space >= 0 {
+			end = at + space
+		}
+		if l.isKept(text[at:end]) {
+			flush(at)
+			out.WriteString(text[at:end])
+			run = end
+		}
+		at = end + 1
+	}
+	flush(len(text))
+	return out.String()
+}
+
+// isKept reports whether word is an encoded word in a charset that isn't read, which takes no decoding
+// to find out when the list was told which those are.
+func (l AddressList) isKept(word string) bool {
+	charset, ok := mailaddr.WordCharset(word)
+	if !ok {
+		return false
+	}
+	if unread := l.unreadCharset(); unread != nil {
+		return unread(charset)
+	}
+	_, err := l.dec.Decode(word)
+	return err != nil
 }
 
 // sanitizeHeaderValue removes CR and LF from a decoded header value. RFC 2047 encoded-words can
