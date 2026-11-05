@@ -365,6 +365,15 @@ var fieldShapesStillOver = map[string]stillOverCost{
 	"8-bit names, on many parts":   {importing: 9},
 	"comments on name*N":           {restmail: 9},
 	"name*N on a part":             {restmail: 9},
+	// A part costs what it costs however little it holds: its file and row on import, and its fields and
+	// a place in what filters read on every route. That's about 3 KiB a part on import and under 2 KiB on
+	// the others, bounded by the limit of a thousand parts (#1641), so what's over 8x here comes from how
+	// little a part has to hold and not from its size. At 339 bytes a part, 8x is 2.7 KiB for all of it,
+	// the message's own copies included. Import was 135x and about 50x on these, on a buffer for each part.
+	"999 small attachments":                        {importing: 20, delivering: 12, restmail: 13},
+	"attachments, base64, on many parts":           {importing: 11, delivering: 10, restmail: 10},
+	"attachments, quoted-printable, on many parts": {importing: 11, delivering: 10, restmail: 10},
+	"attachments, no encoding, on many parts":      {importing: 11, delivering: 10, restmail: 11},
 }
 
 // shapesUnderTheLimit are the shapes a route holds to 8x, which is every one cost doesn't name for it.
@@ -493,40 +502,56 @@ func allFieldShapes(id string) map[string]string {
 	onPart := func(field string) string {
 		return id + "Content-Type: multipart/mixed; boundary=B\r\n\r\n--B\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n" + eightBit + "--B\r\n" + field + "\r\n\r\nx\r\n--B--\r\n"
 	}
+	// Each named and with its own bytes, so that each is a file and a row of its own.
+	attachments := func(encoding string, content func(i int) string) string {
+		var b strings.Builder
+		for i := range 999 {
+			fmt.Fprintf(&b, "--B\r\nContent-Type: application/octet-stream\r\nContent-Disposition: attachment; filename=part%d.bin\r\nContent-Transfer-Encoding: %s\r\n\r\n%s\r\n", i, encoding, content(i))
+		}
+		return b.String() + "--B--\r\n"
+	}
+	encoded := func(size int) func(i int) string {
+		return func(i int) string { return base64.StdEncoding.EncodeToString(fmt.Appendf(nil, "%0*d", size, i)) }
+	}
+	textThenParts := id + "Content-Type: multipart/mixed; boundary=B\r\n\r\n--B\r\nContent-Type: text/plain\r\n\r\n" + eightBit
 	return map[string]string{
-		"comments, on a part":               onPart(long("Content-Type: application/x", ";\r\n p%d=v%d (c)", "")),
-		"comments on name*N":                onPart(long("Content-Type: application/x", ";\r\n name*%d=v (c%.0d)", "")),
-		"comments, top level":               id + long("Content-Type: text/plain; charset=utf-8", ";\r\n p%d=v%d (c)", "") + "\r\n" + eightBit,
-		"Latin-1 filename*N":                onPart(long("Content-Disposition: attachment; filename*0*=iso-8859-1''%E9", ";\r\n filename*%d*=%%E9%.0d", "")),
-		"comments on filename*N":            onPart(long("Content-Disposition: attachment", ";\r\n filename*%d=v (c%.0d)", "")),
-		"8-bit parameters, on a part":       onPart(long("Content-Type: application/x; x=\u00e9", ";\r\n p%d=v%d", "")),
-		"8-bit values, on a part":           onPart(long("Content-Disposition: attachment", ";\r\n p%d=\u00e9%d", "")),
-		"8-bit name*N":                      onPart(long("Content-Type: application/x; x=\u00e9", ";\r\n name*%d=v%.0d", "")),
-		"8-bit filename*N":                  onPart(long("Content-Disposition: attachment; x=\u00e9", ";\r\n filename*%d=v%.0d", "")),
-		"8-bit charset*N, top level":        id + long("Content-Type: text/plain; x=\u00e9", ";\r\n charset*%d=v%.0d", "") + "\r\n" + eightBit,
-		"8-bit comments on filename*N":      onPart(long("Content-Disposition: attachment; x=\u00e9", ";\r\n filename*%d=v (c%.0d)", "")),
-		"a multipart that reads as text":    id + "Content-Type: multipart/mixed; boundary=B; x=\"b\r\n\r\n--B\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n" + strings.Repeat("\u00f6", size/2) + "\r\n--B--\r\n",
-		"comments, on many parts":           id + "Content-Type: multipart/mixed; boundary=B\r\n\r\n--B\r\nContent-Type: text/plain\r\n\r\n" + eightBit + strings.Repeat("--B\r\nContent-Type: a/b (c); x=n (c)\r\nContent-Disposition: inline (c); x=f (c)\r\n\r\n"+strings.Repeat("y", size/1400)+"\r\n", 999) + "--B--\r\n",
-		"8-bit names, on many parts":        id + "Content-Type: multipart/mixed; boundary=B\r\n\r\n--B\r\nContent-Type: text/plain\r\n\r\n" + eightBit + strings.Repeat("--B\r\nContent-Type: a/b; x=\u00e9\r\nContent-Disposition: inline; x=\u00e9\r\n\r\n"+strings.Repeat("y", size/1400)+"\r\n", 999) + "--B--\r\n",
-		"repeated names, on many parts":     id + "Content-Type: multipart/mixed; boundary=B; boundary=C\r\n\r\n--B\r\nContent-Type: text/plain\r\n\r\n" + eightBit + strings.Repeat(repeatedPart, 999) + "--B--\r\n",
-		"repeats of a kept name":            id + long("Content-Type: text/plain; charset=utf-8", ";\r\n charset=v%d%.0d", "") + "\r\n" + eightBit,
-		"repeats of an RFC 2231 name":       id + long("Content-Type: text/plain; charset=utf-8; name*0=a", ";\r\n name*0=v%d%.0d", "") + "\r\n" + eightBit,
-		"a blank, then only repeats":        id + "Content-Type: text/plain; charset=utf-8" + half(";\r\n p%d=valuevaluev") + ";\r\n ;" + strings.TrimPrefix(half(";\r\n p%d=othervalue"), ";") + "\r\n\r\n" + eightBit,
-		"address list, top level":           id + long("To: to@example.test", ",\r\n \"Name %d\" <a%d@example.test>", "") + "Content-Type: text/plain; charset=utf-8\r\n\r\n" + eightBit,
-		"parameters, top level":             id + long("Content-Type: text/plain; charset=utf-8", ";\r\n p%d=v%d", "") + "\r\n" + ascii,
-		"parameters, on a part":             id + "Content-Type: multipart/mixed; boundary=B\r\n\r\n--B\r\n" + long("Content-Type: text/plain; charset=utf-8", ";\r\n p%d=v%d", "") + "\r\n" + ascii + "--B--\r\n",
-		"a field past 1 MiB":                id + long("X-Long: y", "\r\n y%.0d%.0d", strings.Repeat("y", size/2)) + "\r\n" + ascii,
-		"parameters, on many parts":         id + "Content-Type: multipart/mixed; boundary=B\r\n\r\n--B\r\nContent-Type: text/plain\r\n\r\n" + eightBit + strings.Repeat("--B\r\nContent-Type: a/b"+strings.Repeat("; p=v", size/5000)+"\r\n\r\nx\r\n", 750) + "--B--\r\n",
-		"parameters, top level, 8-bit text": id + long("Content-Type: text/plain; charset=utf-8", ";\r\n p%d=v%d", "") + "\r\n" + eightBit,
-		"parameters, on a part, 8-bit text": id + "Content-Type: multipart/mixed; boundary=B\r\n\r\n--B\r\n" + long("Content-Type: text/plain; charset=utf-8", ";\r\n p%d=v%d", "") + "\r\n" + eightBit + "--B--\r\n",
-		"address list, encoded names":       id + long("To: to@example.test", ",\r\n =?utf-8?q?N%d?= <a%d@example.test>", "") + "Content-Type: text/plain; charset=utf-8\r\n\r\n" + eightBit,
-		"address list, comments":            id + long("To: to@example.test", ",\r\n a%d@example.test (c%d)", "") + "Content-Type: text/plain; charset=utf-8\r\n\r\n" + eightBit,
-		"address list, 8-bit names":         id + long("To: to@example.test", ",\r\n \"N\u00e4me %d\" <a%d@example.test>", "") + "Content-Type: text/plain; charset=utf-8\r\n\r\n" + eightBit,
-		"address list, very short":          id + "To: a@b" + strings.Repeat(",a@b", size*3/16) + "\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n" + eightBit,
-		"name*N on a part":                  id + "Content-Type: multipart/mixed; boundary=B\r\n\r\n--B\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n" + eightBit + "--B\r\n" + long("Content-Type: application/x", ";\r\n name*%d=v%.0d", "") + "\r\n\r\nx\r\n--B--\r\n",
-		"filename*N on a part":              id + "Content-Type: multipart/mixed; boundary=B\r\n\r\n--B\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n" + eightBit + "--B\r\n" + long("Content-Disposition: attachment", ";\r\n filename*%d=v%.0d", "") + "\r\n\r\nx\r\n--B--\r\n",
-		"charset*N, top level, 8-bit text":  id + long("Content-Type: text/plain", ";\r\n charset*%d=v%.0d", "") + "\r\n" + eightBit,
-		"boundary*N, 8-bit text":            id + continued + "\r\n--B\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n" + eightBit + "--B--\r\n",
+		"999 small attachments":                        id + "Content-Type: multipart/mixed; boundary=B\r\n\r\n" + attachments("base64", encoded(150)),
+		"attachments, base64, on many parts":           textThenParts + attachments("base64", encoded(450)),
+		"attachments, quoted-printable, on many parts": textThenParts + attachments("quoted-printable", func(i int) string { return fmt.Sprintf("%0600d", i) }),
+		"attachments, no encoding, on many parts":      textThenParts + attachments("7bit", func(i int) string { return fmt.Sprintf("%0600d", i) }),
+		"comments, on a part":                          onPart(long("Content-Type: application/x", ";\r\n p%d=v%d (c)", "")),
+		"comments on name*N":                           onPart(long("Content-Type: application/x", ";\r\n name*%d=v (c%.0d)", "")),
+		"comments, top level":                          id + long("Content-Type: text/plain; charset=utf-8", ";\r\n p%d=v%d (c)", "") + "\r\n" + eightBit,
+		"Latin-1 filename*N":                           onPart(long("Content-Disposition: attachment; filename*0*=iso-8859-1''%E9", ";\r\n filename*%d*=%%E9%.0d", "")),
+		"comments on filename*N":                       onPart(long("Content-Disposition: attachment", ";\r\n filename*%d=v (c%.0d)", "")),
+		"8-bit parameters, on a part":                  onPart(long("Content-Type: application/x; x=\u00e9", ";\r\n p%d=v%d", "")),
+		"8-bit values, on a part":                      onPart(long("Content-Disposition: attachment", ";\r\n p%d=\u00e9%d", "")),
+		"8-bit name*N":                                 onPart(long("Content-Type: application/x; x=\u00e9", ";\r\n name*%d=v%.0d", "")),
+		"8-bit filename*N":                             onPart(long("Content-Disposition: attachment; x=\u00e9", ";\r\n filename*%d=v%.0d", "")),
+		"8-bit charset*N, top level":                   id + long("Content-Type: text/plain; x=\u00e9", ";\r\n charset*%d=v%.0d", "") + "\r\n" + eightBit,
+		"8-bit comments on filename*N":                 onPart(long("Content-Disposition: attachment; x=\u00e9", ";\r\n filename*%d=v (c%.0d)", "")),
+		"a multipart that reads as text":               id + "Content-Type: multipart/mixed; boundary=B; x=\"b\r\n\r\n--B\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n" + strings.Repeat("\u00f6", size/2) + "\r\n--B--\r\n",
+		"comments, on many parts":                      id + "Content-Type: multipart/mixed; boundary=B\r\n\r\n--B\r\nContent-Type: text/plain\r\n\r\n" + eightBit + strings.Repeat("--B\r\nContent-Type: a/b (c); x=n (c)\r\nContent-Disposition: inline (c); x=f (c)\r\n\r\n"+strings.Repeat("y", size/1400)+"\r\n", 999) + "--B--\r\n",
+		"8-bit names, on many parts":                   id + "Content-Type: multipart/mixed; boundary=B\r\n\r\n--B\r\nContent-Type: text/plain\r\n\r\n" + eightBit + strings.Repeat("--B\r\nContent-Type: a/b; x=\u00e9\r\nContent-Disposition: inline; x=\u00e9\r\n\r\n"+strings.Repeat("y", size/1400)+"\r\n", 999) + "--B--\r\n",
+		"repeated names, on many parts":                id + "Content-Type: multipart/mixed; boundary=B; boundary=C\r\n\r\n--B\r\nContent-Type: text/plain\r\n\r\n" + eightBit + strings.Repeat(repeatedPart, 999) + "--B--\r\n",
+		"repeats of a kept name":                       id + long("Content-Type: text/plain; charset=utf-8", ";\r\n charset=v%d%.0d", "") + "\r\n" + eightBit,
+		"repeats of an RFC 2231 name":                  id + long("Content-Type: text/plain; charset=utf-8; name*0=a", ";\r\n name*0=v%d%.0d", "") + "\r\n" + eightBit,
+		"a blank, then only repeats":                   id + "Content-Type: text/plain; charset=utf-8" + half(";\r\n p%d=valuevaluev") + ";\r\n ;" + strings.TrimPrefix(half(";\r\n p%d=othervalue"), ";") + "\r\n\r\n" + eightBit,
+		"address list, top level":                      id + long("To: to@example.test", ",\r\n \"Name %d\" <a%d@example.test>", "") + "Content-Type: text/plain; charset=utf-8\r\n\r\n" + eightBit,
+		"parameters, top level":                        id + long("Content-Type: text/plain; charset=utf-8", ";\r\n p%d=v%d", "") + "\r\n" + ascii,
+		"parameters, on a part":                        id + "Content-Type: multipart/mixed; boundary=B\r\n\r\n--B\r\n" + long("Content-Type: text/plain; charset=utf-8", ";\r\n p%d=v%d", "") + "\r\n" + ascii + "--B--\r\n",
+		"a field past 1 MiB":                           id + long("X-Long: y", "\r\n y%.0d%.0d", strings.Repeat("y", size/2)) + "\r\n" + ascii,
+		"parameters, on many parts":                    id + "Content-Type: multipart/mixed; boundary=B\r\n\r\n--B\r\nContent-Type: text/plain\r\n\r\n" + eightBit + strings.Repeat("--B\r\nContent-Type: a/b"+strings.Repeat("; p=v", size/5000)+"\r\n\r\nx\r\n", 750) + "--B--\r\n",
+		"parameters, top level, 8-bit text":            id + long("Content-Type: text/plain; charset=utf-8", ";\r\n p%d=v%d", "") + "\r\n" + eightBit,
+		"parameters, on a part, 8-bit text":            id + "Content-Type: multipart/mixed; boundary=B\r\n\r\n--B\r\n" + long("Content-Type: text/plain; charset=utf-8", ";\r\n p%d=v%d", "") + "\r\n" + eightBit + "--B--\r\n",
+		"address list, encoded names":                  id + long("To: to@example.test", ",\r\n =?utf-8?q?N%d?= <a%d@example.test>", "") + "Content-Type: text/plain; charset=utf-8\r\n\r\n" + eightBit,
+		"address list, comments":                       id + long("To: to@example.test", ",\r\n a%d@example.test (c%d)", "") + "Content-Type: text/plain; charset=utf-8\r\n\r\n" + eightBit,
+		"address list, 8-bit names":                    id + long("To: to@example.test", ",\r\n \"N\u00e4me %d\" <a%d@example.test>", "") + "Content-Type: text/plain; charset=utf-8\r\n\r\n" + eightBit,
+		"address list, very short":                     id + "To: a@b" + strings.Repeat(",a@b", size*3/16) + "\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n" + eightBit,
+		"name*N on a part":                             id + "Content-Type: multipart/mixed; boundary=B\r\n\r\n--B\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n" + eightBit + "--B\r\n" + long("Content-Type: application/x", ";\r\n name*%d=v%.0d", "") + "\r\n\r\nx\r\n--B--\r\n",
+		"filename*N on a part":                         id + "Content-Type: multipart/mixed; boundary=B\r\n\r\n--B\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n" + eightBit + "--B\r\n" + long("Content-Disposition: attachment", ";\r\n filename*%d=v%.0d", "") + "\r\n\r\nx\r\n--B--\r\n",
+		"charset*N, top level, 8-bit text":             id + long("Content-Type: text/plain", ";\r\n charset*%d=v%.0d", "") + "\r\n" + eightBit,
+		"boundary*N, 8-bit text":                       id + continued + "\r\n--B\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n" + eightBit + "--B--\r\n",
 	}
 }
 

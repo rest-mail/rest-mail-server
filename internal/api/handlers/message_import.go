@@ -212,7 +212,9 @@ func (h *MessageImportHandler) storeImportedMessage(r *http.Request, accountID u
 				return err
 			}
 			// The text columns keep a part's whole text, so no part is cut short here.
-			parsed, err := rmime.ParseStream(ctx, reader, rmime.StreamOptions{Store: h.storeAttachmentPart, MaxText: math.MaxInt64, SourceSize: source.size, HeadersRead: true})
+			parts := &importParts{handler: h}
+			defer parts.close()
+			parsed, err := rmime.ParseStream(ctx, reader, rmime.StreamOptions{Store: parts.store, MaxText: math.MaxInt64, SourceSize: source.size, HeadersRead: true})
 			if errors.Is(err, rmime.ErrStructureLimit) {
 				// Imported mail is held to the same MIME limits as arriving mail (#1641). Its
 				// Received: fields are not counted: old mail may carry any number, and storing
@@ -229,7 +231,7 @@ func (h *MessageImportHandler) storeImportedMessage(r *http.Request, accountID u
 				data, _ := json.Marshal(parsed.CalendarEvents)
 				msg.CalendarEventsRaw = models.JSONB(data)
 			}
-			var rows []models.Attachment
+			rows := make([]models.Attachment, 0, len(parsed.Attachments)+len(parsed.Inline))
 			var attachmentBytes int64
 			for _, group := range [][]pipeline.Attachment{parsed.Attachments, parsed.Inline} {
 				for _, att := range group {
@@ -258,7 +260,7 @@ func (h *MessageImportHandler) storeImportedMessage(r *http.Request, accountID u
 				rows[i].MessageID = msg.ID
 			}
 			if len(rows) != 0 {
-				if err := tx.Create(&rows).Error; err != nil {
+				if err := createAttachmentRows(tx, rows); err != nil {
 					return err
 				}
 			}
@@ -301,11 +303,31 @@ func importedText(value string) string {
 	return strings.ToValidUTF8(strings.ReplaceAll(value, "\x00", "�"), "�")
 }
 
-// storeAttachmentPart stores one decoded part as it is read. The object store has to be told a
-// size and a checksum before the upload, so a part bound for it goes through a file first.
-func (h *MessageImportHandler) storeAttachmentPart(ctx context.Context, part io.Reader) (rmime.StoredPart, error) {
+// importParts stores the parts of one message.
+type importParts struct {
+	handler *MessageImportHandler
+	objects *attachmentstore.FilesystemObjects
+}
+
+func (p *importParts) close() {
+	if p.objects != nil {
+		p.objects.Close()
+	}
+}
+
+// store stores one decoded part as it is read. The object store has to be told a size and a checksum
+// before the upload, so a part bound for it goes through a file first.
+func (p *importParts) store(ctx context.Context, part io.Reader) (rmime.StoredPart, error) {
+	h := p.handler
 	if h.store == nil {
-		ref, checksum, size, err := attachmentstore.PutFilesystemReader(ctx, h.directory, part)
+		if p.objects == nil {
+			objects, err := attachmentstore.OpenFilesystemImports(h.directory)
+			if err != nil {
+				return rmime.StoredPart{}, err
+			}
+			p.objects = objects
+		}
+		ref, checksum, size, err := p.objects.Put(ctx, part)
 		return rmime.StoredPart{Storage: "filesystem", Ref: ref, Checksum: checksum, Size: size}, err
 	}
 	file, done, err := newImportSpool()
@@ -313,7 +335,7 @@ func (h *MessageImportHandler) storeAttachmentPart(ctx context.Context, part io.
 		return rmime.StoredPart{}, err
 	}
 	defer done()
-	size, err := io.Copy(file, part)
+	size, err := attachmentstore.Copy(file, part)
 	if err != nil {
 		return rmime.StoredPart{}, err
 	}
@@ -322,6 +344,36 @@ func (h *MessageImportHandler) storeAttachmentPart(ctx context.Context, part io.
 	}
 	ref, checksum, err := h.store.PutReader(ctx, file, size)
 	return rmime.StoredPart{Storage: "s3", Ref: ref, Checksum: checksum, Size: size}, err
+}
+
+// attachmentRowColumns are every column of models.Attachment but its id, each under the name its JSON
+// field has (TestAttachmentRowColumnsAreTheModels).
+const attachmentRowColumns = "message_id, filename, content_type, size_bytes, storage_type, storage_ref, checksum, created_at"
+
+// createAttachmentRows stores a message's attachment rows as one parameter. A message can have a
+// thousand, and through gorm each is nine parameters, each encoded and copied on its own: about 6 KiB
+// a row, the largest part of what a message of small attachments still cost once it stopped allocating
+// a buffer for each. The rows store the same as gorm's would, without their ids, which no caller reads.
+func createAttachmentRows(tx *gorm.DB, rows []models.Attachment) error {
+	now := time.Now()
+	// One row at a time, because all of them at once is encoding/json's own buffer doubling and a copy.
+	encoded := append(make([]byte, 0, 512*len(rows)), '[')
+	for i := range rows {
+		rows[i].CreatedAt = now
+		if err := rows[i].BeforeCreate(tx); err != nil {
+			return err
+		}
+		row, err := json.Marshal(&rows[i])
+		if err != nil {
+			return err
+		}
+		if i != 0 {
+			encoded = append(encoded, ',')
+		}
+		encoded = append(encoded, row...)
+	}
+	return tx.Exec("INSERT INTO attachments ("+attachmentRowColumns+") SELECT "+attachmentRowColumns+
+		" FROM jsonb_populate_recordset(NULL::attachments, ?::jsonb)", append(encoded, ']')).Error
 }
 
 // storedImportSource is a stored message with what identifies its source, which the database
