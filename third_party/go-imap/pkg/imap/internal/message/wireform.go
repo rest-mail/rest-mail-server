@@ -1077,7 +1077,13 @@ func sevenBitField(w wireSink, field string) {
 		written := false
 		switch strings.ToLower(strings.TrimSpace(name)) {
 		case "content-type", "content-disposition":
-			written = WriteParameterField(w, name, unfoldHeader(value))
+			var read bool
+			if written, read = WriteFoldedParameterField(w, name, value); !read {
+				// What it writes is the sink's to copy, so the unfolded field needn't outlast it.
+				unfolded := TakeFieldScratch(0)
+				written = WriteParameterField(w, name, unfolded.withoutCRLF(value))
+				unfolded.Release()
+			}
 		}
 		if !written {
 			_, _ = w.WriteString(name)

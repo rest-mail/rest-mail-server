@@ -30,7 +30,7 @@ func (n mimeNode) wireType() wireType {
 	var t wireType
 	usable := false
 	if contentType != "" {
-		mt, params, err := parseKeptParameters(contentType)
+		mt, params, err := readWireField(contentType)
 		t = wireType{mt, params["boundary"], params["charset"]}
 		usable = err == nil && strings.Contains(mt, "/") && (!strings.HasPrefix(mt, "multipart/") || t.boundary != "")
 	}
@@ -52,8 +52,8 @@ func contentFields(header string) (contentType, encoding string) {
 	return readContentFields(header, false)
 }
 
-// readContentFields is contentFields. With keepFolded, a Content-Type that readsFolded stays as it's
-// spelled, line breaks and all.
+// readContentFields is contentFields. With keepFolded, a Content-Type stays as it's spelled, line
+// breaks and all, for readWireField.
 func readContentFields(header string, keepFolded bool) (contentType, encoding string) {
 	if header != "" && (header[0] == ' ' || header[0] == '\t') {
 		return "", ""
@@ -100,8 +100,8 @@ func readContentFields(header string, keepFolded bool) (contentType, encoding st
 				if folded {
 					// The value and its lines lie side by side in the block.
 					spelled := rest[strings.IndexByte(rest, ':')+1 : len(rest)-len(field)]
-					if keepFolded && isType && readsFolded(spelled) {
-						value = spelled
+					if keepFolded && isType {
+						value = strings.TrimRight(spelled, " \t\r\n")
 					} else {
 						value = unfoldedField(value, continuation)
 					}
@@ -126,6 +126,34 @@ func readsFolded(spelled string) bool {
 	return strings.Count(spelled, ";") > manyParameters && !strings.ContainsAny(spelled, `"()`) && !has8bit(spelled)
 }
 
+// readWireField is parseKeptParameters of a Content-Type as readContentFields spells it. Most of what
+// a field holds doesn't change by its line breaks: see readsFolded for a 7-bit one, and an 8-bit one
+// reads a piece at a time, where one matters only inside a piece it keeps. So it's only built again
+// without them when it has to be, as entityHeader unfolds it, and then what's answered is copied out.
+func readWireField(value string) (string, map[string]string, error) {
+	if strings.IndexByte(value, '\n') < 0 || readsFolded(value) {
+		return parseKeptParameters(value)
+	}
+	if has8bit(value) && strings.Count(value, ";") > manyParameters {
+		if mt, params, err, read := readKeptSpelled(value, conversionFamilies, true); read {
+			return mt, params, err
+		}
+	}
+	scratch := TakeFieldScratch(0)
+	defer scratch.Release()
+	first, lines, _ := cutHeaderLine(value)
+	mt, params, err := parseKeptParameters(strings.TrimLeft(scratch.unfoldedField(trimHeaderSpace(first), lines), " \t"))
+	for name, text := range params {
+		if scratch.holds(text) {
+			params[name] = strings.Clone(text)
+		}
+	}
+	if scratch.holds(mt) {
+		mt = strings.Clone(mt)
+	}
+	return mt, params, err
+}
+
 // entityHeaderBuffer is the size of the buffers entityHeader reads with.
 const entityHeaderBuffer = 4096
 
@@ -148,14 +176,24 @@ func lostHeaderLine(line string) bool {
 func unfoldedField(value, lines string) string {
 	var b strings.Builder
 	b.Grow(len(value) + len(lines))
-	b.WriteString(value)
+	writeUnfoldedField(&b, value, lines)
+	return b.String()
+}
+
+func (s *FieldScratch) unfoldedField(value, lines string) string {
+	s.room(len(value) + len(lines))
+	writeUnfoldedField(s, value, lines)
+	return s.String()
+}
+
+func writeUnfoldedField(w interface{ WriteString(string) (int, error) }, value, lines string) {
+	_, _ = w.WriteString(value)
 	for lines != "" {
 		var line string
 		line, lines, _ = cutHeaderLine(strings.TrimLeft(lines, " \t"))
-		b.WriteByte(' ')
-		b.WriteString(trimHeaderSpace(line))
+		_, _ = w.WriteString(" ")
+		_, _ = w.WriteString(trimHeaderSpace(line))
 	}
-	return b.String()
 }
 
 // cutHeaderLine splits off one line as bufio.Reader.ReadLine reads it: without its LF, or
@@ -195,7 +233,8 @@ var (
 // readKept is parseContentType of any field, keeping only families and holding nothing for the rest.
 func readKept(value string, families []string) (string, map[string]string, error) {
 	if has8bit(value) {
-		return parseKept(readableKept(value, families), families)
+		mt, params, err, _ := readKeptSpelled(value, families, false)
+		return mt, params, err
 	}
 	if kept, ok := uncommentedKept(value, families); ok {
 		return parseKept(kept, families)
@@ -205,6 +244,25 @@ func readKept(value string, families []string) (string, map[string]string, error
 		return "", nil, err
 	}
 	return parseKept(uncommented, families)
+}
+
+// readKeptSpelled is readKept of a field holding an 8-bit octet. With noBreaks, read is false and
+// nothing else is answered when a piece that's kept holds a line break.
+func readKeptSpelled(value string, families []string, noBreaks bool) (mt string, params map[string]string, err error, read bool) {
+	scratch := TakeFieldScratch(0)
+	defer scratch.Release()
+	kept, read := readableKept(scratch, value, families, noBreaks)
+	if !read {
+		return "", nil, nil, false
+	}
+	mt, params, err = parseKept(kept, families)
+	// One value on its own is a view of what's kept, and that memory goes back here.
+	for name, text := range params {
+		if scratch.holds(text) {
+			params[name] = strings.Clone(text)
+		}
+	}
+	return mt, params, err, true
 }
 
 // uncommentedKept is uncommentMIME of a 7-bit field holding comments, less each parameter that reads
@@ -290,30 +348,35 @@ func keptFamily(families []string, name string) (string, bool) {
 
 // readableKept is readableField keeping only families, with their repeats, which parseKept reads as
 // parseMediaType does. What readableField writes always parses, so leaving the others out can't change
-// anything else.
-func readableKept(value string, families []string) string {
+// anything else. What it answers is in scratch.
+func readableKept(scratch *FieldScratch, value string, families []string, noBreaks bool) (string, bool) {
 	closers := commentClosers(value)
 	// A long field has one buffer, of what's kept of it, which is usually far less than the field.
 	size := 0
 	first := true
+	breaks := false
 	eachFieldPiece(value, closers, func(piece fieldPiece) {
 		switch {
 		case first:
 			first = false
 			size += len(piece.key)
+			breaks = breaks || pieceHasBreak(piece)
 		case piece.key != "":
 			name := parameterName(piece.key)
 			if _, kept := keptFamily(families, name); kept {
 				size += len(name) + len(piece.value) + len("; =\"\"")
+				breaks = breaks || pieceHasBreak(piece)
 			}
 		}
 	})
-	var b strings.Builder
-	b.Grow(size)
+	if noBreaks && breaks {
+		return "", false
+	}
+	scratch.room(size)
 	first = true
 	eachFieldPiece(value, closers, func(piece fieldPiece) {
 		if first {
-			b.WriteString(piece.key)
+			_, _ = scratch.WriteString(piece.key)
 			first = false
 			return
 		}
@@ -322,10 +385,16 @@ func readableKept(value string, families []string) string {
 		}
 		name := parameterName(piece.key)
 		if _, kept := keptFamily(families, name); kept {
-			writeReadableParameter(&b, name, piece)
+			writeReadableParameter(scratch, name, piece)
 		}
 	})
-	return b.String()
+	return scratch.String(), true
+}
+
+// pieceHasBreak says a line break stands inside what a piece reads as, not only around it.
+func pieceHasBreak(piece fieldPiece) bool {
+	// A piece's key and value are parts of raw.
+	return strings.IndexByte(piece.raw, '\n') >= 0 || strings.IndexByte(piece.broken, '\n') >= 0
 }
 
 // parseKept is parseUncommented of a field with no comments, when only its type, whether it can be
@@ -341,6 +410,7 @@ func parseKept(kept string, families []string) (string, map[string]string, error
 	var plain strings.Builder
 	plain.WriteString(base)
 	var plainSeen uint8 // a bit for each of families
+	var held *keptPieces
 	var pieces []keptPiece
 	_, rest, more, closed := cutFieldSegment(kept)
 	for closed && more {
@@ -371,7 +441,9 @@ func parseKept(kept string, families []string) (string, map[string]string, error
 			}
 		default:
 			if pieces == nil {
-				pieces = make([]keptPiece, 0, strings.Count(rest, "*")+1)
+				held = takeKeptPieces(strings.Count(rest, "*") + 1)
+				defer held.release()
+				pieces = held.pieces
 			}
 			spaces := len(segment) - len(strings.TrimLeftFunc(segment, unicode.IsSpace))
 			pieces = append(pieces, keptPiece{keyAt: uint32(at + spaces)})
@@ -440,6 +512,23 @@ func onlyRepeatsFollow(before, after string) bool {
 	}
 	return true
 }
+
+// keptPieces is memory for the pieces of one reading, used again by the next, as a field of many of
+// them holds them only until it's read, and it's read more than once.
+type keptPieces struct{ pieces []keptPiece }
+
+var keptPieceLists = sync.Pool{New: func() any { return new(keptPieces) }}
+
+func takeKeptPieces(count int) *keptPieces {
+	list := keptPieceLists.Get().(*keptPieces)
+	if cap(list.pieces) < count {
+		list.pieces = make([]keptPiece, 0, count)
+	}
+	list.pieces = list.pieces[:0]
+	return list
+}
+
+func (list *keptPieces) release() { keptPieceLists.Put(list) }
 
 // keptPiece is one RFC 2231 form of a kept parameter, by where its name starts in its field. A field
 // is mostly these, so what's held for each is as small as can be, and the rest is read again when
@@ -537,11 +626,44 @@ type nameSet struct {
 	slots  []nameSlot
 	arena  []byte
 	filled int
+	// source is a field its names are mostly views of. A name that is one stays there, spelled as it
+	// was, and holds nothing in the arena.
+	source string
 }
 
-// nameSlot is one name in the arena.
+// nameSlot is one name: off is one past where it starts in the arena, or that as a negative number
+// when it's in source.
 type nameSlot struct {
 	off, length int32
+}
+
+// text is the slot's name as it's held. It's in lower case only if it's in the arena.
+func (s *nameSet) text(slot nameSlot) []byte {
+	if slot.off < 0 {
+		name := s.source[-slot.off-1 : -slot.off-1+slot.length]
+		return unsafe.Slice(unsafe.StringData(name), len(name))
+	}
+	return s.arena[slot.off-1 : slot.off-1+slot.length]
+}
+
+// matches says the slot holds lowered, which is a name in lower case.
+func (s *nameSet) matches(slot nameSlot, lowered []byte) bool {
+	if int(slot.length) != len(lowered) {
+		return false
+	}
+	held := s.text(slot)
+	if slot.off > 0 {
+		return string(held) == string(lowered)
+	}
+	for i, c := range held {
+		if c >= 'A' && c <= 'Z' {
+			c += 'a' - 'A'
+		}
+		if c != lowered[i] {
+			return false
+		}
+	}
+	return true
 }
 
 var (
@@ -552,7 +674,7 @@ var (
 // takeNameSet is an empty set with room for count names without growing.
 func takeNameSet(count int) *nameSet {
 	size := 16
-	for size < 2*count+2 {
+	for 3*size < 4*count+8 {
 		size *= 2
 	}
 	s := nameSets.Get().(*nameSet)
@@ -564,10 +686,14 @@ func takeNameSet(count int) *nameSet {
 	}
 	s.arena = s.arena[:0]
 	s.filled = 0
+	s.source = ""
 	return s
 }
 
-func (s *nameSet) release() { nameSets.Put(s) }
+func (s *nameSet) release() {
+	s.source = ""
+	nameSets.Put(s)
+}
 
 // add finds name, or adds it, and says whether it was there already. A set taken with room for its
 // names never grows. Its names double the arena when they fill it, as appending to it would grow it by
@@ -592,12 +718,16 @@ func (s *nameSet) add(name string) bool {
 		slot := &s.slots[at]
 		if slot.length == 0 {
 			slot.off, slot.length = int32(off)+1, int32(len(lowered))
-			if s.filled++; 2*s.filled >= len(s.slots) {
+			if at, in := viewOffset(s.source, name); in {
+				slot.off = -int32(at) - 1
+				s.arena = s.arena[:off]
+			}
+			if s.filled++; 4*s.filled >= 3*len(s.slots) {
 				s.grow()
 			}
 			return false
 		}
-		if int(slot.length) == len(lowered) && string(s.arena[slot.off-1:slot.off-1+slot.length]) == string(lowered) {
+		if s.matches(*slot, lowered) {
 			s.arena = s.arena[:off]
 			return true
 		}
@@ -612,13 +742,30 @@ func (s *nameSet) grow() {
 		if old.length == 0 {
 			continue
 		}
-		at := maphash.Bytes(nameSeed, s.arena[old.off-1:old.off-1+old.length]) & mask
+		at := maphash.Bytes(nameSeed, s.loweredText(old)) & mask
 		for slots[at].length != 0 {
 			at = (at + 1) & mask
 		}
 		slots[at] = old
 	}
 	s.slots = slots
+}
+
+// loweredText is the slot's name in lower case, past the end of the arena when it isn't in it.
+func (s *nameSet) loweredText(slot nameSlot) []byte {
+	if slot.off > 0 {
+		return s.text(slot)
+	}
+	off := len(s.arena)
+	for _, c := range s.text(slot) {
+		if c >= 'A' && c <= 'Z' {
+			c += 'a' - 'A'
+		}
+		s.arena = append(s.arena, c)
+	}
+	lowered := s.arena[off:]
+	s.arena = s.arena[:off]
+	return lowered
 }
 
 // has reports whether name is in the set.
@@ -639,7 +786,7 @@ func (s *nameSet) has(name string) bool {
 		if slot.length == 0 {
 			return false
 		}
-		if int(slot.length) == len(lowered) && string(s.arena[slot.off-1:slot.off-1+slot.length]) == string(lowered) {
+		if s.matches(*slot, lowered) {
 			return true
 		}
 	}
