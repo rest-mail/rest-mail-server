@@ -31,11 +31,11 @@ case "${1:-}" in
     # Evicts dentries and inodes for the whole VM, and nothing else. Containers keep
     # running; their next file reads are slower. Measured 217,092 open files to 69.
     #
-    # Those 69 are the VM's own: besides the guest's cache it keeps the last 40 to 60
-    # files it read open on the Mac, which no number of drops releases and only later
-    # reads displace. Measured: 58 of 300 deleted files stayed held through four drops.
-    # So the container reads a set of files that are never deleted first, and what the
-    # VM keeps is those. Measured: 0 of 300 held, three times out of three.
+    # Besides the guest's cache, the VM keeps up to about 60 of the files it last read
+    # open on the Mac, which no number of drops releases and only later reads displace.
+    # Measured: 58 of 200 deleted files stayed held through four drops. So the container
+    # first reads a set of files that are never deleted, and what the VM keeps is those.
+    # Measured: 0 of 300 deleted files held, three times out of three.
     decoys=${RESTMAIL_GUEST_DECOYS:-${XDG_CACHE_HOME:-$HOME/.cache}/rest-mail/guest-cache-decoys}
     i=0
     while [ "$i" -lt 256 ] && mkdir -p "$decoys" 2>/dev/null; do
