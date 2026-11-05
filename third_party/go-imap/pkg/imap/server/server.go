@@ -20,6 +20,8 @@ type Server struct {
 	tlsConfig *tls.Config
 	limiter   imap.Limiter
 	idlePoll  time.Duration // SetIdlePollInterval
+	idName    string        // SetServerID
+	idVersion string
 
 	// shutdown is closed once, by the first Shutdown or Close, to tell the
 	// accept loops to stop.
@@ -185,6 +187,7 @@ func (s *Server) acceptLoop(listener net.Listener, implicitTLS bool) {
 			defer s.limiter.Release(ip)
 			session := NewSession(conn, s.backend, s.hostname, s.tlsConfig, s.limiter)
 			session.SetIdlePollInterval(s.idlePoll)
+			session.SetServerID(s.idName, s.idVersion)
 			session.stop = s.shutdown
 			if implicitTLS {
 				session.usingTLS = true

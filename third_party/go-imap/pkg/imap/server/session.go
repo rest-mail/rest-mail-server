@@ -52,6 +52,11 @@ type Session struct {
 	// (rest-mail/rest-mail-server#718). It gates the CLOSED response code; see
 	// closedCode.
 	imap4rev2 bool
+
+	// clientID is what the client last said it is with ID (RFC 2971), and
+	// serverID what the session says in return (SetServerID).
+	clientID imap.ClientID
+	serverID []wire.IDPair
 }
 
 type authState struct {
@@ -600,6 +605,8 @@ func (s *Session) Handle() {
 			s.handleUnselect(tag)
 		case "ENABLE":
 			s.handleEnable(tag, args)
+		case "ID":
+			s.handleID(tag, args)
 		case "NAMESPACE":
 			// One personal namespace: folders sit at the top, under "/" as LIST
 			// gives it; there are no other users' or shared ones (RFC 2342 §5).

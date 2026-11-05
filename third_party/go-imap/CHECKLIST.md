@@ -1041,6 +1041,19 @@ or separate unlimited marker. Read-side proofs below do not claim those features
 | IMAP-LITMINUS-03 | RFC 7888 §§4, 5 | Normative | A non-synchronizing literal of up to 4096 octets is taken as a command argument and as APPEND's message; a synchronizing literal of any size the command allows is unaffected. | TestLiteralMinusLimit |
 | IMAP-LITMINUS-04 | RFC 7888 §§4, 5 | MUST | One over 4096 octets, as a command argument, APPEND's mailbox or APPEND's message, gets a tagged BAD with TOOBIG and a BYE with TOOBIG, and the session ends without running its in-flight octets. | TestLiteralMinusLimit, TestAppendRejectedNonSynchronizing |
 
+## RFC 2971: ID
+
+Source: RFC Editor RFC2971 text, retrieved 2026-11-03, SHA-256
+`e951146a2ad39f55a6507fa6616edc101fa4a1ab3ff4c6a9b86a4de7eb019dac`.
+
+| ID | Section | Level | Requirement | Tests |
+|----|---------|-------|-------------|-------|
+| IMAP-ID-01 | RFC 2971 §§3, 3.1 | Normative | ID is advertised in CAPABILITY before and after authentication, and IMAP4rev2 is not. | TestIDExamples |
+| IMAP-ID-02 | RFC 2971 §§3.1, 3.2 | MUST | ID with a field-value list or NIL is answered with one untagged ID, then OK, in the not-authenticated, authenticated and selected states, as in the RFC's two examples. | TestIDExamples |
+| IMAP-ID-03 | RFC 2971 §§3.2, 7 | MAY | The server's list carries only its name and version, and is NIL when none is set, as the §3.1 example shows. | TestIDExamples |
+| IMAP-ID-04 | RFC 2971 §§3, 3.1 | MUST NOT | The client's fields, in order and with NIL values kept, reach a Mailbox implementing IDMailbox whether ID came before or after authentication; ID NIL hands over nothing, and a client that never sends ID is served the same. Nothing about how the session is served depends on them. | TestIDStoredForTheMailbox |
+| IMAP-ID-05 | RFC 2971 §§3.1, 3.3, 4 | MUST NOT | Data past §3.3's bounds (more than 30 pairs, a field name over 30 octets, a value over 1024 octets, a field name twice in any case) or breaking §4's grammar is answered BAD with no ID response, and the fields already held are kept. | TestIDLimits |
+
 ## Session negotiation extension reconciliation (2026-10-26)
 
 [RFC-SESSION-EXTENSIONS.md](RFC-SESSION-EXTENSIONS.md) reconciles every numbered

@@ -228,6 +228,7 @@ func (s *Session) authenticate(tag, username, password, okMsg string) {
 	s.limiter.ResetAuth(ip)
 	s.auth.authenticated = true
 	s.mailbox = mailbox
+	s.deliverClientID()
 
 	slog.Info("imap: authenticated", "remote", s.conn.RemoteAddr(), "user", username)
 	s.tagged(tag, "OK", "[CAPABILITY "+s.capabilities()+"] "+okMsg)
