@@ -65,7 +65,7 @@ func TestRESTMAILStoredHeadersThroughPOP3RETR(t *testing.T) {
 			rs := endpoint.Routes{Router: router, Registry: endpoint.NewRegistry()}
 			NewRestmailHandler(db, pipeline.NewEngine(registry, nil), nil, RestmailTarpitConfig{}, RestmailDeliverAuthConfig{TrustedCIDRs: []string{"127.0.0.1/32"}}).Register(rs, passingSignInChecks.Throttle)
 			NewGatewaySessionHandler(db, middleware.DefaultGatewayServices).Register(rs, GatewaySessionRouteChecks{
-				Credential: endpoint.Middleware{Wrap: middleware.NewSessionPasswords(PasswordVerifier(db), nil, nil).Authenticate()},
+				Credential: endpoint.Middleware{Wrap: middleware.NewSessionPasswords(PasswordVerifier(db), nil, nil, nil).Authenticate()},
 				Throttle:   passingSignInChecks.Throttle,
 				Audit:      passingSignInChecks.Audit,
 			})

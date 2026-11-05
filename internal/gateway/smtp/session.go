@@ -315,7 +315,7 @@ func (s *session) login(username, password string) error {
 
 	// The connection gets its own session with the API (#1586), opened with
 	// the submission service's certificate and closed at QUIT or disconnect.
-	resp, err := s.api.OpenSession(username, password, "smtp")
+	resp, err := s.api.OpenSession(username, password, "smtp", ip)
 	if err != nil {
 		// OSI-5: the attempted username is attacker-controlled and high-volume on
 		// this path (credential-stuffing / user-enumeration probes), so it is

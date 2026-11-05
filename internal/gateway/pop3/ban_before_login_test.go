@@ -12,8 +12,6 @@ import (
 	"testing"
 	"time"
 
-	pop3server "github.com/rest-mail/go-pop3/pkg/pop3/server"
-
 	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/connlimiter"
 )
@@ -48,8 +46,12 @@ func TestBannedAddressRefusedAtConnect(t *testing.T) {
 	port := probe.Addr().(*net.TCPAddr).Port
 	_ = probe.Close()
 
-	srv := pop3server.New(NewBackend(apiclient.New(api.URL), lim), nil, lim)
-	if err := srv.ListenAndServe(pop3server.Ports{POP3: port}); err != nil {
+	listener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := NewServer(NewBackend(apiclient.New(api.URL), lim), lim)
+	if err := srv.Serve(listener); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = srv.Close() })

@@ -9,8 +9,6 @@ import (
 	"syscall"
 	"time"
 
-	pop3server "github.com/rest-mail/go-pop3/pkg/pop3/server"
-
 	"github.com/rest-mail/rest-mail-server/internal/config"
 	"github.com/rest-mail/rest-mail-server/internal/db"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
@@ -176,11 +174,9 @@ func main() {
 	bancheck.Wire(limiter, database, "pop3")
 	// The shared connlimiter satisfies the library's structural Limiter interface;
 	// the rest-mail Backend adapter maps API responses onto the library's types.
-	pop3Server := pop3server.New(pop3.NewBackend(api, limiter), tlsConfig, limiter)
-	// POP3 is left zero, which the library skips: there is no cleartext listener on 110.
-	if err := pop3Server.ListenAndServe(pop3server.Ports{
-		POP3TLS: cfg.POP3TLSPort,
-	}); err != nil {
+	pop3Server := pop3.NewServer(pop3.NewBackend(api, limiter), limiter)
+	// Implicit TLS only: there is no cleartext listener on 110.
+	if err := pop3Server.ListenAndServeTLS(cfg.POP3TLSPort, tlsConfig); err != nil {
 		slog.Error("failed to start POP3 server", "error", err)
 		os.Exit(1)
 	}

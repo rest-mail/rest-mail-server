@@ -1342,7 +1342,10 @@ paths:
         The mail client''s address and password or app password come once, in the body:
         this is the only request that takes a mail client''s password (there is no HTTP
         Basic). A refused one is recorded as auth.credential_refused and refusals are
-        throttled; an account with two-factor authentication needs an app password. The answer''s token is sent as
+        throttled; client_ip is the address the mail client connected to the gateway from,
+        and the throttle, the refusals'' budget and the audit record go by it instead of the
+        gateway''s own. Only a gateway''s certificate is believed about it. An account with
+        two-factor authentication needs an app password. The answer''s token is sent as
         Bearer on every call the gateway then makes for that connection, over the internal
         listener with the same certificate; the session is checked on every request,
         so revoking the credential or the account''s sessions ends it at the next one.
@@ -1355,7 +1358,7 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [protocol, address, password]
+              required: [protocol, address, password, client_ip]
               properties:
                 protocol:
                   type: string
@@ -1371,6 +1374,12 @@ paths:
                   description: >
                     What the mail client gave as its password: an app password, or one
                     of the account's passwords. Never stored or recorded.
+                client_ip:
+                  type: string
+                  description: >
+                    The IP address the mail client is connected to the gateway from. The
+                    sign-in throttle and the audit record use it, and the API takes it only
+                    from a gateway's own certificate.
         required: true
       responses:
         "201":

@@ -155,8 +155,10 @@ const gatewaySessionPrefix = "rmgs_"
 // is asking. The answer's Token is what every call for the connection then
 // sends, and CloseSession ends it at logout or disconnect. The API checks the
 // session on every call, so a revoked app password fails at the next one.
-func (c *Client) OpenSession(email, password, protocol string) (*apitypes.GatewaySessionOpened, error) {
-	jsonBody, err := json.Marshal(apitypes.GatewaySessionOpenRequest{Protocol: protocol, Address: email, Password: password})
+// clientIP is the address the mail client connected from: the API throttles and
+// records the sign-in by it, not by the gateway's own address.
+func (c *Client) OpenSession(email, password, protocol, clientIP string) (*apitypes.GatewaySessionOpened, error) {
+	jsonBody, err := json.Marshal(apitypes.GatewaySessionOpenRequest{Protocol: protocol, Address: email, Password: password, ClientIP: clientIP})
 	if err != nil {
 		return nil, err
 	}

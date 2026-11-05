@@ -247,7 +247,8 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	if cfg.AuthRateLimitEnabled {
 		credentialRefusals = &middleware.RateLimitConfig{RPS: cfg.AuthRateLimitRPS, Burst: cfg.AuthRateLimitBurst}
 	}
-	sessionPasswords := middleware.NewSessionPasswords(handlers.PasswordVerifier(db), auditor.CredentialRefused, credentialRefusals)
+	sessionPasswords := middleware.NewSessionPasswords(handlers.PasswordVerifier(db), auditor.CredentialRefused, credentialRefusals,
+		handlers.GatewaySignsInMailClients(middleware.DefaultGatewayServices))
 	credentialH := handlers.NewCredentialHandler(db)
 	// Protocol gateway connection sessions (#1586): a gateway, identified by its
 	// mTLS client certificate on the internal listener, opens one when a mail

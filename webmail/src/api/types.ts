@@ -2544,7 +2544,7 @@ export interface paths {
         put?: never;
         /**
          * Open a mail client's connection session (protocol gateways)
-         * @description Internal: served on the mTLS listener, for a gateway presenting its own client certificate, which names its service (IMAP, POP3 or SMTP submission). The mail client's address and password or app password come once, in the body: this is the only request that takes a mail client's password. A refused one is recorded as auth.credential_refused and refusals are throttled; an account with two-factor authentication needs an app password. The answer's token is sent as Bearer on every call the gateway then makes for that connection, over the internal listener with the same certificate; the session is checked on every request, so revoking the credential or the account's sessions ends it at the next one. protocol must be the one the service serves; a caller without a gateway certificate is 403 gateway_required.
+         * @description Internal: served on the mTLS listener, for a gateway presenting its own client certificate, which names its service (IMAP, POP3 or SMTP submission). The mail client's address and password or app password come once, in the body: this is the only request that takes a mail client's password. A refused one is recorded as auth.credential_refused and refusals are throttled; client_ip is the address the mail client connected to the gateway from, and the throttle, the refusals' budget and the audit record go by it instead of the gateway's own. Only a gateway's certificate is believed about it. An account with two-factor authentication needs an app password. The answer's token is sent as Bearer on every call the gateway then makes for that connection, over the internal listener with the same certificate; the session is checked on every request, so revoking the credential or the account's sessions ends it at the next one. protocol must be the one the service serves; a caller without a gateway certificate is 403 gateway_required.
          */
         post: operations["openGatewaySession"];
         delete?: never;
@@ -5231,6 +5231,7 @@ export interface components {
         gatewaySessionOpenRequest: {
             /** Format: email */
             address: string;
+            client_ip: string;
             /** Format: password */
             password: string;
             /** @enum {string} */
