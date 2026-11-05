@@ -350,18 +350,19 @@ func hostileFieldShapes(id string) map[string]string {
 // cost, rounded up with room for what a run varies by. 0 means the route holds it to 8x.
 type stillOverCost struct{ importing, delivering, restmail uint64 }
 
-// fieldShapesStillOver aren't reliably under 8x on the routes they name, measured from empty pools. For a
-// field holding an 8-bit octet, most of what's left is what's stored and what measuring it reads again
-// (WriteParameterField, the field unfolded each time it's read); those were 12 to 40x before #1968. The
-// RESTMAIL rows at 9 are at 8.0x, where its structure check holds a long field a second time. The limit
-// is still 8x (#1915), and each answers to it once it's under: holdsItsCost fails when one is.
+// fieldShapesStillOver aren't reliably under 8x on the routes they name, measured from empty pools. The
+// limit is still 8x (#1915), and each answers to it once it's under: holdsItsCost fails when one is.
+//
+// What's left of the 8-bit rows is what's stored (a copy for the row, two through pgx) and three buffers
+// of about the message that the parse and the delivery hold. The rows at 9 are at 8.0x to 8.3x, with one
+// copy of what's kept of the field and a table of its names on top of those. A top-level field also costs
+// the measured header block, and each of its four readings joins the value again, so that row is at 10x
+// to 11x. RESTMAIL's structure check holds a long field a second time, which is the 1x on its name*N.
 var fieldShapesStillOver = map[string]stillOverCost{
-	"8-bit charset*N, top level":   {importing: 18, delivering: 18, restmail: 18},
-	"8-bit name*N":                 {importing: 12, delivering: 12, restmail: 13},
-	"8-bit filename*N":             {importing: 11, delivering: 11, restmail: 11},
-	"8-bit values, on a part":      {importing: 11, delivering: 11, restmail: 11},
-	"8-bit parameters, on a part":  {importing: 11, delivering: 11, restmail: 11},
-	"8-bit comments on filename*N": {importing: 11, delivering: 11, restmail: 11},
+	"8-bit charset*N, top level":   {importing: 11, delivering: 11, restmail: 11},
+	"8-bit name*N":                 {delivering: 9, restmail: 10},
+	"8-bit filename*N":             {delivering: 9, restmail: 9},
+	"8-bit comments on filename*N": {delivering: 9, restmail: 9},
 	"8-bit names, on many parts":   {importing: 9},
 	"comments on name*N":           {restmail: 9},
 	"name*N on a part":             {restmail: 9},
