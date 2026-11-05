@@ -16,7 +16,8 @@ type Backend interface {
 	// OpenSession signs a mail client in at submission AUTH, with one of the
 	// account's passwords or an app password, and opens the connection's
 	// session with the API (#1586), with the submission service's certificate.
-	OpenSession(email, password, protocol string) (*apitypes.GatewaySessionOpened, error)
+	// clientIP is the address the mail client connected from.
+	OpenSession(email, password, protocol, clientIP string) (*apitypes.GatewaySessionOpened, error)
 	// CloseSession ends the connection's session, at QUIT or disconnect.
 	CloseSession(token string) error
 	// CheckMailbox verifies a recipient address exists locally.
@@ -36,8 +37,8 @@ type Clients struct {
 
 var _ Backend = Clients{}
 
-func (c Clients) OpenSession(email, password, protocol string) (*apitypes.GatewaySessionOpened, error) {
-	return c.Submission.OpenSession(email, password, protocol)
+func (c Clients) OpenSession(email, password, protocol, clientIP string) (*apitypes.GatewaySessionOpened, error) {
+	return c.Submission.OpenSession(email, password, protocol, clientIP)
 }
 
 func (c Clients) CloseSession(token string) error { return c.Submission.CloseSession(token) }

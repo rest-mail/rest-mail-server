@@ -7,6 +7,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/rest-mail/go-imap/pkg/imap"
 	"github.com/rest-mail/go-imap/pkg/imap/internal/wire"
 )
 
@@ -209,7 +210,11 @@ func (s *Session) handleAuthenticate(tag, args string) {
 func (s *Session) authenticate(tag, username, password, okMsg string) {
 	ip := extractIP(s.conn.RemoteAddr().String())
 
-	mailbox, err := s.backend.Authenticate(username, password)
+	backend := s.backend
+	if b, ok := backend.(imap.ClientAddressBackend); ok {
+		backend = b.ForClient(ip)
+	}
+	mailbox, err := backend.Authenticate(username, password)
 	if err != nil {
 		slog.Warn("imap: auth failed",
 			"remote", s.conn.RemoteAddr(),

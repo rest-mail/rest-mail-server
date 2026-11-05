@@ -34,6 +34,9 @@ type Backend struct {
 	// per-IP tracker cannot see a distributed attack that rotates source IPs
 	// against one account. A nil limiter disables per-account throttling.
 	limiter *connlimiter.Limiter
+	// clientIP is the address of the mail client this Backend signs in, set by
+	// ForClient. The API throttles and records a sign-in by it.
+	clientIP string
 }
 
 // NewBackend creates a Backend over the given API client. limiter enables
@@ -42,7 +45,18 @@ func NewBackend(api *apiclient.Client, limiter *connlimiter.Limiter) *Backend {
 	return &Backend{api: api, limiter: limiter}
 }
 
-var _ goimap.Backend = (*Backend)(nil)
+var (
+	_ goimap.Backend              = (*Backend)(nil)
+	_ goimap.ClientAddressBackend = (*Backend)(nil)
+)
+
+// ForClient returns the Backend that signs in the mail client connected from
+// ip (goimap.ClientAddressBackend).
+func (b *Backend) ForClient(ip string) goimap.Backend {
+	forClient := *b
+	forClient.clientIP = ip
+	return &forClient
+}
 
 // Authenticate signs the user in via the API, with the mailbox's password or
 // an app password, and returns a Mailbox scoped to the resulting token and
@@ -71,7 +85,7 @@ func (b *Backend) Authenticate(user, pass string) (goimap.Mailbox, error) {
 	// The connection gets its own session with the API (#1586): the address
 	// and password go once, and every call that follows sends the session's
 	// token. An app password signs in without the API's interactive login (#344).
-	resp, err := b.api.OpenSession(user, pass, "imap")
+	resp, err := b.api.OpenSession(user, pass, "imap", b.clientIP)
 	if err != nil {
 		// A failed IMAP login is a security-relevant event (credential stuffing /
 		// enumeration). Log it structured, with the attacker-controlled username
