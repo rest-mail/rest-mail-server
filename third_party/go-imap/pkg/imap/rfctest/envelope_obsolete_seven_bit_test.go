@@ -1,6 +1,7 @@
 package rfctest
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/rest-mail/go-imap/pkg/imap/wireform"
@@ -88,9 +89,39 @@ func TestMailboxWithNoSevenBitFormIsLeftOut(t *testing.T) {
 		}
 	})
 
-	t.Run("stored as an encoded word", func(t *testing.T) {
-		requireToList(t, "x@example.com, =?UTF-8?Q?j=C3=B6?=@example.com", `((NIL NIL "x" "example.com"))`)
+	t.Run("word that white space separates, sent that way", func(t *testing.T) {
+		requireToList(t, "x@example.com, =?UTF-8?Q?j=C3=B6?= @ example.com", `((NIL NIL "x" "example.com"))`)
 	})
+}
+
+// TestMailboxSpelledLikeAnEncodedWordIsRead: =?UTF-8?Q?x?= is legal atext, so a mailbox
+// sent spelled that way, against the '@' or '.' beside it, is the sender's address. A
+// word WireForm makes never touches them, because it encodes them with the token.
+//
+// checklist: IMAP-ENV-14 IMAP-ENV-13
+func TestMailboxSpelledLikeAnEncodedWordIsRead(t *testing.T) {
+	const word = "=?UTF-8?Q?x?="
+	for _, tc := range []struct{ name, mailbox, local, domain string }{
+		{name: "local part", mailbox: word + "@example.com", local: word, domain: "example.com"},
+		{name: "angle address", mailbox: "J <" + word + "@example.com>", local: word, domain: "example.com"},
+		{name: "word of a local part", mailbox: "j." + word + "@example.com", local: "j." + word, domain: "example.com"},
+		{name: "quoted local part", mailbox: `"` + word + `"@example.com`, local: word, domain: "example.com"},
+		{name: "quoted word", mailbox: `"j".` + word + "@example.com", local: "j." + word, domain: "example.com"},
+		{name: "domain", mailbox: "a@" + word, local: "a", domain: word},
+		{name: "word of a domain", mailbox: "a@" + word + ".com", local: "a", domain: word + ".com"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			name := "NIL"
+			if strings.HasPrefix(tc.mailbox, "J ") {
+				name = `"J"`
+			}
+			want := "(" + name + ` NIL "` + tc.local + `" "` + tc.domain + `")`
+			requireToList(t, tc.mailbox, "("+want+")")
+			requireToList(t, "x@example.com, "+tc.mailbox+", y@example.com",
+				`((NIL NIL "x" "example.com")`+want+`(NIL NIL "y" "example.com"))`)
+			requireToList(t, tc.mailbox+", j . \xc3\xb6 @ example . com", "("+want+")")
+		})
+	}
 }
 
 // TestControlOctetPartConverted: a part whose header holds a control octet is read
