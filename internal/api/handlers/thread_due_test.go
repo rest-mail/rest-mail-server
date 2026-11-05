@@ -139,8 +139,12 @@ func TestThreadDueLifecycle(t *testing.T) {
 	if err := tx.First(&durable, "mailbox_id = ? AND thread_id = ?", owner, "due-thread").Error; err != nil || durable.Due != nil || durable.DueSource != nil {
 		t.Fatalf("clear was not stored: %#v, %v", durable, err)
 	}
+	rowIDs := make([]uint, len(rows))
+	for index, row := range rows {
+		rowIDs[index] = row.ID
+	}
 	var stored []models.Message
-	if err := tx.Order("id").Find(&stored).Error; err != nil || len(stored) != len(rows) {
+	if err := tx.Where("id IN ?", rowIDs).Order("id").Find(&stored).Error; err != nil || len(stored) != len(rows) {
 		t.Fatalf("messages changed: %#v, %v", stored, err)
 	}
 	for index, message := range stored {
