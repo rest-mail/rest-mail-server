@@ -355,6 +355,10 @@ func (kept partFields) open(body io.Reader) (*entity, error) {
 	return e, err
 }
 
+const maxCharsetName = 256
+
+var errCharsetName = errors.New("message: unknown charset")
+
 // transferDecoder is go-message's encodingReader.
 func transferDecoder(encoding string, r io.Reader) (io.Reader, error) {
 	switch strings.ToLower(encoding) {
@@ -386,6 +390,10 @@ func charsetDecoder(charset string, input io.Reader) (io.Reader, error) {
 	charset = strings.ToLower(charset)
 	if charset == "utf-8" || charset == "us-ascii" {
 		return input, nil
+	}
+	// No charset has a name near this long, and refusing one quotes all of it in an error.
+	if len(charset) > maxCharsetName {
+		return nil, errCharsetName
 	}
 	if gomessage.CharsetReader != nil {
 		return gomessage.CharsetReader(charset, input)

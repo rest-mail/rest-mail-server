@@ -20,7 +20,7 @@ type wireType struct{ mt, boundary, charset string }
 func (n mimeNode) wireType() wireType {
 	var contentType, encoding string
 	if namesContentField(n.header) {
-		contentType, encoding = contentFields(n.header)
+		contentType, encoding = readContentFields(n.header, true)
 	}
 	if !knownTransferEncoding(encoding) {
 		return wireType{mt: "application/octet-stream"}
@@ -47,6 +47,12 @@ func (n mimeNode) wireType() wireType {
 // before that, but a line with no colon anywhere makes the whole block read as empty, so
 // the block is read to its end whatever has been found (TestContentFieldsMatchTheLibrary).
 func contentFields(header string) (contentType, encoding string) {
+	return readContentFields(header, false)
+}
+
+// readContentFields is contentFields. With keepFolded, a Content-Type that readsFolded stays as it's
+// spelled, line breaks and all.
+func readContentFields(header string, keepFolded bool) (contentType, encoding string) {
 	if header != "" && (header[0] == ' ' || header[0] == '\t') {
 		return "", ""
 	}
@@ -90,7 +96,13 @@ func contentFields(header string) (contentType, encoding string) {
 			isEncoding := len(name) == len("Content-Transfer-Encoding") && strings.EqualFold(name, "Content-Transfer-Encoding")
 			if isType && !haveType || isEncoding && !haveEncoding {
 				if folded {
-					value = unfoldedField(value, continuation)
+					// The value and its lines lie side by side in the block.
+					spelled := rest[strings.IndexByte(rest, ':')+1 : len(rest)-len(field)]
+					if keepFolded && isType && readsFolded(spelled) {
+						value = spelled
+					} else {
+						value = unfoldedField(value, continuation)
+					}
 				}
 				value = strings.TrimLeft(value, " \t")
 				if isType {
@@ -103,6 +115,13 @@ func contentFields(header string) (contentType, encoding string) {
 		rest = field
 	}
 	return contentType, encoding
+}
+
+// readsFolded says parseKept reads a value just the same with its line breaks in it, so nothing need
+// be built to take them out. It holds many parameters, and with nothing quoted or commented a line
+// break can only stand where white space is read as nothing. mime's reader takes CR and LF as space.
+func readsFolded(spelled string) bool {
+	return strings.Count(spelled, ";") > manyParameters && !strings.ContainsAny(spelled, `"()`) && !has8bit(spelled)
 }
 
 // entityHeaderBuffer is the size of the buffers entityHeader reads with.
@@ -277,7 +296,7 @@ func parseKept(kept string) (string, map[string]string, error) {
 		if rest == "" {
 			break
 		}
-		key, value, next, ok := scanMediaParameter(rest)
+		key, _, next, ok := scanMediaParameter(rest)
 		if !ok {
 			if strings.TrimSpace(rest) == ";" {
 				break
@@ -296,18 +315,13 @@ func parseKept(kept string) (string, map[string]string, error) {
 			if pieces == nil {
 				pieces = make([]keptPiece, 0, strings.Count(rest, "*"))
 			}
-			keyAt := offset(rest[strings.Index(rest, key):])
-			pieces = append(pieces, keptPiece{
-				keyAt: keyAt, keyEnd: keyAt + uint32(len(key)),
-				at: offset(next) - uint32(len(value)), end: offset(next),
-				number: pieceNumber(key),
-			})
+			pieces = append(pieces, keptPiece{keyAt: offset(rest[strings.Index(rest, key):]), number: pieceNumber(key)})
 		}
 		rest = next
 	}
 	slices.Sort(names)
 	plain.WriteString(firstRepeat(kept[len(base):], names))
-	key := func(piece keptPiece) string { return kept[piece.keyAt:piece.keyEnd] }
+	key := func(piece keptPiece) string { return piece.key(kept) }
 	family := func(piece keptPiece) string { return pieceFamily(key(piece)) }
 	// The family, then its name*N in order with name*N before name*N*, after everything else.
 	slices.SortFunc(pieces, func(a, b keptPiece) int {
@@ -315,9 +329,13 @@ func parseKept(kept string) (string, map[string]string, error) {
 	})
 	for i := 1; i < len(pieces); i++ {
 		a, b := pieces[i-1], pieces[i]
-		if compareFoldASCII(key(a), key(b)) == 0 && kept[a.at:a.end] != kept[b.at:b.end] && mediaValueText(kept[a.at:a.end]) != mediaValueText(kept[b.at:b.end]) {
+		if compareFoldASCII(key(a), key(b)) != 0 {
+			continue
+		}
+		first, second := a.value(kept), b.value(kept)
+		if first != second && mediaValueText(first) != mediaValueText(second) {
 			// A repeat is for parseMediaType to judge, and these two are enough for it to say so.
-			return parseUncommented(plain.String() + ";" + key(a) + "=" + kept[a.at:a.end] + ";" + key(b) + "=" + kept[b.at:b.end])
+			return parseUncommented(plain.String() + ";" + key(a) + "=" + first + ";" + key(b) + "=" + second)
 		}
 	}
 	mt, params, err := parseUncommented(plain.String())
@@ -347,11 +365,26 @@ func parseKept(kept string) (string, map[string]string, error) {
 	return mt, params, nil
 }
 
-// keptPiece is one RFC 2231 form of a kept parameter, as offsets into its field.
+// keptPiece is one RFC 2231 form of a kept parameter, by where its name starts in its field. A field
+// is mostly these, so what's held for each is as small as can be, and the rest is read again when
+// it's asked for.
 type keptPiece struct {
-	keyAt, keyEnd, at, end uint32
+	keyAt uint32
 	// number is the N of name*N or name*N*, spelled as extendedValue looks for it, or else -1.
 	number int32
+}
+
+func (piece keptPiece) key(kept string) string {
+	key, _ := cutMediaToken(kept[piece.keyAt:])
+	return key
+}
+
+// value is the piece's value as it's spelled. Its field has read as parameters already.
+func (piece keptPiece) value(kept string) string {
+	_, rest := cutMediaToken(kept[piece.keyAt:])
+	rest = strings.TrimLeftFunc(rest, unicode.IsSpace)
+	rest = strings.TrimLeftFunc(rest[1:], unicode.IsSpace)
+	return rest[:mediaValueEnd(rest)]
 }
 
 func pieceFamily(key string) string {
@@ -397,11 +430,11 @@ func compareFoldASCII(a, b string) int {
 
 // keptExtendedValue is extendedValue, of a family's pieces as parseKept sorts them.
 func keptExtendedValue(kept, family string, members []keptPiece) (string, bool) {
-	text := func(piece keptPiece) string { return mediaValueText(kept[piece.at:piece.end]) }
+	text := func(piece keptPiece) string { return mediaValueText(piece.value(kept)) }
 	first := 0
 	for first < len(members) && members[first].number < 0 {
 		piece := members[first]
-		if int(piece.keyEnd-piece.keyAt) == len(family)+1 {
+		if len(piece.key(kept)) == len(family)+1 {
 			charset, octets := splitExtendedValue(text(piece))
 			return keptValue(family, charset, octets), true
 		}
@@ -410,7 +443,7 @@ func keptExtendedValue(kept, family string, members []keptPiece) (string, bool) 
 	numbered := members[first:]
 	size := 0
 	for _, piece := range numbered {
-		size += int(piece.end - piece.at)
+		size += len(piece.value(kept))
 	}
 	var octets strings.Builder
 	octets.Grow(size)
@@ -425,7 +458,7 @@ func keptExtendedValue(kept, family string, members []keptPiece) (string, bool) 
 			continue
 		}
 		value := text(piece)
-		if kept[piece.keyEnd-1] == '*' {
+		if strings.HasSuffix(piece.key(kept), "*") {
 			if next == 0 {
 				charset, value = splitExtendedValue(value)
 			} else {
@@ -445,15 +478,14 @@ func keptExtendedValue(kept, family string, members []keptPiece) (string, bool) 
 // keptLaterSegments is laterSegments, of a family's pieces. It reorders them.
 func keptLaterSegments(kept, family string, members []keptPiece) (string, bool) {
 	number := func(piece keptPiece) string {
-		key := kept[piece.keyAt+uint32(len(family))+1 : piece.keyEnd]
-		return strings.TrimLeft(strings.TrimSuffix(key, "*"), "0")
+		return strings.TrimLeft(strings.TrimSuffix(piece.key(kept)[len(family)+1:], "*"), "0")
 	}
 	valid := members[:0]
 	size := 0
 	for _, piece := range members {
-		if suffix := kept[piece.keyAt+uint32(len(family))+1 : piece.keyEnd]; suffix != "" && validExtendedSuffix(suffix) {
+		if suffix := piece.key(kept)[len(family)+1:]; suffix != "" && validExtendedSuffix(suffix) {
 			valid = append(valid, piece)
-			size += int(piece.end - piece.at)
+			size += len(piece.value(kept))
 		}
 	}
 	if len(valid) == 0 {
@@ -461,17 +493,17 @@ func keptLaterSegments(kept, family string, members []keptPiece) (string, bool) 
 	}
 	slices.SortFunc(valid, func(a, b keptPiece) int {
 		x, y := number(a), number(b)
-		return cmp.Or(cmp.Compare(len(x), len(y)), cmp.Compare(x, y), compareFoldASCII(kept[a.keyAt:a.keyEnd], kept[b.keyAt:b.keyEnd]))
+		return cmp.Or(cmp.Compare(len(x), len(y)), cmp.Compare(x, y), compareFoldASCII(a.key(kept), b.key(kept)))
 	})
 	var octets strings.Builder
 	octets.Grow(size)
 	for i, piece := range valid {
 		// A name repeated with the same value is one segment.
-		if i > 0 && compareFoldASCII(kept[valid[i-1].keyAt:valid[i-1].keyEnd], kept[piece.keyAt:piece.keyEnd]) == 0 {
+		if i > 0 && compareFoldASCII(valid[i-1].key(kept), piece.key(kept)) == 0 {
 			continue
 		}
-		value := mediaValueText(kept[piece.at:piece.end])
-		if kept[piece.keyEnd-1] == '*' {
+		value := mediaValueText(piece.value(kept))
+		if strings.HasSuffix(piece.key(kept), "*") {
 			value = percentDecode(value)
 		}
 		octets.WriteString(value)

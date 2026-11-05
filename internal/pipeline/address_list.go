@@ -25,9 +25,6 @@ func ParsedAddresses(field string, dec *mime.WordDecoder) AddressList {
 	return AddressList{field: field, dec: dec}
 }
 
-// FieldSize is how long the field a parsed list came from is, or 0.
-func (l AddressList) FieldSize() int { return len(l.field) }
-
 // Len is how many addresses there are. It holds nothing for each one.
 func (l AddressList) Len() int {
 	if l.field == "" {
@@ -88,6 +85,17 @@ func (l AddressList) Visit(visit func(Address)) bool {
 	return mailaddr.Each(l.field, l.dec, func(name, address string) {
 		visit(Address{Name: sanitizeHeaderValue(name), Address: sanitizeHeaderValue(address)})
 	}) == nil
+}
+
+// VisitAddresses is Visit with each name left unread, which costs nothing per address.
+func (l AddressList) VisitAddresses(visit func(address string)) bool {
+	if l.field == "" {
+		for _, address := range l.given {
+			visit(address.Address)
+		}
+		return true
+	}
+	return mailaddr.EachAddress(l.field, l.dec, func(address string) { visit(sanitizeHeaderValue(address)) }) == nil
 }
 
 // All is every address, or nil for none.

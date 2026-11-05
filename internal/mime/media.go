@@ -105,7 +105,7 @@ func keptMediaParams(value string) (kept string, continued map[string]string, ok
 				if pieces == nil {
 					pieces = make([]mediaPiece, 0, stars)
 				}
-				piece.at, piece.end = offset(text), offset(text)+uint32(len(text))
+				piece.at = offset(text)
 				pieces = append(pieces, piece)
 				return
 			}
@@ -154,15 +154,44 @@ func keptMediaParams(value string) (kept string, continued map[string]string, ok
 // mediaFamilies are the parameters this package reads, as a mediaPiece names them.
 var mediaFamilies = [...]string{"boundary", "charset", "filename", "name"}
 
-// mediaPiece is one RFC 2231 form of a kept parameter, with its value as offsets into the field it
-// came from: name*, name*N or name*N*. Anything else with a star in its name means nothing to
-// mime.ParseMediaType beyond being one more name.
+// mediaPiece is one RFC 2231 form of a kept parameter, by where its value starts in the field it came
+// from: name*, name*N or name*N*. Anything else with a star in its name means nothing to
+// mime.ParseMediaType beyond being one more name. A field is mostly these, so what's held for each is
+// as small as can be. Its family, N and whether it's name*N* make one number that sorts as they do.
 type mediaPiece struct {
-	family  uint8
-	encoded bool
-	// number is the N, or -1 for name*.
-	number  int32
-	at, end uint32
+	order uint32
+	at    uint32
+}
+
+const (
+	mediaPieceBits   = 27
+	mediaPieceSingle = 1<<mediaPieceBits - 1
+)
+
+func makeMediaOrder(family uint8, number int32, encoded bool) uint32 {
+	order := uint32(family) << (mediaPieceBits + 1)
+	if number < 0 {
+		// name*, which comes before everything else of its family.
+		return order
+	}
+	order |= (uint32(number) + 1) << 1
+	if encoded {
+		order |= 1
+	}
+	return order
+}
+
+func (p mediaPiece) family() uint8 { return uint8(p.order >> (mediaPieceBits + 1)) }
+
+// number is the N, or -1 for name*.
+func (p mediaPiece) number() int32 { return int32(p.order>>1&mediaPieceSingle) - 1 }
+
+func (p mediaPiece) encoded() bool { return p.order&1 == 1 }
+
+// spelled is the piece's value as it's spelled.
+func (p mediaPiece) spelled(value string) string {
+	rest := value[p.at:]
+	return rest[:mediaValueEnd(rest)]
 }
 
 // newMediaPiece reads a kept parameter's name, whose number has to be spelled as mime.ParseMediaType
@@ -172,17 +201,17 @@ func newMediaPiece(key string) (mediaPiece, bool) {
 	if !starred {
 		return mediaPiece{}, false
 	}
-	piece := mediaPiece{number: -1}
-	for i, family := range mediaFamilies {
-		if strings.EqualFold(base, family) {
-			piece.family = uint8(i)
+	var family uint8
+	for i, name := range mediaFamilies {
+		if strings.EqualFold(base, name) {
+			family = uint8(i)
 		}
 	}
 	if suffix == "" {
-		return piece, true
+		return mediaPiece{order: makeMediaOrder(family, -1, false)}, true
 	}
 	digits, encoded := strings.CutSuffix(suffix, "*")
-	if digits == "" || len(digits) > 9 || (digits[0] == '0' && len(digits) > 1) {
+	if digits == "" || len(digits) > 8 || (digits[0] == '0' && len(digits) > 1) {
 		return mediaPiece{}, false
 	}
 	number := int32(0)
@@ -192,8 +221,7 @@ func newMediaPiece(key string) (mediaPiece, bool) {
 		}
 		number = number*10 + int32(digits[i]-'0')
 	}
-	piece.number, piece.encoded = number, encoded
-	return piece, true
+	return mediaPiece{order: makeMediaOrder(family, number, encoded)}, true
 }
 
 // stitchMediaPieces puts each family back together as mime.ParseMediaType does, or answers false for
@@ -202,27 +230,22 @@ func stitchMediaPieces(value string, pieces []mediaPiece, seed maphash.Seed) (ma
 	if len(pieces) == 0 {
 		return nil, true
 	}
-	slices.SortFunc(pieces, func(a, b mediaPiece) int {
-		return cmp.Or(cmp.Compare(a.family, b.family), cmp.Compare(a.number, b.number), cmp.Compare(boolInt(a.encoded), boolInt(b.encoded)))
-	})
-	same := func(a, b mediaPiece) bool {
-		return a.family == b.family && a.number == b.number && a.encoded == b.encoded
-	}
+	slices.SortFunc(pieces, func(a, b mediaPiece) int { return cmp.Compare(a.order, b.order) })
 	for i := 1; i < len(pieces); i++ {
-		if same(pieces[i-1], pieces[i]) && valueHash(seed, value[pieces[i-1].at:pieces[i-1].end]) != valueHash(seed, value[pieces[i].at:pieces[i].end]) {
+		if pieces[i-1].order == pieces[i].order && valueHash(seed, pieces[i-1].spelled(value)) != valueHash(seed, pieces[i].spelled(value)) {
 			return nil, false
 		}
 	}
 	stitched := make(map[string]string, 2)
 	for from := 0; from < len(pieces); {
 		to := from + 1
-		for to < len(pieces) && pieces[to].family == pieces[from].family {
+		for to < len(pieces) && pieces[to].family() == pieces[from].family() {
 			to++
 		}
 		family := pieces[from:to]
 		from = to
-		name := mediaFamilies[family[0].family]
-		if family[0].number < 0 {
+		name := mediaFamilies[family[0].family()]
+		if family[0].number() < 0 {
 			if decoded, ok := decodeExtended(mediaText(value, family[0])); ok {
 				stitched[name] = decoded
 			}
@@ -230,21 +253,22 @@ func stitchMediaPieces(value string, pieces []mediaPiece, seed maphash.Seed) (ma
 		}
 		size := 0
 		for _, piece := range family {
-			size += int(piece.end - piece.at)
+			size += len(piece.spelled(value))
 		}
 		var b strings.Builder
 		b.Grow(size)
 		next, valid := int32(0), false
 		for _, piece := range family {
-			if piece.number >= next+1 {
+			number := piece.number()
+			if number > next {
 				break
 			}
-			if piece.number < next {
+			if number < next {
 				continue
 			}
 			switch {
-			case !piece.encoded:
-				writeMediaText(&b, value[piece.at:piece.end])
+			case !piece.encoded():
+				writeMediaText(&b, piece.spelled(value))
 			case next == 0:
 				if decoded, ok := decodeExtended(mediaText(value, piece)); ok {
 					b.WriteString(decoded)
@@ -263,15 +287,8 @@ func stitchMediaPieces(value string, pieces []mediaPiece, seed maphash.Seed) (ma
 	return stitched, true
 }
 
-func boolInt(b bool) int {
-	if b {
-		return 1
-	}
-	return 0
-}
-
 func mediaText(value string, piece mediaPiece) string {
-	spelled := value[piece.at:piece.end]
+	spelled := piece.spelled(value)
 	if spelled == "" || spelled[0] != '"' {
 		return spelled
 	}

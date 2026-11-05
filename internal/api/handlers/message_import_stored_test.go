@@ -348,6 +348,11 @@ func hostileFieldShapes(id string) map[string]string {
 	}
 	eightBit := strings.Repeat("\u00f6", size/8) + "\r\n"
 	ascii := strings.Repeat("hello world\r\n", size/52)
+	// A boundary of many pieces. RFC 2231 numbers have to run in order, so what follows the gap isn't
+	// part of it: the body can use the boundary, where one as long as all of them can't be read by the
+	// multipart reader, whose line buffer can't hold it, and stores no text. The import test has that
+	// one too.
+	continued := long("Content-Type: multipart/mixed; boundary*0=B", ";\r\n boundary*2%d=v%d", "")
 	return map[string]string{
 		"address list, top level":           id + long("To: to@example.test", ",\r\n \"Name %d\" <a%d@example.test>", "") + "Content-Type: text/plain; charset=utf-8\r\n\r\n" + eightBit,
 		"parameters, top level":             id + long("Content-Type: text/plain; charset=utf-8", ";\r\n p%d=v%d", "") + "\r\n" + ascii,
@@ -363,8 +368,18 @@ func hostileFieldShapes(id string) map[string]string {
 		"name*N on a part":                  id + "Content-Type: multipart/mixed; boundary=B\r\n\r\n--B\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n" + eightBit + "--B\r\n" + long("Content-Type: application/x", ";\r\n name*%d=v%.0d", "") + "\r\n\r\nx\r\n--B--\r\n",
 		"filename*N on a part":              id + "Content-Type: multipart/mixed; boundary=B\r\n\r\n--B\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n" + eightBit + "--B\r\n" + long("Content-Disposition: attachment", ";\r\n filename*%d=v%.0d", "") + "\r\n\r\nx\r\n--B--\r\n",
 		"charset*N, top level, 8-bit text":  id + long("Content-Type: text/plain", ";\r\n charset*%d=v%.0d", "") + "\r\n" + eightBit,
-		"boundary*N, 8-bit text":            id + long("Content-Type: multipart/mixed", ";\r\n boundary*%d=v%.0d", "") + "\r\n\r\n" + eightBit,
+		"boundary*N, 8-bit text":            id + continued + "\r\n--B\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n" + eightBit + "--B--\r\n",
 	}
+}
+
+// longBoundary is a Content-Type naming one boundary in pieces, numbered without a gap, to size.
+func longBoundary(size int) string {
+	var b strings.Builder
+	b.WriteString("Content-Type: multipart/mixed")
+	for i := 0; b.Len() < size; i++ {
+		fmt.Fprintf(&b, ";\r\n boundary*%d=v%d", i, i)
+	}
+	return b.String()
 }
 
 // The same limit holds for an attachment FETCH has to convert, because measuring what it would
@@ -397,6 +412,7 @@ func TestMessageImportStoredHoldsTheLimitOnHostileShapes(t *testing.T) {
 		"8-bit text, no charset": id + "Content-Type: text/plain\r\n\r\n" + strings.Repeat("\xf6", size) + "\r\n",
 		"60 nested messages":     id + strings.Repeat("Content-Type: message/rfc822\r\n\r\n", 60) + "Subject: \xf6\r\n\r\n" + strings.Repeat("\xf6", size),
 		"1000 typed parts":       id + "Content-Type: multipart/mixed; boundary=B\r\n\r\n" + strings.Repeat("--B\r\nContent-Type: a/b\r\n\r\n\xf6"+strings.Repeat("y", size/1000)+"\r\n", 1000) + "--B--\r\n",
+		"boundary*N, all of it":  id + longBoundary(size*3/4) + "\r\n\r\n" + strings.Repeat("\xc3\xb6", size/8) + "\r\n",
 	} {
 		shapes[name] = message
 	}
