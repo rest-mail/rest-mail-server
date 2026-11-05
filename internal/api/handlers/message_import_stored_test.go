@@ -349,11 +349,21 @@ func hostileFieldShapes(id string) map[string]string {
 	eightBit := strings.Repeat("\u00f6", size/8) + "\r\n"
 	ascii := strings.Repeat("hello world\r\n", size/52)
 	return map[string]string{
-		"address list, top level":   id + long("To: to@example.test", ",\r\n \"Name %d\" <a%d@example.test>", "") + "Content-Type: text/plain; charset=utf-8\r\n\r\n" + eightBit,
-		"parameters, top level":     id + long("Content-Type: text/plain; charset=utf-8", ";\r\n p%d=v%d", "") + "\r\n" + ascii,
-		"parameters, on a part":     id + "Content-Type: multipart/mixed; boundary=B\r\n\r\n--B\r\n" + long("Content-Type: text/plain; charset=utf-8", ";\r\n p%d=v%d", "") + "\r\n" + ascii + "--B--\r\n",
-		"a field past 1 MiB":        id + long("X-Long: y", "\r\n y%.0d%.0d", strings.Repeat("y", size/2)) + "\r\n" + ascii,
-		"parameters, on many parts": id + "Content-Type: multipart/mixed; boundary=B\r\n\r\n--B\r\nContent-Type: text/plain\r\n\r\n" + eightBit + strings.Repeat("--B\r\nContent-Type: a/b"+strings.Repeat("; p=v", size/5000)+"\r\n\r\nx\r\n", 750) + "--B--\r\n",
+		"address list, top level":           id + long("To: to@example.test", ",\r\n \"Name %d\" <a%d@example.test>", "") + "Content-Type: text/plain; charset=utf-8\r\n\r\n" + eightBit,
+		"parameters, top level":             id + long("Content-Type: text/plain; charset=utf-8", ";\r\n p%d=v%d", "") + "\r\n" + ascii,
+		"parameters, on a part":             id + "Content-Type: multipart/mixed; boundary=B\r\n\r\n--B\r\n" + long("Content-Type: text/plain; charset=utf-8", ";\r\n p%d=v%d", "") + "\r\n" + ascii + "--B--\r\n",
+		"a field past 1 MiB":                id + long("X-Long: y", "\r\n y%.0d%.0d", strings.Repeat("y", size/2)) + "\r\n" + ascii,
+		"parameters, on many parts":         id + "Content-Type: multipart/mixed; boundary=B\r\n\r\n--B\r\nContent-Type: text/plain\r\n\r\n" + eightBit + strings.Repeat("--B\r\nContent-Type: a/b"+strings.Repeat("; p=v", size/5000)+"\r\n\r\nx\r\n", 750) + "--B--\r\n",
+		"parameters, top level, 8-bit text": id + long("Content-Type: text/plain; charset=utf-8", ";\r\n p%d=v%d", "") + "\r\n" + eightBit,
+		"parameters, on a part, 8-bit text": id + "Content-Type: multipart/mixed; boundary=B\r\n\r\n--B\r\n" + long("Content-Type: text/plain; charset=utf-8", ";\r\n p%d=v%d", "") + "\r\n" + eightBit + "--B--\r\n",
+		"address list, encoded names":       id + long("To: to@example.test", ",\r\n =?utf-8?q?N%d?= <a%d@example.test>", "") + "Content-Type: text/plain; charset=utf-8\r\n\r\n" + eightBit,
+		"address list, comments":            id + long("To: to@example.test", ",\r\n a%d@example.test (c%d)", "") + "Content-Type: text/plain; charset=utf-8\r\n\r\n" + eightBit,
+		"address list, 8-bit names":         id + long("To: to@example.test", ",\r\n \"N\u00e4me %d\" <a%d@example.test>", "") + "Content-Type: text/plain; charset=utf-8\r\n\r\n" + eightBit,
+		"address list, very short":          id + "To: a@b" + strings.Repeat(",a@b", size*3/16) + "\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n" + eightBit,
+		"name*N on a part":                  id + "Content-Type: multipart/mixed; boundary=B\r\n\r\n--B\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n" + eightBit + "--B\r\n" + long("Content-Type: application/x", ";\r\n name*%d=v%.0d", "") + "\r\n\r\nx\r\n--B--\r\n",
+		"filename*N on a part":              id + "Content-Type: multipart/mixed; boundary=B\r\n\r\n--B\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n" + eightBit + "--B\r\n" + long("Content-Disposition: attachment", ";\r\n filename*%d=v%.0d", "") + "\r\n\r\nx\r\n--B--\r\n",
+		"charset*N, top level, 8-bit text":  id + long("Content-Type: text/plain", ";\r\n charset*%d=v%.0d", "") + "\r\n" + eightBit,
+		"boundary*N, 8-bit text":            id + long("Content-Type: multipart/mixed", ";\r\n boundary*%d=v%.0d", "") + "\r\n\r\n" + eightBit,
 	}
 }
 
