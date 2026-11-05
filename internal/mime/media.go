@@ -205,7 +205,9 @@ func stitchMediaPieces(value string, pieces []mediaPiece, seed maphash.Seed) (ma
 	slices.SortFunc(pieces, func(a, b mediaPiece) int {
 		return cmp.Or(cmp.Compare(a.family, b.family), cmp.Compare(a.number, b.number), cmp.Compare(boolInt(a.encoded), boolInt(b.encoded)))
 	})
-	same := func(a, b mediaPiece) bool { return a.family == b.family && a.number == b.number && a.encoded == b.encoded }
+	same := func(a, b mediaPiece) bool {
+		return a.family == b.family && a.number == b.number && a.encoded == b.encoded
+	}
 	for i := 1; i < len(pieces); i++ {
 		if same(pieces[i-1], pieces[i]) && valueHash(seed, value[pieces[i-1].at:pieces[i-1].end]) != valueHash(seed, value[pieces[i].at:pieces[i].end]) {
 			return nil, false

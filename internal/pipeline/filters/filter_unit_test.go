@@ -184,7 +184,7 @@ func TestUnitSizeCheck_ExactlyAtLimitPasses(t *testing.T) {
 	email := &pipeline.EmailJSON{
 		Headers: pipeline.Headers{
 			From:    pipeline.Addresses([]pipeline.Address{{Address: "a@b.c"}}...), // len("a@b.c")+0+20 = 25
-			Subject: "",                                     // 0+20 = 20
+			Subject: "",                                                            // 0+20 = 20
 		},
 		Body: pipeline.Body{Content: ""},
 	}
