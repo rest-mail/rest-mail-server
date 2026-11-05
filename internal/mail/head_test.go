@@ -9,6 +9,12 @@ import (
 	"testing"
 )
 
+var (
+	hiddenFields = []string{"Bcc", "Resent-Bcc"}
+	// resentBcc makes a row about Bcc into the same row about Resent-Bcc, in the same case.
+	resentBcc = strings.NewReplacer("Bcc", "Resent-Bcc", "bCc", "rEsEnT-bCc", "BCC", "RESENT-BCC", "bcc", "resent-bcc")
+)
+
 func TestRemoveHeadField(t *testing.T) {
 	const multipartCRLF = "Content-Type: multipart/mixed; boundary=b\r\n\r\n--b\r\nBcc: in a part\r\n\r\ntext\r\n--b--\r\n"
 	const multipartLF = "Content-Type: multipart/mixed; boundary=b\n\n--b\nBcc: in a part\n\ntext\n--b--\n"
@@ -56,11 +62,40 @@ func TestRemoveHeadField(t *testing.T) {
 		{"the CR before and the CR LF after meet", "A: 1\rBcc: s\n\r\nBcc: t\r\n\r\nbody", "A: 1\r\r\n\r\nbody"},
 		{"a line end left at the start of a line", "A: 1\r\rB: 2\nBcc: s\rBcc: t\n\nbody", "A: 1\r\rB: 2\n\nbody"},
 	} {
+		// Every row holds for Resent-Bcc as it does for Bcc (RFC 5322 section 3.6.6).
+		for _, row := range [][2]string{{tc.raw, tc.want}, {resentBcc.Replace(tc.raw), resentBcc.Replace(tc.want)}} {
+			t.Run(tc.name, func(t *testing.T) {
+				if got := RemoveHeadField(row[0], hiddenFields...); got != row[1] {
+					t.Errorf("RemoveHeadField(%q)\n = %q\nwant %q", row[0], got, row[1])
+				}
+			})
+		}
+	}
+}
+
+// Fields of both names leave in one walk, in any order, and the other resent fields stay.
+func TestRemoveHeadFieldBothNames(t *testing.T) {
+	for _, tc := range []struct{ name, raw, want string }{
+		{"both, mixed line ends", "Resent-Bcc: s\r\nA: 1\nBcc: t\rresent-bcc: u\r\nB: 2\r\n\r\nbody", "A: 1\nB: 2\r\n\r\nbody"},
+		{"the other resent fields stay", "Resent-From: a\r\nResent-To: b\r\nResent-Cc: c\r\nResent-Bcc: s,\r\n t\r\nResent-Date: d\r\n\r\nbody", "Resent-From: a\r\nResent-To: b\r\nResent-Cc: c\r\nResent-Date: d\r\n\r\nbody"},
+
+		// Removing one name and then the other would miss these: the second field is out of every
+		// reading's head until the first has gone.
+		{"Bcc comes into view when Resent-Bcc goes", "A: 1\rResent-Bcc: s\n\nBcc: t\n\nbody", "A: 1\r\n\nbody"},
+		{"Resent-Bcc comes into view when Bcc goes", "A: 1\rBcc: s\n\nResent-Bcc: t\n\nbody", "A: 1\r\n\nbody"},
+	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := RemoveHeadField(tc.raw, "Bcc"); got != tc.want {
+			if got := RemoveHeadField(tc.raw, hiddenFields...); got != tc.want {
 				t.Errorf("RemoveHeadField(%q)\n = %q\nwant %q", tc.raw, got, tc.want)
 			}
+			if got := RemoveHeadField(tc.raw, hiddenFields[1], hiddenFields[0]); got != tc.want {
+				t.Errorf("the names the other way round: %q\nwant %q", got, tc.want)
+			}
 		})
+	}
+	const raw = "Bcc: s\r\nResent-Bcc: t\r\n\r\nbody"
+	if got := RemoveHeadField(raw, "Bcc"); got != "Resent-Bcc: t\r\n\r\nbody" {
+		t.Errorf("only Bcc was named, and %q is left", got)
 	}
 }
 
@@ -113,14 +148,14 @@ func TestHeadFieldsStopWhenAsked(t *testing.T) {
 // the memory rules (#1437) safe: no copy is made.
 func TestRemoveHeadFieldMakesNoCopyWithNothingToRemove(t *testing.T) {
 	raw := strings.Repeat("A: 1\n", 100) + "\n" + strings.Repeat("body\r\n", 100)
-	if allocs := testing.AllocsPerRun(10, func() { _ = RemoveHeadField(raw, "Bcc") }); allocs > 2 {
+	if allocs := testing.AllocsPerRun(10, func() { _ = RemoveHeadField(raw, hiddenFields...) }); allocs > 2 {
 		t.Fatalf("%v allocations, want no copy of the message", allocs)
 	}
 }
 
 // bccReaders are the ways of reading a head a message can meet downstream, written here apart from
 // HeadFields so that the check doesn't test the reader against itself. Each says whether it finds a
-// Bcc field.
+// Bcc or Resent-Bcc field.
 var bccReaders = map[string]func(string) bool{
 	"CRLF alone": func(s string) bool { return splitFindsBcc(strings.Split(s, "\r\n")) },
 	"LF, one CR dropped": func(s string) bool {
@@ -134,7 +169,7 @@ var bccReaders = map[string]func(string) bool{
 	"each of CRLF, CR, LF":              func(s string) bool { return splitFindsBcc(eachLineEnd.Split(s, -1)) },
 	"net/mail": func(s string) bool {
 		msg, err := netmail.ReadMessage(strings.NewReader(s))
-		return err == nil && len(msg.Header["Bcc"]) > 0
+		return err == nil && len(msg.Header["Bcc"])+len(msg.Header["Resent-Bcc"]) > 0
 	},
 }
 
@@ -151,7 +186,9 @@ func splitFindsBcc(lines []string) bool {
 		if i > 0 && (line[0] == ' ' || line[0] == '\t') {
 			continue
 		}
-		if name, _, found := strings.Cut(line, ":"); found && strings.EqualFold(strings.Trim(name, " \t"), "Bcc") {
+		name, _, found := strings.Cut(line, ":")
+		name = strings.Trim(name, " \t")
+		if found && (strings.EqualFold(name, "Bcc") || strings.EqualFold(name, "Resent-Bcc")) {
 			return true
 		}
 	}
@@ -168,6 +205,9 @@ func mutatedHead(r *rand.Rand) (raw string, keep []string) {
 		switch r.IntN(10) {
 		case 0, 1, 2:
 			line = []string{"Bcc: s", "bcc:s", "BCC : s", "Bcc:", "bCc\t: s"}[r.IntN(5)]
+			if r.IntN(2) == 0 {
+				line = resentBcc.Replace(line)
+			}
 		case 3:
 			line = []string{" fold", "\tfold", " "}[r.IntN(3)]
 		case 4, 5:
@@ -184,13 +224,13 @@ func mutatedHead(r *rand.Rand) (raw string, keep []string) {
 	return b.String(), keep
 }
 
-// Whatever the line ends, no reader finds a Bcc in what RemoveHeadField leaves, nothing else goes,
-// and a message no reader finds a Bcc in comes back as it was.
+// Whatever the line ends, no reader finds a Bcc or Resent-Bcc in what RemoveHeadField leaves, nothing
+// else goes, and a message no reader finds one in comes back as it was.
 func TestNoReaderFindsABccAfterRemoval(t *testing.T) {
 	r := rand.New(rand.NewPCG(1970, 1))
 	for range 200_000 {
 		raw, keep := mutatedHead(r)
-		got := RemoveHeadField(raw, "Bcc")
+		got := RemoveHeadField(raw, hiddenFields...)
 		foundInRaw := false
 		for name, finds := range bccReaders {
 			foundInRaw = foundInRaw || finds(raw)
@@ -209,7 +249,7 @@ func TestNoReaderFindsABccAfterRemoval(t *testing.T) {
 		if !isSubsequence(got, raw) {
 			t.Fatalf("%q isn't %q with lines taken out", got, raw)
 		}
-		if again := RemoveHeadField(got, "Bcc"); again != got {
+		if again := RemoveHeadField(got, hiddenFields...); again != got {
 			t.Fatalf("removing twice changed %q to %q, from %q", got, again, raw)
 		}
 	}

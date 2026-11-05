@@ -65,13 +65,18 @@ func HeadFields(raw string) iter.Seq[HeadField] {
 	}
 }
 
-// RemoveHeadField answers raw without any field of this name that HeadFields would find, folded
+// RemoveHeadField answers raw without any field of these names that HeadFields would find, folded
 // lines included. Every other byte stays as it was, and with nothing to remove raw itself comes
 // back, with no copy made.
-func RemoveHeadField(raw, name string) string {
+//
+// All the names go in one walk. Removing them one call at a time can leave a field behind, because
+// taking out a field of one name can bring a field of another into view.
+func RemoveHeadField(raw string, names ...string) string {
 	return walkHead(raw, func(f HeadField) walkStep {
-		if f.Is(name) {
-			return walkRemove
+		for _, name := range names {
+			if f.Is(name) {
+				return walkRemove
+			}
 		}
 		return walkKeep
 	})

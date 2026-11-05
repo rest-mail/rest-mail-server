@@ -37,6 +37,19 @@ func TestStripBcc_NoBccReturnsInputUnchanged(t *testing.T) {
 	}
 }
 
+// A resent message keeps the fields that say who resent it and to whom it was shown, and loses only
+// the one that is hidden, folded or repeated.
+func TestStripBcc_ResentBccLeavesTheOtherResentFields(t *testing.T) {
+	raw := "Resent-From: b@x.test\r\nResent-Date: Thu, 05 Nov 2026 09:00:00 +0000\r\n" +
+		"Resent-To: c@x.test\r\nResent-Bcc: secret@c.test,\r\n secret2@c.test\r\nresent-bcc: secret3@c.test\r\n" +
+		"From: a@x.test\r\nSubject: s\r\n\r\nResent-Bcc: in the body\r\n"
+	want := "Resent-From: b@x.test\r\nResent-Date: Thu, 05 Nov 2026 09:00:00 +0000\r\n" +
+		"Resent-To: c@x.test\r\nFrom: a@x.test\r\nSubject: s\r\n\r\nResent-Bcc: in the body\r\n"
+	if got := StripBcc(raw); got != want {
+		t.Fatalf("StripBcc = %q\n      want %q", got, want)
+	}
+}
+
 func TestStripBcc_CaseInsensitive(t *testing.T) {
 	raw := "From: a@b.com\r\nBCC: x@y.com\r\n\r\nbody\r\n"
 	if strings.Contains(strings.ToLower(StripBcc(raw)), "bcc:") {
@@ -128,21 +141,24 @@ var headMixes = map[string]func(field string) string{
 
 func TestStripBccAnyLineEnds(t *testing.T) {
 	for name, mix := range headMixes {
-		t.Run(name, func(t *testing.T) {
-			raw := mix("Bcc: secret@c.test")
-			got := StripBcc(raw)
-			if strings.Contains(got, "secret") {
-				t.Fatalf("the Bcc stayed: %q", got)
-			}
-			for _, kept := range []string{"From: a@x.test", "Subject: s", "body"} {
-				if !strings.Contains(got, kept) {
-					t.Fatalf("%q went too: %q from %q", kept, got, raw)
+		// RFC 5322 section 3.6.6 hides Resent-Bcc recipients as section 3.6.3 hides Bcc ones.
+		for _, field := range []string{"Bcc: secret@c.test", "Resent-Bcc: secret@c.test", "RESENT-BCC: secret@c.test"} {
+			t.Run(name+"/"+field, func(t *testing.T) {
+				raw := mix(field)
+				got := StripBcc(raw)
+				if strings.Contains(got, "secret") {
+					t.Fatalf("the field stayed: %q", got)
 				}
-			}
-			if len(raw)-len(got) < len("Bcc: secret@c.test") || len(raw)-len(got) > len("Bcc: secret@c.test\r\n") {
-				t.Fatalf("more than the field went: %q from %q", got, raw)
-			}
-		})
+				for _, kept := range []string{"From: a@x.test", "Subject: s", "body"} {
+					if !strings.Contains(got, kept) {
+						t.Fatalf("%q went too: %q from %q", kept, got, raw)
+					}
+				}
+				if len(raw)-len(got) < len(field) || len(raw)-len(got) > len(field+"\r\n") {
+					t.Fatalf("more than the field went: %q from %q", got, raw)
+				}
+			})
+		}
 	}
 }
 
