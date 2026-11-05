@@ -115,6 +115,14 @@ class Sources(unittest.TestCase):
         self.assertEqual(run.source_count(1), 1)
         self.assertEqual(run.source_count(100000), 254)
 
+    def test_the_smtp_loads_together_stay_under_what_one_gateway_allows(self):
+        # They share one gateway's total. At 500 + 500 + 100 they asked for more than
+        # it allows, and most of the second real run's errors were it closing them.
+        together = 2 * run.SMTP_MAX_INFLIGHT + run.SMTP_IN_GREYLIST_MAX_INFLIGHT
+        self.assertLessEqual(together, run.MAX_GLOBAL - 100)
+        limits = (run.ROOT / "cmd/smtp-gateway/main.go").read_text()
+        self.assertIn(f"MaxGlobal: {run.MAX_GLOBAL}", limits)
+
     def test_generators_add_the_addresses_they_are_told_to_use(self):
         a = run.parse_args([])
         script, flags = run.from_sources(a, 203, 56)
@@ -217,6 +225,81 @@ class Evidence(unittest.TestCase):
             self.assertEqual(sorted(p.name for p in raw.iterdir()), ["db-report.log", "service-rest-mail-api.log"])
             self.assertEqual(calls[0][:2], ["docker", "logs"])
             self.assertEqual(calls[1][:3], ["docker", "exec", "-i"])
+
+    def test_the_logs_cover_the_whole_run_and_every_gateway_doing_load(self):
+        started = run.dt.datetime(2026, 11, 5, 6, 40, 17, tzinfo=run.dt.timezone.utc)
+        with tempfile.TemporaryDirectory() as d:
+            calls = []
+
+            def fake_run(cmd, **kw):
+                calls.append(cmd)
+                kw["stdout"].write("line\n")
+                kw["stdout"].flush()
+
+            original, run.subprocess.run = run.subprocess.run, fake_run
+            try:
+                run.save_evidence(Path(d), ["rest-mail-imap-gateway"], started)
+            finally:
+                run.subprocess.run = original
+        self.assertEqual(calls[0], ["docker", "logs", "--since", "2026-11-05T06:40:17Z", "rest-mail-imap-gateway"])
+
+    def test_warnings_are_counted_past_the_statements_around_them(self):
+        lines = [
+            '{"time":"t","level":"WARN","msg":"smtp: connection rejected by limiter","ip":"10.99.201.1"}',
+            "SELECT * FROM messages",
+            '{"time":"t","level":"WARN","msg":"smtp: connection rejected by limiter","ip":"10.99.201.2"}',
+            '{"time":"t","level":"DEBUG","msg":"filter executed"}',
+            '{"time":"t","level":"ERROR","msg":"smtp: delivery failed"}',
+            "{not json",
+            "[1]",
+        ]
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "service.log"
+            path.write_text("\n".join(lines) + "\n")
+            self.assertEqual(run.log_events(path), {"WARN smtp: connection rejected by limiter": 2, "ERROR smtp: delivery failed": 1})
+
+    def test_what_a_container_was_allowed_and_whether_it_hit_that(self):
+        class Done:
+            def __init__(self, stdout, returncode=0):
+                self.stdout, self.returncode = stdout, returncode
+
+        def fake_run(cmd, **kw):
+            if cmd[1] == "inspect":
+                return Done("1500000000 1073741824 0 false\n")
+            return Done("low 0\nhigh 0\nmax 12\noom 1\noom_kill 1\nusage_usec 9\nnr_throttled 3\nthrottled_usec 41500000\n")
+
+        original, run.subprocess.run = run.subprocess.run, fake_run
+        try:
+            facts = run.container_facts(["rest-mail-imap-gateway"])
+        finally:
+            run.subprocess.run = original
+        self.assertEqual(facts["rest-mail-imap-gateway"], {"cpus": 1.5, "memory_mib": 1024, "restarts": 0, "oom_killed": False, "oom_kills": 1, "throttled_s": 41.5})
+
+    def test_a_container_that_cannot_be_read_does_not_lose_the_run(self):
+        def fails(cmd, **kw):
+            raise OSError("no docker")
+
+        original, run.subprocess.run = run.subprocess.run, fails
+        try:
+            self.assertEqual(run.container_facts(["x"]), {"x": {"error": "no docker"}})
+        finally:
+            run.subprocess.run = original
+
+    def test_the_summary_shows_every_error_each_command_and_the_ceilings(self):
+        r = {
+            "tested": {"commit": "abc", "describe": "v1"}, "started_at": "t", "duration_s": 60,
+            "loads": {"imap": {
+                "kind": "imap", "target": 1000, "target_unit": "connections", "achieved_rate": 999, "ok": 518, "errors": 1000, "met_target": False,
+                "error_kinds": {f"kind {i}": i + 1 for i in range(5)}, "other_error_example": "something else",
+                "extra": {"noop": {"ok": 500, "errors": 0, "latency_ms": {"p50": 0.3, "p99": 6}}, "select": {"ok": 18, "errors": 981, "latency_ms": {"p50": 20000, "p99": 29000}}},
+            }},
+            "resources": {"rest-mail-postgres": {"cpu_pct": {"max": 104.05}, "mem_mib": {"max": 305.2}, "net_io_last": "87.6MB / 1.81GB", "cpus": 1.0, "memory_mib": 512, "throttled_s": 41.5, "oom_kills": 0, "restarts": 2}},
+            "log_events": {"rest-mail-smtp-gateway": {"WARN smtp: connection rejected by limiter": 3000}},
+        }
+        text = run.summary(r)
+        for want in ("1 x kind 0", "5 x kind 4", "the first of the other errors: something else", "select: 18 ok, 981 errors, p50 20000ms p99 29000ms",
+                     "net 87.6MB / 1.81GB  of 1.0 CPU, 512 MiB  throttled 41.5s  oom kills 0  restarts 2", "rest-mail-smtp-gateway: 3000 x WARN smtp: connection rejected by limiter"):
+            self.assertIn(want, text)
 
     def test_a_docker_failure_does_not_lose_the_run(self):
         with tempfile.TemporaryDirectory() as d:

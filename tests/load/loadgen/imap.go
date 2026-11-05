@@ -58,6 +58,9 @@ func holdIMAP(ctx context.Context, cfg imapConfig, conns int, connectRate float6
 	defer cancel()
 	connects := newRecorder() // dial + greeting + LOGIN
 	commands := newRecorder() // NOOP / SELECT on an open connection
+	// Each on its own as well: NOOP is answered by the gateway alone and SELECT
+	// lists the folder through the API, so together they describe neither.
+	noops, selects := newRecorder(), newRecorder()
 	var open, peak, dropped atomic.Int64
 	var wg sync.WaitGroup
 	start := time.Now()
@@ -100,13 +103,18 @@ func holdIMAP(ctx context.Context, cfg imapConfig, conns int, connectRate float6
 					return
 				case <-tick.C:
 				}
-				cmd := "NOOP"
+				cmd, name, each := "NOOP", "noop", noops
 				if j%2 == 1 {
-					cmd = "SELECT INBOX"
+					cmd, name, each = "SELECT INBOX", "select", selects
 				}
 				t1 := time.Now()
 				_, err := c.command(cmd)
-				commands.record(time.Since(t1), err)
+				took := time.Since(t1)
+				if err != nil {
+					err = fmt.Errorf("%s: %w", name, err)
+				}
+				commands.record(took, err)
+				each.record(took, err)
 				if err != nil {
 					dropped.Add(1)
 					return
@@ -138,10 +146,18 @@ func holdIMAP(ctx context.Context, cfg imapConfig, conns int, connectRate float6
 		"connect_latency_ms":   cr.LatencyMS,
 		"commands_per_second":  res.AchievedRate,
 		"command_interval_sec": cfg.interval.Seconds(),
+		"noop":                 commandSummary(noops),
+		"select":               commandSummary(selects),
 	}
 	// For IMAP the headline rate is the connections held, not commands.
 	res.AchievedRate = float64(peak.Load())
 	return res
+}
+
+// commandSummary is how one IMAP command fared over a run.
+func commandSummary(r *recorder) map[string]any {
+	res := r.result("", 0, "", 0)
+	return map[string]any{"ok": res.OK, "errors": res.Errors, "latency_ms": res.LatencyMS}
 }
 
 type imapConn struct {

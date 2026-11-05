@@ -87,9 +87,18 @@ abuse would stop it first. No production default changes for any of them.
 
 `chore load` and the Load workflow set the switch. For `chore test:load`, bring
 the topology up with `RESTMAIL_LOAD_LIMITS_OFF=true chore e2e:up`, or the submissions
-are refused with `451 Sending temporarily held`. Each gateway's total of 1,000
-connections (`MaxGlobal`) is left in place, so the default IMAP target sits right
-at it.
+are refused with `451 Sending temporarily held`.
+
+Each gateway's total of 1,000 connections (`MaxGlobal`) is left in place, and a
+gateway closes what is over it, which a generator reports as `ehlo: EOF` or
+`dial: EOF`. So the default IMAP target sits right at it, and the SMTP loads, which
+share the SMTP gateway's across ports 25 and 465, are held to 900 in flight between
+them (400, 400 and 100). What falls due with a load already at its share counts as
+`generator saturated`.
+
+The testbed also gives each container ceilings (`--cpus`, `--memory`, in `tasks/`),
+which no switch changes. `results.txt` shows each service's beside what it used, so
+a figure can be read for what it is: the database, for one, has 1 CPU.
 
 `tests/load/loadgen` is a Go command in this module (unit tests beside it);
 `run.py` builds it for the Docker host and runs it in a pinned Alpine image.
@@ -123,14 +132,22 @@ message size, the docker stats interval).
   is the mail delivered, `errors` the mail accepted and not delivered, and `extra`
   has `accepted`, `delivered`, `duplicates` (a retry the sink saw again, not
   counted twice) and `other_messages` (not from this run, not counted);
+- `error_kinds`: every error, counted by message without the client's address. For
+  `imap`, `extra.noop` and `extra.select` hold each command apart, since the gateway
+  answers NOOP alone and SELECT lists the whole folder through the API;
 - `resources.<container>`: average and peak CPU and memory of every service on
-  the network, from `docker stats` samples taken through the run.
+  the network, from `docker stats` samples taken through the run, with what the
+  testbed allows it (`cpus`, `memory_mib`) and whether it hit that (`throttled_s`,
+  `oom_kills`, `restarts`, `oom_killed`). `oom_kills` counts a process killed inside
+  its container too, which `oom_killed` and `restarts` miss while its supervisor lives;
+- `log_events.<container>`: how many of each warning and error it logged.
 
 `results.txt` is the same in a few lines. The command exits 1 when any load
-missed its target. `raw/` keeps each generator's own output and log, the last
-50,000 lines of the SMTP gateway's and the API's logs (`service-*.log`), and
-`db-report.log`: the outbound queue by status and failure, the message traces by
-outcome and reason, and the greylist's entries, as the run left them.
+missed its target. `raw/` keeps each generator's own output and log, the SMTP and
+IMAP gateways' and the API's logs from the start of the run (`service-*.log`; the
+testbed logs every SQL statement, so read them with grep), and `db-report.log`: the
+outbound queue by status and failure, the message traces by outcome and reason, the
+greylist's entries and the largest folders, as the run left them.
 
 `chore load:compare -- a.json b.json` prints each load's rate, p95, p99 and
 errors (and for `smtp_delivery` the count delivered) side by side and counts what

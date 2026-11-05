@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -46,6 +47,36 @@ func TestRecorderCapsErrorKinds(t *testing.T) {
 	res := r.result("x", 1, "msg/s", time.Second)
 	if res.Errors != maxErrorKinds+5 || len(res.ErrorKinds) != maxErrorKinds+1 || res.ErrorKinds["(other errors)"] != 5 {
 		t.Fatalf("errors=%d kinds=%d other=%d", res.Errors, len(res.ErrorKinds), res.ErrorKinds["(other errors)"])
+	}
+}
+
+func TestRecorderNamesWhatPassesTheCap(t *testing.T) {
+	r := newRecorder()
+	for i := 0; i < maxErrorKinds+2; i++ {
+		r.record(0, fmt.Errorf("error %d", i))
+	}
+	if res := r.result("x", 1, "msg/s", time.Second); res.OtherExample != fmt.Sprintf("error %d", maxErrorKinds) {
+		t.Fatalf("example = %q", res.OtherExample)
+	}
+}
+
+// A timeout's message differs on every connection by the client's port. In the
+// second real run that spent the cap on 20 of them and left 979 errors unnamed.
+func TestRecorderCountsTimeoutsFromAnyClientAddressAsOneKind(t *testing.T) {
+	r := newRecorder()
+	for i := 0; i < 3*maxErrorKinds; i++ {
+		r.record(0, fmt.Errorf("select: read tcp 10.99.203.%d:%d->10.99.0.15:993: i/o timeout", i%50, 40000+i))
+	}
+	r.record(0, errors.New("dial: read tcp [fd00::1]:5->10.99.0.13:465: read: connection reset by peer"))
+	r.record(0, errors.New("ehlo: EOF"))
+	res := r.result("x", 1, "msg/s", time.Second)
+	want := map[string]int64{
+		"select: read tcp client->10.99.0.15:993: i/o timeout":                  3 * maxErrorKinds,
+		"dial: read tcp client->10.99.0.13:465: read: connection reset by peer": 1,
+		"ehlo: EOF": 1,
+	}
+	if !reflect.DeepEqual(res.ErrorKinds, want) {
+		t.Fatalf("kinds = %v", res.ErrorKinds)
 	}
 }
 
@@ -156,9 +187,78 @@ func TestIMAPHoldsConnections(t *testing.T) {
 		t.Fatalf("ok=%d errors=%d kinds=%v", res.OK, res.Errors, res.ErrorKinds)
 	}
 
+	for _, name := range []string{"noop", "select"} {
+		if each := res.Extra[name].(map[string]any); each["ok"].(int64) == 0 || each["errors"].(int64) != 0 {
+			t.Fatalf("%s = %+v, want some answered and none failed", name, each)
+		}
+	}
+
 	if _, err := dialIMAP(imapConfig{addr: addr, user: "bad", pass: "x", timeout: time.Second}); err == nil || !strings.Contains(err.Error(), "AUTHENTICATIONFAILED") {
 		t.Fatalf("a refused login gave %v", err)
 	}
+}
+
+// A command that fails says which it was, and SELECT is held apart from NOOP: in
+// the second real run NOOP answered in under a millisecond, so the percentiles over
+// both hid that nearly every SELECT timed out.
+func TestIMAPSaysWhichCommandFailed(t *testing.T) {
+	addr := imapThatHangsOnSelect(t)
+	cfg := imapConfig{addr: addr, user: "u@t.test", pass: "p", interval: 10 * time.Millisecond, timeout: 100 * time.Millisecond}
+	res := holdIMAP(context.Background(), cfg, 4, 1000, 600*time.Millisecond)
+	if res.Extra["dropped_while_held"].(int64) != 4 {
+		t.Fatalf("extra = %+v, want all 4 dropped", res.Extra)
+	}
+	const kind = "select: read tcp client->"
+	var counted int64
+	for k, v := range res.ErrorKinds {
+		if strings.HasPrefix(k, kind) && strings.HasSuffix(k, "i/o timeout") {
+			counted += v
+		}
+	}
+	if counted != 4 || len(res.ErrorKinds) != 1 {
+		t.Fatalf("kinds = %v", res.ErrorKinds)
+	}
+	if sel := res.Extra["select"].(map[string]any); sel["errors"].(int64) != 4 {
+		t.Fatalf("select = %+v", sel)
+	}
+	if noop := res.Extra["noop"].(map[string]any); noop["errors"].(int64) != 0 || noop["ok"].(int64) == 0 {
+		t.Fatalf("noop = %+v", noop)
+	}
+}
+
+// imapThatHangsOnSelect answers everything but SELECT, as a gateway does when the
+// API behind it is what is slow.
+func imapThatHangsOnSelect(t *testing.T) string {
+	t.Helper()
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = l.Close() })
+	go func() {
+		for {
+			c, err := l.Accept()
+			if err != nil {
+				return
+			}
+			go func() {
+				defer func() { _ = c.Close() }()
+				_, _ = fmt.Fprint(c, "* OK ready\r\n")
+				r := bufio.NewReader(c)
+				for {
+					line, err := r.ReadString('\n')
+					if err != nil {
+						return
+					}
+					tag, cmd, _ := strings.Cut(strings.TrimSpace(line), " ")
+					if !strings.HasPrefix(cmd, "SELECT") {
+						_, _ = fmt.Fprintf(c, "%s OK done\r\n", tag)
+					}
+				}
+			}()
+		}
+	}()
+	return l.Addr().String()
 }
 
 func TestQuote(t *testing.T) {

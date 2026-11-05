@@ -62,20 +62,30 @@ SMTP_IN_SOURCES = 201
 SMTP_OUT_SOURCES = 202
 IMAP_SOURCES = 203
 SMTP_IN_GREYLIST_SOURCES = 204
-SMTP_MAX_INFLIGHT = 500
+# What one gateway allows in all (cmd/*-gateway: MaxGlobal), over all its ports. The
+# SMTP loads share it, so together they stay under it: at 500 + 500 + 100 they asked
+# for more than it allows, and the gateway closing connections hid what it could do.
+# The margin is for connections a generator has given up on at its 30 s timeout and
+# the gateway is still working through.
+MAX_GLOBAL = 1000
+SMTP_MAX_INFLIGHT = 400
 SMTP_IN_GREYLIST_MAX_INFLIGHT = 100
 
-# The logs a run keeps, as many lines of each as a run's mail takes, and what the
-# database says became of that mail. Both go in the artifact: without them the first
-# run could only be explained from the code (#1583).
-LOG_SERVICES = ("rest-mail-smtp-gateway", "rest-mail-api")
-LOG_LINES = 50000
+# The logs a run keeps, all of them from when it started, and what the database says
+# became of that mail. Both go in the artifact: without them the first run could only
+# be explained from the code (#1583). The testbed logs every SQL statement, so a limit
+# on lines kept only the last 4 seconds of the second run's load. They compress well.
+LOG_SERVICES = ("rest-mail-smtp-gateway", "rest-mail-imap-gateway", "rest-mail-api")
 DB_CONTAINER = "rest-mail-postgres"
 DB_REPORT = """
 SELECT status, attempts, failure_category, count(*) FROM outbound_queue GROUP BY 1, 2, 3 ORDER BY 4 DESC;
 SELECT direction, outcome, reason_code, count(*) FROM message_traces GROUP BY 1, 2, 3 ORDER BY 4 DESC;
 SELECT passed, count(*) FROM greylist_entries GROUP BY 1;
+SELECT mailbox_id, folder, count(*), sum(size_bytes) AS bytes FROM messages GROUP BY 1, 2 ORDER BY 3 DESC LIMIT 10;
 """
+
+# So a run with many kinds of log line cannot grow results.json without end.
+MAX_LOG_EVENTS = 30
 
 FRAGMENT = "20-load-sink.conf"
 
@@ -370,16 +380,73 @@ def allow_command(a: argparse.Namespace, loadgen: Path, remove: bool = False) ->
             "-api", a.api, "-user", a.admin_user, "-domain", domain, "-sender", a.smtp_in_from, *(["-remove"] if remove else [])]
 
 
-def save_evidence(raw: Path, services: list[str]) -> None:
+def log_events(path: Path) -> dict[str, int]:
+    """How many of each warning and error a service logged, most frequent first."""
+    counts: dict[str, int] = {}
+    with open(path, errors="replace") as f:
+        for line in f:
+            if not line.startswith("{"):
+                continue
+            try:
+                event = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(event, dict) and event.get("level") in ("WARN", "ERROR"):
+                key = f"{event['level']} {event.get('msg', '')}"
+                counts[key] = counts.get(key, 0) + 1
+    return dict(sorted(counts.items(), key=lambda kv: -kv[1])[:MAX_LOG_EVENTS])
+
+
+def cgroup_values(text: str) -> dict[str, int]:
+    """The name-and-number lines of a cgroup file, such as memory.events."""
+    values = {}
+    for line in text.splitlines():
+        name, _, value = line.partition(" ")
+        if value.isdigit():
+            values[name] = int(value)
+    return values
+
+
+def container_facts(services: list[str]) -> dict[str, dict]:
+    """What each service was allowed, and whether it hit that.
+
+    A load run's figures mean little without the ceilings the testbed gives each
+    container (--cpus, --memory), and docker stats cannot say a process was killed
+    inside its container, where its supervisor outlives it.
+    """
+    facts: dict[str, dict] = {}
+    for name in services:
+        fact: dict = {}
+        try:
+            out = subprocess.run(["docker", "inspect", "-f", "{{.HostConfig.NanoCpus}} {{.HostConfig.Memory}} {{.RestartCount}} {{.State.OOMKilled}}", name],
+                                 capture_output=True, text=True, timeout=30).stdout.split()
+            if len(out) == 4:
+                fact.update(cpus=int(out[0]) / 1e9 or None, memory_mib=int(out[1]) // (1024 * 1024) or None, restarts=int(out[2]), oom_killed=out[3] == "true")
+            out = subprocess.run(["docker", "exec", name, "cat", "/sys/fs/cgroup/memory.events", "/sys/fs/cgroup/cpu.stat"],
+                                 capture_output=True, text=True, timeout=30)
+            if out.returncode == 0:
+                values = cgroup_values(out.stdout)
+                fact.update(oom_kills=values.get("oom_kill", 0), throttled_s=round(values.get("throttled_usec", 0) / 1e6, 1))
+        except (OSError, subprocess.SubprocessError, ValueError) as e:
+            fact["error"] = str(e)
+        facts[name] = fact
+    return facts
+
+
+def save_evidence(raw: Path, services: list[str], since: dt.datetime | None = None) -> dict[str, dict[str, int]]:
     """Keeps what explains a run: service logs and the database's count of the mail."""
+    events: dict[str, dict[str, int]] = {}
     for name in LOG_SERVICES:
         if name not in services:
             continue
-        with open(raw / f"service-{name}.log", "w") as f:
+        path = raw / f"service-{name}.log"
+        window = ["--since", since.strftime("%Y-%m-%dT%H:%M:%SZ")] if since else []
+        with open(path, "w") as f:
             try:
-                subprocess.run(["docker", "logs", "--tail", str(LOG_LINES), name], stdout=f, stderr=subprocess.STDOUT, timeout=120)
+                subprocess.run(["docker", "logs", *window, name], stdout=f, stderr=subprocess.STDOUT, timeout=300)
             except (OSError, subprocess.SubprocessError) as e:
                 f.write(f"could not read the logs: {e}\n")
+        events[name] = log_events(path)
     if DB_CONTAINER in services:
         with open(raw / "db-report.log", "w") as f:
             try:
@@ -387,6 +454,7 @@ def save_evidence(raw: Path, services: list[str]) -> None:
                                input=DB_REPORT, text=True, stdout=f, stderr=subprocess.STDOUT, timeout=120)
             except (OSError, subprocess.SubprocessError) as e:
                 f.write(f"could not read the database: {e}\n")
+    return events
 
 
 def wait_for_file(path: Path, proc: subprocess.Popen, what: str, timeout: float = 120) -> None:
@@ -419,6 +487,8 @@ def main(argv: list[str]) -> int:
     stats.start()
     procs: dict[str, subprocess.Popen] = {}
     logs = {}
+    log_counts: dict[str, dict[str, int]] = {}
+    facts: dict[str, dict] = {}
     measuring_delivery = "smtp_delivery" in jobs
     # The fragment is also the inbound sender's SPF record.
     needs_dns = measuring_delivery or "smtp_in" in jobs or "smtp_in_greylist" in jobs
@@ -455,7 +525,8 @@ def main(argv: list[str]) -> int:
             except subprocess.TimeoutExpired:
                 procs["smtp_delivery"].kill()
     finally:
-        save_evidence(raw, services)
+        log_counts = save_evidence(raw, services, started)
+        facts = container_facts(services)
         if allowing:
             subprocess.run(allow_command(a, loadgen, remove=True), capture_output=True)
         if needs_dns:
@@ -492,7 +563,8 @@ def main(argv: list[str]) -> int:
         "generators": {"loadgen": "tests/load/loadgen", "k6": K6_IMAGE, "runner": RUNNER_IMAGE},
         "host": {"machine": platform.machine(), "cpus": os.cpu_count(), "mem_mib": host_mem_mib()},
         "loads": loads,
-        "resources": stats.summary(),
+        "resources": {name: {**summary_of, **facts.get(name, {})} for name, summary_of in stats.summary().items()},
+        "log_events": log_counts,
     }
     (out / "results.json").write_text(json.dumps(results, indent=2) + "\n")
     text = summary(results)
@@ -534,19 +606,38 @@ def summary(r: dict) -> str:
         verdict = "met" if l["met_target"] else "MISSED"
         lines.append(f"{kind:16} target {l['target']:g} {unit:11} achieved {l['achieved_rate']:g}  ok {l['ok']}  errors {l['errors']}  "
                      f"p50 {lat.get('p50', 0):g}ms p95 {lat.get('p95', 0):g}ms p99 {lat.get('p99', 0):g}ms  {verdict}")
-        for msg, n in sorted(l.get("error_kinds", {}).items(), key=lambda kv: -kv[1])[:3]:
+        for msg, n in sorted(l.get("error_kinds", {}).items(), key=lambda kv: -kv[1]):
             lines.append(f"{'':16}   {n} x {msg}")
+        if l.get("other_error_example"):
+            lines.append(f"{'':16}   the first of the other errors: {l['other_error_example']}")
         extra = l.get("extra", {})
+        for name in ("noop", "select"):
+            if name in extra:
+                each = extra[name]
+                lines.append(f"{'':16}   {name}: {each['ok']} ok, {each['errors']} errors, p50 {each['latency_ms']['p50']:g}ms p99 {each['latency_ms']['p99']:g}ms")
         if "delivered" in extra:
             lines.append(f"{'':16}   delivered {extra['delivered']} of {extra['accepted']} accepted, "
                          f"{extra['duplicates']} duplicates, {extra['first_to_last_s']:g}s first to last")
     res = r["resources"]
     if res:
-        lines += ["", "busiest services (max CPU %, max memory MiB):"]
+        lines += ["", "busiest services (max CPU %, max memory MiB, and what the testbed allows each):"]
         top = sorted(res.items(), key=lambda kv: -(kv[1]["cpu_pct"]["max"] or 0))[:8]
         width = max(len(n) for n, _ in top)
         for name, s in top:
-            lines.append(f"  {name:{width}}  cpu {s['cpu_pct']['max'] or 0:7.1f}%  mem {s['mem_mib']['max'] or 0:8.1f} MiB")
+            line = f"  {name:{width}}  cpu {s['cpu_pct']['max'] or 0:7.1f}%  mem {s['mem_mib']['max'] or 0:8.1f} MiB  net {s.get('net_io_last', '?')}"
+            if s.get("cpus") or s.get("memory_mib"):
+                line += f"  of {s.get('cpus') or 'any'} CPU, {s.get('memory_mib') or 'any'} MiB"
+            if "throttled_s" in s:
+                line += f"  throttled {s['throttled_s']:g}s  oom kills {s['oom_kills']}"
+            if s.get("restarts"):
+                line += f"  restarts {s['restarts']}"
+            lines.append(line)
+    events = r.get("log_events") or {}
+    if any(events.values()):
+        lines += ["", "warnings and errors logged:"]
+        for service, counts in events.items():
+            for what, n in counts.items():
+                lines.append(f"  {service}: {n} x {what}")
     return "\n".join(lines) + "\n"
 
 
