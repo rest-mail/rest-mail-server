@@ -3,12 +3,13 @@ package mime
 import (
 	"cmp"
 	"errors"
-	"hash/maphash"
 	stdmime "mime"
 	"slices"
 	"strings"
 	"unicode"
 	"unsafe"
+
+	"github.com/rest-mail/go-imap/pkg/imap/wireform"
 )
 
 // manyParameters is how many semicolons a field holds before it's read one parameter at a time.
@@ -23,14 +24,17 @@ func parseContentType(value string) (mediaType string, params map[string]string,
 	return parseMedia(value)
 }
 
-// parseMedia reads a Content-Type or Content-Disposition value as go-message does: the type and its
-// parameters, with encoded-words decoded, or when that fails, the value as its type and failed set.
-// It keeps only the parameters this package looks at. value may be a view of a buffer, and nothing
-// it answers is.
+// parseMedia reads a Content-Type or Content-Disposition value: the type and its parameters, with
+// encoded-words decoded, or when that fails, the value as its type and failed set. A repeated name
+// reads as BODYSTRUCTURE reads it, so a filter is shown what a mail client is: the first value stands
+// and a later one has to read (RFC 2045 §5.1 has no rule against a repeat, so §5.2's default doesn't
+// apply). mime.ParseMediaType refuses one, and answers for everything else. It keeps only the
+// parameters this package looks at. value may be a view of a buffer, and nothing it answers is.
 func parseMedia(value string) (mediaType string, params map[string]string, failed bool) {
 	var kept string
 	var continued map[string]string
-	if strings.Count(value, ";") > manyParameters {
+	many := strings.Count(value, ";") > manyParameters
+	if many {
 		var ok bool
 		if kept, continued, ok = keptMediaParams(value); !ok {
 			return strings.Clone(value), nil, true
@@ -39,6 +43,12 @@ func parseMedia(value string) (mediaType string, params map[string]string, faile
 		kept = strings.Clone(value)
 	}
 	mediaType, all, err := stdmime.ParseMediaType(kept)
+	if err != nil && !many {
+		if first, pieces, ok := keptMediaParams(kept); ok {
+			continued = pieces
+			mediaType, all, err = stdmime.ParseMediaType(first)
+		}
+	}
 	if err != nil {
 		return strings.Clone(value), nil, true
 	}
@@ -67,92 +77,75 @@ func keptMediaName(name string) bool {
 		strings.EqualFold(base, "name") || strings.EqualFold(base, "filename")
 }
 
-// keptMediaParams is a value less every parameter keptMediaName leaves out, which
-// mime.ParseMediaType reads the same, or false when it would fail. It takes a parameter at a time as
-// that does (consumeMediaParam), and fails where that does: on one it can't read, or on a name
-// repeated with another value. The RFC 2231 forms of what it keeps are read here rather than left in
-// value, because mime.ParseMediaType holds several maps and strings for each one, and continued says
-// what they come to.
+// keptMediaParams is a value less every parameter keptMediaName leaves out and every repeat of a
+// name, which mime.ParseMediaType reads, or false when it would fail for anything but a repeat. It
+// takes a parameter at a time as that does (consumeMediaParam), and every one has to read, whatever
+// it's named and wherever it stands. The RFC 2231 forms of what it keeps are read here rather than
+// left in value, because mime.ParseMediaType holds several maps and strings for each one, and
+// continued says what they come to. Nothing is held for a name that's left out.
 func keptMediaParams(value string) (kept string, continued map[string]string, ok bool) {
 	base, _, _ := strings.Cut(value, ";")
 	var b strings.Builder
 	b.WriteString(base)
-	seed := maphash.MakeSeed()
-	stars := strings.Count(value, "*")
-	names := make([]uint64, 0, max(strings.Count(value, ";")-stars, 0))
+	var written [len(mediaFamilies)]bool
 	var pieces []mediaPiece
-	eachParam := func(visit func(key, spelled, text string)) bool {
-		for rest := value[len(base):]; len(rest) > 0; {
-			rest = strings.TrimLeftFunc(rest, unicode.IsSpace)
-			if rest == "" {
-				break
-			}
-			key, spelled, next, ok := scanMediaParam(rest)
-			if !ok {
-				return strings.TrimSpace(rest) == ";"
-			}
-			visit(key, rest[:len(rest)-len(next)], spelled)
-			rest = next
+	for rest := value[len(base):]; len(rest) > 0; {
+		rest = strings.TrimLeftFunc(rest, unicode.IsSpace)
+		if rest == "" {
+			break
 		}
-		return true
-	}
-	offset := func(of string) uint32 {
-		return uint32(uintptr(unsafe.Pointer(unsafe.StringData(of))) - uintptr(unsafe.Pointer(unsafe.StringData(value))))
-	}
-	ok = eachParam(func(key, spelled, text string) {
+		key, spelled, next, read := scanMediaParam(rest)
+		if !read {
+			if !endsTheField(value, rest) {
+				return "", nil, false
+			}
+			break
+		}
 		if keptMediaName(key) {
 			if piece, isPiece := newMediaPiece(key); isPiece {
 				if pieces == nil {
-					pieces = make([]mediaPiece, 0, stars)
+					pieces = make([]mediaPiece, 0, strings.Count(value, "*"))
 				}
-				piece.at = offset(text)
+				piece.at = uint32(uintptr(unsafe.Pointer(unsafe.StringData(spelled))) - uintptr(unsafe.Pointer(unsafe.StringData(value))))
 				pieces = append(pieces, piece)
-				return
-			}
-			if !strings.Contains(key, "*") {
-				b.WriteString(spelled)
-				return
+			} else if family := mediaFamily(key); !strings.Contains(key, "*") && !written[family] {
+				written[family] = true
+				b.WriteString(rest[:len(rest)-len(next)])
 			}
 		}
-		names = append(names, lowerHash(seed, key))
-	})
+		rest = next
+	}
+	return b.String(), stitchMediaPieces(value, pieces), true
+}
+
+// endsTheField says that rest, which holds no parameter that reads, is nothing mime.ParseMediaType
+// would see once the repeats are gone: the ';' that ends a field, or a blank segment with only
+// repeats after it, which go-imap settles (wireform.OnlyRepeatsFollow).
+func endsTheField(value, rest string) bool {
+	if strings.TrimSpace(rest) == ";" {
+		return true
+	}
+	after, ok := strings.CutPrefix(rest, ";")
 	if !ok {
-		return "", nil, false
+		return false
 	}
-	slices.Sort(names)
-	if repeatedHash(names) {
-		// A name came twice, which is only an error when its values differ.
-		values := map[uint64]uint64{}
-		same := true
-		eachParam(func(key, _, text string) {
-			if keptMediaName(key) {
-				if _, isPiece := newMediaPiece(key); isPiece || !strings.Contains(key, "*") {
-					return
-				}
-			}
-			name := lowerHash(seed, key)
-			if _, repeated := slices.BinarySearch(names, name); !repeated || !hashRepeats(names, name) {
-				return
-			}
-			hashed := valueHash(seed, text)
-			if earlier, seen := values[name]; seen && earlier != hashed {
-				same = false
-			}
-			values[name] = hashed
-		})
-		if !same {
-			return "", nil, false
-		}
-	}
-	continued, ok = stitchMediaPieces(value, pieces, seed)
-	if !ok {
-		return "", nil, false
-	}
-	return b.String(), continued, true
+	after, ok = strings.CutPrefix(strings.TrimLeftFunc(after, unicode.IsSpace), ";")
+	return ok && wireform.OnlyRepeatsFollow(value[:len(value)-len(rest)], after)
 }
 
 // mediaFamilies are the parameters this package reads, as a mediaPiece names them.
 var mediaFamilies = [...]string{"boundary", "charset", "filename", "name"}
+
+// mediaFamily is where mediaFamilies names the kept parameter a name is a form of.
+func mediaFamily(key string) uint8 {
+	base, _, _ := strings.Cut(key, "*")
+	for i, name := range mediaFamilies {
+		if strings.EqualFold(base, name) {
+			return uint8(i)
+		}
+	}
+	return 0
+}
 
 // mediaPiece is one RFC 2231 form of a kept parameter, by where its value starts in the field it came
 // from: name*, name*N or name*N*. Anything else with a star in its name means nothing to
@@ -197,16 +190,11 @@ func (p mediaPiece) spelled(value string) string {
 // newMediaPiece reads a kept parameter's name, whose number has to be spelled as mime.ParseMediaType
 // looks for it.
 func newMediaPiece(key string) (mediaPiece, bool) {
-	base, suffix, starred := strings.Cut(key, "*")
+	_, suffix, starred := strings.Cut(key, "*")
 	if !starred {
 		return mediaPiece{}, false
 	}
-	var family uint8
-	for i, name := range mediaFamilies {
-		if strings.EqualFold(base, name) {
-			family = uint8(i)
-		}
-	}
+	family := mediaFamily(key)
 	if suffix == "" {
 		return mediaPiece{order: makeMediaOrder(family, -1, false)}, true
 	}
@@ -224,18 +212,14 @@ func newMediaPiece(key string) (mediaPiece, bool) {
 	return mediaPiece{order: makeMediaOrder(family, number, encoded)}, true
 }
 
-// stitchMediaPieces puts each family back together as mime.ParseMediaType does, or answers false for
-// a piece repeated with another value, where that fails.
-func stitchMediaPieces(value string, pieces []mediaPiece, seed maphash.Seed) (map[string]string, bool) {
+// stitchMediaPieces puts each family back together as mime.ParseMediaType does, from the first of
+// each name.
+func stitchMediaPieces(value string, pieces []mediaPiece) map[string]string {
 	if len(pieces) == 0 {
-		return nil, true
+		return nil
 	}
-	slices.SortFunc(pieces, func(a, b mediaPiece) int { return cmp.Compare(a.order, b.order) })
-	for i := 1; i < len(pieces); i++ {
-		if pieces[i-1].order == pieces[i].order && valueHash(seed, pieces[i-1].spelled(value)) != valueHash(seed, pieces[i].spelled(value)) {
-			return nil, false
-		}
-	}
+	// The first of a name sorts first, and what reads a family takes the first it comes to.
+	slices.SortFunc(pieces, func(a, b mediaPiece) int { return cmp.Or(cmp.Compare(a.order, b.order), cmp.Compare(a.at, b.at)) })
 	stitched := make(map[string]string, 2)
 	for from := 0; from < len(pieces); {
 		to := from + 1
@@ -284,7 +268,7 @@ func stitchMediaPieces(value string, pieces []mediaPiece, seed maphash.Seed) (ma
 			stitched[name] = b.String()
 		}
 	}
-	return stitched, true
+	return stitched
 }
 
 func mediaText(value string, piece mediaPiece) string {
@@ -364,50 +348,6 @@ func hexValue(c byte) byte {
 		return c - 'A' + 10
 	}
 	return c - '0'
-}
-
-func repeatedHash(sorted []uint64) bool {
-	for i := 1; i < len(sorted); i++ {
-		if sorted[i] == sorted[i-1] {
-			return true
-		}
-	}
-	return false
-}
-
-func hashRepeats(sorted []uint64, name uint64) bool {
-	at, _ := slices.BinarySearch(sorted, name)
-	return at+1 < len(sorted) && sorted[at+1] == name
-}
-
-// lowerHash hashes a parameter name without regard to case.
-func lowerHash(seed maphash.Seed, name string) uint64 {
-	var h maphash.Hash
-	h.SetSeed(seed)
-	for i := 0; i < len(name); i++ {
-		c := name[i]
-		if c >= 'A' && c <= 'Z' {
-			c += 'a' - 'A'
-		}
-		_ = h.WriteByte(c)
-	}
-	return h.Sum64()
-}
-
-// valueHash hashes a value as mime's consumeValue reads it, unquoted.
-func valueHash(seed maphash.Seed, spelled string) uint64 {
-	if spelled == "" || spelled[0] != '"' {
-		return maphash.String(seed, spelled)
-	}
-	var h maphash.Hash
-	h.SetSeed(seed)
-	for i := 1; i < len(spelled)-1; i++ {
-		if spelled[i] == '\\' && i+1 < len(spelled) && strings.IndexByte(mediaSpecials, spelled[i+1]) >= 0 {
-			i++
-		}
-		_ = h.WriteByte(spelled[i])
-	}
-	return h.Sum64()
 }
 
 const mediaSpecials = `()<>@,;:\"/[]?=`
