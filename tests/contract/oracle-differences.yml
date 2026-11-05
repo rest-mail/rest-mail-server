@@ -2685,7 +2685,7 @@
   difference: "response 451: generated only"
   reason: >-
     The inbound pipeline deferred the message; the gateway answers its SMTP peer 451, the code
-    this answer carries.
+    this answer carries, or 450 when the answer's error code is greylisted or rate_limited.
 - operation: deliverMessage
   difference: "response 550: generated only"
   reason: >-

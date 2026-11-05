@@ -50,7 +50,7 @@ passes the rest on.
   Bots that try every common name (`admin@`, `info@`, `sales@`) can be slowed
   down after their first few misses.
 - **Greylisting:** refuse the first attempt from an unfamiliar combination of
-  sending address, sender and recipient with a temporary `451`, and accept the
+  sending address, sender and recipient with a temporary `450`, and accept the
   retry a few minutes later. Real mail servers retry; many spam tools did not.
   The idea was published by Evan Harris in 2003
   ([The Next Step in the Spam Control War: Greylisting](http://projects.puremagic.com/greylisting/whitepaper.html)),

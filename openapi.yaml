@@ -7567,8 +7567,10 @@ paths:
         From domain, unless it is external mail accepted by non-strict mode. A failed
         sender-domain lookup cannot establish an external sender. Failed sender,
         recipient or inbound-policy lookups and corrupt stored policy defer with 503.
-        Recipient lookups finish before delivery side effects. A genuine absent
-        recipient remains a permanent failure.
+        The inbound pipeline's deferral is also 503, with error code greylisted when
+        its greylist step held the message back, rate_limited when its rate_limit step
+        did, and deferred otherwise. Recipient lookups finish before delivery side
+        effects. A genuine absent recipient remains a permanent failure.
       security: []
       requestBody:
         required: true

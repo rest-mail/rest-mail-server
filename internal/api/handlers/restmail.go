@@ -452,7 +452,7 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput, spoo
 				// the peer retries.
 				rmTrace.Outcome = outcomeDeferred
 				h.recordTrace(buildTrace(rmTrace))
-				return RestmailDelivery{}, endpoint.Refuse(http.StatusServiceUnavailable, "deferred", "Message deferred, retry later")
+				return RestmailDelivery{}, restmailDeferral(deferredError(result, "pipeline deferred delivery"))
 			case pipeline.ActionDiscard:
 				rmTrace.Outcome = outcomeDiscarded
 				h.recordTrace(buildTrace(rmTrace))
@@ -944,6 +944,19 @@ func (h *RestmailHandler) inboundPipeline(ctx context.Context, domainName string
 	}
 	return &pipeline.PipelineConfig{ID: stored.ID, DomainID: stored.DomainID,
 		Direction: stored.Direction, Filters: pipeline.WithDMARCReportsStep(pipeline.WithVacationStep(filters)), Active: stored.Active}, nil
+}
+
+// restmailDeferral is the 503 for a delivery that is to be retried. Its error code
+// carries the reason, which is all the sending server's queue has to choose a retry
+// schedule by.
+func restmailDeferral(err error) error {
+	switch {
+	case errors.Is(err, errGreylisted):
+		return endpoint.Refuse(http.StatusServiceUnavailable, rmail.GreylistedRefusal, "Greylisted, retry later")
+	case errors.Is(err, errRateLimited):
+		return endpoint.Refuse(http.StatusServiceUnavailable, rmail.RateLimitedRefusal, "Too many messages, retry later")
+	}
+	return endpoint.Refuse(http.StatusServiceUnavailable, "deferred", "Message deferred, retry later")
 }
 
 func restmailReadRefusal(stage string) error {
