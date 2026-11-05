@@ -245,15 +245,9 @@ func downgradeField(w wordSink, name, folded string) {
 	writeEncodedText(w, value)
 }
 
-// encodeText renders text as encoded-words when it is not plain ASCII. Octets
-// that are not UTF-8 go out as UNKNOWN-8BIT, so they survive and no charset is
-// guessed.
-func encodeText(s string) string {
-	var b strings.Builder
-	writeEncodedText(&b, s)
-	return b.String()
-}
-
+// writeEncodedText renders text as encoded-words when it is not plain ASCII.
+// Octets that are not UTF-8 go out as UNKNOWN-8BIT, so they survive and no
+// charset is guessed.
 func writeEncodedText(w wordSink, s string) {
 	switch {
 	case !containsNonASCII(s):
