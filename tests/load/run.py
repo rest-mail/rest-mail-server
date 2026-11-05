@@ -5,6 +5,9 @@ Starts each load in its own container on the topology's network, as another
 user of the simulated internet (the way `chore test:e2e` runs the e2e suite):
 
   smtp_in   messages to restmail.test:25, one per connection   (tests/load/loadgen)
+            from a sender on the domain's allowlist, so past the greylist
+  smtp_in_greylist  the same from new senders, which the greylist defers;
+            what that costs is its own figure                  (tests/load/loadgen)
   smtp_out  authenticated submissions on :465 to loadgen.test  (tests/load/loadgen)
             recipient, what the gateway ACCEPTED
   smtp_delivery  what then ARRIVED at loadgen.test's MX, a sink (tests/load/loadgen)
@@ -15,6 +18,8 @@ user of the simulated internet (the way `chore test:e2e` runs the e2e suite):
 While they run it samples `docker stats` for every other container. It writes
 one JSON file (what was tested, each load's achieved rate, latency percentiles,
 errors, and each service's CPU and memory) and a short text summary beside it.
+When the run ends it saves the gateway's and the API's logs, and what the database
+says became of the mail, beside the raw results.
 tests/load/compare.py compares two of those files.
 
 A target of 0 leaves that load out.
@@ -56,7 +61,21 @@ MAX_PER_IP = 18
 SMTP_IN_SOURCES = 201
 SMTP_OUT_SOURCES = 202
 IMAP_SOURCES = 203
+SMTP_IN_GREYLIST_SOURCES = 204
 SMTP_MAX_INFLIGHT = 500
+SMTP_IN_GREYLIST_MAX_INFLIGHT = 100
+
+# The logs a run keeps, as many lines of each as a run's mail takes, and what the
+# database says became of that mail. Both go in the artifact: without them the first
+# run could only be explained from the code (#1583).
+LOG_SERVICES = ("rest-mail-smtp-gateway", "rest-mail-api")
+LOG_LINES = 50000
+DB_CONTAINER = "rest-mail-postgres"
+DB_REPORT = """
+SELECT status, attempts, failure_category, count(*) FROM outbound_queue GROUP BY 1, 2, 3 ORDER BY 4 DESC;
+SELECT direction, outcome, reason_code, count(*) FROM message_traces GROUP BY 1, 2, 3 ORDER BY 4 DESC;
+SELECT passed, count(*) FROM greylist_entries GROUP BY 1;
+"""
 
 FRAGMENT = "20-load-sink.conf"
 
@@ -65,6 +84,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     env = os.environ.get
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--smtp-in-rate", type=float, default=float(env("LOAD_SMTP_IN_RATE", "100")), help="inbound messages per second (default 100)")
+    p.add_argument("--smtp-in-greylist-rate", type=float, default=float(env("LOAD_SMTP_IN_GREYLIST_RATE", "10")), help="inbound messages per second the greylist defers, each from a new sender (default 10)")
     p.add_argument("--smtp-out-rate", type=float, default=float(env("LOAD_SMTP_OUT_RATE", "50")), help="outbound submissions per second (default 50)")
     p.add_argument("--imap-conns", type=int, default=int(env("LOAD_IMAP_CONNS", "1000")), help="concurrent IMAP connections (default 1000)")
     p.add_argument("--api-rate", type=float, default=float(env("LOAD_API_RATE", "100")), help="API requests per second (default 100)")
@@ -77,6 +97,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     p.add_argument("--smtp-in-addr", default="restmail.test:25")
     p.add_argument("--smtp-in-from", default="load@loadgen.test")
     p.add_argument("--smtp-in-to", default="frank@restmail.test")
+    p.add_argument("--smtp-in-greylist-from", default="greylisted@loadgen.test", help="tagged per message, and not on the allowlist")
+    p.add_argument("--admin-user", default=env("LOAD_ADMIN_USER", "admin@restmail.test"), help="admin who puts the inbound sender on the allowlist (a seeded fixture)")
+    p.add_argument("--admin-password", default=env("LOAD_ADMIN_PASSWORD", "admin123!@"))
     p.add_argument("--submit-addr", default="restmail.test:465")
     p.add_argument("--sink-domain", default="loadgen.test", help="the remote domain outbound load is sent to; its MX is the sink")
     p.add_argument("--sink-ip", default=env("LOAD_SINK_IP", "10.99.0.250"), help="the sink's address on the topology's network")
@@ -274,6 +297,12 @@ def build_jobs(a: argparse.Namespace, loadgen: Path, raw: Path, resolv: Path, ui
             "sh", "-c", script + 'exec /loadgen smtp -kind smtp_in "$@"', "loadgen", *sources,
             "-addr", a.smtp_in_addr, "-rate", str(a.smtp_in_rate), "-max-inflight", str(SMTP_MAX_INFLIGHT),
             "-duration", d, "-from", a.smtp_in_from, "-to", a.smtp_in_to, "-size", str(a.message_size), "-out", "/out/smtp_in.json"], add_addresses)
+    if a.smtp_in_greylist_rate > 0:
+        script, sources = from_sources(a, SMTP_IN_GREYLIST_SOURCES, source_count(SMTP_IN_GREYLIST_MAX_INFLIGHT))
+        jobs["smtp_in_greylist"] = container("smtp-in-greylist", RUNNER_IMAGE, lg, {}, [
+            "sh", "-c", script + 'exec /loadgen smtp -kind smtp_in_greylist -expect-defer -unique-from "$@"', "loadgen", *sources,
+            "-addr", a.smtp_in_addr, "-rate", str(a.smtp_in_greylist_rate), "-max-inflight", str(SMTP_IN_GREYLIST_MAX_INFLIGHT),
+            "-duration", d, "-from", a.smtp_in_greylist_from, "-to", a.smtp_in_to, "-size", str(a.message_size), "-out", "/out/smtp_in_greylist.json"], add_addresses)
     if a.smtp_out_rate > 0:
         script, sources = from_sources(a, SMTP_OUT_SOURCES, source_count(SMTP_MAX_INFLIGHT))
         jobs["smtp_delivery"] = container("smtp-delivery", RUNNER_IMAGE, lg, {}, [
@@ -327,6 +356,39 @@ def remove_sink_dns(a: argparse.Namespace) -> None:
     subprocess.run(["docker", "restart", a.dnsmasq_container], capture_output=True)
 
 
+def allow_command(a: argparse.Namespace, loadgen: Path, remove: bool = False) -> list[str]:
+    """Puts the inbound sender on its recipient domain's allowlist, or takes it off.
+
+    It is the testbed's own configuration, through the admin API an operator uses.
+    The default pipeline stays as it is, and the allowlist skips the greylist only
+    for mail whose SPF passes and aligns, which the sink's DNS fragment provides.
+    """
+    domain = a.smtp_in_to.rsplit("@", 1)[-1]
+    return ["docker", "run", "--rm", "--label", a.label, "--network", a.network,
+            "-e", f"LOAD_ADMIN_PASSWORD={a.admin_password}", "-v", f"{loadgen}:/loadgen:ro", RUNNER_IMAGE,
+            "sh", "-c", 'exec /loadgen allow -pass "$LOAD_ADMIN_PASSWORD" "$@"', "loadgen",
+            "-api", a.api, "-user", a.admin_user, "-domain", domain, "-sender", a.smtp_in_from, *(["-remove"] if remove else [])]
+
+
+def save_evidence(raw: Path, services: list[str]) -> None:
+    """Keeps what explains a run: service logs and the database's count of the mail."""
+    for name in LOG_SERVICES:
+        if name not in services:
+            continue
+        with open(raw / f"service-{name}.log", "w") as f:
+            try:
+                subprocess.run(["docker", "logs", "--tail", str(LOG_LINES), name], stdout=f, stderr=subprocess.STDOUT, timeout=120)
+            except (OSError, subprocess.SubprocessError) as e:
+                f.write(f"could not read the logs: {e}\n")
+    if DB_CONTAINER in services:
+        with open(raw / "db-report.log", "w") as f:
+            try:
+                subprocess.run(["docker", "exec", "-i", DB_CONTAINER, "sh", "-c", 'exec psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"'],
+                               input=DB_REPORT, text=True, stdout=f, stderr=subprocess.STDOUT, timeout=120)
+            except (OSError, subprocess.SubprocessError) as e:
+                f.write(f"could not read the database: {e}\n")
+
+
 def wait_for_file(path: Path, proc: subprocess.Popen, what: str, timeout: float = 120) -> None:
     deadline = time.monotonic() + timeout
     while not path.exists():
@@ -340,7 +402,7 @@ def main(argv: list[str]) -> int:
     out = Path(a.out).resolve()
     raw = out / "raw"
     raw.mkdir(parents=True, exist_ok=True)
-    for stale in ("smtp_in.json", "smtp_out.json", "smtp_delivery.json", "sink.ready", "imap.json", "api-k6.json", "k6.log"):
+    for stale in ("smtp_in.json", "smtp_in_greylist.json", "smtp_out.json", "smtp_delivery.json", "sink.ready", "imap.json", "api-k6.json", "k6.log"):
         (raw / stale).unlink(missing_ok=True)
     resolv = raw / "resolv.conf"
     resolv.write_text(f"nameserver {a.dns}\n")
@@ -358,10 +420,16 @@ def main(argv: list[str]) -> int:
     procs: dict[str, subprocess.Popen] = {}
     logs = {}
     measuring_delivery = "smtp_delivery" in jobs
+    # The fragment is also the inbound sender's SPF record.
+    needs_dns = measuring_delivery or "smtp_in" in jobs or "smtp_in_greylist" in jobs
+    allowing = "smtp_in" in jobs
     try:
-        if measuring_delivery:
+        if needs_dns:
             publish_sink_dns(a)
             wait_for_sink_dns(a)
+        if allowing:
+            # Otherwise smtp_in measures the greylist: every message is deferred.
+            run(allow_command(a, loadgen))
         # The sink first, so every load starts together once it is listening.
         for kind in sorted(jobs, key=lambda k: k != "smtp_delivery"):
             logs[kind] = open(raw / f"{kind}.log", "w")
@@ -387,7 +455,10 @@ def main(argv: list[str]) -> int:
             except subprocess.TimeoutExpired:
                 procs["smtp_delivery"].kill()
     finally:
-        if measuring_delivery:
+        save_evidence(raw, services)
+        if allowing:
+            subprocess.run(allow_command(a, loadgen, remove=True), capture_output=True)
+        if needs_dns:
             remove_sink_dns(a)
         for p in procs.values():
             if p.poll() is None:
@@ -416,7 +487,7 @@ def main(argv: list[str]) -> int:
         "tested": {"commit": git("rev-parse", "HEAD"), "describe": git("describe", "--tags", "--always", "--dirty")},
         "started_at": started.isoformat(timespec="seconds"),
         "duration_s": a.duration,
-        "targets": {"smtp_in_msg_s": a.smtp_in_rate, "smtp_out_msg_s": a.smtp_out_rate,
+        "targets": {"smtp_in_msg_s": a.smtp_in_rate, "smtp_in_greylist_msg_s": a.smtp_in_greylist_rate, "smtp_out_msg_s": a.smtp_out_rate,
                     "imap_connections": a.imap_conns, "api_req_s": a.api_rate},
         "generators": {"loadgen": "tests/load/loadgen", "k6": K6_IMAGE, "runner": RUNNER_IMAGE},
         "host": {"machine": platform.machine(), "cpus": os.cpu_count(), "mem_mib": host_mem_mib()},
@@ -456,18 +527,18 @@ def summary(r: dict) -> str:
     lines = [f"REST Mail load run, {r['tested']['describe'] or r['tested']['commit']} at {r['started_at']}, {r['duration_s']}s each", ""]
     for kind, l in r["loads"].items():
         if "failed_to_run" in l:
-            lines.append(f"{kind:13} did not run: {l['failed_to_run']}")
+            lines.append(f"{kind:16} did not run: {l['failed_to_run']}")
             continue
         lat = l.get("latency_ms", {})
         unit = l.get("target_unit", "")
         verdict = "met" if l["met_target"] else "MISSED"
-        lines.append(f"{kind:13} target {l['target']:g} {unit:11} achieved {l['achieved_rate']:g}  ok {l['ok']}  errors {l['errors']}  "
+        lines.append(f"{kind:16} target {l['target']:g} {unit:11} achieved {l['achieved_rate']:g}  ok {l['ok']}  errors {l['errors']}  "
                      f"p50 {lat.get('p50', 0):g}ms p95 {lat.get('p95', 0):g}ms p99 {lat.get('p99', 0):g}ms  {verdict}")
         for msg, n in sorted(l.get("error_kinds", {}).items(), key=lambda kv: -kv[1])[:3]:
-            lines.append(f"{'':13}   {n} x {msg}")
+            lines.append(f"{'':16}   {n} x {msg}")
         extra = l.get("extra", {})
         if "delivered" in extra:
-            lines.append(f"{'':13}   delivered {extra['delivered']} of {extra['accepted']} accepted, "
+            lines.append(f"{'':16}   delivered {extra['delivered']} of {extra['accepted']} accepted, "
                          f"{extra['duplicates']} duplicates, {extra['first_to_last_s']:g}s first to last")
     res = r["resources"]
     if res:

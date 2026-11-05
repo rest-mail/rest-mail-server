@@ -1,10 +1,12 @@
 name: Load
 
-# One load run against the e2e topology (#1583), started by hand: SMTP in,
+# One load run against the e2e topology (#1583), started by hand: SMTP in
+# (past the greylist, with what the greylist costs as its own figure),
 # SMTP out (submissions accepted, and what the queue then delivered to a sink set
 # up as the recipient domain's MX), held IMAP connections and API requests, at the
 # targets given, for the duration given. The results
-# (results.json, results.txt and the raw generator output) are uploaded as an
+# (results.json, results.txt, the raw generator output, the gateway's and API's
+# logs and a count of the mail from the database) are uploaded as an
 # artifact; compare two with `chore load:compare -- a/results.json b/results.json`.
 #
 # A hosted runner carries the topology AND the generators on 4 vCPUs, so what it
@@ -18,6 +20,9 @@ on:
       smtp_in_rate:
         description: Inbound messages per second (0 leaves it out)
         default: "100"
+      smtp_in_greylist_rate:
+        description: Inbound messages per second the greylist defers (0 leaves it out)
+        default: "10"
       smtp_out_rate:
         description: Outbound submissions per second (0 leaves it out)
         default: "50"
@@ -170,6 +175,7 @@ jobs:
         # Inputs reach the runner through the environment, never the script text.
         env:
           LOAD_SMTP_IN_RATE: ${{ inputs.smtp_in_rate }}
+          LOAD_SMTP_IN_GREYLIST_RATE: ${{ inputs.smtp_in_greylist_rate }}
           LOAD_SMTP_OUT_RATE: ${{ inputs.smtp_out_rate }}
           LOAD_IMAP_CONNS: ${{ inputs.imap_conns }}
           LOAD_API_RATE: ${{ inputs.api_rate }}

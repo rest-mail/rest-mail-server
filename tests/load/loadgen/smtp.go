@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/tls"
 	"encoding/hex"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/emersion/go-sasl"
+	gosmtp "github.com/rest-mail/go-smtp/pkg/smtp"
 	"github.com/rest-mail/go-smtp/pkg/smtp/client"
 )
 
@@ -29,6 +31,12 @@ type smtpConfig struct {
 	// run tags every message for the sink, which counts only its own run.
 	run     string
 	sources *sourcePool
+	// expectDefer makes a 451 to the message the success, and anything else a
+	// failure: the load measures what deferring a message costs.
+	expectDefer bool
+	// uniqueFrom gives each message a sender of its own, so each is a first attempt
+	// to a greylist, as mail from a stranger is.
+	uniqueFrom bool
 }
 
 // runSMTP sends one message per connection, the way a remote MTA (or
@@ -51,6 +59,8 @@ func runSMTP(args []string) error {
 	fs.IntVar(&cfg.size, "size", 4096, "approximate message body size in bytes")
 	fs.DurationVar(&cfg.timeout, "timeout", 30*time.Second, "per-message timeout")
 	fs.StringVar(&cfg.run, "run", "", "tag messages with this run id, for loadgen sink -run")
+	fs.BoolVar(&cfg.expectDefer, "expect-defer", false, "count a 451 to the message as the success, and an accepted message as an error")
+	fs.BoolVar(&cfg.uniqueFrom, "unique-from", false, "give each message its own sender address at -from's domain")
 	sources := fs.String("source-ips", "", "connect from these local addresses in turn, as 10.99.201.1-25")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -66,11 +76,17 @@ func runSMTP(args []string) error {
 	return writeResult(*out, rec.result(*kind, *rate, "msg/s", elapsed))
 }
 
+// errNotDeferred is a message accepted by a load that expected it deferred.
+var errNotDeferred = errors.New("accepted, expected 451")
+
 func sendOne(cfg smtpConfig) error {
 	var (
 		conn net.Conn
 		err  error
 	)
+	if cfg.uniqueFrom {
+		cfg.from = uniqueAddress(cfg.from)
+	}
 	d := cfg.sources.dialer(cfg.timeout)
 	if cfg.implicitTLS {
 		tlsDialer := tls.Dialer{NetDialer: d, Config: &tls.Config{InsecureSkipVerify: true}} //nolint:gosec // the testbed's certificates come from its own CA
@@ -107,9 +123,24 @@ func sendOne(cfg smtpConfig) error {
 		return fmt.Errorf("data write: %w", err)
 	}
 	if err := w.Close(); err != nil {
+		var refused *gosmtp.SMTPError
+		if cfg.expectDefer && errors.As(err, &refused) && refused.Code == 451 {
+			return c.Quit()
+		}
 		return fmt.Errorf("data end: %w", err)
 	}
+	if cfg.expectDefer {
+		return errNotDeferred
+	}
 	return c.Quit()
+}
+
+// uniqueAddress is addr with a random tag on its local part.
+func uniqueAddress(addr string) string {
+	id := make([]byte, 8)
+	_, _ = rand.Read(id)
+	local, domain, _ := strings.Cut(addr, "@")
+	return local + "+" + hex.EncodeToString(id) + "@" + domain
 }
 
 // message builds a plain RFC 5322 message of about cfg.size bytes with a

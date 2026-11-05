@@ -3,9 +3,13 @@ package main
 import (
 	"bufio"
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -439,5 +443,173 @@ func TestSourcesAreWhatTheServerSees(t *testing.T) {
 		if seen[addr] != 2 {
 			t.Fatalf("seen = %v, want each address twice", seen)
 		}
+	}
+}
+
+// deferringSession refuses every message at the end of DATA, as a greylist does,
+// and records the sender each came from.
+type deferringSession struct {
+	gatewaySession
+	senders *sync.Map
+	reply   error
+}
+
+func (s *deferringSession) Mail(from string, _ *gosmtp.MailOptions) error {
+	s.senders.Store(from, true)
+	return nil
+}
+
+func (s *deferringSession) Data(r io.Reader) error {
+	_, _ = io.Copy(io.Discard, r)
+	return s.reply
+}
+
+func startDeferring(t *testing.T, reply error) (string, *sync.Map) {
+	t.Helper()
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	senders := &sync.Map{}
+	s := smtpserver.New(smtpserver.BackendFunc(func(*smtpserver.Conn) (smtpserver.Session, error) {
+		return &deferringSession{senders: senders, reply: reply}, nil
+	}))
+	s.Addr = l.Addr().String()
+	s.Domain = "gateway.test"
+	go func() { _ = s.Serve(l) }()
+	t.Cleanup(func() { _ = s.Close() })
+	return l.Addr().String(), senders
+}
+
+// The greylist's cost is measured as its own load: the 451 is that load's success,
+// and each message is a first attempt because each has a sender of its own.
+func TestExpectDeferCountsA451AndNothingElse(t *testing.T) {
+	deferred := &gosmtp.SMTPError{Code: 451, EnhancedCode: gosmtp.EnhancedCode{4, 3, 0}, Message: "Try again later"}
+	rejected := &gosmtp.SMTPError{Code: 550, EnhancedCode: gosmtp.EnhancedCode{5, 7, 1}, Message: "Rejected by policy"}
+	cfg := smtpConfig{helo: "t.test", from: "greylisted@t.test", to: "b@t.test", size: 100, timeout: 5 * time.Second, expectDefer: true, uniqueFrom: true}
+
+	addr, senders := startDeferring(t, deferred)
+	cfg.addr = addr
+	for i := 0; i < 3; i++ {
+		if err := sendOne(cfg); err != nil {
+			t.Fatalf("a 451 is what this load expects: %v", err)
+		}
+	}
+	count := 0
+	senders.Range(func(k, _ any) bool {
+		count++
+		if addr := k.(string); !strings.HasPrefix(addr, "greylisted+") || !strings.HasSuffix(addr, "@t.test") {
+			t.Errorf("sender %q is not -from with a tag", addr)
+		}
+		return true
+	})
+	if count != 3 {
+		t.Fatalf("%d senders for 3 messages, want one each", count)
+	}
+
+	cfg.addr, _ = startDeferring(t, rejected)
+	if err := sendOne(cfg); err == nil || !strings.Contains(err.Error(), "550") {
+		t.Fatalf("a 550 is not a deferral, got %v", err)
+	}
+	cfg.addr, _ = startDeferring(t, nil)
+	if err := sendOne(cfg); !errors.Is(err, errNotDeferred) {
+		t.Fatalf("an accepted message is not a deferral, got %v", err)
+	}
+	// Without the flag a 451 stays the error it was.
+	cfg.addr, _ = startDeferring(t, deferred)
+	cfg.expectDefer = false
+	if err := sendOne(cfg); err == nil || !strings.Contains(err.Error(), "451") {
+		t.Fatalf("a 451 without -expect-defer should be an error, got %v", err)
+	}
+}
+
+// fakeAdminAPI answers what runAllow calls, requires the token sign-in gave, and
+// keeps the allowlist it was asked to.
+func fakeAdminAPI(t *testing.T) (*httptest.Server, map[string]uint) {
+	t.Helper()
+	rules := map[string]uint{"@other.test": 1}
+	next := uint(2)
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /api/v1/auth/login", func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]string
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		if body["email"] != "admin@t.test" || body["password"] != "secret" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		http.SetCookie(w, &http.Cookie{Name: accessCookie, Value: "tok"})
+	})
+	authed := func(h http.HandlerFunc) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			if r.Header.Get("Authorization") != "Bearer tok" {
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			h(w, r)
+		}
+	}
+	mux.HandleFunc("GET /api/v1/admin/domains", authed(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"data":[{"id":3,"name":"other.test"},{"id":7,"name":"t.test"}]}`)
+	}))
+	mux.HandleFunc("POST /api/v1/admin/domains/7/allowlist", authed(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]string
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		if _, seen := rules[body["pattern"]]; seen {
+			w.WriteHeader(http.StatusConflict)
+			return
+		}
+		rules[body["pattern"]] = next
+		next++
+		w.WriteHeader(http.StatusCreated)
+	}))
+	mux.HandleFunc("GET /api/v1/admin/domains/7/allowlist", authed(func(w http.ResponseWriter, _ *http.Request) {
+		var data []map[string]any
+		for pattern, id := range rules {
+			data = append(data, map[string]any{"id": id, "pattern": pattern})
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": data})
+	}))
+	mux.HandleFunc("DELETE /api/v1/admin/domains/7/allowlist/{eid}", authed(func(w http.ResponseWriter, r *http.Request) {
+		for pattern, id := range rules {
+			if fmt.Sprint(id) == r.PathValue("eid") {
+				delete(rules, pattern)
+			}
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	return srv, rules
+}
+
+func TestAllowAddsTheSenderOnceAndRemovesOnlyIt(t *testing.T) {
+	srv, rules := fakeAdminAPI(t)
+	args := []string{"-api", srv.URL, "-user", "admin@t.test", "-pass", "secret", "-domain", "t.test", "-sender", "load@t.test"}
+	for i := 0; i < 2; i++ { // a rule left by an earlier run is not an error
+		if err := runAllow(args); err != nil {
+			t.Fatalf("allow, time %d: %v", i+1, err)
+		}
+	}
+	if _, ok := rules["load@t.test"]; !ok || len(rules) != 2 {
+		t.Fatalf("rules after allow: %v", rules)
+	}
+	remove := append(args, "-remove")
+	for i := 0; i < 2; i++ { // nor is a rule already gone
+		if err := runAllow(remove); err != nil {
+			t.Fatalf("remove, time %d: %v", i+1, err)
+		}
+	}
+	if _, ok := rules["@other.test"]; !ok || len(rules) != 1 {
+		t.Fatalf("rules after remove: %v", rules)
+	}
+}
+
+func TestAllowSaysWhyItFailed(t *testing.T) {
+	srv, _ := fakeAdminAPI(t)
+	if err := runAllow([]string{"-api", srv.URL, "-user", "admin@t.test", "-pass", "wrong", "-domain", "t.test"}); err == nil || !strings.Contains(err.Error(), "401") {
+		t.Fatalf("a refused sign-in: %v", err)
+	}
+	if err := runAllow([]string{"-api", srv.URL, "-user", "admin@t.test", "-pass", "secret", "-domain", "missing.test"}); err == nil || !strings.Contains(err.Error(), "missing.test") {
+		t.Fatalf("an unknown domain: %v", err)
 	}
 }

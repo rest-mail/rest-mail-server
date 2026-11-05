@@ -23,6 +23,7 @@ install the way a client on the internet does.
 | Load       | Default            | What it does                                                                                                   | Generator                    |
 |------------|--------------------|----------------------------------------------------------------------------------------------------------------|------------------------------|
 | `smtp_in`  | 100 msg/s          | one message per connection to `restmail.test:25`, from `load@loadgen.test` to `frank@restmail.test`             | `loadgen smtp`               |
+| `smtp_in_greylist` | 10 msg/s | the same message from a new sender each time, which the greylist defers; a `451` is what it counts as success | `loadgen smtp -expect-defer` |
 | `smtp_out` | 50 msg/s           | signed-in submission on `restmail.test:465` to `load@loadgen.test`; counts what the gateway accepted            | `loadgen smtp -user`         |
 | `smtp_delivery` | as `smtp_out` | what then arrived at `loadgen.test`'s MX, and how long after it was sent                                          | `loadgen sink`               |
 | `imap`     | 1,000 connections  | opens them at 50 a second, signs each in, then holds them, each sending NOOP or SELECT INBOX every 10 seconds   | `loadgen imap`               |
@@ -57,6 +58,22 @@ It is a sink rather than a count at the reference mail1 because mail1 is a Postf
 rspamd and Dovecot sharing the same CPUs, so its limits would be reported as REST
 Mail's, and its mailbox can only be read back to the second.
 
+### The greylist
+
+The default inbound pipeline greylists a new sender, recipient and client address
+for 5 minutes, so a message from a sender the install has not seen is answered
+`451`, and an SMTP load made of them would measure that and nothing past it.
+
+So the run puts `smtp_in`'s sender on `restmail.test`'s allowlist through the admin
+API (`--admin-user`, `--admin-password`) and takes it off when it ends. The rest of
+the default pipeline stays: an allowlisted sender skips the greylist only if its SPF
+or DKIM passes and aligns, which the record in the sink's DNS fragment provides.
+
+What the greylist costs is its own figure, `smtp_in_greylist`, from a new sender per
+message and not on the allowlist. Its `ok` and its latency are the deferrals, and an
+accepted message is an error, so it also shows the greylist working in the same run.
+A `451` for any other reason counts the same; `raw/db-report.log` has the reason.
+
 ### Limits the load cannot pass
 
 A run sets out to find how much an install carries, and three limits meant for
@@ -82,6 +99,7 @@ at it.
 | Flag                  | Environment           | Default |
 |-----------------------|-----------------------|---------|
 | `--smtp-in-rate`      | `LOAD_SMTP_IN_RATE`   | 100     |
+| `--smtp-in-greylist-rate` | `LOAD_SMTP_IN_GREYLIST_RATE` | 10 |
 | `--smtp-out-rate`     | `LOAD_SMTP_OUT_RATE`  | 50      |
 | `--imap-conns`        | `LOAD_IMAP_CONNS`     | 1000    |
 | `--api-rate`          | `LOAD_API_RATE`       | 100     |
@@ -109,7 +127,10 @@ message size, the docker stats interval).
   the network, from `docker stats` samples taken through the run.
 
 `results.txt` is the same in a few lines. The command exits 1 when any load
-missed its target. `raw/` keeps each generator's own output and log.
+missed its target. `raw/` keeps each generator's own output and log, the last
+50,000 lines of the SMTP gateway's and the API's logs (`service-*.log`), and
+`db-report.log`: the outbound queue by status and failure, the message traces by
+outcome and reason, and the greylist's entries, as the run left them.
 
 `chore load:compare -- a.json b.json` prints each load's rate, p95, p99 and
 errors (and for `smtp_delivery` the count delivered) side by side and counts what

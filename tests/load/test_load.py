@@ -128,6 +128,111 @@ class Sources(unittest.TestCase):
         self.assertNotIn("NET_ADMIN", jobs["smtp_delivery"])
 
 
+class Greylist(unittest.TestCase):
+    """smtp_in measures the gateway, with the greylist's cost as a figure of its own."""
+
+    def jobs(self, *argv):
+        a = run.parse_args(list(argv))
+        return a, run.build_jobs(a, Path("/lg"), Path("/raw"), Path("/raw/r"), "1:1", "r")
+
+    @staticmethod
+    def arg(cmd, flag):
+        return cmd[cmd.index(flag) + 1]
+
+    def test_the_allowed_sender_is_smtp_ins_and_not_the_greylisted_ones(self):
+        a, jobs = self.jobs()
+        self.assertEqual(self.arg(jobs["smtp_in"], "-from"), a.smtp_in_from)
+        command = run.allow_command(a, Path("/lg"))
+        self.assertEqual(self.arg(command, "-sender"), self.arg(jobs["smtp_in"], "-from"))
+        self.assertEqual(self.arg(command, "-domain"), "restmail.test")
+        self.assertNotIn("-remove", command)
+        self.assertIn("-remove", run.allow_command(a, Path("/lg"), remove=True))
+        # An exact address, so the other load's senders at the same domain don't match.
+        self.assertTrue(a.smtp_in_from.split("@")[0])  # not "@domain"
+        self.assertNotEqual(a.smtp_in_greylist_from, a.smtp_in_from)
+
+    def test_the_greylist_load_expects_deferrals_from_new_senders_at_the_spf_domain(self):
+        a, jobs = self.jobs()
+        job = jobs["smtp_in_greylist"]
+        script = job[job.index("sh") + 2]
+        self.assertIn("-expect-defer", script)
+        self.assertIn("-unique-from", script)
+        self.assertEqual(self.arg(job, "-from").split("@")[1], a.sink_domain)
+        self.assertEqual(self.arg(job, "-to"), self.arg(jobs["smtp_in"], "-to"))
+        self.assertNotIn("-expect-defer", jobs["smtp_in"][jobs["smtp_in"].index("sh") + 2])
+
+    def test_the_greylist_load_has_its_own_source_addresses(self):
+        _, jobs = self.jobs()
+        self.assertNotEqual(self.arg(jobs["smtp_in"], "-source-ips"), self.arg(jobs["smtp_in_greylist"], "-source-ips"))
+        self.assertEqual(self.arg(jobs["smtp_in_greylist"], "-source-ips"), f"10.99.{run.SMTP_IN_GREYLIST_SOURCES}.1-6")
+
+    def test_a_rate_of_zero_leaves_it_out(self):
+        _, jobs = self.jobs("--smtp-in-greylist-rate", "0")
+        self.assertNotIn("smtp_in_greylist", jobs)
+        self.assertIn("smtp_in", jobs)
+
+    def test_the_seeded_admin_is_the_one_the_e2e_suite_signs_in_as(self):
+        a = run.parse_args([])
+        suite = (run.ROOT / "tests/e2e/suite_test.go").read_text()
+        self.assertIn(f'seedAdminAddress  = "{a.admin_user}"', suite)
+        self.assertIn(f'seedAdminPassword = "{a.admin_password}"', suite)
+
+    def test_the_default_pipeline_still_greylists_and_the_allowlist_comes_first(self):
+        templates = (run.ROOT / "internal/pipeline/templates.go").read_text()
+        self.assertLess(templates.index('Name:    "domain_allowlist"'), templates.index('Name:    "greylist"'))
+
+    def test_the_workflow_passes_the_rate_on(self):
+        workflow = (run.ROOT / ".github/workflows/load.yml").read_text()
+        self.assertIn("LOAD_SMTP_IN_GREYLIST_RATE: ${{ inputs.smtp_in_greylist_rate }}", workflow)
+
+
+class Evidence(unittest.TestCase):
+    """What explains a run reaches the artifact."""
+
+    def test_the_tables_reported_are_real(self):
+        models = "".join(p.read_text() for p in (run.ROOT / "internal/db/models").glob("*.go"))
+        for table in ("outbound_queue", "message_traces", "greylist_entries"):
+            self.assertIn(table, run.DB_REPORT)
+            self.assertIn(f'"{table}"', models)
+
+    def test_the_artifact_takes_what_is_saved(self):
+        workflow = (run.ROOT / ".github/workflows/load.yml").read_text()
+        self.assertIn("/load/raw/*.log", workflow)
+
+    def test_logs_and_the_report_are_saved_for_the_services_there(self):
+        with tempfile.TemporaryDirectory() as d:
+            raw = Path(d)
+            calls = []
+
+            def fake_run(cmd, **kw):
+                calls.append(cmd)
+                kw["stdout"].write("line\n")
+                kw["stdout"].flush()
+
+            original, run.subprocess.run = run.subprocess.run, fake_run
+            try:
+                run.save_evidence(raw, ["rest-mail-api", "rest-mail-postgres", "testbed-dnsmasq"])
+            finally:
+                run.subprocess.run = original
+            self.assertEqual(sorted(p.name for p in raw.iterdir()), ["db-report.log", "service-rest-mail-api.log"])
+            self.assertEqual(calls[0][:2], ["docker", "logs"])
+            self.assertEqual(calls[1][:3], ["docker", "exec", "-i"])
+
+    def test_a_docker_failure_does_not_lose_the_run(self):
+        with tempfile.TemporaryDirectory() as d:
+            raw = Path(d)
+
+            def fails(cmd, **kw):
+                raise OSError("no docker")
+
+            original, run.subprocess.run = run.subprocess.run, fails
+            try:
+                run.save_evidence(raw, ["rest-mail-api", "rest-mail-postgres"])
+            finally:
+                run.subprocess.run = original
+            self.assertIn("no docker", (raw / "db-report.log").read_text())
+
+
 class Limits(unittest.TestCase):
     """The load switch names settings the server reads, and only on the testbed."""
 
