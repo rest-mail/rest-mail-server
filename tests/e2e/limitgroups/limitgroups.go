@@ -31,11 +31,12 @@ const (
 // limit each spends: the account's send rate (#184), the address's recovery
 // failures (#124), and the recovery emails asked for an address.
 var HandlerLimits = map[string]string{
-	"POST /api/v1/messages/send":            "sends",
-	"POST /api/v1/messages/draft/{id}/send": "sends",
-	"POST /api/v1/messages/{id}/forward":    "sends",
-	"POST /api/v1/auth/recover":             "recovery",
-	"POST /api/v1/auth/recover/email":       "recovery email requests",
+	"POST /api/v1/messages/send":                    "sends",
+	"POST /api/v1/messages/draft/{id}/send":         "sends",
+	"POST /api/v1/messages/{id}/forward":            "sends",
+	"POST /api/v1/messages/{id}/unsubscribe/mailto": "sends",
+	"POST /api/v1/auth/recover":                     "recovery",
+	"POST /api/v1/auth/recover/email":               "recovery email requests",
 }
 
 var known = map[string]bool{
