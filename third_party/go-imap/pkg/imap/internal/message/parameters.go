@@ -11,49 +11,91 @@ import (
 
 // parseMediaType is mime.ParseMediaType with RFC 2231 parameters read here, because
 // it drops one in any charset but UTF-8 and US-ASCII, and keeps only the later
-// segments of a continued one, and none of one with no first segment. v holds no
-// comments, and a field holding an 8-bit octet has been through readableField. See
-// extendedValue for what a parameter becomes.
+// segments of a continued one, and none of one with no first segment. It also refuses
+// a repeated name, and a name with a '*' that isn't RFC 2231 form, though RFC 2045 §5.1
+// has neither as a syntax error. v holds no comments, and a field holding an 8-bit octet
+// has been through readableField. See extendedValue for what a parameter becomes.
 func parseMediaType(v string) (string, map[string]string, error) {
 	mt, params, err := mime.ParseMediaType(v)
-	if err != nil || !strings.Contains(v, "*") {
-		return mt, params, err
+	if err != nil {
+		var repeated bool
+		if v, repeated = withoutRepeats(v); !repeated {
+			return mt, params, err
+		}
+		if mt, params, err = mime.ParseMediaType(v); err != nil {
+			return mt, params, err
+		}
+	}
+	if !strings.Contains(v, "*") {
+		return mt, params, nil
 	}
 	segments, ok := fieldSegments(v)
 	if !ok {
 		return mt, params, nil
 	}
-	families := map[string]map[string]string{}
+	families := map[string][]parameterSegment{}
 	for _, segment := range segments[1:] {
 		key, value, ok := strings.Cut(segment, "=")
 		if !ok {
 			continue
 		}
 		key = strings.ToLower(strings.TrimSpace(key))
-		base, _, extended := strings.Cut(key, "*")
+		base, suffix, extended := strings.Cut(key, "*")
 		if !extended {
 			continue
 		}
-		if families[base] == nil {
-			families[base] = map[string]string{}
+		value = unquoteParameter(strings.TrimSpace(value))
+		if base == "" || !validExtendedSuffix(suffix) {
+			// '*' is a token character, so this is a parameter of that name (RFC 2045 §5.1).
+			// mime.ParseMediaType reads "*0" as a segment of a parameter with no name.
+			delete(params, "")
+			params[key] = value
+			continue
 		}
-		families[base][key] = unquoteParameter(strings.TrimSpace(value))
+		families[base] = append(families[base], parameterSegment{suffix, value})
 	}
 	for base, pieces := range families {
-		if value, ok := extendedValue(base, pieces); ok {
-			params[base] = value
-			continue
-		}
-		// Delimiter lines match a boundary's whole value, and this is only part of one.
+		value, first, whole := extendedValue(base, pieces)
 		_, plain := params[base]
-		if plain || (base == "boundary" && strings.HasPrefix(mt, "multipart/")) {
-			continue
-		}
-		if value, ok := laterSegments(base, pieces); ok {
+		switch {
+		case base == "boundary" && strings.HasPrefix(mt, "multipart/") && !whole:
+			// Delimiter lines match a boundary's whole value, and this is only part of one.
+			if first {
+				delete(params, base)
+			}
+		case first || !plain:
 			params[base] = value
 		}
 	}
 	return mt, params, nil
+}
+
+// withoutRepeats is v with only the first parameter of each name, so a repeated name
+// reads as it does in a field holding an 8-bit octet (see readableField). RFC 2045 §5.1
+// doesn't make it a syntax error, so §5.2's default doesn't apply, but a later value that
+// is itself malformed still does. repeated is false when no name repeats, or the field
+// has that other fault. A later value stays in the header section, as stored.
+func withoutRepeats(v string) (first string, repeated bool) {
+	segments, ok := fieldSegments(v)
+	if !ok {
+		return v, false
+	}
+	seen := make(map[string]bool, len(segments))
+	kept := append(make([]string, 0, len(segments)), segments[0])
+	for _, segment := range segments[1:] {
+		key, _, hasValue := strings.Cut(segment, "=")
+		key = strings.ToLower(strings.TrimSpace(key))
+		if !hasValue || !seen[key] {
+			seen[key] = hasValue
+			kept = append(kept, segment)
+			continue
+		}
+		if _, _, err := mime.ParseMediaType("a/a;" + segment); err != nil {
+			return v, false
+		}
+		repeated = true
+	}
+	return strings.Join(kept, ";"), repeated
 }
 
 // isQuotedString reports whether value is one whole quoted-string.
@@ -97,73 +139,53 @@ func trimWSP(s string) string {
 	return strings.Trim(s, " \t\r\n")
 }
 
-// extendedValue puts an RFC 2231 parameter back together, in the order
-// mime.ParseMediaType reads it. pieces holds its segments by lower-case name, each
-// unquoted. A value in a charset go-imap decodes, or naming none, is its text; one
-// in any other charset goes on as a word that names the charset (see keptValue).
-func extendedValue(base string, pieces map[string]string) (string, bool) {
-	if v, ok := pieces[base+"*"]; ok {
-		charset, octets := splitExtendedValue(v)
-		return keptValue(base, charset, octets), true
+// parameterSegment is one piece of an RFC 2231 parameter: suffix is what follows the
+// first '*' of its lower-case name, and value is unquoted.
+type parameterSegment struct{ suffix, value string }
+
+// number is the segment's number with no leading zeros. It can be too long to parse, and
+// the longer is then the larger.
+func (s parameterSegment) number() string {
+	return strings.TrimLeft(strings.TrimSuffix(s.suffix, "*"), "0")
+}
+
+// extendedValue puts an RFC 2231 parameter back together. A value in a charset go-imap
+// decodes, or naming none, is its text; one in any other charset goes on as a word that
+// names the charset (see keptValue).
+//
+// Segments join in number order. Nothing stands in for one that never came: a gap closes
+// up, and only a first segment can name a charset (RFC 2231 §4.1), so with none the octets
+// name none. first reports that it came, and whole that no segment is missing or doubled.
+func extendedValue(base string, segments []parameterSegment) (value string, first, whole bool) {
+	for _, s := range segments {
+		if s.suffix == "" {
+			charset, octets := splitExtendedValue(s.value)
+			return keptValue(base, charset, octets), true, true
+		}
 	}
+	// The suffix settles a tie, so the same field always reads the same. Only the same
+	// name twice is left to compact, with the same value, or the field wouldn't parse.
+	slices.SortFunc(segments, func(a, b parameterSegment) int {
+		x, y := a.number(), b.number()
+		return cmp.Or(cmp.Compare(len(x), len(y)), cmp.Compare(x, y), cmp.Compare(a.suffix, b.suffix))
+	})
+	segments = slices.CompactFunc(segments, func(a, b parameterSegment) bool { return a.suffix == b.suffix })
 	var octets strings.Builder
 	charset := ""
-	found := false
-	for n := 0; ; n++ {
-		key := base + "*" + strconv.Itoa(n)
-		if v, ok := pieces[key]; ok {
-			octets.WriteString(v)
-			found = true
-			continue
-		}
-		v, ok := pieces[key+"*"]
-		if !ok {
-			break
-		}
-		found = true
-		if n == 0 {
+	whole = true
+	for i, s := range segments {
+		v := s.value
+		switch {
+		case i == 0 && s.suffix == "0*":
 			charset, v = splitExtendedValue(v)
-		} else {
+		case strings.HasSuffix(s.suffix, "*"):
 			v = percentDecode(v)
 		}
 		octets.WriteString(v)
+		first = first || s.suffix == "0" || s.suffix == "0*"
+		whole = whole && strings.TrimSuffix(s.suffix, "*") == strconv.Itoa(i)
 	}
-	if !found {
-		return "", false
-	}
-	return keptValue(base, charset, octets.String()), true
-}
-
-// laterSegments is the text of a continued parameter whose first segment never came,
-// in segment order. Nothing stands in for what is missing: only a first segment can
-// name a charset (RFC 2231 §4.1), so the octets name none, and a gap closes up.
-func laterSegments(base string, pieces map[string]string) (string, bool) {
-	type segment struct{ number, key string }
-	var segments []segment
-	for key := range pieces {
-		suffix := strings.TrimPrefix(key, base+"*")
-		if suffix != "" && validExtendedSuffix(suffix) {
-			number := strings.TrimLeft(strings.TrimSuffix(suffix, "*"), "0")
-			segments = append(segments, segment{number, key})
-		}
-	}
-	if len(segments) == 0 {
-		return "", false
-	}
-	// A number can be too long to parse, and without leading zeros the longer is larger.
-	// The name settles a tie, so the same field always reads the same.
-	slices.SortFunc(segments, func(a, b segment) int {
-		return cmp.Or(cmp.Compare(len(a.number), len(b.number)), cmp.Compare(a.number, b.number), cmp.Compare(a.key, b.key))
-	})
-	var octets strings.Builder
-	for _, s := range segments {
-		if v := pieces[s.key]; strings.HasSuffix(s.key, "*") {
-			octets.WriteString(percentDecode(v))
-		} else {
-			octets.WriteString(v)
-		}
-	}
-	return keptValue(base, "", octets.String()), true
+	return keptValue(base, charset, octets.String()), first, whole
 }
 
 // splitExtendedValue reads charset'language'text. A value without both quotes is
@@ -334,7 +356,7 @@ func readField(value string) []fieldPiece {
 				broken = i
 			}
 		case '(':
-			if end, ok := closers[i]; ok {
+			if end, ok := closers.closer(i); ok {
 				comments = append(comments, [2]int{i, end + 1})
 				i = end
 			} else if broken < 0 {
@@ -438,29 +460,48 @@ func cutComments(value string, start, end int, comments [][2]int) (string, []str
 	return trimWSP(b.String()), cut
 }
 
-// commentClosers pairs each '(' with the ')' that closes it, in one pass. A quoted-pair
+// commentPairs pairs each '(' with the ')' that closes it, in one pass. A quoted-pair
 // is skipped wherever it stands. A '(' inside a quoted-string pairs here too, but only
 // one outside a quoted-string is ever looked up.
-func commentClosers(value string) map[int]int {
+type commentPairs struct {
+	opens, closes []int // by opening position; a close of -1 never came
+	at            int   // where the last lookup stopped
+}
+
+func commentClosers(value string) *commentPairs {
+	pairs := &commentPairs{}
 	if strings.IndexByte(value, '(') < 0 {
-		return nil
+		return pairs
 	}
-	closers := map[int]int{}
 	var open []int
 	for i := 0; i < len(value); i++ {
 		switch value[i] {
 		case '\\':
 			i++
 		case '(':
-			open = append(open, i)
+			open = append(open, len(pairs.opens))
+			pairs.opens = append(pairs.opens, i)
+			pairs.closes = append(pairs.closes, -1)
 		case ')':
 			if len(open) > 0 {
-				closers[open[len(open)-1]] = i
+				pairs.closes[open[len(open)-1]] = i
 				open = open[:len(open)-1]
 			}
 		}
 	}
-	return closers
+	return pairs
+}
+
+// closer is where the comment opening at position closes. Positions must rise from one
+// call to the next, so every lookup of a field together walks the list once.
+func (p *commentPairs) closer(position int) (int, bool) {
+	for p.at < len(p.opens) && p.opens[p.at] < position {
+		p.at++
+	}
+	if p.at == len(p.opens) || p.opens[p.at] != position || p.closes[p.at] < 0 {
+		return 0, false
+	}
+	return p.closes[p.at], true
 }
 
 // quoteEnd is where the quoted-string opening at value[open] closes, or -1.
@@ -571,11 +612,10 @@ func ParameterField(name, value string) (string, bool) {
 // spelled, replaced by boundary when that isn't empty.
 func parameterField(name, value, boundary string) (string, bool) {
 	value = trimWSP(value)
-	mt, _, err := parseContentType(value)
-	if err != nil || has8bit(mt) {
+	pieces := readField(value)
+	if !hasReadableType(value, pieces) {
 		return "", false
 	}
-	pieces := readField(value)
 	head := sevenBitComments(pieces[0].raw)
 	if text := pieces[0].broken; text != "" {
 		head += " (" + strings.Join(encodedWords(text), " ") + ")"
@@ -621,6 +661,18 @@ func parameterField(name, value, boundary string) (string, bool) {
 		b.WriteString(strings.Join(parts, " "))
 	}
 	return b.String(), true
+}
+
+// hasReadableType reports whether parseContentType reads a type from value. readableField
+// spells every parameter of a field holding an 8-bit octet so it can't be refused, so
+// only the type is left to ask about, and measuring a message doesn't read each parameter
+// of a very long field again. A 7-bit field gets the strict reading.
+func hasReadableType(value string, pieces []fieldPiece) bool {
+	if has8bit(value) {
+		value = pieces[0].key
+	}
+	mt, _, err := parseContentType(value)
+	return err == nil && !has8bit(mt)
 }
 
 func isBoundaryName(key string) bool {

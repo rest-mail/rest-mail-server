@@ -108,8 +108,8 @@ type Message struct {
 	// count for a client that has enabled UTF-8, which gets the headers as stored.
 	// Both equal RawSize when the headers are already ASCII, every line ends in
 	// CRLF and the last line has one. STAT and LIST report them, because the size
-	// must count the octets actually sent (RFC 1939 section 5). Zero means "not
-	// measured yet" (a row not yet backfilled); consumers fall back to RawSize.
+	// must count the octets actually sent (RFC 1939 section 5). BeforeCreate measures
+	// both for every stored raw, so zero means there is no stored raw.
 	DowngradedSize int `gorm:"not null;default:0" json:"downgraded_size"`
 	POP3UTF8Size   int `gorm:"column:pop3_utf8_size;not null;default:0" json:"pop3_utf8_size"`
 	// IMAPSize and IMAPUTF8Size are the octet counts an IMAP FETCH of the whole
@@ -170,7 +170,7 @@ func (Message) TableName() string { return "messages" }
 // raw source, on every path that stores one, so no delivery path can forget them.
 func (m *Message) BeforeCreate(*gorm.DB) error {
 	if m.RawSize > 0 && (m.DowngradedSize == 0 || m.POP3UTF8Size == 0 || m.IMAPSize == 0 || m.IMAPUTF8Size == 0) {
-		sizes := rmail.MeasureWireSizes(m.SourceView())
+		sizes := rmail.MeasureWireSizes(m.sourceView())
 		if m.DowngradedSize == 0 {
 			m.DowngradedSize = sizes.Downgraded
 		}
@@ -193,9 +193,9 @@ func (m *Message) BeforeCreate(*gorm.DB) error {
 	return err
 }
 
-// SourceView is the source as a string without copying it, for reading it while nothing
+// sourceView is the source as a string without copying it, for reading it while nothing
 // else writes to it: measuring a message must not cost a copy of it. Nothing may keep it.
-func (m *Message) SourceView() string {
+func (m *Message) sourceView() string {
 	if m.RawOctets != nil {
 		return unsafe.String(unsafe.SliceData(m.RawOctets), len(m.RawOctets))
 	}
