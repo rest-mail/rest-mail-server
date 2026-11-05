@@ -571,6 +571,9 @@ func legacyParseHeaders(raw []byte) (pipeline.Headers, error) {
 // Every list reads as net/mail reads it, because that's what every reader of one was given before.
 func TestAddressesMatchNetMail(t *testing.T) {
 	seeds := []string{
+		"=?utf-8?q??= <a@b.test>", "=?utf-8?q?x?= (c) <a@b.test>", "=?utf-8?q?=zz?= <a@b.test>", "=?utf-8?q?=aB?= <a@b.test>", "=?bogus?q?x?= <a@b.test>",
+		"=?utf-8?b?eA==?= <a@b.test>", "a@b.test (=?bogus?q?x?=)", "a@b.test (=?utf-8?q?x?= y)", "=?utf-8?x?y?= <a@b.test>", "=??q?x?= <a@b.test>", "=?us-ascii?Q?x?= =?ISO-8859-1?q?y?= Z <a@b.test>",
+		"=?utf-8?q?x?= =?utf-8?q??= <a@b.test>", "=?utf-8?q?x?y?= <a@b.test>", "=?utf-8?q?x\x7f?= <a@b.test>", "g: =?utf-8?q?x?= <a@b.test>, c@d.test (e);, f@g.test", "a@b.test, \"\" <c@d.test>", "=?utf-8?q?\xc3\xa9?= <a@b.test>",
 		"a@b.test", "<a@b.test>", "Name <a@b.test>", "First Last <a@b.test>", "\"Last, First\" <a@b.test>", "\"\" <a@b.test>",
 		"a@b.test, c@d.test", "a@b.test,c@d.test,\tE F <e@f.test>", " a@b.test ", "a.b.c@d.e.f", "Mr. X <a@b.test>", "a.b <c@d>",
 		"a@b.test (comment)", "=?utf-8?q?x?= <a@b.test>", "x=?y <a@b.test>", "a@b.test,", ",a@b.test", "a@b.test,,c@d.test", "group: a@b.test;", "a b@c.test",
@@ -591,6 +594,16 @@ func TestAddressesMatchNetMail(t *testing.T) {
 		}
 		if len(got) != len(want) || count != len(want) {
 			t.Fatalf("%q: read %+v (%d), net/mail %v", value, got, count, want)
+		}
+		at := 0
+		ok := addressList(value).VisitAddresses(func(address string) {
+			if at >= len(want) || address != sanitizeHeaderValue(want[at].Address) {
+				t.Fatalf("%q: address %d is %q, net/mail %+v", value, at, address, want)
+			}
+			at++
+		})
+		if !ok || at != len(want) {
+			t.Fatalf("%q: %v, %d addresses, net/mail %+v", value, ok, at, want)
 		}
 		for i := range got {
 			if got[i].Name != sanitizeHeaderValue(want[i].Name) || got[i].Address != sanitizeHeaderValue(want[i].Address) {

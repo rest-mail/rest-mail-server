@@ -34,6 +34,13 @@ func Valid(list string, dec *mime.WordDecoder) (int, bool) {
 	return count, true
 }
 
+// EachAddress is Each with no name read, for a caller that wants only the addresses.
+func EachAddress(list string, dec *mime.WordDecoder, visit func(address string)) error {
+	p := parser{s: list, addresses: visit}
+	p.setDecoder(dec)
+	return p.parseAddressList()
+}
+
 // Each calls visit with the name and address of everything in the field, which has to be Valid: a
 // field that goes wrong partway has been visited as far as that. What it gets may be views of list.
 func Each(list string, dec *mime.WordDecoder, visit func(name, address string)) error {
@@ -45,7 +52,9 @@ func Each(list string, dec *mime.WordDecoder, visit func(name, address string)) 
 type parser struct {
 	s     string
 	visit func(name, address string)
-	count *int
+	// addresses is visit with the name left unread.
+	addresses func(address string)
+	count     *int
 	// dec reads an encoded-word with the caller's CharsetReader, and sets charsetFailed when that
 	// is what went wrong.
 	dec           mime.WordDecoder
@@ -68,15 +77,21 @@ func (p *parser) setDecoder(dec *mime.WordDecoder) {
 }
 
 func (p *parser) found(name, address string) {
-	if p.count != nil {
+	switch {
+	case p.count != nil:
 		*p.count++
-		return
+	case p.addresses != nil:
+		p.addresses(address)
+	default:
+		p.visit(name, address)
 	}
-	p.visit(name, address)
 }
 
-// building says whether a result is wanted, or only whether there is one.
-func (p *parser) building() bool { return p.count == nil }
+// building says whether a name is wanted, or only whether there is one.
+func (p *parser) building() bool { return p.visit != nil }
+
+// buildingSpec says whether an address is wanted.
+func (p *parser) buildingSpec() bool { return p.count == nil }
 
 func (p *parser) parseAddressList() error {
 	for {
@@ -251,7 +266,7 @@ func (p *parser) consumeAddrSpec() (spec string, err error) {
 		return "", err
 	}
 
-	if !p.building() {
+	if !p.buildingSpec() {
 		return "", nil
 	}
 	if spelled := start[:len(start)-len(p.s)]; !quoted && len(spelled) == len(localPart)+1+len(domain) {
@@ -495,7 +510,7 @@ func (p *parser) consumeDisplayNameComment() (string, error) {
 		return "", ErrNotAddressList
 	}
 	spelled := start[:len(start)-len(p.s)-1]
-	if !p.building() && !strings.Contains(spelled, "=?") {
+	if !p.building() && !strings.Contains(spelled, "=?") && strings.IndexByte(spelled, '\\') < 0 {
 		return "", nil
 	}
 	comment := commentText(spelled)
@@ -596,6 +611,17 @@ func (p *parser) decodeWord(s string) (word string, isEncoded bool, err error) {
 	if !strings.HasPrefix(s, "=?") {
 		return s, false, nil
 	}
+	if !p.building() {
+		if decodes, empty, known := qWordDecodes(s); known {
+			if !decodes {
+				return s, false, nil
+			}
+			if empty {
+				return "", true, nil
+			}
+			return s, true, nil
+		}
+	}
 	p.charsetFailed = false
 	word, err = p.dec.Decode(s)
 	if err == nil {
@@ -613,6 +639,40 @@ func (p *parser) decodeWord(s string) (word string, isEncoded bool, err error) {
 
 	// Ignore invalid RFC 2047 encoded-word errors.
 	return s, false, nil
+}
+
+// qWordDecodes answers, with nothing built, what mime.WordDecoder.Decode would of a Q-encoded word in
+// a charset it reads by itself: whether it decodes, and whether to nothing. known is false for
+// anything else, for Decode to say.
+func qWordDecodes(s string) (decodes, empty, known bool) {
+	if len(s) < 8 || !strings.HasSuffix(s, "?=") || strings.Count(s, "?") != 4 {
+		return false, false, true
+	}
+	charset, rest, _ := strings.Cut(s[2:len(s)-2], "?")
+	if !strings.EqualFold(charset, "utf-8") && !strings.EqualFold(charset, "iso-8859-1") && !strings.EqualFold(charset, "us-ascii") {
+		return false, false, false
+	}
+	encoding, text, _ := strings.Cut(rest, "?")
+	if encoding != "q" && encoding != "Q" {
+		return false, false, false
+	}
+	for i := 0; i < len(text); i++ {
+		switch c := text[i]; {
+		case c == '=':
+			if i+2 >= len(text) || !isHex(text[i+1]) || !isHex(text[i+2]) {
+				return false, false, true
+			}
+			i += 2
+		case c == '_', (c <= '~' && c >= ' ') || c == '\n' || c == '\r' || c == '\t':
+		default:
+			return false, false, true
+		}
+	}
+	return true, text == "", true
+}
+
+func isHex(c byte) bool {
+	return c >= '0' && c <= '9' || c >= 'A' && c <= 'F' || c >= 'a' && c <= 'f'
 }
 
 // isAtext reports whether r is an RFC 5322 atext character, or a period.

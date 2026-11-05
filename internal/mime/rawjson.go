@@ -46,19 +46,20 @@ func StringsJSON(list []string) []byte {
 
 // AddressesJSON is StringsJSON of the addresses of a list, never null, built without holding them.
 func AddressesJSON(list pipeline.AddressList) []byte {
-	out := make([]byte, 0, list.FieldSize()+list.FieldSize()/2+16)
+	size := 2
+	if !list.VisitAddresses(func(address string) { size += jsonStringSize(address) + 1 }) {
+		return []byte("[]")
+	}
+	out := make([]byte, 0, size)
 	out = append(out, '[')
 	first := true
-	ok := list.Visit(func(address pipeline.Address) {
+	list.VisitAddresses(func(address string) {
 		if !first {
 			out = append(out, ',')
 		}
 		first = false
-		out = appendJSONString(out, address.Address)
+		out = appendJSONString(out, address)
 	})
-	if !ok {
-		return []byte("[]")
-	}
 	return append(out, ']')
 }
 
