@@ -53,7 +53,7 @@ func (h *MessageHandler) deliverToRecipient(ctx context.Context, recipient repos
 				}
 			}
 		}
-		params.RawMessage = "Delivered-To: " + recipient.DeliveredTo + "\r\n" + params.RawMessage
+		params.RawMessage = stampDeliveredTo(params.RawMessage, recipient.DeliveredTo)
 	}
 	if recipient.Mailbox.ID != 0 || !recipient.Alias {
 		if recipient.Mailbox.ID != 0 {
