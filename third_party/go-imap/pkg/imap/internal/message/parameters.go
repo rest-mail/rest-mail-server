@@ -712,8 +712,8 @@ func WriteParameterField(w wireSink, name, value string) bool {
 			return
 		}
 		key := parameterName(piece.key)
-		switch {
-		case piece.key == "":
+		switch piece.key {
+		case "":
 		default:
 			if seen.add(key) {
 				_, _ = w.WriteString(" (")
