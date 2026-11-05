@@ -104,6 +104,8 @@ func writeDowngradedField(w wordSink, span string, bare bool) {
 		_, _ = w.WriteString("\r\n")
 		return
 	}
+	// A NUL is a space on its way to a client, so no encoded word spells one (#1921).
+	span = strings.ReplaceAll(span, "\x00", " ")
 	field := span
 	if bare {
 		var b strings.Builder

@@ -89,7 +89,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   into an ENVELOPE or MIME string, so one message can't stop a fetch of a range. It
   sends a space for each, one octet for one. BINARY sends the exact octets and the
   stored message doesn't change. `wireform.SpaceNUL` does the same for a host whose
-  protocol has no BINARY, leaving data as it is.
+  protocol has no BINARY, leaving data as it is. A boundary holding a NUL takes the
+  same 7-bit spelling as an 8-bit one, in the field and on its delimiter lines.
 - A SELECT or EXAMINE refused with BAD keeps the mailbox already selected, with
   its read-only mode and deletion marks: a rejected command never changes state
   (RFC 3501 §6). Only a well-formed selection attempt that fails with NO
