@@ -19,6 +19,131 @@ includes arrays/null where an object is required, invalid Sieve, unsupported
 filters and recipient limits. State preconditions retain their existing status
 pending a separate decision. The 403/404 decision remains open.
 
+## Before every push: local CI
+
+Run `chore ci:local` on the working tree before pushing, including after a
+rebase. It fetches `origin/main` and refuses a stale base; `--allow-stale` is
+an explicit diagnostic override, not proof that a change will merge safely.
+Pass options after `--`, for example `chore ci:local -- --all` to test every
+Go package rather than changed packages and their transitive importers. In
+either mode `tests/e2e` is left to the E2E job, which starts the topology it needs.
+Selection includes committed, staged, unstaged and untracked files, test-only
+imports and package fixtures. Module/replacement changes select every package.
+
+To check a committed PR head as it will merge without touching a dirty current
+checkout, run `chore ci:local -- --merge-pr 1816` (substitute the PR number). It
+merges the head over freshly fetched main and every merge queue entry, in order, or
+only the entries ahead of it if the PR is already queued. GitHub's CLEAN and a green
+run say only that the PR merges with main alone; #1880 and #1658 both looked fine
+and failed only with #1900 ahead. A conflict fails and names the entry that causes
+it. An entry ahead that conflicts with those before it is left out, as the queue
+would, and the run then ends `WARN`. `--merge-ref COMMIT` tests an existing local
+commit over main alone, unless `--entry` names what goes ahead of it. Both build the
+merge in an isolated detached worktree and remove it even on failure. They test the
+committed head, not uncommitted changes in the current checkout. With entries ahead,
+package selection covers what they change as well as the head.
+
+## Before enqueueing: the whole queue
+
+`chore ci:local -- --stack` merges every merge queue entry in order over newest main
+in a detached worktree, then runs `go vet ./...`, `scripts/tests` and `tests/contract`.
+These three all run even when the first fails. Whatever fails is then repeated on each
+prefix of the queue, from main alone upward, to name the entry where it starts, and
+that entry is also tried alone over main to show whether it needs one ahead of it. A
+test that does not exist yet at a prefix does not count as failing there. A failure on
+main alone blames no entry, and one that does not repeat stays a failure and says so.
+It does not run the other checks. If the queue cannot be read, the run could not run:
+that is never taken for an empty queue.
+
+To replay a past stack, name its parts rather than reading the queue:
+
+    chore ci:local -- --stack --base ab33aacf6^ --entry be03c19d --entry b0c1a61c
+
+That is main just before #1900 merged, then #1900's head, then #1880's. It fails
+`test_ci_transient_failures.ArtifactUploadTests.test_a_job_downloads_only_what_is_tried_again`
+and names the second entry, where neither PR fails over main alone.
+
+The command runs all three Python suites (`scripts/tests`, `tests/contract`,
+`tests/load`), Go vet/build, the exact golangci-lint version pinned in CI,
+selected Go race tests and the contract fault-switch checks. The large
+`internal/api` and `internal/api/handlers` packages run in eight isolated-database
+race shards, with the same 20-minute limit per shard as CI's API matrix. CI's
+four-way split does not finish inside that limit on a Mac at a load of 300, and
+eight shards keep the limit rather than widen it.
+Each shard prints its wall time against that limit. A shard that reaches it is
+reported with the machine's load, and the tests it did not finish run once more
+in a new process under the same limit. If they pass, the step ends `WARN`, not
+`PASS`, and names them: CI may reach its own limit on those tests. If they reach
+the limit again the step has no verdict (see below), and a test that failed before
+the limit fails the step. Each shard also has a new
+database, so a test that relied on an
+earlier test's rows fails here and not in CI's single-database order; the
+summary names it. `internal/api/handlers` is known to depend on test order, so a
+failure in one of its shards says so: confirm it on the whole package.
+The nested IMAP
+module and empty-database fixtures run when affected, or with `--all`. For the IMAP
+module that means the same paths as CI's `scripts/ci/go-imap-changed`, and CI's gates:
+the coverage gate's fixtures, vet, its own lint, the RFC checklist, race tests with
+coverage and the 95% floor. Its 32-bit wire proofs only build here for linux/386,
+because a Mac cannot run 386, so only CI shows they pass. The IMAP
+module has a 30-minute limit here and 10 minutes in CI: its checklist is one test
+and took over 10 minutes on a Mac at a load of 300.
+API changes also discover and run every
+`*WithVertrag` test, in three isolated-database shards, rejecting empty
+discovery or a test that skips whole; a subtest that skips itself is named. `--all` forces those examples too. It does not
+change `contract:pairs` or its selection policy. Each of those shards has a 60-minute
+limit: together they took about 32 minutes at a load of 50 to 85, and 20 minutes cut
+them off.
+
+The Python suites need PyYAML, which the system Python often lacks and which then
+shows as import errors that say nothing about the code. So they run from the gate's
+own venv, never from the Python that started it. That venv, the pinned linter and the
+checksum-verified Vertrag binary are cached outside the repository, under
+`${XDG_CACHE_HOME:-$HOME/Library/Caches}/rest-mail/ci-local`. If PyYAML cannot be
+installed the first step ends `COULD-NOT-RUN`, names it and says how to repair the
+venv. To run a suite by hand, use that venv's `python`. Missing Python/Go/
+Docker tools or failed installs are errors, not successful skips. The Go
+toolchain must match CI, including inside the nested IMAP module.
+
+The task runs the gate through `scripts/scratch_run.py`, so the whole run has
+`GOTMPDIR` and `TMPDIR` in a directory of its own, removed even after a SIGKILL along
+with what the run left running. `RESTMAIL_SCRATCH` chooses where that directory goes,
+by default `$HOME/tmp/rest-mail-ci-local`; `--cache` chooses the cache, and both must
+be outside the repository and off the SD card. A killed run's worktree entry is pruned
+when the next run starts. When Go tests need a database, PostgreSQL uses a unique
+`restmail-1941-postgres-*` container with label `rest-mail-loop=1941` and a second
+label from `RESTMAIL_LABEL`, a
+Docker-assigned loopback port, data on tmpfs rather than a volume, and
+per-package databases. SIGINT, SIGTERM and SIGHUP clean up: its container
+(`docker rm -fv`), plus its
+downloaded image if the image was not already present and no other run is using
+it; existing containers are left alone. A SIGKILL cannot, so `chore clean` removes
+the container by that label. Workers sharing a machine set their own
+`RESTMAIL_LABEL=rest-mail-loop=<name>`, so that they clean up only their own. No limit
+is placed on parallel runs: they stay out of each other's way by cleaning up.
+
+A change under `helm/restmail/` also runs `scripts/check_chart_publish.py`, which
+needs `helm`, once that script is on main.
+
+The gate is fail-fast to avoid expensive work after an earlier failure. The
+summary distinguishes `PASS`, `WARN`, `FAIL`, `COULD-NOT-RUN`, `NO VERDICT` and
+`NOT REQUIRED`, and its last line gives the verdict:
+
+| Exit | Verdict | Meaning |
+|---:|---|---|
+| 0 | passed | Every required check passed. Only this counts as passed for enqueue. |
+| 1 | failed | A check failed or could not run. Do not push. |
+| 3 | `WARN` | No test failed, but a warning stands, such as a test that needed a second process inside a shard's limit. Not passed for enqueue: CI may reach its own limit there. |
+| 4 | no verdict | A time limit ended a step. That is not a pass and not a failure of the test it cut off. Run it again. |
+
+It is not a claim that
+Helm, cross-builds, frontend builds, image smoke tests, proof-union reports or
+the full E2E topology ran. Those remain separate CI jobs. Named Lint/Test/
+test-api artifact/sharding exceptions and their reasons live in
+`scripts/ci-local-coverage.json`. The Python drift tests fail on added,
+removed, renamed or changed workflow steps: implement matching coverage or
+record an explicit exception rather than silently refreshing the hashes.
+
 ## Where it runs
 
 In the `E2E (full topology)` job (`.github/workflows/e2e-suite.yml`), after the

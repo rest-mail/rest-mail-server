@@ -1,0 +1,168 @@
+{
+  "lint": {
+    "Checkout code": {
+      "sha256": "b0a4e5bf0391db799c7a5df7737abe0814096b1ac377b270f9d560e5f96a2fb3",
+      "exception": "Runs on the current working tree, including staged, unstaged and untracked files, or a scratch merge; checkout would discard local work."
+    },
+    "Check constellation inventory": {
+      "sha256": "bcba7b33e7516bcbb4f7708cb0dad631f792ca65c9fcb21dfefd1385d4537c78",
+      "local": "scripts/tests"
+    },
+    "Test contract tooling": {
+      "sha256": "7da8397dac1ec833a6d3734aa4c9ed9e7f3f3e09b74ba86912fbf3df44e4d28a",
+      "local": "tests/contract"
+    },
+    "Test load tooling": {
+      "sha256": "e67ea084585f1b178efbdeb19f712a0c7c9819b29d495fa5e17adb124bde327b",
+      "local": "tests/load"
+    },
+    "Set up Go": {
+      "sha256": "494a08ff4a3ee84a90c11720497f7c13f6fe2a7825a33c3b6584e98ad95bccce",
+      "local": "Go toolchain"
+    },
+    "Run go vet": {
+      "sha256": "4dbabca9d208a84e3e9df84ddf3ae828d135c4b2f1a0710cf7b7670f2d3c86f7",
+      "local": "go vet"
+    },
+    "Install golangci-lint": {
+      "sha256": "08e35e41046f13da3633c0cc8f9101e97ecdef72af1bbf850021f6b39c3f494e",
+      "local": "golangci-lint"
+    },
+    "Run golangci-lint": {
+      "sha256": "5361801dc95f4040cb84d8923e27a8369549a7c2eba1d72d82792060a4caa470",
+      "local": "golangci-lint"
+    },
+    "Decide whether the vendored IMAP module's gates run": {
+      "sha256": "95b7fa880c17d0a907c77a9dd99ef103d31d3a0d959e7eb1c6d57a18fc75a5d3",
+      "local": "IMAP module"
+    },
+    "Check the IMAP coverage gate's fixtures": {
+      "sha256": "b57d004186b3fee34163917f3f4ddf388b5f5488cc0f60c445915b7f93301b0c",
+      "local": "IMAP module"
+    },
+    "Run go vet on the IMAP module": {
+      "sha256": "432b6c161a2a0480271367102a3bd255af27a6b0e16f2b4fe2bd977d3f52c414",
+      "local": "IMAP module"
+    },
+    "Run golangci-lint on the IMAP module": {
+      "sha256": "340819d98eba1263143df8cc523500885480b88710e40675669ce93a6b1e33b0",
+      "local": "IMAP module"
+    }
+  },
+  "test": {
+    "Checkout code": {
+      "sha256": "b0a4e5bf0391db799c7a5df7737abe0814096b1ac377b270f9d560e5f96a2fb3",
+      "exception": "Runs on the current working tree, including staged, unstaged and untracked files, or a scratch merge; checkout would discard local work."
+    },
+    "Set up Go": {
+      "sha256": "494a08ff4a3ee84a90c11720497f7c13f6fe2a7825a33c3b6584e98ad95bccce",
+      "local": "Go toolchain"
+    },
+    "Restore the race build cache": {
+      "sha256": "3c013df89e7db6e763a36094aec27cb08e5343c0e543f92c57fb928a1525d52c",
+      "exception": "GitHub's cache transport only: the race build cache makes CI's runs quicker and changes no result. A local run uses the machine's own Go build cache."
+    },
+    "Use the race build cache": {
+      "sha256": "292ba934588fcad8291f45105a5e4224d4c8839cb0a57cc5aef06746580f57fa",
+      "exception": "GitHub's cache transport only: the race build cache makes CI's runs quicker and changes no result. A local run uses the machine's own Go build cache."
+    },
+    "Download dependencies": {
+      "sha256": "165702a5c5de68977659bece987ffdbf4daf03e247201715da7b2048d26f9aee",
+      "local": "Go dependencies"
+    },
+    "Run unit tests with race detector": {
+      "sha256": "f20a08a8e0d2acacddc43e13695d9164703850b96ae0bf804d10e99d2ac96fc7",
+      "local": "Go tests"
+    },
+    "Check the IMAP module's 32-bit sequence dispatch": {
+      "sha256": "ce652bcb59ea4b0ec21a57f6560128816ee58c2a322daecf0901df38d5695648",
+      "exception": "CI runs these wire proofs on linux/386. A Mac cannot run 386 at all, so the IMAP module step only builds them for linux/386; only CI shows they pass."
+    },
+    "Validate the IMAP module's RFC checklist": {
+      "sha256": "c1578884a4800e99f806a0de9f62e5b2a2eea15c6da38125ce88c4d2964e2a00",
+      "local": "IMAP module"
+    },
+    "Test the local IMAP compatibility module with coverage": {
+      "sha256": "c1517492f86bede877bc6b1838f642eadbd7030ff29eb8aaf96515642fe8d427",
+      "local": "IMAP module"
+    },
+    "Require at least 95% statement coverage": {
+      "sha256": "e65703087f249365f0e981f77fcc67232ea711a0fef59011df73205e907501eb",
+      "local": "IMAP module"
+    },
+    "Upload IMAP coverage evidence": {
+      "sha256": "2f49f38cd78fdfe19d868cac3e40b09a235c381513514985bde4e193daea6db3",
+      "exception": "GitHub artifact transport only; the local gate checks the coverage floor from its own profile and uploads nothing."
+    },
+    "Test contract fixtures against an empty database": {
+      "sha256": "a0f877a08df729ff8128e39daba1ccb67952d983300d7ae2c829e2e651b8e394",
+      "local": "Empty database fixtures"
+    },
+    "Test the contract fault switch": {
+      "sha256": "b1d69dd9b0d22090183917f86de6149853fabdad6f7f3362bdbbfb929509d29c",
+      "local": "Contract fault switch"
+    },
+    "Upload example proofs": {
+      "sha256": "1534c6de94aba481bb7951cb67d84704e4ee0973285e01d6b4decd9d2affcc9d",
+      "exception": "GitHub artifact transport only; the local gate does not publish proof artifacts or claim the cross-job proof-union gate."
+    },
+    "Upload example proofs (second try)": {
+      "sha256": "6ff36cfb68cf1141d2c7666549c8a17ff8aa73198d656b0741a4b055f333d8c5",
+      "exception": "GitHub artifact transport only; the local gate does not publish proof artifacts or claim the cross-job proof-union gate."
+    },
+    "Upload coverage": {
+      "sha256": "9a65a88015ad5d2ed86c1fd5fb332ddaaf9ddaf444b4307a078b614b674d2afa",
+      "exception": "GitHub artifact transport only; local race tests do not generate/upload CI coverage artifacts."
+    },
+    "Upload coverage (second try)": {
+      "sha256": "fb8a491b0db8831471242d7233dc122bba9e4c6d3e61171d9c1df43810995553",
+      "exception": "GitHub artifact transport only; local race tests do not generate/upload CI coverage artifacts."
+    }
+  },
+  "test-api": {
+    "Checkout code": {
+      "sha256": "b0a4e5bf0391db799c7a5df7737abe0814096b1ac377b270f9d560e5f96a2fb3",
+      "exception": "Runs on the current working tree, including staged, unstaged and untracked files, or a scratch merge; checkout would discard local work."
+    },
+    "Set up Go": {
+      "sha256": "494a08ff4a3ee84a90c11720497f7c13f6fe2a7825a33c3b6584e98ad95bccce",
+      "local": "Go toolchain"
+    },
+    "Restore the race build cache": {
+      "sha256": "3c013df89e7db6e763a36094aec27cb08e5343c0e543f92c57fb928a1525d52c",
+      "exception": "GitHub's cache transport only: the race build cache makes CI's runs quicker and changes no result. A local run uses the machine's own Go build cache."
+    },
+    "Use the race build cache": {
+      "sha256": "292ba934588fcad8291f45105a5e4224d4c8839cb0a57cc5aef06746580f57fa",
+      "exception": "GitHub's cache transport only: the race build cache makes CI's runs quicker and changes no result. A local run uses the machine's own Go build cache."
+    },
+    "Download dependencies": {
+      "sha256": "165702a5c5de68977659bece987ffdbf4daf03e247201715da7b2048d26f9aee",
+      "local": "Go dependencies"
+    },
+    "Choose this shard's tests": {
+      "sha256": "d834bcb9c5ef04a82d0dd8fb96f59decfe5e5b88e8c91e85424bda2cf5471fa7",
+      "exception": "Local discovery uses the same sorted round-robin split, across more shards and with isolated databases, rather than a GitHub matrix. Selection runs affected packages; --all runs every package. Vertrag suffix tests run separately with no skips."
+    },
+    "Run internal/api tests with race detector": {
+      "sha256": "85acbc401112d93400332c7e09482a196196162a4beae7020969608d347f7c84",
+      "local": "Go tests"
+    },
+    "Upload example proofs": {
+      "sha256": "1227ad5aaebe40aa726c4ec85a73da6322c35fb4602ae872cead92add3e7f904",
+      "exception": "GitHub artifact transport only; the local gate does not publish proof artifacts or claim the cross-job proof-union gate."
+    },
+    "Upload example proofs (second try)": {
+      "sha256": "f7d01ce586baffaaf85b67c77978e803befefb3ab13aa5b07526a7c4f857c0b7",
+      "exception": "GitHub artifact transport only; the local gate does not publish proof artifacts or claim the cross-job proof-union gate."
+    },
+    "Upload coverage": {
+      "sha256": "39e477238f3dd7f9cfdb784e8500ef8c06eeb6acaf2cc5a062996a7cede84477",
+      "exception": "GitHub artifact transport only; local race tests do not generate/upload CI coverage artifacts."
+    },
+    "Upload coverage (second try)": {
+      "sha256": "b7a0f30332e546b9d35359beb9083e4c8a06abd8a742dde361e10f650f32835c",
+      "exception": "GitHub artifact transport only; local race tests do not generate/upload CI coverage artifacts."
+    }
+  }
+}
