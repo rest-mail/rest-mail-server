@@ -81,8 +81,8 @@ func addressNameText(name string, sessionUTF8 bool) string {
 // default to From. INTERNALDATE and cached summary fields are not header values.
 // The legacy Message fallback is retained only when no header block can be read.
 // raw is the message as FETCH sends it, whose headers WireForm has already made
-// 7-bit where the session requires it, so an 8-bit mailbox reads NIL without UTF-8:
-// an encoded word may not stand in an addr-spec (RFC 2047 §5). sessionUTF8 is
+// 7-bit where the session requires it, so an 8-bit mailbox is left out without
+// UTF-8: an encoded word may not stand in an addr-spec (RFC 2047 §5). sessionUTF8 is
 // whether the session enabled UTF8=ACCEPT; see metadataText.
 func BuildEnvelope(msg imap.Message, raw string, rawOK, sessionUTF8 bool) string {
 	var hdr mail.Header
@@ -204,18 +204,33 @@ func buildAddressList(list string, sessionUTF8 bool) string {
 // reads the current syntax and decodes display names; the obsolete forms RFC
 // 5322 §4 has a reader accept, and RFC 5321 address literals that net/mail
 // tests as bare IPs, are read by parseObsMailbox. A blank member (obs-mbox-list
-// allows empty elements) writes nothing, as does a mailbox neither can read.
+// allows empty elements) writes nothing, as does a mailbox neither can read or
+// one with no 7-bit form.
 func appendMailbox(b *strings.Builder, value string, sessionUTF8 bool) {
 	if strings.TrimSpace(stripComments(value)) == "" {
 		return
 	}
 	if a, err := addressParser.Parse(value); err == nil {
-		b.WriteString(addressPart(a.Name, a.Address, sessionUTF8))
+		if !holdsEncodedWord(a.Address) {
+			b.WriteString(addressPart(a.Name, a.Address, sessionUTF8))
+		}
 		return
 	}
-	if name, local, domain, ok := parseObsMailbox(value); ok {
+	if name, local, domain, ok := parseObsMailbox(value); ok && !holdsEncodedWord(local+"@"+domain) {
 		b.WriteString(mailboxPart(name, local, domain, sessionUTF8))
 	}
+}
+
+// holdsEncodedWord reports whether a word of an addr-spec is spelled as an encoded
+// word, which may not stand there (RFC 2047 §5). Only that is left of an 8-bit word
+// WireForm converted, so the mailbox has no 7-bit form and can't be read.
+func holdsEncodedWord(addrSpec string) bool {
+	for _, word := range strings.FieldsFunc(addrSpec, func(c rune) bool { return c == '.' || c == '@' }) {
+		if strings.HasPrefix(word, "=?") && strings.HasSuffix(word, "?=") {
+			return true
+		}
+	}
+	return false
 }
 
 // appendAddressGroups writes the address structures of an address list,
