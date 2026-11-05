@@ -167,6 +167,13 @@ def administrators(
     with open(tenants_path) as source:
         fixture = json.load(source)
     config = run_config(spec_path, config_path, report_path)
+    if id_key == "domain_id":
+        config["hookfiles"] = [
+            config["hookfiles"],
+            os.path.join(
+                os.path.dirname(os.path.abspath(__file__)), "domain_ownership_hooks.py"
+            ),
+        ]
     config["only-matching"] = [operations]
     config["principals"] = [
         {

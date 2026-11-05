@@ -1335,6 +1335,16 @@ through the API takes a two-factor session, which no contract principal has.
 show the other tenant's domain. It also sends the DKIM routes, whose id is the
 domain's, and the aliases, custom filters, pipelines and certificates a create
 links to, which the victim tenant's administrator makes again for each cell.
+The domain run loads `domain_ownership_hooks.py` after the shared hooks. For
+successful alias, custom-filter and pipeline creates, it reads the caller's real session
+address and the domain-tenant fixture (`.cache/contract/domain-tenants.json`, or
+`CONTRACT_DOMAIN_TENANTS`). All three creates use that caller's own domain;
+aliases and custom filters also get fresh names. Setup and attack credentials,
+target paths and expectations are unchanged, as are refusal examples and other
+phases.
+The runner still reports setup that requires installation-wide privileges as
+unsent: a scoped domain administrator cannot create domains or certificates.
+Those setup limitations are not ownership passes.
 The queue, grants and bans take ids that no link makes and that are not a
 domain's, so they are not sent. The admin mailbox routes have a third run,
 `ownership-mailboxes` (`ownership.py --mailboxes`): the same administrators,
