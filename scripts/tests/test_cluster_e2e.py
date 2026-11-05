@@ -11,10 +11,12 @@ import io
 import os
 from pathlib import Path
 import stat
+import subprocess
 import tempfile
 import textwrap
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import yaml
@@ -54,7 +56,7 @@ class ArgumentTests(unittest.TestCase):
                 self.parse("--commit", "c", *bad)
 
     def test_every_stage1_check_is_a_step(self):
-        self.assertEqual(cluster_e2e.STEPS, ("health", "description", "admin-sign-in", "mailbox",
+        self.assertEqual(cluster_e2e.STEPS, ("health", "description", "admin-sign-in", "mailbox", "domain-live",
                                              "smtp-rcpt", "imap-sign-in", "filter-validate"))
         for step in cluster_e2e.STEPS:
             self.assertTrue(callable(getattr(cluster_e2e.Stage1, step.replace("-", "_"))), step)
@@ -138,6 +140,133 @@ class MainTests(unittest.TestCase):
             calls = (work / "calls").read_text().splitlines()
             self.assertIn("-n ns port-forward svc/restmail-api :8080 --address 127.0.0.1", calls)
             self.assertIn("not found", (report / "port-forward-api.log").read_text())
+
+
+class FreshInstall:
+    """The rules a fresh install answers by, for the steps from mailbox to smtp-rcpt.
+
+    Its domain is not live, going live is refused without a certificate naming it
+    (#289), and a mailbox on a domain that is not live is unknown to RCPT (#1848).
+    """
+
+    DOMAIN = "restmail-ci.test"
+
+    def __init__(self):
+        self.active = False
+        self.certificate = None
+        self.mailboxes = set()
+
+    def call(self, method, path, body=None, token=""):
+        if (method, path) == ("POST", "/api/v1/accounts"):
+            self.mailboxes.add(body["address"])
+            return 201, {"data": {}}
+        if (method, path) == ("GET", "/api/v1/admin/domains"):
+            return 200, {"data": [{"id": 7, "name": self.DOMAIN, "active": self.active}]}
+        if (method, path) == ("POST", "/api/v1/admin/certificates"):
+            self.certificate = body
+            return 201, {"data": {}}
+        if (method, path) == ("PATCH", "/api/v1/admin/domains/7"):
+            if body.get("active") and not self.covered():
+                return 409, {"error": {"code": "certificate_required"}}
+            self.active = bool(body.get("active"))
+            return 200, {"data": {"active": self.active}}
+        return 404, {}
+
+    def expect(self, want, method, path, body=None, token=""):
+        status, answer = self.call(method, path, body, token)
+        if status != want:
+            raise cluster_e2e.StepFailed(f"{method} {path} answered {status}, want {want}")
+        return answer
+
+    def covered(self):
+        if not self.certificate or self.certificate["domain_id"] != 7:
+            return False
+        text = subprocess.run(["openssl", "x509", "-noout", "-ext", "subjectAltName"],
+                              input=self.certificate["cert_pem"], capture_output=True, text=True, check=True).stdout
+        return f"DNS:{self.DOMAIN}" in text and "PRIVATE KEY" in self.certificate["key_pem"]
+
+
+class FreshInstallSmtp:
+    install = None
+
+    def __init__(self, *_, **__):
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        return False
+
+    def ehlo(self, _):
+        return 250, b"ok"
+
+    def mail(self, _):
+        return 250, b"ok"
+
+    def rset(self):
+        return 250, b"ok"
+
+    def rcpt(self, address):
+        install = self.install
+        if address in install.mailboxes and install.active:
+            return 250, b"ok"
+        return 550, b"5.1.1 No such user"
+
+
+class DomainLiveTests(unittest.TestCase):
+    """The order of stage 1 against a fresh install's rules, without kind."""
+
+    def setUp(self):
+        self.install = FreshInstall()
+        FreshInstallSmtp.install = self.install
+        cluster = SimpleNamespace(forward=lambda *_: 2525)
+        self.stage = cluster_e2e.Stage1(SimpleNamespace(timeout=5, report_dir="unused"), cluster)
+        self.stage.api = self.install
+        self.stage.state.update(token="t", domain=self.install.DOMAIN)
+        patcher = patch.object(cluster_e2e.smtplib, "SMTP", FreshInstallSmtp)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def run_steps(self, steps):
+        for step in steps:
+            getattr(self.stage, step.replace("-", "_"))()
+
+    def test_stage_1_makes_the_domain_live_before_rcpt_and_gets_250(self):
+        steps = cluster_e2e.STEPS
+        self.assertLess(steps.index("domain-live"), steps.index("smtp-rcpt"))
+        between = steps[steps.index("mailbox"):steps.index("smtp-rcpt") + 1]
+        self.run_steps(between)
+        self.assertTrue(self.install.active)
+        self.assertEqual(self.stage.smtp_rcpt(), "hosted=250,unhosted=550")
+
+    def test_smtp_rcpt_before_the_domain_is_live_fails(self):
+        self.run_steps(["mailbox"])
+        with self.assertRaisesRegex(cluster_e2e.StepFailed, "needs domain_live"):
+            self.run_steps(["smtp-rcpt"])
+
+    def test_without_the_guard_the_install_answers_what_stopped_ci(self):
+        self.run_steps(["mailbox"])
+        self.stage.state["domain_live"] = "claimed, but never made live"
+        with self.assertRaisesRegex(cluster_e2e.StepFailed, "answered 550 .*want 250"):
+            self.run_steps(["smtp-rcpt"])
+
+    def test_going_live_needs_a_certificate_for_the_domain_itself(self):
+        real = cluster_e2e.self_signed_certificate
+        with patch.object(cluster_e2e, "self_signed_certificate", lambda _: real("other.test")):
+            with self.assertRaisesRegex(cluster_e2e.StepFailed, "answered 409"):
+                self.run_steps(["domain-live"])
+        self.assertFalse(self.install.active)
+
+    def test_a_domain_the_install_does_not_list_fails(self):
+        self.stage.state["domain"] = "elsewhere.test"
+        with self.assertRaisesRegex(cluster_e2e.StepFailed, "lists no domain"):
+            self.run_steps(["domain-live"])
+
+    def test_the_certificate_comes_with_its_own_key(self):
+        cert, key = cluster_e2e.self_signed_certificate(self.install.DOMAIN)
+        self.assertIn("BEGIN CERTIFICATE", cert)
+        self.assertIn("PRIVATE KEY", key)
 
 
 class EntryPointTests(unittest.TestCase):
