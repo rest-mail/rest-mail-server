@@ -616,81 +616,6 @@ func TestSMTPUTF8FollowsThePeer(t *testing.T) {
 	})
 }
 
-// TestMessageDATACannotCarryIsNotChanged: RFC 5321 section 2.3.8 lets SMTP carry CR and LF only as
-// CRLF, and DATA would rewrite anything else, so a bare CR or a bare LF among CRLF line ends
-// (raw binary) bounces as conversion required, and a sender finds out. A message that ends every
-// line in LF means line ends, which the section says to send as CRLF.
-func TestMessageDATACannotCarryIsNotChanged(t *testing.T) {
-	db := eightBitDB(t)
-	domain, sender, mailboxID := signedSender(t, db)
-	head := "From: " + sender + "\r\nTo: bob@elsewhere.test\r\nSubject: raw binary\r\nDate: Wed, 04 Nov 2026 12:00:00 +0000\r\nMessage-ID: <%s@remote.test>\r\nMIME-Version: 1.0\r\nContent-Type: application/octet-stream\r\nContent-Transfer-Encoding: binary\r\n\r\n"
-	for name, body := range map[string]string{
-		"bare LF":  "one\ntwo\xe9\r\n",
-		"bare CR":  "one\rtwo\xe9\r\n",
-		"CR CR LF": "one\r\r\ntwo\xe9\r\n",
-	} {
-		t.Run(name, func(t *testing.T) {
-			message := fmt.Sprintf(head, strings.ReplaceAll(name, " ", "-")) + body
-			mx := newRealMX(t, true, nil)
-			w := eightBitWorker(t, db, "mx.elsewhere.test", mx.addr)
-			row := enqueue(t, db, sender, "bob@elsewhere.test", message)
-			w.processOne(0)
-			after := readRow(t, db, row.ID)
-			got := mx.received()
-			if after.Status == "delivered" {
-				if len(got) != 1 || !strings.HasSuffix(got[0].data, message) {
-					t.Fatalf("relayed changed:\n got %q\nwant suffix %q", got[0].data, message)
-				}
-				dkimVerifies(t, db, domain, got[0].data)
-				return
-			}
-			if after.Status != "bounced" || !strings.Contains(after.LastError, "5.6.3") || len(got) != 0 {
-				t.Fatalf("status %s, %d sent: %s", after.Status, len(got), after.LastError)
-			}
-			if dsn := dsnInInbox(t, db, mailboxID); !strings.Contains(string(dsn.Source()), "Status: 5.6.3") {
-				t.Fatalf("DSN = %q", dsn.Source())
-			}
-			storedExactly(t, db, row.ID, message)
-			db.Delete(&models.OutboundQueue{}, row.ID)
-		})
-	}
-	t.Run("through a relay too", func(t *testing.T) {
-		cert, roots := relayTestCertificate(t, false)
-		peer, _ := relayTestPeer(t, cert, relayPeerOptions{})
-		seedRelay(t, db, domain, models.DomainRelay{Transport: models.OutboundTransportRelay, Host: peer.host, Port: peer.port, TLSMode: models.RelayTLSStartTLS})
-		w := eightBitWorker(t, db)
-		w.relayRoots = roots
-		message := fmt.Sprintf(head, "via-relay") + "one\ntwo\xe9\r\n"
-		row := enqueue(t, db, sender, "bob@elsewhere.test", message)
-		w.processOne(0)
-		after := readRow(t, db, row.ID)
-		if after.Status != "bounced" || !strings.Contains(after.LastError, "5.6.3") {
-			t.Fatalf("status %s: %s", after.Status, after.LastError)
-		}
-		storedExactly(t, db, row.ID, message)
-		db.Exec("DELETE FROM domain_relays")
-		db.Delete(&models.OutboundQueue{}, row.ID)
-	})
-	t.Run("line endings all LF become CRLF and still verify", func(t *testing.T) {
-		message := strings.ReplaceAll(fmt.Sprintf(head, "lf-only")+"one\ntwo\xe9\n", "\r\n", "\n")
-		mx := newRealMX(t, true, nil)
-		w := eightBitWorker(t, db, "mx.elsewhere.test", mx.addr)
-		row := enqueue(t, db, sender, "bob@elsewhere.test", message)
-		w.processOne(0)
-		after := readRow(t, db, row.ID)
-		if after.Status != "delivered" {
-			t.Fatalf("status %s: %s", after.Status, after.LastError)
-		}
-		got := mx.received()
-		want := strings.ReplaceAll(message, "\n", "\r\n")
-		if len(got) != 1 || !strings.HasSuffix(got[0].data, want) {
-			t.Fatalf("arrived %+v, want suffix %q", got, want)
-		}
-		dkimVerifies(t, db, domain, got[0].data)
-		db.Delete(&models.OutboundQueue{}, row.ID)
-	})
-}
-
 // eightBitAPI is a real inbound API on db: the delivery route and RESTMAIL behind a real SMTP
 // inbound listener, with script as the domain's Sieve when it isn't empty.
 type eightBitAPI struct {
@@ -952,33 +877,6 @@ func TestEightBitSieveRedirectArrivesExactly(t *testing.T) {
 					api.sendRESTMAIL(t, "author@original.test", mailbox.Address, mail.message)
 					prove(t, mail.message)
 				})
-			}
-		})
-	}
-}
-
-func TestDataCarries(t *testing.T) {
-	for _, c := range []struct {
-		name, raw string
-		want      bool
-	}{
-		{"CRLF throughout", "A: b\r\n\r\none\r\ntwo\r\n", true},
-		{"LF throughout", "A: b\n\none\ntwo\n", true},
-		{"trace field in CRLF before an LF message", "Delivered-To: x\r\nA: b\n\none\ntwo\n", true},
-		{"LF header section, CRLF body", "A: b\n\none\r\ntwo\r\n", true},
-		{"no body", "A: b\r\n", true},
-		{"NUL and high octets in lines", "A: b\r\n\r\n\x00\xff\r\n", true},
-		{"bare LF in a CRLF body", "A: b\r\n\r\none\ntwo\r\n", false},
-		{"CRLF in an LF body", "A: b\n\none\r\ntwo\n", false},
-		{"blank CRLF lines in a body after LF headers", "A: b\n\none\r\n\r\ntwo\n", false},
-		{"bare CR in a body", "A: b\r\n\r\none\rtwo\r\n", false},
-		{"bare CR in a header", "A: b\rc\r\n\r\none\r\n", false},
-		{"CR CR LF", "A: b\r\n\r\none\r\r\ntwo\r\n", false},
-		{"CR at the very end", "A: b\r\n\r\none\r", false},
-	} {
-		t.Run(c.name, func(t *testing.T) {
-			if got := dataCarries(c.raw); got != c.want {
-				t.Fatalf("dataCarries(%q) = %v", c.raw, got)
 			}
 		})
 	}

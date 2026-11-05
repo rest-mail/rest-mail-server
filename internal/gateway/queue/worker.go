@@ -166,38 +166,30 @@ func messageRequires8BitTransport(bodyType, raw string) bool {
 	return false
 }
 
-// dataCarries reports whether SMTP DATA can carry a stored message without changing what it
-// says. SMTP carries CR and LF only as CRLF (RFC 5321 section 2.3.8), and net/textproto's writer
-// turns every LF without a CR before it into CRLF, CR CR LF included. So a bare CR anywhere can't
-// go, and nor can a body that mixes the two line ends: its bare LFs are data, as in raw binary,
-// and only BINARYMIME over BDAT (RFC 3030) could carry them. A body whose every line ends in LF
-// means line ends, which that section says to send as CRLF. The header section may mix them:
-// this server prepends trace fields to a message whatever line ends it uses, and a header section
-// holds no data that a line end could change.
-func dataCarries(raw string) bool {
-	for i := 0; i < len(raw); i++ {
-		if raw[i] == '\r' && (i+1 == len(raw) || raw[i+1] != '\n') {
-			return false
-		}
-	}
-	body := raw
-	crlf, lf := strings.Index(raw, "\r\n\r\n"), strings.Index(raw, "\n\n")
-	switch {
-	case crlf >= 0 && (lf < 0 || crlf < lf):
-		body = raw[crlf+4:]
-	case lf >= 0:
-		body = raw[lf+2:]
-	}
-	lineEnds := strings.Count(body, "\r\n")
-	return lineEnds == 0 || lineEnds == strings.Count(body, "\n")
+// errDataCannotCarry is the refusal when a message's line ends can't be made what SMTP requires
+// without breaking a part (RFC 5321 section 2.3.8). RFC 6152 section 3 and RFC 3030 leave a client
+// with data a next hop can't take two choices: convert it or return it as a permanent error.
+func errDataCannotCarry(host string) error {
+	return &SMTPError{Code: 550, Enhanced: "5.6.3", RemoteMTA: host, Message: rmail.ErrDataCannotCarry.Error()}
 }
 
-// errDataCannotCarry is the refusal when dataCarries says no. RFC 6152 section 3 and RFC 3030 leave
-// a client with data a next hop can't take two choices: convert it or return it as a permanent
-// error. REST Mail doesn't convert, and rewriting it silently would be neither.
-func errDataCannotCarry(host string) error {
-	return &SMTPError{Code: 550, Enhanced: "5.6.3", RemoteMTA: host,
-		Message: "message holds a bare CR or LF that SMTP DATA cannot carry, and conversion is not implemented"}
+// forData is the message as SMTP DATA carries it, made before it is signed, so that the signature
+// matches what is sent, and before dot-stuffing, so that nothing in it can read as an end of data
+// downstream. The row keeps the exact source, and RESTMAIL carries that. A message whose line ends
+// are all CRLF comes back as it is, with no copy made.
+func forData(raw, host string) (string, error) {
+	if !rmail.HasBareLineEnds(raw) {
+		return raw, nil
+	}
+	var normal strings.Builder
+	normal.Grow(len(raw) + strings.Count(raw, "\n") + strings.Count(raw, "\r"))
+	if err := rmail.ForData(&normal, raw); err != nil {
+		if errors.Is(err, rmail.ErrDataCannotCarry) {
+			return "", errDataCannotCarry(host)
+		}
+		return "", err
+	}
+	return normal.String(), nil
 }
 
 // Worker processes outbound mail queue entries.
@@ -1781,9 +1773,11 @@ func (w *Worker) deliverSMTPWith(addr, host string, item models.OutboundQueue, s
 	if records != nil {
 		stsPolicy, stsErr = nil, nil
 	}
-	if !dataCarries(item.RawMessage) {
-		return errDataCannotCarry(host)
+	normal, err := forData(item.RawMessage, host)
+	if err != nil {
+		return err
 	}
+	item.RawMessage = normal
 	// Strip Bcc and DKIM-sign before transmission (#171). Fail closed on a key
 	// that cannot be loaded so the send retries rather than going out unsigned.
 	prepared, err := w.prepareOutbound(item)

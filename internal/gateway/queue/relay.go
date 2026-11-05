@@ -253,9 +253,11 @@ func (w *Worker) relayRoute(item models.OutboundQueue) (*relaySettings, error) {
 // deliverViaRelay prepares the message once, exactly as the direct path does,
 // and hands it to the relay. There is no RESTMAIL probe and no fallback to MX.
 func (w *Worker) deliverViaRelay(settings relaySettings, item models.OutboundQueue) error {
-	if !dataCarries(item.RawMessage) {
-		return errDataCannotCarry(settings.host)
+	normal, err := forData(item.RawMessage, settings.host)
+	if err != nil {
+		return err
 	}
+	item.RawMessage = normal
 	prepared, err := w.prepareOutbound(item)
 	if err != nil {
 		return fmt.Errorf("prepare outbound message: %w", err)
