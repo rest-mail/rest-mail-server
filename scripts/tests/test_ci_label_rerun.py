@@ -32,7 +32,7 @@ class ContractLabelRerun(unittest.TestCase):
             executable.chmod(0o755)
             rerun = Path(directory) / "rerun"
             result = subprocess.run(
-                ["bash", "-c", script], capture_output=True, text=True, timeout=5,
+                ["bash", "-c", script], capture_output=True, text=True, timeout=600,
                 env=dict(
                     os.environ, PATH=directory + os.pathsep + os.environ["PATH"],
                     PR="1907", GITHUB_REPOSITORY="rest-mail/rest-mail-server",

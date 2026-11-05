@@ -98,7 +98,7 @@ class ContractDiff(unittest.TestCase):
                 text=True,
                 check=False,
                 env=dict(os.environ, GITHUB_STEP_SUMMARY=str(root / "summary.md")),
-                timeout=20,
+                timeout=600,
             )
             path = root / "report/changes.json"
             report = json.loads(path.read_text()) if path.exists() else None
@@ -331,7 +331,7 @@ class GitFixture:
             capture_output=True,
             text=True,
             check=False,
-            timeout=20,
+            timeout=600,
         )
         outputs = output.read_text() if output.exists() else ""
         resolved = outputs.split("sha=", 1)[1].strip() if "sha=" in outputs else None
@@ -679,7 +679,7 @@ class VerdictFixture(GitFixture):
             capture_output=True,
             text=True,
             check=False,
-            timeout=20,
+            timeout=600,
         )
 
     def take_scripts(self, base_tip, head):

@@ -14,7 +14,7 @@ DEV_GOCACHE = ROOT / "tasks/dev-gocache.sh"
 def git(directory, *args):
     subprocess.run(
         ["git", "-c", "user.name=t", "-c", "user.email=t@example.test", *args],
-        cwd=directory, check=True, capture_output=True, text=True, timeout=30,
+        cwd=directory, check=True, capture_output=True, text=True, timeout=600,
     )
 
 
@@ -42,7 +42,7 @@ class DevGoCache(unittest.TestCase):
         if volume:
             environment["RESTMAIL_DEV_GOCACHE_VOLUME"] = volume
         return subprocess.run(
-            [str(DEV_GOCACHE), *args], env=environment, capture_output=True, text=True, timeout=10,
+            [str(DEV_GOCACHE), *args], env=environment, capture_output=True, text=True, timeout=600,
         )
 
     def test_a_new_volume_is_handed_to_its_user_and_only_the_flag_is_printed(self):

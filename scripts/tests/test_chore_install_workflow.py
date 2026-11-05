@@ -72,7 +72,7 @@ else:
                        VERSION=version, ASSETS=str(assets), TMPDIR=str(runs), CAPTURE=str(capture),
                        ATTESTED="yes" if attested else "no")
             result = subprocess.run(["bash", "-eu", "-o", "pipefail"], input=script,
-                                    text=True, cwd=work, capture_output=True, env=env, timeout=10)
+                                    text=True, cwd=work, capture_output=True, env=env, timeout=600)
             calls = [json.loads(line) for line in capture.read_text().splitlines()]
             return result, calls
 

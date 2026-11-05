@@ -160,7 +160,7 @@ class SelectedGate(unittest.TestCase):
                 text=True,
                 # A bound on a hang, not a measure of speed: this runs a shell script of stubs,
                 # and on a loaded machine that alone has taken more than 15 seconds (#1942).
-                timeout=120,
+                timeout=600,
                 check=False,
             )
             self.assertTrue(calls_file.exists(), result.stdout + result.stderr)

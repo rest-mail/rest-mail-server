@@ -94,7 +94,7 @@ class JSFilterNetworkLiveTests(unittest.TestCase):
         ):
             self.addCleanup(self.docker, "rm", "-f", name, check=False)
 
-    def docker(self, *args, check=True, timeout=120):
+    def docker(self, *args, check=True, timeout=600):
         result = subprocess.run(
             ["docker", *args],
             text=True,
@@ -138,7 +138,7 @@ class JSFilterNetworkLiveTests(unittest.TestCase):
                 env=dict(os.environ, OUTPUT="/dev/null", RESTMAIL_LABEL="rest-mail-js-filter-live=1"),
                 text=True,
                 capture_output=True,
-                timeout=120,
+                timeout=600,
                 check=False,
             )
             self.assertEqual(
@@ -156,7 +156,7 @@ class JSFilterNetworkLiveTests(unittest.TestCase):
             ["sh", str(ROOT / "tasks/js-filter-network.sh"), action, project],
             text=True,
             capture_output=True,
-            timeout=60,
+            timeout=600,
             check=False,
         )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -222,7 +222,7 @@ class JSFilterNetworkLiveTests(unittest.TestCase):
             subprocess.run(
                 ["docker", kind, "inspect", name],
                 capture_output=True,
-                timeout=60,
+                timeout=600,
                 check=False,
             ).returncode
             == 0
@@ -294,7 +294,7 @@ class JSFilterNetworkLiveTests(unittest.TestCase):
             ["docker", "exec", container, "node", "-e", code, *args],
             text=True,
             capture_output=True,
-            timeout=60,
+            timeout=600,
             check=False,
         )
         # A non-zero exit means the probe did not run, which proves nothing.

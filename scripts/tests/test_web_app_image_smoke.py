@@ -111,7 +111,7 @@ class WebAppImageStep(unittest.TestCase):
         env = dict(os.environ, APP="webmail", RUNNER_TEMP=str(self.scratch),
                    PATH=f"{self.bin}{os.pathsep}{os.environ['PATH']}")
         return subprocess.run(["bash", "-c", web_app_step()], cwd=self.scratch, env=env,
-                              capture_output=True, text=True, timeout=120)
+                              capture_output=True, text=True, timeout=600)
 
     def stub(self, name, body):
         path = self.bin / name

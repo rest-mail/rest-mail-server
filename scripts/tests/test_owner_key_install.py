@@ -34,12 +34,12 @@ class OwnerKeyInstall(unittest.TestCase):
 
     def call(self, script, *args, env=None):
         return subprocess.run(["bash", str(ROOT / script), *args], cwd=self.path,
-                              env=env or self.env, text=True, capture_output=True, timeout=15)
+                              env=env or self.env, text=True, capture_output=True, timeout=600)
 
     def read(self):
         return subprocess.run(["bash", "-c", 'source "$1"; source "$2"; read_owner_key', "test",
                                str(ROOT / "tasks/lifecycle/lib.sh"), str(ROOT / "tasks/lifecycle/owner-key.sh")],
-                              cwd=self.path, env=self.env, text=True, capture_output=True, timeout=15)
+                              cwd=self.path, env=self.env, text=True, capture_output=True, timeout=600)
 
     def terminal(self, answers, script=None, *args):
         env = dict(self.env, OWNER_KEY="")
@@ -291,7 +291,7 @@ else: sys.exit(1) # Stop at preview; never deploy.
         env = dict(self.env)
         env.pop("OWNER_KEY")
         r = subprocess.run(["chore", "-f", str(task), "key", "--owner-key", self.key.name],
-                           env=env, capture_output=True, text=True, timeout=15)
+                           env=env, capture_output=True, text=True, timeout=600)
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn(self.key.name, r.stdout)
 

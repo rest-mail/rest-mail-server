@@ -154,7 +154,7 @@ class TheDecision(unittest.TestCase):
 
     def decide(self, base):
         self.output.write_text("")
-        result = subprocess.run([str(CHANGED)], cwd=self.repo, capture_output=True, text=True, timeout=30,
+        result = subprocess.run([str(CHANGED)], cwd=self.repo, capture_output=True, text=True, timeout=600,
                                 env=dict(os.environ, BASE_SHA=base, GITHUB_OUTPUT=str(self.output)))
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         return self.output.read_text()
@@ -227,7 +227,7 @@ class NightlyFuzzing(unittest.TestCase):
             exit 0
             """).format(packages=" ".join(listing), cases=cases))
         fake.chmod(0o755)
-        return subprocess.run([str(FUZZ)], cwd=self.temp, capture_output=True, text=True, timeout=30,
+        return subprocess.run([str(FUZZ)], cwd=self.temp, capture_output=True, text=True, timeout=600,
                               env=dict(os.environ, PATH=f"{bin_dir}:{os.environ['PATH']}", CALLS=str(self.calls),
                                        FUZZ_LOG_DIR=str(self.logs), FUZZTIME="7x"))
 

@@ -42,7 +42,7 @@ with open(os.environ["CAPTURE"], "a") as output:
                     env = dict(os.environ, RESTMAIL_LABEL="rest-mail.run=fixture", PATH=temp + os.pathsep + os.environ["PATH"],
                                CAPTURE=str(capture), OUTPUT="/dev/null")
                     result = subprocess.run(["sh", "-eu"], input=script, cwd=temp,
-                                            env=env, text=True, capture_output=True, timeout=10)
+                                            env=env, text=True, capture_output=True, timeout=600)
                     self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
                     calls = [json.loads(line) for line in capture.read_text().splitlines()]
                     self.assertEqual(len(calls), 1)

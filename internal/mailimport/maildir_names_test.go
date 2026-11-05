@@ -1,10 +1,12 @@
 package mailimport
 
 import (
+	"errors"
 	"maps"
 	"os"
 	"path/filepath"
 	"slices"
+	"syscall"
 	"testing"
 
 	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
@@ -18,6 +20,22 @@ func maildirFolders(t *testing.T, directories ...string) ([]string, error) {
 
 // maildirImport imports one message from each source directory and returns the
 // sorted destination folders, one per message, and the renames reported.
+// filesystemTakesName reports whether a directory of this name can exist here.
+// APFS refuses a name that is not UTF-8, so a Mac cannot hold that source at all.
+// Linux can, and CI's run there still tests it.
+func filesystemTakesName(t *testing.T, name string) bool {
+	t.Helper()
+	err := os.Mkdir(filepath.Join(t.TempDir(), name), 0755)
+	if errors.Is(err, syscall.EILSEQ) {
+		t.Logf("%q: this filesystem refuses the name, so this source cannot exist here", name)
+		return false
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	return true
+}
+
 func maildirImport(t *testing.T, directories ...string) ([]string, []FolderRename, error) {
 	t.Helper()
 	root := sourceMaildir(t)
@@ -75,6 +93,9 @@ func TestMaildirImportsMalformedNamesUnderDerivedNames(t *testing.T) {
 		".Caf&AOk-.Tom & Jerry": "Café/Tom & Jerry", // only the bad level is literal
 		".Tab\there":            "Tab\uFFFDhere",    // a control character is not a legal name
 	} {
+		if !filesystemTakesName(t, directory) {
+			continue
+		}
 		folders, renames, err := maildirImport(t, directory)
 		if err != nil || !slices.Equal(folders, []string{want}) {
 			t.Errorf("%q: folders %q error %v, want %q", directory, folders, err, want)
