@@ -1,11 +1,9 @@
 package mime
 
 import (
-	stdmime "mime"
 	"strings"
 	"unicode/utf8"
 
-	gomessage "github.com/emersion/go-message"
 	"github.com/rest-mail/go-imap/pkg/imap/wireform"
 )
 
@@ -82,8 +80,7 @@ func parameterText(value string) string {
 // decodeWords is a header value with its RFC 2047 encoded-words decoded, or the value when it can't
 // be, as go-message reads one.
 func decodeWords(value string) string {
-	decoder := stdmime.WordDecoder{CharsetReader: gomessage.CharsetReader}
-	decoded, err := decoder.DecodeHeader(value)
+	decoded, err := wordDecoder.DecodeHeader(value)
 	if err != nil {
 		return value
 	}

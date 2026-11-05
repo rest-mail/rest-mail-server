@@ -20,6 +20,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- A list of encoded words in a charset nothing here reads no longer costs a 32 KiB
+  copy buffer for each word when ENVELOPE is built, which came to more than 500 MiB
+  for 1 MiB of them. What's sent doesn't change: the word stays as it was written.
 - A client address the Limiter has banned can no longer sign in: it is refused
   in the greeting with `* BYE`, and LOGIN or AUTHENTICATE in a session opened
   before the ban get `* BYE` and `NO [UNAVAILABLE]` without calling the

@@ -2,7 +2,6 @@ package mime
 
 import (
 	"bytes"
-	stdmime "mime"
 	"strings"
 
 	gomessage "github.com/emersion/go-message"
@@ -12,9 +11,6 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/mailaddr"
 	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 )
-
-// addressDecoder reads the encoded-words of an address list as go-message's mail package does.
-var addressDecoder = &stdmime.WordDecoder{CharsetReader: gomessage.CharsetReader}
 
 // unreadCharsets is what every list from a parse is told, one value so that two lists of a field compare
 // equal.
@@ -65,5 +61,5 @@ func isASCII(s string) bool {
 
 // addressList is a header's address list, read when something asks for it.
 func addressList(value string) pipeline.AddressList {
-	return pipeline.ParsedAddressesKeeping(value, addressDecoder, &unreadCharsets)
+	return pipeline.ParsedAddressesKeeping(value, wordDecoder, &unreadCharsets)
 }
