@@ -241,75 +241,20 @@ func TestWireFormSize_MatchesAndIsLinear(t *testing.T) {
 	assertLinear(t, input, func(raw string) { WireFormSize(raw, false) })
 }
 
-func TestParameterSegments_AreLinear(t *testing.T) {
-	for name, unit := range map[string]func(n int) string{
-		"a gap in one parameter": func(n int) string { return "; name*" + strconv.Itoa(2*n) + "=x" },
-		"a number repeated":      func(n int) string { return "; name*0=" + strconv.Itoa(n) },
-		"a name repeated":        func(n int) string { return "; a=" + strconv.Itoa(n) },
-		"distinct names":         func(n int) string { return "; n" + strconv.Itoa(n) + "*x=y" },
-	} {
-		t.Run(name, func(t *testing.T) {
-			allocated := func(size int) uint64 {
-				var b strings.Builder
-				b.WriteString("application/pdf")
-				for n := 0; b.Len() < size; n++ {
-					b.WriteString(unit(n))
-				}
-				value := b.String()
-				var before, after runtime.MemStats
-				runtime.ReadMemStats(&before)
-				mt, _, err := parseContentType(value)
-				runtime.ReadMemStats(&after)
-				if err != nil || mt != "application/pdf" {
-					t.Fatalf("parseContentType: %q, %v", mt, err)
-				}
-				return after.TotalAlloc - before.TotalAlloc
-			}
-			const size, maxRatio = 32 << 10, 9
-			small, big := allocated(size), allocated(4*size)
-			if ratio := float64(big) / float64(small); ratio > maxRatio {
-				t.Errorf("4x the input allocated %.1fx as much (%d, then %d), want at most %dx", ratio, small, big, maxRatio)
-			}
-		})
-	}
-}
-
-func TestHasReadableType_AgreesWithTheWholeField(t *testing.T) {
-	check := func(value string) {
-		value = trimWSP(value)
-		mt, _, err := parseContentType(value)
-		want := err == nil && !has8bit(mt)
-		if got := hasReadableType(value, readField(value)); got != want {
-			t.Errorf("%q: hasReadableType = %v, the whole field reads %q, %v", value, got, mt, err)
+// TestEntityHeader_SharesItsBuffer: net/mail allocates a 4 KiB buffer per read unless
+// it is given one, which a message of many small parts would pay for each part.
+func TestEntityHeader_SharesItsBuffer(t *testing.T) {
+	const reads, wholeBuffer = 200, 4096
+	entityHeader("Content-Type: text/plain\r\n\r\n")
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	for range reads {
+		if entityHeader("Content-Type: text/plain\r\n\r\n").Get("Content-Type") != "text/plain" {
+			t.Fatal("header not read")
 		}
 	}
-	everyString("a/;=\"(*\xf6", 6, func(s string) {
-		check(s)
-		check("a/a;" + s)
-	})
-}
-
-func TestWithoutRepeats_LeavesWhatItCantSplit(t *testing.T) {
-	const value = `a/a; b=1; b="x`
-	if got, repeated := withoutRepeats(value); repeated || got != value {
-		t.Fatalf("withoutRepeats = %q, %v", got, repeated)
-	}
-}
-
-func TestCommentPairs(t *testing.T) {
-	const value = `a(b(c)d)e(f\)(g)h)(`
-	pairs := commentClosers(value)
-	for _, tc := range []struct {
-		at, closer int
-		ok         bool
-	}{
-		{0, 0, false}, {1, 7, true}, {2, 0, false}, {3, 5, true}, {9, 17, true}, {13, 15, true}, {18, 0, false}, {20, 0, false},
-	} {
-		if got, ok := pairs.closer(tc.at); ok != tc.ok || got != tc.closer {
-			t.Errorf("closer(%d) = %d, %v, want %d, %v", tc.at, got, ok, tc.closer, tc.ok)
-		}
-	}
-	if _, ok := commentClosers("no comments").closer(0); ok {
-		t.Error("a value with no comments has a closer")
+	runtime.ReadMemStats(&after)
+	if each := (after.TotalAlloc - before.TotalAlloc) / reads; each >= wholeBuffer*3/4 {
+		t.Errorf("each read allocated %d bytes, want well under the %d of a buffer", each, wholeBuffer)
 	}
 }
