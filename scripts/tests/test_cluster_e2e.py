@@ -865,6 +865,46 @@ class RestmailPeerTests(unittest.TestCase):
         self.assertLess(steps.index("mail-out"), steps.index("dkim-receive"))
         self.assertLess(steps.index("dkim-key"), steps.index("restmail-peer"))
 
+    def test_each_install_certificate_names_its_mail_domain(self):
+        # The API refuses a domain certificate that does not name the domain (#1715),
+        # and restmail-peer uploads the peer's TLS Secret for its domain. Run 42087756027
+        # failed there with 422: the Secret named only the mail host. This runs the
+        # workflow's own step, with kubectl stubbed, and reads the certificates it made.
+        workflow = yaml.safe_load((ROOT / ".github/workflows/cluster-e2e.yml").read_text())
+        step = next(s["run"] for s in workflow["jobs"]["install"]["steps"] if s["name"] == "Create the TLS Secrets")
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            (work / "bin").mkdir()
+            (work / "out").mkdir()
+            fake = work / "fake_kubectl.py"
+            fake.write_text(textwrap.dedent('''\
+                import shutil, sys
+                args = sys.argv[1:]
+                if "secret" in args:
+                    namespace, name = args[args.index("-n") + 1], args[args.index("generic") + 1]
+                    for arg in args:
+                        if arg.startswith("--from-file=tls.crt="):
+                            shutil.copy(arg.split("=", 2)[2], f"{sys.argv[0].rsplit('/', 1)[0]}/out/{namespace}.crt")
+            '''))
+            kubectl = work / "bin/kubectl"
+            kubectl.write_text(f'#!/bin/sh\nexec {shlex.quote(sys.executable)} {shlex.quote(str(fake))} "$@"\n')
+            kubectl.chmod(0o755)
+            env = {**os.environ, **{key: str(value) for key, value in workflow["env"].items()},
+                   "PATH": f"{work / 'bin'}:{os.environ['PATH']}", "RUNNER_TEMP": str(work),
+                   "GITHUB_WORKSPACE": str(ROOT)}
+            subprocess.run(["bash", "-e", "-o", "pipefail", "-c", step], env=env, cwd=work, check=True,
+                           capture_output=True, text=True)
+            for namespace, domain, host in (("NAMESPACE", "MAIL_DOMAIN", "INGRESS_HOST"),
+                                            ("PEER_NAMESPACE", "PEER_MAIL_DOMAIN", "PEER_MAIL_HOST")):
+                with self.subTest(install=workflow["env"][namespace]):
+                    names = subprocess.run(
+                        ["openssl", "x509", "-noout", "-ext", "subjectAltName",
+                         "-in", str(work / "out" / f"{workflow['env'][namespace]}.crt")],
+                        capture_output=True, text=True, check=True).stdout
+                    names = {name.strip() for name in names.split("\n", 1)[1].split(",")}
+                    self.assertIn("DNS:" + workflow["env"][domain], names)
+                    self.assertIn("DNS:" + workflow["env"][host], names)
+
     def test_the_peer_install_has_its_own_names_and_a_trusted_ca(self):
         base = yaml.safe_load((ROOT / "helm/restmail/values-ci.yaml").read_text())
         peer = yaml.safe_load((ROOT / "helm/restmail/values-ci-peer.yaml").read_text())
