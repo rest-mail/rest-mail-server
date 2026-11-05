@@ -1172,7 +1172,7 @@ func (h *MessageHandler) RegisterDelivery(rs endpoint.Routes, bodyLimit endpoint
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/messages/deliver",
 		OperationID: "deliverMessage", Summary: "Deliver a message into a mailbox (protocol gateways)", Tags: []string{"Messages"},
 		Description: "Machine to machine: no user token. The inbound pipeline decides: 201 with the message made, " +
-			"200 processed when it quarantined or discarded it, 403 rejected, 503 deferred, 422 mailbox_full " +
+			"200 processed when it quarantined or discarded it, 403 rejected, 503 deferred (greylisted when the greylist step held it back), 422 mailbox_full " +
 			"over quota. These are REST statuses for every caller; the SMTP gateway rewrites them into its SMTP reply (#1664). A missing mailbox is 404; a failed mailbox lookup is 500, never a missing recipient. " +
 			"Stored text must not contain NUL (U+0000), including strings and object keys anywhere in recipients_to or recipients_cc " +
 			"and the decoded raw_message octets; a refusal is 422 validation_failed naming the field, before any write. " +
@@ -1339,6 +1339,8 @@ func (h *MessageHandler) deliverMessage(r *http.Request, req deliverMessageBody,
 		switch {
 		case strings.HasPrefix(errStr, "rejected:"):
 			return zero, endpoint.Refuse(http.StatusForbidden, "rejected", strings.TrimPrefix(errStr, "rejected: "))
+		case errors.Is(err, errGreylisted):
+			return zero, endpoint.Refuse(http.StatusServiceUnavailable, rmail.GreylistedRefusal, "Greylisted, try again later")
 		case strings.HasPrefix(errStr, "deferred:"):
 			return zero, endpoint.Refuse(http.StatusServiceUnavailable, "deferred", "Try again later")
 		case strings.HasPrefix(errStr, "mailbox_full:"):
@@ -2677,7 +2679,7 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 		case pipeline.ActionDefer:
 			traceBase.Outcome = outcomeDeferred
 			h.recordTrace(ctx, buildTrace(traceBase))
-			return nil, fmt.Errorf("deferred: try again later")
+			return nil, deferredError(pipelineResult, "try again later")
 		case pipeline.ActionContinue:
 			// The required checks passed: the message is accepted, and the rest of
 			// delivery is the content stage's. The trace is recorded there, at the end.
