@@ -5,43 +5,34 @@ import (
 	"runtime"
 	"strings"
 	"testing"
-	"time"
 )
 
-// assertLinear fails when work costs quadratically more on four times the input: a
-// linear scan takes about 4x as long and a quadratic one about 16x. It compares two
-// sizes instead of holding a time limit, so a slow machine doesn't fail it, and a
-// comparison spoiled by a pause elsewhere gets another try.
+// assertLinear fails when work allocates quadratically more on four times the input:
+// about 4x when it builds in proportion, about 16x when it builds on all that came
+// before. It counts bytes, not time, because time on a shared machine also measures
+// what else is running. This conversion once read 25.6x against a limit of 9x by the
+// clock while it executed exactly twice the statements per doubling. A scan that
+// repeats itself allocates nothing, so TestEncodeHeaderValue_ScansInProportion counts
+// those steps.
 func assertLinear(t *testing.T, input func(size int) string, work func(string)) {
 	t.Helper()
-	const size, maxRatio = 32 << 10, 9
-	small, big := input(size), input(4*size)
-	var ratio float64
-	for range 3 {
-		before, after := fastest(small, work), fastest(big, work)
-		ratio = float64(after) / float64(max(before, time.Microsecond))
-		if ratio <= maxRatio || after > 2*time.Second {
-			break
-		}
-	}
-	if ratio > maxRatio {
-		t.Errorf("4x the input took %.1fx as long, want at most %dx", ratio, maxRatio)
+	const size, maxRatio = 32 << 10, 8
+	before, after := bytesAllocated(input(size), work), bytesAllocated(input(4*size), work)
+	if ratio := float64(after) / float64(max(before, 1)); ratio > maxRatio {
+		t.Errorf("4x the input allocated %.1fx as much (%d, then %d bytes), want at most %dx", ratio, before, after, maxRatio)
 	}
 }
 
-// fastest is the best of a few runs, the one least disturbed by anything else. A run
-// that is already slow isn't repeated, so a regression fails in seconds, not minutes.
-func fastest(input string, work func(string)) time.Duration {
-	best := time.Duration(1<<63 - 1)
-	for range 5 {
-		runtime.GC()
-		start := time.Now()
+// bytesAllocated is what one run allocates, the least of a few runs so that anything
+// else the process allocates in between doesn't count, and neither does filling a pool.
+func bytesAllocated(input string, work func(string)) uint64 {
+	var before, after runtime.MemStats
+	best := ^uint64(0)
+	for range 3 {
+		runtime.ReadMemStats(&before)
 		work(input)
-		took := time.Since(start)
-		best = min(best, took)
-		if took > time.Second {
-			break
-		}
+		runtime.ReadMemStats(&after)
+		best = min(best, after.TotalAlloc-before.TotalAlloc)
 	}
 	return best
 }
@@ -97,6 +88,34 @@ func TestParameterField_IsLinear(t *testing.T) {
 			t.Fatal("parameters not rewritten")
 		}
 	})
+}
+
+// TestEncodeHeaderValue_ScansInProportion counts the octets a conversion looks at. A
+// token is read a few times, and an unclosed quote is scanned for its end once; scanning
+// for it from every '"' would look at the rest of the value each time.
+func TestEncodeHeaderValue_ScansInProportion(t *testing.T) {
+	const size = 32 << 10
+	for name, unit := range map[string]string{
+		"escaped quotes":        `\"`,
+		"spaced escaped quotes": `\" `,
+		"unclosed quotes":       `" \"`,
+		"closed quotes":         `"a b" `,
+		"a quote per token":     `a" `,
+		"8-bit escaped quotes":  "\xf6\\\" ",
+		"folded escaped quotes": "\r\n \\\"",
+		"backslashes":           `\`,
+		"8-bit words":           "\xf6 ",
+	} {
+		t.Run(name, func(t *testing.T) {
+			value := " \xf6 " + repeated(unit, size)
+			tokens := headerTokens{value: value, unclosed: len(value)}
+			var sink wireCounter
+			encodeHeaderTokens(&sink, len("Subject:"), &tokens)
+			if limit := 4 * len(value); tokens.steps > limit {
+				t.Errorf("scan took %d steps over %d octets, want at most %d", tokens.steps, len(value), limit)
+			}
+		})
+	}
 }
 
 // rescanToken is headerToken as it was before it remembered an unclosed quote: every
