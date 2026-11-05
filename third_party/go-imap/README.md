@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/rest-mail/go-imap/actions/workflows/ci.yml/badge.svg)](https://github.com/rest-mail/go-imap/actions/workflows/ci.yml)
 [![Coverage gate: >=95%](https://img.shields.io/badge/coverage%20gate-%3E%3D95%25-brightgreen)](COVERAGE.md)
-[![Partial checklist: 515/789 mapped](https://img.shields.io/badge/partial%20checklist-515%2F789%20mapped-blue)](CHECKLIST.md)
+[![Partial checklist: 518/789 mapped](https://img.shields.io/badge/partial%20checklist-518%2F789%20mapped-blue)](CHECKLIST.md)
 [![Go Reference](https://pkg.go.dev/badge/github.com/rest-mail/go-imap.svg)](https://pkg.go.dev/github.com/rest-mail/go-imap/pkg/imap/server)
 [![Go Report Card](https://goreportcard.com/badge/github.com/rest-mail/go-imap)](https://goreportcard.com/report/github.com/rest-mail/go-imap)
 
@@ -307,9 +307,11 @@ The host:
 
 - Assigns UIDs: positive, stable and ascending with arrival in each folder, and
   returns messages oldest first.
-- Reports `Size` as the exact octet count of the stored message.
-- Returns the stored octets from `Fetch` unchanged; FETCH `BODY[]` serves them
-  byte for byte.
+- Reports `Size` as the exact octet count FETCH sends for the message, which
+  `wireform.Convert` measures when it is stored.
+- Returns the stored octets from `Fetch` unchanged. FETCH `BODY[]` serves them
+  byte for byte when they are already 7-bit, and converts them as it sends them
+  otherwise.
 - Reports `Quota` in octets; the server converts to the 1024-octet units of
   RFC 2087.
 - Makes `Append`, `Copy`, `Move` and `Delete` atomic per message. The server calls
@@ -320,21 +322,30 @@ The host:
 
 The library:
 
-- Builds BODY, BODYSTRUCTURE and ENVELOPE from the stored octets, and bounds
-  MIME nesting at depth 64.
+- Converts a message as FETCH sends it (RFC 3501 §7.4.2): 8-bit header text
+  becomes RFC 2047 encoded words in charset `UTF-8`, or `UNKNOWN-8BIT` when it is
+  not UTF-8; non-textual data goes out BASE64; text naming no charset goes out
+  QUOTED-PRINTABLE; text naming a charset stays. BINARY sends the stored octets.
+- Keeps every Content-Type and Content-Disposition parameter, whatever its charset.
+  An RFC 2231 value in a charset it can't decode goes out as an encoded word naming
+  that charset, and converting a field changes only what holds an 8-bit octet.
+- Builds BODY and BODYSTRUCTURE from what FETCH sends and ENVELOPE from the stored
+  octets, and bounds MIME nesting at depth 64.
 - Treats an unknown Content-Transfer-Encoding as `application/octet-stream`
   (RFC 2045 §6.4) everywhere: BODYSTRUCTURE, sections and SEARCH.
 - Removes base64 and quoted-printable for BINARY, and answers
   `NO [UNKNOWN-CTE]` when it cannot.
 - Decodes encoded words, transfer encodings and ISO-8859-1 before SEARCH
-  compares text. It accepts the US-ASCII and UTF-8 charsets.
-- Refuses to FETCH a message whose octets, or whose decoded ENVELOPE and MIME
-  strings, hold NUL.
+  compares text, one encoded word at a time, so a word in another charset is compared
+  as stored and the words around it still decode. It accepts the US-ASCII and UTF-8
+  charsets.
+- Refuses to FETCH a message with a NUL in a header or in text, or whose decoded
+  ENVELOPE and MIME strings hold one. A NUL in non-textual data goes out encoded.
 
 The host:
 
-- Stores messages as received. The library does not downgrade 8-bit headers or
-  binary bodies for clients that did not ask for them.
+- Stores messages as received. The library converts on the way out and never
+  changes what the host stores.
 
 ## RFC conformance
 

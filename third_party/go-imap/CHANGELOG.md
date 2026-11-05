@@ -29,6 +29,43 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   backend. The ban used to be read only after a failed attempt, so a correct
   password still signed in. The reply to the failure that earns the ban is now
   the same `* BYE` and `NO [UNAVAILABLE]`.
+- Converting a header for FETCH takes time in proportion to its size. A run of
+  `\"` in an 8-bit field, or a field folded many times, used to take quadratic
+  time, 16.6 s for a 156 KB Subject. The output doesn't change.
+- FETCH converts a message as it is sent, as RFC 3501 §7.4.2 requires, and what
+  the mailbox returned does not change. HEADER and MIME sections and the header
+  of an encapsulated message are 7-bit. Non-textual data goes out BASE64 and text
+  naming no charset QUOTED-PRINTABLE, while text naming a charset keeps its 8-bit
+  data. BODYSTRUCTURE describes the converted octets, and partial offsets count
+  them. A message already 7-bit goes out byte for byte, and BINARY still sends
+  the stored octets. `Message.Size` must now be the converted length, which the
+  new `wireform` package measures.
+- ENVELOPE and BODYSTRUCTURE strings carry no 8-bit text in a session without
+  UTF8=ACCEPT (RFC 3501 §4.3.1). A personal or group name decoded from an encoded
+  word and a parameter decoded from RFC 2231 go out as encoded words, and ENVELOPE
+  reads the converted header, so an 8-bit mailbox is left out of its address field,
+  which reads NIL when none remains. A mailbox sent spelled like an encoded word,
+  against the `@` or `.` beside it, is legal atext and is still read.
+  After ENABLE UTF8=ACCEPT, valid UTF-8 still goes out as a literal.
+- An ENVELOPE address list no longer reads NIL because a name is an encoded word
+  in a charset go-imap can't decode, such as `windows-1252` or `ISO-8859-2`, in a
+  top-level or an encapsulated message. The name stays the encoded word it was sent
+  as, in either session, so it still names its charset and no byte is guessed.
+  `latin1`, `iso8859-1` and `l1` now decode as ISO-8859-1 here too.
+- BODY and BODYSTRUCTURE no longer lose an RFC 2231 parameter in a charset other
+  than UTF-8 or US-ASCII, such as a filename in `windows-1252`, or keep only the
+  later segments of a continued one. A charset go-imap can't decode stays named: the
+  value goes out as one encoded word in it, in either session. `ISO-8859-1` and its
+  aliases decode, and a value naming no charset or missing its quotes keeps its text.
+- Converting a Content-Type or Content-Disposition field changes only the parameter
+  that holds an 8-bit octet. The others stay as sent, in their order, including RFC
+  2231 text and comments, and an 8-bit comment becomes encoded words instead of going
+  missing.
+- SEARCH decodes a header one encoded word at a time. A word in a charset it can't
+  decode is compared as stored, and neither that nor a stray `=?` stops it decoding
+  the words around it, in TEXT, HEADER, SUBJECT, TO, FROM or an encapsulated message.
+- Binary data holding a NUL can be fetched: BODY sends it BASE64 and BINARY as a
+  literal8. A NUL in a header or in text is still refused.
 - A SELECT or EXAMINE refused with BAD keeps the mailbox already selected, with
   its read-only mode and deletion marks: a rejected command never changes state
   (RFC 3501 §6). Only a well-formed selection attempt that fails with NO

@@ -1,0 +1,637 @@
+package message
+
+import (
+	"encoding/base64"
+	"io"
+	"mime/quotedprintable"
+	"strings"
+	"sync"
+	"unicode/utf8"
+)
+
+// WireForm is raw as FETCH sends it (RFC 3501 §7.4.2). The stored octets never
+// change: this runs on the way out, and only what breaks the rule is rewritten,
+// so a message or entity already 7-bit goes out byte for byte.
+//
+//   - Every header block, including a part's MIME header and an encapsulated
+//     message's, is 7-bit (see wireHeader).
+//   - A textual leaf that names a charset keeps its 8-bit data.
+//   - Other 8-bit leaf data is transfer-encoded, BASE64 for non-textual data and
+//     QUOTED-PRINTABLE for text with no charset, so no charset is guessed.
+//   - A NUL in a header or a textual leaf stays, and FETCH refuses the message
+//     (IMAP-ENV-12). In non-textual data it is encoded like any other octet.
+//
+// sessionUTF8 is whether the session enabled UTF8=ACCEPT (RFC 6855): valid UTF-8
+// then stays in headers, and in a textual leaf with no charset, whose default
+// there is UTF-8 (RFC 6532 §3).
+func WireForm(raw string, sessionUTF8 bool) string {
+	if !needsWireForm(raw) {
+		return raw
+	}
+	var b strings.Builder
+	b.Grow(len(raw) + len(raw)/4)
+	wireEntity(&b, messageNode(raw, 0), sessionUTF8)
+	return b.String()
+}
+
+// WireFormSize is len(WireForm(raw, sessionUTF8)), and holds nothing that grows with
+// the data: the same conversion runs, into a counter instead of a buffer, so the two
+// can't disagree. A store measures every message this way, see package wireform.
+func WireFormSize(raw string, sessionUTF8 bool) int {
+	if !needsWireForm(raw) {
+		return len(raw)
+	}
+	var size wireCounter
+	wireEntity(&size, messageNode(raw, 0), sessionUTF8)
+	return int(size)
+}
+
+// WireFormJoinedSize is WireFormSize(block+body, sessionUTF8) without joining them.
+// It is for a host that rewrites a header block and keeps the stored body.
+func WireFormJoinedSize(block, body string, sessionUTF8 bool) int {
+	end, blank := headerEnd(block)
+	if end != len(block) || !blank {
+		// The block doesn't end where the header does, so the body isn't what follows it.
+		return WireFormSize(block+body, sessionUTF8)
+	}
+	if !needsWireForm(block) && !needsWireForm(body) {
+		return len(block) + len(body)
+	}
+	var size wireCounter
+	wireEntity(&size, mimeNode{header: block, body: body, message: true, defaultType: "text/plain"}, sessionUTF8)
+	return int(size)
+}
+
+// wireSink takes a conversion's output: a strings.Builder to send it, a wireCounter to
+// measure it.
+type wireSink interface {
+	io.Writer
+	io.StringWriter
+}
+
+// wireCounter is a wireSink that keeps only the count.
+type wireCounter int
+
+func (c *wireCounter) Write(p []byte) (int, error) {
+	*c += wireCounter(len(p))
+	return len(p), nil
+}
+
+func (c *wireCounter) WriteString(s string) (int, error) {
+	*c += wireCounter(len(s))
+	return len(s), nil
+}
+
+// needsWireForm reports whether s holds an octet WireForm might rewrite.
+func needsWireForm(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] >= 0x80 || s[i] == 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func has8bit(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] >= 0x80 {
+			return true
+		}
+	}
+	return false
+}
+
+// wireEntity converts one entity. Types come from the stored header, which is
+// what the sections and BODYSTRUCTURE of the same message describe.
+func wireEntity(w wireSink, node mimeNode, sessionUTF8 bool) {
+	if !needsWireForm(node.body) {
+		wireHeader(w, node.header, sessionUTF8)
+		_, _ = w.WriteString(node.body)
+		return
+	}
+	mt, params := node.mediaType()
+	switch {
+	case mt == "message/rfc822":
+		wireHeader(w, node.header, sessionUTF8)
+		wireEntity(w, messageNode(node.body, node.depth+1), sessionUTF8)
+	case strings.HasPrefix(mt, "multipart/") && params["boundary"] != "":
+		wireHeader(w, node.header, sessionUTF8)
+		wireMultipart(w, node, mt, params["boundary"], sessionUTF8)
+	default:
+		wireLeaf(w, node, mt, params, sessionUTF8)
+	}
+}
+
+// wireMultipart converts a multipart body part by part. Delimiter lines stay; a
+// preamble or epilogue that holds 8-bit octets, which MIME readers ignore, has
+// them escaped so a BODY[TEXT] of the multipart is 7-bit too.
+func wireMultipart(w wireSink, node mimeNode, mt, boundary string, sessionUTF8 bool) {
+	def := "text/plain"
+	if mt == "multipart/digest" {
+		def = "message/rfc822"
+	}
+	at := 0
+	eachMultipartSpan(node.body, boundary, func(start, end int) {
+		writeEscaped8bit(w, node.body[at:start], false)
+		h, body := splitEntity(node.body[start:end])
+		wireEntity(w, mimeNode{header: h, body: body, defaultType: def, depth: node.depth + 1}, sessionUTF8)
+		at = end
+	})
+	writeEscaped8bit(w, node.body[at:], false)
+}
+
+// wireLeaf converts a leaf whose body holds an 8-bit octet or a NUL. A body
+// already declared base64 or quoted-printable keeps its encoding, so the client
+// decodes the same data: base64 readers ignore octets outside the alphabet (RFC
+// 2045 §6.8), so they go, and quoted-printable can spell them.
+func wireLeaf(w wireSink, node mimeNode, mt string, params map[string]string, sessionUTF8 bool) {
+	textual := strings.HasPrefix(mt, "text/")
+	if textual && (strings.IndexByte(node.body, 0) >= 0 || params["charset"] != "" || (sessionUTF8 && utf8.ValidString(node.body))) {
+		wireHeader(w, node.header, sessionUTF8)
+		_, _ = w.WriteString(node.body)
+		return
+	}
+	cte := ""
+	if namesContentField(node.header) {
+		if v := HeaderFieldValues(node.header, "Content-Transfer-Encoding"); len(v) > 0 {
+			cte = strings.TrimSpace(v[0])
+		}
+	}
+	opaque := false
+	switch transferEncoding(cte) {
+	case "BASE64":
+		wireHeader(w, node.header, sessionUTF8)
+		writeWithout8bit(w, node.body)
+		return
+	case "QUOTED-PRINTABLE":
+		wireHeader(w, node.header, sessionUTF8)
+		writeEscaped8bit(w, node.body, true)
+		return
+	case "7BIT", "8BIT", "BINARY":
+		if textual {
+			wireHeader(w, node.header, sessionUTF8, fieldChange{"Content-Transfer-Encoding", "quoted-printable"})
+			writeQuotedPrintable(w, node.body)
+			return
+		}
+	default:
+		// An encoding nobody can remove makes the entity opaque data (RFC 2045
+		// §6.4), which is what the header has to say once it is base64 instead.
+		opaque = true
+	}
+	if opaque {
+		wireHeader(w, node.header, sessionUTF8, fieldChange{"Content-Type", "application/octet-stream"}, fieldChange{"Content-Transfer-Encoding", "base64"})
+	} else {
+		wireHeader(w, node.header, sessionUTF8, fieldChange{"Content-Transfer-Encoding", "base64"})
+	}
+	writeBase64Lines(w, node.body)
+}
+
+// metadataText is an ENVELOPE or BODYSTRUCTURE string a decoder produced: a name
+// from an encoded word, or a parameter from RFC 2231. Those strings have nowhere
+// to name a charset (RFC 3501 §4.3.1), so 8-bit text goes out as encoded words,
+// separated by a space so the string needs no literal. After UTF8=ACCEPT (RFC 6855)
+// valid UTF-8 is the agreed charset and stays. A NUL stays too, so FETCH refuses
+// the message rather than hiding it.
+func metadataText(text string, sessionUTF8 bool) string {
+	if !has8bit(text) || strings.IndexByte(text, 0) >= 0 || (sessionUTF8 && utf8.ValidString(text)) {
+		return text
+	}
+	return strings.Join(encodedWords(text), " ")
+}
+
+// writeEscaped8bit spells each 8-bit octet =XX, and a NUL =00 when nul is set, and
+// leaves every other octet alone.
+func writeEscaped8bit(w wireSink, s string, nul bool) {
+	const digits = "0123456789ABCDEF"
+	start := 0
+	for i := 0; i < len(s); i++ {
+		if c := s[i]; c >= 0x80 || (nul && c == 0) {
+			_, _ = w.WriteString(s[start:i])
+			_, _ = w.WriteString("=")
+			_, _ = w.WriteString(digits[c>>4 : c>>4+1])
+			_, _ = w.WriteString(digits[c&0x0f : c&0x0f+1])
+			start = i + 1
+		}
+	}
+	_, _ = w.WriteString(s[start:])
+}
+
+// writeWithout8bit leaves out each 8-bit octet and each NUL.
+func writeWithout8bit(w wireSink, s string) {
+	start := 0
+	for i := 0; i < len(s); i++ {
+		if c := s[i]; c >= 0x80 || c == 0 {
+			_, _ = w.WriteString(s[start:i])
+			start = i + 1
+		}
+	}
+	_, _ = w.WriteString(s[start:])
+}
+
+// wireChunk is how much of a body a transfer encoding holds at once.
+const wireChunk = 1 << 12
+
+func writeQuotedPrintable(w wireSink, body string) {
+	q := quotedprintable.NewWriter(w)
+	chunk := make([]byte, min(len(body), wireChunk))
+	for len(body) > 0 {
+		n := copy(chunk, body)
+		// The sink cannot fail.
+		_, _ = q.Write(chunk[:n])
+		body = body[n:]
+	}
+	_ = q.Close()
+}
+
+// writeBase64Lines encodes body in lines of 76 characters (RFC 2045 §6.8). A body
+// that ended in a line break still does, so the message keeps its shape.
+func writeBase64Lines(w wireSink, body string) {
+	const lineData, lineLen = 57, 76
+	crlf := strings.HasSuffix(body, "\r\n")
+	lines := min(len(body)/lineData+1, wireChunk/lineLen)
+	chunk := make([]byte, lines*(lineLen+2))
+	var data [lineData]byte
+	used := 0
+	for len(body) > 0 {
+		n := copy(data[:], body)
+		body = body[n:]
+		size := base64.StdEncoding.EncodedLen(n)
+		base64.StdEncoding.Encode(chunk[used:used+size], data[:n])
+		used += size
+		if len(body) > 0 {
+			used += copy(chunk[used:], "\r\n")
+		}
+		if used+lineLen+2 > len(chunk) {
+			_, _ = w.Write(chunk[:used])
+			used = 0
+		}
+	}
+	_, _ = w.Write(chunk[:used])
+	if crlf {
+		_, _ = w.WriteString("\r\n")
+	}
+}
+
+// fieldChange replaces a named field of a header block, or adds it before the blank
+// line that ends the block.
+type fieldChange struct{ name, value string }
+
+func (c fieldChange) write(w wireSink) {
+	_, _ = w.WriteString(c.name)
+	_, _ = w.WriteString(": ")
+	_, _ = w.WriteString(c.value)
+	_, _ = w.WriteString("\r\n")
+}
+
+// nextHeaderField is where the field at start ends: its continuation lines and final
+// CRLF belong to it. The blank line that ends a block is a field of its own.
+func nextHeaderField(header string, start int) int {
+	for at := start; at < len(header); {
+		if at > start && header[at] != ' ' && header[at] != '\t' {
+			return at
+		}
+		i := strings.Index(header[at:], "\r\n")
+		if i < 0 {
+			break
+		}
+		at += i + 2
+	}
+	return len(header)
+}
+
+// headerBlockFields splits a header block into its fields, each with its
+// continuation lines and final CRLF, so joining the result gives the block back.
+func headerBlockFields(header string) []string {
+	var fields []string
+	for start := 0; start < len(header); {
+		end := nextHeaderField(header, start)
+		fields = append(fields, header[start:end])
+		start = end
+	}
+	return fields
+}
+
+// wireHeader writes a header block 7-bit, field by field; a field already 7-bit
+// is not touched. In a UTF8=ACCEPT session, a field of valid UTF-8 stays. A field
+// holding a NUL stays too, so FETCH refuses the message rather than hiding it.
+// changes then apply to what that leaves.
+func wireHeader(w wireSink, header string, sessionUTF8 bool, changes ...fieldChange) {
+	if len(changes) == 0 && !has8bit(header) {
+		_, _ = w.WriteString(header)
+		return
+	}
+	var placed [2]bool
+	for start := 0; start < len(header); {
+		end := nextHeaderField(header, start)
+		field := header[start:end]
+		start = end
+		stays := !has8bit(field) || strings.IndexByte(field, 0) >= 0 || (sessionUTF8 && utf8.ValidString(field))
+		name, _, named := strings.Cut(field, ":")
+		// A name holding an 8-bit octet is encoded with its field, which then has no name.
+		named = named && (stays || !has8bit(name))
+		matched := false
+		for i, change := range changes {
+			if named && strings.EqualFold(strings.TrimSpace(name), change.name) {
+				matched = true
+				if !placed[i] {
+					change.write(w)
+					placed[i] = true
+				}
+			} else if field == "\r\n" && !placed[i] {
+				change.write(w)
+				placed[i] = true
+			}
+		}
+		switch {
+		case matched:
+		case stays:
+			_, _ = w.WriteString(field)
+		default:
+			sevenBitField(w, field)
+		}
+	}
+	for i, change := range changes {
+		if !placed[i] {
+			change.write(w)
+		}
+	}
+}
+
+// sevenBitField rewrites one field holding an 8-bit octet. Content-Type and
+// Content-Disposition keep their parameters, see ParameterField, because an
+// encoded word may not appear in a parameter (RFC 2047 §5); anything else has its
+// 8-bit text turned into encoded words. A line that is not a field at all is
+// encoded whole, so its octets survive and a reader still finds no field in it.
+func sevenBitField(w wireSink, field string) {
+	text, eol := strings.CutSuffix(field, "\r\n")
+	name, value, ok := strings.Cut(text, ":")
+	switch {
+	case !ok || has8bit(name):
+		WriteEncodedWords(w, unfoldHeader(text))
+	default:
+		written := false
+		switch strings.ToLower(strings.TrimSpace(name)) {
+		case "content-type", "content-disposition":
+			if rewritten, ok := ParameterField(name, unfoldHeader(value)); ok {
+				_, _ = w.WriteString(rewritten)
+				written = true
+			}
+		}
+		if !written {
+			_, _ = w.WriteString(name)
+			_, _ = w.WriteString(":")
+			encodeHeaderValue(w, len(name)+1, value)
+		}
+	}
+	if eol {
+		_, _ = w.WriteString("\r\n")
+	}
+}
+
+func unfoldHeader(s string) string {
+	return strings.ReplaceAll(s, "\r\n", "")
+}
+
+// isAttributeChar reports whether c may stand unescaped in an RFC 2231 extended
+// value: the MIME token characters less '*', "'" and '%'.
+func isAttributeChar(c byte) bool {
+	return c > 0x20 && c < 0x7f && !strings.ContainsRune(`()<>@,;:\"/[]?=*'%`, rune(c))
+}
+
+// encodeHeaderValue turns the 8-bit runs of a field value into encoded words and
+// leaves everything else, folding included, as it was. Tokens are split on white
+// space, a quoted-string counting as one token. Adjacent 8-bit tokens make one
+// run, since white space between encoded words is not displayed (RFC 2047 §6.2).
+// Punctuation around a run stays outside it, so a comment or angle address keeps
+// its delimiters, and quotes around one go, because an encoded word may not stand
+// in a quoted-string (RFC 2047 §5).
+func encodeHeaderValue(w wireSink, column int, value string) {
+	encodeHeaderTokens(w, column, &headerTokens{value: value, unclosed: len(value)})
+}
+
+// encodeHeaderTokens is encodeHeaderValue over tokens, whose steps then say what it scanned.
+func encodeHeaderTokens(w wireSink, column int, tokens *headerTokens) {
+	value := tokens.value
+	line := column
+	write := func(s string) {
+		_, _ = w.WriteString(s)
+		if i := strings.LastIndex(s, "\r\n"); i >= 0 {
+			line = len(s) - i - 2
+		} else {
+			line += len(s)
+		}
+	}
+	for i := 0; i < len(value); {
+		if !isHeaderSpace(value[i]) && !has8bit(tokens.at(i)) {
+			token := tokens.at(i)
+			write(token)
+			i += len(token)
+			continue
+		}
+		if isHeaderSpace(value[i]) {
+			j := i
+			for j < len(value) && isHeaderSpace(value[j]) {
+				j++
+			}
+			write(value[i:j])
+			i = j
+			continue
+		}
+		end := i + len(tokens.at(i))
+		for {
+			j := end
+			for j < len(value) && isHeaderSpace(value[j]) {
+				j++
+			}
+			if j == end || j == len(value) || !has8bit(tokens.at(j)) {
+				break
+			}
+			end = j + len(tokens.at(j))
+		}
+		lead, run, trail := peelPunctuation(unfoldHeader(value[i:end]))
+		write(lead)
+		first := true
+		eachEncodedWord(run, func(open string, content []byte) {
+			if !first || line+len(open)+len(content)+len(wordClose)+len(trail) > 76 && line > 1 {
+				write("\r\n ")
+			}
+			first = false
+			_, _ = w.WriteString(open)
+			_, _ = w.Write(content)
+			_, _ = w.WriteString(wordClose)
+			line += len(open) + len(content) + len(wordClose)
+		})
+		write(trail)
+		i = end
+	}
+}
+
+func isHeaderSpace(c byte) bool {
+	return c == ' ' || c == '\t' || c == '\r' || c == '\n'
+}
+
+// headerTokens reads the tokens of one field value. unclosed is the offset of the
+// first '"' found to have no closing quote, so that scan runs only once: every later
+// '"' in the value has none either. A scan that reached a later '"' would have closed
+// on it, so it must have skipped it as a quoted-pair, and a scan from just after that
+// '"' follows the same octets to the end of the value. steps counts the octets looked
+// at, which a scan repeating itself over an unclosed quote would multiply without
+// allocating anything.
+type headerTokens struct {
+	value    string
+	unclosed int
+	steps    int
+}
+
+// at is the token starting at offset start: up to white space, a quoted-string that
+// closes counting as part of it, spaces and all.
+func (t *headerTokens) at(start int) string {
+	i := start
+	for i < len(t.value) && !isHeaderSpace(t.value[i]) {
+		t.steps++
+		if t.value[i] == '"' && i < t.unclosed {
+			closes := t.closingQuote(i)
+			if closes < 0 {
+				t.unclosed = i
+			} else {
+				i = closes
+			}
+		}
+		i++
+	}
+	return t.value[start:i]
+}
+
+// closingQuote is the offset of the '"' that closes the one at open, or -1.
+func (t *headerTokens) closingQuote(open int) int {
+	for j := open + 1; j < len(t.value); j++ {
+		t.steps++
+		switch t.value[j] {
+		case '\\':
+			j++
+		case '"':
+			return j
+		}
+	}
+	return -1
+}
+
+// unescapeQuotedPairs reads the quoted-pairs of a quoted-string.
+var unescapeQuotedPairs = strings.NewReplacer(`\\`, `\`, `\"`, `"`)
+
+// peelPunctuation splits the structure around a run from its text. Quotes are
+// dropped with the quoted-pairs they allowed.
+func peelPunctuation(run string) (lead, text, trail string) {
+	start, end := 0, len(run)
+	for start < end && strings.IndexByte(`(<"`, run[start]) >= 0 {
+		start++
+	}
+	for end > start && strings.IndexByte(`)>,;:"`, run[end-1]) >= 0 {
+		end--
+	}
+	lead, text, trail = run[:start], run[start:end], run[end:]
+	if strings.Contains(lead, `"`) || strings.Contains(trail, `"`) {
+		lead = strings.ReplaceAll(lead, `"`, "")
+		trail = strings.ReplaceAll(trail, `"`, "")
+		text = unescapeQuotedPairs.Replace(text)
+	}
+	return lead, text, trail
+}
+
+// EncodeWords renders text as folded RFC 2047 encoded words.
+func EncodeWords(text string) string {
+	var b strings.Builder
+	WriteEncodedWords(&b, text)
+	return b.String()
+}
+
+// WriteEncodedWords is EncodeWords into w, holding one word at a time.
+func WriteEncodedWords(w interface {
+	io.Writer
+	io.StringWriter
+}, text string) {
+	first := true
+	eachEncodedWord(text, func(open string, content []byte) {
+		if !first {
+			_, _ = w.WriteString("\r\n ")
+		}
+		first = false
+		_, _ = w.WriteString(open)
+		_, _ = w.Write(content)
+		_, _ = w.WriteString(wordClose)
+	})
+}
+
+// wordCharset names what text is: UTF-8 when it is valid UTF-8. Anything else is
+// UNKNOWN-8BIT (RFC 1428), so the octets survive and no charset is guessed.
+func wordCharset(text string) string {
+	if utf8.ValidString(text) {
+		return "UTF-8"
+	}
+	return "UNKNOWN-8BIT"
+}
+
+const wordClose = "?="
+
+// encodedWords spells text as encoded words of at most 75 characters (RFC 2047
+// §2), never splitting a UTF-8 character across two (§5).
+func encodedWords(text string) []string {
+	var words []string
+	eachEncodedWord(text, func(open string, content []byte) {
+		words = append(words, open+string(content)+wordClose)
+	})
+	return words
+}
+
+// eachEncodedWord hands over each word of text as its opening and its content, in a
+// buffer the next word reuses.
+func eachEncodedWord(text string, emit func(open string, content []byte)) {
+	open := "=?UNKNOWN-8BIT?Q?"
+	charset := wordCharset(text)
+	if charset == "UTF-8" {
+		open = "=?UTF-8?Q?"
+	}
+	word := wordBuffers.Get().(*[75]byte)
+	defer wordBuffers.Put(word)
+	cur := word[:0]
+	var encoded [3 * utf8.UTFMax]byte
+	for i := 0; i < len(text); {
+		size := 1
+		if charset == "UTF-8" {
+			_, size = utf8.DecodeRuneInString(text[i:])
+		}
+		enc := appendQEncoded(encoded[:0], text[i:i+size])
+		if len(cur) > 0 && len(open)+len(cur)+len(enc)+len(wordClose) > 75 {
+			emit(open, cur)
+			cur = cur[:0]
+		}
+		cur = append(cur, enc...)
+		i += size
+	}
+	emit(open, cur)
+}
+
+// wordBuffers keeps a message of many small encoded fields from allocating for each.
+var wordBuffers = sync.Pool{New: func() any { return new([75]byte) }}
+
+// qEncode is the Q encoding restricted to what RFC 2047 §5(3) allows wherever an
+// encoded word may stand.
+func qEncode(s string) string {
+	return string(appendQEncoded(nil, s))
+}
+
+func appendQEncoded(b []byte, s string) []byte {
+	const hex = "0123456789ABCDEF"
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case c == ' ':
+			b = append(b, '_')
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9', strings.IndexByte("!*+-/", c) >= 0:
+			b = append(b, c)
+		default:
+			b = append(b, '=', hex[c>>4], hex[c&0x0f])
+		}
+	}
+	return b
+}

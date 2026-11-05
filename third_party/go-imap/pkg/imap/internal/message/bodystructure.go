@@ -20,22 +20,24 @@ import (
 // (MD5/disposition/language/location for single parts; parameters/disposition/
 // language/location for multiparts) as NIL where the Message model has no source.
 // The whole message body is always described — never a NIL or empty structure —
-// so the response is well-formed even for unusual or unparseable input.
-func BuildBodyStructure(raw string, extension bool) string {
-	return messageStructure(raw, extension, 0)
+// so the response is well-formed even for unusual or unparseable input. raw is
+// the message as FETCH sends it, and sessionUTF8 is whether the session enabled
+// UTF8=ACCEPT; see metadataText.
+func BuildBodyStructure(raw string, extension, sessionUTF8 bool) string {
+	return messageStructure(raw, extension, sessionUTF8, 0)
 }
 
 // messageStructure describes the RFC 5322 message raw found at MIME nesting
 // depth (see maxMIMEDepth).
-func messageStructure(raw string, extension bool, depth int) string {
+func messageStructure(raw string, extension, sessionUTF8 bool, depth int) string {
 	msg, err := mail.ReadMessage(strings.NewReader(raw))
 	if err != nil {
 		// Unparseable header block: describe the entire input as one text/plain
 		// part so the structure is still well-formed.
-		return singlePartStructure("text", "plain", nil, textproto.MIMEHeader{}, []byte(raw), extension, depth)
+		return singlePartStructure("text", "plain", nil, textproto.MIMEHeader{}, []byte(raw), extension, sessionUTF8, depth)
 	}
 	body, _ := io.ReadAll(msg.Body)
-	return partStructure(textproto.MIMEHeader(msg.Header), body, extension, "text/plain", depth)
+	return partStructure(textproto.MIMEHeader(msg.Header), body, extension, sessionUTF8, "text/plain", depth)
 }
 
 // parseContentType adapts mail's RFC 822 lexical rules to mime.ParseMediaType,
@@ -52,7 +54,7 @@ func parseContentType(value string) (string, map[string]string, error) {
 	if hasParameters {
 		base += ";" + parameters
 	}
-	return mime.ParseMediaType(base)
+	return parseMediaType(base)
 }
 
 // uncommentMIME replaces each RFC 822 §3.4.3 comment in a MIME header value
@@ -61,8 +63,16 @@ func parseContentType(value string) (string, map[string]string, error) {
 // parameter values (including parentheses and quoted-pairs) stay intact.
 // Unbalanced comments and unterminated quoted strings are errors.
 func uncommentMIME(value string) (string, error) {
+	text, _, err := splitComments(value)
+	return text, err
+}
+
+// splitComments is uncommentMIME that also returns each comment it replaced, with
+// its delimiters.
+func splitComments(value string) (string, []string, error) {
 	var b strings.Builder
-	depth := 0
+	var comments []string
+	depth, start := 0, 0
 	quoted := false
 	for i := 0; i < len(value); i++ {
 		c := value[i]
@@ -75,6 +85,9 @@ func uncommentMIME(value string) (string, error) {
 				depth++
 			case ')':
 				depth--
+				if depth == 0 {
+					comments = append(comments, value[start:i+1])
+				}
 			}
 		case quoted:
 			b.WriteByte(c)
@@ -86,18 +99,19 @@ func uncommentMIME(value string) (string, error) {
 			}
 		case c == '(':
 			depth = 1
+			start = i
 			b.WriteByte(' ')
 		case c == ')':
-			return "", mime.ErrInvalidMediaParameter
+			return "", nil, mime.ErrInvalidMediaParameter
 		default:
 			b.WriteByte(c)
 			quoted = c == '"'
 		}
 	}
 	if depth != 0 || quoted {
-		return "", mime.ErrInvalidMediaParameter
+		return "", nil, mime.ErrInvalidMediaParameter
 	}
-	return b.String(), nil
+	return b.String(), comments, nil
 }
 
 // partStructure builds the body structure for one MIME entity given its header
@@ -108,9 +122,9 @@ func uncommentMIME(value string) (string, error) {
 // such as a multipart at maxMIMEDepth or a base64 message/rfc822, is described
 // as an application/octet-stream leaf, as mimeNode.mediaType does for sections
 // and SEARCH.
-func partStructure(header textproto.MIMEHeader, body []byte, extension bool, defaultType string, depth int) string {
+func partStructure(header textproto.MIMEHeader, body []byte, extension, sessionUTF8 bool, defaultType string, depth int) string {
 	if !knownTransferEncoding(header.Get("Content-Transfer-Encoding")) {
-		return singlePartStructure("application", "octet-stream", nil, header, body, extension, depth)
+		return singlePartStructure("application", "octet-stream", nil, header, body, extension, sessionUTF8, depth)
 	}
 	mediatype, params, err := parseContentType(header.Get("Content-Type"))
 	if !usableContentType(mediatype, params, err) {
@@ -122,19 +136,19 @@ func partStructure(header textproto.MIMEHeader, body []byte, extension bool, def
 	}
 
 	if opaqueEntity(mediatype, params, header.Get("Content-Transfer-Encoding"), depth) {
-		return singlePartStructure("application", "octet-stream", nil, header, body, extension, depth)
+		return singlePartStructure("application", "octet-stream", nil, header, body, extension, sessionUTF8, depth)
 	}
 	if maintype == "multipart" && params["boundary"] != "" {
-		return multipartStructure(subtype, params, header, body, extension, depth)
+		return multipartStructure(subtype, params, header, body, extension, sessionUTF8, depth)
 	}
-	return singlePartStructure(maintype, subtype, params, header, body, extension, depth)
+	return singlePartStructure(maintype, subtype, params, header, body, extension, sessionUTF8, depth)
 }
 
 // multipartStructure builds the parenthesized structure for a multipart entity:
 // the nested part structures concatenated with no separator, then the subtype,
 // then (for BODYSTRUCTURE) the extension fields (RFC 3501 §7.4.2). header is the
 // multipart's own header, the source of its body-ext-mpart disposition field.
-func multipartStructure(subtype string, params map[string]string, header textproto.MIMEHeader, body []byte, extension bool, depth int) string {
+func multipartStructure(subtype string, params map[string]string, header textproto.MIMEHeader, body []byte, extension, sessionUTF8 bool, depth int) string {
 	childType := "text/plain"
 	if strings.EqualFold(subtype, "digest") {
 		childType = "message/rfc822"
@@ -147,12 +161,12 @@ func multipartStructure(subtype string, params map[string]string, header textpro
 	// keeps as stored.
 	for _, part := range multipartParts(string(body), params["boundary"]) {
 		h, b := splitEntity(part)
-		parts.WriteString(partStructure(entityHeader(h), []byte(b), extension, childType, depth+1))
+		parts.WriteString(partStructure(entityHeader(h), []byte(b), extension, sessionUTF8, childType, depth+1))
 	}
 	// A multipart with no decodable parts is still described as containing one
 	// empty text/plain part, keeping the structure well-formed.
 	if parts.Len() == 0 {
-		parts.WriteString(singlePartStructure("text", "plain", nil, textproto.MIMEHeader{}, nil, extension, depth+1))
+		parts.WriteString(singlePartStructure("text", "plain", nil, textproto.MIMEHeader{}, nil, extension, sessionUTF8, depth+1))
 	}
 
 	var b strings.Builder
@@ -166,9 +180,9 @@ func multipartStructure(subtype string, params map[string]string, header textpro
 		// read from the multipart's Content-Disposition when present; location is
 		// taken from Content-Location; language from Content-Language.
 		b.WriteByte(' ')
-		b.WriteString(paramList(params))
+		b.WriteString(paramList(params, sessionUTF8))
 		b.WriteByte(' ')
-		b.WriteString(dispositionField(header))
+		b.WriteString(dispositionField(header, sessionUTF8))
 		fmt.Fprintf(&b, " %s %s", languageField(header), wire.NilOrQuote(header.Get("Content-Location")))
 	}
 	b.WriteByte(')')
@@ -179,7 +193,7 @@ func multipartStructure(subtype string, params map[string]string, header textpro
 // entity (RFC 3501 §7.4.2): type, subtype, parameters, id, description,
 // encoding, size — plus a line count for text types, plus (for BODYSTRUCTURE)
 // the single-part extension fields MD5/disposition/language/location.
-func singlePartStructure(maintype, subtype string, params map[string]string, header textproto.MIMEHeader, body []byte, extension bool, depth int) string {
+func singlePartStructure(maintype, subtype string, params map[string]string, header textproto.MIMEHeader, body []byte, extension, sessionUTF8 bool, depth int) string {
 	if maintype == "" {
 		maintype = "text"
 	}
@@ -212,7 +226,7 @@ func singlePartStructure(maintype, subtype string, params map[string]string, hea
 	b.WriteByte(' ')
 	b.WriteString(wire.QuoteUpper(subtype, "PLAIN"))
 	b.WriteByte(' ')
-	b.WriteString(paramList(params))
+	b.WriteString(paramList(params, sessionUTF8))
 	fmt.Fprintf(&b, " %s %s %s %d",
 		wire.NilOrQuote(header.Get("Content-Id")),
 		wire.NilOrQuote(header.Get("Content-Description")),
@@ -225,8 +239,8 @@ func singlePartStructure(maintype, subtype string, params map[string]string, hea
 		// so it is parsed and described recursively (RFC 3501 §7.4.2).
 		enc := string(body)
 		fmt.Fprintf(&b, " %s %s %d",
-			buildEncapsulatedEnvelope(enc),
-			messageStructure(enc, extension, depth+1),
+			buildEncapsulatedEnvelope(enc, sessionUTF8),
+			messageStructure(enc, extension, sessionUTF8, depth+1),
 			countLines(body))
 	case strings.EqualFold(maintype, "text"):
 		// body-type-text adds a line count after the octet size.
@@ -237,7 +251,7 @@ func singlePartStructure(maintype, subtype string, params map[string]string, hea
 		// supplied Content-MD5 and Content-Location; do not compute or verify a
 		// digest, resolve a URI, or inherit fields from an enclosing entity.
 		fmt.Fprintf(&b, " %s %s %s %s", wire.NilOrQuote(header.Get("Content-Md5")),
-			dispositionField(header), languageField(header), wire.NilOrQuote(header.Get("Content-Location")))
+			dispositionField(header, sessionUTF8), languageField(header), wire.NilOrQuote(header.Get("Content-Location")))
 	}
 	b.WriteByte(')')
 	return b.String()
@@ -251,7 +265,7 @@ func singlePartStructure(maintype, subtype string, params map[string]string, hea
 // uses RFC 822 lexical rules). The disposition type is a single token, so a
 // type/subtype pair is invalid. An absent or unparseable Content-Disposition
 // yields NIL.
-func dispositionField(header textproto.MIMEHeader) string {
+func dispositionField(header textproto.MIMEHeader, sessionUTF8 bool) string {
 	cd := header.Get("Content-Disposition")
 	if cd == "" {
 		return "NIL"
@@ -260,11 +274,11 @@ func dispositionField(header textproto.MIMEHeader) string {
 	if err != nil {
 		return "NIL"
 	}
-	disptype, params, err := mime.ParseMediaType(uncommented)
+	disptype, params, err := parseMediaType(uncommented)
 	if err != nil || disptype == "" || strings.Contains(disptype, "/") {
 		return "NIL"
 	}
-	return "(" + wire.EncodeMailboxName(strings.ToUpper(disptype)) + " " + paramList(params) + ")"
+	return "(" + wire.EncodeMailboxName(strings.ToUpper(disptype)) + " " + paramList(params, sessionUTF8) + ")"
 }
 
 // languageField renders a part's Content-Language as an IMAP body-fld-lang:
@@ -317,9 +331,10 @@ func stripComments(s string) string {
 // list, e.g. ("CHARSET" "US-ASCII"), with attribute names uppercased and keys in
 // sorted order for a deterministic result. An empty map yields NIL. Parameter
 // names and values are strings, not nstrings: an empty value is "", never NIL.
-// Reuse the astring encoder so decoded RFC 2231 values containing CR/LF or
-// 8-bit octets use counted literals, including in disposition parameters.
-func paramList(params map[string]string) string {
+// Reuse the astring encoder so decoded RFC 2231 values containing CR/LF use counted
+// literals, including in disposition parameters. A value decoded to 8-bit text
+// follows metadataText.
+func paramList(params map[string]string, sessionUTF8 bool) string {
 	if len(params) == 0 {
 		return "NIL"
 	}
@@ -336,7 +351,7 @@ func paramList(params map[string]string) string {
 		}
 		b.WriteString(wire.EncodeMailboxName(strings.ToUpper(k)))
 		b.WriteByte(' ')
-		b.WriteString(wire.EncodeMailboxName(params[k]))
+		b.WriteString(wire.EncodeMailboxName(metadataText(params[k], sessionUTF8)))
 	}
 	b.WriteByte(')')
 	return b.String()

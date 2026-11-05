@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
+	"unsafe"
 
 	"gorm.io/gorm"
 
@@ -108,6 +109,15 @@ type Message struct {
 	// section 2.3.4). Zero means "not measured yet" (a row stored before this
 	// column existed and not yet backfilled); consumers fall back to RawSize.
 	DowngradedSize int `gorm:"not null;default:0" json:"downgraded_size"`
+	// IMAPSize and IMAPUTF8Size are the octet counts an IMAP FETCH of the whole
+	// message sends, without and with UTF-8 enabled: FETCH converts a message to
+	// 7-bit on the way out (RFC 3501 section 7.4.2) and RawMessage never changes.
+	// RFC822.SIZE reports them, so a client's size matches what it receives
+	// without the message being loaded for every metadata FETCH. They equal
+	// RawSize when the message is already 7-bit, and are zero only when no raw
+	// source is stored.
+	IMAPSize     int `gorm:"column:imap_size;not null;default:0" json:"imap_size"`
+	IMAPUTF8Size int `gorm:"column:imap_utf8_size;not null;default:0" json:"imap_utf8_size"`
 	// ReceivedTLS records the inbound transport security of an inbound-MX
 	// (port 25) delivery: true = the connection was encrypted (implicit TLS or
 	// STARTTLS), false = plaintext. It is a pointer so NULL can mean "not an
@@ -153,11 +163,20 @@ type Message struct {
 
 func (Message) TableName() string { return "messages" }
 
-// BeforeCreate measures the downgraded size of a message stored with its raw
-// source, on every path that stores one, so no delivery path can forget it.
+// BeforeCreate measures the sizes a gateway reports for a message stored with its
+// raw source, on every path that stores one, so no delivery path can forget them.
 func (m *Message) BeforeCreate(*gorm.DB) error {
-	if m.DowngradedSize == 0 && m.RawSize > 0 {
-		m.DowngradedSize = rmail.DowngradedSize(m.sourceText())
+	if m.RawSize > 0 && (m.DowngradedSize == 0 || m.IMAPSize == 0 || m.IMAPUTF8Size == 0) {
+		sizes := rmail.MeasureWireSizes(m.sourceView())
+		if m.DowngradedSize == 0 {
+			m.DowngradedSize = sizes.Downgraded
+		}
+		if m.IMAPSize == 0 {
+			m.IMAPSize = sizes.IMAP
+		}
+		if m.IMAPUTF8Size == 0 {
+			m.IMAPUTF8Size = sizes.IMAPUTF8
+		}
 	}
 	if m.PendingDraft || (m.IsDeleted && m.Sender == "system" && m.Subject == "" && m.BodyText == "" && m.BodyHTML == "" && m.RawMessage == "" && m.RawOctets == nil) {
 		m.SealedHash = ""
@@ -168,10 +187,11 @@ func (m *Message) BeforeCreate(*gorm.DB) error {
 	return err
 }
 
-// sourceText is Source as text. A message held as text isn't copied for it.
-func (m Message) sourceText() string {
+// sourceView is the source as a string without copying it, for reading it while nothing
+// else writes to it: measuring a message must not cost a copy of it. Nothing may keep it.
+func (m *Message) sourceView() string {
 	if m.RawOctets != nil {
-		return string(m.RawOctets)
+		return unsafe.String(unsafe.SliceData(m.RawOctets), len(m.RawOctets))
 	}
 	return m.RawMessage
 }

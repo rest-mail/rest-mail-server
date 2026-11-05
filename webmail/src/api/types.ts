@@ -3955,6 +3955,8 @@ export interface components {
             headers?: unknown;
             id: number;
             imap_deleted?: boolean;
+            imap_size: number;
+            imap_utf8_size: number;
             in_reply_to: string;
             is_answered?: boolean;
             is_deleted: boolean;
@@ -4334,6 +4336,8 @@ export interface components {
             headers?: unknown;
             id?: number;
             imap_deleted?: boolean;
+            imap_size?: number;
+            imap_utf8_size?: number;
             in_reply_to?: string;
             is_answered?: boolean;
             is_deleted?: boolean;
@@ -4765,6 +4769,8 @@ export interface components {
             headers?: unknown;
             id: number;
             imap_deleted?: boolean;
+            imap_size: number;
+            imap_utf8_size: number;
             in_reply_to: string;
             is_answered?: boolean;
             is_deleted: boolean;

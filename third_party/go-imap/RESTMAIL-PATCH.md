@@ -31,6 +31,59 @@ found by the RFC 3501 inventory in rest-mail/rest-mail-server#374.
   that the flag was accepted and ignored, so it is corrected in the same way.
   Under EXAMINE, read-only NO still comes before this check.
 
+- FETCH converts a message as it is sent, for rest-mail/rest-mail-server#1861,
+  because headers "MUST be 7-bit" and "non-textual data such as binary data MUST
+  be transfer encoded" (RFC 3501 §7.4.2). The octets `Mailbox.Fetch` returns are
+  never changed, and BINARY and SEARCH still read them; `RFC822`, `BODY[...]`,
+  partial offsets and `BODYSTRUCTURE` use the converted form, and a host reports
+  its length as `Message.Size`, measured with `wireform.Convert`. Only what breaks
+  the rule is rewritten, so a message already 7-bit goes out byte for byte and a
+  signature over it still verifies from FETCH output. A converted message's
+  signature fails if a client re-verifies it from FETCH output, and still verifies
+  over the store. These are implementation defaults, not owner decisions:
+  - Valid UTF-8 header text becomes RFC 2047 encoded words in charset `UTF-8`;
+    any other 8-bit text uses `UNKNOWN-8BIT`, so no charset is guessed.
+    Content-Type and Content-Disposition parameters become RFC 2231 extended
+    values instead, because an encoded word may not stand in a parameter.
+  - 8-bit text stays when its section names a charset. Text naming none goes out
+    QUOTED-PRINTABLE, and non-textual data BASE64. A body already declared base64
+    or quoted-printable keeps that encoding, so nothing is encoded twice.
+  - After `ENABLE UTF8=ACCEPT`, valid UTF-8 stays in headers and in text naming no
+    charset, whose default there is UTF-8 (RFC 6532 §3).
+  - ENVELOPE and BODYSTRUCTURE read the converted message, for
+    rest-mail/rest-mail-server#1882, because those strings have nowhere to name a
+    charset (RFC 3501 §4.3.1). Without UTF-8, a string a decoder produced (a name
+    from an encoded word, a parameter from RFC 2231) goes out as encoded words,
+    even a parameter, since the rule against that (RFC 2047 §5) is about message
+    headers and an IMAP string can hold nothing else. An address with an 8-bit
+    mailbox has no 7-bit form, so it is left out of its field, which reads NIL when
+    none remains, at the top of a message and in an encapsulated one alike. After `ENABLE UTF8=ACCEPT`, valid
+    UTF-8 goes out as a literal, as before.
+  - An address name in a charset go-imap has no reader for stays the encoded word
+    it was sent as, in either session, for rest-mail/rest-mail-server#1885. It
+    already names its charset, so no byte is guessed, and the address stays. The
+    module has no dependencies, so that is every charset but UTF-8, US-ASCII and
+    ISO-8859-1. This relies on `net/mail` keeping a word whose charset reader
+    fails on read, which the session tests would catch if it changed.
+  - An RFC 2231 parameter in such a charset gets the same treatment, for
+    rest-mail/rest-mail-server#1886, and go-imap reads these parameters itself
+    because `mime.ParseMediaType` drops them. The value goes out as one encoded word
+    naming the charset, in either session, however long, because go-imap can't tell
+    where a character of that charset ends and a word may not split one (RFC 2047
+    §5). That outranks the 75-character limit (§2). A boundary or a charset name
+    that is ASCII stays plain text, because the structure depends on it.
+  - Converting a Content-Type or Content-Disposition field changes only the
+    parameter holding an 8-bit octet, and the field is otherwise as it was sent.
+    A plain 8-bit value beside an extended form of the same parameter becomes encoded
+    words in its quoted-string, against RFC 2047 §5, because a second extended form
+    would make the field unreadable. Readers take the extended form.
+
+- SEARCH decodes a header one encoded word at a time, for
+  rest-mail/rest-mail-server#1887, rather than through
+  `mime.WordDecoder.DecodeHeader`, which gives up on the whole header at a charset
+  with no reader. It finds each word's bounds itself to do that: a word no longer
+  spans lines, and a word it can't decode ends at white space.
+
 ## RFC 9051 additions
 
 These add IMAP4rev2 behaviour from RFC 9051 ahead of the `IMAP4rev2`
