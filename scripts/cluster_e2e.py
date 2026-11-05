@@ -68,8 +68,8 @@ Each step tests REST Mail's wiring, not the components' own behaviour:
                 install's admin sends to it through the API, and it is read back
                 over the second install's IMAP gateway. It went over RESTMAIL: the
                 first install's queue logged the RESTMAIL delivery to the peer's
-                /restmail/messages for that recipient, and nothing fell back to
-                SMTP; the message carries no Received field the peer's SMTP
+                /restmail/messages for that recipient, and no SMTP delivery to the
+                peer's domain; the message carries no Received field the peer's SMTP
                 gateway stamps. A peer identified as REST Mail is never
                 downgraded to SMTP (#291).
 
@@ -150,9 +150,10 @@ GREYLIST_RETRY = 7 * 60 * 6 // 5
 
 # The first install's queue logs this line, with the url and the recipient,
 # when a RESTMAIL delivery succeeds (internal/gateway/queue/worker.go); and
-# this one when a RESTMAIL hop failed and the message goes over SMTP instead.
+# this one, with the host and the domain, when a message leaves over SMTP. Since
+# #1666 no failed RESTMAIL hop goes to SMTP, so this is what breaking that writes.
 RESTMAIL_DELIVERED = "queue: RESTMAIL delivery succeeded"
-RESTMAIL_FELL_BACK = "queue: RESTMAIL delivery failed, falling back to SMTP"
+SMTP_DELIVERED = "queue: delivered over SMTP"
 
 # A recipient on a domain no install hosts (RFC 2606 reserves .invalid).
 UNHOSTED = "nobody@unhosted.invalid"
@@ -728,9 +729,10 @@ def dkim_verify(raw: bytes, owner: str, record: str, verify=None) -> bool:
 
 
 def restmail_hops(log: str, recipient: str) -> tuple[list[str], list[str]]:
-    """The RESTMAIL deliveries to recipient (their urls) and the SMTP fallbacks
+    """The RESTMAIL deliveries to recipient (their urls) and the SMTP deliveries
     (their hosts) in the queue's JSON log lines."""
-    delivered, fell_back = [], []
+    delivered, by_smtp = [], []
+    domain = recipient.rsplit("@", 1)[-1].lower()
     for line in log.splitlines():
         try:
             entry = json.loads(line)
@@ -740,9 +742,9 @@ def restmail_hops(log: str, recipient: str) -> tuple[list[str], list[str]]:
             continue
         if entry.get("msg") == RESTMAIL_DELIVERED and str(entry.get("recipient", "")).lower() == recipient.lower():
             delivered.append(str(entry.get("url", "")))
-        elif entry.get("msg") == RESTMAIL_FELL_BACK:
-            fell_back.append(str(entry.get("host", "")))
-    return delivered, fell_back
+        elif entry.get("msg") == SMTP_DELIVERED and str(entry.get("domain", "")).lower() == domain:
+            by_smtp.append(str(entry.get("host", "")))
+    return delivered, by_smtp
 
 
 def smtp_stamps(raw: bytes, host: str) -> list[str]:
@@ -965,17 +967,17 @@ class Stages:
         log = self.cluster.run("logs", f"deployment/{self.args.release}-smtp-gateway", "--all-containers=true",
                                f"--since-time={since}")
         (self.report_dir / "restmail-peer-queue.log").write_text(log)
-        delivered, fell_back = restmail_hops(log, mailbox)
+        delivered, by_smtp = restmail_hops(log, mailbox)
         want = f"https://{peer_host}/restmail/messages"
-        if fell_back:
-            raise StepFailed(f"a RESTMAIL delivery fell back to SMTP (hosts {fell_back}): see restmail-peer-queue.log")
+        if by_smtp:
+            raise StepFailed(f"the queue sent the peer's mail over SMTP (hosts {by_smtp}): see restmail-peer-queue.log")
         if want not in delivered:
             raise StepFailed(f"the queue logged no RESTMAIL delivery to {want} for {mailbox} "
                              f"(found {delivered}): see restmail-peer-queue.log")
         stamps = smtp_stamps(raw, peer_host)
         if stamps:
             raise StepFailed(f"the peer's SMTP gateway stamped the message: {stamps[0][:200]}")
-        return (f"from={admin},to={mailbox},after={int(waited)}s,via=RESTMAIL,url={want},smtp-fallback=none,"
+        return (f"from={admin},to={mailbox},after={int(waited)}s,via=RESTMAIL,url={want},smtp=none,"
                 f"peer-smtp-received=none,read=peer-imap,message=restmail-peer.eml")
 
     def mail_out(self) -> str:
