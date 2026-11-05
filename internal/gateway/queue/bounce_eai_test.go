@@ -2,6 +2,7 @@ package queue
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -64,5 +65,12 @@ func TestGenerateBounce_EAISender(t *testing.T) {
 	digest, err := dsn.SealDigest()
 	if err != nil || dsn.SealedHash == "" || digest != dsn.SealedHash {
 		t.Fatalf("DSN receipt not sealed: stored %q, computed %q, error %v", dsn.SealedHash, digest, err)
+	}
+	// getMessage links a message to its thread, so the receipt needs one to link to.
+	if dsn.MsgID == "" || dsn.ThreadID != dsn.MsgID {
+		t.Errorf("DSN message_id %q, thread_id %q; want one thread named by the DSN's own Message-ID", dsn.MsgID, dsn.ThreadID)
+	}
+	if !strings.Contains(dsn.RawMessage, "Message-ID: "+dsn.MsgID+"\r\n") {
+		t.Errorf("DSN message_id %q is not the Message-ID in its source", dsn.MsgID)
 	}
 }

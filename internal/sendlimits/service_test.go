@@ -204,6 +204,14 @@ func TestDelegatedSenderLimitAlertsItsOwner(t *testing.T) {
 	if err != nil || hit == nil || hit.OwnerID != owner.ID {
 		t.Fatalf("wrong owner alerted: %+v %v", hit, err)
 	}
+	var notice models.Message
+	if err := db.Where("mailbox_id = ?", owner.ID).First(&notice).Error; err != nil {
+		t.Fatal(err)
+	}
+	// getMessage links a message to its thread, so the notice needs one to link to.
+	if notice.MsgID == "" || notice.ThreadID != notice.MsgID {
+		t.Fatalf("notice message_id %q, thread_id %q; want one thread named by its own Message-ID", notice.MsgID, notice.ThreadID)
+	}
 }
 
 func TestDelegationCannotRotateSendingDomainsPastAccountDomainBudget(t *testing.T) {

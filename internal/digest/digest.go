@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
 	"gorm.io/gorm"
 )
 
@@ -105,7 +106,10 @@ func (w *Worker) deliverDigest(mailboxID uint, items []models.Quarantine) {
 
 	bodyText, bodyHTML := renderDigest(address, time.Now(), items)
 
+	messageID := rmail.GenerateMessageID(mailbox.Domain.Name)
 	msg := models.Message{
+		MsgID:     messageID,
+		ThreadID:  rmail.HeaderThreadID(messageID, "", ""),
 		MailboxID: mailboxID,
 		Folder:    "INBOX",
 		Sender:    fmt.Sprintf("quarantine-digest@%s", mailbox.Domain.Name),

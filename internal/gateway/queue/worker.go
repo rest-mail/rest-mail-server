@@ -1536,6 +1536,8 @@ func (w *Worker) generateBounce(item models.OutboundQueue, smtpErr *SMTPError) {
 	// envelope-from (which an external sender could use to inflate the counter and
 	// suppress a target user's legitimate bounces).
 	bounceMsg := models.Message{
+		MsgID:        dsn.messageID,
+		ThreadID:     rmail.HeaderThreadID(dsn.messageID, "", ""),
 		MailboxID:    senderMailbox.ID,
 		Folder:       "INBOX",
 		Sender:       "mailer-daemon@" + w.hostname,
@@ -1564,6 +1566,7 @@ func (w *Worker) generateBounce(item models.OutboundQueue, smtpErr *SMTPError) {
 // builtDSN is the fully rendered bounce message plus the two fields the caller
 // stores alongside the raw form (the Subject header and the human-readable text).
 type builtDSN struct {
+	messageID string
 	raw       string
 	subject   string
 	humanPart string
@@ -1688,7 +1691,7 @@ func buildDSNMessage(hostname string, item models.OutboundQueue, smtpErr *SMTPEr
 	b.WriteString(originalHeaders + "\r\n")
 	b.WriteString("--" + boundary + "--\r\n")
 
-	return builtDSN{raw: b.String(), subject: bounceSubject, humanPart: humanPart}
+	return builtDSN{messageID: msgID, raw: b.String(), subject: bounceSubject, humanPart: humanPart}
 }
 
 // dsnRecipientField renders a Final-Recipient value. An ASCII address keeps the
