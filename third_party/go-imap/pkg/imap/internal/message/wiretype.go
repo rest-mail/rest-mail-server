@@ -1,7 +1,6 @@
 package message
 
 import (
-	"errors"
 	"hash/maphash"
 	"mime"
 	"strings"
@@ -224,9 +223,12 @@ func readableKept(value string) string {
 }
 
 // keptParameters is a field with no comments, less every parameter isKeptName leaves out,
-// which mime.ParseMediaType reads the same. It takes a parameter one at a time as that
-// does (consumeMediaParam), and fails where that fails: on one it can't read, or on a name
-// repeated with another value. The parameters kept are left for it to judge.
+// which parseMediaType reads the same. It takes a parameter one at a time as
+// mime.ParseMediaType does (consumeMediaParam), and fails where that fails: on one it can't
+// read. The parameters kept are left for parseMediaType to judge, and so is the first name
+// repeated with another value, whose two parameters stay: what a repeat means is
+// parseMediaType's to say, and one is enough for it to say it, since every name dropped
+// here has already been read.
 func keptParameters(v string) (string, error) {
 	base, _, _ := strings.Cut(v, ";")
 	rest := v[len(base):]
@@ -234,6 +236,7 @@ func keptParameters(v string) (string, error) {
 	defer names.release()
 	var b strings.Builder
 	b.WriteString(base)
+	keptRepeat := false
 	for len(rest) > 0 {
 		rest = strings.TrimLeftFunc(rest, unicode.IsSpace)
 		if rest == "" {
@@ -252,8 +255,10 @@ func keptParameters(v string) (string, error) {
 			slot, repeated := names.add(key)
 			if !repeated {
 				slot.at, slot.size = int32(len(v)-len(value)-len(next)), int32(len(value))
-			} else if earlier := v[slot.at : slot.at+slot.size]; earlier != value && mediaValueText(earlier) != mediaValueText(value) {
-				return "", errors.New("mime: duplicate parameter name")
+			} else if earlier := v[slot.at : slot.at+slot.size]; !keptRepeat && earlier != value && mediaValueText(earlier) != mediaValueText(value) {
+				keptRepeat = true
+				b.WriteString(";" + key + "=" + earlier)
+				b.WriteString(rest[:len(rest)-len(next)])
 			}
 		}
 		rest = next

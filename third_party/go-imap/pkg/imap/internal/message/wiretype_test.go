@@ -95,6 +95,35 @@ func TestWireTypeMatchesMediaType(t *testing.T) {
 	})
 }
 
+// A field of many parameters drops the ones nothing reads, and a name repeated among those
+// must read as it does in the whole field, whatever the whole field makes of a repeat.
+func TestManyParametersReadARepeatedNameAsTheWholeField(t *testing.T) {
+	var p strings.Builder
+	for i := range 30 {
+		fmt.Fprintf(&p, "; p%d=v%d", i, i)
+	}
+	many := p.String()
+	for _, value := range []string{
+		"multipart/mixed" + many + "; p1=other; boundary=B",
+		"multipart/mixed; boundary=B" + many + "; P1=\"other\"",
+		"multipart/mixed" + many + "; p1=other; p2=other; p1=another; boundary=B",
+		"multipart/mixed" + many + "; p1=\"v1\"; boundary=B",
+		"text/plain" + many + "; p1=other; charset=y",
+		"text/plain" + many + "; p1=other; broken; charset=y",
+	} {
+		node := mimeNode{header: "Content-Type: " + value + "\r\n\r\n", defaultType: "application/x-default"}
+		mt, params := node.mediaType()
+		if got := node.wireType(); got.mt != mt || got.boundary != params["boundary"] || got.charset != params["charset"] {
+			t.Errorf("%q: read %+v, want %q %q %q", value, got, mt, params["boundary"], params["charset"])
+		}
+		want, wantOK := parameterField("Content-Type", value, "")
+		var b strings.Builder
+		if ok := WriteParameterField(&b, "Content-Type", value); ok != wantOK || b.String() != want {
+			t.Errorf("%q: wrote %t %q, want %t %q", value, ok, b.String(), wantOK, want)
+		}
+	}
+}
+
 // parameterField holds the whole field and WriteParameterField holds none of it, so each
 // checks the other.
 func TestWriteParameterFieldMatchesBuilt(t *testing.T) {
