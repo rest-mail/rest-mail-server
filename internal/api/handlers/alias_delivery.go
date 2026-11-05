@@ -98,7 +98,7 @@ func (h *MessageHandler) deliverToRecipient(ctx context.Context, recipient repos
 		case pipeline.ActionDefer:
 			deliveredTrace.Outcome = outcomeDeferred
 			h.recordTrace(buildTrace(*deliveredTrace))
-			return nil, fmt.Errorf("deferred: alias pipeline deferred delivery")
+			return nil, deferredError(result, "alias pipeline deferred delivery")
 		default:
 			deliveredTrace.Outcome = outcomeRejected
 			h.recordTrace(buildTrace(*deliveredTrace))

@@ -250,7 +250,7 @@ OpenAPI 3.1 spec: `/api/docs/openapi.yaml`, and the description generated from t
 
 Per-domain, per-direction (inbound / outbound) filter chains. Configured via `/api/v1/admin/pipelines`. Filter registry at [internal/pipeline/](../internal/pipeline/); built-in filter implementations at [internal/pipeline/filters/](../internal/pipeline/filters/).
 
-Each filter returns one of: `continue`, `reject`, `quarantine`, `discard`, `defer`. SMTP gateway maps these to reply codes 250 / 550 / silent discard / 200 / 451 respectively.
+Each filter returns one of: `continue`, `reject`, `quarantine`, `discard`, `defer`. SMTP gateway maps these to reply codes 250 / 550 / silent discard / 200 / 451 respectively; a deferral by the `greylist` filter is `450 4.7.1 Greylisted, try again later`, so a sending queue can tell it apart.
 
 #### Built-in filters (21)
 

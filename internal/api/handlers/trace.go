@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"time"
 
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
@@ -51,6 +52,21 @@ func terminalStep(result *pipeline.ExecutionResult) *pipeline.StepResult {
 		return nil
 	}
 	return &result.Steps[len(result.Steps)-1]
+}
+
+// errGreylisted is a delivery the greylist step held back. It reads as any other
+// deferral to a caller that does not ask, and the deliver route names it, so the
+// sending server's queue can retry on its greylisting schedule.
+var errGreylisted = errors.New("deferred: greylisted, try again later")
+
+// deferredError is the error of a delivery its pipeline deferred. The step's own
+// fault is not greylisting, even in the greylist step: nothing says a retry after
+// the delay gets through.
+func deferredError(result *pipeline.ExecutionResult, detail string) error {
+	if ts := terminalStep(result); ts != nil && ts.Error == "" && pipeline.ReasonForStep(*ts) == pipeline.ReasonGreylistDefer {
+		return errGreylisted
+	}
+	return errors.New("deferred: " + detail)
 }
 
 // quarantineReason is why a message was held, for its quarantine row: the

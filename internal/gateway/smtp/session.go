@@ -1001,6 +1001,12 @@ func (s *session) Data(r io.Reader) (err error) {
 					// hides the cause. 452 4.2.2 is the transient form (retry); a
 					// policy-permanent full mailbox would be 552 5.2.2.
 					failCode, failEnhanced, failMsg = 452, gosmtp.EnhancedCode{4, 2, 2}, "Mailbox full"
+				case greylistRefusal(apiErr):
+					// RFC 6647 §5 leaves 450 as the reply for a greylisting delay that
+					// keeps the connection, and RFC 5321 §4.3.2 allows it after DATA for a
+					// policy refusal. X.7.1 is RFC 3463's refusal by policy. A sending
+					// queue reads the word: no status code says greylisting.
+					failCode, failEnhanced, failMsg = 450, gosmtp.EnhancedCode{4, 7, 1}, "Greylisted, try again later"
 				case apiErr.StatusCode == 503 || apiErr.StatusCode == 451:
 					failCode, failEnhanced, failMsg = 451, gosmtp.EnhancedCode{4, 3, 0}, "Try again later"
 				default:
@@ -1051,6 +1057,19 @@ func aliasRoutingRefusal(err error) (string, bool) {
 		return "", false
 	}
 	return refusal.Error.Message, true
+}
+
+// greylistRefusal recognises the API's 451 for a message the greylist step held back.
+func greylistRefusal(apiError *apiclient.APIError) bool {
+	if apiError.StatusCode != 451 {
+		return false
+	}
+	var refusal struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	return json.Unmarshal([]byte(apiError.Body), &refusal) == nil && refusal.Error.Code == rmail.GreylistedRefusal
 }
 
 // Reset discards the current transaction (RSET, or implicitly after DATA).
