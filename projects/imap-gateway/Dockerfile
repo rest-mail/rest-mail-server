@@ -40,7 +40,9 @@ EXPOSE 993
 CMD ["air", "-c", "projects/imap-gateway/.air.toml"]
 
 # ── Stage 4: prod (minimal Alpine runtime, non-root) ─────────────────
-FROM alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc AS prod
+# 3.24, not 3.20: an end-of-life release gets no fixes, so its image scan stays
+# quiet while its packages age (#1947).
+FROM alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a AS prod
 # An unprivileged runtime user (#193), the API image's uid. It needs no
 # capability for the ports below 1024: the chart has the gateway listen on
 # unprivileged ports and its Service maps the public ones onto them, and Docker

@@ -32,6 +32,9 @@ jobs:
     if: >-
       github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
     strategy:
+      # Each image reports its own scan: without this the first failure cancels
+      # the others and hides their findings (#1947). The job still fails.
+      fail-fast: false
       matrix:
         include:
           - image: api
@@ -119,6 +122,9 @@ jobs:
         env:
           TRIVY_PLATFORM: linux/amd64
         with:
+          # Named, not left to the action's default: scripts/image_scan.py runs
+          # this same version locally.
+          version: v0.70.0
           image-ref: ${{ env.IMAGE_PREFIX }}/${{ matrix.image }}@${{ steps.build.outputs.digest }}
           format: sarif
           output: trivy-${{ matrix.image }}.sarif

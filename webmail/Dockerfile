@@ -5,7 +5,7 @@
 # every platform, and installing under emulation hung the arm64 build (#1850).
 # Only the prod stage is built per platform. The dev stage inherits this stage's
 # platform, which is right for an image built for the machine running it.
-FROM --platform=$BUILDPLATFORM node:22-alpine@sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb9c86130c3e2 AS deps
+FROM --platform=$BUILDPLATFORM node:22-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914 AS deps
 WORKDIR /app
 # pnpm, activated by corepack at the version package.json pins in
 # `packageManager` — so the image build, CI and a developer's shell all install
@@ -41,7 +41,9 @@ EXPOSE 3000
 CMD ["pnpm", "run", "dev"]
 
 # ── Stage 4: prod (nginx serving built assets) ────────────────────────
-FROM nginxinc/nginx-unprivileged:1.27-alpine@sha256:65e3e85dbaed8ba248841d9d58a899b6197106c23cb0ff1a132b7bfe0547e4c0 AS prod
+# The slim variant: nginx.conf loads no dynamic module, and the full image's
+# curl, brotli and expat only ever add findings to the image scan (#1947).
+FROM nginxinc/nginx-unprivileged:1.30-alpine-slim@sha256:5d8bb9437d74a600ec5dbf90c035451c724dc33eac8d3a71078f6f8612c345f6 AS prod
 ARG NGINX_BASE_PATH=/
 ENV NGINX_BASE_PATH=${NGINX_BASE_PATH}
 # The template is kept out of conf.d, where the entrypoint writes the finished
