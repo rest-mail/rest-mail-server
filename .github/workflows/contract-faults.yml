@@ -1,18 +1,25 @@
 name: Contract faults
 
-# Nightly, proof that the contract run catches faults (#654): the E2E topology
-# comes up and passes its stages as usual, then the API is rebuilt with each
-# fault in tests/contract/faults.yml (Go build tags, so a normal build holds no
-# fault code), and the phase each fault names must turn red on its operation.
-# A fault that stops being caught fails this run; faults.md in the run's
+# Nightly and on every v* tag, proof that the contract run catches faults (#654,
+# #626): the E2E topology comes up and passes its stages as usual, then the API is
+# rebuilt with each fault in tests/contract/faults.yml (Go build tags, so a normal
+# build holds no fault code), and the phase each fault names must turn red on its
+# operation. A fault that stops being caught fails this run; faults.md in the run's
 # e2e-container-logs artifact says which. Adding a fault: tests/contract/README.md.
+#
+# Each fault that fails has one issue (label contract-faults): a failure opens or
+# updates it, and a later run that catches the fault closes it
+# (scripts/contract_tier_issues.py).
 on:
   schedule:
     - cron: "30 4 * * *"
+  push:
+    tags: ["v*"]
   workflow_dispatch:
 
+# By ref, so a nightly run cannot cancel a release tag's.
 concurrency:
-  group: contract-faults
+  group: contract-faults-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -25,3 +32,38 @@ jobs:
     uses: ./.github/workflows/e2e-suite.yml
     with:
       contract-phases: faults
+
+  # Its own job, so only this one can write issues: the suite builds and runs the
+  # images with a read-only token.
+  finding-issues:
+    name: Finding issues
+    needs: faults
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # One at a time across refs, so two runs cannot both open the same finding.
+    concurrency:
+      group: contract-faults-issues
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Missing when the suite failed before it collected anything; the script
+      # then files the run itself as not finished.
+      - name: Download the suite's reports
+        continue-on-error: true
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: e2e-container-logs
+          path: e2e-container-logs
+
+      - name: Open, update or close the finding issues
+        env:
+          SUITE_RESULT: ${{ needs.faults.result }}
+        run: python3 -B scripts/contract_tier_issues.py --tier faults --result "$SUITE_RESULT" --reports e2e-container-logs

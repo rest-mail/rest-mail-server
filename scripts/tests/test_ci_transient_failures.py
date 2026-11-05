@@ -242,6 +242,11 @@ READ_BY_PEOPLE = {
     "api-gap-report",
     "load-results",
 }
+# People read these, and a later job reads them too if they arrive. Each download
+# carries on when the artifact is missing, because the job has an answer for a run
+# with no report: contract_tier_issues.py files the run as not finished and closes
+# nothing. So a lost upload still cannot fail a job, and it is not tried again.
+READ_BY_A_LATER_JOB_THAT_CAN_DO_WITHOUT = {"e2e-container-logs"}
 READ_BY_A_LATER_JOB = {
     "example-proofs-rest",
     "coverage-part-rest",
@@ -321,17 +326,28 @@ class ArtifactUploadTests(unittest.TestCase):
                 # The reset can come after the artifact finalized.
                 self.assertIn("          overwrite: true", step_with(step))
 
+    def downloads(self):
+        """Every download as (workflow:job, its step, the artifact or pattern)."""
+        found = []
+        for workflow in sorted(WORKFLOWS.glob("*.yml")):
+            for name, job in jobs(workflow).items():
+                for step in steps(job):
+                    if "uses: actions/download-artifact@" in step:
+                        for wanted in re.findall(
+                            r"(?m)^          (?:name|pattern): (.+)$", step
+                        ):
+                            found.append((f"{workflow.name}:{name}", step, wanted))
+        return found
+
     def test_a_job_downloads_only_what_is_tried_again(self):
         wanted = re.findall(
             r"--pattern '([^']+)'", (ROOT / "scripts/ci_example_proofs.sh").read_text()
         )
-        for workflow in sorted(WORKFLOWS.glob("*.yml")):
-            for job in jobs(workflow).values():
-                for step in steps(job):
-                    if "uses: actions/download-artifact@" in step:
-                        wanted += re.findall(
-                            r"(?m)^          (?:name|pattern): (.+)$", step
-                        )
+        wanted += [
+            pattern
+            for _, _, pattern in self.downloads()
+            if pattern not in READ_BY_A_LATER_JOB_THAT_CAN_DO_WITHOUT
+        ]
         self.assertEqual(
             set(wanted), {"example-proofs-*", "coverage-part-*", "live-example-proofs"}
         )
@@ -339,6 +355,22 @@ class ArtifactUploadTests(unittest.TestCase):
             with self.subTest(pattern=pattern):
                 self.assertTrue(fnmatch.filter(READ_BY_A_LATER_JOB, pattern))
                 self.assertFalse(fnmatch.filter(READ_BY_PEOPLE, pattern))
+
+    def test_a_job_that_reads_what_is_not_tried_again_carries_on_without_it(self):
+        self.assertLessEqual(READ_BY_A_LATER_JOB_THAT_CAN_DO_WITHOUT, READ_BY_PEOPLE)
+        seen = set()
+        for where, step, pattern in self.downloads():
+            if pattern in READ_BY_A_LATER_JOB_THAT_CAN_DO_WITHOUT:
+                seen.add(where)
+                with self.subTest(where=where, artifact=pattern):
+                    self.assertEqual(step_field(step, "continue-on-error"), "true")
+        self.assertEqual(
+            seen,
+            {
+                "contract-fuzz.yml:finding-issues",
+                "contract-faults.yml:finding-issues",
+            },
+        )
 
 
 if __name__ == "__main__":

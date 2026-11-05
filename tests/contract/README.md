@@ -34,9 +34,27 @@ In the `E2E (full topology)` job (`.github/workflows/e2e-suite.yml`), after the
 | `authorization` | Every selected operation as each configured principal, checked against the spec's security roles. A signed-in caller refused an object the path names may get the 404 that hides it (#672); `authorization_refusals.py` names any 404 outside that, so an admin route stays 403 and no credential stays 401. | Report only, after the gates |
 | `ownership` | Each account tenant's principals sent the other tenant's account id, on the operations they are entitled to; every answer must be 403 or 404. | Report only, after authorization |
 | live proofs | Named `principal: anonymous` and `body: over_cap` examples, and a bounded matrix of real principals (`chore test:contract-live-proofs`). What they prove joins the in-process proofs; the union is a gate, a failing runner is not ([details](#live-requirement-proofs-1237)). | Report only, after the gates |
-| `fuzz` | Values drawn from each schema, shrunk to the smallest failing input, with a replayable seed. | Nightly (`contract-fuzz.yml`), never blocks |
+| `fuzz` | Values drawn from each schema, shrunk to the smallest failing input, with a replayable seed. | Nightly and on `v*` tags (`contract-fuzz.yml`), never blocks; [one issue per finding](#the-daily-tiers-issues-626) |
 | `own-data` | The operations moved to a clean start, each exchange after a reset and seed, with what follows `createDomain`'s links ([Moved to a clean start](#moved-to-a-clean-start-part-of-1385)). | Gate, before the teardown |
-| faults | The API built with each fault in `faults.yml`, and the phase the fault names run on its operation: it must turn red ([Fault catalogue](#fault-catalogue-654)). | Nightly (`contract-faults.yml`), fails on a fault not caught |
+| faults | The API built with each fault in `faults.yml`, and the phase the fault names run on its operation: it must turn red ([Fault catalogue](#fault-catalogue-654)). | Nightly and on `v*` tags (`contract-faults.yml`), [one issue per failing fault](#the-daily-tiers-issues-626), fails on a fault not caught |
+
+### The daily tier's issues (#626)
+
+`contract-fuzz.yml` and `contract-faults.yml` end with `scripts/contract_tier_issues.py`,
+for scheduled runs, `v*` tags and runs dispatched on `main`:
+
+- Each fuzz finding has one issue (label `contract-fuzz`) with the seed that replays
+  it: `chore contract:fuzz -- --seed N`, against a topology at the commit it names. Each
+  fault that fails has one issue (label `contract-faults`).
+- A failure opens the issue, reopens it, or rewrites its latest failing run, which
+  notifies nobody. A later finished run in which that transaction passes, or that fault
+  is caught, closes it. A fuzz transaction not sent this run leaves its issue as it is.
+- A run that did not finish has an issue of its own, and closes nothing else.
+- An issue closed as not planned stays closed, so that is how to stop tracking a finding.
+- One run opens at most 25 issues; it warns about the rest, and the next run opens them.
+
+Issues are public: values that look secret are scrubbed, and only the seed is read
+from the log.
 
 ### Skipped valid coverage probes (#1443)
 
