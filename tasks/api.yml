@@ -88,6 +88,7 @@ tasks:
       - |
         echo "  building {{.API_IMAGE}} (target={{.API_MODE}})"
         docker build -t {{.API_IMAGE}} --target {{.API_MODE}} -f Dockerfile . >$OUTPUT 2>&1
+      - sh "{{.TASKFILE_DIR}}/docker-hygiene.sh" cap-build-cache
 
   # ════════════════════════════════════════════════════════
   # up / down / restart
@@ -102,7 +103,7 @@ tasks:
           [ -n "$VERBOSE" ] && echo "  volume {{.API_ATTACHMENTS_VOLUME}} already exists" || true
         else
           echo "  creating volume {{.API_ATTACHMENTS_VOLUME}}"
-          docker volume create {{.API_ATTACHMENTS_VOLUME}} >$OUTPUT 2>&1
+          docker volume create --label "$RESTMAIL_LABEL" --label rest-mail.data=true {{.API_ATTACHMENTS_VOLUME}} >$OUTPUT 2>&1
         fi
       - |
         echo "  starting api ({{.API_CONTAINER_NAME}} @ {{.API_IP}}, mode={{.API_MODE}}, cover={{.API_COVER}})"
@@ -141,8 +142,8 @@ tasks:
             echo "ERROR: API_COVER=true needs API_MODE=dev: it builds the API from the mounted source" >&2
             exit 1
           fi
-          docker volume create {{.API_COVER_VOLUME}} >$OUTPUT 2>&1 || exit 1
-          docker run --rm -v {{.API_COVER_VOLUME}}:/gocover alpine:3.20 \
+          docker volume create --label "$RESTMAIL_LABEL" {{.API_COVER_VOLUME}} >$OUTPUT 2>&1 || exit 1
+          docker run --rm --label "$RESTMAIL_LABEL" -v {{.API_COVER_VOLUME}}:/gocover alpine:3.20 \
             find /gocover -mindepth 1 -delete >$OUTPUT 2>&1 || exit 1
           COVER_FLAGS="-v {{.API_COVER_VOLUME}}:/gocover -e GOCOVERDIR=/gocover"
           set -- sh -c 'go build -cover -o /app/tmp/api ./cmd/api && exec /app/tmp/api'
@@ -206,7 +207,7 @@ tasks:
         # mounted testbed resolver authoritative for every DNS query. Connect
         # both networks before starting the API to avoid a sidecar startup race.
         JS_FILTER_IP=$(sh "{{.TASKFILE_DIR}}/js-filter-network.sh" address "{{.API_PROJECT}}") || exit 1
-        docker create --name {{.API_CONTAINER_NAME}} \
+        docker create --name {{.API_CONTAINER_NAME}} --label "$RESTMAIL_LABEL" \
           $HARDENING \
           --restart unless-stopped \
           --network {{.API_NETWORK}} \
@@ -280,7 +281,7 @@ tasks:
         fi
         echo "  restarting {{.API_CONTAINER_NAME}} with empty coverage counters"
         docker stop -t 60 {{.API_CONTAINER_NAME}} >$OUTPUT 2>&1 || exit 1
-        docker run --rm -v {{.API_COVER_VOLUME}}:/gocover alpine:3.20 \
+        docker run --rm --label "$RESTMAIL_LABEL" -v {{.API_COVER_VOLUME}}:/gocover alpine:3.20 \
           find /gocover -mindepth 1 -delete >$OUTPUT 2>&1 || exit 1
         docker start {{.API_CONTAINER_NAME}} >$OUTPUT 2>&1 || exit 1
         # It rebuilds before it listens: its build cache is on a tmpfs.
@@ -312,7 +313,7 @@ tasks:
         # The Go that wrote the counters reads them: the container's own image,
         # as the invoking user so the files it writes are theirs.
         merged=0
-        docker run --rm --network none --user "$(id -u):$(id -g)" \
+        docker run --rm --label "$RESTMAIL_LABEL" --network none --user "$(id -u):$(id -g)" \
           -e HOME=/tmp -e GOCACHE=/tmp/go-build-cache -w /tmp \
           -v {{.API_COVER_VOLUME}}:/gocover:ro -v "$out":/out \
           "$image" \

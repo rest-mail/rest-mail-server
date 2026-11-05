@@ -95,9 +95,9 @@ jobs:
           chore --version
 
       - name: Populate Go module cache
-        # `test:e2e` and `instance:mtls:issue` mount the host GOMODCACHE
-        # read-only into a golang container; it must be complete up front or
-        # those `go` invocations fail trying to write to a read-only cache.
+        # For the `go run` steps on the runner itself. The golang containers of
+        # `test:e2e` and `instance:mtls:issue` use a volume of their own instead
+        # (scripts/source_volume.py).
         run: go mod download
 
       - name: Route git@github over HTTPS

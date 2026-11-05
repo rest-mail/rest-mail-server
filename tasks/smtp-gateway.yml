@@ -95,6 +95,7 @@ tasks:
           --target {{.SMTP_GATEWAY_MODE}} \
           -f projects/smtp-gateway/Dockerfile \
           . >$OUTPUT 2>&1
+      - sh "{{.TASKFILE_DIR}}/docker-hygiene.sh" cap-build-cache
 
   # ════════════════════════════════════════════════════════
   # up / down / restart
@@ -109,7 +110,7 @@ tasks:
           [ -n "$VERBOSE" ] && echo "  volume {{.SMTP_GATEWAY_LOGS_VOLUME}} already exists" || true
         else
           echo "  creating volume {{.SMTP_GATEWAY_LOGS_VOLUME}}"
-          docker volume create {{.SMTP_GATEWAY_LOGS_VOLUME}} >$OUTPUT 2>&1
+          docker volume create --label "$RESTMAIL_LABEL" {{.SMTP_GATEWAY_LOGS_VOLUME}} >$OUTPUT 2>&1
         fi
       - |
         echo "  starting smtp-gateway ({{.SMTP_GATEWAY_CONTAINER_NAME}} @ {{.SMTP_GATEWAY_IP}}, mode: {{.SMTP_GATEWAY_MODE}})"
@@ -188,7 +189,7 @@ tasks:
         printf 'MASTER_KEY=%s\n' "{{.SMTP_GATEWAY_MASTER_KEY}}" >> "$SECRETS_ENV"
         printf 'SRS_SECRET=%s\n' "{{.SMTP_GATEWAY_SRS_SECRET}}" >> "$SECRETS_ENV"
         printf 'SRS_PREVIOUS_SECRET=%s\n' "{{.SMTP_GATEWAY_SRS_PREVIOUS_SECRET}}" >> "$SECRETS_ENV"
-        docker run -d --name {{.SMTP_GATEWAY_CONTAINER_NAME}} \
+        docker run -d --label "$RESTMAIL_LABEL" --name {{.SMTP_GATEWAY_CONTAINER_NAME}} \
           $HARDENING \
           --hostname {{.SMTP_GATEWAY_RESTMAIL_HOSTNAME}} \
           --restart unless-stopped \

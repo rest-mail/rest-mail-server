@@ -96,6 +96,8 @@ Services: `postgres`, `api`, `js-filter`, `smtp-gateway`, `imap-gateway`,
 ```sh
 chore db:seed              # seed fixture users into the instance database
 chore purge                # remove all rest-mail-* containers (keeps volumes)
+chore clean                # remove what carries RESTMAIL_LABEL, even after a crash (keeps data volumes)
+chore clean --volumes      # DESTRUCTIVE — the labelled data volumes too
 chore postgres:reset       # DESTRUCTIVE — drop the postgres data volume + recreate
 chore db:reset             # DESTRUCTIVE — drop the DB volume, recreate, reseed
 chore testbed:down         # stop the testbed (keeps certs volume + network)

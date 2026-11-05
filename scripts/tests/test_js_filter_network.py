@@ -77,6 +77,7 @@ path.write_text(json.dumps(state))
         docker.chmod(0o755)
         self.env = dict(
             os.environ,
+            RESTMAIL_LABEL="rest-mail.run=fixture",
             PATH=self.temp.name + os.pathsep + os.environ["PATH"],
             STATE=str(self.state),
             CAPTURE=str(self.capture),

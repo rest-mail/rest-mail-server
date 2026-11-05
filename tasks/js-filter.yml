@@ -35,6 +35,7 @@ tasks:
       - |
         echo "  building {{.JS_FILTER_IMAGE}} from {{.JS_FILTER_BUILD_CONTEXT}}"
         docker build -t {{.JS_FILTER_IMAGE}} {{.JS_FILTER_BUILD_CONTEXT}} >$OUTPUT 2>&1
+      - sh "{{.TASKFILE_DIR}}/docker-hygiene.sh" cap-build-cache
 
   up:
     desc: Start (or recreate) the js-filter sidecar container
@@ -79,7 +80,7 @@ tasks:
         : > "$SECRETS_ENV"
         chmod 600 "$SECRETS_ENV"
         printf 'JS_FILTER_TOKEN=%s\n' "{{.JS_FILTER_TOKEN}}" > "$SECRETS_ENV"
-        docker run -d --name {{.JS_FILTER_CONTAINER_NAME}} \
+        docker run -d --label "$RESTMAIL_LABEL" --name {{.JS_FILTER_CONTAINER_NAME}} \
           $HARDENING \
           --restart unless-stopped \
           --network "{{.JS_FILTER_PROJECT}}-js-filter-net" \

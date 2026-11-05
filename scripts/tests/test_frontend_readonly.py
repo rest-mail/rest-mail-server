@@ -39,7 +39,7 @@ with open(os.environ["CAPTURE"], "a") as output:
                         match[1], "fixture-" + match[1].lower()), script)
                     self.assertNotIn("{{", script)
                     capture = directory / "docker.jsonl"
-                    env = dict(os.environ, PATH=temp + os.pathsep + os.environ["PATH"],
+                    env = dict(os.environ, RESTMAIL_LABEL="rest-mail.run=fixture", PATH=temp + os.pathsep + os.environ["PATH"],
                                CAPTURE=str(capture), OUTPUT="/dev/null")
                     result = subprocess.run(["sh", "-eu"], input=script, cwd=temp,
                                             env=env, text=True, capture_output=True, timeout=10)

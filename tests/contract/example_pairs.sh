@@ -12,6 +12,11 @@
 # were once read as the shard count, which ran no shard and still exited 0.
 set -euo pipefail
 
+# A temporary directory of its own, removed however the run ends (#1963).
+if [ -z "${RESTMAIL_SCRATCH_RUN:-}" ]; then
+	exec python3 -B "$(dirname "$0")/../../scripts/scratch_run.py" "$0" "$@"
+fi
+
 usage() { echo "usage: $0 -run '^(TestA|TestB)\$' [shards]" >&2; exit 2; }
 [ "${1:-}" = "-run" ] && [ -n "${2:-}" ] && [ $# -le 3 ] || usage
 pattern=$2

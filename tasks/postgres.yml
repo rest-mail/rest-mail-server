@@ -42,7 +42,7 @@ tasks:
           [ -n "$VERBOSE" ] && echo "  volume {{.POSTGRES_DATA_VOLUME}} already exists" || true
         else
           echo "  creating volume {{.POSTGRES_DATA_VOLUME}}"
-          docker volume create {{.POSTGRES_DATA_VOLUME}} >$OUTPUT 2>&1
+          docker volume create --label "$RESTMAIL_LABEL" --label rest-mail.data=true {{.POSTGRES_DATA_VOLUME}} >$OUTPUT 2>&1
         fi
       - |
         # Pull upstream and retag locally so the image name matches the
@@ -77,7 +77,7 @@ tasks:
         : > "$SECRETS_ENV"
         chmod 600 "$SECRETS_ENV"
         printf 'POSTGRES_PASSWORD=%s\n' "{{.POSTGRES_DB_PASS}}" > "$SECRETS_ENV"
-        docker run -d --name {{.POSTGRES_CONTAINER_NAME}} \
+        docker run -d --label "$RESTMAIL_LABEL" --name {{.POSTGRES_CONTAINER_NAME}} \
           $HARDENING \
           --restart unless-stopped \
           --network {{.POSTGRES_NETWORK}} \

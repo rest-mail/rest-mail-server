@@ -21,6 +21,7 @@ if [ $# -lt 3 ]; then
   exit 2
 fi
 service_volume=$1 owner=$2
+: "${RESTMAIL_LABEL:=rest-mail.run=local}"
 shift 2
 
 mounts="" plan="" i=0
@@ -36,8 +37,9 @@ for source in "$@"; do
   i=$((i + 1))
 done
 
+docker volume create --label "$RESTMAIL_LABEL" "$service_volume" >/dev/null
 # shellcheck disable=SC2086 # $mounts and $plan are lists of words
-docker run --rm --network none $mounts -v "$service_volume:/to" alpine:3.20 sh -euc '
+docker run --rm --label "$RESTMAIL_LABEL" --network none $mounts -v "$service_volume:/to" alpine:3.20 sh -euc '
   set -f
   owner=$1
   shift
