@@ -139,6 +139,10 @@ tasks:
         # only what this container ran. "$@" is the command after the image:
         # empty keeps the image's own (air), set replaces it.
         COVER_FLAGS=""
+        LOAD_LIMITS=""
+        if [ "{{.API_LOAD_LIMITS_OFF}}" = "true" ]; then
+          LOAD_LIMITS="-e AUTH_RATE_LIMIT_ENABLED=false"
+        fi
         set --
         if [ "{{.API_COVER}}" = "true" ]; then
           if [ "{{.API_MODE}}" != "dev" ]; then
@@ -239,7 +243,7 @@ tasks:
           -e TRACE_SAMPLE_RATE={{.API_TRACE_SAMPLE_RATE}} \
           --env-file "$SECRETS_ENV" \
           -e ENVIRONMENT={{.API_ENVIRONMENT}} \
-          {{if eq .API_LOAD_LIMITS_OFF "true"}}-e AUTH_RATE_LIMIT_ENABLED=false{{end}} \
+          $LOAD_LIMITS \
           -e LOG_LEVEL={{.API_LOG_LEVEL}} \
           -e INTERNAL_MTLS_ENABLED={{.API_INTERNAL_MTLS}} \
           -e INTERNAL_MTLS_PORT={{.API_INTERNAL_MTLS_PORT}} \
