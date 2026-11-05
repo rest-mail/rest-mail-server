@@ -174,12 +174,8 @@ func (w *Worker) deliverToRelay(ctx context.Context, settings relaySettings, ite
 	if err := checkSMTPUTF8(client, sender, recipient, item.RawMessage, settings.host); err != nil {
 		return err
 	}
-	mail := client.Mail
-	if item.RequireTLS && item.Sender != "" {
-		mail = func(from string) error { return mailRequireTLS(client, from) }
-	}
 	armStep(conn, timeouts.Mail)
-	if err := mail(sender); err != nil {
+	if err := mailFrom(client, sender, smtpUTF8Status(sender, recipient, item.RawMessage) != "", item.RequireTLS && item.Sender != ""); err != nil {
 		return fail("MAIL", err)
 	}
 	armStep(conn, timeouts.Rcpt)
@@ -257,6 +253,9 @@ func (w *Worker) relayRoute(item models.OutboundQueue) (*relaySettings, error) {
 // deliverViaRelay prepares the message once, exactly as the direct path does,
 // and hands it to the relay. There is no RESTMAIL probe and no fallback to MX.
 func (w *Worker) deliverViaRelay(settings relaySettings, item models.OutboundQueue) error {
+	if !dataCarries(item.RawMessage) {
+		return errDataCannotCarry(settings.host)
+	}
 	prepared, err := w.prepareOutbound(item)
 	if err != nil {
 		return fmt.Errorf("prepare outbound message: %w", err)

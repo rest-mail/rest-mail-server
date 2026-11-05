@@ -19,36 +19,39 @@ func smtpEnvelope(item models.OutboundQueue) (sender, recipient string, err erro
 	return sender, recipient, nil
 }
 
-// checkSMTPUTF8 runs after STARTTLS (which replaces the EHLO capabilities) and
-// before MAIL. net/smtp adds SMTPUTF8 when advertised, but does not reject
-// internationalized mail when it is absent. Never rewrite signed headers to
-// attempt a downgrade: reject this hop and let the caller try another MX.
-func checkSMTPUTF8(client *smtp.Client, sender, recipient, raw, host string) error {
-	status := ""
+// smtpUTF8Status is the RFC 3463 status of a message that needs SMTPUTF8 and can't have it, or
+// empty when neither its envelope nor its header section needs the extension. 8-bit in the body
+// needs only 8BITMIME.
+func smtpUTF8Status(sender, recipient, raw string) string {
 	if containsNonASCII(sender) || containsNonASCII(recipient) {
-		status = "5.6.7"
-	} else {
-		headers, _, found := strings.Cut(raw, "\r\n\r\n")
-		if !found {
-			headers, _, _ = strings.Cut(raw, "\n\n")
-		}
-		if containsNonASCII(headers) {
-			status = "5.6.9"
-		}
+		return "5.6.7"
 	}
-	if status != "" {
-		if ok, _ := client.Extension("SMTPUTF8"); ok {
-			// SMTPUTF8 requires BODY=8BITMIME even when only the local part
-			// is internationalized (RFC 6531 section 3.2). net/smtp adds
-			// BODY=8BITMIME only if the peer advertises that extension.
-			if ok, _ := client.Extension("8BITMIME"); !ok {
-				return &SMTPError{Code: 550, Enhanced: "5.6.3", Message: "SMTPUTF8 next hop does not support required 8BITMIME", RemoteMTA: host}
-			}
-			return nil
-		}
-		return &SMTPError{Code: 550, Enhanced: status, Message: "next hop does not support required SMTPUTF8", RemoteMTA: host}
+	headers, _, found := strings.Cut(raw, "\r\n\r\n")
+	if !found {
+		headers, _, _ = strings.Cut(raw, "\n\n")
 	}
-	return nil
+	if containsNonASCII(headers) {
+		return "5.6.9"
+	}
+	return ""
+}
+
+// checkSMTPUTF8 runs after STARTTLS (which replaces the EHLO capabilities) and before MAIL. Never
+// rewrite signed headers to attempt a downgrade: reject this hop and let the caller try another MX.
+func checkSMTPUTF8(client *smtp.Client, sender, recipient, raw, host string) error {
+	status := smtpUTF8Status(sender, recipient, raw)
+	if status == "" {
+		return nil
+	}
+	if ok, _ := client.Extension("SMTPUTF8"); ok {
+		// SMTPUTF8 requires BODY=8BITMIME even when only the local part is internationalized
+		// (RFC 6531 section 3.2).
+		if ok, _ := client.Extension("8BITMIME"); !ok {
+			return &SMTPError{Code: 550, Enhanced: "5.6.3", Message: "SMTPUTF8 next hop does not support required 8BITMIME", RemoteMTA: host, HopLacksExtension: true}
+		}
+		return nil
+	}
+	return &SMTPError{Code: 550, Enhanced: status, Message: "next hop does not support required SMTPUTF8", RemoteMTA: host, HopLacksExtension: true}
 }
 
 func containsNonASCII(s string) bool {

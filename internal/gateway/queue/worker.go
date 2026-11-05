@@ -43,6 +43,9 @@ type SMTPError struct {
 	// plumbed into the DSN's Remote-MTA field (RFC 3464 §2.3.5). Empty for a
 	// failure with no identified peer (e.g. a locally synthesized error).
 	RemoteMTA string
+	// HopLacksExtension says this next hop lacks an extension the message needs: no reply
+	// from it refused the message, and another MX may offer what this one doesn't.
+	HopLacksExtension bool
 }
 
 func (e *SMTPError) Error() string {
@@ -161,6 +164,40 @@ func messageRequires8BitTransport(bodyType, raw string) bool {
 		}
 	}
 	return false
+}
+
+// dataCarries reports whether SMTP DATA can carry a stored message without changing what it
+// says. SMTP carries CR and LF only as CRLF (RFC 5321 section 2.3.8), and net/textproto's writer
+// turns every LF without a CR before it into CRLF, CR CR LF included. So a bare CR anywhere can't
+// go, and nor can a body that mixes the two line ends: its bare LFs are data, as in raw binary,
+// and only BINARYMIME over BDAT (RFC 3030) could carry them. A body whose every line ends in LF
+// means line ends, which that section says to send as CRLF. The header section may mix them:
+// this server prepends trace fields to a message whatever line ends it uses, and a header section
+// holds no data that a line end could change.
+func dataCarries(raw string) bool {
+	for i := 0; i < len(raw); i++ {
+		if raw[i] == '\r' && (i+1 == len(raw) || raw[i+1] != '\n') {
+			return false
+		}
+	}
+	body := raw
+	crlf, lf := strings.Index(raw, "\r\n\r\n"), strings.Index(raw, "\n\n")
+	switch {
+	case crlf >= 0 && (lf < 0 || crlf < lf):
+		body = raw[crlf+4:]
+	case lf >= 0:
+		body = raw[lf+2:]
+	}
+	lineEnds := strings.Count(body, "\r\n")
+	return lineEnds == 0 || lineEnds == strings.Count(body, "\n")
+}
+
+// errDataCannotCarry is the refusal when dataCarries says no. RFC 6152 section 3 and RFC 3030 leave
+// a client with data a next hop can't take two choices: convert it or return it as a permanent
+// error. REST Mail doesn't convert, and rewriting it silently would be neither.
+func errDataCannotCarry(host string) error {
+	return &SMTPError{Code: 550, Enhanced: "5.6.3", RemoteMTA: host,
+		Message: "message holds a bare CR or LF that SMTP DATA cannot carry, and conversion is not implemented"}
 }
 
 // Worker processes outbound mail queue entries.
@@ -948,8 +985,10 @@ func (w *Worker) deliver(item models.OutboundQueue) error {
 	}
 
 	// A message that requires TLS bounces when no MX can take it so (RFC 8689 §4.2.1), but an
-	// MX that could not be reached at all might: it is tried again, as any message is.
-	if item.RequireTLS && transientErr != nil {
+	// MX that could not be reached at all might: it is tried again, as any message is. So too a
+	// message an MX could not take for lack of an extension: that says nothing of the others.
+	var lacking *SMTPError
+	if transientErr != nil && (item.RequireTLS || errors.As(lastErr, &lacking) && lacking.HopLacksExtension) {
 		lastErr = transientErr
 	}
 	return fmt.Errorf("all MX hosts failed: %w", lastErr)
@@ -1742,6 +1781,9 @@ func (w *Worker) deliverSMTPWith(addr, host string, item models.OutboundQueue, s
 	if records != nil {
 		stsPolicy, stsErr = nil, nil
 	}
+	if !dataCarries(item.RawMessage) {
+		return errDataCannotCarry(host)
+	}
 	// Strip Bcc and DKIM-sign before transmission (#171). Fail closed on a key
 	// that cannot be loaded so the send retries rather than going out unsigned.
 	prepared, err := w.prepareOutbound(item)
@@ -1882,10 +1924,11 @@ func (w *Worker) deliverSMTPWith(addr, host string, item models.OutboundQueue, s
 		slog.Warn("queue: next hop lacks 8BITMIME for 8-bit message, refusing (no 7-bit downconversion)",
 			"host", host, "domain", item.Domain, "body_type", item.BodyType)
 		return &SMTPError{
-			Code:      550,
-			Enhanced:  "5.6.3",
-			Message:   "next hop does not support 8BITMIME and 7-bit conversion is not implemented",
-			RemoteMTA: host,
+			Code:              550,
+			Enhanced:          "5.6.3",
+			Message:           "next hop does not support 8BITMIME and 7-bit conversion is not implemented",
+			RemoteMTA:         host,
+			HopLacksExtension: true,
 		}
 	}
 
@@ -1894,12 +1937,8 @@ func (w *Worker) deliverSMTPWith(addr, host string, item models.OutboundQueue, s
 	}
 
 	// Set sender, with REQUIRETLS when the message requires it (RFC 8689 §4.2.1).
-	mail := client.Mail
-	if requireTLS {
-		mail = func(from string) error { return mailRequireTLS(client, from) }
-	}
 	armStep(link.conn, timeouts.Mail)
-	if err := mail(sender); err != nil {
+	if err := mailFrom(client, sender, smtpUTF8Status(sender, recipient, item.RawMessage) != "", requireTLS); err != nil {
 		se := parseSMTPError(err)
 		se.RemoteMTA = host
 		return se
@@ -2040,10 +2079,12 @@ func verifyPeerCertificate(cs tls.ConnectionState, host string, roots *x509.Cert
 	return err
 }
 
-// mailRequireTLS issues MAIL FROM with the REQUIRETLS parameter (RFC 8689 §4.2.1), which
-// net/smtp's Mail cannot add, alongside the BODY=8BITMIME and SMTPUTF8 parameters Mail adds
-// when the server offers them.
-func mailRequireTLS(c *smtp.Client, from string) error {
+// mailFrom sends MAIL with the parameters this message calls for, which net/smtp's Mail can't
+// choose: it adds SMTPUTF8 whenever the server offers it, and RFC 6531 section 3.4 says a client
+// that knows the message doesn't need the extension SHOULD NOT, since a server takes the tag as
+// a promise to keep it and a later hop without SMTPUTF8 would refuse plain mail. REQUIRETLS is
+// RFC 8689 section 4.2.1's.
+func mailFrom(c *smtp.Client, from string, smtpUTF8, requireTLS bool) error {
 	if strings.ContainsAny(from, "\r\n") {
 		return errors.New("smtp: a line must not contain CR or LF")
 	}
@@ -2051,10 +2092,13 @@ func mailRequireTLS(c *smtp.Client, from string) error {
 	if ok, _ := c.Extension("8BITMIME"); ok {
 		cmd += " BODY=8BITMIME"
 	}
-	if ok, _ := c.Extension("SMTPUTF8"); ok {
+	if smtpUTF8 {
 		cmd += " SMTPUTF8"
 	}
-	id, err := c.Text.Cmd("%s REQUIRETLS", cmd)
+	if requireTLS {
+		cmd += " REQUIRETLS"
+	}
+	id, err := c.Text.Cmd("%s", cmd)
 	if err != nil {
 		return err
 	}
