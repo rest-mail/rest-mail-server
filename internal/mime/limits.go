@@ -1,13 +1,13 @@
 package mime
 
 import (
+	"bufio"
 	"bytes"
 	"errors"
 	"fmt"
 	"io"
 	"sync/atomic"
-
-	gomessage "github.com/emersion/go-message"
+	"unsafe"
 )
 
 // Defaults for Limits. Each is what an established implementation already applies to real mail:
@@ -142,20 +142,19 @@ func (b *partBudget) enter(depth int) error {
 	return nil
 }
 
-// CheckStructure reads a message from source and answers the ErrStructureLimit that Parse would,
-// wrapped, or nil. It holds no part's content, for a caller that must refuse such a message before
-// it does anything that needs the message in memory. A message Parse fails on for any other reason
-// is nil here.
-func CheckStructure(source io.Reader) error {
-	entity, _ := gomessage.Read(source)
-	if entity == nil {
-		return nil
-	}
-	mr := entity.MultipartReader()
+// CheckStructure reads a message's body as Parse reads it, and answers the ErrStructureLimit that
+// Parse would, wrapped, or nil. It holds no part's content and keeps none of a field it doesn't open
+// a part with, for a caller that must refuse such a message before it does anything that needs the
+// message in memory. A message that fails for any other reason is nil here. size is the body's, for
+// a part's long field to be read without growing a buffer to it.
+func (h *HeaderSection) CheckStructure(body io.Reader, size int64) error {
+	entity, _ := h.opening.open(body)
+	budget := newPartBudget()
+	budget.fields = &fieldReader{sourceSize: int(size), wanted: isContentType, typeOnly: true}
+	mr := entity.multipart(budget.fields)
 	if mr == nil {
 		return nil
 	}
-	budget := newPartBudget()
 	if err := budget.enter(1); err != nil {
 		return fmt.Errorf("parse message: %w", err)
 	}
@@ -167,19 +166,19 @@ func CheckStructure(source io.Reader) error {
 
 // checkParts counts the parts of a multipart at depth as parseMultipart counts them. Asking for the
 // next part passes over what is left of the one before.
-func checkParts(mr gomessage.MultipartReader, depth int, budget *partBudget) error {
+func checkParts(mr *multipartReader, depth int, budget *partBudget) error {
 	for {
-		part, err := mr.NextPart()
+		part, err := mr.nextPart()
 		if err == io.EOF {
 			return nil
 		}
-		if err != nil && !gomessage.IsUnknownCharset(err) && !gomessage.IsUnknownEncoding(err) {
+		if err != nil && !isUnknownCoding(err) {
 			return nil // a malformed boundary: nothing further can be read
 		}
 		if err := budget.part(); err != nil {
 			return err
 		}
-		if nested := part.MultipartReader(); nested != nil {
+		if nested := part.multipart(budget.fields); nested != nil {
 			if err := budget.enter(depth + 1); err != nil {
 				return err
 			}
@@ -260,8 +259,9 @@ func CountReceived(src io.Reader) (int, error) {
 	}
 }
 
-// TooManyReceived reports whether raw carries more Received: header fields than the limit in
-// force, which RFC 5321 §6.3 takes as a mail loop.
-func TooManyReceived(raw []byte) bool {
-	return ReceivedCount(raw) > CurrentLimits().MaxReceived
+// TooManyReceived reports whether a header section carries more Received: header fields than the
+// limit in force, which RFC 5321 §6.3 takes as a mail loop. ReceivedCount only reads what it's given,
+// so a section as long as its sender likes isn't copied to count them.
+func TooManyReceived(section string) bool {
+	return ReceivedCount(unsafe.Slice(unsafe.StringData(section), len(section))) > CurrentLimits().MaxReceived
 }

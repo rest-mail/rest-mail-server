@@ -225,24 +225,24 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput, spoo
 	}
 	// A message from another server with more Received: fields than the hop limit is a mail
 	// loop (RFC 5321 §6.3, #1647), refused as the SMTP gateway refuses it.
-	if rmime.TooManyReceived([]byte(headerSection)) {
+	if rmime.TooManyReceived(headerSection) {
 		return RestmailDelivery{}, endpoint.Refuse(http.StatusForbidden, "rejected", "Routing loop detected: too many Received headers")
 	}
 	if headerSection != "" {
 		// Nested deeper or holding more parts than the MIME limits allow (#1641). This passes over
 		// the message in its file and holds none of it, and it comes before any lookup.
-		err := spool.checkStructure()
+		parsed, parseErr, err := spool.readHeaders()
 		if errors.Is(err, rmime.ErrStructureLimit) {
 			return RestmailDelivery{}, endpoint.Refuse(http.StatusForbidden, "rejected", "Message structure too complex: too deeply nested or too many MIME parts")
 		}
 		if err != nil {
 			return RestmailDelivery{}, restmailReadRefusal(r.Context(), "spooled message")
 		}
-		parsedHeaders, err := rmime.ParseHeaders(strings.NewReader(headerSection))
-		if err != nil {
-			slog.WarnContext(r.Context(), "restmail: failed to parse raw_message", "error", err)
+		if parseErr != nil {
+			slog.WarnContext(r.Context(), "restmail: failed to parse raw_message", "error", parseErr)
 			// Fall through to use whatever structured fields were provided
 		} else {
+			parsedHeaders := parsed.Headers
 			if len(parsedHeaders.From) > 0 && req.From == "" {
 				req.From = parsedHeaders.From[0].Address
 			}
@@ -760,9 +760,13 @@ func (s *deliverySpool) readRestmailMessage(req *restmailDeliverBody, source *st
 	if *source == "" {
 		return nil, nil
 	}
-	parsed, err := rmime.ParseReader(strings.NewReader(*source))
-	if err != nil {
+	if s.parsed == nil {
 		return nil, nil // Said when its headers were read.
+	}
+	// The section at the start of the message is the one already parsed.
+	parsed, err := s.parsed.Parse(req.RawMessage[len(s.section):])
+	if err != nil {
+		return nil, nil
 	}
 	if req.BodyText == "" || req.BodyHTML == "" {
 		text, html := extractBodyParts(parsed.Body)

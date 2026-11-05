@@ -516,7 +516,7 @@ func TestAHeaderBlockHasNoLimit(t *testing.T) {
 		for _, value := range []string{long, strings.Repeat("y ", size/2)} {
 			want := strings.TrimSpace(value)
 			message := "X-Long: " + value + "\r\nIn-Reply-To: <p@x>\r\nContent-Type: multipart/mixed; boundary=B\r\n\r\n--B\r\nContent-Type: text/plain\r\n\r\ntext\r\n--B\r\nContent-Type: application/pdf; name=a.pdf\r\n\r\nPDF\r\n--B--\r\n"
-			parsed, err := ParseString(message)
+			parsed, err := ParseReader(strings.NewReader(message))
 			if err != nil {
 				t.Fatalf("%d: %v", size, err)
 			}
@@ -630,7 +630,7 @@ func TestParsingLongFieldsCostsLittle(t *testing.T) {
 			var email *pipeline.EmailJSON
 			got := bytesAllocated(func() {
 				var err error
-				email, err = ParseString(message)
+				email, err = ParseReader(strings.NewReader(message))
 				if err != nil {
 					t.Fatal(err)
 				}

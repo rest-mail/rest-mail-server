@@ -60,6 +60,9 @@ type fieldReader struct {
 	// asked yet and skipping what it said.
 	wanted            func(key []byte) bool
 	decided, skipping bool
+	// typeOnly says a part's fields are read only for whether it holds parts of its own. A
+	// Content-Type that can't say so isn't parsed.
+	typeOnly bool
 }
 
 // fieldBufferDoubles is as far as the buffer grows by doubling. A field longer than that is hostile
@@ -264,6 +267,15 @@ func isPartField(key []byte) bool {
 		bytes.EqualFold(key, []byte("Content-Transfer-Encoding")) || bytes.EqualFold(key, []byte("Content-Id"))
 }
 
+func isContentType(key []byte) bool { return bytes.EqualFold(key, []byte("Content-Type")) }
+
+// namesMultipart says whether parseMedia could answer a multipart type for a value: true of every
+// value it does, as it lowers and trims the type before the first semicolon, or answers the value.
+func namesMultipart(value []byte) bool {
+	base, _, _ := bytes.Cut(value, []byte(";"))
+	return bytes.HasPrefix(bytes.ToLower(bytes.TrimSpace(base)), []byte("multipart/"))
+}
+
 // partFields is what's read of a header when only opening the entity matters: each field's first
 // occurrence, with its parameters already parsed.
 type partFields struct {
@@ -290,7 +302,9 @@ func (r *fieldReader) readPartFields(br *bufio.Reader) (partFields, error) {
 			if !kept.hasType {
 				kept.hasType = true
 				view := unfold(value)
-				kept.mediaType, kept.params, kept.typeFailed = parseContentType(unsafe.String(unsafe.SliceData(view), len(view)))
+				if !r.typeOnly || namesMultipart(view) {
+					kept.mediaType, kept.params, kept.typeFailed = parseContentType(unsafe.String(unsafe.SliceData(view), len(view)))
+				}
 			}
 		case bytes.EqualFold(key, []byte("Content-Disposition")):
 			if !kept.hasDisp {
@@ -410,7 +424,9 @@ type multipartReader struct {
 const multipartPeek = 4096
 
 func newMultipartReader(r io.Reader, boundary string, fields *fieldReader) *multipartReader {
-	fields.wanted = isPartField
+	if !fields.typeOnly {
+		fields.wanted = isPartField
+	}
 	b := []byte("\r\n--" + boundary + "--")
 	return &multipartReader{
 		bufReader:        bufio.NewReaderSize(&stickyErrorReader{r: r}, multipartPeek),

@@ -1241,7 +1241,7 @@ func (h *MessageHandler) deliverMessage(r *http.Request, req deliverMessageBody,
 		if err != nil {
 			return zero, err
 		}
-		if rmime.TooManyReceived([]byte(headerSection)) {
+		if rmime.TooManyReceived(headerSection) {
 			return zero, endpoint.Refuse(http.StatusForbidden, "rejected", "Routing loop detected: too many Received headers")
 		}
 	}
