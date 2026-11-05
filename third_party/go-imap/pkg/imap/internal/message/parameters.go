@@ -56,18 +56,23 @@ func parseMediaType(v string) (string, map[string]string, error) {
 	}
 	for base, pieces := range families {
 		value, first, whole := extendedValue(base, pieces)
-		_, plain := params[base]
-		switch {
-		case base == "boundary" && strings.HasPrefix(mt, "multipart/") && !whole:
-			// Delimiter lines match a boundary's whole value, and this is only part of one.
-			if first {
-				delete(params, base)
-			}
-		case first || !plain:
-			params[base] = value
-		}
+		setExtended(params, mt, base, value, first, whole)
 	}
 	return mt, params, nil
+}
+
+// setExtended puts what extendedValue read of a parameter among the ones already read.
+func setExtended(params map[string]string, mt, base, value string, first, whole bool) {
+	_, plain := params[base]
+	switch {
+	case base == "boundary" && strings.HasPrefix(mt, "multipart/") && !whole:
+		// Delimiter lines match a boundary's whole value, and this is only part of one.
+		if first {
+			delete(params, base)
+		}
+	case first || !plain:
+		params[base] = value
+	}
 }
 
 // withoutRepeats is v with only the first parameter of each name, so a repeated name
@@ -143,10 +148,10 @@ func trimWSP(s string) string {
 // first '*' of its lower-case name, and value is unquoted.
 type parameterSegment struct{ suffix, value string }
 
-// number is the segment's number with no leading zeros. It can be too long to parse, and
-// the longer is then the larger.
-func (s parameterSegment) number() string {
-	return strings.TrimLeft(strings.TrimSuffix(s.suffix, "*"), "0")
+// segmentNumber is the number in a segment's suffix with no leading zeros. It can be too long to
+// parse, and the longer is then the larger.
+func segmentNumber(suffix string) string {
+	return strings.TrimLeft(strings.TrimSuffix(suffix, "*"), "0")
 }
 
 // extendedValue puts an RFC 2231 parameter back together. A value in a charset go-imap
@@ -157,33 +162,47 @@ func (s parameterSegment) number() string {
 // up, and only a first segment can name a charset (RFC 2231 §4.1), so with none the octets
 // name none. first reports that it came, and whole that no segment is missing or doubled.
 func extendedValue(base string, segments []parameterSegment) (value string, first, whole bool) {
+	size := 0
 	for _, s := range segments {
-		if s.suffix == "" {
-			charset, octets := splitExtendedValue(s.value)
+		size += len(s.value)
+	}
+	return joinSegments(base, segments, size,
+		func(s parameterSegment) string { return s.suffix },
+		func(s parameterSegment) string { return s.value })
+}
+
+// joinSegments is extendedValue of segments however they're held: suffix and text read one, and
+// size is at least the length of their text. It reorders them.
+func joinSegments[S any](base string, segments []S, size int, suffix, text func(S) string) (value string, first, whole bool) {
+	for _, s := range segments {
+		if suffix(s) == "" {
+			charset, octets := splitExtendedValue(text(s))
 			return keptValue(base, charset, octets), true, true
 		}
 	}
 	// The suffix settles a tie, so the same field always reads the same. Only the same
 	// name twice is left to compact, with the same value, or the field wouldn't parse.
-	slices.SortFunc(segments, func(a, b parameterSegment) int {
-		x, y := a.number(), b.number()
-		return cmp.Or(cmp.Compare(len(x), len(y)), cmp.Compare(x, y), cmp.Compare(a.suffix, b.suffix))
+	slices.SortFunc(segments, func(a, b S) int {
+		x, y := segmentNumber(suffix(a)), segmentNumber(suffix(b))
+		return cmp.Or(cmp.Compare(len(x), len(y)), cmp.Compare(x, y), cmp.Compare(suffix(a), suffix(b)))
 	})
-	segments = slices.CompactFunc(segments, func(a, b parameterSegment) bool { return a.suffix == b.suffix })
+	segments = slices.CompactFunc(segments, func(a, b S) bool { return suffix(a) == suffix(b) })
 	var octets strings.Builder
+	octets.Grow(size)
 	charset := ""
 	whole = true
 	for i, s := range segments {
-		v := s.value
+		v := text(s)
+		end := suffix(s)
 		switch {
-		case i == 0 && s.suffix == "0*":
+		case i == 0 && end == "0*":
 			charset, v = splitExtendedValue(v)
-		case strings.HasSuffix(s.suffix, "*"):
+		case strings.HasSuffix(end, "*"):
 			v = percentDecode(v)
 		}
 		octets.WriteString(v)
-		first = first || s.suffix == "0" || s.suffix == "0*"
-		whole = whole && strings.TrimSuffix(s.suffix, "*") == strconv.Itoa(i)
+		first = first || end == "0" || end == "0*"
+		whole = whole && strings.TrimSuffix(end, "*") == strconv.Itoa(i)
 	}
 	return keptValue(base, charset, octets.String()), first, whole
 }
@@ -261,7 +280,20 @@ func validWordCharset(charset string) bool {
 // fieldSegments splits a Content-Type or Content-Disposition value at each ';'
 // outside a quoted-string or comment. ok is false when one of those never closes.
 func fieldSegments(value string) (segments []string, ok bool) {
-	start, comments := 0, 0
+	for more := true; more; {
+		var segment string
+		segment, value, more, ok = cutFieldSegment(value)
+		if !ok {
+			return nil, false
+		}
+		segments = append(segments, segment)
+	}
+	return segments, true
+}
+
+// cutFieldSegment is the first of fieldSegments, and what follows it when more says there's a ';'.
+func cutFieldSegment(value string) (segment, rest string, more, ok bool) {
+	comments := 0
 	quoted := false
 	for i := 0; i < len(value); i++ {
 		c := value[i]
@@ -277,14 +309,13 @@ func fieldSegments(value string) (segments []string, ok bool) {
 		case c == ')' && comments > 0:
 			comments--
 		case c == ';' && comments == 0:
-			segments = append(segments, value[start:i])
-			start = i + 1
+			return value[:i], value[i+1:], true, true
 		}
 	}
 	if quoted || comments > 0 {
-		return nil, false
+		return "", "", false, false
 	}
-	return append(segments, value[start:]), true
+	return value, "", false, true
 }
 
 // unquoteParameter reads a parameter value as mime.ParseMediaType does: a backslash
