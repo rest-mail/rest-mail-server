@@ -46,8 +46,9 @@ least one of --status, --domain, --sender or --recipient; --all selects every
 entry the action applies to.
 
   retry   pending and deferred entries: try them now
-  bounce  pending, deferred and delivering entries: give up and tell the sender
-  purge   any entry: delete it without telling the sender
+  bounce  pending, deferred and delivering entries: give up, keeping the entry
+          as bounced; the sender is not told (#1950)
+  purge   any entry: delete it; the sender is not told
 
   --server URL       the server's address (https; http only for localhost)
   --status S         pending, delivering, deferred, delivered, bounced or expired

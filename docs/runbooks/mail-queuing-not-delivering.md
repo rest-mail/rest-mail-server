@@ -104,7 +104,7 @@ curl -sS -X POST -H "Authorization: Bearer $RESTMAIL_TOKEN" -H 'Content-Type: ap
   -d '{"filter":{"status":"deferred","domain":"example.org"}}' \
   "$API/api/v1/admin/queue/bulk-retry"
 
-# give up on one entry and bounce it to its sender
+# give up on one entry and mark it bounced (its sender is not told, see below)
 curl -sS -X POST -H "Authorization: Bearer $RESTMAIL_TOKEN" "$API/api/v1/admin/queue/123/bounce"
 
 # purge entries that have already bounced
@@ -115,8 +115,10 @@ curl -sS -X DELETE -H "Authorization: Bearer $RESTMAIL_TOKEN" -H 'Content-Type: 
 
 Bulk requests take `ids` (at most 1000) or a `filter`. An empty filter `{}`
 selects every entry the action applies to, so always name a status or a
-domain. Deleting an entry drops the message without telling its sender; bounce
-it instead when the sender should know.
+domain. Neither action tells the sender. A delete drops the entry; a bounce
+stops delivery and keeps the entry as `bounced`, with `last_error` saying an
+admin did it, but sends no bounce message (#1950). When the sender should know,
+tell them yourself.
 
 From a terminal, `restmail mail-queue` does the same through the public API,
 with the token in `RESTMAIL_API_KEY`:
