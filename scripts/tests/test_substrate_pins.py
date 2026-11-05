@@ -81,6 +81,13 @@ class Manifest(unittest.TestCase):
         self.assertIn("substrate_pins.py sync reference-mailserver", chores)
         self.assertNotRegex(chores, r"git clone git@github\.com:rest-mail/(testbed|reference-mailserver)")
 
+    def test_the_mail_conformance_run_takes_the_testbed_from_the_manifest(self):
+        workflow = (ROOT / ".github/workflows/mail-conformance.yml").read_text()
+        for pin in substrate_pins.read_pins(ROOT / "scripts/substrate-pins.yml").values():
+            self.assertNotIn(pin, workflow)
+        self.assertNotIn("TESTBED_REF", workflow)
+        self.assertIn("chore testbed:init\n", workflow)
+
 
 class Preparation(unittest.TestCase):
     def test_runs_the_host_chmod_in_a_container_once(self):
