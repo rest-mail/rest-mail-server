@@ -929,10 +929,7 @@ func sevenBitField(w wireSink, field string) {
 		written := false
 		switch strings.ToLower(strings.TrimSpace(name)) {
 		case "content-type", "content-disposition":
-			if rewritten, ok := ParameterField(name, unfoldHeader(value)); ok {
-				_, _ = w.WriteString(rewritten)
-				written = true
-			}
+			written = WriteParameterField(w, name, unfoldHeader(value))
 		}
 		if !written {
 			_, _ = w.WriteString(name)

@@ -62,12 +62,25 @@ func WithoutRepeats(value string) (first string, repeated bool) {
 	return message.WithoutRepeats(value)
 }
 
-// OnlyRepeatsFollow says that a blank segment in a parameter field, with before ahead of
-// it and after behind it, is followed only by parameters that read and repeat a name
-// before it, so the field reads as ending there. It holds nothing past the call, for a
-// host reading a long field a parameter at a time.
-func OnlyRepeatsFollow(before, after string) bool {
-	return message.OnlyRepeatsFollow(before, after)
+// ReadContentType reads a Content-Type as BODYSTRUCTURE and sections read it, so a host can't
+// be told of different parts from those a client is. It keeps only boundary, charset, filename and
+// name, and holds nothing for any other parameter, however long the field. usable is false when the
+// field gives the entity no type, so RFC 2045 §5.2's default stands: it can't be read, it names no
+// subtype, or it's a multipart with no boundary. Its answers may be views of value.
+func ReadContentType(value string) (mediaType string, params map[string]string, usable bool) {
+	return message.ReadContentType(value)
+}
+
+// ReadDisposition is [ReadContentType] of a Content-Disposition. usable is false where BODYSTRUCTURE
+// reports none.
+func ReadDisposition(value string) (disposition string, params map[string]string, usable bool) {
+	return message.ReadDisposition(value)
+}
+
+// BodyStructure is the BODYSTRUCTURE of a stored message as a session reading UTF-8 is sent it, so
+// a host can prove what it reads of a message against what a client is told.
+func BodyStructure(raw string) string {
+	return message.BuildBodyStructure(raw, true, true)
 }
 
 // EncodeWords renders text as RFC 2047 encoded words: charset UTF-8 when it is

@@ -275,7 +275,7 @@ func TestRestmailHoldsTheLimitOnHostileShapes(t *testing.T) {
 	// A message nested in another isn't that message's text, so the shapes with parts carry a text
 	// part beside them, of half the message.
 	mixed := "Content-Type: multipart/mixed; boundary=B\r\n\r\n--B\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n" + strings.Repeat("\u00f6", size/4) + "\r\n"
-	shapes := hostileFieldShapes(id)
+	shapes := shapesUnderTheLimit(id, func(c stillOverCost) uint64 { return c.restmail })
 	for name, message := range map[string]string{
 		"plain ASCII":              id + "Content-Type: text/plain\r\n\r\n" + strings.Repeat("hello world\r\n", size/13),
 		"8-bit text, no charset":   id + "Content-Type: text/plain\r\n\r\n" + strings.Repeat("\u00f6", size/2) + "\r\n",
@@ -296,6 +296,7 @@ func TestRestmailHoldsTheLimitOnHostileShapes(t *testing.T) {
 				length = len(want)
 				body := restmailClientBody(t, mailbox.Address, want)
 				var before, after runtime.MemStats
+				emptyPools()
 				runtime.ReadMemStats(&before)
 				w := postRestmail(routes, body)
 				runtime.ReadMemStats(&after)
@@ -373,4 +374,24 @@ func TestRestmailStoresTheStringAsJSONReadsIt(t *testing.T) {
 	if len(left) != 0 {
 		t.Fatalf("%d files left behind, the first %s", len(left), left[0].Name())
 	}
+}
+
+func TestStillOverTheLimit_RestmailFields(t *testing.T) {
+	const id = "From: old@example.test\r\nSubject: s\r\nDate: Thu, 02 Jan 2020 03:04:05 +0000\r\n"
+	t.Setenv("TMPDIR", t.TempDir())
+	routes, mailbox, _ := restmailLimitFixture(t)
+	if w := postRestmail(routes, restmailClientBody(t, mailbox.Address, "Message-ID: <warm@example.test>\r\n"+id+"\r\nb\r\n")); w.Code != http.StatusCreated {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	holdsItsCost(t, id, func(c stillOverCost) uint64 { return c.restmail }, func(t *testing.T, message string) uint64 {
+		body := restmailClientBody(t, mailbox.Address, message)
+		var before, after runtime.MemStats
+		runtime.ReadMemStats(&before)
+		w := postRestmail(routes, body)
+		runtime.ReadMemStats(&after)
+		if w.Code != http.StatusCreated {
+			t.Fatalf("%d %s", w.Code, w.Body)
+		}
+		return after.TotalAlloc - before.TotalAlloc
+	})
 }

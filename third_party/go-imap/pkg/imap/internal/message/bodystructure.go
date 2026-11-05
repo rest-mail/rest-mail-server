@@ -93,6 +93,14 @@ func uncommentMIME(value string) (string, error) {
 	}
 	var b strings.Builder
 	b.Grow(len(value))
+	if !uncommentInto(&b, value) {
+		return "", mime.ErrInvalidMediaParameter
+	}
+	return b.String(), nil
+}
+
+// uncommentInto writes value to b as uncommentMIME reads it, or says it can't be read.
+func uncommentInto(b io.ByteWriter, value string) bool {
 	depth := 0
 	quoted := false
 	for i := 0; i < len(value); i++ {
@@ -108,27 +116,24 @@ func uncommentMIME(value string) (string, error) {
 				depth--
 			}
 		case quoted:
-			b.WriteByte(c)
+			_ = b.WriteByte(c)
 			if c == '\\' && i+1 < len(value) {
 				i++
-				b.WriteByte(value[i])
+				_ = b.WriteByte(value[i])
 			} else if c == '"' {
 				quoted = false
 			}
 		case c == '(':
 			depth = 1
-			b.WriteByte(' ')
+			_ = b.WriteByte(' ')
 		case c == ')':
-			return "", mime.ErrInvalidMediaParameter
+			return false
 		default:
-			b.WriteByte(c)
+			_ = b.WriteByte(c)
 			quoted = c == '"'
 		}
 	}
-	if depth != 0 || quoted {
-		return "", mime.ErrInvalidMediaParameter
-	}
-	return b.String(), nil
+	return depth == 0 && !quoted
 }
 
 // partStructure builds the body structure for one MIME entity given its header

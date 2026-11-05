@@ -1,6 +1,7 @@
 package message
 
 import (
+	"bytes"
 	"cmp"
 	"hash/maphash"
 	"mime"
@@ -8,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"unicode"
+	"unsafe"
 )
 
 // wireType is what a conversion needs to know of an entity's type: mediaType's answer
@@ -180,30 +182,136 @@ func parseKeptParameters(value string) (string, map[string]string, error) {
 	if strings.Count(value, ";") <= manyParameters {
 		return parseContentType(value)
 	}
+	return readKept(value, conversionFamilies)
+}
+
+// conversionFamilies are the parameters a conversion reads, and hostFamilies the ones a host reads
+// of a part as well, to say what it's called.
+var (
+	conversionFamilies = []string{"boundary", "charset"}
+	hostFamilies       = []string{"boundary", "charset", "filename", "name"}
+)
+
+// readKept is parseContentType of any field, keeping only families and holding nothing for the rest.
+func readKept(value string, families []string) (string, map[string]string, error) {
 	if has8bit(value) {
-		return parseKept(readableKept(value))
+		return parseKept(readableKept(value, families), families)
+	}
+	if kept, ok := uncommentedKept(value, families); ok {
+		return parseKept(kept, families)
 	}
 	uncommented, err := uncommentMIME(value)
 	if err != nil {
 		return "", nil, err
 	}
-	return parseKept(uncommented)
+	return parseKept(uncommented, families)
 }
 
-// isKeptName reports whether a parameter name, in any of its RFC 2231 forms, is one a
-// conversion reads. A '*' in any other form is part of another name (see parseMediaType).
-func isKeptName(name string) bool {
-	base, suffix, _ := strings.Cut(name, "*")
-	return (strings.EqualFold(base, "boundary") || strings.EqualFold(base, "charset")) && validExtendedSuffix(suffix)
-}
-
-// readableKept is readableField without the parameters isKeptName leaves out. What
-// readableField writes always parses, so leaving them out can't change anything else.
-func readableKept(value string) string {
+// uncommentedKept is uncommentMIME of a 7-bit field holding comments, less each parameter that reads
+// and isn't one of families, so a field of many costs only what's kept of it. ok is false when
+// there's nothing to save, or anything about the field is for parseKept to decide: a parameter that
+// doesn't read, a blank, or a comment or quoted-string that doesn't close.
+func uncommentedKept(value string, families []string) (string, bool) {
+	if strings.IndexByte(value, '(') < 0 && strings.IndexByte(value, ')') < 0 {
+		return "", false
+	}
+	var scratch bytes.Buffer
 	var b strings.Builder
+	// Twice: once to size it, and once to write it.
+	for size, writing := 0, false; ; writing = true {
+		rest, more := value, true
+		for first := true; more; first = false {
+			var segment string
+			var closed bool
+			segment, rest, more, closed = cutFieldSegment(rest)
+			if !closed {
+				return "", false
+			}
+			text := segment
+			if strings.IndexByte(segment, '(') >= 0 || strings.IndexByte(segment, ')') >= 0 {
+				scratch.Reset()
+				if !uncommentInto(&scratch, segment) {
+					return "", false
+				}
+				// Good only until the next segment: what's kept of it is copied to b below.
+				text = unsafe.String(unsafe.SliceData(scratch.Bytes()), scratch.Len())
+			}
+			if !first {
+				if strings.TrimSpace(text) == "" {
+					return "", false
+				}
+				key, after, read := scanMediaParameter(text)
+				if !read || strings.TrimSpace(after) != "" {
+					return "", false
+				}
+				if _, kept := keptFamily(families, key); !kept {
+					continue
+				}
+			}
+			size += len(text) + 1
+			if writing {
+				if !first {
+					b.WriteByte(';')
+				}
+				b.WriteString(text)
+			}
+		}
+		if writing {
+			return b.String(), true
+		}
+		b.Grow(size)
+	}
+}
+
+// ReadContentType reads a Content-Type as BODYSTRUCTURE does, keeping hostFamilies. usable says it's
+// the entity's type. When it isn't, RFC 2045 §5.2's default stands. Its answers may be views of value.
+func ReadContentType(value string) (mediaType string, params map[string]string, usable bool) {
+	mt, params, err := readKept(value, hostFamilies)
+	return mt, params, usableContentType(mt, params, err)
+}
+
+// ReadDisposition reads a Content-Disposition as BODYSTRUCTURE does, keeping hostFamilies. usable is
+// false where dispositionField answers NIL. Its answers may be views of value.
+func ReadDisposition(value string) (disposition string, params map[string]string, usable bool) {
+	disposition, params, err := readKept(value, hostFamilies)
+	return disposition, params, err == nil && disposition != "" && !strings.Contains(disposition, "/")
+}
+
+// keptFamily is which of families a parameter name is a form of, in any of its RFC 2231 forms. A '*'
+// in any other form is part of another name (see parseMediaType).
+func keptFamily(families []string, name string) (string, bool) {
+	base, suffix, _ := strings.Cut(name, "*")
+	if !validExtendedSuffix(suffix) {
+		return "", false
+	}
+	family := pieceFamily(families, base)
+	return family, family != ""
+}
+
+// readableKept is readableField keeping only families, with their repeats, which parseKept reads as
+// parseMediaType does. What readableField writes always parses, so leaving the others out can't change
+// anything else.
+func readableKept(value string, families []string) string {
+	closers := commentClosers(value)
+	// A long field has one buffer, of what's kept of it, which is usually far less than the field.
+	size := 0
 	first := true
-	seen := map[string]bool{}
-	eachFieldPiece(value, func(piece fieldPiece) {
+	eachFieldPiece(value, closers, func(piece fieldPiece) {
+		switch {
+		case first:
+			first = false
+			size += len(piece.key)
+		case piece.key != "":
+			name := parameterName(piece.key)
+			if _, kept := keptFamily(families, name); kept {
+				size += len(name) + len(piece.value) + len("; =\"\"")
+			}
+		}
+	})
+	var b strings.Builder
+	b.Grow(size)
+	first = true
+	eachFieldPiece(value, closers, func(piece fieldPiece) {
 		if first {
 			b.WriteString(piece.key)
 			first = false
@@ -213,31 +321,26 @@ func readableKept(value string) string {
 			return
 		}
 		name := parameterName(piece.key)
-		if !isKeptName(name) {
-			return
+		if _, kept := keptFamily(families, name); kept {
+			writeReadableParameter(&b, name, piece)
 		}
-		if seen[strings.ToLower(name)] {
-			return
-		}
-		seen[strings.ToLower(name)] = true
-		writeReadableParameter(&b, name, piece)
 	})
 	return b.String()
 }
 
 // parseKept is parseUncommented of a field with no comments, when only its type, whether it can be
-// read, and its boundary and charset matter (TestParseKeptMatchesParseUncommented). mime.ParseMediaType
+// read, and families matter (TestParseKeptMatchesParseUncommented). mime.ParseMediaType
 // holds several maps and strings for each parameter, so this reads them one at a time, and hands it
 // only the type and the plain kept ones.
 //
 // It reads a repeated name as parseMediaType does, with withoutRepeats: the first of a name stands,
 // and a later one has to read but is otherwise gone. So every segment has to read, wherever it stands
 // and whatever it's named, and nothing is held for a name that's left out.
-func parseKept(kept string) (string, map[string]string, error) {
+func parseKept(kept string, families []string) (string, map[string]string, error) {
 	base, _, _ := strings.Cut(kept, ";")
 	var plain strings.Builder
 	plain.WriteString(base)
-	boundarySeen, charsetSeen := false, false
+	var plainSeen uint8 // a bit for each of families
 	var pieces []keptPiece
 	_, rest, more, closed := cutFieldSegment(kept)
 	for closed && more {
@@ -257,15 +360,12 @@ func parseKept(kept string) (string, map[string]string, error) {
 		if !ok || strings.TrimSpace(after) != "" {
 			return "", nil, mime.ErrInvalidMediaParameter
 		}
+		family, isKept := keptFamily(families, key)
 		switch {
-		case !isKeptName(key):
+		case !isKept:
 		case strings.IndexByte(key, '*') < 0:
-			seen := &charsetSeen
-			if pieceFamily(key) == "boundary" {
-				seen = &boundarySeen
-			}
-			if !*seen {
-				*seen = true
+			if bit := uint8(1) << slices.Index(families, family); plainSeen&bit == 0 {
+				plainSeen |= bit
 				plain.WriteByte(';')
 				plain.WriteString(segment)
 			}
@@ -284,7 +384,7 @@ func parseKept(kept string) (string, map[string]string, error) {
 	if err != nil {
 		return mt, params, err
 	}
-	family := func(piece keptPiece) string { return pieceFamily(piece.key(kept)) }
+	family := func(piece keptPiece) string { return pieceFamily(families, piece.key(kept)) }
 	suffix := func(piece keptPiece) string {
 		key := piece.key(kept)
 		return key[strings.IndexByte(key, '*')+1:]
@@ -359,12 +459,15 @@ func (piece keptPiece) value(kept string) string {
 	return rest[:mediaValueEnd(rest)]
 }
 
-func pieceFamily(key string) string {
+// pieceFamily is which of families a name or its base is a form of, or "" when it's none of them.
+func pieceFamily(families []string, key string) string {
 	base, _, _ := strings.Cut(key, "*")
-	if strings.EqualFold(base, "boundary") {
-		return "boundary"
+	for _, family := range families {
+		if strings.EqualFold(base, family) {
+			return family
+		}
 	}
-	return "charset"
+	return ""
 }
 
 // scanMediaParameter is mime's consumeMediaParam of what follows a ';'.
@@ -431,8 +534,9 @@ func mediaValueText(value string) string {
 // is used again by the next field, because a field of very many parameters would
 // otherwise allocate many times its own size for each reading of it.
 type nameSet struct {
-	slots []nameSlot
-	arena []byte
+	slots  []nameSlot
+	arena  []byte
+	filled int
 }
 
 // nameSlot is one name in the arena.
@@ -459,15 +563,22 @@ func takeNameSet(count int) *nameSet {
 		clear(s.slots)
 	}
 	s.arena = s.arena[:0]
+	s.filled = 0
 	return s
 }
 
 func (s *nameSet) release() { nameSets.Put(s) }
 
-// add finds name, or adds it, and says whether it was there already. The set must have
-// been taken with room for it.
+// add finds name, or adds it, and says whether it was there already. A set taken with room for its
+// names never grows. Its names double the arena when they fill it, as appending to it would grow it by
+// a quarter at a time, which allocates five times what it ends up holding.
 func (s *nameSet) add(name string) bool {
 	off := len(s.arena)
+	if need := off + len(name); need > cap(s.arena) {
+		grown := make([]byte, off, max(2*cap(s.arena), need, 256))
+		copy(grown, s.arena)
+		s.arena = grown
+	}
 	for i := 0; i < len(name); i++ {
 		c := name[i]
 		if c >= 'A' && c <= 'Z' {
@@ -481,6 +592,9 @@ func (s *nameSet) add(name string) bool {
 		slot := &s.slots[at]
 		if slot.length == 0 {
 			slot.off, slot.length = int32(off)+1, int32(len(lowered))
+			if s.filled++; 2*s.filled >= len(s.slots) {
+				s.grow()
+			}
 			return false
 		}
 		if int(slot.length) == len(lowered) && string(s.arena[slot.off-1:slot.off-1+slot.length]) == string(lowered) {
@@ -488,6 +602,23 @@ func (s *nameSet) add(name string) bool {
 			return true
 		}
 	}
+}
+
+// grow doubles the table, with the names it holds, which are all in the arena.
+func (s *nameSet) grow() {
+	slots := make([]nameSlot, 2*len(s.slots))
+	mask := uint64(len(slots) - 1)
+	for _, old := range s.slots {
+		if old.length == 0 {
+			continue
+		}
+		at := maphash.Bytes(nameSeed, s.arena[old.off-1:old.off-1+old.length]) & mask
+		for slots[at].length != 0 {
+			at = (at + 1) & mask
+		}
+		slots[at] = old
+	}
+	s.slots = slots
 }
 
 // has reports whether name is in the set.
