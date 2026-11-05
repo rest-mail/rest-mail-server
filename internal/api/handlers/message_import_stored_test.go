@@ -433,7 +433,7 @@ func holdsItsCost(t *testing.T, id string, cost func(stillOverCost) uint64, send
 				allocated := send(t, message)
 				best, worst = min(best, allocated), max(worst, allocated)
 			}
-			t.Logf("%d bytes allocated %.1f to %.1f times over, held to %dx", length, float64(best)/float64(length), float64(worst)/float64(length), ceiling)
+			t.Logf("%d bytes allocated %.2f to %.2f times over, held to %dx", length, float64(best)/float64(length), float64(worst)/float64(length), ceiling)
 			if best > ceiling*length {
 				t.Fatalf("%d bytes allocated %d, over the %dx this row was measured at", length, best, ceiling)
 			}
