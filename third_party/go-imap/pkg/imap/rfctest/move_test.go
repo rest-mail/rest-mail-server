@@ -239,10 +239,14 @@ func TestMoveNames(t *testing.T) {
 				c := expungeClient(t, m)
 				lines, tagged := c.command("M1", "%s %s", prefix, dest)
 				requireOK(t, tagged, "M1")
-				requireExactly(t, lines, "* 2 EXPUNGE")
 				want := "INBOX"
 				if strings.HasPrefix(dest, `"`) {
 					want = "Project Archive"
+					requireExactly(t, lines, "* 2 EXPUNGE")
+				} else {
+					// INBOX is the selected mailbox, and this fixture still lists all
+					// four messages, so the size update goes out (IMAP-MOVE-01).
+					requireExactly(t, lines, "* 2 EXPUNGE", "* 4 EXISTS")
 				}
 				requireCopies(t, m.copyMailbox, want, 304)
 			})
@@ -359,4 +363,43 @@ func TestMoveUIDInvalidBackendUIDs(t *testing.T) {
 	}
 	requireExactly(t, lines, "* 2 EXPUNGE")
 	requireRemaining(t, c, 300, 319, 320)
+}
+
+// growingMoveMailbox is a store where a message moved into the selected mailbox
+// takes a new UID there and the old one is gone.
+type growingMoveMailbox struct {
+	*moveMailbox
+}
+
+func (m *growingMoveMailbox) Move(uid uint32, dest string) error {
+	if err := m.moveMailbox.Move(uid, dest); err != nil {
+		return err
+	}
+	for i, message := range m.messages {
+		if message.UID == uid {
+			m.messages = append(m.messages[:i:i], m.messages[i+1:]...)
+			break
+		}
+	}
+	if dest == "INBOX" {
+		m.messages = append(m.messages, imap.Message{UID: 500 + uint32(len(m.calls))})
+	}
+	return nil
+}
+
+// A message moved into the mailbox it came from leaves its old sequence number
+// and arrives at the end (RFC 3501 §5.2). A move elsewhere sends no EXISTS.
+// checklist: IMAP-MOVE-01
+func TestMoveIntoSelectedMailbox(t *testing.T) {
+	m := &growingMoveMailbox{moveMailbox: newMoveMailbox()}
+	c := expungeClient(t, m)
+	lines, tagged := c.command("M1", "MOVE 2 INBOX")
+	requireOK(t, tagged, "M1")
+	requireExactly(t, lines, "* 2 EXPUNGE", "* 4 EXISTS")
+	requireRemaining(t, c, 300, 319, 320, 501)
+
+	lines, tagged = c.command("M2", "MOVE 1 foo")
+	requireOK(t, tagged, "M2")
+	requireExactly(t, lines, "* 1 EXPUNGE")
+	requireRemaining(t, c, 319, 320, 501)
 }

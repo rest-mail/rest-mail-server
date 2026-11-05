@@ -3409,13 +3409,18 @@ def import_into_an_account_with_room(transaction):
     # Only the path: a hook that changed a generated body would end the probe. The
     # documented account is 12, which the E2E stages leave at its quota on the topology.
     # A held message is new mail there (probes.py), so the example would answer 409 and
-    # skip the valid probes. The examples phase keeps the documented account.
+    # skip the valid probes. Elsewhere the documented account is kept, except for
+    # always_store, which adds a message however often it is sent, so a later process
+    # would find that account full.
     if (
-        os.environ.get("CONTRACT_COVERAGE") != "1"
-        or " > 200 > " not in transaction.get("name", "")
+        " > 200 > " not in transaction.get("name", "")
         or transaction.get("fullPath") != "/api/v1/accounts/12/messages/import"
     ):
         return
+    if os.environ.get("CONTRACT_COVERAGE") != "1":
+        body = hooks.get_json(transaction)
+        if not isinstance(body, dict) or body.get("always_store") is not True:
+            return
     account = mailbox_id(origin_of(transaction), ADMIN)
     transaction["fullPath"] = f"/api/v1/accounts/{account:d}/messages/import"
 

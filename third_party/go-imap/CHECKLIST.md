@@ -554,13 +554,13 @@ store preserves content/metadata or atomically copies a whole set.
 
 | ID | Section | Level | Requirement | Tests |
 |----|---------|-------|-------------|-------|
-| IMAP-COPY-01 | RFC 3501 §6.4.7 | Normative | COPY passes each selected sequence number's UID and the destination to the backend, then returns tagged OK without command-specific untagged responses. Base backends omit COPYUID. | TestCopyExample |
+| IMAP-COPY-01 | RFC 3501 §§5.2, 6.4.7 | Normative | COPY passes each selected sequence number's UID and the destination to the backend, then returns tagged OK without command-specific untagged responses, unless the backend now shows the selected mailbox larger: then EXISTS goes out before the tagged response and sequence numbers follow it. Base backends omit COPYUID. | TestCopyExample, TestCopyIntoSelectedMailbox, TestCopyIntoSelectedMailboxPartialFailure |
 | IMAP-COPY-02 | RFC 3501 §6.4.7 | Normative | COPY leaves source membership and source flags unchanged in the selected session. | TestCopyExample |
 | IMAP-COPY-03 | RFC 4315 §3 | SHOULD | Successful COPY/UID COPY with destination UID metadata returns tagged OK with COPYUID containing destination UIDVALIDITY and corresponding source/destination UIDs in copy order. | TestCopyUIDExample, TestCopyUIDMapping |
 | IMAP-COPY-04 | RFC 3501 §6.4.8; RFC 4315 §3 | Normative | UID COPY uses UIDs rather than sequence numbers and ignores nonexistent UIDs; an empty match succeeds without copying or reporting COPYUID. | TestCopyUIDExample, TestCopySets |
 | IMAP-COPY-05 | RFC 3501 §§2.3.1.1, 6.4.8 | Normative | Reversed ranges denote the same members; a UID range ending in star includes the last message even if its other endpoint exceeds the greatest UID. | TestCopySets |
 | IMAP-COPY-06 | RFC 3501 §9; RFC 4315 §3 | Normative | Overlapping sequence-set members identify each message once; UID COPY must not duplicate backend calls or COPYUID members. | TestCopySets, TestCopyUIDMapping |
-| IMAP-COPY-07 | RFC 3501 §§6.4.7, 6.4.8 | Normative | A backend copy failure returns tagged NO without COPYUID and stops further dispatch; the session accepts a later retry. This does not establish rollback of earlier copies. | TestCopyBackendFailure |
+| IMAP-COPY-07 | RFC 3501 §§5.2, 6.4.7, 6.4.8 | Normative | A backend copy failure returns tagged NO without COPYUID and stops further dispatch; the session accepts a later retry. Earlier copies that made the selected mailbox larger are announced with EXISTS before the NO. This does not establish rollback of earlier copies. | TestCopyBackendFailure, TestCopyIntoSelectedMailboxPartialFailure |
 | IMAP-COPY-08 | RFC 3501 §§5.1, 6.3.2, 6.4.7 | Normative | COPY/UID COPY may copy from an EXAMINE selection; quoted destination names retain spaces and INBOX is case-insensitive. | TestCopyReadOnlyAndNames |
 | IMAP-COPY-09 | RFC 3501 §§3, 6.4 | Normative | COPY/UID COPY require a selected mailbox and dispatch no backend copy before selection. | TestCopyRequiresSelection |
 | IMAP-COPY-10 | RFC 4315 §3 | Normative | Omit COPYUID when the destination UIDVALIDITY is unavailable rather than reporting guessed metadata; the completed copy still succeeds. | TestCopyUIDValidityFallback |
@@ -573,9 +573,8 @@ store preserves content/metadata or atomically copies a whole set.
 
 This slice stops at the first backend failure and suppresses COPYUID on NO;
 earlier destination writes can remain and a retry may duplicate them. This is an
-explicit RFC rollback gap, not atomic COPY conformance. Concurrent updates,
-copy-to-self notifications and the remaining UIDPLUS requirements remain for
-later slices. No batch backend interface or public capability changes are made.
+explicit RFC rollback gap, not atomic COPY conformance. Concurrent updates and
+the remaining UIDPLUS requirements remain for later slices. No batch backend interface or public capability changes are made.
 
 ## RFC 6851: MOVE and UID MOVE — partial dispatch slice
 
@@ -586,7 +585,7 @@ messages. They do not prove a real store moves each message atomically.
 
 | ID | Section | Level | Requirement | Tests |
 |----|---------|-------|-------------|-------|
-| IMAP-MOVE-01 | RFC 6851 §3.1 | Normative | MOVE passes each selected message's UID and the destination to the backend, sends an untagged EXPUNGE for each moved message and returns tagged OK; moved messages leave the selected view. Base backends omit COPYUID. | TestMoveExample |
+| IMAP-MOVE-01 | RFC 6851 §3.1; RFC 3501 §5.2 | Normative | MOVE passes each selected message's UID and the destination to the backend, sends an untagged EXPUNGE for each moved message and returns tagged OK; moved messages leave the selected view. A move into the selected mailbox that leaves it holding more messages than the expunges left is announced with EXISTS after them. Base backends omit COPYUID. | TestMoveExample, TestMoveIntoSelectedMailbox |
 | IMAP-MOVE-02 | RFC 6851 §§3.3, 4; RFC 4315 §3 | SHOULD | With UIDPLUS and destination UID metadata, send COPYUID in an untagged OK before any EXPUNGE, with corresponding source/destination UIDs in move order. | TestMoveUIDExample, TestMoveUIDMapping |
 | IMAP-MOVE-03 | RFC 6851 §3.2; RFC 3501 §§2.3.1.1, 6.4.8 | Normative | UID MOVE uses UIDs and ignores nonexistent UIDs; reversed ranges and star denote the same members; an empty match succeeds without EXPUNGE or COPYUID. | TestMoveUIDExample, TestMoveSets |
 | IMAP-MOVE-04 | RFC 3501 §9; RFC 6851 §3.3 | Normative | Overlapping sequence-set members identify each message once: one backend move, one EXPUNGE and one COPYUID member per message, and no unrelated message leaves the view. | TestMoveSets, TestMoveUIDMapping |

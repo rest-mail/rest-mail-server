@@ -227,7 +227,9 @@ or attachment reference, and a rerun reuses the same object content.
 Direct IMAP source import, including OAuth, is available alongside Maildir/mbox,
 and all three restore Deleted and keywords. Copying with imapsync also works: the E2E job copies a folder
 from Dovecot with it and compares folders, counts, subjects and flags
-(`scripts/tests/test_imapsync_live.py`). The wider migration outcome
+(`scripts/tests/test_imapsync_live.py`). Over IMAP, APPEND and COPY always add a
+message, as the protocol requires, so it is imapsync's own comparison of Message-Id
+and Received headers that makes a second imapsync run add nothing. The wider migration outcome
 stays tracked in [#734](https://github.com/rest-mail/rest-mail-server/issues/734);
 this does not claim its full acceptance criteria are complete.
 

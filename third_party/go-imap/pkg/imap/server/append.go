@@ -320,9 +320,9 @@ func (s *Session) handleAppend(tag, args string) (closeConn bool) {
 	return
 }
 
-// notifyAppendToSelected sends an untagged "* n EXISTS" (RFC 3501 §6.3.11) when a
-// just-completed APPEND targeted the mailbox this session has selected, so the
-// client learns a message arrived. It re-reads the mailbox so the cached message
+// notifyAppendToSelected sends an untagged "* n EXISTS" (RFC 3501 §§5.2, 6.3.11) when a
+// just-completed APPEND, COPY or MOVE targeted the mailbox this session has selected
+// and its size changed, so the client learns a message arrived. It re-reads the mailbox so the cached message
 // slice — which backs sequence-number resolution for later FETCH/STORE/SEARCH —
 // reflects the new message rather than going stale. folder is already canonical
 // (INBOX-folded), as is s.selected.name, so the comparison is exact. A read error
@@ -343,6 +343,9 @@ func (s *Session) notifyAppendToSelected(folder string) {
 	}
 	s.announceKeywords(messages)
 	s.messages = messages
+	if s.selected.total == int64(len(messages)) {
+		return
+	}
 	s.selected.total = int64(len(messages))
 	s.send("* %d EXISTS", len(messages))
 }

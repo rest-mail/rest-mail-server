@@ -99,6 +99,14 @@ func (s *Session) copyMessages(seqNums []int, dest string) (string, error) {
 	up, uidPlus := s.mailbox.(imap.UIDPlusMailbox)
 	var srcUIDs, dstUIDs []uint32
 	seen := make(map[int]bool)
+	// A copy into the selected mailbox changes its size, and that goes out before
+	// the tagged answer even if a later message fails (RFC 3501 §5.2).
+	copied := false
+	defer func() {
+		if copied {
+			s.notifyAppendToSelected(dest)
+		}
+	}()
 
 	for _, seq := range seqNums {
 		if seq < 1 || seq > len(s.messages) || seen[seq] {
@@ -112,6 +120,7 @@ func (s *Session) copyMessages(seqNums []int, dest string) (string, error) {
 				slog.Warn("imap: copy failed", "uid", msg.UID, "error", err)
 				return "", err
 			}
+			copied = true
 			srcUIDs = append(srcUIDs, msg.UID)
 			dstUIDs = append(dstUIDs, newUID)
 			continue
@@ -120,6 +129,7 @@ func (s *Session) copyMessages(seqNums []int, dest string) (string, error) {
 			slog.Warn("imap: copy failed", "uid", msg.UID, "error", err)
 			return "", err
 		}
+		copied = true
 	}
 
 	if uidPlus && len(dstUIDs) > 0 && validCopyUIDs(dstUIDs) {
@@ -227,6 +237,10 @@ func (s *Session) moveMessages(tag, cmdName string, seqNums []int, dest string) 
 	}
 	if s.selected != nil {
 		s.selected.total = int64(len(s.messages))
+	}
+	// A message moved into the selected mailbox has arrived at its end.
+	if len(doneSeq) > 0 {
+		s.notifyAppendToSelected(dest)
 	}
 	if moveErr != nil {
 		s.tagged(tag, "NO", failText(moveErr, cmdName+" failed"))

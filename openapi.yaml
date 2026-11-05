@@ -14820,7 +14820,9 @@ paths:
         which every account is granted on its own mailbox by the importer role; an owner
         can revoke that grant, and the account is then refused with 403. A message whose Message-ID and exact
         octets are already in that account and folder is skipped without changing its flags
-        or date; the same Message-ID with different octets is stored as another message. Messages without Message-ID use a
+        or date; the same Message-ID with different octets is stored as another message.
+        With always_store true no such check is made - a new message is stored with its own
+        id, flags and date, and the one already there is left as it was. Messages without Message-ID use a
         deterministic SHA-256 import identity; the raw source remains unchanged. Every
         attempt is audited; successful imports and skips also receive a transactional
         messages.import audit entry. The decoded message is bounded by SMTP_MAX_MESSAGE_SIZE
@@ -19350,6 +19352,8 @@ components:
     ImportMessageBody:
       additionalProperties: false
       properties:
+        always_store:
+          type: boolean
         flags:
           items:
             type: string

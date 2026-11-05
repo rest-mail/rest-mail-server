@@ -342,3 +342,65 @@ func TestCopyUIDInvalidBackendUIDs(t *testing.T) {
 		}
 	}
 }
+
+// growingCopyMailbox is a store where a copy is a message: one copied into the
+// selected mailbox is there the next time it is read.
+type growingCopyMailbox struct {
+	*copyMailbox
+	failAfter int
+}
+
+func (m *growingCopyMailbox) Copy(uid uint32, dest string) error {
+	if m.failAfter != 0 && len(m.calls) == m.failAfter {
+		m.calls = append(m.calls, copyCall{uid, dest})
+		return errors.New("copy refused")
+	}
+	if err := m.copyMailbox.Copy(uid, dest); err != nil {
+		return err
+	}
+	if dest == "INBOX" {
+		m.messages = append(m.messages, imap.Message{UID: 400 + uint32(len(m.calls))})
+	}
+	return nil
+}
+
+// RFC 3501 §5.2: a server sends a mailbox size update it observes while
+// processing a command, and sequence numbers follow it. A copy to another mailbox
+// changes nothing here.
+// checklist: IMAP-COPY-01
+func TestCopyIntoSelectedMailbox(t *testing.T) {
+	for _, command := range []string{"COPY 2", "UID COPY 304"} {
+		t.Run(command, func(t *testing.T) {
+			m := &growingCopyMailbox{copyMailbox: newCopyMailbox()}
+			c := selectionClient(t, m)
+			_, tagged := c.command("S1", "SELECT INBOX")
+			requireOK(t, tagged, "S1")
+
+			lines, tagged := c.command("C1", "%s INBOX", command)
+			requireOK(t, tagged, "C1")
+			requireExactly(t, lines, "* 5 EXISTS")
+			lines, tagged = c.command("F1", "FETCH 5 UID")
+			requireOK(t, tagged, "F1")
+			requireLine(t, lines, "* 5 FETCH (UID 401 FLAGS ())")
+
+			lines, tagged = c.command("C2", `%s "Project Archive"`, command)
+			requireOK(t, tagged, "C2")
+			requireExactly(t, lines)
+		})
+	}
+}
+
+// Copies made before a failure are in the mailbox, so the size update still goes
+// out, before the tagged NO.
+// checklist: IMAP-COPY-01 IMAP-COPY-07
+func TestCopyIntoSelectedMailboxPartialFailure(t *testing.T) {
+	m := &growingCopyMailbox{copyMailbox: newCopyMailbox(), failAfter: 1}
+	c := selectionClient(t, m)
+	_, tagged := c.command("S1", "SELECT INBOX")
+	requireOK(t, tagged, "S1")
+	lines, tagged := c.command("C1", "COPY 1:2 INBOX")
+	if !strings.HasPrefix(tagged, "C1 NO") {
+		t.Fatalf("tagged: %q", tagged)
+	}
+	requireExactly(t, lines, "* 5 EXISTS")
+}

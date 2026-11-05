@@ -22,7 +22,7 @@ type importScenario struct {
 }
 
 var importScenarios = []importScenario{
-	{"created", "", 200}, {"duplicate", "", 200}, {"default_folder", "", 200},
+	{"created", "", 200}, {"duplicate", "", 200}, {"always_store", "", 200}, {"default_folder", "", 200},
 	{"missing_message_id", "", 200}, {"binary_source", "", 200}, {"api_key", "", 200},
 	{"body_array", "", 422}, {"unauthenticated", "", 401},
 	{"insufficient_permissions", "denied", 404}, {"missing_scoped_target", "missing", 404},
@@ -44,6 +44,8 @@ func importScenarioRequest(t *testing.T, tc importScenario) oapifly.ExampleReque
 	body := importExampleBody()
 	id := 12
 	switch tc.name {
+	case "always_store":
+		body["always_store"] = true
 	case "default_folder":
 		delete(body, "folder")
 	case "missing_message_id":
@@ -94,7 +96,7 @@ func importScenarioRequest(t *testing.T, tc importScenario) oapifly.ExampleReque
 
 func prepareImportScenario(t *testing.T, tc importScenario, f *importFixture) {
 	t.Helper()
-	if tc.name == "duplicate" {
+	if tc.name == "duplicate" || tc.name == "always_store" {
 		w := f.request(t, importExampleBody(), "12", f.token)
 		if w.Code != 200 {
 			t.Fatalf("seed import: %d %s", w.Code, w.Body)

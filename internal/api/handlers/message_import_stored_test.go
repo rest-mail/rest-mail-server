@@ -246,9 +246,9 @@ func TestMessageImportNotStoredIsNotHeld(t *testing.T) {
 	h := NewMessageImportHandler(db, 2*size, nil, nil)
 	h.directory = t.TempDir()
 	routes := importMessageRoutes(h)
-	send := func(message string) (*httptest.ResponseRecorder, uint64) {
+	send := func(message string, alwaysStore bool) (*httptest.ResponseRecorder, uint64) {
 		t.Helper()
-		body := fmt.Sprintf(`{"raw_message":"%s","folder":"Big","internal_date":"2020-01-02T03:04:05Z"}`, base64.StdEncoding.EncodeToString([]byte(message)))
+		body := fmt.Sprintf(`{"raw_message":"%s","folder":"Big","internal_date":"2020-01-02T03:04:05Z","always_store":%t}`, base64.StdEncoding.EncodeToString([]byte(message)), alwaysStore)
 		r := authzRequest(http.MethodPost, fmt.Sprintf("/api/v1/accounts/%d/messages/import", fx.user.ID), fx.user.ID, nil, body)
 		r.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
@@ -259,10 +259,10 @@ func TestMessageImportNotStoredIsNotHeld(t *testing.T) {
 		return w, after.TotalAlloc - before.TotalAlloc
 	}
 	message := bigImport("rerun", size)
-	if w, _ := send(message); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"imported":true`) {
+	if w, _ := send(message, false); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"imported":true`) {
 		t.Fatalf("first import: %d %s", w.Code, w.Body)
 	}
-	w, allocated := send(message)
+	w, allocated := send(message, false)
 	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"imported":false`) {
 		t.Fatalf("rerun: %d %s", w.Code, w.Body)
 	}
@@ -274,19 +274,30 @@ func TestMessageImportNotStoredIsNotHeld(t *testing.T) {
 	if err := db.Model(&models.Mailbox{}).Where("id = ?", fx.user.ID).Update("quota_bytes", 1).Error; err != nil {
 		t.Fatal(err)
 	}
-	w, allocated = send(bigImport("full", size))
-	if w.Code != http.StatusConflict {
-		t.Fatalf("over quota: %d %s", w.Code, w.Body)
-	}
-	t.Logf("a refusal of %d bytes at the quota allocated %d", size, allocated)
-	if allocated > limit {
-		t.Fatalf("a refusal of %d bytes at the quota allocated %d", size, allocated)
+	for _, alwaysStore := range []bool{false, true} {
+		w, allocated = send(bigImport("full", size), alwaysStore)
+		if w.Code != http.StatusConflict {
+			t.Fatalf("over quota (always_store=%t): %d %s", alwaysStore, w.Code, w.Body)
+		}
+		t.Logf("a refusal of %d bytes at the quota (always_store=%t) allocated %d", size, alwaysStore, allocated)
+		if allocated > limit {
+			t.Fatalf("a refusal of %d bytes at the quota (always_store=%t) allocated %d", size, alwaysStore, allocated)
+		}
 	}
 }
 
 // Storing still reads the source, because the row keeps it (see importSource.columns), but the
 // attachment isn't read for itself as well, and the request isn't held to get at either.
 func TestMessageImportStoredHoldsOnlyWhatTheRowKeeps(t *testing.T) {
+	for _, alwaysStore := range []bool{false, true} {
+		t.Run(fmt.Sprintf("always_store=%t", alwaysStore), func(t *testing.T) {
+			testMessageImportStoredHoldsOnlyWhatTheRowKeeps(t, alwaysStore)
+		})
+	}
+}
+
+func testMessageImportStoredHoldsOnlyWhatTheRowKeeps(t *testing.T, alwaysStore bool) {
+	t.Helper()
 	const size = 1 << 20
 	db := importProofDB(t)
 	fx := seedAccountsFixture(t, db)
@@ -302,16 +313,25 @@ func TestMessageImportStoredHoldsOnlyWhatTheRowKeeps(t *testing.T) {
 	h := NewMessageImportHandler(db, 2*size, nil, nil)
 	h.directory = t.TempDir()
 	message := bigImport("stored", size)
-	body := fmt.Sprintf(`{"raw_message":"%s","internal_date":"2020-01-02T03:04:05Z"}`, base64.StdEncoding.EncodeToString([]byte(message)))
+	body := fmt.Sprintf(`{"raw_message":"%s","internal_date":"2020-01-02T03:04:05Z","always_store":%t}`, base64.StdEncoding.EncodeToString([]byte(message)), alwaysStore)
+	routes := importMessageRoutes(h)
+	if alwaysStore {
+		first := authzRequest(http.MethodPost, fmt.Sprintf("/api/v1/accounts/%d/messages/import", fx.user.ID), fx.user.ID, nil, body)
+		first.Header.Set("Content-Type", "application/json")
+		stored := httptest.NewRecorder()
+		routes.ServeHTTP(stored, first)
+		if stored.Code != http.StatusOK || !strings.Contains(stored.Body.String(), `"imported":true`) {
+			t.Fatalf("first import: %d %s", stored.Code, stored.Body)
+		}
+	}
 	r := authzRequest(http.MethodPost, fmt.Sprintf("/api/v1/accounts/%d/messages/import", fx.user.ID), fx.user.ID, nil, body)
 	r.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
-	routes := importMessageRoutes(h)
 	var before, after runtime.MemStats
 	runtime.ReadMemStats(&before)
 	routes.ServeHTTP(w, r)
 	runtime.ReadMemStats(&after)
-	if w.Code != http.StatusOK {
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"imported":true`) {
 		t.Fatalf("%d %s", w.Code, w.Body)
 	}
 	allocated := after.TotalAlloc - before.TotalAlloc
