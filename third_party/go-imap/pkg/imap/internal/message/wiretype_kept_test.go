@@ -38,7 +38,7 @@ func TestParseKeptMatchesParseUncommented(t *testing.T) {
 		}
 		field := b.String()
 		wantType, wantParams, wantErr := parseUncommented(field)
-		gotType, gotParams, gotErr := parseKept(field)
+		gotType, gotParams, gotErr := parseKept(field, conversionFamilies)
 		if (wantErr == nil) != (gotErr == nil) {
 			t.Fatalf("round %d: %q: errors %v and %v", round, field, wantErr, gotErr)
 		}
@@ -75,7 +75,7 @@ func TestParseKeptReadsTheFirstOfARepeatedName(t *testing.T) {
 		{name: "two blanks", field: many + "; boundary=B; p1=other;;", refused: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			mt, params, err := parseKept(tc.field)
+			mt, params, err := parseKept(tc.field, conversionFamilies)
 			if tc.refused {
 				if err == nil {
 					t.Fatalf("read %q %q, want it refused", mt, params)
@@ -120,7 +120,7 @@ func TestParseKeptMatchesParseUncommented_Repeats(t *testing.T) {
 		}
 		field := b.String()
 		wantType, wantParams, wantErr := parseUncommented(field)
-		gotType, gotParams, gotErr := parseKept(field)
+		gotType, gotParams, gotErr := parseKept(field, conversionFamilies)
 		if (wantErr == nil) != (gotErr == nil) {
 			t.Fatalf("round %d: %q: errors %v and %v", round, field, wantErr, gotErr)
 		}
@@ -137,5 +137,45 @@ func TestParseKeptMatchesParseUncommented_Repeats(t *testing.T) {
 	}
 	if read < 1000 || blanks < 100 {
 		t.Fatalf("%d fields read, %d of them with a blank, which proves too little", read, blanks)
+	}
+}
+
+// A field holding comments, long or short and whatever else is wrong with it, reads as parseContentType
+// reads it, whichever parameters are kept: it's what a host and a conversion read a field by.
+func TestReadKeptMatchesParseContentType(t *testing.T) {
+	rng := rand.New(rand.NewSource(1968))
+	types := []string{"text/plain", "multipart/mixed", "MULTIPART / Mixed", "(c) a/b", "a/b (c)", "a (;) / b", "bad", ""}
+	segments := []string{"boundary=a", "boundary=a (c)", "(c) boundary=b", "boundary*0=a (c)", "boundary*1=b", "charset=(c) x", "CHARSET=y", "charset*=utf-8''z",
+		"name=n (c)", "name*0=(;)a", "name*1=b", "NAME*=iso-8859-1''%E9", "filename=f (\\)c)", "filename*0*=utf-8''%C3%A9", "filename*1=(\"c\")x",
+		"p=v", "p=v (c)", "(c) q=v", "q*0=v", `r="a;b (c)"`, "s=(unclosed", "s=unclosed)", `s="unclosed`, "s", "=s", "", " ", "(only)", "t=a b", "p=w"}
+	for round := range 40000 {
+		var b strings.Builder
+		b.WriteString(types[rng.Intn(len(types))])
+		count := rng.Intn(6)
+		if rng.Intn(4) == 0 {
+			count = manyParameters + rng.Intn(6)
+		}
+		for range count {
+			b.WriteString(";" + segments[rng.Intn(len(segments))])
+		}
+		field := b.String()
+		wantType, wantParams, wantErr := parseContentType(field)
+		for _, families := range [][]string{conversionFamilies, hostFamilies} {
+			gotType, gotParams, gotErr := readKept(field, families)
+			if (wantErr == nil) != (gotErr == nil) {
+				t.Fatalf("round %d: %q: readKept %v, parseContentType %v", round, field, gotErr, wantErr)
+			}
+			if wantErr != nil {
+				continue
+			}
+			if gotType != wantType {
+				t.Fatalf("round %d: %q: type %q, want %q", round, field, gotType, wantType)
+			}
+			for _, family := range families {
+				if gotParams[family] != wantParams[family] {
+					t.Fatalf("round %d: %q: %s %q, want %q", round, field, family, gotParams[family], wantParams[family])
+				}
+			}
+		}
 	}
 }

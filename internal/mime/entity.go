@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	stdmime "mime"
 	"mime/quotedprintable"
 	"net/textproto"
 	"strings"
@@ -269,11 +268,35 @@ func isPartField(key []byte) bool {
 
 func isContentType(key []byte) bool { return bytes.EqualFold(key, []byte("Content-Type")) }
 
-// namesMultipart says whether parseMedia could answer a multipart type for a value: true of every
-// value it does, as it lowers and trims the type before the first semicolon, or answers the value.
+// namesMultipart says whether parseContentType could answer a multipart type for a value: true of
+// every value it does, as what stands before the type's slash, comments and white space aside, lowers
+// to "multipart", and a ';' ends the type. It holds nothing, so a part that holds no parts doesn't pay
+// to read its field just to learn that.
 func namesMultipart(value []byte) bool {
-	base, _, _ := bytes.Cut(value, []byte(";"))
-	return bytes.HasPrefix(bytes.ToLower(bytes.TrimSpace(base)), []byte("multipart/"))
+	var main [32]byte
+	size, comments := 0, 0
+	for i := 0; i < len(value); i++ {
+		switch c := value[i]; {
+		case comments > 0 && c == '\\':
+			i++
+		case c == '(':
+			comments++
+		case comments > 0:
+			if c == ')' {
+				comments--
+			}
+		case c == ' ' || c == '\t' || c == '\r' || c == '\n':
+		case c == '/':
+			return bytes.Equal(bytes.ToLower(main[:size]), []byte("multipart"))
+		case c == ';' || size == len(main):
+			return false
+		default:
+			main[size] = c
+			size++
+		}
+	}
+	// A '(' that never closes is text in an 8-bit field, and the type before it can still read.
+	return comments > 0 && bytes.Contains(bytes.ToLower(value), []byte("multipart"))
 }
 
 // partFields is what's read of a header when only opening the entity matters: each field's first
@@ -310,7 +333,7 @@ func (r *fieldReader) readPartFields(br *bufio.Reader) (partFields, error) {
 			if !kept.hasDisp {
 				kept.hasDisp = true
 				view := unfold(value)
-				kept.disposition, kept.dispParams, _ = parseMedia(unsafe.String(unsafe.SliceData(view), len(view)))
+				kept.disposition, kept.dispParams = parseDisposition(unsafe.String(unsafe.SliceData(view), len(view)))
 			}
 		case bytes.EqualFold(key, []byte("Content-Transfer-Encoding")):
 			if !kept.hasEncoding {
@@ -399,17 +422,6 @@ func charsetDecoder(charset string, input io.Reader) (io.Reader, error) {
 		return gomessage.CharsetReader(charset, input)
 	}
 	return input, fmt.Errorf("message: unhandled charset %q", charset)
-}
-
-// decodeWords is a header value with its RFC 2047 encoded-words decoded, or the value when it can't
-// be, as go-message reads one.
-func decodeWords(value string) string {
-	decoder := stdmime.WordDecoder{CharsetReader: gomessage.CharsetReader}
-	decoded, err := decoder.DecodeHeader(value)
-	if err != nil {
-		return value
-	}
-	return decoded
 }
 
 // multipartReader reads the parts of a multipart. It's go-message's textproto.MultipartReader, in

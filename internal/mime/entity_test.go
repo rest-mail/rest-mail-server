@@ -10,6 +10,7 @@ import (
 	"io"
 	"math"
 	"math/rand"
+	stdmime "mime"
 	"reflect"
 	"runtime"
 	"strings"
@@ -493,10 +494,16 @@ func entityStore(_ context.Context, part io.Reader) (StoredPart, error) {
 // Parse and ParseStream answer what they answered through go-message, on every seed and on what
 // mutating them makes. A malformed header fails the same way and a part left out is left out.
 func TestEntityReadsAsGoMessageDoes(t *testing.T) {
+	compared := 0
 	check := func(raw []byte) {
 		t.Helper()
 		// go-message refuses a repeated name, which a mail client reads: this compares what's left.
+		// TestFieldsReadAsBodyStructureTellsAClient is what decides a field the two read differently.
 		raw = firstOfRepeats(raw)
+		if !fieldsReadAsGoMessageDoes(raw) {
+			return
+		}
+		compared++
 		want, wantErr := legacyParse(raw)
 		got, gotErr := Parse(raw)
 		if (wantErr == nil) != (gotErr == nil) {
@@ -560,6 +567,56 @@ func TestEntityReadsAsGoMessageDoes(t *testing.T) {
 	for range entityMutations() {
 		check(mutateEntity(random, seeds[random.Intn(len(seeds))]))
 	}
+	if compared < entityMutations()/2 {
+		t.Fatalf("only %d of %d messages compared, so this proves little", compared, entityMutations())
+	}
+}
+
+// fieldsReadAsGoMessageDoes says go-message has the reading of every Content-Type and
+// Content-Disposition a message may hold that go-imap has: it refuses a comment, a field that's 8-bit
+// and much of RFC 2231, and reads a type that has no use, and those answer differently here on purpose.
+func fieldsReadAsGoMessageDoes(raw []byte) bool {
+	lines := bytes.SplitAfter(raw, []byte("\n"))
+	for i := 0; i < len(lines); i++ {
+		name, _, found := bytes.Cut(lines[i], []byte(":"))
+		if !found {
+			continue
+		}
+		isType := bytes.EqualFold(bytes.TrimSpace(name), []byte("Content-Type"))
+		if !isType && !bytes.EqualFold(bytes.TrimSpace(name), []byte("Content-Disposition")) {
+			continue
+		}
+		end := i + 1
+		for end < len(lines) && len(lines[end]) > 0 && (lines[end][0] == ' ' || lines[end][0] == '\t') {
+			end++
+		}
+		whole := bytes.Join(lines[i:end], nil)
+		value := strings.TrimSpace(strings.NewReplacer("\r", "", "\n", "").Replace(string(whole[len(name)+1:])))
+		if strings.Contains(value, "=?") || strings.Contains(strings.ReplaceAll(string(whole), "\r\n", ""), "\r") {
+			return false
+		}
+		library, parameters, err := stdmime.ParseMediaType(value)
+		if err != nil {
+			return false
+		}
+		var read string
+		var kept map[string]string
+		var usable bool
+		if isType {
+			read, kept, usable = wireform.ReadContentType(value)
+		} else {
+			read, kept, usable = wireform.ReadDisposition(value)
+		}
+		if !usable || read != library {
+			return false
+		}
+		for _, family := range []string{"boundary", "charset", "filename", "name"} {
+			if kept[family] != parameters[family] {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // A long field doesn't stop a message being read, by anything that reads it: a message not read is

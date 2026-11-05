@@ -132,7 +132,7 @@ func writeDowngradedField(w wordSink, span string, bare bool) {
 // its text only ever counts. ok is false when a blank line in the block ends the header
 // early, so that text is the body, and counts for what it says.
 func measuredBlock(header, sep string, also wordSink) (block string, dropped int, ok bool) {
-	var b strings.Builder
+	var b doublingBuilder
 	writeMeasuredBlock(&b, header, sep, &dropped, also)
 	block = b.String()
 	if strings.HasPrefix(block, "\r\n") || strings.Index(block, "\r\n\r\n") != len(block)-4 {
@@ -161,6 +161,24 @@ func writeMeasuredBlock(w wordSink, header, sep string, dropped *int, also wordS
 		*dropped += names.dropped - len("\r\n")
 	})
 	_, _ = kept.WriteString(sep)
+}
+
+// doublingBuilder is a strings.Builder that at least doubles when it grows. Left to itself one
+// grows a long field by a quarter at a time, which allocates five times what it ends up holding.
+type doublingBuilder struct{ strings.Builder }
+
+func (b *doublingBuilder) Write(p []byte) (int, error) {
+	if b.Cap()-b.Len() < len(p) {
+		b.Grow(len(p))
+	}
+	return b.Builder.Write(p)
+}
+
+func (b *doublingBuilder) WriteString(s string) (int, error) {
+	if b.Cap()-b.Len() < len(s) {
+		b.Grow(len(s))
+	}
+	return b.Builder.WriteString(s)
 }
 
 // teeSink tells two sinks the same.

@@ -183,8 +183,16 @@ chose on rest-mail/rest-mail-server#1921 to send a space instead:
   hold a NUL. The stored message never changes.
 - An encoding that spells a NUL (`=00`, `%00`, base64) in what is sent stays as it
   is, since no NUL octet goes out. ENVELOPE and BODYSTRUCTURE are the exception,
-  because the engine decodes those strings itself.
+  because the engine decodes those strings itself, and a client decodes the encoded
+  words it leaves in them. So a word in a Subject, a description, a name or a
+  parameter goes out with a space for each NUL it spells, in its own charset and
+  encoding (`SpaceWordNUL`, rest-mail/rest-mail-server#1968): `=?utf-8?Q?a=00.txt?=`
+  becomes `=?utf-8?Q?a_.txt?=`. In a charset with NUL octets only U+0000 is a NUL.
+- What a client matches rather than decodes keeps the spelling, because a space would
+  make it something else: a boundary, an addr-spec, Message-ID, In-Reply-To, Content-ID,
+  Content-Location, Content-Language, Content-MD5 and Date.
 
 `wireform.SpaceNUL` is the same rule for a host whose protocol has neither BINARY nor
-this conversion, so data stays exact there rather than encoded.
+this conversion, so data stays exact there rather than encoded. `wireform.SpaceWordNUL`
+lets a host read a Subject or a part's name as a client decodes it.
 `TestFetchRejectsNUL` became `TestFetchReplacesNUL`.

@@ -214,6 +214,105 @@ func TestBinaryKeepsNUL(t *testing.T) {
 	}
 }
 
+// An ENVELOPE or BODYSTRUCTURE string a client decodes can't hand it a NUL through an
+// encoded word, whichever encoding or charset spells it: the word goes out with a space
+// there, in the same charset and encoding. Sections and BINARY still send what they did.
+//
+// checklist: IMAP-ENV-12
+func TestFetchSpacesNULInEncodedWord(t *testing.T) {
+	disposed := func(field string) string {
+		return "Content-Type: application/octet-stream\r\nContent-Disposition: attachment; " + field + "\r\n\r\nbody"
+	}
+	typed := func(field string) string {
+		return "Content-Type: application/octet-stream; " + field + "\r\n\r\nbody"
+	}
+	for _, tc := range []struct{ raw, want string }{
+		// A part's parameters.
+		{disposed(`filename="=?utf-8?Q?a=00.txt?="`), `("FILENAME" "=?utf-8?Q?a_.txt?=")`},
+		{disposed(`filename="=?UTF-8?q?a=00.txt?="`), `("FILENAME" "=?UTF-8?q?a_.txt?=")`},
+		{disposed(`filename="=?utf-8?B?YQAudHh0?="`), `("FILENAME" "=?utf-8?B?YSAudHh0?=")`},
+		{disposed(`filename="=?utf-8?b?YQAudHh0?="`), `("FILENAME" "=?utf-8?b?YSAudHh0?=")`},
+		{disposed(`filename="=?utf-8?B?YQA?="`), `("FILENAME" "=?utf-8?B?YSA=?=")`},
+		{disposed(`filename="=?utf-8*en?Q?a=00?="`), `("FILENAME" "=?utf-8*en?Q?a_?=")`},
+		{disposed(`filename="=?utf-8?Q?=C3=A9=00?="`), `("FILENAME" "=?utf-8?Q?=C3=A9_?=")`},
+		{disposed(`filename="=?utf-8?Q?a=00?= =?utf-8?Q?b?="`), `("FILENAME" "=?utf-8?Q?a_?= =?utf-8?Q?b?=")`},
+		{disposed(`filename="x =?utf-8?Q?a=00?= y"`), `("FILENAME" "x =?utf-8?Q?a_?= y")`},
+		{disposed(`filename="=?iso-8859-1?Q?a=00=E9?="`), `("FILENAME" "=?iso-8859-1?Q?a_=E9?=")`},
+		{disposed(`filename="=?windows-1252?Q?a=00=E9?="`), `("FILENAME" "=?windows-1252?Q?a_=E9?=")`},
+		{disposed(`filename="=?x-none?Q?a=00.txt?="`), `("FILENAME" "=?x-none?Q?a_.txt?=")`},
+		{disposed(`x="=?utf-8?Q?a=00?="`), `("X" "=?utf-8?Q?a_?=")`},
+		{typed(`name="=?utf-8?Q?a=00.txt?="`), `("NAME" "=?utf-8?Q?a_.txt?=")`},
+		{typed(`name="=?utf-8?B?YQAudHh0?="`), `("NAME" "=?utf-8?B?YSAudHh0?=")`},
+		// RFC 2231 decoded by the engine, and what that leaves spelled as a word.
+		{disposed(`filename*=utf-8''a%00.txt`), `("FILENAME" "a .txt")`},
+		{disposed(`filename*=iso-8859-1''a%00.txt`), `("FILENAME" "a .txt")`},
+		{disposed(`filename*=windows-1252''a%00.txt`), `("FILENAME" "=?windows-1252?Q?a_=2Etxt?=")`},
+		{disposed(`filename*=x-none''a%00.txt`), `("FILENAME" "=?x-none?Q?a_=2Etxt?=")`},
+		{disposed(`filename*0*=x-none''a%00; filename*1*=b.txt`), `("FILENAME" "=?x-none?Q?a_b=2Etxt?=")`},
+		{disposed(`filename*=utf-8''%3D%3Futf-8%3FQ%3Fa%3D00%3F%3D`), `("FILENAME" "=?utf-8?Q?a_?=")`},
+		{typed(`name*=x-none''a%00.txt`), `("NAME" "=?x-none?Q?a_=2Etxt?=")`},
+		// In a charset whose characters hold NUL octets, only U+0000 is a NUL.
+		{disposed(`filename="=?utf-16be?B?AGEAAABi?="`), `("FILENAME" "=?utf-16be?B?AGEAIABi?=")`},
+		{disposed(`filename="=?utf-16le?Q?a=00=00=00b=00?="`), `("FILENAME" "=?utf-16le?Q?a=00_=00b=00?=")`},
+		{disposed(`filename="=?utf-16?B?//4AAGEA?="`), `("FILENAME" "=?utf-16?B?//4gAGEA?=")`},
+		{disposed(`filename="=?utf-32be?B?AAAAAA==?="`), `("FILENAME" "=?utf-32be?B?AAAAIA==?=")`},
+		{disposed(`filename*=utf-16be''%00a%00%00%00b`), `("FILENAME" "=?utf-16be?Q?=00a=00_=00b?=")`},
+		{disposed(`filename="=?utf-16be?B?AGE=?="`), `("FILENAME" "=?utf-16be?B?AGE=?=")`},
+		{disposed(`filename="=?utf-16le?Q?a=00?="`), `("FILENAME" "=?utf-16le?Q?a=00?=")`},
+		// A description a client decodes, at the top and inside a message.
+		{"Content-Description: =?utf-8?Q?a=00b?=\r\n\r\nbody", `NIL "=?utf-8?Q?a_b?=" "7BIT"`},
+		{"Content-Type: message/rfc822\r\n\r\nContent-Description: =?utf-8?B?YQBi?=\r\n\r\nbody", `NIL "=?utf-8?B?YSBi?=" "7BIT"`},
+		// ENVELOPE: a Subject stays spelled as it was sent.
+		{"Subject: =?utf-8?Q?a=00b?=\r\n\r\nbody", `ENVELOPE (NIL "=?utf-8?Q?a_b?=" NIL`},
+		{"Subject: =?utf-8?B?YQBi?=\r\n\r\nbody", `ENVELOPE (NIL "=?utf-8?B?YSBi?=" NIL`},
+		{"Subject: =?x-none?Q?a=00b?=\r\n\r\nbody", `ENVELOPE (NIL "=?x-none?Q?a_b?=" NIL`},
+		{"Subject: =?utf-8?Q?a=00?=\r\n =?utf-8?Q?b?=\r\n\r\nbody", `ENVELOPE (NIL "=?utf-8?Q?a_?= =?utf-8?Q?b?=" NIL`},
+		{"Content-Type: message/rfc822\r\n\r\nSubject: =?utf-8?Q?a=00b?=\r\n\r\nbody", `(NIL "=?utf-8?Q?a_b?=" NIL`},
+		// ENVELOPE: a name, decoded or kept in the charset it names.
+		{"To: =?utf-8?B?YQBi?= <a@example.com>\r\n\r\nbody", `(("a b" NIL "a" "example.com"))`},
+		{"To: =?iso-8859-1?Q?a=00b?= <a@example.com>\r\n\r\nbody", `(("a b" NIL "a" "example.com"))`},
+		{"To: a@example.com (=?utf-8?Q?a=00b?=)\r\n\r\nbody", `(("a b" NIL "a" "example.com"))`},
+		{"To: =?windows-1252?Q?a=00b?= <a@example.com>\r\n\r\nbody", `(("=?windows-1252?Q?a_b?=" NIL "a" "example.com"))`},
+		{"To: =?x-none?Q?a=00b?= <a@example.com>\r\n\r\nbody", `(("=?x-none?Q?a_b?=" NIL "a" "example.com"))`},
+		{"To: =?utf-16be?B?AGEAAABi?= <a@example.com>\r\n\r\nbody", `(("=?utf-16be?B?AGEAIABi?=" NIL "a" "example.com"))`},
+		{"To: \"=?utf-8?Q?a=00b?=\" <a@example.com>\r\n\r\nbody", `(("=?utf-8?Q?a_b?=" NIL "a" "example.com"))`},
+		{"To: a@example.com (=?x-none?Q?a=00b?=)\r\n\r\nbody", `(("=?x-none?Q?a_b?=" NIL "a" "example.com"))`},
+		{"To: =?x-none?Q?a=00b?=:;\r\n\r\nbody", `((NIL NIL "=?x-none?Q?a_b?=" NIL)(NIL NIL NIL NIL))`},
+		{"Content-Type: message/rfc822\r\n\r\nTo: =?x-none?Q?a=00b?= <a@example.com>\r\n\r\nbody", `(("=?x-none?Q?a_b?=" NIL "a" "example.com"))`},
+		// A client matches these octet for octet and doesn't decode them, so a space would
+		// make them something else.
+		{"Content-Type: multipart/mixed; boundary=\"=?utf-8?Q?a=00?=\"\r\n\r\n--=?utf-8?Q?a=00?=\r\nContent-Type: text/plain\r\n\r\nx\r\n--=?utf-8?Q?a=00?=--\r\n", `("BOUNDARY" "=?utf-8?Q?a=00?=")`},
+		{"Message-Id: <=?utf-8?Q?a=00?=@x>\r\n\r\nbody", `"<=?utf-8?Q?a=00?=@x>")`},
+		{"In-Reply-To: <=?utf-8?Q?a=00?=@x>\r\n\r\nbody", `"<=?utf-8?Q?a=00?=@x>" NIL)`},
+		{"Content-Id: <=?utf-8?Q?a=00?=@x>\r\n\r\nbody", `"<=?utf-8?Q?a=00?=@x>" NIL "7BIT"`},
+		{"To: =?utf-8?Q?a=00b?=@example.com\r\n\r\nbody", `((NIL NIL "=?utf-8?Q?a=00b?=" "example.com"))`},
+	} {
+		t.Run(fmt.Sprintf("%q", tc.raw), func(t *testing.T) {
+			box := envelopeFixture(tc.raw)
+			c := fetchClient(t, box, "EXAMINE")
+			replies, tagged := fetchCommand(t, c, "FETCH 1 (ENVELOPE BODYSTRUCTURE BODY.PEEK[])")
+			requireOK(t, tagged, "F1")
+			if len(replies) != 1 || len(replies[0].literals) != 1 {
+				t.Fatalf("response: %#v", replies)
+			}
+			if !strings.Contains(replies[0].framing, tc.want) {
+				t.Fatalf("%q lacks %q", replies[0].framing, tc.want)
+			}
+			if replies[0].literals[0] != tc.raw {
+				t.Fatalf("BODY[] = %q, want %q", replies[0].literals[0], tc.raw)
+			}
+			replies, tagged = fetchCommand(t, c, "FETCH 1 BINARY.PEEK[]")
+			requireOK(t, tagged, "F1")
+			if len(replies) != 1 || len(replies[0].literals) != 1 || replies[0].literals[0] != tc.raw {
+				t.Fatalf("BINARY[]: %#v, want %q", replies, tc.raw)
+			}
+			if box.raw[10] != tc.raw {
+				t.Fatalf("stored octets changed: %q", box.raw[10])
+			}
+		})
+	}
+}
+
 // Whatever a message holds, a FETCH of it succeeds with no NUL on the wire outside
 // BINARY, and RFC822.SIZE stays what BODY[] sends. The seeds put a NUL or a spelled one
 // in each place a decoder reads, and the mutations move them about.

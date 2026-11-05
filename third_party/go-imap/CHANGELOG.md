@@ -103,6 +103,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   stored message doesn't change. `wireform.SpaceNUL` does the same for a host whose
   protocol has no BINARY, leaving data as it is. A boundary holding a NUL takes the
   same 7-bit spelling as an 8-bit one, in the field and on its delimiter lines.
+- An encoded word in an ENVELOPE or BODYSTRUCTURE string no longer hands a client that
+  decodes it a NUL: a Subject, description, display name or parameter goes out with a
+  space for each NUL a word spells, in Q or base64, in the word's own charset, and in
+  a charset with NUL octets only for U+0000. `wireform.SpaceWordNUL` gives a host the
+  same reading. A boundary, an addr-spec and the identifiers stay octet for octet, as
+  do sections, BINARY and what is stored.
 - A SELECT or EXAMINE refused with BAD keeps the mailbox already selected, with
   its read-only mode and deletion marks: a rejected command never changes state
   (RFC 3501 §6). Only a well-formed selection attempt that fails with NO

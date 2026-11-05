@@ -3,6 +3,7 @@ package pipeline
 import (
 	"encoding/json"
 	"mime"
+	"strings"
 
 	"github.com/rest-mail/rest-mail-server/internal/mailaddr"
 )
@@ -71,7 +72,7 @@ func (l AddressList) Each(visit func(Address)) {
 		return
 	}
 	_ = mailaddr.Each(l.field, l.dec, func(name, address string) {
-		visit(Address{Name: sanitizeHeaderValue(name), Address: sanitizeHeaderValue(address)})
+		visit(Address{Name: addressName(name), Address: sanitizeHeaderValue(address)})
 	})
 }
 
@@ -83,7 +84,7 @@ func (l AddressList) Visit(visit func(Address)) bool {
 		return true
 	}
 	return mailaddr.Each(l.field, l.dec, func(name, address string) {
-		visit(Address{Name: sanitizeHeaderValue(name), Address: sanitizeHeaderValue(address)})
+		visit(Address{Name: addressName(name), Address: sanitizeHeaderValue(address)})
 	}) == nil
 }
 
@@ -109,7 +110,7 @@ func (l AddressList) All() []Address {
 	}
 	all := make([]Address, 0, count)
 	_ = mailaddr.Each(l.field, l.dec, func(name, address string) {
-		all = append(all, Address{Name: sanitizeHeaderValue(name), Address: sanitizeHeaderValue(address)})
+		all = append(all, Address{Name: addressName(name), Address: sanitizeHeaderValue(address)})
 	})
 	return all
 }
@@ -125,6 +126,12 @@ func (l *AddressList) UnmarshalJSON(data []byte) error {
 	}
 	*l = AddressList{given: given}
 	return nil
+}
+
+// addressName is a decoded display name as text, with a space for a NUL an encoded word spelled, as
+// it's sent to a mail client.
+func addressName(name string) string {
+	return sanitizeHeaderValue(strings.ReplaceAll(name, "\x00", " "))
 }
 
 // sanitizeHeaderValue removes CR and LF from a decoded header value. RFC 2047 encoded-words can

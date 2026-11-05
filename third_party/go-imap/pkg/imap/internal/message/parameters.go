@@ -106,9 +106,6 @@ func withoutRepeats(v string) (first string, repeated bool) {
 // WithoutRepeats is withoutRepeats, for wireform.
 func WithoutRepeats(v string) (first string, repeated bool) { return withoutRepeats(v) }
 
-// OnlyRepeatsFollow is onlyRepeatsFollow, for wireform.
-func OnlyRepeatsFollow(before, after string) bool { return onlyRepeatsFollow(before, after) }
-
 // isQuotedString reports whether value is one whole quoted-string.
 func isQuotedString(value string) bool {
 	if len(value) < 2 || value[0] != '"' {
@@ -125,8 +122,10 @@ func isQuotedString(value string) bool {
 	return false
 }
 
+var quoteEscapes = strings.NewReplacer(`\`, `\\`, `"`, `\"`)
+
 func quoteString(value string) string {
-	return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(value) + `"`
+	return `"` + quoteEscapes.Replace(value) + `"`
 }
 
 // cleanValue reports whether value is one a reader of the field can take as it is.
@@ -197,18 +196,21 @@ func joinSegments[S any](base string, segments []S, size int, suffix, text func(
 	octets.Grow(size)
 	charset := ""
 	whole = true
+	var digits [20]byte
 	for i, s := range segments {
 		v := text(s)
 		end := suffix(s)
 		switch {
 		case i == 0 && end == "0*":
 			charset, v = splitExtendedValue(v)
+			octets.WriteString(v)
 		case strings.HasSuffix(end, "*"):
-			v = percentDecode(v)
+			writePercentDecoded(&octets, v)
+		default:
+			octets.WriteString(v)
 		}
-		octets.WriteString(v)
 		first = first || end == "0" || end == "0*"
-		whole = whole && strings.TrimSuffix(end, "*") == strconv.Itoa(i)
+		whole = whole && strings.TrimSuffix(end, "*") == string(strconv.AppendInt(digits[:0], int64(i), 10))
 	}
 	return keptValue(base, charset, octets.String()), first, whole
 }
@@ -231,6 +233,12 @@ func percentDecode(s string) string {
 	}
 	var b strings.Builder
 	b.Grow(len(s))
+	writePercentDecoded(&b, s)
+	return b.String()
+}
+
+// writePercentDecoded is percentDecode into b, so a value of many segments costs one buffer.
+func writePercentDecoded(b *strings.Builder, s string) {
 	for i := 0; i < len(s); i++ {
 		if s[i] == '%' && i+2 < len(s) {
 			if c, err := strconv.ParseUint(s[i+1:i+3], 16, 8); err == nil {
@@ -241,7 +249,6 @@ func percentDecode(s string) string {
 		}
 		b.WriteByte(s[i])
 	}
-	return b.String()
 }
 
 // keptValue is octets as a parameter value. Text in a charset go-imap decodes is
@@ -370,23 +377,50 @@ type fieldPiece struct {
 // It takes time linear in value, however many delimiters never close.
 func readField(value string) []fieldPiece {
 	var pieces []fieldPiece
-	eachFieldPiece(value, func(piece fieldPiece) { pieces = append(pieces, piece) })
+	eachFieldPiece(value, commentClosers(value), func(piece fieldPiece) {
+		piece.comments = slices.Clone(piece.comments)
+		pieces = append(pieces, piece)
+	})
 	return pieces
 }
 
-// eachFieldPiece is readField one piece at a time, holding none of them.
-func eachFieldPiece(value string, each func(fieldPiece)) {
-	closers := commentClosers(value)
+// eachFieldPiece is readField one piece at a time, holding none of them. A piece's comments are good
+// only for the call that's handed them, as the list is used again for the next, though their text is
+// value's. closers is commentClosers(value), which a walk of the same field can use again.
+func eachFieldPiece(value string, closers *commentPairs, each func(fieldPiece)) {
+	walkFieldPieces(value, closers, func(piece fieldPiece) bool {
+		each(piece)
+		return true
+	})
+}
+
+// firstFieldPiece is the first piece eachFieldPiece reads, reading no further.
+func firstFieldPiece(value string, closers *commentPairs) fieldPiece {
+	var first fieldPiece
+	walkFieldPieces(value, closers, func(piece fieldPiece) bool {
+		first = piece
+		return false
+	})
+	return first
+}
+
+// walkFieldPieces is eachFieldPiece until each answers false.
+func walkFieldPieces(value string, closers *commentPairs, each func(fieldPiece) bool) {
+	closers.at = 0
 	quotes := true // false once a '"' has found nothing to close it
 	start, eq, broken := 0, -1, -1
 	var comments [][2]int
-	first := true
+	var texts []string
+	first, more := true, true
 	flush := func(end int) {
-		each(newFieldPiece(value, start, end, eq, broken, comments, first))
+		var piece fieldPiece
+		piece, texts = newFieldPiece(value, start, end, eq, broken, comments, first, texts[:0])
+		more = each(piece)
 		first = false
-		start, eq, broken, comments = end+1, -1, -1, nil
+		// A piece holds only the text of its comments, so where they are can be used again.
+		start, eq, broken, comments = end+1, -1, -1, comments[:0]
 	}
-	for i := 0; i < len(value); i++ {
+	for i := 0; i < len(value) && more; i++ {
 		switch c := value[i]; c {
 		case '"':
 			end := -1
@@ -419,12 +453,15 @@ func eachFieldPiece(value string, each func(fieldPiece)) {
 			flush(i)
 		}
 	}
-	flush(len(value))
+	if more {
+		flush(len(value))
+	}
 }
 
 // newFieldPiece reads value[start:end]: see readField. eq is the first '=' and broken
-// the first unbalanced delimiter in it, or -1, and comments are where its comments are.
-func newFieldPiece(value string, start, end, eq, broken int, comments [][2]int, first bool) fieldPiece {
+// the first unbalanced delimiter in it, or -1, and comments are where its comments are. The text of
+// those goes in texts, which it answers as well, for the next piece to use again.
+func newFieldPiece(value string, start, end, eq, broken int, comments [][2]int, first bool, texts []string) (fieldPiece, []string) {
 	piece := fieldPiece{raw: trimWSP(value[start:end])}
 	if first {
 		if broken >= 0 {
@@ -432,20 +469,21 @@ func newFieldPiece(value string, start, end, eq, broken int, comments [][2]int, 
 			piece.raw = trimWSP(value[start:broken])
 			end = broken
 		}
-		piece.key, _ = cutComments(value, start, end, comments)
-		return piece
+		piece.key, _ = cutComments(value, start, end, comments, nil)
+		return piece, texts
 	}
 	keyEnd := end
 	if eq >= 0 {
 		keyEnd = eq
 	}
-	piece.key, piece.comments = cutComments(value, start, keyEnd, comments)
+	piece.key, texts = cutComments(value, start, keyEnd, comments, texts)
+	piece.comments = texts
 	if eq < 0 {
-		return piece
+		return piece, texts
 	}
 	from, to := eq+1, end
 	// comments is in order, so each end of the value walks it once.
-	lo, hi := 0, len(comments)-1
+	lo, hi, last := 0, len(comments)-1, len(comments)-1
 	for lo <= hi && comments[lo][0] < from {
 		lo++
 	}
@@ -456,11 +494,10 @@ func newFieldPiece(value string, start, end, eq, broken int, comments [][2]int, 
 		if lo > hi || comments[lo][0] != from {
 			break
 		}
-		piece.comments = append(piece.comments, value[comments[lo][0]:comments[lo][1]])
+		texts = append(texts, value[comments[lo][0]:comments[lo][1]])
 		from = comments[lo][1]
 		lo++
 	}
-	var trailing []string
 	for {
 		for to > from && isHeaderSpace(value[to-1]) {
 			to--
@@ -468,32 +505,31 @@ func newFieldPiece(value string, start, end, eq, broken int, comments [][2]int, 
 		if lo > hi || comments[hi][1] != to {
 			break
 		}
-		trailing = append(trailing, value[comments[hi][0]:comments[hi][1]])
 		to = comments[hi][0]
 		hi--
 	}
-	for i := len(trailing) - 1; i >= 0; i-- {
-		piece.comments = append(piece.comments, trailing[i])
+	for i := hi + 1; i <= last; i++ {
+		texts = append(texts, value[comments[i][0]:comments[i][1]])
 	}
+	piece.comments = texts
 	piece.value, piece.hasValue = value[from:to], true
 	if piece.key == "" {
 		// No name. The whole of it is one, as what has no value is.
 		piece.key, piece.value, piece.hasValue = "="+piece.value, "", false
 	}
-	return piece
+	return piece, texts
 }
 
 // cutComments is value[start:end] with each comment in it replaced by a space, as
-// uncommentMIME does, and those comments. A comment after end is left for later.
-func cutComments(value string, start, end int, comments [][2]int) (string, []string) {
+// uncommentMIME does, and those comments, after cut. A comment after end is left for later.
+func cutComments(value string, start, end int, comments [][2]int, cut []string) (string, []string) {
 	if len(comments) == 0 || comments[0][0] >= end {
 		if start >= end {
-			return "", nil
+			return "", cut
 		}
-		return trimWSP(value[start:end]), nil
+		return trimWSP(value[start:end]), cut
 	}
 	var b strings.Builder
-	var cut []string
 	at := start
 	for _, comment := range comments {
 		if comment[0] >= end {
@@ -514,15 +550,17 @@ func cutComments(value string, start, end int, comments [][2]int) (string, []str
 // is skipped wherever it stands. A '(' inside a quoted-string pairs here too, but only
 // one outside a quoted-string is ever looked up.
 type commentPairs struct {
-	opens, closes []int // by opening position; a close of -1 never came
-	at            int   // where the last lookup stopped
+	opens, closes []int32 // by opening position; a close of -1 never came
+	at            int     // where the last lookup stopped
 }
 
 func commentClosers(value string) *commentPairs {
 	pairs := &commentPairs{}
-	if strings.IndexByte(value, '(') < 0 {
+	count := strings.Count(value, "(")
+	if count == 0 {
 		return pairs
 	}
+	pairs.opens, pairs.closes = make([]int32, 0, count), make([]int32, 0, count)
 	var open []int
 	for i := 0; i < len(value); i++ {
 		switch value[i] {
@@ -530,11 +568,11 @@ func commentClosers(value string) *commentPairs {
 			i++
 		case '(':
 			open = append(open, len(pairs.opens))
-			pairs.opens = append(pairs.opens, i)
+			pairs.opens = append(pairs.opens, int32(i))
 			pairs.closes = append(pairs.closes, -1)
 		case ')':
 			if len(open) > 0 {
-				pairs.closes[open[len(open)-1]] = i
+				pairs.closes[open[len(open)-1]] = int32(i)
 				open = open[:len(open)-1]
 			}
 		}
@@ -545,13 +583,13 @@ func commentClosers(value string) *commentPairs {
 // closer is where the comment opening at position closes. Positions must rise from one
 // call to the next, so every lookup of a field together walks the list once.
 func (p *commentPairs) closer(position int) (int, bool) {
-	for p.at < len(p.opens) && p.opens[p.at] < position {
+	for p.at < len(p.opens) && int(p.opens[p.at]) < position {
 		p.at++
 	}
-	if p.at == len(p.opens) || p.opens[p.at] != position || p.closes[p.at] < 0 {
+	if p.at == len(p.opens) || int(p.opens[p.at]) != position || p.closes[p.at] < 0 {
 		return 0, false
 	}
-	return p.closes[p.at], true
+	return int(p.closes[p.at]), true
 }
 
 // quoteEnd is where the quoted-string opening at value[open] closes, or -1.
@@ -663,6 +701,7 @@ func restoreNames(stored string, params map[string]string) map[string]string {
 // no readable type, or the type itself is 8-bit.
 func ParameterField(name, value string) (string, bool) {
 	var b strings.Builder
+	b.Grow(len(name) + len(": ") + len(value) + len(value)/4)
 	if !WriteParameterField(&b, name, value) {
 		return "", false
 	}
@@ -674,18 +713,27 @@ func ParameterField(name, value string) (string, bool) {
 // for the next field, so a field of very many parameters costs little more than its size.
 func WriteParameterField(w wireSink, name, value string) bool {
 	value = trimWSP(value)
-	mt, _, err := parseKeptParameters(value)
+	closers := commentClosers(value)
+	var mt string
+	var err error
+	if has8bit(value) {
+		// Every parameter of a field holding an 8-bit octet is spelled so it can't be refused, so only
+		// the type is left to ask about (hasReadableType).
+		mt, _, err = parseContentType(firstFieldPiece(value, closers).key)
+	} else {
+		mt, _, err = parseKeptParameters(value)
+	}
 	if err != nil || has8bit(mt) {
 		return false
 	}
-	semicolons := strings.Count(value, ";")
 	// Only a name holding a '*' is extended.
 	var extended *nameSet
 	if strings.IndexByte(value, '*') >= 0 {
-		extended = takeNameSet(semicolons)
+		// Few names are extended however many parameters there are, so this grows if it has to.
+		extended = takeNameSet(0)
 		defer extended.release()
 		first := true
-		eachFieldPiece(value, func(piece fieldPiece) {
+		eachFieldPiece(value, closers, func(piece fieldPiece) {
 			if !first {
 				if base, _, ok := strings.Cut(parameterName(piece.key), "*"); ok {
 					extended.add(base)
@@ -695,10 +743,10 @@ func WriteParameterField(w wireSink, name, value string) bool {
 		})
 	}
 	isExtended := func(base string) bool { return extended != nil && extended.has(base) }
-	seen := takeNameSet(semicolons)
+	seen := takeNameSet(strings.Count(value, ";"))
 	defer seen.release()
 	first := true
-	eachFieldPiece(value, func(piece fieldPiece) {
+	eachFieldPiece(value, closers, func(piece fieldPiece) {
 		if first {
 			first = false
 			_, _ = w.WriteString(name)
