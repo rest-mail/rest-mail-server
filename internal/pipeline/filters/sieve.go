@@ -295,9 +295,9 @@ func sieveMessage(email *pipeline.EmailJSON) *sieve.Message {
 	msg := &sieve.Message{
 		Headers: sieve.Headers{
 			Subject:    email.Headers.Subject,
-			From:       sieveAddresses(email.Headers.From.All()),
-			To:         sieveAddresses(email.Headers.To.All()),
-			Cc:         sieveAddresses(email.Headers.Cc.All()),
+			From:       sieveAddressList(email.Headers.From),
+			To:         sieveAddressList(email.Headers.To),
+			Cc:         sieveAddressList(email.Headers.Cc),
 			Bcc:        sieveAddresses(email.Headers.Bcc),
 			MessageID:  email.Headers.MessageID,
 			InReplyTo:  email.Headers.InReplyTo,
@@ -323,6 +323,21 @@ func sieveMessage(email *pipeline.EmailJSON) *sieve.Message {
 		msg.Attachments = append(msg.Attachments, sieve.Attachment{Size: a.Size})
 	}
 	return msg
+}
+
+// sieveAddressList is sieveAddresses of the list's All, holding only the one slice the library takes.
+func sieveAddressList(list pipeline.AddressList) []sieve.Address {
+	count := list.Len()
+	if count == 0 {
+		return nil
+	}
+	out := make([]sieve.Address, 0, count)
+	if !list.Visit(func(a pipeline.Address) {
+		out = append(out, sieve.Address{Name: a.Name, Address: a.Address})
+	}) {
+		return nil
+	}
+	return out
 }
 
 func sieveAddresses(addrs []pipeline.Address) []sieve.Address {
