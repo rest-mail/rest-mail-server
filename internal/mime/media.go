@@ -41,20 +41,26 @@ func heldParameters(read map[string]string) map[string]string {
 	if len(read) == 0 {
 		return nil
 	}
-	params := make(map[string]string, len(read))
-	if boundary, ok := read["boundary"]; ok {
-		params["boundary"] = strings.Clone(boundary)
+	boundary, hasBoundary := read["boundary"]
+	charset, hasCharset := read["charset"]
+	name, hasName := read["name"]
+	filename, hasFilename := read["filename"]
+	// The map is this reading's and has room for these, and a part reads two of them. Its keys can be
+	// views too, so none stays.
+	clear(read)
+	if hasBoundary {
+		read["boundary"] = strings.Clone(boundary)
 	}
-	if charset, ok := read["charset"]; ok {
-		params["charset"] = strings.Clone(charset)
+	if hasCharset {
+		read["charset"] = strings.Clone(charset)
 	}
-	if name, ok := read["name"]; ok {
-		params["name"] = parameterText(name)
+	if hasName {
+		read["name"] = parameterText(name)
 	}
-	if filename, ok := read["filename"]; ok {
-		params["filename"] = parameterText(filename)
+	if hasFilename {
+		read["filename"] = parameterText(filename)
 	}
-	return params
+	return read
 }
 
 // parameterText is a parameter as text for a row and a filter alike: its RFC 2047 encoded-words

@@ -3,11 +3,9 @@ package mime
 import (
 	"bufio"
 	"bytes"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
-	"mime/quotedprintable"
 	"net/textproto"
 	"strings"
 	"unsafe"
@@ -386,26 +384,13 @@ var errCharsetName = errors.New("message: unknown charset")
 func transferDecoder(encoding string, r io.Reader) (io.Reader, error) {
 	switch strings.ToLower(encoding) {
 	case "quoted-printable":
-		return quotedprintable.NewReader(r), nil
+		return newQuotedReader(r), nil
 	case "base64":
-		return base64.NewDecoder(base64.StdEncoding, &spacesAsBreaks{r}), nil
+		return newBase64Reader(r), nil
 	case "7bit", "8bit", "binary", "":
 		return r, nil
 	}
 	return nil, fmt.Errorf("unhandled encoding %q", encoding)
-}
-
-// spacesAsBreaks lets a base64 body with its lines indented decode.
-type spacesAsBreaks struct{ source io.Reader }
-
-func (r *spacesAsBreaks) Read(p []byte) (int, error) {
-	n, err := r.source.Read(p)
-	for i := 0; i < n; i++ {
-		if p[i] == ' ' || p[i] == '\t' {
-			p[i] = '\n'
-		}
-	}
-	return n, err
 }
 
 // charsetDecoder is go-message's charsetReader.
