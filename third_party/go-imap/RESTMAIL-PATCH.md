@@ -344,6 +344,9 @@ chose on rest-mail/rest-mail-server#1921 to send a space instead:
 - A NUL in a header or a textual leaf goes out as a space, one octet for one, and so
   does one decoded into an ENVELOPE or BODYSTRUCTURE string. In an 8-bit field the
   space comes first, so no encoded word spells the NUL.
+- A NUL in a multipart's boundary can't be a space, which could end the boundary or
+  spell another line, so the field and the delimiter lines take the 7-bit spelling an
+  8-bit boundary gets (`wireBoundary`).
 - Where a NUL is data, a space would corrupt it, so it is encoded. That covers
   non-textual leaves, an encoding nobody can remove, and text in a charset with NUL
   octets (`utf-16`, `utf-32`, `ucs-2`, `ucs-4`).

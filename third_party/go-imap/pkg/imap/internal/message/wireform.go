@@ -189,12 +189,12 @@ func spaceNULEntity(w wireSink, node mimeNode) {
 			def = "message/rfc822"
 		}
 		at := 0
-		eachMultipartSpan(node.body, params["boundary"], func(start, end int) {
-			writeSpaced(w, node.body[at:start])
-			h, body := splitEntity(node.body[start:end])
+		for _, span := range partSpans(node.body, multipartDelimiters(node.body, params["boundary"])) {
+			writeSpaced(w, node.body[at:span[0]])
+			h, body := splitEntity(node.body[span[0]:span[1]])
 			spaceNULEntity(w, mimeNode{header: h, body: body, defaultType: def, depth: node.depth + 1})
-			at = end
-		})
+			at = span[1]
+		}
 		writeSpaced(w, node.body[at:])
 	case nulIsData(mt, params):
 		_, _ = w.WriteString(node.body)
@@ -259,7 +259,7 @@ func has8bit(s string) bool {
 // what the sections and BODYSTRUCTURE of the same message describe.
 func wireEntity(w wireSink, node mimeNode, sessionUTF8 bool) {
 	if !has8bit(node.header) && !needsWireForm(node.body) {
-		_, _ = w.WriteString(node.header)
+		writeSpaced(w, node.header)
 		_, _ = w.WriteString(node.body)
 		return
 	}
@@ -385,9 +385,13 @@ func (m *multipartTexts) count(c *wireCounter) {
 }
 
 // boundaryStays reports whether a multipart's boundary goes out as stored, unless that
-// would collide with something in its body.
+// would collide with something in its body. A NUL can't go out, and a space for it could
+// end the boundary or spell another line, so that one moves like an 8-bit one.
 func boundaryStays(header, boundary string, sessionUTF8 bool) bool {
-	if !has8bit(boundary) || strings.IndexByte(boundary, 0) >= 0 {
+	if strings.IndexByte(boundary, 0) >= 0 {
+		return false
+	}
+	if !has8bit(boundary) {
 		return true
 	}
 	field, _ := contentTypeField(header)

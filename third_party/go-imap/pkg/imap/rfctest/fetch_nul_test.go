@@ -228,6 +228,8 @@ func TestFetchNULAcrossMessageShapes(t *testing.T) {
 		"Content-Type: message/rfc822\r\n\r\nSubject: a\x00\xf6\r\nTo: =?utf-8?Q?a=00b?=:;\r\nContent-Type: text/plain; charset=x\x00y\r\n\r\nb\x00\xf6\r\n",
 		"Content-Type: text/plain\r\nContent-Transfer-Encoding: base64\r\n\r\nAA\x00\xf6==\r\n",
 		"Content-Type: multipart/digest; boundary=B\r\n\r\n--B\r\n\r\nSubject: \x00\r\n\r\n\x00\r\n--B\x00\r\n\r\nx\r\n--B--\r\n",
+		"Content-Type: multipart/mixed; boundary=\"a\x00B\"\r\n\r\n--a\x00B\r\n\r\nx\r\n--a\x00B--\r\n",
+		"Content-Type: multipart/mixed; boundary=\"\xf6\x00B\"\r\n\r\n--\xf6\x00B\r\n\r\nx\x00\r\n--\xf6\x00B--\r\n",
 	}
 	r := rand.New(rand.NewSource(1921))
 	const alphabet = "\r\n\xf6\x00:;=\"\\ -B\tA"
@@ -274,6 +276,46 @@ func TestFetchNULAcrossMessageShapes(t *testing.T) {
 					t.Fatalf("SpaceNUL changed octet %d: %q from %q", j, got, raw)
 				}
 			}
+		}
+	}
+}
+
+// A NUL in a boundary can't go out, so the field and the delimiter lines take one 7-bit
+// spelling, and a client still splits the parts, in either kind of session.
+func TestFetchNULInBoundary(t *testing.T) {
+	for _, tc := range []struct{ name, boundary, spelled string }{
+		{"7-bit", "a\x00B", "a=00B"},
+		{"8-bit", "\xf6\x00B", "=F6=00B"},
+		{"UTF-8", "\xc3\xa9\x00B", "=C3=A9=00B"},
+	} {
+		raw := "Content-Type: multipart/mixed; boundary=\"" + tc.boundary + "\"\r\n\r\n" +
+			"--" + tc.boundary + "\r\n\r\none\r\n--" + tc.boundary + "\r\n\r\ntwo\x00\r\n--" + tc.boundary + "--\r\n"
+		for _, session := range []string{"plain", "UTF8=ACCEPT"} {
+			t.Run(tc.name+"/"+session, func(t *testing.T) {
+				sessionUTF8 := session != "plain"
+				box := sevenBitBox(raw)
+				box.messages[0].Size = wireform.Size(raw, sessionUTF8)
+				var c *client
+				if sessionUTF8 {
+					c = utf8FetchClient(t, box)
+				} else {
+					c = fetchClient(t, box, "EXAMINE")
+				}
+				replies, tagged := fetchCommand(t, c, "FETCH 1 (RFC822.SIZE BODY.PEEK[])")
+				requireOK(t, tagged, "F1")
+				if len(replies) != 1 {
+					t.Fatalf("%#v", replies)
+				}
+				sent := replies[0].literals[len(replies[0].literals)-1]
+				want := "Content-Type: multipart/mixed;\r\n boundary=\"" + tc.spelled + "\"\r\n\r\n" +
+					"--" + tc.spelled + "\r\n\r\none\r\n--" + tc.spelled + "\r\n\r\ntwo \r\n--" + tc.spelled + "--\r\n"
+				if sent != want {
+					t.Errorf("sent %q, want %q", sent, want)
+				}
+				if size := fmt.Sprintf("RFC822.SIZE %d", len(sent)); !strings.Contains(replies[0].framing, size) {
+					t.Errorf("%q lacks %q", replies[0].framing, size)
+				}
+			})
 		}
 	}
 }
