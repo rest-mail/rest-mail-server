@@ -668,6 +668,18 @@ tasks:
     cmds:
       - tests/contract/run.sh gate {{.CLI_ARGS}}
 
+  contract:bases:
+    desc: 'The narrowed gate for each operation whose coverage probes start from a different example than on origin/main, against a running API; a skipped valid probe fails it (#1942)'
+    cmds:
+      - |
+        set -eu
+        flags="$(python3 -B tests/contract/coverage_bases.py --base "${CONTRACT_BASE:-origin/main}" --flags)"
+        if [ -z "$flags" ]; then
+          echo "No operation's coverage base changed, so there is nothing to send."
+          exit 0
+        fi
+        tests/contract/run.sh gate $flags
+
   contract:fuzz:
     desc: 'The fuzz phase against a running topology, a report; replay a finding with -- --seed N'
     cmds:

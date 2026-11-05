@@ -1190,6 +1190,7 @@ a hosted domain and mailbox for each address a test send probe uses, and,
   and `test_secret_audit_read.py`. The HAR contains fixture credentials and is
   not uploaded with the logs.
 - `coverage-baseline.txt`: the coverage ratchet's baseline.
+- `coverage_bases.py`: names the operations whose coverage probes start from a different example than on `origin/main`, without a server. `chore contract:bases` sends them.
 - `test_gate.py`: `gate.py`'s own tests (`python3 -m unittest discover -s tests/contract -p test_gate.py`).
 - `test_hooks_save_draft.py`: the saveDraft sender hook's tests, against a stub admin API.
 - `test_hooks_rename_folder.py`: the renameFolder source-folder hook's tests, against a stub admin API.
@@ -1607,6 +1608,16 @@ Its coverage verdict comes directly from Vertrag: exit 0 for passing selected
 probes, exit 2 for findings or skipped valid probes. A narrowed finding is not
 excused by the whole-API baseline. The complete command preserves that failure while still running the
 secret scan and producing the authorization report.
+
+Coverage builds all of an operation's valid probes on one example: the first by
+name among its lowest 2xx status. A new example that sorts first therefore changes
+every one of those probes, and if it cannot be sent live they are skipped.
+`python3 tests/contract/coverage_bases.py` compares each operation's example with
+`origin/main` and needs no server. It exits 1 and names any that changed.
+`chore contract:bases` runs the narrowed gate on those operations. The comparison
+does not say a probe will be skipped, and a narrowed run holds only what it selects:
+`updateMailbox`'s new example on #1724 left an account inactive and lost
+`restmailDeliver`'s probes, which only a whole-API run shows.
 
 The secret scan also runs locally, including after a failing examples gate.
 The API key proof and every Vertrag phase honor `CONTRACT_ENDPOINT`. A fetch
