@@ -8,12 +8,19 @@ from pathlib import Path
 import re
 import stat
 import subprocess
+import sys
 import tarfile
 import tempfile
 import threading
 import unittest
+from unittest import mock
+import urllib.error
 
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
+import oasdiff_pin
 from test_ci_transient_failures import ENABLE_STEP, FAKE_DOCKER, SHIM, WORKFLOWS, jobs, step_field, steps
+import vertrag_pin
 
 ROOT = Path(__file__).resolve().parents[2]
 INSTALLER = ROOT / "scripts" / "ci" / "install-golangci-lint"
@@ -47,13 +54,13 @@ def release_archive():
 
 
 class Release(http.server.BaseHTTPRequestHandler):
-    """Answers 504 to the first `failures` requests, then the archive."""
+    """Answers `status` (504) to the first `failures` requests, then the archive."""
 
     def do_GET(self):
         server = self.server
         server.requests += 1
         if server.requests <= server.failures:
-            self.send_error(504)
+            self.send_error(getattr(server, "status", 504))
             return
         self.send_response(200)
         self.send_header("Content-Length", str(len(server.body)))
@@ -128,6 +135,56 @@ class InstallerTests(unittest.TestCase):
         retries = int(re.search(r"INSTALL_LINT_RETRIES:-(\d+)", text).group(1))
         delay = int(re.search(r"INSTALL_LINT_RETRY_DELAY:-(\d+)", text).group(1))
         self.assertGreaterEqual(retries * delay, 120)
+
+
+class PinnedDownloadTests(unittest.TestCase):
+    """The installers' own fetch, against a real server, as `HTTP Error 504` hit it."""
+
+    def serve(self, failures, status=504):
+        server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Release)
+        server.failures, server.requests, server.body, server.status = failures, 0, b"archive", status
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        return server, f"http://127.0.0.1:{server.server_address[1]}/archive"
+
+    def each_tool(self):
+        for module in (vertrag_pin, oasdiff_pin):
+            with self.subTest(module.__name__), mock.patch.object(module.time, "sleep"), \
+                    mock.patch("sys.stderr", io.StringIO()):
+                yield module
+
+    def test_a_504_is_tried_again(self):
+        for module in self.each_tool():
+            server, url = self.serve(failures=len(module.RETRY_DELAYS))
+            self.assertEqual(module.fetch(url), b"archive")
+            self.assertEqual(server.requests, len(module.RETRY_DELAYS) + 1)
+
+    def test_a_lasting_504_still_fails(self):
+        for module in self.each_tool():
+            server, url = self.serve(failures=99)
+            with self.assertRaises(urllib.error.HTTPError):
+                module.fetch(url)
+            self.assertEqual(server.requests, len(module.RETRY_DELAYS) + 1)
+
+    def test_a_missing_release_is_not_tried_again(self):
+        for module in self.each_tool():
+            server, url = self.serve(failures=99, status=404)
+            with self.assertRaises(urllib.error.HTTPError):
+                module.fetch(url)
+            self.assertEqual(server.requests, 1)
+
+    def test_nothing_but_the_installed_path_reaches_stdout(self):
+        for module in self.each_tool():
+            _, url = self.serve(failures=1)
+            with mock.patch("sys.stdout", io.StringIO()) as stdout:
+                module.fetch(url)
+            self.assertEqual(stdout.getvalue(), "")
+
+    def test_the_kind_download_keeps_trying(self):
+        text = (WORKFLOWS / "cluster-e2e.yml").read_text()
+        line = next(line for line in text.splitlines() if "kubernetes-sigs/kind/releases/download" in line)
+        self.assertIn("--retry-all-errors", line)
 
 
 class LintWiringTests(unittest.TestCase):
