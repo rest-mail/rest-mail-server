@@ -2,6 +2,7 @@ package digest
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"log/slog"
@@ -9,6 +10,9 @@ import (
 	"time"
 
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
+	rmime "github.com/rest-mail/rest-mail-server/internal/mime"
+	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 	"gorm.io/gorm"
 )
 
@@ -52,13 +56,15 @@ func (w *Worker) run() {
 		case <-w.stop:
 			return
 		case <-timer.C:
-			w.sendDigests()
+			w.SendDigests()
 			timer.Reset(w.interval)
 		}
 	}
 }
 
-func (w *Worker) sendDigests() {
+// SendDigests delivers one round of digests, to each mailbox with mail quarantined in the last
+// interval. Start runs it on the interval.
+func (w *Worker) SendDigests() {
 	// Find mailboxes that have unreleased quarantine items from the last digest interval
 	cutoff := time.Now().Add(-w.interval)
 
@@ -103,16 +109,47 @@ func (w *Worker) deliverDigest(mailboxID uint, items []models.Quarantine) {
 	address := fmt.Sprintf("%s@%s", mailbox.LocalPart, mailbox.Domain.Name)
 	subject := fmt.Sprintf("Quarantine Digest: %d message(s) held", len(items))
 
-	bodyText, bodyHTML := renderDigest(address, time.Now(), items)
+	now := time.Now()
+	bodyText, bodyHTML := renderDigest(address, now, items)
 
-	msg := models.Message{
-		MailboxID: mailboxID,
-		Folder:    "INBOX",
-		Sender:    fmt.Sprintf("quarantine-digest@%s", mailbox.Domain.Name),
+	// The row holds the digest's source like any other stored mail, so the gateways serve those
+	// octets and report their measured size. It is charged at that size, as a DSN is.
+	sender := fmt.Sprintf("quarantine-digest@%s", mailbox.Domain.Name)
+	messageID := rmail.GenerateMessageID(mailbox.Domain.Name)
+	raw, err := rmime.RenderGenerated(rmime.Generated{
+		From:      pipeline.Address{Address: sender},
+		To:        []pipeline.Address{{Address: address}},
 		Subject:   subject,
 		BodyText:  bodyText,
 		BodyHTML:  bodyHTML,
-		SizeBytes: len(bodyText),
+		MessageID: messageID,
+		Date:      now,
+	})
+	if err != nil {
+		slog.Warn("digest: failed to render digest", "mailbox_id", mailboxID, "error", err)
+		return
+	}
+	recipients, err := json.Marshal([]string{address})
+	if err != nil {
+		slog.Warn("digest: failed to encode recipient", "mailbox_id", mailboxID, "error", err)
+		return
+	}
+
+	msg := models.Message{
+		MailboxID:    mailboxID,
+		Folder:       "INBOX",
+		MsgID:        messageID,
+		ThreadID:     messageID,
+		Sender:       sender,
+		RecipientsTo: models.JSONB(recipients),
+		RecipientsCc: models.JSONB("[]"),
+		Subject:      subject,
+		BodyText:     bodyText,
+		BodyHTML:     bodyHTML,
+		RawMessage:   raw,
+		RawSize:      len(raw),
+		SizeBytes:    len(raw),
+		ReceivedAt:   now,
 	}
 
 	if err := w.db.Create(&msg).Error; err != nil {
@@ -189,7 +226,8 @@ func renderDigest(address string, now time.Time, items []models.Quarantine) (bod
 		if item.BodyPreview != "" {
 			preview := item.BodyPreview
 			if len(preview) > 100 {
-				preview = preview[:100] + "..."
+				// Cut at a character: half of one is not text, and the row could not store it.
+				preview = strings.ToValidUTF8(preview[:100], "") + "..."
 			}
 			sb.WriteString(fmt.Sprintf("   Preview: %s\n", sanitizeLine(preview)))
 		}

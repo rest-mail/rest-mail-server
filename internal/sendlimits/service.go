@@ -10,6 +10,9 @@ import (
 
 	"github.com/rest-mail/rest-mail-server/internal/audit"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
+	rmime "github.com/rest-mail/rest-mail-server/internal/mime"
+	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -312,7 +315,20 @@ func notice(tx *gorm.DB, hit *Hit, now time.Time) error {
 	}
 	to, _ := json.Marshal([]string{owner.Address})
 	body := fmt.Sprintf("Sending has reached %s (%s). Further mail is held: REST Mail retains API submissions; SMTP clients receive a temporary failure and retain their submissions. Sign in with two-factor authentication to review held mail or change send limits. Next budget reset: %s.", hit.Dimension, hit.Scope, hit.RetryAt.Format(time.RFC3339))
-	msg := models.Message{MailboxID: owner.ID, Folder: "INBOX", Sender: "postmaster@localhost", Subject: "REST Mail sending limit reached", BodyText: body, RecipientsTo: models.JSONB(to), RecipientsCc: models.JSONB("[]"), ReceivedAt: now, SizeBytes: len(body)}
+	const sender, subject = "postmaster@localhost", "REST Mail sending limit reached"
+	messageID := rmail.GenerateMessageID(rmail.DomainFromAddress(owner.Address))
+	raw, err := rmime.RenderGenerated(rmime.Generated{
+		From:      pipeline.Address{Address: sender},
+		To:        []pipeline.Address{{Address: owner.Address}},
+		Subject:   subject,
+		BodyText:  body,
+		MessageID: messageID,
+		Date:      now,
+	})
+	if err != nil {
+		return err
+	}
+	msg := models.Message{MailboxID: owner.ID, Folder: "INBOX", MsgID: messageID, ThreadID: messageID, Sender: sender, Subject: subject, BodyText: body, RawMessage: raw, RawSize: len(raw), RecipientsTo: models.JSONB(to), RecipientsCc: models.JSONB("[]"), ReceivedAt: now, SizeBytes: len(raw)}
 	if err := tx.Create(&msg).Error; err != nil {
 		return err
 	}
