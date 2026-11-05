@@ -18,7 +18,7 @@ func TestSubmissionQueuesMixedLineEndsExactly(t *testing.T) {
 		"bare CR in the head":       from + "\r\nSubject: s\rBcc: secret@c.test\r\nTo: c@d.test\r\n\r\nbody",
 		"all LF":                    from + "\nBcc: secret@c.test\nSubject: s\n\nbody\n",
 		"Resent-Bcc, one LF":        from + "\r\nResent-To: d@e.test\r\nResent-Bcc: secret@c.test\nSubject: s\r\n\r\nbody",
-		"Resent-Bcc, bare CR":       from + "\rresent-bcc: secret@c.test\r\n secret2@c.test\r\nSubject: s\r\n\r\nbody",
+		"Resent-Bcc, bare CR":       from + "\r\nSubject: s\rresent-bcc: secret@c.test\r\n secret2@c.test\r\nTo: c@d.test\r\n\r\nbody",
 	} {
 		t.Run(name, func(t *testing.T) {
 			back := newMockBackend()
@@ -53,7 +53,7 @@ func TestSubmissionQueuesMixedLineEndsExactly(t *testing.T) {
 			if !strings.HasSuffix(row, message+"\r\n") {
 				t.Fatalf("the row isn't what the client sent: %q", row)
 			}
-			if sent := outbound.StripBcc(row); strings.Contains(sent, "secret@") {
+			if sent := outbound.StripBcc(row); strings.Contains(sent, "secret") {
 				t.Fatalf("the hidden recipient would leave this row: %q", sent)
 			}
 		})
