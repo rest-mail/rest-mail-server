@@ -29,9 +29,13 @@ var addressParser = mail.AddressParser{WordDecoder: &mime.WordDecoder{
 // stays, and the word still names its charset, with no byte guessed.
 type keptWordReader struct{}
 
-func (keptWordReader) Read([]byte) (int, error) {
-	return 0, errors.New("charset has no reader")
-}
+var errKeptWord = errors.New("charset has no reader")
+
+func (keptWordReader) Read([]byte) (int, error) { return 0, errKeptWord }
+
+// WriteTo fails as Read does. io.Copy uses it in place of the 32 KiB buffer it would otherwise take to
+// read each word of a list that can be nothing but words.
+func (keptWordReader) WriteTo(io.Writer) (int64, error) { return 0, errKeptWord }
 
 // isKeptWord reports whether word is one addressParser kept: an encoded word in a
 // charset neither it nor net/mail decodes.

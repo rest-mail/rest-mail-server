@@ -380,6 +380,12 @@ var fieldShapesStillOver = map[string]stillOverCost{
 	"attachments, base64, on many parts":           {importing: 11, delivering: 10, restmail: 10},
 	"attachments, quoted-printable, on many parts": {importing: 11, delivering: 10, restmail: 10},
 	"attachments, no encoding, on many parts":      {importing: 11, delivering: 10, restmail: 11},
+	// A list of words costs what any other list does, now that a word costs little but itself. These
+	// build the long field they read whatever charset its words are in: 8.5 to 9.7x and 14.5 to 14.9x in
+	// UTF-8 as well.
+	"Subject of many words read":        {importing: 11, delivering: 10, restmail: 11},
+	"Subject of many base64 words read": {importing: 10, delivering: 9, restmail: 10},
+	"filename of many words read":       {importing: 16, delivering: 16, restmail: 16},
 }
 
 // shapesUnderTheLimit are the shapes a route holds to 8x, which is every one cost doesn't name for it.
@@ -557,6 +563,15 @@ func allFieldShapes(id string) map[string]string {
 		"address list, names no one reads":             id + long("To: to@example.test", ",\r\n =?x-none?q?N%d?= <a%d@example.test>", "") + "Content-Type: text/plain; charset=utf-8\r\n\r\n" + eightBit,
 		"address list, short unread names":             id + "To: a@b" + strings.Repeat(",=?x?q?a?=<a@b>", size*3/4/15) + "\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n" + eightBit,
 		"address list, quoted words":                   id + long("To: to@example.test", ",\r\n \"=?utf-8?q?N%d?=\" <a%d@example.test>", "") + "Content-Type: text/plain; charset=utf-8\r\n\r\n" + eightBit,
+		"address list, words read":                     id + long("To: to@example.test", ",\r\n =?windows-1252?q?N%d?= <a%d@example.test>", "") + "Content-Type: text/plain; charset=utf-8\r\n\r\n" + eightBit,
+		"address list, base64 words read":              id + long("To: to@example.test", ",\r\n =?windows-1252?b?TjA=?= <a%d%.0d@example.test>", "") + "Content-Type: text/plain; charset=utf-8\r\n\r\n" + eightBit,
+		"address list, short words read":               id + "To: a@b" + strings.Repeat(",=?cp866?q?a?=<a@b>", size*3/4/19) + "\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n" + eightBit,
+		"address list, words in comments":              id + long("To: to@example.test", ",\r\n a%d@example.test (=?windows-1252?q?N%d?=)", "") + "Content-Type: text/plain; charset=utf-8\r\n\r\n" + eightBit,
+		"address list, many charsets":                  id + manyCharsets(size*3/4) + "Content-Type: text/plain; charset=utf-8\r\n\r\n" + eightBit,
+		"a name of many words read":                    id + long("To: =?windows-1252?q?a?=", " =?windows-1252?q?N%d%.0d?=", " <a@example.test>") + "Content-Type: text/plain; charset=utf-8\r\n\r\n" + eightBit,
+		"Subject of many words read":                   strings.Replace(id, "Subject: s\r\n", "", 1) + long("Subject: =?windows-1252?q?a?=", "\r\n =?windows-1252?q?N%d%.0d?=", "") + "Content-Type: text/plain; charset=utf-8\r\n\r\n" + eightBit,
+		"Subject of many base64 words read":            strings.Replace(id, "Subject: s\r\n", "", 1) + long("Subject: =?windows-1252?b?YQ==?=", "\r\n =?windows-1252?b?YQ==?=%.0d%.0d", "") + "Content-Type: text/plain; charset=utf-8\r\n\r\n" + eightBit,
+		"filename of many words read":                  onPart(long("Content-Disposition: attachment; filename=\"=?windows-1252?q?a?=", " =?windows-1252?q?N%d%.0d?=", "\"")),
 		"address list, comments":                       id + long("To: to@example.test", ",\r\n a%d@example.test (c%d)", "") + "Content-Type: text/plain; charset=utf-8\r\n\r\n" + eightBit,
 		"address list, 8-bit names":                    id + long("To: to@example.test", ",\r\n \"N\u00e4me %d\" <a%d@example.test>", "") + "Content-Type: text/plain; charset=utf-8\r\n\r\n" + eightBit,
 		"address list, very short":                     id + "To: a@b" + strings.Repeat(",a@b", size*3/16) + "\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n" + eightBit,
@@ -565,6 +580,22 @@ func allFieldShapes(id string) map[string]string {
 		"charset*N, top level, 8-bit text":             id + long("Content-Type: text/plain", ";\r\n charset*%d=v%.0d", "") + "\r\n" + eightBit,
 		"boundary*N, 8-bit text":                       id + continued + "\r\n--B\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n" + eightBit + "--B--\r\n",
 	}
+}
+
+// manyCharsets is an address list whose words go round more charsets than a reader keeps a decoder for.
+func manyCharsets(size int) string {
+	charsets := []string{
+		"windows-1250", "windows-1251", "windows-1252", "windows-1253", "windows-1254", "windows-1255", "windows-1256", "windows-1257", "windows-1258",
+		"koi8-r", "koi8-u", "shift_jis", "euc-jp", "big5", "gbk", "euc-kr", "macintosh",
+		"iso-8859-2", "iso-8859-3", "iso-8859-4", "iso-8859-5", "iso-8859-6", "iso-8859-7", "iso-8859-8",
+	}
+	var b strings.Builder
+	b.WriteString("To: to@example.test")
+	for i := 0; b.Len() < size; i++ {
+		fmt.Fprintf(&b, ",\r\n =?%s?q?N?= <a%d@example.test>", charsets[i%len(charsets)], i)
+	}
+	b.WriteString("\r\n")
+	return b.String()
 }
 
 // longBoundary is a Content-Type naming one boundary in pieces, numbered without a gap, to size.

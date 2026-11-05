@@ -11,10 +11,13 @@
 package mailaddr
 
 import (
+	"bytes"
+	"encoding/base64"
 	"errors"
 	"io"
 	"mime"
 	"net"
+	"slices"
 	"strings"
 	"unicode/utf8"
 )
@@ -74,6 +77,10 @@ type parser struct {
 	dec           mime.WordDecoder
 	charsetFailed bool
 	unread        Unread
+	// encoded, content, source and read are what a word is read with, used again for the next one.
+	encoded, content []byte
+	source           bytes.Reader
+	read             bytes.Buffer
 }
 
 func (p *parser) setDecoder(dec *mime.WordDecoder) {
@@ -620,7 +627,8 @@ func (p *parser) skipComment() bool {
 	return depth == 0
 }
 
-// decodeWord is net/mail's decodeRFC2047Word.
+// decodeWord is net/mail's decodeRFC2047Word, with what a word is read into used again. A field can be
+// nothing but words, and mime.WordDecoder builds a reader and two buffers for each one (#1915).
 func (p *parser) decodeWord(s string) (word string, isEncoded bool, err error) {
 	// mime.WordDecoder refuses anything that doesn't start so, and that isn't an encoded-word.
 	if !strings.HasPrefix(s, "=?") {
@@ -631,21 +639,16 @@ func (p *parser) decodeWord(s string) (word string, isEncoded bool, err error) {
 			return s, false, nil
 		}
 	}
-	if !p.building() {
-		if decodes, empty, known := qWordDecodes(s); known {
-			if !decodes {
-				return s, false, nil
-			}
-			if empty {
-				return "", true, nil
-			}
-			return s, true, nil
-		}
-	}
 	p.charsetFailed = false
-	word, err = p.dec.Decode(s)
+	err = p.readWord(s)
 	if err == nil {
-		return word, true, nil
+		switch {
+		case p.building():
+			return p.read.String(), true, nil
+		case p.read.Len() == 0:
+			return "", true, nil
+		}
+		return s, true, nil
 	}
 
 	// If the error came from the character set reader
@@ -661,38 +664,96 @@ func (p *parser) decodeWord(s string) (word string, isEncoded bool, err error) {
 	return s, false, nil
 }
 
-// qWordDecodes answers, with nothing built, what mime.WordDecoder.Decode would of a Q-encoded word in
-// a charset it reads by itself: whether it decodes, and whether to nothing. known is false for
-// anything else, for Decode to say.
-func qWordDecodes(s string) (decodes, empty, known bool) {
+// readWord leaves in p.read what mime.WordDecoder.Decode answers of s, and fails where it does.
+// TestWordsReadAsWordDecoderDoes holds the two together.
+func (p *parser) readWord(s string) error {
 	if len(s) < 8 || !strings.HasSuffix(s, "?=") || strings.Count(s, "?") != 4 {
-		return false, false, true
+		return ErrNotAddressList
 	}
 	charset, rest, _ := strings.Cut(s[2:len(s)-2], "?")
-	if !strings.EqualFold(charset, "utf-8") && !strings.EqualFold(charset, "iso-8859-1") && !strings.EqualFold(charset, "us-ascii") {
-		return false, false, false
-	}
 	encoding, text, _ := strings.Cut(rest, "?")
-	if encoding != "q" && encoding != "Q" {
-		return false, false, false
+	if charset == "" || len(encoding) != 1 {
+		return ErrNotAddressList
 	}
-	for i := 0; i < len(text); i++ {
-		switch c := text[i]; {
-		case c == '=':
-			if i+2 >= len(text) || !isHex(text[i+1]) || !isHex(text[i+2]) {
-				return false, false, true
+	content, err := p.wordContent(encoding[0], text)
+	if err != nil {
+		return err
+	}
+	p.read.Reset()
+	switch {
+	case strings.EqualFold("utf-8", charset):
+		p.read.Write(content)
+	case strings.EqualFold("iso-8859-1", charset):
+		for _, c := range content {
+			p.read.WriteRune(rune(c))
+		}
+	case strings.EqualFold("us-ascii", charset):
+		for _, c := range content {
+			if c >= utf8.RuneSelf {
+				p.read.WriteRune(utf8.RuneError)
+			} else {
+				p.read.WriteByte(c)
 			}
-			i += 2
-		case c == '_', (c <= '~' && c >= ' ') || c == '\n' || c == '\r' || c == '\t':
-		default:
-			return false, false, true
+		}
+	default:
+		p.source.Reset(content)
+		r, err := p.dec.CharsetReader(strings.ToLower(charset), &p.source)
+		if err != nil {
+			return err
+		}
+		if _, err := io.Copy(&p.read, r); err != nil {
+			return err
 		}
 	}
-	return true, text == "", true
+	return nil
 }
 
-func isHex(c byte) bool {
-	return c >= '0' && c <= '9' || c >= 'A' && c <= 'F' || c >= 'a' && c <= 'f'
+// wordContent is what an encoded-word's text spells, in p.content until the next word.
+func (p *parser) wordContent(encoding byte, text string) ([]byte, error) {
+	switch encoding {
+	case 'B', 'b':
+		p.encoded = append(p.encoded[:0], text...)
+		p.content = slices.Grow(p.content[:0], base64.StdEncoding.DecodedLen(len(text)))
+		n, err := base64.StdEncoding.Decode(p.content[:cap(p.content)], p.encoded)
+		return p.content[:n], err
+	case 'Q', 'q':
+		p.content = p.content[:0]
+		for i := 0; i < len(text); i++ {
+			switch c := text[i]; {
+			case c == '_':
+				p.content = append(p.content, ' ')
+			case c == '=':
+				if i+2 >= len(text) {
+					return nil, ErrNotAddressList
+				}
+				high, highOK := fromHex(text[i+1])
+				low, lowOK := fromHex(text[i+2])
+				if !highOK || !lowOK {
+					return nil, ErrNotAddressList
+				}
+				p.content = append(p.content, high<<4|low)
+				i += 2
+			case (c <= '~' && c >= ' ') || c == '\n' || c == '\r' || c == '\t':
+				p.content = append(p.content, c)
+			default:
+				return nil, ErrNotAddressList
+			}
+		}
+		return p.content, nil
+	}
+	return nil, ErrNotAddressList
+}
+
+func fromHex(c byte) (byte, bool) {
+	switch {
+	case c >= '0' && c <= '9':
+		return c - '0', true
+	case c >= 'A' && c <= 'F':
+		return c - 'A' + 10, true
+	case c >= 'a' && c <= 'f':
+		return c - 'a' + 10, true
+	}
+	return 0, false
 }
 
 // isAtext reports whether r is an RFC 5322 atext character, or a period.
