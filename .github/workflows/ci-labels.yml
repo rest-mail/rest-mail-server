@@ -56,6 +56,12 @@ jobs:
           job=$(gh run view "$id" --repo "$GITHUB_REPOSITORY" --json jobs \
             --jq '.jobs[] | select(.name == "API contract changes") | .databaseId' | head -n1)
           if [ -z "$job" ]; then
+            conclusion=$(gh run view "$id" --repo "$GITHUB_REPOSITORY" --json conclusion --jq '.conclusion')
+            if [ "$conclusion" = cancelled ]; then
+              echo "CI run $id was cancelled before the contract gate was created; there is no job to re-run."
+              echo "A new CI run is still required for $sha and will read the current labels."
+              exit 0
+            fi
             echo "::error::CI run $id has no 'API contract changes' job to re-run"
             exit 1
           fi

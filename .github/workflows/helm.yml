@@ -67,13 +67,7 @@ jobs:
         # to publish again, say so by bumping the version.
         env:
           VERSION: ${{ steps.chart.outputs.version }}
-        run: |
-          set -euo pipefail
-          if helm show chart "$REGISTRY/restmail" --version "$VERSION" > /dev/null 2>&1; then
-            echo "::error::chart $VERSION is already published — bump version in $CHART_DIR/Chart.yaml" >&2
-            exit 1
-          fi
-          echo "$VERSION is unpublished"
+        run: python3 scripts/check_chart_publish.py
 
       - name: Package and push
         env:
