@@ -135,7 +135,7 @@ class JSFilterNetworkLiveTests(unittest.TestCase):
                 ["sh", "-eu"],
                 input=script,
                 cwd=self.temp.name,
-                env=dict(os.environ, OUTPUT="/dev/null"),
+                env=dict(os.environ, OUTPUT="/dev/null", RESTMAIL_LABEL="rest-mail-js-filter-live=1"),
                 text=True,
                 capture_output=True,
                 timeout=120,

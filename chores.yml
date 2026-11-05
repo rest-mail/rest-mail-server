@@ -18,6 +18,11 @@ silent: true
 # `[ -n "${VERBOSE}" ] && OUTPUT=…` boilerplate needed.
 env:
   COMPOSE_PROJECT_NAME: rest-mail
+  # On every container, network and named volume made here, so that `chore clean`
+  # can tell this run's from anything else on the machine (#1963). A run that
+  # shares the machine sets its own value: RESTMAIL_LABEL=rest-mail-loop=<name>.
+  RESTMAIL_LABEL:
+    sh: 'echo "${RESTMAIL_LABEL:-rest-mail.run=local}"'
   OUTPUT:
     sh: '[ -n "$VERBOSE" ] && echo /dev/stdout || echo /dev/null'
   # Per-user toggles live in .env.local (gitignored). `chore project:toggle
@@ -557,21 +562,21 @@ tasks:
     env:
       ENVIRONMENT: test
     cmds:
-      - go test -race -count=1 ./internal/... ./tests/contract/fixtureplan ./tests/contract/browser_sessions
+      - python3 -B scripts/scratch_run.py go test -race -count=1 ./internal/... ./tests/contract/fixtureplan ./tests/contract/browser_sessions
 
   test:unit:
     desc: Run unit tests (alias for test)
     env:
       ENVIRONMENT: test
     cmds:
-      - go test -race -count=1 ./internal/... ./tests/contract/fixtureplan ./tests/contract/browser_sessions
+      - python3 -B scripts/scratch_run.py go test -race -count=1 ./internal/... ./tests/contract/fixtureplan ./tests/contract/browser_sessions
 
   test:verbose:
     desc: Run unit tests with verbose output
     env:
       ENVIRONMENT: test
     cmds:
-      - go test -race -count=1 -v ./internal/... ./tests/contract/fixtureplan ./tests/contract/browser_sessions
+      - python3 -B scripts/scratch_run.py go test -race -count=1 -v ./internal/... ./tests/contract/fixtureplan ./tests/contract/browser_sessions
 
   deps:vertrag:
     desc: Pin the latest Vertrag release for the contract run (version and checksum together)
@@ -596,7 +601,7 @@ tasks:
     env:
       ENVIRONMENT: test
     cmds:
-      - go test -race -count=1 -coverprofile=coverage.out ./internal/... ./tests/contract/fixtureplan ./tests/contract/browser_sessions
+      - python3 -B scripts/scratch_run.py go test -race -count=1 -coverprofile=coverage.out ./internal/... ./tests/contract/fixtureplan ./tests/contract/browser_sessions
       - go tool cover -html=coverage.out -o coverage.html
       - echo "Coverage report written to coverage.html"
 
@@ -674,7 +679,7 @@ tasks:
   contract:diff:
     desc: The generated description against openapi.yaml, operation by operation (#624), without a server
     cmds:
-      - go test ./internal/api/ -run 'TestGeneratedDescriptionMatchesOracle|TestExamplePairsFitTheDescription' -count=1 -v
+      - python3 -B scripts/scratch_run.py go test ./internal/api/ -run 'TestGeneratedDescriptionMatchesOracle|TestExamplePairsFitTheDescription' -count=1 -v
 
   test:contract-fixtures:
     desc: Prepare stable queue state only on the disposable restmail.test topology
@@ -856,15 +861,22 @@ tasks:
       # route to mailnet IPs (Docker Desktop) nor resolve *.test. Run it in a
       # golang container attached to the mailnet with the testbed dnsmasq as
       # its only resolver — the suite is then just another internet user.
-      # The host Go module cache is mounted read-only to avoid re-downloading.
+      # The tree and the modules reach it as copies in volumes, not bind mounts: on
+      # Docker Desktop every file a container reads through a bind mount keeps a file
+      # open on the Mac until the guest's cache lets go (#1963). Only .cache is mounted,
+      # because the suite writes the principals and MFA files the host reads next.
       - |
+        volume=$(python3 -B {{.ROOT_DIR}}/scripts/source_volume.py create) || exit 1
+        trap 'docker volume rm -f "$volume" >/dev/null 2>&1' EXIT
+        docker volume create --label "$RESTMAIL_LABEL" rest-mail-e2e-gocache >/dev/null
         mkdir -p {{.ROOT_DIR}}/.cache
         printf 'nameserver %s\n' "{{.RESTMAIL_TESTBED_DNS_IP | default "10.99.0.10"}}" > {{.ROOT_DIR}}/.cache/testbed-resolv.conf
-        docker run --rm \
+        docker run --rm --label "$RESTMAIL_LABEL" \
           --network {{.RESTMAIL_NETWORK | default "testbed_mailnet"}} \
           -v {{.ROOT_DIR}}/.cache/testbed-resolv.conf:/etc/resolv.conf:ro \
-          -v {{.ROOT_DIR}}:/src -w /src \
-          -v "$(go env GOMODCACHE):/go/pkg/mod:ro" \
+          -v "$volume:/src" -w /src \
+          -v {{.ROOT_DIR}}/.cache:/src/.cache \
+          -v rest-mail-go-modules:/go/pkg/mod:ro \
           -v rest-mail-e2e-gocache:/root/.cache/go-build \
           -e GOFLAGS=-buildvcs=false \
           -e E2E_REQUIRE_STACK \
@@ -901,6 +913,7 @@ tasks:
     desc: 'One load run against an already-running topology (#1583): SMTP in and out, held IMAP connections, API; flags after --, see tests/load/README.md'
     cmds:
       - >-
+        LOAD_LABEL="${LOAD_LABEL:-$RESTMAIL_LABEL}"
         RESTMAIL_NETWORK="{{.RESTMAIL_NETWORK | default "testbed_mailnet"}}"
         RESTMAIL_TESTBED_DNS_IP="{{.RESTMAIL_TESTBED_DNS_IP | default "10.99.0.10"}}"
         python3 -B tests/load/run.py {{.CLI_ARGS}}
@@ -976,6 +989,7 @@ tasks:
         vars: {CONFIG: restmail.test}
       - '"${CHORE_BIN:-chore}" -C .workspace/reference-mailserver down CONFIG=mail1'
       - '"${CHORE_BIN:-chore}" -C .workspace/reference-mailserver down CONFIG=mail2'
+      - sh tasks/docker-hygiene.sh drop-guest-cache
 
   test:all:
     desc: Run all tests (unit + e2e)
@@ -1107,7 +1121,7 @@ tasks:
             fi
           done
           exit $fail'
-        docker run --rm --network {{.RESTMAIL_NETWORK}} --entrypoint sh alpine/openssl -c "$probe"
+        docker run --rm --label "$RESTMAIL_LABEL" --network {{.RESTMAIL_NETWORK}} --entrypoint sh alpine/openssl -c "$probe"
 
   mailserver:wait:
     desc: 'Wait until a reference server answers SMTP and IMAP: chore mailserver:wait mail1'
@@ -1147,7 +1161,7 @@ tasks:
             fi
           done
           exit $fail'
-        docker run --rm --network testbed_mailnet alpine:3.20 sh -c "$probe"
+        docker run --rm --label "$RESTMAIL_LABEL" --network testbed_mailnet alpine:3.20 sh -c "$probe"
 
   health:wait:
     desc: Wait for the API to answer its health endpoint (up to 180s)
@@ -1171,7 +1185,7 @@ tasks:
           done
           echo "ERROR: api did not become healthy within 180s" >&2
           exit 1'
-        docker run --rm --network {{.RESTMAIL_NETWORK}} alpine:3.20 sh -c "$probe"
+        docker run --rm --label "$RESTMAIL_LABEL" --network {{.RESTMAIL_NETWORK}} alpine:3.20 sh -c "$probe"
 
   ps:
     desc: Show all running rest-mail-* containers (raw docker ps view)
@@ -1519,7 +1533,7 @@ tasks:
       # crash-loop without /certs/mailN.test.{crt,key}, so this must run
       # before their first bring-up.
       - |
-        docker run --rm \
+        docker run --rm --label "$RESTMAIL_LABEL" \
           -v "{{.CERTS_VOLUME}}:/certs" \
           -e CERTGEN_DOMAINS="mail1.test mail2.test" \
           {{.CERTGEN_IMAGE}}:{{.CERTGEN_TAG}}
@@ -1623,7 +1637,7 @@ tasks:
             # CERT_SANS. For a single-domain instance that is a single hostname
             # (byte-identical to before); for multi-domain / extra_hostnames it is
             # the full comma-separated SAN list. Idempotent + CA-preserving.
-            docker run --rm \
+            docker run --rm --label "$RESTMAIL_LABEL" \
               -v "{{.CERTS_VOLUME}}:/certs" \
               -e CERTGEN_DOMAINS="{{.CERT_SANS}}" \
               {{.CERTGEN_IMAGE}}:{{.CERTGEN_TAG}}
@@ -1634,7 +1648,7 @@ tasks:
             # <hostname>.{crt,key} by SNI and falls back to the primary cert for any
             # name it lacks a per-name file for — so a single multi-SAN cert named
             # after the primary hostname is sufficient (it must list every SAN).
-            docker run --rm -v "{{.CERTS_VOLUME}}:/certs:ro" alpine:3 sh -euc '
+            docker run --rm --label "$RESTMAIL_LABEL" -v "{{.CERTS_VOLUME}}:/certs:ro" alpine:3 sh -euc '
               sans=$(echo "$1" | tr "," " "); set -- $sans; primary="$1"; shift
               if [ ! -f "/certs/${primary}.crt" ] || [ ! -f "/certs/${primary}.key" ]; then
                 echo "cert_provider=manual: MISSING /certs/${primary}.{crt,key} — drop the serving cert+key (covering SANs: ${sans}) into volume {{.CERTS_VOLUME}}" >&2
@@ -1664,14 +1678,18 @@ tasks:
             # CERT_CHECK_INTERVAL=12h opts into continuous checks (requires
             # positive CERT_RENEW_BEFORE), reserving port 80 while waiting too.
             # Build then exec so the issuer directly receives stop signals.
+            # The source and modules are copies in volumes, not bind mounts (#1963).
             # The 0600 .acme-account-<directory-hash>.key
             # in the certs volume preserves the CA account across runs. Keep
             # it with the volume backups; staging uses a separate account.
-            docker run --rm \
+            volume=$(python3 -B scripts/source_volume.py create) || exit 1
+            trap 'docker volume rm -f "$volume" >/dev/null 2>&1' EXIT
+            docker volume create --label "$RESTMAIL_LABEL" rest-mail-e2e-gocache >/dev/null
+            docker run --rm --label "$RESTMAIL_LABEL" \
               -p 80:80 \
               -v "{{.CERTS_VOLUME}}:/certs" \
-              -v "{{.ROOT_DIR}}:/src" -w /src \
-              -v "$(go env GOMODCACHE):/go/pkg/mod:ro" \
+              -v "$volume:/src" -w /src \
+              -v rest-mail-go-modules:/go/pkg/mod:ro \
               -v rest-mail-e2e-gocache:/root/.cache/go-build \
               -e GOFLAGS=-buildvcs=false \
               golang:1.26.10 \
@@ -1717,11 +1735,15 @@ tasks:
             # arch-correct for the volume). Idempotent: an existing internal CA is reused and
             # leaves already present are skipped, so it is safe to re-run and safe to
             # run even when the instance has not enabled internal mTLS (the certs
-            # simply go unused).
-            docker run --rm \
+            # simply go unused). The source and modules are copies in volumes (#1963).
+            docker volume create --label "$RESTMAIL_LABEL" --label rest-mail.data=true "{{.INTERNAL_MTLS_VOLUME}}" >/dev/null
+            volume=$(python3 -B scripts/source_volume.py create) || exit 1
+            trap 'docker volume rm -f "$volume" >/dev/null 2>&1' EXIT
+            docker volume create --label "$RESTMAIL_LABEL" rest-mail-e2e-gocache >/dev/null
+            docker run --rm --label "$RESTMAIL_LABEL" \
               -v "{{.INTERNAL_MTLS_VOLUME}}:/internal-mtls" \
-              -v "{{.ROOT_DIR}}:/src" -w /src \
-              -v "$(go env GOMODCACHE):/go/pkg/mod:ro" \
+              -v "$volume:/src" -w /src \
+              -v rest-mail-go-modules:/go/pkg/mod:ro \
               -v rest-mail-e2e-gocache:/root/.cache/go-build \
               -e GOFLAGS=-buildvcs=false \
               golang:1.26.10 \
@@ -1737,7 +1759,8 @@ tasks:
             # keypair, which each service's `up` copies to the /certs/internal-*
             # paths its env vars point at (INTERNAL_MTLS_CA_CERT / _SERVER_* /
             # _CLIENT_*). The CA's key is not one of them, and is best kept out.
-            docker run --rm -v "{{.INTERNAL_MTLS_VOLUME}}:/internal-mtls:ro" alpine:3 sh -euc '
+            docker volume create --label "$RESTMAIL_LABEL" --label rest-mail.data=true "{{.INTERNAL_MTLS_VOLUME}}" >/dev/null
+            docker run --rm --label "$RESTMAIL_LABEL" -v "{{.INTERNAL_MTLS_VOLUME}}:/internal-mtls:ro" alpine:3 sh -euc '
               missing=0
               for f in internal-ca.crt internal-server.crt internal-server.key internal-client.crt internal-client.key; do
                 if [ ! -f "/internal-mtls/$f" ]; then
@@ -1768,7 +1791,7 @@ tasks:
       # repo's zones.conf; scaffolded instances rely on this dynamic path.
       - go run ./cmd/instance dns-env -o {{.CONFIG_DIR}}/dns.env {{.CONFIG_DIR}}/manifest.yml
       - |
-        docker run --rm \
+        docker run --rm --label "$RESTMAIL_LABEL" \
           -v "{{.FRAG_VOL}}:/dst" \
           -v "$(pwd)/{{.CONFIG_DIR}}/dns.env:/env:ro" \
           -v "$(pwd)/projects/dnsmasq/fragment.tmpl:/tmpl:ro" \
@@ -1796,7 +1819,7 @@ tasks:
           [ -n "$name" ] || continue
           slug=$(echo "$name" | cut -d. -f1)
           go run ./cmd/instance dns-env -domain "$name" -o "{{.CONFIG_DIR}}/dns.env" {{.CONFIG_DIR}}/manifest.yml
-          docker run --rm \
+          docker run --rm --label "$RESTMAIL_LABEL" \
             -v "{{.FRAG_VOL}}:/dst" \
             -v "$(pwd)/{{.CONFIG_DIR}}/dns.env:/env:ro" \
             -v "$(pwd)/projects/dnsmasq/fragment.tmpl:/tmpl:ro" \
@@ -1818,7 +1841,7 @@ tasks:
       DNSMASQ_TAG: '{{.DNSMASQ_TAG | default "0.1.0"}}'
     cmds:
       - |
-        docker run --rm -v "{{.FRAG_VOL}}:/dst" \
+        docker run --rm --label "$RESTMAIL_LABEL" -v "{{.FRAG_VOL}}:/dst" \
           {{.DNSMASQ_IMAGE}}:{{.DNSMASQ_TAG}} remove-fragment --name {{.CONFIG}}
       - |
         if docker ps -aq --filter "name=^/{{.DNSMASQ_CONTAINER}}$" | grep -q .; then
@@ -1853,7 +1876,7 @@ tasks:
             {{if .RESTMAIL_DKIM_SELECTOR}}--selector {{.RESTMAIL_DKIM_SELECTOR}}{{end}} \
             {{if .RESTMAIL_DKIM_BITS}}-bits {{.RESTMAIL_DKIM_BITS}}{{end}} \
           2>/dev/null | tail -1 > "{{.CONFIG_DIR}}/dkim.conf"
-        docker run --rm \
+        docker run --rm --label "$RESTMAIL_LABEL" \
           -v "{{.ROOT_DIR}}/{{.CONFIG_DIR}}:/src:ro" \
           -v "{{.FRAG_VOL}}:/dst" \
           alpine:3.20 cp /src/dkim.conf /dst/11-{{.CONFIG}}-dkim.conf
@@ -1886,7 +1909,7 @@ tasks:
               --admin-address "{{.ADMIN_ADDRESS}}" --admin-pass "{{.ADMIN_PASS}}" \
               ${sel:+--selector "$sel"} ${bits:+-bits "$bits"} \
             2>/dev/null | tail -1 > "{{.CONFIG_DIR}}/dkim.conf"
-          docker run --rm \
+          docker run --rm --label "$RESTMAIL_LABEL" \
             -v "{{.ROOT_DIR}}/{{.CONFIG_DIR}}:/src:ro" \
             -v "{{.FRAG_VOL}}:/dst" \
             alpine:3.20 cp "/src/dkim.conf" "/dst/11-{{.CONFIG}}-$slug-dkim.conf"
@@ -2077,6 +2100,7 @@ tasks:
       - task: garage:down
       - task: js-filter:network:down
       - task: postgres:down
+      - sh tasks/docker-hygiene.sh drop-guest-cache
 
   instance:restart:
     desc: "Stop + recreate CONFIG's stack"
@@ -2143,10 +2167,23 @@ tasks:
       - echo "Setup complete."
 
   clean:
-    desc: Remove build artifacts
+    desc: 'Remove build artifacts and every container, network and volume labelled RESTMAIL_LABEL, even after a crashed run; data volumes stay unless --volumes. Nothing unlabelled is touched'
+    # No config needed: this is what you run when a run has left things broken.
+    dotenv: []
+    args:
+      - {name: volumes, type: bool, desc: "also remove the labelled data volumes that e2e:down keeps (databases, attachments, the internal CA)"}
+    vars:
+      VOLUMES: ''
     cmds:
       - rm -rf build/
       - rm -f coverage.out coverage.html
+      - sh tasks/clean.sh
+
+  check:docker-labels:
+    desc: 'Fail if a docker run, compose, network or volume creation in chores.yml or tasks/ carries no RESTMAIL_LABEL'
+    dotenv: []
+    cmds:
+      - python3 -B scripts/check_docker_labels.py
 
   purge:
     desc: Remove all rest-mail-* containers (does not touch volumes — use instance:down + postgres:reset for data)

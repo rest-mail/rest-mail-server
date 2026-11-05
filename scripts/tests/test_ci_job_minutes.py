@@ -115,8 +115,8 @@ class DevGoCache(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout, "-v fixture-10001:/tmp/go-build-cache\n")
         calls = self.calls.read_text().splitlines()
-        self.assertIn("volume create fixture-10001", calls)
-        self.assertIn("run --rm -v fixture-10001:/cache alpine:3.20 chown 10001:10001 /cache", calls)
+        self.assertIn("volume create --label rest-mail.run=local fixture-10001", calls)
+        self.assertIn("run --rm --label rest-mail.run=local -v fixture-10001:/cache alpine:3.20 chown 10001:10001 /cache", calls)
 
     def test_a_volume_in_use_is_left_alone(self):
         result = self.run_script("0", volume_exists=True)

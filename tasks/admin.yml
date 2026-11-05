@@ -54,6 +54,7 @@ tasks:
           echo "  building {{.ADMIN_IMAGE}} (target: dev)"
           docker build -t {{.ADMIN_IMAGE}} --target dev {{.ADMIN_BUILD_CONTEXT}} >$OUTPUT 2>&1
         fi
+      - sh "{{.TASKFILE_DIR}}/docker-hygiene.sh" cap-build-cache
 
   # ════════════════════════════════════════════════════════
   # up / down / restart
@@ -84,7 +85,7 @@ tasks:
           --pids-limit 512 --memory 1g --cpus 1.5"
         if [ "{{.ADMIN_MODE}}" = "prod" ]; then
           echo "  starting {{.ADMIN_CONTAINER_NAME}} (prod @ {{.ADMIN_IP}}, port {{.ADMIN_PROD_PORT}})"
-          docker run -d --name {{.ADMIN_CONTAINER_NAME}} \
+          docker run -d --label "$RESTMAIL_LABEL" --name {{.ADMIN_CONTAINER_NAME}} \
             $HARDENING \
             --restart unless-stopped \
             --network {{.ADMIN_NETWORK}} \
@@ -97,7 +98,7 @@ tasks:
             {{.ADMIN_IMAGE}} >$OUTPUT 2>&1
         else
           echo "  starting {{.ADMIN_CONTAINER_NAME}} (dev @ {{.ADMIN_IP}}, port {{.ADMIN_DEV_PORT}})"
-          docker run -d --name {{.ADMIN_CONTAINER_NAME}} \
+          docker run -d --label "$RESTMAIL_LABEL" --name {{.ADMIN_CONTAINER_NAME}} \
             $HARDENING \
             --restart unless-stopped \
             --network {{.ADMIN_NETWORK}} \
@@ -141,7 +142,8 @@ tasks:
           exit 0
         fi
         echo "  installing admin node_modules from pnpm-lock.yaml"
-        docker run --rm \
+        docker volume create --label "$RESTMAIL_LABEL" {{.ADMIN_MODULES_VOLUME}} >/dev/null
+        docker run --rm --label "$RESTMAIL_LABEL" \
           -v "$(pwd)/admin:/app" \
           -v {{.ADMIN_MODULES_VOLUME}}:/app/node_modules \
           -w /app \

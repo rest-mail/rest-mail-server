@@ -126,7 +126,7 @@ tasks:
           [ -n "$VERBOSE" ] && echo "  volume {{.PROMETHEUS_DATA_VOLUME}} already exists" || true
         else
           echo "  creating volume {{.PROMETHEUS_DATA_VOLUME}}"
-          docker volume create {{.PROMETHEUS_DATA_VOLUME}} >$OUTPUT 2>&1
+          docker volume create --label "$RESTMAIL_LABEL" --label rest-mail.data=true {{.PROMETHEUS_DATA_VOLUME}} >$OUTPUT 2>&1
         fi
       - |
         if ! docker image inspect {{.PROMETHEUS_IMAGE}} >/dev/null 2>&1; then
@@ -146,7 +146,7 @@ tasks:
         #   * --web.enable-lifecycle OFF   — no remote POST /-/reload or /-/quit
         #                                    (off by default; never enabled here)
         #   * admin API stays off (default) — no remote TSDB delete/snapshot
-        docker run -d --name {{.PROMETHEUS_NAME}} \
+        docker run -d --label "$RESTMAIL_LABEL" --name {{.PROMETHEUS_NAME}} \
           --restart unless-stopped \
           --network {{.MONITORING_NETWORK}} \
           --ip {{.PROMETHEUS_IP}} \
@@ -186,7 +186,7 @@ tasks:
           [ -n "$VERBOSE" ] && echo "  volume {{.GRAFANA_DATA_VOLUME}} already exists" || true
         else
           echo "  creating volume {{.GRAFANA_DATA_VOLUME}}"
-          docker volume create {{.GRAFANA_DATA_VOLUME}} >$OUTPUT 2>&1
+          docker volume create --label "$RESTMAIL_LABEL" --label rest-mail.data=true {{.GRAFANA_DATA_VOLUME}} >$OUTPUT 2>&1
         fi
       - |
         if ! docker image inspect {{.GRAFANA_IMAGE}} >/dev/null 2>&1; then
@@ -214,7 +214,7 @@ tasks:
         : > "$SECRETS_ENV"
         chmod 600 "$SECRETS_ENV"
         printf 'GF_SECURITY_ADMIN_PASSWORD=%s\n' "{{.GRAFANA_ADMIN_PASSWORD}}" > "$SECRETS_ENV"
-        docker run -d --name {{.GRAFANA_NAME}} \
+        docker run -d --label "$RESTMAIL_LABEL" --name {{.GRAFANA_NAME}} \
           --restart unless-stopped \
           --network {{.MONITORING_NETWORK}} \
           --ip {{.GRAFANA_IP}} \
@@ -271,7 +271,7 @@ tasks:
         chmod 600 "$SECRETS_ENV"
         printf 'DATA_SOURCE_NAME=postgresql://%s:%s@%s:5432/%s?sslmode=disable\n' \
           "{{.MONITORING_DB_USER}}" "{{.MONITORING_DB_PASS}}" "{{.MONITORING_DB_HOST}}" "{{.MONITORING_DB_NAME}}" > "$SECRETS_ENV"
-        docker run -d --name {{.POSTGRES_EXPORTER_NAME}} \
+        docker run -d --label "$RESTMAIL_LABEL" --name {{.POSTGRES_EXPORTER_NAME}} \
           --restart unless-stopped \
           --network {{.MONITORING_NETWORK}} \
           --ip {{.POSTGRES_EXPORTER_IP}} \

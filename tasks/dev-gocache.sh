@@ -16,9 +16,10 @@ set -euo pipefail
 }
 owner=$1
 volume="${RESTMAIL_DEV_GOCACHE_VOLUME:?}-$owner"
+: "${RESTMAIL_LABEL:=rest-mail.run=local}"
 
 if ! docker volume inspect "$volume" >/dev/null 2>&1; then
-  docker volume create "$volume" >/dev/null
-  docker run --rm -v "$volume:/cache" alpine:3.20 chown "$owner:$owner" /cache >/dev/null
+  docker volume create --label "$RESTMAIL_LABEL" "$volume" >/dev/null
+  docker run --rm --label "$RESTMAIL_LABEL" -v "$volume:/cache" alpine:3.20 chown "$owner:$owner" /cache >/dev/null
 fi
 echo "-v $volume:/tmp/go-build-cache"

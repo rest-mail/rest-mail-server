@@ -68,6 +68,7 @@ tasks:
       - |
         echo "  building {{.IMAP_GATEWAY_IMAGE}} (target={{.IMAP_GATEWAY_MODE}})"
         docker build -t {{.IMAP_GATEWAY_IMAGE}} --target {{.IMAP_GATEWAY_MODE}} -f projects/imap-gateway/Dockerfile . >$OUTPUT 2>&1
+      - sh "{{.TASKFILE_DIR}}/docker-hygiene.sh" cap-build-cache
 
   up:
     desc: Start (or recreate) the imap-gateway container
@@ -78,7 +79,7 @@ tasks:
           [ -n "$VERBOSE" ] && echo "  volume {{.IMAP_GATEWAY_LOGS_VOLUME}} already exists" || true
         else
           echo "  creating volume {{.IMAP_GATEWAY_LOGS_VOLUME}}"
-          docker volume create {{.IMAP_GATEWAY_LOGS_VOLUME}} >$OUTPUT 2>&1
+          docker volume create --label "$RESTMAIL_LABEL" {{.IMAP_GATEWAY_LOGS_VOLUME}} >$OUTPUT 2>&1
         fi
       - |
         echo "  starting imap-gateway ({{.IMAP_GATEWAY_CONTAINER_NAME}} @ {{.IMAP_GATEWAY_IP}}, mode={{.IMAP_GATEWAY_MODE}})"
@@ -136,7 +137,7 @@ tasks:
         : > "$SECRETS_ENV"
         chmod 600 "$SECRETS_ENV"
         printf 'DB_PASS=%s\n' "{{.IMAP_GATEWAY_DB_PASS}}" > "$SECRETS_ENV"
-        docker run -d --name {{.IMAP_GATEWAY_CONTAINER_NAME}} \
+        docker run -d --label "$RESTMAIL_LABEL" --name {{.IMAP_GATEWAY_CONTAINER_NAME}} \
           $HARDENING \
           --hostname {{.IMAP_GATEWAY_RESTMAIL_HOSTNAME}} \
           --restart unless-stopped \

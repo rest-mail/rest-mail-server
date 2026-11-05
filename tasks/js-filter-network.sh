@@ -12,6 +12,7 @@ case "$project" in
   ''|*[!a-zA-Z0-9_.-]*|-*) echo "invalid instance project: $project" >&2; exit 2 ;;
 esac
 network="$project-js-filter-net"
+: "${RESTMAIL_LABEL:=rest-mail.run=local}"
 
 check_network() {
   properties=$(docker network inspect --format \
@@ -33,7 +34,7 @@ case "$action" in
   up)
     if ! docker network inspect "$network" >/dev/null 2>&1; then
       docker network create --driver bridge --internal \
-        --label "rest-mail.js-filter.project=$project" "$network" >/dev/null
+        --label "rest-mail.js-filter.project=$project" --label "$RESTMAIL_LABEL" "$network" >/dev/null
     fi
     check_network
     ;;

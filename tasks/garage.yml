@@ -30,7 +30,7 @@ tasks:
     desc: Start Garage, and make its layout, bucket and key if they are missing
     cmds:
       - |
-        docker volume create {{.GARAGE_DATA_VOLUME}} >/dev/null
+        docker volume create --label "$RESTMAIL_LABEL" --label rest-mail.data=true {{.GARAGE_DATA_VOLUME}} >/dev/null
         mkdir -p .cache
         config="$(pwd)/.cache/{{.GARAGE_CONTAINER_NAME}}.toml"
         cat > "$config" <<CONFIG
@@ -51,7 +51,7 @@ tasks:
         chmod 600 "$config"
         echo "  starting garage ({{.GARAGE_CONTAINER_NAME}} @ {{.GARAGE_IP}})"
         docker rm -f {{.GARAGE_CONTAINER_NAME}} >/dev/null 2>&1 || true
-        docker run --detach --name {{.GARAGE_CONTAINER_NAME}} \
+        docker run --detach --label "$RESTMAIL_LABEL" --name {{.GARAGE_CONTAINER_NAME}} \
           --network {{.GARAGE_NETWORK}} --ip {{.GARAGE_IP}} \
           --restart unless-stopped \
           --security-opt no-new-privileges:true --cap-drop ALL --cap-add DAC_OVERRIDE \

@@ -27,6 +27,7 @@ def main():
         config.chmod(0o600)
         try:
             subprocess.run(["docker", "run", "--detach", "--name", name,
+                            "--label", os.environ.get("RESTMAIL_LABEL") or "rest-mail.run=local",
                             "-p", "127.0.0.1:3900:3900", "-p", "127.0.0.1:3903:3903",
                             "-v", str(config) + ":/etc/garage.toml:ro", "--entrypoint", "/garage", "dxflrs/garage:v2.4.1", "server"], check=True)
 

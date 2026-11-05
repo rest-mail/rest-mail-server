@@ -52,6 +52,7 @@ tasks:
         else
           docker build -t {{.WEBMAIL_IMAGE}} --target dev {{.WEBMAIL_BUILD_CONTEXT}} >$OUTPUT 2>&1
         fi
+      - sh "{{.TASKFILE_DIR}}/docker-hygiene.sh" cap-build-cache
 
   # ════════════════════════════════════════════════════════
   # up / down / restart
@@ -83,7 +84,8 @@ tasks:
           exit 0
         fi
         echo "  installing webmail node_modules from pnpm-lock.yaml"
-        docker run --rm \
+        docker volume create --label "$RESTMAIL_LABEL" {{.WEBMAIL_MODULES_VOLUME}} >/dev/null
+        docker run --rm --label "$RESTMAIL_LABEL" \
           -v "$(pwd)/webmail:/app" \
           -v {{.WEBMAIL_MODULES_VOLUME}}:/app/node_modules \
           -w /app \
@@ -113,7 +115,7 @@ tasks:
           --cap-drop ALL \
           --pids-limit 512 --memory 1g --cpus 1.5"
         if [ "{{.WEBMAIL_MODE}}" = "prod" ]; then
-          docker run -d --name {{.WEBMAIL_CONTAINER_NAME}} \
+          docker run -d --label "$RESTMAIL_LABEL" --name {{.WEBMAIL_CONTAINER_NAME}} \
             $HARDENING \
             --restart unless-stopped \
             --network {{.WEBMAIL_NETWORK}} \
@@ -125,7 +127,7 @@ tasks:
             -l docker-proxy.webmail.path={{.WEBMAIL_BASE_PATH}} \
             {{.WEBMAIL_IMAGE}} >$OUTPUT 2>&1
         else
-          docker run -d --name {{.WEBMAIL_CONTAINER_NAME}} \
+          docker run -d --label "$RESTMAIL_LABEL" --name {{.WEBMAIL_CONTAINER_NAME}} \
             $HARDENING \
             --restart unless-stopped \
             --network {{.WEBMAIL_NETWORK}} \

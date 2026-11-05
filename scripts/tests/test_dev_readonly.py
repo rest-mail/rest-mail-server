@@ -46,6 +46,7 @@ class DevReadonlyTests(unittest.TestCase):
         capture.unlink(missing_ok=True)
         env = dict(
             os.environ,
+            RESTMAIL_LABEL="rest-mail.run=fixture",
             PATH=str(directory / "bin") + os.pathsep + os.environ["PATH"],
             CAPTURE=str(capture),
             OUTPUT="/dev/null",
