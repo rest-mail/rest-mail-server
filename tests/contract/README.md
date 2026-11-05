@@ -1035,10 +1035,39 @@ The baseline needs the checker passed, with `createAccount` refusing each of
 the three requests lacking CSRF with 403. A failure of any other check, or one
 it could not run, is an error, not a verdict.
 
-The other authorization and ownership faults still wait until those phases stop
-being report-only.
+The whole-API authorization and ownership phases are still reports, so they
+witness no fault. The other authorization faults are caught by a required gate
+instead: `chore contract:pairs`, the in-process example pairs a contract run
+starts with. Those tests send a pair that says a principal is refused, through
+`NewRouters`, the real router, with Vertrag. A guard sits inside the server, out
+of a build tag's reach, so these faults are a `patch`: a diff removing the real
+guard, in a throwaway `git worktree` of HEAD (never the running checkout, whose
+API rebuilds itself when it changes). The `pairs` phase runs the entry's `test`,
+narrowed to its `subtest`, first on HEAD (green) and then with the patch, where
+it must fail with `expected_failure`. A patch that no longer applies or does not
+build, a subtest that did not run, and a failure for any other reason are not a
+caught fault.
+
+| Fault | What a client sees | Vertrag's failure |
+|---|---|---|
+| `get_domain_capability_check_removed` | The route still documents its capability check, and holds none: another domain's administrator reads this domain | `GET /api/v1/admin/domains/{id} 403 answered 200` |
+| `domain_scope_widened_to_any_grant` | A capability held on any domain passes on the target, as if held at `*`: another domain's administrator reads this one's custom filter | `GET /api/v1/admin/custom-filters/{id} 403 answered 200` |
+| `domain_scope_checked_at_all` | A check on the domain is made at `*`: the domain's own administrator is refused | `GET /api/v1/admin/domains/{id}/allowlist 200 answered 403` |
+| `get_quota_may_reach_skipped` | The handler skips its `mayReach` check: a key scoped to another mailbox reads this account's quota | `GET /api/v1/accounts/{id}/quota 404 answered 200` |
+
+`faults.py pairs` runs only these. It needs `RESTMAIL_VERTRAG_BINARY` and no
+topology, so it can run on a laptop.
 
 ### Adding a fault
+
+A fault that removes a guard inside the server is one change, to `faults.yml`:
+an entry with `name`, `operation`, `path`, `phase: pairs`, `breaks`, `test` (a
+`*WithVertrag` test `chore contract:pairs` names), `subtest`, `expected_failure`
+and `patch`, a `git diff` with a short context (`-U1`). `go test
+./internal/faultinject` holds the patch to the code, so a change to the guarded
+lines names the fault it broke, and `faults.py pairs` says whether it is caught.
+
+A fault that changes an answer takes a switch file and an entry:
 
 1. Write `internal/faultinject/fault_<name>.go`, starting
    `//go:build faultinject && fault_<name>`. Its `init` registers a `Fault`:

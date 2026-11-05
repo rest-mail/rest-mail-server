@@ -18,15 +18,20 @@ because a secret in a free string fits the schema and passes the examples phase.
 The browser_session phase runs the same narrowed gate, whose first step is the
 browser-session checker (tests/contract/browser_sessions), and judges only that
 checker: its output line and its receipt (browser-sessions.json).
+The pairs phase needs no API: a fault with a patch removes a real guard in a
+throwaway tree of HEAD, and the example-pair test CI requires (chore
+contract:pairs) must fail its witness pair there, through the real router.
 Known gaps remain until live proof is reviewed; a newly caught gap deliberately
 fails.
 
 Usage:
   faults.py tags                       every build tag in the catalogue, comma separated
   faults.py run --api-container NAME   the fault run
+  faults.py pairs                      only the pairs phase's faults; no topology
 """
 
 import argparse
+import contextlib
 import http.client
 import json
 import os
@@ -34,6 +39,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -51,12 +57,14 @@ ACTIVE = "fault injection active"
 PHASES = {
     "examples": ("gate", "examples.xml"), "body_cap": None, "auth_throttle": None,
     "secret_scan": ("gate", "examples.har"), "browser_session": ("gate", "browser-sessions.json"),
+    "pairs": None,
 }
 LIMIT_PHASES = {"body_cap", "auth_throttle"}
 SCAN_PHASE = "secret_scan"
 SESSION_PHASE = "browser_session"
+PAIRS_PHASE = "pairs"
 # The phases whose report is the one case this runner writes for the route.
-OWN_CASE_PHASES = {SCAN_PHASE, SESSION_PHASE}
+OWN_CASE_PHASES = {SCAN_PHASE, SESSION_PHASE, PAIRS_PHASE}
 # What the browser-session checker prints, and the requests it sends a cookie
 # session's unsafe operation lacking a matching CSRF token (browser_sessions/main.go).
 SESSION_CHECKER = "browser session contract: "
@@ -73,13 +81,24 @@ def load(path=CATALOGUE):
             raise ValueError(f"{fault['name']}: no fault run for phase {fault['phase']}")
         if fault["phase"] in LIMIT_PHASES and (fault["operation"], fault["path"]) != ("login", LOGIN):
             raise ValueError(f"{fault['name']}: limit probes only exercise POST {LOGIN}")
+        if (fault["phase"] == PAIRS_PHASE) != ("patch" in fault):
+            raise ValueError(f"{fault['name']}: a patch is applied and judged only by the pairs phase")
+        if "patch" in fault:
+            if "build_tags" in fault:
+                raise ValueError(f"{fault['name']}: a patch or build tags, not both")
+            # A compile error or a panic also fails the test, so the reason is required.
+            for field in ("test", "subtest", "expected_failure"):
+                if not fault.get(field):
+                    raise ValueError(f"{fault['name']}: a patch fault needs {field}")
     return faults
 
 
 def all_tags(faults):
     tags = []
     for fault in faults:
-        for tag in fault["build_tags"].split(","):
+        for tag in fault.get("build_tags", "").split(","):
+            if not tag:
+                continue
             if tag not in tags:
                 tags.append(tag)
     return ",".join(tags)
@@ -138,7 +157,7 @@ def judge(report, path, faulted, known_gap=None, phase="examples", expected_fail
         try:
             sent, failed = probe_transactions_of(report, path, phase)
         except (ValueError, ET.ParseError) as error:
-            kind = {SCAN_PHASE: "scan", SESSION_PHASE: "session"}.get(phase, "limit")
+            kind = {SCAN_PHASE: "scan", SESSION_PHASE: "session", PAIRS_PHASE: "pairs"}.get(phase, "limit")
             return False, f"invalid {kind} proof: {error}"
     else:
         sent, failed = transactions_of(report, path)
@@ -335,6 +354,80 @@ def session_verdict(output, receipt_path, operation, path, keep_as):
     return report
 
 
+@contextlib.contextmanager
+def throwaway_tree(patch):
+    """A tree of HEAD with the patch applied, gone afterwards. Never the running
+    checkout: the topology's API rebuilds itself when that changes."""
+    scratch = Path(tempfile.mkdtemp(prefix="contract-fault-"))
+    tree = scratch / "tree"
+    subprocess.run(["git", "worktree", "add", "--quiet", "--detach", str(tree), "HEAD"], cwd=ROOT, check=True)
+    try:
+        applied = subprocess.run(["git", "apply", "-"], input=patch, text=True, cwd=tree, capture_output=True, check=False)
+        if applied.returncode:
+            raise ValueError("the patch no longer applies: " + applied.stderr.strip())
+        yield tree
+    finally:
+        subprocess.run(["git", "worktree", "remove", "--force", str(tree)], cwd=ROOT, check=False)
+        shutil.rmtree(scratch, ignore_errors=True)
+
+
+def subtest_outcome(events, test, subtest):
+    """(outcome, output) of one subtest in `go test -json`'s stream. No outcome
+    means it never ran, and the output is then what the build said, if anything."""
+    name = f"{test}/{subtest}"
+    outcome, output, built = None, [], []
+    for line in events.splitlines():
+        try:
+            event = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(event, dict):
+            continue
+        if event.get("Action") == "build-output":
+            built.append(event.get("Output", ""))
+        if event.get("Test") != name:
+            continue
+        if event.get("Action") in {"pass", "fail", "skip"}:
+            outcome = event["Action"]
+        elif event.get("Action") == "output":
+            output.append(event.get("Output", ""))
+    return outcome, " ".join("".join(output if outcome else built).split())
+
+
+def run_pair(fault, keep_as, patched):
+    """Run the fault's witness pair, on HEAD or with its patch, as a report the
+    run can read: a failure when the pair failed. A pair that never ran or was
+    skipped is an error, so it neither catches nor clears."""
+    operation, path, test, subtest = fault["operation"], fault["path"], fault["test"], fault["subtest"]
+    report = OUT / keep_as
+    report.parent.mkdir(parents=True, exist_ok=True)
+    suite = ET.Element("testsuite", name=PAIRS_PHASE)
+    case = ET.SubElement(suite, "testcase", classname=operation, name=f"{path} > {PAIRS_PHASE}")
+    try:
+        binary = os.environ.get("RESTMAIL_VERTRAG_BINARY")
+        if not binary:
+            raise ValueError("RESTMAIL_VERTRAG_BINARY names no Vertrag, so the pair would skip")
+        environment = {**os.environ, "RESTMAIL_VERTRAG_BINARY": str((ROOT / binary).resolve())}
+        selected = "/".join("^" + part + "$" for part in [test, *subtest.split("/")])
+        with throwaway_tree(fault["patch"]) if patched else contextlib.nullcontext(ROOT) as tree:
+            # -trimpath lets the trees share the build cache, so only what a patch touches recompiles.
+            done = subprocess.run(
+                ["go", "test", "-json", "-trimpath", "-count=1", "-timeout", "10m", "-run", selected, "./internal/api"],
+                cwd=tree, env=environment, capture_output=True, text=True, check=False,
+            )
+        outcome, output = subtest_outcome(done.stdout, test, subtest)
+        if outcome not in {"pass", "fail"}:
+            raise ValueError(f"{test}/{subtest} did not run ({outcome}), go test exit {done.returncode}: {output[:500]} {done.stderr[-500:]}")
+        if outcome == "fail":
+            expected = fault["expected_failure"]
+            ET.SubElement(case, "failure", type=PAIRS_PHASE, message=f"{subtest}: " + (expected if expected in output else output[:2000]))
+        ET.SubElement(case, "system-out").text = f"{test}/{subtest}: {outcome}"
+    except (OSError, ValueError, subprocess.SubprocessError) as error:
+        ET.SubElement(case, "error", message=str(error)).text = str(error)
+    ET.ElementTree(suite).write(report, encoding="utf-8", xml_declaration=True)
+    return report
+
+
 def run_phase(phase, operation, keep_as, path=None):
     if phase in LIMIT_PHASES:
         return run_limits(phase, operation, keep_as)
@@ -362,17 +455,21 @@ def run_phase(phase, operation, keep_as, path=None):
     return kept
 
 
-def run(container):
-    faults = load()
+def run(container, phases=None):
+    faults = [fault for fault in load() if phases is None or fault["phase"] in phases]
     rows = ["| Fault | Operation | Phase | Verdict |", "|---|---|---|---|"]
     ok = True
 
-    baselines = {(f["phase"], f["operation"], f["path"]) for f in faults}
-    for phase, operation, path in sorted(baselines):
+    # A patch's witness is one subtest, so each of its witnesses has its own baseline.
+    baselines = {(f["phase"], f["operation"], f["path"], f.get("subtest", "")): f for f in faults}
+    for (phase, operation, path, subtest), fault in sorted(baselines.items(), key=lambda item: item[0]):
         print(f"::group::baseline: {phase} of {operation} on the normal API")
         if phase in LIMIT_PHASES:
             restart_api("")
-        report = run_phase(phase, operation, f"faults-baseline-{operation}-{phase}.xml", path)
+        if phase == PAIRS_PHASE:
+            report = run_pair(fault, f"faults-baseline-{operation}-{subtest.replace('/', '-')}-{phase}.xml", patched=False)
+        else:
+            report = run_phase(phase, operation, f"faults-baseline-{operation}-{phase}.xml", path)
         passed, why = judge(report, path, faulted=False, phase=phase)
         print("::endgroup::")
         rows.append(f"| (none) | {operation} | {phase} | {why} |")
@@ -383,21 +480,26 @@ def run(container):
         for fault in faults:
             name, operation, phase = fault["name"], fault["operation"], fault["phase"]
             print(f"::group::fault {name}: {fault['breaks']}")
-            restart_api(fault["build_tags"])
-            if not fault_active(container, name):
-                passed, why = False, f"the API did not log '{ACTIVE}' for {name}: the switch did not take"
+            if phase == PAIRS_PHASE:
+                report = run_pair(fault, f"faults-{name}-{phase}.xml", patched=True)
             else:
-                report = run_phase(phase, operation, f"faults-{name}-{phase}.xml", fault["path"])
+                restart_api(fault["build_tags"])
+                active = fault_active(container, name)
+                report = active and run_phase(phase, operation, f"faults-{name}-{phase}.xml", fault["path"])
+            if report:
                 passed, why = judge(
                     report, fault["path"], faulted=True, known_gap=fault.get("known_gap"), phase=phase,
                     expected_failure=fault.get("expected_failure"),
                 )
+            else:
+                passed, why = False, f"the API did not log '{ACTIVE}' for {name}: the switch did not take"
             print("::endgroup::")
             if not passed:
                 print(f"::error::fault {name}: {why}")
             rows.append(f"| {name} | {operation} | {phase} | {why} |")
             ok = ok and passed
-        restart_api("")
+        if any(fault["phase"] != PAIRS_PHASE for fault in faults):
+            restart_api("")
 
     table = "\n".join(rows) + "\n"
     OUT.mkdir(parents=True, exist_ok=True)
@@ -414,10 +516,13 @@ def main(argv):
     sub.add_parser("tags")
     running = sub.add_parser("run")
     running.add_argument("--api-container", required=True)
+    sub.add_parser("pairs")
     args = parser.parse_args(argv)
     if args.command == "tags":
         print(all_tags(load()))
         return 0
+    if args.command == "pairs":
+        return run(None, {PAIRS_PHASE})
     return run(args.api_container)
 
 

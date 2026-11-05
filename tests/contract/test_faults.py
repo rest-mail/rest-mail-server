@@ -1,5 +1,6 @@
 """The fault run's verdicts: a fault counts as caught only in the phase it names."""
 
+import contextlib
 import http.client
 import json
 import os
@@ -39,7 +40,10 @@ class Catalogue(unittest.TestCase):
     def test_every_fault_names_a_judged_phase_and_its_tags(self):
         for fault in faults.load():
             self.assertIn(fault["phase"], faults.PHASES)
-            self.assertEqual(fault["build_tags"], "faultinject,fault_" + fault["name"])
+            if "patch" in fault:
+                self.assertEqual(fault["phase"], faults.PAIRS_PHASE)
+            else:
+                self.assertEqual(fault["build_tags"], "faultinject,fault_" + fault["name"])
             self.assertTrue(fault["path"].startswith("/"), fault["name"])
 
     def test_tags_join_every_fault_once(self):
@@ -584,6 +588,134 @@ class BrowserSession(unittest.TestCase):
                     self.assertEqual([call.args for call in restart.call_args_list], [(fault["build_tags"],), ("",)])
                 else:
                     restart.assert_not_called()
+
+
+class PairRun(unittest.TestCase):
+    FAULT = {
+        "name": "a", "operation": "getThing", "path": "/things/{id}", "phase": faults.PAIRS_PHASE,
+        "test": "TestThingWithVertrag", "subtest": "getThing/outside", "breaks": "b",
+        "expected_failure": "GET /things/{id} 403 answered 200", "patch": "--- a/x\n",
+    }
+
+    @staticmethod
+    def events(action, output="", test="TestThingWithVertrag/getThing/outside"):
+        return "\n".join(
+            [
+                "not json: a build line",
+                json.dumps({"Action": "output", "Test": test, "Output": output}),
+                json.dumps({"Action": action, "Test": test}),
+                json.dumps({"Action": "pass", "Test": "TestThingWithVertrag"}),
+            ]
+        )
+
+    def verdict(self, stdout, patched=True, **judged):
+        """Judge a go test run that printed stdout, as run_pair would."""
+        with tempfile.TemporaryDirectory() as directory, patch.object(faults, "OUT", Path(directory)), patch.dict(
+            os.environ, {"RESTMAIL_VERTRAG_BINARY": "/vertrag"}
+        ), patch.object(faults, "throwaway_tree", lambda _: contextlib.nullcontext(directory)), patch.object(
+            faults.subprocess, "run", return_value=SimpleNamespace(stdout=stdout, stderr="", returncode=1)
+        ):
+            report = faults.run_pair(self.FAULT, "r.xml", patched=patched)
+            return faults.judge(report, self.FAULT["path"], faulted=patched, phase=faults.PAIRS_PHASE, **judged)
+
+    def test_the_named_failure_of_the_witness_catches_the_fault(self):
+        passed, why = self.verdict(
+            self.events("fail", "vertrag says GET /things/{id} 403 answered 200\n"),
+            expected_failure=self.FAULT["expected_failure"],
+        )
+        self.assertTrue(passed, why)
+        self.assertIn("caught", why)
+
+    def test_a_witness_failing_for_another_reason_is_not_caught(self):
+        passed, why = self.verdict(self.events("fail", "panic: a nil map\n"), expected_failure=self.FAULT["expected_failure"])
+        self.assertFalse(passed)
+        self.assertIn("not caught", why)
+
+    def test_a_patch_that_does_not_build_neither_catches_nor_clears(self):
+        for patched in (True, False):
+            passed, why = self.verdict("# a compile error\nFAIL\n", patched=patched)
+            self.assertFalse(passed)
+            self.assertIn("invalid pairs proof", why)
+
+    def test_a_patch_that_does_not_build_says_what_the_build_said(self):
+        events = json.dumps({"Action": "build-output", "Output": "routes.go:1: declared and not used: onDomain\n"})
+        passed, why = self.verdict(events)
+        self.assertFalse(passed)
+        self.assertIn("declared and not used: onDomain", why)
+
+    def test_a_witness_that_skipped_or_only_its_parent_ran_is_no_verdict(self):
+        for events in (self.events("skip"), self.events("pass", test="TestThingWithVertrag/other")):
+            passed, why = self.verdict(events, patched=False)
+            self.assertFalse(passed)
+            self.assertIn("invalid pairs proof", why)
+
+    def test_a_green_witness_clears_the_baseline_and_catches_nothing(self):
+        passed, why = self.verdict(self.events("pass"), patched=False)
+        self.assertEqual((passed, why), (True, "green"))
+        passed, why = self.verdict(self.events("pass"), expected_failure=self.FAULT["expected_failure"])
+        self.assertFalse(passed)
+        self.assertIn("not caught", why)
+
+    def test_a_missing_vertrag_is_no_verdict_rather_than_a_skip(self):
+        with tempfile.TemporaryDirectory() as directory, patch.object(faults, "OUT", Path(directory)), patch.dict(os.environ):
+            os.environ.pop("RESTMAIL_VERTRAG_BINARY", None)
+            report = faults.run_pair(self.FAULT, "r.xml", patched=False)
+            passed, why = faults.judge(report, self.FAULT["path"], faulted=False, phase=faults.PAIRS_PHASE)
+        self.assertFalse(passed)
+        self.assertIn("names no Vertrag", why)
+
+    def test_a_patch_that_no_longer_applies_is_refused_and_leaves_no_tree(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "repo"
+            root.mkdir()
+            for command in (["git", "init", "-q"], ["git", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "c"]):
+                subprocess.run(command, cwd=root, check=True)
+            with patch.object(faults, "ROOT", root):
+                with self.assertRaisesRegex(ValueError, "no longer applies"):
+                    with faults.throwaway_tree("--- a/gone\n+++ b/gone\n@@ -1 +1 @@\n-a\n+b\n"):
+                        self.fail("no tree for a patch that did not apply")
+            listed = subprocess.run(["git", "worktree", "list"], cwd=root, capture_output=True, text=True, check=True)
+            self.assertEqual(len(listed.stdout.splitlines()), 1)
+
+    def test_a_patch_needs_its_witness_and_only_the_pairs_phase_takes_one(self):
+        cases = {
+            "a patch fault needs subtest": "{name: a, operation: o, path: /o, phase: pairs, patch: x, test: T, expected_failure: e}",
+            "a patch fault needs expected_failure": "{name: a, operation: o, path: /o, phase: pairs, patch: x, test: T, subtest: s}",
+            "a patch or build tags": "{name: a, operation: o, path: /o, phase: pairs, patch: x, build_tags: t, test: T, subtest: s, expected_failure: e}",
+            "only by the pairs phase": "{name: a, operation: o, path: /o, phase: examples, patch: x}",
+        }
+        for message, entry in cases.items():
+            with tempfile.TemporaryDirectory() as directory:
+                path = Path(directory) / "faults.yml"
+                path.write_text("faults:\n  - " + entry + "\n")
+                with self.assertRaisesRegex(ValueError, message):
+                    faults.load(path)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "faults.yml"
+            path.write_text("faults:\n  - {name: a, operation: o, path: /o, phase: pairs, build_tags: t}\n")
+            with self.assertRaisesRegex(ValueError, "only by the pairs phase"):
+                faults.load(path)
+
+    def test_a_pairs_run_needs_no_topology_and_judges_each_witness(self):
+        fault = {**self.FAULT, "patch": "p"}
+        seen = []
+
+        def run_pair(entry, keep_as, patched):
+            seen.append((keep_as, patched))
+            return Path(keep_as)
+
+        def judged(report, path, faulted, **_):
+            return True, "caught" if faulted else "green"
+
+        with tempfile.TemporaryDirectory() as directory, patch.object(faults, "OUT", Path(directory)), patch.object(
+            faults, "load", return_value=[fault, {"name": "b", "phase": "examples"}]
+        ), patch.object(faults, "run_pair", run_pair), patch.object(faults, "judge", judged), patch.object(
+            faults, "restart_api", side_effect=AssertionError("a pairs run restarted the API")
+        ):
+            self.assertEqual(faults.run(None, {faults.PAIRS_PHASE}), 0)
+        self.assertEqual(
+            seen, [("faults-baseline-getThing-getThing-outside-pairs.xml", False), ("faults-a-pairs.xml", True)]
+        )
 
 
 class LimitRun(unittest.TestCase):
