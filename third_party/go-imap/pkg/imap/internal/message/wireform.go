@@ -18,8 +18,9 @@ import (
 //   - A textual leaf that names a charset keeps its 8-bit data.
 //   - Other 8-bit leaf data is transfer-encoded, BASE64 for non-textual data and
 //     QUOTED-PRINTABLE for text with no charset, so no charset is guessed.
-//   - A NUL in a header or a textual leaf stays, and FETCH refuses the message
-//     (IMAP-ENV-12). In non-textual data it is encoded like any other octet.
+//   - A NUL in a header or a textual leaf goes out as a space, one octet for one
+//     (IMAP-ENV-12). Where a NUL is data, see nulIsData, it is encoded like any
+//     other octet instead, so the client decodes the exact octets.
 //
 // sessionUTF8 is whether the session enabled UTF8=ACCEPT (RFC 6855): valid UTF-8
 // then stays in headers, and in a textual leaf with no charset, whose default
@@ -92,6 +93,93 @@ func needsWireForm(s string) bool {
 	return false
 }
 
+// SpaceNUL is raw with no NUL in a header or in text, for a protocol with nothing like
+// BINARY or a transfer-encoding conversion. Every octet stays where it was, so a size
+// measured from raw stays true. Where a NUL is data, see nulIsData, the entity is left
+// as it is. A message holding no NUL comes back byte for byte, and one that does is
+// built once, in the one buffer returned.
+func SpaceNUL(raw string) []byte {
+	if strings.IndexByte(raw, 0) < 0 {
+		return []byte(raw)
+	}
+	out := byteSink(make([]byte, 0, len(raw)))
+	spaceNULEntity(&out, messageNode(raw, 0))
+	return out
+}
+
+func spaceNULEntity(w wireSink, node mimeNode) {
+	writeSpaced(w, node.header)
+	if strings.IndexByte(node.body, 0) < 0 {
+		_, _ = w.WriteString(node.body)
+		return
+	}
+	mt, params := node.mediaType()
+	switch {
+	case mt == "message/rfc822":
+		spaceNULEntity(w, messageNode(node.body, node.depth+1))
+	case strings.HasPrefix(mt, "multipart/") && params["boundary"] != "":
+		def := "text/plain"
+		if mt == "multipart/digest" {
+			def = "message/rfc822"
+		}
+		at := 0
+		eachMultipartSpan(node.body, params["boundary"], func(start, end int) {
+			writeSpaced(w, node.body[at:start])
+			h, body := splitEntity(node.body[start:end])
+			spaceNULEntity(w, mimeNode{header: h, body: body, defaultType: def, depth: node.depth + 1})
+			at = end
+		})
+		writeSpaced(w, node.body[at:])
+	case nulIsData(mt, params):
+		_, _ = w.WriteString(node.body)
+	default:
+		writeSpaced(w, node.body)
+	}
+}
+
+// byteSink is a wireSink that appends to a byte slice.
+type byteSink []byte
+
+func (b *byteSink) Write(p []byte) (int, error) {
+	*b = append(*b, p...)
+	return len(p), nil
+}
+
+func (b *byteSink) WriteString(s string) (int, error) {
+	*b = append(*b, s...)
+	return len(s), nil
+}
+
+// nulIsData reports whether a NUL in a leaf of this type means something, so a space
+// would corrupt it: anything not text, which includes an encoding nobody can remove
+// (see mediaType), and text in a charset whose characters hold NUL octets.
+func nulIsData(mt string, params map[string]string) bool {
+	if !strings.HasPrefix(mt, "text/") {
+		return true
+	}
+	charset := strings.ToLower(params["charset"])
+	for _, wide := range []string{"utf-16", "utf16", "utf-32", "utf32", "ucs-2", "ucs2", "ucs-4", "ucs4", "iso-10646-ucs-", "csucs4", "csunicode"} {
+		if strings.HasPrefix(charset, wide) {
+			return true
+		}
+	}
+	return false
+}
+
+// writeSpaced writes s with a space for each NUL, and holds no copy of it.
+func writeSpaced(w wireSink, s string) {
+	for {
+		i := strings.IndexByte(s, 0)
+		if i < 0 {
+			_, _ = w.WriteString(s)
+			return
+		}
+		_, _ = w.WriteString(s[:i])
+		_, _ = w.WriteString(" ")
+		s = s[i+1:]
+	}
+}
+
 func has8bit(s string) bool {
 	for i := 0; i < len(s); i++ {
 		if s[i] >= 0x80 {
@@ -143,12 +231,13 @@ func wireMultipart(w wireSink, node mimeNode, mt, boundary string, sessionUTF8 b
 // wireLeaf converts a leaf whose body holds an 8-bit octet or a NUL. A body
 // already declared base64 or quoted-printable keeps its encoding, so the client
 // decodes the same data: base64 readers ignore octets outside the alphabet (RFC
-// 2045 §6.8), so they go, and quoted-printable can spell them.
+// 2045 §6.8), so they go, and quoted-printable can spell them. A NUL in text is a
+// space on any of these paths; text whose NUL is data is treated as data.
 func wireLeaf(w wireSink, node mimeNode, mt string, params map[string]string, sessionUTF8 bool) {
-	textual := strings.HasPrefix(mt, "text/")
-	if textual && (strings.IndexByte(node.body, 0) >= 0 || params["charset"] != "" || (sessionUTF8 && utf8.ValidString(node.body))) {
+	textual := strings.HasPrefix(mt, "text/") && (strings.IndexByte(node.body, 0) < 0 || !nulIsData(mt, params))
+	if textual && (!has8bit(node.body) || params["charset"] != "" || (sessionUTF8 && utf8.ValidString(node.body))) {
 		wireHeader(w, node.header, sessionUTF8)
-		_, _ = w.WriteString(node.body)
+		writeSpaced(w, node.body)
 		return
 	}
 	cte := ""
@@ -165,7 +254,7 @@ func wireLeaf(w wireSink, node mimeNode, mt string, params map[string]string, se
 		return
 	case "QUOTED-PRINTABLE":
 		wireHeader(w, node.header, sessionUTF8)
-		writeEscaped8bit(w, node.body, true)
+		writeEscaped8bit(w, node.body, !textual)
 		return
 	case "7BIT", "8BIT", "BINARY":
 		if textual {
@@ -190,22 +279,30 @@ func wireLeaf(w wireSink, node mimeNode, mt string, params map[string]string, se
 // from an encoded word, or a parameter from RFC 2231. Those strings have nowhere
 // to name a charset (RFC 3501 §4.3.1), so 8-bit text goes out as encoded words,
 // separated by a space so the string needs no literal. After UTF8=ACCEPT (RFC 6855)
-// valid UTF-8 is the agreed charset and stays. A NUL stays too, so FETCH refuses
-// the message rather than hiding it.
+// valid UTF-8 is the agreed charset and stays. A decoded NUL is a space, as it is in
+// a header, so it can't reach the client through an encoded word either.
 func metadataText(text string, sessionUTF8 bool) string {
-	if !has8bit(text) || strings.IndexByte(text, 0) >= 0 || (sessionUTF8 && utf8.ValidString(text)) {
+	text = strings.ReplaceAll(text, "\x00", " ")
+	if !has8bit(text) || (sessionUTF8 && utf8.ValidString(text)) {
 		return text
 	}
 	return strings.Join(encodedWords(text), " ")
 }
 
-// writeEscaped8bit spells each 8-bit octet =XX, and a NUL =00 when nul is set, and
-// leaves every other octet alone.
+// writeEscaped8bit spells each 8-bit octet =XX, and a NUL =00 when nul is set or a
+// space when it isn't, and leaves every other octet alone.
 func writeEscaped8bit(w wireSink, s string, nul bool) {
 	const digits = "0123456789ABCDEF"
 	start := 0
 	for i := 0; i < len(s); i++ {
-		if c := s[i]; c >= 0x80 || (nul && c == 0) {
+		c := s[i]
+		if c == 0 && !nul {
+			_, _ = w.WriteString(s[start:i])
+			_, _ = w.WriteString(" ")
+			start = i + 1
+			continue
+		}
+		if c >= 0x80 || c == 0 {
 			_, _ = w.WriteString(s[start:i])
 			_, _ = w.WriteString("=")
 			_, _ = w.WriteString(digits[c>>4 : c>>4+1])
@@ -231,11 +328,17 @@ func writeWithout8bit(w wireSink, s string) {
 // wireChunk is how much of a body a transfer encoding holds at once.
 const wireChunk = 1 << 12
 
+// writeQuotedPrintable encodes text, so a NUL goes in as a space rather than as =00.
 func writeQuotedPrintable(w wireSink, body string) {
 	q := quotedprintable.NewWriter(w)
 	chunk := make([]byte, min(len(body), wireChunk))
 	for len(body) > 0 {
 		n := copy(chunk, body)
+		for i, c := range chunk[:n] {
+			if c == 0 {
+				chunk[i] = ' '
+			}
+		}
 		// The sink cannot fail.
 		_, _ = q.Write(chunk[:n])
 		body = body[n:]
@@ -312,20 +415,20 @@ func headerBlockFields(header string) []string {
 }
 
 // wireHeader writes a header block 7-bit, field by field; a field already 7-bit
-// is not touched. In a UTF8=ACCEPT session, a field of valid UTF-8 stays. A field
-// holding a NUL stays too, so FETCH refuses the message rather than hiding it.
-// changes then apply to what that leaves.
+// is not touched. In a UTF8=ACCEPT session, a field of valid UTF-8 stays. A NUL is a
+// space before any of that, so an encoded word never spells one. changes then apply
+// to what that leaves.
 func wireHeader(w wireSink, header string, sessionUTF8 bool, changes ...fieldChange) {
 	if len(changes) == 0 && !has8bit(header) {
-		_, _ = w.WriteString(header)
+		writeSpaced(w, header)
 		return
 	}
 	var placed [2]bool
 	for start := 0; start < len(header); {
 		end := nextHeaderField(header, start)
-		field := header[start:end]
+		field := strings.ReplaceAll(header[start:end], "\x00", " ")
 		start = end
-		stays := !has8bit(field) || strings.IndexByte(field, 0) >= 0 || (sessionUTF8 && utf8.ValidString(field))
+		stays := !has8bit(field) || (sessionUTF8 && utf8.ValidString(field))
 		name, _, named := strings.Cut(field, ":")
 		// A name holding an 8-bit octet is encoded with its field, which then has no name.
 		named = named && (stays || !has8bit(name))
