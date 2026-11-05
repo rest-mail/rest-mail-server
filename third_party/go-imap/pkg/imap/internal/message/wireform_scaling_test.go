@@ -80,18 +80,40 @@ func TestWireForm_HeaderConversionIsLinear(t *testing.T) {
 	}
 }
 
-// TestSevenBitBoundary_IsLinear covers what POP3 adds to a downgrade: many delimiter
-// lines, lines that only look like one, lines holding the new spelling, and bare LFs.
+// sevenBitBoundaryHead and sevenBitBoundaryUnits are what POP3 adds to a downgrade: many
+// delimiter lines, lines that only look like one, lines holding the new spelling, bare
+// LFs, and delimiters with no line to stand on.
+const sevenBitBoundaryHead = "Content-Type: multipart/mixed; boundary=\"\xf6\"\r\n\r\n"
+
+var sevenBitBoundaryUnits = map[string]string{
+	"delimiters":      "--\xf6\r\n\r\nx\r\n",
+	"near misses":     "--\xf6x\r\n",
+	"new spelling":    "--=F6\r\n",
+	"bare line feeds": "--\xf6\nx\n",
+	"no line breaks":  "--\xf6",
+}
+
 func TestSevenBitBoundary_IsLinear(t *testing.T) {
-	const head = "Content-Type: multipart/mixed; boundary=\"\xf6\"\r\n\r\n"
-	for name, unit := range map[string]string{
-		"delimiters":      "--\xf6\r\n\r\nx\r\n",
-		"near misses":     "--\xf6x\r\n",
-		"new spelling":    "--=F6\r\n",
-		"bare line feeds": "--\xf6\nx\n",
-	} {
+	for name, unit := range sevenBitBoundaryUnits {
 		t.Run(name, func(t *testing.T) {
-			assertLinear(t, func(size int) string { return head + repeated(unit, size) }, func(raw string) { SevenBitBoundary(raw) })
+			assertLinear(t, func(size int) string { return sevenBitBoundaryHead + repeated(unit, size) }, func(raw string) { SevenBitBoundary(raw) })
+		})
+	}
+}
+
+// TestSevenBitBoundary_ScansInProportion counts the octets a rewrite looks at. Searching
+// the body again from each delimiter would allocate nothing and look at all of it each
+// time, which assertLinear can't see.
+func TestSevenBitBoundary_ScansInProportion(t *testing.T) {
+	const size = 32 << 10
+	for name, unit := range sevenBitBoundaryUnits {
+		t.Run(name, func(t *testing.T) {
+			raw := sevenBitBoundaryHead + repeated(unit, size)
+			var scan boundaryScan
+			scan.sevenBitBoundary(raw)
+			if low, limit := len(raw)/2, 6*len(raw); scan.steps < low || scan.steps > limit {
+				t.Errorf("rewrite took %d steps over %d octets, want %d to %d", scan.steps, len(raw), low, limit)
+			}
 		})
 	}
 }

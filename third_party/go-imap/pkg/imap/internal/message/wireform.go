@@ -405,17 +405,18 @@ func boundaryStays(header, boundary string, sessionUTF8 bool) bool {
 // conversion may turn text into a stored boundary's delimiter. The texts already hold
 // the delimiters of every nested multipart, so an outer boundary is what moves.
 func wireBoundary(header, boundary string, texts []string, sessionUTF8 bool) string {
+	var scan boundaryScan
 	if boundaryStays(header, boundary, sessionUTF8) {
 		for _, text := range texts {
-			if len(multipartDelimiters(text, boundary)) > 0 {
-				return freeBoundary(sevenBitBoundary(boundary), texts)
+			if len(scan.delimiters(text, boundary)) > 0 {
+				return scan.freeBoundary(sevenBitBoundary(boundary), texts)
 			}
 		}
 		return boundary
 	}
 	spelled := sevenBitBoundary(boundary)
-	if startsLine(texts, spelled) {
-		return freeBoundary(spelled, texts)
+	if scan.startsLine(texts, spelled) {
+		return scan.freeBoundary(spelled, texts)
 	}
 	return spelled
 }
@@ -440,6 +441,11 @@ func withoutBareLineFeeds(s string) string {
 // message comes back as it is. When the boundary moves, every bare LF of raw becomes
 // CRLF, which makes its delimiters readable here and is what such a host then sends.
 func SevenBitBoundary(raw string) string {
+	var scan boundaryScan
+	return scan.sevenBitBoundary(raw)
+}
+
+func (s *boundaryScan) sevenBitBoundary(raw string) string {
 	// Only the header says whether the rest needs reading.
 	mt, params := messageNode(withoutBareLineFeeds(raw[:headerBlockEnd(raw)]), 0).mediaType()
 	boundary := params["boundary"]
@@ -448,9 +454,9 @@ func SevenBitBoundary(raw string) string {
 	}
 	canonical := withoutBareLineFeeds(raw)
 	node := messageNode(canonical, 0)
-	mt, params = node.mediaType()
+	_, params = node.mediaType()
 	boundary = params["boundary"]
-	delimiters := multipartDelimiters(node.body, boundary)
+	delimiters := s.delimiters(node.body, boundary)
 	// texts[i] is what stands before delimiter i, and the last is what follows them all.
 	texts := make([]string, len(delimiters)+1)
 	at := 0
@@ -461,8 +467,8 @@ func SevenBitBoundary(raw string) string {
 	texts[len(delimiters)] = node.body[at:]
 
 	spelled := sevenBitBoundary(boundary)
-	if startsLine(texts, spelled) {
-		spelled = freeBoundary(spelled, texts)
+	if s.startsLine(texts, spelled) {
+		spelled = s.freeBoundary(spelled, texts)
 	}
 	header := headerWithBoundary(node.header, spelled)
 	if header == node.header {
@@ -543,15 +549,16 @@ func shortBoundary(spelled string, hash [sha256.Size]byte) string {
 // freeBoundary is spelled with a suffix that no line in texts starts with. The suffix
 // hashes the texts, so a message can't hold the line it would need ahead of time, and
 // it is the same each time, so sizes and offsets stay the same between FETCHes.
-func freeBoundary(spelled string, texts []string) string {
+func (s *boundaryScan) freeBoundary(spelled string, texts []string) string {
 	h := sha256.New()
 	for _, text := range texts {
+		s.steps += len(text)
 		h.Write([]byte(text))
 	}
 	hash := [sha256.Size]byte(h.Sum(nil))
 	for {
 		free := shortBoundary(spelled, hash)
-		if !startsLine(texts, free) {
+		if !s.startsLine(texts, free) {
 			return free
 		}
 		hash = sha256.Sum256(hash[:])
@@ -560,9 +567,10 @@ func freeBoundary(spelled string, texts []string) string {
 
 // startsLine reports whether any line in texts starts with the delimiter of boundary,
 // whatever follows it, which is what some readers take for one.
-func startsLine(texts []string, boundary string) bool {
+func (s *boundaryScan) startsLine(texts []string, boundary string) bool {
 	delimiter := "--" + boundary
 	for _, text := range texts {
+		s.steps += len(text)
 		if strings.HasPrefix(text, delimiter) || strings.Contains(text, "\n"+delimiter) {
 			return true
 		}
