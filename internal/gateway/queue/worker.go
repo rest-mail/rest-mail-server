@@ -1234,11 +1234,12 @@ func (w *Worker) deliverRESTMAILHTTPS(ctx context.Context, endpointURL string, i
 // RESTMAIL; any other 4xx is the receiving server refusing the message, so it
 // bounces with the server's own words in the DSN.
 //
-// A 503 whose error code is "deferred" is the receiving server's inbound
-// pipeline holding the message back. Its default pipeline greylists a first
-// message from a new sender (5 minutes), and the answer does not name the
-// filter, so it is retried on the greylisting schedule: a first retry that
-// lands after the greylist delay instead of just before it.
+// A 503's error code says why the receiving server's inbound pipeline held the
+// message back. Greylisting and a rate limit are retried on their own schedules:
+// the first retry lands after the greylist delay instead of just before it, and
+// well after a limit's window. Those replies are the ones a REST Mail server's
+// SMTP gateway gives for the same reasons. Any other deferral, a fault included, is
+// an ordinary transient failure.
 func restmailRefusal(status int, body []byte) *SMTPError {
 	text := strings.TrimSpace(string(body))
 	if len(text) > 512 {
@@ -1246,9 +1247,10 @@ func restmailRefusal(status int, body []byte) *SMTPError {
 	}
 	msg := fmt.Sprintf("RESTMAIL delivery got HTTP %d: %s", status, text)
 	switch {
-	case status == http.StatusServiceUnavailable && restmailErrorCode(body) == restmailDeferred:
-		return &SMTPError{Code: 451, Enhanced: "4.7.1",
-			Message: "deferred by the receiving server's inbound pipeline (greylisting or another filter), retry later: " + msg}
+	case status == http.StatusServiceUnavailable && restmailErrorCode(body) == rmail.GreylistedRefusal:
+		return &SMTPError{Code: 450, Enhanced: "4.7.1", Message: "greylisted by the receiving server, retry later: " + msg}
+	case status == http.StatusServiceUnavailable && restmailErrorCode(body) == rmail.RateLimitedRefusal:
+		return &SMTPError{Code: 450, Enhanced: "4.7.1", Message: "rate limited by the receiving server, retry later: " + msg}
 	case status == http.StatusTooManyRequests:
 		return &SMTPError{Code: 451, Enhanced: "4.7.0", Message: "rate limited: " + msg}
 	case status == http.StatusRequestTimeout || status == http.StatusTooEarly || status < 400 || status >= 500:
@@ -1258,10 +1260,6 @@ func restmailRefusal(status int, body []byte) *SMTPError {
 	}
 	return &SMTPError{Code: 550, Enhanced: "5.0.0", Message: msg}
 }
-
-// restmailDeferred is the error code a REST Mail server's deliver endpoint
-// answers, with a 503, when its inbound pipeline defers the message.
-const restmailDeferred = "deferred"
 
 // restmailErrorCode is the code of a REST Mail error body
 // ({"error":{"code":...,"message":...}}), or "" when the body is not one.

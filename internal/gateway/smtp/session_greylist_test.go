@@ -17,18 +17,20 @@ func (backend *greylistDelivery) DeliverMessageFrom(*apiclient.DeliverRequest, a
 	return nil, &apiclient.APIError{StatusCode: backend.status, Body: backend.body}
 }
 
-// The API's greylisted refusal reaches a sending server in words its queue can read;
-// every other temporary refusal keeps its own reply.
-func TestSMTPGreylistRefusalNamesGreylisting(t *testing.T) {
+// The API's greylisted and rate limited refusals reach a sending server in words its
+// queue can read; every other temporary refusal keeps its own reply.
+func TestSMTPDeferralReplyNamesItsReason(t *testing.T) {
 	for _, test := range []struct {
 		name, body string
 		status     int
 		want       string
 	}{
 		{"greylisted", `{"error":{"code":"greylisted","message":"Greylisted, try again later"}}`, 503, "450 4.7.1 Greylisted, try again later"},
+		{"rate limited", `{"error":{"code":"rate_limited","message":"Too many messages, try again later"}}`, 503, "450 4.7.1 Too many messages, try again later"},
 		{"deferred", `{"error":{"code":"deferred","message":"Try again later"}}`, 503, "451 4.3.0 Try again later"},
 		{"not JSON", `greylisted`, 503, "451 4.3.0 Try again later"},
-		{"another status", `{"error":{"code":"greylisted"}}`, 451, "451 4.3.0 Try again later"},
+		{"another status", `{"error":{"code":"greylisted"}}`, 451, "451 4.3.0 Temporary delivery failure"},
+		{"rate limit with another status", `{"error":{"code":"rate_limited"}}`, 451, "451 4.3.0 Temporary delivery failure"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			backend := newMockBackend()

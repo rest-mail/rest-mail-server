@@ -9,9 +9,11 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/examplepairs"
+	"github.com/rest-mail/rest-mail-server/internal/pipeline/filters"
 )
 
 func TestSendIdempotencyDescription(t *testing.T) {
@@ -66,6 +68,7 @@ func TestSendIdempotencyConflictExamples(t *testing.T) {
 		"forwardMessage": "/api/v1/messages/{id}/forward",
 	} {
 		t.Run(operation, func(t *testing.T) {
+			t.Cleanup(filters.SetRateLimitClock(time.Now))
 			pair := pairs[operation]["idempotency_conflict"]
 			examplepairs.Proven(t, operation, "idempotency_conflict")
 			fixture := newCredentialFixture(t)
