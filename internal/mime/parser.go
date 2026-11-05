@@ -90,7 +90,6 @@ func parseHeaders(fields []field) pipeline.Headers {
 		Date:      firstField(fields, "Date"),
 		MessageID: firstField(fields, "Message-Id"),
 		InReplyTo: firstField(fields, "In-Reply-To"),
-		Raw:       make(map[string][]string),
 	}
 
 	// Subject is RFC 2047-decoded (or the raw value when it can't be).
@@ -123,15 +122,30 @@ func parseHeaders(fields []field) pipeline.Headers {
 	// any field claiming our own authserv-id is removed from the raw message
 	// before it is parsed (StripAuthResults). ARC-* headers are cryptographically
 	// verified by arc_verify and are left untouched.
+	headers.Raw = rawFields(fields)
+
+	return headers
+}
+
+func rawFields(fields []field) map[string][]string {
+	raw := make(map[string][]string)
 	for i := range fields {
 		key := fields[i].key
 		if strings.EqualFold(key, "Authentication-Results") {
 			key = "X-Original-Authentication-Results"
 		}
-		headers.Raw[key] = append(headers.Raw[key], fields[i].value)
+		raw[key] = append(raw[key], fields[i].value)
 	}
+	return raw
+}
 
-	return headers
+// SourceHeaders reads the header fields of a source as a parse keeps them, stopping at the first
+// blank line and never reading the body. A malformed field ends the read: what came before it still
+// counts, and a signal after it is not seen, so the message stays visible.
+func SourceHeaders(source io.Reader) map[string][]string {
+	// The error is that malformed field, and the fields before it are returned with it.
+	fields, _, _, _, _ := readTopFields(source, 0)
+	return rawFields(fields)
 }
 
 // sanitizeHeaderValue removes CR and LF from a decoded header value. RFC 2047

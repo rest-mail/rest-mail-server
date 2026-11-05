@@ -1,11 +1,8 @@
 package mail
 
 import (
-	"bufio"
-	"io"
 	"mime"
 	stdmail "net/mail"
-	"net/textproto"
 	"net/url"
 	"regexp"
 	"strings"
@@ -51,15 +48,6 @@ func RuleClassOf(keywords []string) string {
 		}
 	}
 	return ""
-}
-
-// SourceHeaders reads the unfolded header fields of an RFC 5322 source, stopping at the
-// first blank line and never reading the body. A malformed field ends the read: what came
-// before it still counts, and a signal after it is not seen, so the message stays visible.
-func SourceHeaders(source io.Reader) map[string][]string {
-	// The error is that malformed field, and the fields before it are returned with it.
-	fields, _ := textproto.NewReader(bufio.NewReader(source)).ReadMIMEHeader()
-	return fields
 }
 
 func ClassifyHeaders(headers map[string][]string) string {

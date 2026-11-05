@@ -182,15 +182,7 @@ func (Message) TableName() string { return "messages" }
 // raw source, on every path that stores one, so no delivery path can forget them.
 func (m *Message) BeforeCreate(tx *gorm.DB) error {
 	returnStoredModSeq(tx)
-	if m.RawOctets == nil {
-		m.RawMessage, m.RawOctets = SourceColumns(m.RawMessage)
-	}
-	for _, text := range []*string{&m.MsgID, &m.InReplyTo, &m.References, &m.ThreadID, &m.Sender, &m.SenderName, &m.Subject, &m.BodyText, &m.BodyHTML} {
-		*text = ReadableText(*text)
-	}
-	for _, list := range []*JSONB{&m.RecipientsTo, &m.RecipientsCc, &m.Headers, &m.CalendarEventsRaw} {
-		*list = readableJSON(*list)
-	}
+	m.fitColumns()
 	if m.RawSize > 0 && (m.DowngradedSize == 0 || m.POP3UTF8Size == 0 || m.IMAPSize == 0 || m.IMAPUTF8Size == 0) {
 		sizes := rmail.MeasureWireSizes(m.sourceView())
 		if m.DowngradedSize == 0 {

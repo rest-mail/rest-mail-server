@@ -496,14 +496,46 @@ func TestEntityReadsAsGoMessageDoes(t *testing.T) {
 	for _, seed := range seeds {
 		check([]byte(seed))
 	}
-	// A header block at go-message's limit reads, and one past it doesn't.
-	for _, size := range []int{1<<20 - 40, 1<<20 - 1, 1 << 20, 1<<20 + 1, 1<<20 + 40, 5 << 20} {
+	// Up to go-message's limit on a header block, the two read the same. Past it, go-message fails:
+	// TestAHeaderBlockHasNoLimit is what happens here.
+	for _, size := range []int{1 << 19, 1<<20 - 40} {
 		check([]byte("X-Long: " + strings.Repeat("y", size) + "\r\n\r\nb\r\n"))
 		check([]byte("X-Long: " + strings.Repeat("y ", size/2) + "\r\n\r\nb\r\n"))
 	}
 	random := rand.New(rand.NewSource(1915))
 	for range entityMutations() {
 		check(mutateEntity(random, seeds[random.Intn(len(seeds))]))
+	}
+}
+
+// A long field doesn't stop a message being read, by anything that reads it: a message not read is
+// one whose attachments and threading fields no filter sees.
+func TestAHeaderBlockHasNoLimit(t *testing.T) {
+	for _, size := range []int{1<<20 - 12, 1<<20 - 11, 1 << 20, 1<<20 + 40, 5 << 20} {
+		long := strings.Repeat("y", size)
+		for _, value := range []string{long, strings.Repeat("y ", size/2)} {
+			want := strings.TrimSpace(value)
+			message := "X-Long: " + value + "\r\nIn-Reply-To: <p@x>\r\nContent-Type: multipart/mixed; boundary=B\r\n\r\n--B\r\nContent-Type: text/plain\r\n\r\ntext\r\n--B\r\nContent-Type: application/pdf; name=a.pdf\r\n\r\nPDF\r\n--B--\r\n"
+			parsed, err := ParseString(message)
+			if err != nil {
+				t.Fatalf("%d: %v", size, err)
+			}
+			if got := parsed.Headers.Raw["X-Long"]; len(got) != 1 || strings.TrimSpace(got[0]) != want {
+				t.Fatalf("%d: X-Long of %d values", size, len(got))
+			}
+			if parsed.Headers.InReplyTo != "<p@x>" || len(parsed.Attachments) != 1 || parsed.Attachments[0].Filename != "a.pdf" {
+				t.Fatalf("%d: in-reply-to %q, attachments %+v", size, parsed.Headers.InReplyTo, parsed.Attachments)
+			}
+			headers, err := ParseSizedHeaders(strings.NewReader(message), int64(len(message)))
+			if err != nil || headers.InReplyTo != "<p@x>" {
+				t.Fatalf("%d: headers %q (%v)", size, headers.InReplyTo, err)
+			}
+			store := &memoryStore{}
+			streamed, err := ParseStream(context.Background(), strings.NewReader(message), StreamOptions{Store: store.put, MaxText: 1 << 20, HeadersRead: true, SourceSize: int64(len(message))})
+			if err != nil || len(streamed.Attachments) != 1 {
+				t.Fatalf("%d: streamed %+v (%v)", size, streamed, err)
+			}
+		}
 	}
 }
 
