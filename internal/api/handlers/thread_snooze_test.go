@@ -12,8 +12,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rest-mail/rest-mail-server/internal/auth"
 	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/grants"
 	"gorm.io/gorm"
 )
 
@@ -400,5 +402,26 @@ func TestListMessagesIncludesSnoozedOnRequest(t *testing.T) {
 	}
 	if snoozed, deleted := refused("include_snoozed"), refused("include_imap_deleted"); snoozed != deleted {
 		t.Fatalf("a bad include_snoozed is refused unlike include_imap_deleted:\n%s\n%s", snoozed, deleted)
+	}
+	// It lists more of the same folder under the same mail:read: without it, a credential sees
+	// none of the snoozed thread, and another account does not learn the account exists.
+	listAs := func(claims *auth.Claims) *httptest.ResponseRecorder {
+		t.Helper()
+		recorder := httptest.NewRecorder()
+		messageRoutes(handler).ServeHTTP(recorder, withClaims(httptest.NewRequest(http.MethodGet, listing+"?include_snoozed=true", nil), claims))
+		return recorder
+	}
+	key := func(capability string) *auth.Claims {
+		return &auth.Claims{AccountID: fixture.mailbox.ID, CredentialID: 9, CredentialKind: auth.CredentialKindAPIKey,
+			APIKeyPermissions: []auth.ScopedPermission{{Capability: capability, Scope: grants.Mailbox(fixture.mailbox.Address)}}}
+	}
+	if recorder := listAs(key(models.CapMailRead)); recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), `"snoozed"`) {
+		t.Fatalf("a key with mail:read: %d %s", recorder.Code, recorder.Body)
+	}
+	if recorder := listAs(key(models.CapMailWrite)); recorder.Code != http.StatusForbidden || strings.Contains(recorder.Body.String(), `"snoozed"`) {
+		t.Fatalf("a key without mail:read: %d %s", recorder.Code, recorder.Body)
+	}
+	if recorder := listAs(&auth.Claims{AccountID: fixture.mailbox.ID + 100000}); recorder.Code != http.StatusNotFound {
+		t.Fatalf("another account: %d %s", recorder.Code, recorder.Body)
 	}
 }

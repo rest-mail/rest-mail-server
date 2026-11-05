@@ -27,7 +27,8 @@ type fakeExportMessage struct {
 }
 
 // fakeExportServer answers the three public routes export-maildir reads, one
-// message per list page so the cursor is followed.
+// message per list page so the cursor is followed. Like the real listing, it
+// leaves out a message with a snoozed_until unless include_snoozed=true asks.
 func fakeExportServer(t *testing.T, folders []string, messages []fakeExportMessage) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -51,7 +52,8 @@ func fakeExportServer(t *testing.T, folders []string, messages []fakeExportMessa
 			}
 			var inFolder []map[string]any
 			for _, m := range messages {
-				if m.folder == folder {
+				_, snoozed := m.listed["snoozed_until"]
+				if m.folder == folder && (!snoozed || r.URL.Query().Get("include_snoozed") == "true") {
 					inFolder = append(inFolder, m.listed)
 				}
 			}
@@ -150,6 +152,40 @@ func TestExportMaildirReadsBackThroughImportMaildir(t *testing.T) {
 		if m.Folder != w.folder || !reflect.DeepEqual(flags, w.flags) || !m.InternalDate.Equal(w.date) {
 			t.Errorf("%s: folder %q flags %v date %v; want %q %v %v", m.RawMessage[:20], m.Folder, flags, m.InternalDate, w.folder, w.flags, w.date)
 		}
+	}
+}
+
+// A snooze hides a thread from the app's folder lists until its deadline; it
+// does not take the thread's mail out of an export (#1599).
+func TestExportMaildirIncludesASnoozedThread(t *testing.T) {
+	date := time.Date(2021, 3, 4, 5, 6, 7, 0, time.UTC)
+	awake := []byte("Subject: awake\r\n\r\nawake\r\n")
+	snoozed := []byte("Subject: snoozed\r\n\r\nsnoozed\r\n")
+	alone := []byte("Subject: alone in its folder\r\n\r\nalone\r\n")
+	until := map[string]any{"snoozed_until": date.AddDate(10, 0, 0)}
+	srv := fakeExportServer(t, []string{"INBOX", "Archive"}, []fakeExportMessage{
+		{"INBOX", listedMessage(1, awake, date, nil), awake},
+		{"INBOX", listedMessage(2, snoozed, date, until), snoozed},
+		{"Archive", listedMessage(3, alone, date, until), alone},
+	})
+	defer srv.Close()
+
+	root := filepath.Join(t.TempDir(), "Maildir")
+	var out, stderr bytes.Buffer
+	if code := runExportMaildir(context.Background(), []string{"--server", srv.URL, "--account-id", "12", "--path", root}, "private-test-key", srv.Client(), &out, &stderr); code != exitOK {
+		t.Fatalf("export: code=%d err=%s", code, &stderr)
+	}
+	var got []string
+	if err := mailimport.Maildir(context.Background(), root, 1<<20, func(_ string, m apitypes.ImportMessageBody) error {
+		got = append(got, m.Folder+": "+string(m.RawMessage))
+		return nil
+	}, nil); err != nil {
+		t.Fatalf("import-maildir cannot read the export: %v", err)
+	}
+	slices.Sort(got)
+	want := []string{"Archive: " + string(alone), "INBOX: " + string(awake), "INBOX: " + string(snoozed)}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("exported %q, want %q", got, want)
 	}
 }
 

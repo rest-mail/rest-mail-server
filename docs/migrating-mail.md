@@ -246,7 +246,7 @@ restmail import-maildir --server https://new.example.com --account-id 7 --path .
 holds `mail:read` on its own mailbox, and the admin role holds it at its scope.
 The command reads only existing routes, each with its usual `mail:read` check and
 request audit: `GET /api/v1/accounts/{id}/folders`,
-`GET /api/v1/accounts/{id}/folders/{folder}/messages?include_imap_deleted=true`
+`GET /api/v1/accounts/{id}/folders/{folder}/messages?include_imap_deleted=true&include_snoozed=true`
 and `GET /api/v1/messages/{id}/raw`. It adds no audit entry of its own.
 
 INBOX becomes the Maildir root and every other folder a Maildir++ folder, `/`
@@ -278,8 +278,7 @@ remain. `--max-message-bytes` (default and maximum 1 GiB) refuses larger
 messages. `--json` writes one summary (`folders`, `messages`, `bytes`) or one
 error.
 
-Messages in a snoozed thread are not listed by the API until the snooze ends,
-so the export does not contain them
-([#1599](https://github.com/rest-mail/rest-mail-server/issues/1599)). Contacts,
+The messages of a snoozed thread are exported like any others; the snooze itself
+is not kept, so the thread is back in its folder after an import. Contacts,
 calendars and settings are not part of this export
 ([#1577](https://github.com/rest-mail/rest-mail-server/issues/1577)).
