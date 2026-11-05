@@ -67,7 +67,7 @@ type fieldReader struct {
 
 // fieldBufferDoubles is as far as the buffer grows by doubling. A field longer than that is hostile
 // or very nearly so, and the message's own size holds it with no more steps.
-const fieldBufferDoubles = 64 << 10
+const fieldBufferDoubles = 32 << 10
 
 func (r *fieldReader) room(need int) {
 	if cap(r.line)-len(r.line) >= need {
