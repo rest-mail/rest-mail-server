@@ -48,6 +48,10 @@ GO_TEST = textwrap.dedent("""
 """)
 
 
+# Long enough to build the standard library with an empty cache on a loaded machine.
+GO_TEST_STARTS_SECONDS = 600
+
+
 def wait_for(condition, seconds=30):
     deadline = time.monotonic() + seconds
     while time.monotonic() < deadline:
@@ -73,15 +77,64 @@ class ScratchRunTests(unittest.TestCase):
         self.base = self.temp / "scratch"
         self.ready = self.temp / "ready"
 
-    def start(self, *command, **environment):
+    def start(self, *command, output=None, **environment):
         process = subprocess.Popen(
             [sys.executable, "-B", str(SCRIPT), *command],
             env=dict(os.environ, RESTMAIL_SCRATCH=str(self.base), **environment),
             start_new_session=True,
+            stdout=output,
+            stderr=subprocess.STDOUT if output else None,
         )
         self.addCleanup(process.wait)
         self.addCleanup(lambda: process.poll() is None and process.kill())
         return process
+
+    def wait_for_go_test(self, process, log):
+        """Whether go test wrote its file; failing says why, as soon as that is known."""
+        start = time.monotonic()
+        def state():
+            return (
+                f"go is {shutil.which('go')}, ran for {time.monotonic() - start:.0f} s, "
+                f"exit code {process.poll()}, output:\n{log.read_text()}"
+            )
+
+        def started():
+            return self.ready.exists() and self.ready.read_text()
+
+        def over():
+            return started() or process.poll() is not None
+
+        if not wait_for(over, GO_TEST_STARTS_SECONDS):
+            message = f"go test never started: {state()}"
+            # The other subtest must not wait behind this one.
+            process.kill()
+            self.fail(message)
+        if not started():
+            self.fail(f"go test exited before it started: {state()}")
+
+    def started_with_log(self, code):
+        log = self.temp / "command.log"
+        with log.open("wb") as output:
+            process = self.start(sys.executable, "-c", code, output=output)
+        return process, log
+
+    def test_a_go_test_that_exits_is_reported_at_once_with_its_code_and_output(self):
+        process, log = self.started_with_log("print('no such package', flush=True); raise SystemExit(3)")
+        with self.assertRaises(self.failureException) as failed:
+            self.wait_for_go_test(process, log)
+        self.assertIn("go test exited before it started", str(failed.exception))
+        self.assertIn("exit code 3", str(failed.exception))
+        self.assertIn("no such package", str(failed.exception))
+
+    def test_a_go_test_that_never_starts_is_reported_with_what_it_printed(self):
+        process, log = self.started_with_log("print('still building', flush=True); import time; time.sleep(300)")
+        self.assertTrue(wait_for(lambda: log.read_text()), "the command never printed")
+        with mock.patch(f"{__name__}.GO_TEST_STARTS_SECONDS", 1):
+            with self.assertRaises(self.failureException) as failed:
+                self.wait_for_go_test(process, log)
+        self.assertIn("go test never started", str(failed.exception))
+        self.assertIn("exit code None", str(failed.exception))
+        self.assertIn("still building", str(failed.exception))
 
     def hold(self):
         process = self.start(sys.executable, "-c", HOLD, str(self.ready))
@@ -231,7 +284,8 @@ class ScratchRunTests(unittest.TestCase):
         self.assert_nothing_left()
 
     def test_killing_go_test_part_way_leaves_no_temporary_directory(self):
-        # Lint runs these tests before it sets Go up; the test jobs and the local gate have it.
+        # Lint runs these tests before it sets Go up. The runner image's own go is on PATH
+        # by then, so this runs there too, on whichever version that image has.
         if shutil.which("go") is None:
             self.skipTest("go is not installed")
         module = self.temp / "module"
@@ -244,22 +298,20 @@ class ScratchRunTests(unittest.TestCase):
                 previous = Path.cwd()
                 os.chdir(module)
                 self.addCleanup(os.chdir, previous)
-                process = self.start(
-                    "go",
-                    "test",
-                    "-count=1",
-                    "-timeout",
-                    "3m",
-                    ".",
-                    HOLD_READY=str(self.ready),
-                )
+                log = self.temp / f"go-test-{number.name}.log"
+                with log.open("wb") as output:
+                    process = self.start(
+                        "go",
+                        "test",
+                        "-count=1",
+                        "-timeout",
+                        "15m",
+                        ".",
+                        output=output,
+                        HOLD_READY=str(self.ready),
+                    )
                 os.chdir(previous)
-                self.assertTrue(
-                    wait_for(
-                        lambda: self.ready.exists() and self.ready.read_text(), 180
-                    ),
-                    "go test never started",
-                )
+                self.wait_for_go_test(process, log)
                 # go-build* and the test's own TempDir are both under the run's directory.
                 self.assertEqual(Path(self.ready.read_text()).parents[2], self.base)
                 process.send_signal(number)
