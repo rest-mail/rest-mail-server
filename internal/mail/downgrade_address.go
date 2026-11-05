@@ -11,29 +11,6 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/mailaddr"
 )
 
-// downgradeAddressField makes an address field 7-bit by changing only what holds an
-// 8-bit octet, in the order RFC 6857 section 3.2.1 gives. Everything else stays as it
-// was sent, folding included.
-//
-//   - A comment or display name becomes encoded-words (sections 3.1.3, 3.1.5).
-//   - An internationalized domain becomes its A-label (section 3.1.6).
-//   - An address with no 7-bit form, because of its local part or a domain with no
-//     A-label, becomes an encoded-word and " :;" after its display name (section
-//     3.1.8). A group holding one becomes its display name, its whole group-list as
-//     encoded-words and " :;", since a group can't nest (section 3.1.7).
-//
-// value is still folded, and column is where it starts on its line. ok is false when
-// it doesn't read as an address list.
-func downgradeAddressField(column int, value string) (string, bool) {
-	var scan addressScan
-	var b strings.Builder
-	b.Grow(len(value))
-	if !scan.field(&b, column, value) {
-		return "", false
-	}
-	return b.String(), true
-}
-
 // field writes the downgraded value to out, or nothing and false when it doesn't read as a list. Only
 // one mailbox's or group's tokens are held at a time, because a list of very many names would
 // otherwise hold several times its size in tokens each time it's measured.
@@ -45,7 +22,19 @@ func (s *addressScan) field(out wordSink, column int, value string) bool {
 	return true
 }
 
-// write writes a value that reads as a list.
+// write makes an address field 7-bit by changing only what holds an
+// 8-bit octet, in the order RFC 6857 section 3.2.1 gives. Everything else stays as it
+// was sent, folding included.
+//
+//   - A comment or display name becomes encoded-words (sections 3.1.3, 3.1.5).
+//   - An internationalized domain becomes its A-label (section 3.1.6).
+//   - An address with no 7-bit form, because of its local part or a domain with no
+//     A-label, becomes an encoded-word and " :;" after its display name (section
+//     3.1.8). A group holding one becomes its display name, its whole group-list as
+//     encoded-words and " :;", since a group can't nest (section 3.1.7).
+//
+// value is still folded, and column is where it starts on its line.
+// value has to read as a list.
 func (s *addressScan) write(out wordSink, column int, value string) {
 	lastBracket := strings.LastIndexByte(value, ']')
 	w := &addressWriter{out: out, line: column}
