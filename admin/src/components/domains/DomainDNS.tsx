@@ -1,10 +1,125 @@
 import { useCallback, useEffect, useState } from "react";
-import { CheckCircle, XCircle, AlertCircle, RefreshCw } from "lucide-react";
+import {
+  CheckCircle,
+  XCircle,
+  AlertCircle,
+  RefreshCw,
+  Copy,
+} from "lucide-react";
 import { apiV1 } from "../../lib/api";
 import { readJSON } from "../../lib/api-contract";
 import type { JsonResponse } from "../../lib/api-contract";
+import { DKIM_PROBLEM_TEXT } from "./dkimProblems";
 
 type DNSCheckResponse = JsonResponse<"domainDNSCheck", 200>["data"];
+type DNSRecordCheck = DNSCheckResponse["records"][number];
+function CopyButton({ value, label }: { value: string; label: string }) {
+  const [status, setStatus] = useState("");
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(value);
+      setStatus("Copied");
+    } catch {
+      setStatus("Copy unavailable. Select the value to copy it manually.");
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-2 shrink-0">
+      <button
+        type="button"
+        onClick={copy}
+        aria-label={label}
+        className="flex items-center gap-1 px-3 py-1.5 rounded text-xs"
+        style={{
+          border: "1px solid var(--gray-border)",
+          color: "var(--black-soft)",
+        }}
+      >
+        <Copy className="w-3.5 h-3.5" />
+        Copy
+      </button>
+      {status && (
+        <span
+          role="status"
+          className="text-xs"
+          style={{ color: "var(--gray-secondary)" }}
+        >
+          {status}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function DKIMPublishDetails({ record }: { record: DNSRecordCheck }) {
+  if (!record.expected && !record.problem) return null;
+  const problemText = record.problem
+    ? DKIM_PROBLEM_TEXT[record.problem]
+    : undefined;
+
+  return (
+    <div className="mt-3 space-y-2">
+      {problemText && (
+        <p
+          className="text-sm"
+          style={{
+            color:
+              record.problem === "missing"
+                ? "var(--black-soft)"
+                : "var(--red-primary)",
+          }}
+        >
+          {problemText}
+        </p>
+      )}
+      {record.expected && (
+        <div className="space-y-2">
+          <p className="text-sm" style={{ color: "var(--black-soft)" }}>
+            {record.status === "ok"
+              ? "The published TXT record matches:"
+              : "Publish this TXT record:"}
+          </p>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-xs" style={{ color: "var(--gray-secondary)" }}>
+                Name
+              </p>
+              <code
+                className="text-sm font-mono break-all select-all"
+                style={{ color: "var(--black-soft)" }}
+              >
+                {record.name}
+              </code>
+            </div>
+            <CopyButton value={record.name} label="Copy DKIM record name" />
+          </div>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <p className="text-xs" style={{ color: "var(--gray-secondary)" }}>
+                Value
+              </p>
+              <code
+                className="block p-3 rounded text-sm font-mono break-all select-all"
+                style={{
+                  backgroundColor: "var(--bg-surface)",
+                  color: "var(--black-soft)",
+                }}
+              >
+                {record.expected}
+              </code>
+            </div>
+            <CopyButton
+              value={record.expected}
+              label="Copy DKIM record value"
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface DomainDNSProps {
   domainId: number;
@@ -281,7 +396,7 @@ export function DomainDNS({ domainId, accessToken }: DomainDNSProps) {
                 {getStatusBadge(record.status)}
               </div>
 
-              {record.expected && (
+              {record.expected && record.type !== "DKIM" && (
                 <RecordValue label="Publish this value" value={record.expected} />
               )}
 
@@ -290,13 +405,17 @@ export function DomainDNS({ domainId, accessToken }: DomainDNSProps) {
                   <RecordValue label="Found" value={record.value} />
                 )}
 
-              {record.message && (
+              {record.message && !(record.type === "DKIM" && record.problem) && (
                 <p
                   style={{ color: "var(--gray-secondary)" }}
                   className="text-sm mt-2"
                 >
                   {record.message}
                 </p>
+              )}
+
+              {record.type === "DKIM" && (
+                <DKIMPublishDetails record={record} />
               )}
             </div>
           ))

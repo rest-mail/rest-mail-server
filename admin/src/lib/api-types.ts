@@ -3334,6 +3334,8 @@ export interface components {
             message?: string;
             name: string;
             /** @enum {string} */
+            problem?: "missing" | "malformed" | "different_key_type" | "different_key" | "more_than_one" | "key_unreadable";
+            /** @enum {string} */
             status: "ok" | "missing" | "different" | "error";
             type: string;
             value?: string;
@@ -15026,6 +15028,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description request_too_large: the body is over the API's size cap */
             413: {
                 headers: {
@@ -15319,6 +15330,15 @@ export interface operations {
             };
             /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -16442,6 +16462,15 @@ export interface operations {
             };
             /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

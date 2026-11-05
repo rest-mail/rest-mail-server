@@ -12733,6 +12733,138 @@
     }
   },
   "domainDNSCheck": {
+    "dkim_record_differs": {
+      "description": "The domain stale.test signs with the RFC 8032 test Ed25519 key under selector rm2026, but its DKIM record still carries another key. The check names the record to publish in expected, derived from the stored key's public half, and says the published key differs; no private key material is answered with.",
+      "request": {
+        "path": {
+          "id": 7
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "domain": "stale.test",
+            "records": [
+              {
+                "type": "MX",
+                "name": "stale.test",
+                "status": "ok",
+                "value": "10 mail.example.net",
+                "expected": "10 mail.example.net"
+              },
+              {
+                "type": "SPF",
+                "name": "stale.test",
+                "status": "ok",
+                "value": "v=spf1 mx -all",
+                "expected": "v=spf1 mx -all"
+              },
+              {
+                "type": "DMARC",
+                "name": "_dmarc.stale.test",
+                "status": "ok",
+                "value": "v=DMARC1; p=none; rua=mailto:postmaster@stale.test",
+                "expected": "v=DMARC1; p=none; rua=mailto:postmaster@stale.test"
+              },
+              {
+                "type": "DKIM",
+                "name": "rm2026._domainkey.stale.test",
+                "status": "different",
+                "value": "v=DKIM1; k=ed25519; p=A6EHv/POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg=",
+                "expected": "v=DKIM1; k=ed25519; p=11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=",
+                "message": "The published value differs from the value to publish. It carries another public key (p=) than the domain signs with.",
+                "problem": "different_key"
+              },
+              {
+                "type": "TLS-RPT",
+                "name": "_smtp._tls.stale.test",
+                "status": "ok",
+                "value": "v=TLSRPTv1; rua=https://mail.example.net/.well-known/smtp-tlsrpt",
+                "expected": "v=TLSRPTv1; rua=https://mail.example.net/.well-known/smtp-tlsrpt"
+              },
+              {
+                "type": "SRV",
+                "name": "_submissions._tcp.stale.test",
+                "status": "ok",
+                "value": "0 1 465 mail.example.net",
+                "expected": "0 1 465 mail.example.net"
+              },
+              {
+                "type": "SRV",
+                "name": "_imaps._tcp.stale.test",
+                "status": "ok",
+                "value": "0 1 993 mail.example.net",
+                "expected": "0 1 993 mail.example.net"
+              },
+              {
+                "type": "SRV",
+                "name": "_pop3s._tcp.stale.test",
+                "status": "ok",
+                "value": "0 1 995 mail.example.net",
+                "expected": "0 1 995 mail.example.net"
+              },
+              {
+                "type": "SRV",
+                "name": "_submission._tcp.stale.test",
+                "status": "ok",
+                "value": "0 0 0 .",
+                "expected": "0 0 0 ."
+              },
+              {
+                "type": "SRV",
+                "name": "_imap._tcp.stale.test",
+                "status": "ok",
+                "value": "0 0 0 .",
+                "expected": "0 0 0 ."
+              },
+              {
+                "type": "SRV",
+                "name": "_pop3._tcp.stale.test",
+                "status": "ok",
+                "value": "0 0 0 .",
+                "expected": "0 0 0 ."
+              },
+              {
+                "type": "CNAME",
+                "name": "autoconfig.stale.test",
+                "status": "ok",
+                "value": "mail.example.net",
+                "expected": "mail.example.net"
+              },
+              {
+                "type": "CNAME",
+                "name": "autodiscover.stale.test",
+                "status": "ok",
+                "value": "mail.example.net",
+                "expected": "mail.example.net"
+              },
+              {
+                "type": "MTA-STS",
+                "name": "_mta-sts.stale.test",
+                "status": "missing",
+                "message": "No MTA-STS TXT record found. It is optional, and this domain has no active policy yet."
+              },
+              {
+                "type": "A",
+                "name": "mail.example.net",
+                "status": "ok",
+                "value": "203.0.113.25",
+                "message": "REST Mail does not know its own public address, so this shows only that the mail host has one. The person who runs the server publishes it."
+              },
+              {
+                "type": "PTR",
+                "name": "203.0.113.25",
+                "status": "ok",
+                "value": "mail.example.net",
+                "expected": "mail.example.net"
+              }
+            ],
+            "summary": "14/16 records verified"
+          }
+        }
+      }
+    },
     "found": {
       "description": "The complete production response compares what real bounded local UDP DNS exchanges find with the records the domain must publish, including the stored signing selector's key. The optional MTA-STS record is missing, since the domain has no active policy, and the server cannot compare its own address. No external DNS service is consulted.",
       "request": {

@@ -135,7 +135,7 @@ func aCorrectZone(domain string) publishedZone {
 }
 
 type checkedRecord struct {
-	Type, Name, Status, Value, Expected, Message string
+	Type, Name, Status, Value, Expected, Message, Problem string
 }
 
 type checkedDomain struct {
