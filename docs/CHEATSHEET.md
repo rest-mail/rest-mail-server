@@ -113,20 +113,20 @@ chore website:init | :up | :down     # the marketing website (separate subprojec
 
 ## Edit the extracted website
 
-The website's `master` branch in [rest-mail/website](https://github.com/rest-mail/website)
+The website's `main` branch in [rest-mail/website](https://github.com/rest-mail/website)
 is authoritative. The helpers use a separate, gitignored working copy at
 `.workspace/website`; they never commit website source to this server repository.
 Git and Node >=22.12 (with npm) are needed for development.
 
 ```sh
-chore website:dev                    # clone master if missing, npm ci, npm run dev
+chore website:dev                    # clone main if missing, npm ci, npm run dev
 # Open the URL printed by upstream Vite (normally http://localhost:5173).
 # Ctrl-C stops the foreground dev server.
 EDITOR='code --wait' chore website:edit
 # Prefer a website branch for review before publishing changes:
 git -C .workspace/website switch -c fix/site-copy
 chore website:push --message "fix: clarify the site copy"
-chore website:reset                  # fetch master; refuse to lose edits or local commits
+chore website:reset                  # fetch main; refuse to lose edits or local commits
 ```
 
 `website:dev` follows the current upstream package lock and live-reload script.
@@ -150,12 +150,12 @@ To deliberately discard work, inspect that exact copy first:
 
 ```sh
 git -C .workspace/website status --short
-git -C .workspace/website log --oneline origin/master..HEAD
+git -C .workspace/website log --oneline origin/main..HEAD
 chore website:reset --discard-local-work
 ```
 
 The flag explicitly permits resetting the **current branch** to fetched upstream
-`master`, losing local commits and tracked edits, and deleting nonignored untracked
+`main`, losing local commits and tracked edits, and deleting nonignored untracked
 files/directories (`git clean -fd`). Ignored files such as dependencies are kept
 by the clean step. Without it, dirty work and commits absent from upstream block
 the reset. Save wanted work on another branch or outside the copy first.
