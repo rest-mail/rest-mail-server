@@ -3,6 +3,7 @@
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -193,28 +194,47 @@ class Summary(unittest.TestCase):
         self.assertNotIn("example_pairs.sh", workflow)
         self.assertIn("chore contract:pairs\n", tasks["contract"]["cmds"][0])
         pairs = tasks["contract:pairs"]["cmds"][0]
-        self.assertIn("tests/contract/example_pairs.sh -run '^(", pairs)
+        self.assertIn("tests/contract/example_pairs.sh -run 'WithVertrag$'", pairs)
         self.assertTrue(os.access(ROOT / "tests/contract/example_pairs.sh", os.X_OK))
 
-    def test_the_example_pairs_name_every_vertrag_test(self):
-        # A *WithVertrag test skips without the binary, so one this list misses
+    def test_the_example_pairs_pattern_selects_every_vertrag_test(self):
+        # A *WithVertrag test skips without the binary, so one this pattern misses
         # looks fine everywhere and proves nothing.
         tasks = yaml.safe_load((ROOT / "chores.yml").read_text())["tasks"]
-        named = set(re.findall(r"Test\w+", tasks["contract:pairs"]["cmds"][0]))
+        command = next(
+            line
+            for line in tasks["contract:pairs"]["cmds"][0].splitlines()
+            if line.strip().startswith("tests/contract/example_pairs.sh ")
+        )
+        arguments = shlex.split(command)
+        pattern = arguments[arguments.index("-run") + 1]
+        self.assertEqual(pattern, "WithVertrag$")
         written = set()
         for path in (ROOT / "internal/api").rglob("*_test.go"):
             written.update(
-                re.findall(r"^func (Test\w+WithVertrag)\(", path.read_text(), re.MULTILINE)
+                re.findall(r"^func (Test\w*WithVertrag)\(", path.read_text(), re.MULTILINE)
             )
-        self.assertEqual(sorted(written - named), [], "no run sends these")
-        self.assertEqual(sorted(named - written), [], "these no longer exist")
+        self.assertTrue(written)
+        self.assertEqual(
+            sorted(name for name in written if not re.search(pattern, name)),
+            [],
+            "no run sends these",
+        )
 
     def test_every_test_that_needs_vertrag_is_in_the_example_pairs(self):
         # The same trap under any other name: TestContactReplyTimeContractExchanges read the
         # binary, skipped without it, and no CI step ever set it for that test.
         tasks = yaml.safe_load((ROOT / "chores.yml").read_text())["tasks"]
-        named = set(re.findall(r"Test\w+", tasks["contract:pairs"]["cmds"][0]))
+        command = next(
+            line
+            for line in tasks["contract:pairs"]["cmds"][0].splitlines()
+            if line.strip().startswith("tests/contract/example_pairs.sh ")
+        )
+        arguments = shlex.split(command)
+        pattern = arguments[arguments.index("-run") + 1]
         functions = {}
+        # The wrapper builds only this package, so a match anywhere else is not sent.
+        sent = set()
         for top in ("internal", "cmd"):
             for path in (ROOT / top).rglob("*_test.go"):
                 for match in re.finditer(
@@ -222,14 +242,17 @@ class Summary(unittest.TestCase):
                     path.read_text(),
                     re.MULTILINE | re.DOTALL,
                 ):
-                    functions[match.group(1)] = match.group(0)
+                    name = match.group(1)
+                    functions[name] = match.group(0)
+                    if path.parent == ROOT / "internal/api" and re.search(pattern, name):
+                        sent.add(name)
         readers = {name for name, body in functions.items() if "RESTMAIL_VERTRAG_BINARY" in body}
         self.assertTrue(readers, "no test reads the binary: this check looks in the wrong place")
         unsent = [
             name
             for name, body in functions.items()
             if name.startswith("Test")
-            and name not in named
+            and name not in sent
             and (name in readers or any(re.search(rf"\b{reader}\b", body) for reader in readers))
         ]
         self.assertEqual(sorted(unsent), [], "these skip in every run")
@@ -527,6 +550,104 @@ class PhaseCommand(unittest.TestCase):
 
 
 class ExamplePairsCommand(unittest.TestCase):
+    def run_pairs(self, pattern="WithVertrag$", shards=3, **settings):
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            (work / "internal/api").mkdir(parents=True)
+            go = work / "go"
+            go.write_text('#!/bin/sh\ncp "$FAKE_API_TEST" "$4"\n')
+            go.chmod(0o755)
+            api_test = work / "fake-api.test"
+            api_test.write_text(
+                f"#!{sys.executable}\n"
+                "import json, os, re, sys\n"
+                "from pathlib import Path\n"
+                "assert Path.cwd().name == 'api'\n"
+                "names = ['TestAWithVertrag', 'TestBWithVertrag', 'TestCWithVertrag',\n"
+                "         'TestDWithVertrag', 'TestWithVertrag', 'TestOther',\n"
+                "         'BenchmarkOtherWithVertrag', 'ExampleOtherWithVertrag']\n"
+                "if sys.argv[1] == '-test.list':\n"
+                "    if os.environ.get('LIST_EXIT'):\n"
+                "        sys.exit(int(os.environ['LIST_EXIT']))\n"
+                "    pattern = re.compile(sys.argv[2])\n"
+                "    print('\\n'.join(name for name in names if pattern.search(name)))\n"
+                "else:\n"
+                "    pattern = re.compile(sys.argv[sys.argv.index('-test.run') + 1])\n"
+                "    selected = [name for name in names if pattern.search(name)]\n"
+                "    with open(os.environ['CALLS'], 'a') as calls:\n"
+                "        calls.write(json.dumps(selected) + '\\n')\n"
+                "    if os.environ.get('FAIL_TEST') in selected:\n"
+                "        sys.exit(1)\n"
+            )
+            api_test.chmod(0o755)
+            calls = work / "calls"
+            result = subprocess.run(
+                [
+                    "bash",
+                    str(ROOT / "tests/contract/example_pairs.sh"),
+                    "-run",
+                    pattern,
+                    str(shards),
+                ],
+                cwd=work,
+                env=dict(
+                    os.environ,
+                    PATH=str(work) + os.pathsep + os.environ["PATH"],
+                    FAKE_API_TEST=str(api_test),
+                    CALLS=str(calls),
+                    **settings,
+                ),
+                text=True,
+                capture_output=True,
+                timeout=600,
+                check=False,
+            )
+            runs = (
+                [json.loads(line) for line in calls.read_text().splitlines()]
+                if calls.exists()
+                else []
+            )
+            return result, runs
+
+    def test_pattern_discovers_tests_and_shards_each_match_once(self):
+        result, runs = self.run_pairs()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(sorted(map(len, runs)), [1, 2, 2])
+        self.assertEqual(
+            sorted(name for run in runs for name in run),
+            [
+                "TestAWithVertrag",
+                "TestBWithVertrag",
+                "TestCWithVertrag",
+                "TestDWithVertrag",
+                "TestWithVertrag",
+            ],
+        )
+
+    def test_explicit_names_still_support_narrowed_runs(self):
+        result, runs = self.run_pairs(
+            pattern="^(TestBWithVertrag|TestCWithVertrag)$", shards=5
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(sorted(runs), [["TestBWithVertrag"], ["TestCWithVertrag"]])
+
+    def test_no_matches_fail_before_running_shards(self):
+        result, runs = self.run_pairs(pattern="MissingWithVertrag$")
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertIn("no tests match pattern:", result.stderr)
+        self.assertEqual(runs, [])
+
+    def test_listing_errors_fail_before_running_shards(self):
+        result, runs = self.run_pairs(LIST_EXIT="23")
+        self.assertEqual(result.returncode, 23, result.stderr)
+        self.assertEqual(runs, [])
+
+    def test_failed_shard_fails_the_command(self):
+        result, runs = self.run_pairs(FAIL_TEST="TestBWithVertrag")
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertEqual(len(runs), 3)
+        self.assertIn("FAILED", result.stdout)
+
     def test_stray_arguments_are_refused_before_building(self):
         # CI once passed `-count=1 -v` after the pattern: the shard count became
         # "-count=1", no shard ran, and the step still passed.

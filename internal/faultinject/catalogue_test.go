@@ -141,7 +141,11 @@ func checkPatchFault(t *testing.T, f catalogueEntry) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !regexp.MustCompile(`example_pairs\.sh -run '.*\b` + regexp.QuoteMeta(f.Test) + `\b`).Match(chores) {
+	selection := regexp.MustCompile(`example_pairs\.sh -run '([^']+)'`).FindSubmatch(chores)
+	if selection == nil {
+		t.Fatal("chores.yml: contract:pairs does not run example_pairs.sh with a pattern")
+	}
+	if !regexp.MustCompile(string(selection[1])).MatchString(f.Test) || !declaredInAPITests(t, f.Test) {
 		t.Errorf("%s: %s is not a test chore contract:pairs requires", f.Name, f.Test)
 	}
 	raw, err := os.ReadFile("../../openapi-example.json")
@@ -156,6 +160,28 @@ func checkPatchFault(t *testing.T, f catalogueEntry) {
 	if _, ok := pairs[f.Operation][pair]; !ok {
 		t.Errorf("%s: subtest %q names no example pair of %s", f.Name, f.Subtest, f.Operation)
 	}
+}
+
+// declaredInAPITests says whether internal/api, the one package the example
+// pairs run builds, declares this test. The pattern alone would also match a
+// test that was renamed or removed.
+func declaredInAPITests(t *testing.T, name string) bool {
+	t.Helper()
+	files, err := filepath.Glob("../api/*_test.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	declaration := regexp.MustCompile(`(?m)^func ` + regexp.QuoteMeta(name) + `\(`)
+	for _, file := range files {
+		source, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if declaration.Match(source) {
+			return true
+		}
+	}
+	return false
 }
 
 // Every source file of this package needs the faultinject tag, so a normal
