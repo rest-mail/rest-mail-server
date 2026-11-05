@@ -16,8 +16,10 @@ import json
 import os
 import re
 from pathlib import Path
+import shlex
 import stat
 import subprocess
+import sys
 import tempfile
 import textwrap
 import threading
@@ -380,7 +382,6 @@ class JunitTests(unittest.TestCase):
 # Writes the JUnit report named in its --config, as Vertrag would, with the
 # verdict FAKE_FAILURES asks for, and records its arguments.
 FAKE_VERTRAG = textwrap.dedent('''\
-    #!/usr/bin/env python3
     import os, sys, yaml
     args = sys.argv[1:]
     with open(os.environ["CALLS"], "a") as calls:
@@ -418,7 +419,9 @@ class ContractStepTests(unittest.TestCase):
         self.addCleanup(directory.cleanup)
         self.work = Path(directory.name)
         self.vertrag = self.work / "vertrag"
-        self.vertrag.write_text(FAKE_VERTRAG)
+        fake = self.work / "fake_vertrag.py"
+        fake.write_text(FAKE_VERTRAG)
+        self.vertrag.write_text(f'#!/bin/sh\nexec {shlex.quote(sys.executable)} {shlex.quote(str(fake))} "$@"\n')
         self.vertrag.chmod(self.vertrag.stat().st_mode | stat.S_IEXEC)
 
     def stage(self, **state):
@@ -446,6 +449,16 @@ class ContractStepTests(unittest.TestCase):
         self.assertEqual(config["endpoint"], f"http://127.0.0.1:{self.server.server_address[1]}")
         self.assertEqual(json.loads((out / "openapi.json").read_text()), DESCRIPTION)
         self.assertTrue((out / "examples.log").read_text().startswith("$ " + str(self.vertrag)))
+
+    def test_the_fake_runs_whatever_python3_the_path_finds(self):
+        # The fake needs PyYAML, as this file does. A python3 on the PATH without
+        # it made these tests fail on a machine whose CI passed them: CI's own
+        # python3 has PyYAML. So the fake runs on this file's interpreter.
+        empty = self.work / "no-python-here"
+        empty.mkdir()
+        with patch.dict(os.environ, {"PATH": str(empty)}):
+            detail = self.run_step(description=DESCRIPTION)
+        self.assertIn("transactions=3,failed=0", detail)
 
     def test_a_failed_transaction_fails_the_step(self):
         with self.assertRaisesRegex(cluster_e2e.StepFailed, "Vertrag exited 1: .*failed=1"):
@@ -807,14 +820,19 @@ class RestmailPeerTests(unittest.TestCase):
                        {"msg": "queue: RESTMAIL capability detected", "host": "mail.restmail-ci2.test"})
         self.assertEqual(cluster_e2e.restmail_hops(log, "cluster-e2e@restmail-ci2.test"), ([self.URL], []))
 
-    def test_a_fallback_to_smtp_is_reported(self):
-        log = self.log({"msg": cluster_e2e.RESTMAIL_FELL_BACK, "host": "mail.restmail-ci2.test", "error": "x"})
+    def test_a_delivery_by_smtp_to_the_peers_domain_is_reported(self):
+        log = self.log({"msg": cluster_e2e.SMTP_DELIVERED, "host": "mail.restmail-ci2.test", "domain": "B.test",
+                        "transport": "authenticated"})
         self.assertEqual(cluster_e2e.restmail_hops(log, "a@b.test"), ([], ["mail.restmail-ci2.test"]))
+
+    def test_a_delivery_by_smtp_to_another_domain_is_not_the_peers(self):
+        log = self.log({"msg": cluster_e2e.SMTP_DELIVERED, "host": "mail.reference.test", "domain": "reference.test"})
+        self.assertEqual(cluster_e2e.restmail_hops(log, "a@b.test"), ([], []))
 
     def test_the_log_lines_are_the_ones_the_queue_writes(self):
         worker = (ROOT / "internal/gateway/queue/worker.go").read_text()
         self.assertIn(f'"{cluster_e2e.RESTMAIL_DELIVERED}", "url", messagesURL, "recipient"', worker)
-        self.assertIn(f'"{cluster_e2e.RESTMAIL_FELL_BACK}"', worker)
+        self.assertIn(f'"{cluster_e2e.SMTP_DELIVERED}", "host", host, "domain", item.Domain', worker)
 
     def test_only_the_peers_smtp_stamp_counts(self):
         raw = (b"Received: from mail.restmail-ci.test by mail.reference.test with ESMTPS id 1;\r\n Wed, 4 Nov 2026\r\n"
