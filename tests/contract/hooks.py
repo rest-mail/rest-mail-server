@@ -1165,6 +1165,73 @@ def a_fresh_signing_key(transaction):
         hooks.set_json(transaction, body)
 
 
+@hooks.before("requestRecoveryEmail")
+def a_fresh_recovery_address(transaction):
+    if os.environ.get("CONTRACT_AUTHORIZATION") != "1":
+        return
+    body = hooks.get_json(transaction)
+    if (
+        str(transaction.get("expected", {}).get("statusCode")) != "200"
+        or not isinstance(body, dict)
+        or body.get("email") != "unknown@example.test"
+    ):
+        return
+    body["email"] = f"contract-recovery-{time.time_ns()}@example.test"
+    hooks.set_json(transaction, body)
+
+
+def authorization_admin_success(transaction, status):
+    return (
+        os.environ.get("CONTRACT_AUTHORIZATION") == "1"
+        and str(transaction.get("expected", {}).get("statusCode")) == str(status)
+        and session_address(transaction) in (ADMIN, mfa_admin.ADDRESS)
+    )
+
+
+@hooks.before("createCertificate")
+def a_domain_for_the_authorization_certificate(transaction):
+    if not authorization_admin_success(transaction, 201):
+        return
+    body = hooks.get_json(transaction)
+    if not isinstance(body, dict) or not (
+        body.get("cert_pem") == "certificate" and body.get("key_pem") == "key"
+    ):
+        return
+    domain = fixture_call(
+        transaction,
+        "POST",
+        "/api/v1/admin/domains",
+        {"name": f"contract-certificate-{time.time_ns()}.test", "server_type": "traditional"},
+    )
+    body["domain_id"] = domain["id"]
+    hooks.set_json(transaction, body)
+
+
+@hooks.before("updateDraft")
+def a_draft_for_the_authorization_admin(transaction):
+    if not authorization_admin_success(transaction, 200):
+        return
+    path, separator, query = transaction["fullPath"].partition("?")
+    parent, _, target = path.rpartition("/")
+    if parent != "/api/v1/messages/draft" or not positive_id(target):
+        return
+    body = hooks.get_json(transaction)
+    if not isinstance(body, dict):
+        return
+    request = urllib.request.Request(
+        origin_of(transaction) + parent,
+        data=json.dumps({"from": body.get("from", ""), "subject": "Contract authorization draft"}).encode(),
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": transaction["request"]["headers"]["Authorization"],
+        },
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        draft = json.load(response)["data"]
+    transaction["fullPath"] = f"{parent}/{draft['id']}" + separator + query
+
+
 @hooks.before("createCertificate")
 def a_self_signed_certificate(transaction):
     body = hooks.get_json(transaction)

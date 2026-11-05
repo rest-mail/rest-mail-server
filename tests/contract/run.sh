@@ -169,7 +169,7 @@ authorization)
     .cache/contract-principals.json "$out/vertrag-authorization.yml" "$out/authorization.xml"
   python3 -B tests/contract/reports.py "$out/vertrag-authorization.yml" "$out/vertrag-authorization.yml" "$out/authorization" "${narrowed[@]}"
   code=0
-  "$CONTRACT_VERTRAG" run --config "$out/vertrag-authorization.yml" --sequence --phases authorization "${select[@]}" \
+  CONTRACT_AUTHORIZATION=1 "$CONTRACT_VERTRAG" run --config "$out/vertrag-authorization.yml" --sequence --phases authorization "${select[@]}" \
     >"$logs/contract-authorization.log" 2>&1 || code=$?
   cat "$logs/contract-authorization.log"
   # Vertrag's refuse list covers every cell; this holds a 404 to the routes the
