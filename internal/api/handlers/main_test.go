@@ -19,6 +19,7 @@ func TestMain(m *testing.M) {
 	// CI runs with: at the real cost, the passwords and recovery codes these
 	// tests hash and check took the package past go test's timeout. Nothing a
 	// test here checks depends on the cost, so they hash at the lowest.
+	auth.UseMinimumHashCostInTests()
 	hashPassword = minCostHashPassword
 	hashRecoveryCode = func(code string) (string, error) {
 		return minCostHashPassword(auth.NormalizeRecoveryCode(code))
