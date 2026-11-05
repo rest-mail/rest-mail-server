@@ -119,6 +119,13 @@ func TestManyParametersReadARepeatedNameAsTheWholeField(t *testing.T) {
 		"multipart/mixed" + many + "; p1=\"v1\"; boundary=B",
 		"text/plain" + many + "; p1=other; charset=y",
 		"text/plain" + many + "; p1=other; broken; charset=y",
+		"multipart/mixed" + many + "; boundary*0=A; boundary*1=B; p3=v3;; P4=\"v4\"",
+		"multipart/mixed" + many + "; boundary*0=A; boundary*0=C; boundary*1=B",
+		"multipart/mixed" + many + "; boundary*0=A; boundary*2=C",
+		"multipart/mixed" + many + "; boundary=P; boundary*1=B",
+		"multipart/mixed" + many + "; p1=other;; q=1; boundary=B",
+		"multipart/mixed" + many + "; boundary=B; p1=",
+		"text/plain" + many + "; charset*0=a; charset*2=c; charset*01=b",
 	} {
 		node := mimeNode{header: "Content-Type: " + value + "\r\n\r\n", defaultType: "application/x-default"}
 		mt, params := node.mediaType()
