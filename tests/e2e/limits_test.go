@@ -16,6 +16,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/rest-mail/rest-mail-server/tests/e2e/limitgroups"
 )
 
 // TestLimits spends every limit the API declares and checks that it answers as
@@ -58,31 +60,15 @@ func TestLimits(t *testing.T) {
 	t.Run("BodyCaps", l.bodyCaps)
 }
 
-// The limit groups, by the description of the 429 their routes declare. A 429
-// with any other description is a limit this suite does not know yet.
+// The limit groups, by the description of the 429 their routes declare.
 const (
-	authThrottleShared  = "rate_limited: too many requests to the shared authentication throttle"
-	authThrottleGrants  = "rate_limited: login's per-IP limit"
-	ownerThrottleGroup  = "rate_limited: too many requests to the owner endpoints' throttle"
-	tlsrptThrottleGroup = "rate_limited: too many reports from one address"
-	basicRefusalGroup   = "rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate"
-	apiKeyRefusalGroup  = "rate_limited: refused API keys, throttled at login's rate"
-	// handlerLimitGroup is the bare status text: what a route says when it
-	// lists 429 among its errors. The limit is its handler's (handlerLimits),
-	// or else the refused API keys' throttle in front of the admin routes.
-	handlerLimitGroup = "Too Many Requests"
+	authThrottleShared  = limitgroups.AuthThrottleShared
+	authThrottleGrants  = limitgroups.AuthThrottleGrants
+	ownerThrottleGroup  = limitgroups.OwnerThrottleGroup
+	tlsrptThrottleGroup = limitgroups.TLSRPTThrottleGroup
+	basicRefusalGroup   = limitgroups.BasicRefusalGroup
+	apiKeyRefusalGroup  = limitgroups.APIKeyRefusalGroup
 )
-
-// handlerLimits are the operations whose handler answers 429 itself, and the
-// limit each spends: the account's send rate (#184), the address's recovery
-// failures (#124), and the recovery emails asked for an address.
-var handlerLimits = map[string]string{
-	"POST /api/v1/messages/send":            "sends",
-	"POST /api/v1/messages/draft/{id}/send": "sends",
-	"POST /api/v1/messages/{id}/forward":    "sends",
-	"POST /api/v1/auth/recover":             "recovery",
-	"POST /api/v1/auth/recover/email":       "recovery email requests",
-}
 
 // The defaults the suite expects the topology to run with (config.go).
 const (
@@ -171,21 +157,16 @@ func sortOperations(ops []limitsOperation) {
 
 // declared places every declared 429 in a limit the suite spends.
 func (l *limitsRun) declared(t *testing.T) {
-	known := map[string]bool{authThrottleShared: true, authThrottleGrants: true, ownerThrottleGroup: true,
-		tlsrptThrottleGroup: true, basicRefusalGroup: true, apiKeyRefusalGroup: true,
-		handlerLimitGroup: true}
+	limits := map[string][]string{}
 	for description, ops := range l.limits {
-		if !known[description] {
-			t.Errorf("%d operations declare a 429 the limits suite does not spend (%q), e.g. %s: add the limit to tests/e2e/limits_test.go",
-				len(ops), description, ops[0])
+		for _, op := range ops {
+			limits[description] = append(limits[description], op.String())
 		}
+	}
+	for _, problem := range limitgroups.Problems(limits) {
+		t.Error(problem)
 	}
 	l.apiKeyLimited = l.limits[apiKeyRefusalGroup]
-	for _, op := range l.limits[handlerLimitGroup] {
-		if handlerLimits[op.String()] == "" {
-			t.Errorf("%s declares the bare 429, and no handler of its limits it: describe the limit where it is applied", op)
-		}
-	}
 	if len(l.limits[authThrottleShared]) == 0 || len(l.limits[basicRefusalGroup]) == 0 {
 		t.Fatalf("the description declares no sign-in or HTTP Basic limit; was it served from the right API? %v", l.limits)
 	}
