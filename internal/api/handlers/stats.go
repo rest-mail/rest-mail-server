@@ -53,7 +53,7 @@ type RecentActivity struct {
 //
 // The denominator counts inbound-MX deliveries (one row per local recipient),
 // identified by received_tls IS NOT NULL — the column is left NULL for local
-// webmail sends, IMAP APPEND, authenticated submission, and pre-existing rows.
+// webmail sends, IMAP APPEND, and authenticated submission.
 type InboundTransportSecurity struct {
 	TotalInboundMX    int     `json:"totalInboundMX"`
 	OverTLS           int     `json:"overTLS"`

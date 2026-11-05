@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
@@ -77,4 +78,28 @@ func withSession(r *http.Request, accountID uint) *http.Request {
 		return r
 	}
 	return r.WithContext(context.WithValue(r.Context(), middleware.ClaimsKey, &auth.Claims{AccountID: accountID}))
+}
+
+// A row labelled s3 is the store's, whatever its reference looks like: it never
+// reads a file from the attachment directory. This reference is not one the store
+// made, so the store refuses it, and the answer is not the filesystem path's 404.
+func TestS3AttachmentWithAPathReferenceIsNeverReadFromDisk(t *testing.T) {
+	db := openMsgDeleteTestDB(t)
+	tx := db.Begin()
+	t.Cleanup(func() { tx.Rollback() })
+	fx := seedMsgDeleteFixture(t, tx, 0)
+	msg := models.Message{MailboxID: fx.mailbox.ID, Folder: "INBOX", Sender: "sender@remote.test"}
+	if err := tx.Create(&msg).Error; err != nil {
+		t.Fatal(err)
+	}
+	att := models.Attachment{MessageID: msg.ID, Filename: "disk.bin", StorageType: "s3", StorageRef: attachmentstore.FilesystemRoot + "/a/b.bin"}
+	if err := tx.Create(&att).Error; err != nil {
+		t.Fatal(err)
+	}
+	w := httptest.NewRecorder()
+	attachmentDownload(NewAttachmentHandler(tx, attachmentstore.NewS3(s3test.New(t).Config)))(w,
+		withSession(httptest.NewRequest(http.MethodGet, "/api/v1/attachments/"+uintToStr(att.ID), nil), fx.mailbox.ID))
+	if w.Code != http.StatusInternalServerError || !strings.Contains(w.Body.String(), "attachment object") {
+		t.Fatalf("download: %d %s, want the store's refusal", w.Code, w.Body)
+	}
 }

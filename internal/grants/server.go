@@ -11,11 +11,10 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-// EnsureServerCeiling migrates the installation-wide server RBAC object into
-// the existing role/capability/grant tables. Bootstrap calls it after seeding
-// capabilities on both fresh and existing installations. The protected role
-// is the initialization marker: restarts never restore removed capabilities,
-// even when the set is empty or its grant has been removed.
+// EnsureServerCeiling creates the installation-wide server RBAC object in the
+// role/capability/grant tables. Bootstrap calls it after seeding capabilities.
+// The protected role is the initialization marker: restarts never restore
+// removed capabilities, even when the set is empty or its grant has been removed.
 func EnsureServerCeiling(db *gorm.DB) error {
 	return db.Transaction(func(tx *gorm.DB) error {
 		if err := Lock(tx); err != nil {

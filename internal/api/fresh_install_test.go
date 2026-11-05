@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
@@ -416,6 +417,76 @@ func TestFreshInstall_EndToEnd(t *testing.T) {
 
 	if res, err := audit.VerifyDB(db); err != nil || !res.OK {
 		t.Fatalf("audit chain: %+v, %v", res, err)
+	}
+}
+
+// Every way a fresh install gets a mailbox receives mail from the first
+// delivery, with nothing done on any later start (#1937): the bootstrap account,
+// and an account made through the create route on the empty database.
+func TestFreshInstall_NewAccountsReceiveMail(t *testing.T) {
+	db := createScratchDB(t, "fresh_receive")
+	useRealGrants(t)
+	serveTXT(t, map[string][]string{})
+	firstStart(t, db)
+	routers := NewRouters(db, auth.NewJWTService(routerTestSecret, 5*time.Minute, 24*time.Hour),
+		&config.Config{Environment: "test", TOTP2FAEnabled: true, MasterKey: accessMasterKey}, nil)
+	t.Cleanup(routers.Close)
+	f := &freshInstall{t: t, db: db, router: routers.Public}
+
+	// The bootstrap account chooses a password and an authenticator.
+	setup := f.signIn(freshAdmin, freshDeployPW, "")
+	f.expect(f.do(http.MethodPost, "/api/v1/auth/password", setup.bearer(),
+		fmt.Sprintf(`{"current_password":%q,"new_password":%q}`, freshDeployPW, freshAdminPW)), http.StatusOK, "choose a password", nil)
+	setup = f.signIn(freshAdmin, freshAdminPW, "")
+	var enrolled struct {
+		Secret string `json:"secret"`
+	}
+	f.expect(f.do(http.MethodPost, "/api/v1/auth/2fa/enroll", setup.bearer(), ""), http.StatusOK, "enroll", &enrolled)
+	code, err := auth.GenerateTOTPCode(enrolled.Secret, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.expect(f.do(http.MethodPost, "/api/v1/auth/2fa/confirm", setup.bearer(), fmt.Sprintf(`{"totp_code":%q}`, code)), http.StatusNoContent, "confirm", nil)
+	admin := f.signIn(freshAdmin, freshAdminPW, code)
+
+	// Its domain goes live once it has a certificate, as a fresh install's does.
+	var domain models.Domain
+	if err := db.Where("name = ?", freshDomain).First(&domain).Error; err != nil {
+		t.Fatal(err)
+	}
+	certPEM, keyPEM := freshCertificate(t, freshDomain)
+	if err := db.Create(&models.Certificate{DomainID: domain.ID, CertPEM: certPEM, KeyPEM: keyPEM,
+		Issuer: "the install", NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(90 * 24 * time.Hour)}).Error; err != nil {
+		t.Fatal(err)
+	}
+	f.expect(f.do(http.MethodPatch, fmt.Sprintf("/api/v1/admin/domains/%d", domain.ID), admin.bearer(), `{"active":true}`),
+		http.StatusOK, "put the domain live", nil)
+
+	var created freshAccount
+	f.expect(f.do(http.MethodPost, "/api/v1/accounts", admin.bearer(), `{"address":"new@fresh.test"}`), http.StatusCreated, "create new@", &created)
+	var bootstrapAccount models.Mailbox
+	if err := db.Where("address = ?", freshAdmin).First(&bootstrapAccount).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	for _, recipient := range []struct {
+		address string
+		id      uint
+	}{{freshAdmin, bootstrapAccount.ID}, {created.Address, created.ID}} {
+		subject := "to " + recipient.address
+		raw := fmt.Sprintf("From: someone@elsewhere.test\r\nTo: %s\r\nSubject: %s\r\nDate: %s\r\nMessage-ID: <%d@elsewhere.test>\r\n\r\nhello\r\n",
+			recipient.address, subject, time.Now().UTC().Format(time.RFC1123Z), recipient.id)
+		body, err := json.Marshal(map[string]any{"address": recipient.address, "sender": "someone@elsewhere.test", "subject": subject, "body_text": "hello", "raw_message": base64.StdEncoding.EncodeToString([]byte(raw))})
+		if err != nil {
+			t.Fatal(err)
+		}
+		rr := f.do(http.MethodPost, "/api/v1/messages/deliver", "", string(body))
+		if rr.Code != http.StatusCreated {
+			t.Fatalf("deliver to %s: %d %s", recipient.address, rr.Code, rr.Body.String())
+		}
+		if !f.inFolder(recipient.id, "INBOX", subject) {
+			t.Fatalf("mail to %s is not in its INBOX: %s", recipient.address, rr.Body.String())
+		}
 	}
 }
 
