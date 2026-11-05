@@ -68,7 +68,7 @@ func TestSMTPInboundStoresTextReadFromTheSource(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer client.Close()
+			defer func() { _ = client.Close() }()
 			if err := client.Hello("client.test"); err != nil {
 				t.Fatal(err)
 			}
