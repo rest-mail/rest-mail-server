@@ -28,19 +28,14 @@ func (m *mockBackend) DeliverMessageFrom(req *apiclient.DeliverRequest, content 
 // wholeDelivery is the request a streamed delivery amounts to.
 func wholeDelivery(req *apiclient.DeliverRequest, content apiclient.DeliverContent) *apiclient.DeliverRequest {
 	whole := *req
-	read := func(open func() io.Reader) []byte {
-		if open == nil {
-			return nil
-		}
-		data, err := io.ReadAll(open())
+	whole.RawMessage = nil
+	if content.RawMessage != nil {
+		data, err := io.ReadAll(content.RawMessage())
 		if err != nil {
 			panic(fmt.Sprintf("read a delivery's content: %v", err))
 		}
-		return data
+		whole.RawMessage = data
 	}
-	whole.RawMessage = read(content.RawMessage)
-	whole.BodyText = string(read(content.BodyText))
-	whole.BodyHTML = string(read(content.BodyHTML))
 	return &whole
 }
 

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"math/rand"
 	"net/http"
 	"runtime"
 	"strings"
@@ -34,17 +33,15 @@ func deliveredResponse() *http.Response {
 }
 
 // TestDeliverMessageFromSendsWhatDeliverMessageSends decodes the two requests as the API decodes
-// them. The text and the octets are what JSON can mangle: invalid UTF-8, characters straddling a
-// chunk, what encoding/json escapes, and a NUL, which the API refuses by name.
+// them. The octets are what JSON can mangle: invalid UTF-8, a source longer than a chunk, what
+// encoding/json escapes, and a NUL, which the API refuses by name.
 func TestDeliverMessageFromSendsWhatDeliverMessageSends(t *testing.T) {
-	straddling := strings.Repeat("x", jsonTextChunk-1) + "é" + strings.Repeat("y", jsonTextChunk-2) + "😀" + "tail"
-	for name, tc := range map[string]struct{ text, html, raw string }{
-		"plain":              {"body", "<b>x</b>", "From: a\r\n\r\nbody\r\n"},
-		"not UTF-8":          {"A\xe9B\x80\xff", "\xfe<\xc3", "A\xe9B\x80\xff\xfe\x00 raw"},
-		"escaped characters": {"\"\\\n\r\t\x00\x1f<>&  ", "", "x"},
-		"straddling chunks":  {straddling, straddling, straddling},
-		"cut character":      {"ends in \xe2\x82", "", "ends in \xe2\x82"},
-		"no text":            {"", "", "only the raw message"},
+	for name, raw := range map[string]string{
+		"plain":              "From: a\r\n\r\nbody\r\n",
+		"not UTF-8":          "A\xe9B\x80\xff\xfe\x00 raw",
+		"escaped characters": "\"\\\n\r\t\x00\x1f<>&  ",
+		"longer than chunks": strings.Repeat("x", 3*deliverChunk+1),
+		"cut character":      "ends in \xe2\x82",
 	} {
 		t.Run(name, func(t *testing.T) {
 			var bodies [][]byte
@@ -66,18 +63,11 @@ func TestDeliverMessageFromSendsWhatDeliverMessageSends(t *testing.T) {
 			tls := true
 			small := DeliverRequest{Address: "user@mail1.test", Sender: "s@example.com", Subject: "subject <x>", RecipientsTo: json.RawMessage(`["a@b.test"]`), ReceivedTLS: &tls}
 			whole := small
-			whole.BodyText, whole.BodyHTML, whole.RawMessage = tc.text, tc.html, []byte(tc.raw)
+			whole.RawMessage = []byte(raw)
 			if _, err := client.DeliverMessage(&whole); err != nil {
 				t.Fatalf("DeliverMessage: %v", err)
 			}
-			content := DeliverContent{RawMessage: opener(tc.raw)}
-			if tc.text != "" {
-				content.BodyText = opener(tc.text)
-			}
-			if tc.html != "" {
-				content.BodyHTML = opener(tc.html)
-			}
-			resp, err := client.DeliverMessageFrom(&small, content)
+			resp, err := client.DeliverMessageFrom(&small, DeliverContent{RawMessage: opener(raw)})
 			if err != nil {
 				t.Fatalf("DeliverMessageFrom: %v", err)
 			}
@@ -145,9 +135,7 @@ func TestDeliverMessageFromCanBeSentAgain(t *testing.T) {
 		}
 		return deliveredResponse(), nil
 	})
-	if _, err := client.DeliverMessageFrom(&DeliverRequest{Address: "a@b.test"}, DeliverContent{
-		RawMessage: opener("raw"), BodyText: opener("text"),
-	}); err != nil {
+	if _, err := client.DeliverMessageFrom(&DeliverRequest{Address: "a@b.test"}, DeliverContent{RawMessage: opener("raw")}); err != nil {
 		t.Fatal(err)
 	}
 	if len(first) == 0 || !bytes.Equal(first, second) {
@@ -191,40 +179,5 @@ func TestDeliverMessageFromReportsAFileThatCannotBeRead(t *testing.T) {
 	}}.encode(&body, []byte(`{"address":"a"}`))
 	if !errors.Is(err, broken) {
 		t.Fatalf("error = %v, want %v", err, broken)
-	}
-}
-
-// TestCopyJSONTextIsJSONMarshal compares the two over text made to go wrong at chunk edges, read
-// in pieces of every sort of size.
-func TestCopyJSONTextIsJSONMarshal(t *testing.T) {
-	random := rand.New(rand.NewSource(1437))
-	pieces := []string{"a", "é", "€", "😀", "\xe2", "\xe2\x82", "\xf0\x9f", "\xff", "\x00", "\"", "\\", "\n", "<", "&", " "}
-	for round := 0; round < 200; round++ {
-		var text strings.Builder
-		size := random.Intn(3 * jsonTextChunk)
-		for text.Len() < size {
-			text.WriteString(pieces[random.Intn(len(pieces))])
-		}
-		var reader io.Reader = strings.NewReader(text.String())
-		switch round % 3 {
-		case 1:
-			reader = iotest.OneByteReader(reader)
-		case 2:
-			reader = iotest.HalfReader(reader)
-		}
-		if round%3 == 1 && text.Len() > 4096 {
-			continue // A byte at a time needs no more than the small rounds to show what it shows.
-		}
-		var got bytes.Buffer
-		if err := copyJSONText(&got, reader); err != nil {
-			t.Fatal(err)
-		}
-		want, err := json.Marshal(text.String())
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !bytes.Equal(want[1:len(want)-1], got.Bytes()) {
-			t.Fatalf("round %d differs for %d bytes of text", round, text.Len())
-		}
 	}
 }
