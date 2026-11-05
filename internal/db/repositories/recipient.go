@@ -98,16 +98,9 @@ func ResolveRecipient(db *gorm.DB, address string, liveDomainOnly bool) (Recipie
 		seen[canonical] = true
 		var mailbox models.Mailbox
 		err = FindReceivingMailboxByAddress(db, resolved.Address, &mailbox)
+		// FindReceivingMailboxByAddress already refuses a mailbox on a domain that
+		// is not live, so every caller gets delivery's rule (#1845).
 		if err == nil {
-			if liveDomainOnly || resolved.Alias {
-				var live int64
-				if err := db.Model(&models.Domain{}).Where("id = ? AND active", mailbox.DomainID).Count(&live).Error; err != nil {
-					return Recipient{}, err
-				}
-				if live == 0 {
-					return Recipient{}, gorm.ErrRecordNotFound
-				}
-			}
 			resolved.Mailbox, resolved.Address = mailbox, mailbox.Address
 			return resolved, nil
 		}
@@ -139,15 +132,6 @@ func ResolveRecipient(db *gorm.DB, address string, liveDomainOnly bool) (Recipie
 		}
 		if base, _, tagged := rmail.StripSubaddress(resolved.Address); tagged {
 			if err := FindReceivingMailboxByAddress(db, base, &mailbox); err == nil {
-				if liveDomainOnly || resolved.Alias {
-					var live int64
-					if err := db.Model(&models.Domain{}).Where("id = ? AND active", mailbox.DomainID).Count(&live).Error; err != nil {
-						return Recipient{}, err
-					}
-					if live == 0 {
-						return Recipient{}, gorm.ErrRecordNotFound
-					}
-				}
 				resolved.Mailbox, resolved.Address, resolved.DeliveredTo = mailbox, mailbox.Address, address
 				return resolved, nil
 			} else if errors.Is(err, ErrMailboxUnavailable) || !errors.Is(err, gorm.ErrRecordNotFound) {

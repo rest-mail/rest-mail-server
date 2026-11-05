@@ -23,7 +23,7 @@ func restmailStorageFixture(t *testing.T) (*gorm.DB, models.Mailbox) {
 	if err := db.AutoMigrate(&models.Mailbox{}, &models.Message{}, &models.QuotaUsage{}, &models.Pipeline{}); err != nil {
 		t.Fatal(err)
 	}
-	domain := models.Domain{Name: "restmail-storage.test"}
+	domain := models.Domain{Name: "restmail-storage.test", Active: true}
 	if err := db.Create(&domain).Error; err != nil {
 		t.Fatal(err)
 	}

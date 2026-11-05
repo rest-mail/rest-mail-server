@@ -7312,7 +7312,10 @@ paths:
         is served ONLY on the dedicated internal listener (verified gateway client
         certificate required) and is absent from the public listener; when disabled
         it is unauthenticated on the public listener. Never accepts a user JWT.
-        A missing mailbox is 404; a failed mailbox lookup is 500, never a missing recipient.
+        It applies the rule delivery applies: an address that is not a mailbox here, or is one
+        that may not receive, or is on a domain that is not live, is 200 with exists false, so
+        the gateway refuses it at RCPT (or, on authenticated submission, routes it outbound).
+        A failed mailbox lookup is 500, never a missing recipient.
         A reserved alias that cannot route is 403 rejected, never an outbound recipient;
         the gateway answers its SMTP peer 550.
       security: []
@@ -7529,6 +7532,9 @@ paths:
       operationId: restmailCheckMailbox
       tags: [RESTMAIL]
       summary: Check if a recipient mailbox exists
+      description: >-
+        It applies the rule delivery applies: an address that is not a mailbox here, or is one
+        that may not receive, or is on a domain that is not live, is 200 with exists false.
       security: []
       parameters:
         - name: address

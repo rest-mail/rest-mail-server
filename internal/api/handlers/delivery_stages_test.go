@@ -46,6 +46,10 @@ func stagedHandler(t *testing.T, content pipeline.Action) (*MessageHandler, loca
 	fx := seedAccountsFixture(t, db)
 	tx := db.Begin()
 	t.Cleanup(func() { tx.Rollback() })
+	// Mail is delivered only to a live domain's mailboxes (#1845).
+	if err := tx.Model(&models.Domain{}).Where("id = ?", fx.domain.ID).Update("active", true).Error; err != nil {
+		t.Fatal(err)
+	}
 	stored, err := json.Marshal([]pipeline.FilterConfig{
 		{Name: "spf_check", Type: pipeline.FilterTypeAction, Enabled: true},
 		{Name: "rspamd", Type: pipeline.FilterTypeAction, Enabled: true},

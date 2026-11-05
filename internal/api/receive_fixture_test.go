@@ -16,5 +16,9 @@ func defaultReceiveAccountRows(query string) (*authReadSnapshotRows, bool) {
 	if strings.Contains(query, `SELECT "address","owner_id" FROM "mailboxes"`) {
 		return &authReadSnapshotRows{columns: []string{"address", "owner_id"}}, true
 	}
+	// The fixture accounts are on a live domain: only those take mail (#1845).
+	if strings.Contains(query, `SELECT count(*) FROM "domains" WHERE id = $1 AND active`) {
+		return &authReadSnapshotRows{columns: []string{"count"}, rows: [][]driver.Value{{int64(1)}}}, true
+	}
 	return nil, false
 }
