@@ -5,7 +5,7 @@ It runs against a cluster where helm/restmail is already installed, with the
 production images, and reaches it the way an operator would from outside: a
 kubectl port-forward to each Service. The same command runs in
 .github/workflows/cluster-e2e.yml and locally as `chore cluster:e2e`. It needs
-python3, kubectl and the cluster, and nothing else: no Go toolchain, no
+python3, kubectl, openssl and the cluster, and nothing else: no Go toolchain, no
 repository build. The API description it checks is the one the running install
 serves.
 
@@ -17,6 +17,9 @@ Each step tests REST Mail's wiring, not the components' own behaviour:
                 chart's API Secret) signs in through the API, chooses its own
                 password, enrolls an authenticator and reaches a full session
   mailbox       that admin makes a mailbox through the API
+  domain-live   that admin gives the bootstrap domain a certificate of its own
+                and makes it live, as an operator does first: a fresh install's
+                domain is not live, and refuses mail, until then (#289)
   smtp-rcpt     the installed SMTP gateway accepts RCPT for the hosted mailbox
                 and refuses an address on a domain it does not host
   imap-sign-in  the installed IMAP gateway signs the mailbox in through protocol
@@ -49,6 +52,7 @@ import ssl
 import struct
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import urllib.error
@@ -60,6 +64,7 @@ STEPS = (
     "description",
     "admin-sign-in",
     "mailbox",
+    "domain-live",
     "smtp-rcpt",
     "imap-sign-in",
     "filter-validate",
@@ -226,6 +231,22 @@ def forwarded_port(line: str) -> int | None:
     return int(match.group(1)) if match else None
 
 
+def self_signed_certificate(domain: str) -> tuple[str, str]:
+    """A short-lived certificate naming domain, and its key, in PEM."""
+    with tempfile.TemporaryDirectory() as directory:
+        cert, key = Path(directory) / "tls.crt", Path(directory) / "tls.key"
+        try:
+            subprocess.run(
+                ["openssl", "req", "-x509", "-nodes", "-newkey", "rsa:2048", "-days", "2",
+                 "-subj", f"/CN={domain}", "-addext", f"subjectAltName=DNS:{domain}",
+                 "-keyout", str(key), "-out", str(cert)],
+                check=True, capture_output=True, text=True,
+            )
+        except (OSError, subprocess.CalledProcessError) as error:
+            raise StepFailed(f"openssl could not make a certificate for {domain}: {error}") from error
+        return cert.read_text(), key.read_text()
+
+
 class Api:
     def __init__(self, base: str):
         self.base = base.rstrip("/")
@@ -321,7 +342,26 @@ class Stage1:
         self.state["mailbox"], self.state["mailbox_password"] = address, password
         return f"mailbox={address}"
 
+    def domain_live(self) -> str:
+        api, token, domain = self.need_api(), self.need("token"), self.need("domain")
+        found = api.expect(200, "GET", "/api/v1/admin/domains", token=token)
+        ids = [row["id"] for row in found["data"] if row["name"] == domain]
+        if not ids:
+            raise StepFailed(f"the install lists no domain named {domain}")
+        cert_pem, key_pem = self_signed_certificate(domain)
+        # The chart's install has no ACME account here, so nothing could renew it.
+        api.expect(201, "POST", "/api/v1/admin/certificates",
+                   {"domain_id": ids[0], "cert_pem": cert_pem, "key_pem": key_pem, "auto_renew": False}, token)
+        answer = api.expect(200, "PATCH", f"/api/v1/admin/domains/{ids[0]}", {"active": True}, token)
+        if answer["data"].get("active") is not True:
+            raise StepFailed(f"making {domain} live answered active={answer['data'].get('active')!r}")
+        self.state["domain_live"] = domain
+        return f"domain={domain},active=true"
+
     def smtp_rcpt(self) -> str:
+        # A mailbox on a domain that is not live is refused as unknown (#1848), so a
+        # 550 without this says nothing about the gateway's wiring.
+        self.need("domain_live")
         hosted = self.need("mailbox")
         port = self.cluster.forward("smtp-gateway", SERVICES["smtp-gateway"], self.args.timeout)
         with smtplib.SMTP("127.0.0.1", port, timeout=60) as smtp:
