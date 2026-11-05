@@ -111,3 +111,87 @@ func TestTLSOptional(t *testing.T) {
 		}
 	}
 }
+
+// headMixes puts a field into a message with each mix of line ends #1970 found a split missing it.
+var headMixes = map[string]func(field string) string{
+	"all CRLF":                  func(f string) string { return "From: a@x.test\r\n" + f + "\r\nSubject: s\r\n\r\nbody\r\n" },
+	"all LF":                    func(f string) string { return "From: a@x.test\n" + f + "\nSubject: s\n\nbody\n" },
+	"LF head, CRLF blank later": func(f string) string { return "From: a@x.test\n" + f + "\nSubject: s\n\nbody\n\r\n\r\nmore\r\n" },
+	"one LF, after the field":   func(f string) string { return "From: a@x.test\r\n" + f + "\nSubject: s\r\n\r\nbody\r\n" },
+	"one LF, before the field":  func(f string) string { return "From: a@x.test\n" + f + "\r\nSubject: s\r\n\r\nbody\r\n" },
+	"bare CR, before the field": func(f string) string { return "From: a@x.test\r" + f + "\r\nSubject: s\r\n\r\nbody\r\n" },
+	"bare CR, after the field":  func(f string) string { return "From: a@x.test\r\n" + f + "\rSubject: s\r\n\r\nbody\r\n" },
+	"first field":               func(f string) string { return f + "\nFrom: a@x.test\r\nSubject: s\r\n\r\nbody\r\n" },
+	"last field":                func(f string) string { return "From: a@x.test\nSubject: s\r\n" + f + "\n\r\nbody\r\n" },
+}
+
+func TestStripBccAnyLineEnds(t *testing.T) {
+	for name, mix := range headMixes {
+		t.Run(name, func(t *testing.T) {
+			raw := mix("Bcc: secret@c.test")
+			got := StripBcc(raw)
+			if strings.Contains(got, "secret") {
+				t.Fatalf("the Bcc stayed: %q", got)
+			}
+			for _, kept := range []string{"From: a@x.test", "Subject: s", "body"} {
+				if !strings.Contains(got, kept) {
+					t.Fatalf("%q went too: %q from %q", kept, got, raw)
+				}
+			}
+			if len(raw)-len(got) < len("Bcc: secret@c.test") || len(raw)-len(got) > len("Bcc: secret@c.test\r\n") {
+				t.Fatalf("more than the field went: %q from %q", got, raw)
+			}
+		})
+	}
+}
+
+// A signature the old split hid is seen, and so is not signed over a second time by Prepare.
+func TestHasDKIMSignatureAnyLineEnds(t *testing.T) {
+	for name, mix := range headMixes {
+		t.Run(name, func(t *testing.T) {
+			raw := mix("DKIM-Signature: v=1; d=x.test; s=sel; b=abc")
+			if !HasDKIMSignature(raw) {
+				t.Fatalf("no signature seen in %q", raw)
+			}
+			if HasDKIMSignature(mix("X-Other: DKIM-Signature: v=1")) {
+				t.Fatal("found a signature in another field")
+			}
+		})
+	}
+	for _, raw := range []string{
+		"From: a@x.test\n\nDKIM-Signature: v=1\n",
+		"From: a@x.test\r\n\r\nDKIM-Signature: v=1\r\n",
+		"From: a@x.test\n\nDKIM-Signature: v=1\n\r\n\r\nmore",
+	} {
+		if HasDKIMSignature(raw) {
+			t.Errorf("found a signature in the body of %q", raw)
+		}
+	}
+}
+
+// One field asks for the policy to be ignored, in any mix. A second field keeps the policy wherever
+// it hides, and so does the word in the body.
+func TestTLSOptionalAnyLineEnds(t *testing.T) {
+	for name, mix := range headMixes {
+		t.Run(name, func(t *testing.T) {
+			if raw := mix("TLS-Required: No"); !TLSOptional(raw) {
+				t.Fatalf("field not seen in %q", raw)
+			}
+			if raw := mix("TLS-Required:\n No"); !TLSOptional(raw) {
+				t.Fatalf("folded field not seen in %q", raw)
+			}
+			if raw := mix("TLS-Required: No\nTLS-Required: No"); TLSOptional(raw) {
+				t.Fatalf("two fields ask for nothing, in %q", raw)
+			}
+			if raw := mix("TLS-Required: No\rtls-required: no"); TLSOptional(raw) {
+				t.Fatalf("two fields ask for nothing, in %q", raw)
+			}
+			if raw := mix("TLS-Required: Yes"); TLSOptional(raw) {
+				t.Fatalf("another value asks for nothing, in %q", raw)
+			}
+		})
+	}
+	if raw := "From: a@x.test\n\nTLS-Required: No\n\r\n\r\nmore"; TLSOptional(raw) {
+		t.Errorf("the words in the body asked for it, in %q", raw)
+	}
+}

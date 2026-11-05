@@ -53,75 +53,25 @@ func Prepare(db *gorm.DB, masterKey, senderDomain, raw string) (string, error) {
 	return SignDKIM(db, masterKey, senderDomain, raw)
 }
 
-// headerBodySplit returns the index just past the end of the header block (the
-// position where the body begins) and the line terminator in use ("\r\n" or
-// "\n"). When no blank-line separator is found the whole input is treated as
-// headers. The message is assumed to use a single, consistent terminator, as
-// RFC 5322 / SMTP DATA requires (CRLF); a bare-LF message is still handled.
-func headerBodySplit(raw string) (bodyStart int, eol string) {
-	if i := strings.Index(raw, "\r\n\r\n"); i >= 0 {
-		return i + 4, "\r\n"
-	}
-	if i := strings.Index(raw, "\n\n"); i >= 0 {
-		return i + 2, "\n"
-	}
-	return len(raw), "\r\n"
-}
-
-// StripBcc removes the Bcc header field (and any folded continuation lines) from
+// StripBcc removes every Bcc header field (and its folded continuation lines) from
 // a raw RFC 5322 message so Bcc recipients are not disclosed to destination MXs.
 // The Bcc recipients still receive the message — they are delivered via the
-// envelope; only the header is withheld.
+// envelope; only the header is withheld. rmail.HeadFields says what is in the head,
+// for any mix of line ends.
 //
 // When the message carries no Bcc header the input is returned byte-for-byte
 // unchanged, so a message that was already DKIM-signed upstream is never
 // disturbed.
 func StripBcc(raw string) string {
-	bodyStart, eol := headerBodySplit(raw)
-	header := raw[:bodyStart]
-	body := raw[bodyStart:]
-
-	lines := strings.Split(header, eol)
-	out := make([]string, 0, len(lines))
-	removed := false
-	skipping := false
-	for _, line := range lines {
-		// A folded continuation line (leading space/tab) belongs to the previous
-		// header field; drop it while we are skipping a Bcc field.
-		if skipping && (strings.HasPrefix(line, " ") || strings.HasPrefix(line, "\t")) {
-			continue
-		}
-		skipping = false
-		if hasHeaderName(line, "Bcc") {
-			skipping = true
-			removed = true
-			continue
-		}
-		out = append(out, line)
-	}
-	if !removed {
-		return raw
-	}
-	return strings.Join(out, eol) + body
-}
-
-// hasHeaderName reports whether line begins a header field with the given name
-// (case-insensitive), i.e. "Name:" optionally preceded by no whitespace.
-func hasHeaderName(line, name string) bool {
-	colon := strings.IndexByte(line, ':')
-	if colon < 0 {
-		return false
-	}
-	return strings.EqualFold(strings.TrimRight(line[:colon], " \t"), name)
+	return rmail.RemoveHeadField(raw, "Bcc")
 }
 
 // HasDKIMSignature reports whether the raw message already carries a
 // DKIM-Signature header field, so the outbound path can avoid adding a second
 // signature to mail that was signed at submission (the API path).
 func HasDKIMSignature(raw string) bool {
-	bodyStart, eol := headerBodySplit(raw)
-	for _, line := range strings.Split(raw[:bodyStart], eol) {
-		if hasHeaderName(line, "DKIM-Signature") {
+	for field := range rmail.HeadFields(raw) {
+		if field.Is("DKIM-Signature") {
 			return true
 		}
 	}
@@ -135,23 +85,13 @@ func HasDKIMSignature(raw string) bool {
 // any other value, keeps the policy. The name and "No" match in any case
 // (RFC 5234 §2.3), and the value may be folded.
 func TLSOptional(raw string) bool {
-	bodyStart, eol := headerBodySplit(raw)
 	var values []string
-	inField := false
-	for _, line := range strings.Split(raw[:bodyStart], eol) {
-		if strings.HasPrefix(line, " ") || strings.HasPrefix(line, "\t") {
-			if inField {
-				values[len(values)-1] += line
-			}
-			continue
-		}
-		inField = hasHeaderName(line, "TLS-Required")
-		if inField {
-			_, value, _ := strings.Cut(line, ":")
-			values = append(values, value)
+	for field := range rmail.HeadFields(raw) {
+		if field.Is("TLS-Required") {
+			values = append(values, field.Value())
 		}
 	}
-	return len(values) == 1 && strings.EqualFold(strings.TrimSpace(values[0]), "No")
+	return len(values) == 1 && strings.EqualFold(values[0], "No")
 }
 
 // signedHeaders is the h= set SignDKIM signs: go-dkim's default set, the
