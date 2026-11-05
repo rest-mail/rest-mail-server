@@ -69,7 +69,7 @@ func TestCustomFilterGet_DocumentedExamples(t *testing.T) {
 	if err != nil {
 		t.Skipf("filter lookup contract test needs PostgreSQL: %v", err)
 	}
-	if err := gdb.AutoMigrate(&models.Domain{}, &models.CustomFilter{}); err != nil {
+	if err := migrateModels(gdb, &models.Domain{}, &models.CustomFilter{}); err != nil {
 		t.Fatal(err)
 	}
 	tx := gdb.Begin()

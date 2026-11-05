@@ -19,7 +19,7 @@ func openMsgDeleteTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		testdb.Unreachable(t, "message-delete DB test skipped: no database reachable (%v)", err)
 	}
-	if err := gdb.AutoMigrate(append(accountModels, &models.Message{}, &models.Attachment{})...); err != nil {
+	if err := migrateModels(gdb, append(accountModels, &models.Message{}, &models.Attachment{})...); err != nil {
 		t.Skipf("message-delete DB test skipped: migrate failed (%v)", err)
 	}
 	return gdb

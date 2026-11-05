@@ -52,7 +52,7 @@ func draftSendPostgres(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(append(accountModels, &models.Message{}, &models.OutboundQueue{}, &models.Contact{}, &models.Attachment{}, &models.Pipeline{}, &models.SieveScript{})...); err != nil {
+	if err := migrateModels(db, append(accountModels, &models.Message{}, &models.OutboundQueue{}, &models.Contact{}, &models.Attachment{}, &models.Pipeline{}, &models.SieveScript{})...); err != nil {
 		t.Fatal(err)
 	}
 	ensureDefaultServerCeiling(t, db)

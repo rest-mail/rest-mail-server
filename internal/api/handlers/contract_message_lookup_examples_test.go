@@ -80,7 +80,7 @@ func TestMessageLookups_DocumentedMissingExamples(t *testing.T) {
 				if err != nil {
 					t.Skipf("message lookup contract test needs PostgreSQL: %v", err)
 				}
-				if err := gdb.AutoMigrate(&models.OutboundQueue{}, &models.MessageTrace{}); err != nil {
+				if err := migrateModels(gdb, &models.OutboundQueue{}, &models.MessageTrace{}); err != nil {
 					t.Fatal(err)
 				}
 				tx := gdb.Begin()

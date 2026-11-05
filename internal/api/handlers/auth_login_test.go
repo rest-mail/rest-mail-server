@@ -26,7 +26,7 @@ func openLoginTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		testdb.Unreachable(t, "login DB test skipped: no database reachable (%v)", err)
 	}
-	if err := gdb.AutoMigrate(accountModels...); err != nil {
+	if err := migrateModels(gdb, accountModels...); err != nil {
 		t.Skipf("login DB test skipped: migrate failed (%v)", err)
 	}
 	return gdb

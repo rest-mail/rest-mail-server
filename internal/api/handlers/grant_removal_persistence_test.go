@@ -24,7 +24,7 @@ func TestGrantRemovalPersistenceAndAtomicAudit(t *testing.T) {
 	for _, scenario := range []string{"active", "live", "final_audit_failure", "grant_delete_failure", "activation_delete_failure", "cancelled", "cancelled_after_load", "last_superadmin"} {
 		t.Run(scenario, func(t *testing.T) {
 			db := openCustomFilterCreateScratchDB(t)
-			if err := db.AutoMigrate(&models.Mailbox{}, &models.Credential{}, &models.Role{}, &models.Capability{}, &models.RoleCapability{}, &models.Grant{}, &models.GrantActivation{}, &models.AuditEntry{}); err != nil {
+			if err := migrateModels(db, &models.Mailbox{}, &models.Credential{}, &models.Role{}, &models.Capability{}, &models.RoleCapability{}, &models.Grant{}, &models.GrantActivation{}, &models.AuditEntry{}); err != nil {
 				t.Fatal(err)
 			}
 			create := func(v interface{}) {

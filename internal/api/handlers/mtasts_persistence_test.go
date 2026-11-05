@@ -121,7 +121,7 @@ func openMTASTSPersistenceDB(t *testing.T) *gorm.DB {
 		t.Fatalf("scratch identity = %q, want %q (error %v)", current, name, err)
 	}
 	t.Logf("verified isolated scratch database %s", current)
-	if err := db.AutoMigrate(&models.Domain{}, &models.MTASTSPolicy{}); err != nil {
+	if err := migrateModels(db, &models.Domain{}, &models.MTASTSPolicy{}); err != nil {
 		t.Fatal(err)
 	}
 	return db

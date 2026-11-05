@@ -33,7 +33,7 @@ func sealSourceTestDB(t *testing.T) *gorm.DB {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = pool.Close() })
-	if err := database.AutoMigrate(append(accountModels, &models.Message{}, &models.Attachment{}, &models.AuditEntry{}, &models.Pipeline{}, &models.Alias{})...); err != nil {
+	if err := migrateModels(database, append(accountModels, &models.Message{}, &models.Attachment{}, &models.AuditEntry{}, &models.Pipeline{}, &models.Alias{})...); err != nil {
 		t.Fatal(err)
 	}
 	transaction := database.Begin()
@@ -185,7 +185,7 @@ func TestMessageSealMigrationKeepsHistoricalRowsUnsealed(t *testing.T) {
 		t.Fatal(err)
 	}
 	for range 2 {
-		if err := database.AutoMigrate(&models.Message{}); err != nil {
+		if err := migrateModels(database, &models.Message{}); err != nil {
 			t.Fatal(err)
 		}
 		var count int64

@@ -23,7 +23,7 @@ func relayTestServer(t *testing.T, masterKey string) (http.Handler, *RelayHandle
 	if err != nil {
 		testdb.Unreachable(t, "relay settings test skipped: no database reachable (%v)", err)
 	}
-	if err := gdb.AutoMigrate(&models.Domain{}, &models.DomainRelay{}); err != nil {
+	if err := migrateModels(gdb, &models.Domain{}, &models.DomainRelay{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	tx := gdb.Begin()

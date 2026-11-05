@@ -22,7 +22,7 @@ import (
 // stored with the message, and neither it nor a list header files or removes anything.
 func TestDeliveredMailIsClassifiedFromWhatDeliveryStores(t *testing.T) {
 	db := openRedirectTestDB(t)
-	if err := db.AutoMigrate(&models.SieveScript{}); err != nil {
+	if err := migrateModels(db, &models.SieveScript{}); err != nil {
 		t.Fatal(err)
 	}
 	engine := pipeline.NewEngine(withQuietVacation(pipeline.DefaultRegistry), slog.Default())
@@ -107,7 +107,7 @@ func TestDeliveredMailIsClassifiedFromWhatDeliveryStores(t *testing.T) {
 // A RESTMAIL recipient's own rule decides that recipient's copy alone.
 func TestRESTMAILDeliver_SieveReceiptRuleAppliesToItsRecipient(t *testing.T) {
 	db := openRedirectTestDB(t)
-	if err := db.AutoMigrate(&models.SieveScript{}, &models.Quarantine{}, &models.VacationConfig{}, &models.VacationResponse{}); err != nil {
+	if err := migrateModels(db, &models.SieveScript{}, &models.Quarantine{}, &models.VacationConfig{}, &models.VacationResponse{}); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_vacation_responses_handle ON vacation_responses(mailbox_id, sender, handle)`).Error; err != nil {

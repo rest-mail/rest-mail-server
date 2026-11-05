@@ -88,7 +88,7 @@ func TestDomainUpdate_DocumentedExamples(t *testing.T) {
 	if err != nil {
 		t.Skipf("domain update examples need Postgres: %v", err)
 	}
-	if err := db.AutoMigrate(&models.Domain{}); err != nil {
+	if err := migrateModels(db, &models.Domain{}); err != nil {
 		t.Fatal(err)
 	}
 	tx := db.Begin()

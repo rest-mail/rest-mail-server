@@ -81,7 +81,7 @@ func TestMayReachBoundsAppPasswordByServerCeiling(t *testing.T) {
 // The global superadmin is exempt throughout.
 func TestMayReachAppliesServerCeilingToOpenSessions(t *testing.T) {
 	db := openAliasUpdateScratchDB(t)
-	if err := db.AutoMigrate(accountModels...); err != nil {
+	if err := migrateModels(db, accountModels...); err != nil {
 		t.Fatal(err)
 	}
 	ensureDefaultServerCeiling(t, db)

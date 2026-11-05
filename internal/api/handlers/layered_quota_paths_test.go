@@ -16,7 +16,7 @@ import (
 
 func TestOwnedQuotaIncludesAttachmentBytes(t *testing.T) {
 	db := openAccountsTestDB(t)
-	if err := db.AutoMigrate(&models.Attachment{}, &models.Pipeline{}); err != nil {
+	if err := migrateModels(db, &models.Attachment{}, &models.Pipeline{}); err != nil {
 		t.Fatal(err)
 	}
 	fx := seedAccountsFixture(t, db)

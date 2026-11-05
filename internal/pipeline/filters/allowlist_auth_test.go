@@ -30,6 +30,7 @@ func openAllowlistAuthTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		testdb.Unreachable(t, "allowlist auth DB test skipped: no database reachable (%v)", err)
 	}
+	testdb.ReuseConnections(t, gdb)
 	if err := gdb.AutoMigrate(
 		&models.Domain{}, &models.Mailbox{}, &models.Contact{}, &models.DomainSenderRule{},
 	); err != nil {

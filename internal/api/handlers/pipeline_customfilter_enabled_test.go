@@ -60,7 +60,7 @@ func openCustomFilterCreateScratchDB(t *testing.T) *gorm.DB {
 		t.Fatalf("scratch database identity = %q, want %q, err = %v", current, name, err)
 	}
 	t.Logf("verified isolated scratch database %s before migrations/writes", current)
-	if err := scratch.AutoMigrate(&models.Domain{}, &models.CustomFilter{}); err != nil {
+	if err := migrateModels(scratch, &models.Domain{}, &models.CustomFilter{}); err != nil {
 		t.Fatal(err)
 	}
 	return scratch

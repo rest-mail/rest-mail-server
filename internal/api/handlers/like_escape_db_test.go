@@ -17,7 +17,7 @@ import (
 // every LIKE/ILIKE filter param.
 func TestDeliveryLog_LikeWildcardEscaped(t *testing.T) {
 	gdb := openAuthzTestDB(t)
-	if err := gdb.AutoMigrate(&models.OutboundQueue{}); err != nil {
+	if err := migrateModels(gdb, &models.OutboundQueue{}); err != nil {
 		t.Skipf("delivery-log LIKE test skipped: migrate failed (%v)", err)
 	}
 	tx := gdb.Begin()

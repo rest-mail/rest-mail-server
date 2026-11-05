@@ -23,7 +23,7 @@ func openHealthTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		testdb.Unreachable(t, "health DB test skipped: no database reachable (%v)", err)
 	}
-	if err := gdb.AutoMigrate(append(accountModels, &models.Certificate{})...); err != nil {
+	if err := migrateModels(gdb, append(accountModels, &models.Certificate{})...); err != nil {
 		t.Skipf("health DB test skipped: migrate failed (%v)", err)
 	}
 	return gdb

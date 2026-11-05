@@ -56,7 +56,7 @@ func TestCreateBan_ContractSchema(t *testing.T) {
 
 func TestCreateBan_ContractProbes(t *testing.T) {
 	db := openMsgDeleteTestDB(t)
-	if err := db.AutoMigrate(&models.Ban{}); err != nil {
+	if err := migrateModels(db, &models.Ban{}); err != nil {
 		t.Fatal(err)
 	}
 	tx := db.Begin()

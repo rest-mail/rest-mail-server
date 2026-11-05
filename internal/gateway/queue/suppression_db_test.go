@@ -27,7 +27,7 @@ func openSuppressionTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		testdb.Unreachable(t, "suppression DB test skipped: no database reachable (%v)", err)
 	}
-	reuseConnections(t, gdb)
+	testdb.ReuseConnections(t, gdb)
 	if err := gdb.AutoMigrate(&models.Domain{}, &models.Mailbox{}, &models.Message{},
 		&models.OutboundQueue{}, &models.Suppression{}); err != nil {
 		t.Skipf("suppression DB test skipped: migrate failed (%v)", err)

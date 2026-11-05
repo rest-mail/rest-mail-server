@@ -14,7 +14,7 @@ import (
 
 func TestLegacyAliasEAIClaims(t *testing.T) {
 	db := openAliasUpdateScratchDB(t)
-	if err := db.AutoMigrate(&models.Mailbox{}); err != nil {
+	if err := migrateModels(db, &models.Mailbox{}); err != nil {
 		t.Fatal(err)
 	}
 	domain := models.Domain{Name: "xn--stdte-hra.test", Active: true}
@@ -139,7 +139,7 @@ func TestLegacyAliasEAIClaimPolicies(t *testing.T) {
 
 func TestAliasClaimLookupFailureBlocksPlusFallback(t *testing.T) {
 	db := openAliasUpdateScratchDB(t)
-	if err := db.AutoMigrate(&models.Mailbox{}); err != nil {
+	if err := migrateModels(db, &models.Mailbox{}); err != nil {
 		t.Fatal(err)
 	}
 	domain := models.Domain{Name: "aliases.test", Active: true}

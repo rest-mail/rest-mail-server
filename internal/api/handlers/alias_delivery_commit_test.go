@@ -15,7 +15,7 @@ func TestAliasDeliveryCommitAndReplay(t *testing.T) {
 	for _, destination := range []string{"hosted", "external"} {
 		t.Run(destination, func(t *testing.T) {
 			fixture := newAliasDeliveryFixture(t)
-			if err := fixture.db.AutoMigrate(&models.InboundMessage{}); err != nil {
+			if err := migrateModels(fixture.db, &models.InboundMessage{}); err != nil {
 				t.Fatal(err)
 			}
 			if destination == "external" {

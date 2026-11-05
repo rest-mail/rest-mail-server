@@ -17,7 +17,7 @@ func TestContactReplyTime(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(append(accountModels, &models.Contact{}, &models.Message{})...); err != nil {
+	if err := migrateModels(db, append(accountModels, &models.Contact{}, &models.Message{})...); err != nil {
 		t.Fatal(err)
 	}
 	tx := db.Begin()

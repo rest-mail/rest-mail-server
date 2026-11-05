@@ -65,7 +65,7 @@ func openTransportSecTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		testdb.Unreachable(t, "inbound transport-security DB test skipped: no database reachable (%v)", err)
 	}
-	if err := gdb.AutoMigrate(&models.Message{}); err != nil {
+	if err := migrateModels(gdb, &models.Message{}); err != nil {
 		t.Skipf("inbound transport-security DB test skipped: migrate failed (%v)", err)
 	}
 	return gdb

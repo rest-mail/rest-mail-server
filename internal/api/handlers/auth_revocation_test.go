@@ -43,7 +43,7 @@ func openRevocationTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		testdb.Unreachable(t, "session-revocation DB test skipped: no database reachable (%v)", err)
 	}
-	if err := gdb.AutoMigrate(accountModels...); err != nil {
+	if err := migrateModels(gdb, accountModels...); err != nil {
 		t.Skipf("session-revocation DB test skipped: migrate failed (%v)", err)
 	}
 	return gdb

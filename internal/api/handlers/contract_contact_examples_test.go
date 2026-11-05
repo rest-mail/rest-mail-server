@@ -17,7 +17,7 @@ import (
 // account check reads the database, so this test needs one.
 func TestCreateContact_DocumentedRefusals(t *testing.T) {
 	db := openMsgDeleteTestDB(t)
-	if err := db.AutoMigrate(&models.Contact{}); err != nil {
+	if err := migrateModels(db, &models.Contact{}); err != nil {
 		t.Fatal(err)
 	}
 	fx := seedMsgDeleteFixture(t, db, 0)

@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	rmime "github.com/rest-mail/rest-mail-server/internal/mime"
 	"gorm.io/gorm"
@@ -21,7 +20,7 @@ func threadRootFixture(t *testing.T) (*gorm.DB, authzFixture, *MessageHandler) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := rmdb.AutoMigrate(database); err != nil {
+	if err := migrateSchema(database); err != nil {
 		t.Fatal(err)
 	}
 	tx := database.Begin()

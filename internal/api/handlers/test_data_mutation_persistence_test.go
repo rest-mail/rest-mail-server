@@ -18,7 +18,7 @@ func TestTestDataMutationPersistence(t *testing.T) {
 	// or writes. Missing optional tables intentionally exercise PostgreSQL's
 	// aborted-transaction recovery through the cleanup savepoints.
 	db := openAliasUpdateScratchDB(t)
-	if err := db.AutoMigrate(&models.Mailbox{}, &models.Credential{}, &models.QuotaUsage{}, &models.Role{}, &models.Grant{}, &models.Pipeline{}, &models.Quarantine{}, &models.DomainSenderRule{}); err != nil {
+	if err := migrateModels(db, &models.Mailbox{}, &models.Credential{}, &models.QuotaUsage{}, &models.Role{}, &models.Grant{}, &models.Pipeline{}, &models.Quarantine{}, &models.DomainSenderRule{}); err != nil {
 		t.Fatal(err)
 	}
 	seedReceiveFixture(t, db)

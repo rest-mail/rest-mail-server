@@ -23,7 +23,7 @@ import (
 // accepted by all of them.
 func TestRecipientCheckMatchesDeliveryOnDomainLive(t *testing.T) {
 	db := openAccountsTestDB(t)
-	if err := db.AutoMigrate(&models.Message{}, &models.Pipeline{}, &models.Alias{}, &models.GreylistEntry{}); err != nil {
+	if err := migrateModels(db, &models.Message{}, &models.Pipeline{}, &models.Alias{}, &models.GreylistEntry{}); err != nil {
 		t.Fatal(err)
 	}
 	dormant := models.Domain{Name: fmt.Sprintf("dormant-%d.test", time.Now().UnixNano()), Active: false}

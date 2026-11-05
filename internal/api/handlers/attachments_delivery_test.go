@@ -17,7 +17,7 @@ import (
 func TestS3AttachmentDeliveryMetadataFailureRollsBack(t *testing.T) {
 	errAttachmentMetadata := errors.New("metadata unavailable")
 	db := openMsgDeleteTestDB(t)
-	if err := db.AutoMigrate(&models.QuotaUsage{}, &models.Pipeline{}, &models.SieveScript{}); err != nil {
+	if err := migrateModels(db, &models.QuotaUsage{}, &models.Pipeline{}, &models.SieveScript{}); err != nil {
 		t.Fatal(err)
 	}
 	tx := db.Begin()

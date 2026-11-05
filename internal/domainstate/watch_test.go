@@ -42,6 +42,7 @@ func openWatchTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		testdb.Unreachable(t, "domainstate test skipped: no database reachable (%v)", err)
 	}
+	testdb.ReuseConnections(t, gdb)
 	if err := gdb.AutoMigrate(&models.Domain{}, &models.Certificate{}); err != nil {
 		t.Skipf("domainstate test skipped: migrate failed (%v)", err)
 	}

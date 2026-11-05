@@ -18,7 +18,7 @@ func TestContactPostgresRollbackAndSuccessfulReload(t *testing.T) {
 		t.Skip("PostgreSQL contact transaction proof runs in CI with DB_HOST; no local database is started")
 	}
 	db := openAuthzTestDB(t)
-	if err := db.AutoMigrate(&models.Contact{}); err != nil {
+	if err := migrateModels(db, &models.Contact{}); err != nil {
 		t.Fatal(err)
 	}
 	ensureDefaultServerCeiling(t, db)

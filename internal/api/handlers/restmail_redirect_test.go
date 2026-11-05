@@ -187,7 +187,7 @@ func openRedirectTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		testdb.Unreachable(t, "restmail redirect DB test skipped: no database reachable (%v)", err)
 	}
-	if err := gdb.AutoMigrate(&models.Domain{}, &models.Mailbox{}, &models.Alias{}, &models.Message{},
+	if err := migrateModels(gdb, &models.Domain{}, &models.Mailbox{}, &models.Alias{}, &models.Message{},
 		&models.QuotaUsage{}, &models.Pipeline{}, &models.OutboundQueue{}, &models.SieveScript{}); err != nil {
 		t.Skipf("restmail redirect DB test skipped: migrate failed (%v)", err)
 	}

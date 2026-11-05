@@ -13,7 +13,7 @@ import (
 
 func TestVacationMutationPersistence(t *testing.T) {
 	db := openAuthzTestDB(t)
-	if err := db.AutoMigrate(&models.VacationConfig{}); err != nil {
+	if err := migrateModels(db, &models.VacationConfig{}); err != nil {
 		t.Fatal(err)
 	}
 	tx := db.Begin()

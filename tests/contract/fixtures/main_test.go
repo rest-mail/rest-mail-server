@@ -7,6 +7,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -22,6 +23,14 @@ import (
 	"gorm.io/gorm"
 )
 
+// The schema and roles are set up once per test binary, by whichever test comes
+// first. Every test works in a transaction that is rolled back, so none of them can
+// leave the database different, and setting them up again would change nothing.
+var (
+	fixtureSchema    sync.Once
+	fixtureSchemaErr error
+)
+
 func fixtureDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	name := os.Getenv("DB_NAME")
@@ -30,7 +39,7 @@ func fixtureDB(t *testing.T) *gorm.DB {
 	}
 	port, _ := strconv.Atoi(os.Getenv("DB_PORT"))
 	db, err := rmdb.Connect(&config.Config{DBHost: os.Getenv("DB_HOST"), DBPort: port,
-		DBName: name, DBUser: os.Getenv("DB_USER"), DBPass: os.Getenv("DB_PASS")})
+		DBName: name, DBUser: os.Getenv("DB_USER"), DBPass: os.Getenv("DB_PASS"), DBMaxIdleConns: 2})
 	if err != nil {
 		t.Fatal("connect to isolated fixture database:", err)
 	}
@@ -43,11 +52,13 @@ func fixtureDB(t *testing.T) *gorm.DB {
 			t.Error(err)
 		}
 	})
-	if err := rmdb.AutoMigrate(db); err != nil {
-		t.Fatal(err)
-	}
-	if err := bootstrap.EnsureRBAC(db); err != nil {
-		t.Fatal(err)
+	fixtureSchema.Do(func() {
+		if fixtureSchemaErr = rmdb.AutoMigrate(db); fixtureSchemaErr == nil {
+			fixtureSchemaErr = bootstrap.EnsureRBAC(db)
+		}
+	})
+	if fixtureSchemaErr != nil {
+		t.Fatal(fixtureSchemaErr)
 	}
 	tx := db.Begin()
 	if tx.Error != nil {

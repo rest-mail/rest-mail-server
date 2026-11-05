@@ -51,6 +51,7 @@ func TestVacation_SieveReply(t *testing.T) {
 	if err != nil {
 		testdb.Unreachable(t, "vacation DB test skipped: no database reachable (%v)", err)
 	}
+	testdb.ReuseConnections(t, gdb)
 	if err := gdb.AutoMigrate(&models.Domain{}, &models.Mailbox{}, &models.VacationConfig{},
 		&models.VacationResponse{}, &models.OutboundQueue{}); err != nil {
 		t.Skipf("vacation DB test skipped: migrate failed (%v)", err)

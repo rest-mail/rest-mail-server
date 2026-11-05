@@ -62,7 +62,7 @@ func TestBulkQueue_SelectionBoundaries(t *testing.T) {
 	if err != nil {
 		t.Skipf("bulk queue selections require PostgreSQL: %v", err)
 	}
-	if err := db.AutoMigrate(&models.OutboundQueue{}); err != nil {
+	if err := migrateModels(db, &models.OutboundQueue{}); err != nil {
 		t.Fatal(err)
 	}
 	tx := db.Begin()
@@ -125,7 +125,7 @@ func TestBulkQueue_EmptyFilterDeletesEveryEntry(t *testing.T) {
 	if err != nil {
 		t.Skipf("bulk queue deletes require PostgreSQL: %v", err)
 	}
-	if err := db.AutoMigrate(&models.OutboundQueue{}); err != nil {
+	if err := migrateModels(db, &models.OutboundQueue{}); err != nil {
 		t.Fatal(err)
 	}
 	tx := db.Begin()

@@ -18,7 +18,7 @@ import (
 // cleanup itself is TestDomainCleanupPostgresLifecycleRetentionAndRollback's (#1141).
 func TestDomainRemovalPersistenceAndCancellation(t *testing.T) {
 	db := openDomainMutationScratchDB(t)
-	if err := db.AutoMigrate(&models.Mailbox{}, &models.Alias{}, &models.Role{}, &models.Capability{}, &models.RoleCapability{}, &models.Grant{},
+	if err := migrateModels(db, &models.Mailbox{}, &models.Alias{}, &models.Role{}, &models.Capability{}, &models.RoleCapability{}, &models.Grant{},
 		&models.Pipeline{}, &models.CustomFilter{}, &models.DomainSenderRule{}, &models.Certificate{}, &models.DKIMRotationKey{}, &models.MTASTSPolicy{}, &models.DomainRelay{}, &models.Suppression{}); err != nil {
 		t.Fatal(err)
 	}

@@ -57,6 +57,9 @@ func scratchDBConfig() config.Config {
 		DBName: credentialTestEnv("DB_NAME", "restmail"),
 		DBUser: credentialTestEnv("DB_USER", "restmail"),
 		DBPass: credentialTestEnv("DB_PASS", "restmail"),
+		// Connecting again for every statement outside a transaction is most of
+		// what a pool with no idle connections costs. Each pool here is closed.
+		DBMaxIdleConns: 2,
 	}
 }
 

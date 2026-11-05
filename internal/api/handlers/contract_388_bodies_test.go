@@ -58,7 +58,7 @@ func TestProbeServicesRejectsUnknownService(t *testing.T) {
 
 func TestSetVacationRequiresEnabled(t *testing.T) {
 	db := openAuthzTestDB(t)
-	if err := db.AutoMigrate(&models.VacationConfig{}); err != nil {
+	if err := migrateModels(db, &models.VacationConfig{}); err != nil {
 		t.Skipf("vacation DB test skipped: migrate failed (%v)", err)
 	}
 	tx := db.Begin()
@@ -175,7 +175,7 @@ func TestVacationConfig_ContractSchema(t *testing.T) {
 
 func TestSetVacationEnabledNeedsSubjectAndBody(t *testing.T) {
 	db := openAuthzTestDB(t)
-	if err := db.AutoMigrate(&models.VacationConfig{}); err != nil {
+	if err := migrateModels(db, &models.VacationConfig{}); err != nil {
 		t.Skipf("vacation DB test skipped: migrate failed (%v)", err)
 	}
 	tx := db.Begin()

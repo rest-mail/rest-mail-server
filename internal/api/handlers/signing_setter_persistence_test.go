@@ -34,7 +34,7 @@ func signingPersistenceFixture(t *testing.T) string {
 // Use a dedicated scratch database; never write to the shared test database.
 func TestSigningSetterKeyPersistence(t *testing.T) {
 	db := openCustomFilterCreateScratchDB(t)
-	if err := db.AutoMigrate(&models.Domain{}, &models.DKIMRotationKey{}); err != nil {
+	if err := migrateModels(db, &models.Domain{}, &models.DKIMRotationKey{}); err != nil {
 		t.Fatal(err)
 	}
 	db.NowFunc = func() time.Time { return signingPersistenceNow }
@@ -175,7 +175,7 @@ func TestSigningSetterKeyPersistence(t *testing.T) {
 
 func TestSigningSetterRotationPersistence(t *testing.T) {
 	db := openCustomFilterCreateScratchDB(t)
-	if err := db.AutoMigrate(&models.Domain{}, &models.DKIMRotationKey{}); err != nil {
+	if err := migrateModels(db, &models.Domain{}, &models.DKIMRotationKey{}); err != nil {
 		t.Fatal(err)
 	}
 	key := signingPersistenceFixture(t)

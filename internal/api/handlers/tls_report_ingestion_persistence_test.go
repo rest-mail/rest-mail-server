@@ -17,7 +17,7 @@ import (
 // PostgreSQL it skips rather than writing to the shared test database.
 func TestTLSIngestionPersistence(t *testing.T) {
 	db := openAliasUpdateScratchDB(t)
-	if err := db.AutoMigrate(&models.TLSReport{}); err != nil {
+	if err := migrateModels(db, &models.TLSReport{}); err != nil {
 		t.Fatal(err)
 	}
 	for _, name := range []string{"restmail.test", "example.com"} {

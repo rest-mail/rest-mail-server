@@ -48,7 +48,7 @@ func (f dmarcFixtureAuth) Execute(ctx context.Context, _ *pipeline.EmailJSON) (*
 
 func TestDMARCReportsMailDelivery(t *testing.T) {
 	db := openAliasUpdateScratchDB(t)
-	if err := db.AutoMigrate(append(accountModels, &models.Message{}, &models.Attachment{}, &models.Pipeline{}, &models.SieveScript{}, &models.DMARCReportReceived{})...); err != nil {
+	if err := migrateModels(db, append(accountModels, &models.Message{}, &models.Attachment{}, &models.Pipeline{}, &models.SieveScript{}, &models.DMARCReportReceived{})...); err != nil {
 		t.Fatal(err)
 	}
 	domain := models.Domain{Name: "hosted.test", Active: true}
@@ -182,7 +182,7 @@ func TestDMARCReportRoutes(t *testing.T) {
 		}
 	}
 	db := openAliasUpdateScratchDB(t)
-	if err := db.AutoMigrate(&models.DMARCReportReceived{}); err != nil {
+	if err := migrateModels(db, &models.DMARCReportReceived{}); err != nil {
 		t.Fatal(err)
 	}
 	domains := []models.Domain{{Name: "one.test"}, {Name: "two.test"}}

@@ -88,7 +88,7 @@ func restmailTestDB(t *testing.T, domain string) *gorm.DB {
 	if err != nil {
 		testdb.Unreachable(t, "RESTMAIL endpoint DB test skipped: no database reachable (%v)", err)
 	}
-	reuseConnections(t, gdb)
+	testdb.ReuseConnections(t, gdb)
 	if err := rmdb.AutoMigrate(gdb); err != nil {
 		t.Skipf("RESTMAIL endpoint DB test skipped: migrate failed (%v)", err)
 	}

@@ -68,7 +68,7 @@ func spoolEngine(t *testing.T, probe spoolProbe) *pipeline.Engine {
 func newSpoolFixture(t *testing.T, probe spoolProbe) spoolFixture {
 	t.Helper()
 	db := importProofDB(t)
-	if err := db.AutoMigrate(&models.QuotaUsage{}, &models.Pipeline{}, &models.Quarantine{}, &models.OutboundQueue{}, &models.CalendarEventVersion{}, &models.SieveScript{}, &models.Alias{}); err != nil {
+	if err := migrateModels(db, &models.QuotaUsage{}, &models.Pipeline{}, &models.Quarantine{}, &models.OutboundQueue{}, &models.CalendarEventVersion{}, &models.SieveScript{}, &models.Alias{}); err != nil {
 		t.Fatal(err)
 	}
 	// Mail is delivered only to a live domain's mailboxes (#1845).

@@ -15,7 +15,7 @@ import (
 // from it, and gives the mailbox the quota row every account has.
 func seedSenderWithOwnData(t *testing.T, db *gorm.DB, domain, local string) models.Mailbox {
 	t.Helper()
-	if err := db.AutoMigrate(accountModels...); err != nil {
+	if err := migrateModels(db, accountModels...); err != nil {
 		t.Skipf("send test skipped: migrate failed (%v)", err)
 	}
 	if err := rmdb.MigrateAuditLog(db); err != nil {

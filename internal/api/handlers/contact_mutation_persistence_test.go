@@ -12,7 +12,7 @@ import (
 
 func TestContactMutationPersistence(t *testing.T) {
 	db := openAuthzTestDB(t)
-	if err := db.AutoMigrate(&models.Contact{}); err != nil {
+	if err := migrateModels(db, &models.Contact{}); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_contacts_mailbox_email ON contacts(mailbox_id, email)`).Error; err != nil {

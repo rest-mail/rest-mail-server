@@ -19,7 +19,7 @@ import (
 func openScheduledSendTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	gdb := openMsgDeleteTestDB(t)
-	if err := gdb.AutoMigrate(
+	if err := migrateModels(gdb,
 		&models.Contact{},
 		&models.OutboundQueue{},
 		&models.ScheduledSend{},

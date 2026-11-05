@@ -287,7 +287,7 @@ func TestBulkDeleteQueue_ByIDsExampleAnswered(t *testing.T) {
 	documented := uint(ids[0].(float64))
 
 	gdb := openAuthzTestDB(t)
-	if err := gdb.AutoMigrate(&models.OutboundQueue{}); err != nil {
+	if err := migrateModels(gdb, &models.OutboundQueue{}); err != nil {
 		t.Skipf("bulk-delete test skipped: migrate failed (%v)", err)
 	}
 	tx := gdb.Begin()

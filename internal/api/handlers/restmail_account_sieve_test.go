@@ -24,7 +24,7 @@ import (
 // recipient has it; a domain whose pipeline has no sieve step runs no account's script.
 func TestRESTMAILDeliver_RunsEachRecipientsSieveScript(t *testing.T) {
 	db := openRedirectTestDB(t)
-	if err := db.AutoMigrate(&models.SieveScript{}, &models.Quarantine{}, &models.VacationConfig{}, &models.VacationResponse{}); err != nil {
+	if err := migrateModels(db, &models.SieveScript{}, &models.Quarantine{}, &models.VacationConfig{}, &models.VacationResponse{}); err != nil {
 		t.Skipf("restmail account sieve DB test skipped: migrate failed (%v)", err)
 	}
 	// Production migration adds this index outside AutoMigrate. Vacation's

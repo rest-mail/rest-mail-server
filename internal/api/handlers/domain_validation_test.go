@@ -19,7 +19,7 @@ import (
 // and normalized to its ASCII (punycode) form.
 func TestDomainCreate_NameValidation(t *testing.T) {
 	gdb := openAuthzTestDB(t)
-	if err := gdb.AutoMigrate(&models.Pipeline{}); err != nil {
+	if err := migrateModels(gdb, &models.Pipeline{}); err != nil {
 		t.Skipf("domain validation test skipped: migrate Pipeline failed (%v)", err)
 	}
 

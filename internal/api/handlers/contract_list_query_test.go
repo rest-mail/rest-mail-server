@@ -85,7 +85,7 @@ func TestListQueryIntegerContractProbes(t *testing.T) {
 	}
 	modelsToMigrate := append([]interface{}{}, accountModels...)
 	modelsToMigrate = append(modelsToMigrate, &models.Message{}, &models.Alias{}, &models.Pipeline{}, &models.CustomFilter{}, &models.MessageTrace{}, &models.OutboundQueue{}, &models.Ban{}, &models.TLSReport{}, &models.AuditEntry{})
-	if err := db.AutoMigrate(modelsToMigrate...); err != nil {
+	if err := migrateModels(db, modelsToMigrate...); err != nil {
 		t.Fatal(err)
 	}
 	tx := db.Begin()
@@ -209,7 +209,7 @@ func TestListQueryTypedContractProbes(t *testing.T) {
 	}
 	modelsToMigrate := append([]interface{}{}, accountModels...)
 	modelsToMigrate = append(modelsToMigrate, &models.Message{}, &models.OutboundQueue{}, &models.Contact{})
-	if err := db.AutoMigrate(modelsToMigrate...); err != nil {
+	if err := migrateModels(db, modelsToMigrate...); err != nil {
 		t.Fatal(err)
 	}
 	tx := db.Begin()

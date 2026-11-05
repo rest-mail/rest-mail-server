@@ -25,7 +25,7 @@ func snoozeDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := rmdb.AutoMigrate(database); err != nil {
+	if err := migrateSchema(database); err != nil {
 		t.Fatal(err)
 	}
 	return database
@@ -196,7 +196,7 @@ func TestThreadSnoozeSurvivesRestartAndReturnsOverdue(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = beforeSQL.Close() })
-	if err := rmdb.AutoMigrate(before); err != nil {
+	if err := migrateSchema(before); err != nil {
 		t.Fatal(err)
 	}
 	fixture := seedMsgDeleteFixture(t, before, 0)
@@ -219,7 +219,7 @@ func TestThreadSnoozeSurvivesRestartAndReturnsOverdue(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = afterSQL.Close() })
-	if err := rmdb.AutoMigrate(after); err != nil {
+	if err := migrateSchema(after); err != nil {
 		t.Fatal(err)
 	}
 	var persisted models.ThreadSnooze

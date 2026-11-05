@@ -3,6 +3,7 @@ package filters
 import (
 	"context"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -14,6 +15,14 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 	"github.com/rest-mail/rest-mail-server/internal/testdb"
 	"gorm.io/gorm"
+)
+
+// The full migration runs once per test binary, by whichever test comes first. It
+// only adds to a database, and no test in this package removes anything from the
+// schema, so running it again would change nothing.
+var (
+	recipientSchema    sync.Once
+	recipientSchemaErr error
 )
 
 // openRecipientCheckTestDB connects to the unit-test Postgres, skipping (never
@@ -31,11 +40,13 @@ func openRecipientCheckTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		testdb.Unreachable(t, "recipient_check DB test skipped: no database reachable (%v)", err)
 	}
+	testdb.ReuseConnections(t, gdb)
 	if err := gdb.AutoMigrate(&models.Domain{}, &models.Mailbox{}, &models.Alias{}); err != nil {
 		t.Skipf("recipient_check DB test skipped: migrate failed (%v)", err)
 	}
-	if err := rmdb.AutoMigrate(gdb); err != nil {
-		t.Fatal(err)
+	recipientSchema.Do(func() { recipientSchemaErr = rmdb.AutoMigrate(gdb) })
+	if recipientSchemaErr != nil {
+		t.Fatal(recipientSchemaErr)
 	}
 	if err := bootstrap.EnsureRBAC(gdb); err != nil {
 		t.Fatal(err)

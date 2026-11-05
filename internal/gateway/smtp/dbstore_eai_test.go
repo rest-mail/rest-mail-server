@@ -3,6 +3,7 @@ package smtp
 import (
 	"errors"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -86,13 +87,22 @@ func TestDBStore_SenderMatchesAccount(t *testing.T) {
 	}
 }
 
+// The full migration runs once per test binary, by whichever test comes first. It
+// only adds to a database, and no test in this package removes anything from the
+// schema, so running it again would change nothing.
+var (
+	storeSchema    sync.Once
+	storeSchemaErr error
+)
+
 // openStoreRBACTestDB is openStoreTestDB with the full schema and the built-in
 // roles, which SenderAuthorized reads grants through.
 func openStoreRBACTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	db := openStoreTestDB(t)
-	if err := rmdb.AutoMigrate(db); err != nil {
-		t.Skipf("smtp dbStore test skipped: migrate failed (%v)", err)
+	storeSchema.Do(func() { storeSchemaErr = rmdb.AutoMigrate(db) })
+	if storeSchemaErr != nil {
+		t.Skipf("smtp dbStore test skipped: migrate failed (%v)", storeSchemaErr)
 	}
 	if err := bootstrap.EnsureRBAC(db); err != nil {
 		t.Fatalf("roles: %v", err)

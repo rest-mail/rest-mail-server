@@ -27,7 +27,7 @@ import (
 // check the persisted default and rollback, not just controlled SQL bindings.
 func TestCertificateCreationPersistence(t *testing.T) {
 	db := openCustomFilterCreateScratchDB(t)
-	if err := db.AutoMigrate(&models.Certificate{}); err != nil {
+	if err := migrateModels(db, &models.Certificate{}); err != nil {
 		t.Fatal(err)
 	}
 	const master = "public-test-certificate-persistence-master"

@@ -19,7 +19,7 @@ import (
 func openRotationTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	db := openAuthzTestDB(t)
-	if err := db.AutoMigrate(&models.DKIMRotationKey{}); err != nil {
+	if err := migrateModels(db, &models.DKIMRotationKey{}); err != nil {
 		t.Skipf("DKIM rotation DB test skipped: migrate failed (%v)", err)
 	}
 	return db

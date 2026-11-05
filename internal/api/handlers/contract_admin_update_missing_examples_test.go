@@ -106,7 +106,7 @@ func TestAdminUpdates_DocumentedMissingExamples(t *testing.T) {
 				if err != nil {
 					t.Skipf("admin update contract test requires PostgreSQL: %v", err)
 				}
-				if err := gdb.AutoMigrate(&models.Domain{}, &models.Mailbox{}, &models.QuotaUsage{}, &models.Alias{}, &models.CustomFilter{}); err != nil {
+				if err := migrateModels(gdb, &models.Domain{}, &models.Mailbox{}, &models.QuotaUsage{}, &models.Alias{}, &models.CustomFilter{}); err != nil {
 					t.Fatal(err)
 				}
 				tx := gdb.Begin()

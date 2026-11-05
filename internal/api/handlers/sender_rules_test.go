@@ -20,7 +20,7 @@ import (
 // may still be on both lists at once.
 func TestSenderRules_DuplicateIsConflict(t *testing.T) {
 	gdb := openAuthzTestDB(t)
-	if err := gdb.AutoMigrate(&models.DomainSenderRule{}); err != nil {
+	if err := migrateModels(gdb, &models.DomainSenderRule{}); err != nil {
 		t.Skipf("sender rule test skipped: migrate failed (%v)", err)
 	}
 	// The uniqueness lives in this index, which rmdb.AutoMigrate creates.
@@ -120,7 +120,7 @@ func TestSenderRules_RejectDomainIDsBelowOne(t *testing.T) {
 // range is served: added, listed and removed.
 func TestSenderRules_DomainIDsFromOneReachTheList(t *testing.T) {
 	gdb := openAuthzTestDB(t)
-	if err := gdb.AutoMigrate(&models.DomainSenderRule{}); err != nil {
+	if err := migrateModels(gdb, &models.DomainSenderRule{}); err != nil {
 		t.Skipf("sender rule test skipped: migrate failed (%v)", err)
 	}
 	for _, list := range []string{"Allowlist", "Blocklist"} {

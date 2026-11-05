@@ -23,7 +23,7 @@ func queueMutationPostgres(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&models.OutboundQueue{}); err != nil {
+	if err := migrateModels(db, &models.OutboundQueue{}); err != nil {
 		t.Fatal(err)
 	}
 	return db

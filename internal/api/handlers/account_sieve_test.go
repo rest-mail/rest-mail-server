@@ -106,7 +106,7 @@ func TestSieveFolderAndFlags(t *testing.T) {
 // step runs none (#787).
 func TestDelivery_RunsTheAccountsSieveScript(t *testing.T) {
 	db := openRedirectTestDB(t)
-	if err := db.AutoMigrate(&models.SieveScript{}); err != nil {
+	if err := migrateModels(db, &models.SieveScript{}); err != nil {
 		t.Skipf("account sieve DB test skipped: migrate failed (%v)", err)
 	}
 	engine := pipeline.NewEngine(withQuietVacation(pipeline.DefaultRegistry), slog.Default())

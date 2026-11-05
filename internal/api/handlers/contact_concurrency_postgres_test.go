@@ -56,7 +56,7 @@ func newContactRace(t *testing.T) *contactRace {
 			_ = sqlDB.Close()
 		}
 	})
-	if err := db.AutoMigrate(&models.Domain{}, &models.Mailbox{}, &models.Contact{}); err != nil {
+	if err := migrateModels(db, &models.Domain{}, &models.Mailbox{}, &models.Contact{}); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_contacts_mailbox_email ON contacts(mailbox_id, email)`).Error; err != nil {

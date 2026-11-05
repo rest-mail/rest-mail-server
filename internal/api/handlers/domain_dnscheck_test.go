@@ -190,7 +190,7 @@ func TestDNSCheck_IDNLooksUpALabels(t *testing.T) {
 func openDNSCheckDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	gdb := openAuthzTestDB(t)
-	if err := gdb.AutoMigrate(&models.MTASTSPolicy{}, &models.DKIMRotationKey{}); err != nil {
+	if err := migrateModels(gdb, &models.MTASTSPolicy{}, &models.DKIMRotationKey{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	return gdb

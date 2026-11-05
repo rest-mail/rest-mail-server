@@ -19,7 +19,7 @@ import (
 // (RFC 9989 §7.4, #729).
 func TestDomainDMARCPolicy_SetThroughTheAdminAPI(t *testing.T) {
 	gdb := openAuthzTestDB(t)
-	if err := gdb.AutoMigrate(&models.Pipeline{}); err != nil {
+	if err := migrateModels(gdb, &models.Pipeline{}); err != nil {
 		t.Skipf("domain DMARC policy test skipped: migrate failed (%v)", err)
 	}
 	tx := gdb.Begin()

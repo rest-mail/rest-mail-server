@@ -13,7 +13,7 @@ func TestQuietHoursAccountSetting(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := database.AutoMigrate(accountModels...); err != nil {
+	if err := migrateModels(database, accountModels...); err != nil {
 		t.Fatal(err)
 	}
 	tx := database.Begin()

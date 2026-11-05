@@ -53,7 +53,7 @@ func TestBulkQueue_AddressFiltersSelectOnlyMatchingEntries(t *testing.T) {
 	if err != nil {
 		t.Skipf("bulk queue filters require PostgreSQL: %v", err)
 	}
-	if err := db.AutoMigrate(&models.OutboundQueue{}); err != nil {
+	if err := migrateModels(db, &models.OutboundQueue{}); err != nil {
 		t.Fatal(err)
 	}
 	for _, action := range []string{"retry", "bounce", "delete"} {

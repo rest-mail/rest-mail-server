@@ -44,7 +44,7 @@ func keysHandler(t *testing.T, f *firstSignIn, owners, status []ssh.Signer) *Own
 		}
 		return strings.Join(lines, "")
 	}
-	if err := f.db.AutoMigrate(&models.OwnerKey{}); err != nil {
+	if err := migrateModels(f.db, &models.OwnerKey{}); err != nil {
 		t.Fatal(err)
 	}
 	if err := f.db.Where("1 = 1").Delete(&models.OwnerKey{}).Error; err != nil {

@@ -153,7 +153,7 @@ func TestDKIMKeyContract_DocumentedExamples(t *testing.T) {
 	if err != nil {
 		t.Skipf("no test database: %v", err)
 	}
-	if err := db.AutoMigrate(&models.Domain{}); err != nil {
+	if err := migrateModels(db, &models.Domain{}); err != nil {
 		t.Fatal(err)
 	}
 	tx := db.Begin()
