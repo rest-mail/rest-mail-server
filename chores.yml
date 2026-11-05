@@ -617,6 +617,9 @@ tasks:
         export CONTRACT_VERTRAG
         export RESTMAIL_VERTRAG_BINARY="$CONTRACT_VERTRAG"
         export PATH="$(dirname "$CONTRACT_VERTRAG"):$PATH"
+        # The version receipt (#1751). It fails when this run would bring up a
+        # substrate other than CI's; a named endpoint only reports it.
+        python3 -B scripts/substrate_pins.py preflight ${CONTRACT_ENDPOINT:+--report}
         chore contract:pairs
         if [ -z "${CONTRACT_ENDPOINT:-}" ]; then chore e2e:up; fi
         if [ ! -s .cache/contract-principals.json ]; then
@@ -1465,19 +1468,21 @@ tasks:
   # operational tasks (up, down, smoke, dig, ...) flow through
   # automatically once cloned. The clone steps live here because the
   # include can't bootstrap itself — first-run is `chore testbed:init`
-  # and `chore mailserver:init`.
+  # and `chore mailserver:init`. Both check out the commits pinned in
+  # scripts/substrate-pins.yml, as CI does (#1751).
   # ════════════════════════════════════════════════════════
 
   testbed:init:
-    desc: First-run only — clone rest-mail/testbed and seed config/restmail.test from its fixture config
+    desc: Clone rest-mail/testbed at its pinned commit and seed config/restmail.test from its fixture config
     # This task CREATES config/<domain>/config.env, so it cannot require one to already
     # exist. Without the opt-out chore refuses to start on a fresh checkout — the one
     # situation the task is for. Locally it always passed, because the files were there.
     dotenv: []
     cmds:
-      # Clone the testbed if absent (idempotent — safe to re-run) …
       - mkdir -p .workspace config
-      - test -d .workspace/testbed/.git || git clone git@github.com:rest-mail/testbed.git .workspace/testbed
+      # Clone the testbed if absent and check out its pin from
+      # scripts/substrate-pins.yml, the commit CI uses (#1751) …
+      - python3 -B scripts/substrate_pins.py sync testbed
       # … then COPY its restmail.test fixture into the authoritative
       # config/<domain>/ layout, where CONFIG=restmail.test resolves
       # config/restmail.test/config.env for the dotenv load.
@@ -1514,12 +1519,18 @@ tasks:
         echo "  config/restmail.test is yours now — edit manifest.yml, then chore config:render"
 
   mailserver:init:
-    desc: First-run only — clone rest-mail/reference-mailserver into .workspace/reference-mailserver
-    status:
-      - test -d .workspace/reference-mailserver/.git
+    desc: Clone rest-mail/reference-mailserver into .workspace/reference-mailserver at its pinned commit, prepared for this platform
     cmds:
-      - mkdir -p .workspace
-      - git clone git@github.com:rest-mail/reference-mailserver.git .workspace/reference-mailserver
+      # The pin in scripts/substrate-pins.yml, the commit CI uses (#1751). On
+      # native-Linux Docker this also runs dkim:provision's chmod in a container.
+      # Idempotent; RESTMAIL_SUBSTRATE=unpinned keeps an existing checkout.
+      - python3 -B scripts/substrate_pins.py sync reference-mailserver
+
+  substrate:check:
+    desc: 'Print the version receipt (server and substrate commits); fail when a substrate clone is not at its pin'
+    dotenv: []   # a clone check needs no config's environment
+    cmds:
+      - python3 -B scripts/substrate_pins.py preflight
 
   mailserver:certs:issue:
     desc: Issue TLS certs for the reference mail1/mail2 servers into the shared testbed certs volume

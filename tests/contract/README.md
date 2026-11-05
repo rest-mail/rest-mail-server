@@ -1512,8 +1512,9 @@ A fresh checkout needs the test substrate before `chore contract` can bring up
 the topology:
 
 ```sh
-chore testbed:init       # clone rest-mail/testbed, seed config/restmail.test
-chore mailserver:init    # clone rest-mail/reference-mailserver into .workspace/
+chore testbed:init       # clone rest-mail/testbed at its pin, seed config/restmail.test
+chore mailserver:init    # clone rest-mail/reference-mailserver at its pin into .workspace/
+chore substrate:check    # the version receipt; fails when a clone is not at its pin
 ```
 
 Both clone over `git@github.com:`, so they need GitHub SSH access. The first
@@ -1522,12 +1523,29 @@ runs `pip install pyyaml` when PyYAML is missing, and pulls the topology's
 container images. After that, the check talks only to the local
 `restmail.test` topology.
 
-Two differences from CI remain. CI checks out `testbed` and
-`reference-mailserver` at fixed commits (`TESTBED_REF` and
-`REFERENCE_MAILSERVER_REF` in `e2e-suite.yml`), while the init tasks clone each
-default branch. CI also patches the reference server's `dkim:provision` for
-native-Linux Docker, which Docker Desktop does not need. When a local result
-differs from CI's, check those commits first.
+The substrate commits come from one file, `scripts/substrate-pins.yml` (#1751).
+Both init tasks check out its commits through `scripts/substrate_pins.py sync`,
+and CI's E2E job runs the same two tasks, so a clean checkout gets CI's inputs
+without reconciling clones by hand. Re-running an init task moves an existing
+clean clone to the pin; a clone with uncommitted changes is left alone and the
+task fails, naming the files. To adopt upstream substrate changes, bump the
+commit in that file.
+
+The one platform-specific step is scripted there too: on native-Linux Docker
+(CI's runner, and a Linux machine) `mailserver:init` rewrites the reference
+server's `dkim:provision` so its `chmod` of the container-root-owned key runs in
+a container. Docker Desktop's host-owned bind mounts need no change, so macOS
+skips it.
+
+Before a run, `chore contract` prints the version receipt: the server commit
+(marked when it has uncommitted changes) and each substrate's checked-out commit
+against its pin. When it is about to bring the topology up and a clone is
+missing, at another commit, unprepared or changed, it fails before the example
+pairs. With `CONTRACT_ENDPOINT` it only reports, because the running topology was
+not necessarily built from these clones. CI prints the same receipt after its
+init step and fails there. `RESTMAIL_SUBSTRATE=unpinned` keeps an existing
+clone where it is, to run against a substrate branch, and turns the failures
+into warnings; that run's inputs are not CI's.
 
 ### Running the check
 
@@ -1553,7 +1571,8 @@ must start successfully before topology or fixture setup. Its absolute path is
 exported to API-key probes and phase child commands. CI uses the same installer
 and cache; `chore vertrag:install` remains available for an explicit reinstall.
 
-`chore contract` then runs these steps in order:
+`chore contract` then prints the substrate receipt (above) and runs these steps
+in order:
 
 1. `chore contract:pairs`, the registered example-pair checks
    (`tests/contract/example_pairs.sh`). It builds the `internal/api` test binary
@@ -1574,8 +1593,9 @@ and cache; `chore vertrag:install` remains available for an explicit reinstall.
 
 The command fails when the example pairs, the setup, the gate or the secret
 scan fail. The authorization and ownership reports never fail it. CI's E2E job
-calls `chore contract`, so a run here gives the verdict CI gives for the same
-commit, apart from the substrate differences under "First run".
+calls `chore contract`, so a run here whose receipt shows the same server commit
+and substrate pins has CI's inputs. A recorded local and CI run with equal
+verdicts at the same pins is still open in #1751.
 
 The example-pair test list lives in the `contract:pairs` task in `chores.yml`.
 A new `*WithVertrag` test in `internal/api` must be added there, or no run sends

@@ -107,56 +107,20 @@ jobs:
         run: git config --global url."https://github.com/".insteadOf "git@github.com:"
 
       - name: Clone testbed + reference-mailserver substrate (pinned)
-        # The `testbed` include must resolve before `chore e2e:up` is parsed;
-        # reference-mailserver is also cloned by e2e:up, pre-cloning is harmless.
+        # The `testbed` include must resolve before `chore e2e:up` is parsed.
         #
-        # The init tasks clone each repo's DEFAULT BRANCH (no ref). Pin the
-        # checkout to a known-good commit so an e2e run is reproducible and
-        # tamper-evident: an upstream force-push or a compromised default branch
-        # cannot silently change what CI executes — a missing/rewritten pin fails
-        # the step loudly instead. Bump these SHAs deliberately when adopting
-        # upstream substrate changes.
-        env:
-          TESTBED_REF: 398d29cd40eb1a8553d710dc25491c2a4b727a37              # rest-mail/testbed @ master
-          REFERENCE_MAILSERVER_REF: 4f6f8e0fb61d6aac9a3adffa38f05c55be27e25d  # rest-mail/reference-mailserver @ master
+        # The same init tasks a person runs (#1751): each checks out the commit
+        # pinned in scripts/substrate-pins.yml, so an upstream force-push or a
+        # compromised default branch cannot silently change what CI executes,
+        # and a missing pin fails loudly. On this native-Linux runner
+        # mailserver:init also runs reference-mailserver's dkim:provision chmod
+        # in a container. The preflight prints the server and substrate commits
+        # and fails when a clone is not at its pin. Bump the pins in that file.
         run: |
           set -euo pipefail
           chore testbed:init
           chore mailserver:init
-          git -C .workspace/testbed fetch --quiet origin "$TESTBED_REF" || true
-          git -C .workspace/testbed checkout --quiet "$TESTBED_REF"
-          git -C .workspace/reference-mailserver fetch --quiet origin "$REFERENCE_MAILSERVER_REF" || true
-          git -C .workspace/reference-mailserver checkout --quiet "$REFERENCE_MAILSERVER_REF"
-          echo "testbed pinned @ $(git -C .workspace/testbed rev-parse --short HEAD)"
-          echo "reference-mailserver pinned @ $(git -C .workspace/reference-mailserver rev-parse --short HEAD)"
-
-      - name: Patch reference dkim:provision for native-Linux Docker
-        # reference-mailserver's dkim:provision generates the DKIM key as
-        # container-root, then runs `chmod 644` on it FROM THE HOST. On Docker
-        # Desktop bind-mount files are host-user-owned so that works; on native
-        # Linux (this runner) the file is root-owned and the non-root runner
-        # can't chmod it ("Operation not permitted"). Run that chmod inside a
-        # container instead — the same idiom the task already uses two lines
-        # below for the fragment copy. (Follow-up: fix this upstream in
-        # rest-mail/reference-mailserver so it's portable off Docker Desktop.)
-        run: |
-          # Whichever name that project ships: it is migrating from Taskfile.yml to
-          # chores.yml, and this must not break on either side of that.
-          f=""
-          for c in chores.yml Taskfile.yml; do
-            [ -f ".workspace/reference-mailserver/$c" ] && f=".workspace/reference-mailserver/$c" && break
-          done
-          if [ -z "$f" ]; then
-            echo "::error::no chores.yml or Taskfile.yml in reference-mailserver" >&2
-            exit 1
-          fi
-          perl -pi -e 's{chmod 644 "\$KEYDIR/\$DOMAIN\.\$SEL\.key"}{docker run --rm -v "\$(pwd)/\$KEYDIR:/keys" alpine:3.20 chmod 644 "/keys/\$DOMAIN.\$SEL.key"}g' "$f"
-          if grep -qF 'chmod 644 "$KEYDIR/$DOMAIN.$SEL.key"' "$f"; then
-            echo "::error::dkim:provision chmod patch did not apply — upstream reference-mailserver task file changed"
-            exit 1
-          fi
-          echo "patched host chmod -> containerized chmod:"
-          grep -nF 'alpine:3.20 chmod 644' "$f"
+          python3 -B scripts/substrate_pins.py preflight
 
       - name: Bring up e2e topology
         env:

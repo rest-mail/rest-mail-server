@@ -95,14 +95,11 @@ jobs:
         run: git config --global url."https://github.com/".insteadOf "git@github.com:"
 
       - name: Clone the testbed (pinned)
-        # Bump this with the pin in e2e-suite.yml; a test holds them equal.
-        env:
-          TESTBED_REF: 398d29cd40eb1a8553d710dc25491c2a4b727a37 # rest-mail/testbed @ master
+        # chore testbed:init checks out the commit in scripts/substrate-pins.yml (#1751),
+        # as the E2E suite does. Bump it in that file; a test holds this step to it.
         run: |
           set -euo pipefail
           chore testbed:init
-          git -C .workspace/testbed fetch --quiet origin "$TESTBED_REF" || true
-          git -C .workspace/testbed checkout --quiet "$TESTBED_REF"
           echo "testbed pinned @ $(git -C .workspace/testbed rev-parse --short HEAD)"
 
       - name: Bring up restmail.test

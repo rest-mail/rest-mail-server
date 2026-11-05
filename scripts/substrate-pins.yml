@@ -1,0 +1,6 @@
+# The test substrate commits every E2E and contract run uses (#1751).
+# Read by scripts/substrate_pins.py: `chore testbed:init` and `chore mailserver:init`
+# check these commits out, CI runs the same tasks, and the preflight fails when a
+# clone is anywhere else. Bump a commit deliberately, when adopting an upstream change.
+testbed: 398d29cd40eb1a8553d710dc25491c2a4b727a37
+reference-mailserver: 4f6f8e0fb61d6aac9a3adffa38f05c55be27e25d

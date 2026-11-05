@@ -17,6 +17,8 @@ import mailcheck_baseline  # noqa: E402
 BASELINE = ROOT / "scripts/mailcheck-baseline.json"
 WORKFLOW = ROOT / ".github/workflows/mail-conformance.yml"
 E2E_SUITE = ROOT / ".github/workflows/e2e-suite.yml"
+CHORES = ROOT / "chores.yml"
+MANIFEST = ROOT / "scripts/substrate-pins.yml"
 DOMAIN = "restmail.test"
 
 
@@ -205,8 +207,18 @@ class Workflow(unittest.TestCase):
         suite = E2E_SUITE.read_text()
         name = "Install chore (the newest release, attested)"
         self.assertEqual(self.step(name), self.step(name, suite))
-        pin = re.compile(r"TESTBED_REF: (\S+)")
-        self.assertEqual(pin.search(self.source)[1], pin.search(suite)[1])
+        # Both take the testbed from the one pin manifest, by the same task (#1751), so
+        # neither may name a commit of its own or move the clone after that task.
+        clone = self.step("Clone the testbed (pinned)")
+        self.assertIn("chore testbed:init", clone)
+        self.assertIn("chore testbed:init", self.step("Clone testbed + reference-mailserver substrate (pinned)", suite))
+        commit = re.search(r"(?m)^testbed: ([0-9a-f]{40})$", MANIFEST.read_text())[1]
+        for source in (self.source, suite):
+            self.assertNotIn("TESTBED_REF", source)
+            self.assertNotIn(commit, source)
+        self.assertNotRegex(clone, r"git -C \.workspace/testbed (fetch|checkout)")
+        task = re.search(r"(?ms)^  testbed:init:.*?(?=^  \S)", CHORES.read_text())[0]
+        self.assertIn("scripts/substrate_pins.py sync testbed", task)
 
     def test_a_tool_that_breaks_still_reaches_the_comparison(self):
         step = self.step("Run instantmailcheck and compare with the baseline")
