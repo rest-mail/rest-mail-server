@@ -220,3 +220,21 @@ func TestWireFormSize_MatchesAndIsLinear(t *testing.T) {
 	}
 	assertLinear(t, input, func(raw string) { WireFormSize(raw, false) })
 }
+
+// TestEntityHeader_SharesItsBuffer: net/mail allocates a 4 KiB buffer per read unless
+// it is given one, which a message of many small parts would pay for each part.
+func TestEntityHeader_SharesItsBuffer(t *testing.T) {
+	const reads, wholeBuffer = 200, 4096
+	entityHeader("Content-Type: text/plain\r\n\r\n")
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	for range reads {
+		if entityHeader("Content-Type: text/plain\r\n\r\n").Get("Content-Type") != "text/plain" {
+			t.Fatal("header not read")
+		}
+	}
+	runtime.ReadMemStats(&after)
+	if each := (after.TotalAlloc - before.TotalAlloc) / reads; each >= wholeBuffer*3/4 {
+		t.Errorf("each read allocated %d bytes, want well under the %d of a buffer", each, wholeBuffer)
+	}
+}
