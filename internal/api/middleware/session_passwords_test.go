@@ -44,7 +44,7 @@ func (f *fakeAppPasswords) verify(address, password string) (*auth.Claims, error
 // SessionPasswords, answering with the claims it saw and the body it was left.
 func appPasswordRouter(f *fakeAppPasswords, sink *auditSink, failures *RateLimitConfig) (http.Handler, *auth.JWTService) {
 	jwtSvc := auth.NewJWTService("app-password-test", time.Minute, time.Hour)
-	a := NewSessionPasswords(f.verify, sink.auditor(nil).CredentialRefused, failures)
+	a := NewSessionPasswords(f.verify, sink.auditor(nil).CredentialRefused, failures, nil)
 	r := chi.NewRouter()
 	r.Use(chimw.RequestID)
 	r.With(a.Authenticate()).Post("/api/v1/gateway-sessions", func(w http.ResponseWriter, r *http.Request) {
@@ -302,4 +302,58 @@ func errorCode(t *testing.T, rr *httptest.ResponseRecorder) string {
 
 func withClaims(r *http.Request, claims *auth.Claims) context.Context {
 	return context.WithValue(r.Context(), ClaimsKey, claims)
+}
+
+// mailClientRouter is appPasswordRouter's route with a gateway that speaks for
+// its mail client when speaks says so, answering with the address the request
+// is known by from there on.
+func mailClientRouter(f *fakeAppPasswords, failures *RateLimitConfig, speaks SpeaksForMailClient) http.Handler {
+	a := NewSessionPasswords(f.verify, nil, failures, speaks)
+	r := chi.NewRouter()
+	r.With(a.Authenticate()).Post("/api/v1/gateway-sessions", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Client", clientIP(r))
+		w.WriteHeader(http.StatusOK)
+	})
+	return r
+}
+
+func mailClientRequest(clientIPField string) *http.Request {
+	b, _ := json.Marshal(map[string]string{"protocol": "imap", "address": "user@example.com", "password": testAppPassword, "client_ip": clientIPField})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/gateway-sessions", strings.NewReader(string(b)))
+	req.RemoteAddr = "192.0.2.20:40000"
+	return req
+}
+
+func TestMailClientAddressIsBelievedOnlyFromAGateway(t *testing.T) {
+	yes := func(*http.Request) bool { return true }
+	no := func(*http.Request) bool { return false }
+	for _, tc := range []struct {
+		name   string
+		speaks SpeaksForMailClient
+		stated string
+		code   int
+		known  string
+	}{
+		{"a gateway's IPv4", yes, "198.51.100.7", http.StatusOK, "198.51.100.7"},
+		{"a gateway's IPv6", yes, "2001:db8::7", http.StatusOK, "2001:db8::7"},
+		{"an IPv4 client on an IPv6 socket", yes, "::ffff:198.51.100.7", http.StatusOK, "198.51.100.7"},
+		{"a link-local client's zone", yes, "fe80::7%eth0", http.StatusOK, "fe80::7"},
+		{"a gateway states nothing", yes, "", http.StatusUnprocessableEntity, ""},
+		{"a gateway states a host and port", yes, "198.51.100.7:143", http.StatusUnprocessableEntity, ""},
+		{"a gateway states a name", yes, "client.example.test", http.StatusUnprocessableEntity, ""},
+		{"anyone else states one", no, "198.51.100.7", http.StatusOK, "192.0.2.20"},
+		{"anyone else states rubbish", no, "rubbish", http.StatusOK, "192.0.2.20"},
+		{"no gateway is configured", nil, "198.51.100.7", http.StatusOK, "192.0.2.20"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rr := httptest.NewRecorder()
+			mailClientRouter(&fakeAppPasswords{}, nil, tc.speaks).ServeHTTP(rr, mailClientRequest(tc.stated))
+			if rr.Code != tc.code {
+				t.Fatalf("got %d %s, want %d", rr.Code, rr.Body.String(), tc.code)
+			}
+			if got := rr.Header().Get("X-Client"); got != tc.known {
+				t.Fatalf("the request is known by %q, want %q", got, tc.known)
+			}
+		})
+	}
 }

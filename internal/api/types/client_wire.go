@@ -56,6 +56,7 @@ type gatewaySessionOpenRequest struct {
 	Protocol string `json:"protocol" enums:"imap,pop3,smtp" message:"must be \"imap\", \"pop3\" or \"smtp\"" missing:"must be \"imap\", \"pop3\" or \"smtp\""`
 	Address  string `json:"address" format:"email" description:"The account's address, as the mail client gave it"`
 	Password string `json:"password" format:"password" description:"What the mail client gave as its password: an app password, or one of the account's passwords. Never stored or recorded"`
+	ClientIP string `json:"client_ip" description:"The IP address the mail client is connected to the gateway from. The sign-in throttle and the audit record use it, and the API takes it only from a gateway's own certificate"`
 }
 
 type sendMessageRequest struct {

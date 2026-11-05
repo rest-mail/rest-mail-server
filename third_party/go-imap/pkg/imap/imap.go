@@ -129,6 +129,15 @@ type Backend interface {
 	Authenticate(user, pass string) (Mailbox, error)
 }
 
+// ClientAddressBackend is an optional interface a [Backend] implements to learn
+// which address a client connected from, for a store that signs clients in on
+// their behalf and has to tell it apart from its own. The server asks for the
+// Backend to use for each sign-in, with the client's IP address as the session
+// sees it.
+type ClientAddressBackend interface {
+	ForClient(ip string) Backend
+}
+
 // CommandObserver is an optional interface a [Backend] implements to learn how
 // long each command took, from the end of its command line (and any literal
 // arguments) to the end of its handling. name is the command name the client

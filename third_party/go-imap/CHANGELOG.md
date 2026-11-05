@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- `ClientAddressBackend`: an optional interface through which a `Backend` is
+  told the client's IP address at sign-in.
 - STATUS DELETED (RFC 9051 §6.3.11): STATUS, and LIST's STATUS return option,
   report how many messages carry `\Deleted`.
 - The CLOSED response code (RFC 9051 §§6.3.2, 7.1): SELECT or EXAMINE that

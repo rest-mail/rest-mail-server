@@ -66,3 +66,13 @@ temporary refusal, unlike AUTHENTICATIONFAILED) without calling the backend,
 then the connection closes. The failure that earns the ban gets the same reply.
 `TestAuthenticationFailureBudgetAppliesToBothForms` asserted the old reply text,
 so it is corrected.
+
+## The Backend can learn the client's address
+
+`Backend.Authenticate` takes a user and password, and nothing says where they
+came from. A store that signs clients in on their behalf has to tell the
+client's address from its own, or it throttles and records everyone as one
+client (rest-mail/rest-mail-server#1957). A `Backend` that also implements the
+optional `ClientAddressBackend` is asked, at each LOGIN or AUTHENTICATE, for the
+`Backend` to use for the client's IP address, the one the `Limiter` already goes
+by. A `Backend` without it is called as before.

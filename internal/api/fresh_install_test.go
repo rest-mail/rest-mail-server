@@ -304,7 +304,7 @@ func TestFreshInstall_EndToEnd(t *testing.T) {
 	var adminApp createdCredential
 	f.expect(f.do(http.MethodPost, fmt.Sprintf("/api/v1/accounts/%d/credentials", admin.ID), adminS.bearer(),
 		fmt.Sprintf(`{"name":"Thunderbird","password":%q}`, freshAdminPW)), http.StatusCreated, "admin@'s app password", &adminApp)
-	if _, err := gateway.OpenSession(freshAdmin, freshAdminPW, "imap"); !apiclient.IsAuthRejection(err) {
+	if _, err := gateway.OpenSession(freshAdmin, freshAdminPW, "imap", testClientIP); !apiclient.IsAuthRejection(err) {
 		t.Fatalf("admin@'s password at a gateway = %v, want refused", err)
 	}
 	received := "to chris@, over SMTP"
@@ -327,7 +327,7 @@ func TestFreshInstall_EndToEnd(t *testing.T) {
 			t.Fatalf("signing in to chris@ with %q: %d %s", pw, rr.Code, rr.Body.String())
 		}
 	}
-	if _, err := imapgw.NewBackend(gateway, nil).Authenticate("chris@fresh.test", freshAdminPW); !apiclient.IsAuthRejection(err) {
+	if _, err := imapgw.NewBackend(gateway, nil).ForClient(testClientIP).Authenticate("chris@fresh.test", freshAdminPW); !apiclient.IsAuthRejection(err) {
 		t.Fatalf("chris@ over IMAP = %v, want refused", err)
 	}
 
@@ -400,7 +400,7 @@ func TestFreshInstall_EndToEnd(t *testing.T) {
 		address, password string
 		id                uint
 	}{{freshAdmin, adminApp.Password, admin.ID}, {"chris@fresh.test", chrisApp.Password, chris.ID}} {
-		box, err := imapgw.NewBackend(gateway, nil).Authenticate(signIn.address, signIn.password)
+		box, err := imapgw.NewBackend(gateway, nil).ForClient(testClientIP).Authenticate(signIn.address, signIn.password)
 		if err != nil {
 			t.Fatalf("%s over IMAP with its app password: %v", signIn.address, err)
 		}
@@ -413,7 +413,7 @@ func TestFreshInstall_EndToEnd(t *testing.T) {
 		}
 		f.expect(f.login(signIn.address, signIn.password, ""), http.StatusUnauthorized, signIn.address+"'s app password at sign-in", nil)
 	}
-	if _, err := imapgw.NewBackend(gateway, nil).Authenticate("chris@fresh.test", adminApp.Password); !apiclient.IsAuthRejection(err) {
+	if _, err := imapgw.NewBackend(gateway, nil).ForClient(testClientIP).Authenticate("chris@fresh.test", adminApp.Password); !apiclient.IsAuthRejection(err) {
 		t.Fatalf("admin@'s app password for chris@ over IMAP = %v, want refused", err)
 	}
 

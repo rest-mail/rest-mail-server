@@ -77,7 +77,7 @@ func newMockBackend() *mockBackend {
 	}
 }
 
-func (m *mockBackend) OpenSession(email, password, _ string) (*apitypes.GatewaySessionOpened, error) {
+func (m *mockBackend) OpenSession(email, password, _, _ string) (*apitypes.GatewaySessionOpened, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.loginCalls++

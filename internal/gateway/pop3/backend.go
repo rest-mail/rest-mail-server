@@ -31,6 +31,9 @@ type Backend struct {
 	// per-IP tracker cannot see a distributed attack that rotates source IPs
 	// against one account. A nil limiter disables per-account throttling.
 	limiter *connlimiter.Limiter
+	// clientIP is the address of the mail client this Backend signs in, set by
+	// ForClient. The API throttles and records a sign-in by it.
+	clientIP string
 }
 
 // NewBackend creates a Backend over the given API client. limiter enables
@@ -43,6 +46,14 @@ var (
 	_ gopop3.Backend     = (*Backend)(nil)
 	_ gopop3.UTF8Backend = (*Backend)(nil)
 )
+
+// ForClient returns the Backend that signs in the mail client connected from
+// ip. [Server] gives each connection its own.
+func (b *Backend) ForClient(ip string) *Backend {
+	forClient := *b
+	forClient.clientIP = ip
+	return &forClient
+}
 
 // Authenticate signs in a client that has not sent UTF8; the library calls
 // [Backend.AuthenticateUTF8] instead, since the Backend implements it.
@@ -69,7 +80,7 @@ func (b *Backend) AuthenticateUTF8(user, pass string, utf8 bool) (gopop3.Mailbox
 	// The connection gets its own session with the API (#1586): the address
 	// and password go once, and every call that follows sends the session's
 	// token. An app password signs in without the API's interactive login (#344).
-	resp, err := b.api.OpenSession(user, pass, "pop3")
+	resp, err := b.api.OpenSession(user, pass, "pop3", b.clientIP)
 	if err != nil {
 		// A failed POP3 login is a security-relevant event (credential stuffing /
 		// enumeration). Log it structured, with the attacker-controlled username

@@ -1994,6 +1994,8 @@ def give_each_rename_probe_a_folder(transaction):
 # session routes there with the same one).
 INTERNAL_ORIGIN = "https://10.99.0.20:8443"
 CONTRACT_MTLS = os.environ.get("CONTRACT_MTLS_DIR", ".cache/contract-mtls")
+# The mail client the contract run's gateway signs in (RFC 5737).
+CONTRACT_MAIL_CLIENT_IP = "198.51.100.7"
 
 
 @hooks.before("/api/v1/gateway-sessions > * > 201 > application/json")
@@ -2001,10 +2003,12 @@ CONTRACT_MTLS = os.environ.get("CONTRACT_MTLS_DIR", ".cache/contract-mtls")
 def sign_in_a_mail_client(transaction):
     """The IMAP gateway opens a session for the app password principal: its
     address and secret go in the body, the only place a mail client's password
-    is sent (#1586). The pair's protocol stays, so 422 still names another."""
+    is sent (#1586), with the address its mail client connected from. The pair's
+    protocol stays, so 422 still names another."""
     app = principals()["app_password"]
     body = hooks.get_json(transaction)
     body["address"], body["password"] = app["address"], app["secret"]
+    body["client_ip"] = CONTRACT_MAIL_CLIENT_IP
     hooks.set_json(transaction, body)
 
 
@@ -2017,7 +2021,8 @@ def open_gateway_session():
     pace_auth_requests(None)
     request = urllib.request.Request(
         INTERNAL_ORIGIN + "/api/v1/gateway-sessions",
-        data=json.dumps({"protocol": "imap", "address": app["address"], "password": app["secret"]}).encode(),
+        data=json.dumps({"protocol": "imap", "address": app["address"], "password": app["secret"],
+                         "client_ip": CONTRACT_MAIL_CLIENT_IP}).encode(),
         headers={"Content-Type": "application/json"},
         method="POST",
     )
