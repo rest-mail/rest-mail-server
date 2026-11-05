@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"io"
 	"mime/quotedprintable"
+	"strconv"
 	"strings"
 	"sync"
 	"unicode/utf8"
@@ -264,16 +265,26 @@ func (b *byteSink) WriteString(s string) (int, error) {
 // would corrupt it: anything not text, which includes an encoding nobody can remove
 // (see mediaType), and text in a charset whose characters hold NUL octets.
 func nulIsData(mt, charset string) bool {
-	if !strings.HasPrefix(mt, "text/") {
-		return true
-	}
+	return !strings.HasPrefix(mt, "text/") || wideCharUnit(charset) > 1
+}
+
+// wideCharUnit is how many octets make up a code unit of a charset whose characters hold
+// NUL octets, or 1 for any other.
+func wideCharUnit(charset string) int {
 	charset = strings.ToLower(charset)
-	for _, wide := range []string{"utf-16", "utf16", "utf-32", "utf32", "ucs-2", "ucs2", "ucs-4", "ucs4", "iso-10646-ucs-", "csucs4", "csunicode"} {
-		if strings.HasPrefix(charset, wide) {
-			return true
+	for _, wide := range []struct {
+		prefix string
+		unit   int
+	}{
+		{"utf-16", 2}, {"utf16", 2}, {"ucs-2", 2}, {"ucs2", 2}, {"csunicode", 2},
+		{"utf-32", 4}, {"utf32", 4}, {"ucs-4", 4}, {"ucs4", 4}, {"csucs4", 4},
+		{"iso-10646-ucs-4", 4}, {"iso-10646-ucs-", 2},
+	} {
+		if strings.HasPrefix(charset, wide.prefix) {
+			return wide.unit
 		}
 	}
-	return false
+	return 1
 }
 
 // writeSpaced writes s with a space for each NUL, and holds no copy of it.
@@ -736,6 +747,143 @@ func metadataText(text string, sessionUTF8 bool) string {
 		return text
 	}
 	return strings.Join(encodedWords(text), " ")
+}
+
+// SpaceWordNUL is text with each NUL that one of its encoded words spells sent as a
+// space, for an ENVELOPE or BODYSTRUCTURE string a client will decode: what it decodes
+// is then what metadataText sends for a NUL decoded here, and what a host reads. The
+// word keeps its charset and its encoding, in a charset go-imap doesn't read too, and a
+// word that spells no NUL isn't touched. In a charset whose characters hold NUL octets
+// only the character U+0000 is a NUL. Text that isn't for reading stays as it is,
+// because a client matches it octet for octet and a space would make it something
+// else: a boundary (see wireBoundary), an addr-spec, a message or content identifier.
+func SpaceWordNUL(text string) string {
+	if !strings.Contains(text, "=?") {
+		return text
+	}
+	var b strings.Builder
+	written, at, lineEnd := 0, 0, 0
+	for {
+		i := strings.Index(text[at:], "=?")
+		if i < 0 {
+			break
+		}
+		start := at + i
+		if start >= lineEnd {
+			lineEnd = len(text)
+			if j := strings.IndexAny(text[start:], "\r\n"); j >= 0 {
+				lineEnd = start + j
+			}
+		}
+		size, skip := encodedWordAt(text[start:lineEnd])
+		if size == 0 {
+			at = start + skip
+			continue
+		}
+		at = start + size
+		if spaced, changed := spacedWord(text[start:at]); changed {
+			b.WriteString(text[written:start])
+			b.WriteString(spaced)
+			written = at
+		}
+	}
+	if written == 0 {
+		return text
+	}
+	b.WriteString(text[written:])
+	return b.String()
+}
+
+// spacedWord is an encoded word with a space for each NUL it spells. It reads the word
+// as loosely as a client might, so a spelling mime.WordDecoder refuses still can't carry
+// one past it.
+func spacedWord(word string) (string, bool) {
+	charset, rest, _ := strings.Cut(word[2:len(word)-2], "?")
+	encoding, text, _ := strings.Cut(rest, "?")
+	charset, _, _ = strings.Cut(charset, "*") // RFC 2231 §5: a language may follow it.
+	unit := wideCharUnit(charset)
+	var octets []byte
+	switch encoding {
+	case "Q", "q":
+		if unit == 1 {
+			// '=' is no hex digit, so this can only be the escape for a NUL.
+			spaced := strings.ReplaceAll(text, "=00", "_")
+			return word[:len(word)-2-len(text)] + spaced + "?=", spaced != text
+		}
+		octets = looseQDecoded(text)
+	case "B", "b":
+		octets, _ = base64.RawStdEncoding.DecodeString(strings.Map(base64Digit, text))
+	default:
+		return word, false
+	}
+	if !spaceNULUnits(octets, unit, strings.HasSuffix(strings.ToLower(charset), "le")) {
+		return word, false
+	}
+	spelled := base64.StdEncoding.EncodeToString(octets)
+	if encoding == "Q" || encoding == "q" {
+		spelled = qEncode(string(octets))
+	}
+	return word[:len(word)-2-len(text)] + spelled + "?=", true
+}
+
+// base64Digit is r when it's a base64 digit, for strings.Map to leave out anything else.
+func base64Digit(r rune) rune {
+	if r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '+' || r == '/' {
+		return r
+	}
+	return -1
+}
+
+// looseQDecoded is the octets of Q-encoded text. An '=' opening no escape is itself.
+func looseQDecoded(text string) []byte {
+	octets := make([]byte, 0, len(text))
+	for i := 0; i < len(text); i++ {
+		switch c := text[i]; {
+		case c == '_':
+			octets = append(octets, ' ')
+		case c == '=' && i+2 < len(text):
+			if v, err := strconv.ParseUint(text[i+1:i+3], 16, 8); err == nil {
+				octets = append(octets, byte(v))
+				i += 2
+				continue
+			}
+			octets = append(octets, c)
+		default:
+			octets = append(octets, c)
+		}
+	}
+	return octets
+}
+
+// spaceNULUnits writes a space over each code unit of octets that is all NUL, and says
+// whether there was one. Units are big-endian unless the charset's name or a byte order
+// mark says otherwise (RFC 2781 §4.3). An unfinished unit at the end is no character.
+func spaceNULUnits(octets []byte, unit int, littleEndian bool) bool {
+	if unit > 1 && len(octets) >= 2 && octets[0] == 0xff && octets[1] == 0xfe {
+		littleEndian = true
+	}
+	found := false
+	for i := 0; i+unit <= len(octets); i += unit {
+		if !allNUL(octets[i : i+unit]) {
+			continue
+		}
+		found = true
+		if littleEndian {
+			octets[i] = ' '
+		} else {
+			octets[i+unit-1] = ' '
+		}
+	}
+	return found
+}
+
+func allNUL(octets []byte) bool {
+	for _, c := range octets {
+		if c != 0 {
+			return false
+		}
+	}
+	return true
 }
 
 // writeEscaped8bit spells each 8-bit octet =XX, and a NUL =00 when nul is set or a

@@ -286,6 +286,43 @@ func fieldRounds() int {
 	return 10000
 }
 
+// A NUL an encoded word spells in a Subject or a sender's name reads as the space a mail client is sent
+// for it (#1968).
+func TestNULInAnEncodedWordReadsAsASpace(t *testing.T) {
+	for _, tc := range []struct{ field, want string }{
+		{"=?utf-8?Q?a=00b?=", "a b"},
+		{"=?utf-8?B?YQBi?=", "a b"},
+		{"=?iso-8859-1?Q?a=00b?=", "a b"},
+		{"=?windows-1252?Q?a=00b?=", "a b"},
+		{"=?utf-16be?B?AGEAAABi?=", "a b"},
+		{"=?utf-16be?B?AGEAYg==?=", "ab"},
+	} {
+		t.Run(tc.field, func(t *testing.T) {
+			parsed, err := Parse([]byte("From: " + tc.field + " <a@b.test>\r\nSubject: " + tc.field + "\r\n\r\nbody"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if parsed.Headers.Subject != tc.want {
+				t.Errorf("Subject %q, want %q", parsed.Headers.Subject, tc.want)
+			}
+			if first, ok := parsed.Headers.From.First(); !ok || first.Name != tc.want || first.Address != "a@b.test" {
+				t.Errorf("From %+v (%v), want the name %q", first, ok, tc.want)
+			}
+			if all := parsed.Headers.From.All(); len(all) != 1 || all[0].Name != tc.want {
+				t.Errorf("From %+v, want the name %q", all, tc.want)
+			}
+		})
+	}
+	const kept = "=?x-none?Q?a=00b?="
+	parsed, err := Parse([]byte("Subject: " + kept + "\r\n\r\nbody"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "=?x-none?Q?a_b?="; parsed.Headers.Subject != want {
+		t.Errorf("Subject %q, want %q as a client is sent it", parsed.Headers.Subject, want)
+	}
+}
+
 // What a filter is handed of a message is what a mail client is told of it, for any field a sender can
 // write: that a part can't be hidden from a filter by a field one of them reads and the other doesn't.
 // It reads each field in the place it matters, with the real readers on both sides.

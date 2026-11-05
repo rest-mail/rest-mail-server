@@ -58,10 +58,12 @@ func heldParameters(read map[string]string) map[string]string {
 }
 
 // parameterText is a parameter as text for a row and a filter alike: its RFC 2047 encoded-words
-// decoded, a NUL as a space, as it reads in what's sent of a message (#1921), and octets that aren't
-// UTF-8 as U+FFFD, since nothing says what charset they're in. A client is sent those octets in
-// encoded words naming UNKNOWN-8BIT, which is the same reading in the one spelling it can take.
+// decoded, a NUL as a space whether or not a word spells it, as it reads in what's sent of a message
+// (#1921), and octets that aren't UTF-8 as U+FFFD, since nothing says what charset they're in. A client
+// is sent those octets in encoded words naming UNKNOWN-8BIT, which is the same reading in the one
+// spelling it can take.
 func parameterText(value string) string {
+	value = wireform.SpaceWordNUL(value)
 	if utf8.ValidString(value) {
 		value = decodeWords(value)
 	}

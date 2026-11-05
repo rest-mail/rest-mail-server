@@ -28,6 +28,13 @@ func SpaceNUL(raw string) []byte {
 	return message.SpaceNUL(raw)
 }
 
+// SpaceWordNUL is text with a space for each NUL one of its encoded words spells, as
+// ENVELOPE and BODYSTRUCTURE send it, so a host reading a Subject or a part's name reads
+// what a client decodes. See [Convert] for a NUL anywhere else.
+func SpaceWordNUL(text string) string {
+	return message.SpaceWordNUL(text)
+}
+
 // Size is len(Convert(raw, utf8)): the same conversion, counted rather than built, so
 // measuring a message at store time holds nothing that grows with its data.
 func Size(raw string, utf8 bool) int {
