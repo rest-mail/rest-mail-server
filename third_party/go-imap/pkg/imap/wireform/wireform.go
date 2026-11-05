@@ -54,6 +54,22 @@ func SevenBitBoundary(raw string) string {
 	return message.SevenBitBoundary(raw)
 }
 
+// WithoutRepeats is a Content-Type or Content-Disposition value with only the first
+// parameter of each name, which is how BODYSTRUCTURE reads a repeated name. repeated is
+// false when no name repeats, or a later value doesn't read, which leaves the field to
+// RFC 2045 §5.2's default. It says what a host reading such a field has to answer.
+func WithoutRepeats(value string) (first string, repeated bool) {
+	return message.WithoutRepeats(value)
+}
+
+// OnlyRepeatsFollow says that a blank segment in a parameter field, with before ahead of
+// it and after behind it, is followed only by parameters that read and repeat a name
+// before it, so the field reads as ending there. It holds nothing past the call, for a
+// host reading a long field a parameter at a time.
+func OnlyRepeatsFollow(before, after string) bool {
+	return message.OnlyRepeatsFollow(before, after)
+}
+
 // EncodeWords renders text as RFC 2047 encoded words: charset UTF-8 when it is
 // valid UTF-8, and UNKNOWN-8BIT otherwise, so the octets survive and no charset
 // is guessed.

@@ -353,7 +353,21 @@ func hostileFieldShapes(id string) map[string]string {
 	// multipart reader, whose line buffer can't hold it, and stores no text. The import test has that
 	// one too.
 	continued := long("Content-Type: multipart/mixed; boundary*0=B", ";\r\n boundary*2%d=v%d", "")
+	// A repeated name is read now, where it used to stop the field being read at all, so what it costs
+	// is new: on a field too short to read a parameter at a time, and on one long enough to.
+	half := func(format string) string {
+		var b strings.Builder
+		for i := range size / 60 {
+			fmt.Fprintf(&b, format, i)
+		}
+		return b.String()
+	}
+	repeatedPart := "--B\r\nContent-Type: a/b; x=1; x=2\r\nContent-Disposition: inline; x=1; x=2\r\n\r\n" + strings.Repeat("y", size/1400) + "\r\n"
 	return map[string]string{
+		"repeated names, on many parts":     id + "Content-Type: multipart/mixed; boundary=B; boundary=C\r\n\r\n--B\r\nContent-Type: text/plain\r\n\r\n" + eightBit + strings.Repeat(repeatedPart, 999) + "--B--\r\n",
+		"repeats of a kept name":            id + long("Content-Type: text/plain; charset=utf-8", ";\r\n charset=v%d%.0d", "") + "\r\n" + eightBit,
+		"repeats of an RFC 2231 name":       id + long("Content-Type: text/plain; charset=utf-8; name*0=a", ";\r\n name*0=v%d%.0d", "") + "\r\n" + eightBit,
+		"a blank, then only repeats":        id + "Content-Type: text/plain; charset=utf-8" + half(";\r\n p%d=valuevaluev") + ";\r\n ;" + strings.TrimPrefix(half(";\r\n p%d=othervalue"), ";") + "\r\n\r\n" + eightBit,
 		"address list, top level":           id + long("To: to@example.test", ",\r\n \"Name %d\" <a%d@example.test>", "") + "Content-Type: text/plain; charset=utf-8\r\n\r\n" + eightBit,
 		"parameters, top level":             id + long("Content-Type: text/plain; charset=utf-8", ";\r\n p%d=v%d", "") + "\r\n" + ascii,
 		"parameters, on a part":             id + "Content-Type: multipart/mixed; boundary=B\r\n\r\n--B\r\n" + long("Content-Type: text/plain; charset=utf-8", ";\r\n p%d=v%d", "") + "\r\n" + ascii + "--B--\r\n",
@@ -527,11 +541,12 @@ func TestDeliverHoldsTheLimitOnHostileShapes(t *testing.T) {
 	mixed := "Content-Type: multipart/mixed; boundary=B\r\n\r\n--B\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n" + strings.Repeat("\u00f6", size/4) + "\r\n"
 	shapes := hostileFieldShapes(id)
 	for name, message := range map[string]string{
-		"plain ASCII":              id + "Content-Type: text/plain\r\n\r\n" + strings.Repeat("hello world\r\n", size/13),
-		"8-bit text, no charset":   id + "Content-Type: text/plain\r\n\r\n" + strings.Repeat("\u00f6", size/2) + "\r\n",
-		"60 nested messages":       id + mixed + "--B\r\n" + strings.Repeat("Content-Type: message/rfc822\r\n\r\n", 60) + "Subject: \u00f6\r\n\r\n" + strings.Repeat("\u00f6", size/4) + "\r\n--B--\r\n",
-		"1000 typed parts":         id + mixed + strings.Repeat("--B\r\nContent-Type: a/b\r\n\r\n\u00f6"+strings.Repeat("y", size/2000)+"\r\n", 999) + "--B--\r\n",
-		"typed parts in a message": id + mixed + "--B\r\nContent-Type: message/rfc822\r\n\r\nContent-Type: multipart/mixed; boundary=C\r\n\r\n" + strings.Repeat("--C\r\nContent-Type: a/b\r\n\r\nx\r\n", size/56) + "--C--\r\n--B--\r\n",
+		"repeated name, one long value": id + mixed + "--B\r\nContent-Type: a/b; p=" + strings.Repeat("y", size*3/4) + "; p=2\r\n\r\nx\r\n--B--\r\n",
+		"plain ASCII":                   id + "Content-Type: text/plain\r\n\r\n" + strings.Repeat("hello world\r\n", size/13),
+		"8-bit text, no charset":        id + "Content-Type: text/plain\r\n\r\n" + strings.Repeat("\u00f6", size/2) + "\r\n",
+		"60 nested messages":            id + mixed + "--B\r\n" + strings.Repeat("Content-Type: message/rfc822\r\n\r\n", 60) + "Subject: \u00f6\r\n\r\n" + strings.Repeat("\u00f6", size/4) + "\r\n--B--\r\n",
+		"1000 typed parts":              id + mixed + strings.Repeat("--B\r\nContent-Type: a/b\r\n\r\n\u00f6"+strings.Repeat("y", size/2000)+"\r\n", 999) + "--B--\r\n",
+		"typed parts in a message":      id + mixed + "--B\r\nContent-Type: message/rfc822\r\n\r\nContent-Type: multipart/mixed; boundary=C\r\n\r\n" + strings.Repeat("--C\r\nContent-Type: a/b\r\n\r\nx\r\n", size/56) + "--C--\r\n--B--\r\n",
 	} {
 		shapes[name] = message
 	}

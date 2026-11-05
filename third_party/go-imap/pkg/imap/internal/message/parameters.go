@@ -103,6 +103,12 @@ func withoutRepeats(v string) (first string, repeated bool) {
 	return strings.Join(kept, ";"), repeated
 }
 
+// WithoutRepeats is withoutRepeats, for wireform.
+func WithoutRepeats(v string) (first string, repeated bool) { return withoutRepeats(v) }
+
+// OnlyRepeatsFollow is onlyRepeatsFollow, for wireform.
+func OnlyRepeatsFollow(before, after string) bool { return onlyRepeatsFollow(before, after) }
+
 // isQuotedString reports whether value is one whole quoted-string.
 func isQuotedString(value string) bool {
 	if len(value) < 2 || value[0] != '"' {

@@ -18,6 +18,7 @@ import (
 
 	gomessage "github.com/emersion/go-message"
 	gomail "github.com/emersion/go-message/mail"
+	"github.com/rest-mail/go-imap/pkg/imap/wireform"
 
 	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 )
@@ -393,6 +394,33 @@ func (s *legacyStream) walk(mr gomessage.MultipartReader, mediaType string, dept
 	return body
 }
 
+// firstOfRepeats is a message with go-imap's rule applied to every Content-Type and
+// Content-Disposition field that repeats a name, and its other bytes as they came.
+func firstOfRepeats(raw []byte) []byte {
+	lines := bytes.SplitAfter(raw, []byte("\n"))
+	var out bytes.Buffer
+	for i := 0; i < len(lines); i++ {
+		name, _, found := bytes.Cut(lines[i], []byte(":"))
+		end := i + 1
+		for end < len(lines) && len(lines[end]) > 0 && (lines[end][0] == ' ' || lines[end][0] == '\t') {
+			end++
+		}
+		whole := bytes.Join(lines[i:end], nil)
+		if found && (bytes.EqualFold(name, []byte("Content-Type")) || bytes.EqualFold(name, []byte("Content-Disposition"))) {
+			value := strings.NewReplacer("\r", "", "\n", "").Replace(string(whole[len(name)+1:]))
+			if first, repeated := wireform.WithoutRepeats(strings.TrimSpace(value)); repeated {
+				out.Write(name)
+				out.WriteString(": " + first)
+				out.Write(whole[len(bytes.TrimRight(whole, "\r\n")):])
+				i = end - 1
+				continue
+			}
+		}
+		out.Write(lines[i])
+	}
+	return out.Bytes()
+}
+
 // entitySeeds are messages with something for each thing reading a message decides.
 func entitySeeds() []string {
 	head := "From: \"A, B\" <a@example.test>\r\nTo: b@example.test, C D <c@example.test>\r\nCc: =?utf-8?q?=C3=A9?= <e@example.test>\r\nSubject: =?utf-8?q?=C3=A9?= x\r\nDate: Thu, 02 Jan 2020 03:04:05 +0000\r\nMessage-ID: <m@example.test>\r\nReferences: <a@b>  <c@d>\r\nAuthentication-Results: x; none\r\nX-Folded: a\r\n  b\r\n\t c\r\n"
@@ -417,6 +445,7 @@ func entitySeeds() []string {
 		head + many("Content-Type: text/plain; charset=iso-8859-1", 40) + "\r\nbody =E9\r\n",
 		head + many("Content-Type: multipart/mixed; boundary=M", 40) + "\r\n--M\r\n" + many("Content-Type: text/plain; charset=utf-8; name=n", 40) + many("Content-Disposition: attachment; filename=f.txt", 40) + "\r\nkept\r\n--M--\r\n",
 		head + "Content-Type: a/b; p=1; p=2\r\n\r\nrepeat\r\n",
+		head + "Content-Type: multipart/mixed; boundary=R; boundary=S\r\n\r\n--R\r\nContent-Type: text/plain; charset=iso-8859-1; charset=utf-8\r\n\r\ncaf\xe9\r\n--R\r\nContent-Type: application/x; name=a; name=b\r\nContent-Disposition: attachment; filename=c; filename=d\r\n\r\ndata\r\n--R\r\nContent-Type: a/b; name*0=e; name*0=f; name*1=g\r\n\r\nmore\r\n--R--\r\n",
 		head + many("Content-Type: a/b; q=\"1\"; q=1", 40) + "\r\nsame\r\n",
 		head + many("Content-Type: a/b; q=1; q=2", 40) + "\r\ndifferent\r\n",
 		head + many("Content-Type: a/b; q=\"x\\\"y\"; q=\"x\\\"z\"", 40) + "\r\nquoted\r\n",
@@ -466,6 +495,8 @@ func entityStore(_ context.Context, part io.Reader) (StoredPart, error) {
 func TestEntityReadsAsGoMessageDoes(t *testing.T) {
 	check := func(raw []byte) {
 		t.Helper()
+		// go-message refuses a repeated name, which a mail client reads: this compares what's left.
+		raw = firstOfRepeats(raw)
 		want, wantErr := legacyParse(raw)
 		got, gotErr := Parse(raw)
 		if (wantErr == nil) != (gotErr == nil) {
@@ -509,6 +540,15 @@ func TestEntityReadsAsGoMessageDoes(t *testing.T) {
 	seeds := entitySeeds()
 	for _, seed := range seeds {
 		check([]byte(seed))
+		// And a field with a repeat reads as one with only the first of each name.
+		got, gotErr := Parse([]byte(seed))
+		want, wantErr := Parse(firstOfRepeats([]byte(seed)))
+		if (gotErr == nil) != (wantErr == nil) {
+			t.Fatalf("%q: %v, without its repeats %v", seed, gotErr, wantErr)
+		}
+		if got != nil && (!reflect.DeepEqual(got.Body, want.Body) || !reflect.DeepEqual(got.Attachments, want.Attachments) || !reflect.DeepEqual(got.Inline, want.Inline)) {
+			t.Fatalf("%q:\n%+v\nwithout its repeats\n%+v", seed, got, want)
+		}
 	}
 	// Up to go-message's limit on a header block, the two read the same. Past it, go-message fails:
 	// TestAHeaderBlockHasNoLimit is what happens here.
