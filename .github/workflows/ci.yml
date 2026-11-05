@@ -1,19 +1,28 @@
 name: CI
-run-name: ${{ github.event_name == 'pull_request' && github.event.action == 'edited' && github.event.changes.base.ref.from == '' && 'CI (ignored edit)' || '' }}
 
 on:
   push:
     branches: [main]
   # Stack layers report skipped gates until retargeted to main (#1775).
-  # Only base-changing edits run jobs; other edits have their own concurrency group
-  # and non-required gate name, so they cannot replace or cancel a real verdict.
+  # No `edited`: every edit starts a run, and from then on GitHub says the required `CI`
+  # is expected, whatever an older run on that head reported (#1876). A retarget to main
+  # dispatches this workflow from ci-retarget.yml instead.
   # No `labeled` or `unlabeled`: claim labels must not cancel CI (#1593).
   # The labels the contract gate reads re-run that gate from ci-labels.yml instead.
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review, edited]
+    types: [opened, synchronize, reopened, ready_for_review]
   # The Vertrag bump (bump-vertrag.yml) dispatches CI for its branch: a pull request it
   # opens with the workflow's own token starts no checks by itself.
   workflow_dispatch:
+    inputs:
+      pull-request:
+        description: The pull request this run stands in for, which runs the contract gate
+        type: string
+        default: ""
+      base-sha:
+        description: The tip of that pull request's base when the run was dispatched
+        type: string
+        default: ""
   # The merge queue on main (#825) tests each group of pull requests on top of main
   # before merging it, and waits for every required check to report on that group.
   merge_group:
@@ -22,7 +31,7 @@ on:
 # judges the required check by the newest run, so that one supersedes it. Each run
 # on main or by dispatch has a group of its own, so every merged commit keeps its result.
 concurrency:
-  group: ${{ github.event_name == 'pull_request' && (github.event.action != 'edited' || github.event.changes.base.ref.from != '') && format('ci-{0}', github.ref) || format('ci-run-{0}', github.run_id) }}
+  group: ${{ github.event_name == 'pull_request' && format('ci-{0}', github.ref) || format('ci-run-{0}', github.run_id) }}
   cancel-in-progress: true
 
 # A merge moves main to the commit the merge queue just tested, so a push by the queue
@@ -105,7 +114,7 @@ jobs:
 
   contract-diff:
     name: API contract changes
-    if: github.event_name == 'pull_request' && github.base_ref == 'main' && (github.event.action != 'edited' || github.event.changes.base.ref.from != '')
+    if: (github.event_name == 'pull_request' && github.base_ref == 'main' && (github.event.action != 'edited' || github.event.changes.base.ref.from != '')) || (github.event_name == 'workflow_dispatch' && inputs.pull-request != '')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -115,7 +124,7 @@ jobs:
       - name: Checkout the exact PR head
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           # The history that says where this PR branched from its base.
           fetch-depth: 0
           persist-credentials: false
@@ -129,8 +138,8 @@ jobs:
       - name: Find where the PR branched from its base
         id: branch-point
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || inputs.base-sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
           git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null || git fetch --quiet --no-tags origin "$BASE_SHA"
@@ -191,7 +200,7 @@ jobs:
       - name: Report contract changes and require deliberate labels
         env:
           GH_TOKEN: ${{ github.token }}
-          PR: ${{ github.event.pull_request.number }}
+          PR: ${{ github.event.pull_request.number || inputs.pull-request }}
         run: |
           set -euo pipefail
           labels=()
