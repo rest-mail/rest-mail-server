@@ -4,6 +4,7 @@ import (
 	"math/rand/v2"
 	"mime"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -44,5 +45,35 @@ func TestSieveAddressListMatchesAll(t *testing.T) {
 		if got, want := sieveAddressList(list), sieveAddresses(list.All()); !reflect.DeepEqual(got, want) {
 			t.Fatalf("%+v: got %+v, want %+v", given, got, want)
 		}
+	}
+}
+
+// Other filters ask of From only whether it has addresses and what the first is, which for a list
+// of comments or encoded names still reads each of them. That stays under 2x for each filter asking.
+func TestFiltersAddressReadsStayCheap(t *testing.T) {
+	const size = 1 << 20
+	for name, one := range map[string]string{
+		"plain":    "Some Name <someone@example.test>,",
+		"comments": "someone@example.test (a comment),",
+		"encoded":  "=?UTF-8?Q?Some_Name?= <someone@example.test>,",
+		"8-bit":    "Gr\xc3\xbc\xc3\x9fe <someone@example.test>,",
+		"short":    "a@b,",
+	} {
+		t.Run(name, func(t *testing.T) {
+			field := strings.Repeat(one, size/len(one)) + "last@example.test"
+			list := pipeline.ParsedAddresses(field, &mime.WordDecoder{})
+			var before, after runtime.MemStats
+			runtime.ReadMemStats(&before)
+			count, first := list.Len(), list.FirstAddress()
+			runtime.ReadMemStats(&after)
+			allocated := after.TotalAlloc - before.TotalAlloc
+			t.Logf("%d addresses, first %q: %d bytes, %.2fx", count, first, allocated, float64(allocated)/float64(len(field)))
+			if count == 0 || first == "" {
+				t.Fatalf("read %d, %q", count, first)
+			}
+			if allocated > 2*uint64(len(field)) {
+				t.Errorf("reading %d bytes allocated %d", len(field), allocated)
+			}
+		})
 	}
 }
