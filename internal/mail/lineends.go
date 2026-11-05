@@ -69,6 +69,9 @@ type entityContext struct {
 	// mimeVersionNeeded is true for a message, as opposed to a part of one: base64 means nothing
 	// to a reader without MIME-Version (RFC 2045 section 4).
 	mimeVersionNeeded bool
+	// lastLineGrows says the line end after this entity becomes CRLF and takes its last line over
+	// the limit. That line end belongs to the delimiter that follows, so the entity can't see it.
+	lastLineGrows bool
 }
 
 // lineAt finds the line starting at start: its content ends at end, and the next line starts at
@@ -209,6 +212,11 @@ func (n *dataNormaliser) entity(s string, ctx entityContext) error {
 	body := s[f.bodyStart:]
 	identity := f.encoding == "" || f.encoding == "7bit" || f.encoding == "8bit" || f.encoding == "binary"
 	major, _, _ := strings.Cut(mediaType, "/")
+	grows := ctx.lastLineGrows
+	if grows && (!f.hasBlank || ctx.depth >= maxEntityDepth || major == "multipart" || !identity) {
+		// A header line or a line of a part that can't be encoded: as for any other such line.
+		return ErrDataCannotCarry
+	}
 
 	switch {
 	case ctx.depth >= maxEntityDepth:
@@ -222,7 +230,7 @@ func (n *dataNormaliser) entity(s string, ctx entityContext) error {
 		if err := n.headerSection(s, f); err != nil {
 			return err
 		}
-		return n.entity(body, entityContext{depth: ctx.depth + 1, sealed: ctx.sealed, mimeVersionNeeded: true})
+		return n.entity(body, entityContext{depth: ctx.depth + 1, sealed: ctx.sealed, mimeVersionNeeded: true, lastLineGrows: grows})
 	case major == "multipart" || (!identity && f.encoding != "base64" && f.encoding != "quoted-printable"):
 		// No way to find its parts, or an encoding this server can't read: its octets can't be
 		// told apart and can't be encoded again (RFC 2045 section 6.4).
@@ -238,7 +246,7 @@ func (n *dataNormaliser) entity(s string, ctx entityContext) error {
 
 	text := (major == "text" || major == "message") && f.encoding != "binary" && !strings.Contains(body, "\x00")
 	switch {
-	case text && !anyLineOutgrows(body):
+	case text && !grows && !anyLineOutgrows(body):
 		if err := n.headerSection(s, f); err != nil {
 			return err
 		}
@@ -246,7 +254,7 @@ func (n *dataNormaliser) entity(s string, ctx entityContext) error {
 	case text:
 		// Its line ends are line ends, and one of them can't become CRLF within the limit.
 		return n.asBase64(s, f, ctx, func(w *bufio.Writer) error { return writeWithCRLF(w, body) })
-	case !HasBareLineEnds(body):
+	case !grows && !HasBareLineEnds(body):
 		if err := n.headerSection(s, f); err != nil {
 			return err
 		}
@@ -387,18 +395,19 @@ func (n *dataNormaliser) multipart(body, mediaType, boundary string, ctx entityC
 		sealed:        ctx.sealed || mediaType == "multipart/signed" || mediaType == "multipart/encrypted",
 	}
 	boundary = strings.TrimRight(boundary, " \t")
-	pos, partStart, inPart, lastEnd := 0, 0, false, 0
+	pos, partStart, inPart, lastStart, lastEnd := 0, 0, false, 0, 0
 	for pos < len(body) {
 		end, next, _ := lineAt(body, pos)
 		kind := delimiterKind(body[pos:end], boundary)
 		if kind == notDelimiter {
-			lastEnd, pos = end, next
+			lastStart, lastEnd, pos = pos, end, next
 			continue
 		}
+		inner.lastLineGrows = lineOutgrows(lastStart, lastEnd, pos, true)
 		if err := n.beforeDelimiter(body, partStart, pos, lastEnd, inPart, inner); err != nil {
 			return err
 		}
-		if err := writeWithCRLF(n.w, body[pos:next]); err != nil {
+		if err := n.writeLines(body[pos:next]); err != nil {
 			return err
 		}
 		if kind == closingDelimiter {
@@ -411,6 +420,7 @@ func (n *dataNormaliser) multipart(body, mediaType, boundary string, ctx entityC
 	if !inPart {
 		return n.writeLines(body)
 	}
+	inner.lastLineGrows = false
 	return n.entity(body[partStart:], inner)
 }
 
@@ -422,9 +432,12 @@ func (n *dataNormaliser) beforeDelimiter(body string, partStart, lineStart, last
 		return nil
 	}
 	var err error
-	if inPart {
+	switch {
+	case inPart:
 		err = n.entity(body[partStart:lastEnd], inner)
-	} else {
+	case inner.lastLineGrows:
+		err = ErrDataCannotCarry
+	default:
 		err = n.writeLines(body[:lastEnd])
 	}
 	if err != nil {

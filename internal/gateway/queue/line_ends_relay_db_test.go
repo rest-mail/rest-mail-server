@@ -516,6 +516,71 @@ func TestForeignSignatureThroughTheRewrite(t *testing.T) {
 	})
 }
 
+// A 999-octet line ended by a bare LF just before a delimiter: the delimiter's CRLF would make it
+// 1001 octets on the wire, over RFC 5321 section 4.5.3.1.6's limit.
+func TestLineEndBeforeADelimiterKeepsTheLimitOnTheWire(t *testing.T) {
+	db := eightBitDB(t)
+	domain, sender, mailboxID := signedSender(t, db)
+	long := strings.Repeat("x", 999)
+	head := "From: " + sender + "\r\nTo: bob@elsewhere.test\r\nSubject: long\r\nDate: Wed, 04 Nov 2026 12:00:00 +0000\r\nMessage-ID: <long@remote.test>\r\nMIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary=\"b1\"\r\n\r\n--b1\r\n"
+	message := func(partHead, partBody string) string {
+		return head + partHead + "\r\n" + partBody + "\n--b1--\r\n"
+	}
+	sends := func(t *testing.T, raw string) (*wirePeer, models.OutboundQueue) {
+		t.Helper()
+		peer := newWirePeer(t, true)
+		w := eightBitWorker(t, db, "mx.elsewhere.test", peer.addr)
+		row := enqueue(t, db, sender, "bob@elsewhere.test", raw)
+		t.Cleanup(func() { db.Delete(&models.OutboundQueue{}, row.ID) })
+		w.processOne(0)
+		return peer, readRow(t, db, row.ID)
+	}
+
+	t.Run("text goes as base64", func(t *testing.T) {
+		raw := message("Content-Type: text/plain; charset=utf-8\r\n", "first\n"+long)
+		peer, row := sends(t, raw)
+		if row.Status != "delivered" {
+			t.Fatalf("status %s: %s", row.Status, row.LastError)
+		}
+		wire := relayedOnce(t, peer)
+		for _, line := range strings.Split(wire, "\r\n") {
+			if len(line)+2 > 1000 {
+				t.Fatalf("a line of %d octets on the wire", len(line)+2)
+			}
+		}
+		text := unstuffed(t, wire)
+		dkimVerifies(t, db, domain, text)
+		storedExactly(t, db, row.ID, raw)
+		_, rest, found := strings.Cut(text, "Content-Transfer-Encoding: base64\r\n\r\n")
+		if !found {
+			t.Fatalf("no base64: %q", text)
+		}
+		encoded, _, _ := strings.Cut(rest, "--b1--")
+		decoded, err := base64.StdEncoding.DecodeString(strings.ReplaceAll(encoded, "\r\n", ""))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(decoded) != "first\r\n"+long {
+			t.Fatalf("decoded %q", decoded)
+		}
+	})
+
+	t.Run("under multipart/signed it bounces with nothing sent", func(t *testing.T) {
+		raw := strings.Replace(message("Content-Type: text/plain\r\n", long), "multipart/mixed", "multipart/signed", 1)
+		peer, row := sends(t, raw)
+		if row.Status != "bounced" || !strings.Contains(row.LastError, "5.6.3") {
+			t.Fatalf("status %s: %s", row.Status, row.LastError)
+		}
+		if _, data := peer.received(); len(data) != 0 {
+			t.Fatalf("%d sent", len(data))
+		}
+		if dsn := dsnInInbox(t, db, mailboxID); !strings.Contains(string(dsn.Source()), "Status: 5.6.3") {
+			t.Fatalf("DSN = %q", dsn.Source())
+		}
+		storedExactly(t, db, row.ID, raw)
+	})
+}
+
 // Normalising on the relay path adds one copy of the message, and the 8x bound of the handlers'
 // tests holds for all the worker does around it, so long as a message is held in its row (#1437).
 func TestNormalisingARelayHoldsOneMoreCopy(t *testing.T) {

@@ -197,6 +197,90 @@ func TestForDataCreatesNoLineOverTheLimit(t *testing.T) {
 	})
 }
 
+// The line end before a delimiter becomes CRLF like any other, so the last line of a part is held
+// to the same limit, whichever entity it ends.
+func TestForDataHoldsALastLineBeforeADelimiterToTheLimit(t *testing.T) {
+	long := strings.Repeat("x", 999)
+	longest := func(s string) int {
+		most := 0
+		for _, line := range strings.Split(s, "\r\n") {
+			most = max(most, len(line)+2)
+		}
+		return most
+	}
+	message := func(partHead, partBody, end string) string {
+		return "From: a@b.test\r\nMIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary=\"b1\"\r\n\r\n--b1\r\n" +
+			partHead + "\r\n" + partBody + end + "--b1--\r\n"
+	}
+	for name, c := range map[string]struct {
+		raw     string
+		decoded string // what the part holds once decoded, for one that goes as base64
+	}{
+		"text":      {raw: message("Content-Type: text/plain\r\n", long, "\n"), decoded: long},
+		"bare CR":   {raw: message("Content-Type: text/plain\r\n", long, "\r"), decoded: long},
+		"two lines": {raw: message("Content-Type: text/plain\r\n", "first\n"+long, "\n"), decoded: "first\r\n" + long},
+		"binary":    {raw: message("Content-Type: application/octet-stream\r\n", long, "\n"), decoded: long},
+		"a message in the part": {
+			raw:     message("Content-Type: message/rfc822\r\n", "Subject: inner\r\n\r\n"+long, "\n"),
+			decoded: long,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			got := forData(t, c.raw)
+			if longest(got) > maxTextLine {
+				t.Fatalf("a line of %d octets: %q", longest(got), got[:120])
+			}
+			if HasBareLineEnds(got) {
+				t.Fatalf("a bare line end: %q", got)
+			}
+			_, rest, found := strings.Cut(got, "Content-Transfer-Encoding: base64\r\n\r\n")
+			if !found {
+				t.Fatalf("no base64: %q", got)
+			}
+			encoded, _, _ := strings.Cut(rest, "--b1--")
+			decoded, err := base64.StdEncoding.DecodeString(strings.ReplaceAll(encoded, "\r\n", ""))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(decoded) != c.decoded {
+				t.Fatalf("decoded %q", decoded)
+			}
+		})
+	}
+	for name, raw := range map[string]string{
+		"quoted-printable": message("Content-Type: text/plain\r\nContent-Transfer-Encoding: quoted-printable\r\n", long, "\n"),
+		"base64":           message("Content-Type: text/plain\r\nContent-Transfer-Encoding: base64\r\n", long, "\n"),
+		"under signed": "From: a@b.test\r\nMIME-Version: 1.0\r\nContent-Type: multipart/signed; boundary=\"b1\"\r\n\r\n--b1\r\n" +
+			"Content-Type: text/plain\r\n\r\n" + long + "\n--b1--\r\n",
+		"a part of only headers": "From: a@b.test\r\nMIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary=\"b1\"\r\n\r\n--b1\r\nX-Long: " + strings.Repeat("y", 991) + "\n--b1--\r\n",
+		"the preamble":           "From: a@b.test\r\nMIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary=\"b1\"\r\n\r\n" + long + "\n--b1\r\n\r\nx\r\n--b1--\r\n",
+		"a delimiter padded out": "From: a@b.test\r\nMIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary=\"b1\"\r\n\r\n--b1" + strings.Repeat(" ", 995) + "\n\r\nx\r\n--b1--\r\n",
+		"a nested multipart": message("Content-Type: multipart/mixed; boundary=\"b2\"\r\n",
+			"--b2\r\n\r\nx\r\n--b2--\r\n"+long, "\n"),
+	} {
+		t.Run("refused: "+name, func(t *testing.T) {
+			var out strings.Builder
+			if err := ForData(&out, raw); !errors.Is(err, ErrDataCannotCarry) {
+				t.Fatalf("got %v: %q", err, out.String())
+			}
+		})
+	}
+	t.Run("998 and a bare LF fits and stays as it is", func(t *testing.T) {
+		line := strings.Repeat("x", 998)
+		got := forData(t, message("Content-Type: text/plain\r\n", line, "\n"))
+		if longest(got) != maxTextLine || strings.Contains(got, "base64") {
+			t.Fatalf("%d octets: %q", longest(got), got[:120])
+		}
+	})
+	t.Run("one already over goes as it is", func(t *testing.T) {
+		// A line that CRLF already ends is over the limit whatever this does.
+		got := forData(t, message("Content-Type: text/plain\r\n", "a\nb\r\n"+long, "\r\n"))
+		if !strings.Contains(got, "\r\n"+long+"\r\n--b1--") || strings.Contains(got, "base64") {
+			t.Fatalf("changed: %q", got[:120])
+		}
+	})
+}
+
 // ForData writes as it reads: what it allocates doesn't grow with the message (#1437).
 func TestForDataHoldsNoCopyOfTheMessage(t *testing.T) {
 	const size = 8 << 20
