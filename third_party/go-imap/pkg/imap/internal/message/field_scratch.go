@@ -28,13 +28,25 @@ func TakeFieldScratch(size int) *FieldScratch {
 // Release gives the memory back. Nothing String answered can be read after it.
 func (s *FieldScratch) Release() { fieldScratches.Put(s) }
 
-// room doubles at the least, as appending grows a long field by a quarter at a time, which allocates
-// five times what it ends up holding.
+// readingSlack is what an empty scratch is given over what it's asked for. Two readings of one field ask
+// for a few bytes apart, by whether they count its first space and its line end, and each byte short costs
+// another buffer of the field.
+const readingSlack = 16
+
+// room doubles what it's holding at the least, as appending grows a long field by a quarter at a time,
+// which allocates five times what it ends up holding. An empty scratch has nothing to grow from: it needs
+// what's asked for and no more, whatever it last held. Doubling that one spent 1.5 buffers of the field on
+// one reading whenever the pool answered with a scratch a little too small, and none when it answered with
+// a new one, so a message's cost came down to which processor its goroutine was on.
 func (s *FieldScratch) room(need int) {
 	if cap(s.b)-len(s.b) >= need {
 		return
 	}
-	grown := make([]byte, len(s.b), max(2*cap(s.b), len(s.b)+need))
+	size := need + readingSlack
+	if len(s.b) > 0 {
+		size = max(2*cap(s.b), len(s.b)+need)
+	}
+	grown := make([]byte, len(s.b), size)
 	copy(grown, s.b)
 	s.b = grown
 }

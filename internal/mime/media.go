@@ -76,13 +76,3 @@ func parameterText(value string) string {
 	}
 	return strings.Clone(strings.ToValidUTF8(value, "\uFFFD"))
 }
-
-// decodeWords is a header value with its RFC 2047 encoded-words decoded, or the value when it can't
-// be, as go-message reads one.
-func decodeWords(value string) string {
-	decoded, err := wordDecoder.DecodeHeader(value)
-	if err != nil {
-		return value
-	}
-	return decoded
-}

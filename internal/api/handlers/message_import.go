@@ -92,6 +92,10 @@ func importRefusal(err error) error {
 	return err
 }
 
+func errImportStructure() error {
+	return endpoint.Invalid(map[string]string{"raw_message": "MIME structure over limit: nested too deep or too many parts"})
+}
+
 var errImportQuota = endpoint.Refuse(http.StatusConflict, "mailbox_full", "The destination account has insufficient quota")
 
 // storeImportedMessage stores a message from its file. Only headers are read before it is known
@@ -211,15 +215,22 @@ func (h *MessageImportHandler) storeImportedMessage(r *http.Request, accountID u
 			if err != nil {
 				return err
 			}
+			// Imported mail is held to the same MIME limits as arriving mail (#1641). Its
+			// Received: fields are not counted: old mail may carry any number, and storing
+			// it in the account is not a hop that could loop (#1647). A message with too many parts
+			// is refused here, before its first part is stored only to be left behind.
+			if err := rmime.CheckSource(reader, source.size); errors.Is(err, rmime.ErrStructureLimit) {
+				return errImportStructure()
+			}
+			if reader, err = source.reader(); err != nil {
+				return err
+			}
 			// The text columns keep a part's whole text, so no part is cut short here.
 			parts := &importParts{handler: h}
 			defer parts.close()
 			parsed, err := rmime.ParseStream(ctx, reader, rmime.StreamOptions{Store: parts.store, MaxText: math.MaxInt64, SourceSize: source.size, HeadersRead: true})
 			if errors.Is(err, rmime.ErrStructureLimit) {
-				// Imported mail is held to the same MIME limits as arriving mail (#1641). Its
-				// Received: fields are not counted: old mail may carry any number, and storing
-				// it in the account is not a hop that could loop (#1647).
-				return endpoint.Invalid(map[string]string{"raw_message": "MIME structure over limit: nested too deep or too many parts"})
+				return errImportStructure()
 			}
 			if err != nil {
 				return fmt.Errorf("store imported attachment: %w", err)
