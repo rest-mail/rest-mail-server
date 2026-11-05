@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Build every published image and scan it as the Docker Build & Push job does.
 
-    chore image:scan                             every image, both platforms
+    chore image:scan                             every image, this machine's platform
+    chore image:scan -- --all-platforms          every platform the gate scans
     chore image:scan -- --image js-filter        one image
     chore image:scan -- --platform linux/arm64   one platform
 
@@ -11,12 +12,17 @@ from what fails on main (#1947). One image's failure does not stop the others.
 
 Exit status 0 means no image has a finding the gate would fail on. Anything else
 fails: a finding, a build that broke, or a scan that did not produce a report.
+
+Nothing is bind mounted into Trivy: on Docker Desktop every file a container reads
+that way holds a handle on the Mac (#1963). The image goes in over a pipe to a
+labelled volume, and the report comes out over stdout.
 """
 
 import argparse
+import contextlib
 import json
+import os
 import re
-import shutil
 import subprocess
 import sys
 from dataclasses import dataclass, field
@@ -36,6 +42,9 @@ TRIVY_IMAGE = (
 # Trivy also exits 1 when it fails outright, so the local scan asks for another
 # status on findings. A broken scan must not read as "vulnerable" or as "clean".
 FINDINGS_EXIT = 64
+
+# Trims the build cache and frees the Docker VM's (#1963).
+HYGIENE_SCRIPT = Path("tasks/docker-hygiene.sh")
 
 
 class WorkflowError(Exception):
@@ -254,22 +263,67 @@ class Docker:
         ]  # fmt: skip
         return self._run(command)
 
-    def save(self, image, platform, tar_path):
-        return self._run(
-            ["docker", "save", "--output", str(tar_path), self.tag(image, platform)]
+    def _in_volume(self, volume, *command, **kwargs):
+        """A throwaway container of the Trivy image, with the scan's volume at /scan."""
+        return [
+            "docker", "run", "--rm", "--label", self.label,
+            "--volume", f"{volume}:/scan", "--entrypoint", command[0],
+            *kwargs.get("flags", []), TRIVY_IMAGE, *command[1:],
+        ]  # fmt: skip
+
+    def _create_volume(self, name):
+        return self._run(["docker", "volume", "create", "--label", self.label, name])
+
+    def prepare(self, volume, ignore):
+        """A new volume for one scan, holding the ignore file."""
+        created = self._create_volume(volume)
+        if created.returncode != 0:
+            return created
+        return subprocess.run(
+            self._in_volume(volume, "sh", "-c", "cat > /scan/ignore", flags=["--interactive"]),
+            input=ignore,
+            capture_output=True,
         )
 
-    def scan(self, gate, scan_dir, cache_dir, report_name):
+    def save(self, image, platform, volume):
+        """docker save, piped into the scan's volume."""
+        with subprocess.Popen(
+            ["docker", "save", self.tag(image, platform)],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+        ) as saving:
+            stored = subprocess.run(
+                self._in_volume(volume, "sh", "-c", "cat > /scan/image.tar", flags=["--interactive"]),
+                stdin=saving.stdout,
+                text=True,
+                capture_output=True,
+            )
+            saving.stdout.close()
+        if saving.returncode != 0:
+            return subprocess.CompletedProcess(saving.args, saving.returncode, "", "docker save failed")
+        return stored
+
+    def scan(self, gate, volume, report_name):
+        cache = f"{self.tag_prefix}trivy-cache"
+        self._create_volume(cache)
         command = [
             "docker", "run", "--rm",
-            "--name", f"{self.tag_prefix}scan-{scan_dir.name}",
+            "--name", f"{volume}-trivy",
             "--label", self.label,
-            "--volume", f"{scan_dir}:/scan",
-            "--volume", f"{cache_dir}:/root/.cache/trivy",
+            "--volume", f"{volume}:/scan",
+            "--volume", f"{cache}:/root/.cache/trivy",
             TRIVY_IMAGE,
             *trivy_args(gate, report_name),
         ]  # fmt: skip
         return self._run(command)
+
+    def read_report(self, volume, report_name):
+        """The report's text, or None when Trivy wrote none."""
+        done = self._run(self._in_volume(volume, "cat", f"/scan/{report_name}"))
+        return done.stdout if done.returncode == 0 else None
+
+    def remove_volume(self, volume):
+        return self._run(["docker", "volume", "rm", "--force", volume])
 
     def remove(self, image, platform):
         return self._run(["docker", "image", "rm", self.tag(image, platform)])
@@ -282,34 +336,37 @@ def _tail(completed, lines=15):
 
 def scan_one(docker, root, gate, image, platform, work_dir, commit, keep):
     arch = platform.split("/")[-1]
-    scan_dir = work_dir / f"{image.name}-{arch}"
-    cache_dir = work_dir / "trivy-cache"
-    scan_dir.mkdir(parents=True, exist_ok=True)
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    tar_path = scan_dir / "image.tar"
-    report_path = scan_dir / "report.json"
+    report_dir = work_dir / f"{image.name}-{arch}"
+    report_dir.mkdir(parents=True, exist_ok=True)
+    report_path = report_dir / "report.json"
     report_path.unlink(missing_ok=True)
-    shutil.copyfile(ROOT / gate.ignore_file, scan_dir / "ignore")
 
     built = docker.build(root, image, platform, commit)
     if built.returncode != 0:
         return Result(image.name, platform, "error", detail=f"build: {_tail(built)}")
+    volume = f"{docker.tag_prefix}{image.name}-{arch}-{os.getpid()}"
     try:
-        saved = docker.save(image, platform, tar_path)
+        prepared = docker.prepare(volume, (ROOT / gate.ignore_file).read_bytes())
+        if prepared.returncode != 0:
+            return Result(image.name, platform, "error", detail="the scan's volume could not be made")
+        saved = docker.save(image, platform, volume)
         if saved.returncode != 0:
             return Result(image.name, platform, "error", detail=f"save: {_tail(saved)}")
-        scanned = docker.scan(gate, scan_dir.resolve(), cache_dir.resolve(), report_path.name)
+        scanned = docker.scan(gate, volume, report_path.name)
+        text = docker.read_report(volume, report_path.name)
         report = None
         try:
-            report = json.loads(report_path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
+            report = json.loads(text) if text is not None else None
+        except ValueError:
             pass
+        if report is not None:
+            report_path.write_text(text, encoding="utf-8")
         verdict, findings, detail = judge(scanned.returncode, report)
         if verdict == "error" and scanned.returncode != FINDINGS_EXIT:
             detail = f"{detail}\n{_tail(scanned)}".strip()
         return Result(image.name, platform, verdict, findings, detail)
     finally:
-        tar_path.unlink(missing_ok=True)
+        docker.remove_volume(volume)
         if not keep:
             docker.remove(image, platform)
 
@@ -359,10 +416,44 @@ def head_commit(root):
     return done.stdout.strip() if done.returncode == 0 else "unknown"
 
 
+def default_label():
+    """The run's own label when it set one, so `chore clean` finds what a killed scan left."""
+    return os.environ.get("RESTMAIL_LABEL") or "rest-mail.run=local"
+
+
+def daemon_arch():
+    done = subprocess.run(
+        ["docker", "version", "--format", "{{.Server.Arch}}"], text=True, capture_output=True
+    )
+    return done.stdout.strip()
+
+
+def choose_platforms(named, all_platforms, gate, arch):
+    """One scan grows the build cache by gigabytes, so only a release needs both."""
+    if named:
+        return tuple(named)
+    if all_platforms:
+        return gate.platforms
+    return (f"linux/{arch}",)
+
+
+@contextlib.contextmanager
+def tidied_afterwards(root):
+    """Cap the build cache and free the VM's cache however the scan ended."""
+    try:
+        yield
+    finally:
+        for step in ("cap-build-cache", "drop-guest-cache"):
+            subprocess.run(["sh", str(root / HYGIENE_SCRIPT), step], cwd=root)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     parser.add_argument("--image", action="append", help="only this image (repeatable)")
     parser.add_argument("--platform", action="append", help="only this platform (repeatable)")
+    parser.add_argument(
+        "--all-platforms", action="store_true", help="every platform the gate scans, not only this machine's"
+    )
     parser.add_argument(
         "--root",
         type=Path,
@@ -372,10 +463,10 @@ def main(argv=None):
         "by the same rules",
     )
     parser.add_argument(
-        "--work-dir", type=Path, help="reports and Trivy's cache (default: <root>/.cache/image-scan)"
+        "--work-dir", type=Path, help="reports (default: <root>/.cache/image-scan)"
     )
     parser.add_argument("--tag-prefix", default="restmail-image-scan-", help="prefix of local image names")
-    parser.add_argument("--label", default="rest-mail-image-scan=1", help="label on what this makes")
+    parser.add_argument("--label", default=default_label(), help="label on what this makes (default: RESTMAIL_LABEL)")
     parser.add_argument("--keep-images", action="store_true", help="leave the built images in place")
     args = parser.parse_args(argv)
 
@@ -395,7 +486,7 @@ def main(argv=None):
             print(f"image scan: not in the matrix: {sorted(unknown)}", file=sys.stderr)
             return 2
         images = [i for i in images if i.name in args.image]
-    platforms = tuple(args.platform or gate.platforms)
+    platforms = choose_platforms(args.platform, args.all_platforms, gate, daemon_arch())
     unknown = set(platforms) - set(gate.platforms)
     if unknown:
         print(f"image scan: the gate does not scan {sorted(unknown)}", file=sys.stderr)
@@ -404,7 +495,8 @@ def main(argv=None):
     work_dir = (args.work_dir or root / ".cache" / "image-scan").resolve()
     work_dir.mkdir(parents=True, exist_ok=True)
     docker = Docker(args.tag_prefix, args.label)
-    return run(docker, root, images, gate, platforms, work_dir, head_commit(root), args.keep_images)
+    with tidied_afterwards(ROOT):
+        return run(docker, root, images, gate, platforms, work_dir, head_commit(root), args.keep_images)
 
 
 if __name__ == "__main__":

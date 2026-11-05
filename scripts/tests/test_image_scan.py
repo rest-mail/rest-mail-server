@@ -10,6 +10,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = ROOT / ".github" / "workflows" / "docker.yml"
@@ -51,27 +52,40 @@ CLEAN_REPORT = {"Results": [{"Target": "image.tar (alpine 3.23.0)"}]}
 class FakeDocker:
     """Answers as Docker and Trivy would, one scripted answer per image."""
 
+    tag_prefix = "test-"
+
     def __init__(self, answers):
         self.answers = answers
         self.removed = []
         self.built = []
+        self.volumes = {}
 
     def build(self, root, image, platform, commit):
         self.built.append((image.name, platform))
         code = self.answers[image.name].get("build", 0)
         return SimpleNamespace(returncode=code, stdout="", stderr="no such file")
 
-    def save(self, image, platform, tar_path):
-        Path(tar_path).write_bytes(b"tar")
+    def prepare(self, volume, ignore):
+        self.volumes[volume] = {}
         return SimpleNamespace(returncode=0, stdout="", stderr="")
 
-    def scan(self, gate, scan_dir, cache_dir, report_name):
-        answer = self.answers[scan_dir.name.rsplit("-", 1)[0]]
+    def save(self, image, platform, volume):
+        self.volumes[volume]["image"] = image.name
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    def scan(self, gate, volume, report_name):
+        answer = self.answers[self.volumes[volume]["image"]]
         if "report" in answer:
-            (scan_dir / report_name).write_text(json.dumps(answer["report"]))
+            self.volumes[volume][report_name] = json.dumps(answer["report"])
         return SimpleNamespace(
             returncode=answer.get("scan", 0), stdout="", stderr="trivy said"
         )
+
+    def read_report(self, volume, report_name):
+        return self.volumes[volume].get(report_name)
+
+    def remove_volume(self, volume):
+        del self.volumes[volume]
 
     def remove(self, image, platform):
         self.removed.append((image.name, platform))
@@ -278,6 +292,101 @@ class RunTests(unittest.TestCase):
         kept = FakeDocker(answers)
         self.run_scan(kept, keep=True)
         self.assertEqual(kept.removed, [])
+
+    def test_no_scan_leaves_a_volume_behind(self):
+        docker = FakeDocker({"first": {"scan": 1}, "second": {"report": CLEAN_REPORT}})
+        self.run_scan(docker)
+        self.assertEqual(docker.volumes, {})
+
+    def test_the_report_stays_on_disk_to_read_afterwards(self):
+        docker = FakeDocker(
+            {"first": {"report": CLEAN_REPORT}, "second": {"report": CLEAN_REPORT}}
+        )
+        self.run_scan(docker)
+        report = self.work_dir / "first-arm64" / "report.json"
+        self.assertEqual(json.loads(report.read_text()), CLEAN_REPORT)
+
+
+class DockerCommandTests(unittest.TestCase):
+    """What reaches the Docker VM: what the machine pays for (#1963)."""
+
+    def setUp(self):
+        self.commands = []
+
+        def record(command, **kwargs):
+            self.commands.append(command)
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+        patcher = patch.object(image_scan.subprocess, "run", record)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.docker = image_scan.Docker("restmail-image-scan-", "rest-mail-loop=test")
+        self.gate = image_scan.Gate("v0.70.0", "CRITICAL,HIGH", True, ".trivyignore", ("linux/arm64",))
+
+    def test_nothing_is_bind_mounted_into_trivy(self):
+        self.docker.scan(self.gate, "the-volume", "report.json")
+        self.docker.read_report("the-volume", "report.json")
+        for command in self.commands:
+            for index, word in enumerate(command):
+                if word == "--volume":
+                    self.assertNotIn("/", command[index + 1].split(":", 1)[0], command)
+
+    def test_every_volume_and_container_carries_the_label(self):
+        self.docker.prepare("the-volume", b"ignored")
+        self.docker.scan(self.gate, "the-volume", "report.json")
+        self.docker.read_report("the-volume", "report.json")
+        made = [c for c in self.commands if c[1] == "run" or c[1:3] == ["volume", "create"]]
+        self.assertGreaterEqual(len(made), 4)
+        for command in made:
+            self.assertIn("rest-mail-loop=test", command, command)
+
+    def test_the_trivy_cache_stays_in_one_volume_between_scans(self):
+        self.docker.scan(self.gate, "one", "report.json")
+        self.docker.scan(self.gate, "two", "report.json")
+        caches = {
+            word for command in self.commands for word in command
+            if word.endswith(":/root/.cache/trivy")
+        }
+        self.assertEqual(caches, {"restmail-image-scan-trivy-cache:/root/.cache/trivy"})
+
+
+class ChoicesTests(unittest.TestCase):
+    gate = image_scan.Gate("v0.70.0", "CRITICAL,HIGH", True, ".trivyignore", ("linux/amd64", "linux/arm64"))
+
+    def test_an_ordinary_run_scans_the_machines_own_platform(self):
+        self.assertEqual(image_scan.choose_platforms(None, False, self.gate, "arm64"), ("linux/arm64",))
+
+    def test_all_platforms_scans_what_the_gate_scans(self):
+        self.assertEqual(image_scan.choose_platforms(None, True, self.gate, "arm64"), self.gate.platforms)
+
+    def test_a_named_platform_is_kept(self):
+        self.assertEqual(image_scan.choose_platforms(["linux/amd64"], False, self.gate, "arm64"), ("linux/amd64",))
+
+    def test_a_machine_the_gate_does_not_scan_is_not_a_silent_pass(self):
+        self.assertEqual(image_scan.choose_platforms(None, False, self.gate, "riscv64"), ("linux/riscv64",))
+
+    def test_the_label_comes_from_the_run(self):
+        with patch.dict(image_scan.os.environ, {"RESTMAIL_LABEL": "rest-mail-loop=prfix"}):
+            self.assertEqual(image_scan.default_label(), "rest-mail-loop=prfix")
+        with patch.dict(image_scan.os.environ):
+            image_scan.os.environ.pop("RESTMAIL_LABEL", None)
+            self.assertEqual(image_scan.default_label(), "rest-mail.run=local")
+
+
+class HygieneTests(unittest.TestCase):
+    def test_the_hygiene_script_is_there_and_takes_both_steps(self):
+        script = (ROOT / image_scan.HYGIENE_SCRIPT).read_text()
+        for step in ("cap-build-cache", "drop-guest-cache"):
+            self.assertIn(step, script)
+
+    def test_the_cache_is_capped_and_the_guest_cache_dropped_even_after_a_failure(self):
+        calls = []
+        with tempfile.TemporaryDirectory() as root:
+            with patch.object(image_scan.subprocess, "run", lambda c, **k: calls.append(c)):
+                with self.assertRaises(RuntimeError):
+                    with image_scan.tidied_afterwards(Path(root)):
+                        raise RuntimeError("the scan broke")
+        self.assertEqual([c[-1] for c in calls], ["cap-build-cache", "drop-guest-cache"])
 
 
 class JsFilterImageTests(unittest.TestCase):
