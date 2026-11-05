@@ -406,7 +406,12 @@ func isAttributeChar(c byte) bool {
 // its delimiters, and quotes around one go, because an encoded word may not stand
 // in a quoted-string (RFC 2047 §5).
 func encodeHeaderValue(w wireSink, column int, value string) {
-	tokens := headerTokens{value: value, unclosed: len(value)}
+	encodeHeaderTokens(w, column, &headerTokens{value: value, unclosed: len(value)})
+}
+
+// encodeHeaderTokens is encodeHeaderValue over tokens, whose steps then say what it scanned.
+func encodeHeaderTokens(w wireSink, column int, tokens *headerTokens) {
+	value := tokens.value
 	line := column
 	write := func(s string) {
 		_, _ = w.WriteString(s)
@@ -469,10 +474,13 @@ func isHeaderSpace(c byte) bool {
 // first '"' found to have no closing quote, so that scan runs only once: every later
 // '"' in the value has none either. A scan that reached a later '"' would have closed
 // on it, so it must have skipped it as a quoted-pair, and a scan from just after that
-// '"' follows the same octets to the end of the value.
+// '"' follows the same octets to the end of the value. steps counts the octets looked
+// at, which a scan repeating itself over an unclosed quote would multiply without
+// allocating anything.
 type headerTokens struct {
 	value    string
 	unclosed int
+	steps    int
 }
 
 // at is the token starting at offset start: up to white space, a quoted-string that
@@ -480,6 +488,7 @@ type headerTokens struct {
 func (t *headerTokens) at(start int) string {
 	i := start
 	for i < len(t.value) && !isHeaderSpace(t.value[i]) {
+		t.steps++
 		if t.value[i] == '"' && i < t.unclosed {
 			closes := t.closingQuote(i)
 			if closes < 0 {
@@ -496,6 +505,7 @@ func (t *headerTokens) at(start int) string {
 // closingQuote is the offset of the '"' that closes the one at open, or -1.
 func (t *headerTokens) closingQuote(open int) int {
 	for j := open + 1; j < len(t.value); j++ {
+		t.steps++
 		if t.value[j] == '\\' {
 			j++
 		} else if t.value[j] == '"' {
