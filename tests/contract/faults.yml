@@ -5,14 +5,21 @@
 # that phase turns red there. Adding a fault: tests/contract/README.md, "Fault
 # catalogue".
 #
-#   name        the fault; its switch is internal/faultinject/fault_<name>.go
+#   name        the fault; a build-tag fault's switch is
+#               internal/faultinject/fault_<name>.go
 #   build_tags  how it is applied: the API is built with these Go build tags
 #               (GOFLAGS=-tags=...). A normal build has neither tag, so it holds
 #               no fault code.
+#   patch       or this: a diff removing a real guard, applied only to a
+#               throwaway tree of HEAD. It needs phase pairs, test, subtest and
+#               expected_failure, and this entry is its whole change.
+#   test        the *WithVertrag test chore contract:pairs requires
+#   subtest     the subtest of it, sending the operation's example pair, that
+#               must fail
 #   operation   the operationId whose answer it breaks
 #   path        that operation's path, which Vertrag's report names it by
 #   phase       the witness phase (examples, body_cap, auth_throttle, secret_scan,
-#               browser_session)
+#               browser_session, pairs)
 #   breaks      what a client would see
 #   expected_failure  optional: text Vertrag's failure must hold, so the run
 #               counts as catching the fault only when it fails for this reason
@@ -107,3 +114,72 @@ faults:
     phase: browser_session
     breaks: POST /api/v1/accounts lets a cookie session's request past the CSRF guard without a matching X-CSRF-Token header, instead of refusing it with 403 csrf_failed
     expected_failure: "expected 403 csrf_failed"
+
+  - name: get_domain_capability_check_removed
+    operation: getDomain
+    path: /api/v1/admin/domains/{id}
+    phase: pairs
+    test: TestDomainAliasReadExamplesWithVertrag
+    subtest: getDomain/outside_domain
+    breaks: GET /api/v1/admin/domains/{id} no longer checks domains:read, though its description still documents the check, so a caller without it reads the domain instead of receiving 403
+    expected_failure: "GET /api/v1/admin/domains/{id} 403 answered 200"
+    patch: |
+      --- a/internal/api/handlers/domains.go
+      +++ b/internal/api/handlers/domains.go
+      @@ -165,3 +165,3 @@ func (h *DomainHandler) Register(rs endpoint.Routes, checks DomainRouteChecks) {
+       		OperationID: "getDomain", Summary: "Get a domain by ID", Tags: tags, Errors: missing,
+      -		Middleware: []endpoint.Middleware{checks.OnDomain(middleware.CapDomainsRead)}}, h.get)
+      +		Middleware: []endpoint.Middleware{{Wrap: func(next http.Handler) http.Handler { return next }, Describes: checks.OnDomain(middleware.CapDomainsRead).Describes}}}, h.get)
+       	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPatch, Path: "/api/v1/admin/domains/{id}",
+
+  - name: domain_scope_widened_to_any_grant
+    operation: getCustomFilter
+    path: /api/v1/admin/custom-filters/{id}
+    phase: pairs
+    test: TestAdminResourceReadExamplesWithVertrag
+    subtest: getCustomFilter/domain_scope
+    breaks: RequireCapability lets a capability held on any domain pass as if held at * on the target, so an administrator of another domain reads this one's custom filter instead of receiving 403
+    expected_failure: "GET /api/v1/admin/custom-filters/{id} 403 answered 200"
+    patch: |
+      --- a/internal/api/middleware/auth.go
+      +++ b/internal/api/middleware/auth.go
+      @@ -157,3 +157,3 @@ func RequireCapability(held HeldGrants, capability string, target ScopeOf) func(
+       				}
+      -				if found && h.Allows(capability, scope) && CredentialAllows(claims, capability, scope) {
+      +				if found && scope != "" {
+       					next.ServeHTTP(w, withAuthorizedGrants(r, h))
+
+  - name: domain_scope_checked_at_all
+    operation: listAllowlist
+    path: /api/v1/admin/domains/{id}/allowlist
+    phase: pairs
+    test: TestDomainPolicyReadExamplesWithVertrag
+    subtest: available
+    breaks: A route checked on its domain is checked at * instead, so an administrator of that domain receives 403 instead of its allowlist
+    expected_failure: "GET /api/v1/admin/domains/{id}/allowlist 200 answered 403"
+    patch: |
+      --- a/internal/api/routes.go
+      +++ b/internal/api/routes.go
+      @@ -736,3 +736,4 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
+       		needsOnDomain := func(capability string) func(http.Handler) http.Handler {
+      -			return middleware.RequireCapability(held, capability, onDomain)
+      +			_ = onDomain
+      +			return middleware.RequireCapability(held, capability, nil)
+       		}
+
+  - name: get_quota_may_reach_skipped
+    operation: getQuota
+    path: /api/v1/accounts/{id}/quota
+    phase: pairs
+    test: TestAccountReadExamplesWithVertrag
+    subtest: getQuota/key_wrong_scope
+    breaks: getQuota skips its mayReach check, so an API key scoped to another mailbox reads this account's quota instead of receiving 404
+    expected_failure: "GET /api/v1/accounts/{id}/quota 404 answered 200"
+    patch: |
+      --- a/internal/api/handlers/messages.go
+      +++ b/internal/api/handlers/messages.go
+      @@ -1643,3 +1643,3 @@ func (h *MessageHandler) getQuota(r *http.Request, in accountPath) (Quota, error
+       	h = h.forRequest(r)
+      -	mailboxID, err := h.accountMailbox(r, in.ID, models.CapMailRead)
+      +	mailboxID, err := uint(in.ID), error(nil)
+       	if err != nil {

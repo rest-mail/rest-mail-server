@@ -5,6 +5,7 @@ package faultinject
 
 import (
 	"bufio"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -25,10 +26,13 @@ type catalogueEntry struct {
 	KnownGap        string `yaml:"known_gap"`
 	Breaks          string `yaml:"breaks"`
 	ExpectedFailure string `yaml:"expected_failure"`
+	Patch           string `yaml:"patch"`
+	Test            string `yaml:"test"`
+	Subtest         string `yaml:"subtest"`
 }
 
 // The phases tests/contract/faults.py can run and judge.
-var judgedPhases = map[string]bool{"examples": true, "body_cap": true, "auth_throttle": true, "secret_scan": true, "browser_session": true}
+var judgedPhases = map[string]bool{"examples": true, "body_cap": true, "auth_throttle": true, "secret_scan": true, "browser_session": true, "pairs": true}
 
 func readCatalogue(t *testing.T) []catalogueEntry {
 	t.Helper()
@@ -72,6 +76,10 @@ func TestEveryCatalogueFaultHasItsSwitch(t *testing.T) {
 			t.Fatalf("a fault without a name, or named twice: %q", f.Name)
 		}
 		seen[f.Name] = true
+		if f.Patch != "" {
+			checkPatchFault(t, f)
+			continue
+		}
 		if want := "faultinject,fault_" + f.Name; f.BuildTags != want {
 			t.Errorf("%s: build_tags %q, want %q", f.Name, f.BuildTags, want)
 		}
@@ -108,6 +116,45 @@ func TestEveryCatalogueFaultHasItsSwitch(t *testing.T) {
 		if !seen[name] {
 			t.Errorf("%s has no entry in tests/contract/faults.yml", file)
 		}
+	}
+}
+
+// A patch fault is its catalogue entry alone. Its diff must still apply to the
+// code it breaks, so a change to that code says so here rather than a night
+// later. Its witness must be a pair of the operation, sent by a test the gate
+// chore contract:pairs requires, or a red run of it would prove nothing.
+func checkPatchFault(t *testing.T, f catalogueEntry) {
+	t.Helper()
+	if f.Phase != "pairs" || f.BuildTags != "" {
+		t.Errorf("%s: a patch fault has phase pairs and no build tags, got %q and %q", f.Name, f.Phase, f.BuildTags)
+	}
+	if f.ExpectedFailure == "" || strings.TrimSpace(f.Breaks) == "" {
+		t.Errorf("%s: a patch fault says what it breaks and the failure it must cause", f.Name)
+	}
+	apply := exec.Command("git", "apply", "--check", "-")
+	apply.Dir = "../.."
+	apply.Stdin = strings.NewReader(f.Patch)
+	if out, err := apply.CombinedOutput(); err != nil {
+		t.Errorf("%s: its patch no longer applies, so update it to break this code the same way: %v\n%s", f.Name, err, out)
+	}
+	chores, err := os.ReadFile("../../chores.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !regexp.MustCompile(`example_pairs\.sh -run '.*\b` + regexp.QuoteMeta(f.Test) + `\b`).Match(chores) {
+		t.Errorf("%s: %s is not a test chore contract:pairs requires", f.Name, f.Test)
+	}
+	raw, err := os.ReadFile("../../openapi-example.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var pairs map[string]map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &pairs); err != nil {
+		t.Fatal(err)
+	}
+	pair := f.Subtest[strings.LastIndex(f.Subtest, "/")+1:]
+	if _, ok := pairs[f.Operation][pair]; !ok {
+		t.Errorf("%s: subtest %q names no example pair of %s", f.Name, f.Subtest, f.Operation)
 	}
 }
 
