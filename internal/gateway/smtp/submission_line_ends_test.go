@@ -8,8 +8,8 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/outbound"
 )
 
-// Submission keeps what a client sent, so a row can hold any mix of line ends with a Bcc field in
-// its head (#1970). The row stays as it was sent, and what leaves it has no Bcc field.
+// Submission keeps what a client sent, so a row can hold any mix of line ends with a Bcc or Resent-Bcc field in
+// its head (#1970, #1973). The row stays as it was sent, and what leaves it has no such field.
 func TestSubmissionQueuesMixedLineEndsExactly(t *testing.T) {
 	const from = "From: alice@example.com"
 	for name, message := range map[string]string{
@@ -17,6 +17,8 @@ func TestSubmissionQueuesMixedLineEndsExactly(t *testing.T) {
 		"one LF in the head":        from + "\r\nBcc: secret@c.test\nSubject: s\r\n\r\nbody",
 		"bare CR in the head":       from + "\r\nSubject: s\rBcc: secret@c.test\r\nTo: c@d.test\r\n\r\nbody",
 		"all LF":                    from + "\nBcc: secret@c.test\nSubject: s\n\nbody\n",
+		"Resent-Bcc, one LF":        from + "\r\nResent-To: d@e.test\r\nResent-Bcc: secret@c.test\nSubject: s\r\n\r\nbody",
+		"Resent-Bcc, bare CR":       from + "\rresent-bcc: secret@c.test\r\n secret2@c.test\r\nSubject: s\r\n\r\nbody",
 	} {
 		t.Run(name, func(t *testing.T) {
 			back := newMockBackend()
@@ -52,7 +54,7 @@ func TestSubmissionQueuesMixedLineEndsExactly(t *testing.T) {
 				t.Fatalf("the row isn't what the client sent: %q", row)
 			}
 			if sent := outbound.StripBcc(row); strings.Contains(sent, "secret@") {
-				t.Fatalf("the Bcc would leave this row: %q", sent)
+				t.Fatalf("the hidden recipient would leave this row: %q", sent)
 			}
 		})
 	}

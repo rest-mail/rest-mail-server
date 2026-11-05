@@ -317,8 +317,8 @@ func (w *Worker) SetMasterKey(key string) {
 }
 
 // prepareOutbound applies the outbound transforms to a queue row's raw message
-// immediately before it is written to the wire: the Bcc header is stripped and,
-// when the message arrived unsigned, it is DKIM-signed with the sender domain's
+// immediately before it is written to the wire: the Bcc and Resent-Bcc headers are
+// stripped and, when the message arrived unsigned, it is DKIM-signed with the sender domain's
 // key. This is the single choke point every outbound message passes through, so
 // SMTP-submitted mail (which enqueues raw MUA bytes) gets the same treatment the
 // API path applies at submission (#171); the transforms are idempotent, so
@@ -1605,8 +1605,9 @@ func buildDSNMessage(hostname string, item models.OutboundQueue, smtpErr *SMTPEr
 		remoteMTA = rmail.SanitizeHeaderValue(smtpErr.RemoteMTA)
 	}
 
-	// Extract original headers from RawMessage for Part 3.
-	originalHeaders := item.RawMessage
+	// Extract original headers from RawMessage for Part 3, without the hidden fields. Part 3 sits
+	// in the notice's body, where prepareOutbound's strip of the notice's own head can't reach it.
+	originalHeaders := outbound.StripBcc(item.RawMessage)
 	if idx := strings.Index(originalHeaders, "\r\n\r\n"); idx >= 0 {
 		originalHeaders = originalHeaders[:idx]
 	} else if idx := strings.Index(originalHeaders, "\n\n"); idx >= 0 {

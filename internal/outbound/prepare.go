@@ -27,7 +27,7 @@ import (
 )
 
 // Prepare applies the outbound transforms to a raw RFC 5322 message before it is
-// relayed: it strips the Bcc header, then DKIM-signs the result when the sender
+// relayed: it strips the Bcc and Resent-Bcc headers, then DKIM-signs the result when the sender
 // domain has a key configured and the message is not already signed.
 //
 // It is idempotent, which is what makes it safe to run in the shared queue
@@ -35,8 +35,8 @@ import (
 //   - API-originated mail is already Bcc-free and DKIM-signed at submission, so
 //     Prepare leaves it untouched (StripBcc is a no-op, HasDKIMSignature short-
 //     circuits the signing).
-//   - SMTP-submitted mail arrives raw, so Prepare removes any Bcc header and
-//     signs it here.
+//   - SMTP-submitted mail arrives raw, so Prepare removes any Bcc or Resent-Bcc
+//     header and signs it here.
 //
 // An error is returned ONLY when the domain has a key that cannot sign (see
 // SignDKIM); the caller must fail closed (defer/retry) rather than relay the
@@ -53,17 +53,18 @@ func Prepare(db *gorm.DB, masterKey, senderDomain, raw string) (string, error) {
 	return SignDKIM(db, masterKey, senderDomain, raw)
 }
 
-// StripBcc removes every Bcc header field (and its folded continuation lines) from
-// a raw RFC 5322 message so Bcc recipients are not disclosed to destination MXs.
-// The Bcc recipients still receive the message — they are delivered via the
-// envelope; only the header is withheld. rmail.HeadFields says what is in the head,
-// for any mix of line ends.
+// StripBcc removes every Bcc and Resent-Bcc header field (and their folded
+// continuation lines) from a raw RFC 5322 message so hidden recipients are not
+// disclosed to destination MXs. RFC 5322 section 3.6.6 gives Resent-Bcc the same
+// meaning for a resent message that section 3.6.3 gives Bcc. The hidden recipients
+// still receive the message — they are delivered via the envelope; only the header
+// is withheld. rmail.HeadFields says what is in the head, for any mix of line ends.
 //
-// When the message carries no Bcc header the input is returned byte-for-byte
+// When the message carries neither field the input is returned byte-for-byte
 // unchanged, so a message that was already DKIM-signed upstream is never
 // disturbed.
 func StripBcc(raw string) string {
-	return rmail.RemoveHeadField(raw, "Bcc")
+	return rmail.RemoveHeadField(raw, "Bcc", "Resent-Bcc")
 }
 
 // HasDKIMSignature reports whether the raw message already carries a
