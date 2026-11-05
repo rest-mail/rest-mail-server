@@ -94,12 +94,12 @@ func parseWhole(data []byte) (subject, bodyText, bodyHTML, messageID, senderName
 	messageID = strings.Trim(h.MessageID, "<>")
 	inReplyTo = strings.Trim(h.InReplyTo, "<>")
 	references = strings.Join(h.References, " ")
-	if len(h.From) > 0 {
-		senderName = h.From[0].Name
-		fromAddr = h.From[0].Address
+	if from, ok := h.From.First(); ok {
+		senderName = from.Name
+		fromAddr = from.Address
 	}
-	toList = bareAddresses(h.To)
-	ccList = bareAddresses(h.Cc)
+	toList = bareAddresses(h.To.All())
+	ccList = bareAddresses(h.Cc.All())
 	bodyText, bodyHTML = rmime.TextAndHTML(email.Body)
 	return
 }
@@ -553,7 +553,7 @@ func TestSpoolLeavesNoFileWhenTheSourceFails(t *testing.T) {
 }
 
 // TestDeliveredFieldsMatchTheMessage proves a local delivery carries the raw octets, with the trace
-// field in front, and the decoded bodies, however they are not UTF-8.
+// field in front, and no decoded text beside them: the server reads that from the source (#1915).
 func TestDeliveredFieldsMatchTheMessage(t *testing.T) {
 	t.Setenv("TMPDIR", t.TempDir())
 	back := newMockBackend()
@@ -576,11 +576,8 @@ func TestDeliveredFieldsMatchTheMessage(t *testing.T) {
 	if !bytes.HasSuffix(req.RawMessage, []byte(raw)) {
 		t.Fatalf("raw message does not end with what was sent: %q", clip(string(req.RawMessage)))
 	}
-	if req.BodyText != "café" {
-		t.Errorf("BodyText = %q, want the decoded text", req.BodyText)
-	}
-	if req.BodyHTML != "" {
-		t.Errorf("BodyHTML = %q, want none", req.BodyHTML)
+	if req.BodyText != "" || req.BodyHTML != "" {
+		t.Errorf("text sent beside the source: %q / %q", req.BodyText, req.BodyHTML)
 	}
 	if req.Subject != "hi" || req.SenderName != "S" {
 		t.Errorf("Subject, SenderName = %q, %q", req.Subject, req.SenderName)

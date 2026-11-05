@@ -1019,8 +1019,6 @@ func (s *session) Data(r io.Reader) (err error) {
 
 		if _, err := s.api.DeliverMessageFrom(deliverReq, apiclient.DeliverContent{
 			RawMessage: localSource.open,
-			BodyText:   parsed.text.opener(),
-			BodyHTML:   parsed.html.opener(),
 		}); err != nil {
 			if reason, refused := aliasRoutingRefusal(err); refused {
 				aliasFailure = reason
