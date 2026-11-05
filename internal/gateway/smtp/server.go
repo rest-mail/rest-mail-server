@@ -363,7 +363,6 @@ func (c *limitedConn) admit() error {
 		case !granted:
 			c.admitErr = net.ErrClosed
 			c.mu.Unlock()
-			slog.Warn("smtp: connection rejected by limiter", "ip", ip)
 			_ = c.Conn.Close()
 		case c.closed:
 			// Close raced ahead of admission; release the slot we just took so

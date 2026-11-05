@@ -16,6 +16,7 @@ package endpoint
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -520,7 +521,12 @@ func write(w http.ResponseWriter, status int, out interface{}) {
 func writeError(w http.ResponseWriter, err error) {
 	var refusal *Error
 	if !errors.As(err, &refusal) {
-		slog.Error("api: handler failed", "error", err)
+		if errors.Is(err, context.Canceled) {
+			// The caller went away: nothing failed, and nobody reads this answer.
+			slog.Info("api: request cancelled", "error", err)
+		} else {
+			slog.Error("api: handler failed", "error", err)
+		}
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Internal server error")
 		return
 	}

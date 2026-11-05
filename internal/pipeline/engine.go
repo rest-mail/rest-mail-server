@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"runtime/debug"
@@ -319,7 +320,11 @@ func (e *Engine) runFilter(ctx context.Context, filter Filter, email *EmailJSON)
 	case <-fctx.Done():
 		// The backstop deadline (or an upstream cancellation) fired before the
 		// filter returned. Abandon the in-flight goroutine and fail this step.
-		return nil, fmt.Errorf("filter execution aborted (timeout %s): %w", e.filterTimeout, context.Cause(fctx))
+		cause := context.Cause(fctx)
+		if errors.Is(cause, context.Canceled) {
+			return nil, fmt.Errorf("filter execution aborted, the caller cancelled it: %w", cause)
+		}
+		return nil, fmt.Errorf("filter execution aborted (timeout %s): %w", e.filterTimeout, cause)
 	}
 }
 

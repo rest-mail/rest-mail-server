@@ -1,6 +1,7 @@
 package connlimiter
 
 import (
+	"log/slog"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -94,11 +95,15 @@ func initProtocolSeries(protocol string) {
 }
 
 // Accept checks whether a new connection from ip is allowed.
-// Returns true and increments counters if allowed.
+// Returns true and increments counters if allowed. A refusal is logged here, naming
+// the limit, because the answer to its caller is only a bool and the limits call for
+// different responses: a ban or the per-IP limit points at one client, the global
+// limit at the whole gateway.
 func (l *Limiter) Accept(ip string) bool {
 	// Check persistent bans first. The ban checker may hit the DB, so keep it
 	// outside acceptMu.
 	if l.banChecker != nil && l.banChecker(ip, l.protocol) {
+		slog.Warn("connection refused", "protocol", l.protocol, "ip", ip, "limit", "ban")
 		return false
 	}
 
@@ -107,14 +112,16 @@ func (l *Limiter) Accept(ip string) bool {
 	// observe a sub-limit count and all increment past the cap, admitting more
 	// connections than MaxPerIP/MaxGlobal (M-2, CWE-362).
 	l.acceptMu.Lock()
-	if int(l.global.Load()) >= l.cfg.MaxGlobal {
+	if open := int(l.global.Load()); open >= l.cfg.MaxGlobal {
 		l.acceptMu.Unlock()
+		slog.Warn("connection refused", "protocol", l.protocol, "ip", ip, "limit", "global", "open", open, "max", l.cfg.MaxGlobal)
 		return false
 	}
 	val, _ := l.perIP.LoadOrStore(ip, &atomic.Int32{})
 	counter := val.(*atomic.Int32)
-	if int(counter.Load()) >= l.cfg.MaxPerIP {
+	if open := int(counter.Load()); open >= l.cfg.MaxPerIP {
 		l.acceptMu.Unlock()
+		slog.Warn("connection refused", "protocol", l.protocol, "ip", ip, "limit", "per_ip", "open", open, "max", l.cfg.MaxPerIP)
 		return false
 	}
 	counter.Add(1)
