@@ -1,10 +1,8 @@
 package message
 
 import (
-	"bufio"
 	"fmt"
 	"math/rand"
-	"net/textproto"
 	"strings"
 	"testing"
 )
@@ -26,6 +24,12 @@ func wireTypeSeeds() []string {
 		"X: a\rb\r\nContent-Type: a/b\r\n\r\n",
 		"NoColon\r\nContent-Type: a/b\r\n\r\n",
 		"Content-Type: a/b\r\n ",
+		"Content-Type: a/b\r\nContent-Transfer-Encoding: 7bit\r\nNoColon\r\n\r\n",
+		"No\r\n colon: here\r\nContent-Type: a/b\r\n\r\n",
+		"No\r\n colon\r\nContent-Type: a/b\r\n\r\n",
+		": no name\r\nContent-Type: a/b\r\n\r\n",
+		"X: a\x01b\r\nContent-Type: a/b\x7f\r\n\r\n",
+		"Content-\r\n Type: a/b\r\nContent-Tran\u017ffer-Encoding: x-nope\r\n\r\n",
 		"Content-Type: multipart/mixed" + many + "; boundary=B\r\nX: \xc3\xbc\r\n\r\n",
 		"Content-Type: multipart/mixed" + many + "; boundary*0=A; boundary*1=B; p3=v3; P4=\"v4\"\r\n\r\n",
 		"Content-Type: text/plain" + many + " (c\xc3\xb6); q=\"(\"; r=J\xc3\xb6rg (1).pdf; CHARSET=y\r\n\r\n",
@@ -65,6 +69,11 @@ func eachMutatedHeader(each func(header string)) {
 		each("X: y\r\nContent-Type: " + strings.Repeat("a", size-len("Content-Type: ")))
 		each("X: y\r\nContent-Type: a/b\r\n " + strings.Repeat("a", size))
 	}
+	// A CR on the buffer's end waits for the next read, which moves where the line runs out.
+	for _, tail := range []int{0, 1, 4094, 4095, 4096, 4097} {
+		each("Content-Type: a/b\r\nX: " + strings.Repeat("a", 4092) + "\r" + strings.Repeat("a", tail))
+		each("Content-Type: a/b\r\n " + strings.Repeat("a", 4095) + "\r" + strings.Repeat("a", tail))
+	}
 	for _, seed := range wireTypeSeeds() {
 		each(seed)
 		for range 3000 {
@@ -75,7 +84,7 @@ func eachMutatedHeader(each func(header string)) {
 
 func TestContentFieldsMatchTheLibrary(t *testing.T) {
 	eachMutatedHeader(func(header string) {
-		h, _ := textproto.NewReader(bufio.NewReaderSize(strings.NewReader(header), min(len(header), 4096))).ReadMIMEHeader()
+		h := entityHeader(header)
 		contentType, encoding := contentFields(header)
 		if contentType != h.Get("Content-Type") || encoding != h.Get("Content-Transfer-Encoding") {
 			t.Fatalf("%q: read %q and %q, the library %q and %q", header, contentType, encoding, h.Get("Content-Type"), h.Get("Content-Transfer-Encoding"))

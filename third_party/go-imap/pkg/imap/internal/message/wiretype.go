@@ -40,33 +40,19 @@ func (n mimeNode) wireType() wireType {
 }
 
 // contentFields is the first Content-Type and the first Content-Transfer-Encoding that
-// textproto.Reader.ReadMIMEHeader reads from a header block, with what it would hold of
-// every other field left unbuilt: it stops at the first line it can't read, and keeps
-// what it read before that (TestContentFieldsMatchTheLibrary).
+// entityHeader reads from a header block, with what it would hold of every other field
+// left unbuilt. It stops at a blank line or a line the reader loses, and keeps what it read
+// before that, but a line with no colon anywhere makes the whole block read as empty, so
+// the block is read to its end whatever has been found (TestContentFieldsMatchTheLibrary).
 func contentFields(header string) (contentType, encoding string) {
 	if header != "" && (header[0] == ' ' || header[0] == '\t') {
 		return "", ""
 	}
-	buffer := max(min(len(header), 4096), 16)
-	// A last line with no line break, in a whole number of mediaType's buffers, reads as the
-	// end of input straight after a full buffer, and the reader loses it.
-	lost := func(line string, ended bool) bool {
-		return !ended && line != "" && len(line)%buffer == 0
-	}
 	rest := header
 	haveType, haveEncoding := false, false
-	for rest != "" && !(haveType && haveEncoding) {
+	for rest != "" {
 		first, after, ended := cutHeaderLine(rest)
-		if first == "" || lost(first, ended) {
-			return contentType, encoding
-		}
-		colon := strings.IndexByte(first, ':')
-		if colon < 0 {
-			return contentType, encoding
-		}
-		line := trimHeaderSpace(first)
-		colon = strings.IndexByte(line, ':')
-		if !readableFieldName(line[:colon]) || !readableFieldValue(line[colon+1:]) {
+		if first == "" || (!ended && lostHeaderLine(first)) {
 			return contentType, encoding
 		}
 		field := after
@@ -85,23 +71,31 @@ func contentFields(header string) (contentType, encoding string) {
 			}
 			var next string
 			next, field, ended = cutHeaderLine(field[spaces:])
-			if lost(next, ended) || !readableFieldValue(trimHeaderSpace(next)) {
+			if !ended && lostHeaderLine(next) {
 				return contentType, encoding
 			}
 			folded = true
 		}
-		name := line[:colon]
-		isType, isEncoding := strings.EqualFold(name, "Content-Type"), strings.EqualFold(name, "Content-Transfer-Encoding")
-		if isType && !haveType || isEncoding && !haveEncoding {
-			value := line[colon+1:]
-			if folded {
-				value = unfoldedField(value, after[:len(after)-len(field)])
-			}
-			value = strings.TrimLeft(value, " \t")
-			if isType {
-				contentType, haveType = value, true
-			} else {
-				encoding, haveEncoding = value, true
+		continuation := after[:len(after)-len(field)]
+		line := trimHeaderSpace(first)
+		name, value, named := strings.Cut(line, ":")
+		switch {
+		case !named && !strings.Contains(continuation, ":"):
+			return "", ""
+		case named:
+			// A name folded over lines holds a space, so it never names these two.
+			isType := len(name) == len("Content-Type") && strings.EqualFold(name, "Content-Type")
+			isEncoding := len(name) == len("Content-Transfer-Encoding") && strings.EqualFold(name, "Content-Transfer-Encoding")
+			if isType && !haveType || isEncoding && !haveEncoding {
+				if folded {
+					value = unfoldedField(value, continuation)
+				}
+				value = strings.TrimLeft(value, " \t")
+				if isType {
+					contentType, haveType = value, true
+				} else {
+					encoding, haveEncoding = value, true
+				}
 			}
 		}
 		rest = field
@@ -109,8 +103,25 @@ func contentFields(header string) (contentType, encoding string) {
 	return contentType, encoding
 }
 
-// unfoldedField joins a value's first line and its continuation lines as ReadMIMEHeader
-// does: each one trimmed, with one space before it.
+// entityHeaderBuffer is the size of the buffers entityHeader reads with.
+const entityHeaderBuffer = 4096
+
+// lostHeaderLine reports whether the reader loses a line that ends its input with no line
+// break. It takes a line a full buffer at a time, leaving a CR at a buffer's end for the
+// next, and when the line ends exactly there the next read finds only the end of input.
+func lostHeaderLine(line string) bool {
+	for len(line) >= entityHeaderBuffer {
+		n := entityHeaderBuffer
+		if line[n-1] == '\r' {
+			n--
+		}
+		line = line[n:]
+	}
+	return line == ""
+}
+
+// unfoldedField joins a value's first line and its continuation lines as entityHeader's
+// reader does: each one trimmed, with one space before it.
 func unfoldedField(value, lines string) string {
 	var b strings.Builder
 	b.Grow(len(value) + len(lines))
@@ -137,31 +148,6 @@ func cutHeaderLine(s string) (line, rest string, ended bool) {
 }
 
 func trimHeaderSpace(s string) string { return strings.Trim(s, " \t") }
-
-// readableFieldName is what ReadMIMEHeader takes as a field name: not empty, and
-// token characters or a space, which it allows before the colon.
-func readableFieldName(name string) bool {
-	for i := 0; i < len(name); i++ {
-		if c := name[i]; c != ' ' && !isHeaderNameByte(c) {
-			return false
-		}
-	}
-	return name != ""
-}
-
-func isHeaderNameByte(c byte) bool {
-	return c >= '0' && c <= '9' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || strings.IndexByte("!#$%&'*+-.^_`|~", c) >= 0
-}
-
-// readableFieldValue is what ReadMIMEHeader takes as a value: no control octet but a tab.
-func readableFieldValue(value string) bool {
-	for i := 0; i < len(value); i++ {
-		if c := value[i]; (c < 0x20 && c != '\t') || c == 0x7f {
-			return false
-		}
-	}
-	return true
-}
 
 // manyParameters is how many parameters a field holds before reading it reads only the
 // ones it needs. Mail with fewer goes the way it always did.
