@@ -449,7 +449,7 @@ class ContractCommand(unittest.TestCase):
             [
                 "pin",
                 "substrate:preflight",
-                "summary:tests/contract/summary.py .cache/contract examples coverage authorization ownership ownership-domains ownership-mailboxes",
+                "summary:tests/contract/summary.py .cache/contract examples coverage authorization ownership ownership-domains ownership-mailboxes ownership-messages",
             ],
         )
 
