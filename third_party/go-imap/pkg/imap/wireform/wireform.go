@@ -34,6 +34,11 @@ func Size(raw string, utf8 bool) int {
 	return message.WireFormSize(raw, utf8)
 }
 
+// Sizes is Size with and without UTF-8, from one reading of what the two share.
+func Sizes(raw string) (sevenBit, utf8 int) {
+	return message.WireFormSizes(raw)
+}
+
 // JoinedSize is Size(block+body, utf8) without joining them, for a host that rewrites
 // the header block of a message and keeps its stored body.
 func JoinedSize(block, body string, utf8 bool) int {
