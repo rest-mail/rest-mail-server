@@ -206,5 +206,82 @@ class ContractRateLimits(unittest.TestCase):
         self.assertNotIn("RESTMAIL_CONTRACT_LIMITS_RAISED=false", teardown)
 
 
+class ContainerRateLimitChecks(unittest.TestCase):
+    def test_settings_match_the_existing_raised_flags(self):
+        settings = rate_limits.settings()
+        self.assertEqual(set(settings), set(rate_limits.DEFAULTS))
+        self.assertEqual(rate_limits.docker_flags().split()[1::2], [
+            f"{name}={value}" for name, value in settings.items()
+        ])
+        for name, value in settings.items():
+            if name.endswith("_ENABLED"):
+                self.assertEqual(value, "true")
+            else:
+                self.assertGreater(float(value), 10 * float(rate_limits.DEFAULTS[name]))
+
+    def test_raised_checks_every_setting_and_the_pacing_switch(self):
+        settings = rate_limits.settings()
+        environment = [f"{name}={value}" for name, value in settings.items()]
+        self.assertEqual(rate_limits.problems("raised", environment, switch="true"), [])
+        for switch in ("", "false", "TRUE"):
+            self.assertTrue(rate_limits.problems("raised", environment, switch=switch))
+        for name in settings:
+            with self.subTest(name=name):
+                missing = [entry for entry in environment if not entry.startswith(name + "=")]
+                changed = missing + [f"{name}={rate_limits.DEFAULTS[name]}"]
+                self.assertTrue(rate_limits.problems("raised", missing, switch="true"))
+                if settings[name] != rate_limits.DEFAULTS[name]:
+                    self.assertTrue(rate_limits.problems("raised", changed, switch="true"))
+
+    def test_defaults_allow_explicit_defaults_but_not_overrides_or_a_raised_switch(self):
+        defaults = [f"{name}={value}" for name, value in rate_limits.DEFAULTS.items()]
+        for environment in ([], defaults, defaults + ["OTEL_SERVICE_NAME"]):
+            self.assertEqual(rate_limits.problems("default", environment, switch="false"), [])
+            self.assertTrue(rate_limits.problems("default", environment, switch="true"))
+        for name in rate_limits.DEFAULTS:
+            changed = "false" if name.endswith("_ENABLED") else "10000"
+            self.assertTrue(rate_limits.problems("default", defaults + [f"{name}={changed}"], switch="false"))
+
+    def test_cli_checks_the_container_environment_without_printing_secrets(self):
+        raised = [f"{name}={value}" for name, value in rate_limits.settings().items()]
+        with tempfile.TemporaryDirectory() as directory:
+            docker = Path(directory) / "docker"
+            docker.write_text(
+                '#!/bin/sh\n'
+                'test "$1" = inspect && test "$4" = test-api || exit 90\n'
+                'printf "%s" "$RATE_TEST_ENV"\n'
+            )
+            docker.chmod(0o755)
+            for expect, environment, switch, code in (
+                ("raised", raised, "true", 0),
+                ("raised", raised, "false", 1),
+                ("default", [], "false", 0),
+                ("default", raised, "false", 1),
+                ("default", [], "true", 1),
+            ):
+                with self.subTest(expect=expect, switch=switch, code=code):
+                    result = subprocess.run(
+                        [sys.executable, str(ROOT / "tests/contract/rate_limits.py"), "check", expect, "test-api"],
+                        capture_output=True, text=True,
+                        env={**os.environ, "PATH": directory + os.pathsep + os.environ["PATH"],
+                             rate_limits.SWITCH: switch,
+                             "RATE_TEST_ENV": json.dumps(environment + ["JWT_SECRET=do-not-print"])},
+                    )
+                    self.assertEqual(result.returncode, code, result.stderr)
+                    self.assertNotIn("do-not-print", result.stdout + result.stderr)
+
+    def test_raise_restore_and_contract_checks_preserve_the_existing_limits_gate(self):
+        tasks = yaml.safe_load((ROOT / "chores.yml").read_text())["tasks"]
+        self.assertEqual(tasks["contract:limits:raise"]["env"][rate_limits.SWITCH], "true")
+        self.assertIn("raised-limits.env", tasks["contract:limits:raise"]["cmds"][0])
+        self.assertIn("check raised", tasks["contract:limits:raise"]["cmds"][-1])
+        self.assertEqual(tasks["contract:limits:default"]["env"][rate_limits.SWITCH], "false")
+        self.assertIn("env -u RESTMAIL_API_LIMITS_ENV", tasks["contract:limits:default"]["cmds"][0])
+        self.assertIn("check default", tasks["contract:limits:default"]["cmds"][-1])
+        self.assertIn("check raised", tasks["contract"]["cmds"][0])
+        self.assertEqual(tasks["test:limits"]["env"][rate_limits.SWITCH], "false")
+        self.assertIn("env -u RESTMAIL_API_LIMITS_ENV", tasks["test:limits"]["cmds"][0])
+
+
 if __name__ == "__main__":
     unittest.main()
