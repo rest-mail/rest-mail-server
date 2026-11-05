@@ -363,7 +363,7 @@ const DummyPasswordHash = "{BLF-CRYPT}$2a$10$aA7IA.HJ0RwvnriddDdy0OX/T7cjApOOFFe
 
 // HashPassword hashes a password using bcrypt with cost 10, compatible with Dovecot's {BLF-CRYPT}.
 func HashPassword(password string) (string, error) {
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), 10)
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), hashCost())
 	if err != nil {
 		return "", fmt.Errorf("failed to hash password: %w", err)
 	}

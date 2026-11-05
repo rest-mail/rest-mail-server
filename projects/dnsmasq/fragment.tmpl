@@ -11,6 +11,11 @@
 # DKIM is intentionally NOT here — the record needs the instance's generated
 # public key and is published at instance:up time, not from static config.
 
+# .test names exist only here (RFC 6761), so they are never forwarded. Without
+# this, the AAAA query Go sends beside each A query goes to the public resolvers,
+# and a lookup fails with an i/o timeout whenever they do not answer (#1942).
+local=/test/
+
 # A records — the domain (MX target / inbound SMTP) plus per-protocol hosts
 address=/${MAIL_HOSTNAME}/${SMTP_IP}
 address=/imap.${MAIL_HOSTNAME}/${IMAP_IP}

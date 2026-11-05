@@ -70,6 +70,7 @@ func newDraftExampleFixture(t *testing.T, operation, name string) draftExampleFi
 		t.Fatal(err)
 	}
 	seed := models.Message{ID: 12, MailboxID: f.mailboxID, Folder: "Drafts", IsDraft: true, IsRead: true, PendingDraft: true,
+		MsgID: "<draft/2026@restmail.test>", ThreadID: "<draft/2026@restmail.test>",
 		Sender: f.address, RecipientsTo: models.JSONB(`["admin@restmail.test"]`), RecipientsCc: models.JSONB(`[]`),
 		Subject: "Draft", BodyText: "Not sent yet.", SizeBytes: len("Draft") + len("Not sent yet.")}
 	if operation == "sendDraft" {
@@ -171,22 +172,25 @@ func (fx draftExampleFixture) verify(t *testing.T, operation, name string, pair 
 				t.Fatalf("unexpected generated %s: %v", field, data[field])
 			}
 		}
+		// Every draft has its identity from when it is saved: its link to its
+		// thread is usable before it is sent (#1942).
+		if data["message_id"] != stored.MsgID || data["thread_id"] != stored.ThreadID || stored.MsgID == "" || stored.ThreadID == "" {
+			t.Fatalf("identities differ from storage or are empty: %s", body)
+		}
 		for _, field := range []string{"id", "mailbox_id", "received_at", "created_at", "updated_at"} {
 			data[field] = want[field]
 		}
 		if name == "sent" {
 			assertExampleReceipt(t, data, stored.RawMessage, stored.SealedHash)
 			data["sealed_hash"] = want["sealed_hash"]
-			if data["message_id"] != stored.MsgID || data["thread_id"] != stored.ThreadID || stored.MsgID == "" {
-				t.Fatal("sent identities differ from storage")
-			}
 			if stored.DowngradedSize == 0 || data["downgraded_size"] != float64(stored.DowngradedSize) {
 				t.Fatalf("sent downgraded size differs from storage: %v, stored %d", data["downgraded_size"], stored.DowngradedSize)
 			}
-			for _, field := range []string{"message_id", "thread_id", "raw_size", "downgraded_size"} {
+			for _, field := range []string{"raw_size", "downgraded_size"} {
 				data[field] = want[field]
 			}
 		}
+		data["message_id"], data["thread_id"] = want["message_id"], want["thread_id"]
 		var err error
 		body, err = json.Marshal(actual)
 		if err != nil {

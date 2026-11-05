@@ -1727,12 +1727,14 @@ func (h *MessageHandler) saveDraft(r *http.Request, req saveDraftBody) (Message,
 		ccJSON = []byte("[]")
 	}
 
-	threadID, err := repositories.ResolveThreadID(h.db.WithContext(r.Context()), mailboxID, "", req.InReplyTo, req.References)
+	messageID := rmail.GenerateMessageID(rmail.DomainFromAddress(mb.Address))
+	threadID, err := repositories.ResolveThreadID(h.db.WithContext(r.Context()), mailboxID, messageID, req.InReplyTo, req.References)
 	if err != nil {
 		return Message{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to look up the reply thread")
 	}
 	draft := models.Message{
 		PendingDraft: true,
+		MsgID:        messageID,
 		MailboxID:    mailboxID,
 		Folder:       "Drafts",
 		Sender:       req.From,

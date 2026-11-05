@@ -16,6 +16,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -42,13 +43,24 @@ type gapReport struct {
 // gapGenerators includes disabled-by-default push and ACME routes and non-production
 // testing routes. A production-only snapshot must never close their issues.
 // No network or live database is needed to construct these actual registrations.
+// They are built once per test binary and read by about 70 tests: each generator
+// validates every example pair, and its Report and Generate only read the result.
 func gapGenerators(t *testing.T) []*oapifly.Generator {
 	t.Helper()
-	var generators []*oapifly.Generator
-	for _, routers := range gapRouters(t) {
-		generators = append(generators, routers.generator("report"))
+	builtGapGenerators.once.Do(func() {
+		for _, routers := range gapRouters(t) {
+			builtGapGenerators.generators = append(builtGapGenerators.generators, routers.generator("report"))
+		}
+	})
+	if len(builtGapGenerators.generators) == 0 {
+		t.Fatal("the gap generators could not be built: see the first test that asked for them")
 	}
-	return generators
+	return builtGapGenerators.generators
+}
+
+var builtGapGenerators struct {
+	once       sync.Once
+	generators []*oapifly.Generator
 }
 
 func gapRouters(t *testing.T) []*Routers {
