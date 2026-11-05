@@ -30,7 +30,7 @@ check_copy() {
 init_copy() {
     if [ ! -e "$website_dir" ] && [ ! -L "$website_dir" ]; then
         mkdir -p "$(dirname "$website_dir")"
-        git clone --branch master git@github.com:rest-mail/website.git "$website_dir"
+        git clone --branch main git@github.com:rest-mail/website.git "$website_dir"
     fi
     check_copy
 }
