@@ -37,6 +37,8 @@ class DevGoCache(unittest.TestCase):
         """))
         docker.chmod(0o755)
         environment = dict(os.environ, PATH=f"{self.directory}{os.pathsep}{os.environ['PATH']}")
+        # A worker that shares the machine sets its own label; these calls check the default.
+        environment.pop("RESTMAIL_LABEL", None)
         if volume:
             environment["RESTMAIL_DEV_GOCACHE_VOLUME"] = volume
         return subprocess.run(
