@@ -56,7 +56,7 @@ KEY_PERMISSIONS = [{"capability": "mail:read", "scope": "mailbox:contract-probe-
 # Sieve script, an RFC 5322 message. The generator draws "x" or base64 of "vertrag",
 # and a hook cannot supply them. Refusals of these fields are named pairs:
 # invalid_zone; invalid_syntax, script_missing, script_null; script_empty,
-# script_wrong_type; invalid_base64, missing_raw, raw_message_invalid, raw_message_nul.
+# script_wrong_type; invalid_base64, missing_raw, raw_message_invalid.
 TIME_ZONE = "UTC"
 SCRIPT = "keep;"
 RAW_MESSAGE = base64.b64encode(
@@ -64,8 +64,8 @@ RAW_MESSAGE = base64.b64encode(
     b"From: Original <old@example.test>\r\n"
     b"Subject: imported\r\n\r\nhistory\r\n"
 ).decode()
-# raw_message also reaches restmailDeliver, whose field is the message itself and not
-# base64, so the handler cannot read a recipient or a Date from the value above. Only
+# raw_message also reaches restmailDeliver, and the handler cannot read a recipient or a
+# Date from the value above, which names neither. Only
 # restmailDeliver's body has these two fields: a delivery to a mailbox the run has,
 # on the documented date. Refusals: recipients_missing, recipients_wrong_type,
 # recipient_wrong_type, date_wrong_type.

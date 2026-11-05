@@ -216,9 +216,9 @@ There are three ways to keep a probe:
   `TestQuietHoursCoverageWithVertrag` has its own configuration, so it pins
   `time_zone` itself.
   `script` also reaches `validateSieveScript` and `validateCustomFilter`, and
-  `raw_message` reaches `deliverMessage` and `restmailDeliver`. `restmailDeliver`'s
-  field is the message itself, not base64, so the handler cannot read a recipient or a
-  Date from that value. Holding it also gives that operation its first valid probes, so
+  `raw_message` reaches `deliverMessage` and `restmailDeliver`. The held message names
+  no recipient and has no Date, so the handler cannot read them from that value.
+  Holding it also gives that operation its first valid probes, so
   `recipients` and `date`, which only its body has, are held at a mailbox the run has
   and the documented date, and those probes are delivered. `permissions` is held
   at a real capability the probe
@@ -242,15 +242,6 @@ There are three ways to keep a probe:
   that one at its quota, so its new message answers 409 and skips the valid probes.
   In the coverage process its success requests go to the fixture admin's account.
 
-A probe the description refuses is not sent at all, and that can be the honest
-answer. Vertrag draws `dmVydHJhZw==` (base64 of `vertrag`) for every `format: byte`
-field, and a `raw_message` that alone names the recipients has to be a message with
-a To header. So `restmailDeliver`'s alternative for it says the shortest such
-message's length, and the specimen is too short to meet it.
-`TestDescriptionRefusesTheRawMessageSpecimen` (`internal/api`) runs without Vertrag
-or a topology, and fails when an operation permits the specimen with no hook in
-`lost-probes-baseline.txt` to give the probe a message.
-
 A pin takes away the probes that vary its own field, so the named examples prove
 those refusals in the gated examples phase, which is not pinned. For snooze:
 `past`, `malformed_time`, `snoozed_until_missing` and `snoozed_until_wrong_type`.
@@ -262,7 +253,7 @@ For `createAPIKey` and `updateAPIKey`: `permissions_missing`, `permissions_empty
 `script_null`, `script_wrong_type` and `invalid_syntax` on the Sieve operations, and
 `script_missing`, `script_null`, `script_empty` and `script_wrong_type` on
 `validateCustomFilter`. For `raw_message`: `missing_raw`, `raw_wrong_type` and
-`invalid_base64` on `importMessage`, `raw_message_invalid` and `raw_message_nul` on
+`invalid_base64` on `importMessage`, `raw_message_invalid` on
 `deliverMessage`, and `raw_message_wrong_type` on `restmailDeliver`. For `recipients`:
 `recipients_missing`, `recipients_wrong_type` and `recipient_wrong_type`. For `date`:
 `date_wrong_type`. A pin engages only
