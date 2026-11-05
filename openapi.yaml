@@ -28346,7 +28346,10 @@ components:
         Recipients come from a non-empty to list, otherwise a non-empty
         recipients list, otherwise the To header parsed from raw_message.
         A raw message must contain a parseable To header when neither list
-        supplies recipients; an empty or missing recipient set is refused.
+        supplies recipients, so it is then at least 16 base64 characters, the
+        length of the shortest RFC 5322 message naming an address on a hosted
+        domain;
+        an empty or missing recipient set is refused.
       anyOf:
         - required: [to]
           properties:
@@ -28359,7 +28362,7 @@ components:
         - required: [raw_message]
           properties:
             raw_message:
-              minLength: 1
+              minLength: 16
       properties:
         from:
           type: string

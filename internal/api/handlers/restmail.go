@@ -132,15 +132,22 @@ type restmailDeliverBody struct {
 	Recipients *[]string                  `json:"recipients,omitempty"`
 }
 
+// restmailShortestAddressedMessage is the base64 length of the shortest RFC 5322 message that can
+// name a recipient on its own: "To:a@b.c\r\n". A field ends in CRLF (RFC 5322 section 2.2), and a
+// hosted domain has a dot in it (validateDomainName).
+const restmailShortestAddressedMessage = "16"
+
 // AnyOf states what no one field can: a delivery names its recipients in a nonempty to,
-// a nonempty recipients, or a raw_message whose To header the handler parses. The binder
-// refuses a body meeting none with the handler's own 422.
+// a nonempty recipients, or a raw_message whose To header the handler parses. A schema can't say a
+// message has a To header, but it can say how short one can be, and base64 shorter than that is
+// refused whatever it holds. The binder refuses a body meeting none with the handler's own 422; it
+// reads no length on a raw_message, so one too short gets that 422 from the handler.
 func (restmailDeliverBody) AnyOf() oapifly.AnyOfRule {
 	return oapifly.AnyOfRule{
 		Alternatives: []oapifly.Alternative{
 			{Required: []string{"to"}, Fields: map[string]string{"to": `minItems:"1"`}},
 			{Required: []string{"recipients"}, Fields: map[string]string{"recipients": `minItems:"1"`}},
-			{Required: []string{"raw_message"}, Fields: map[string]string{"raw_message": `minLength:"1"`}},
+			{Required: []string{"raw_message"}, Fields: map[string]string{"raw_message": `minLength:"` + restmailShortestAddressedMessage + `"`}},
 		},
 		Field:   "to",
 		Message: "at least one recipient required",
