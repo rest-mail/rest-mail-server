@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"math"
 	"os"
+	"regexp"
 	"sort"
 	"sync"
 	"time"
@@ -11,7 +12,26 @@ import (
 
 // maxErrorKinds caps how many distinct error messages a result keeps, so a run
 // where every failure carries a unique message cannot grow the file unbounded.
-const maxErrorKinds = 20
+// errorKind keeps a run well under it; what passes it is still shown by example.
+const maxErrorKinds = 50
+
+const otherErrors = "(other errors)"
+
+// clientAddress is the client's end in a Go network error: "read tcp
+// 10.99.201.11:56669->10.99.0.13:25: i/o timeout". A new port on every connection
+// made each timeout a kind of its own, so they filled the cap and the rest of a
+// run's errors went unnamed (#1583).
+var clientAddress = regexp.MustCompile(`\b(tcp|udp)[46]? [0-9a-fA-F.:\[\]]+:\d+->`)
+
+// errorKind is what an error is counted under: its message, without the client's
+// address, and short enough to read.
+func errorKind(err error) string {
+	msg := clientAddress.ReplaceAllString(err.Error(), "$1 client->")
+	if len(msg) > 200 {
+		msg = msg[:200]
+	}
+	return msg
+}
 
 // recorder collects the outcome of every operation one generator makes.
 type recorder struct {
@@ -20,6 +40,8 @@ type recorder struct {
 	ok        int64
 	failed    int64
 	errors    map[string]int64
+	// otherExample is the first message past the cap, so even those have a name.
+	otherExample string
 }
 
 func newRecorder() *recorder {
@@ -32,15 +54,15 @@ func (r *recorder) record(d time.Duration, err error) {
 	defer r.mu.Unlock()
 	if err != nil {
 		r.failed++
-		msg := err.Error()
-		if len(msg) > 200 {
-			msg = msg[:200]
-		}
+		msg := errorKind(err)
 		if _, seen := r.errors[msg]; seen || len(r.errors) < maxErrorKinds {
 			r.errors[msg]++
-		} else {
-			r.errors["(other errors)"]++
+			return
 		}
+		if r.errors[otherErrors] == 0 {
+			r.otherExample = msg
+		}
+		r.errors[otherErrors]++
 		return
 	}
 	r.ok++
@@ -69,6 +91,7 @@ type Result struct {
 	AchievedRate float64          `json:"achieved_rate"`
 	LatencyMS    Latency          `json:"latency_ms"`
 	ErrorKinds   map[string]int64 `json:"error_kinds,omitempty"`
+	OtherExample string           `json:"other_error_example,omitempty"`
 	Extra        map[string]any   `json:"extra,omitempty"`
 }
 
@@ -84,6 +107,8 @@ func (r *recorder) result(kind string, target float64, unit string, elapsed time
 		OK:          r.ok,
 		Errors:      r.failed,
 		LatencyMS:   percentiles(r.latencies),
+
+		OtherExample: r.otherExample,
 	}
 	if elapsed > 0 {
 		res.AchievedRate = round(float64(r.ok) / elapsed.Seconds())
