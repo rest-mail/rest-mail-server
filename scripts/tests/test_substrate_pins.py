@@ -88,6 +88,23 @@ class Manifest(unittest.TestCase):
         self.assertNotIn("TESTBED_REF", workflow)
         self.assertIn("chore testbed:init\n", workflow)
 
+    def test_the_load_run_takes_the_substrate_from_the_manifest(self):
+        workflow = (ROOT / ".github/workflows/load.yml").read_text()
+        self.assertIn("chore testbed:init\n", workflow)
+        self.assertIn("chore mailserver:init\n", workflow)
+        self.assertIn("scripts/substrate_pins.py preflight\n", workflow)
+        # Only the manifest's task prepares the task file now.
+        self.assertNotIn("chmod 644", workflow)
+
+    def test_no_workflow_keeps_a_substrate_pin_of_its_own(self):
+        pins = substrate_pins.read_pins(ROOT / "scripts/substrate-pins.yml").values()
+        for path in sorted((ROOT / ".github/workflows").glob("*.yml")):
+            text = path.read_text()
+            with self.subTest(workflow=path.name):
+                self.assertNotRegex(text, r"(TESTBED|REFERENCE_MAILSERVER)_REF")
+                for pin in pins:
+                    self.assertNotIn(pin, text)
+
 
 class Preparation(unittest.TestCase):
     def test_runs_the_host_chmod_in_a_container_once(self):
