@@ -56,8 +56,8 @@ found by the RFC 3501 inventory in rest-mail/rest-mail-server#374.
     from an encoded word, a parameter from RFC 2231) goes out as encoded words,
     even a parameter, since the rule against that (RFC 2047 §5) is about message
     headers and an IMAP string can hold nothing else. An address with an 8-bit
-    mailbox has no 7-bit form, so its whole field reads NIL, at the top of a
-    message and in an encapsulated one alike. After `ENABLE UTF8=ACCEPT`, valid
+    mailbox has no 7-bit form, so it is left out of its field, which reads NIL when
+    none remains, at the top of a message and in an encapsulated one alike. After `ENABLE UTF8=ACCEPT`, valid
     UTF-8 goes out as a literal, as before.
   - An address name in a charset go-imap has no reader for stays the encoded word
     it was sent as, in either session, for rest-mail/rest-mail-server#1885. It
