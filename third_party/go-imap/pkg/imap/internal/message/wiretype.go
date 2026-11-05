@@ -552,9 +552,9 @@ type nameSet struct {
 	arena []byte
 }
 
-// nameSlot is one name in the arena. at and size are its user's to keep.
+// nameSlot is one name in the arena.
 type nameSlot struct {
-	off, length, at, size int32
+	off, length int32
 }
 
 var (
@@ -583,7 +583,7 @@ func (s *nameSet) release() { nameSets.Put(s) }
 
 // add finds name, or adds it, and says whether it was there already. The set must have
 // been taken with room for it.
-func (s *nameSet) add(name string) (*nameSlot, bool) {
+func (s *nameSet) add(name string) bool {
 	off := len(s.arena)
 	for i := 0; i < len(name); i++ {
 		c := name[i]
@@ -598,11 +598,11 @@ func (s *nameSet) add(name string) (*nameSlot, bool) {
 		slot := &s.slots[at]
 		if slot.length == 0 {
 			slot.off, slot.length = int32(off)+1, int32(len(lowered))
-			return slot, false
+			return false
 		}
 		if int(slot.length) == len(lowered) && string(s.arena[slot.off-1:slot.off-1+slot.length]) == string(lowered) {
 			s.arena = s.arena[:off]
-			return slot, true
+			return true
 		}
 	}
 }

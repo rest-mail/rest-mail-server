@@ -32,7 +32,7 @@ var unstructuredFields = map[string]bool{
 //
 //   - Subject, Comments and Keywords become RFC 2047 encoded-words.
 //   - An address field changes only what holds an 8-bit octet, see
-//     downgradeAddressField: names, group names and comments become encoded-words,
+//     addressScan.write: names, group names and comments become encoded-words,
 //     and an internationalized domain becomes its A-label. An address whose local
 //     part is non-ASCII cannot be expressed in ASCII, so it becomes an empty group
 //     whose encoded display name shows the original (RFC 6857 section 3.1.8): the

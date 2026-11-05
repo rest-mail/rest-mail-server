@@ -678,7 +678,7 @@ func WriteParameterField(w wireSink, name, value string) bool {
 		switch {
 		case piece.key == "":
 		default:
-			if _, repeated := seen.add(key); repeated {
+			if seen.add(key) {
 				_, _ = w.WriteString(" (")
 				writeSpacedWords(w, repeatedText(piece))
 				_, _ = w.WriteString(")")
