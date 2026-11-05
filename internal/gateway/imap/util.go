@@ -99,8 +99,8 @@ func parseBasicHeaders(data []byte) (subject, bodyText, bodyHTML, messageID, sen
 
 	subject = email.Headers.Subject
 	messageID = strings.Trim(email.Headers.MessageID, "<>")
-	if from := email.Headers.From; len(from) > 0 {
-		senderName = from[0].Name
+	if from, ok := email.Headers.From.First(); ok {
+		senderName = from.Name
 	}
 	bodyText, bodyHTML = rmime.TextAndHTML(email.Body)
 	return

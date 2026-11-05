@@ -34,6 +34,11 @@ func Size(raw string, utf8 bool) int {
 	return message.WireFormSize(raw, utf8)
 }
 
+// Sizes is Size with and without UTF-8, from one reading of what the two share.
+func Sizes(raw string) (sevenBit, utf8 int) {
+	return message.WireFormSizes(raw)
+}
+
 // JoinedSize is Size(block+body, utf8) without joining them, for a host that rewrites
 // the header block of a message and keeps its stored body.
 func JoinedSize(block, body string, utf8 bool) int {
@@ -47,6 +52,22 @@ func JoinedSize(block, body string, utf8 bool) int {
 // as it is. It doesn't make the rest of the header 7-bit.
 func SevenBitBoundary(raw string) string {
 	return message.SevenBitBoundary(raw)
+}
+
+// WithoutRepeats is a Content-Type or Content-Disposition value with only the first
+// parameter of each name, which is how BODYSTRUCTURE reads a repeated name. repeated is
+// false when no name repeats, or a later value doesn't read, which leaves the field to
+// RFC 2045 §5.2's default. It says what a host reading such a field has to answer.
+func WithoutRepeats(value string) (first string, repeated bool) {
+	return message.WithoutRepeats(value)
+}
+
+// OnlyRepeatsFollow says that a blank segment in a parameter field, with before ahead of
+// it and after behind it, is followed only by parameters that read and repeat a name
+// before it, so the field reads as ending there. It holds nothing past the call, for a
+// host reading a long field a parameter at a time.
+func OnlyRepeatsFollow(before, after string) bool {
+	return message.OnlyRepeatsFollow(before, after)
 }
 
 // EncodeWords renders text as RFC 2047 encoded words: charset UTF-8 when it is
@@ -70,4 +91,13 @@ func WriteEncodedWords(w interface {
 // type, or the type itself is 8-bit.
 func ParameterField(name, value string) (field string, ok bool) {
 	return message.ParameterField(name, value)
+}
+
+// WriteParameterField is [ParameterField] into w, holding one parameter at a time. It
+// writes nothing when ok would be false.
+func WriteParameterField(w interface {
+	io.Writer
+	io.StringWriter
+}, name, value string) (ok bool) {
+	return message.WriteParameterField(w, name, value)
 }

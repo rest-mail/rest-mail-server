@@ -75,7 +75,7 @@ func TestDeliverMessage_SizeAwareDeadlineGoverns(t *testing.T) {
 	mux.HandleFunc("/api/v1/messages/deliver", func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(150 * time.Millisecond)
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"data":{"id":1,"mailbox_id":2,"subject":"ok"}}`))
+		_, _ = w.Write([]byte(`{"data":{"id":1,"message_id":"ok@example.test","folder":"INBOX"}}`))
 	})
 
 	t.Run("too-short deadline times out", func(t *testing.T) {

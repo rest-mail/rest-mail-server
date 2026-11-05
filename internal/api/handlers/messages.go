@@ -762,9 +762,9 @@ func (h *MessageHandler) sendComposedMessage(r *http.Request, req sendMessageReq
 				Direction: "outbound",
 			},
 			Headers: pipeline.Headers{
-				From:    []pipeline.Address{{Name: senderMailbox.DisplayName, Address: req.From}},
-				To:      outToAddrs,
-				Cc:      outCcAddrs,
+				From:    pipeline.Addresses([]pipeline.Address{{Name: senderMailbox.DisplayName, Address: req.From}}...),
+				To:      pipeline.Addresses(outToAddrs...),
+				Cc:      pipeline.Addresses(outCcAddrs...),
 				Subject: req.Subject,
 			},
 			Body: pipeline.Body{
@@ -1154,22 +1154,28 @@ type deliverMessageBody = apitypes.DeliverMessageBody
 // accepted, and no message made.
 type DeliveryProcessed = apitypes.DeliveryProcessed
 
+// DeliveredMessage names the message a delivery made. A gateway has no use for its body, and
+// writing that into the answer cost several times the message (#1915).
+type DeliveredMessage = apitypes.DeliveredMessage
+
 // RegisterDelivery mounts inbound delivery, which only the protocol gateways call: on the
 // internal mTLS listener, or the public one where internal mTLS is off. bodyLimit is the
 // delivery body cap, which takes a full max-size message.
 func (h *MessageHandler) RegisterDelivery(rs endpoint.Routes, bodyLimit endpoint.Middleware) {
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/messages/deliver",
 		OperationID: "deliverMessage", Summary: "Deliver a message into a mailbox (protocol gateways)", Tags: []string{"Messages"},
-		Description: "Machine to machine: no user token. The inbound pipeline decides: 201 with the message made, " +
+		Description: "Machine to machine: no user token. The inbound pipeline decides: 201 naming the message made, " +
 			"200 processed when it quarantined or discarded it, 550 rejected, 451 deferred, 422 mailbox_full " +
 			"over quota. A missing mailbox is 404; a failed mailbox lookup is 500, never a missing recipient. " +
 			"Stored text must not contain NUL (U+0000), including strings and object keys anywhere in recipients_to or recipients_cc " +
 			"and the decoded raw_message octets; a refusal is 422 validation_failed naming the field, before any write. " +
 			"raw_message is a standard padded base64 string (format: byte), not unencoded message text. " +
+			"With raw_message and neither body_text nor body_html, the stored text is read from raw_message; when it can't be parsed, " +
+			"the text is whatever follows its first blank line. " +
 			"An omitted or empty folder means INBOX; otherwise " + folderNameRule,
 		Status: http.StatusCreated, SuccessStatuses: []int{http.StatusOK},
 		Responses: []oapifly.EndpointResponse{
-			{Status: http.StatusCreated, Description: "Delivered; the message made", Type: oapifly.TypeOf[endpoint.Data[Message]]()},
+			{Status: http.StatusCreated, Description: "Delivered; which message was made", Type: oapifly.TypeOf[endpoint.Data[DeliveredMessage]]()},
 			{Status: http.StatusOK, Description: "Quarantined or discarded by the inbound pipeline", Type: oapifly.TypeOf[endpoint.Data[DeliveryProcessed]]()},
 		},
 		Errors:   []int{http.StatusUnprocessableEntity, http.StatusNotFound, 451, 550},
@@ -1238,7 +1244,7 @@ func (h *MessageHandler) deliverMessage(r *http.Request, req deliverMessageBody,
 		if err != nil {
 			return zero, err
 		}
-		if rmime.TooManyReceived([]byte(headerSection)) {
+		if rmime.TooManyReceived(headerSection) {
 			return zero, endpoint.Refuse(550, "rejected", "Routing loop detected: too many Received headers")
 		}
 	}
@@ -1341,7 +1347,7 @@ func (h *MessageHandler) deliverMessage(r *http.Request, req deliverMessageBody,
 		return endpoint.Status[any]{Code: http.StatusOK, Value: DeliveryProcessed{Status: "processed"}}, nil
 	}
 
-	return endpoint.Status[any]{Code: http.StatusCreated, Value: messageOf(*msg)}, nil
+	return endpoint.Status[any]{Code: http.StatusCreated, Value: DeliveredMessage{ID: msg.ID, MessageID: msg.MsgID, Folder: msg.Folder}}, nil
 }
 
 // FolderSummary is a folder of an account, with how many messages it holds and how many of
@@ -2321,6 +2327,63 @@ func (h *MessageHandler) respondToCalendar(r *http.Request, in calendarReplyRequ
 	return CalendarReplied{Response: response, Status: "sent"}, nil
 }
 
+// deliveredColumnOnItsOwnFrom is the size of a message's text, or of one of its JSON columns, from
+// which it's written after the row. The driver builds each statement's parameters into one buffer,
+// growing it as it goes, so a source and a text as large as it cost about 7x when written together
+// and about 4.6x apart (#1915). Below this it costs nothing worth a second statement.
+const deliveredColumnOnItsOwnFrom = 64 << 10
+
+// decodedHeadersColumn is what the row keeps of a message's header fields beside its source, encoded.
+// Header fields as long as these stay only in the source, as all of a message's do on /deliver:
+// nothing is lost, and encoding them, sending them and sealing them again cost about 3x of them
+// (#1915). A reader of the message's class reads them from the source (messageClass).
+func decodedHeadersColumn(raw map[string][]string) []byte {
+	size := 0
+	for key, values := range raw {
+		size += len(key)
+		for _, value := range values {
+			size += len(value)
+		}
+	}
+	if size >= deliveredColumnOnItsOwnFrom {
+		return nil
+	}
+	return rmime.RawHeadersJSON(raw)
+}
+
+// createDeliveredMessage stores a message, in the caller's transaction, so its row and what's
+// written after it are written together or not at all. BeforeCreate seals the whole message either
+// way. A sender chooses how large the text and the header fields behind the JSON columns are.
+func createDeliveredMessage(tx *gorm.DB, msg *models.Message) error {
+	var omit []string
+	var later []map[string]any
+	if len(msg.BodyText)+len(msg.BodyHTML) >= deliveredColumnOnItsOwnFrom {
+		omit = append(omit, "BodyText", "BodyHTML")
+		later = append(later, map[string]any{"body_text": msg.BodyText, "body_html": msg.BodyHTML})
+	}
+	for _, column := range []struct {
+		field, name string
+		value       models.JSONB
+	}{{"Headers", "headers", msg.Headers}, {"RecipientsTo", "recipients_to", msg.RecipientsTo}, {"RecipientsCc", "recipients_cc", msg.RecipientsCc}} {
+		if len(column.value) >= deliveredColumnOnItsOwnFrom {
+			omit = append(omit, column.field)
+			later = append(later, map[string]any{column.name: column.value})
+		}
+	}
+	if len(omit) == 0 {
+		return tx.Create(msg).Error
+	}
+	if err := tx.Omit(omit...).Create(msg).Error; err != nil {
+		return err
+	}
+	for _, columns := range later {
+		if err := tx.Model(&models.Message{}).Where("id = ?", msg.ID).UpdateColumns(columns).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // localDeliveryParams holds the information needed for local message delivery with
 // full inbound pipeline processing, quota checks, attachment extraction, and SSE events.
 type localDeliveryParams struct {
@@ -2450,6 +2513,8 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 	// cherry-picked params, so constructing solely from those silently dropped
 	// every attachment (and the Date header, which header_validate then rejected
 	// on). Fall back to the params only when there is no parseable raw message.
+	// A caller that sent the source and no text gets the text read from the source: what the
+	// parser can't read is still stored, with whatever follows the first blank line as its text.
 	var emailJSON *pipeline.EmailJSON
 	// rawCalendar is what the message holds of calendar events when it parsed, kept for the row
 	// so that the message needn't be parsed again. A filter can't change it.
@@ -2460,9 +2525,16 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 			// Nested deeper or holding more parts than the MIME limits allow (#1641).
 			return nil, fmt.Errorf("rejected: message structure too complex: %w", perr)
 		}
+		textFromSource := params.BodyText == "" && params.BodyHTML == ""
 		if perr == nil {
 			emailJSON = parsed
 			rawCalendar = parsed.CalendarEvents
+			if textFromSource {
+				text, html := rmime.TextAndHTML(parsed.Body)
+				params.BodyText, params.BodyHTML = importedText(text), importedText(html)
+			}
+		} else if textFromSource {
+			params.BodyText = importedText(rmime.RecoverBody(params.RawMessage))
 		}
 	}
 	rawParsed := emailJSON != nil
@@ -2499,14 +2571,14 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 		Direction: "inbound",
 	}
 	// Fill any header the parse didn't populate from the gateway-extracted params.
-	if len(emailJSON.Headers.From) == 0 {
-		emailJSON.Headers.From = []pipeline.Address{{Name: params.SenderName, Address: params.Sender}}
+	if emailJSON.Headers.From.Len() == 0 {
+		emailJSON.Headers.From = pipeline.Addresses(pipeline.Address{Name: params.SenderName, Address: params.Sender})
 	}
-	if len(emailJSON.Headers.To) == 0 {
-		emailJSON.Headers.To = toAddrs
+	if emailJSON.Headers.To.Len() == 0 {
+		emailJSON.Headers.To = pipeline.Addresses(toAddrs...)
 	}
-	if len(emailJSON.Headers.Cc) == 0 {
-		emailJSON.Headers.Cc = ccAddrs
+	if emailJSON.Headers.Cc.Len() == 0 {
+		emailJSON.Headers.Cc = pipeline.Addresses(ccAddrs...)
 	}
 	if emailJSON.Headers.Subject == "" {
 		emailJSON.Headers.Subject = params.Subject
@@ -2823,7 +2895,7 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 		if err := repositories.ReserveStorage(tx, mailbox.ID, int64(sizeBytes)+totalAttBytes); err != nil {
 			return err
 		}
-		if err := tx.Create(&msg).Error; err != nil {
+		if err := createDeliveredMessage(tx, &msg); err != nil {
 			return err
 		}
 		if len(calendarVersions) > 0 {

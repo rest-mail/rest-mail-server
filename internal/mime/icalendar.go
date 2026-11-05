@@ -12,6 +12,10 @@ import (
 // ParseCalendar parses an iCalendar (text/calendar) body and extracts calendar events.
 // It handles line unfolding, VTIMEZONE blocks, and multiple VEVENT sections.
 func ParseCalendar(data string) ([]pipeline.CalendarEvent, error) {
+	// Events are stored as JSON and in text columns, which hold neither a NUL nor invalid UTF-8, and
+	// refusing the row refuses the mail. The source keeps what arrived (#1915).
+	data = strings.ToValidUTF8(strings.ReplaceAll(data, "\x00", "\uFFFD"), "\uFFFD")
+
 	// Unfold lines: RFC 5545 says lines can be folded by inserting CRLF + whitespace.
 	data = unfoldLines(data)
 

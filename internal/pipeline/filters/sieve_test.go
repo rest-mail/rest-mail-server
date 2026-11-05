@@ -25,8 +25,8 @@ func sieveEmail() *pipeline.EmailJSON {
 			RcptTo:   []string{"recipient@example.com"},
 		},
 		Headers: pipeline.Headers{
-			From:      []pipeline.Address{{Address: "sender@example.com"}},
-			To:        []pipeline.Address{{Address: "recipient@example.com"}},
+			From:      pipeline.Addresses([]pipeline.Address{{Address: "sender@example.com"}}...),
+			To:        pipeline.Addresses([]pipeline.Address{{Address: "recipient@example.com"}}...),
 			Date:      "Mon, 17 Feb 2026 10:00:00 +0000",
 			MessageID: "<abc123@example.com>",
 			Subject:   "Test message",

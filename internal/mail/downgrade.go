@@ -32,7 +32,7 @@ var unstructuredFields = map[string]bool{
 //
 //   - Subject, Comments and Keywords become RFC 2047 encoded-words.
 //   - An address field changes only what holds an 8-bit octet, see
-//     downgradeAddressField: names, group names and comments become encoded-words,
+//     addressScan.write: names, group names and comments become encoded-words,
 //     and an internationalized domain becomes its A-label. An address whose local
 //     part is non-ASCII cannot be expressed in ASCII, so it becomes an empty group
 //     whose encoded display name shows the original (RFC 6857 section 3.1.8): the
@@ -131,13 +131,9 @@ func writeDowngradedField(w wordSink, span string, bare bool) {
 // the real block. A field rewritten to carry no 8-bit octet keeps only its name, since
 // its text only ever counts. ok is false when a blank line in the block ends the header
 // early, so that text is the body, and counts for what it says.
-func measuredBlock(header, sep string) (block string, dropped int, ok bool) {
-	var size headerSink
-	writeMeasuredBlock(&size, header, sep, &dropped)
+func measuredBlock(header, sep string, also wordSink) (block string, dropped int, ok bool) {
 	var b strings.Builder
-	b.Grow(int(size))
-	dropped = 0
-	writeMeasuredBlock(&b, header, sep, &dropped)
+	writeMeasuredBlock(&b, header, sep, &dropped, also)
 	block = b.String()
 	if strings.HasPrefix(block, "\r\n") || strings.Index(block, "\r\n\r\n") != len(block)-4 {
 		return "", 0, false
@@ -145,19 +141,39 @@ func measuredBlock(header, sep string) (block string, dropped int, ok bool) {
 	return block, dropped, true
 }
 
-func writeMeasuredBlock(w wordSink, header, sep string, dropped *int) {
+func writeMeasuredBlock(w wordSink, header, sep string, dropped *int, also wordSink) {
 	names := &nameOnly{w: w}
+	both := func(sink wordSink) wordSink {
+		if also == nil {
+			return sink
+		}
+		return teeSink{sink, also}
+	}
+	kept, cut := both(w), both(names)
 	eachHeaderField(header, func(span string, bare bool) {
 		if !containsNonASCII(span) || keptWhenMeasured(span) {
-			writeDowngradedField(w, span, bare)
+			writeDowngradedField(kept, span, bare)
 			return
 		}
 		names.named, names.dropped = false, 0
-		writeDowngradedField(names, span, bare)
+		writeDowngradedField(cut, span, bare)
 		_, _ = w.WriteString("\r\n")
 		*dropped += names.dropped - len("\r\n")
 	})
-	_, _ = w.WriteString(sep)
+	_, _ = kept.WriteString(sep)
+}
+
+// teeSink tells two sinks the same.
+type teeSink struct{ a, b wordSink }
+
+func (t teeSink) Write(p []byte) (int, error) {
+	_, _ = t.a.Write(p)
+	return t.b.Write(p)
+}
+
+func (t teeSink) WriteString(s string) (int, error) {
+	_, _ = t.a.WriteString(s)
+	return t.b.WriteString(s)
 }
 
 // keptWhenMeasured reports whether the conversion reads more of a downgraded 8-bit field
@@ -220,10 +236,11 @@ func writeFolded(w wordSink, span string, bare bool) {
 func downgradeField(w wordSink, name, folded string) {
 	key := strings.ToLower(strings.TrimSpace(name))
 	if addressFields[key] {
-		if value, ok := downgradeAddressField(len(name)+1, folded); ok {
+		var scan addressScan
+		if scan.readsAsList(folded, strings.LastIndexByte(folded, ']')) {
 			_, _ = w.WriteString(name)
 			_, _ = w.WriteString(":")
-			_, _ = w.WriteString(value)
+			scan.write(w, len(name)+1, folded)
 			return
 		}
 	}
@@ -236,8 +253,7 @@ func downgradeField(w wordSink, name, folded string) {
 		writeEncodedText(w, value)
 		return
 	case key == "content-type" || key == "content-disposition":
-		if field, ok := wireform.ParameterField(name, value); ok {
-			_, _ = w.WriteString(field)
+		if wireform.WriteParameterField(w, name, value) {
 			return
 		}
 	}
@@ -380,13 +396,16 @@ func DowngradeForPOP3(raw string) string {
 // POP3WireSize of DowngradeForPOP3(raw). Nothing is built to measure it, but a body whose
 // top-level 8-bit boundary has to change.
 func DowngradedSize(raw string) int {
-	header, sep, body := splitHeader(raw)
-	if !containsNonASCII(header) {
+	if header, _, _ := splitHeader(raw); !containsNonASCII(header) {
 		return POP3WireSize(raw)
 	}
-	if respelled := wireform.SevenBitBoundary(raw); respelled != raw {
-		header, sep, body = splitHeader(respelled)
-	}
+	return downgradedSizeOf(wireform.SevenBitBoundary(raw))
+}
+
+// downgradedSizeOf is DowngradedSize of a message whose header holds an 8-bit octet and whose
+// boundary needs no new spelling.
+func downgradedSizeOf(raw string) int {
+	header, sep, body := splitHeader(raw)
 	var block pop3Counter
 	writeDowngraded(&block, header, sep)
 	// The block ends in a line break, so the body can't add to a line of it, and it is

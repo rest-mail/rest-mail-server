@@ -11605,38 +11605,9 @@
         "status": 201,
         "body": {
           "data": {
-            "class": "person",
             "id": 1,
-            "mailbox_id": 1,
-            "folder": "INBOX",
             "message_id": "\u003cmessage@example.net\u003e",
-            "in_reply_to": "",
-            "references": "",
-            "thread_id": "",
-            "sender": "sender@example.net",
-            "sender_name": "Sender",
-            "recipients_to": [
-              "recipient@example.com"
-            ],
-            "recipients_cc": [],
-            "subject": "Subject",
-            "size_bytes": 80,
-            "raw_size": 137,
-            "downgraded_size": 137,
-            "pop3_utf8_size": 137,
-            "imap_size": 137,
-            "imap_utf8_size": 137,
-            "has_attachments": false,
-            "is_read": false,
-            "is_dsn": false,
-            "is_flagged": false,
-            "is_starred": false,
-            "is_draft": false,
-            "is_deleted": false,
-            "received_at": "2026-10-20T00:00:00Z",
-            "date_header": "2026-10-20T00:00:00Z",
-            "created_at": "2026-10-20T00:00:00Z",
-            "updated_at": "2026-10-20T00:00:00Z"
+            "folder": "INBOX"
           }
         },
         "mediaType": "application/json"

@@ -194,8 +194,8 @@ func TestDeliverMessage_Success(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"data": map[string]interface{}{
 				"id":         100,
-				"mailbox_id": 42,
-				"subject":    "Hello",
+				"message_id": "hello@example.com",
+				"folder":     "INBOX",
 			},
 		})
 	})
@@ -213,8 +213,8 @@ func TestDeliverMessage_Success(t *testing.T) {
 	if resp.Data.ID != 100 {
 		t.Fatalf("expected message ID 100, got %d", resp.Data.ID)
 	}
-	if resp.Data.Subject != "Hello" {
-		t.Fatalf("expected subject 'Hello', got %q", resp.Data.Subject)
+	if resp.Data.Folder != "INBOX" {
+		t.Fatalf("expected folder 'INBOX', got %q", resp.Data.Folder)
 	}
 }
 

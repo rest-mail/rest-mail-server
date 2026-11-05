@@ -56,18 +56,23 @@ func parseMediaType(v string) (string, map[string]string, error) {
 	}
 	for base, pieces := range families {
 		value, first, whole := extendedValue(base, pieces)
-		_, plain := params[base]
-		switch {
-		case base == "boundary" && strings.HasPrefix(mt, "multipart/") && !whole:
-			// Delimiter lines match a boundary's whole value, and this is only part of one.
-			if first {
-				delete(params, base)
-			}
-		case first || !plain:
-			params[base] = value
-		}
+		setExtended(params, mt, base, value, first, whole)
 	}
 	return mt, params, nil
+}
+
+// setExtended puts what extendedValue read of a parameter among the ones already read.
+func setExtended(params map[string]string, mt, base, value string, first, whole bool) {
+	_, plain := params[base]
+	switch {
+	case base == "boundary" && strings.HasPrefix(mt, "multipart/") && !whole:
+		// Delimiter lines match a boundary's whole value, and this is only part of one.
+		if first {
+			delete(params, base)
+		}
+	case first || !plain:
+		params[base] = value
+	}
 }
 
 // withoutRepeats is v with only the first parameter of each name, so a repeated name
@@ -97,6 +102,12 @@ func withoutRepeats(v string) (first string, repeated bool) {
 	}
 	return strings.Join(kept, ";"), repeated
 }
+
+// WithoutRepeats is withoutRepeats, for wireform.
+func WithoutRepeats(v string) (first string, repeated bool) { return withoutRepeats(v) }
+
+// OnlyRepeatsFollow is onlyRepeatsFollow, for wireform.
+func OnlyRepeatsFollow(before, after string) bool { return onlyRepeatsFollow(before, after) }
 
 // isQuotedString reports whether value is one whole quoted-string.
 func isQuotedString(value string) bool {
@@ -143,10 +154,10 @@ func trimWSP(s string) string {
 // first '*' of its lower-case name, and value is unquoted.
 type parameterSegment struct{ suffix, value string }
 
-// number is the segment's number with no leading zeros. It can be too long to parse, and
-// the longer is then the larger.
-func (s parameterSegment) number() string {
-	return strings.TrimLeft(strings.TrimSuffix(s.suffix, "*"), "0")
+// segmentNumber is the number in a segment's suffix with no leading zeros. It can be too long to
+// parse, and the longer is then the larger.
+func segmentNumber(suffix string) string {
+	return strings.TrimLeft(strings.TrimSuffix(suffix, "*"), "0")
 }
 
 // extendedValue puts an RFC 2231 parameter back together. A value in a charset go-imap
@@ -157,33 +168,47 @@ func (s parameterSegment) number() string {
 // up, and only a first segment can name a charset (RFC 2231 §4.1), so with none the octets
 // name none. first reports that it came, and whole that no segment is missing or doubled.
 func extendedValue(base string, segments []parameterSegment) (value string, first, whole bool) {
+	size := 0
 	for _, s := range segments {
-		if s.suffix == "" {
-			charset, octets := splitExtendedValue(s.value)
+		size += len(s.value)
+	}
+	return joinSegments(base, segments, size,
+		func(s parameterSegment) string { return s.suffix },
+		func(s parameterSegment) string { return s.value })
+}
+
+// joinSegments is extendedValue of segments however they're held: suffix and text read one, and
+// size is at least the length of their text. It reorders them.
+func joinSegments[S any](base string, segments []S, size int, suffix, text func(S) string) (value string, first, whole bool) {
+	for _, s := range segments {
+		if suffix(s) == "" {
+			charset, octets := splitExtendedValue(text(s))
 			return keptValue(base, charset, octets), true, true
 		}
 	}
 	// The suffix settles a tie, so the same field always reads the same. Only the same
 	// name twice is left to compact, with the same value, or the field wouldn't parse.
-	slices.SortFunc(segments, func(a, b parameterSegment) int {
-		x, y := a.number(), b.number()
-		return cmp.Or(cmp.Compare(len(x), len(y)), cmp.Compare(x, y), cmp.Compare(a.suffix, b.suffix))
+	slices.SortFunc(segments, func(a, b S) int {
+		x, y := segmentNumber(suffix(a)), segmentNumber(suffix(b))
+		return cmp.Or(cmp.Compare(len(x), len(y)), cmp.Compare(x, y), cmp.Compare(suffix(a), suffix(b)))
 	})
-	segments = slices.CompactFunc(segments, func(a, b parameterSegment) bool { return a.suffix == b.suffix })
+	segments = slices.CompactFunc(segments, func(a, b S) bool { return suffix(a) == suffix(b) })
 	var octets strings.Builder
+	octets.Grow(size)
 	charset := ""
 	whole = true
 	for i, s := range segments {
-		v := s.value
+		v := text(s)
+		end := suffix(s)
 		switch {
-		case i == 0 && s.suffix == "0*":
+		case i == 0 && end == "0*":
 			charset, v = splitExtendedValue(v)
-		case strings.HasSuffix(s.suffix, "*"):
+		case strings.HasSuffix(end, "*"):
 			v = percentDecode(v)
 		}
 		octets.WriteString(v)
-		first = first || s.suffix == "0" || s.suffix == "0*"
-		whole = whole && strings.TrimSuffix(s.suffix, "*") == strconv.Itoa(i)
+		first = first || end == "0" || end == "0*"
+		whole = whole && strings.TrimSuffix(end, "*") == strconv.Itoa(i)
 	}
 	return keptValue(base, charset, octets.String()), first, whole
 }
@@ -261,7 +286,20 @@ func validWordCharset(charset string) bool {
 // fieldSegments splits a Content-Type or Content-Disposition value at each ';'
 // outside a quoted-string or comment. ok is false when one of those never closes.
 func fieldSegments(value string) (segments []string, ok bool) {
-	start, comments := 0, 0
+	for more := true; more; {
+		var segment string
+		segment, value, more, ok = cutFieldSegment(value)
+		if !ok {
+			return nil, false
+		}
+		segments = append(segments, segment)
+	}
+	return segments, true
+}
+
+// cutFieldSegment is the first of fieldSegments, and what follows it when more says there's a ';'.
+func cutFieldSegment(value string) (segment, rest string, more, ok bool) {
+	comments := 0
 	quoted := false
 	for i := 0; i < len(value); i++ {
 		c := value[i]
@@ -277,14 +315,13 @@ func fieldSegments(value string) (segments []string, ok bool) {
 		case c == ')' && comments > 0:
 			comments--
 		case c == ';' && comments == 0:
-			segments = append(segments, value[start:i])
-			start = i + 1
+			return value[:i], value[i+1:], true, true
 		}
 	}
 	if quoted || comments > 0 {
-		return nil, false
+		return "", "", false, false
 	}
-	return append(segments, value[start:]), true
+	return value, "", false, true
 }
 
 // unquoteParameter reads a parameter value as mime.ParseMediaType does: a backslash
@@ -332,13 +369,21 @@ type fieldPiece struct {
 //
 // It takes time linear in value, however many delimiters never close.
 func readField(value string) []fieldPiece {
+	var pieces []fieldPiece
+	eachFieldPiece(value, func(piece fieldPiece) { pieces = append(pieces, piece) })
+	return pieces
+}
+
+// eachFieldPiece is readField one piece at a time, holding none of them.
+func eachFieldPiece(value string, each func(fieldPiece)) {
 	closers := commentClosers(value)
 	quotes := true // false once a '"' has found nothing to close it
-	var pieces []fieldPiece
 	start, eq, broken := 0, -1, -1
 	var comments [][2]int
+	first := true
 	flush := func(end int) {
-		pieces = append(pieces, newFieldPiece(value, start, end, eq, broken, comments, len(pieces) == 0))
+		each(newFieldPiece(value, start, end, eq, broken, comments, first))
+		first = false
 		start, eq, broken, comments = end+1, -1, -1, nil
 	}
 	for i := 0; i < len(value); i++ {
@@ -375,7 +420,6 @@ func readField(value string) []fieldPiece {
 		}
 	}
 	flush(len(value))
-	return pieces
 }
 
 // newFieldPiece reads value[start:end]: see readField. eq is the first '=' and broken
@@ -442,6 +486,12 @@ func newFieldPiece(value string, start, end, eq, broken int, comments [][2]int, 
 // cutComments is value[start:end] with each comment in it replaced by a space, as
 // uncommentMIME does, and those comments. A comment after end is left for later.
 func cutComments(value string, start, end int, comments [][2]int) (string, []string) {
+	if len(comments) == 0 || comments[0][0] >= end {
+		if start >= end {
+			return "", nil
+		}
+		return trimWSP(value[start:end]), nil
+	}
 	var b strings.Builder
 	var cut []string
 	at := start
@@ -570,13 +620,20 @@ func readableField(value string) string {
 			continue
 		}
 		seen[strings.ToLower(name)] = true
-		text := piece.value
-		if !cleanValue(text) {
-			text = quoteString(lineBreaksAsSpaces.Replace(text))
-		}
-		b.WriteString("; " + name + "=" + text)
+		writeReadableParameter(&b, name, piece)
 	}
 	return b.String()
+}
+
+func writeReadableParameter(b *strings.Builder, name string, piece fieldPiece) {
+	text := piece.value
+	if !cleanValue(text) {
+		text = quoteString(lineBreaksAsSpaces.Replace(text))
+	}
+	b.WriteString("; ")
+	b.WriteString(name)
+	b.WriteString("=")
+	b.WriteString(text)
 }
 
 // restoreNames puts the names parameterName spelled back, once the field is read,
@@ -605,11 +662,97 @@ func restoreNames(stored string, params map[string]string) map[string]string {
 // go-imap can't read is still the only copy of it. ok is false when the value holds
 // no readable type, or the type itself is 8-bit.
 func ParameterField(name, value string) (string, bool) {
-	return parameterField(name, value, "")
+	var b strings.Builder
+	if !WriteParameterField(&b, name, value) {
+		return "", false
+	}
+	return b.String(), true
 }
 
-// parameterField is ParameterField with the boundary parameter, whichever way it was
-// spelled, replaced by boundary when that isn't empty.
+// WriteParameterField is ParameterField into w, holding one parameter at a time, and
+// writes nothing when ok would be false. It remembers the names it has seen in a set kept
+// for the next field, so a field of very many parameters costs little more than its size.
+func WriteParameterField(w wireSink, name, value string) bool {
+	value = trimWSP(value)
+	mt, _, err := parseKeptParameters(value)
+	if err != nil || has8bit(mt) {
+		return false
+	}
+	semicolons := strings.Count(value, ";")
+	// Only a name holding a '*' is extended.
+	var extended *nameSet
+	if strings.IndexByte(value, '*') >= 0 {
+		extended = takeNameSet(semicolons)
+		defer extended.release()
+		first := true
+		eachFieldPiece(value, func(piece fieldPiece) {
+			if !first {
+				if base, _, ok := strings.Cut(parameterName(piece.key), "*"); ok {
+					extended.add(base)
+				}
+			}
+			first = false
+		})
+	}
+	isExtended := func(base string) bool { return extended != nil && extended.has(base) }
+	seen := takeNameSet(semicolons)
+	defer seen.release()
+	first := true
+	eachFieldPiece(value, func(piece fieldPiece) {
+		if first {
+			first = false
+			_, _ = w.WriteString(name)
+			_, _ = w.WriteString(": ")
+			_, _ = w.WriteString(sevenBitComments(piece.raw))
+			if text := piece.broken; text != "" {
+				_, _ = w.WriteString(" (")
+				writeSpacedWords(w, text)
+				_, _ = w.WriteString(")")
+			}
+			return
+		}
+		key := parameterName(piece.key)
+		switch piece.key {
+		case "":
+		default:
+			if seen.add(key) {
+				_, _ = w.WriteString(" (")
+				writeSpacedWords(w, repeatedText(piece))
+				_, _ = w.WriteString(")")
+				break
+			}
+			_, _ = w.WriteString(";\r\n ")
+			if !has8bit(piece.raw) && piece.hasValue && key == piece.key && cleanValue(piece.value) {
+				_, _ = w.WriteString(piece.raw)
+				return
+			}
+			_, _ = w.WriteString(parameterValue(key, piece.value, isExtended))
+		}
+		for _, comment := range piece.comments {
+			_, _ = w.WriteString(" ")
+			_, _ = w.WriteString(sevenBitComments(comment))
+		}
+	})
+	return true
+}
+
+// writeSpacedWords is strings.Join(encodedWords(text), " ") into w.
+func writeSpacedWords(w wireSink, text string) {
+	first := true
+	eachEncodedWord(text, func(open string, content []byte) {
+		if !first {
+			_, _ = w.WriteString(" ")
+		}
+		first = false
+		_, _ = w.WriteString(open)
+		_, _ = w.Write(content)
+		_, _ = w.WriteString(wordClose)
+	})
+}
+
+// parameterField rewrites a field with the boundary parameter, whichever way it was
+// spelled, replaced by boundary. A message that has to move a boundary has its conversion
+// built, so this holds the whole field as it works.
 func parameterField(name, value, boundary string) (string, bool) {
 	value = trimWSP(value)
 	pieces := readField(value)
@@ -645,7 +788,7 @@ func parameterField(name, value, boundary string) (string, bool) {
 				out = append(out, []string{piece.raw})
 				continue
 			}
-			out = append(out, []string{parameterValue(key, piece.value, extended)})
+			out = append(out, []string{parameterValue(key, piece.value, func(base string) bool { return extended[strings.ToLower(base)] })})
 			at = len(out) - 1
 		}
 		for _, comment := range piece.comments {
@@ -712,7 +855,7 @@ func extendedFamilies(pieces []fieldPiece) map[string]bool {
 //     words in its quoted-string, which readers take the extended form over, since
 //     two extended forms that differ make the field unreadable. RFC 2047 §5 forbids
 //     that spelling, but it is the only one that keeps both.
-func parameterValue(key, value string, extended map[string]bool) string {
+func parameterValue(key, value string, extended func(base string) bool) string {
 	sevenBit := !has8bit(value) && !strings.ContainsAny(value, "\r\n")
 	if sevenBit && cleanValue(value) {
 		return key + "=" + value
@@ -727,7 +870,7 @@ func parameterValue(key, value string, extended map[string]bool) string {
 	}
 	base, segment, isExtended := strings.Cut(key, "*")
 	switch {
-	case !isExtended && extended[strings.ToLower(base)]:
+	case !isExtended && extended(base):
 		return key + `="` + strings.Join(encodedWords(text), " ") + `"`
 	case !isExtended:
 		return key + "*=" + wordCharset(text) + "''" + percentEncode(text)

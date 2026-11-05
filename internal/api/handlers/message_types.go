@@ -7,6 +7,7 @@ import (
 	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
+	rmime "github.com/rest-mail/rest-mail-server/internal/mime"
 	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 )
 
@@ -18,12 +19,13 @@ import (
 type Message = apitypes.Message
 
 // messageClass is the class of a stored message, worked out on read as the authentication
-// results are. Most delivery paths store only the source and no decoded headers, so the
-// source answers when the row has no usable decoded headers.
+// results are. Most delivery paths store only the source and no decoded headers, and a long field
+// keeps the rest out of the row too, so the source answers when the row has no usable decoded
+// headers. Both are the same fields (rmime.SourceHeaders), or a long field could change the class.
 func messageClass(m models.Message) string {
 	var headers map[string][]string
 	if err := json.Unmarshal(m.Headers, &headers); err != nil || len(headers) == 0 {
-		headers = rmail.SourceHeaders(m.SourceReader())
+		headers = rmime.SourceHeaders(m.SourceReader())
 	}
 	return rmail.Classify(headers, m.RuleClass)
 }
@@ -112,8 +114,8 @@ func messagesOf(rows []models.Message) []Message {
 type MessageAttachment struct {
 	ID          uint      `json:"id"`
 	MessageID   uint      `json:"message_id"`
-	Filename    string    `json:"filename"`
-	ContentType string    `json:"content_type"`
+	Filename    string    `json:"filename" description:"What the sender called it, for showing: at most 255 characters of valid UTF-8, with U+FFFD for a NUL or an invalid octet. A longer name keeps its start and its last extension. GET /messages/{id}/raw answers the name as it was sent"`
+	ContentType string    `json:"content_type" description:"The part's media type, or application/octet-stream when it is not one a media type can be: over 255 characters, or not valid UTF-8"`
 	SizeBytes   int64     `json:"size_bytes"`
 	Checksum    string    `json:"checksum" description:"SHA-256 hex"`
 	CreatedAt   time.Time `json:"created_at"`

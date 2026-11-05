@@ -24,7 +24,7 @@ func (backend *nulDeliveryBackend) DeliverMessageFrom(request *apiclient.Deliver
 }
 
 func TestSMTPNULDeliveryIsRefused(t *testing.T) {
-	for _, field := range []string{"subject", "body_text", "raw_message"} {
+	for _, field := range []string{"subject", "raw_message"} {
 		t.Run(field, func(t *testing.T) {
 			router := chi.NewRouter()
 			(&handlers.MessageHandler{}).RegisterDelivery(endpoint.Routes{Router: router, Registry: endpoint.NewRegistry()}, endpoint.Middleware{Wrap: func(next http.Handler) http.Handler { return next }})
@@ -53,11 +53,9 @@ func TestSMTPNULDeliveryIsRefused(t *testing.T) {
 			if reply := harness.cmd("RCPT TO:<receiver@local.test>"); replyCode(reply) != "250" {
 				t.Fatal(reply)
 			}
-			body := "Subject: Hello\r\nContent-Type: text/plain\r\n\r\nbefore\x00after\r\n"
+			body := "Subject: Hello\r\nContent-Type: application/octet-stream\r\n\r\nbefore\x00after\r\n"
 			if field == "subject" {
 				body = "Subject: before\x00after\r\n\r\nHello\r\n"
-			} else if field == "raw_message" {
-				body = "Subject: Hello\r\nContent-Type: application/octet-stream\r\n\r\nbefore\x00after\r\n"
 			}
 			reply := harness.dataBody(body)
 			select {

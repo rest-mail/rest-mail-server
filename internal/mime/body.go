@@ -34,6 +34,17 @@ func TextAndHTML(body pipeline.Body) (text, html string) {
 	return text, html
 }
 
+// RecoverBody returns the body of a message the parser could not read: whatever follows the
+// first blank line, or nothing when there is no body at all.
+func RecoverBody(raw string) string {
+	for _, separator := range []string{"\r\n\r\n", "\n\n"} {
+		if _, body, found := strings.Cut(raw, separator); found {
+			return body
+		}
+	}
+	return ""
+}
+
 // MediaType strips any parameters from a content type and lower-cases what
 // remains, so "TEXT/HTML; charset=utf-8" matches "text/html".
 func MediaType(contentType string) string {

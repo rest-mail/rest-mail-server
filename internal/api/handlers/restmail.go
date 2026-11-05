@@ -192,11 +192,6 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput, spoo
 	if len(to) == 0 && req.Recipients != nil && len(*req.Recipients) > 0 {
 		to = *req.Recipients
 	}
-	var headers json.RawMessage
-	if req.Headers != nil {
-		headers, _ = json.Marshal(req.Headers)
-	}
-
 	// When raw_message is provided, its headers fill the structured fields a request left empty.
 	//
 	// Authentication-Results claiming this server's authserv-id did not come
@@ -208,30 +203,36 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput, spoo
 	}
 	// A message from another server with more Received: fields than the hop limit is a mail
 	// loop (RFC 5321 §6.3, #1647), refused as the SMTP gateway refuses it.
-	if rmime.TooManyReceived([]byte(headerSection)) {
+	if rmime.TooManyReceived(headerSection) {
 		return RestmailDelivery{}, endpoint.Refuse(http.StatusForbidden, "rejected", "Routing loop detected: too many Received headers")
+	}
+	// A source says what its headers are. A peer's own account of them is kept only when there's no
+	// source, or it could call a list's mail a person's (#1915).
+	var headers json.RawMessage
+	if req.Headers != nil && headerSection == "" {
+		headers, _ = json.Marshal(req.Headers)
 	}
 	if headerSection != "" {
 		// Nested deeper or holding more parts than the MIME limits allow (#1641). This passes over
 		// the message in its file and holds none of it, and it comes before any lookup.
-		err := spool.checkStructure()
+		parsed, parseErr, err := spool.readHeaders()
 		if errors.Is(err, rmime.ErrStructureLimit) {
 			return RestmailDelivery{}, endpoint.Refuse(http.StatusForbidden, "rejected", "Message structure too complex: too deeply nested or too many MIME parts")
 		}
 		if err != nil {
 			return RestmailDelivery{}, restmailReadRefusal("spooled message")
 		}
-		parsedHeaders, err := rmime.ParseHeaders(strings.NewReader(headerSection))
-		if err != nil {
-			slog.Warn("restmail: failed to parse raw_message", "error", err)
+		if parseErr != nil {
+			slog.Warn("restmail: failed to parse raw_message", "error", parseErr)
 			// Fall through to use whatever structured fields were provided
 		} else {
-			if len(parsedHeaders.From) > 0 && req.From == "" {
-				req.From = parsedHeaders.From[0].Address
+			parsedHeaders := parsed.Headers
+			if parsedHeaders.From.Len() > 0 && req.From == "" {
+				req.From = parsedHeaders.From.FirstAddress()
 			}
-			if len(parsedHeaders.To) > 0 && len(to) == 0 {
-				addrs := make([]string, len(parsedHeaders.To))
-				for i, a := range parsedHeaders.To {
+			if parsedHeaders.To.Len() > 0 && len(to) == 0 {
+				addrs := make([]string, parsedHeaders.To.Len())
+				for i, a := range parsedHeaders.To.All() {
 					addrs[i] = a.Address
 				}
 				to = addrs
@@ -253,7 +254,7 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput, spoo
 			}
 			// Preserve raw headers as JSON
 			if headers == nil && parsedHeaders.Raw != nil {
-				headers, _ = json.Marshal(parsedHeaders.Raw)
+				headers = decodedHeadersColumn(parsedHeaders.Raw)
 			}
 		}
 	}
@@ -643,7 +644,7 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput, spoo
 			if err := repositories.ReserveStorage(tx, mailbox.ID, int64(sizeBytes)); err != nil {
 				return err
 			}
-			if err := tx.Create(&msg).Error; err != nil {
+			if err := createDeliveredMessage(tx, &msg); err != nil {
 				return err
 			}
 			return tx.Model(&models.QuotaUsage{}).Where("mailbox_id = ?", mailbox.ID).Updates(map[string]interface{}{
@@ -706,9 +707,13 @@ func (s *deliverySpool) readRestmailMessage(req *restmailDeliverBody) (*pipeline
 	if req.RawMessage == "" {
 		return nil, nil
 	}
-	parsed, err := rmime.ParseReader(strings.NewReader(req.RawMessage))
-	if err != nil {
+	if s.parsed == nil {
 		return nil, nil // Said when its headers were read.
+	}
+	// The section at the start of the message is the one already parsed.
+	parsed, err := s.parsed.Parse(req.RawMessage[len(s.section):])
+	if err != nil {
+		return nil, nil
 	}
 	if req.BodyText == "" || req.BodyHTML == "" {
 		text, html := extractBodyParts(parsed.Body)
@@ -840,11 +845,11 @@ func buildInboundEmail(parsed *pipeline.EmailJSON, envelopeFrom, from string, to
 	}
 
 	// Fill any header the parse didn't populate from the structured request fields.
-	if len(emailJSON.Headers.From) == 0 {
-		emailJSON.Headers.From = []pipeline.Address{{Address: from}}
+	if emailJSON.Headers.From.Len() == 0 {
+		emailJSON.Headers.From = pipeline.Addresses(pipeline.Address{Address: from})
 	}
-	if len(emailJSON.Headers.To) == 0 {
-		emailJSON.Headers.To = toAddrs
+	if emailJSON.Headers.To.Len() == 0 {
+		emailJSON.Headers.To = pipeline.Addresses(toAddrs...)
 	}
 	if emailJSON.Headers.Subject == "" {
 		emailJSON.Headers.Subject = subject
