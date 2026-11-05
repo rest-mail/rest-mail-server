@@ -308,6 +308,7 @@ func TestPipelineConfigurationRowsAttachments(t *testing.T) {
 				pipelineRowDeliver(t, fixture, raw, http.StatusServiceUnavailable, 0)
 				server.Failure.Store(0)
 			}
+			stopTraceRecorder(fixture.routers)
 			const callback = "configuration-row-attachment-write-failure"
 			if err := fixture.db.Callback().Create().Before("gorm:create").Register(callback, func(query *gorm.DB) {
 				if query.Statement.Table == "attachments" {
