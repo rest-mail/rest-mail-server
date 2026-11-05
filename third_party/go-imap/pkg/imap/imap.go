@@ -32,7 +32,9 @@
 // ([RFC 6851]) into a single atomic backend operation. A Mailbox that implements
 // [DateAppender] additionally receives the client-supplied INTERNALDATE on
 // APPEND, and one that implements [UTF8Mailbox] turns on UTF8=ACCEPT
-// ([RFC 6855]) through ENABLE. The advertised CAPABILITY list reflects only the
+// ([RFC 6855]) through ENABLE. One that implements [Subscriber] keeps a real
+// subscription list for SUBSCRIBE, UNSUBSCRIBE, LSUB and LIST's SUBSCRIBED
+// options ([RFC 5258]). The advertised CAPABILITY list reflects only the
 // optional interfaces the concrete Mailbox satisfies, so a backend implementing
 // just [Mailbox] is unaffected and the list never over-promises.
 //
@@ -40,6 +42,7 @@
 // [RFC 4315]: https://www.rfc-editor.org/rfc/rfc4315
 // [RFC 6851]: https://www.rfc-editor.org/rfc/rfc6851
 // [RFC 6855]: https://www.rfc-editor.org/rfc/rfc6855
+// [RFC 5258]: https://www.rfc-editor.org/rfc/rfc5258
 package imap
 
 import (
@@ -208,6 +211,25 @@ type UIDPlusMailbox interface {
 	// [Mailbox.Copy] and returns the UID assigned to the copy, for COPYUID.
 	// COPYUID is omitted when any returned UID is zero or repeats in the command.
 	CopyUID(srcUID uint32, dest string) (uid uint32, err error)
+}
+
+// Subscriber is the optional interface a [Mailbox] may also implement to keep
+// the user's subscription list (RFC 3501 §§6.3.6-6.3.9, RFC 5258 §3.1). A
+// subscribed name need not exist: a folder deleted while subscribed stays on
+// the list, which LIST (SUBSCRIBED) reports as \NonExistent \Subscribed. Names
+// are store names, as [Folder.Name] holds them, with INBOX in that spelling.
+//
+// A Mailbox that does not implement it has every existing folder subscribed,
+// and nothing else: SUBSCRIBE and UNSUBSCRIBE are acknowledged without effect.
+type Subscriber interface {
+	// Subscriptions returns every subscribed name, in any order.
+	Subscriptions() ([]string, error)
+	// Subscribe adds name to the list; subscribing a listed name again is not
+	// an error.
+	Subscribe(name string) error
+	// Unsubscribe removes name from the list; removing an unlisted name is not
+	// an error.
+	Unsubscribe(name string) error
 }
 
 // UTF8Mailbox is the optional interface a [Mailbox] may also implement to
