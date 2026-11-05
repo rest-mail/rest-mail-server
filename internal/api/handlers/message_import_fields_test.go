@@ -95,6 +95,8 @@ func TestImportStoresAnyFieldASenderWrote(t *testing.T) {
 		{"a long sender address", "From: " + strings.Repeat("a", 300) + "@remote.test\r\nSubject: s\r\n\r\nb\r\n", "", ""},
 		{"a long In-Reply-To", "From: old@remote.test\r\nIn-Reply-To: <" + strings.Repeat("r", 1200) + "@x.test>\r\n\r\nb\r\n", "", ""},
 		{"a long first reference", "From: old@remote.test\r\nReferences: <" + strings.Repeat("r", 3000) + "@x.test>\r\n\r\nb\r\n", "", ""},
+		{"a NUL in a calendar", "From: old@remote.test\r\nContent-Type: text/calendar; method=REQUEST\r\nContent-Transfer-Encoding: base64\r\n\r\n" +
+			base64.StdEncoding.EncodeToString([]byte("BEGIN:VCALENDAR\r\nMETHOD:REQUEST\r\nBEGIN:VEVENT\r\nUID:a\x00b\r\nSUMMARY:c\x00d\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n")) + "\r\n", "", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			message := fmt.Sprintf("Message-ID: <%x@remote.test>\r\n", tc.name) + tc.message

@@ -83,3 +83,41 @@ func TestMessageFitsItsColumnsBeforeItsSeal(t *testing.T) {
 		t.Fatalf("a message that fits changed: %+v", short)
 	}
 }
+
+func TestCalendarVersionFitsItsColumns(t *testing.T) {
+	long := strings.Repeat("u", 600) + "@remote.test"
+	version := CalendarEventVersion{UID: long, Method: strings.Repeat("M", 40), Status: "CANCELLED" + strings.Repeat("X", 40),
+		Summary: "a\x00b\xff", Organizer: strings.Repeat("日", 300)}
+	version.fitColumns()
+	for _, column := range []struct {
+		name, value string
+		limit       int
+	}{
+		{"uid", version.UID, calendarUIDColumn},
+		{"method", version.Method, calendarMethodColumn},
+		{"status", version.Status, calendarStatusColumn},
+		{"organizer", version.Organizer, calendarOrganizerColumn},
+	} {
+		if !fitsColumn(column.value, column.limit) {
+			t.Errorf("%s: %d characters", column.name, utf8.RuneCountInString(column.value))
+		}
+	}
+	if version.Summary != "a�b�" {
+		t.Errorf("summary %q", version.Summary)
+	}
+	if version.Status == "CANCELLED" {
+		t.Error("a cut status became one this server acts on")
+	}
+
+	// The versions of one event stay one event, and two events that share a long start stay two.
+	if fitCalendarUID(long) != version.UID {
+		t.Error("the same UID fit differently")
+	}
+	if fitCalendarUID(strings.Repeat("u", 600)+"@other.test") == version.UID {
+		t.Error("two long UIDs fit the same")
+	}
+	exact := strings.Repeat("u", calendarUIDColumn)
+	if fitCalendarUID(exact) != exact {
+		t.Error("a UID that fits was changed")
+	}
+}

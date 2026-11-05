@@ -19,6 +19,10 @@ const (
 	attachmentTypeColumn     = 255
 	senderColumn             = 255
 	messageIDColumn          = 995
+	calendarUIDColumn        = 512
+	calendarOrganizerColumn  = 255
+	calendarMethodColumn     = 32
+	calendarStatusColumn     = 32
 	// longestKeptExtension is how long a filename's last extension may be and still be kept when
 	// the name is cut. What a file opens as is decided by its end, so a cut must not change that.
 	longestKeptExtension = 16
@@ -96,4 +100,27 @@ func (m *Message) fitColumns() {
 	if m.InReplyTo = storableText(m.InReplyTo); utf8.RuneCountInString(m.InReplyTo) > messageIDColumn {
 		m.InReplyTo = ""
 	}
+}
+
+// fitCalendarUID is an event's UID as its column can store it. As with fitID, a cut UID would be some
+// other event's, and one version row's CANCEL would reach that event, so one too long to store is
+// stored as its digest: every version of the event still shares it. The event in the message keeps
+// the UID as written, which is what a reply names.
+func fitCalendarUID(uid string) string {
+	uid = storableText(uid)
+	if utf8.RuneCountInString(uid) <= calendarUIDColumn {
+		return uid
+	}
+	digest := sha256.Sum256([]byte(uid))
+	return hex.EncodeToString(digest[:]) + "@rest-mail.invalid"
+}
+
+// fitColumns fits what a calendar's sender wrote to the version row's columns. A cut method or status
+// stays longer than any this server acts on, so it can't become CANCEL or CANCELLED.
+func (v *CalendarEventVersion) fitColumns() {
+	v.UID = fitCalendarUID(v.UID)
+	v.Method = fitText(v.Method, calendarMethodColumn)
+	v.Status = fitText(v.Status, calendarStatusColumn)
+	v.Summary = storableText(v.Summary)
+	v.Organizer = fitText(v.Organizer, calendarOrganizerColumn)
 }
