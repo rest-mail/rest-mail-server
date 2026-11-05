@@ -3,6 +3,8 @@ package pop3
 import (
 	"context"
 	"crypto/tls"
+	pop3server "github.com/rest-mail/go-pop3/pkg/pop3/server"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -35,8 +37,18 @@ func TestPOP3ListenersServeRenewedCertificate(t *testing.T) {
 		})
 	})
 	t.Run("implicit TLS", func(t *testing.T) {
+		listener, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		server := NewServer(NewBackend(apiclient.New(api.URL), nil), nil)
+		if err := server.Serve(tls.NewListener(listener, pair.Config)); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = server.Close() })
+		port := listener.Addr().(*net.TCPAddr).Port
 		reloadtest.Prove(t, host, pair, func(t *testing.T) tls.ConnectionState {
-			return reloadtest.ImplicitTLS(t, ports.POP3TLS, host)
+			return reloadtest.ImplicitTLS(t, port, host)
 		})
 	})
 }

@@ -4396,6 +4396,8 @@ def a_folder_to_delete_of_its_own(transaction):
 # session routes there with the same one).
 INTERNAL_ORIGIN = os.environ.get("CONTRACT_INTERNAL_ENDPOINT") or "https://10.99.0.20:8443"
 CONTRACT_MTLS = os.environ.get("CONTRACT_MTLS_DIR", ".cache/contract-mtls")
+# The mail client the contract run's gateway signs in (RFC 5737).
+CONTRACT_MAIL_CLIENT_IP = "198.51.100.7"
 
 
 def authenticate_gateway_sign_in_examples(transactions):
@@ -4407,10 +4409,11 @@ def authenticate_gateway_sign_in_examples(transactions):
             continue
         if str(transaction.get("expected", {}).get("statusCode")) not in ("201", "422"):
             continue
-        app = principals()["app_password"]
         body = hooks.get_json(transaction)
         if isinstance(body, dict):
+            app = principals()["app_password"]
             body["address"], body["password"] = app["address"], app["secret"]
+            body["client_ip"] = CONTRACT_MAIL_CLIENT_IP
             hooks.set_json(transaction, body)
 
 
@@ -4424,9 +4427,12 @@ def sign_in_a_mail_client(transaction):
     # gives the exchange an app password of an account made for it.
     if os.environ.get("CONTRACT_AUTHORIZATION") == "1" or asked_for_a_clean_start():
         return
-    app = principals()["app_password"]
     body = hooks.get_json(transaction)
+    if not isinstance(body, dict):
+        return
+    app = principals()["app_password"]
     body["address"], body["password"] = app["address"], app["secret"]
+    body["client_ip"] = CONTRACT_MAIL_CLIENT_IP
     hooks.set_json(transaction, body)
 
 
@@ -4439,7 +4445,8 @@ def open_gateway_session():
     pace_auth_requests(None)
     request = urllib.request.Request(
         INTERNAL_ORIGIN + "/api/v1/gateway-sessions",
-        data=json.dumps({"protocol": "imap", "address": app["address"], "password": app["secret"]}).encode(),
+        data=json.dumps({"protocol": "imap", "address": app["address"], "password": app["secret"],
+                         "client_ip": CONTRACT_MAIL_CLIENT_IP}).encode(),
         headers={"Content-Type": "application/json"},
         method="POST",
     )

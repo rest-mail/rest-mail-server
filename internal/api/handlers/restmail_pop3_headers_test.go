@@ -43,7 +43,7 @@ func TestRESTMAILStoredHeadersThroughPOP3RETR(t *testing.T) {
 			router := chi.NewRouter()
 			rs := endpoint.Routes{Router: router, Registry: endpoint.NewRegistry()}
 			NewGatewaySessionHandler(db, middleware.DefaultGatewayServices).Register(rs, GatewaySessionRouteChecks{
-				Credential: endpoint.Middleware{Wrap: middleware.NewSessionPasswords(PasswordVerifier(db), nil, nil).Authenticate()},
+				Credential: endpoint.Middleware{Wrap: middleware.NewSessionPasswords(PasswordVerifier(db), nil, nil, nil).Authenticate()},
 				Throttle:   passingSignInChecks.Throttle,
 				Audit:      passingSignInChecks.Audit,
 			})

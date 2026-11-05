@@ -161,27 +161,28 @@ class AuthorizationCellHooks(unittest.TestCase):
                 self.assertEqual(request, before)
 
 
-class ProtocolSignInAuthorizationHooks(unittest.TestCase):
+class GatewaySignInAuthorizationHooks(unittest.TestCase):
     def setUp(self):
         self.module, self.stub, self.registered = load_hooks()
         self.app = {"address": "ordinary@restmail.test", "secret": "app:fixture"}
 
     def request(self, credential, status):
         request = transaction(
-            "/api/v1/auth/protocol-sign-in",
+            "/api/v1/gateway-sessions",
             credential,
-            json.dumps({200: {"protocol": "imap"}, 400: [], 422: {}}[status]),
+            json.dumps({201: {"protocol": "imap"}, 400: [], 422: {}}[status]),
         )
         request["expected"] = {"statusCode": str(status)}
         request["name"] = (
-            f"/api/v1/auth/protocol-sign-in > Sign a mail client in (protocol gateways) > {status} > application/json"
+            f"/api/v1/gateway-sessions > Sign a mail client in (protocol gateways) > {status} > application/json"
         )
         return request
 
     def test_registered_for_success_and_refusal_examples(self):
-        for status in (200, 400, 422):
-            pattern = f"/api/v1/auth/protocol-sign-in > * > {status} > application/json"
+        for status in (201, 422):
+            pattern = f"/api/v1/gateway-sessions > * > {status} > application/json"
             self.assertIn("sign_in_a_mail_client", self.registered[pattern])
+        self.assertNotIn("/api/v1/auth/protocol-sign-in > * > 200 > application/json", self.registered)
 
     def test_authorization_cells_keep_every_principals_own_credential(self):
         credentials = {
@@ -196,7 +197,7 @@ class ProtocolSignInAuthorizationHooks(unittest.TestCase):
             patch.object(self.module, "principals", return_value={"app_password": self.app}) as fixture,
         ):
             for principal, credential in credentials.items():
-                for status in (200, 400, 422):
+                for status in (201, 400, 422):
                     with self.subTest(principal=principal, status=status):
                         request = self.request(credential, status)
                         before = copy.deepcopy(request)
@@ -204,11 +205,11 @@ class ProtocolSignInAuthorizationHooks(unittest.TestCase):
                         self.assertEqual(request, before)
             fixture.assert_not_called()
 
-    def test_authorization_example_replays_get_basic_without_changing_the_contract(self):
-        examples = [self.request(None, status) for status in (200, 400, 422)]
+    def test_authorization_example_replays_get_body_credentials_without_changing_the_contract(self):
+        examples = [self.request(None, status) for status in (201, 400, 422)]
         examples.append(self.request(None, 422))
         examples[-1]["request"]["body"] = "[]"
-        untouched = self.request(None, 200)
+        untouched = self.request(None, 201)
         untouched["name"] = "/api/v1/other > Other > 200 > application/json"
         examples.append(untouched)
         before = copy.deepcopy(examples)
@@ -216,28 +217,29 @@ class ProtocolSignInAuthorizationHooks(unittest.TestCase):
             patch.dict(os.environ, {"CONTRACT_AUTHORIZATION": "1"}),
             patch.object(self.module, "principals", return_value={"app_password": self.app}),
         ):
-            self.module.authenticate_protocol_sign_in_examples(examples)
+            self.module.authenticate_gateway_sign_in_examples(examples)
             for request in examples[:-1]:
                 self.module.sign_in_a_mail_client(request)
         for request in before[:-1]:
-            request["request"]["headers"]["Authorization"] = self.module.basic(
-                self.app["address"], self.app["secret"]
-            )
+            body = json.loads(request["request"]["body"])
+            if isinstance(body, dict) and request["expected"]["statusCode"] in ("201", "422"):
+                body.update(address=self.app["address"], password=self.app["secret"], client_ip=self.module.CONTRACT_MAIL_CLIENT_IP)
+                request["request"]["body"] = json.dumps(body)
         self.assertEqual(examples, before)
 
     def test_example_setup_leaves_unauthenticated_and_other_phase_examples_alone(self):
         for marker in ("1", "", "0"):
-            statuses = (401, 403) if marker == "1" else (200, 400, 422)
-            examples = [self.request(None, 200) for _ in statuses]
+            statuses = (401, 403) if marker == "1" else (201, 400, 422)
+            examples = [self.request(None, 201) for _ in statuses]
             for request, status in zip(examples, statuses):
                 request["expected"]["statusCode"] = str(status)
-                request["name"] = request["name"].replace("200", str(status))
+                request["name"] = request["name"].replace("201", str(status))
             before = copy.deepcopy(examples)
             with (
                 patch.dict(os.environ, {"CONTRACT_AUTHORIZATION": marker}),
                 patch.object(self.module, "principals") as fixture,
             ):
-                self.module.authenticate_protocol_sign_in_examples(examples)
+                self.module.authenticate_gateway_sign_in_examples(examples)
             self.assertEqual(examples, before)
             fixture.assert_not_called()
 
@@ -251,16 +253,17 @@ class ProtocolSignInAuthorizationHooks(unittest.TestCase):
             runpy.run_path(str(Path(__file__).with_name("entrypoint.py")))
         self.assertEqual(
             [callback.__name__ for callback in callbacks],
-            ["authenticate_protocol_sign_in_examples"],
+            ["authenticate_gateway_sign_in_examples"],
         )
-        replay = self.request(None, 200)
+        replay = self.request(None, 201)
         with patch.dict(callbacks[0].__globals__, {"principals": lambda: {"app_password": self.app}}):
             with patch.dict(os.environ, {"CONTRACT_AUTHORIZATION": "1"}):
                 callbacks[0]([replay])
-        self.assertEqual(
-            replay["request"]["headers"]["Authorization"],
-            self.module.basic(self.app["address"], self.app["secret"]),
-        )
+        self.assertEqual(json.loads(replay["request"]["body"]), {
+            "protocol": "imap", "address": self.app["address"], "password": self.app["secret"],
+            "client_ip": self.module.CONTRACT_MAIL_CLIENT_IP,
+        })
+        self.assertNotIn("Authorization", replay["request"]["headers"])
 
     def test_other_phases_still_use_the_app_password(self):
         phases = (
@@ -278,12 +281,13 @@ class ProtocolSignInAuthorizationHooks(unittest.TestCase):
                 patch.object(self.module, "principals", return_value={"app_password": self.app}),
             ):
                 for credential in (None, session(self.module.ADMIN)):
-                    for status in (200, 400, 422):
+                    for status in (201, 400, 422):
                         request = self.request(credential, status)
                         expected = copy.deepcopy(request)
-                        expected["request"]["headers"]["Authorization"] = self.module.basic(
-                            self.app["address"], self.app["secret"]
-                        )
+                        body = json.loads(expected["request"]["body"])
+                        if isinstance(body, dict) and phase.get("CONTRACT_RESET_SEED") != "1":
+                            body.update(address=self.app["address"], password=self.app["secret"], client_ip=self.module.CONTRACT_MAIL_CLIENT_IP)
+                            expected["request"]["body"] = json.dumps(body)
                         self.module.sign_in_a_mail_client(request)
                         self.assertEqual(request, expected)
 

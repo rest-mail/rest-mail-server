@@ -15,7 +15,9 @@ port.
 > the external `rest-mail/imap` and `rest-mail/pop3` server libraries and do
 > **not** read PROXY headers. If you place a proxy in front of IMAP/POP3,
 > forward plain TCP (no `send-proxy` / `proxy_protocol`) — those gateways will
-> log the proxy's address as the client IP.
+> log the proxy's address as the client IP. Their sign-ins then reach the API
+> with that address too, so everyone behind the proxy shares one sign-in
+> allowance and the audit log records the proxy.
 
 ## How It Works
 

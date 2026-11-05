@@ -43,6 +43,7 @@ class ContractGatewaySessionHookTests(unittest.TestCase):
                     module.sign_in_a_mail_client(transaction)
                     self.assertEqual(json.loads(transaction["request"]["body"]), {
                         "protocol": protocol, "address": "mailbox@example.test", "password": "app:fixture",
+                        "client_ip": "198.51.100.7",
                     })
                     self.assertNotIn("Authorization", transaction["request"]["headers"])
 
