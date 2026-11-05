@@ -37,7 +37,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   UTF8=ACCEPT (RFC 3501 §4.3.1). A personal or group name decoded from an encoded
   word and a parameter decoded from RFC 2231 go out as encoded words, and ENVELOPE
   reads the converted header, so an 8-bit mailbox is left out of its address field,
-  which reads NIL when none remains.
+  which reads NIL when none remains. A mailbox sent spelled like an encoded word,
+  against the `@` or `.` beside it, is legal atext and is still read.
   After ENABLE UTF8=ACCEPT, valid UTF-8 still goes out as a literal.
 - An ENVELOPE address list no longer reads NIL because a name is an encoded word
   in a charset go-imap can't decode, such as `windows-1252` or `ISO-8859-2`, in a
