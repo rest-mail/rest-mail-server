@@ -3,26 +3,28 @@ package server
 import (
 	"bufio"
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
 	"github.com/rest-mail/go-imap/pkg/imap"
 )
 
-// freePort returns a currently-unused TCP port. There is an unavoidable gap
-// between closing the probe listener and the server re-binding the port, but it
-// is small enough to be reliable for tests.
-func freePort(t *testing.T) int {
+// serveOnFreePort starts srv on a free loopback port and returns the port. The
+// listener stays open from the moment the port is chosen, so nothing else can
+// take it.
+func serveOnFreePort(t *testing.T, srv *Server) int {
 	t.Helper()
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
-		t.Fatalf("freePort: %v", err)
+		t.Fatalf("listen: %v", err)
 	}
-	defer func() { _ = l.Close() }()
+	srv.Serve(Listeners{IMAP: l})
 	return l.Addr().(*net.TCPAddr).Port
 }
 
@@ -128,12 +130,9 @@ func readLines(conn net.Conn, r *bufio.Reader) []string {
 // soon as the accept loops stop. A session in the middle of a command finishes
 // it, and only then says BYE and closes.
 func TestShutdownWaitsForInflightSession(t *testing.T) {
-	port := freePort(t)
 	b := newSlowBackend()
 	srv := New("imap.test", b, nil, nil)
-	if err := srv.ListenAndServe(Ports{IMAP: port}); err != nil {
-		t.Fatalf("ListenAndServe: %v", err)
-	}
+	port := serveOnFreePort(t, srv)
 
 	conn, r := dialClient(t, port)
 	defer func() { _ = conn.Close() }()
@@ -172,11 +171,8 @@ func TestShutdownWaitsForInflightSession(t *testing.T) {
 // and one in IDLE, each get the BYE and close at once, so Shutdown does not wait
 // for clients that would never finish.
 func TestShutdownSaysByeToIdleSessions(t *testing.T) {
-	port := freePort(t)
 	srv := New("imap.test", newMockBackend(), nil, nil)
-	if err := srv.ListenAndServe(Ports{IMAP: port}); err != nil {
-		t.Fatalf("ListenAndServe: %v", err)
-	}
+	port := serveOnFreePort(t, srv)
 
 	waiting, wr := dialClient(t, port)
 	defer func() { _ = waiting.Close() }()
@@ -219,12 +215,9 @@ func TestShutdownSaysByeToIdleSessions(t *testing.T) {
 // its command, Shutdown gives up at the context deadline and reports the ctx
 // error rather than blocking forever.
 func TestShutdownRespectsContextTimeout(t *testing.T) {
-	port := freePort(t)
 	b := newSlowBackend()
 	srv := New("imap.test", b, nil, nil)
-	if err := srv.ListenAndServe(Ports{IMAP: port}); err != nil {
-		t.Fatalf("ListenAndServe: %v", err)
-	}
+	port := serveOnFreePort(t, srv)
 	t.Cleanup(func() { close(b.release); _ = srv.Close() })
 
 	conn, r := dialClient(t, port)
@@ -254,11 +247,8 @@ func TestShutdownRespectsContextTimeout(t *testing.T) {
 // stop: it force-closes live connections and returns without a graceful drain,
 // leaving a subsequent Shutdown nothing to wait for.
 func TestCloseInterruptsInflightSession(t *testing.T) {
-	port := freePort(t)
 	srv := New("imap.test", newMockBackend(), nil, nil)
-	if err := srv.ListenAndServe(Ports{IMAP: port}); err != nil {
-		t.Fatalf("ListenAndServe: %v", err)
-	}
+	port := serveOnFreePort(t, srv)
 
 	conn, r := dialClient(t, port)
 	defer func() { _ = conn.Close() }()
@@ -278,5 +268,28 @@ func TestCloseInterruptsInflightSession(t *testing.T) {
 	// No sessions remain, so a graceful Shutdown returns at once.
 	if err := srv.Shutdown(context.Background()); err != nil {
 		t.Fatalf("Shutdown after Close: %v", err)
+	}
+}
+
+// TestListenAndServeReportsPortInUse proves ListenAndServe binds the ports it is
+// given, on every service: a port already held comes back as the bind error.
+func TestListenAndServeReportsPortInUse(t *testing.T) {
+	held, err := net.Listen("tcp", ":0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer func() { _ = held.Close() }()
+	port := held.Addr().(*net.TCPAddr).Port
+	for name, ports := range map[string]Ports{"IMAP": {IMAP: port}, "IMAPTLS": {IMAPTLS: port}} {
+		t.Run(name, func(t *testing.T) {
+			// tls.Listen refuses a config with no certificate source before it
+			// binds, so the implicit TLS port needs one to reach the bind.
+			config := &tls.Config{GetCertificate: func(*tls.ClientHelloInfo) (*tls.Certificate, error) { return nil, errors.New("unused") }}
+			srv := New("imap.test", newMockBackend(), config, nil)
+			t.Cleanup(func() { _ = srv.Close() })
+			if err := srv.ListenAndServe(ports); !errors.Is(err, syscall.EADDRINUSE) {
+				t.Fatalf("ListenAndServe on a held port = %v, want EADDRINUSE", err)
+			}
+		})
 	}
 }

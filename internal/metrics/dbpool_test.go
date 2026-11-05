@@ -198,13 +198,23 @@ func TestInstrumentDB_CountsUnreachableDatabase(t *testing.T) {
 	prev := dbPool.db.Load()
 	t.Cleanup(func() { dbPool.db.Store(prev) })
 
-	// A port nothing listens on: reserve one and close it.
+	// A database that cannot be reached: the port stays held by a listener that
+	// hangs up on every connection, so no other process can take it and answer.
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = l.Close() })
+	go func() {
+		for {
+			conn, err := l.Accept()
+			if err != nil {
+				return
+			}
+			_ = conn.Close()
+		}
+	}()
 	addr := l.Addr().(*net.TCPAddr)
-	l.Close()
 	dsn := fmt.Sprintf("host=127.0.0.1 port=%d user=x password=x dbname=x sslmode=disable connect_timeout=2", addr.Port)
 	gdb, err := gorm.Open(postgres.Open(dsn), &gorm.Config{DisableAutomaticPing: true, Logger: logger.Discard})
 	if err != nil {
@@ -215,7 +225,7 @@ func TestInstrumentDB_CountsUnreachableDatabase(t *testing.T) {
 	}
 	before := testutil.ToFloat64(DBConnectionErrors)
 	if err := gdb.Exec("SELECT 1").Error; err == nil {
-		t.Fatal("SELECT 1 against a closed port succeeded")
+		t.Fatal("SELECT 1 against a listener that hangs up succeeded")
 	}
 	var n int64
 	_ = gdb.Raw("SELECT 1").Scan(&n).Error

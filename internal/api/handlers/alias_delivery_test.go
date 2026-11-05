@@ -95,13 +95,11 @@ func newAliasDeliveryFixture(t *testing.T) *aliasDeliveryFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	port := listener.Addr().(*net.TCPAddr).Port
-	listener.Close()
 	server := smtpgateway.NewServer("mx."+fixture.domain.Name, apiclient.New(fixture.api.URL), nil, smtpgateway.NewStore(database, ""), connlimiter.New(connlimiter.Config{}))
-	if err := server.ListenAndServe(smtpgateway.SMTPPorts{Inbound: port}); err != nil {
+	if err := server.Serve(smtpgateway.SMTPListeners{Inbound: listener}); err != nil {
 		t.Fatal(err)
 	}
-	fixture.smtpAddress = fmt.Sprintf("127.0.0.1:%d", port)
+	fixture.smtpAddress = listener.Addr().String()
 	t.Cleanup(func() {
 		server.Shutdown()
 		fixture.api.Close()

@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"encoding/base64"
 	"errors"
-	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -149,20 +148,16 @@ func TestBannedAddressRefusedAtConnect(t *testing.T) {
 		t.Fatal("setup: 127.0.0.1 is not banned")
 	}
 
-	probe, err := net.Listen("tcp", "127.0.0.1:0")
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
-	port := probe.Addr().(*net.TCPAddr).Port
-	_ = probe.Close()
 
 	srv := imapserver.New("imap.test", NewBackend(api, lim), nil, lim)
-	if err := srv.ListenAndServe(imapserver.Ports{IMAP: port}); err != nil {
-		t.Fatal(err)
-	}
+	srv.Serve(imapserver.Listeners{IMAP: listener})
 	t.Cleanup(func() { _ = srv.Close() })
 
-	conn, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+	conn, err := net.Dial("tcp", listener.Addr().String())
 	if err != nil {
 		t.Fatal(err)
 	}

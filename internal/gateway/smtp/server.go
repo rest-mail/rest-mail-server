@@ -171,6 +171,38 @@ type SMTPPorts struct {
 	SubmissionTLS int // 465, implicit TLS
 }
 
+// SMTPListeners are listeners the caller has already opened, one per SMTP
+// service. A nil listener is skipped.
+type SMTPListeners struct {
+	Inbound       net.Listener // as SMTPPorts.Inbound
+	SubmissionTLS net.Listener // as SMTPPorts.SubmissionTLS; Serve adds the TLS layer
+}
+
+// Serve is ListenAndServe for listeners the caller has already opened, so the
+// caller can know the address before the server starts, with no gap in which
+// another process could take the port. The server owns the listeners from here
+// on, and Shutdown closes them.
+func (s *Server) Serve(listeners SMTPListeners) error {
+	if listeners.Inbound != nil {
+		if err := s.serve(listeners.Inbound, listenerPort(listeners.Inbound), false, false); err != nil {
+			return err
+		}
+	}
+	if listeners.SubmissionTLS != nil {
+		return s.serve(listeners.SubmissionTLS, listenerPort(listeners.SubmissionTLS), true, true)
+	}
+	return nil
+}
+
+// listenerPort is the port serve logs for a listener it was handed: 0 if the
+// listener is not on TCP.
+func listenerPort(listener net.Listener) int {
+	if addr, ok := listener.Addr().(*net.TCPAddr); ok {
+		return addr.Port
+	}
+	return 0
+}
+
 // newSMTPServer builds the go-smtp server used for every listener of the
 // given flavor. The test harness uses it too, so the protocol configuration
 // under test is exactly the production one.
@@ -241,7 +273,12 @@ func (s *Server) listen(port int, isSubmission, implicitTLS bool) error {
 		return err
 	}
 	slog.Info("smtp: listening", "port", port, "submission", isSubmission, "implicit_tls", implicitTLS && s.tlsConfig != nil)
+	return s.serve(listener, port, isSubmission, implicitTLS)
+}
 
+// serve adds the server's layers to an open listener and serves it in the
+// background. If it fails it closes the listener.
+func (s *Server) serve(listener net.Listener, port int, isSubmission, implicitTLS bool) error {
 	// Wrap with PROXY protocol if trusted CIDRs are configured. This stays
 	// closest to the socket: the PROXY header arrives in cleartext before any
 	// TLS bytes.

@@ -41,20 +41,12 @@ func TestBannedAddressRefusedAtConnect(t *testing.T) {
 		t.Fatal("setup: 127.0.0.1 is not banned")
 	}
 
-	probe, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	port := probe.Addr().(*net.TCPAddr).Port
-	_ = probe.Close()
-
-	srv := pop3server.New(NewBackend(apiclient.New(api.URL), lim), nil, lim)
-	if err := srv.ListenAndServe(pop3server.Ports{POP3: port}); err != nil {
-		t.Fatal(err)
-	}
+	srv, ports := serveOnFreePorts(t, false, func() *pop3server.Server {
+		return pop3server.New(NewBackend(apiclient.New(api.URL), lim), nil, lim)
+	})
 	t.Cleanup(func() { _ = srv.Close() })
 
-	conn, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+	conn, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", ports.POP3))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -24,22 +24,21 @@ func TestIMAPListenersServeRenewedCertificate(t *testing.T) {
 	api := httptest.NewServer(http.NotFoundHandler())
 	t.Cleanup(api.Close)
 	srv := imapserver.New(host, NewBackend(apiclient.New(api.URL), nil), pair.Config, goimap.NopLimiter{})
-	ports := imapserver.Ports{IMAP: reloadtest.FreePort(t), IMAPTLS: reloadtest.FreePort(t)}
-	if err := srv.ListenAndServe(ports); err != nil {
-		t.Fatal(err)
-	}
+	plain, plainPort := reloadtest.Listen(t)
+	implicit, implicitPort := reloadtest.Listen(t)
+	srv.Serve(imapserver.Listeners{IMAP: plain, IMAPTLS: implicit})
 	t.Cleanup(func() { _ = srv.Shutdown(context.Background()) })
 
 	t.Run("STARTTLS", func(t *testing.T) {
 		reloadtest.Prove(t, host, pair, func(t *testing.T) tls.ConnectionState {
-			return reloadtest.StartTLS(t, ports.IMAP, host,
+			return reloadtest.StartTLS(t, plainPort, host,
 				reloadtest.Step{Until: "* OK"},
 				reloadtest.Step{Send: "a1 STARTTLS", Until: "a1 OK"})
 		})
 	})
 	t.Run("implicit TLS", func(t *testing.T) {
 		reloadtest.Prove(t, host, pair, func(t *testing.T) tls.ConnectionState {
-			return reloadtest.ImplicitTLS(t, ports.IMAPTLS, host)
+			return reloadtest.ImplicitTLS(t, implicitPort, host)
 		})
 	})
 }

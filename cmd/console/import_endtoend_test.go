@@ -196,19 +196,13 @@ func startIMAPGateway(t *testing.T, apiURL string) (string, *tls.Config) {
 	client := apiclient.New(apiURL, apiclient.WithMessageDeadline(30*time.Second))
 	server := imapserver.New("imap."+migrationDomain, imapgw.NewBackend(client, limiter),
 		&tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{certificate}}, limiter)
-	probe, err := net.Listen("tcp", "127.0.0.1:0")
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
-	port := probe.Addr().(*net.TCPAddr).Port
-	if err := probe.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err := server.ListenAndServe(imapserver.Ports{IMAPTLS: port}); err != nil {
-		t.Fatalf("start the IMAP server: %v", err)
-	}
+	server.Serve(imapserver.Listeners{IMAPTLS: listener})
 	t.Cleanup(func() { _ = server.Close() })
-	return net.JoinHostPort("127.0.0.1", strconv.Itoa(port)), &tls.Config{RootCAs: roots, ServerName: "imap." + migrationDomain, MinVersion: tls.VersionTLS12}
+	return listener.Addr().String(), &tls.Config{RootCAs: roots, ServerName: "imap." + migrationDomain, MinVersion: tls.VersionTLS12}
 }
 
 func migrationCertificate(t *testing.T) (tls.Certificate, *x509.CertPool) {

@@ -8,7 +8,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/rest-mail/rest-mail-server/internal/metrics"
 	"github.com/rest-mail/rest-mail-server/internal/netallow"
@@ -17,19 +16,6 @@ import (
 // loopbackCIDRs is the allowlist used by the real-listener tests, which scrape
 // over 127.0.0.1.
 var loopbackCIDRs = []string{"127.0.0.0/8", "::1/128"}
-
-// freePort returns an OS-assigned free TCP port. The listener is closed before
-// return, so there is a small reuse window — acceptable for a local test.
-func freePort(t *testing.T) int {
-	t.Helper()
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("reserve free port: %v", err)
-	}
-	port := l.Addr().(*net.TCPAddr).Port
-	_ = l.Close()
-	return port
-}
 
 // TestHandlerServesGatewaySeries verifies the gateway /metrics handler serves
 // the process's default registry and that the gateway-side series are present
@@ -89,28 +75,25 @@ func TestNewDisabledPort(t *testing.T) {
 	s.Shutdown()  // must not panic
 }
 
-// TestServerStartAndShutdown spins the full server on an ephemeral port, scrapes
+// TestServerServeAndShutdown spins the full server on an ephemeral port, scrapes
 // it over real HTTP, and shuts it down cleanly.
-func TestServerStartAndShutdown(t *testing.T) {
-	port := freePort(t)
+func TestServerServeAndShutdown(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("open a port: %v", err)
+	}
+	port := listener.Addr().(*net.TCPAddr).Port
 	s := New(port, loopbackCIDRs, nil)
 	if s == nil {
 		t.Fatalf("New(%d) = nil, want a server", port)
 	}
-	s.Start()
+	s.Serve(listener)
 	defer s.Shutdown()
 
-	// Poll for the listener to come up. Start listens in a goroutine, which
-	// under the race detector can take longer than 50 back-to-back dials.
-	var resp *http.Response
-	var err error
+	// The listener is already open, so this connects even if the Serve goroutine
+	// has not reached Accept yet.
 	url := "http://127.0.0.1:" + strconv.Itoa(port) + "/metrics"
-	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(10 * time.Millisecond) {
-		resp, err = http.Get(url)
-		if err == nil || time.Now().After(deadline) {
-			break
-		}
-	}
+	resp, err := http.Get(url)
 	if err != nil {
 		t.Fatalf("GET %s: %v", url, err)
 	}

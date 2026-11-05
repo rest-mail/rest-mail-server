@@ -15,6 +15,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"net"
 	"net/http"
 	"strconv"
 	"time"
@@ -97,6 +98,21 @@ func (s *Server) Start() {
 	go func() {
 		slog.Info("metrics endpoint listening", "addr", s.addr)
 		if err := s.srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			slog.Error("metrics endpoint failed", "error", err)
+		}
+	}()
+}
+
+// Serve is Start for a listener the caller has already opened, so the caller
+// can know the address before the server starts, with no gap in which another
+// process could take the port. Shutdown closes the listener.
+func (s *Server) Serve(listener net.Listener) {
+	if s == nil {
+		return
+	}
+	go func() {
+		slog.Info("metrics endpoint listening", "addr", listener.Addr().String())
+		if err := s.srv.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			slog.Error("metrics endpoint failed", "error", err)
 		}
 	}()
