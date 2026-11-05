@@ -36,13 +36,14 @@ type lifecycleCase struct {
 	repeat404 bool     // no read route, and a repeated delete answers 404
 	gone      string   // what the list no longer shows, %d for the id, when changed is not unique
 	trashed   bool     // the first delete moves it to Trash, and the next removes it
-	emptied   string   // a value with one per parent: the read after the delete answers this
 	noDelete  bool     // no route deletes it: the reason is in convention-exceptions.json
 	unlinked  []string // the operations, taking the made id, its recorded reasons leave unlinked
 }
 
 func TestCreatesPersistAndEndAt404(t *testing.T) {
-	// The push routes are off unless configured, and gapGenerators turns them on.
+	// The push routes are off unless configured. gapGenerators turns them on only for the first
+	// test in the process that asks, so this router asks for itself.
+	configureAuthReadPush(t)
 	generator := gapGenerators(t)[len(gapGenerators(t))-1]
 	doc := contractDocument(t, generator)
 	exceptions := readConventionExceptions(t)
@@ -101,7 +102,7 @@ func TestCreatesPersistAndEndAt404(t *testing.T) {
 			update: `{"from":"owner@access.test","to":["owner@access.test"],"subject":"Changed","body_text":"Saved again."}`, changed: `"subject":"Changed"`, trashed: true, unlinked: []string{"getMessage", "deleteMessage"}},
 		{name: "sent message", create: "sendMessage", body: `{"from":"owner@access.test","to":["owner@access.test"],"subject":"Sent lifecycle","body_text":"Sent."}`, persisted: `"subject":"Sent lifecycle"`,
 			update: `{"is_flagged":true}`, changed: `"is_flagged":true`, trashed: true},
-		{name: "sieve script", create: "putSieveScript", path: mine + "/sieve", body: `{"script":"keep;"}`, persisted: `keep;`, emptied: `"script":""`},
+		{name: "sieve script", create: "putSieveScript", path: mine + "/sieve", body: `{"script":"keep;"}`, persisted: `keep;`},
 		{name: "mta-sts policy", create: "setMtaStsPolicy", path: "/api/v1/admin/domains/" + domain + "/mta-sts", body: `{"active":false,"max_age":0,"mode":"enforce","mx_hosts":"mail.a.test"}`, persisted: `mail.a.test`},
 		{name: "recovery address", create: "registerRecoveryEmail", body: fmt.Sprintf(`{"email":"backup@external.test","current_password":%q}`, accessPassword), persisted: `backup@external.test`, noDelete: true},
 		{name: "push device", create: "registerPushDevice", list: "/api/v1/devices", body: `{"platform":"apns","token":"5c1d7e0f3a9b2c4d6e8f0a1b3c5d7e9f1a2b4c6d8e0f2a3b5c7d9e1f3a4b6c8d","environment":"production","app_id":"com.antimatterstudios.restmail"}`, persisted: `"platform":"apns"`, repeat404: true},
@@ -284,10 +285,6 @@ func runLifecycle(t *testing.T, router http.Handler, doc map[string]any, token s
 		if rr := send("delete", ""); rr.Code < 200 || rr.Code > 299 {
 			t.Fatalf("delete from Trash: %d %s", rr.Code, rr.Body)
 		}
-	}
-	if tc.emptied != "" {
-		shows("after the delete", tc.emptied)
-		return
 	}
 	if tc.list == "" {
 		if rr := read(); rr.Code != http.StatusNotFound {
