@@ -96,10 +96,14 @@ jobs:
 
       # The action saves its own cache for a key that turns over weekly. The queue tested
       # this commit, so this is for the cache and not for the verdict.
+      - name: Install golangci-lint
+        run: scripts/ci/install-golangci-lint "$RUNNER_TEMP/bin"
+
       - name: Refresh golangci-lint's cache
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
           version: v2.11.4
+          install-mode: none
           args: --timeout=5m
           verify: false
 
@@ -280,12 +284,18 @@ jobs:
       - name: Run go vet
         run: go vet ./...
 
+      # The action's own download fails the job on a short GitHub 504 (#1942).
+      - name: Install golangci-lint
+        run: scripts/ci/install-golangci-lint "$RUNNER_TEMP/bin"
+
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
           # v2.1.6 is built with Go 1.24 and refuses to lint a module that
           # targets go 1.26.10 (go.mod). Pin a build made with Go >= 1.26.
           version: v2.11.4
+          # Installed by the step above, which keeps trying for longer.
+          install-mode: none
           args: --timeout=5m
           # `config verify` downloads its JSON schema from golangci-lint.run
           # and fails the job when that fetch times out (#508, #521). The
@@ -318,6 +328,7 @@ jobs:
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
           version: v2.11.4
+          install-mode: none
           working-directory: third_party/go-imap
           args: --timeout=5m --no-config
           verify: false

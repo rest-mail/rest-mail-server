@@ -68,7 +68,7 @@ jobs:
 
       - name: Install kind
         run: |
-          curl -fsSLo kind "https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-linux-amd64"
+          curl -fsSL --retry 6 --retry-all-errors --retry-delay 20 -o kind "https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-linux-amd64"
           echo "${KIND_SHA256}  kind" | sha256sum -c -
           sudo install -m 0755 kind /usr/local/bin/kind
           rm kind

@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# Installs the pinned golangci-lint into a directory and puts it on the job's PATH,
+# for golangci-lint-action's `install-mode: none`.
+#
+#   scripts/ci/install-golangci-lint "$RUNNER_TEMP/bin"
+#
+# The action's own download gives up after about 20 seconds. A GitHub 504 outlasted
+# that twice on 2026-11-05, which failed Lint in a merge group and reset the groups
+# behind it (#1942). This keeps trying for longer, and checks what it got.
+set -euo pipefail
+
+VERSION=2.11.4
+PLATFORM=linux-amd64
+SHA256=200c5b7503f67b59a6743ccf32133026c174e272b930ee79aa2aa6f37aca7ef1
+BASE_URL=https://github.com/golangci/golangci-lint/releases/download
+
+directory=${1:?usage: install-golangci-lint DIRECTORY}
+name="golangci-lint-$VERSION-$PLATFORM"
+url="${INSTALL_LINT_BASE_URL:-$BASE_URL}/v$VERSION/$name.tar.gz"
+expected=${INSTALL_LINT_SHA256:-$SHA256}
+
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+
+curl --fail --silent --show-error --location \
+  --connect-timeout 30 --max-time 120 \
+  --retry "${INSTALL_LINT_RETRIES:-6}" --retry-all-errors --retry-delay "${INSTALL_LINT_RETRY_DELAY:-20}" \
+  --output "$work/$name.tar.gz" "$url"
+
+actual=$(shasum -a 256 "$work/$name.tar.gz" | cut -d' ' -f1)
+if [ "$actual" != "$expected" ]; then
+  echo "golangci-lint $VERSION: checksum $actual, expected $expected" >&2
+  exit 1
+fi
+
+mkdir -p "$directory"
+tar -xzf "$work/$name.tar.gz" -C "$directory" --strip-components=1 "$name/golangci-lint"
+if [ -n "${GITHUB_PATH:-}" ]; then
+  (cd "$directory" && pwd) >>"$GITHUB_PATH"
+fi

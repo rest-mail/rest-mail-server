@@ -2,10 +2,13 @@
 """Install the OpenAPI 3.1 comparator used by contract-change CI (#653)."""
 
 import hashlib
+import http.client
 import io
 import platform
 import sys
 import tarfile
+import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -17,6 +20,30 @@ CHECKSUMS = {
 }
 
 
+# GitHub's release downloads have answered 504 for longer than a quick retry lasts:
+# they failed three merge group jobs on 2026-11-05 (#1942).
+RETRY_DELAYS = (5, 15, 30, 60)
+
+
+def transient(error):
+    """A request worth repeating: a 5xx or 429, or one that never got an answer."""
+    if isinstance(error, urllib.error.HTTPError):
+        return error.code >= 500 or error.code == 429
+    return True
+
+
+def fetch(url):
+    for delay in (*RETRY_DELAYS, None):
+        try:
+            with urllib.request.urlopen(url, timeout=60) as response:
+                return response.read()
+        except (OSError, http.client.HTTPException) as error:
+            if delay is None or not transient(error):
+                raise
+            print(f"oasdiff_pin: {url} failed ({error}); retrying in {delay}s", file=sys.stderr)
+            time.sleep(delay)
+
+
 def install(directory):
     system = platform.system().lower()
     machine = {"x86_64": "amd64", "aarch64": "arm64"}.get(
@@ -26,8 +53,7 @@ def install(directory):
     want = CHECKSUMS[target]
     name = f"oasdiff_{VERSION}_{target}.tar.gz"
     url = f"https://github.com/oasdiff/oasdiff/releases/download/v{VERSION}/{name}"
-    with urllib.request.urlopen(url, timeout=60) as response:
-        archive = response.read()
+    archive = fetch(url)
     if hashlib.sha256(archive).hexdigest() != want:
         raise ValueError(f"{name} does not match the pinned release checksum")
     with tarfile.open(fileobj=io.BytesIO(archive)) as tar:

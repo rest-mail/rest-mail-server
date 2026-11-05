@@ -17,6 +17,7 @@ install is how a person's run uses the same binary CI does.
 
 import contextlib
 import hashlib
+import http.client
 import io
 import json
 import os
@@ -26,6 +27,8 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import time
+import urllib.error
 import urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -75,6 +78,18 @@ def checksum_for(checksums, name):
     return checksum.lower()
 
 
+# GitHub's release downloads have answered 504 for longer than a quick retry lasts:
+# they failed three merge group jobs on 2026-11-05 (#1942).
+RETRY_DELAYS = (5, 15, 30, 60)
+
+
+def transient(error):
+    """A request worth repeating: a 5xx or 429, or one that never got an answer."""
+    if isinstance(error, urllib.error.HTTPError):
+        return error.code >= 500 or error.code == 429
+    return True
+
+
 def fetch(url):
     request = urllib.request.Request(
         url, headers={"User-Agent": "rest-mail-server vertrag_pin"}
@@ -82,8 +97,15 @@ def fetch(url):
     token = os.environ.get("GITHUB_TOKEN")
     if token and url.startswith("https://api.github.com/"):
         request.add_header("Authorization", "Bearer " + token)
-    with urllib.request.urlopen(request, timeout=60) as response:
-        return response.read()
+    for delay in (*RETRY_DELAYS, None):
+        try:
+            with urllib.request.urlopen(request, timeout=60) as response:
+                return response.read()
+        except (OSError, http.client.HTTPException) as error:
+            if delay is None or not transient(error):
+                raise
+            print(f"vertrag_pin: {url} failed ({error}); retrying in {delay}s", file=sys.stderr)
+            time.sleep(delay)
 
 
 def latest_version():
