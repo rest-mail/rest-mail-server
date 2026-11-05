@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -18,6 +19,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/grants"
 	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
+	rmime "github.com/rest-mail/rest-mail-server/internal/mime"
 )
 
 // These speak only to the route, so they hold on any way of reading a request. The rows wanted
@@ -380,12 +382,16 @@ var fieldShapesStillOver = map[string]stillOverCost{
 	"attachments, base64, on many parts":           {importing: 11, delivering: 10, restmail: 10},
 	"attachments, quoted-printable, on many parts": {importing: 11, delivering: 10, restmail: 10},
 	"attachments, no encoding, on many parts":      {importing: 11, delivering: 10, restmail: 11},
-	// A list of words costs what any other list does, now that a word costs little but itself. These
-	// build the long field they read whatever charset its words are in: 8.5 to 9.7x and 14.5 to 14.9x in
-	// UTF-8 as well.
-	"Subject of many words read":        {importing: 11, delivering: 10, restmail: 11},
-	"Subject of many base64 words read": {importing: 10, delivering: 9, restmail: 10},
-	"filename of many words read":       {importing: 16, delivering: 16, restmail: 16},
+	// RESTMAIL's structure check holds the long field a second time. The filename beside it isn't a field
+	// that check reads, so it's under 8x.
+	"a long quoted name": {restmail: 9},
+	// These are 58 octets for each part, so the multiple says little. What matters is what a part costs,
+	// about 2 KiB with a charset and 2.4 KiB with a word on /deliver and RESTMAIL, counting what the message
+	// costs whatever its parts, and what bounds that is the limit on parts (rmime.DefaultMaxParts): 2 to
+	// 2.4 MB, whatever the message's size. Import's 730x with a word is the 32 KiB copy buffer for each
+	// attachment it stores, which #1975 removes, so that ceiling comes down with that PR.
+	"999 parts, a charset on each":   {importing: 36, delivering: 34, restmail: 37},
+	"999 parts, a word in each name": {importing: 745, delivering: 44, restmail: 46},
 }
 
 // shapesUnderTheLimit are the shapes a route holds to 8x, which is every one cost doesn't name for it.
@@ -572,6 +578,10 @@ func allFieldShapes(id string) map[string]string {
 		"Subject of many words read":                   strings.Replace(id, "Subject: s\r\n", "", 1) + long("Subject: =?windows-1252?q?a?=", "\r\n =?windows-1252?q?N%d%.0d?=", "") + "Content-Type: text/plain; charset=utf-8\r\n\r\n" + eightBit,
 		"Subject of many base64 words read":            strings.Replace(id, "Subject: s\r\n", "", 1) + long("Subject: =?windows-1252?b?YQ==?=", "\r\n =?windows-1252?b?YQ==?=%.0d%.0d", "") + "Content-Type: text/plain; charset=utf-8\r\n\r\n" + eightBit,
 		"filename of many words read":                  onPart(long("Content-Disposition: attachment; filename=\"=?windows-1252?q?a?=", " =?windows-1252?q?N%d%.0d?=", "\"")),
+		"a long quoted filename":                       onPart(long("Content-Disposition: attachment; filename=\"a", " word%d%.0d", "\"")),
+		"a long quoted name":                           onPart(long("Content-Type: application/x; name=\"a", " word%d%.0d", "\"")),
+		"999 parts, a charset on each":                 id + "Content-Type: multipart/mixed; boundary=B\r\n\r\n" + strings.Repeat("--B\r\nContent-Type: text/plain; charset=windows-1252\r\n\r\nx\r\n", 999) + "--B--\r\n",
+		"999 parts, a word in each name":               id + "Content-Type: multipart/mixed; boundary=B\r\n\r\n" + strings.Repeat("--B\r\nContent-Type: a/b; name=\"=?windows-1252?q?n?=\"\r\n\r\nx\r\n", 999) + "--B--\r\n",
 		"address list, comments":                       id + long("To: to@example.test", ",\r\n a%d@example.test (c%d)", "") + "Content-Type: text/plain; charset=utf-8\r\n\r\n" + eightBit,
 		"address list, 8-bit names":                    id + long("To: to@example.test", ",\r\n \"N\u00e4me %d\" <a%d@example.test>", "") + "Content-Type: text/plain; charset=utf-8\r\n\r\n" + eightBit,
 		"address list, very short":                     id + "To: a@b" + strings.Repeat(",a@b", size*3/16) + "\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n" + eightBit,
@@ -606,6 +616,83 @@ func longBoundary(size int) string {
 		fmt.Fprintf(&b, ";\r\n boundary*%d=v%d", i, i)
 	}
 	return b.String()
+}
+
+// An import over the part limit is refused for what the first part past it shows, whatever it holds
+// after that, so what it costs doesn't grow with what's refused.
+func TestRefusedImportDoesNotParseWhatItRefuses(t *testing.T) {
+	const size = 1 << 20
+	db := importProofDB(t)
+	fx := seedAccountsFixture(t, db)
+	if err := db.Create(&models.QuotaUsage{MailboxID: fx.user.ID}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := grants.EnsureImport(db, &fx.user); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Model(&models.Mailbox{}).Where("id = ?", fx.user.ID).Update("quota_bytes", int64(1)<<40).Error; err != nil {
+		t.Fatal(err)
+	}
+	h := NewMessageImportHandler(db, 2*size, nil, nil)
+	h.directory = t.TempDir()
+	routes := importMessageRoutes(h)
+	send := func(message string) (*httptest.ResponseRecorder, uint64) {
+		body := fmt.Sprintf(`{"raw_message":"%s","internal_date":"2020-01-02T03:04:05Z"}`, base64.StdEncoding.EncodeToString([]byte(message)))
+		r := authzRequest(http.MethodPost, fmt.Sprintf("/api/v1/accounts/%d/messages/import", fx.user.ID), fx.user.ID, nil, body)
+		r.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		var before, after runtime.MemStats
+		emptyPools()
+		runtime.ReadMemStats(&before)
+		routes.ServeHTTP(w, r)
+		runtime.ReadMemStats(&after)
+		return w, after.TotalAlloc - before.TotalAlloc
+	}
+	if w, _ := send("Message-ID: <warm@example.test>\r\nFrom: old@example.test\r\n\r\nb\r\n"); w.Code != http.StatusOK {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	const head = "From: old@example.test\r\nContent-Type: multipart/mixed; boundary=B\r\n\r\n"
+	for name, part := range map[string]string{
+		"typed":       "--B\r\nContent-Type: a/b\r\n\r\n" + strings.Repeat("y", 45) + "\r\n",
+		"attachment":  "--B\r\nContent-Disposition: attachment; filename=a\r\n\r\n" + strings.Repeat("y", 20) + "\r\n",
+		"with a word": "--B\r\nContent-Type: text/plain; charset=windows-1252; name=\"=?windows-1252?q?n?=\"\r\n\r\nx\r\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			best, length := uint64(1)<<63, 0
+			for attempt := range 3 {
+				message := fmt.Sprintf("Message-ID: <refused-%s-%d@example.test>\r\n", strings.ReplaceAll(name, " ", "-"), attempt) + head + strings.Repeat(part, size/len(part)) + "--B--\r\n"
+				length = len(message)
+				w, allocated := send(message)
+				if w.Code != http.StatusUnprocessableEntity || !strings.Contains(w.Body.String(), "MIME structure over limit") {
+					t.Fatalf("%d %s", w.Code, w.Body)
+				}
+				best = min(best, allocated)
+			}
+			t.Logf("refusing %d bytes allocated %d, %.1f times over", length, best, float64(best)/float64(length))
+			if best > uint64(length) {
+				t.Fatalf("refusing %d bytes allocated %d", length, best)
+			}
+			// Parts stored before it was refused would stay on disk, with no row to find them by.
+			left, err := os.ReadDir(h.directory)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(left) != 0 {
+				t.Fatalf("%d files left behind", len(left))
+			}
+		})
+	}
+	// Too deep with too few lines to be counted first, and the parse refuses it as it always did.
+	var deep strings.Builder
+	deep.WriteString("Message-ID: <refused-deep@example.test>\r\nFrom: old@example.test\r\n")
+	for depth := range rmime.DefaultMaxNestingDepth + 1 {
+		fmt.Fprintf(&deep, "Content-Type: multipart/mixed; boundary=B%d\r\n\r\n--B%d\r\n", depth, depth)
+	}
+	deep.WriteString("\r\nx\r\n")
+	w, _ := send(deep.String())
+	if w.Code != http.StatusUnprocessableEntity || !strings.Contains(w.Body.String(), "MIME structure over limit") {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
 }
 
 // The same limit holds for an attachment FETCH has to convert, because measuring what it would
