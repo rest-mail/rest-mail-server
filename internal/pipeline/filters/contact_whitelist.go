@@ -34,8 +34,8 @@ func (f *contactWhitelistFilter) Execute(ctx context.Context, email *pipeline.Em
 		f = &copy
 	}
 	sender := email.Envelope.MailFrom
-	if sender == "" && len(email.Headers.From) > 0 {
-		sender = email.Headers.From[0].Address
+	if sender == "" && email.Headers.From.Len() > 0 {
+		sender = email.Headers.From.FirstAddress()
 	}
 
 	if sender == "" {

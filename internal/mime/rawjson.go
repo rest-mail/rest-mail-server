@@ -1,6 +1,7 @@
 package mime
 
 import (
+	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 	"slices"
 	"unicode/utf8"
 )
@@ -41,6 +42,24 @@ func StringsJSON(list []string) []byte {
 		size += jsonStringSize(value) + 1
 	}
 	return appendJSONStrings(make([]byte, 0, size), list)
+}
+
+// AddressesJSON is StringsJSON of the addresses of a list, never null, built without holding them.
+func AddressesJSON(list pipeline.AddressList) []byte {
+	out := make([]byte, 0, list.FieldSize()+list.FieldSize()/2+2)
+	out = append(out, '[')
+	first := true
+	ok := list.Visit(func(address pipeline.Address) {
+		if !first {
+			out = append(out, ',')
+		}
+		first = false
+		out = appendJSONString(out, address.Address)
+	})
+	if !ok {
+		return []byte("[]")
+	}
+	return append(out, ']')
 }
 
 // jsonStringSize is as much as appendJSONString writes for s, or a little more.

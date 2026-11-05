@@ -114,10 +114,18 @@ func legacyHeaders(h gomessage.Header) pipeline.Headers {
 	return headers
 }
 
-func legacyAddressList(h *gomail.Header, key string) []pipeline.Address {
+// settledHeaders has its address lists read, so two parses compare by what they read as.
+func settledHeaders(headers pipeline.Headers) pipeline.Headers {
+	headers.From = pipeline.Addresses(headers.From.All()...)
+	headers.To = pipeline.Addresses(headers.To.All()...)
+	headers.Cc = pipeline.Addresses(headers.Cc.All()...)
+	return headers
+}
+
+func legacyAddressList(h *gomail.Header, key string) pipeline.AddressList {
 	list, err := h.AddressList(key)
 	if err != nil {
-		return nil
+		return pipeline.AddressList{}
 	}
 	var addrs []pipeline.Address
 	for _, addr := range list {
@@ -128,7 +136,7 @@ func legacyAddressList(h *gomail.Header, key string) []pipeline.Address {
 			Address: sanitizeHeaderValue(addr.Address),
 		})
 	}
-	return addrs
+	return pipeline.Addresses(addrs...)
 }
 
 // legacyEntity converts a go-message entity (whole message or a single part)
@@ -463,6 +471,9 @@ func TestEntityReadsAsGoMessageDoes(t *testing.T) {
 		if (wantErr == nil) != (gotErr == nil) {
 			t.Fatalf("%q: Parse error %v, go-message %v", raw, gotErr, wantErr)
 		}
+		if got != nil && want != nil {
+			got.Headers, want.Headers = settledHeaders(got.Headers), settledHeaders(want.Headers)
+		}
 		if !reflect.DeepEqual(got, want) {
 			t.Fatalf("%q:\nParse     %+v\ngo-message %+v", raw, got, want)
 		}
@@ -471,6 +482,9 @@ func TestEntityReadsAsGoMessageDoes(t *testing.T) {
 		gotStream, gotErr := ParseStream(context.Background(), bytes.NewReader(raw), options)
 		if (wantErr == nil) != (gotErr == nil) {
 			t.Fatalf("%q: ParseStream error %v, go-message %v", raw, gotErr, wantErr)
+		}
+		if gotStream != nil && wantStream != nil {
+			gotStream.Headers, wantStream.Headers = settledHeaders(gotStream.Headers), settledHeaders(wantStream.Headers)
 		}
 		if !reflect.DeepEqual(gotStream, wantStream) {
 			t.Fatalf("%q:\nParseStream %+v\ngo-message  %+v", raw, gotStream, wantStream)
@@ -488,7 +502,7 @@ func TestEntityReadsAsGoMessageDoes(t *testing.T) {
 		}
 		wantHeaders, wantErr := legacyParseHeaders(raw)
 		gotHeaders, gotErr := ParseHeaders(bytes.NewReader(raw))
-		if (wantErr == nil) != (gotErr == nil) || !reflect.DeepEqual(gotHeaders, wantHeaders) {
+		if (wantErr == nil) != (gotErr == nil) || !reflect.DeepEqual(settledHeaders(gotHeaders), settledHeaders(wantHeaders)) {
 			t.Fatalf("%q: ParseHeaders %+v %v, go-message %+v %v", raw, gotHeaders, gotErr, wantHeaders, wantErr)
 		}
 	}
@@ -554,9 +568,8 @@ func legacyParseHeaders(raw []byte) (pipeline.Headers, error) {
 	return legacyHeaders(entity.Header), nil
 }
 
-// plainAddresses reads what it reads as net/mail does, which is what's used for anything it doesn't
-// read, so it can't change an answer.
-func TestPlainAddressesMatchNetMail(t *testing.T) {
+// Every list reads as net/mail reads it, because that's what every reader of one was given before.
+func TestAddressesMatchNetMail(t *testing.T) {
 	seeds := []string{
 		"a@b.test", "<a@b.test>", "Name <a@b.test>", "First Last <a@b.test>", "\"Last, First\" <a@b.test>", "\"\" <a@b.test>",
 		"a@b.test, c@d.test", "a@b.test,c@d.test,\tE F <e@f.test>", " a@b.test ", "a.b.c@d.e.f", "Mr. X <a@b.test>", "a.b <c@d>",
@@ -567,19 +580,20 @@ func TestPlainAddressesMatchNetMail(t *testing.T) {
 	}
 	check := func(value string) {
 		t.Helper()
-		got, plain := plainAddresses(value)
-		if !plain {
-			return
-		}
+		got := addressList(value).All()
+		count := addressList(value).Len()
 		want, err := gomail.ParseAddressList(value)
 		if err != nil {
-			t.Fatalf("%q: read as %+v, net/mail fails: %v", value, got, err)
+			if got != nil || count != 0 {
+				t.Fatalf("%q: read as %+v, net/mail fails: %v", value, got, err)
+			}
+			return
 		}
-		if len(got) != len(want) {
-			t.Fatalf("%q: read %+v, net/mail %v", value, got, want)
+		if len(got) != len(want) || count != len(want) {
+			t.Fatalf("%q: read %+v (%d), net/mail %v", value, got, count, want)
 		}
 		for i := range got {
-			if got[i].Name != want[i].Name || got[i].Address != want[i].Address {
+			if got[i].Name != sanitizeHeaderValue(want[i].Name) || got[i].Address != sanitizeHeaderValue(want[i].Address) {
 				t.Fatalf("%q: read %+v, net/mail %+v", value, got[i], *want[i])
 			}
 		}
