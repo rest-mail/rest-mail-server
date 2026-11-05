@@ -26,7 +26,6 @@ class SkippedProbes(unittest.TestCase):
 """)
         self.config = self.write("config.yml", "{}")
         self.coverage = self.write("coverage.txt", "")
-        self.baseline = self.write("skipped.txt", "getThings 2\n")
         self.report = self.write("report.xml", "")
 
     def write(self, name, text):
@@ -39,25 +38,8 @@ class SkippedProbes(unittest.TestCase):
         message = reason or f"{count} valid probe(s) skipped: its example answered 404, documented 200"
         self.report.write_text(f"<testsuite><testcase name={quoteattr(name)}><skipped message={quoteattr(message)}/></testcase></testsuite>")
         with contextlib.redirect_stdout(io.StringIO()) as output:
-            status = gate.gate(self.spec, self.config, self.report, self.coverage, self.baseline)
+            status = gate.gate(self.spec, self.config, self.report, self.coverage)
         return status, output.getvalue()
-
-    def test_unchanged_debt_passes(self):
-        self.assertEqual(self.run_gate()[0], 0)
-
-    def test_increased_count_fails(self):
-        self.assertIn("getThings: 3 > 2", self.run_gate(3)[1])
-        self.assertEqual(self.run_gate(3)[0], 1)
-
-    def test_new_operation_cannot_spend_anothers_budget(self):
-        status, output = self.run_gate(1, "Create")
-        self.assertEqual(status, 1)
-        self.assertIn("createThing: 1 > 0", output)
-
-    def test_decreased_count_requires_shrinking_the_baseline(self):
-        status, output = self.run_gate(1)
-        self.assertEqual(status, 1)
-        self.assertIn("getThings: 1 < 2", output)
 
     def test_skipped_probes_do_not_clear_failing_probe_debt(self):
         self.coverage.write_text("getThings\n")
@@ -69,14 +51,17 @@ class SkippedProbes(unittest.TestCase):
         report = self.report.read_text().replace("</testsuite>",
             '<testcase name="coverage: /things > Things > 200 · path id below minimum"/></testsuite>')
         self.report.write_text(report)
-        self.assertEqual(gate.gate(self.spec, self.config, self.report, self.coverage, self.baseline), 0)
+        self.assertEqual(gate.gate(self.spec, self.config, self.report, self.coverage), 0)
 
     def test_counts_add_across_transactions_of_one_operation(self):
         self.run_gate(1)
         report = self.report.read_text()
         case = report.removeprefix("<testsuite>").removesuffix("</testsuite>")
         self.report.write_text("<testsuite>" + case + case + "</testsuite>")
-        self.assertEqual(gate.gate(self.spec, self.config, self.report, self.coverage, self.baseline), 0)
+        with contextlib.redirect_stdout(io.StringIO()) as output:
+            status = gate.gate(self.spec, self.config, self.report, self.coverage)
+        self.assertEqual(status, 0)
+        self.assertIn("2 valid probes skipped", output.getvalue())
 
     def test_unknown_or_malformed_skips_fail_closed(self):
         for reason in ("skipped by a hook", "0 valid probe(s) skipped: missing", "two valid probes skipped"):
@@ -84,27 +69,24 @@ class SkippedProbes(unittest.TestCase):
                 self.assertEqual(self.run_gate(reason=reason)[0], 1)
         self.assertEqual(self.run_gate(operation="Unknown")[0], 1)
 
-    def test_invalid_baseline_entries_fail(self):
+    def test_invalid_lost_probe_baseline_entries_fail(self):
         for text in ("getThings 0", "getThings -1", "missing 2", "getThings 2\ngetThings 2", "getThings"):
             with self.subTest(text=text):
-                self.baseline.write_text(text)
-                self.assertEqual(self.run_gate()[0], 1)
+                self.assertEqual(self.lost("", text)[0], 1)
 
-    def test_empty_baseline_and_no_skips_pass(self):
-        self.baseline.write_text("")
+    def test_no_skips_pass(self):
         self.report.write_text("<testsuite/>")
-        self.assertEqual(gate.gate(self.spec, self.config, self.report, self.coverage, self.baseline), 0)
+        self.assertEqual(gate.gate(self.spec, self.config, self.report, self.coverage), 0)
 
     def test_missing_report_fails(self):
-        self.assertEqual(gate.gate(self.spec, self.config, self.directory / "missing.xml", self.coverage, self.baseline), 1)
+        self.assertEqual(gate.gate(self.spec, self.config, self.directory / "missing.xml", self.coverage), 1)
 
     def lost(self, reported, baseline):
         report = self.write("lost.txt", reported)
         limit = self.write("lost-baseline.txt", baseline)
         self.report.write_text("<testsuite/>")
-        self.baseline.write_text("")
         with contextlib.redirect_stdout(io.StringIO()) as output:
-            status = gate.gate(self.spec, self.config, self.report, self.coverage, self.baseline, limit, report)
+            status = gate.gate(self.spec, self.config, self.report, self.coverage, limit, report)
         return status, output.getvalue()
 
     def test_probes_a_hook_ended_within_the_baseline_pass(self):
@@ -129,10 +111,9 @@ class SkippedProbes(unittest.TestCase):
 
     def test_a_missing_count_of_lost_probes_fails(self):
         self.report.write_text("<testsuite/>")
-        self.baseline.write_text("")
         limit = self.write("lost-baseline.txt", "")
         with contextlib.redirect_stdout(io.StringIO()) as output:
-            status = gate.gate(self.spec, self.config, self.report, self.coverage, self.baseline,
+            status = gate.gate(self.spec, self.config, self.report, self.coverage,
                                limit, self.directory / "absent.txt")
         self.assertEqual(status, 1)
         self.assertIn("absent.txt is missing", output.getvalue())
@@ -165,9 +146,8 @@ class SkippedProbes(unittest.TestCase):
             self.assertTrue(command.strip().startswith('CONTRACT_COVERAGE=1 "$CONTRACT_VERTRAG" run'))
             self.assertIn("--phases coverage", command)
             self.assertIn("--fail-on-skipped-probes", command)
-        self.assertNotIn("tests/contract/skipped-probes-baseline.txt", script)
 
-    def test_without_a_skip_baseline_the_gate_leaves_skips_to_vertrag(self):
+    def test_the_gate_leaves_skips_to_vertrag(self):
         self.report.write_text(
             '<testsuite><testcase name="coverage: /things &gt; Things &gt; 200 · valid probes skipped">'
             '<skipped message="2 valid probe(s) skipped: its example answered 404, documented 200"/>'
@@ -178,7 +158,7 @@ class SkippedProbes(unittest.TestCase):
         self.assertEqual(status, 0, output.getvalue())
         self.assertIn("--fail-on-skipped-probes decides", output.getvalue())
 
-    def test_without_a_skip_baseline_an_unknown_skip_still_fails(self):
+    def test_an_unknown_skip_still_fails(self):
         self.report.write_text(
             '<testsuite><testcase name="coverage: /things &gt; Things &gt; 200 · valid probes skipped">'
             '<skipped message="skipped by a hook"/></testcase></testsuite>'
@@ -187,7 +167,7 @@ class SkippedProbes(unittest.TestCase):
             status = gate.gate(self.spec, self.config, self.report, self.coverage)
         self.assertEqual(status, 1)
 
-    def test_the_command_line_passes_lost_probes_without_a_skip_baseline(self):
+    def test_the_command_line_passes_lost_probes(self):
         limit = self.write("lost-baseline.txt", "createThing 1\n")
         counted = self.write("lost.txt", "createThing\ncreateThing\n")
         self.report.write_text("<testsuite/>")
@@ -196,6 +176,14 @@ class SkippedProbes(unittest.TestCase):
                                 "--lost-probes", str(limit), str(counted)])
         self.assertEqual(status, 1)
         self.assertIn("createThing: 2 > 1", output.getvalue())
+
+    def test_the_command_line_refuses_the_removed_positional_baseline(self):
+        arguments = [str(self.spec), str(self.config), str(self.report), str(self.coverage)]
+        removed = self.write("skipped.txt", "")
+        for extra in ([str(removed)], [str(removed), str(removed), str(removed)]):
+            with self.subTest(extra=len(extra)), contextlib.redirect_stderr(io.StringIO()) as output:
+                self.assertEqual(gate.main(arguments + extra), 2)
+                self.assertIn("Usage:", output.getvalue())
 
 
 if __name__ == "__main__":

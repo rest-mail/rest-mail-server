@@ -2,9 +2,9 @@
 
 Vertrag 0.42.0 sends nothing for a probe whose body a hook changed
 (runner.ErrChangedByHook) or that a hook skipped, and then drops it: it is not in
-the report, the skip count or skipped-probes-baseline.txt. So this watches from
-inside the hook worker. It writes one line, the operationId, per probe ended,
-and gate.py holds the counts to lost-probes-baseline.txt.
+the report or the skip count. So this watches from inside the hook worker. It
+writes one line, the operationId, per probe ended, and gate.py holds the counts
+to lost-probes-baseline.txt.
 
 The coverage process sends a transaction's documented request twice before any
 of its probes: once in the examples phase, which always runs, and once to see
