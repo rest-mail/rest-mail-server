@@ -69,15 +69,6 @@ func (f *spoolFile) whole() (string, error) {
 	return text.String(), err
 }
 
-// opener answers the function that opens the file, and nil for an empty file, as a delivery
-// names a field it does not have.
-func (f *spoolFile) opener() func() io.Reader {
-	if f == nil {
-		return nil
-	}
-	return f.reader
-}
-
 // messageSource is a message as it goes on from this server: the file, with the header field
 // this server stamps in front of it.
 type messageSource struct {
@@ -243,20 +234,13 @@ func (p *parsedMessage) applyHeaders(h pipeline.Headers) {
 	p.inReplyTo = models.ReadableText(strings.Trim(h.InReplyTo, "<>"))
 	// References stays the whitespace-separated list with brackets intact, matching the
 	// historical output contract.
-	p.references = models.ReadableText(strings.Join(h.References, " "))
-	if len(h.From) > 0 {
-		p.senderName = models.ReadableText(h.From[0].Name)
-		p.fromAddr = models.ReadableText(h.From[0].Address)
+	p.references = strings.Join(h.References, " ")
+	if from, ok := h.From.First(); ok {
+		p.senderName = from.Name
+		p.fromAddr = from.Address
 	}
-	p.toList = readableList(bareAddresses(h.To))
-	p.ccList = readableList(bareAddresses(h.Cc))
-}
-
-func readableList(list []string) []string {
-	for i := range list {
-		list[i] = models.ReadableText(list[i])
-	}
-	return list
+	p.toList = bareAddresses(h.To.All())
+	p.ccList = bareAddresses(h.Cc.All())
 }
 
 // onlyWhitespace says whether src holds nothing but what bytes.TrimSpace would remove, reading no

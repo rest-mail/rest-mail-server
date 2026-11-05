@@ -97,7 +97,7 @@ func ParseStream(ctx context.Context, source io.Reader, options StreamOptions) (
 		}
 	} else if s.wantsText(mediaType) {
 		s.email.Body = pipeline.Body{ContentType: mediaType}
-		s.textPart(mediaType, decodedSoFar{entity.Body})
+		s.textPart(mediaType, decodedSoFar{opened.body})
 	} else {
 		content, _ := s.readSized(opened.body, max(options.SourceSize-headerSize, 0))
 		s.email.Body = pipeline.Body{ContentType: mediaType, Content: content}
@@ -170,7 +170,7 @@ func (s *streamParse) walk(mr *multipartReader, mediaType string, depth int) pip
 				s.email.Attachments = append(s.email.Attachments, attachmentOf(filename, partType, "attachment", "", stored))
 			}
 		case s.wantsText(partType):
-			if s.textPart(partType, part.Body) {
+			if s.textPart(partType, part.body) {
 				body.Parts = append(body.Parts, pipeline.Body{ContentType: partType})
 			}
 		default:
