@@ -3595,6 +3595,8 @@ paths:
   /api/v1/accounts/{id}/send-limits:
     get:
       summary: Read effective account send limits
+      description: An inactive account, or one with an inactive account above it in its ownership chain,
+        has no effective limits and answers 409 account_inactive.
       operationId: getAccountSendLimits
       tags:
       - Accounts
@@ -3668,6 +3670,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '413':
           description: 'request_too_large: the body is over the API''s size cap'
           content:
@@ -3709,7 +3717,8 @@ paths:
     put:
       summary: Set account send limits with a two-factor session
       description: All four values are required; zero is unlimited. Owned accounts may only be capped below
-        their owner's live limits. A two-factor person session and mailbox:manage are required. Changes
+        their owner's live limits; an inactive owner has none, and answers 409 account_inactive. A two-factor
+        person session and mailbox:manage are required. Changes
         are audited with the actual actor and session. Domain and server ceilings still apply.
       operationId: setAccountSendLimits
       tags:

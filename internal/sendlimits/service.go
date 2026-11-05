@@ -17,6 +17,11 @@ import (
 const lockKey int64 = 0x73656e646c696d74 // sendlimt; always before audit's lock
 var ErrOwnerCeiling = errors.New("owned account send limits must not exceed the owner's limits")
 
+// ErrAccountInactive is an account, or an account above it in its ownership
+// chain, that is not active. It is the account's state, not a server failure:
+// nothing changes by trying again until someone makes the account active.
+var ErrAccountInactive = errors.New("inactive account in send ownership chain")
+
 type Service struct {
 	Defaults  models.SendLimitValues
 	Domain    models.SendLimitValues
@@ -86,7 +91,7 @@ func (s *Service) accountLayers(db *gorm.DB, id uint) ([]layer, uint, error) {
 			return nil, 0, err
 		}
 		if !m.Active {
-			return nil, 0, errors.New("inactive account in send ownership chain")
+			return nil, 0, ErrAccountInactive
 		}
 		chain = append(chain, m)
 		id = 0

@@ -297,3 +297,75 @@ func TestLayeredConcurrentHumanReleaseSendsOnce(t *testing.T) {
 		t.Fatalf("duplicate released mail: queued %d", queued)
 	}
 }
+
+// An inactive identity is refused for good on SMTP: ReserveSubmission says so
+// with the typed error, and spends no budget, whichever identity is inactive.
+func TestSMTPReservationNamesAnInactiveIdentity(t *testing.T) {
+	cases := map[string]func(owner, child models.Mailbox) (smtpgw.SubmissionAttempt, uint){
+		"sender": func(o, c models.Mailbox) (smtpgw.SubmissionAttempt, uint) {
+			return smtpgw.SubmissionAttempt{AccountID: o.ID, Sender: c.Address}, c.ID
+		},
+		"header sender": func(o, c models.Mailbox) (smtpgw.SubmissionAttempt, uint) {
+			return smtpgw.SubmissionAttempt{AccountID: o.ID, Sender: o.Address, HeaderSender: c.Address}, c.ID
+		},
+		"sender's owner": func(o, c models.Mailbox) (smtpgw.SubmissionAttempt, uint) {
+			return smtpgw.SubmissionAttempt{AccountID: c.ID, Sender: c.Address}, o.ID
+		},
+		"submitting account": func(o, c models.Mailbox) (smtpgw.SubmissionAttempt, uint) {
+			return smtpgw.SubmissionAttempt{AccountID: c.ID, Sender: o.Address}, c.ID
+		},
+	}
+	for name, attempt := range cases {
+		t.Run(name, func(t *testing.T) {
+			db, h, owner, child := layeredSendFixture(t)
+			a, inactive := attempt(owner, child)
+			a.Recipients, a.Remote = 1, "192.0.2.5"
+			if err := db.Model(&models.Mailbox{}).Where("id = ?", inactive).Update("active", false).Error; err != nil {
+				t.Fatal(err)
+			}
+			gateway := smtpgw.NewLimitedStore(db, "", h.layeredLimits).(smtpgw.SubmissionBudget)
+			limited, err := gateway.ReserveSubmission(a)
+			if limited || !errors.Is(err, sendlimits.ErrAccountInactive) {
+				t.Fatalf("limited=%v err=%v, want the inactive refusal", limited, err)
+			}
+			var counters int64
+			if err := db.Model(&models.SendLimitCounter{}).Count(&counters).Error; err != nil {
+				t.Fatal(err)
+			}
+			if counters != 0 {
+				t.Fatalf("a refused submission spent budget: %d counters", counters)
+			}
+		})
+	}
+}
+
+// A due send from an account that has gone inactive fails at once: retrying a
+// refusal that only an administrator can lift would only delay saying so.
+func TestScheduledSendFromInactiveSenderFailsWithoutRetry(t *testing.T) {
+	db, h, owner, child := layeredSendFixture(t)
+	if err := db.Model(&models.Mailbox{}).Where("id = ?", child.ID).Update("active", false).Error; err != nil {
+		t.Fatal(err)
+	}
+	body, err := json.Marshal(sendMessageRequest{From: child.Address, To: []string{"far@remote.test"}, BodyText: "due"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	row := models.ScheduledSend{AccountID: owner.ID, From: child.Address, To: models.JSONB(`["far@remote.test"]`), SendAt: time.Now().Add(-time.Minute), Status: "pending", Request: models.JSONB(body)}
+	if err := db.Create(&row).Error; err != nil {
+		t.Fatal(err)
+	}
+	h.runScheduledSends(context.Background())
+	if err := db.First(&row, row.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if row.Status != "failed" || row.Attempts != 0 {
+		t.Fatalf("status %q after %d attempts (%s), want failed with no retry", row.Status, row.Attempts, row.LastError)
+	}
+	var queued int64
+	if err := db.Model(&models.OutboundQueue{}).Count(&queued).Error; err != nil {
+		t.Fatal(err)
+	}
+	if queued != 0 {
+		t.Fatalf("mail from an inactive sender was queued: %d", queued)
+	}
+}
