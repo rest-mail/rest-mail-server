@@ -43,7 +43,13 @@ class AuthorizationCellHooks(unittest.TestCase):
         )
 
     def test_registered_before_certificate_material_is_generated(self):
-        self.assertEqual(self.registered["requestRecoveryEmail"], ["a_fresh_recovery_address"])
+        # Both give a success an address of its own: this phase's cells by what they
+        # expect, every other run's documented success by its name. Whichever runs
+        # second finds the placeholder gone and leaves the address alone.
+        self.assertEqual(
+            self.registered["requestRecoveryEmail"],
+            ["a_fresh_recovery_address", "a_recovery_request_for_an_address_of_its_own"],
+        )
         certificate_hooks = self.registered["createCertificate"]
         self.assertLess(
             certificate_hooks.index("a_domain_for_the_authorization_certificate"),

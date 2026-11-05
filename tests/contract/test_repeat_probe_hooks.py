@@ -338,13 +338,17 @@ class AliasProbes(AdminAPITestCase):
         self.create_over_the_seeded_alias(self.PATH + " > Create an alias > 201 > application/json", False)
         self.assertEqual(self.server.state["deleted"], [])
 
-    def test_only_the_ownership_phase_turns_on_clearing_leftovers(self):
+    def test_only_the_phases_after_the_gate_turn_on_clearing_leftovers(self):
         script = (Path(__file__).resolve().parents[2] / "tests/contract/run.sh").read_text()
-        self.assertEqual(script.count("export CONTRACT_REMOVE_LEFTOVERS=1"), 1)
-        ownership = script.index("\nownership)\n")
-        next_phase = re.compile(r"^[a-z|* ]+\)$", re.M).search(script, ownership + len("\nownership)\n"))
-        self.assertLess(script.index("export CONTRACT_REMOVE_LEFTOVERS=1"), next_phase.start())
-        self.assertGreater(script.index("export CONTRACT_REMOVE_LEFTOVERS=1"), ownership)
+        phases = re.compile(r"^(gate|authorization|ownership|own-data|teardown|fuzz)\)$", re.M)
+        marks = list(phases.finditer(script))
+        turned_on = []
+        for mark, following in zip(marks, marks[1:] + [None]):
+            body = script[mark.end():following.start() if following else len(script)]
+            if "export CONTRACT_REMOVE_LEFTOVERS=1" in body:
+                turned_on.append(mark.group(1))
+        self.assertEqual(turned_on, ["authorization", "ownership"])
+        self.assertEqual(script.count("export CONTRACT_REMOVE_LEFTOVERS=1"), 2)
 
     def test_leaves_malformed_and_unhostable_addresses_to_the_probe(self):
         for body in ({}, [], {"source_address": ""}, {"source_address": "not-an-email"},

@@ -1399,6 +1399,18 @@ cells. This report does not establish
 that every operation or principal passes. The existing examples and coverage
 gates keep their configuration and exclusions.
 
+The run does not rely on what the gate left. Its creates clear what the gate made
+from the same examples (`a_leftover_to_remove`; `run.sh` sets
+`CONTRACT_REMOVE_LEFTOVERS`, as for the ownership runs). The admin's
+`updateDraft` cell updates a draft made for it, since `saveDraft`'s 201 is not
+sent here. Each documented `requestRecoveryEmail` success asks about an address
+of its own, since the server allows five requests an address every 15 minutes. The
+documented `retryQueueEntry` refusal retries an entry bounced for it, and an upload
+whose run's domain `deleteDomain` removed goes to a domain of its own. Coverage
+probes of `updateMailbox` go to a mailbox made for them, so their generated
+password never replaces the one `linkAccount`'s example proves on
+`eve@restmail.test`.
+
 Run the matrix locally after the examples and coverage gates. vertrag always
 runs examples first, even with `--phases authorization`; this diagnostic run
 repeats them with lifecycle ordering, then sends the matrix. Both can repeat

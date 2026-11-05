@@ -27,6 +27,8 @@ class ContractCertificateHookTests(unittest.TestCase):
         self.module = importlib.util.module_from_spec(spec)
         with patch.dict(sys.modules, {"vertrag_hooks": hooks}):
             spec.loader.exec_module(self.module)
+        # The run's domain still stands unless a test says otherwise.
+        self.module.fixture_call = lambda *args, **kwargs: {"id": 17}
 
     def transaction(self, body):
         return {
@@ -54,6 +56,35 @@ class ContractCertificateHookTests(unittest.TestCase):
                     self.module.a_self_signed_certificate(transaction)
                     self.assertEqual(transaction, before)
             openssl.assert_not_called()
+
+    def test_upload_moves_to_its_own_domain_once_the_run_has_deleted_its_own(self):
+        calls = []
+
+        def fixture_call(transaction, method, path, *args, **kwargs):
+            calls.append((method, path))
+            if method == "GET":
+                return None
+            return {"id": 99, "name": args[0]["name"]}
+
+        def generate(*args):
+            Path(args[args.index("-keyout") + 1]).write_text("fresh key")
+            Path(args[args.index("-out") + 1]).write_text("fresh certificate")
+
+        for _ in range(2):
+            transaction = self.transaction(
+                {"domain_id": 1, "cert_pem": "certificate", "key_pem": "key"}
+            )
+            with (
+                patch.object(self.module, "fixture_call", side_effect=fixture_call),
+                patch.object(self.module, "certificate_name_for", return_value="n.test"),
+                patch.object(self.module, "openssl", side_effect=generate),
+            ):
+                self.module.a_self_signed_certificate(transaction)
+            self.assertEqual(json.loads(transaction["request"]["body"])["domain_id"], 99)
+        self.assertEqual(
+            [call for call in calls if call[0] == "POST"],
+            [("POST", "/api/v1/admin/domains")],
+        )
 
     def test_valid_upload_gets_fresh_pem_and_the_created_domain(self):
         transaction = self.transaction(
