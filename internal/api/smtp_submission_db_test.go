@@ -149,20 +149,18 @@ func startSubmission(t *testing.T, db *gorm.DB, router http.Handler) (*apiclient
 	rootCAs := x509.NewCertPool()
 	rootCAs.AddCert(certSrv.Certificate())
 
-	free, err := net.Listen("tcp", "127.0.0.1:0")
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
-		t.Fatalf("find a free port: %v", err)
+		t.Fatalf("open the submission port: %v", err)
 	}
-	port := free.Addr().(*net.TCPAddr).Port
-	_ = free.Close()
 	gateway := smtpgw.NewServer("mail.example.test", api,
 		&tls.Config{Certificates: certSrv.TLS.Certificates, MinVersion: tls.VersionTLS12},
 		smtpgw.NewStore(db, ""), connlimiter.New(connlimiter.Config{MaxPerIP: 100, MaxGlobal: 100}))
-	if err := gateway.ListenAndServe(smtpgw.SMTPPorts{SubmissionTLS: port}); err != nil {
+	if err := gateway.Serve(smtpgw.SMTPListeners{SubmissionTLS: listener}); err != nil {
 		t.Fatalf("start the SMTP gateway: %v", err)
 	}
 	t.Cleanup(gateway.Shutdown)
-	return api, fmt.Sprintf("127.0.0.1:%d", port), rootCAs
+	return api, listener.Addr().String(), rootCAs
 }
 
 // dial opens a submission session signed in as address with password.

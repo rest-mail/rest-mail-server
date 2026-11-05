@@ -83,6 +83,30 @@ func (s *Server) ListenAndServe(ports Ports) error {
 	return nil
 }
 
+// Listeners are listeners the caller has already opened, one per IMAP service.
+// A nil listener is skipped.
+type Listeners struct {
+	IMAP    net.Listener // STARTTLS
+	IMAPTLS net.Listener // implicit TLS; [Server.Serve] adds the TLS layer
+}
+
+// Serve is [Server.ListenAndServe] for listeners the caller has already opened,
+// so the caller can know the address before the server starts, with no gap in
+// which another process could take the port. It returns at once; connections
+// are served in the background. The server owns the listeners from here on, and
+// [Server.Shutdown] or [Server.Close] closes them.
+func (s *Server) Serve(listeners Listeners) {
+	if listeners.IMAP != nil {
+		s.serve(listeners.IMAP, false)
+	}
+	if listener := listeners.IMAPTLS; listener != nil {
+		if s.tlsConfig != nil {
+			listener = tls.NewListener(listener, s.tlsConfig)
+		}
+		s.serve(listener, true)
+	}
+}
+
 func (s *Server) listen(port int, implicitTLS bool) error {
 	addr := fmt.Sprintf(":%d", port)
 	var listener net.Listener
@@ -102,6 +126,11 @@ func (s *Server) listen(port int, implicitTLS bool) error {
 		slog.Info("imap: listening", "port", port)
 	}
 
+	s.serve(listener, implicitTLS)
+	return nil
+}
+
+func (s *Server) serve(listener net.Listener, implicitTLS bool) {
 	s.mu.Lock()
 	s.listeners = append(s.listeners, listener)
 	s.mu.Unlock()
@@ -111,8 +140,6 @@ func (s *Server) listen(port int, implicitTLS bool) error {
 		defer s.wg.Done()
 		s.acceptLoop(listener, implicitTLS)
 	}()
-
-	return nil
 }
 
 func (s *Server) acceptLoop(listener net.Listener, implicitTLS bool) {

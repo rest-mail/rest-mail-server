@@ -124,15 +124,17 @@ func Prove(t *testing.T, host string, p *Pair, connect func(t *testing.T) tls.Co
 	}
 }
 
-// FreePort returns a loopback TCP port that was free a moment ago.
-func FreePort(t *testing.T) int {
+// Listen opens a listener on a free loopback port, for a server to take over,
+// and returns it with its port. It stays open, so nothing else can take the
+// port before the server starts serving it.
+func Listen(t *testing.T) (net.Listener, int) {
 	t.Helper()
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = l.Close() }()
-	return l.Addr().(*net.TCPAddr).Port
+	t.Cleanup(func() { _ = l.Close() })
+	return l, l.Addr().(*net.TCPAddr).Port
 }
 
 // Step is one exchange of a cleartext protocol dialogue: Send (if not empty)

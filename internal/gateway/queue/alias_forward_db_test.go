@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/smtp"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -103,14 +102,12 @@ func TestAliasForwardDeliveryAndSigning(t *testing.T) {
 					if err != nil {
 						t.Fatal(err)
 					}
-					port := listener.Addr().(*net.TCPAddr).Port
-					listener.Close()
 					gateway := smtpgateway.NewServer("mx."+domain, apiclient.New(apiServer.URL), nil, smtpgateway.NewStore(database, relayRouteMasterKey), connlimiter.New(connlimiter.Config{}))
-					if err := gateway.ListenAndServe(smtpgateway.SMTPPorts{Inbound: port}); err != nil {
+					if err := gateway.Serve(smtpgateway.SMTPListeners{Inbound: listener}); err != nil {
 						t.Fatal(err)
 					}
 					t.Cleanup(gateway.Shutdown)
-					client, err := smtp.Dial(net.JoinHostPort("127.0.0.1", strconv.Itoa(port)))
+					client, err := smtp.Dial(listener.Addr().String())
 					if err != nil {
 						t.Fatal(err)
 					}

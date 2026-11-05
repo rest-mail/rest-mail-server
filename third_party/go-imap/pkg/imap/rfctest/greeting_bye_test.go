@@ -3,7 +3,6 @@ package rfctest
 import (
 	"bufio"
 	"context"
-	"fmt"
 	"io"
 	"net"
 	"strings"
@@ -34,25 +33,21 @@ func (l *refuseLimiter) ResetAuth(string)      {}
 //
 // checklist: IMAP-GREET-02
 func TestGreetingByeOnRefusal(t *testing.T) {
-	probe, err := net.Listen("tcp", "127.0.0.1:0")
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("listen: %v", err)
 	}
-	port := probe.Addr().(*net.TCPAddr).Port
-	_ = probe.Close()
 
 	limiter := &refuseLimiter{}
 	srv := server.New("imap.test", &backend{}, nil, limiter)
-	if err := srv.ListenAndServe(server.Ports{IMAP: port}); err != nil {
-		t.Fatalf("ListenAndServe: %v", err)
-	}
+	srv.Serve(server.Listeners{IMAP: listener})
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		_ = srv.Shutdown(ctx)
 	})
 
-	conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), 2*time.Second)
+	conn, err := net.DialTimeout("tcp", listener.Addr().String(), 2*time.Second)
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}

@@ -22,11 +22,9 @@ func TestPOP3ListenersServeRenewedCertificate(t *testing.T) {
 	pair := reloadtest.New(t, host)
 	api := httptest.NewServer(http.NotFoundHandler())
 	t.Cleanup(api.Close)
-	srv := pop3server.New(NewBackend(apiclient.New(api.URL), nil), pair.Config, nil)
-	ports := pop3server.Ports{POP3: reloadtest.FreePort(t), POP3TLS: reloadtest.FreePort(t)}
-	if err := srv.ListenAndServe(ports); err != nil {
-		t.Fatal(err)
-	}
+	srv, ports := serveOnFreePorts(t, true, func() *pop3server.Server {
+		return pop3server.New(NewBackend(apiclient.New(api.URL), nil), pair.Config, nil)
+	})
 	t.Cleanup(func() { _ = srv.Shutdown(context.Background()) })
 
 	t.Run("STLS", func(t *testing.T) {
