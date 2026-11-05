@@ -10,9 +10,7 @@ import (
 	"time"
 
 	"github.com/rest-mail/rest-mail-server/internal/auth"
-	"github.com/rest-mail/rest-mail-server/internal/bootstrap"
 	"github.com/rest-mail/rest-mail-server/internal/crypto"
-	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/db/repositories"
 	"github.com/rest-mail/rest-mail-server/internal/grants"
@@ -27,10 +25,10 @@ func openAccountsTestDB(t *testing.T) *gorm.DB {
 	if err := migrateModels(db, &models.QuotaUsage{}, &models.RefreshToken{}); err != nil {
 		t.Skipf("accounts DB test skipped: migrate failed (%v)", err)
 	}
-	if err := rmdb.MigrateAuditLog(db); err != nil {
+	if err := migrateAuditLog(db); err != nil {
 		t.Skipf("accounts DB test skipped: audit log migrate failed (%v)", err)
 	}
-	if err := bootstrap.EnsureRBAC(db); err != nil {
+	if err := ensureRBAC(db); err != nil {
 		t.Fatalf("EnsureRBAC: %v", err)
 	}
 	return db

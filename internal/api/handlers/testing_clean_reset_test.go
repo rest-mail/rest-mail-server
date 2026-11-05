@@ -15,7 +15,6 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
 	"github.com/rest-mail/rest-mail-server/internal/api/middleware"
 	"github.com/rest-mail/rest-mail-server/internal/auth"
-	"github.com/rest-mail/rest-mail-server/internal/bootstrap"
 	"github.com/rest-mail/rest-mail-server/internal/config"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/grants"
@@ -26,13 +25,7 @@ import (
 
 func cleanResetFixture(t *testing.T) (*gorm.DB, *TestHandler, models.Mailbox) {
 	t.Helper()
-	db := openAliasUpdateScratchDB(t)
-	if err := migrateSchema(db); err != nil {
-		t.Fatal(err)
-	}
-	if err := bootstrap.EnsureRBAC(db); err != nil {
-		t.Fatal(err)
-	}
+	db := openAliasUpdateScratchDB(t, withFullSchema, withRoles)
 	domain := models.Domain{Name: "control.test", Active: true}
 	if err := db.Create(&domain).Error; err != nil {
 		t.Fatal(err)

@@ -12,7 +12,6 @@ import (
 
 	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
 	"github.com/rest-mail/rest-mail-server/internal/auth"
-	"github.com/rest-mail/rest-mail-server/internal/bootstrap"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	smtpgw "github.com/rest-mail/rest-mail-server/internal/gateway/smtp"
 	"github.com/rest-mail/rest-mail-server/internal/grants"
@@ -26,7 +25,7 @@ func layeredSendFixture(t *testing.T) (*gorm.DB, *MessageHandler, models.Mailbox
 	if err := migrateModels(db, &models.SendLimitPolicy{}, &models.SendLimitCounter{}, &models.SendLimitNotice{}, &models.ScheduledSend{}, &models.AuditEntry{}, &models.Role{}, &models.Capability{}, &models.RoleCapability{}, &models.Grant{}, &models.GrantActivation{}, &models.Credential{}); err != nil {
 		t.Fatal(err)
 	}
-	if err := bootstrap.EnsureRBAC(db); err != nil {
+	if err := ensureRBAC(db); err != nil {
 		t.Fatal(err)
 	}
 	domain := models.Domain{Name: "layered.example.test", Active: true}

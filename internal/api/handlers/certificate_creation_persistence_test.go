@@ -26,10 +26,7 @@ import (
 // The scratch database is verified before migrations or writes. These cases
 // check the persisted default and rollback, not just controlled SQL bindings.
 func TestCertificateCreationPersistence(t *testing.T) {
-	db := openCustomFilterCreateScratchDB(t)
-	if err := migrateModels(db, &models.Certificate{}); err != nil {
-		t.Fatal(err)
-	}
+	db := openCustomFilterCreateScratchDB(t, &models.Certificate{})
 	const master = "public-test-certificate-persistence-master"
 	key, err := os.ReadFile("../../../tests/contract/fixtures/dkim-key.pem")
 	if err != nil {

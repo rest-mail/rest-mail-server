@@ -17,10 +17,7 @@ import (
 
 func certificateReadFixture(t *testing.T) (*gorm.DB, models.Certificate) {
 	t.Helper()
-	db := openCustomFilterCreateScratchDB(t)
-	if err := migrateModels(db, &models.Certificate{}); err != nil {
-		t.Fatal(err)
-	}
+	db := openCustomFilterCreateScratchDB(t, &models.Certificate{})
 	domain := models.Domain{Name: "certificate-read.test"}
 	if err := db.Create(&domain).Error; err != nil {
 		t.Fatal(err)

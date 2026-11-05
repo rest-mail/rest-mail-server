@@ -20,10 +20,7 @@ import (
 func openDomainMutationScratchDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	// Reuse the allocator that verifies a fresh database identity before writes.
-	db := openCustomFilterCreateScratchDB(t)
-	if err := migrateModels(db, &models.Pipeline{}, &models.Certificate{}); err != nil {
-		t.Fatal(err)
-	}
+	db := openCustomFilterCreateScratchDB(t, &models.Pipeline{}, &models.Certificate{})
 	return db
 }
 

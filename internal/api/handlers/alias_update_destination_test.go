@@ -6,71 +6,29 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"reflect"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/go-chi/chi/v5"
-	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"gorm.io/gorm"
 )
 
-// Never use the shared test pool: even migrations and fixtures belong only in
-// a fresh scratch database, whose identity is checked before any writes.
-func openAliasUpdateScratchDB(t *testing.T) *gorm.DB {
+// aliasTables are the tables every alias scratch database starts with. The composite
+// index matches the production migration, which creates it separately from the
+// model's field tags.
+var aliasTables = scratchStep{"alias-tables", func(db *gorm.DB) error {
+	if err := db.AutoMigrate(&models.Domain{}, &models.Alias{}); err != nil {
+		return err
+	}
+	return db.Exec("CREATE UNIQUE INDEX idx_aliases_source_dest ON aliases(source_address, destination_address)").Error
+}}
+
+// openAliasUpdateScratchDB is a scratch database with the domain and alias tables, then setup.
+func openAliasUpdateScratchDB(t *testing.T, setup ...any) *gorm.DB {
 	t.Helper()
-	cfg := testDBConfig()
-	cfg.DBName = "postgres"
-	admin, err := rmdb.Connect(cfg)
-	if err != nil {
-		t.Skipf("alias update DB test: admin database unavailable: %v", err)
-	}
-	adminSQL, err := admin.DB()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = adminSQL.Close() })
-	var current string
-	if err := admin.Raw("SELECT current_database()").Scan(&current).Error; err != nil || current != "postgres" {
-		t.Fatalf("admin database identity = %q, err = %v", current, err)
-	}
-	name := fmt.Sprintf("restmail_aliasupdate_%d_%d", os.Getpid(), time.Now().UnixNano())
-	if err := admin.Exec("CREATE DATABASE " + name).Error; err != nil {
-		t.Fatalf("create isolated scratch database: %v", err)
-	}
-	t.Cleanup(func() {
-		if err := admin.Exec("DROP DATABASE " + name).Error; err != nil {
-			t.Errorf("drop scratch database: %v", err)
-		} else {
-			t.Logf("dropped isolated scratch database %s", name)
-		}
-	})
-	cfg.DBName = name
-	scratch, err := rmdb.Connect(cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	scratchSQL, err := scratch.DB()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = scratchSQL.Close() })
-	if err := scratch.Raw("SELECT current_database()").Scan(&current).Error; err != nil || current != name {
-		t.Fatalf("scratch database identity = %q, want %q, err = %v", current, name, err)
-	}
-	t.Logf("verified isolated scratch database %s before migrations/writes", current)
-	if err := migrateModels(scratch, &models.Domain{}, &models.Alias{}); err != nil {
-		t.Fatal(err)
-	}
-	// Match the production migration, which creates this composite index
-	// separately from the model's field tags.
-	if err := scratch.Exec("CREATE UNIQUE INDEX idx_aliases_source_dest ON aliases(source_address, destination_address)").Error; err != nil {
-		t.Fatal(err)
-	}
-	return scratch
+	return openScratchDB(t, "aliasupdate", append([]any{aliasTables}, setup...))
 }
 
 // patchAlias sends body to the alias update handler as PATCH /admin/aliases/{id}.

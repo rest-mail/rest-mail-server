@@ -80,10 +80,7 @@ func TestMayReachBoundsAppPasswordByServerCeiling(t *testing.T) {
 // password or the account's password, and reads again once it is restored.
 // The global superadmin is exempt throughout.
 func TestMayReachAppliesServerCeilingToOpenSessions(t *testing.T) {
-	db := openAliasUpdateScratchDB(t)
-	if err := migrateModels(db, accountModels...); err != nil {
-		t.Fatal(err)
-	}
+	db := openAliasUpdateScratchDB(t, accountModels...)
 	ensureDefaultServerCeiling(t, db)
 
 	domain := models.Domain{Name: "ceiling-session.test", Active: true}

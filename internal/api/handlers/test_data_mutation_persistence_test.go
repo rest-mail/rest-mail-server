@@ -17,10 +17,7 @@ func TestTestDataMutationPersistence(t *testing.T) {
 	// This helper verifies a freshly created scratch database before migrations
 	// or writes. Missing optional tables intentionally exercise PostgreSQL's
 	// aborted-transaction recovery through the cleanup savepoints.
-	db := openAliasUpdateScratchDB(t)
-	if err := migrateModels(db, &models.Mailbox{}, &models.Credential{}, &models.QuotaUsage{}, &models.Role{}, &models.Grant{}, &models.Pipeline{}, &models.Quarantine{}, &models.DomainSenderRule{}); err != nil {
-		t.Fatal(err)
-	}
+	db := openAliasUpdateScratchDB(t, &models.Mailbox{}, &models.Credential{}, &models.QuotaUsage{}, &models.Role{}, &models.Grant{}, &models.Pipeline{}, &models.Quarantine{}, &models.DomainSenderRule{})
 	seedReceiveFixture(t, db)
 	domain := models.Domain{Name: "admin.test", Active: true}
 	if err := db.Create(&domain).Error; err != nil {

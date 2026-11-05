@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rest-mail/rest-mail-server/internal/bootstrap"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/grants"
 )
@@ -38,7 +37,7 @@ var draftRecipientAnswers = []struct {
 
 func TestDraftFields(t *testing.T) {
 	db := openAuthzTestDB(t)
-	if err := bootstrap.EnsureRBAC(db); err != nil {
+	if err := ensureRBAC(db); err != nil {
 		t.Fatal(err)
 	}
 	tx := db.Begin()

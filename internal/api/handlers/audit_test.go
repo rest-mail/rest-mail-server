@@ -43,7 +43,7 @@ func openAuditTestDB(t *testing.T) *gorm.DB {
 		}
 		admin.Exec("DROP DATABASE IF EXISTS " + name)
 	})
-	if err := rmdb.MigrateAuditLog(scratch); err != nil {
+	if err := migrateAuditLog(scratch); err != nil {
 		t.Fatalf("migrate the audit log: %v", err)
 	}
 	return scratch

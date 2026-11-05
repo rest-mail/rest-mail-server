@@ -126,7 +126,7 @@ func newPushEnv(t *testing.T) *pushEnv {
 	}
 	// Device changes are audited, and the log cannot be emptied: everything
 	// happens in a transaction the test rolls back.
-	if err := rmdb.MigrateAuditLog(db); err != nil {
+	if err := migrateAuditLog(db); err != nil {
 		t.Skipf("push DB test skipped: audit log migrate failed (%v)", err)
 	}
 	if err := rmdb.MigrateQuietNotifications(db); err != nil {

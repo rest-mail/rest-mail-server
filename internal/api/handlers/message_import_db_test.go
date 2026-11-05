@@ -17,7 +17,6 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
 	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
 	"github.com/rest-mail/rest-mail-server/internal/auth"
-	"github.com/rest-mail/rest-mail-server/internal/bootstrap"
 	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/grants"
@@ -65,10 +64,10 @@ func importProofDB(t *testing.T) *gorm.DB {
 	if err := migrateModels(db, append(accountModels, &models.Message{}, &models.Attachment{})...); err != nil {
 		t.Fatal(err)
 	}
-	if err := rmdb.MigrateAuditLog(db); err != nil {
+	if err := migrateAuditLog(db); err != nil {
 		t.Fatal(err)
 	}
-	if err := bootstrap.EnsureRBAC(db); err != nil {
+	if err := ensureRBAC(db); err != nil {
 		t.Fatal(err)
 	}
 	return db

@@ -77,10 +77,7 @@ func TestInboundTransportSecurity_QueryDoesNotReadMessageContent(t *testing.T) {
 }
 
 func TestTypedAuthMigrationPreservesLegacyRows(t *testing.T) {
-	database := openAliasUpdateScratchDB(t)
-	if err := migrateModels(database, &models.Message{}); err != nil {
-		t.Fatal(err)
-	}
+	database := openAliasUpdateScratchDB(t, &models.Message{})
 	if err := database.Migrator().DropColumn(&models.Message{}, "AuthResults"); err != nil {
 		t.Fatal(err)
 	}

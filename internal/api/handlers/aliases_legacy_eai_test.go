@@ -13,10 +13,7 @@ import (
 )
 
 func TestLegacyAliasEAIClaims(t *testing.T) {
-	db := openAliasUpdateScratchDB(t)
-	if err := migrateModels(db, &models.Mailbox{}); err != nil {
-		t.Fatal(err)
-	}
+	db := openAliasUpdateScratchDB(t, &models.Mailbox{})
 	domain := models.Domain{Name: "xn--stdte-hra.test", Active: true}
 	other := models.Domain{Name: "other.test", Active: true}
 	for _, d := range []*models.Domain{&domain, &other} {
@@ -138,10 +135,7 @@ func TestLegacyAliasEAIClaimPolicies(t *testing.T) {
 }
 
 func TestAliasClaimLookupFailureBlocksPlusFallback(t *testing.T) {
-	db := openAliasUpdateScratchDB(t)
-	if err := migrateModels(db, &models.Mailbox{}); err != nil {
-		t.Fatal(err)
-	}
+	db := openAliasUpdateScratchDB(t, &models.Mailbox{})
 	domain := models.Domain{Name: "aliases.test", Active: true}
 	if err := db.Create(&domain).Error; err != nil {
 		t.Fatal(err)

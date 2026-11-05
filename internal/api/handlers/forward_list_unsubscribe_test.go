@@ -11,8 +11,6 @@ import (
 
 	oapifly "github.com/antimatter-studios/go-oapifly"
 	"github.com/rest-mail/rest-mail-server/internal/auth"
-	"github.com/rest-mail/rest-mail-server/internal/bootstrap"
-	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 )
 
@@ -49,10 +47,10 @@ func TestForward_FollowsTheDomainSendingPolicy(t *testing.T) {
 	if err := migrateModels(h.db, &models.Attachment{}); err != nil {
 		t.Skipf("forward test skipped: migrate failed (%v)", err)
 	}
-	if err := rmdb.MigrateAuditLog(h.db); err != nil {
+	if err := migrateAuditLog(h.db); err != nil {
 		t.Skipf("forward test skipped: audit log migrate failed (%v)", err)
 	}
-	if err := bootstrap.EnsureRBAC(h.db); err != nil {
+	if err := ensureRBAC(h.db); err != nil {
 		t.Fatalf("seed the roles: %v", err)
 	}
 	// The account owns its mailbox, so it may read its mail and send from it.

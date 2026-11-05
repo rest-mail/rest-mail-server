@@ -13,8 +13,6 @@ import (
 	dkim "github.com/rest-mail/go-dkim/pkg/dkim"
 	"github.com/rest-mail/rest-mail-server/internal/api/middleware"
 	"github.com/rest-mail/rest-mail-server/internal/auth"
-	"github.com/rest-mail/rest-mail-server/internal/bootstrap"
-	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"gorm.io/gorm"
 )
@@ -287,10 +285,10 @@ func seedOwnedSendingMailbox(t *testing.T, db *gorm.DB, domain, local string) mo
 	if err := migrateModels(db, accountModels...); err != nil {
 		t.Skipf("list-unsubscribe send test skipped: migrate failed (%v)", err)
 	}
-	if err := rmdb.MigrateAuditLog(db); err != nil {
+	if err := migrateAuditLog(db); err != nil {
 		t.Skipf("list-unsubscribe send test skipped: audit log migrate failed (%v)", err)
 	}
-	if err := bootstrap.EnsureRBAC(db); err != nil {
+	if err := ensureRBAC(db); err != nil {
 		t.Fatalf("seed the roles: %v", err)
 	}
 	mb := seedSendingMailbox(t, db, domain, local)

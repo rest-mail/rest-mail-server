@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"sync"
 	"testing"
 
 	"github.com/rest-mail/rest-mail-server"
@@ -105,19 +106,29 @@ func requestExamples(t *testing.T, path, operationID, method string) (map[string
 	return operationExamples(t, path, method, operationID)
 }
 
-func operationExamples(t *testing.T, path, method, operationID string) (map[string]interface{}, map[string]map[string]interface{}) {
-	t.Helper()
+// specPaths is the spec's paths, parsed once: over 100 tests read an operation from it and
+// none changes it, and parsing all of it each time was most of what they did.
+var specPaths = sync.OnceValues(func() (map[string]map[string]interface{}, error) {
 	served, err := restmail.OpenAPI.ReadFile("openapi.yaml")
 	if err != nil {
-		t.Fatalf("read the spec: %v", err)
+		return nil, err
 	}
 	var doc struct {
 		Paths map[string]map[string]interface{} `yaml:"paths"`
 	}
 	if err := yaml.Unmarshal(served, &doc); err != nil {
-		t.Fatalf("parse: %v", err)
+		return nil, err
 	}
-	encoded, err := yaml.Marshal(doc.Paths[path][method])
+	return doc.Paths, nil
+})
+
+func operationExamples(t *testing.T, path, method, operationID string) (map[string]interface{}, map[string]map[string]interface{}) {
+	t.Helper()
+	paths, err := specPaths()
+	if err != nil {
+		t.Fatalf("read the spec: %v", err)
+	}
+	encoded, err := yaml.Marshal(paths[path][method])
 	if err != nil {
 		t.Fatal(err)
 	}
