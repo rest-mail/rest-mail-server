@@ -23,42 +23,47 @@ func TestEnvelopeMalformedHeaders(t *testing.T) {
 	}
 }
 
-// TestFetchRejectsNUL refuses prohibited CHAR8 NUL in raw messages and in
-// decoded envelope/MIME strings before any response fragments or Seen writes.
-// Metadata-only FLAGS remains usable and a later valid raw-message fetch works.
+// TestFetchReplacesNUL sends a space for a NUL in a raw message, and for one decoded
+// into an ENVELOPE or BODYSTRUCTURE string, in place of the CHAR8 that RFC 3501 §9
+// excludes. Nothing is refused, flags follow the usual rules, and the stored octets
+// stay as they were.
 //
 // checklist: IMAP-ENV-12
-func TestFetchRejectsNUL(t *testing.T) {
-	for _, raw := range []string{
-		"Subject: a\x00b\r\n\r\nbody",
-		"To: =?utf-8?Q?a=00b?= <a@example.com>\r\n\r\nbody",
-		"To: =?utf-8?Q?=C3=A9=00?= <a@example.com>\r\n\r\nbody",
-		"Content-Type: text/plain; name*=utf-8''%C3%A9%00\r\n\r\nbody",
-		"Content-Type: text/plain; name*=utf-8''a%00b\r\n\r\nbody",
-		"Subject: header\r\n\r\na\x00b",
-		"To: =?utf-8?Q?a=00b?=:;\r\n\r\nbody",
-		"Content-Type: message/rfc822\r\n\r\nTo: =?utf-8?Q?a=00b?= <a@example.com>\r\n\r\nbody",
+func TestFetchReplacesNUL(t *testing.T) {
+	for _, tc := range []struct{ raw, want string }{
+		{"Subject: a\x00b\r\n\r\nbody", `"a b"`},
+		{"To: =?utf-8?Q?a=00b?= <a@example.com>\r\n\r\nbody", `(("a b" NIL "a" "example.com"))`},
+		{"To: =?utf-8?Q?=C3=A9=00?= <a@example.com>\r\n\r\nbody", `(("=?UTF-8?Q?=C3=A9_?=" NIL "a" "example.com"))`},
+		{"Content-Type: text/plain; name*=utf-8''%C3%A9%00\r\n\r\nbody", `"NAME" "=?UTF-8?Q?=C3=A9_?=")`},
+		{"Content-Type: text/plain; name*=utf-8''a%00b\r\n\r\nbody", `"NAME" "a b")`},
+		{"Subject: header\r\n\r\na\x00b", `"header"`},
+		{"To: =?utf-8?Q?a=00b?=:;\r\n\r\nbody", `"a b"`},
+		{"Content-Type: message/rfc822\r\n\r\nTo: =?utf-8?Q?a=00b?= <a@example.com>\r\n\r\nbody", `(("a b" NIL "a" "example.com"))`},
 	} {
 		for _, selection := range []string{"SELECT", "EXAMINE"} {
 			for _, prefix := range []string{"FETCH 1", "UID FETCH 10"} {
-				t.Run(fmt.Sprintf("%q/%s/%s", raw, selection, prefix), func(t *testing.T) {
-					box := envelopeFixture(raw)
+				t.Run(fmt.Sprintf("%q/%s/%s", tc.raw, selection, prefix), func(t *testing.T) {
+					box := envelopeFixture(tc.raw)
 					c := fetchClient(t, box, selection)
 					replies, tagged := fetchCommand(t, c, prefix+" (BODY[] ENVELOPE BODYSTRUCTURE)")
-					if len(replies) != 0 || !strings.HasPrefix(tagged, "F1 NO ") {
-						t.Fatalf("NUL response: %#v %q", replies, tagged)
-					}
-					if len(box.updates) != 0 {
-						t.Fatalf("NUL set Seen: %v", box.updates)
-					}
-					lines, tagged := c.command("N1", "FETCH 1 FLAGS")
-					requireOK(t, tagged, "N1")
-					requireExactly(t, lines, "* 1 FETCH (UID 10 FLAGS ())")
-					box.raw[10] = "Subject: recovered\r\n\r\nbody"
-					replies, tagged = fetchCommand(t, c, prefix+" ENVELOPE")
 					requireOK(t, tagged, "F1")
-					if len(replies) != 1 || !strings.Contains(replies[0].framing, `"recovered"`) {
-						t.Fatalf("recovery: %#v", replies)
+					if len(replies) != 1 || len(replies[0].literals) != 1 {
+						t.Fatalf("NUL response: %#v", replies)
+					}
+					if !strings.Contains(replies[0].framing, tc.want) {
+						t.Fatalf("%q lacks %q", replies[0].framing, tc.want)
+					}
+					if strings.IndexByte(replies[0].framing, 0) >= 0 {
+						t.Fatalf("a NUL reached the client: %q", replies[0].framing)
+					}
+					if got, want := replies[0].literals[0], strings.ReplaceAll(tc.raw, "\x00", " "); got != want {
+						t.Fatalf("BODY[] = %q, want %q", got, want)
+					}
+					if box.raw[10] != tc.raw {
+						t.Fatalf("stored octets changed: %q", box.raw[10])
+					}
+					if read := len(box.updates) != 0; read != (selection == "SELECT") {
+						t.Fatalf("%s set Seen: %v", selection, box.updates)
 					}
 				})
 			}
