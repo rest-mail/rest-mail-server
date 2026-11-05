@@ -171,9 +171,11 @@ jobs:
           openssl req -x509 -nodes -newkey rsa:2048 -days 2 -subj "/CN=restmail-ci run CA" \
             -addext "basicConstraints=critical,CA:TRUE" -addext "keyUsage=critical,keyCertSign,cRLSign" \
             -keyout ca.key -out ca.crt
-          issue() { # issue <namespace> <secret> <mail host>
+          # It names the mail domain too: the API takes a domain's certificate only
+          # if it names the domain (#1715), and restmail-peer uploads this one.
+          issue() { # issue <namespace> <secret> <mail host> <mail domain>
             kubectl create namespace "$1"
-            printf '%s\n' "subjectAltName=DNS:$3,DNS:$RELEASE-postgres,DNS:$RELEASE-postgres.$1.svc" \
+            printf '%s\n' "subjectAltName=DNS:$3,DNS:$4,DNS:$RELEASE-postgres,DNS:$RELEASE-postgres.$1.svc" \
               "basicConstraints=CA:FALSE" "keyUsage=critical,digitalSignature,keyEncipherment" \
               "extendedKeyUsage=serverAuth" "subjectKeyIdentifier=hash" "authorityKeyIdentifier=keyid" > "$2.ext"
             openssl req -nodes -newkey rsa:2048 -subj "/CN=$3" -keyout "$2.key" -out "$2.csr"
@@ -182,8 +184,8 @@ jobs:
             kubectl -n "$1" create secret generic "$2" --type=kubernetes.io/tls \
               --from-file=tls.crt="$2.crt" --from-file=tls.key="$2.key" --from-file=ca.crt=ca.crt
           }
-          issue "$NAMESPACE" restmail-ci-tls "$INGRESS_HOST"
-          issue "$PEER_NAMESPACE" restmail-ci2-tls "$PEER_MAIL_HOST"
+          issue "$NAMESPACE" restmail-ci-tls "$INGRESS_HOST" "$MAIL_DOMAIN"
+          issue "$PEER_NAMESPACE" restmail-ci2-tls "$PEER_MAIL_HOST" "$PEER_MAIL_DOMAIN"
           rm ca.key
 
       # Its admission webhook must answer before the chart's Ingress is made.
