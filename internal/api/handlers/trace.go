@@ -54,17 +54,26 @@ func terminalStep(result *pipeline.ExecutionResult) *pipeline.StepResult {
 	return &result.Steps[len(result.Steps)-1]
 }
 
-// errGreylisted is a delivery the greylist step held back. It reads as any other
-// deferral to a caller that does not ask, and the deliver route names it, so the
-// sending server's queue can retry on its greylisting schedule.
-var errGreylisted = errors.New("deferred: greylisted, try again later")
+// errGreylisted and errRateLimited are a delivery the greylist or rate_limit step
+// held back. Each reads as any other deferral to a caller that does not ask, and the
+// delivery routes name it, so the sending server's queue can retry on the schedule
+// for that reason.
+var (
+	errGreylisted  = errors.New("deferred: greylisted, try again later")
+	errRateLimited = errors.New("deferred: rate limited, try again later")
+)
 
-// deferredError is the error of a delivery its pipeline deferred. The step's own
-// fault is not greylisting, even in the greylist step: nothing says a retry after
-// the delay gets through.
+// deferredError is the error of a delivery its pipeline deferred. A step's own fault
+// is not its reason, even in the greylist or rate_limit step: nothing says a retry
+// after the delay gets through.
 func deferredError(result *pipeline.ExecutionResult, detail string) error {
-	if ts := terminalStep(result); ts != nil && ts.Error == "" && pipeline.ReasonForStep(*ts) == pipeline.ReasonGreylistDefer {
-		return errGreylisted
+	if ts := terminalStep(result); ts != nil && ts.Error == "" {
+		switch pipeline.ReasonForStep(*ts) {
+		case pipeline.ReasonGreylistDefer:
+			return errGreylisted
+		case pipeline.ReasonRateLimited:
+			return errRateLimited
+		}
 	}
 	return errors.New("deferred: " + detail)
 }

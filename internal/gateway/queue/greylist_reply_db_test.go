@@ -29,11 +29,10 @@ import (
 
 const inboundRouteDomain = "greylist-reply.test"
 
-// inboundRoute is a real queue worker whose only way to inboundRouteDomain is the
-// SMTP gateway's real inbound port, in front of the real deliver route and steps as
-// the domain's inbound pipeline. It returns the worker, the transaction everything
-// runs in, and the recipient's mailbox.
-func inboundRoute(t *testing.T, steps ...pipeline.FilterConfig) (*Worker, *gorm.DB, uint) {
+// inboundReceiver is a receiving server for inboundRouteDomain: its real delivery
+// routes, with steps as the domain's inbound pipeline. It returns the router, the
+// transaction everything runs in, and the recipient's mailbox.
+func inboundReceiver(t *testing.T, steps ...pipeline.FilterConfig) (*chi.Mux, *gorm.DB, uint) {
 	t.Helper()
 	base := restmailTestDB(t, inboundRouteDomain)
 	if err := bootstrap.EnsureRBAC(base); err != nil {
@@ -64,13 +63,29 @@ func inboundRoute(t *testing.T, steps ...pipeline.FilterConfig) (*Worker, *gorm.
 	registry := pipeline.NewRegistry()
 	registry.Register("greylist", filters.NewGreylist(db))
 	registry.Register("rate_limit", filters.NewRateLimit())
+	registry.Register("rspamd", filters.NewRspamd)
 	registry.Register("dmarc_reports_received", filters.NewDMARCReportsReceived)
 	registry.Register("vacation", func([]byte) (pipeline.Filter, error) { return aliasForwardPass{}, nil })
 	router := chi.NewRouter()
 	routes := endpoint.Routes{Router: router, Registry: endpoint.NewRegistry()}
-	handlers.NewMessageHandler(db, nil, pipeline.NewEngine(registry, nil), "", nil).
-		RegisterDelivery(routes, endpoint.Middleware{Wrap: func(next http.Handler) http.Handler { return next }})
+	middleware := endpoint.Middleware{Wrap: func(next http.Handler) http.Handler { return next }}
+	engine := pipeline.NewEngine(registry, nil)
+	messages := handlers.NewMessageHandler(db, nil, engine, "", nil)
+	messages.RegisterDelivery(routes, middleware)
 	handlers.NewMailboxHandler(db, nil, nil).RegisterAddressCheck(routes)
+	rest := handlers.NewRestmailHandler(db, engine, nil, handlers.RestmailTarpitConfig{},
+		handlers.RestmailDeliverAuthConfig{TrustedCIDRs: []string{"127.0.0.0/8"}})
+	rest.SetLocalDelivery(messages)
+	rest.Register(routes, middleware)
+	return router, db, mailbox.ID
+}
+
+// inboundRoute is a real queue worker whose only way to inboundRouteDomain is the
+// SMTP gateway's real inbound port, in front of inboundReceiver. It returns the
+// worker, the transaction everything runs in, and the recipient's mailbox.
+func inboundRoute(t *testing.T, steps ...pipeline.FilterConfig) (*Worker, *gorm.DB, uint) {
+	t.Helper()
+	router, db, mailbox := inboundReceiver(t, steps...)
 	apiServer := httptest.NewServer(router)
 	t.Cleanup(apiServer.Close)
 
@@ -94,7 +109,58 @@ func inboundRoute(t *testing.T, steps ...pipeline.FilterConfig) (*Worker, *gorm.
 	w.resolver = fixedMXResolver{host: "mx." + inboundRouteDomain}
 	w.smtpAddr = func(string) string { return net.JoinHostPort("127.0.0.1", strconv.Itoa(port)) }
 	w.sts.LookupTXT = func(context.Context, string) ([]string, error) { return nil, mtasts.ErrNoPolicy }
-	return w, db, mailbox.ID
+	return w, db, mailbox
+}
+
+// restmailInboundRoute is a real queue worker that reaches inboundReceiver's real
+// /restmail/messages over HTTPS, with the domain cached as a REST Mail peer. The
+// returned MX counts a message sent by SMTP instead.
+func restmailInboundRoute(t *testing.T, steps ...pipeline.FilterConfig) (*Worker, *gorm.DB, uint, *noFallbackMX) {
+	t.Helper()
+	router, db, mailbox := inboundReceiver(t, steps...)
+	var server *httptest.Server
+	router.Get("/.well-known/restmail", func(rw http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(rw).Encode(map[string]string{"endpoint": server.URL + "/restmail"})
+	})
+	server = httptest.NewTLSServer(router)
+	t.Cleanup(server.Close)
+
+	mx := newNoFallbackMX(t, true)
+	cacheRESTMAIL(t, db, inboundRouteDomain, true)
+	w := NewWorker(db, "sender.test", 1, time.Second)
+	w.allowPrivateDest = true
+	w.resolver = fixedMXResolver{host: "mx." + inboundRouteDomain}
+	w.smtpAddr = func(string) string { return mx.addr }
+	w.restmailRoots = server.Client().Transport.(*http.Transport).TLSClientConfig.RootCAs
+	w.restmailDiscoveryURL = func(_, domain string) string { return server.URL + "/.well-known/restmail?domain=" + domain }
+	w.sts.LookupTXT = func(context.Context, string) ([]string, error) { return nil, mtasts.ErrNoPolicy }
+	return w, db, mailbox, mx
+}
+
+// rateLimitStep lets one message through each minute. rspamdDownStep defers
+// everything: no scanner answers, and its fallback is to defer. Neither its fault
+// nor its verdict says greylisting or a rate limit.
+var (
+	greylistStep   = pipeline.FilterConfig{Name: "greylist", Type: pipeline.FilterTypeAction, Enabled: true, Config: json.RawMessage(`{"delay_minutes": 5, "ttl_days": 36}`)}
+	rateLimitStep  = pipeline.FilterConfig{Name: "rate_limit", Type: pipeline.FilterTypeAction, Enabled: true, Config: json.RawMessage(`{"max_per_minute": 1, "max_per_hour": 100}`)}
+	rspamdDownStep = pipeline.FilterConfig{Name: "rspamd", Type: pipeline.FilterTypeAction, Enabled: true,
+		Config: json.RawMessage(`{"url": "http://127.0.0.1:1", "timeout_ms": 1000, "fallback_action": "defer"}`)}
+)
+
+// checkDeferredRow records the failure as the worker does and checks the row it
+// leaves: still queued, in category, retried no sooner than earliest.
+func checkDeferredRow(t *testing.T, w *Worker, db *gorm.DB, item models.OutboundQueue, err error, category models.FailureCategory, code int, earliest time.Duration) models.OutboundQueue {
+	t.Helper()
+	now := time.Now()
+	w.recordFailure(item, err, now)
+	row := readRow(t, db, item.ID)
+	if row.Status != "deferred" || row.FailureCategory != category || row.LastErrorCode != code {
+		t.Fatalf("row %s, category %s, code %d: want deferred, %s, %d", row.Status, row.FailureCategory, row.LastErrorCode, category, code)
+	}
+	if wait := row.NextAttempt.Sub(now); wait < earliest {
+		t.Fatalf("first retry after %s, want at least %s", wait, earliest)
+	}
+	return row
 }
 
 // queueForInboundRoute is the row of a message to the route's mailbox, from outside.
@@ -125,8 +191,7 @@ func refusal(t *testing.T, err error) *SMTPError {
 // greylisting, so the queue row waits on the greylisting schedule, and a retry after
 // the delay is delivered.
 func TestGreylistRefusalThroughInboundPortIsGreylisting(t *testing.T) {
-	w, db, mailbox := inboundRoute(t, pipeline.FilterConfig{Name: "greylist", Type: pipeline.FilterTypeAction, Enabled: true,
-		Config: json.RawMessage(`{"delay_minutes": 5, "ttl_days": 36}`)})
+	w, db, mailbox := inboundRoute(t, greylistStep)
 	item := queueForInboundRoute(t, db)
 
 	now := time.Now()
@@ -166,20 +231,126 @@ func TestGreylistRefusalThroughInboundPortIsGreylisting(t *testing.T) {
 	}
 }
 
-// Any other step's deferral says nothing about greylisting and keeps its category.
-func TestOtherDeferralThroughInboundPortStaysOtherTransient(t *testing.T) {
-	w, db, _ := inboundRoute(t, pipeline.FilterConfig{Name: "rate_limit", Type: pipeline.FilterTypeAction, Enabled: true,
-		Config: json.RawMessage(`{"max_per_minute": 1, "max_per_hour": 100}`)})
+// A rate_limit step's deferral (#1794): the inbound port's reply says so, and the row
+// waits on the rate limit schedule.
+func TestRateLimitRefusalThroughInboundPortIsRateLimited(t *testing.T) {
+	w, db, _ := inboundRoute(t, rateLimitStep)
 	if err := w.deliver(queueForInboundRoute(t, db)); err != nil {
 		t.Fatalf("first message: %v", err)
 	}
 
-	err := w.deliver(queueForInboundRoute(t, db))
+	item := queueForInboundRoute(t, db)
+	err := w.deliver(item)
+	reply := refusal(t, err)
+	if reply.Code != 450 || reply.Enhanced != "4.7.1" || reply.Message != "Too many messages, try again later" {
+		t.Fatalf("reply %d %s %q, want 450 4.7.1 Too many messages, try again later", reply.Code, reply.Enhanced, reply.Message)
+	}
+	checkDeferredRow(t, w, db, item, err, models.FailureRateLimited, 450, 12*time.Minute)
+}
+
+// Any other step's deferral says nothing about greylisting or a rate limit, and keeps
+// its category.
+func TestOtherDeferralThroughInboundPortStaysOtherTransient(t *testing.T) {
+	w, db, _ := inboundRoute(t, rspamdDownStep)
+
+	item := queueForInboundRoute(t, db)
+	err := w.deliver(item)
 	reply := refusal(t, err)
 	if reply.Code != 451 || reply.Enhanced != "4.3.0" || reply.Message != "Try again later" {
 		t.Fatalf("reply %d %s %q, want 451 4.3.0 Try again later", reply.Code, reply.Enhanced, reply.Message)
 	}
-	if got := ClassifyFailure(err); got != models.FailureOtherTransient {
-		t.Fatalf("reply classified %s, want %s", got, models.FailureOtherTransient)
+	checkDeferredRow(t, w, db, item, err, models.FailureOtherTransient, 451, 4*time.Minute)
+}
+
+// A first message through the greylist step over RESTMAIL (#1794): the route's answer
+// names greylisting, the row waits on the greylisting schedule, and a retry after the
+// delay is delivered, by RESTMAIL.
+func TestGreylistDeferralOverRESTMAILIsGreylisting(t *testing.T) {
+	w, db, mailbox, mx := restmailInboundRoute(t, greylistStep)
+	item := queueForInboundRoute(t, db)
+
+	err := w.deliver(item)
+	noSMTP(t, db, item, mx, err, false)
+	if reply := refusal(t, err); reply.Code != 450 || reply.Enhanced != "4.7.1" || !strings.Contains(reply.Message, `"code":"greylisted"`) {
+		t.Fatalf("reply %d %s %q, want 450 4.7.1 with the route's code greylisted", reply.Code, reply.Enhanced, reply.Message)
+	}
+	row := checkDeferredRow(t, w, db, item, err, models.FailureGreylisted, 450, 5*time.Minute)
+
+	if err := db.Exec("UPDATE greylist_entries SET retry_after = now() - interval '1 hour'").Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := w.deliver(row); err != nil {
+		t.Fatalf("retry after the delay: %v", err)
+	}
+	var copies int64
+	if err := db.Model(&models.Message{}).Where("mailbox_id = ?", mailbox).Count(&copies).Error; err != nil {
+		t.Fatal(err)
+	}
+	if copies != 1 || mx.mails.Load() != 0 {
+		t.Fatalf("%d messages in the mailbox, %d by SMTP: want 1, by RESTMAIL", copies, mx.mails.Load())
+	}
+}
+
+// A rate_limit step's deferral over RESTMAIL has its own category and schedule.
+func TestRateLimitDeferralOverRESTMAILIsRateLimited(t *testing.T) {
+	w, db, _, mx := restmailInboundRoute(t, rateLimitStep)
+	if err := w.deliver(queueForInboundRoute(t, db)); err != nil {
+		t.Fatalf("first message: %v", err)
+	}
+
+	item := queueForInboundRoute(t, db)
+	err := w.deliver(item)
+	noSMTP(t, db, item, mx, err, false)
+	if reply := refusal(t, err); reply.Code != 450 || reply.Enhanced != "4.7.1" || !strings.Contains(reply.Message, `"code":"rate_limited"`) {
+		t.Fatalf("reply %d %s %q, want 450 4.7.1 with the route's code rate_limited", reply.Code, reply.Enhanced, reply.Message)
+	}
+	checkDeferredRow(t, w, db, item, err, models.FailureRateLimited, 450, 12*time.Minute)
+}
+
+// Any other deferral over RESTMAIL is an ordinary transient failure, not greylisting.
+func TestOtherDeferralOverRESTMAILIsOtherTransient(t *testing.T) {
+	w, db, _, mx := restmailInboundRoute(t, rspamdDownStep)
+
+	item := queueForInboundRoute(t, db)
+	err := w.deliver(item)
+	noSMTP(t, db, item, mx, err, false)
+	if reply := refusal(t, err); reply.Code != 451 || reply.Enhanced != "4.3.0" || !strings.Contains(reply.Message, `"code":"deferred"`) {
+		t.Fatalf("reply %d %s %q, want 451 4.3.0 with the route's code deferred", reply.Code, reply.Enhanced, reply.Message)
+	}
+	checkDeferredRow(t, w, db, item, err, models.FailureOtherTransient, 451, 4*time.Minute)
+}
+
+// A delivery to an alias runs its own path through /restmail/messages, which carries
+// the reason the same way.
+func TestAliasDeferralOverRESTMAILKeepsItsReason(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		step     pipeline.FilterConfig
+		category models.FailureCategory
+		code     int
+	}{
+		{"greylist", greylistStep, models.FailureGreylisted, 450},
+		{"other", rspamdDownStep, models.FailureOtherTransient, 451},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			w, db, _, mx := restmailInboundRoute(t, test.step)
+			var domain models.Domain
+			if err := db.Where("name = ?", inboundRouteDomain).First(&domain).Error; err != nil {
+				t.Fatal(err)
+			}
+			alias := "list@" + inboundRouteDomain
+			if err := db.Create(&models.Alias{DomainID: domain.ID, SourceAddress: alias, DestinationAddress: "elsewhere@target.test", Active: true}).Error; err != nil {
+				t.Fatal(err)
+			}
+			item := queueForInboundRoute(t, db)
+			item.Recipient = alias
+			if err := db.Save(&item).Error; err != nil {
+				t.Fatal(err)
+			}
+
+			err := w.deliver(item)
+			noSMTP(t, db, item, mx, err, false)
+			checkDeferredRow(t, w, db, item, err, test.category, test.code, 4*time.Minute)
+		})
 	}
 }

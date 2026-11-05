@@ -1161,8 +1161,8 @@ func (h *MessageHandler) RegisterDelivery(rs endpoint.Routes, bodyLimit endpoint
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/messages/deliver",
 		OperationID: "deliverMessage", Summary: "Deliver a message into a mailbox (protocol gateways)", Tags: []string{"Messages"},
 		Description: "Machine to machine: no user token. The inbound pipeline decides: 201 with the message made, " +
-			"200 processed when it quarantined or discarded it, 550 rejected, 451 deferred (greylisted when the greylist step " +
-			"held it back), 422 mailbox_full over quota. A missing mailbox is 404; a failed mailbox lookup is 500, never a missing recipient. " +
+			"200 processed when it quarantined or discarded it, 550 rejected, 451 deferred (greylisted or rate_limited when the " +
+			"greylist or rate_limit step held it back), 422 mailbox_full over quota. A missing mailbox is 404; a failed mailbox lookup is 500, never a missing recipient. " +
 			"Stored text must not contain NUL (U+0000), including strings and object keys anywhere in recipients_to or recipients_cc " +
 			"and the decoded raw_message octets; a refusal is 422 validation_failed naming the field, before any write. " +
 			"raw_message is a standard padded base64 string (format: byte), not unencoded message text. " +
@@ -1330,6 +1330,8 @@ func (h *MessageHandler) deliverMessage(r *http.Request, req deliverMessageBody,
 			return zero, endpoint.Refuse(550, "rejected", strings.TrimPrefix(errStr, "rejected: "))
 		case errors.Is(err, errGreylisted):
 			return zero, endpoint.Refuse(451, rmail.GreylistedRefusal, "Greylisted, try again later")
+		case errors.Is(err, errRateLimited):
+			return zero, endpoint.Refuse(451, rmail.RateLimitedRefusal, "Too many messages, try again later")
 		case strings.HasPrefix(errStr, "deferred:"):
 			return zero, endpoint.Refuse(451, "deferred", "Try again later")
 		case strings.HasPrefix(errStr, "mailbox_full:"):

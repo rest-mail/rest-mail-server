@@ -17,8 +17,7 @@ import (
 
 func (h *RestmailHandler) deliverResolvedRecipients(ctx context.Context, req restmailDeliverBody, sender, clientIP string, accepted, refused []string, recipients map[string]repositories.Recipient) (RestmailDelivery, error) {
 	result := RestmailDelivery{Delivered: []string{}, Failed: refused}
-	var lastError error
-	deferred := false
+	var lastError, deferred error
 	to, _ := json.Marshal(accepted)
 	for _, address := range accepted {
 		recipient := recipients[address]
@@ -29,15 +28,17 @@ func (h *RestmailHandler) deliverResolvedRecipients(ctx context.Context, req res
 		})
 		if err != nil {
 			lastError = err
-			deferred = deferred || (!strings.HasPrefix(err.Error(), "rejected:") && !strings.HasPrefix(err.Error(), "mailbox_full:"))
+			if deferred == nil && !strings.HasPrefix(err.Error(), "rejected:") && !strings.HasPrefix(err.Error(), "mailbox_full:") {
+				deferred = err
+			}
 			result.Failed = append(result.Failed, address)
 			continue
 		}
 		result.Delivered = append(result.Delivered, address)
 	}
 	if len(result.Delivered) == 0 {
-		if deferred {
-			return RestmailDelivery{}, endpoint.Refuse(http.StatusServiceUnavailable, "deferred", "Message deferred, retry later")
+		if deferred != nil {
+			return RestmailDelivery{}, restmailDeferral(deferred)
 		}
 		return RestmailDelivery{}, endpoint.Refuse(http.StatusUnprocessableEntity, "undeliverable", lastError.Error())
 	}

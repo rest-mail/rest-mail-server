@@ -23,7 +23,9 @@ func (h *RestmailHandler) Register(rs endpoint.Routes, deliverBodyLimit endpoint
 		OperationID: "restmailDeliver", Summary: "Deliver a message via RESTMAIL protocol", Tags: []string{"RESTMAIL"},
 		Description: "Server-to-server delivery. Unauthenticated at the HTTP layer: a delivery must come from a " +
 			"trusted peer network or carry a DKIM signature aligned with its From domain, or it is refused 403 " +
-			"unauthorized. The inbound pipeline can refuse it 403 rejected or defer it 503 deferred. When no " +
+			"unauthorized. The inbound pipeline can refuse it 403 rejected or defer it 503, with error code greylisted " +
+			"when its greylist step held the message back, rate_limited when its rate_limit step did, and deferred " +
+			"for any other deferral. The sending queue retries on the schedule for that code. When no " +
 			"recipient takes the message the answer is 422 undeliverable. Failed sender/recipient or inbound-policy " +
 			"lookups and corrupt stored policy defer with 503; recipient lookups finish before delivery side effects.",
 		Status: http.StatusCreated, Errors: []int{http.StatusForbidden, http.StatusServiceUnavailable},

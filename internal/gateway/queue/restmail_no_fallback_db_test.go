@@ -14,6 +14,7 @@ import (
 	"github.com/rest-mail/go-mtasts/pkg/mtasts"
 	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
 	"gorm.io/gorm"
 )
 
@@ -94,7 +95,7 @@ func (mx *noFallbackMX) serve(c net.Conn) {
 // answers post.
 // A peer with deferFirst set answers that many POSTs first the way a REST Mail
 // server's deliver handler answers a message its inbound pipeline defers
-// (greylisting a first message): 503, error code "deferred".
+// (greylisting a first message): 503, error code "greylisted".
 type restPeer struct {
 	discovery, post atomic.Int32
 	posts           atomic.Int32
@@ -119,7 +120,7 @@ func noFallbackWorker(t *testing.T, domain string, mx *noFallbackMX, peer *restP
 		case "/restmail/messages":
 			peer.posts.Add(1)
 			if peer.deferFirst.Add(-1) >= 0 {
-				endpoint.WriteError(rw, endpoint.Refuse(http.StatusServiceUnavailable, "deferred", "Message deferred, retry later"))
+				endpoint.WriteError(rw, endpoint.Refuse(http.StatusServiceUnavailable, rmail.GreylistedRefusal, "Greylisted, retry later"))
 				return
 			}
 			rw.WriteHeader(int(peer.post.Load()))
@@ -305,7 +306,7 @@ func TestNoSMTPFallback_NeverIdentifiedUsesSMTP(t *testing.T) {
 
 // An ordinary first message between two REST Mail installs (#291): the
 // receiver's default inbound pipeline greylists it, and its deliver handler
-// answers 503 "deferred". The row stays queued on the greylisting schedule, its
+// answers 503 "greylisted". The row stays queued on the greylisting schedule, its
 // first retry no sooner than the greylist's five-minute delay, and the retry
 // goes by RESTMAIL and is accepted. No attempt goes by SMTP, whether the peer
 // was identified by the EHLO probe or by the capability cache, and whatever
@@ -331,7 +332,7 @@ func TestNoSMTPFallback_GreylistDeferredThenAccepted(t *testing.T) {
 			err := w.deliver(item)
 			noSMTP(t, gdb, item, mx, err, false)
 			if got := ClassifyFailure(err); got != models.FailureGreylisted {
-				t.Fatalf("deferred answer classified %s, want %s: %v", got, models.FailureGreylisted, err)
+				t.Fatalf("greylisted answer classified %s, want %s: %v", got, models.FailureGreylisted, err)
 			}
 			item.Attempts = 1
 			w.recordFailure(item, err, now)
@@ -356,14 +357,16 @@ func TestNoSMTPFallback_GreylistDeferredThenAccepted(t *testing.T) {
 	}
 }
 
-// A REST Mail server's "deferred" refusal is retried on the greylisting
-// schedule; any other 503 stays an ordinary transient failure.
-func TestRESTMAILRefusalDeferredIsGreylisting(t *testing.T) {
+// The error code of a REST Mail server's 503 says why it held the message back, and
+// only those words choose a schedule; any other 503 is an ordinary transient failure.
+func TestRESTMAILRefusalCarriesTheDeferralReason(t *testing.T) {
 	for _, tc := range []struct {
 		body string
 		want models.FailureCategory
 	}{
-		{`{"error":{"code":"deferred","message":"Message deferred, retry later"}}`, models.FailureGreylisted},
+		{`{"error":{"code":"greylisted","message":"Greylisted, retry later"}}`, models.FailureGreylisted},
+		{`{"error":{"code":"rate_limited","message":"Too many messages, retry later"}}`, models.FailureRateLimited},
+		{`{"error":{"code":"deferred","message":"Message deferred, retry later"}}`, models.FailureOtherTransient},
 		{`{"error":{"code":"internal_error","message":"Internal server error"}}`, models.FailureOtherTransient},
 		{`not json`, models.FailureOtherTransient},
 	} {
@@ -371,7 +374,7 @@ func TestRESTMAILRefusalDeferredIsGreylisting(t *testing.T) {
 			t.Errorf("503 %s classified %s, want %s", tc.body, got, tc.want)
 		}
 	}
-	if got := ClassifyFailure(restmailRefusal(http.StatusForbidden, []byte(`{"error":{"code":"deferred"}}`))); !got.Permanent() {
-		t.Errorf("403 with code deferred classified %s, want permanent", got)
+	if got := ClassifyFailure(restmailRefusal(http.StatusForbidden, []byte(`{"error":{"code":"greylisted"}}`))); !got.Permanent() {
+		t.Errorf("403 with code greylisted classified %s, want permanent", got)
 	}
 }
