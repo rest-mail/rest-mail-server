@@ -424,6 +424,7 @@ func listOf[T any](e *mailExporter, path string, each func(T) error) (respond.Pa
 	if tok, err := dec.Token(); err != nil || tok != json.Delim('{') {
 		return page, invalid
 	}
+	seenData := false
 	for dec.More() {
 		tok, err := dec.Token()
 		if err != nil {
@@ -434,6 +435,7 @@ func listOf[T any](e *mailExporter, path string, each func(T) error) (respond.Pa
 			if tok, err := dec.Token(); err != nil || tok != json.Delim('[') {
 				return page, invalid
 			}
+			seenData = true
 			for dec.More() {
 				var item T
 				if err := dec.Decode(&item); err != nil {
@@ -457,7 +459,7 @@ func listOf[T any](e *mailExporter, path string, each func(T) error) (respond.Pa
 			}
 		}
 	}
-	if tok, err := dec.Token(); err != nil || tok != json.Delim('}') {
+	if tok, err := dec.Token(); err != nil || tok != json.Delim('}') || !seenData {
 		return page, invalid
 	}
 	return page, nil
