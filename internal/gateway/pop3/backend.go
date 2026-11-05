@@ -178,12 +178,12 @@ func (m *mailbox) Retrieve(uid string) ([]byte, error) {
 		return nil, err
 	}
 	raw := m.rawMessage(detail.Data)
-	if m.utf8 {
-		return []byte(raw), nil
+	if !m.utf8 {
+		// A client that did not send UTF8 gets headers downgraded to ASCII (RFC
+		// 6856 §3, RFC 6857).
+		raw = rawmsg.Downgrade(raw)
 	}
-	// A client that did not send UTF8 gets headers downgraded to ASCII (RFC
-	// 6856 §3, RFC 6857).
-	return []byte(rawmsg.Downgrade(raw)), nil
+	return rawmsg.SpaceNUL(raw), nil
 }
 
 // rawMessage returns the stored raw bytes when present, else the rebuild.

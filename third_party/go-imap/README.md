@@ -353,8 +353,10 @@ The library:
   compares text, one encoded word at a time, so a word in another charset is compared
   as stored and the words around it still decode. It accepts the US-ASCII and UTF-8
   charsets.
-- Refuses to FETCH a message with a NUL in a header or in text, or whose decoded
-  ENVELOPE and MIME strings hold one. A NUL in non-textual data goes out encoded.
+- Sends a space for a NUL in a header or in text, and for one decoded into an
+  ENVELOPE or MIME string, one octet for one, so a FETCH never fails for a NUL. A
+  NUL in non-textual data, or in text whose charset has NUL octets such as UTF-16,
+  goes out encoded. BINARY sends the exact octets.
 
 The host:
 

@@ -258,3 +258,48 @@ func TestEntityHeader_SharesItsBuffer(t *testing.T) {
 		t.Errorf("each read allocated %d bytes, want well under the %d of a buffer", each, wholeBuffer)
 	}
 }
+
+// TestNULReplacement_HoldsNoCopy: a space for a NUL is written where the NUL was, so
+// measuring text full of them holds nothing that grows with it, and SpaceNUL builds the
+// message once (#1437).
+func TestNULReplacement_HoldsNoCopy(t *testing.T) {
+	const size = 1 << 20
+	text := "Content-Type: text/plain; charset=utf-8\r\n\r\n" + repeated("a\x00", size) + "\r\n"
+	if got := bytesAllocated(text, func(raw string) { WireFormSize(raw, false) }); got > 64<<10 {
+		t.Errorf("measuring %d bytes of text allocated %d", len(text), got)
+	}
+	if got := bytesAllocated(text, func(raw string) { SpaceNUL(raw) }); got > uint64(len(text))+64<<10 {
+		t.Errorf("SpaceNUL of %d bytes allocated %d", len(text), got)
+	}
+	data := "Content-Type: application/pdf\r\nContent-Transfer-Encoding: binary\r\n\r\n" + repeated("a\x00", size) + "\r\n"
+	if got := bytesAllocated(data, func(raw string) { WireFormSize(raw, false) }); got > 64<<10 {
+		t.Errorf("measuring %d bytes of data allocated %d", len(data), got)
+	}
+	if got := bytesAllocated(data, func(raw string) { SpaceNUL(raw) }); got > uint64(len(data))+64<<10 {
+		t.Errorf("SpaceNUL of %d bytes of data allocated %d", len(data), got)
+	}
+}
+
+// TestNULReplacement_IsLinear covers the shapes that go through a copy of a field: an
+// 8-bit field holding NULs, many of them, and many parts.
+func TestNULReplacement_IsLinear(t *testing.T) {
+	field := func(prefix, unit string) func(int) string {
+		return func(size int) string { return prefix + repeated(unit, size) + "\r\n\r\nbody\r\n" }
+	}
+	cases := map[string]func(int) string{
+		"8-bit field":       field("Subject: \xf6 ", "\x00"),
+		"7-bit field":       field("Subject: ", "\x00"),
+		"many fields":       field("", "Subject: \xf6\x00\r\n"),
+		"8-bit parameter":   field("Content-Type: text/plain; a=\"\xf6", "\x00"),
+		"encoded body type": field("Content-Type: application/pdf\r\nX-Other: \x00", "\r\n y\x00"),
+		"many parts": func(size int) string {
+			return "Content-Type: multipart/mixed; boundary=b\r\n\r\n" + repeated("--b\r\nSubject: \x00\r\n\r\n\x00\r\n", size) + "--b--\r\n"
+		},
+	}
+	for name, input := range cases {
+		t.Run(name, func(t *testing.T) {
+			assertLinear(t, input, func(raw string) { WireForm(raw, false) })
+			assertLinear(t, input, func(raw string) { SpaceNUL(raw) })
+		})
+	}
+}

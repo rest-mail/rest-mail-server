@@ -14,9 +14,18 @@ import (
 // data goes out transfer-encoded, and 8-bit textual data stays when its section
 // names a charset. A message that is already 7-bit comes back byte for byte.
 // utf8 is whether the session enabled UTF8=ACCEPT (RFC 6855): valid UTF-8 then
-// stays in headers and in a textual body that names no charset.
+// stays in headers and in a textual body that names no charset. A NUL in a header
+// or in text comes back as a space, one octet for one; one in data is encoded.
 func Convert(raw string, utf8 bool) string {
 	return message.WireForm(raw, utf8)
+}
+
+// SpaceNUL returns raw with a space for each NUL in a header or in text, one octet for
+// one. Where a NUL is data, in anything not text or in text whose charset has NUL
+// octets, the entity stays as it is. This is for a protocol that sends a message as
+// stored, with no BINARY to fetch the exact octets and no conversion to encode data.
+func SpaceNUL(raw string) []byte {
+	return message.SpaceNUL(raw)
 }
 
 // Size is len(Convert(raw, utf8)): the same conversion, counted rather than built, so

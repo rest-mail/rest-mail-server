@@ -56,6 +56,11 @@ func measuresWhatFetchSends(t *testing.T, name, raw string) {
 	if got := wireform.Size(raw, false); got != len(wireform.Convert(raw, false)) {
 		t.Fatalf("%s: Size counts %d of %q", name, got, raw)
 	}
+	for _, sent := range []string{wireform.Convert(downgraded, false), wireform.Convert(raw, true), wireform.Convert(raw, false)} {
+		if strings.IndexByte(sent, 0) >= 0 {
+			t.Fatalf("%s: a NUL survives the conversion of %q: %q", name, raw, sent)
+		}
+	}
 }
 
 // A size is the conversion counted, not worked out apart from it, for every shape of message
@@ -136,5 +141,23 @@ func TestMeasuringHoldsNoCopy(t *testing.T) {
 				t.Errorf("measuring %d bytes allocated %d", len(raw), got)
 			}
 		})
+	}
+}
+
+// A NUL doesn't reach a client through any conversion, spelled in an encoded word
+// or not, and the sizes still measure what is sent.
+func TestDowngradeSpellsNoNUL(t *testing.T) {
+	for _, raw := range []string{
+		"Subject: nul\x00\xf6\r\n\r\nb\r\n",
+		"X-Other: \x00\xc3\xa9\r\n\r\nb\r\n",
+		"To: J\xc3\xb6\x00rg <j@example.test>\r\n\r\nb\r\n",
+		"Content-Type: text/plain; name=\"\x00\xc3\xa9\"\r\n\r\nb\r\n",
+		"N\xc3\xb6Colon\x00 line\r\n\r\nb\r\n",
+	} {
+		down := DowngradeHeaders(raw)
+		if strings.Contains(down, "=00") || strings.Contains(down, "%00") || strings.IndexByte(down, 0) >= 0 {
+			t.Errorf("%q downgrades to %q", raw, down)
+		}
+		measuresWhatFetchSends(t, "NUL", raw)
 	}
 }
