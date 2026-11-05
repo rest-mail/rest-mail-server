@@ -71,6 +71,11 @@ var bccPeerShapes = append(withResentBcc([]bccPeerShape{
 		raw:  "From: a@x.test\nBcc: secret@c.test\n\nBcc: quoted in the text\n\r\n\r\nmore\r\n",
 		peer: "From: a@x.test\n\nBcc: quoted in the text\n\r\n\r\nmore\r\n",
 	},
+	{
+		name: "a space before the first field, which a forward's stamp must not fold",
+		raw:  " Bcc: secret@c.test\r\nFrom: a@x.test\r\nSubject: s\r\n\r\nbody\r\n",
+		peer: "From: a@x.test\r\nSubject: s\r\n\r\nbody\r\n",
+	},
 }), bccPeerShape{
 	name: "a resent message: only the hidden field goes",
 	raw:  "Resent-From: b@x.test\r\nResent-To: c@x.test\r\nResent-Bcc: secret@c.test,\r\n more@c.test\r\nFrom: a@x.test\r\nSubject: s\r\n\r\nbody\r\n",
@@ -229,7 +234,7 @@ func TestForwardedMessageLeavesWithoutHiddenFields(t *testing.T) {
 					}
 					row := rows[0]
 					t.Cleanup(func() { tx.Delete(&models.OutboundQueue{}, row.ID) })
-					if !strings.HasSuffix(row.RawMessage, tc.raw) {
+					if !strings.HasSuffix(row.RawMessage, strings.TrimLeft(tc.raw, " ")) {
 						t.Fatalf("the row isn't the message it forwards: %q", row.RawMessage)
 					}
 					if kind == "alias" && row.ARCResults == "" {

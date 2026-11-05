@@ -102,7 +102,7 @@ func buildRedirectForwards(ctx context.Context, finalEmail *pipeline.EmailJSON, 
 		}
 		forwardedRaw := originalRaw
 		if forwardedRaw != "" {
-			forwardedRaw = "Delivered-To: " + target + "\r\n" + forwardedRaw
+			forwardedRaw = stampDeliveredTo(forwardedRaw, target)
 		}
 		forwards = append(forwards, models.OutboundQueue{
 			Sender:        sender,
@@ -116,6 +116,17 @@ func buildRedirectForwards(ctx context.Context, finalEmail *pipeline.EmailJSON, 
 		})
 	}
 	return forwards
+}
+
+// stampDeliveredTo puts a Delivered-To field on top of raw. A first line starting with a space would
+// become a fold of the new field, so a first line of " Bcc: x" would leave inside Delivered-To, where
+// the outbound strip can't find it. So the space goes and the line stays its own field. A first line
+// with only space keeps it: without the space it would be the empty line that ends the head.
+func stampDeliveredTo(raw, address string) string {
+	if trimmed := strings.TrimLeft(raw, " \t"); trimmed != "" && trimmed[0] != '\r' && trimmed[0] != '\n' {
+		raw = trimmed
+	}
+	return "Delivered-To: " + address + "\r\n" + raw
 }
 
 // arcChain is the validation status of the ARC chain a message arrived with, as the
