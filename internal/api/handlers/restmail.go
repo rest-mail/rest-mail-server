@@ -192,8 +192,10 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput, spoo
 	if len(to) == 0 && req.Recipients != nil && len(*req.Recipients) > 0 {
 		to = *req.Recipients
 	}
+	// A source says what its headers are. A peer's own account of them is kept only when there's no
+	// source, or it could call a list's mail a person's (#1915).
 	var headers json.RawMessage
-	if req.Headers != nil {
+	if req.Headers != nil && req.RawMessage == "" {
 		headers, _ = json.Marshal(req.Headers)
 	}
 

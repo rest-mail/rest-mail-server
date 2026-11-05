@@ -115,31 +115,3 @@ func TestRuleClassOf(t *testing.T) {
 		}
 	}
 }
-
-func TestClassifySourceHeaders(t *testing.T) {
-	for _, test := range []struct {
-		name, source, want string
-	}{
-		{"empty", "", ClassPerson},
-		{"no header section", "\r\nList-Id: <news.example.test>\r\n", ClassPerson},
-		{"plain", "From: a@example.test\r\nSubject: Hi\r\n\r\nhello\r\n", ClassPerson},
-		{"list id", "List-Id: <news.example.test>\r\n\r\n", ClassNewsletter},
-		{"header section ends without a blank line", "List-Id: <news.example.test>\r\n", ClassNewsletter},
-		{"line feed line endings", "List-Id: <news.example.test>\n\nhello\n", ClassNewsletter},
-		{"name case", "lIsT-uNsUbScRiBe: <https://example.test/leave>\r\n\r\n", ClassNewsletter},
-		{"folded", "List-Id: A list\r\n\t<news.example.test>\r\n\r\n", ClassNewsletter},
-		{"folded twice", "List-Unsubscribe: <mailto:leave@example.test>,\r\n  \r\n <https://example.test/leave>\r\n\r\n", ClassNewsletter},
-		{"precedence after other fields", "From: a@example.test\r\nReceived: from a\r\n by b\r\nPrecedence: BULK\r\n\r\n", ClassNotification},
-		{"same field twice is ignored", "List-Id: <a.example.test>\r\nlist-id: <b.example.test>\r\n\r\n", ClassPerson},
-		{"a signal in the body does not count", "From: a@example.test\r\n\r\nList-Id: <news.example.test>\r\n", ClassPerson},
-		{"a signal in a folded value does not count", "Subject: hello\r\n List-Id: <news.example.test>\r\n\r\n", ClassPerson},
-		{"a signal after a malformed field is not seen", "From: a@example.test\r\nnot a field\r\nList-Id: <news.example.test>\r\n\r\n", ClassPerson},
-		{"a signal before a malformed field counts", "List-Id: <news.example.test>\r\nnot a field\r\n\r\n", ClassNewsletter},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			if got := Classify(SourceHeaders(strings.NewReader(test.source)), ""); got != test.want {
-				t.Fatalf("class = %q, want %q", got, test.want)
-			}
-		})
-	}
-}

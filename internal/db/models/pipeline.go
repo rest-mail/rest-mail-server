@@ -3,6 +3,8 @@ package models
 import (
 	"encoding/json"
 	"time"
+
+	"gorm.io/gorm"
 )
 
 // Pipeline represents a filter pipeline configured for a domain.
@@ -204,12 +206,13 @@ type VacationConfig struct {
 
 func (VacationConfig) TableName() string { return "vacation_configs" }
 
-// Attachment represents a stored attachment reference.
+// Attachment represents a stored attachment reference. Filename and ContentType are what a sender
+// wrote, so BeforeCreate fits them to their columns. The message's source keeps them as they arrived.
 type Attachment struct {
 	ID          uint      `gorm:"primaryKey" json:"id"`
 	MessageID   uint      `gorm:"not null;index" json:"message_id"`
 	Filename    string    `gorm:"size:255" json:"filename"`
-	ContentType string    `gorm:"size:100" json:"content_type"`
+	ContentType string    `gorm:"size:255" json:"content_type"` // RFC 6838 section 4.2: 127 + "/" + 127
 	SizeBytes   int64     `json:"size_bytes"`
 	StorageType string    `gorm:"size:20;default:filesystem" json:"storage_type"` // "filesystem" or "s3"
 	StorageRef  string    `gorm:"size:500;not null;index" json:"storage_ref"`
@@ -223,6 +226,16 @@ type Attachment struct {
 }
 
 func (Attachment) TableName() string { return "attachments" }
+
+// BeforeCreate is here so that no way of storing an attachment can refuse its message over what the
+// sender called it (#1915).
+func (a *Attachment) BeforeCreate(*gorm.DB) error {
+	a.Filename = FitFilename(a.Filename)
+	if !fitsColumn(a.ContentType, attachmentTypeColumn) {
+		a.ContentType = "application/octet-stream"
+	}
+	return nil
+}
 
 // SieveScript stores per-mailbox Sieve filter scripts.
 //

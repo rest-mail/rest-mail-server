@@ -260,7 +260,7 @@ type Message struct {
 	Subject           string                `json:"subject"`
 	BodyText          string                `json:"body_text,omitempty"`
 	BodyHTML          string                `json:"body_html,omitempty"`
-	Headers           json.RawMessage       `json:"headers,omitempty"`
+	Headers           json.RawMessage       `json:"headers,omitempty" description:"The message's header fields as it arrived, each name with its values; an empty array when none were recorded (mail sent from here, drafts, mail delivered by a gateway, and imported or federated mail whose fields come to 64 KiB or more). GET /messages/{id}/raw answers them all"`
 	SealedHash        string                `json:"sealed_hash,omitempty" description:"SHA-256 receipt seal (restmail-seal-v1); covers the exact stored source and displayed headers and bodies. Absent on historical unsealed messages. Does not authenticate the author or establish safety"`
 	CalendarEventsRaw json.RawMessage       `json:"calendar_events,omitempty"`
 	SizeBytes         int                   `json:"size_bytes"`

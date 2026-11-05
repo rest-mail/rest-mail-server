@@ -23,9 +23,9 @@ import (
 // many times its size. Here a field is read once into a buffer every field shares, a part keeps
 // only the few fields that are looked at, and each of those is parsed once.
 
-// topHeaderLimit is go-message's limit on a message's header block. A longer one is an error. A
-// part's header has no limit, as it has none there.
-const topHeaderLimit = 1 << 20
+// A header block has no limit of its own, only the message's. go-message refuses one past 1 MiB, but
+// a message that isn't parsed is one no filter reads: a long field would hide the attachments, the
+// threading fields and everything else a filter looks at from all of them (#1915).
 
 // field is a header field, unfolded, under its canonical name.
 type field struct{ key, value string }
@@ -209,11 +209,11 @@ func unfold(value []byte) []byte {
 	}
 }
 
-// readTopFields reads a message's header block, under go-message's limit on it. What's read past the
-// block stays in the reader it answers, and headerSize says how long the block was.
+// readTopFields reads a message's header block. What's read past the block stays in the reader it
+// answers, and headerSize says how long the block was.
 func readTopFields(source io.Reader, sourceSize int) (_ []field, _ *bufio.Reader, _ *fieldReader, headerSize int64, _ error) {
-	limit := &headerLimit{source: source, left: topHeaderLimit}
-	br := bufio.NewReader(limit)
+	counted := &sourceCounter{source: source}
+	br := bufio.NewReader(counted)
 	reader := &fieldReader{sourceSize: sourceSize}
 	var fields []field
 	err := reader.each(br, func(key, value []byte) {
@@ -223,9 +223,7 @@ func readTopFields(source io.Reader, sourceSize int) (_ []field, _ *bufio.Reader
 		// starts after it. Nothing writes there again.
 		reader.line = reader.line[len(reader.line):]
 	})
-	headerSize = topHeaderLimit - limit.left - int64(br.Buffered())
-	limit.left = 1<<63 - 1
-	return fields, br, reader, headerSize, err
+	return fields, br, reader, counted.read - int64(br.Buffered()), err
 }
 
 // firstField is the value of the first field under a canonical name, or empty.
@@ -241,29 +239,22 @@ func firstField(fields []field, key string) string {
 // readTopForOpening reads only what opening a message needs from its header block, for a caller
 // that has the rest of it already.
 func readTopForOpening(source io.Reader, sourceSize int) (_ *bufio.Reader, _ *fieldReader, _ partFields, headerSize int64, _ error) {
-	limit := &headerLimit{source: source, left: topHeaderLimit}
-	br := bufio.NewReader(limit)
+	counted := &sourceCounter{source: source}
+	br := bufio.NewReader(counted)
 	reader := &fieldReader{sourceSize: sourceSize, wanted: isPartField}
 	kept, err := reader.readPartFields(br)
-	headerSize = topHeaderLimit - limit.left - int64(br.Buffered())
-	limit.left = 1<<63 - 1
-	return br, reader, kept, headerSize, err
+	return br, reader, kept, counted.read - int64(br.Buffered()), err
 }
 
-type headerLimit struct {
+// sourceCounter says how much of its source was read.
+type sourceCounter struct {
 	source io.Reader
-	left   int64
+	read   int64
 }
 
-func (l *headerLimit) Read(p []byte) (int, error) {
-	if l.left <= 0 {
-		return 0, errors.New("message: header exceeds maximum size")
-	}
-	if int64(len(p)) > l.left {
-		p = p[:l.left]
-	}
-	n, err := l.source.Read(p)
-	l.left -= int64(n)
+func (c *sourceCounter) Read(p []byte) (int, error) {
+	n, err := c.source.Read(p)
+	c.read += int64(n)
 	return n, err
 }
 

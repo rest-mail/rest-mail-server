@@ -16478,7 +16478,9 @@ components:
           description: >-
             The message's header fields as it arrived, each name with its
             values; an empty array when none were recorded (mail sent from
-            here, drafts).
+            here, drafts, mail delivered by a gateway, and imported or
+            federated mail whose fields come to 64 KiB or more).
+            GET /messages/{id}/raw answers them all.
           oneOf:
             - type: object
               additionalProperties:
@@ -16833,8 +16835,16 @@ components:
           type: integer
         filename:
           type: string
+          description: >-
+            What the sender called it, for showing: at most 255 characters of
+            valid UTF-8, with U+FFFD for a NUL or an invalid octet. A longer
+            name keeps its start and its last extension.
+            GET /messages/{id}/raw answers the name as it was sent.
         content_type:
           type: string
+          description: >-
+            The part's media type, or application/octet-stream when it is not
+            one a media type can be: over 255 characters, or not valid UTF-8.
         size_bytes:
           type: integer
           format: int64

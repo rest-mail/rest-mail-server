@@ -58,7 +58,7 @@ func TestSMTPInboundStoresTextReadFromTheSource(t *testing.T) {
 		{name: "attachment only", message: head + "Message-ID: <pdf@remote.test>\r\nSubject: pdf\r\nContent-Type: application/pdf\r\n\r\n%PDF\r\n"},
 		{name: "long enough to be written on its own", message: head + "Message-ID: <long@remote.test>\r\nSubject: long\r\n\r\n" + long, text: long},
 		{name: "unparseable", message: "this line is not a header\r\nFrom: sender@remote.test\r\n\r\nstill readable\r\n", text: "still readable\r\n"},
-		{name: "a header over the parser's limit", message: head + "Subject: " + strings.Repeat("y\r\n ", 300_000) + "y\r\n\r\nstill readable\r\n", text: "still readable\r\n"},
+		{name: "a header past 1 MiB", message: head + "Subject: " + strings.Repeat("y\r\n ", 300_000) + "y\r\n\r\nstill readable\r\n", text: "still readable\r\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if err := f.db.Where("mailbox_id = ?", f.mailboxID).Delete(&models.Message{}).Error; err != nil {

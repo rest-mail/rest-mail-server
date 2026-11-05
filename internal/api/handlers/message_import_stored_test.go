@@ -352,6 +352,7 @@ func hostileFieldShapes(id string) map[string]string {
 		"address list, top level":   id + long("To: to@example.test", ",\r\n \"Name %d\" <a%d@example.test>", "") + "Content-Type: text/plain; charset=utf-8\r\n\r\n" + eightBit,
 		"parameters, top level":     id + long("Content-Type: text/plain; charset=utf-8", ";\r\n p%d=v%d", "") + "\r\n" + ascii,
 		"parameters, on a part":     id + "Content-Type: multipart/mixed; boundary=B\r\n\r\n--B\r\n" + long("Content-Type: text/plain; charset=utf-8", ";\r\n p%d=v%d", "") + "\r\n" + ascii + "--B--\r\n",
+		"a field past 1 MiB":        id + long("X-Long: y", "\r\n y%.0d%.0d", strings.Repeat("y", size/2)) + "\r\n" + ascii,
 		"parameters, on many parts": id + "Content-Type: multipart/mixed; boundary=B\r\n\r\n--B\r\nContent-Type: text/plain\r\n\r\n" + eightBit + strings.Repeat("--B\r\nContent-Type: a/b"+strings.Repeat("; p=v", size/5000)+"\r\n\r\nx\r\n", 750) + "--B--\r\n",
 	}
 }

@@ -171,6 +171,7 @@ func (Message) TableName() string { return "messages" }
 // BeforeCreate measures the sizes a gateway reports for a message stored with its
 // raw source, on every path that stores one, so no delivery path can forget them.
 func (m *Message) BeforeCreate(*gorm.DB) error {
+	m.fitColumns()
 	if m.RawSize > 0 && (m.DowngradedSize == 0 || m.POP3UTF8Size == 0 || m.IMAPSize == 0 || m.IMAPUTF8Size == 0) {
 		sizes := rmail.MeasureWireSizes(m.sourceView())
 		if m.DowngradedSize == 0 {
