@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rest-mail/rest-mail-server/internal/auth"
 	"github.com/rest-mail/rest-mail-server/internal/config"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/pipeline/filters"
@@ -83,6 +84,15 @@ func TestSends_DefaultHourlyAllowanceThroughTheRouter(t *testing.T) {
 	start := time.Date(2030, 1, 1, 10, 0, 0, 0, time.UTC)
 	now := start
 	f.routers.sendLimits.Now = func() time.Time { return now }
+	// Tokens are issued and checked at the start of the hour, whatever the wall
+	// clock says, so a slow machine's 100 sends can't outlast the session's
+	// five-minute token. The fixture's own session came from the wall clock.
+	f.jwt.Now = func() time.Time { return start }
+	pair, err := f.jwt.GenerateSession(f.accountID, f.address, 0, []string{auth.AMRPassword, auth.AMROTP}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.session = "Bearer " + pair.AccessToken
 	// The default outbound pipeline holds the same allowance in its rate_limit
 	// filter, on its own clock.
 	t.Cleanup(filters.SetRateLimitClock(func() time.Time { return now }))

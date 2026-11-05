@@ -167,6 +167,51 @@ func TestValidateToken_Expired(t *testing.T) {
 	}
 }
 
+// A token's lifetime is read on the service's clock, issued and checked alike, so a
+// test that moves the clock decides expiry, and a slow machine doesn't.
+func TestJWTService_ClockDecidesExpiry(t *testing.T) {
+	svc := NewJWTService(testSecret, time.Minute, time.Hour)
+	at := time.Date(2030, 1, 1, 10, 0, 0, 0, time.UTC)
+	svc.Now = func() time.Time { return at }
+
+	pair, err := svc.GenerateSession(testMailboxID, testEmail, 0, []string{AMRPassword}, false)
+	if err != nil {
+		t.Fatalf("GenerateSession() unexpected error: %v", err)
+	}
+	machine, err := svc.GenerateMachineToken(testMailboxID, testEmail, 7)
+	if err != nil {
+		t.Fatalf("GenerateMachineToken() unexpected error: %v", err)
+	}
+	for name, token := range map[string]string{"session": pair.AccessToken, "machine": machine} {
+		claims, err := svc.ValidateAccessToken(token)
+		if err != nil {
+			t.Fatalf("%s: ValidateAccessToken() at its issue time: %v", name, err)
+		}
+		if !claims.IssuedAt.Time.Equal(at) {
+			t.Errorf("%s: issued at %s, want the service's clock %s", name, claims.IssuedAt.Time, at)
+		}
+	}
+	if !pair.RefreshExpiresAt.Equal(at.Add(time.Hour)) {
+		t.Errorf("refresh expires at %s, want %s", pair.RefreshExpiresAt, at.Add(time.Hour))
+	}
+
+	issued := at
+	at = issued.Add(time.Minute + time.Second)
+	if _, err := svc.ValidateAccessToken(pair.AccessToken); !errors.Is(err, ErrTokenExpired) {
+		t.Errorf("a minute and a second on, the session's access token: error = %v; want %v", err, ErrTokenExpired)
+	}
+	if _, err := svc.ValidateRefreshToken(pair.RefreshToken); err != nil {
+		t.Errorf("a minute and a second on, the refresh token: %v", err)
+	}
+	if _, err := svc.ValidateAccessToken(machine); err != nil {
+		t.Errorf("a minute and a second on, the machine token: %v", err)
+	}
+	at = issued.Add(MachineTokenLifetime + time.Second)
+	if _, err := svc.ValidateAccessToken(machine); !errors.Is(err, ErrTokenExpired) {
+		t.Errorf("past its lifetime, the machine token: error = %v; want %v", err, ErrTokenExpired)
+	}
+}
+
 // signRawClaims mints a token from arbitrary claims, signed with testSecret, so
 // tests can forge a token whose issuer differs from the one the service pins.
 func signRawClaims(t *testing.T, c Claims) string {

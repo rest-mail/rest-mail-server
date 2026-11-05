@@ -179,6 +179,17 @@ type JWTService struct {
 	// issuer is the `iss` claim minted into every token and pinned on
 	// validation. It defaults to TokenIssuer.
 	issuer string
+	// Now is the clock tokens are issued and checked on: time.Now when nil. A test
+	// that moves its own clock sets it, so a token lives as long as that clock says,
+	// however slow the machine running it.
+	Now func() time.Time
+}
+
+func (s *JWTService) now() time.Time {
+	if s.Now != nil {
+		return s.Now()
+	}
+	return time.Now()
 }
 
 // NewJWTService creates a new JWT service.
@@ -202,7 +213,7 @@ func NewJWTService(secret string, accessExpiry, refreshExpiry time.Duration) *JW
 // carries one of its own, which the audit log records as the session. Both
 // carry a new sid, or the one ContinueSession names.
 func (s *JWTService) GenerateSession(accountID uint, address string, epoch int, amr []string, setupPending bool, opts ...TokenOption) (*TokenPair, error) {
-	now := time.Now()
+	now := s.now()
 	var options tokenOptions
 	for _, opt := range opts {
 		opt(&options)
@@ -312,6 +323,7 @@ func (s *JWTService) ValidateToken(tokenStr string) (*Claims, error) {
 		// rejected, in addition to the existing signing-method, expiry, and
 		// token_type checks. WithIssuer treats a missing/empty iss as a failure.
 		jwt.WithIssuer(s.issuer),
+		jwt.WithTimeFunc(s.now),
 	)
 	if err != nil {
 		if errors.Is(err, jwt.ErrTokenExpired) {
