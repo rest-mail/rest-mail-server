@@ -49,7 +49,9 @@ class CoverageGateRuns(unittest.TestCase):
         self.assertIn("run: go test -race -count=1 -timeout=10m -covermode=atomic "
                       "-coverpkg=./... -coverprofile=coverage.out ./...\n", run)
         self.assertLess(self.test.index("-coverprofile=coverage.out"), self.test.index("go tool cover -func=coverage.out"))
-        self.assertNotIn("continue-on-error", self.test)
+        # Only the proof steps: an upload after them may not fail its job (#1896).
+        self.assertNotIn("continue-on-error", run)
+        self.assertNotIn("continue-on-error", step(self.test, "Require at least 95% statement coverage"))
 
     def test_gate_is_the_modules_own_and_fails_closed(self):
         block = step(self.test, "Require at least 95% statement coverage")
@@ -262,7 +264,8 @@ class NightlyFuzzing(unittest.TestCase):
         self.assertIn("FUZZ_LOG_DIR: ${{ runner.temp }}/go-imap-fuzz\n", block)
         self.assertEqual(self.job.split("    steps:\n", 1)[0].count("runner."), 0)
         self.assertIn("run: ../../scripts/ci/go-imap-fuzz\n", block)
-        self.assertNotIn("continue-on-error", self.job)
+        # Only the fuzzing: the upload after it may not fail its job (#1896).
+        self.assertNotIn("continue-on-error", block)
 
     def test_a_failure_is_visible(self):
         keep = step(self.job, "Keep the logs and failing inputs")
