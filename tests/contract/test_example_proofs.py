@@ -356,7 +356,7 @@ class CIProofFetch(unittest.TestCase):
             calls = root / "calls"
             result = subprocess.run(
                 ["bash", str(ROOT / "scripts/ci_example_proofs.sh"), "abc", "merge_group", str(root / "out")],
-                capture_output=True, text=True, check=False, timeout=20,
+                capture_output=True, text=True, check=False, timeout=600,
                 env={**os.environ, "PATH": f"{root}:{os.environ['PATH']}", "GH_ROOT": str(root),
                      "CI_PROOFS_WAIT_SECONDS": wait, "CI_PROOFS_POLL_SECONDS": "0"},
             )

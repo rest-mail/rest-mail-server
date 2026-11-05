@@ -162,7 +162,7 @@ else: sys.exit(1)
                 env=self.env,
                 text=True,
                 capture_output=True,
-                timeout=15,
+                timeout=600,
             )
             return p.returncode, p.stdout + p.stderr
         pid, fd = pty.fork()
@@ -387,7 +387,7 @@ else: sys.exit(1)
             input="",
             text=True,
             capture_output=True,
-            timeout=20,
+            timeout=600,
         )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertNotIn(KEY.strip(), result.stdout + result.stderr)

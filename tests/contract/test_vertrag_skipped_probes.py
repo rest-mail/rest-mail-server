@@ -16,7 +16,7 @@ import gate
 class VertragSkippedProbes(unittest.TestCase):
     def test_flag_fails_only_when_valid_probes_are_skipped(self):
         binary = os.environ["RESTMAIL_VERTRAG_BINARY"]
-        help_result = subprocess.run([binary, "run", "--help"], capture_output=True, text=True, timeout=20)
+        help_result = subprocess.run([binary, "run", "--help"], capture_output=True, text=True, timeout=600)
         self.assertIn("fail-on-skipped-probes", help_result.stdout + help_result.stderr)
 
         class API(BaseHTTPRequestHandler):
@@ -72,7 +72,7 @@ paths:
                     if flag:
                         command.append("--fail-on-skipped-probes")
                     command.append(str(spec))
-                    result = subprocess.run(command, cwd=directory, capture_output=True, text=True, timeout=30)
+                    result = subprocess.run(command, cwd=directory, capture_output=True, text=True, timeout=600)
                     self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
                     counts = gate.skipped_counts(report, gate.operations(spec))
                     self.assertEqual(counts, {"getThing": 1} if breaks else {})

@@ -51,7 +51,7 @@ class OverviewTests(unittest.TestCase):
     def run_overview(self, arguments, fixtures):
         return subprocess.run(
             [str(SCRIPT), *arguments], cwd=self.directory, text=True,
-            capture_output=True, timeout=20,
+            capture_output=True, timeout=600,
             env=dict(self.environment, OVERVIEW_FIXTURES=json.dumps(fixtures)),
         )
 

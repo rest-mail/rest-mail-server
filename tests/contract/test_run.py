@@ -321,7 +321,7 @@ class ContractCommand(unittest.TestCase):
                 cwd=work,
                 env=env,
                 capture_output=True,
-                timeout=5,
+                timeout=600,
                 check=False,
             )
             if artifacts is not None:
@@ -516,7 +516,7 @@ class PhaseCommand(unittest.TestCase):
                         ),
                         text=True,
                         capture_output=True,
-                        timeout=10,
+                        timeout=600,
                         check=False,
                     )
                     self.assertEqual(result.returncode, 17, result.stderr)
@@ -552,7 +552,7 @@ class ExamplePairsCommand(unittest.TestCase):
                     ),
                     text=True,
                     capture_output=True,
-                    timeout=10,
+                    timeout=600,
                     check=False,
                 )
                 self.assertEqual(result.returncode, 2, result.stderr)

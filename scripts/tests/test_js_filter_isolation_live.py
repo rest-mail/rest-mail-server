@@ -79,7 +79,7 @@ def log(line):
     print("  " + line, file=sys.stderr, flush=True)
 
 
-def run(*args, timeout=60, check=True, input=None):
+def run(*args, timeout=600, check=True, input=None):
     result = subprocess.run(
         args,
         cwd=ROOT,

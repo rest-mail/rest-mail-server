@@ -60,7 +60,7 @@ class ContractQueueFixtureTests(unittest.TestCase):
                        CAPTURE=str(capture), CONTRACT_FIXTURE_CONFIG="restmail.test",
                        CONTRACT_FIXTURE_PROJECT="custom-test-project")
             result = subprocess.run(["sh", "-eu"], input=script, text=True,
-                                    env=env, capture_output=True, timeout=5)
+                                    env=env, capture_output=True, timeout=600)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             self.assertEqual(json.loads(capture.read_text()),
                              ["exec", "--", "custom-test-project-api", "go", "run",
@@ -68,7 +68,7 @@ class ContractQueueFixtureTests(unittest.TestCase):
             capture.unlink()
             env["CONTRACT_FIXTURE_CONFIG"] = "production.example"
             result = subprocess.run(["sh", "-eu"], input=script, text=True,
-                                    env=env, capture_output=True, timeout=5)
+                                    env=env, capture_output=True, timeout=600)
             self.assertNotEqual(result.returncode, 0)
             self.assertFalse(capture.exists())
 

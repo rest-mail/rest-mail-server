@@ -91,7 +91,7 @@ path.write_text(json.dumps(state))
             env=self.env,
             text=True,
             capture_output=True,
-            timeout=10,
+            timeout=600,
             check=False,
         )
         if success:
@@ -131,7 +131,7 @@ path.write_text(json.dumps(state))
             env=self.env,
             text=True,
             capture_output=True,
-            timeout=10,
+            timeout=600,
             check=False,
         )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

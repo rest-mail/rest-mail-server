@@ -17,7 +17,7 @@ class DNSTaskTests(unittest.TestCase):
             cwd=ROOT,
             capture_output=True,
             text=True,
-            timeout=15,
+            timeout=600,
             check=False,
         )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

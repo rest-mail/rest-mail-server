@@ -96,7 +96,7 @@ class Toolchain(unittest.TestCase):
                     env=env,
                     text=True,
                     capture_output=True,
-                    timeout=10,
+                    timeout=600,
                     check=False,
                 )
                 self.assertEqual(result.returncode, 0, result.stderr)

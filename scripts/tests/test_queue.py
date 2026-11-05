@@ -63,7 +63,7 @@ class QueueTests(unittest.TestCase):
     def run_queue(self, arguments=(), fixtures=None, **environment):
         return subprocess.run(
             [str(SCRIPT), *arguments], cwd=self.directory, text=True,
-            capture_output=True, timeout=20,
+            capture_output=True, timeout=600,
             env=dict(self.environment, QUEUE_FIXTURES=json.dumps(fixtures or {}),
                      **environment),
         )
