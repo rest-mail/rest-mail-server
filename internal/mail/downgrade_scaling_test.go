@@ -78,7 +78,8 @@ func TestAddressScan_LooksAtEachOctetOnce(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) {
 			var scan addressScan
-			scan.field(len("To:"), value)
+			var sink headerSink
+			scan.field(&sink, len("To:"), value)
 			if limit := 2 * len(value); scan.steps > limit {
 				t.Errorf("scan took %d steps over %d octets, want at most %d", scan.steps, len(value), limit)
 			}
