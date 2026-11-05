@@ -275,7 +275,7 @@ func (h *MessageHandler) listMessages(r *http.Request, in listMessagesRequest) (
 	// pair: a page cut by id alone skipped every message whose id is above the cut but whose
 	// date is older, such as a copy, which keeps its source's date (#805).
 	query := h.db.Where("mailbox_id = ? AND folder = ? AND is_deleted = ?", mailboxID, folder, false).
-		Select(messageThreadFields).
+		Select(messageListFields).
 		Order("received_at DESC, id DESC").
 		Limit(limit + 1)
 	if !in.IncludeIMAPDeleted {
@@ -1992,7 +1992,7 @@ func (h *MessageHandler) getThread(r *http.Request, in threadRequest) (endpoint.
 
 	var messages []models.Message
 	if err := h.db.Where("mailbox_id = ? AND thread_id = ? AND is_deleted = ? AND imap_deleted = false", mailboxID, in.ThreadID, false).
-		Select(messageThreadFields).
+		Select(messageListFields).
 		Order("received_at ASC").
 		Find(&messages).Error; err != nil {
 		return endpoint.List[Message]{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to retrieve thread")

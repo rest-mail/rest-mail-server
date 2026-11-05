@@ -10,10 +10,12 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-const messageDueFields = `messages.*, (SELECT due FROM thread_dues WHERE
+const messageDueColumns = `(SELECT due FROM thread_dues WHERE
 	(thread_dues.mailbox_id, thread_dues.thread_id) = (messages.mailbox_id, messages.thread_id)) AS due,
 	(SELECT due_source FROM thread_dues WHERE
 	(thread_dues.mailbox_id, thread_dues.thread_id) = (messages.mailbox_id, messages.thread_id)) AS due_source`
+
+const messageDueFields = `messages.*, ` + messageDueColumns
 
 type setThreadDueRequest struct {
 	ID       uint32 `path:"id" minimum:"1" example:"1"`

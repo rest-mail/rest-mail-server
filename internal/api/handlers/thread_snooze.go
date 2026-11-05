@@ -16,8 +16,10 @@ const visibleThreads = `NOT EXISTS (SELECT 1 FROM thread_snoozes WHERE
 	(thread_snoozes.mailbox_id, thread_snoozes.thread_id) = (messages.mailbox_id, messages.thread_id)
 	AND snoozed_until IS NOT NULL)`
 
-const messageThreadFields = messageDueFields + `, (SELECT snoozed_until FROM thread_snoozes WHERE
+const messageSnoozeColumn = `(SELECT snoozed_until FROM thread_snoozes WHERE
 	(thread_snoozes.mailbox_id, thread_snoozes.thread_id) = (messages.mailbox_id, messages.thread_id)) AS snoozed_until`
+
+const messageThreadFields = messageDueFields + `, ` + messageSnoozeColumn
 
 type snoozeThreadRequest struct {
 	ID       uint32 `path:"id" minimum:"1" example:"1"`

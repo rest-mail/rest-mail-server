@@ -140,7 +140,7 @@ func (h *MessageHandler) listThreads(r *http.Request, in listThreadsRequest) (en
 		limit = *in.Limit
 	}
 	query := h.db.Where("messages.mailbox_id = ?", mailboxID).Where(awaitingMessageSQL, spellings).
-		Select(messageThreadFields).Order("messages.received_at DESC, messages.id DESC").Limit(limit + 1)
+		Select(messageListFields).Order("messages.received_at DESC, messages.id DESC").Limit(limit + 1)
 	if after, ok := decodeMessageCursor(in.Cursor); ok {
 		query = query.Where("(messages.received_at, messages.id) < (?, ?)", after.ReceivedAt, after.ID)
 	}
