@@ -15,8 +15,9 @@ import (
 )
 
 func TestS3AttachmentDeliveryMetadataFailureRollsBack(t *testing.T) {
+	errAttachmentMetadata := errors.New("metadata unavailable")
 	db := openMsgDeleteTestDB(t)
-	if err := db.AutoMigrate(&models.QuotaUsage{}, &models.Pipeline{}); err != nil {
+	if err := db.AutoMigrate(&models.QuotaUsage{}, &models.Pipeline{}, &models.SieveScript{}); err != nil {
 		t.Fatal(err)
 	}
 	tx := db.Begin()
@@ -42,14 +43,16 @@ func TestS3AttachmentDeliveryMetadataFailureRollsBack(t *testing.T) {
 	const callback = "s3-test-attachment-write-failure"
 	if err := tx.Callback().Create().Before("gorm:create").Register(callback, func(q *gorm.DB) {
 		if q.Statement.Table == "attachments" {
-			_ = q.AddError(errors.New("metadata unavailable"))
+			_ = q.AddError(errAttachmentMetadata)
 		}
 	}); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = tx.Callback().Create().Remove(callback) })
-	if _, err := h.deliverToLocal(context.Background(), params); err == nil {
-		t.Fatal("delivery accepted without attachment metadata")
+	// The refusal must be the injected metadata failure: any earlier failure would
+	// also leave nothing delivered without reaching the rollback this test proves.
+	if _, err := h.deliverToLocal(context.Background(), params); !errors.Is(err, errAttachmentMetadata) {
+		t.Fatalf("delivery without attachment metadata: got %v, want %v", err, errAttachmentMetadata)
 	}
 	if countMessages(t, tx, fx.mailbox.ID) != 0 || quotaUsedBytes(t, tx, fx.mailbox.ID) != 0 {
 		t.Fatal("failed attachment write partially committed delivery")
