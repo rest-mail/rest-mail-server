@@ -32257,7 +32257,7 @@
             "message": "Request body failed validation",
             "details": {
               "fields": {
-                "raw_message": "must be a string"
+                "raw_message": "must be a base64 string"
               }
             }
           }
