@@ -1,7 +1,9 @@
 """A test run removes its temporary directory, however it ends (#1963)."""
 
+import importlib.util
 import os
 import re
+import select
 import shutil
 import signal
 import subprocess
@@ -11,6 +13,7 @@ import textwrap
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts/scratch_run.py"
@@ -82,14 +85,22 @@ class ScratchRunTests(unittest.TestCase):
 
     def hold(self):
         process = self.start(sys.executable, "-c", HOLD, str(self.ready))
-        self.assertTrue(wait_for(lambda: self.ready.exists() and self.ready.read_text()), "the command never started")
+        self.assertTrue(
+            wait_for(lambda: self.ready.exists() and self.ready.read_text()),
+            "the command never started",
+        )
         pid, directory = self.ready.read_text().split(" ", 1)
         return process, int(pid), Path(directory)
 
     def assert_nothing_left(self, pid=None):
-        self.assertTrue(wait_for(lambda: not list(self.base.iterdir())), f"left behind: {list(self.base.iterdir())}")
+        self.assertTrue(
+            wait_for(lambda: not list(self.base.iterdir())),
+            f"left behind: {list(self.base.iterdir())}",
+        )
         if pid is not None:
-            self.assertTrue(wait_for(lambda: not alive(pid)), "the command outlived its run")
+            self.assertTrue(
+                wait_for(lambda: not alive(pid)), "the command outlived its run"
+            )
 
     def test_the_directory_is_the_commands_own_and_under_scratch(self):
         code = "import os; print(os.environ['GOTMPDIR'], os.environ['TMPDIR'])"
@@ -107,7 +118,14 @@ class ScratchRunTests(unittest.TestCase):
     def test_exit_status_is_the_commands(self):
         for code in (0, 3):
             result = subprocess.run(
-                [sys.executable, "-B", str(SCRIPT), sys.executable, "-c", f"raise SystemExit({code})"],
+                [
+                    sys.executable,
+                    "-B",
+                    str(SCRIPT),
+                    sys.executable,
+                    "-c",
+                    f"raise SystemExit({code})",
+                ],
                 env=dict(os.environ, RESTMAIL_SCRATCH=str(self.base)),
                 check=False,
             )
@@ -124,6 +142,34 @@ class ScratchRunTests(unittest.TestCase):
         self.assertEqual(result.returncode, 127)
         self.assert_nothing_left()
 
+    def test_the_cleaner_can_reach_the_command_as_soon_as_it_exists(self):
+        # A run killed once the command is up must not leave it running. So the
+        # pipe already names the command when Popen returns, or a SIGKILL in
+        # that gap leaves the cleaner with nothing to kill.
+        spec = importlib.util.spec_from_file_location("scratch_run", SCRIPT)
+        scratch_run = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(scratch_run)
+        read_end, write_end = os.pipe()
+        self.addCleanup(os.close, read_end)
+        self.addCleanup(os.close, write_end)
+        handled = (*scratch_run.HANGUP_SIGNALS, signal.SIGALRM)
+        for number, handler in [
+            (number, signal.getsignal(number)) for number in handled
+        ]:
+            self.addCleanup(signal.signal, number, handler)
+        named = []
+        real_popen = subprocess.Popen
+
+        def popen(*args, **kwargs):
+            child = real_popen(*args, **kwargs)
+            ready = select.select([read_end], [], [], 0)[0]
+            named.append((child.pid, os.read(read_end, 64) if ready else b""))
+            return child
+
+        with mock.patch.object(scratch_run.subprocess, "Popen", popen):
+            self.assertEqual(scratch_run.run(["true"], str(self.temp), write_end), 0)
+        self.assertEqual(named[0][1], str(named[0][0]).encode())
+
     def test_each_way_of_being_killed_leaves_nothing(self):
         for number in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP, signal.SIGKILL):
             with self.subTest(signal=number.name):
@@ -136,6 +182,44 @@ class ScratchRunTests(unittest.TestCase):
 
     def test_killing_the_runners_whole_group_leaves_nothing(self):
         process, pid, _directory = self.hold()
+        os.killpg(process.pid, signal.SIGKILL)
+        self.assert_nothing_left(pid)
+
+    def test_the_cleaner_has_left_the_group_before_the_command_starts(self):
+        # A slow cleaner is still in the runner's process group until its setsid
+        # runs. Killing that group must not be able to take the cleaner with it.
+        launcher = textwrap.dedent(f"""
+            import importlib.util, os, sys, time
+            spec = importlib.util.spec_from_file_location("scratch_run", {str(SCRIPT)!r})
+            scratch_run = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(scratch_run)
+            real_setsid = os.setsid
+            def slow_setsid():
+                time.sleep(1)
+                real_setsid()
+            os.setsid = slow_setsid
+            sys.exit(scratch_run.main(sys.argv[1:]))
+        """)
+        process = subprocess.Popen(
+            [
+                sys.executable,
+                "-B",
+                "-c",
+                launcher,
+                sys.executable,
+                "-c",
+                HOLD,
+                str(self.ready),
+            ],
+            env=dict(os.environ, RESTMAIL_SCRATCH=str(self.base)),
+            start_new_session=True,
+        )
+        self.addCleanup(process.wait)
+        self.assertTrue(
+            wait_for(lambda: self.ready.exists() and self.ready.read_text()),
+            "the command never started",
+        )
+        pid = int(self.ready.read_text().split(" ", 1)[0])
         os.killpg(process.pid, signal.SIGKILL)
         self.assert_nothing_left(pid)
 
@@ -160,9 +244,22 @@ class ScratchRunTests(unittest.TestCase):
                 previous = Path.cwd()
                 os.chdir(module)
                 self.addCleanup(os.chdir, previous)
-                process = self.start("go", "test", "-count=1", "-timeout", "3m", ".", HOLD_READY=str(self.ready))
+                process = self.start(
+                    "go",
+                    "test",
+                    "-count=1",
+                    "-timeout",
+                    "3m",
+                    ".",
+                    HOLD_READY=str(self.ready),
+                )
                 os.chdir(previous)
-                self.assertTrue(wait_for(lambda: self.ready.exists() and self.ready.read_text(), 180), "go test never started")
+                self.assertTrue(
+                    wait_for(
+                        lambda: self.ready.exists() and self.ready.read_text(), 180
+                    ),
+                    "go test never started",
+                )
                 # go-build* and the test's own TempDir are both under the run's directory.
                 self.assertEqual(Path(self.ready.read_text()).parents[2], self.base)
                 process.send_signal(number)

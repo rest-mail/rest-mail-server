@@ -30,9 +30,11 @@ GRACE_SECONDS = 10
 HANGUP_SIGNALS = (signal.SIGHUP, signal.SIGINT, signal.SIGTERM)
 
 
-def remove_when_released(read_end, directory):
+def remove_when_released(read_end, started_end, directory):
     """The cleaner: blocks until the pipe closes, then removes the directory. Never returns."""
     os.setsid()
+    # Only now can killing the runner's process group not reach this process.
+    os.close(started_end)
     for number in HANGUP_SIGNALS:
         signal.signal(number, signal.SIG_IGN)
     # The cleaner must not keep a caller's `| tee` open after the run ends.
@@ -80,15 +82,24 @@ def run(command, directory, write_end):
     for number in HANGUP_SIGNALS:
         signal.signal(number, forward)
 
-    environment = dict(os.environ, GOTMPDIR=directory, TMPDIR=directory, RESTMAIL_SCRATCH_RUN=directory)
+    environment = dict(
+        os.environ, GOTMPDIR=directory, TMPDIR=directory, RESTMAIL_SCRATCH_RUN=directory
+    )
     try:
         # A session of its own, so the cleaner can reach everything it started
         # and a signal to our group does not reach it twice.
-        child = subprocess.Popen(command, env=environment, start_new_session=True)
+        # The new process names itself to the cleaner before it execs. If this
+        # process wrote the pid after Popen returned, a SIGKILL in between would
+        # leave the command running with nothing that knows it.
+        child = subprocess.Popen(
+            command,
+            env=environment,
+            start_new_session=True,
+            preexec_fn=lambda: os.write(write_end, str(os.getpid()).encode()),  # noqa: PLW1509 - no threads here
+        )
     except OSError as error:
         print(f"scratch_run: cannot run {command[0]}: {error}", file=sys.stderr)
         return 127
-    os.write(write_end, str(child.pid).encode())
     status = child.wait()
     return 128 - status if status < 0 else status
 
@@ -103,11 +114,17 @@ def main(command):
     directory = tempfile.mkdtemp(prefix="gotmp.", dir=base)
 
     read_end, write_end = os.pipe()
+    started_read, started_write = os.pipe()
     cleaner = os.fork()
     if cleaner == 0:
         os.close(write_end)
-        remove_when_released(read_end, directory)
+        os.close(started_read)
+        remove_when_released(read_end, started_write, directory)
     os.close(read_end)
+    os.close(started_write)
+    # The command must not start while the cleaner can still die with this group.
+    os.read(started_read, 1)
+    os.close(started_read)
 
     status = 1
     try:
