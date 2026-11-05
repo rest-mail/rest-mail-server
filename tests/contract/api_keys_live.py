@@ -30,6 +30,10 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import rate_limits  # noqa: E402
 
 FIXTURE_DOMAIN = "restmail.test"
 API_KEY_PREFIX = "rmk_"
@@ -130,7 +134,7 @@ def check_editing(client, keys, created, secret, domain_path, held, email, plain
     def patch(want, body, as_token, code=None):
         # An edit spends login's budget, which the checks after this suite need too:
         # wait for each one's token instead of draining it.
-        time.sleep(1.1)
+        rate_limits.pace(1.1)
         return client.expect(want, "PATCH", key, body, as_token, code=code)
 
     patch(403, held, plain_token, code="two_factor_required")

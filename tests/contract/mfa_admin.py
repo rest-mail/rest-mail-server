@@ -38,6 +38,7 @@ PROBE_STATE = STATE.with_name("mfa-probe-admin.json")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from api_keys_live import totp  # noqa: E402
+import rate_limits  # noqa: E402
 
 
 def _post(base_url, path, body, token=None):
@@ -54,7 +55,7 @@ def _post(base_url, path, body, token=None):
 
 def _sign_in(base_url, address=ADDRESS, password=PASSWORD, **factor):
     # Sign-ins share the 1 request/second auth bucket.
-    time.sleep(1.1)
+    rate_limits.pace(1.1)
     body = {"email": address, "password": password, "client": "native", **factor}
     return _post(base_url, "/api/v1/auth/login", body)
 

@@ -207,6 +207,19 @@ tasks:
         # mounted testbed resolver authoritative for every DNS query. Connect
         # both networks before starting the API to avoid a sidecar startup race.
         JS_FILTER_IP=$(sh "{{.TASKFILE_DIR}}/js-filter-network.sh" address "{{.API_PROJECT}}") || exit 1
+        # RESTMAIL_API_LIMITS_ENV names an env file of rate limits the API reads
+        # (internal/config/config.go). Only the E2E topology's contract phases
+        # give one, tests/contract/raised-limits.env (#1979); without it the API
+        # runs on its defaults.
+        LIMITS_FLAGS=""
+        if [ -n "${RESTMAIL_API_LIMITS_ENV:-}" ]; then
+          if [ ! -r "$RESTMAIL_API_LIMITS_ENV" ]; then
+            echo "ERROR: RESTMAIL_API_LIMITS_ENV names $RESTMAIL_API_LIMITS_ENV, which cannot be read" >&2
+            exit 1
+          fi
+          echo "  rate limits from $RESTMAIL_API_LIMITS_ENV"
+          LIMITS_FLAGS="--env-file $RESTMAIL_API_LIMITS_ENV"
+        fi
         docker create --name {{.API_CONTAINER_NAME}} --label "$RESTMAIL_LABEL" \
           $HARDENING \
           --restart unless-stopped \
@@ -235,6 +248,7 @@ tasks:
           -e JS_FILTER_URL="http://$JS_FILTER_IP:3100" \
           -e TRACE_SAMPLE_RATE={{.API_TRACE_SAMPLE_RATE}} \
           --env-file "$SECRETS_ENV" \
+          $LIMITS_FLAGS \
           -e ENVIRONMENT={{.API_ENVIRONMENT}} \
           -e LOG_LEVEL={{.API_LOG_LEVEL}} \
           -e INTERNAL_MTLS_ENABLED={{.API_INTERNAL_MTLS}} \
