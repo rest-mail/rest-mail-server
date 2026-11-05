@@ -1,5 +1,5 @@
 #!/bin/sh
-# Thin working-copy helpers; rest-mail/website master owns the site and runtime.
+# Thin working-copy helpers; rest-mail/website main owns the site and runtime.
 set -eu
 
 website_dir=${WEBSITE_DIR:-.workspace/website}
@@ -30,7 +30,7 @@ check_copy() {
 init_copy() {
     if [ ! -e "$website_dir" ] && [ ! -L "$website_dir" ]; then
         mkdir -p "$(dirname "$website_dir")"
-        git clone --branch master git@github.com:rest-mail/website.git "$website_dir"
+        git clone --branch main git@github.com:rest-mail/website.git "$website_dir"
     fi
     check_copy
 }
@@ -40,7 +40,7 @@ case "${1:-}" in
     dev)
         init_copy
         cd "$website_dir"
-        # Current master declares npm (package-lock.json) and a Vite dev script.
+        # Current main declares npm (package-lock.json) and a Vite dev script.
         # Keep the runtime in upstream; this wrapper owns no build or proxy config.
         npm ci
         exec npm run dev
@@ -70,10 +70,10 @@ case "${1:-}" in
         if [ -n "$dirty" ] && [ "${DISCARD_LOCAL_WORK:-}" != true ]; then
             fail 'dirty working copy; review git status first. --discard-local-work explicitly discards tracked edits and untracked files'
         fi
-        git -C "$website_dir" fetch origin master
+        git -C "$website_dir" fetch origin main
         ahead=$(git -C "$website_dir" rev-list --count FETCH_HEAD..HEAD)
         if [ "$ahead" -gt 0 ] && [ "${DISCARD_LOCAL_WORK:-}" != true ]; then
-            fail 'local commits would be lost; --discard-local-work explicitly resets this branch to origin/master'
+            fail 'local commits would be lost; --discard-local-work explicitly resets this branch to origin/main'
         fi
         git -C "$website_dir" reset --hard FETCH_HEAD
         # Ignored files (including dependencies) are deliberately retained.

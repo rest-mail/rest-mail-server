@@ -1572,7 +1572,7 @@ tasks:
           {{.CERTGEN_IMAGE}}:{{.CERTGEN_TAG}}
 
   website:init:
-    desc: Clone and validate the upstream website working copy (master)
+    desc: Clone and validate the upstream website working copy (main)
     dotenv: []
     cmds:
       - scripts/website.sh init
@@ -1602,7 +1602,7 @@ tasks:
       - scripts/website.sh push
 
   website:reset:
-    desc: Reset the website branch to upstream master; refuses to discard local work by default
+    desc: Reset the website branch to upstream main; refuses to discard local work by default
     dotenv: []
     args:
       - {name: discard_local_work, type: bool, desc: "discard tracked edits, untracked files and local commits"}

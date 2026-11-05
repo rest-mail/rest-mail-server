@@ -81,7 +81,7 @@ class Helpers(unittest.TestCase):
     def test_missing_copy_clones_master_and_runs_upstream_dev(self):
         self.copy.rmdir()
         self.run_helper("dev")
-        self.assertEqual(self.git_calls()[0], ["clone", "--branch", "master",
+        self.assertEqual(self.git_calls()[0], ["clone", "--branch", "main",
                          "git@github.com:rest-mail/website.git", str(self.copy)])
         self.assertEqual(self.logged("npm"), [["ci"], ["run", "dev"]])
         self.assertTrue(all(call[2] == str(self.copy) for call in self.logged() if call[0] == "npm"))
@@ -135,7 +135,7 @@ class Helpers(unittest.TestCase):
 
     def test_local_commits_refused_after_fetch(self):
         self.run_helper("reset", code=1, AHEAD="2")
-        self.assertIn(["fetch", "origin", "master"], self.git_calls())
+        self.assertIn(["fetch", "origin", "main"], self.git_calls())
         self.assertFalse(any(args[0] in ("reset", "clean") for args in self.git_calls()))
 
     def test_clean_reset_uses_fetched_master_and_keeps_untracked_files(self):
@@ -160,7 +160,7 @@ class Helpers(unittest.TestCase):
             ("push", "git", ["add", "-A"]),
             ("push", "git", ["commit", "-m", "change"]),
             ("push", "git", ["push", "origin", "HEAD:refs/heads/feature/site"]),
-            ("reset", "git", ["fetch", "origin", "master"]),
+            ("reset", "git", ["fetch", "origin", "main"]),
             ("reset", "git", ["rev-list", "--count", "FETCH_HEAD..HEAD"]),
             ("reset", "git", ["reset", "--hard", "FETCH_HEAD"]),
             ("reset", "git", ["clean", "-fd"]),
@@ -176,7 +176,7 @@ class Helpers(unittest.TestCase):
 
     def test_clone_failure_is_preserved(self):
         self.copy.rmdir()
-        self.run_helper("init", code=37, FAIL_CALL=json.dumps(["git", ["clone", "--branch", "master",
+        self.run_helper("init", code=37, FAIL_CALL=json.dumps(["git", ["clone", "--branch", "main",
                         "git@github.com:rest-mail/website.git", str(self.copy)]]))
 
     @unittest.skipUnless(shutil.which("chore"), "Chore is needed for CLI integration")
@@ -213,7 +213,7 @@ class RealWorktree(unittest.TestCase):
         wrapper.write_text("#!/usr/bin/env python3\nimport os, sys\n"
                            "if sys.argv[3:5] == ['remote', 'get-url']:\n"
                            f"    print({UPSTREAM!r})\n"
-                           "elif sys.argv[3:] == ['fetch', 'origin', 'master']:\n"
+                           "elif sys.argv[3:] == ['fetch', 'origin', 'main']:\n"
                            "    import pathlib, subprocess\n"
                            f"    fetch_head = subprocess.check_output([{REAL_GIT!r}, '-C', sys.argv[2], 'rev-parse', '--git-path', 'FETCH_HEAD'], text=True).strip()\n"
                            "    pathlib.Path(fetch_head).write_text(os.environ['FETCH_TARGET'] + '\\n')\n"
