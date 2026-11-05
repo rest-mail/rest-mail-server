@@ -8,8 +8,10 @@
 #
 #   helm/restmail/tests/render-test.sh
 #
-# Needs helm and yq v4 (https://github.com/mikefarah/yq, preinstalled on GitHub's
-# runners), which reads the rendered manifests as YAML where grep cannot.
+# Needs helm and yq 4.46.1 or newer (https://github.com/mikefarah/yq, preinstalled
+# on GitHub's runners), which reads the rendered manifests as YAML where grep
+# cannot. Older releases fail a correct chart: 4.45.4 adds to an empty stream, and
+# 4.44.3 gives no rows at all, so both fail with messages that blame the chart.
 #
 # shellcheck disable=SC2016 # the $names in single quotes are yq's, not the shell's
 set -euo pipefail
@@ -37,10 +39,12 @@ assert_absent() {
   pass "$1"
 }
 
-case "$(yq --version 2>/dev/null)" in
-  *mikefarah*" v4."*) ;;
-  *) fail "needs yq v4 from https://github.com/mikefarah/yq (found: $(yq --version 2>&1 || true))" ;;
+yq_found="$(yq --version 2>&1 || true)"
+yq_minor=0
+case "$yq_found" in
+  *mikefarah*" v4."*) yq_minor="${yq_found##* v4.}"; yq_minor="${yq_minor%%.*}" ;;
 esac
+[ "$yq_minor" -ge 46 ] || fail "needs yq 4.46.1 or newer from https://github.com/mikefarah/yq (found: $yq_found)"
 
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
