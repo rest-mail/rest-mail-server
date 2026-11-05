@@ -169,6 +169,28 @@ class ExampleStateHookTest(unittest.TestCase):
                 self.hooks.import_into_an_account_with_room(kept)
                 self.assertEqual(kept["fullPath"], documented)
 
+    def test_an_example_that_always_stores_never_spends_the_quota_of_the_documented_account(self):
+        # Account 12 is stage 4's quota account, left with 22 bytes on the topology.
+        # always_store adds a 17-byte message every time, so a second process answered
+        # 409: the coverage gate on #1561, then the authorization and ownership reports.
+        success = "/api/v1/accounts/{id}/messages/import > Store a message the account already has > 200 > application/json"
+        examples = json.loads((ROOT / "openapi-example.json").read_text())
+        pairs = examples["importMessage"]
+        documented = "/api/v1/accounts/{:d}/messages/import".format(pairs["always_store"]["request"]["path"]["id"])
+        self.assertEqual(documented, "/api/v1/accounts/12/messages/import")
+        with patch.dict(os.environ):
+            os.environ.pop("CONTRACT_COVERAGE", None)
+            with patch.object(self.hooks, "mailbox_id", return_value=7):
+                moved = self.transaction(success, documented, pairs["always_store"]["request"]["body"])
+                self.hooks.import_into_an_account_with_room(moved)
+                self.assertEqual(moved["fullPath"], "/api/v1/accounts/7/messages/import")
+                self.assertEqual(json.loads(moved["request"]["body"]), pairs["always_store"]["request"]["body"])
+                # A rerun of any other documented success is skipped as a duplicate, so
+                # it costs nothing and keeps the account the description names.
+                kept = self.transaction(success, documented, pairs["created"]["request"]["body"])
+                self.hooks.import_into_an_account_with_room(kept)
+                self.assertEqual(kept["fullPath"], documented)
+
     def test_an_array_body_has_no_password_to_confirm(self):
         transaction = self.transaction(
             "/api/v1/accounts/{id}/credentials > Make an app password > 400 > application/json",
