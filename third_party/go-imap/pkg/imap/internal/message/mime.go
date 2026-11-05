@@ -200,14 +200,26 @@ type multipartDelimiter struct {
 // multipartDelimiters finds each delimiter line of a multipart body, up to and
 // including the close delimiter.
 func multipartDelimiters(body, boundary string) []multipartDelimiter {
+	var scan boundaryScan
+	return scan.delimiters(body, boundary)
+}
+
+// boundaryScan looks for a boundary's lines and counts the octets it looks at. A search
+// repeated from every line allocates nothing, so only this count shows it
+// (TestSevenBitBoundary_ScansInProportion).
+type boundaryScan struct{ steps int }
+
+func (s *boundaryScan) delimiters(body, boundary string) []multipartDelimiter {
 	delim := "--" + boundary
 	// next finds the next delimiter line at or after from.
 	next := func(from int) (multipartDelimiter, bool) {
 		for from <= len(body) {
 			i := strings.Index(body[from:], delim)
 			if i < 0 {
+				s.steps += len(body) - from
 				return multipartDelimiter{}, false
 			}
+			s.steps += i + len(delim)
 			at := from + i
 			from = at + 1
 			if at != 0 && (at < 2 || body[at-2:at] != "\r\n") {
@@ -223,6 +235,7 @@ func multipartDelimiters(body, boundary string) []multipartDelimiter {
 			if eol >= 0 {
 				line = rest[:eol]
 			}
+			s.steps += len(line)
 			if strings.Trim(line, " \t") != "" {
 				continue
 			}
@@ -235,6 +248,7 @@ func multipartDelimiters(body, boundary string) []multipartDelimiter {
 		return multipartDelimiter{}, false
 	}
 
+	s.steps += len(body)
 	delimiters := make([]multipartDelimiter, 0, strings.Count(body, delim))
 	for from := 0; ; {
 		d, found := next(from)
