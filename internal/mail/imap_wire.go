@@ -43,12 +43,14 @@ type WireSizes struct {
 
 // MeasureWireSizes is every count at once.
 func MeasureWireSizes(raw string) WireSizes {
-	sizes := WireSizes{POP3UTF8: POP3WireSize(raw), IMAPUTF8: IMAPWireSize(raw, true)}
+	sizes := WireSizes{POP3UTF8: POP3WireSize(raw)}
 	header, sep, body := splitHeader(raw)
 	if !containsNonASCII(header) {
-		sizes.Downgraded, sizes.IMAP = DowngradedSize(raw), wireform.Size(raw, false)
+		sizes.Downgraded = DowngradedSize(raw)
+		sizes.IMAP, sizes.IMAPUTF8 = wireform.Sizes(raw)
 		return sizes
 	}
+	sizes.IMAPUTF8 = IMAPWireSize(raw, true)
 	if respelled := wireform.SevenBitBoundary(raw); respelled != raw {
 		sizes.Downgraded, sizes.IMAP = downgradedSizeOf(respelled), downgradedWireSize(header, sep, body)
 		return sizes

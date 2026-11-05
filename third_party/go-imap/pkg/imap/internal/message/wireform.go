@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"unicode/utf8"
+	"unsafe"
 )
 
 // WireForm is raw as FETCH sends it (RFC 3501 §7.4.2). The stored octets never
@@ -54,6 +55,47 @@ func WireFormSize(raw string, sessionUTF8 bool) int {
 	return size.n
 }
 
+// WireFormSizes is WireFormSize(raw, false) and WireFormSize(raw, true), with each long field read
+// for both.
+func WireFormSizes(raw string) (sevenBit, utf8Session int) {
+	if !needsWireForm(raw) {
+		return len(raw), len(raw)
+	}
+	types := wireTypes{}
+	measure := func(sessionUTF8 bool) int {
+		size := wireCounter{types: types}
+		wireEntity(&size, messageNode(raw, 0), sessionUTF8)
+		if size.collided {
+			return len(WireForm(raw, sessionUTF8))
+		}
+		return size.n
+	}
+	return measure(false), measure(true)
+}
+
+// wireTypes remembers what a field of many parameters says for the rest of a measuring, because a
+// sender chooses how many there are, and each reading holds some of it.
+type wireTypes map[wireTypeKey]wireType
+
+type wireTypeKey struct {
+	header      *byte
+	size, depth int
+	defaultType string
+}
+
+func (types wireTypes) of(node mimeNode) wireType {
+	if strings.Count(node.header, ";") <= manyParameters {
+		return node.wireType()
+	}
+	key := wireTypeKey{unsafe.StringData(node.header), len(node.header), node.depth, node.defaultType}
+	t, known := types[key]
+	if !known {
+		t = node.wireType()
+		types[key] = t
+	}
+	return t
+}
+
 // WireFormJoinedSize is WireFormSize(block+body, sessionUTF8) without joining them.
 // It is for a host that rewrites a header block and keeps the stored body.
 func WireFormJoinedSize(block, body string, sessionUTF8 bool) int {
@@ -86,6 +128,7 @@ type wireSink interface {
 // can't go on without that text: collided says the conversion has to run for real. The
 // watch is wider than wireBoundary's test, which only costs that run.
 type wireCounter struct {
+	types    wireTypes
 	n        int
 	watching []lineWatch
 	collided bool
@@ -264,7 +307,12 @@ func wireEntity(w wireSink, node mimeNode, sessionUTF8 bool) {
 		_, _ = w.WriteString(node.body)
 		return
 	}
-	t := node.wireType()
+	var t wireType
+	if counter, counting := w.(*wireCounter); counting && counter.types != nil {
+		t = counter.types.of(node)
+	} else {
+		t = node.wireType()
+	}
 	mt := t.mt
 	multipart := strings.HasPrefix(mt, "multipart/") && t.boundary != ""
 	switch {
