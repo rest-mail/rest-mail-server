@@ -313,6 +313,10 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # This database is thrown away with the job, so it need not wait for its disk (#1979).
+      - name: Stop the test database waiting for its disk
+        run: scripts/ci/throwaway-postgres "${{ job.services.postgres.id }}"
+
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
@@ -480,6 +484,10 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # This database is thrown away with the job, so it need not wait for its disk (#1979).
+      - name: Stop the test database waiting for its disk
+        run: scripts/ci/throwaway-postgres "${{ job.services.postgres.id }}"
 
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0

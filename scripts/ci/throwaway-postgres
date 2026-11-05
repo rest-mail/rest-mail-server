@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# Stop a CI job's test database waiting for its writes to reach the disk. That wait is
+# what protects a database from a crash, and this one is thrown away with the job, so
+# here it only costs time (#1979). A GitHub Actions service cannot change its command,
+# so this changes the running server, and then reads each setting back: a job that lost
+# them would still pass, only slower, and nobody would notice.
+#
+# Never use this on a database that stands in for a real install. The E2E topology, the
+# chart's cluster run, the load run and the mail conformance run keep their defaults.
+#
+#   scripts/ci/throwaway-postgres CONTAINER
+set -uo pipefail
+
+[ $# -eq 1 ] || {
+  echo "usage: $0 CONTAINER" >&2
+  exit 2
+}
+container=$1
+settings=(fsync synchronous_commit full_page_writes)
+
+query() {
+  docker exec "$container" psql -U restmail -d restmail_test -XAtq -v ON_ERROR_STOP=1 -c "$1"
+}
+
+fail() {
+  echo "::error::$1" >&2
+  exit 1
+}
+
+for setting in "${settings[@]}"; do
+  query "ALTER SYSTEM SET $setting = off" || fail "could not set $setting on the test database"
+done
+query "SELECT pg_reload_conf()" >/dev/null || fail "could not reload the test database's settings"
+
+# pg_reload_conf only signals the server, so the first read can come too soon.
+for setting in "${settings[@]}"; do
+  value=""
+  for _ in $(seq 1 20); do
+    value="$(query "SHOW $setting")" || fail "could not read $setting back from the test database"
+    [ "$value" = off ] && break
+    sleep 0.5
+  done
+  [ "$value" = off ] || fail "$setting is still '$value' on the test database"
+  echo "$setting = $value"
+done
