@@ -184,15 +184,14 @@ with exit 2 when non-login valid probes are skipped and deliberately exempts log
 `run.sh` treats that exit as final, on a whole-API run and a narrowed one. The log
 names each operation and what its example answered. A skipped case never counts as
 a passing boundary probe, and `gate.py` still fails on a skipped result in any other
-form. `skipped-probes-baseline.txt` is empty, and `run.sh` no longer reads it.
+form.
 
 ### A hook cannot change a generated body
 
 Vertrag 0.42.0 ends a generated probe whose body a before hook changed
 (`runner.ErrChangedByHook`). `fuzz.Cover` marks it not sent, and the coverage
-command then drops it: it is not in the report, the skip count or
-`skipped-probes-baseline.txt`. A hook that always rewrites a body therefore
-leaves that operation's valid probes unsent and invisible. A hook also never
+command then drops it: it is not in the report or the skip count. A hook that
+always rewrites a body therefore leaves that operation's valid probes unsent and invisible. A hook also never
 sees a `coverage: ` name: the prefix is added to the result, not the transaction.
 `CONTRACT_COVERAGE=1` is what tells a hook it is in the coverage process, whose
 examples phase and working check it also sees.
@@ -450,7 +449,7 @@ the examples of its account and domain runs. So `run.sh authorization` and
 `run.sh ownership` first run `chore test:contract-report-targets`, which tops up
 exactly what that phase consumes, and leaves none behind. No gate calls it, and
 it runs after the gate, so examples and coverage see the rows they always saw:
-coverage's skipped-probe ratchet depends on the single rows being spent.
+coverage's skipped-probe check depends on the single rows being spent.
 
 ### The routes the mail gateways call
 

@@ -21,10 +21,8 @@ nothing about the operation's validation (#386).
 
 Skipped valid probes are Vertrag's to fail: run.sh passes
 --fail-on-skipped-probes, which also exempts login's generated-credential probes,
-and treats its exit 2 as final. So the gate no longer needs a skip count. A
-skipped result in a form Vertrag's flag does not produce still fails here. Given
-a skipped-probes baseline, this still holds each operation to its count, but
-run.sh gives it none and skipped-probes-baseline.txt is empty.
+and treats its exit 2 as final. A skipped result in a form Vertrag's flag does not
+produce still fails here.
 
 Probes a hook ended (lost_probes.py) appear in no report, so the hook worker
 counts them and lost-probes-baseline.txt holds them, per operation. A new
@@ -33,8 +31,6 @@ whole-API topology run can measure it.
 
 Usage: gate.py <openapi.yaml> <vertrag.yml> <junit.xml> <coverage-baseline.txt>
            [--lost-probes lost-probes-baseline.txt lost-probes.txt]
-       gate.py <openapi.yaml> <vertrag.yml> <junit.xml> <coverage-baseline.txt>
-           skipped-probes-baseline.txt [lost-probes-baseline.txt lost-probes.txt]
        gate.py --failing-probes <openapi.yaml> <junit.xml>
            prints the operations with a failing probe, in baseline form.
 """
@@ -181,8 +177,7 @@ def check_lost_probes(baseline_path, report_path, all_ids):
     return held
 
 
-def gate(spec_path, config_path, report_path, baseline_path, skipped_baseline_path=None,
-         lost_baseline_path=None, lost_report_path=None):
+def gate(spec_path, config_path, report_path, baseline_path, lost_baseline_path=None, lost_report_path=None):
     ops = operations(spec_path)
     all_ids = set(ops.values())
     skipped, uncounted = exclusions(config_path)
@@ -215,7 +210,6 @@ def gate(spec_path, config_path, report_path, baseline_path, skipped_baseline_pa
     try:
         probed, probes_failed = results(report_path, ops)
         counts = skipped_counts(report_path, ops)
-        allowed = skipped_baseline(skipped_baseline_path, all_ids)
     except ET.ParseError as err:
         # vertrag exits 1 when it cannot read the spec, leaving an empty report.
         print("the report at %s is unreadable (%s): vertrag judged nothing (see its log)" % (
@@ -225,21 +219,8 @@ def gate(spec_path, config_path, report_path, baseline_path, skipped_baseline_pa
         print(str(err))
         return 1
 
-    if skipped_baseline_path is None:
-        print("Coverage phase: %d valid probes skipped; --fail-on-skipped-probes decides (login probes are exempt)" % (
-            sum(counts.values())))
-    else:
-        print("Coverage phase: %d valid probes skipped; the baseline holds %d (login probes are exempt)" % (
-            sum(counts.values()), sum(allowed.values())))
-    for operation in sorted(counts.keys() | allowed.keys()) if skipped_baseline_path is not None else ():
-        actual, limit = counts.get(operation, 0), allowed.get(operation, 0)
-        if actual > limit:
-            ok = False
-            print("Skipped valid probes increased: %s: %d > %d" % (operation, actual, limit))
-        elif actual < limit:
-            ok = False
-            print("Skipped valid probes decreased: %s: %d < %d; shrink tests/contract/skipped-probes-baseline.txt" % (
-                operation, actual, limit))
+    print("Coverage phase: %d valid probes skipped; --fail-on-skipped-probes decides (login probes are exempt)" % (
+        sum(counts.values())))
 
     if lost_baseline_path is not None and not check_lost_probes(lost_baseline_path, lost_report_path, all_ids):
         ok = False
@@ -272,7 +253,13 @@ def main(argv):
         return 0
     if "--lost-probes" in argv:
         at = argv.index("--lost-probes")
-        return gate(*argv[:at], None, *argv[at + 1:])
+        if at != 4 or len(argv) != 7:
+            print(__doc__, file=sys.stderr)
+            return 2
+        return gate(*argv[:at], *argv[at + 1:])
+    if len(argv) != 4:
+        print(__doc__, file=sys.stderr)
+        return 2
     return gate(*argv)
 
 
