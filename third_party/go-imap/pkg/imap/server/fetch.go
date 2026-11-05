@@ -76,14 +76,13 @@ func (s *Session) fetchResponse(seq int, msg imap.Message, tokens []string) erro
 	}
 	// loadSent is the message as this response sends it (RFC 3501 §7.4.2): every
 	// section, partial offset and described size is taken from these octets. Only
-	// BINARY reads the stored ones (RFC 3516). A NUL that conversion left behind,
-	// in a header or in text, cannot be sent at all.
+	// BINARY reads the stored ones (RFC 3516). The conversion leaves no NUL, so one
+	// message can't stop a FETCH of a range.
 	loadSent := func() (string, bool) {
 		if !sentLoaded {
 			sentLoaded = true
 			if raw, ok := loadStored(); ok {
-				sent = message.WireForm(raw, s.utf8)
-				sentOK = strings.IndexByte(sent, 0) < 0
+				sent, sentOK = message.WireForm(raw, s.utf8), true
 			}
 		}
 		return sent, sentOK
@@ -180,17 +179,6 @@ func (s *Session) fetchResponse(seq int, msg imap.Message, tokens []string) erro
 
 	if (storedLoaded && !storedOK) || (sentLoaded && !sentOK) {
 		return errors.New("cannot load message data")
-	}
-
-	// RFC 3501 CHAR8 excludes NUL. MIME/encoded-word decoders can produce
-	// one even when the raw message has none. Validate decoded metadata
-	// before any Seen write or response bytes, including nested envelopes.
-	// Body literals were already checked in loadSent, and BINARY sends a NUL as a
-	// literal8.
-	for _, field := range plain {
-		if strings.IndexByte(field, 0) >= 0 {
-			return errors.New("NUL in message metadata")
-		}
 	}
 
 	// Only advertise a new \Seen after the backend accepted it. Earlier

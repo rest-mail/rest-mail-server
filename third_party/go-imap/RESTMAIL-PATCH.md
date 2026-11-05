@@ -119,3 +119,26 @@ temporary refusal, unlike AUTHENTICATIONFAILED) without calling the backend,
 then the connection closes. The failure that earns the ban gets the same reply.
 `TestAuthenticationFailureBudgetAppliesToBothForms` asserted the old reply text,
 so it is corrected.
+
+## FETCH sends a space for a NUL instead of refusing the message
+
+RFC 3501 §9 leaves NUL out of CHAR8, so FETCH used to answer `NO` for a message
+holding one in a header or in text, and a range stopped there. SMTP can deliver such
+a message, so one sender could stop an IMAP client reading the mailbox. The owner
+chose on rest-mail/rest-mail-server#1921 to send a space instead:
+
+- A NUL in a header or a textual leaf goes out as a space, one octet for one, and so
+  does one decoded into an ENVELOPE or BODYSTRUCTURE string. In an 8-bit field the
+  space comes first, so no encoded word spells the NUL.
+- Where a NUL is data, a space would corrupt it, so it is encoded. That covers
+  non-textual leaves, an encoding nobody can remove, and text in a charset with NUL
+  octets (`utf-16`, `utf-32`, `ucs-2`, `ucs-4`).
+- `BINARY[]` and `BINARY[n]` still send the stored octets, as a literal8 when they
+  hold a NUL. The stored message never changes.
+- An encoding that spells a NUL (`=00`, `%00`, base64) in what is sent stays as it
+  is, since no NUL octet goes out. ENVELOPE and BODYSTRUCTURE are the exception,
+  because the engine decodes those strings itself.
+
+`wireform.SpaceNUL` is the same rule for a host whose protocol has neither BINARY nor
+this conversion, so data stays exact there rather than encoded.
+`TestFetchRejectsNUL` became `TestFetchReplacesNUL`.

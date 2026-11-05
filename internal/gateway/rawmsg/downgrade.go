@@ -1,6 +1,10 @@
 package rawmsg
 
-import rmail "github.com/rest-mail/rest-mail-server/internal/mail"
+import (
+	"github.com/rest-mail/go-imap/pkg/imap/wireform"
+
+	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
+)
 
 // Downgrade rewrites the top-level header block of a stored message so it
 // carries only ASCII, for a POP3 or IMAP client that has not enabled UTF-8.
@@ -9,4 +13,11 @@ import rmail "github.com/rest-mail/rest-mail-server/internal/mail"
 // from the same code.
 func Downgrade(raw string) string {
 	return rmail.DowngradeHeaders(raw)
+}
+
+// SpaceNUL is raw for POP3, which sends a message as an octet stream with no way to
+// fetch its exact octets (RFC 1939 section 3): a NUL in a header or in text is a
+// space, one octet for one, so LIST and STAT stay exact. Data is left as it is.
+func SpaceNUL(raw string) []byte {
+	return wireform.SpaceNUL(raw)
 }

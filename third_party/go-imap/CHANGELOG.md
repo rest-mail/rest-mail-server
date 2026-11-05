@@ -58,7 +58,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   decode is compared as stored, and neither that nor a stray `=?` stops it decoding
   the words around it, in TEXT, HEADER, SUBJECT, TO, FROM or an encapsulated message.
 - Binary data holding a NUL can be fetched: BODY sends it BASE64 and BINARY as a
-  literal8. A NUL in a header or in text is still refused.
+  literal8. So can text holding one in a charset with NUL octets, such as UTF-16.
+- FETCH no longer refuses a message for a NUL in a header or in text, or one decoded
+  into an ENVELOPE or MIME string, so one message can't stop a fetch of a range. It
+  sends a space for each, one octet for one. BINARY sends the exact octets and the
+  stored message doesn't change. `wireform.SpaceNUL` does the same for a host whose
+  protocol has no BINARY, leaving data as it is.
 - A SELECT or EXAMINE refused with BAD keeps the mailbox already selected, with
   its read-only mode and deletion marks: a rejected command never changes state
   (RFC 3501 §6). Only a well-formed selection attempt that fails with NO
