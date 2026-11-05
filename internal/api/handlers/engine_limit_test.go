@@ -20,7 +20,6 @@ import (
 // unread on the way to the row hasn't only moved what it costs. A Sieve script reads To and Cc for
 // every message.
 func TestDeliverHoldsTheLimitThroughTheEngine(t *testing.T) {
-	const size = 1 << 20
 	const id = "From: old@example.test\r\nSubject: s\r\nDate: Thu, 02 Jan 2020 03:04:05 +0000\r\n"
 	db := importProofDB(t)
 	if err := db.AutoMigrate(&models.Pipeline{}, &models.OutboundQueue{}, &models.SieveScript{}); err != nil {
