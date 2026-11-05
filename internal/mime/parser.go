@@ -27,11 +27,6 @@ func Parse(raw []byte) (*pipeline.EmailJSON, error) {
 	return ParseReader(bytes.NewReader(raw))
 }
 
-// ParseString is Parse for a message already held as text, with no copy of it.
-func ParseString(raw string) (*pipeline.EmailJSON, error) {
-	return ParseReader(strings.NewReader(raw))
-}
-
 // ParseReader is Parse from a reader, for a caller that holds the message in some other form and
 // has no need to copy it to parse it. What it builds is held whole, as Parse's is.
 func ParseReader(source io.Reader) (*pipeline.EmailJSON, error) {
@@ -44,26 +39,50 @@ func ParseReader(source io.Reader) (*pipeline.EmailJSON, error) {
 		return nil, fmt.Errorf("parse message: %w", err)
 	}
 	// The body is what's left of the source.
-	sourceSize = max(sourceSize-int(headerSize), 0)
+	return newHeaderSection(fields, reader).parseBody(br, max(sourceSize-int(headerSize), 0))
+}
 
-	email := &pipeline.EmailJSON{
-		Headers: parseHeaders(fields),
-	}
+// HeaderSection is a message's header section, parsed once, for a caller that decides what it can
+// from that before it reads the body, and then has no need to read it again. Headers is the caller's
+// from then on, and Parse's answer holds the same one.
+type HeaderSection struct {
+	Headers pipeline.Headers
+	opening partFields
+	// fields holds the values of the section's fields, and has room left after them.
+	fields *fieldReader
+}
 
-	// An unknown charset or transfer encoding still gives a readable entity.
-	entity, _ := fieldsOpening(fields).open(br)
-	budget := newPartBudget()
-	budget.fields = reader
-	body, attachments, inline, calendarEvents, err := parseEntity(entity, sourceSize, budget)
+func newHeaderSection(fields []field, reader *fieldReader) *HeaderSection {
+	return &HeaderSection{Headers: parseHeaders(fields), opening: fieldsOpening(fields), fields: reader}
+}
+
+// ReadHeaderSection parses a message's header section, which is everything before its body. It
+// fails for what ParseReader fails for on the same section.
+func ReadHeaderSection(section string) (*HeaderSection, error) {
+	fields, _, reader, _, err := readTopFields(strings.NewReader(section), len(section))
 	if err != nil {
 		return nil, fmt.Errorf("parse message: %w", err)
 	}
-	email.Body = body
-	email.Attachments = attachments
-	email.Inline = inline
-	email.CalendarEvents = calendarEvents
+	return newHeaderSection(fields, reader), nil
+}
 
-	return email, nil
+// Parse reads the body that follows the section, whose size is known, and answers what ParseReader
+// answers for the whole message.
+func (h *HeaderSection) Parse(body string) (*pipeline.EmailJSON, error) {
+	h.fields.sourceSize = len(body)
+	return h.parseBody(strings.NewReader(body), len(body))
+}
+
+func (h *HeaderSection) parseBody(source io.Reader, size int) (*pipeline.EmailJSON, error) {
+	// An unknown charset or transfer encoding still gives a readable entity.
+	entity, _ := h.opening.open(source)
+	budget := newPartBudget()
+	budget.fields = h.fields
+	body, attachments, inline, calendarEvents, err := parseEntity(entity, size, budget)
+	if err != nil {
+		return nil, fmt.Errorf("parse message: %w", err)
+	}
+	return &pipeline.EmailJSON{Headers: h.Headers, Body: body, Attachments: attachments, Inline: inline, CalendarEvents: calendarEvents}, nil
 }
 
 // fieldsOpening is what opening a message needs of its fields, which are already read.

@@ -192,7 +192,7 @@ func (s *importSource) replace(data []byte) error {
 }
 
 // reader reads the message from its start, and stops being good when reader is called again.
-func (s *importSource) reader() (io.Reader, error) {
+func (s *importSource) reader() (*os.File, error) {
 	if _, err := s.file.Seek(0, io.SeekStart); err != nil {
 		return nil, err
 	}
