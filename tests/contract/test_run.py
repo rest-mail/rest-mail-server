@@ -200,7 +200,7 @@ class Summary(unittest.TestCase):
         # A *WithVertrag test skips without the binary, so one this list misses
         # looks fine everywhere and proves nothing.
         tasks = yaml.safe_load((ROOT / "chores.yml").read_text())["tasks"]
-        named = set(re.findall(r"Test\w+WithVertrag", tasks["contract:pairs"]["cmds"][0]))
+        named = set(re.findall(r"Test\w+", tasks["contract:pairs"]["cmds"][0]))
         written = set()
         for path in (ROOT / "internal/api").rglob("*_test.go"):
             written.update(
@@ -208,6 +208,31 @@ class Summary(unittest.TestCase):
             )
         self.assertEqual(sorted(written - named), [], "no run sends these")
         self.assertEqual(sorted(named - written), [], "these no longer exist")
+
+    def test_every_test_that_needs_vertrag_is_in_the_example_pairs(self):
+        # The same trap under any other name: TestContactReplyTimeContractExchanges read the
+        # binary, skipped without it, and no CI step ever set it for that test.
+        tasks = yaml.safe_load((ROOT / "chores.yml").read_text())["tasks"]
+        named = set(re.findall(r"Test\w+", tasks["contract:pairs"]["cmds"][0]))
+        functions = {}
+        for top in ("internal", "cmd"):
+            for path in (ROOT / top).rglob("*_test.go"):
+                for match in re.finditer(
+                    r"^func (\w+)\([^\n]*\{(?:[^\n]*\}\n|\n.*?^\}\n)",
+                    path.read_text(),
+                    re.MULTILINE | re.DOTALL,
+                ):
+                    functions[match.group(1)] = match.group(0)
+        readers = {name for name, body in functions.items() if "RESTMAIL_VERTRAG_BINARY" in body}
+        self.assertTrue(readers, "no test reads the binary: this check looks in the wrong place")
+        unsent = [
+            name
+            for name, body in functions.items()
+            if name.startswith("Test")
+            and name not in named
+            and (name in readers or any(re.search(rf"\b{reader}\b", body) for reader in readers))
+        ]
+        self.assertEqual(sorted(unsent), [], "these skip in every run")
 
 
 class ContractCommand(unittest.TestCase):

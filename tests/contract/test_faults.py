@@ -3,6 +3,8 @@
 import http.client
 import json
 import os
+import subprocess
+import sys
 import tempfile
 import threading
 import unittest
@@ -14,6 +16,17 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import faults
+
+HERE = Path(__file__).resolve().parent
+
+
+def setUpModule():
+    # faults.run speaks to GitHub Actions on stdout. Here it judges made-up faults, and each
+    # "::error::" it printed became an annotation on a passing Lint job, read as the job's
+    # first evidence on every failure that job ever had (#1942).
+    silence = patch.object(faults, "print", create=True)
+    silence.start()
+    unittest.addModuleCleanup(silence.stop)
 
 
 def report(directory, cases):
@@ -603,6 +616,25 @@ class LimitRun(unittest.TestCase):
                 self.assertEqual(faults.run("api"), expected_code)
                 self.assertEqual([call.args for call in restart.call_args_list], [("",), (fault["build_tags"],), ("",)])
                 self.assertIn(verdict, (Path(directory) / "faults.md").read_text())
+
+
+class Output(unittest.TestCase):
+    def test_these_tests_send_github_actions_no_command(self):
+        others = [
+            f"test_faults.{name}"
+            for name, value in globals().items()
+            if isinstance(value, type) and issubclass(value, unittest.TestCase) and value is not Output
+        ]
+        result = subprocess.run(
+            [sys.executable, "-B", "-m", "unittest", *others],
+            cwd=HERE,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        commands = [line for line in result.stdout.splitlines() if line.startswith("::")]
+        self.assertEqual(commands, [])
 
 
 if __name__ == "__main__":

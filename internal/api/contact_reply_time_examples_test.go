@@ -132,7 +132,7 @@ func contactReplyTimeExamples(t *testing.T) {
 
 func TestContactReplyTimeExamples(t *testing.T) { contactReplyTimeExamples(t) }
 
-func TestContactReplyTimeContractExchanges(t *testing.T) {
+func TestContactReplyTimeExamplesWithVertrag(t *testing.T) {
 	binary := os.Getenv("RESTMAIL_VERTRAG_BINARY")
 	if binary == "" {
 		t.Skip("set RESTMAIL_VERTRAG_BINARY for contact reply-time exchange proof")
