@@ -52,6 +52,8 @@ GRANTS = (
 
 # Every domain sender rule operation of the area map. Each follows
 # createDomain's link, and each add's link reaches only the remove of its list.
+DKIM = ("setDKIMKey", "deleteDKIMKey", "getDKIMRotation", "setDKIMRotation")
+
 SENDER_RULES = (
     "listAllowlist",
     "addToAllowlist",
@@ -330,6 +332,16 @@ class Selection(unittest.TestCase):
                     link_followers(description, operation) & set(DRAFTS), operation
                 )
         self.assertLessEqual(set(DRAFTS), set(own_data.MOVED))
+
+    def test_it_selects_every_dkim_operation_and_its_links(self):
+        description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
+        self.assertEqual(link_followers(description, "setDKIMKey"), {"deleteDKIMKey"})
+        for operation in DKIM:
+            if operation != "setDKIMKey":
+                self.assertEqual(link_followers(description, operation), set())
+        self.assertLessEqual(set(DKIM), link_followers(description, "createDomain"))
+        self.assertLessEqual(set(DKIM), set(own_data.MOVED))
+        self.assertFalse(set(DKIM) & set(own_data.FOLLOWS_THE_CREATED_DOMAIN))
 
     def test_a_skipped_exchange_is_not_a_pass(self):
         with tempfile.TemporaryDirectory() as directory:
