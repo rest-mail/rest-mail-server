@@ -211,6 +211,40 @@ class AuthorizationConfig(unittest.TestCase):
         # standing in for each other.
         self.assertEqual(self.generate()["authorization"], {"refuse": [404]})
 
+    def test_the_phase_provides_a_recoverable_account_beside_the_runs_own(self):
+        self.settings["provides"] = {"state": ["kept"], "fault": ["database"]}
+        self.config.write_text(yaml.safe_dump(self.settings))
+        config = self.generate()
+        self.assertEqual(
+            config["provides"],
+            {"state": ["kept", "recoverable_account"], "fault": ["database"]},
+        )
+        # The examples phase's own configuration and unproven list are kept.
+        self.assertEqual(yaml.safe_load(self.config.read_text()), self.settings)
+        self.assertEqual(
+            config["unproven"], ".cache/contract/unproven-authorization.json"
+        )
+
+    def test_only_recoverys_success_needs_the_provided_state(self):
+        # A provided state proves every pair requiring it, so it names one a
+        # hook prepares for every principal (hooks.py,
+        # recover_an_account_of_its_own) and no state of the caller's own
+        # account, whose success would end the principal's sessions.
+        examples = json.loads(
+            (Path(__file__).resolve().parents[2] / "openapi-example.json").read_text()
+        )
+        needing = sorted(
+            (operation, name)
+            for operation, pairs in examples.items()
+            for name, pair in pairs.items()
+            if (pair.get("requires") or {}).get("state")
+            in authorization.PROVIDES["state"]
+        )
+        self.assertEqual(needing, [("recoverAccount", "recovered")])
+        self.assertEqual(examples["recoverAccount"]["recovered"]["response"]["status"], 200)
+        for own in ("known_password", "enrolled_authenticator", "pending_enrollment"):
+            self.assertNotIn(own, authorization.PROVIDES["state"])
+
     def test_own_account_operations_are_left_out_with_a_reason(self):
         self.settings["skip"] = [{"name": "/kept > Kept > 200", "reason": "kept"}]
         self.config.write_text(yaml.safe_dump(self.settings))
