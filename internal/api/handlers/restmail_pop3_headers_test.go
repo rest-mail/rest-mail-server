@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"encoding/json"
 	"io"
 	"net"
 	"net/http"
@@ -24,8 +23,6 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/db/repositories"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 	pop3gateway "github.com/rest-mail/rest-mail-server/internal/gateway/pop3"
-	"github.com/rest-mail/rest-mail-server/internal/pipeline"
-	"github.com/rest-mail/rest-mail-server/internal/pipeline/filters"
 )
 
 func TestRESTMAILStoredHeadersThroughPOP3RETR(t *testing.T) {
@@ -36,25 +33,7 @@ func TestRESTMAILStoredHeadersThroughPOP3RETR(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) {
 			db, mailbox := restmailStorageFixture(t)
-			if err := db.Model(&models.Domain{}).Where("id = ?", mailbox.DomainID).Update("active", true).Error; err != nil {
-				t.Fatal(err)
-			}
-			if err := db.AutoMigrate(&models.Credential{}, &models.GatewaySession{}, &models.ThreadDue{}, &models.ThreadSnooze{}, &models.VacationConfig{}, &models.Alias{}); err != nil {
-				t.Fatal(err)
-			}
-			registry := pipeline.NewRegistry()
-			registry.Register("header_validate", filters.NewHeaderValidate)
-			registry.Register("recipient_check", filters.NewRecipientCheck(db))
-			registry.Register("dmarc_reports_received", filters.NewDMARCReportsReceived)
-			registry.Register("vacation", filters.NewVacation(db))
-			steps, err := json.Marshal([]pipeline.FilterConfig{
-				{Name: "header_validate", Type: pipeline.FilterTypeAction, Enabled: true},
-				{Name: "recipient_check", Type: pipeline.FilterTypeAction, Enabled: true},
-			})
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := db.Create(&models.Pipeline{DomainID: mailbox.DomainID, Direction: "inbound", Active: true, Filters: steps}).Error; err != nil {
+			if err := db.AutoMigrate(&models.Credential{}, &models.GatewaySession{}, &models.ThreadDue{}, &models.ThreadSnooze{}); err != nil {
 				t.Fatal(err)
 			}
 			_, password, err := repositories.NewCredentialRepository(db).CreateAppPassword(mailbox.ID, mailbox.ID, "retrieval test", nil)
@@ -63,7 +42,6 @@ func TestRESTMAILStoredHeadersThroughPOP3RETR(t *testing.T) {
 			}
 			router := chi.NewRouter()
 			rs := endpoint.Routes{Router: router, Registry: endpoint.NewRegistry()}
-			NewRestmailHandler(db, pipeline.NewEngine(registry, nil), nil, RestmailTarpitConfig{}, RestmailDeliverAuthConfig{TrustedCIDRs: []string{"127.0.0.1/32"}}).Register(rs, passingSignInChecks.Throttle)
 			NewGatewaySessionHandler(db, middleware.DefaultGatewayServices).Register(rs, GatewaySessionRouteChecks{
 				Credential: endpoint.Middleware{Wrap: middleware.NewSessionPasswords(PasswordVerifier(db), nil, nil).Authenticate()},
 				Throttle:   passingSignInChecks.Throttle,
@@ -86,38 +64,31 @@ func TestRESTMAILStoredHeadersThroughPOP3RETR(t *testing.T) {
 				internal.ServeHTTP(w, r)
 			}))
 			t.Cleanup(api.Close)
+			// POST /restmail/messages refuses these values, but a row stored
+			// before it did can still hold them, so the row is written directly.
 			messageID := "stored@example.test\r\nX-Stored-Message-ID: extra"
 			inReplyTo := "parent@example.test\nX-Stored-In-Reply-To: extra"
 			references := "reference@example.test\rX-Stored-References: extra"
-			payload := map[string]any{
-				"from": "sender@external.test", "to": []string{mailbox.Address},
-				"subject": "Stored headers", "body_text": "Original body.\r\n",
-				"date":       "Tue, 03 Nov 2026 12:00:00 +0000",
-				"message_id": messageID, "in_reply_to": inReplyTo, "references": references,
+			row := models.Message{
+				MailboxID: mailbox.ID, Folder: "INBOX",
+				MsgID: messageID, InReplyTo: inReplyTo, References: references,
+				Sender: "sender@external.test", RecipientsTo: models.JSONB(`["` + mailbox.Address + `"]`),
+				Subject: "Stored headers", BodyText: "Original body.\r\n",
 			}
-			original := "From: sender@external.test\r\nSubject: Stored headers\r\nMessage-ID: <original@example.test>\r\n\r\nOriginal body.\r\n"
+			row.SizeBytes = len(row.Subject) + len(row.BodyText)
 			if withRaw {
-				payload["raw_message"] = original
+				row.RawMessage = "From: sender@external.test\r\nSubject: Stored headers\r\nMessage-ID: <original@example.test>\r\n\r\nOriginal body.\r\n"
+				row.RawSize = len(row.RawMessage)
 			}
-			encoded, err := json.Marshal(payload)
-			if err != nil {
+			if err := db.Create(&row).Error; err != nil {
 				t.Fatal(err)
-			}
-			response, err := api.Client().Post(api.URL+restmailMessagesPath, "application/json", bytes.NewReader(encoded))
-			if err != nil {
-				t.Fatal(err)
-			}
-			result, err := io.ReadAll(response.Body)
-			_ = response.Body.Close()
-			if err != nil || response.StatusCode != http.StatusCreated {
-				t.Fatalf("RESTMAIL delivery: status %d, body %s, err %v", response.StatusCode, result, err)
 			}
 			var stored models.Message
 			if err := db.Where("mailbox_id = ?", mailbox.ID).Take(&stored).Error; err != nil {
 				t.Fatal(err)
 			}
 			if stored.MsgID != messageID || stored.InReplyTo != inReplyTo || stored.References != references {
-				t.Fatal("delivery changed the structured header values")
+				t.Fatal("the database changed the structured header values")
 			}
 			if (stored.RawMessage != "") != withRaw {
 				t.Fatalf("stored raw present = %t, want %t", stored.RawMessage != "", withRaw)

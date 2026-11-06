@@ -37015,6 +37015,35 @@
         "mediaType": "application/json"
       }
     },
+    "message_id_invalid": {
+      "request": {
+        "body": {
+          "from": "someone@ext-contract.test",
+          "to": [
+            "eve@restmail.test"
+          ],
+          "subject": "Delivered over RESTMAIL",
+          "body_text": "Hello, Eve.",
+          "message_id": "\u003crestmail-delivery@ext-contract.test\u003e\r\nBcc: eve@restmail.test",
+          "date": "Sat, 17 Oct 2026 12:00:00 +0000"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "message_id": "must not contain line breaks or other control characters"
+              }
+            }
+          }
+        }
+      }
+    },
     "recipients_missing": {
       "request": {
         "body": {
