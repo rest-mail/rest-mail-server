@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"os"
 	"sync"
 	"testing"
@@ -10,6 +11,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/config"
 	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/examplepairs"
 	"github.com/rest-mail/rest-mail-server/internal/testdb"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
@@ -28,6 +30,13 @@ func TestMain(m *testing.M) {
 	code := m.Run()
 	code = testdb.Finish(code)
 	closeTestDB()
+	// The example pairs proven here against a real database (the slow statement
+	// view's unavailable answers, #1629) count only once written where CI asks
+	// for them (examplepairs.ProofsEnv, #1237).
+	if err := examplepairs.WriteProofs(); err != nil {
+		fmt.Fprintln(os.Stderr, "example proofs:", err)
+		code = 1
+	}
 	os.Exit(code)
 }
 

@@ -101,6 +101,13 @@ postgres:
     mountPath: /certs
     certFilename: tls.crt
     keyFilename: tls.key
+  # Preload pg_stat_statements, which the slow statement view reads
+  # (`restmail db slow-statements`, GET /api/v1/admin/database/statements,
+  # #1629). The API creates the extension at boot. Off, the view answers 503
+  # statistics_unavailable. An external database (enabled: false) needs
+  # shared_preload_libraries = 'pg_stat_statements' set by its operator.
+  statStatements:
+    enabled: true
   # Empty: the chart makes the credentials itself, keeps them across upgrades,
   # and keeps them when uninstalled (templates/postgres-secret.yaml) — nothing to
   # prepare. Or name a Secret you manage, with keys POSTGRES_USER,

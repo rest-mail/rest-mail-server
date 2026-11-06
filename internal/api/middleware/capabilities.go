@@ -34,6 +34,7 @@ package middleware
 //	observability:read  pipeline analytics funnel + per-message trace read
 //	audit:read   the audit log and its verification (read)
 //	agents:create creating an owned account (POST /api/v1/accounts with owned)
+//	database:read the slow statement view; database:manage resets its counters
 //
 // The dashboard stats endpoint needs domains:read, which every admin role
 // holds; the non-production test endpoints need "*" itself, and refuse to run
@@ -80,4 +81,12 @@ const (
 	// factor (#341, Decided 12). Seeded into the admin role; superadmin's "*"
 	// satisfies it.
 	CapAgentsCreate = "agents:create"
+
+	// CapDatabaseRead gates the slow statement view (GET
+	// /admin/database/statements, #1629): normalised statement text with call
+	// counts and times from pg_stat_statements. CapDatabaseManage gates
+	// resetting those counters. Both are seeded into the admin role only;
+	// superadmin's "*" satisfies them.
+	CapDatabaseRead   = "database:read"
+	CapDatabaseManage = "database:manage"
 )

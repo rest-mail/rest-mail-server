@@ -13170,6 +13170,83 @@ paths:
                   data:
                     $ref: "#/components/schemas/DashboardStats"
 
+  /api/v1/admin/database/statements:
+    get:
+      operationId: listSlowStatements
+      description: "The current database's statements from pg_stat_statements, slowest first: by total execution time (`sort=total`, the default) or by mean time per call (`sort=mean`), at most `limit` of them (default 20, at most 100). Each is the statement as Postgres normalises it, constants replaced by `$1`, `$2` and so on, so no parameter value is shown, with its calls, total and mean execution time in milliseconds and the rows it returned or changed. The figures count from the last reset (`POST /api/v1/admin/database/statements/reset`) or the database's start. Answers 503 with code `statistics_unavailable` when the database does not have pg_stat_statements loaded: Postgres needs `shared_preload_libraries = 'pg_stat_statements'` and the extension created, which the chart's bundled Postgres has."
+      tags: ["Admin: Stats"]
+      security:
+        - CookieAuth: [database:read]
+        - BearerAuth: [database:read]
+        - APIKeyAuth: [database:read]
+      summary: List the database's slowest statements
+      parameters:
+        - name: sort
+          in: query
+          required: false
+          description: total orders by total execution time, mean by mean time per call; total when left out.
+          schema:
+            type: string
+            enum: [total, mean]
+        - name: limit
+          in: query
+          required: false
+          description: How many statements to list; 20 when left out.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+      responses:
+        "200":
+          description: The slowest statements, slowest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/SlowStatements"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          description: Authentication refusals exceeded the configured rate limit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: The database does not have pg_stat_statements loaded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/admin/database/statements/reset:
+    post:
+      operationId: resetSlowStatements
+      description: "Resets the current database's pg_stat_statements counters, so the slow statement view counts from now: reset after a change, wait for traffic, then read the view. Answers 503 with code `statistics_unavailable` when the database does not have pg_stat_statements loaded or its user may not reset it."
+      tags: ["Admin: Stats"]
+      security:
+        - CookieAuth: [database:manage]
+        - BearerAuth: [database:manage]
+        - APIKeyAuth: [database:manage]
+      summary: Reset the database's statement statistics
+      responses:
+        "204":
+          description: The counters are reset
+        "429":
+          description: Authentication refusals exceeded the configured rate limit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: The database does not have pg_stat_statements loaded, or its user may not reset it
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   # ═══════════════════════════════════════════════════════════════
   # Admin: Roles & Grants
   # ═══════════════════════════════════════════════════════════════
@@ -19750,6 +19827,45 @@ components:
     # ─────────────────────────────────────────────────────────────
     # Admin: Dashboard stats
     # ─────────────────────────────────────────────────────────────
+    SlowStatements:
+      description: The slow statement view (#1629), slowest first.
+      type: object
+      additionalProperties: false
+      required: [sort, statements]
+      properties:
+        sort:
+          type: string
+          description: "total or mean: what the statements are ordered by, slowest first"
+        statements:
+          type: array
+          items:
+            $ref: "#/components/schemas/SlowStatement"
+
+    SlowStatement:
+      description: One normalised statement's figures since the last reset.
+      type: object
+      additionalProperties: false
+      required: [query, calls, total_ms, mean_ms, rows]
+      properties:
+        query:
+          type: string
+          description: The statement as Postgres normalises it, constants replaced by $1, $2 and so on
+        calls:
+          type: integer
+          format: int64
+        total_ms:
+          type: number
+          format: double
+          description: Total execution time in milliseconds
+        mean_ms:
+          type: number
+          format: double
+          description: Mean execution time per call in milliseconds
+        rows:
+          type: integer
+          format: int64
+          description: Rows returned or changed, over every call
+
     DashboardStats:
       type: object
       required: [domainCount, mailboxCount, queueStats, messageVolume, recentActivity, inboundTransportSecurity]

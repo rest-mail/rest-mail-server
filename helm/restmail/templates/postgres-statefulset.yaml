@@ -32,19 +32,28 @@ spec:
           imagePullPolicy: {{ .Values.global.imagePullPolicy }}
           securityContext:
             {{- include "restmail.containerSecurityContext" (list . "postgres") | nindent 12 }}
-          {{- if .Values.postgres.tls.enabled }}
-          # Serve TLS so the API/gateways can connect with a secure DB_SSLMODE
-          # (require / verify-*). The key is mounted root-owned mode 0640 and the
-          # pod's fsGroup (70, the alpine postgres gid, set in the pod
-          # securityContext) grants the postgres user group-read — the posture
-          # Postgres accepts for a root-owned key.
+          {{- if or .Values.postgres.tls.enabled .Values.postgres.statStatements.enabled }}
           args:
+            {{- if .Values.postgres.statStatements.enabled }}
+            # Statement statistics for the slow statement view (#1629,
+            # GET /api/v1/admin/database/statements). The API creates the
+            # extension at boot; the library must be preloaded.
+            - -c
+            - shared_preload_libraries=pg_stat_statements
+            {{- end }}
+            {{- if .Values.postgres.tls.enabled }}
+            # Serve TLS so the API/gateways can connect with a secure DB_SSLMODE
+            # (require / verify-*). The key is mounted root-owned mode 0640 and the
+            # pod's fsGroup (70, the alpine postgres gid, set in the pod
+            # securityContext) grants the postgres user group-read — the posture
+            # Postgres accepts for a root-owned key.
             - -c
             - ssl=on
             - -c
             - ssl_cert_file={{ .Values.postgres.tls.mountPath }}/{{ .Values.postgres.tls.certFilename }}
             - -c
             - ssl_key_file={{ .Values.postgres.tls.mountPath }}/{{ .Values.postgres.tls.keyFilename }}
+            {{- end }}
           {{- end }}
           ports:
             - name: postgres

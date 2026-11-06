@@ -114,6 +114,8 @@ func EnsureRBAC(database *gorm.DB) error {
 		{Name: "observability:read", Description: "View pipeline analytics funnel and per-message traces", Resource: "observability", Action: "read"},
 		{Name: "audit:read", Description: "Read the audit log and verify its chain", Resource: "audit", Action: "read"},
 		{Name: "agents:create", Description: "Create owned accounts (agents and sub accounts) on a domain", Resource: "agents", Action: "create"},
+		{Name: "database:read", Description: "View the database's slowest statements", Resource: "database", Action: "read"},
+		{Name: "database:manage", Description: "Reset the database's statement statistics", Resource: "database", Action: "manage"},
 		{Name: models.CapMailRead, Description: "Read a mailbox's mail", Resource: "mail", Action: "read"},
 		{Name: models.CapMailWrite, Description: "Change a mailbox's mail: folders, flags, drafts, contacts, filters", Resource: "mail", Action: "write"},
 		{Name: models.CapMailImport, Description: "Store a message in a mailbox without running delivery rules", Resource: "mail", Action: "import"},
@@ -194,6 +196,7 @@ func EnsureRBAC(database *gorm.DB) error {
 		"observability:read",
 		"audit:read",
 		"agents:create",
+		"database:read", "database:manage",
 		models.CapAdminSession,
 	}
 	for _, capName := range adminCaps {

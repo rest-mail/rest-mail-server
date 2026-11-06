@@ -21,6 +21,7 @@ func defaultServerCeilingRows(query string, args []driver.NamedValue) (*authRead
 		"pipelines:read", "pipelines:write", "pipelines:delete",
 		"messages:send_bulk", "messages:read", "queue:read", "queue:manage",
 		"bans:read", "bans:write", "bans:delete", "observability:read", "audit:read", "agents:create",
+		"database:read", "database:manage",
 		models.CapMailRead, models.CapMailWrite, models.CapMailSend, models.CapMailReceive, models.CapMailSendAs, models.CapMailSendOnBehalf, models.CapMailboxManage,
 		models.CapMailboxSession, models.CapAdminSession,
 	} {

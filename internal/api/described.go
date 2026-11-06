@@ -226,6 +226,9 @@ var exampleRequirements = map[string][]string{
 		// A received list message whose List-Unsubscribe target the request reaches: a
 		// mailto: address, or a one-click HTTPS target served by the test (#1575).
 		"unsubscribe_target",
+		// A database without pg_stat_statements preloaded (#1629): the live
+		// run's chart-installed Postgres preloads it.
+		"pg_stat_statements_not_loaded",
 	},
 }
 
