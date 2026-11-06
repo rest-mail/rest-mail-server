@@ -69,6 +69,21 @@ HANDLERS = "internal/api/handlers"
 # is aliased, and a reboot drops the aliases (#1942).
 LOADGEN = "/tests/load/loadgen"
 LOOPBACK_ALIASES = ("127.0.1.1", "127.0.1.2", "127.0.1.3")
+# Packages whose tests read the source of packages they do not import, so selecting
+# changed packages and their importers never selects them: CI failed #1791 on
+# internal/testguard's TestNoFreePortProbes after its local gate passed (#1942).
+# They run whatever changed. A new test that walks the tree belongs here too.
+GUARD_PACKAGES = (
+    # TestNoFreePortProbes: every .go file in the repository.
+    "internal/testguard",
+    # TestEveryStoredMessageNamesItsThread: every message literal under internal and cmd.
+    "internal/db/repositories",
+    # TestRotateCoversEveryEncryptedColumn: every encrypt call under cmd and internal.
+    "cmd/rotate-key",
+    # Its catalogue's patches must apply to other packages' source, and it reads
+    # internal/api's tests.
+    "internal/faultinject",
+)
 
 EXIT_PASSED = 0
 EXIT_FAILED = 1
@@ -340,11 +355,14 @@ def failure_report(events):
         }
     )
     shown = set(failed)
+    # Decided once: asked per line, a large log with one failed test took 36
+    # minutes of CPU and printed nothing (#1942).
+    only_failed = bool(failed) and not timed_out(events)
     lines = [
         event.get("Output", "").rstrip("\n")
         for event in events
         if event.get("Action") == "output"
-        and (event.get("Test") in shown if failed and not timed_out(events) else True)
+        and (event.get("Test") in shown if only_failed else True)
     ]
     for index, line in enumerate(lines):
         if "panic: test timed out" in line:
@@ -738,6 +756,7 @@ class Gate:
         self.env.pop("RESTMAIL_EXAMPLE_PROOFS", None)
         self.env.pop("RESTMAIL_VERTRAG_BINARY", None)
         self.packages = []
+        self.guards = []
         self.files = []
         self.api_changed = False
         self.container = None
@@ -1047,6 +1066,21 @@ class Gate:
         )
         if self.api_changed and api not in self.packages:
             self.packages.append(api)
+        for directory in GUARD_PACKAGES:
+            guard = next(
+                (
+                    package["ImportPath"]
+                    for package in packages
+                    if package["Dir"] == str(self.root / directory)
+                ),
+                None,
+            )
+            if guard is None:
+                print(f"No guard package {directory} on this tree")
+                continue
+            self.guards.append(guard)
+            if guard not in self.packages:
+                self.packages.append(guard)
         print("Changed paths:\n" + "\n".join(files))
         print("Go test packages:\n" + "\n".join(self.packages))
 
@@ -1174,6 +1208,12 @@ class Gate:
         ]
         if not remaining:
             return "NOT REQUIRED: no changed Go packages or importers"
+        guards = [name for name in remaining if name in self.guards]
+        if guards:
+            # Seconds, where the race shards take half an hour: a guard that any
+            # change can break fails the step before them.
+            remaining = [name for name in remaining if name not in guards]
+            self.go_test_packages(guards)
         for directory in ("internal/api", "internal/api/handlers"):
             package = next(
                 (name for name in remaining if name.endswith("/" + directory)), None
@@ -1210,6 +1250,10 @@ class Gate:
             )
         if not remaining:
             return self.warning()
+        self.go_test_packages(remaining)
+        return self.warning()
+
+    def go_test_packages(self, packages):
         self.run_go_test(
             [
                 "go",
@@ -1221,10 +1265,9 @@ class Gate:
                 "WithVertrag$",
                 "-exec",
                 self.work / "testdb-exec",
-                *remaining,
+                *packages,
             ]
         )
-        return self.warning()
 
     def imap(self):
         if not self.all_packages and not any(

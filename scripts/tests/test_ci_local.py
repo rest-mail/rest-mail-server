@@ -110,6 +110,45 @@ class Selection(unittest.TestCase):
         self.assertEqual(local.packages, ["mod/internal/api"])
         self.assertIn("tests/e2e", output.getvalue())
 
+    def test_a_change_to_one_handler_package_still_runs_the_guard_packages(self):
+        # The guards read other packages' source without importing them (#1942).
+        directories = ["internal/api", "internal/api/handlers", "internal/mail"]
+        directories += list(gate.GUARD_PACKAGES)
+        packages = [
+            {"ImportPath": "mod/" + directory, "Dir": str(ROOT / directory)}
+            for directory in directories
+        ]
+        packages[0]["Imports"] = ["mod/internal/api/handlers"]
+        with tempfile.TemporaryDirectory() as temporary:
+            local = gate.Gate(ROOT, Path(temporary), Path(temporary), False)
+            with (
+                patch.object(local, "run", return_value=""),
+                patch.object(gate, "json_stream", return_value=packages),
+                patch.object(
+                    gate,
+                    "changed_files",
+                    return_value=["internal/api/handlers/messages_test.go"],
+                ),
+                redirect_stdout(io.StringIO()),
+            ):
+                local.selection()
+        self.assertEqual(
+            sorted(local.packages),
+            sorted(
+                ["mod/internal/api", "mod/internal/api/handlers"]
+                + ["mod/" + directory for directory in gate.GUARD_PACKAGES]
+            ),
+        )
+
+    def test_the_guard_packages_are_on_this_tree_and_each_walks_it(self):
+        for directory in gate.GUARD_PACKAGES:
+            with self.subTest(directory=directory):
+                tests = "".join(
+                    path.read_text()
+                    for path in (ROOT / directory).glob("*_test.go")
+                )
+                self.assertRegex(tests, r"filepath\.WalkDir|filepath\.Glob\(\"\.\./")
+
     def test_json_stream_is_not_assumed_to_be_one_document(self):
         self.assertEqual(gate.json_stream('{"a":1}\n {"a":2}\n'), [{"a": 1}, {"a": 2}])
 
@@ -270,6 +309,74 @@ class TestEvents(unittest.TestCase):
         self.assertTrue(report.startswith("panic: test timed out"))
         self.assertLess(len(report.splitlines()), 100)
 
+    def test_a_large_log_with_one_failed_test_is_read_in_seconds(self):
+        # A 36-minute spin on such a log, asking per line whether it timed out (#1942).
+        lines = []
+        for package in range(40):
+            name = f"mod/internal/package{package}"
+            for test in range(250):
+                test = f"TestPackage{package}Case{test}"
+                lines.append(json.dumps({"Action": "run", "Package": name, "Test": test}))
+                for line in range(20):
+                    lines.append(
+                        json.dumps(
+                            {
+                                "Action": "output",
+                                "Package": name,
+                                "Test": test,
+                                "Output": f"2026/11/06 03:35:51 SELECT * FROM rows {line} "
+                                + "x" * 120
+                                + "\n",
+                            }
+                        )
+                    )
+                failing = test == "TestPackage17Case123"
+                if failing:
+                    lines.append(
+                        json.dumps(
+                            {
+                                "Action": "output",
+                                "Package": name,
+                                "Test": test,
+                                "Output": "    send_test.go:96: send 97 of the hour's 100: 503\n",
+                            }
+                        )
+                    )
+                lines.append(
+                    json.dumps(
+                        {
+                            "Action": "fail" if failing else "pass",
+                            "Package": name,
+                            "Test": test,
+                            "Elapsed": 0.1,
+                        }
+                    )
+                )
+        text = "\n".join(lines) + "\n"
+        self.assertGreater(len(text), 30_000_000)
+
+        def too_slow(signum, frame):
+            raise AssertionError("reading the log did not finish within 60 seconds")
+
+        previous = signal.signal(signal.SIGALRM, too_slow)
+        signal.alarm(60)
+        try:
+            events, stray = gate.parse_events(text)
+            started = time.monotonic()
+            names, report = gate.failure_report(events)
+            limited = gate.timed_out(events)
+            first, cut_off = gate.split_at_limit(events)
+            elapsed = time.monotonic() - started
+        finally:
+            signal.alarm(0)
+            signal.signal(signal.SIGALRM, previous)
+        self.assertEqual(stray, [])
+        self.assertEqual(names, ["TestPackage17Case123"])
+        self.assertTrue("send 97 of the hour's 100" in report, report[-1000:])
+        self.assertFalse(limited)
+        self.assertEqual((first, cut_off), (["TestPackage17Case123"], []))
+        self.assertLess(elapsed, 5)
+
     def test_failure_with_no_named_test_keeps_the_package_output(self):
         names, report = gate.failure_report(
             [
@@ -346,6 +453,23 @@ class VertragShards(unittest.TestCase):
             self.assertEqual(shards.call_args.args[0], ["TestA", "TestB"])
             self.assertEqual(shards.call_args.args[3:5], (gate.RACE_SHARDS, "20m"))
             self.assertIn("-race", commands.call_args_list[1].args[0])
+
+    def test_a_failing_guard_stops_the_step_before_the_race_shards(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            local = gate.Gate(ROOT, Path(temporary), Path(temporary), False)
+            local.packages = ["mod/internal/api", "mod/internal/mail", "mod/guard"]
+            local.guards = ["mod/guard"]
+            failure = subprocess.CalledProcessError(1, ["go", "test"])
+            with (
+                patch.object(local, "run_go_test", side_effect=failure) as tests,
+                patch.object(local, "run") as commands,
+                patch.object(local, "shards", create=True) as shards,
+                self.assertRaises(subprocess.CalledProcessError),
+            ):
+                local.go_tests()
+            self.assertEqual(tests.call_args.args[0][-1:], ["mod/guard"])
+            commands.assert_not_called()
+            shards.assert_not_called()
 
     def test_selective_mode_does_not_start_database_or_unchanged_nested_tests(self):
         with tempfile.TemporaryDirectory() as temporary:
