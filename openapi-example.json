@@ -33315,7 +33315,7 @@
     "recovered": {
       "summary": "A recovery code sets a new password and signs in",
       "requires": {
-        "state": "enrolled_authenticator"
+        "state": "recoverable_account"
       },
       "request": {
         "body": {
