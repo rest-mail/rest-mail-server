@@ -74,7 +74,11 @@ HIDING_REFUSAL = [404]
 # (known_password, enrolled_authenticator, pending_enrollment) are not provided:
 # their success ends or changes the principal's own sessions, and a hook may not
 # point the request at another account's credential.
-PROVIDES = {"state": ["recoverable_account"]}
+# The owner endpoints need a key in the owner registry: chore contract registers
+# a throwaway one (owner_key.py, chore test:contract-owner-key) for this phase
+# only, and hooks.py signs each success with it. A token is minted and redeemed
+# only for an account made for that request, never one of the run's own.
+PROVIDES = {"state": ["owner_key", "recoverable_account"]}
 # Operations whose request names no mailbox: they act on the caller's own
 # account, where every signed-in principal holds the capability they declare.
 OWN_ACCOUNT = [

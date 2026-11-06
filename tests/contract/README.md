@@ -1307,10 +1307,19 @@ a hosted domain and mailbox for each address a test send probe uses, and,
 - `authorization.py`: builds a private configuration from the E2E principals
   for the report-only authorization phase. Its JUnit report and log are
   included in `e2e-container-logs`; the generated credential-bearing YAML is
-  removed after the run and is never uploaded. It provides one state the
-  examples phase does not, `recoverable_account` (#1162): recoverAccount names
+  removed after the run and is never uploaded. It provides two states the
+  examples phase does not (#1162). `recoverable_account`: recoverAccount names
   its account in the body, so `hooks.py` makes a fresh account, enrolled in
-  TOTP, for each principal's request and recovers that one. States of the
+  TOTP, for each principal's request and recovers that one. `owner_key`: just
+  before the phase, `chore test:contract-owner-key -- add` makes a throwaway
+  Ed25519 key (`owner_key.py`; the seed stays in the private, never-uploaded
+  `.cache/contract/owner-key.json`) and registers its public half with the
+  documented operator action, `restmail-api owner-key add`; after the phase,
+  `-- revoke` revokes it and deletes the seed, so the gate and later phases see
+  no owner key. `hooks.py` signs each owner success with it as every
+  principal: ownerStatus on a fresh challenge; ownerToken for an account made
+  for that request; resetAdmin redeems a token minted for such an account, so
+  no token for one of the run's own accounts is minted or spent. States of the
   caller's own account (`known_password`, `enrolled_authenticator`,
   `pending_enrollment`) are not provided: their success would end or change the
   principal's own sessions. Its unproven list is
