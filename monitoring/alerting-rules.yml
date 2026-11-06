@@ -201,6 +201,68 @@ groups:
           summary: "No DNSBL answer for {{ $labels.ip }} from {{ $labels.provider }} in 6 hours"
           description: "restmail_dnsbl_listed for this pair reflects an answer more than 6 hours old."
 
+  # Disk space on the volumes REST Mail writes (#1579): the database, the
+  # attachments (the API's volume and Garage's) and the certificates. A full
+  # database volume stops every write, so mail is refused; a full attachment
+  # volume fails every message with a file.
+  #
+  # Thresholds are a share of the volume, not a fixed number of GB, because the
+  # same rule covers a few-MB certificate volume, the chart's 20Gi database and
+  # its 50Gi Garage volume. 80% used (warning, for 30m) leaves room to grow the
+  # volume during working hours; 90% (critical, for 5m) leaves about 2Gi on the
+  # default database volume, little more than Postgres needs for a VACUUM or a
+  # burst of WAL, so act now.
+  #
+  # Two sources, one pair of alerts each:
+  #   * compose stack: node-exporter (tasks/monitoring.yml) mounts each volume
+  #     read-only under /volumes/<name>, scraped as job "node";
+  #   * Kubernetes: kubelet's volume stats for the chart's PVCs
+  #     (<release>-postgres-data, <release>-api-attachments and Garage's
+  #     data-<release>-garage-N). Only when the cluster's Prometheus scrapes
+  #     kubelet, as kube-prometheus-stack does; the chart installs nothing.
+  - name: restmail-disk
+    rules:
+      - alert: DiskSpaceLow
+        expr: >
+          node_filesystem_avail_bytes{job="node", mountpoint=~"/volumes/.+"}
+          / node_filesystem_size_bytes{job="node", mountpoint=~"/volumes/.+"} < 0.20
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Volume {{ $labels.mountpoint }} is over 80% full"
+          description: "Only {{ $value | humanizePercentage }} of the filesystem holding {{ $labels.mountpoint }} is free. Free space or grow the volume before it fills."
+      - alert: DiskSpaceCritical
+        expr: >
+          node_filesystem_avail_bytes{job="node", mountpoint=~"/volumes/.+"}
+          / node_filesystem_size_bytes{job="node", mountpoint=~"/volumes/.+"} < 0.10
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Volume {{ $labels.mountpoint }} is over 90% full"
+          description: "Only {{ $value | humanizePercentage }} of the filesystem holding {{ $labels.mountpoint }} is free. When it fills, writes to it fail: the database refuses mail, attachments cannot be stored. Act now."
+      - alert: PVCSpaceLow
+        expr: >
+          kubelet_volume_stats_available_bytes{persistentvolumeclaim=~".+-(postgres-data|api-attachments)|data-.+-garage-[0-9]+"}
+          / kubelet_volume_stats_capacity_bytes{persistentvolumeclaim=~".+-(postgres-data|api-attachments)|data-.+-garage-[0-9]+"} < 0.20
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} is over 80% full"
+          description: "Only {{ $value | humanizePercentage }} of the volume is free. Grow the PVC (its storage class must allow expansion) or free space before it fills."
+      - alert: PVCSpaceCritical
+        expr: >
+          kubelet_volume_stats_available_bytes{persistentvolumeclaim=~".+-(postgres-data|api-attachments)|data-.+-garage-[0-9]+"}
+          / kubelet_volume_stats_capacity_bytes{persistentvolumeclaim=~".+-(postgres-data|api-attachments)|data-.+-garage-[0-9]+"} < 0.10
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} is over 90% full"
+          description: "Only {{ $value | humanizePercentage }} of the volume is free. When it fills, writes to it fail: the database refuses mail, attachments cannot be stored. Act now."
+
   # DKIM key age and rotation (moved here from docs/dkim-rotation-alerts.md,
   # #1579). They match the same domain, scrape job and instance, so several
   # API replicas do not cause a many-to-many match. The chart's PrometheusRule
