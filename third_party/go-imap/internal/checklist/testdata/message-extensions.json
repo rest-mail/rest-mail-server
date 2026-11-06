@@ -331,7 +331,7 @@
           "requirements": [
             "IMAP-ESEARCH-06"
           ],
-          "note": "Conditional CONDSTORE/MODSEQ examples remain unsupported."
+          "note": "MODSEQ in ESEARCH with a CONDSTORE store (RFC 7162 §3.1.10)."
         },
         {
           "section": "4",
@@ -342,7 +342,7 @@
             "IMAP-ESEARCH-05",
             "IMAP-ESEARCH-06"
           ],
-          "note": "Case-insensitive option/response syntax and unsupported conditional MODSEQ."
+          "note": "Case-insensitive option/response syntax and conditional MODSEQ."
         },
         {
           "section": "5",
@@ -635,7 +635,7 @@
             "IMAP-MOVE-13",
             "IMAP-MOVE-18"
           ],
-          "note": "QRESYNC/VANISHED and mod-sequences remain unsupported."
+          "note": "With QRESYNC enabled, MOVE reports VANISHED; the store raises mod-sequences."
         },
         {
           "section": "4.5",

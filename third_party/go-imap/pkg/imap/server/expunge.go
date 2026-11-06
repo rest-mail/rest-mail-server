@@ -20,7 +20,9 @@ func (s *Session) handleExpunge(tag string) {
 }
 
 // expungeMessages removes marked messages, optionally restricted to the given
-// sequence numbers. Descending order keeps every reported sequence valid. A
+// sequence numbers. Descending order keeps every reported sequence valid; a
+// session that enabled QRESYNC is told with one VANISHED instead (RFC 7162
+// §3.2.10). A
 // refused delete leaves the message and its mark intact for a later retry;
 // successful removals are still reported before the final NO (RFC 3501 §6.4.3,
 // RFC 4315 §2.1). Backends need not support an atomic multi-message deletion.
@@ -32,6 +34,7 @@ func (s *Session) expungeMessages(tag, command string, targets map[int]bool) {
 		return
 	}
 	failed := false
+	var removed []int
 	for i := len(s.messages) - 1; i >= 0; i-- {
 		msg := s.messages[i]
 		if !marks[msg.UID] || (targets != nil && !targets[i+1]) {
@@ -42,12 +45,10 @@ func (s *Session) expungeMessages(tag, command string, targets map[int]bool) {
 			failed = true
 			continue
 		}
-		s.send("* %d EXPUNGE", i+1)
-		s.messages = append(s.messages[:i], s.messages[i+1:]...)
-		delete(s.deleted, msg.UID)
+		removed = append(removed, i+1)
 	}
+	s.removeMessages(removed)
 
-	s.selected.total = int64(len(s.messages))
 	if failed {
 		s.tagged(tag, "NO", command+" failed")
 		return
@@ -80,18 +81,13 @@ func (s *Session) closeExpunge(tag string) bool {
 			failed = true
 			continue
 		}
-		removed = append(removed, i)
+		removed = append(removed, i+1)
 	}
 	if !failed {
 		return true
 	}
 	// Descending order keeps every reported sequence number valid.
-	for _, i := range removed {
-		s.send("* %d EXPUNGE", i+1)
-		delete(s.deleted, s.messages[i].UID)
-		s.messages = append(s.messages[:i], s.messages[i+1:]...)
-	}
-	s.selected.total = int64(len(s.messages))
+	s.removeMessages(removed)
 	s.tagged(tag, "NO", "CLOSE failed")
 	return false
 }

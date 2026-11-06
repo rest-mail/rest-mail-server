@@ -127,6 +127,12 @@ then the connection closes. The failure that earns the ban gets the same reply.
 `TestAuthenticationFailureBudgetAppliesToBothForms` asserted the old reply text,
 so it is corrected.
 
+  to an IMAP4rev2 session, or when the store keeps mod-sequences: RFC 3501
+  has no CLOSED and asks that other codes "SHOULD be prefixed with an "X"
+  until they are added to a revision of this protocol" (§7.1), and RFC 7162
+  §3.2.11 requires CLOSED of a server that "advertises "QRESYNC" or
+  "CONDSTORE"", which this one does only with such a store. ENABLE IMAP4rev2
+  will turn it on for every session.
 - Mailbox access rights (RFC 9051 §§6.3.2, 6.3.9.2, 6.3.12, 6.4.7, 11.4). The
   rev2 rules on READ-ONLY selections, TRYCREATE without implicit creation,
   \Noselect for unopenable LIST-STATUS entries and withholding APPENDUID and
@@ -194,3 +200,14 @@ fields and one call after authentication.
   `TestIDStoredForTheMailbox` and `TestIDLimits` cover storage and the bounds
   (CHECKLIST.md IMAP-ID-01 to IMAP-ID-05). The CAPABILITY example output in
   `server/example_test.go` gains ID.
+- CONDSTORE and QRESYNC (RFC 7162, go-imap#162). Without them a client that
+  reconnects must FETCH every message's flags to learn what changed. The
+  optional `imap.ModSeqMailbox` interface (`HighestModSeq`, `StoreModSeq`)
+  gives the server a folder's HIGHESTMODSEQ and each message's
+  `Message.ModSeq`, and turns on CONDSTORE: ENABLE CONDSTORE, SELECT/EXAMINE
+  (CONDSTORE) with HIGHESTMODSEQ or NOMODSEQ, STATUS HIGHESTMODSEQ, FETCH
+  MODSEQ and CHANGEDSINCE, STORE UNCHANGEDSINCE with MODIFIED, and SEARCH
+  MODSEQ (with ESEARCH's MODSEQ). `imap.VanishedMailbox` (`Vanished`) adds the
+  record of expunged UIDs and turns on QRESYNC: ENABLE QRESYNC, SELECT/EXAMINE
+  (QRESYNC ...), UID FETCH (CHANGEDSINCE n VANISHED), and VANISHED in place of
+  EXPUNGE once enabled. A Mailbox without them advertises neither.

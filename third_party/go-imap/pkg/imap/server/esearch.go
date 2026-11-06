@@ -1,6 +1,7 @@
 package server
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 
@@ -106,4 +107,22 @@ func sequenceSet(numbers []uint32) string {
 		i = j + 1
 	}
 	return b.String()
+}
+
+// esearchModSeq is the MODSEQ an ESEARCH carries when the search had a MODSEQ
+// key (RFC 7162 §3.1.10, RFC 4731 §3.2): the highest mod-sequence of all the
+// matches when ALL or COUNT was asked for, else of those MIN and MAX return.
+// modSeqs is that of each match, in result order, and is not empty.
+func esearchModSeq(returns map[string]bool, modSeqs []uint64) uint64 {
+	if returns["ALL"] || returns["COUNT"] || (!returns["MIN"] && !returns["MAX"]) {
+		return slices.Max(modSeqs)
+	}
+	var v uint64
+	if returns["MIN"] {
+		v = modSeqs[0]
+	}
+	if returns["MAX"] {
+		v = max(v, modSeqs[len(modSeqs)-1])
+	}
+	return v
 }

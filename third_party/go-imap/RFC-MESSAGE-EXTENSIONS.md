@@ -31,7 +31,7 @@ structure; they are not an independent conformance oracle.
 
 ## Boundaries
 
-CONDSTORE/QRESYNC, persistent/live UIDVALIDITY, destination-readability privacy,
+Persistent/live UIDVALIDITY, destination-readability privacy,
 MULTIAPPEND, IMAP Sieve events, global saved-search budgets, host atomic movement,
 quota/ACL/scanning policy, CATENATE, NFC naming and legacy header/body downgrading
 are not silently added or marked complete. The backend and deliberate owner
@@ -91,8 +91,8 @@ Source: [RFC4731](https://www.rfc-editor.org/rfc/rfc4731.txt); SHA256 `e5fad166c
 | RFC4731 §2 | — | Document context, conventions, references, acknowledgements or legal metadata; no independent server protocol requirement. |
 | RFC4731 §3 | `IMAP-ESEARCH-02` | Search protocol-change overview. |
 | RFC4731 §3.1 | `IMAP-ESEARCH-01`, `IMAP-ESEARCH-02`, `IMAP-ESEARCH-03`, `IMAP-ESEARCH-04`, `IMAP-ESEARCH-07` | MIN/MAX/ALL/COUNT, empty result/list, single response, UID indicator and examples. Clients cannot assume ALL ordering. |
-| RFC4731 §3.2 | `IMAP-ESEARCH-06` | Conditional CONDSTORE/MODSEQ examples remain unsupported. |
-| RFC4731 §4 | `IMAP-ESEARCH-01`, `IMAP-ESEARCH-05`, `IMAP-ESEARCH-06` | Case-insensitive option/response syntax and unsupported conditional MODSEQ. |
+| RFC4731 §3.2 | `IMAP-ESEARCH-06` | MODSEQ in ESEARCH with a CONDSTORE store (RFC 7162 §3.1.10). |
+| RFC4731 §4 | `IMAP-ESEARCH-01`, `IMAP-ESEARCH-05`, `IMAP-ESEARCH-06` | Case-insensitive option/response syntax and conditional MODSEQ. |
 | RFC4731 §5 | `IMAP-ESEARCH-08` | Search work/resource and optional optimization boundary. |
 | RFC4731 §6 | `IMAP-ESEARCH-01` | ESEARCH capability registration. |
 | RFC4731 §7 | — | Document context, conventions, references, acknowledgements or legal metadata; no independent server protocol requirement. |
@@ -136,7 +136,7 @@ Source: [RFC6851](https://www.rfc-editor.org/rfc/rfc6851.txt); SHA256 `c4d5c0a72
 | RFC6851 §4.1 | `IMAP-MOVE-16` | Quota policy stays with storage. |
 | RFC6851 §4.2 | `IMAP-MOVE-17` | ACL union remains outside the backend API. |
 | RFC6851 §4.3 | `IMAP-MOVE-02`, `IMAP-MOVE-09`, `IMAP-MOVE-14` | UIDPLUS corresponding identities and COPYUID before EXPUNGE; missing/invalid metadata is omitted. |
-| RFC6851 §4.4 | `IMAP-MOVE-13`, `IMAP-MOVE-18` | QRESYNC/VANISHED and mod-sequences remain unsupported. |
+| RFC6851 §4.4 | `IMAP-MOVE-13`, `IMAP-MOVE-18` | With QRESYNC enabled, MOVE reports VANISHED; the store raises mod-sequences. |
 | RFC6851 §4.5 | `IMAP-MOVE-19` | IMAP Sieve COPY-versus-FLAG event hooks are not offered. |
 | RFC6851 §5 | `IMAP-MOVE-12` | Case-insensitive MOVE/UID MOVE grammar. |
 | RFC6851 §6 | `IMAP-MOVE-10`, `IMAP-MOVE-16` | Storage atomicity, quota and target scanning/auditing boundaries. |
