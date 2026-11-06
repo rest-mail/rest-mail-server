@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
 )
@@ -162,8 +163,11 @@ type Message struct {
 func (Message) TableName() string { return "messages" }
 
 // BeforeCreate measures the downgraded size of a message stored with its raw
-// source, on every path that stores one, so no delivery path can forget it.
-func (m *Message) BeforeCreate(*gorm.DB) error {
+// source, on every path that stores one, so no delivery path can forget it. It
+// also has the INSERT return mod_seq, so the row it answers holds the value the
+// trigger stored and not the model's default (#1756).
+func (m *Message) BeforeCreate(tx *gorm.DB) error {
+	returnStoredModSeq(tx)
 	if m.DowngradedSize == 0 && m.RawSize > 0 {
 		m.DowngradedSize = rmail.DowngradedSize(m.sourceText())
 	}
@@ -182,6 +186,42 @@ func (m Message) sourceText() string {
 		return string(m.RawOctets)
 	}
 	return m.RawMessage
+}
+
+// returnStoredModSeq adds mod_seq to the INSERT's RETURNING. The trigger sets
+// it before the row is written, and GORM reads back only the columns it thinks
+// the database fills, which a column with a Go default is not. GORM adds its
+// own RETURNING (the ID) only when none is there yet, so those columns are kept
+// in the one this adds. A batch calls this once per row; the first adds it.
+func returnStoredModSeq(tx *gorm.DB) {
+	if tx == nil {
+		return
+	}
+	stmt := tx.Statement
+	if stmt == nil || stmt.Schema == nil {
+		return
+	}
+	modSeq := clause.Column{Name: "mod_seq"}
+	if existing, ok := stmt.Clauses["RETURNING"]; ok {
+		returning, _ := existing.Expression.(clause.Returning)
+		if returning.Columns == nil {
+			return // RETURNING * already reads it
+		}
+		for _, column := range returning.Columns {
+			if column.Name == modSeq.Name {
+				return
+			}
+		}
+		stmt.AddClause(clause.Returning{Columns: []clause.Column{modSeq}})
+		return
+	}
+	columns := make([]clause.Column, 0, len(stmt.Schema.FieldsWithDefaultDBValue)+1)
+	for _, field := range stmt.Schema.FieldsWithDefaultDBValue {
+		if field.Readable {
+			columns = append(columns, clause.Column{Name: field.DBName})
+		}
+	}
+	stmt.AddClause(clause.Returning{Columns: append(columns, modSeq)})
 }
 
 // Source returns original octets, including historical non-UTF-8 and NUL data.

@@ -197,6 +197,11 @@ type updateMessageBody struct {
 	IsStarred   *bool     `json:"is_starred,omitempty"`
 	IsDraft     *bool     `json:"is_draft,omitempty"`
 	Folder      *string   `json:"folder,omitempty" minLength:"1" minLengthMessage:"required"`
+	// UnchangedSince makes the change conditional, as IMAP's STORE (UNCHANGEDSINCE n)
+	// (RFC 7162 §3.1.3): it is made only while the message's mod_seq is at most this
+	// value, checked and written in one statement, and otherwise answers 409 and
+	// changes nothing.
+	UnchangedSince *uint64 `json:"unchanged_since,omitempty" description:"Change the message only if its mod_seq is still at most this value (IMAP STORE UNCHANGEDSINCE, RFC 7162 §3.1.3); a higher mod_seq answers 409 message_modified and changes nothing. 0 always answers 409"`
 }
 
 type updatePipelineRequestBody struct {
@@ -273,6 +278,7 @@ type Message struct {
 	IsDraft           bool                  `json:"is_draft"`
 	Keywords          []string              `json:"keywords,omitempty"`
 	IMAPDeleted       bool                  `json:"imap_deleted,omitempty"`
+	ModSeq            uint64                `json:"mod_seq,omitempty" minimum:"1" description:"The message's IMAP mod-sequence (RFC 7162 §3.1): it rises whenever the message is stored or moved into its folder and whenever a flag changes, and never falls. Send it back as unchanged_since to change the message only if nothing changed it since"`
 	IsDeleted         bool                  `json:"is_deleted"`
 	ReceivedAt        time.Time             `json:"received_at"`
 	DateHeader        *time.Time            `json:"date_header"`
@@ -355,6 +361,20 @@ type FolderSummary struct {
 	// HighestID is the highest ID among the folder's rows, read with the
 	// counts; it only feeds UIDNext and is not sent.
 	HighestID uint64 `json:"-" gorm:"column:highest_id"`
+	// HighestModSeq is the folder's IMAP HIGHESTMODSEQ (RFC 7162 §3.1.2.1): the
+	// highest mod-sequence it has given out, to a message stored, moved in or
+	// changed there or to one that left it. It never falls.
+	HighestModSeq uint64 `json:"highest_mod_seq" minimum:"1" description:"The folder's IMAP HIGHESTMODSEQ (RFC 7162 §3.1.2.1): the highest mod_seq any change in it has had, including messages that left it. It never falls"`
+	// MaxModSeq is the highest mod_seq among the folder's rows, read with the
+	// counts; it only feeds HighestModSeq and is not sent.
+	MaxModSeq uint64 `json:"-" gorm:"column:max_mod_seq"`
+}
+
+// VanishedUID is a message that left a folder, by an expunge, a delete or a move out,
+// with the folder's mod-sequence at the moment it left (RFC 7162 §3.2.5.1).
+type VanishedUID struct {
+	UID    uint64 `json:"uid" minimum:"1" description:"The message's ID, which is its IMAP UID"`
+	ModSeq uint64 `json:"mod_seq" minimum:"1" description:"The folder's mod-sequence when the message left it"`
 }
 
 type Quota struct {
