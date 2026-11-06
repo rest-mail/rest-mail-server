@@ -182,91 +182,39 @@ class SenderRuleProbes(AdminAPITestCase):
             self.probe_rule({"pattern": "x"}, path)
         self.assertEqual(self.server.state["deleted"], [])
 
-    def test_the_linked_entry_follows_a_probe_that_replaced_it(self):
-        example = {"pattern": "@partner.example.com", "reason": "A trusted partner"}
-        self.probe_rule(example)
-        rule = self.created("rules", domain_id=1, list="allowlist", **example)
-        hooks.keep_the_added_sender_rule(dict(self.transaction(self.PATH, example),
-                                              real={"body": json.dumps({"data": rule})}))
-        # A probe repeating the example's pattern removes it, then adds its own.
-        self.probe_rule(example)
-        replacement = self.created("rules", domain_id=1, list="allowlist", **example)
+    def removal(self, path, status=204):
+        transaction = self.transaction(path)
+        transaction["name"] = "%s/{eid} > Remove entry > %d" % (self.PATH, status)
+        transaction["request"]["headers"] = {"Authorization": "Bearer original"}
+        return transaction
 
-        transaction = self.transaction("%s/%d" % (self.PATH, rule["id"]))
-        hooks.on_the_added_sender_rule(transaction)
-        self.assertEqual(transaction["fullPath"], "%s/%d" % (self.PATH, replacement["id"]))
-
-    def test_the_linked_entry_is_added_again_when_a_probe_left_none(self):
-        example = {"pattern": "@partner.example.com"}
-        rule = self.created("rules", domain_id=1, list="allowlist", **example)
-        hooks.keep_the_added_sender_rule(dict(self.transaction(self.PATH, example),
-                                              real={"body": json.dumps({"data": rule})}))
-        self.server.state["rules"] = [r for r in self.server.state["rules"] if r["id"] != rule["id"]]
-
-        transaction = self.transaction("%s/%d?x=1" % (self.PATH, rule["id"]))
-        hooks.on_the_added_sender_rule(transaction)
-        added = next(r for r in self.server.state["rules"] if r["pattern"] == example["pattern"])
-        self.assertEqual(transaction["fullPath"], "%s/%d?x=1" % (self.PATH, added["id"]))
-
-    def test_other_entry_ids_are_left_alone(self):
-        for path in ("%s/1" % self.PATH, "%s/999" % self.PATH):
-            transaction = self.transaction(path)
-            hooks.on_the_added_sender_rule(transaction)
-            self.assertEqual(transaction["fullPath"], path)
-
-    def test_coverage_placeholder_restores_the_consumed_rule(self):
-        self.enterContext(mock.patch.dict(os.environ, {"CONTRACT_COVERAGE": "1"}))
-        for kind in ("allowlist", "blocklist"):
-            with self.subTest(kind=kind):
-                parent = "/api/v1/admin/domains/1/" + kind
-                example = {"pattern": "@partner.example.com"}
-                rule = self.created("rules", domain_id=1, list=kind, **example)
-                hooks.keep_the_added_sender_rule(dict(self.transaction(parent, example),
-                    real={"body": json.dumps({"data": rule})}))
-                self.server.state["rules"] = []
-                transaction = self.transaction(parent + "/1?keep=yes")
-                transaction["name"] = "coverage: " + parent + "/{eid} > Remove entry > 204"
-                hooks.on_the_added_sender_rule(transaction)
-                restored = self.server.state["rules"][-1]
-                self.assertEqual(transaction["fullPath"], parent + "/%d?keep=yes" % restored["id"])
-                self.assertEqual(restored["pattern"], example["pattern"])
-
-    def test_coverage_keeps_other_rule_ids_and_domains(self):
-        self.enterContext(mock.patch.dict(os.environ, {"CONTRACT_COVERAGE": "1"}))
-        vertrag_hooks.stash["created_sender_rules"] = {self.PATH: {"id": 101, "body": {"pattern": "@partner.example.com"}}}
-        for path in (self.PATH + "/0", self.PATH + "/x", self.PATH + "/2147483647",
-                     "/api/v1/admin/domains/0/allowlist/1", "/api/v1/admin/domains/x/allowlist/1"):
-            transaction = self.transaction(path)
+    def test_an_entry_that_is_there_is_followed_unchanged(self):
+        for path in (self.PATH + "/2", self.PATH + "/2?x=1"):
+            transaction = self.removal(path)
             before = json.loads(json.dumps(transaction))
-            hooks.on_the_added_sender_rule(transaction)
+            hooks.on_a_sender_rule_of_its_own(transaction)
             self.assertEqual(transaction, before)
+        self.assertEqual(self.server.state["serial"], 100)
 
-    def test_coverage_cold_start_recreates_each_removal_without_after_hooks(self):
-        self.enterContext(mock.patch.dict(os.environ, {"CONTRACT_COVERAGE": "1"}))
+    def test_an_entry_that_is_gone_gets_one_of_its_own(self):
+        # The add's linked entry, removed by a probe repeating its pattern (which
+        # added its own), by the documented remove, or never made (coverage's
+        # placeholder 1). Each kind of list gets its own entry, made once.
         for kind in ("allowlist", "blocklist"):
-            for attempt in range(3):
-                with self.subTest(kind=kind, attempt=attempt):
-                    parent = "/api/v1/admin/domains/1/" + kind
-                    transaction = self.transaction(parent + "/1?keep=yes")
-                    transaction["name"] = parent + "/{eid} > Remove entry > 204"
-                    transaction["request"]["headers"] = {"Authorization": "Bearer original"}
+            parent = "/api/v1/admin/domains/1/" + kind
+            for entry_id in ("1", "101", "999"):
+                with self.subTest(kind=kind, entry_id=entry_id):
+                    transaction = self.removal(parent + "/" + entry_id + "?keep=yes")
                     before = json.loads(json.dumps(transaction))
-                    hooks.on_the_added_sender_rule(transaction)
-                    restored = self.server.state["rules"][-1]
-                    before["fullPath"] = parent + "/%d?keep=yes" % restored["id"]
+                    hooks.on_a_sender_rule_of_its_own(transaction)
+                    own = [r for r in self.server.state["rules"]
+                           if r["list"] == kind and r["pattern"] == hooks.OWN_SENDER_RULE["pattern"]]
+                    self.assertEqual(len(own), 1)
+                    before["fullPath"] = parent + "/%d?keep=yes" % own[0]["id"]
                     self.assertEqual(transaction, before)
-                    self.assertEqual(restored["list"], kind)
-                    with urllib.request.urlopen(urllib.request.Request(
-                        "http://127.0.0.1:%d%s" % (self.server.server_port, transaction["fullPath"]),
-                        method="DELETE",
-                    )) as response:
-                        self.assertEqual(response.status, 204)
-        self.assertEqual(self.server.state["rules"], [
-            {"id": 2, "domain_id": 1, "list": "allowlist", "pattern": "@seeded.example"}
-        ])
+        self.assertEqual(self.server.state["deleted"], [])
 
-    def test_coverage_cold_start_keeps_refusals_and_other_targets(self):
-        self.enterContext(mock.patch.dict(os.environ, {"CONTRACT_COVERAGE": "1"}))
+    def test_refusals_and_other_targets_keep_their_ids(self):
         for path, status in (
             (self.PATH + "/1", 404),
             (self.PATH + "/0", 204),
@@ -277,20 +225,113 @@ class SenderRuleProbes(AdminAPITestCase):
             ("/api/v1/admin/domains/999/allowlist/1", 204),
         ):
             with self.subTest(path=path, status=status):
-                transaction = self.transaction(path)
-                transaction["name"] = "coverage: Remove entry > %d" % status
+                transaction = self.removal(path, status)
                 before = json.loads(json.dumps(transaction))
-                hooks.on_the_added_sender_rule(transaction)
+                hooks.on_a_sender_rule_of_its_own(transaction)
                 self.assertEqual(transaction, before)
+        self.assertEqual(self.server.state["serial"], 100)
+
+    def test_nothing_is_kept_between_exchanges(self):
+        example = {"pattern": "@partner.example.com"}
+        self.probe_rule(example)
+        self.created("rules", domain_id=1, list="allowlist", **example)
+        hooks.on_a_sender_rule_of_its_own(self.removal(self.PATH + "/1"))
+        self.assertEqual(set(vertrag_hooks.stash) - {"setup_admin_tokens"}, {"created_sender_rule_probes"})
+
+
+class SenderRuleCleanStart(AdminAPITestCase):
+    """With CONTRACT_RESET_SEED=1 (the own-data phase), each sender rule
+    exchange resets first and is sent to a domain of its own; a remove gets an
+    entry of its own there (#1385)."""
+
+    LINKED = "/api/v1/admin/domains/7/"
+
+    def setUp(self):
+        super().setUp()
+        self.enterContext(mock.patch.dict(os.environ, {"CONTRACT_RESET_SEED": "1"}))
+        self.start_clean = self.enterContext(mock.patch.object(hooks, "start_clean"))
+
+    def sent(self, hook, path, name, body=None):
+        transaction = self.transaction(path, body)
+        transaction["name"] = name
+        hook(transaction)
+        self.start_clean.assert_called_once_with(transaction)
+        self.start_clean.reset_mock()
+        return transaction
+
+    def own_domain(self):
+        return next(d for d in self.server.state["domains"] if d["name"] == hooks.OWN_DOMAIN)
+
+    def forget(self, domain):
+        # The reset (mocked here) removes what the exchange made.
+        self.server.state["domains"].remove(domain)
+        self.server.state["rules"] = [r for r in self.server.state["rules"] if r["domain_id"] != domain["id"]]
+
+    def test_a_list_reads_a_domain_of_its_own(self):
+        for kind in ("allowlist", "blocklist"):
+            with self.subTest(kind=kind):
+                transaction = self.sent(hooks.list_sender_rules_from_a_clean_start,
+                                        self.LINKED + kind + "?limit=5", "x > 200")
+                domain = self.own_domain()
+                self.assertEqual(transaction["fullPath"],
+                                 "/api/v1/admin/domains/%d/%s?limit=5" % (domain["id"], kind))
+                self.forget(domain)
+
+    def test_an_add_is_sent_as_documented_to_a_domain_of_its_own(self):
+        for kind in ("allowlist", "blocklist"):
+            for body, name in (({"pattern": "@partner.example.com", "reason": "A partner"}, "x > 201"),
+                               ({"reason": "No pattern"}, "x > 422")):
+                with self.subTest(kind=kind, name=name):
+                    transaction = self.sent(hooks.remove_a_previous_sender_rule_probe,
+                                            self.LINKED + kind, name, body)
+                    domain = self.own_domain()
+                    self.assertEqual(transaction["fullPath"], "/api/v1/admin/domains/%d/%s" % (domain["id"], kind))
+                    self.assertEqual(json.loads(transaction["request"]["body"]), body)
+                    self.assertEqual(self.server.state["deleted"], [])
+                    self.forget(domain)
+
+    def test_a_remove_reaches_an_entry_of_its_own_on_a_domain_of_its_own(self):
+        for kind in ("allowlist", "blocklist"):
+            with self.subTest(kind=kind):
+                transaction = self.sent(hooks.on_a_sender_rule_of_its_own,
+                                        self.LINKED + kind + "/2?keep=yes", "x > 204")
+                domain = self.own_domain()
+                own = self.server.state["rules"][-1]
+                self.assertEqual((own["domain_id"], own["list"]), (domain["id"], kind))
+                self.assertEqual(own["pattern"], hooks.OWN_SENDER_RULE["pattern"])
+                self.assertEqual(transaction["fullPath"],
+                                 "/api/v1/admin/domains/%d/%s/%d?keep=yes" % (domain["id"], kind, own["id"]))
+                self.forget(domain)
+
+    def test_refusals_reset_and_keep_their_ids(self):
+        # The entry is refused on a domain that exists; missing's domain and a
+        # malformed domain id stay as they are.
+        for path, name in ((self.LINKED + "allowlist/2147483647", "x > 404"),
+                           (self.LINKED + "blocklist/2", "x > 404"),
+                           (self.LINKED + "allowlist/0", "x > 422")):
+            with self.subTest(path=path):
+                transaction = self.sent(hooks.on_a_sender_rule_of_its_own, path, name)
+                domain = self.own_domain()
+                self.assertEqual(transaction["fullPath"],
+                                 path.replace("/7/", "/%d/" % domain["id"]))
+                self.forget(domain)
+        for path in ("/api/v1/admin/domains/2147483647/allowlist/1", "/api/v1/admin/domains/0/allowlist/1",
+                     "/api/v1/admin/domains/x/blocklist"):
+            with self.subTest(path=path):
+                hook = hooks.on_a_sender_rule_of_its_own if path.endswith("/1") else hooks.list_sender_rules_from_a_clean_start
+                transaction = self.sent(hook, path, "x > 404")
+                self.assertEqual(transaction["fullPath"], path)
         self.assertEqual(len(self.server.state["rules"]), 1)
 
-    def test_noncoverage_placeholder_keeps_its_target(self):
-        self.enterContext(mock.patch.dict(os.environ, {"CONTRACT_COVERAGE": "0"}))
-        vertrag_hooks.stash["created_sender_rules"] = {self.PATH: {"id": 101, "body": {"pattern": "@partner.example.com"}}}
-        transaction = self.transaction(self.PATH + "/1")
-        before = json.loads(json.dumps(transaction))
-        hooks.on_the_added_sender_rule(transaction)
-        self.assertEqual(transaction, before)
+    def test_without_a_reset_none_is_asked_for(self):
+        os.environ.pop("CONTRACT_RESET_SEED")
+        hooks.list_sender_rules_from_a_clean_start(self.transaction("/api/v1/admin/domains/1/allowlist"))
+        hooks.remove_a_previous_sender_rule_probe(self.transaction("/api/v1/admin/domains/1/allowlist", []))
+        transaction = self.transaction("/api/v1/admin/domains/1/allowlist/2")
+        transaction["name"] = "x > 204"
+        hooks.on_a_sender_rule_of_its_own(transaction)
+        self.start_clean.assert_not_called()
+        self.assertEqual(transaction["fullPath"], "/api/v1/admin/domains/1/allowlist/2")
 
 
 class AliasProbes(AdminAPITestCase):
