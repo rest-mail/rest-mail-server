@@ -22,6 +22,7 @@ workflow changes, and the fuzz targets nightly in
 `.github/workflows/scheduled.yml`. This copy has no `.github/workflows/`, because
 one here would never run. `.github/scripts/check_coverage.py` and `.github/tests`
 stay: those steps run them, and `TestReadmeCoverageBadge` reads the gate.
+
 ## Unsolicited FETCH UIDs
 
 Unsolicited flag updates include both UID and FLAGS, including after EXPUNGE
