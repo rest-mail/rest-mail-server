@@ -20328,7 +20328,6 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @example 1 */
                 id: number;
             };
             cookie?: never;
