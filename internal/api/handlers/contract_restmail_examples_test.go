@@ -16,17 +16,18 @@ func TestRestmailDeliver_DocumentedRefusals(t *testing.T) {
 	documentedRefusals(t, restmailMessagesPath, "restmailDeliver", deliver)
 }
 
-// The pairs vertrag compiles for restmailDeliver: delivered with the 201 and
-// recipients_missing with the 422, nothing else. recipients_missing is
-// delivered without its to, and neither carries a recipients alias or a raw
-// message, so the missing to is the only reason it is refused.
+// The pairs vertrag compiles for restmailDeliver: delivered with the 201, and
+// message_id_invalid and recipients_missing with the 422, nothing else.
+// recipients_missing is delivered without its to, and message_id_invalid is
+// delivered with a line break and a header after its message_id; none carries a
+// recipients alias or a raw message, so that one change is why each is refused.
 func TestRestmailDeliver_ExamplePairs(t *testing.T) {
 	requests, responses := postExamples(t, restmailMessagesPath, "restmailDeliver")
 
 	want := map[string][]string{
-		"request": {"delivered", "recipients_missing"},
+		"request": {"delivered", "message_id_invalid", "recipients_missing"},
 		"201":     {"delivered"},
-		"422":     {"recipients_missing"},
+		"422":     {"message_id_invalid", "recipients_missing"},
 	}
 	got := map[string][]string{"request": names(requests)}
 	for status, examples := range responses {
@@ -57,6 +58,15 @@ func TestRestmailDeliver_ExamplePairs(t *testing.T) {
 	if !reflect.DeepEqual(requests["recipients_missing"], missing) {
 		t.Errorf("recipients_missing is %s, want delivered without its to: %s",
 			mustJSON(requests["recipients_missing"]), mustJSON(missing))
+	}
+	injected := map[string]interface{}{}
+	for k, v := range delivered {
+		injected[k] = v
+	}
+	injected["message_id"] = "<restmail-delivery@ext-contract.test>\r\nBcc: eve@restmail.test"
+	if !reflect.DeepEqual(requests["message_id_invalid"], injected) {
+		t.Errorf("message_id_invalid is %s, want delivered with a header injected after its message_id: %s",
+			mustJSON(requests["message_id_invalid"]), mustJSON(injected))
 	}
 
 	// The handler answers a delivery with the recipients it stored the message
