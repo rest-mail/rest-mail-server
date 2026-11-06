@@ -28,7 +28,7 @@ func TestRestmailDeliveryRefusalExamples(t *testing.T) {
 	route := requirementRoutes(t)["restmailDeliver"]
 	r := NewRouters(newFailingGormDB(t), auth.NewJWTService(routerTestSecret, time.Minute, time.Hour), &config.Config{Environment: "test"}, nil)
 	t.Cleanup(r.Close)
-	for _, name := range []string{"malformed_json", "body_array", "recipients_missing", "raw_message_wrong_type", "date_wrong_type", "recipients_wrong_type", "recipient_wrong_type"} {
+	for _, name := range []string{"malformed_json", "body_array", "recipients_missing", "raw_message_wrong_type", "date_wrong_type", "recipients_wrong_type", "recipient_wrong_type", "message_id_invalid"} {
 		t.Run(name, func(t *testing.T) {
 			examplepairs.Proven(t, "restmailDeliver", name)
 			pair, ok := pairs["restmailDeliver"][name]

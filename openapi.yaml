@@ -7905,6 +7905,17 @@ paths:
                   body_text: Hello, Eve.
                   message_id: <restmail-delivery@ext-contract.test>
                   date: "Sat, 17 Oct 2026 12:00:00 +0000"
+              # A message_id carrying a line break would add a header line
+              # wherever it is written: refused before anything is looked up
+              # or stored (RFC 5322 §3.6.4, #1608).
+              message_id_invalid:
+                value:
+                  from: someone@ext-contract.test
+                  to: [eve@restmail.test]
+                  subject: Delivered over RESTMAIL
+                  body_text: Hello, Eve.
+                  message_id: "<restmail-delivery@ext-contract.test>\r\nBcc: eve@restmail.test"
+                  date: "Sat, 17 Oct 2026 12:00:00 +0000"
       responses:
         "201":
           description: Delivery result
@@ -7937,6 +7948,14 @@ paths:
                       details:
                         fields:
                           to: at least one recipient required
+                message_id_invalid:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          message_id: must not contain line breaks or other control characters
 
   # ═══════════════════════════════════════════════════════════════
   # Admin: Domains
@@ -18652,13 +18671,26 @@ components:
           type: string
         message_id:
           type: string
+          description: One RFC 5322 msg-id, <id-left@id-right>, with no line break or other control character; refused 422 otherwise. Generated when omitted or empty
+          maxLength: 998
+          pattern: '^[^\x00-\x08\x0A-\x1F\x7F-\x9F]*$'
+          allOf:
+            - pattern: '^$|^[ \t]*<(?:[^\x00-\x20\x7F()<>\[\]:;@\\,."]+(?:\.[^\x00-\x20\x7F()<>\[\]:;@\\,."]+)*|"(?:[^"\\\x00-\x08\x0A-\x1F\x7F]|\\[^\x00-\x08\x0A-\x1F\x7F])*")@(?:[^\x00-\x20\x7F()<>\[\]:;@\\,."]+(?:\.[^\x00-\x20\x7F()<>\[\]:;@\\,."]+)*|\[[^\x00-\x20\x7F\[\]\\]*\])>[ \t]*$'
         date:
           type: string
           description: The Date header (RFC 5322); the inbound pipeline rejects a message without one
         in_reply_to:
           type: string
+          description: One or more RFC 5322 msg-ids separated by spaces, with no line break or other control character; refused 422 otherwise. Empty is the same as omitted
+          pattern: '^[^\x00-\x08\x0A-\x1F\x7F-\x9F]*$'
+          allOf:
+            - pattern: '^$|^[ \t]*<(?:[^\x00-\x20\x7F()<>\[\]:;@\\,."]+(?:\.[^\x00-\x20\x7F()<>\[\]:;@\\,."]+)*|"(?:[^"\\\x00-\x08\x0A-\x1F\x7F]|\\[^\x00-\x08\x0A-\x1F\x7F])*")@(?:[^\x00-\x20\x7F()<>\[\]:;@\\,."]+(?:\.[^\x00-\x20\x7F()<>\[\]:;@\\,."]+)*|\[[^\x00-\x20\x7F\[\]\\]*\])>(?:[ \t]*<(?:[^\x00-\x20\x7F()<>\[\]:;@\\,."]+(?:\.[^\x00-\x20\x7F()<>\[\]:;@\\,."]+)*|"(?:[^"\\\x00-\x08\x0A-\x1F\x7F]|\\[^\x00-\x08\x0A-\x1F\x7F])*")@(?:[^\x00-\x20\x7F()<>\[\]:;@\\,."]+(?:\.[^\x00-\x20\x7F()<>\[\]:;@\\,."]+)*|\[[^\x00-\x20\x7F\[\]\\]*\])>)*[ \t]*$'
         references:
           type: string
+          description: One or more RFC 5322 msg-ids separated by spaces, with no line break or other control character; refused 422 otherwise. Empty is the same as omitted
+          pattern: '^[^\x00-\x08\x0A-\x1F\x7F-\x9F]*$'
+          allOf:
+            - pattern: '^$|^[ \t]*<(?:[^\x00-\x20\x7F()<>\[\]:;@\\,."]+(?:\.[^\x00-\x20\x7F()<>\[\]:;@\\,."]+)*|"(?:[^"\\\x00-\x08\x0A-\x1F\x7F]|\\[^\x00-\x08\x0A-\x1F\x7F])*")@(?:[^\x00-\x20\x7F()<>\[\]:;@\\,."]+(?:\.[^\x00-\x20\x7F()<>\[\]:;@\\,."]+)*|\[[^\x00-\x20\x7F\[\]\\]*\])>(?:[ \t]*<(?:[^\x00-\x20\x7F()<>\[\]:;@\\,."]+(?:\.[^\x00-\x20\x7F()<>\[\]:;@\\,."]+)*|"(?:[^"\\\x00-\x08\x0A-\x1F\x7F]|\\[^\x00-\x08\x0A-\x1F\x7F])*")@(?:[^\x00-\x20\x7F()<>\[\]:;@\\,."]+(?:\.[^\x00-\x20\x7F()<>\[\]:;@\\,."]+)*|\[[^\x00-\x20\x7F\[\]\\]*\])>)*[ \t]*$'
         headers:
           type: object
           description: Raw headers as JSON
