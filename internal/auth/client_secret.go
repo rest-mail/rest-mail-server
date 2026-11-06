@@ -30,7 +30,7 @@ func (s *JWTService) GenerateMachineToken(accountID uint, address string, creden
 	if accountID == 0 || credentialID == 0 {
 		return "", ErrInvalidCredentials
 	}
-	now := time.Now()
+	now := s.now()
 	sid, err := newSessionID()
 	if err != nil {
 		return "", err

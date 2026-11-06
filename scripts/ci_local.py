@@ -346,6 +346,29 @@ def failure_report(events):
     return failed, "\n".join(lines[-FAILURE_REPORT_LINES:])
 
 
+def plan_shards(names, seconds, count):
+    """Splits tests into at most count shards that should take about as long.
+
+    The sorted round robin CI uses put five of internal/api's slowest tests in one
+    of eight shards: 250 s against a mean of 154 s, so at the load several gates
+    bring, that shard alone passed the 20 minute limit (#1942). Here the longest
+    test goes first, each to the shard with the least time so far, so no shard
+    passes the mean by more than its longest test. A test with no time on record
+    counts as the median of those with one; with none on record every test weighs
+    the same and the tests are dealt out in turn, as CI deals them.
+    """
+    known = sorted(seconds[name] for name in names if name in seconds)
+    default = known[len(known) // 2] if known else 1.0
+    weight = {name: seconds.get(name, default) for name in names}
+    shards = [[] for _ in range(min(count, len(names)))]
+    totals = [0.0] * len(shards)
+    for name in sorted(names, key=lambda name: -weight[name]):
+        lightest = totals.index(min(totals))
+        shards[lightest].append(name)
+        totals[lightest] += weight[name]
+    return [sorted(shard) for shard in shards]
+
+
 def timed_out(events):
     return any(TIMEOUT_MARK in event.get("Output", "") for event in events)
 
@@ -1310,8 +1333,8 @@ class Gate:
             raise RuntimeError(f"no tests selected for {label}")
         processes, outputs, logs = [], [], []
         try:
-            for shard in range(min(count, len(names))):
-                selected = names[shard::count]
+            seconds = self.test_seconds(label)
+            for shard, selected in enumerate(plan_shards(names, seconds, count)):
                 pattern = "^(" + "|".join(selected) + ")$"
                 log = self.work / f"{label}-{shard}.json"
                 output = log.open("w")
@@ -1362,6 +1385,7 @@ class Gate:
                 for line in stray[:20]:
                     print(f"{log.name}: not a test event: {line[:500]}")
             events = [event for parsed in shard_events for event in parsed]
+            self.record_test_seconds(label, events)
             failed = [
                 index for index, process in enumerate(processes) if process.poll()
             ]
@@ -1431,6 +1455,53 @@ class Gate:
                         process.wait()
             for output in outputs:
                 output.close()
+
+    def seconds_file(self, label):
+        # A rerun of what a limit cut off is the same tests, so it shares their times.
+        while label.endswith("-again"):
+            label = label[: -len("-again")]
+        return self.cache / "go-test-seconds" / (label + ".json")
+
+    def test_seconds(self, label):
+        """What each test took when it last passed on this machine, by name."""
+        try:
+            seconds = json.loads(self.seconds_file(label).read_text())
+        except (OSError, ValueError):
+            return {}
+        if not isinstance(seconds, dict):
+            return {}
+        return {
+            name: value
+            for name, value in seconds.items()
+            if isinstance(value, (int, float)) and value >= 0
+        }
+
+    def record_test_seconds(self, label, events):
+        """Keeps each passed top-level test's time for the next run's shard plan.
+
+        Every worktree on the machine shares the file. It is replaced whole, so a
+        reader never sees half of it; of two runs writing at once, one's times win.
+        """
+        passed = {
+            event["Test"]: round(float(event["Elapsed"]), 1)
+            for event in events
+            if event.get("Action") == "pass"
+            and "/" not in event.get("Test", "/")
+            and isinstance(event.get("Elapsed"), (int, float))
+        }
+        if not passed:
+            return
+        path = self.seconds_file(label)
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            seconds = {**self.test_seconds(label), **passed}
+            with tempfile.NamedTemporaryFile(
+                "w", dir=path.parent, prefix=path.name, suffix=".tmp", delete=False
+            ) as handle:
+                json.dump(seconds, handle, indent=0, sort_keys=True)
+            os.replace(handle.name, path)
+        except OSError as error:
+            print(f"WARNING: could not keep test times in {path}: {error}")
 
     def cleanup(self):
         failures = []

@@ -981,6 +981,92 @@ class VertragShards(unittest.TestCase):
                 self.assertFalse(local.created_image)
 
 
+class ShardPlan(unittest.TestCase):
+    """Shards are planned on the times tests took, so none carries far more (#1942)."""
+
+    MEASURED = json.loads(
+        (ROOT / "scripts/tests/data/internal_api_race_seconds.json").read_text()
+    )["seconds"]
+
+    def test_measured_times_overload_a_round_robin_shard_and_not_a_planned_one(self):
+        seconds = self.MEASURED
+        names = sorted(seconds)
+        mean = sum(seconds.values()) / gate.RACE_SHARDS
+        bound = mean + max(seconds.values())
+        round_robin = [
+            sum(seconds[name] for name in names[shard :: gate.RACE_SHARDS])
+            for shard in range(gate.RACE_SHARDS)
+        ]
+        # What the gate did before: one shard of eight at 250 s against 154 s.
+        self.assertGreater(max(round_robin), bound)
+        plan = gate.plan_shards(names, seconds, gate.RACE_SHARDS)
+        self.assertEqual(len(plan), gate.RACE_SHARDS)
+        self.assertCountEqual([name for shard in plan for name in shard], names)
+        totals = [sum(seconds[name] for name in shard) for shard in plan]
+        self.assertLessEqual(max(totals), bound, totals)
+
+    def test_with_no_times_on_record_tests_are_dealt_out_as_ci_deals_them(self):
+        names = [f"Test{index:02d}" for index in range(19)]
+        self.assertEqual(
+            gate.plan_shards(names, {}, 8), [names[shard::8] for shard in range(8)]
+        )
+        self.assertEqual(gate.plan_shards(names[:3], {}, 8), [[name] for name in names[:3]])
+
+    def test_a_test_with_no_time_on_record_weighs_the_median(self):
+        seconds = {"TestA": 1, "TestB": 2, "TestC": 30, "TestD": 30}
+        plan = gate.plan_shards(["TestA", "TestB", "TestC", "TestD", "TestNew"], seconds, 2)
+        # TestNew counts as 30 s, so it shares a shard with one 30 s test and the
+        # 1 and 2 s tests go with the other: 60 s against 33 s.
+        self.assertEqual(sorted(plan), [["TestA", "TestB", "TestD"], ["TestC", "TestNew"]])
+
+    def test_a_shard_run_keeps_passed_times_and_the_next_plan_uses_them(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            cache, work = Path(temporary) / "cache", Path(temporary) / "work"
+            cache.mkdir()
+            work.mkdir()
+            local = gate.Gate(ROOT, cache, work, False)
+            patterns = []
+            elapsed = {"TestHeavy": 300.04, "TestA": 1, "TestB": 1, "TestC": 1}
+
+            class Process:
+                pid = 1
+
+                def __init__(self, args, **kwargs):
+                    patterns.append(args[-1])
+                    for name in args[-1][2:-2].split("|"):
+                        for event in (
+                            {"Action": "pass", "Test": name + "/sub", "Elapsed": 999},
+                            {"Action": "pass", "Test": name, "Elapsed": elapsed[name]},
+                        ):
+                            kwargs["stdout"].write(json.dumps(event) + "\n")
+
+                def poll(self):
+                    return 0
+
+            names = ["TestA", "TestB", "TestC", "TestHeavy"]
+            with (
+                patch.object(gate.subprocess, "Popen", Process),
+                redirect_stdout(io.StringIO()),
+            ):
+                local.shards(names, "binary", "label", 2, "20m")
+                self.assertEqual(patterns, ["^(TestA|TestC)$", "^(TestB|TestHeavy)$"])
+                kept = json.loads((cache / "go-test-seconds/label.json").read_text())
+                self.assertEqual(kept, {"TestA": 1, "TestB": 1, "TestC": 1, "TestHeavy": 300.0})
+                patterns.clear()
+                # A rerun of what a limit cut off plans on the same times.
+                local.shards(names, "binary", "label-again", 2, "20m")
+            self.assertEqual(patterns, ["^(TestHeavy)$", "^(TestA|TestB|TestC)$"])
+
+    def test_unreadable_times_plan_as_if_none_were_on_record(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            local = gate.Gate(ROOT, Path(temporary), Path(temporary), False)
+            path = Path(temporary) / "go-test-seconds/label.json"
+            path.parent.mkdir()
+            for text in ("{not json", "[1, 2]", '{"TestA": "slow", "TestB": -1}'):
+                path.write_text(text)
+                self.assertEqual(local.test_seconds("label"), {})
+
+
 class PythonEnvironment(unittest.TestCase):
     def test_pyyaml_that_cannot_be_installed_is_named_and_is_not_a_failure(self):
         with tempfile.TemporaryDirectory() as temporary:

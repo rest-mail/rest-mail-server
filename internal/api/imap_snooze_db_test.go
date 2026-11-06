@@ -65,7 +65,10 @@ func TestIMAPSnoozeKeepsMessagesUIDsAndCounts(t *testing.T) {
 		<-done
 	})
 	reader := bufio.NewReader(client)
-	if err := client.SetDeadline(time.Now().Add(15 * time.Second)); err != nil {
+	// The deadline ends a hung session; it does not time the API. One LIST with
+	// STATUS makes API calls per folder, and on a loaded machine a fixed 15 s per
+	// command ran out with nothing wrong (#1942).
+	if err := client.SetDeadline(imapHangDeadline(t)); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := reader.ReadString('\n'); err != nil {
@@ -73,9 +76,6 @@ func TestIMAPSnoozeKeepsMessagesUIDsAndCounts(t *testing.T) {
 	}
 	command := func(request string) string {
 		t.Helper()
-		if err := client.SetDeadline(time.Now().Add(15 * time.Second)); err != nil {
-			t.Fatal(err)
-		}
 		if _, err := fmt.Fprintf(client, "test %s\r\n", request); err != nil {
 			t.Fatal(err)
 		}
@@ -207,4 +207,17 @@ func TestIMAPSnoozeKeepsMessagesUIDsAndCounts(t *testing.T) {
 			}
 		})
 	}
+}
+
+// imapHangDeadline is when a test's IMAP session counts as hung: shortly before go
+// test's own limit, so the failure names the command that hung rather than ending
+// the whole binary. With no limit, or too little of it left to fail first, there is
+// no deadline and go test's limit is what stops a hang.
+func imapHangDeadline(t *testing.T) time.Time {
+	const margin = 30 * time.Second
+	deadline, ok := t.Deadline()
+	if !ok || time.Until(deadline) < 2*margin {
+		return time.Time{}
+	}
+	return deadline.Add(-margin)
 }
