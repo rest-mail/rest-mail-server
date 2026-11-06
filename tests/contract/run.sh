@@ -236,6 +236,10 @@ own-data)
   python3 -B tests/contract/own_data.py "$out/vertrag-run.yml" "$out/vertrag-own-data.yml"
   python3 -B tests/contract/reports.py "$out/vertrag-own-data.yml" "$out/vertrag-own-data.yml" "$out/own-data" --narrowed
   code=0
+  # The hooks reset and make their data on the run's endpoint, also for the
+  # gateway routes sent to the internal listener (hooks.py, setup_origin).
+  CONTRACT_SETUP_ORIGIN="$(python3 -B tests/contract/own_data.py --endpoint "$out/vertrag-own-data.yml")"
+  export CONTRACT_SETUP_ORIGIN
   CONTRACT_RESET_SEED=1 "$CONTRACT_VERTRAG" run --config "$out/vertrag-own-data.yml" --sequence --phases examples "${select[@]}" \
     2>&1 | tee "$logs/contract-own-data.log" || code=$?
   echo "vertrag own-data exited $code"
