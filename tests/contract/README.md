@@ -1309,7 +1309,14 @@ a hosted domain and mailbox for each address a test send probe uses, and,
 - `authorization.py`: builds a private configuration from the E2E principals
   for the report-only authorization phase. Its JUnit report and log are
   included in `e2e-container-logs`; the generated credential-bearing YAML is
-  removed after the run and is never uploaded.
+  removed after the run and is never uploaded. It provides one state the
+  examples phase does not, `recoverable_account` (#1162): recoverAccount names
+  its account in the body, so `hooks.py` makes a fresh account, enrolled in
+  TOTP, for each principal's request and recovers that one. States of the
+  caller's own account (`known_password`, `enrolled_authenticator`,
+  `pending_enrollment`) are not provided: their success would end or change the
+  principal's own sessions. Its unproven list is
+  `.cache/contract/unproven-authorization.json`.
 - `ownership.py`: builds the private configuration of the report-only
   ownership phase (#657) from the same principals, as two account tenants.
   Its reports are uploaded like the authorization phase's; its generated YAML
