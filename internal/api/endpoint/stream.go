@@ -1,6 +1,7 @@
 package endpoint
 
 import (
+	"context"
 	"io"
 	"net/http"
 )
@@ -21,13 +22,13 @@ type Stream struct {
 	Done        func()
 }
 
-func (s Stream) stream(w http.ResponseWriter, status int) {
+func (s Stream) stream(ctx context.Context, w http.ResponseWriter, status int) {
 	if s.Done != nil {
 		defer s.Done()
 	}
 	flusher, ok := w.(http.Flusher)
 	if !ok {
-		writeError(w, Refuse(http.StatusInternalServerError, "internal_error", "Streaming not supported"))
+		writeError(ctx, w, Refuse(http.StatusInternalServerError, "internal_error", "Streaming not supported"))
 		return
 	}
 	for name, values := range s.Header {

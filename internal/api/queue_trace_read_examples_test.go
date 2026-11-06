@@ -74,7 +74,7 @@ func (c queueTraceReadConnection) QueryContext(_ context.Context, query string, 
 		if !strings.Contains(query, "message_id =") || !strings.Contains(query, "created_at DESC") {
 			return nil, errors.New("trace lookup lost delivered-message/latest restriction")
 		}
-		r := &authReadSnapshotRows{columns: []string{"id", "message_id", "rfc_message_id", "direction", "transport", "mail_from", "rcpt_to", "client_ip", "pipeline_id", "final_action", "outcome", "reason_code", "spam_score", "duration_ms", "stages", "sampled", "created_at", "expires_at"}}
+		r := &authReadSnapshotRows{columns: []string{"id", "message_id", "rfc_message_id", "direction", "transport", "mail_from", "rcpt_to", "client_ip", "request_id", "pipeline_id", "final_action", "outcome", "reason_code", "spam_score", "duration_ms", "stages", "sampled", "created_at", "expires_at"}}
 		if id != "2147483647" {
 			var stages driver.Value = []byte(`[{"filter_name":"header_validate","filter_type":"action","action":"continue","log":{"filter":"header_validate","result":"pass","detail":"Headers accepted","duration_ms":2},"duration_ms":3}]`)
 			if id == "2" {
@@ -86,7 +86,7 @@ func (c queueTraceReadConnection) QueryContext(_ context.Context, query string, 
 			if id == "5" {
 				stages = []byte(`[]`)
 			}
-			r.rows = [][]driver.Value{{n + 100, n, "<fixture@example.com>", "inbound", "tls", "sender@example.com", "recipient@example.com", "192.0.2.10", int64(7), "continue", "delivered", "", float64(2.5), int64(12), stages, true, stamp, stamp.Add(24 * time.Hour)}}
+			r.rows = [][]driver.Value{{n + 100, n, "<fixture@example.com>", "inbound", "tls", "sender@example.com", "recipient@example.com", "192.0.2.10", "4f9c2d7e1a0b3c5d6e7f8091a2b3c4d5", int64(7), "continue", "delivered", "", float64(2.5), int64(12), stages, true, stamp, stamp.Add(24 * time.Hour)}}
 		}
 		return r, nil
 	}

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
@@ -234,12 +235,12 @@ func (h *AuthHandler) persistRefreshToken(tokens *auth.TokenPair, accountID uint
 // account. Used from the refresh path when a disabled/deleted account is
 // detected; failures are non-fatal (the refresh is refused regardless) but
 // logged.
-func (h *AuthHandler) revokeAllForAccount(accountID uint) {
+func (h *AuthHandler) revokeAllForAccount(ctx context.Context, accountID uint) {
 	if h.refreshStore == nil {
 		return
 	}
 	if err := h.refreshStore.RevokeAllForAccount(accountID); err != nil {
-		slog.Warn("failed to revoke sessions on refresh", "account_id", accountID, "error", err)
+		slog.WarnContext(ctx, "failed to revoke sessions on refresh", "account_id", accountID, "error", err)
 	}
 }
 
@@ -509,7 +510,7 @@ func (h *AuthHandler) logout(r *http.Request, in sessionTokenRequest) (endpoint.
 			// The phones the session registered for push go with it.
 			if h.pushDevices != nil {
 				if _, err := h.pushDevices.SessionEnded(claims.SessionID, time.Now()); err != nil {
-					slog.Warn("failed to remove the push devices of a session that signed out", "error", err)
+					slog.WarnContext(r.Context(), "failed to remove the push devices of a session that signed out", "error", err)
 				}
 			}
 		}
@@ -565,11 +566,11 @@ func (h *AuthHandler) refresh(r *http.Request, in sessionTokenRequest) (endpoint
 		var stateErr error
 		state, stateErr = h.accountState.AccountState(claims.AccountID)
 		if stateErr != nil {
-			slog.Error("refresh: could not read the account's state", "error", stateErr)
+			slog.ErrorContext(r.Context(), "refresh: could not read the account's state", "error", stateErr)
 			return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to verify the session")
 		}
 		if !state.Active {
-			h.revokeAllForAccount(claims.AccountID)
+			h.revokeAllForAccount(r.Context(), claims.AccountID)
 			return zero, endpoint.Refuse(http.StatusUnauthorized, "unauthorized", "Account is disabled")
 		}
 		// A refresh token from before the account's sessions last ended (a
@@ -590,7 +591,7 @@ func (h *AuthHandler) refresh(r *http.Request, in sessionTokenRequest) (endpoint
 		if err := h.refreshStore.Rotate(claims.ID); errors.Is(err, repositories.ErrRefreshTokenNotFound) {
 			return zero, endpoint.Refuse(http.StatusUnauthorized, "unauthorized", "Invalid or expired refresh token")
 		} else if err != nil {
-			slog.Error("refresh: could not rotate the refresh token", "error", err)
+			slog.ErrorContext(r.Context(), "refresh: could not rotate the refresh token", "error", err)
 			return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to verify the session")
 		}
 	}
@@ -877,7 +878,7 @@ func (h *AuthHandler) reset(r *http.Request, req resetRequest) (endpoint.Headed[
 	}
 	account, err := bootstrap.ResetAdmin(h.db, req.Token, req.Password)
 	if err != nil {
-		return zero, redeemRefusal(err)
+		return zero, redeemRefusal(r.Context(), err)
 	}
 	h.sessions.Forget(account.ID)
 	// Redeeming a token is neither a password nor a second factor: the
@@ -887,14 +888,14 @@ func (h *AuthHandler) reset(r *http.Request, req resetRequest) (endpoint.Headed[
 }
 
 // redeemRefusal is the answer for a token that could not be redeemed.
-func redeemRefusal(err error) error {
+func redeemRefusal(ctx context.Context, err error) error {
 	switch {
 	case errors.Is(err, bootstrap.ErrTokenInvalid):
 		return endpoint.Refuse(http.StatusUnauthorized, "invalid_token", err.Error())
 	case errors.Is(err, bootstrap.ErrPasswordTooShort):
 		return endpoint.Invalid(map[string]string{"password": err.Error()})
 	}
-	slog.Error("redeeming a one-time token failed", "error", err)
+	slog.ErrorContext(ctx, "redeeming a one-time token failed", "error", err)
 	return endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to redeem the token")
 }
 

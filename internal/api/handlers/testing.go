@@ -230,7 +230,7 @@ func (h *TestHandler) resetTestData(r *http.Request, _ endpoint.Empty) (TestData
 	if h.productionLocked() {
 		return TestDataStatus{}, endpoint.Refuse(http.StatusForbidden, "forbidden", "test endpoints disabled in production")
 	}
-	slog.Warn("test: resetting all data")
+	slog.WarnContext(r.Context(), "test: resetting all data")
 	ctx, cancel := context.WithTimeout(r.Context(), testreset.DrainTimeout)
 	defer cancel()
 	if err := testreset.Reset(ctx, h.db, func(conn *gorm.DB) error {

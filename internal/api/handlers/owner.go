@@ -69,7 +69,7 @@ func (h *OwnerHandler) Register(rs endpoint.Routes, throttle endpoint.Middleware
 func (h *OwnerHandler) ownerKeys(r *http.Request) (*bootstrap.OwnerKeys, error) {
 	keys, err := bootstrap.LoadOwnerKeys(h.db.WithContext(r.Context()))
 	if err != nil {
-		slog.Error("reading owner key registry failed", "error", err)
+		slog.ErrorContext(r.Context(), "reading owner key registry failed", "error", err)
 		return nil, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to read owner key registry")
 	}
 	return keys, nil
@@ -144,7 +144,7 @@ func (h *OwnerHandler) token(r *http.Request, req ownerTokenRequest) (OwnerToken
 	case errors.Is(err, bootstrap.ErrNoSuchAdmin):
 		return OwnerToken{}, endpoint.Refuse(http.StatusNotFound, "no_such_account", err.Error())
 	case err != nil:
-		slog.Error("minting a token for an owner failed", "error", err)
+		slog.ErrorContext(r.Context(), "minting a token for an owner failed", "error", err)
 		return OwnerToken{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to mint the token")
 	}
 	return OwnerToken{ExpiresAt: wholeSecondUTC(expires), Purpose: req.Purpose, Token: token}, nil
@@ -174,7 +174,7 @@ func (h *OwnerHandler) status(r *http.Request, req apitypes.OwnerStatusRequest) 
 	case errors.Is(err, bootstrap.ErrNotStatusKey):
 		return apitypes.ServerStatus{}, endpoint.Refuse(http.StatusForbidden, "not_status_key", err.Error())
 	case err != nil:
-		slog.Error("checking a status request failed", "error", err)
+		slog.ErrorContext(r.Context(), "checking a status request failed", "error", err)
 		return apitypes.ServerStatus{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to check the request")
 	}
 	return apitypes.ServerStatus{

@@ -41,7 +41,7 @@ func RequireTwoFactor(r *http.Request) error {
 	if humanTwoFactor(middleware.GetClaims(r)) {
 		return nil
 	}
-	return grantChangeError(errTwoFactorRequired)
+	return grantChangeError(r.Context(), errTwoFactorRequired)
 }
 
 // RequireFreshTwoFactor additionally checks the original proof time, never iat:

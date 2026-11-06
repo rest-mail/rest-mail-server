@@ -66,8 +66,8 @@ type draftSendObserver struct {
 	traces int
 }
 
-func (o *draftSendObserver) Publish(uint, SSEEvent) { o.check(); o.events++ }
-func (o *draftSendObserver) NewMail(uint)           { o.check(); o.pushes++ }
+func (o *draftSendObserver) Publish(context.Context, uint, SSEEvent) { o.check(); o.events++ }
+func (o *draftSendObserver) NewMail(uint)                            { o.check(); o.pushes++ }
 func (o *draftSendObserver) Record(models.MessageTrace) {
 	o.check()
 	o.traces++

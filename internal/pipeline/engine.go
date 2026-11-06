@@ -162,7 +162,7 @@ Loop:
 			step.Action = ActionContinue
 			step.Duration = Elapsed(time.Since(stepStart))
 			recordStep(step)
-			e.logger.Debug("filter skipped", "filter", fc.Name, "reason", step.SkipReason)
+			e.logger.DebugContext(ctx, "filter skipped", "filter", fc.Name, "reason", step.SkipReason)
 			continue
 		}
 
@@ -176,7 +176,7 @@ Loop:
 			step.Action = e.filterErrorAction
 			step.Duration = Elapsed(time.Since(stepStart))
 			recordStep(step)
-			e.logger.Error("failed to create filter", "filter", fc.Name, "error", err, "fail_action", e.filterErrorAction)
+			e.logger.ErrorContext(ctx, "failed to create filter", "filter", fc.Name, "error", err, "fail_action", e.filterErrorAction)
 			if e.filterErrorAction == ActionContinue {
 				continue // fail-open: skip filters that fail to instantiate
 			}
@@ -196,7 +196,7 @@ Loop:
 			step.Action = e.filterErrorAction
 			step.Duration = Elapsed(time.Since(stepStart))
 			recordStep(step)
-			e.logger.Error("filter execution failed", "filter", fc.Name, "error", err, "fail_action", e.filterErrorAction)
+			e.logger.ErrorContext(ctx, "filter execution failed", "filter", fc.Name, "error", err, "fail_action", e.filterErrorAction)
 			if e.filterErrorAction == ActionContinue {
 				continue // fail-open
 			}
@@ -210,7 +210,7 @@ Loop:
 		step.Duration = Elapsed(time.Since(stepStart))
 		recordStep(step)
 
-		e.logger.Debug("filter executed",
+		e.logger.DebugContext(ctx, "filter executed",
 			"filter", fc.Name,
 			"action", filterResult.Action,
 			"duration", time.Duration(step.Duration),
@@ -302,7 +302,7 @@ func (e *Engine) runFilter(ctx context.Context, filter Filter, email *EmailJSON)
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				e.logger.Error("filter panicked; recovered",
+				e.logger.ErrorContext(ctx, "filter panicked; recovered",
 					"filter", filter.Name(),
 					"panic", r,
 					"stack", string(debug.Stack()),

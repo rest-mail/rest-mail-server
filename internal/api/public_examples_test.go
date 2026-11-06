@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"github.com/rest-mail/rest-mail-server/internal/examplepairs"
@@ -145,7 +146,7 @@ func TestPublicReadFailureExamplesMatchErrorAdapter(t *testing.T) {
 					promhttp.HandlerFor(prometheus.Gatherers{registry}, promhttp.HandlerOpts{}))
 				router.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/metrics", nil))
 			} else {
-				endpoint.WriteError(rr, errors.New("dependency details must stay private"))
+				endpoint.WriteError(context.Background(), rr, errors.New("dependency details must stay private"))
 			}
 			if rr.Code != pair.Response.Status || rr.Header().Get("Content-Type") != pair.Response.MediaType {
 				t.Fatalf("got %d %v", rr.Code, rr.Header())
@@ -155,7 +156,7 @@ func TestPublicReadFailureExamplesMatchErrorAdapter(t *testing.T) {
 	}
 	t.Run("shared_error_adapter", func(t *testing.T) {
 		rr := httptest.NewRecorder()
-		endpoint.WriteError(rr, errors.New("dependency details must stay private"))
+		endpoint.WriteError(context.Background(), rr, errors.New("dependency details must stay private"))
 		if rr.Code != http.StatusInternalServerError {
 			t.Fatalf("got %d, want 500", rr.Code)
 		}

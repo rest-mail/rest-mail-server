@@ -50,6 +50,9 @@ docs/                 This manual + reference docs (adapter-filters,
 
 Dates below reflect when the corresponding feature/plan was merged, implemented, or last verified.
 
+### 2026-11-03 — One ID follows a message through the logs
+Each SMTP connection, and each IMAP or POP3 session, has one ID, logged as `request_id` by its gateway and sent to the API as `X-Request-Id`. The API adopts it only from a gateway on the internal listener whose certificate it verified (at most 64 characters of `[A-Za-z0-9._/-]`), and logs it on the request line and on every line logged while that request runs, the event stream's included; a public client's header is ignored. [§7.11](#711-following-one-message-through-the-logs).
+
 ### 2026-11-03 — App passwords from the CLI
 `restmail app-password list|create|revoke --server URL` manages an account's app passwords through the public API (`GET`/`POST /api/v1/accounts/{id}/credentials`, `DELETE …/{credential_id}`), with a person's session token in `RESTMAIL_API_KEY` (sign in with `"client": "native"` and your authenticator code); `--account ID` names an account the session holds `mailbox:manage` on, and by default it is the token's own `account_id`. It keeps the API's rules: `create --name NAME [--expires-at TIME]` needs a sign-in with two-factor authentication at most 15 minutes old and asks for the current password again on the terminal without echo (`--password-stdin` for scripts; never a flag), then prints the new app password once; `revoke ID` asks first (`--yes` skips it) and needs a two-factor session. A `two_factor_required` or `recent_two_factor_required` refusal says how to get a session that passes: sign in again with the code and set the new token; the CLI cannot sign in with a second factor itself and has no way around the rule. `list --json`, and `--json` everywhere, for programs. [§3.3](#33-auth).
 
@@ -1283,6 +1286,22 @@ kubectl rollout restart deployment/restmail-smtp-gateway   # or daemonset/, as y
 Only one previous secret is kept, and an address lives 21 days. So leave at least 21 days between rotations, or addresses signed two rotations ago are refused with `550 5.1.1` and their bounces do not reach the sender. To rotate because a secret leaked, rotate twice, and accept that loss: the first rotation alone leaves the leaked secret accepted as the previous one. Restart every SMTP gateway at about the same time, since one still on the old secrets refuses an address signed with the new one.
 
 Addresses have a four-character hash, about a million values. An attacker needs a good guess per address, and each refused RCPT feeds the connection's tarpit. A good address only sends a message to the sender it carries, held to the per-recipient DSN limit.
+
+### 7.11 Following one message through the logs
+
+Each SMTP connection, and each IMAP or POP3 session from its sign-in, gets one ID. The gateway writes it as `request_id` on every line it logs for that connection, and sends it as the `X-Request-Id` header on each call it makes to the API. The API takes that ID for the request when the call comes over the internal listener with a client certificate it verified, and puts it on the request line (`[<id>] "POST /api/v1/messages/deliver …"`) and as `request_id` on the lines the delivery handler and the pipeline log for it. Every other request gets an ID the API makes; the API ignores a public client's `X-Request-Id`. An adopted ID has at most 64 characters, each a letter, digit, `-`, `_`, `.` or `/`; any other gets a new one.
+
+To follow a message, find a gateway line for it, for example `smtp: message delivered` or `smtp: delivery failed`, take its `request_id`, and search every service's logs for it:
+
+```sh
+id=3f2a9c0d41b7e6a85b1e0c2d7f9a4e61
+kubectl logs deploy/restmail-smtp-gateway | grep "$id"
+kubectl logs deploy/restmail-api | grep "$id"
+```
+
+Inside the API, every line logged while a request runs carries its `request_id`: a handler that fails (`api: handler failed`), the auth and audit middleware, and the event stream. Each event the API publishes to a mailbox's event stream logs `sse: event published` (debug level; a warning when a slow subscriber misses it) with the request's ID; the ID stays in the log and is not added to the event clients receive. Background jobs (scheduled sends, snoozed threads returning, the push notification batch, the queue worker) run outside any request and log without one.
+
+One SMTP connection can carry several messages, so the ID can match more than one. The audit log keeps it too, as the `request_id` of the API calls it records. The pipeline trace keeps the ID of the request that ran the pipeline: the admin trace view shows it as **Request ID**, with a button that copies it, and the admin trace API returns it as `request_id`. Start from a trace and search the logs for that ID. A trace written outside a request has none.
 
 ## 8. Test stack IPs (dev testbed on `10.99.0.0/16`)
 

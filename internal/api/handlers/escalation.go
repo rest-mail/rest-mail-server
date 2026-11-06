@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strings"
@@ -136,7 +137,7 @@ func (h *GrantHandler) activate(r *http.Request, in activateGrantRequest) (escal
 		return err
 	})
 	if err != nil {
-		return escalationResponse{}, escalationError(err)
+		return escalationResponse{}, escalationError(r.Context(), err)
 	}
 	h.cache.Invalidate()
 	return h.escalation(claims.AccountID, &g, a)
@@ -163,7 +164,7 @@ func (h *GrantHandler) deactivate(r *http.Request, in grantPath) (escalationResp
 		return err
 	})
 	if err != nil {
-		return escalationResponse{}, escalationError(err)
+		return escalationResponse{}, escalationError(r.Context(), err)
 	}
 	h.cache.Invalidate()
 	return h.escalation(claims.AccountID, &g, nil)
@@ -202,7 +203,7 @@ func (h *GrantHandler) makeEligible(r *http.Request, in eligibleGrantRequest) (e
 		return grants.MakeEligible(tx, &g, middleware.RequestEntry(r, grants.ActionMakeEligible, http.StatusOK))
 	})
 	if err != nil {
-		return escalationResponse{}, escalationError(err)
+		return escalationResponse{}, escalationError(r.Context(), err)
 	}
 	h.cache.Invalidate()
 	return h.escalation(claims.AccountID, &g, nil)
@@ -273,7 +274,7 @@ func ownGrant(tx *gorm.DB, accountID uint, id uint64, g *models.Grant) error {
 // escalationError is the refusal for a step of escalation that did not happen.
 // A refused code is 403, not 401: the session is fine, and a client must not
 // take it as signed out.
-func escalationError(err error) error {
+func escalationError(ctx context.Context, err error) error {
 	switch {
 	case err == nil:
 		return nil
@@ -296,6 +297,6 @@ func escalationError(err error) error {
 	case errors.Is(err, grants.ErrAlreadyEligible):
 		return endpoint.Refuse(http.StatusConflict, "already_eligible", err.Error())
 	default:
-		return grantChangeError(err)
+		return grantChangeError(ctx, err)
 	}
 }

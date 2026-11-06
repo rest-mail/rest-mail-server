@@ -13,6 +13,7 @@ import (
 
 	"github.com/rest-mail/rest-mail-server/internal/gateway/connlimiter"
 	"github.com/rest-mail/rest-mail-server/internal/ratelimit"
+	"github.com/rest-mail/rest-mail-server/internal/requestid"
 	"github.com/rest-mail/rest-mail-server/internal/srs"
 )
 
@@ -208,10 +209,15 @@ func listenerPort(listener net.Listener) int {
 // under test is exactly the production one.
 func (s *Server) newSMTPServer(isSubmission bool) *smtpserver.Server {
 	srv := smtpserver.New(smtpserver.BackendFunc(func(c *smtpserver.Conn) (smtpserver.Session, error) {
-		slog.Debug("smtp: new session", "remote", c.Conn().RemoteAddr().String(), "submission", isSubmission)
+		// One ID per connection (#1580): on every line logged for it, and
+		// sent to the API on each call it makes.
+		id := requestid.New()
+		log := slog.Default().With(requestid.Attr, id)
+		log.Debug("smtp: new session", "remote", c.Conn().RemoteAddr().String(), "submission", isSubmission)
 		return &session{
 			conn:         c,
-			api:          s.api,
+			log:          log,
+			api:          withRequestID(s.api, id),
 			store:        s.store,
 			limiter:      s.limiter,
 			subLimiter:   s.subLimiter,

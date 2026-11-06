@@ -206,7 +206,7 @@ func (h *RecoveryEmailHandler) verify(r *http.Request, req recoveryEmailTokenReq
 		return emailRecoveryAudit(tx, r, "auth.recovery_email.verify", account)
 	})
 	if errors.Is(err, bootstrap.ErrTokenInvalid) {
-		err = redeemRefusal(err)
+		err = redeemRefusal(r.Context(), err)
 	}
 	return passwordChanged{Message: "Recovery email verified."}, err
 }
@@ -242,7 +242,7 @@ func (h *RecoveryEmailHandler) request(r *http.Request, req requestRecoveryEmail
 	// Delivery/storage failure is private too: an account's existence must not
 	// change this endpoint's response when the outbound queue fails.
 	if err != nil {
-		slog.Error("recovery email delivery failed", "error", err)
+		slog.ErrorContext(r.Context(), "recovery email delivery failed", "error", err)
 		return answer, nil
 	}
 	return answer, nil
@@ -282,7 +282,7 @@ func (h *RecoveryEmailHandler) redeem(r *http.Request, req redeemRecoveryEmailRe
 		return emailRecoveryAudit(tx, r, "auth.recovery_email.redeem", account)
 	})
 	if errors.Is(err, bootstrap.ErrTokenInvalid) {
-		err = redeemRefusal(err)
+		err = redeemRefusal(r.Context(), err)
 	}
 	if err == nil {
 		h.auth.sessions.Forget(accountID)

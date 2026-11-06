@@ -49,6 +49,8 @@ type MessageTrace struct {
 	RcptTo   string `json:"rcpt_to"` // first recipient
 	ClientIP string `json:"client_ip"`
 
+	RequestID *string `json:"request_id" description:"ID of the request that ran the pipeline, the request_id on its gateway and API log lines; null when none was recorded"`
+
 	PipelineID  uint   `json:"pipeline_id"`
 	FinalAction string `json:"final_action" enums:"continue,defer,discard,quarantine,reject"`
 
@@ -83,7 +85,7 @@ func messageTraceOf(row models.MessageTrace) (MessageTrace, error) {
 	return MessageTrace{
 		ID: row.ID, MessageID: row.MessageID, RFCMessageID: row.RFCMessageID,
 		Direction: row.Direction, Transport: row.Transport,
-		MailFrom: row.MailFrom, RcptTo: row.RcptTo, ClientIP: row.ClientIP,
+		MailFrom: row.MailFrom, RcptTo: row.RcptTo, ClientIP: row.ClientIP, RequestID: row.RequestID,
 		PipelineID: row.PipelineID, FinalAction: row.FinalAction,
 		Outcome: row.Outcome, ReasonCode: row.ReasonCode,
 		SpamScore: row.SpamScore, DurationMS: row.DurationMS, Stages: stages,

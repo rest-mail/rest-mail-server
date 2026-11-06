@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -201,7 +202,7 @@ func (a *Auditor) record(action string, cfg *auditConfig, r *http.Request, statu
 		}
 		decodeFirst(body, &who)
 		if who.Email != "" {
-			a.namedActor(e, models.AuditActorAccount, who.Email)
+			a.namedActor(r.Context(), e, models.AuditActorAccount, who.Email)
 		}
 	case cfg.refreshToken:
 		if claims := a.refreshClaims(r, body); claims != nil {
@@ -217,7 +218,7 @@ func (a *Auditor) record(action string, cfg *auditConfig, r *http.Request, statu
 				} `json:"data"`
 			}
 			if json.Unmarshal(resp, &session) == nil && session.Data.User.Email != "" {
-				a.namedActor(e, models.AuditActorAccount, session.Data.User.Email)
+				a.namedActor(r.Context(), e, models.AuditActorAccount, session.Data.User.Email)
 			}
 		}
 	}
@@ -256,13 +257,13 @@ func (a *Auditor) record(action string, cfg *auditConfig, r *http.Request, statu
 		return
 	}
 
-	a.write(e)
+	a.write(r.Context(), e)
 }
 
 // write appends e; if that fails it logs the whole entry with slog.Error.
-func (a *Auditor) write(e *models.AuditEntry) {
+func (a *Auditor) write(ctx context.Context, e *models.AuditEntry) {
 	if err := a.appendEntry(e); err != nil {
-		slog.Error("failed to write an audit entry", "error", err, "entry", e)
+		slog.ErrorContext(ctx, "failed to write an audit entry", "error", err, "entry", e)
 	}
 }
 
@@ -280,7 +281,7 @@ func (a *Auditor) CredentialRefused(r *http.Request, address string, refusal *au
 	if refusal.PublicID != "" {
 		e.Target["public_id"] = refusal.PublicID
 	}
-	a.write(e)
+	a.write(r.Context(), e)
 }
 
 // AuditActionCredentialRefused is the action of a refused credential: an app
@@ -330,14 +331,14 @@ func actorFromClaims(e *models.AuditEntry, claims *auth.Claims) {
 
 // namedActor makes the account a request names the actor; its id is looked up
 // only once the request has succeeded, which proves it.
-func (a *Auditor) namedActor(e *models.AuditEntry, kind, name string) {
+func (a *Auditor) namedActor(ctx context.Context, e *models.AuditEntry, kind, name string) {
 	e.ActorKind, e.ActorName = kind, name
 	if e.Outcome != models.AuditOutcomeSuccess || a.lookup == nil {
 		return
 	}
 	id, err := a.lookup(kind, name)
 	if err != nil {
-		slog.Warn("audit: could not look up the actor", "kind", kind, "name", name, "error", err)
+		slog.WarnContext(ctx, "audit: could not look up the actor", "kind", kind, "name", name, "error", err)
 		return
 	}
 	e.ActorID = id

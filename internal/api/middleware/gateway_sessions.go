@@ -72,7 +72,7 @@ func GatewaySessions(services GatewayServices, prefix string, use GatewaySession
 				claims, ended, err := use(token, service)
 				switch {
 				case err != nil:
-					slog.Error("could not check a gateway session", "error", err)
+					slog.ErrorContext(r.Context(), "could not check a gateway session", "error", err)
 					writeError(w, http.StatusServiceUnavailable, "unavailable", "Could not verify the session")
 					return
 				case ended:

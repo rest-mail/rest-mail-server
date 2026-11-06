@@ -480,7 +480,7 @@ function PipelineLogsPage() {
                           >
                             Stage timeline
                           </h4>
-                          <TraceTimeline stages={trace.stages} />
+                          <TraceTimeline stages={trace.stages} requestId={trace.request_id} />
                         </td>
                       </tr>
                     )}
