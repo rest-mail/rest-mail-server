@@ -6154,11 +6154,6 @@ export interface components {
         testCustomFilterRequestBody: {
             email?: unknown;
         };
-        testFilterRequestBody: {
-            config: unknown;
-            email: components["schemas"]["sampleEmail"] | null;
-            filter_name: string;
-        };
         testPipelineRequestBody: {
             email: components["schemas"]["sampleEmail"] | null;
             pipeline_id: number;
@@ -32708,7 +32703,13 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["testFilterRequestBody"];
+                "application/json": {
+                    config: {
+                        [key: string]: unknown;
+                    };
+                    email: components["schemas"]["sampleEmail"] | null;
+                    filter_name: string;
+                };
             };
         };
         responses: {
