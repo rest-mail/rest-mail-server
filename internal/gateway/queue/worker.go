@@ -228,6 +228,9 @@ type Worker struct {
 	heartbeatDB    *gorm.DB
 	// smtpAddr maps an MX host to the address to dial; nil is its port 25. Tests only.
 	smtpAddr func(host string) string
+	// wrapSMTPConn wraps the socket an SMTP conversation runs on; nil leaves it
+	// as dialed. Tests only.
+	wrapSMTPConn func(net.Conn) net.Conn
 	// restmailDiscoveryURL maps an MX host and recipient domain to the RESTMAIL
 	// discovery URL; nil is restmailDiscoveryURL. Tests only.
 	restmailDiscoveryURL func(mxHost, dnsDomain string) string
@@ -1983,6 +1986,9 @@ func (w *Worker) openSMTP(addr, host string, tryTLS, requireVerified bool, recor
 	conn, err := dialer.Dial("tcp", addr)
 	if err != nil {
 		return nil, fmt.Errorf("connect to %s: %w", addr, err)
+	}
+	if w.wrapSMTPConn != nil {
+		conn = w.wrapSMTPConn(conn)
 	}
 	armStep(conn, timeouts.Greeting)
 	client, err := smtp.NewClient(conn, host)
