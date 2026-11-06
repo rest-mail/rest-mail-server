@@ -2,6 +2,11 @@
 
 import unittest
 
+# scripts/api_gaps.py and test_api_gaps.py, which this file tests and imports,
+# were removed. Deleting this file wasn't part of that approval, so it stays
+# for the owner to decide (#1563).
+raise unittest.SkipTest("tests the removed scripts/api_gaps.py (#1563)")
+
 from test_api_gaps import FakeGitHub, gaps, issue, report
 
 

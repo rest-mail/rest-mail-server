@@ -137,7 +137,7 @@ func gapSources(t *testing.T) map[string]gapOperation {
 	return sources
 }
 
-// TestAPIGapReport is also the report command used by api-gaps.yml. It exports
+// TestAPIGapReport is the report command for API gaps. It exports
 // warnings without failing on them; strict enforcement has its own test below.
 func TestAPIGapReport(t *testing.T) {
 	sources := gapSources(t)

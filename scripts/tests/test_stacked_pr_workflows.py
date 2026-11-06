@@ -85,7 +85,7 @@ class StackedPRWorkflows(unittest.TestCase):
 
     def test_every_pr_workflow_is_covered_and_keeps_its_existing_events(self):
         self.assertEqual(set(self.full), {
-            "ci.yml", "e2e.yml", "api-gaps.yml", "email-explained.yml", "pulumi.yml", "release-cli.yml",
+            "ci.yml", "e2e.yml", "email-explained.yml", "pulumi.yml", "release-cli.yml",
         })
         for name, source in self.full.items():
             with self.subTest(workflow=name):
@@ -158,7 +158,7 @@ class StackedPRWorkflows(unittest.TestCase):
 
     def test_ignored_edits_cannot_cancel_running_or_pending_work(self):
         expected = {"ci.yml": "ci-refs/pull/42/merge", "e2e.yml": "e2e-refs/pull/42/merge",
-                    "api-gaps.yml": "api-gap-issues-42", "email-explained.yml": "email-explained-publish"}
+                    "email-explained.yml": "email-explained-publish"}
         for name, active in expected.items():
             expression = field(blocks(self.workflows[name], 0)["concurrency"], "group", 2)
             with self.subTest(workflow=name):
