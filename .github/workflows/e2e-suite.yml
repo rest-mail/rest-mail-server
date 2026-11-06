@@ -183,6 +183,17 @@ jobs:
         if: inputs.contract-phases == 'fuzz'
         run: chore test:contract-fixtures
 
+      - name: Raise the API's rate limits for the contract phases
+        # The owner's decision on #1979: examples, coverage, authorization and
+        # ownership run against an API recreated with tests/contract/raised-limits.env,
+        # so the hooks no longer pace requests to stay under the defaults. The
+        # step after the contract step puts the defaults back, for the live proofs,
+        # the Limits suite and the teardown.
+        if: inputs.contract-phases == 'gate'
+        env:
+          API_COVER: ${{ inputs.contract-phases == 'gate' && 'true' || 'false' }}
+        run: chore contract:limits:raise
+
       - name: Contract tests (example pairs, examples, coverage, secret scan and authorization report)
         # The same command a person runs (#627), against the topology whose
         # stages just passed. It starts with the registered example-pair
@@ -199,6 +210,9 @@ jobs:
           # TestDraftLifecycleExamplesWithVertrag makes its scratch databases on
           # this server, the topology's own, and skips without it.
           DB_HOST: 10.99.0.43
+          # The API has the raised limits (the step above), so the hooks do not
+          # pace (tests/contract/rate_limits.py); chore contract checks they agree.
+          CONTRACT_RAISED_LIMITS: "1"
         run: chore contract
 
       - name: API code coverage of the contract run (report)
@@ -208,6 +222,13 @@ jobs:
           if [ -f .cache/contract/api-coverage/summary.md ]; then
             cat .cache/contract/api-coverage/summary.md >> "$GITHUB_STEP_SUMMARY"
           fi
+
+      - name: Put the API's default rate limits back
+        # Everything after the contract phases runs on the real limits (#1979).
+        if: always() && inputs.contract-phases == 'gate'
+        env:
+          API_COVER: ${{ inputs.contract-phases == 'gate' && 'true' || 'false' }}
+        run: chore contract:limits:default
 
       - name: Contract live proofs (anonymous, over-cap and real principals; report only)
         # Real exchanges for the examples that need setup, against the topology the

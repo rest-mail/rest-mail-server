@@ -2,6 +2,7 @@
 
 import copy
 import importlib.util
+import os
 from pathlib import Path
 import sys
 import types
@@ -12,6 +13,13 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class AuthPacing(unittest.TestCase):
+    def setUp(self):
+        # Against the default limits: the raised ones turn pacing off (test_rate_limits.py).
+        environment = patch.dict(os.environ)
+        environment.start()
+        self.addCleanup(environment.stop)
+        os.environ.pop("CONTRACT_RAISED_LIMITS", None)
+
     def test_examples_and_probes_share_a_sustainable_auth_rate(self):
         hooks = types.ModuleType("vertrag_hooks")
         registered = []

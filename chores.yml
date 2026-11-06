@@ -645,6 +645,11 @@ tasks:
         python3 -B scripts/substrate_pins.py preflight ${CONTRACT_ENDPOINT:+--report}
         chore contract:pairs
         if [ -z "${CONTRACT_ENDPOINT:-}" ]; then chore e2e:up; fi
+        # The hooks stop pacing under CONTRACT_RAISED_LIMITS=1, so the API must
+        # really have the raised limits (chore contract:limits:raise, #1979).
+        if [ -n "${CONTRACT_RAISED_LIMITS:-}" ]; then
+          python3 -B tests/contract/rate_limits.py check raised "{{.RESTMAIL_PROJECT}}-api"
+        fi
         if [ ! -s .cache/contract-principals.json ]; then
           API_BASE_URL="${CONTRACT_ENDPOINT:-http://10.99.0.20:8080}" E2E_REQUIRE_STACK=1 chore test:e2e -- -run '^TestContractPrincipals$'
         fi
@@ -663,6 +668,19 @@ tasks:
         chore api:coverage:report || echo "the API's coverage is a report, not a gate"
         if [ "$code" -ne 0 ]; then exit "$code"; fi
         exit "$scan"
+
+  contract:limits:raise:
+    desc: 'Recreate the topology API with the contract phases'' raised rate limits (tests/contract/raised-limits.env, #1979); contract:limits:default undoes it'
+    cmds:
+      - RESTMAIL_API_LIMITS_ENV="{{.ROOT_DIR}}/tests/contract/raised-limits.env" "${CHORE_BIN:-chore}" api:up
+      - task: health:wait
+
+  contract:limits:default:
+    desc: 'Recreate the topology API on its default rate limits, as the live proofs, the Limits suite and the teardown need (#1979)'
+    cmds:
+      - env -u RESTMAIL_API_LIMITS_ENV "${CHORE_BIN:-chore}" api:up
+      - task: health:wait
+      - CONTRACT_RAISED_LIMITS= python3 -B tests/contract/rate_limits.py check default "{{.RESTMAIL_PROJECT}}-api"
 
   contract:pairs:
     desc: 'The registered example-pair boundary checks (internal/api *WithVertrag), in parallel shards; a gate in CI, no topology needed'
@@ -945,6 +963,9 @@ tasks:
       # phases spend them; a restart gives the suite buckets of its own.
       - docker restart "{{.RESTMAIL_PROJECT}}-api" >/dev/null
       - task: health:wait
+      # The suite proves the defaults, so none of the contract phases' raised
+      # limits may reach it (#1979).
+      - python3 -B tests/contract/rate_limits.py check default "{{.RESTMAIL_PROJECT}}-api"
       - E2E_LIMITS=1 E2E_REQUIRE_STACK=1 "${CHORE_BIN:-chore}" test:e2e -- -run '^TestLimits$'
 
   test:load:
