@@ -206,6 +206,18 @@ class ProbeConfig(unittest.TestCase):
                     status.startswith("4"),
                 )
 
+    def test_the_password_is_held_only_on_valid_requests_of_two_operations(self):
+        valid = self.config["fuzz"]["pin-valid"]
+        self.assertEqual(valid.keys(), {"createAccount", "updateMailbox"})
+        self.assertEqual(valid["createAccount"]["password_hash"], "")
+        self.assertEqual(
+            valid["createAccount"]["password"], valid["updateMailbox"]["password"]
+        )
+        # A fuzz.pin on the same field would win, and hold the invalid requests too.
+        pinned = self.config["fuzz"]["pin"]
+        self.assertNotIn("password", pinned)
+        self.assertNotIn("password_hash", pinned)
+
     def test_a_send_is_held_immediate_so_its_success_example_stays_a_201(self):
         self.assertIsNone(self.config["fuzz"]["pin"]["scheduled_at"])
 
@@ -226,7 +238,8 @@ class ProbeConfig(unittest.TestCase):
                     "raw_message": probes.RAW_MESSAGE,
                     "recipients": probes.RECIPIENTS,
                     "date": probes.DELIVERY_DATE,
-                }
+                },
+                "pin-valid": self.base["fuzz"]["pin-valid"],
             },
         )
         self.assertEqual(

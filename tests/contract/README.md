@@ -364,9 +364,30 @@ There are three ways to keep a probe:
   at a real capability the probe
   administrator has, because the generator's stand-in is capability `x` at scope
   `x`. A pin is global by field name, so it does not suit `password`, which eleven
-  operations have. Vertrag does not look through a body's nested `$ref` to see
+  operations have: `fuzz.pin-valid`, below, holds that one. Vertrag does not look through a body's nested `$ref` to see
   what a pin names, so `apiKeyPermission` is an alias that the description holds in
   the body.
+- **`fuzz.pin-valid`** holds a value on one operation's valid requests, for a rule
+  no schema can say, and the probe is still sent, judged and reported. The
+  chosen-password rule refuses the generator's `xxxxxxxxxxxx`, so `vertrag.yml` holds
+  a strong `password` on `createAccount` and `updateMailbox`. Invalid requests are
+  left alone, so the 11-character refusal is still sent, and a `fuzz.pin` on the same
+  field would win; none names `password`. The other operations the rule guards send
+  no valid generated password on this topology: their success examples need state
+  the run does not have, and `acceptInvitation`'s probes end in the token its hook
+  makes for each one. `TestContractValidPinsPassTheRule` holds the value to the rule.
+  This setting also puts the password in bodies that had none. On `updateMailbox`,
+  `a_new_password_only_on_the_created_account` sends those to the run's own account.
+  On `createAccount`, a password with a `password_hash` is refused, so `password_hash`
+  is held at the empty string the schema permits, which means no hash. So no generated
+  valid request imports a hash live; its refused shapes are still sent, and
+  `TestAccountImportPasswordHashAndProtocolSignIn` proves an import in-process.
+  The cost is that a valid password no longer varies in these probes, so the boundary
+  is proved elsewhere: `createAccount.created` and
+  `updateMailbox.updated_password_at_minimum` each send a strong password of exactly
+  12 characters in the examples phase, which the surface gate requires, and
+  `TestCreateAccount_ContractPasswordBoundary` and
+  `TestMailboxUpdate_ContractPasswordBoundary` hold both sides.
 - **The fixture matches the body.** `createAPIKey` and `updateAPIKey` check the
   caller's current password, and the coverage process sends them as
   `contract-probe-admin@restmail.test`, whose two passwords are plainly fake and
@@ -383,6 +404,17 @@ There are three ways to keep a probe:
   In the coverage process its success requests go to the fixture admin's account.
   In every other process only `always_store` and `match_submission` go there: the
   rest store or skip one message, which fits, but those two would store another.
+
+The name of `updateMailbox.updated_password_at_minimum` matters. Coverage takes an
+operation's first 2xx example, by name, as the base of its probes, and the probes of
+the path send that base unchanged to id 1, a fixture account (`eve@restmail.test` on
+the seed), as the ownership runs' `PATCH` cells send it to their own ids. A base with
+a password would land on those accounts or be moved or skipped by the hook above, and
+everything after it that needs the account fails: delivery to it, its API keys,
+signing in as it. So `updated` stays first, and `TestMailboxUpdate_ExamplePairs` holds
+it. The body probes go to the run's own account, because `fuzz.pin-valid` gives each
+valid one a password, so id 1 is not made inactive or given a quota of -1. The probe
+of the path at its minimum still writes `updated`'s `display_name` to it.
 
 A pin takes away the probes that vary its own field, so the named examples prove
 those refusals in the gated examples phase, which is not pinned. For snooze:

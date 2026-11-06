@@ -130,6 +130,25 @@ surface:
     - operation: restoreTestSnapshot
       reason: "Wipes the data the rest of the run depends on: sent last, by the teardown phase (tests/contract/teardown.py)."
 
+# The chosen-password rule (bootstrap.ChosenPasswordProblem) refuses the generator's
+# xxxxxxxxxxxx, and no schema can say so. These hold a password the rule accepts in
+# the valid requests a generating phase draws for these two operations, which are
+# the ones with such requests on this topology. Their invalid requests still vary,
+# so the 11-character refusal is sent, and no other operation's password is touched.
+# A held password is in every valid body, and createAccount refuses one sent with a
+# password_hash, so that is held at the empty string the schema permits, which means
+# no hash; TestAccountImportPasswordHashAndProtocolSignIn proves an import.
+# Nothing in fuzz.pin names either field, which would win. The password is a test
+# fixture like every password in cmd/seed, and TestContractValidPinsPassTheRule holds
+# it to the rule. See tests/contract/README.md, "fuzz.pin-valid".
+fuzz:
+  pin-valid:
+    createAccount:
+      password: &probe-password "ochre-walnut-tundra-sextant-61"
+      password_hash: ""
+    updateMailbox:
+      password: *probe-password
+
 # The HAR records the traffic for the secret scan (tests/contract/secret_scan.py, #673).
 reporter: [cli, junit, har]
 output: ["", .cache/contract/examples.xml, .cache/contract/examples.har]

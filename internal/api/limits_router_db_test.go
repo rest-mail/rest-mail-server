@@ -211,7 +211,7 @@ func TestRecover_RefusalBudgetRefillsThroughTheRouter(t *testing.T) {
 	now := start
 	f.routers.recoverFailures.SetClock(func() time.Time { return now })
 
-	body := fmt.Sprintf(`{"email":%q,"totp_code":"000000","recovery_code":"nope","new_password":"a-new-password-nobody-saw"}`, "nobody-here@example.test")
+	body := fmt.Sprintf(`{"email":%q,"totp_code":"000000","recovery_code":"nope","new_password":"violet-ember-quorum-lantern-92"}`, "nobody-here@example.test")
 	refused := func(when string) {
 		t.Helper()
 		rr := f.do(http.MethodPost, "/api/v1/auth/recover", "", body)

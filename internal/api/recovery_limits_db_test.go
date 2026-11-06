@@ -44,7 +44,7 @@ func TestRecover_RefusalsPastTheAddressBudgetAreThrottled(t *testing.T) {
 		AuthRateLimitRPS:     0.0001,
 		AuthRateLimitBurst:   100,
 	})
-	body := fmt.Sprintf(`{"email":%q,"totp_code":"000000","recovery_code":"nope","new_password":"a-new-password-nobody-saw"}`, "nobody-here@example.test")
+	body := fmt.Sprintf(`{"email":%q,"totp_code":"000000","recovery_code":"nope","new_password":"a-new-quokka-sundial-unseen"}`, "nobody-here@example.test")
 	for i := 0; i < recoveryBudget; i++ {
 		rr := f.do(http.MethodPost, "/api/v1/auth/recover", "", body)
 		if rr.Code != http.StatusUnauthorized || !strings.Contains(rr.Body.String(), `"code":"recovery_failed"`) {

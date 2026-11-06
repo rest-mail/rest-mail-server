@@ -65,7 +65,20 @@ func TestRecover_ResetsThePasswordWithTheAuthenticatorAndARecoveryCode(t *testin
 	}
 	secret, codes := enrollWithRecoveryCodes(t, gdb, before.ID, masterKey)
 
-	const newPassword = "a-new-password-nobody-saw"
+	// A guessable new password, or one built from the account's own address,
+	// is refused before either factor is checked, so codes[0] is still unspent
+	// for the recovery below (#1672).
+	local, _, _ := strings.Cut(addr, "@")
+	for _, guessable := range []string{"Summer2026!!", "password123456", "Tr1cky-Orbit-Lantern-" + local} {
+		refused := post(recoverHandler(h), map[string]string{
+			"email": addr, "totp_code": totpNow(t, secret), "recovery_code": codes[0], "new_password": guessable,
+		})
+		if refused.Code != http.StatusUnprocessableEntity || !strings.Contains(validationField(t, refused, "new_password"), "too easy to guess") || strings.Contains(refused.Body.String(), guessable) {
+			t.Fatalf("guessable %q: status %d (%s), want 422 too easy to guess", guessable, refused.Code, refused.Body.String())
+		}
+	}
+
+	const newPassword = "a-new-quokka-sundial-unseen"
 	rr := post(recoverHandler(h), map[string]string{
 		"email": addr, "totp_code": totpNow(t, secret), "recovery_code": codes[0],
 		"new_password": newPassword, "client": "native",
@@ -89,7 +102,7 @@ func TestRecover_ResetsThePasswordWithTheAuthenticatorAndARecoveryCode(t *testin
 	}
 
 	again := post(recoverHandler(h), map[string]string{
-		"email": addr, "totp_code": totpNow(t, secret), "recovery_code": codes[0], "new_password": "yet-another-password",
+		"email": addr, "totp_code": totpNow(t, secret), "recovery_code": codes[0], "new_password": "yet-another-quokka-sundial",
 	})
 	if again.Code != http.StatusUnauthorized || errorCode(again) != "recovery_failed" {
 		t.Errorf("a spent recovery code: status %d code %q, want 401 recovery_failed", again.Code, errorCode(again))
@@ -111,7 +124,7 @@ func TestRecover_RefusesWithoutBothFactors(t *testing.T) {
 	noTwoFactor := seedLoginMailbox(t, gdb, "correct-horse-battery")
 	secret, codes := enrollWithRecoveryCodes(t, gdb, mb.ID, masterKey)
 
-	const newPassword = "a-new-password-nobody-saw"
+	const newPassword = "a-new-quokka-sundial-unseen"
 	refused := []struct {
 		name string
 		body map[string]string
@@ -162,7 +175,7 @@ func TestRecover_RefusalsAreBudgetedPerAddress(t *testing.T) {
 	other := seedLoginMailbox(t, gdb, "correct-horse-battery")
 	secret, codes := enrollWithRecoveryCodes(t, gdb, mb.ID, masterKey)
 
-	const newPassword = "a-new-password-nobody-saw"
+	const newPassword = "a-new-quokka-sundial-unseen"
 	// The budget is the address's however it is spelled.
 	for _, email := range []string{addr, "  " + strings.ToUpper(addr) + " "} {
 		rr := post(recoverHandler(h), map[string]string{"email": email, "totp_code": "000000", "recovery_code": codes[0], "new_password": newPassword})
