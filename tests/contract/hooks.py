@@ -2101,6 +2101,155 @@ def cancel_a_message_we_made(transaction):
         transaction["fullPath"] = f"/api/v1/messages/scheduled/{scheduled_id:d}"
 
 
+def an_imported_message(transaction, folder, subject):
+    """The id of a message imported into the fixture admin's mailbox, looked
+    up by address, for this exchange alone."""
+    origin = origin_of(transaction)
+    raw = (
+        f"Message-ID: <{folder.rsplit(' ', 1)[-1].lower()}-{time.time_ns()}@restmail.test>\r\n"
+        "From: sender@example.test\r\n"
+        f"To: {ADMIN}\r\n"
+        f"Date: {formatdate(usegmt=True)}\r\n"
+        f"Subject: {subject}\r\n\r\nA contract fixture.\r\n"
+    ).encode()
+    request = urllib.request.Request(
+        origin + f"/api/v1/accounts/{mailbox_id(origin, ADMIN):d}/messages/import",
+        data=json.dumps(
+            {
+                "raw_message": base64.b64encode(raw).decode(),
+                "folder": folder,
+                "internal_date": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            }
+        ).encode(),
+        headers={"Content-Type": "application/json", "Authorization": "Bearer " + admin_token(origin)},
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        message_id = (json.load(response).get("data") or {}).get("id")
+    if type(message_id) is not int or message_id < 1:
+        raise RuntimeError("the fixture import returned no message")
+    return message_id
+
+
+def a_sent_message(transaction):
+    """The id of a message the fixture admin sends itself, for an exchange that
+    needs what only a send makes (a delivery trace)."""
+    sent = fixture_call(
+        transaction,
+        "POST",
+        "/api/v1/messages/send",
+        {
+            "from": ADMIN,
+            "to": [ADMIN],
+            "subject": "Contract trace",
+            "body_text": "Sent by the contract.",
+        },
+    )
+    message_id = (sent or {}).get("id")
+    if type(message_id) is not int or message_id < 1:
+        raise RuntimeError("the fixture send returned no message")
+    return message_id
+
+
+@hooks.before("getMessage")
+@hooks.before("updateMessage")
+@hooks.before("getRawMessage")
+@hooks.before("forwardMessage")
+@hooks.before("listAttachments")
+@hooks.before("getMessageTrace")
+@hooks.before("deleteMessage")
+@hooks.before("verifyMessageSeal")
+def on_a_message_of_its_own(transaction):
+    # These follow sendMessage's link (and getMessage's and getRawMessage's).
+    # After a reset (the own-data phase) every exchange, refusals included,
+    # starts clean, and the message the link names went with the reset. So an
+    # exchange aimed at a positive message id gets a message of its own, made
+    # after the reset: imported into the seeded admin's mailbox, or for a trace
+    # sent, since only a send writes one. A refusal is then refused for its
+    # body and not for a message that is gone. Missing's 2147483647, a
+    # non-positive or undecodable id and every documented 404 keep their ids.
+    # Without a reset the link's message is still there, and nothing changes.
+    if not asked_for_a_clean_start():
+        return
+    start_clean(transaction)
+    path, _, query = transaction["fullPath"].partition("?")
+    parts = path.split("/")
+    # /api/v1/messages/{id}..., and the trace's /api/v1/admin/messages/{id}.
+    traced = path.startswith("/api/v1/admin/messages/")
+    segment = 5 if traced else 4
+    if len(parts) <= segment:
+        return
+    message = parts[segment]
+    if not positive_id(message) or message == "2147483647":
+        return
+    if " > 404" in transaction.get("name", ""):
+        return
+    if traced:
+        message_id = a_sent_message(transaction)
+    else:
+        message_id = an_imported_message(transaction, "Contract own", "Contract own message")
+    parts[segment] = str(message_id)
+    transaction["fullPath"] = "/".join(parts) + ("?" + query if query else "")
+
+
+@hooks.before("getThread")
+def on_a_thread_of_its_own(transaction):
+    # getThread follows getMessage's link, with its mailbox and thread. After a
+    # reset both went, so a positive mailbox id gets the thread of a message of
+    # its own, in the seeded admin's mailbox, both read back from the message.
+    # A non-positive or undecodable id, missing's and a documented 404 keep
+    # theirs. Without a reset nothing changes.
+    if not asked_for_a_clean_start():
+        return
+    start_clean(transaction)
+    path, _, query = transaction["fullPath"].partition("?")
+    parts = path.split("/")
+    if len(parts) < 7 or not positive_id(parts[4]) or parts[4] == "2147483647":
+        return
+    if " > 404" in transaction.get("name", ""):
+        return
+    message = fixture_call(
+        transaction,
+        "GET",
+        "/api/v1/messages/{:d}".format(
+            an_imported_message(transaction, "Contract thread", "Contract thread")
+        ),
+    )
+    parts[4] = str(message["mailbox_id"])
+    parts[6] = urllib.parse.quote(message["thread_id"], safe="")
+    transaction["fullPath"] = "/".join(parts) + ("?" + query if query else "")
+
+
+@hooks.before("updateDraft")
+def on_a_draft_of_its_own(transaction):
+    # updateDraft follows saveDraft's link. After a reset (the own-data phase)
+    # every exchange starts clean, and one aimed at a positive draft id gets a
+    # draft of its own, from the seeded admin, made after the reset.
+    # Missing's 2147483647, a non-positive or undecodable id and every
+    # documented 404 keep their ids. Without a reset nothing changes.
+    if not asked_for_a_clean_start():
+        return
+    start_clean(transaction)
+    path, _, query = transaction["fullPath"].partition("?")
+    parent, _, draft = path.rpartition("/")
+    if not positive_id(draft) or draft == "2147483647":
+        return
+    if " > 404" in transaction.get("name", ""):
+        return
+    made = fixture_call(
+        transaction,
+        "POST",
+        "/api/v1/messages/draft",
+        {
+            "from": ADMIN,
+            "to": [ADMIN],
+            "subject": "Contract draft",
+            "body_text": "Not sent yet.",
+        },
+    )
+    transaction["fullPath"] = f"{parent}/{made['id']:d}" + ("?" + query if query else "")
+
+
 @hooks.before("deleteMessage")
 def delete_a_message_we_made(transaction):
     # The example's message, 51, is a number and not a fixture: which row it
@@ -2113,30 +2262,7 @@ def delete_a_message_we_made(transaction):
     path, _, query = transaction.get("fullPath", "").partition("?")
     if path.rsplit("/", 1)[-1] != "51" or not with_the_fixture_admins_session(transaction):
         return
-    origin = origin_of(transaction)
-    raw = (
-        f"Message-ID: <delete-{time.time_ns()}@restmail.test>\r\n"
-        "From: sender@example.test\r\n"
-        f"To: {ADMIN}\r\n"
-        f"Date: {formatdate(usegmt=True)}\r\n"
-        "Subject: Delete contract fixture\r\n\r\nDelete fixture.\r\n"
-    ).encode()
-    request = urllib.request.Request(
-        origin + f"/api/v1/accounts/{mailbox_id(origin, ADMIN):d}/messages/import",
-        data=json.dumps(
-            {
-                "raw_message": base64.b64encode(raw).decode(),
-                "folder": "Contract delete",
-                "internal_date": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-            }
-        ).encode(),
-        headers={"Content-Type": "application/json", "Authorization": "Bearer " + admin_token(origin)},
-        method="POST",
-    )
-    with urllib.request.urlopen(request, timeout=10) as response:
-        message_id = (json.load(response).get("data") or {}).get("id")
-    if type(message_id) is not int or message_id < 1:
-        raise RuntimeError("the delete fixture's import returned no message")
+    message_id = an_imported_message(transaction, "Contract delete", "Delete contract fixture")
     transaction["fullPath"] = f"/api/v1/messages/{message_id:d}" + ("?" + query if query else "")
 
 
@@ -3052,6 +3178,11 @@ def a_mailbox_at(transaction, address):
 
 @hooks.before("saveDraft")
 def a_mailbox_for_the_draft(transaction):
+    # After a reset (the own-data phase) every save, refusals included, starts
+    # clean, and the sender's mailbox is made again after it: the reset cleared
+    # probe_mailboxes along with the mailboxes it named.
+    if asked_for_a_clean_start():
+        start_clean(transaction)
     # Coverage probes save drafts from a generated address
     # (someone@example.com) that no mailbox holds, which the handler rightly
     # refuses (403). The sender gets a hosted domain and a mailbox the admin
@@ -3793,6 +3924,10 @@ def a_recovery_request_for_an_address_of_its_own(transaction):
 
 @hooks.before("sendDraft")
 def send_a_draft_of_its_own(transaction):
+    # After a reset (the own-data phase) every exchange starts clean; what
+    # follows already makes the draft a send needs, after the reset.
+    if asked_for_a_clean_start():
+        start_clean(transaction)
     # sent (201) and missing (404) both name the placeholder draft 12: sent is
     # given a fresh draft of the fixture admin's to send, and missing an id no
     # draft holds. Coverage probes keep their ids.

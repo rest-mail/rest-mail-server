@@ -82,6 +82,9 @@ CONTACTS = (
 # message operations, and their links three more, none moved or selected: the
 # reset is before the send, never between it and a follower.
 SENDS = ("sendMessage", "sendTestEmail")
+# What sendMessage's link reaches, and the draft operations, whose links reach
+# one another: all moved together, each follower on a message of its own.
+DRAFTS = ("saveDraft", "updateDraft", "sendDraft")
 FOLLOWS_THE_SENT_MESSAGE = {
     "getMessage",
     "updateMessage",
@@ -169,7 +172,9 @@ class Selection(unittest.TestCase):
             - set(INVITATIONS)
             - set(GRANTS)
             - set(CONTACTS)
-            - set(SENDS),
+            - set(SENDS)
+            - FOLLOWS_THE_SENT_MESSAGE
+            - set(DRAFTS),
             link_followers(description, "createDomain") | {"createDomain"},
         )
 
@@ -298,7 +303,7 @@ class Selection(unittest.TestCase):
         self.assertNotIn("listAccounts", selected)
         self.assertLessEqual(set(CONTACTS), set(own_data.MOVED))
 
-    def test_it_selects_the_send_operations_and_not_what_follows_the_send(self):
+    def test_it_selects_the_send_operations_and_what_follows_the_send(self):
         description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
         hooks = (ROOT / "tests/contract/hooks.py").read_text()
         readers = set()
@@ -317,9 +322,27 @@ class Selection(unittest.TestCase):
         for operation in description_operations(description):
             reached |= link_followers(description, operation)
         self.assertFalse(reached & set(SENDS))
-        selected = set(own_data.configure({})["operation-id"])
         self.assertLessEqual(set(SENDS), set(own_data.MOVED))
-        self.assertFalse(selected & FOLLOWS_THE_SENT_MESSAGE)
+        self.assertLessEqual(FOLLOWS_THE_SENT_MESSAGE, set(own_data.MOVED))
+        # No other link reaches what follows the send.
+        for operation in description_operations(description):
+            if operation not in set(SENDS) | FOLLOWS_THE_SENT_MESSAGE:
+                self.assertFalse(
+                    link_followers(description, operation) & FOLLOWS_THE_SENT_MESSAGE,
+                    operation,
+                )
+
+    def test_it_selects_every_draft_operation_and_its_links(self):
+        description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
+        self.assertEqual(
+            link_followers(description, "saveDraft"), {"updateDraft", "sendDraft"}
+        )
+        for operation in description_operations(description):
+            if operation not in DRAFTS:
+                self.assertFalse(
+                    link_followers(description, operation) & set(DRAFTS), operation
+                )
+        self.assertLessEqual(set(DRAFTS), set(own_data.MOVED))
 
     def test_a_skipped_exchange_is_not_a_pass(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -173,6 +173,18 @@ class OwnDataHooks(unittest.TestCase):
             "setContactReplyTimeSetting": "a_contact_operation_from_a_clean_start",
             "sendMessage": "a_sending_policy_for_the_send",
             "sendTestEmail": "a_mailbox_at_each_test_send_address",
+            "getMessage": "on_a_message_of_its_own",
+            "updateMessage": "on_a_message_of_its_own",
+            "getRawMessage": "on_a_message_of_its_own",
+            "forwardMessage": "on_a_message_of_its_own",
+            "listAttachments": "on_a_message_of_its_own",
+            "getMessageTrace": "on_a_message_of_its_own",
+            "deleteMessage": "on_a_message_of_its_own",
+            "verifyMessageSeal": "on_a_message_of_its_own",
+            "getThread": "on_a_thread_of_its_own",
+            "saveDraft": "a_mailbox_for_the_draft",
+            "updateDraft": "on_a_draft_of_its_own",
+            "sendDraft": "send_a_draft_of_its_own",
         }
         self.assertEqual(set(hooks), set(own_data.MOVED))
         for operation, hook in hooks.items():
