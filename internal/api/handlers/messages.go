@@ -1455,6 +1455,7 @@ func (h *MessageHandler) RegisterFolders(rs endpoint.Routes) {
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/accounts/{id}/quota",
 		OperationID: "getQuota", Summary: "Get quota usage for an account", Tags: []string{"Accounts"},
 		Errors: []int{http.StatusForbidden, http.StatusNotFound}, Security: reads}, h.getQuota)
+	h.registerSubscriptions(rs, reads, writes)
 }
 
 // accountMailbox is the mailbox of the account the path names, when the session may reach
