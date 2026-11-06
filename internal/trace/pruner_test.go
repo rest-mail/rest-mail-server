@@ -1,6 +1,7 @@
 package trace
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -53,7 +54,7 @@ func TestPruner_DeletesExpiredKeepsUnexpired(t *testing.T) {
 	seedTrace(t, tx, "<no-horizon@t>", now, nil) // NULL expires_at → not expiry-pruned
 
 	p := NewPruner(tx, time.Hour, 0) // backstop disabled; test expiry only
-	p.pruneOnce(now)
+	p.pruneOnce(context.Background(), now)
 
 	if got := countTraces(t, tx); got != 2 {
 		t.Fatalf("after expiry prune: %d traces remain, want 2 (fresh + no-horizon)", got)
@@ -88,7 +89,7 @@ func TestPruner_BackstopTrimsOldest(t *testing.T) {
 	}
 
 	p := NewPruner(tx, time.Hour, 2) // cap at 2 rows
-	p.pruneOnce(base.Add(time.Hour))
+	p.pruneOnce(context.Background(), base.Add(time.Hour))
 
 	if got := countTraces(t, tx); got != 2 {
 		t.Fatalf("after backstop: %d traces remain, want 2 (the cap)", got)
@@ -136,7 +137,7 @@ func TestPruner_LeavesRollupsUntouched(t *testing.T) {
 	}
 
 	p := NewPruner(tx, time.Hour, 1_000_000)
-	p.pruneOnce(now)
+	p.pruneOnce(context.Background(), now)
 
 	if got := countTraces(t, tx); got != 0 {
 		t.Errorf("expired trace not pruned: %d remain, want 0", got)

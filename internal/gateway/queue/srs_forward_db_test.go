@@ -53,7 +53,7 @@ func sentMailFrom(t *testing.T, w *Worker, item models.OutboundQueue) string {
 	cert, _ := relayTestCertificate(t, false)
 	settings, finish := relayTestPeer(t, cert, relayPeerOptions{})
 	addr := net.JoinHostPort(settings.host, strconv.Itoa(settings.port))
-	if err := w.deliverSMTP(addr, settings.host, item, nil, nil); err != nil {
+	if err := w.deliverSMTP(context.Background(), addr, settings.host, item, nil, nil); err != nil {
 		t.Fatalf("deliverSMTP: %v", err)
 	}
 	return mailCommand(finish().commands)
@@ -168,7 +168,7 @@ func TestForwardRetriesWhenHostingIsUnknown(t *testing.T) {
 	broken := tx.Begin()
 	broken.Rollback()
 	w.db = broken
-	if _, err := w.forwardSender(item); err == nil {
+	if _, err := w.forwardSender(context.Background(), item); err == nil {
 		t.Fatal("no error when the domain lookup failed")
 	}
 }
@@ -186,7 +186,7 @@ func TestFailedForwardIsReportedToTheOriginalSender(t *testing.T) {
 	if sent := sentMailFrom(t, w, item); !strings.Contains(sent, "SRS0=") {
 		t.Fatalf("MAIL = %q, want an SRS address", sent)
 	}
-	w.generateBounce(item, &SMTPError{Code: 550, Enhanced: "5.1.1", Message: "no such user"})
+	w.generateBounce(context.Background(), item, &SMTPError{Code: 550, Enhanced: "5.1.1", Message: "no such user"})
 
 	var notice models.OutboundQueue
 	if err := tx.Where("recipient = ?", author).First(&notice).Error; err != nil {
@@ -213,7 +213,7 @@ func TestForwardOverRESTMAILIsNotRewritten(t *testing.T) {
 	t.Cleanup(srv.Close)
 	w.restmailRoots = srv.Client().Transport.(*http.Transport).TLSClientConfig.RootCAs
 
-	if err := w.deliverRESTMAILHTTPS(srv.URL, forwardRow("alice@orig.example", forwarder)); err != nil {
+	if err := w.deliverRESTMAILHTTPS(context.Background(), srv.URL, forwardRow("alice@orig.example", forwarder)); err != nil {
 		t.Fatalf("deliverRESTMAILHTTPS: %v", err)
 	}
 	if from != "alice@orig.example" {
@@ -232,7 +232,7 @@ func TestRelayedBounceLeavesWithANullReversePath(t *testing.T) {
 		Sender: "", SendingDomain: forwarder, Recipient: "alice@orig.example", Domain: "orig.example", IsDSN: true,
 		RawMessage: "From: mailer-daemon@elsewhere.test\r\nTo: alice@orig.example\r\nSubject: Undelivered\r\n\r\nNo such user.\r\n",
 	}
-	if err := w.deliverSMTP(addr, settings.host, item, nil, nil); err != nil {
+	if err := w.deliverSMTP(context.Background(), addr, settings.host, item, nil, nil); err != nil {
 		t.Fatalf("deliverSMTP: %v", err)
 	}
 	result := finish()

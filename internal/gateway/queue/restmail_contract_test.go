@@ -81,7 +81,7 @@ func TestRESTMAILClientRequestsMatchTheDescription(t *testing.T) {
 	// Discovery, as a peer asks the MX host for a domain (restmailDiscover), then delivery to
 	// the endpoint it would have named (restmailDeliver).
 	_, _ = w.discoverRESTMAILEndpoint(srv.URL + "/.well-known/restmail?domain=example.net")
-	_ = w.deliverRESTMAILHTTPS(srv.URL+"/restmail", testItem())
+	_ = w.deliverRESTMAILHTTPS(context.Background(), srv.URL+"/restmail", testItem())
 
 	mu.Lock()
 	defer mu.Unlock()

@@ -221,7 +221,7 @@ func (w *S3Worker) Check(ctx context.Context, now time.Time) (bool, error) {
 	if d.result != "accepted" {
 		return false, fmt.Errorf("audit anchor s3 %s after %d attempts: %v", d.result, d.attempts, d.err)
 	}
-	slog.Info("audit anchor s3 stored", "endpoint", w.endpoint, "bucket", w.target.bucket)
+	slog.InfoContext(ctx, "audit anchor s3 stored", "endpoint", w.endpoint, "bucket", w.target.bucket)
 	return true, nil
 }
 

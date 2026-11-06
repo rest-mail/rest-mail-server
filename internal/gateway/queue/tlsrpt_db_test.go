@@ -76,7 +76,7 @@ func TestTLSReports_ADayOfDeliveries(t *testing.T) {
 	cert, _ := relayTestCertificate(t, false) // nothing vouches for it
 	deliver := func(item models.OutboundQueue, policy *mtasts.Policy, stsErr error) error {
 		settings, finish := relayTestPeer(t, cert, relayPeerOptions{noAUTH: true})
-		err := w.deliverSMTP(net.JoinHostPort(settings.host, strconv.Itoa(settings.port)), settings.host, item, policy, stsErr)
+		err := w.deliverSMTP(context.Background(), net.JoinHostPort(settings.host, strconv.Itoa(settings.port)), settings.host, item, policy, stsErr)
 		finish()
 		return err
 	}
@@ -119,7 +119,7 @@ func TestTLSReports_ADayOfDeliveries(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	w.sendTLSReports(now)
+	w.sendTLSReports(context.Background(), now)
 
 	if contentType != "application/tlsrpt+gzip" {
 		t.Fatalf("POSTed %q, want application/tlsrpt+gzip", contentType)
@@ -186,11 +186,11 @@ func TestTLSReports_RefusedReportIsTriedAgain(t *testing.T) {
 		tx.Model(&models.TLSRPTSession{}).Where("policy_domain = ?", domain).Count(&n)
 		return n
 	}
-	w.sendTLSReports(day.Add(30 * time.Hour))
+	w.sendTLSReports(context.Background(), day.Add(30*time.Hour))
 	if count() != 1 {
 		t.Fatal("a refused report's sessions were dropped")
 	}
-	w.sendTLSReports(day.Add(73 * time.Hour))
+	w.sendTLSReports(context.Background(), day.Add(73*time.Hour))
 	if count() != 0 {
 		t.Fatal("a report was still tried two days after its day")
 	}

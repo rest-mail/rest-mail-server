@@ -334,15 +334,15 @@ func (w *Worker) SetMasterKey(key string) {
 // leave (RFC 8617 §5.1, #731). It returns an error only when a configured DKIM key
 // cannot sign, so the caller fails closed (defer/retry) rather than relaying the
 // message unsigned.
-func (w *Worker) prepareOutbound(item models.OutboundQueue) (string, error) {
+func (w *Worker) prepareOutbound(ctx context.Context, item models.OutboundQueue) (string, error) {
 	if item.ARCResults != "" {
-		raw, err := outbound.SignDKIM(w.db, w.masterKey, sendsAs(item), outbound.StripBcc(item.RawMessage))
+		raw, err := outbound.SignDKIM(ctx, w.db, w.masterKey, sendsAs(item), outbound.StripBcc(item.RawMessage))
 		if err != nil {
 			return "", err
 		}
-		return outbound.SealARC(w.db, w.masterKey, sendsAs(item), raw, item.ARCResults, item.ARCChain)
+		return outbound.SealARC(ctx, w.db, w.masterKey, sendsAs(item), raw, item.ARCResults, item.ARCChain)
 	}
-	return outbound.Prepare(w.db, w.masterKey, sendsAs(item), item.RawMessage)
+	return outbound.Prepare(ctx, w.db, w.masterKey, sendsAs(item), item.RawMessage)
 }
 
 // SetSRS gives the worker the signer that rewrites the envelope sender of a forward
@@ -360,7 +360,7 @@ func (w *Worker) SetSRS(signer *srs.Signer) {
 // A row with ARC results is a forward (see models.OutboundQueue.ARCResults). A null
 // sender stays null (RFC 5321 §6.1). A failed domain lookup is an error, so the
 // message waits for a retry rather than leave with the wrong sender.
-func (w *Worker) forwardSender(item models.OutboundQueue) (string, error) {
+func (w *Worker) forwardSender(ctx context.Context, item models.OutboundQueue) (string, error) {
 	if w.srs == nil || item.ARCResults == "" || item.Sender == "" {
 		return item.Sender, nil
 	}
@@ -379,7 +379,7 @@ func (w *Worker) forwardSender(item models.OutboundQueue) (string, error) {
 	}
 	rewritten, err := w.srs.Rewrite(sender, item.SendingDomain, time.Now())
 	if err != nil {
-		slog.Warn("queue: forward keeps its sender, which SRS cannot carry", "id", item.ID, "error", err)
+		slog.WarnContext(ctx, "queue: forward keeps its sender, which SRS cannot carry", "id", item.ID, "error", err)
 		return item.Sender, nil
 	}
 	return rewritten, nil
@@ -667,14 +667,14 @@ func (w *Worker) process(ctx context.Context, item models.OutboundQueue, now tim
 
 	// A recipient that hard bounced from this sending domain isn't tried
 	// again until its suppression expires (#141).
-	if s, ok := w.suppression(item, now); ok {
+	if s, ok := w.suppression(ctx, item, now); ok {
 		setOutcome(ctx, "suppressed")
-		w.bounceSuppressed(item, s)
+		w.bounceSuppressed(ctx, item, s)
 		return
 	}
 
 	// Attempt delivery, holding the row for as long as that takes.
-	stopHeartbeat := w.startHeartbeat(item)
+	stopHeartbeat := w.startHeartbeat(ctx, item)
 	deliveryErr := w.deliver(ctx, item)
 	stopHeartbeat()
 
@@ -747,7 +747,7 @@ func (w *Worker) recordFailure(ctx context.Context, item models.OutboundQueue, d
 	w.db.Model(&item).Updates(failed)
 	setOutcome(ctx, "bounced")
 	if category.Suppresses() {
-		w.suppress(item, category, deliveryErr.Error(), now)
+		w.suppress(ctx, item, category, deliveryErr.Error(), now)
 	}
 	if category.Permanent() {
 		slog.WarnContext(ctx, "queue: permanent failure, bouncing", "id", item.ID, "smtp_code", errorCode, "failure_category", category)
@@ -762,7 +762,7 @@ func (w *Worker) recordFailure(ctx context.Context, item models.OutboundQueue, d
 	if bounceErr == nil {
 		bounceErr = &SMTPError{Code: 0, Message: deliveryErr.Error()}
 	}
-	w.generateBounce(item, bounceErr)
+	w.generateBounce(ctx, item, bounceErr)
 }
 
 // mxResolver is what delivery asks the DNS; *net.Resolver answers it.
@@ -837,7 +837,7 @@ func (w *Worker) deliver(ctx context.Context, item models.OutboundQueue) error {
 	if relay != nil {
 		setTransport(ctx, "relay")
 		_, span := tracing.Start(ctx, "queue.relay")
-		err := w.deliverViaRelay(*relay, item)
+		err := w.deliverViaRelay(ctx, *relay, item)
 		tracing.End(span, err)
 		return err
 	}
@@ -878,7 +878,7 @@ func (w *Worker) deliver(ctx context.Context, item models.OutboundQueue) error {
 	// plaintext EHLO-advertised RESTMAIL upgrade as well as the SMTP fallback
 	// (#168). Discovery is fail-open: a missing/unreachable policy leaves stsPolicy
 	// nil and delivery proceeds with ordinary opportunistic TLS.
-	stsPolicy, stsErr := w.recipientPolicy(item, dnsDomain)
+	stsPolicy, stsErr := w.recipientPolicy(ctx, item, dnsDomain)
 
 	// Whether an enforce policy is actively enforced by this worker. When
 	// enforcement is disabled, an enforce policy behaves like "testing".
@@ -889,7 +889,7 @@ func (w *Worker) deliver(ctx context.Context, item models.OutboundQueue) error {
 	if item.Transport == models.TransportRESTMAIL {
 		setTransport(ctx, "restmail")
 		_, span := tracing.Start(ctx, "queue.restmail")
-		err := w.deliverPinnedRESTMAIL(item, firstHost, dnsDomain, stsPolicy, enforcing, daneSecure)
+		err := w.deliverPinnedRESTMAIL(ctx, item, firstHost, dnsDomain, stsPolicy, enforcing, daneSecure)
 		tracing.End(span, err)
 		return err
 	}
@@ -926,7 +926,7 @@ func (w *Worker) deliver(ctx context.Context, item models.OutboundQueue) error {
 				}
 				setTransport(ctx, "restmail")
 				_, span := tracing.Start(ctx, "queue.restmail", trace.WithAttributes(attribute.Bool("queue.restmail.cached", true)))
-				err := w.deliverRESTMAILDiscovered(discoveryURL, item)
+				err := w.deliverRESTMAILDiscovered(ctx, discoveryURL, item)
 				tracing.End(span, err)
 				return restmailFailure(firstHost, item, err)
 			}
@@ -934,7 +934,7 @@ func (w *Worker) deliver(ctx context.Context, item models.OutboundQueue) error {
 			// upgrade and deliver over the policy-guarded SMTP path. This is
 			// the policy declining the upgrade before it is taken, not a
 			// fallback after a RESTMAIL failure.
-			slog.Warn("queue: MTA-STS enforce — RESTMAIL discovery host not permitted by policy, using SMTP",
+			slog.WarnContext(ctx, "queue: MTA-STS enforce — RESTMAIL discovery host not permitted by policy, using SMTP",
 				"domain", item.Domain, "url", discoveryURL)
 		}
 		// cap.Supported == false: skip RESTMAIL, go straight to SMTP
@@ -942,7 +942,7 @@ func (w *Worker) deliver(ctx context.Context, item models.OutboundQueue) error {
 		// No cache or expired — do EHLO probe (gated by the policy inside tryRESTMAIL).
 		// Once the probe has taken the upgrade, its outcome is final either way.
 		_, span := tracing.Start(ctx, "queue.restmail", trace.WithAttributes(attribute.Bool("queue.restmail.cached", false)))
-		upgraded, err := w.tryRESTMAIL(firstHost, dnsDomain, item, stsPolicy, enforcing)
+		upgraded, err := w.tryRESTMAIL(ctx, firstHost, dnsDomain, item, stsPolicy, enforcing)
 		span.SetAttributes(attribute.Bool("queue.restmail.upgraded", upgraded))
 		tracing.End(span, err)
 		if upgraded {
@@ -954,7 +954,7 @@ func (w *Worker) deliver(ctx context.Context, item models.OutboundQueue) error {
 	// SMTP delivery, for a peer never identified as a REST Mail server (or one the
 	// gates above keep off RESTMAIL).
 	setTransport(ctx, "smtp")
-	w.noteSMTP(item)
+	w.noteSMTP(ctx, item)
 	var lastErr, transientErr error
 	for i, mx := range mxRecords {
 		host := strings.TrimSuffix(mx.Host, ".")
@@ -963,7 +963,7 @@ func (w *Worker) deliver(ctx context.Context, item models.OutboundQueue) error {
 		// decide its TLS: MTA-STS must not override a DANE verdict (RFC 8461 §2).
 		var records []dane.TLSA
 		if daneSecure {
-			if records, lastErr = w.daneRecords(item.Domain, host, !item.TLSReport); lastErr != nil {
+			if records, lastErr = w.daneRecords(ctx, item.Domain, host, !item.TLSReport); lastErr != nil {
 				transientErr = lastErr
 				continue
 			}
@@ -973,12 +973,12 @@ func (w *Worker) deliver(ctx context.Context, item models.OutboundQueue) error {
 		// by the policy (RFC 8461 section 4.1).
 		if records == nil && stsPolicy != nil && len(stsPolicy.MX) > 0 && !stsPolicy.MatchesMX(host) {
 			if enforcing {
-				slog.Warn("queue: MTA-STS enforce — MX host not named by policy, skipping",
+				slog.WarnContext(ctx, "queue: MTA-STS enforce — MX host not named by policy, skipping",
 					"host", host, "domain", item.Domain)
 				lastErr = &mtasts.EnforceError{Domain: item.Domain, MXHost: host, Reason: "MX host not named by policy"}
 				continue
 			}
-			slog.Warn("queue: MTA-STS — MX host not named by policy, delivering anyway",
+			slog.WarnContext(ctx, "queue: MTA-STS — MX host not named by policy, delivering anyway",
 				"host", host, "domain", item.Domain, "mode", stsPolicy.Mode)
 		}
 
@@ -986,7 +986,7 @@ func (w *Worker) deliver(ctx context.Context, item models.OutboundQueue) error {
 			attribute.Int("queue.mx_index", i),
 			attribute.Bool("queue.dane", records != nil),
 		))
-		lastErr = w.deliverToHost(host, item, stsPolicy, stsErr, records)
+		lastErr = w.deliverToHost(ctx, host, item, stsPolicy, stsErr, records)
 		tracing.End(span, lastErr)
 		if lastErr == nil {
 			return nil
@@ -995,7 +995,7 @@ func (w *Worker) deliver(ctx context.Context, item models.OutboundQueue) error {
 		if !errors.As(lastErr, &refused) || refused.Code < 500 {
 			transientErr = lastErr
 		}
-		slog.Debug("queue: MX attempt failed", "host", host, "error", lastErr)
+		slog.DebugContext(ctx, "queue: MX attempt failed", "host", host, "error", lastErr)
 	}
 
 	// A message that requires TLS bounces when no MX can take it so (RFC 8689 §4.2.1), but an
@@ -1012,7 +1012,7 @@ func (w *Worker) deliver(ctx context.Context, item models.OutboundQueue) error {
 // sender asks that the recipient's policy be ignored, so it goes with
 // opportunistic TLS, STARTTLS whenever the MX offers it, as mail to a domain
 // without a policy does (RFC 8689 §4.2.2, §8.4).
-func (w *Worker) recipientPolicy(item models.OutboundQueue, dnsDomain string) (*mtasts.Policy, error) {
+func (w *Worker) recipientPolicy(ctx context.Context, item models.OutboundQueue, dnsDomain string) (*mtasts.Policy, error) {
 	if item.TLSReport {
 		// A TLS-RPT report goes despite any TLS failure, MTA-STS included:
 		// it may be what tells the domain its TLS is broken (RFC 8460 §3).
@@ -1021,18 +1021,18 @@ func (w *Worker) recipientPolicy(item models.OutboundQueue, dnsDomain string) (*
 	// "If the REQUIRETLS MAIL FROM parameter is specified, the TLS-Required header field MUST
 	// be ignored" (RFC 8689 §4.1).
 	if !item.RequireTLS && outbound.TLSOptional(item.RawMessage) {
-		slog.Info("queue: TLS-Required: No, the recipient's MTA-STS policy is not applied", "domain", item.Domain)
+		slog.InfoContext(ctx, "queue: TLS-Required: No, the recipient's MTA-STS policy is not applied", "domain", item.Domain)
 		return nil, errTLSOptional
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 	policy, err := w.sts.Resolve(ctx, dnsDomain)
 	if err != nil {
-		slog.Debug("queue: MTA-STS not available, proceeding normally",
+		slog.DebugContext(ctx, "queue: MTA-STS not available, proceeding normally",
 			"domain", item.Domain, "error", err)
 		return nil, err
 	}
-	slog.Info("queue: MTA-STS policy found",
+	slog.InfoContext(ctx, "queue: MTA-STS policy found",
 		"domain", item.Domain, "mode", policy.Mode, "mx_count", len(policy.MX), "enforce", w.stsEnforce)
 	return policy, nil
 }
@@ -1129,10 +1129,10 @@ func (w *Worker) cacheCapability(domain, mxHost string, supported bool) {
 // The endpoint comes from verified MX discovery. Its certificate must also be
 // verified against its own host, in every environment (#291). The SMTP-only
 // tlsInsecure flag never applies to either RESTMAIL HTTPS connection.
-func (w *Worker) deliverRESTMAILHTTPS(endpointURL string, item models.OutboundQueue) error {
+func (w *Worker) deliverRESTMAILHTTPS(ctx context.Context, endpointURL string, item models.OutboundQueue) error {
 	// Strip Bcc and DKIM-sign before transmission (#171). Fail closed on a key
 	// that cannot be loaded so the send retries rather than going out unsigned.
-	prepared, err := w.prepareOutbound(item)
+	prepared, err := w.prepareOutbound(ctx, item)
 	if err != nil {
 		return fmt.Errorf("prepare outbound message: %w", err)
 	}
@@ -1188,7 +1188,7 @@ func (w *Worker) deliverRESTMAILHTTPS(endpointURL string, item models.OutboundQu
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-		slog.Info("queue: RESTMAIL delivery succeeded", "url", messagesURL, "recipient", item.Recipient)
+		slog.InfoContext(ctx, "queue: RESTMAIL delivery succeeded", "url", messagesURL, "recipient", item.Recipient)
 		return nil
 	}
 
@@ -1251,13 +1251,13 @@ func restmailErrorCode(body []byte) string {
 // discovery endpoint (#291) — where to deliver, then POSTs the message there.
 // errRESTMAILNotHosted means the MX verifiably does not take REST mail for the
 // domain.
-func (w *Worker) deliverRESTMAILDiscovered(discoveryURL string, item models.OutboundQueue) error {
+func (w *Worker) deliverRESTMAILDiscovered(ctx context.Context, discoveryURL string, item models.OutboundQueue) error {
 	endpointURL, err := w.discoverRESTMAILEndpoint(discoveryURL)
 	if err != nil {
 		return err
 	}
-	slog.Info("queue: RESTMAIL endpoint discovered", "discovery", discoveryURL, "endpoint", endpointURL)
-	return w.deliverRESTMAILHTTPS(endpointURL, item)
+	slog.InfoContext(ctx, "queue: RESTMAIL endpoint discovered", "discovery", discoveryURL, "endpoint", endpointURL)
+	return w.deliverRESTMAILHTTPS(ctx, endpointURL, item)
 }
 
 // tryRESTMAIL probes a host for the RESTMAIL EHLO extension. If found — and the
@@ -1271,13 +1271,13 @@ func (w *Worker) deliverRESTMAILDiscovered(discoveryURL string, item models.Outb
 // SMTP, #291), and (false, nil) if the probe failed, the host does not
 // advertise RESTMAIL, or an enforce-mode policy does not name the host (the
 // caller uses the SMTP path).
-func (w *Worker) tryRESTMAIL(host, dnsDomain string, item models.OutboundQueue, stsPolicy *mtasts.Policy, enforcing bool) (upgraded bool, err error) {
-	return w.tryRESTMAILAt(w.smtpAddrOf(host), w.restmailDiscoveryURLOf(host, dnsDomain), host, item, stsPolicy, enforcing)
+func (w *Worker) tryRESTMAIL(ctx context.Context, host, dnsDomain string, item models.OutboundQueue, stsPolicy *mtasts.Policy, enforcing bool) (upgraded bool, err error) {
+	return w.tryRESTMAILAt(ctx, w.smtpAddrOf(host), w.restmailDiscoveryURLOf(host, dnsDomain), host, item, stsPolicy, enforcing)
 }
 
 // tryRESTMAILAt is tryRESTMAIL with the probe address and discovery URL given
 // separately from the MX host name, so a test can use listeners on other ports.
-func (w *Worker) tryRESTMAILAt(addr, discoveryURL, host string, item models.OutboundQueue, stsPolicy *mtasts.Policy, enforcing bool) (upgraded bool, err error) {
+func (w *Worker) tryRESTMAILAt(ctx context.Context, addr, discoveryURL, host string, item models.OutboundQueue, stsPolicy *mtasts.Policy, enforcing bool) (upgraded bool, err error) {
 	probed, ok := w.probeRESTMAIL(addr, host)
 	if !probed {
 		return false, nil // Can't connect / probe failed, let SMTP path handle it
@@ -1291,14 +1291,14 @@ func (w *Worker) tryRESTMAILAt(addr, discoveryURL, host string, item models.Outb
 	// The keyword is only a hint: the endpoint comes from the MX host's verified
 	// discovery endpoint, not from the address the MX advertised in cleartext
 	// (#291).
-	slog.Info("queue: RESTMAIL capability detected", "host", host)
+	slog.InfoContext(ctx, "queue: RESTMAIL capability detected", "host", host)
 	w.cacheCapability(item.Domain, host, true)
 
 	// Under an enforce-mode MTA-STS policy only ask an MX host named by the
 	// policy (#168); otherwise report "not upgraded" so the caller delivers over
 	// the policy-guarded SMTP path.
 	if !restmailUpgradePermitted(discoveryURL, stsPolicy, enforcing) {
-		slog.Warn("queue: MTA-STS enforce — RESTMAIL discovery host not permitted by policy, using SMTP",
+		slog.WarnContext(ctx, "queue: MTA-STS enforce — RESTMAIL discovery host not permitted by policy, using SMTP",
 			"host", host, "url", discoveryURL)
 		return false, nil
 	}
@@ -1306,7 +1306,7 @@ func (w *Worker) tryRESTMAILAt(addr, discoveryURL, host string, item models.Outb
 	if err := w.pinRESTMAIL(item); err != nil {
 		return true, err
 	}
-	return true, restmailFailure(host, item, w.deliverRESTMAILDiscovered(discoveryURL, item))
+	return true, restmailFailure(host, item, w.deliverRESTMAILDiscovered(ctx, discoveryURL, item))
 }
 
 // restmailDiscoveryURLOf is restmailDiscoveryURL, or the worker's test seam.
@@ -1334,13 +1334,13 @@ func (w *Worker) pinRESTMAIL(item models.OutboundQueue) error {
 
 // noteSMTP records that the message is going by SMTP, unless it is already
 // pinned to RESTMAIL. It is only a record: a later attempt may still upgrade it.
-func (w *Worker) noteSMTP(item models.OutboundQueue) {
+func (w *Worker) noteSMTP(ctx context.Context, item models.OutboundQueue) {
 	if w.db == nil || item.ID == 0 || item.Transport != "" {
 		return
 	}
 	if err := w.db.Model(&models.OutboundQueue{}).Where("id = ? AND transport = ''", item.ID).
 		Update("transport", models.TransportSMTP).Error; err != nil {
-		slog.Debug("queue: recording the SMTP transport failed", "id", item.ID, "error", err)
+		slog.DebugContext(ctx, "queue: recording the SMTP transport failed", "id", item.ID, "error", err)
 	}
 }
 
@@ -1355,7 +1355,7 @@ func (w *Worker) noteSMTP(item models.OutboundQueue) {
 // permanent). A gate that keeps RESTMAIL off the domain since it was pinned (an
 // enforce-mode MTA-STS policy no longer naming the MX host, or DANE now
 // covering the domain) is a transient failure too, never SMTP.
-func (w *Worker) deliverPinnedRESTMAIL(item models.OutboundQueue, firstHost, dnsDomain string, stsPolicy *mtasts.Policy, enforcing, daneSecure bool) error {
+func (w *Worker) deliverPinnedRESTMAIL(ctx context.Context, item models.OutboundQueue, firstHost, dnsDomain string, stsPolicy *mtasts.Policy, enforcing, daneSecure bool) error {
 	if daneSecure {
 		return fmt.Errorf("message pinned to RESTMAIL (#291): %s is now covered by DANE, which RESTMAIL cannot meet, and it is not sent by SMTP instead", item.Domain)
 	}
@@ -1364,8 +1364,8 @@ func (w *Worker) deliverPinnedRESTMAIL(item models.OutboundQueue, firstHost, dns
 		return &mtasts.EnforceError{Domain: item.Domain, MXHost: firstHost,
 			Reason: "RESTMAIL discovery host not named by policy; the message is pinned to RESTMAIL and is not sent by SMTP (#291)"}
 	}
-	slog.Info("queue: message pinned to RESTMAIL", "id", item.ID, "domain", item.Domain, "mx", firstHost)
-	return restmailFailure(firstHost, item, w.deliverRESTMAILDiscovered(discoveryURL, item))
+	slog.InfoContext(ctx, "queue: message pinned to RESTMAIL", "id", item.ID, "domain", item.Domain, "mx", firstHost)
+	return restmailFailure(firstHost, item, w.deliverRESTMAILDiscovered(ctx, discoveryURL, item))
 }
 
 // restmailFailure is what a RESTMAIL attempt's error means for the message: nil
@@ -1478,11 +1478,11 @@ func withinDSNRateLimit(recentCount, maxPerWindow int) bool {
 // goes with a null reverse path, as every DSN does (RFC 5321 §6.1), From: mailer-daemon at
 // this host, and is sent as this host. Like a local DSN it is limited per recipient, so mail
 // that forged a sender cannot turn into a stream of notices to them (backscatter).
-func (w *Worker) queueRemoteDSN(item models.OutboundQueue, smtpErr *SMTPError) {
+func (w *Worker) queueRemoteDSN(ctx context.Context, item models.OutboundQueue, smtpErr *SMTPError) {
 	recipient := strings.TrimSpace(item.Sender)
 	domain := rmail.DomainFromAddress(recipient)
 	if domain == "" || rmail.ValidateAddress(recipient) != nil {
-		slog.Warn("queue: the sender of a failed message is not an address, no DSN", "id", item.ID)
+		slog.WarnContext(ctx, "queue: the sender of a failed message is not an address, no DSN", "id", item.ID)
 		return
 	}
 	now := time.Now()
@@ -1492,7 +1492,7 @@ func (w *Worker) queueRemoteDSN(item models.OutboundQueue, smtpErr *SMTPError) {
 			Where("is_dsn = ? AND recipient = ? AND created_at > ?", true, recipient, now.Add(-w.bounceWindow)).
 			Count(&recent)
 		if !withinDSNRateLimit(int(recent), w.bounceMax) {
-			slog.Warn("queue: DSN rate limit exceeded for a sender outside, suppressing DSN",
+			slog.WarnContext(ctx, "queue: DSN rate limit exceeded for a sender outside, suppressing DSN",
 				"sender", recipient, "recent", recent, "max", w.bounceMax, "window", w.bounceWindow)
 			return
 		}
@@ -1512,10 +1512,10 @@ func (w *Worker) queueRemoteDSN(item models.OutboundQueue, smtpErr *SMTPError) {
 		IsDSN:         true,
 	}
 	if err := w.db.Create(&notice).Error; err != nil {
-		slog.Error("queue: failed to queue a DSN for a sender outside", "sender", recipient, "error", err)
+		slog.ErrorContext(ctx, "queue: failed to queue a DSN for a sender outside", "sender", recipient, "error", err)
 		return
 	}
-	slog.Info("queue: RFC 3464 DSN queued for a sender outside", "sender", recipient, "failed_recipient", item.Recipient)
+	slog.InfoContext(ctx, "queue: RFC 3464 DSN queued for a sender outside", "sender", recipient, "failed_recipient", item.Recipient)
 }
 
 func (w *Worker) recentDSNCount(mailboxID uint) int64 {
@@ -1529,12 +1529,12 @@ func (w *Worker) recentDSNCount(mailboxID uint) int64 {
 
 // generateBounce creates an RFC 3464 DSN (Delivery Status Notification)
 // and delivers it to the original sender's mailbox if the sender is local.
-func (w *Worker) generateBounce(item models.OutboundQueue, smtpErr *SMTPError) {
+func (w *Worker) generateBounce(ctx context.Context, item models.OutboundQueue, smtpErr *SMTPError) {
 	// Mail sent with a null reverse path, such as a vacation reply, is never
 	// bounced (RFC 5321 §6.1): there is nobody to tell, and a notice about a
 	// notice could loop.
 	if item.Sender == "" {
-		slog.Debug("queue: null sender, no DSN", "id", item.ID)
+		slog.DebugContext(ctx, "queue: null sender, no DSN", "id", item.ID)
 		return
 	}
 	// Check if the sender has a local mailbox, resolving its hosted identity as
@@ -1544,7 +1544,7 @@ func (w *Worker) generateBounce(item models.OutboundQueue, smtpErr *SMTPError) {
 		// A sender outside REST Mail, such as the author of mail a Sieve redirect
 		// forwarded: accepting the message took on telling them it failed (RFC 5321
 		// §6.1), so the notice goes by mail (#715).
-		w.queueRemoteDSN(item, smtpErr)
+		w.queueRemoteDSN(ctx, item, smtpErr)
 		return
 	}
 
@@ -1557,7 +1557,7 @@ func (w *Worker) generateBounce(item models.OutboundQueue, smtpErr *SMTPError) {
 		mres := w.db.Raw("SELECT mailbox_id FROM messages WHERE id = ? LIMIT 1", *item.MessageID).Scan(&msgMailbox)
 		msgFound := mres.Error == nil && mres.RowsAffected > 0
 		if !bounceSenderAuthorized(msgFound, msgMailbox.MailboxID, senderMailbox.ID) {
-			slog.Warn("queue: bounce sender not authorized for submitted message, suppressing DSN",
+			slog.WarnContext(ctx, "queue: bounce sender not authorized for submitted message, suppressing DSN",
 				"sender", item.Sender, "message_id", *item.MessageID)
 			return
 		}
@@ -1569,7 +1569,7 @@ func (w *Worker) generateBounce(item models.OutboundQueue, smtpErr *SMTPError) {
 	if w.bounceMax > 0 {
 		recent := w.recentDSNCount(senderMailbox.ID)
 		if !withinDSNRateLimit(int(recent), w.bounceMax) {
-			slog.Warn("queue: DSN rate limit exceeded for recipient, suppressing DSN",
+			slog.WarnContext(ctx, "queue: DSN rate limit exceeded for recipient, suppressing DSN",
 				"sender", item.Sender, "recent", recent, "max", w.bounceMax, "window", w.bounceWindow)
 			return
 		}
@@ -1608,11 +1608,11 @@ func (w *Worker) generateBounce(item models.OutboundQueue, smtpErr *SMTPError) {
 	}
 
 	if err := w.db.Create(&bounceMsg).Error; err != nil {
-		slog.Error("queue: failed to insert bounce DSN", "sender", item.Sender, "error", err)
+		slog.ErrorContext(ctx, "queue: failed to insert bounce DSN", "sender", item.Sender, "error", err)
 		return
 	}
 
-	slog.Info("queue: RFC 3464 bounce DSN delivered", "sender", item.Sender, "failed_recipient", item.Recipient)
+	slog.InfoContext(ctx, "queue: RFC 3464 bounce DSN delivered", "sender", item.Sender, "failed_recipient", item.Recipient)
 }
 
 // builtDSN is the fully rendered bounce message plus the two fields the caller
@@ -1777,33 +1777,33 @@ func dsnRecipientField(addr string) string {
 //     MX offers STARTTLS, whatever its certificate, and record whether it
 //     verified; a handshake that fails is retried on a new connection without
 //     TLS. A would-fail under "testing" is logged but delivery proceeds.
-func (w *Worker) deliverToHost(host string, item models.OutboundQueue, stsPolicy *mtasts.Policy, stsErr error, records []dane.TLSA) error {
-	return w.deliverSMTPWith(w.smtpAddrOf(host), host, item, stsPolicy, stsErr, records)
+func (w *Worker) deliverToHost(ctx context.Context, host string, item models.OutboundQueue, stsPolicy *mtasts.Policy, stsErr error, records []dane.TLSA) error {
+	return w.deliverSMTPWith(ctx, w.smtpAddrOf(host), host, item, stsPolicy, stsErr, records)
 }
 
 // deliverSMTP keeps the socket address separate from the MX identity used for
 // EHLO/TLS policy, as probeRESTMAIL does. Production uses the MX's port 25.
 // stsErr is why MTA-STS discovery found no policy (nil when stsPolicy is
 // set), recorded with the session for the domain's TLS-RPT report.
-func (w *Worker) deliverSMTP(addr, host string, item models.OutboundQueue, stsPolicy *mtasts.Policy, stsErr error) error {
-	return w.deliverSMTPWith(addr, host, item, stsPolicy, stsErr, nil)
+func (w *Worker) deliverSMTP(ctx context.Context, addr, host string, item models.OutboundQueue, stsPolicy *mtasts.Policy, stsErr error) error {
+	return w.deliverSMTPWith(ctx, addr, host, item, stsPolicy, stsErr, nil)
 }
 
 // deliverSMTPWith is deliverSMTP for a host DANE covers when records is not nil: TLS
 // is then required and authenticated by those TLSA records alone (RFC 7672 §2.2),
 // and the domain's MTA-STS policy does not apply to the host.
-func (w *Worker) deliverSMTPWith(addr, host string, item models.OutboundQueue, stsPolicy *mtasts.Policy, stsErr error, records []dane.TLSA) error {
+func (w *Worker) deliverSMTPWith(ctx context.Context, addr, host string, item models.OutboundQueue, stsPolicy *mtasts.Policy, stsErr error, records []dane.TLSA) error {
 	if records != nil {
 		stsPolicy, stsErr = nil, nil
 	}
 	// Strip Bcc and DKIM-sign before transmission (#171). Fail closed on a key
 	// that cannot be loaded so the send retries rather than going out unsigned.
-	prepared, err := w.prepareOutbound(item)
+	prepared, err := w.prepareOutbound(ctx, item)
 	if err != nil {
 		return fmt.Errorf("prepare outbound message: %w", err)
 	}
 	item.RawMessage = prepared
-	if item.Sender, err = w.forwardSender(item); err != nil {
+	if item.Sender, err = w.forwardSender(ctx, item); err != nil {
 		return err
 	}
 	sender, recipient, err := smtpEnvelope(item)
@@ -1846,7 +1846,7 @@ func (w *Worker) deliverSMTPWith(addr, host string, item models.OutboundQueue, s
 		return err
 	}
 	if records != nil && !item.TLSReport {
-		w.recordDANESession(item.Domain, host, records, link, time.Now())
+		w.recordDANESession(ctx, item.Domain, host, records, link, time.Now())
 	}
 	if records != nil && (link.tlsErr != nil || link.security != transportAuthenticated) {
 		_ = link.client.Close()
@@ -1870,7 +1870,7 @@ func (w *Worker) deliverSMTPWith(addr, host string, item models.OutboundQueue, s
 	// (RFC 8460): a report itself is not counted (§3).
 	// A DANE session was recorded above, with the tlsa policy type.
 	if !item.TLSReport && records == nil {
-		w.recordTLSSession(item.Domain, host, stsPolicy, stsErr, link, time.Now())
+		w.recordTLSSession(ctx, item.Domain, host, stsPolicy, stsErr, link, time.Now())
 	}
 	if link.tlsErr != nil && !enforce {
 		// The failed handshake has left that connection unusable: net/smtp has
@@ -1878,10 +1878,10 @@ func (w *Worker) deliverSMTPWith(addr, host string, item models.OutboundQueue, s
 		// it. An opportunistic client starts again on a new connection without
 		// TLS (RFC 7435 §3, as Postfix does) rather than give up on the MX.
 		if testingMode {
-			slog.Warn("queue: MTA-STS testing — STARTTLS failed, delivering without TLS",
+			slog.WarnContext(ctx, "queue: MTA-STS testing — STARTTLS failed, delivering without TLS",
 				"host", host, "error", link.tlsErr)
 		} else {
-			slog.Info("queue: STARTTLS failed, delivering without TLS", "host", host, "error", link.tlsErr)
+			slog.InfoContext(ctx, "queue: STARTTLS failed, delivering without TLS", "host", host, "error", link.tlsErr)
 		}
 		_ = link.client.Close()
 		if link, err = w.openSMTP(addr, host, false, false, nil); err != nil {
@@ -1894,9 +1894,9 @@ func (w *Worker) deliverSMTPWith(addr, host string, item models.OutboundQueue, s
 	if testingMode {
 		switch link.security {
 		case transportCleartext:
-			slog.Warn("queue: MTA-STS testing — no TLS with the host, delivering anyway", "host", host)
+			slog.WarnContext(ctx, "queue: MTA-STS testing — no TLS with the host, delivering anyway", "host", host)
 		case transportEncrypted:
-			slog.Warn("queue: MTA-STS testing — the host's certificate did not verify, delivering anyway", "host", host)
+			slog.WarnContext(ctx, "queue: MTA-STS testing — the host's certificate did not verify, delivering anyway", "host", host)
 		}
 	}
 
@@ -1918,7 +1918,7 @@ func (w *Worker) deliverSMTPWith(addr, host string, item models.OutboundQueue, s
 		CertValid:              link.security == transportAuthenticated,
 		AllowInsecureDowngrade: !w.stsEnforce,
 	}); decision != nil {
-		slog.Warn("queue: MTA-STS enforce — refusing delivery", "host", host, "domain", item.Domain, "error", decision)
+		slog.WarnContext(ctx, "queue: MTA-STS enforce — refusing delivery", "host", host, "domain", item.Domain, "error", decision)
 		return decision
 	}
 
@@ -1933,7 +1933,7 @@ func (w *Worker) deliverSMTPWith(addr, host string, item models.OutboundQueue, s
 	// silently corrupted. Peers that advertise 8BITMIME (nearly all modern MTAs)
 	// are unaffected.
 	if ok, _ := client.Extension("8BITMIME"); !ok && messageRequires8BitTransport(item.BodyType, item.RawMessage) {
-		slog.Warn("queue: next hop lacks 8BITMIME for 8-bit message, refusing (no 7-bit downconversion)",
+		slog.WarnContext(ctx, "queue: next hop lacks 8BITMIME for 8-bit message, refusing (no 7-bit downconversion)",
 			"host", host, "domain", item.Domain, "body_type", item.BodyType)
 		return &SMTPError{
 			Code:      550,
@@ -1991,7 +1991,7 @@ func (w *Worker) deliverSMTPWith(addr, host string, item models.OutboundQueue, s
 	// What protected it, never more than it was (RFC 7435 §3): a certificate
 	// that did not verify is encryption, not authentication.
 	metrics.OutboundTransport.WithLabelValues(link.security).Inc()
-	slog.Info("queue: delivered over SMTP", "host", host, "domain", item.Domain, "transport", link.security)
+	slog.InfoContext(ctx, "queue: delivered over SMTP", "host", host, "domain", item.Domain, "transport", link.security)
 	return nil
 }
 

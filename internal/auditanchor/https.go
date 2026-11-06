@@ -178,7 +178,7 @@ func (w *HTTPSWorker) Check(ctx context.Context, now time.Time) (bool, error) {
 	if d.result != "accepted" {
 		return false, fmt.Errorf("audit anchor https %s after %d attempts: %v", d.result, d.attempts, d.err)
 	}
-	slog.Info("audit anchor https accepted", "endpoint", hostOf(w.target.url))
+	slog.InfoContext(ctx, "audit anchor https accepted", "endpoint", hostOf(w.target.url))
 	return true, nil
 }
 

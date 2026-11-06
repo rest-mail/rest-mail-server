@@ -1,6 +1,7 @@
 package smtp
 
 import (
+	"context"
 	"time"
 
 	"go.opentelemetry.io/otel/trace"
@@ -148,7 +149,7 @@ type Store interface {
 	// header stripped, and the message DKIM-signed with the sender domain's
 	// key. An error means a configured key could not sign; the caller
 	// defers rather than deliver the message unsigned.
-	PrepareSubmitted(sender, raw string) (string, error)
+	PrepareSubmitted(ctx context.Context, sender, raw string) (string, error)
 }
 
 // OutboundMessage is a neutral description of a queued outbound message, keeping

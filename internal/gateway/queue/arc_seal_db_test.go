@@ -53,7 +53,7 @@ func TestPrepareOutbound_SealsAForward(t *testing.T) {
 	}
 	w := &Worker{db: tx, masterKey: relayRouteMasterKey}
 
-	sent, err := w.prepareOutbound(forward)
+	sent, err := w.prepareOutbound(context.Background(), forward)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +72,7 @@ func TestPrepareOutbound_SealsAForward(t *testing.T) {
 
 	// The same domain's own mail is DKIM-signed and not sealed.
 	own := models.OutboundQueue{Sender: "dana@" + forwarder, Recipient: "bob@elsewhere.test", Domain: "elsewhere.test", RawMessage: original}
-	plain, err := w.prepareOutbound(own)
+	plain, err := w.prepareOutbound(context.Background(), own)
 	if err != nil {
 		t.Fatal(err)
 	}

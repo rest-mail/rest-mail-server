@@ -96,7 +96,7 @@ func (w *Worker) deliverToRelay(ctx context.Context, settings relaySettings, ite
 	if !validRelayHost(w.hostname) {
 		return errors.New("relay: invalid EHLO hostname")
 	}
-	envelopeSender, err := w.forwardSender(item)
+	envelopeSender, err := w.forwardSender(ctx, item)
 	if err != nil {
 		return err
 	}
@@ -256,11 +256,11 @@ func (w *Worker) relayRoute(item models.OutboundQueue) (*relaySettings, error) {
 
 // deliverViaRelay prepares the message once, exactly as the direct path does,
 // and hands it to the relay. There is no RESTMAIL probe and no fallback to MX.
-func (w *Worker) deliverViaRelay(settings relaySettings, item models.OutboundQueue) error {
-	prepared, err := w.prepareOutbound(item)
+func (w *Worker) deliverViaRelay(ctx context.Context, settings relaySettings, item models.OutboundQueue) error {
+	prepared, err := w.prepareOutbound(ctx, item)
 	if err != nil {
 		return fmt.Errorf("prepare outbound message: %w", err)
 	}
 	item.RawMessage = prepared
-	return w.deliverToRelay(context.Background(), settings, item)
+	return w.deliverToRelay(ctx, settings, item)
 }

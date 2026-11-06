@@ -1,6 +1,7 @@
 package queue
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -72,7 +73,7 @@ func TestSubmittedMailBccStrippedBeforeRelay(t *testing.T) {
 			"hello\r\n",
 	}
 
-	if err := w.deliverRESTMAILHTTPS(srv.URL, item); err != nil {
+	if err := w.deliverRESTMAILHTTPS(context.Background(), srv.URL, item); err != nil {
 		t.Fatalf("deliverRESTMAILHTTPS: %v", err)
 	}
 
@@ -117,7 +118,7 @@ func TestSubmittedMailSignedBeforeRelay(t *testing.T) {
 			"hello\r\n",
 	}
 
-	if err := w.deliverRESTMAILHTTPS(srv.URL, item); err != nil {
+	if err := w.deliverRESTMAILHTTPS(context.Background(), srv.URL, item); err != nil {
 		t.Fatalf("deliverRESTMAILHTTPS: %v", err)
 	}
 	if !strings.Contains(gotRaw, "DKIM-Signature:") {
@@ -151,7 +152,7 @@ func TestSubmittedMailFailsClosedWithoutMasterKey(t *testing.T) {
 		RawMessage: "From: alice@" + domainName + "\r\nTo: bob@example.net\r\nSubject: hi\r\n\r\nhello\r\n",
 	}
 
-	if err := w.deliverRESTMAILHTTPS(srv.URL, item); err == nil {
+	if err := w.deliverRESTMAILHTTPS(context.Background(), srv.URL, item); err == nil {
 		t.Fatal("expected fail-closed error without a MASTER_KEY, got nil (message would go out unsigned)")
 	}
 	if gotRaw != "" {
@@ -182,7 +183,7 @@ func TestSubmittedMailFailsClosedOnWrongMasterKey(t *testing.T) {
 		RawMessage: "From: alice@" + domainName + "\r\nTo: bob@example.net\r\nSubject: hi\r\n\r\nhello\r\n",
 	}
 
-	if err := w.deliverRESTMAILHTTPS(srv.URL, item); err == nil {
+	if err := w.deliverRESTMAILHTTPS(context.Background(), srv.URL, item); err == nil {
 		t.Fatal("expected fail-closed error on an undecryptable key, got nil (message would go out unsigned)")
 	}
 }
@@ -206,7 +207,7 @@ func TestAlreadySignedMailPassesThroughUnchanged(t *testing.T) {
 		"hello\r\n"
 	item := models.OutboundQueue{Sender: "alice@example.com", Recipient: "bob@example.net", RawMessage: raw}
 
-	if err := w.deliverRESTMAILHTTPS(srv.URL, item); err != nil {
+	if err := w.deliverRESTMAILHTTPS(context.Background(), srv.URL, item); err != nil {
 		t.Fatalf("deliverRESTMAILHTTPS: %v", err)
 	}
 	if gotRaw != raw {

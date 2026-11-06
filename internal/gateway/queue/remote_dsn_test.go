@@ -1,6 +1,7 @@
 package queue
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -25,7 +26,7 @@ func TestGenerateBounce_SenderOutsideGetsAQueuedDSN(t *testing.T) {
 	failed := models.OutboundQueue{ID: 41, Sender: author, Recipient: "gone@far.example",
 		Domain: "far.example", RawMessage: "Subject: forwarded\r\n\r\nbody\r\n"}
 	for i := 0; i < 3; i++ {
-		w.generateBounce(failed, &SMTPError{Code: 550, Enhanced: "5.1.1", Message: "no such user"})
+		w.generateBounce(context.Background(), failed, &SMTPError{Code: 550, Enhanced: "5.1.1", Message: "no such user"})
 	}
 
 	var notices []models.OutboundQueue
@@ -49,5 +50,5 @@ func TestGenerateBounce_SenderOutsideGetsAQueuedDSN(t *testing.T) {
 // worker has no database, so trying would panic.
 func TestQueueRemoteDSN_NotAnAddress(t *testing.T) {
 	w := &Worker{hostname: "mail.example"}
-	w.queueRemoteDSN(models.OutboundQueue{ID: 9, Sender: "not an address"}, &SMTPError{Code: 550})
+	w.queueRemoteDSN(context.Background(), models.OutboundQueue{ID: 9, Sender: "not an address"}, &SMTPError{Code: 550})
 }

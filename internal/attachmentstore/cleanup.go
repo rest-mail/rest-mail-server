@@ -234,7 +234,7 @@ func (c *Cleaner) removeUnreferenced(ctx context.Context, batch []candidate, res
 			if errors.Is(err, fs.ErrNotExist) || errors.Is(err, errStillInUse) {
 				continue
 			}
-			slog.Warn("attachment cleanup could not remove an object", "error", err)
+			slog.WarnContext(ctx, "attachment cleanup could not remove an object", "error", err)
 			result.Failed++
 			continue
 		}

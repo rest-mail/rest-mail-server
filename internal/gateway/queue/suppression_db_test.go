@@ -171,7 +171,7 @@ func TestProcess_SuppressedRecipientBouncesWithoutAnAttempt(t *testing.T) {
 	}
 
 	// The other domain's suppressions are its own.
-	if _, ok := w.suppression(claimedFrom(t, gdb, other.Address, "gone@remote.invalid"), time.Now()); ok {
+	if _, ok := w.suppression(context.Background(), claimedFrom(t, gdb, other.Address, "gone@remote.invalid"), time.Now()); ok {
 		t.Error("another domain's mail to the address is suppressed too")
 	}
 }
@@ -190,12 +190,12 @@ func TestSuppression_ExpiryAndClearing(t *testing.T) {
 		t.Fatal(err)
 	}
 	item := claimedFrom(t, gdb, mb.Address, "gone@remote.test")
-	if _, ok := w.suppression(item, now); ok {
+	if _, ok := w.suppression(context.Background(), item, now); ok {
 		t.Fatal("an expired suppression still suppresses")
 	}
 
 	w.recordFailure(context.Background(), item, rcptRefusal(550, "5.1.1 User unknown"), now)
-	got, ok := w.suppression(item, now)
+	got, ok := w.suppression(context.Background(), item, now)
 	if !ok || got.ID != s.ID || got.ExpiresAt.Before(now.Add(DefaultSuppressionTTL-time.Minute)) {
 		t.Fatalf("after a new bounce: suppressed %v, row %d (want %d), until %v", ok, got.ID, s.ID, got.ExpiresAt)
 	}
@@ -203,7 +203,7 @@ func TestSuppression_ExpiryAndClearing(t *testing.T) {
 	if err := gdb.Delete(&models.Suppression{}, s.ID).Error; err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := w.suppression(item, now); ok {
+	if _, ok := w.suppression(context.Background(), item, now); ok {
 		t.Fatal("a cleared suppression still suppresses")
 	}
 }
@@ -215,7 +215,7 @@ func TestSuppress_SenderDomainNotHostedHere(t *testing.T) {
 	w := &Worker{db: gdb, hostname: "mx.supp.test", suppressionTTL: DefaultSuppressionTTL}
 	recipient := fmt.Sprintf("gone-%d@remote.test", time.Now().UnixNano())
 	for _, sender := range []string{"", "someone@not-hosted.invalid"} {
-		w.suppress(models.OutboundQueue{Sender: sender, Recipient: recipient}, models.FailureBadMailbox, "550 5.1.1", time.Now())
+		w.suppress(context.Background(), models.OutboundQueue{Sender: sender, Recipient: recipient}, models.FailureBadMailbox, "550 5.1.1", time.Now())
 		var n int64
 		gdb.Model(&models.Suppression{}).Where("address = ?", recipient).Count(&n)
 		if n != 0 {

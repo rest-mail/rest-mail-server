@@ -145,7 +145,7 @@ func (w *Worker) Check(ctx context.Context, now time.Time) (bool, error) {
 		return false, fmt.Errorf("queue audit anchor email: %w", err)
 	}
 	if queued {
-		slog.Info("audit anchor email queued")
+		slog.InfoContext(ctx, "audit anchor email queued")
 	}
 	return queued, nil
 }
