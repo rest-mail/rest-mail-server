@@ -80,10 +80,7 @@ func main() {
 			slog.Error("failed to load TLS certificate", "error", err)
 			os.Exit(1)
 		}
-		tlsConfig = &tls.Config{
-			MinVersion:     tls.VersionTLS12,
-			GetCertificate: primaryLoader.GetCertificate,
-		}
+		tlsConfig = imap.ServerTLSConfig(primaryLoader.GetCertificate)
 		if cfg.TLSCertDir != "" {
 			loader := tlsutil.NewSNICertLoader(cfg.TLSCertDir, primaryLoader.Current())
 			loader.SetFallbackCurrent(primaryLoader.Current)
