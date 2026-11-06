@@ -86,6 +86,15 @@ func cleanResetData(tx *gorm.DB) error {
 			return fmt.Errorf("clear retained reset table %s: %w", table, err)
 		}
 	}
+	// The retained accounts lost their messages and their usage row with them,
+	// and an import into an account with no usage row is refused: each starts
+	// again at nothing, as a new account does.
+	if containsResetTable(tables, "quota_usage") {
+		if err := tx.Exec(`INSERT INTO quota_usage (mailbox_id, updated_at)
+			SELECT id, now() FROM mailboxes ON CONFLICT DO NOTHING`).Error; err != nil {
+			return fmt.Errorf("restart the retained accounts' usage: %w", err)
+		}
+	}
 	for _, table := range tables {
 		var sequence *string
 		if err := tx.Raw(`SELECT pg_get_serial_sequence(?, 'id') WHERE EXISTS (

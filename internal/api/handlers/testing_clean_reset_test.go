@@ -185,6 +185,10 @@ func TestCleanResetEveryTable(t *testing.T) {
 		if len(names) > 0 {
 			statement = "INSERT INTO " + resetIdentifier(table) + " (" + strings.Join(names, ",") + ") VALUES (" + strings.Join(values, ",") + ")"
 		}
+		if table == "quota_usage" {
+			// The fixture's own reset gave the admin a row: give it usage to lose.
+			statement += " ON CONFLICT (mailbox_id) DO UPDATE SET message_count = 3, body_bytes = 9"
+		}
 		if err := db.Exec(statement).Error; err != nil {
 			t.Fatalf("populate reset table %s: %v", table, err)
 		}
@@ -197,10 +201,20 @@ func TestCleanResetEveryTable(t *testing.T) {
 			t.Logf("retained %s: %s", table, reason)
 			continue
 		}
+		if table == "quota_usage" {
+			continue // the retained admin's, at nothing: checked below
+		}
 		var count int64
 		if err := db.Table(table).Count(&count).Error; err != nil || count != 0 {
 			t.Errorf("reset left %d rows in %s: %v", count, table, err)
 		}
+	}
+	var usage []models.QuotaUsage
+	if err := db.Find(&usage).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(usage) != 1 || usage[0].MailboxID != admin.ID || usage[0].MessageCount != 0 || usage[0].TotalBytes() != 0 {
+		t.Errorf("retained usage = %+v, want the admin's alone, at nothing", usage)
 	}
 	for table, expected := range map[string]int64{"mailboxes": 1, "domains": 1, "credentials": 1} {
 		var count int64
