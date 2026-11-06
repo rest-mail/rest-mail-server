@@ -166,6 +166,13 @@ func (s *Session) handleDelete(tag, args string) {
 		return
 	}
 
+	// A name that is not a mailbox but has inferiors is \Noselect, and deleting
+	// it is an error (RFC 9051 §6.3.5); HASCHILDREN says why (RFC 5530 §3).
+	if folders, err := s.mailbox.Folders(); err == nil && !folderIn(folders, folder) && hasInferiors(folders, folder) {
+		s.tagged(tag, "NO", "[HASCHILDREN] Mailbox has inferior mailboxes")
+		return
+	}
+
 	// Move all messages in the folder to Trash.
 	if messages, err := s.mailbox.Messages(folder); err == nil {
 		for _, msg := range messages {
