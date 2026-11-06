@@ -240,6 +240,11 @@ var exampleRequirements = map[string][]string{
 		// A database without pg_stat_statements preloaded (#1629): the live
 		// run's chart-installed Postgres preloads it.
 		"pg_stat_statements_not_loaded",
+		// A server that lists no owner keys and no status keys (#1162): the
+		// owner endpoints' 409s. The live authorization run registers an owner
+		// key (owner_key), so it cannot send them; in process they are proven
+		// on a server with an empty owner registry.
+		"no_owner_keys",
 	},
 }
 
