@@ -107,6 +107,9 @@ func TestDBStore_PersistSubmittedMessageLinksQueue(t *testing.T) {
 	if stored.Folder != "Sent" {
 		t.Errorf("persisted message folder = %q, want Sent", stored.Folder)
 	}
+	if stored.SubmittedAt == nil || time.Since(*stored.SubmittedAt) > time.Minute {
+		t.Errorf("persisted message submitted_at = %v, want now: an APPEND of the same message reads it", stored.SubmittedAt)
+	}
 
 	// An outbound row enqueued with the reference must carry the link.
 	if err := store.EnqueueOutbound(OutboundMessage{

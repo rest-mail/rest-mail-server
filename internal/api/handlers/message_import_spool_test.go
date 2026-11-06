@@ -471,7 +471,7 @@ func TestImportDiskFailureIsNotARefusal(t *testing.T) {
 }
 
 func TestImportDeclaredFieldsAreTheType(t *testing.T) {
-	want := map[string]bool{"folder": true, "flags": true, "internal_date": true, "always_store": true}
+	want := map[string]bool{"folder": true, "flags": true, "internal_date": true, "always_store": true, "match_submission": true}
 	if !reflect.DeepEqual(importDeclaredFields, want) {
 		t.Fatalf("declared %v, want %v", importDeclaredFields, want)
 	}

@@ -383,6 +383,8 @@ There are three ways to keep a probe:
   `importMessage`'s documented account is 12, and on the topology the E2E stages leave
   that one at its quota, so its new message answers 409 and skips the valid probes.
   In the coverage process its success requests go to the fixture admin's account.
+  In every other process only `always_store` and `match_submission` go there: the
+  rest store or skip one message, which fits, but those two would store another.
 
 A pin takes away the probes that vary its own field, so the named examples prove
 those refusals in the gated examples phase, which is not pinned. For snooze:

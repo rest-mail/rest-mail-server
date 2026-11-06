@@ -22,7 +22,7 @@ type importScenario struct {
 }
 
 var importScenarios = []importScenario{
-	{"created", "", 200}, {"duplicate", "", 200}, {"always_store", "", 200}, {"default_folder", "", 200},
+	{"created", "", 200}, {"duplicate", "", 200}, {"always_store", "", 200}, {"match_submission", "", 200}, {"default_folder", "", 200},
 	{"missing_message_id", "", 200}, {"binary_source", "", 200}, {"api_key", "", 200},
 	{"body_array", "", 422}, {"unauthenticated", "", 401},
 	{"insufficient_permissions", "denied", 404}, {"missing_scoped_target", "missing", 404},
@@ -46,6 +46,8 @@ func importScenarioRequest(t *testing.T, tc importScenario) oapifly.ExampleReque
 	switch tc.name {
 	case "always_store":
 		body["always_store"] = true
+	case "match_submission":
+		body["match_submission"], body["folder"] = true, "Sent"
 	case "default_folder":
 		delete(body, "folder")
 	case "missing_message_id":
@@ -99,6 +101,15 @@ func prepareImportScenario(t *testing.T, tc importScenario, f *importFixture) {
 	if tc.name == "duplicate" || tc.name == "always_store" {
 		w := f.request(t, importExampleBody(), "12", f.token)
 		if w.Code != 200 {
+			t.Fatalf("seed import: %d %s", w.Code, w.Body)
+		}
+	}
+	if tc.name == "match_submission" {
+		// This connection knows no submitted_at, so a message already in Sent stands in for
+		// the submitted one. imap_sent_copy_db_test.go proves the rule on PostgreSQL.
+		body := importExampleBody()
+		body["folder"] = "Sent"
+		if w := f.request(t, body, "12", f.token); w.Code != 200 {
 			t.Fatalf("seed import: %d %s", w.Code, w.Body)
 		}
 	}

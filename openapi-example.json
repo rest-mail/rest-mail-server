@@ -20549,6 +20549,38 @@
         "mediaType": "application/json"
       }
     },
+    "match_submission": {
+      "request": {
+        "path": {
+          "id": 12
+        },
+        "body": {
+          "flags": [
+            "\\Seen",
+            "\\Answered",
+            "\\Flagged",
+            "\\Draft"
+          ],
+          "folder": "Sent",
+          "internal_date": "2020-01-02T03:04:05Z",
+          "match_submission": true,
+          "raw_message": "TWVzc2FnZS1JRDogPGhpc3RvcnlAZXhhbXBsZS50ZXN0Pg0KRnJvbTogT3JpZ2luYWwgPG9sZEBleGFtcGxlLnRlc3Q+DQpTdWJqZWN0OiBvcmlnaW5hbA0KDQpoaXN0b3J5DQo="
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "id": 41,
+            "imported": false,
+            "message_id": "\u003chistory@example.test\u003e",
+            "folder": "Sent"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "missing": {
       "requires": {
         "state": "deleted_account"
