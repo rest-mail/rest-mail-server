@@ -138,6 +138,11 @@ class OwnDataHooks(unittest.TestCase):
             "getAlias": "on_an_alias_of_its_own",
             "updateAlias": "on_an_alias_of_its_own",
             "deleteAlias": "on_an_alias_of_its_own",
+            "createCustomFilter": "a_custom_filter_on_the_created_domain",
+            "getCustomFilter": "on_a_custom_filter_of_its_own",
+            "updateCustomFilter": "on_a_custom_filter_of_its_own",
+            "testCustomFilter": "on_a_custom_filter_of_its_own",
+            "deleteCustomFilter": "on_a_custom_filter_of_its_own",
         }
         self.assertEqual(set(hooks), set(own_data.MOVED))
         for operation, hook in hooks.items():
