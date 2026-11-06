@@ -2019,6 +2019,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/reputation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read each domain's sending reputation
+         * @description Per hosted domain, over a window of the last `days` days (default 7, at most 90) and the same length before it: DMARC pass and fail message counts from received aggregate reports whose period ends in the window, a message counting as a pass when DKIM or SPF passed; outbound delivered, bounced and deferred counts for mail queued in the window and sent as the domain, with bounces by failure category and the bounce rate (bounced over delivered plus bounced, expired counting as bounced); and whether the domain's outbound mail is stopped. Complaints are always null: the server does not record complaint reports yet. The current DNSBL listings of the server's sending IPs are given once, since every domain sends from them. Rates are null when there is nothing to divide. Domains come worst first: by bounce rate, then by name. Only data the server already stores is read.
+         */
+        get: operations["getReputation"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/roles": {
         parameters: {
             query?: never;
@@ -3664,6 +3684,9 @@ export interface components {
         "Data-Quota": {
             data: components["schemas"]["Quota"];
         };
+        "Data-Reputation": {
+            data: components["schemas"]["Reputation"];
+        };
         "Data-RestmailCapabilities": {
             data: components["schemas"]["RestmailCapabilities"];
         };
@@ -3871,6 +3894,13 @@ export interface components {
             /** Format: date-time */
             stopped_at: string;
             stopped_by: string;
+        };
+        DomainReputation: {
+            current: components["schemas"]["ReputationFigures"];
+            domain: string;
+            domain_id: number;
+            outbound_stop: components["schemas"]["DomainOutboundStop"] | null;
+            previous: components["schemas"]["ReputationFigures"];
         };
         EmailJSON: {
             attachments?: components["schemas"]["Attachment"][];
@@ -4516,6 +4546,64 @@ export interface components {
             /** Format: double */
             count: number;
             reason_code: string;
+        };
+        Reputation: {
+            days: number;
+            dnsbl: components["schemas"]["ReputationDNSBL"];
+            domains: components["schemas"]["DomainReputation"][];
+            /** Format: date-time */
+            from: string;
+            /** Format: date-time */
+            to: string;
+        };
+        ReputationBounces: {
+            /** Format: int64 */
+            bad_domain: number;
+            /** Format: int64 */
+            bad_mailbox: number;
+            /** Format: int64 */
+            expired: number;
+            /** Format: int64 */
+            other_permanent: number;
+            /** Format: int64 */
+            policy: number;
+        };
+        ReputationDMARC: {
+            /** Format: int64 */
+            fail: number;
+            /** Format: int64 */
+            pass: number;
+            /** Format: double */
+            pass_rate: number | null;
+        };
+        ReputationDNSBL: {
+            listed: boolean;
+            listings: components["schemas"]["ReputationDNSBLListing"][];
+        };
+        ReputationDNSBLListing: {
+            ip: string;
+            provider: string;
+            reason: string;
+            /** Format: date-time */
+            since: string;
+            zone: string;
+        };
+        ReputationFigures: {
+            /** Format: int64 */
+            complaints: number | null;
+            dmarc: components["schemas"]["ReputationDMARC"];
+            outbound: components["schemas"]["ReputationOutbound"];
+        };
+        ReputationOutbound: {
+            /** Format: double */
+            bounce_rate: number | null;
+            /** Format: int64 */
+            bounced: number;
+            bounces: components["schemas"]["ReputationBounces"];
+            /** Format: int64 */
+            deferred: number;
+            /** Format: int64 */
+            delivered: number;
         };
         RestmailCapabilities: {
             features: string[];
@@ -20341,6 +20429,94 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused API keys, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After": number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getReputation: {
+        parameters: {
+            query?: {
+                /** @description The window's length in days, ending now; 7 when left out. */
+                days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-Reputation"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
