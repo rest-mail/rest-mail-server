@@ -16,9 +16,11 @@
 // The server caches the slice [Mailbox.Messages] returns for the selected folder
 // and derives sequence numbers, UIDs, flags, ENVELOPE and SEARCH results from it,
 // calling [Mailbox.Fetch] only when a body is requested — and FETCH BODY[] then
-// serves whatever Fetch returns, byte-for-byte. Folders are implicit: there is no
-// folder-management method, so a folder exists once a message names it, and
-// deleting or renaming one is composed from [Mailbox.Messages] and [Mailbox.Move].
+// serves whatever Fetch returns, byte-for-byte. A folder exists when [Mailbox.Folders]
+// lists it. A Mailbox that implements [FolderMailbox] creates, deletes and renames
+// folders itself; for any other, folders are implicit: a folder exists once a
+// message names it, and deleting or renaming one is composed from
+// [Mailbox.Messages] and [Mailbox.Move].
 // The store holds no assumptions about where mail lives: a Backend can be a
 // database, a maildir, or a remote API.
 //
@@ -310,6 +312,46 @@ type DeletedMailbox interface {
 	// \Deleted now, in any order. folder is a store name, as [Folder.Name]
 	// holds it.
 	DeletedUIDs(folder string) ([]uint32, error)
+}
+
+// FolderMailbox is the optional interface a [Mailbox] may also implement to
+// create, delete and rename folders itself, so a folder exists apart from the
+// messages in it. Every name is a store name, as [Folder.Name] holds it, with
+// "/" between levels of hierarchy. With it the server:
+//
+//   - answers CREATE OK only once CreateFolder has made the folder, so the next
+//     LIST shows it even while it is empty; a name that already exists is NO
+//     [ALREADYEXISTS], a trailing "/" is dropped, and any superior name the new
+//     one needs is created first (RFC 9051 §6.3.4);
+//   - answers DELETE by calling DeleteFolder, which removes the folder and its
+//     messages for good; a name that does not exist is NO [NONEXISTENT], and
+//     the folder's inferiors stay (RFC 9051 §6.3.5);
+//   - answers RENAME by calling RenameFolder for the folder and then for each
+//     inferior, after creating any superior the new name needs; a source that
+//     does not exist is NO [NONEXISTENT] and a destination that does is NO
+//     [ALREADYEXISTS] (RFC 9051 §6.3.6).
+//
+// INBOX is never created or deleted. RenameFolder("INBOX", to) is the one
+// exception to an ordinary rename: it makes the folder to, moves every message
+// in INBOX into it and leaves INBOX in place and empty; INBOX's inferiors are
+// not renamed (RFC 9051 §6.3.6).
+//
+// A [RightsMailbox] is consulted too: a name the user could not create is NO
+// [CANNOT], and a folder the user may not write is not deleted or renamed (NO
+// [NOPERM]). An error from any method answers the command with NO.
+//
+// A Mailbox that does not implement it keeps implicit folders: CREATE
+// acknowledges a valid name without creating anything, DELETE moves the
+// folder's messages to Trash and RENAME moves them one by one.
+type FolderMailbox interface {
+	// CreateFolder makes an empty folder named name, which does not exist.
+	CreateFolder(name string) error
+	// DeleteFolder removes the folder named name and every message in it.
+	DeleteFolder(name string) error
+	// RenameFolder gives the folder from the name to, which does not exist,
+	// keeping its messages. It does not rename from's inferiors: the server
+	// renames each of them itself.
+	RenameFolder(from, to string) error
 }
 
 // UTF8Mailbox is the optional interface a [Mailbox] may also implement to

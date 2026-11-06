@@ -171,6 +171,11 @@ func (s *Session) handleDelete(tag, args string) {
 		return
 	}
 
+	if fm, ok := s.mailbox.(imap.FolderMailbox); ok {
+		s.deleteFolder(tag, fm, folder)
+		return
+	}
+
 	// A name that is not a mailbox but has inferiors is \Noselect, and deleting
 	// it is an error (RFC 9051 §6.3.5); HASCHILDREN says why (RFC 5530 §3).
 	if folders, err := s.mailbox.Folders(); err == nil && !folderIn(folders, folder) && hasInferiors(folders, folder) {
@@ -221,8 +226,18 @@ func (s *Session) handleRename(tag, args string) {
 	// spelling matches the standard-folder guard below rather than bypassing it.
 	oldName = canonicalizeInbox(oldName)
 
-	standard := map[string]bool{"INBOX": true, "Sent": true, "Drafts": true, "Trash": true}
+	standard := map[string]bool{"Sent": true, "Drafts": true, "Trash": true}
 	if standard[oldName] {
+		s.tagged(tag, "NO", "Cannot rename standard folder")
+		return
+	}
+	// A store that renames folders itself renames INBOX by moving its messages
+	// to the new name (RFC 9051 §6.3.6).
+	if fm, ok := s.mailbox.(imap.FolderMailbox); ok {
+		s.renameFolder(tag, fm, oldName, newName)
+		return
+	}
+	if oldName == "INBOX" {
 		s.tagged(tag, "NO", "Cannot rename standard folder")
 		return
 	}

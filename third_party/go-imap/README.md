@@ -275,10 +275,17 @@ The library:
 - Treats INBOX case-insensitively, and only INBOX.
 - Answers LIST, LSUB and LIST-EXTENDED from `Mailbox.Folders`, with hierarchy
   levels under `%` and each folder's special-use role.
-- Composes DELETE and RENAME from `Messages` and `Move`, since folders are
-  implicit: DELETE moves the folder's messages to `Trash`, and RENAME moves
-  them, with any inferior folders, to the new name. It refuses to delete or
-  rename INBOX, Sent, Drafts and Trash.
+- Answers CREATE, DELETE and RENAME through `imap.FolderMailbox` when the
+  Mailbox implements it: CREATE answers OK only once the folder exists, so an
+  empty folder stays in LIST, an extant name is `NO [ALREADYEXISTS]`, and
+  superior names are created first; DELETE removes the folder and its messages
+  for good; RENAME renames the folder with its inferiors, and RENAME of INBOX
+  moves its messages to the new name and leaves INBOX empty (RFC 9051
+  §§6.3.4-6.3.6). Without it folders are implicit, and DELETE and RENAME are
+  composed from `Messages` and `Move`: DELETE moves the folder's messages to
+  `Trash`, and RENAME moves them, with any inferior folders, to the new name.
+  It refuses to delete or rename Sent, Drafts and Trash, to delete INBOX, and,
+  without `imap.FolderMailbox`, to rename INBOX.
 
 The host:
 
