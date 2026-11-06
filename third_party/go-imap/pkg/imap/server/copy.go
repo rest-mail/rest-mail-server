@@ -96,6 +96,9 @@ func (s *Session) copyMessages(seqNums []int, dest string) (string, error) {
 	if !ok {
 		return "", errInvalidMailboxName
 	}
+	if err := s.destinationRefusal(dest); err != nil {
+		return "", err
+	}
 	up, uidPlus := s.mailbox.(imap.UIDPlusMailbox)
 	var srcUIDs, dstUIDs []uint32
 	seen := make(map[int]bool)
@@ -132,7 +135,9 @@ func (s *Session) copyMessages(seqNums []int, dest string) (string, error) {
 		copied = true
 	}
 
-	if uidPlus && len(dstUIDs) > 0 && validCopyUIDs(dstUIDs) {
+	// COPYUID only to a user who may read the destination (RFC 9051 §§6.4.7,
+	// 11.4).
+	if uidPlus && len(dstUIDs) > 0 && validCopyUIDs(dstUIDs) && s.mayRead(dest) {
 		if v, ok := s.uidValidity(dest); ok {
 			return "COPYUID " + strconv.FormatUint(uint64(v), 10) + " " +
 				joinUIDs(srcUIDs) + " " + joinUIDs(dstUIDs), nil
@@ -147,6 +152,10 @@ func (s *Session) copyMessages(seqNums []int, dest string) (string, error) {
 func failText(err error, text string) string {
 	if errors.Is(err, imap.ErrNoSuchMailbox) {
 		return "[TRYCREATE] " + text
+	}
+	var refused refusedDestination
+	if errors.As(err, &refused) {
+		return "[" + refused.code + "] " + text
 	}
 	return text
 }
@@ -186,6 +195,10 @@ func (s *Session) moveMessages(tag, cmdName string, seqNums []int, dest string) 
 		s.tagged(tag, "NO", "No such mailbox")
 		return
 	}
+	if err := s.destinationRefusal(dest); err != nil {
+		s.tagged(tag, "NO", failText(err, cmdName+" failed"))
+		return
+	}
 	mover, hasMover := s.mailbox.(imap.Mover)
 
 	var srcUIDs, dstUIDs []uint32
@@ -219,7 +232,7 @@ func (s *Session) moveMessages(tag, cmdName string, seqNums []int, dest string) 
 
 	// RFC 6851: send COPYUID in an untagged OK *before* the EXPUNGEs, so a client
 	// never sees a message expunged before it learns the copy's UID.
-	if hasMover && len(dstUIDs) > 0 && validCopyUIDs(dstUIDs) {
+	if hasMover && len(dstUIDs) > 0 && validCopyUIDs(dstUIDs) && s.mayRead(dest) {
 		if v, ok := s.uidValidity(dest); ok {
 			s.send("* OK [COPYUID %d %s %s] Moved", v, joinUIDs(srcUIDs), joinUIDs(dstUIDs))
 		}
