@@ -31,6 +31,7 @@ code changes.
 | [`proxy-protocol.md`](proxy-protocol.md) | PROXY protocol support for running behind HAProxy/nginx. |
 | [`runbooks/`](runbooks/README.md) | **Operator runbooks**: what to do when mail queues, an IP is blocklisted, the database is lost, certificates expire, the API is slow, spam gets through or a customer's mail bounces, and how to rotate the master key. Also says REST Mail runs in one region. |
 | [`email-explained/`](email-explained/README.md) | **Email, explained**: the public guide to how email works, why servers go wrong, and how REST Mail fixes it. The guide on rest-mail.com is built from it. Every claim is sourced; see [its writing rules](email-explained/WRITING.md). |
+| [`email-explained/guides/`](email-explained/README.md#part-5-using-a-rest-mail-domain) | **Guides for customers**: setting up a first domain, connecting a mail app, bouncing mail, DKIM, SPF and DMARC, and why mail goes to spam. Published with Email, explained. |
 
 ## Dated snapshots (point-in-time — not maintained)
 

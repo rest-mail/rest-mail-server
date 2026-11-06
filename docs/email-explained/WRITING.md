@@ -16,6 +16,11 @@ Every chapter has the same five parts, in this order:
    must be useful to someone who runs a different server.
 5. **Sources.** Everything the chapter relies on.
 
+**Guides are different.** The pages in `guides/` are steps for people using a REST
+Mail domain, so they are about REST Mail throughout, and leave out the pattern above.
+The rest of this page still applies. Each screen name, setting and error message is
+checked against the code, and written exactly as it appears.
+
 ## Every claim has a source
 
 - **About a standard:** link the RFC, at the section if it has one.
@@ -50,7 +55,7 @@ current, reliable count of …") rather than estimating.
 ## Files
 
 - One folder per part, one Markdown file per chapter: `how-email-works/`,
-  `security/`, `how-it-goes-wrong/`, `landscape/` and `reference/`.
+  `security/`, `how-it-goes-wrong/`, `landscape/`, `guides/` and `reference/`.
 - Each chapter starts with front matter: `title`, `part`, `summary`, and
   `diagram` when it has one. The website build reads it. A value with a colon in
   it goes in double quotes, so GitHub can read it as YAML.
