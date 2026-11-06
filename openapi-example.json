@@ -19638,6 +19638,42 @@
         "mediaType": "application/json"
       }
     },
+    "internal_error": {
+      "summary": "The reputation reads fail",
+      "description": "Session and permission checks pass, but the database the reputation is read from fails. The production handler and error writer produce this refusal without exposing dependency details.",
+      "requires": {
+        "fault": "database"
+      },
+      "request": {},
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {},
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "reputation": {
       "summary": "The operator reads each domain's reputation over the last week",
       "description": "One domain bounced a quarter of what it sent this week, against none the week before, and its outbound mail is stopped; complaints are not recorded yet, so they are null. One of the server's sending IPs is listed.",
@@ -19766,6 +19802,24 @@
         "mediaType": "application/json"
       }
     },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "description": "A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The focused Vertrag test supplies a real oversized body; no typed body is declared.",
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {},
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "required_capability": {
       "summary": "A session without queue:read at the server's own scope is refused",
       "description": "The view covers every domain on the server, so it needs queue:read at the server's own scope; a grant on one domain does not give it.",
@@ -19779,6 +19833,24 @@
           "error": {
             "code": "forbidden",
             "message": "Insufficient permissions"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "description": "The database-backed current-session lookup fails. The production session-cache builder and stale-session middleware produce this refusal.",
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {},
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
           }
         },
         "mediaType": "application/json"
