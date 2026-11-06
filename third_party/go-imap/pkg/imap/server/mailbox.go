@@ -134,6 +134,10 @@ func (s *Session) handleCreate(tag, args string) {
 		return
 	}
 
+	if fm, ok := s.mailbox.(imap.FolderMailbox); ok {
+		s.createFolder(tag, fm, folder)
+		return
+	}
 	// Folders are implicit — they exist once a message is moved into them.
 	// CREATE just validates and acknowledges.
 	s.tagged(tag, "OK", "CREATE completed")
@@ -163,6 +167,11 @@ func (s *Session) handleDelete(tag, args string) {
 	standard := map[string]bool{"INBOX": true, "Sent": true, "Drafts": true, "Trash": true}
 	if standard[folder] {
 		s.tagged(tag, "NO", "Cannot delete standard folder")
+		return
+	}
+
+	if fm, ok := s.mailbox.(imap.FolderMailbox); ok {
+		s.deleteFolder(tag, fm, folder)
 		return
 	}
 
@@ -216,8 +225,18 @@ func (s *Session) handleRename(tag, args string) {
 	// spelling matches the standard-folder guard below rather than bypassing it.
 	oldName = canonicalizeInbox(oldName)
 
-	standard := map[string]bool{"INBOX": true, "Sent": true, "Drafts": true, "Trash": true}
+	standard := map[string]bool{"Sent": true, "Drafts": true, "Trash": true}
 	if standard[oldName] {
+		s.tagged(tag, "NO", "Cannot rename standard folder")
+		return
+	}
+	// A store that renames folders itself renames INBOX by moving its messages
+	// to the new name (RFC 9051 §6.3.6).
+	if fm, ok := s.mailbox.(imap.FolderMailbox); ok {
+		s.renameFolder(tag, fm, oldName, newName)
+		return
+	}
+	if oldName == "INBOX" {
 		s.tagged(tag, "NO", "Cannot rename standard folder")
 		return
 	}

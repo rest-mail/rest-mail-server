@@ -4,7 +4,9 @@ Opt-in: it needs the E2E topology running, so it runs only when
 RESTMAIL_LIVE_IMAPSYNC is set. It fills a new folder on the reference Dovecot,
 copies that account with imapsync over IMAP into REST Mail's gateway, compares
 folders, counts, subjects and flags over IMAP, then copies again and expects
-nothing added.
+nothing added. The account also holds an empty folder: imapsync once reported
+success while the destination silently lacked it (#1834), so the proof LISTs the
+destination itself rather than trusting imapsync's exit status or report.
 """
 
 import imaplib
@@ -50,6 +52,52 @@ def target(host):
     return client
 
 
+LIST_LINE = re.compile(rb'^\((?P<flags>[^)]*)\) (?:NIL|"(?:[^"\\]|\\.)*") (?P<name>.+)$')
+
+
+def listed(data):
+    """The LIST response imaplib returned, as {folder name: set of lowercased attributes}."""
+    folders = {}
+    for item in data:
+        if item is None or item == b"":
+            # None: no folders. b"": the rest of a line whose name came as a literal.
+            continue
+        if isinstance(item, tuple):
+            # A name sent as a literal: the line ends {n} and the name follows.
+            line, name = item[0], item[1]
+            match = LIST_LINE.match(line)
+            if match is None:
+                raise AssertionError("unparsable LIST line %r" % (line,))
+        else:
+            match = LIST_LINE.match(item)
+            if match is None:
+                raise AssertionError("unparsable LIST line %r" % (item,))
+            name = match.group("name")
+            if name.startswith(b'"') and name.endswith(b'"'):
+                name = re.sub(rb'\\(.)', rb'\1', name[1:-1])
+        attributes = {flag.lower() for flag in match.group("flags").decode().split()}
+        folders[name.decode()] = attributes
+    return folders
+
+
+def folders(client):
+    """Every folder the server lists, read with our own LIST."""
+    status, data = client.list('""', "*")
+    if status != "OK":
+        raise AssertionError("LIST failed: %r" % (data,))
+    return listed(data)
+
+
+def message_count(client, folder):
+    """How many messages SELECT reports in folder (its EXISTS count)."""
+    status, data = client.select('"%s"' % folder, readonly=True)
+    if status != "OK":
+        raise AssertionError("cannot select %s: %r" % (folder, data))
+    count = int(data[0])
+    client.close()
+    return count
+
+
 def contents(client, folder):
     """Each message in folder, as {subject: sorted flags that were copied}."""
     status, _ = client.select('"%s"' % folder, readonly=True)
@@ -70,12 +118,15 @@ def contents(client, folder):
     return found
 
 
-def imapsync(host, folder):
+def imapsync(host, *names):
+    chosen = []
+    for name in names:
+        chosen += ["--folder", name]
     result = subprocess.run(
         ["docker", "run", "--rm", "--network", NETWORK, IMAGE, "imapsync",
          "--host1", SOURCE_HOST, "--port1", "143", "--user1", SOURCE_USER, "--password1", PASSWORD,
          "--host2", host, "--port2", "993", "--ssl2", "--user2", TARGET_USER, "--password2", TARGET_PASSWORD,
-         "--folder", folder, "--nolog", "--noreleasecheck"],
+         *chosen, "--nolog", "--noreleasecheck"],
         capture_output=True, text=True, timeout=600, check=False,
     )
     if result.returncode != 0:
@@ -106,15 +157,22 @@ class ImapsyncCutover(unittest.TestCase):
             self.assertEqual(status, "OK")
         self.addCleanup(sender.logout)
         self.assertEqual(contents(sender, folder), want)
+        empty = "Empty%d" % time.time()
+        status, _ = sender.create(empty)
+        self.assertEqual(status, "OK")
+        self.assertNotIn("\\noselect", folders(sender)[empty])
+        self.assertEqual(message_count(sender, empty), 0)
 
         host = gateway_address()
-        print(imapsync(host, folder)[-800:], file=sys.stderr)
+        print(imapsync(host, folder, empty)[-800:], file=sys.stderr)
         receiver = target(host)
         self.addCleanup(receiver.logout)
         self.assertEqual(contents(receiver, folder), want)
-
-        print(imapsync(host, folder)[-800:], file=sys.stderr)
         receiver.close()
+        self.assert_empty_folder_arrived(receiver, empty)
+
+        print(imapsync(host, folder, empty)[-800:], file=sys.stderr)
+        self.assert_empty_folder_arrived(receiver, empty)
         self.assertEqual(contents(receiver, folder), want, "a second copy changed the folder")
         receiver.close()
         status, _ = receiver.select('"%s"' % folder)
@@ -124,6 +182,40 @@ class ImapsyncCutover(unittest.TestCase):
         remaining = {subject: flags for subject, flags in want.items() if "\\Deleted" not in flags}
         self.assertEqual(contents(receiver, folder), remaining)
         self.assertEqual(contents(sender, folder), want, "destination EXPUNGE changed the source")
+
+    def assert_empty_folder_arrived(self, receiver, empty):
+        """The destination itself lists the empty folder as selectable, and it holds nothing."""
+        destination = folders(receiver)
+        self.assertIn(empty, destination,
+                      "imapsync succeeded but the destination does not list the empty folder (#1834)")
+        self.assertNotIn("\\noselect", destination[empty])
+        self.assertEqual(message_count(receiver, empty), 0)
+
+
+class ListParsing(unittest.TestCase):
+    """listed() reads the LIST shapes servers send, so a missing folder is never a parse slip."""
+
+    def test_quoted_atom_and_literal_names(self):
+        data = [
+            b'(\\HasNoChildren) "/" "INBOX"',
+            b'(\\HasNoChildren \\Noselect) "." Archive',
+            b'() NIL "Say \\"hi\\""',
+            (b'(\\HasNoChildren) "/" {9}', b'Empty 123'),
+            b"",
+        ]
+        self.assertEqual(listed(data), {
+            "INBOX": {"\\hasnochildren"},
+            "Archive": {"\\hasnochildren", "\\noselect"},
+            'Say "hi"': set(),
+            "Empty 123": {"\\hasnochildren"},
+        })
+
+    def test_no_folders(self):
+        self.assertEqual(listed([None]), {})
+
+    def test_an_unreadable_line_fails_loudly(self):
+        with self.assertRaises(AssertionError):
+            listed([b"garbage"])
 
 
 if __name__ == "__main__":
