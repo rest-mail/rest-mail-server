@@ -50,6 +50,26 @@ groups:
           summary: "High authentication failure rate on {{ $labels.protocol }}"
           description: "More than 100 authentication failures in the last 5 minutes on protocol {{ $labels.protocol }}. Possible brute-force attempt."
 
+      # One address has taken many failed sign-ins (#1643). Sign-ins are slowed,
+      # never refused, so this is the administrator's only prompt to look.
+      - alert: SignInAccountUnderAttack
+        expr: increase(restmail_signin_accounts_under_attack_total[15m]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "An address is taking many failed sign-ins"
+          description: "One address reached 20 recent failed sign-ins. Failures for it now wait up to 3 seconds; the correct password is not slowed. The API log event api_signin_account_under_attack gives the masked address, and the audit log's auth.sign_in entries give the sources."
+
+      # So many failed sign-ins are waiting that more are answered with no delay.
+      - alert: SignInDelayBoundReached
+        expr: increase(restmail_signin_failures_unslowed_total[10m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Failed sign-ins are being answered without their delay"
+          description: "{{ $value }} failed sign-ins in the last 10 minutes were answered at once because 256 were already waiting. Nobody is refused, but guessing is no longer slowed. Look for a large attack."
+
       # HTTP error rate above 5%
       - alert: HTTPErrorRateHigh
         expr: >
