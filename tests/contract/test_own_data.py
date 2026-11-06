@@ -173,11 +173,15 @@ class Selection(unittest.TestCase):
             if "Grant" in operation
         }
         self.assertEqual(in_the_map, set(GRANTS))
+        # createGrant links deleteGrant, the delete of what it made (#1780): a
+        # link inside the moved grant operations, which all start clean. No
+        # other link reaches a grant operation, and none leaves one.
         for operation in GRANTS:
-            self.assertEqual(link_followers(description, operation), set())
+            self.assertLessEqual(link_followers(description, operation), set(GRANTS))
         reached = set()
         for operation in description_operations(description):
-            reached |= link_followers(description, operation)
+            if operation not in GRANTS:
+                reached |= link_followers(description, operation)
         self.assertFalse(reached & set(GRANTS))
         self.assertLessEqual(set(GRANTS), set(own_data.MOVED))
 
