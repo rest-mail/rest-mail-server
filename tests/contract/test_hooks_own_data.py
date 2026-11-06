@@ -171,6 +171,8 @@ class OwnDataHooks(unittest.TestCase):
             "suggestContacts": "a_contact_operation_from_a_clean_start",
             "getContactReplyTimeSetting": "a_contact_operation_from_a_clean_start",
             "setContactReplyTimeSetting": "a_contact_operation_from_a_clean_start",
+            "sendMessage": "a_sending_policy_for_the_send",
+            "sendTestEmail": "a_mailbox_at_each_test_send_address",
         }
         self.assertEqual(set(hooks), set(own_data.MOVED))
         for operation, hook in hooks.items():
