@@ -1324,6 +1324,15 @@ class VertragShards(unittest.TestCase):
                 self.assertIn("rest-mail-loop=1942", create)
                 self.assertIn("127.0.0.1::5432", create)
                 self.assertIn("/var/lib/postgresql/data", create)
+                self.assertIn("shared_preload_libraries=pg_stat_statements", create)
+                self.assertIn("pg_stat_statements.max=100000", create)
+                preload = next(
+                    step["run"]
+                    for job in local.workflow["jobs"].values()
+                    for step in job.get("steps", [])
+                    if step.get("name") == "Preload pg_stat_statements in the test database"
+                )
+                self.assertIn("ALTER SYSTEM SET pg_stat_statements.max = 100000", preload)
                 ready = docker.call_args.args[0]
                 self.assertEqual(ready[ready.index("-h") + 1], "127.0.0.1")
                 self.assertTrue(local.container.startswith("restmail-1942-postgres-"))
