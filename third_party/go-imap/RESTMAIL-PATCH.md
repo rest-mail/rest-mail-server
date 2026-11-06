@@ -127,6 +127,12 @@ so it is corrected.
   `imap.RightsMailbox` interface reports them; a Mailbox without it keeps every
   right, so existing hosts see no change. DELETE of a \Noselect level with
   inferiors answers `NO [HASCHILDREN]` (§6.3.5) for every host.
+- `\Deleted` kept by the store (RFC 3501 §2.3.2, go-imap#159). Upstream keeps
+  the mark in the session until EXPUNGE, so the user's other devices never see
+  it and a dropped connection loses it. The optional `imap.DeletedMailbox`
+  interface says the store keeps it; EXPUNGE, CLOSE and UID EXPUNGE then remove
+  what the store marks at that moment, so a mark another session cleared is
+  never expunged. A Mailbox without it keeps the session's marks.
 - LIST-EXTENDED in full (RFC 5258, folded into RFC 9051 §6.3.9) needs a real
   subscription list: "the list MUST include exactly those mailbox names that
   match the canonical list pattern and are subscribed to" (§3.1), names that
