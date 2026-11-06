@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/rest-mail/go-imap/actions/workflows/ci.yml/badge.svg)](https://github.com/rest-mail/go-imap/actions/workflows/ci.yml)
 [![Coverage gate: >=95%](https://img.shields.io/badge/coverage%20gate-%3E%3D95%25-brightgreen)](COVERAGE.md)
-[![Partial checklist: 563/800 mapped](https://img.shields.io/badge/partial%20checklist-563%2F800%20mapped-blue)](CHECKLIST.md)
+[![Partial checklist: 566/800 mapped](https://img.shields.io/badge/partial%20checklist-566%2F800%20mapped-blue)](CHECKLIST.md)
 [![Go Reference](https://pkg.go.dev/badge/github.com/rest-mail/go-imap.svg)](https://pkg.go.dev/github.com/rest-mail/go-imap/pkg/imap/server)
 [![Go Report Card](https://goreportcard.com/badge/github.com/rest-mail/go-imap)](https://goreportcard.com/report/github.com/rest-mail/go-imap)
 
