@@ -75,7 +75,7 @@ export interface paths {
         put?: never;
         /**
          * TLS-RPT report ingestion (RFC 8460)
-         * @description Receives TLS-RPT reports from external MTAs, as JSON or gzip-compressed. No auth by design. A body sent with Content-Encoding: gzip, or gzip-compressed under a JSON media type, is inflated first.
+         * @description Receives TLS-RPT reports from external MTAs, as JSON or gzip-compressed. No auth by design. A body sent with Content-Encoding: gzip, or gzip-compressed under a JSON media type, is inflated first. Parsed reports that break a rule return 422 validation_failed with details.fields; if no policy domain is hosted, the failing field is policies.
          */
         post: operations["receiveTlsReport"];
         delete?: never;
@@ -181,7 +181,7 @@ export interface paths {
         };
         /**
          * Check whether an address is a mailbox here (protocol gateways)
-         * @description Machine to machine: no user token. An address that is not a mailbox here is 200 with exists false: the gateway then routes it outbound. A reserved alias that cannot route is 403 rejected, never an outbound recipient; the gateway answers its SMTP peer 550.
+         * @description Machine to machine: no user token. It applies the rule delivery applies: an address that is not a mailbox here, or is one that may not receive, or is on a domain that is not live, is 200 with exists false, so the gateway refuses it at RCPT (or, on authenticated submission, routes it outbound). A reserved alias that cannot route is 403 rejected, never an outbound recipient; the gateway answers its SMTP peer 550.
          */
         get: operations["checkMailboxAddress"];
         put?: never;
@@ -243,6 +243,26 @@ export interface paths {
          * @description Missing links retain 404; account lookup and grant-removal failures return 500. The lookup and removal transaction follow request cancellation.
          */
         delete: operations["unlinkAccount"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounts/{id}/addresses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the addresses an account receives at and may send from
+         * @description receives is the account's own address, then every active alias on an active domain whose destination is this account; no other alias or destination is shown. sends_as is every mailbox address the account may put in From, each with the modes allowed (from: on_behalf false; on_behalf: on_behalf true), decided by the same check sendMessage makes, so the two cannot disagree. Asked by the account itself, it answers for the credential the request is made with; asked by someone else who may read the account, for the account's own sign-in. Uses the same mail:read authorization as getAccount; an account the caller may not read is 404.
+         */
+        get: operations["listAccountAddresses"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -607,10 +627,50 @@ export interface paths {
         put?: never;
         /**
          * Store a message the account already has
-         * @description Stores original message octets, folder, supported system flags and required internal_date without delivery rules or push notifications. Requires mail:import on the destination, which every account is granted on its own mailbox by the importer role; an owner can revoke that grant, and the account is then refused with 403. A message whose Message-ID and exact octets are already in that account and folder is skipped without changing its flags or date; the same Message-ID with different octets is stored as another message. Messages without Message-ID use a deterministic SHA-256 import identity; the raw source remains unchanged. Every attempt is audited; successful imports and skips also receive a transactional messages.import audit entry. The decoded message is bounded by SMTP_MAX_MESSAGE_SIZE (10 MiB by default); the general API body limit may be stricter. Deleted state and up to 100 case-insensitive keywords of 1–255 ASCII bytes are preserved. Keywords must be RFC 3501 atoms without backslash. Deleted messages use IMAP deletion state, not API tombstones; EXPUNGE removes them.
+         * @description Stores original message octets, folder, supported system flags and required internal_date without delivery rules or push notifications. Requires mail:import on the destination, which every account is granted on its own mailbox by the importer role; an owner can revoke that grant, and the account is then refused with 403. A message whose Message-ID and exact octets are already in that account and folder is skipped without changing its flags or date; the same Message-ID with different octets is stored as another message. With always_store true no such check is made: a new message is stored with its own id, flags and date, and the one already there is left as it was. With match_submission true and folder Sent, a message whose Message-ID is on one authenticated SMTP submission saved in that account's Sent in the last 5 minutes is not stored, whatever always_store says, and the answer names the saved message with imported false. Messages without Message-ID use a deterministic SHA-256 import identity; the raw source remains unchanged. The one exception is a leading mbox From_ separator line (RFC 4155), which is dropped so the message starts at its first header, and counted as mbox_separator_stripped; any other header block that does not parse is refused. Every attempt the route can read is audited in a messages.import summary, never one entry per message of a session. With import_session (from createImportSession) it is counted in that session's summary, written once when the session closes; without it, it is written at once as a summary of its one message. A summary counts, per folder, messages imported (in the same transaction as the message), deduplicated (a copy matched to its submission included) and refused (stored nothing, including server failures), and the bytes imported. A request over the body limit, or one that cannot be read as this request, is refused before it is counted. An unknown, closed or other opener's import_session is refused as import_session_not_found. The decoded message is bounded by SMTP_MAX_MESSAGE_SIZE (10 MiB by default); the general API body limit may be stricter. Deleted state and up to 100 case-insensitive keywords of 1–255 ASCII bytes are preserved. Keywords must be RFC 3501 atoms without backslash. Deleted messages use IMAP deletion state, not API tombstones; EXPUNGE removes them.
          */
         post: operations["importMessage"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounts/{id}/messages/import-sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Open an import session
+         * @description Opens an import of many messages into the account, so it is audited as one summary instead of one entry per message. Send the returned id as import_session with each importMessage call, then close it with closeImportSession. Requires mail:import on the account. A session with no import or close for idle_timeout_seconds (one hour) is closed by the server and its summary written. The IMAP gateway opens one at a connection's first APPEND or COPY and closes it at LOGOUT or disconnect, naming the client from its ID command.
+         */
+        post: operations["createImportSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounts/{id}/messages/import-sessions/{session}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Close an import session and write its summary
+         * @description Closes the import session and writes its summary as one messages.import audit entry: account, client, start and end, and per folder the messages imported, deduplicated and refused with the bytes imported. The summary is returned. Only the account that opened the session may close it; a session that does not exist, has closed or belongs to another opener is not found.
+         */
+        delete: operations["closeImportSession"];
         options?: never;
         head?: never;
         patch?: never;
@@ -735,11 +795,14 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Read effective account send limits */
+        /**
+         * Read effective account send limits
+         * @description An inactive account, or one with an inactive account above it in its ownership chain, has no effective limits and answers 409 account_inactive.
+         */
         get: operations["getAccountSendLimits"];
         /**
          * Set account send limits with a two-factor session
-         * @description All four values are required; zero is unlimited. Owned accounts may only be capped below their owner's live limits. A two-factor person session and mailbox:manage are required. Changes are audited with the actual actor and session. Domain and server ceilings still apply.
+         * @description All four values are required; zero is unlimited. Owned accounts may only be capped below their owner's live limits; an inactive owner has none, and answers 409 account_inactive. A two-factor person session and mailbox:manage are required. Changes are audited with the actual actor and session. Domain and server ceilings still apply.
          */
         put: operations["setAccountSendLimits"];
         post?: never;
@@ -756,7 +819,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get the Sieve filter script */
+        /**
+         * Get the Sieve filter script
+         * @description 404 not_found when the account has no stored Sieve script.
+         */
         get: operations["getSieveScript"];
         /**
          * Create or replace the Sieve filter script
@@ -764,7 +830,10 @@ export interface paths {
          */
         put: operations["putSieveScript"];
         post?: never;
-        /** Delete the Sieve filter script */
+        /**
+         * Delete the Sieve filter script
+         * @description Deletes a stored script. 404 not_found when the account has no stored Sieve script.
+         */
         delete: operations["deleteSieveScript"];
         options?: never;
         head?: never;
@@ -877,7 +946,10 @@ export interface paths {
         /** Set vacation auto-reply settings */
         put: operations["setVacation"];
         post?: never;
-        /** Disable vacation auto-reply */
+        /**
+         * Disable vacation auto-reply
+         * @description Disables a stored vacation reply, including one already disabled. 404 not_found when the account has no stored vacation reply.
+         */
         delete: operations["disableVacation"];
         options?: never;
         head?: never;
@@ -1364,7 +1436,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Live DNS record check (MX, SPF, DMARC, DKIM, MTA-STS, TLS-RPT) for a domain */
+        /** The DNS records a domain must publish, compared with a live lookup of each */
         get: operations["domainDNSCheck"];
         put?: never;
         post?: never;
@@ -1918,7 +1990,7 @@ export interface paths {
         put?: never;
         /**
          * Bounce a single queue entry
-         * @description Database work follows the HTTP request context, including cancellation and deadlines. The entry is locked in one transaction before the update is written; lookup, update or commit failures cannot return success.
+         * @description Only a pending, deferred or delivering entry can be bounced, as with the bulk route; any other state is refused with 400 bad_request and the entry is left as it was. Database work follows the HTTP request context, including cancellation and deadlines. The entry is locked in one transaction before eligibility is checked and the update is written; lookup, update or commit failures cannot return success.
          */
         post: operations["bounceQueueEntry"];
         delete?: never;
@@ -1984,6 +2056,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/sender-rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the installation's sender rules
+         * @description Every domain inherits these rules. A block, whether the installation's or a domain's, wins over an allow at either scope: a domain cannot allow a sender the installation blocks, and a domain can add blocks of its own. Requires domains:read at *.
+         */
+        get: operations["listInstallationSenderRules"];
+        put?: never;
+        /**
+         * Add an installation sender rule
+         * @description Every domain inherits these rules. A block, whether the installation's or a domain's, wins over an allow at either scope: a domain cannot allow a sender the installation blocks, and a domain can add blocks of its own. Requires domains:write at *.
+         */
+        post: operations["addInstallationSenderRule"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/sender-rules/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove an installation sender rule
+         * @description Requires domains:write at *.
+         */
+        delete: operations["removeInstallationSenderRule"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/server-capabilities": {
         parameters: {
             query?: never;
@@ -2027,7 +2143,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Dashboard statistics */
+        /**
+         * Dashboard statistics
+         * @description inboundTransportSecurity counts stored inbound-MX deliveries, one per local recipient, identified by recorded received_tls. plaintextAuthPass counts plaintext deliveries with a saved typed SPF or DKIM pass. Message headers and bodies are never consulted. plaintextAuthFail counts plaintext deliveries without a recorded pass, including unknown verdicts and mail stored before typed verdict persistence; it is not a count of explicit authentication failures. Historic verdicts are not inferred from message text.
+         */
         get: operations["getDashboardStats"];
         put?: never;
         post?: never;
@@ -2395,23 +2514,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/auth/protocol-sign-in": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Sign a mail client in (protocol gateways) */
-        post: operations["protocolSignIn"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/auth/recover": {
         parameters: {
             query?: never;
@@ -2567,6 +2669,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/gateway-sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Open a mail client's connection session (protocol gateways)
+         * @description Internal: served on the mTLS listener, for a gateway presenting its own client certificate, which names its service (IMAP, POP3 or SMTP submission). The mail client's address and password or app password come once, in the body: this is the only request that takes a mail client's password. A refused one is recorded as auth.credential_refused and refusals are throttled; an account with two-factor authentication needs an app password. The answer's token is sent as Bearer on every call the gateway then makes for that connection, over the internal listener with the same certificate; the session is checked on every request, so revoking the credential or the account's sessions ends it at the next one. protocol must be the one the service serves; a caller without a gateway certificate is 403 gateway_required.
+         */
+        post: operations["openGatewaySession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/gateway-sessions/current": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Close a mail client's connection session (protocol gateways)
+         * @description Internal: the gateway that opened the session closes it at logout or disconnect, sending its token as Bearer with the same client certificate. Closing one already closed is not an error. A caller without a gateway certificate is 403 gateway_required.
+         */
+        delete: operations["closeGatewaySession"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messages/deliver": {
         parameters: {
             query?: never;
@@ -2638,7 +2780,7 @@ export interface paths {
         put?: never;
         /**
          * Send a draft
-         * @description The draft (mail:write) is sent as sendMessage sends, and deleted once it is; a refused send keeps it. Draft lookup/access dependency failures return 500 and follow request cancellation. Sending from your own mailbox requires mail:send. From another mailbox requires mail:send_as on that mailbox. Set on_behalf to true to require mail:send_on_behalf instead: From stays the represented mailbox and RFC 5322 Sender is the authenticated account's own address. Read access grants neither mode. Both modes audit the real account, credential and represented mailbox.
+         * @description The draft (mail:write) is sent as sendMessage sends, and deleted once it is; a refused send keeps it. Draft lookup/access dependency failures return 500 and follow request cancellation. Sending from your own mailbox requires mail:send. From another mailbox requires mail:send_as on that mailbox. Set on_behalf to true to require mail:send_on_behalf instead: From stays the represented mailbox and RFC 5322 Sender is the authenticated account's own address. Read access grants neither mode. An unknown sender and a sender the caller has no link to return the same 404 not_found. A visible sender without the selected sending capability returns 403 forbidden. Parsed fields that break sender policy or scheduling rules return 422 validation_failed with details.fields naming them. Both modes audit the real account, credential and represented mailbox.
          */
         post: operations["sendDraft"];
         delete?: never;
@@ -2698,7 +2840,7 @@ export interface paths {
         put?: never;
         /**
          * Release held mail with a two-factor session
-         * @description Requires a two-factor person session, mailbox:manage on the submitting account and mail:send on the sender. Releases one retained message, bypassing account budgets for this deliberate send while still charging them. Domain/server budgets, live sender permissions and outbound policies remain enforced. Returns the retained record: 200 after release, or 202 if budgets or policies defer and keep the same hold. Concurrent releases cannot send twice. The real releasing actor/session and original submitting account are audited.
+         * @description Requires a two-factor person session, mailbox:manage on the submitting account and mail:send on the sender. Releases one retained message, bypassing account budgets for this deliberate send while still charging them. Domain/server budgets, live sender permissions and outbound policies remain enforced. Returns the retained record: 200 after release, or 202 if budgets or policies defer and keep the same hold. Concurrent releases cannot send twice. The real releasing actor/session and original submitting account are audited. An unknown or unlinked sender answers the same 404 not_found; a visible sender without the sending capability answers 403 forbidden. Live sender policy refusals answer 422 validation_failed with details.fields naming list_unsubscribe or list_unsubscribe.https.
          */
         post: operations["releaseHeldMessage"];
         delete?: never;
@@ -2718,7 +2860,7 @@ export interface paths {
         put?: never;
         /**
          * Send a message
-         * @description Sent at once (201), or with scheduled_at stored and sent then (202); the outbound pipeline may discard it (200). to needs at least one address. from, to, cc and bcc are described as bare addresses, internationalized or not; the handler also accepts an RFC 5322 display name around one. scheduled_at must be at least a minute ahead and within a year; null or omitted sends at once. Sending from your own mailbox requires mail:send. From another mailbox requires mail:send_as on that mailbox. Set on_behalf to true to require mail:send_on_behalf instead: From stays the represented mailbox and RFC 5322 Sender is the authenticated account's own address. Read access grants neither mode. Both modes audit the real account, credential and represented mailbox.
+         * @description Sent at once (201), or with scheduled_at stored and sent then (202); the outbound pipeline may discard it (200). to needs at least one address. from, to, cc and bcc are described as bare addresses, internationalized or not; the handler also accepts an RFC 5322 display name around one. scheduled_at must be at least a minute ahead and within a year; null or omitted sends at once. Sending from your own mailbox requires mail:send. From another mailbox requires mail:send_as on that mailbox. Set on_behalf to true to require mail:send_on_behalf instead: From stays the represented mailbox and RFC 5322 Sender is the authenticated account's own address. Read access grants neither mode. An unknown sender and a sender the caller has no link to return the same 404 not_found. A visible sender without the selected sending capability returns 403 forbidden. Parsed fields that break sender policy or scheduling rules return 422 validation_failed with details.fields naming them. Both modes audit the real account, credential and represented mailbox.
          */
         post: operations["sendMessage"];
         delete?: never;
@@ -2794,7 +2936,7 @@ export interface paths {
         put?: never;
         /**
          * Forward a message
-         * @description The message (mail:read) is forwarded through the normal sender authorization, rate limit and outbound policy, with Fwd: and the note above its original header. Stored attachments, including empty and inline parts, are re-attached; the Sent copy owns independent attachment objects. The final signed MIME message is bounded by SMTP_MAX_MESSAGE_SIZE, and sender quota includes the copied parts. Sent, attachment references, quota and recipient work commit together. Unavailable or changed source objects fail the forward instead of dropping parts. Sending from your own mailbox requires mail:send. From another mailbox requires mail:send_as on that mailbox. Set on_behalf to true to require mail:send_on_behalf instead: From stays the represented mailbox and RFC 5322 Sender is the authenticated account's own address. Read access grants neither mode. Both modes audit the real account, credential and represented mailbox.
+         * @description The message (mail:read) is forwarded through the normal sender authorization, rate limit and outbound policy, with Fwd: and the note above its original header. Stored attachments, including empty and inline parts, are re-attached; the Sent copy owns independent attachment objects. The final signed MIME message is bounded by SMTP_MAX_MESSAGE_SIZE, and sender quota includes the copied parts. Sent, attachment references, quota and recipient work commit together. Unavailable or changed source objects fail the forward instead of dropping parts. Sending from your own mailbox requires mail:send. From another mailbox requires mail:send_as on that mailbox. Set on_behalf to true to require mail:send_on_behalf instead: From stays the represented mailbox and RFC 5322 Sender is the authenticated account's own address. Read access grants neither mode. An unknown sender and a sender the caller has no link to return the same 404 not_found. A visible sender without the selected sending capability returns 403 forbidden. Parsed fields that break sender policy or scheduling rules return 422 validation_failed with details.fields naming them. Both modes audit the real account, credential and represented mailbox.
          */
         post: operations["forwardMessage"];
         delete?: never;
@@ -2857,6 +2999,66 @@ export interface paths {
         get: operations["verifyMessageSeal"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messages/{id}/unsubscribe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a message's unsubscribe targets
+         * @description The targets the message's List-Unsubscribe field offers (RFC 2369), checked because the sender wrote them; nothing is sent. one_click is present only when List-Unsubscribe-Post is List-Unsubscribe=One-Click and a DKIM signature this server verified as pass covers both List-Unsubscribe and List-Unsubscribe-Post (RFC 8058 §4); without one that HTTPS URI is listed first in links instead. links are other HTTPS pages for the person to open; the server never fetches them. A field given more than once, an item that does not parse, an http: URI and a mailto: URI naming more than one address are left out.
+         */
+        get: operations["getUnsubscribeOptions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messages/{id}/unsubscribe/mailto": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Unsubscribe by sending the mailto: message
+         * @description Sends the message mailto target index asks for (its address, subject and body, RFC 6068) through sendMessage, so every send rule applies; an empty subject or body is sent as unsubscribe. from defaults to the message's account. 404 no_mailto_unsubscribe when there is no target at index. Sending from your own mailbox requires mail:send. From another mailbox requires mail:send_as on that mailbox. Set on_behalf to true to require mail:send_on_behalf instead: From stays the represented mailbox and RFC 5322 Sender is the authenticated account's own address. Read access grants neither mode. An unknown sender and a sender the caller has no link to return the same 404 not_found. A visible sender without the selected sending capability returns 403 forbidden. Parsed fields that break sender policy or scheduling rules return 422 validation_failed with details.fields naming them. Both modes audit the real account, credential and represented mailbox.
+         */
+        post: operations["unsubscribeMailto"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messages/{id}/unsubscribe/one-click": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Unsubscribe with RFC 8058 one-click
+         * @description The server POSTs List-Unsubscribe=One-Click to the message's one-click target, once, only on this request. The target must be HTTPS and it and every redirect hop must resolve only to public addresses, checked again on the address dialed; otherwise 422 unsubscribe_target_refused. The same refusal answers a one-click claim that no DKIM signature this server verified as pass covers, List-Unsubscribe and List-Unsubscribe-Post both (RFC 8058 §4). No cookie or credential is sent. 404 no_one_click_unsubscribe when the message has no one-click target; 502 unsubscribe_failed when the target cannot be reached or answers other than 2xx.
+         */
+        post: operations["unsubscribeOneClick"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2981,7 +3183,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Check if a recipient mailbox exists */
+        /**
+         * Check if a recipient mailbox exists
+         * @description It applies the rule delivery applies: an address that is not a mailbox here, or is one that may not receive, or is on a domain that is not live, is 200 with exists false.
+         */
         get: operations["restmailCheckMailbox"];
         put?: never;
         post?: never;
@@ -3002,7 +3207,7 @@ export interface paths {
         put?: never;
         /**
          * Deliver a message via RESTMAIL protocol
-         * @description Server-to-server delivery. Unauthenticated at the HTTP layer: a delivery must come from a trusted peer network or carry a DKIM signature aligned with its From domain, or it is refused 403 unauthorized. The inbound pipeline can refuse it 403 rejected or defer it 503 deferred. When no recipient takes the message the answer is 422 undeliverable. Failed sender/recipient or inbound-policy lookups and corrupt stored policy defer with 503; recipient lookups finish before delivery side effects.
+         * @description Server-to-server delivery. Unauthenticated at the HTTP layer: a delivery must come from a trusted peer network or carry a DKIM signature aligned with its From domain, or it is refused 403 unauthorized. The inbound pipeline can refuse it 403 rejected or defer it 503 deferred. When no recipient takes the message the answer is 422 undeliverable. Failed sender/recipient, DKIM key or inbound-policy lookups and corrupt stored policy defer with 503; recipient lookups finish before delivery side effects.
          */
         post: operations["restmailDeliver"];
         delete?: never;
@@ -3332,10 +3537,13 @@ export interface components {
             start_date: string;
         };
         DNSRecordCheck: {
+            expected?: string;
             message?: string;
             name: string;
             /** @enum {string} */
-            status: "ok" | "missing" | "error";
+            problem?: "missing" | "malformed" | "different_key_type" | "different_key" | "more_than_one" | "key_unreadable";
+            /** @enum {string} */
+            status: "ok" | "missing" | "different" | "error";
             type: string;
             value?: string;
         };
@@ -3345,7 +3553,7 @@ export interface components {
             mailboxCount: number;
             messageVolume: components["schemas"]["MessageVolumeData"][];
             queueStats: components["schemas"]["QueueStats"];
-            recentActivity: components["schemas"]["RecentActivity"][] | null;
+            recentActivity: components["schemas"]["RecentActivity"][];
         };
         "Data-APIRoot": {
             data: components["schemas"]["APIRoot"];
@@ -3407,11 +3615,23 @@ export interface components {
         "Data-FolderName": {
             data: components["schemas"]["FolderName"];
         };
+        "Data-GatewaySessionOpened": {
+            data: components["schemas"]["GatewaySessionOpened"];
+        };
         "Data-Health": {
             data: components["schemas"]["Health"];
         };
         "Data-ImportMessageResult": {
             data: components["schemas"]["ImportMessageResult"];
+        };
+        "Data-ImportSession": {
+            data: components["schemas"]["ImportSession"];
+        };
+        "Data-ImportSessionSummary": {
+            data: components["schemas"]["ImportSessionSummary"];
+        };
+        "Data-InstallationSenderRule": {
+            data: components["schemas"]["InstallationSenderRule"];
         };
         "Data-MTASTSPolicy": {
             data: components["schemas"]["MTASTSPolicy"];
@@ -3442,9 +3662,6 @@ export interface components {
         };
         "Data-PipelineAnalyticsResponse": {
             data: components["schemas"]["PipelineAnalyticsResponse"];
-        };
-        "Data-ProtocolSignedIn": {
-            data: components["schemas"]["ProtocolSignedIn"];
         };
         "Data-QuarantineDeleted": {
             data: components["schemas"]["QuarantineDeleted"];
@@ -3535,6 +3752,15 @@ export interface components {
         };
         "Data-ThreadSnooze": {
             data: components["schemas"]["ThreadSnooze"];
+        };
+        "Data-UnsubscribeOptions": {
+            data: components["schemas"]["UnsubscribeOptions"];
+        };
+        "Data-UnsubscribedOneClick": {
+            data: components["schemas"]["UnsubscribedOneClick"];
+        };
+        "Data-accountAddresses": {
+            data: components["schemas"]["accountAddresses"];
         };
         "Data-accountResponse": {
             data: components["schemas"]["accountResponse"];
@@ -3754,6 +3980,15 @@ export interface components {
         ForwardRefusalResponse: {
             error: components["schemas"]["ForwardRefusalBody"];
         };
+        GatewaySessionOpened: {
+            credential_id: number;
+            /** @enum {string} */
+            credential_kind: "password" | "app_password";
+            /** @enum {string} */
+            protocol: "imap" | "pop3" | "smtp";
+            token: string;
+            user: components["schemas"]["userInfo"];
+        };
         Headers: {
             bcc?: components["schemas"]["Address"][];
             cc?: components["schemas"]["Address"][];
@@ -3776,11 +4011,25 @@ export interface components {
             db: string;
             status: string;
         };
+        ImportFolderCounts: {
+            /** Format: int64 */
+            bytes: number;
+            /** Format: int64 */
+            deduplicated: number;
+            /** Format: int64 */
+            imported: number;
+            /** Format: int64 */
+            mbox_separator_stripped: number;
+            /** Format: int64 */
+            refused: number;
+        };
         ImportMessageBody: {
+            always_store?: boolean;
             flags?: string[];
             folder?: string;
             /** Format: date-time */
             internal_date: string;
+            match_submission?: boolean;
             /** Format: byte */
             raw_message: string;
         };
@@ -3789,6 +4038,38 @@ export interface components {
             id: number;
             imported: boolean;
             message_id: string;
+        };
+        ImportSession: {
+            account_id: number;
+            client_name?: string;
+            client_version?: string;
+            id: string;
+            idle_timeout_seconds: number;
+            /** Format: date-time */
+            started_at: string;
+        };
+        ImportSessionSummary: {
+            account_id: number;
+            /** Format: int64 */
+            bytes: number;
+            client_name?: string;
+            client_version?: string;
+            /** Format: int64 */
+            deduplicated: number;
+            /** Format: date-time */
+            ended_at: string;
+            folders: {
+                [key: string]: components["schemas"]["ImportFolderCounts"];
+            };
+            id: string;
+            /** Format: int64 */
+            imported: number;
+            /** Format: int64 */
+            mbox_separator_stripped: number;
+            /** Format: int64 */
+            refused: number;
+            /** Format: date-time */
+            started_at: string;
         };
         InboundTransportSecurity: {
             overTLS: number;
@@ -3800,6 +4081,16 @@ export interface components {
             /** Format: double */
             tlsPercent: number;
             totalInboundMX: number;
+        };
+        InstallationSenderRule: {
+            /** Format: date-time */
+            created_at: string;
+            created_by?: number | null;
+            id: number;
+            /** @enum {string} */
+            list_type: "allow" | "block";
+            pattern: string;
+            reason?: string;
         };
         "List-Alias": {
             data: components["schemas"]["Alias"][];
@@ -3843,6 +4134,10 @@ export interface components {
         };
         "List-FolderSummary": {
             data: components["schemas"]["FolderSummary"][];
+            pagination?: components["schemas"]["Pagination"] | null;
+        };
+        "List-InstallationSenderRule": {
+            data: components["schemas"]["InstallationSenderRule"][];
             pagination?: components["schemas"]["Pagination"] | null;
         };
         "List-Mailbox": {
@@ -4047,13 +4342,17 @@ export interface components {
             sampled: boolean;
             /** Format: float */
             spam_score?: number | null;
-            stages: components["schemas"]["StepResult"][] | null;
+            stages: components["schemas"]["StepResult"][];
             /** @enum {string} */
             transport: "" | "plaintext" | "tls";
         };
         MessageVolumeData: {
             count: number;
             date: string;
+        };
+        OpenImportSessionBody: {
+            client_name?: string;
+            client_version?: string;
         };
         OwnerChallenge: {
             challenge: string;
@@ -4119,12 +4418,6 @@ export interface components {
             stage_decisions: components["schemas"]["StageDecisionCount"][];
             terminal_outcomes: components["schemas"]["TerminalCount"][];
             top_reject_reasons: components["schemas"]["RejectReasonCount"][];
-        };
-        ProtocolSignedIn: {
-            credential_id: number;
-            /** @enum {string} */
-            credential_kind: "password" | "app_password";
-            user: components["schemas"]["userInfo"];
         };
         QuarantineDeleted: {
             /** @enum {string} */
@@ -4713,6 +5006,13 @@ export interface components {
             direction: string;
             outcome: string;
         };
+        TestDNSProbeResult: {
+            domain: string;
+            error?: string;
+            latency?: string;
+            mx_records: string[];
+            status: string;
+        };
         TestDataStatus: {
             status: string;
         };
@@ -4738,25 +5038,24 @@ export interface components {
             domain?: string;
             error?: string;
             latency?: string;
-            mx_records?: string[] | null;
             status: string;
         };
         TestProbeResults: {
             db?: components["schemas"]["TestProbeResult"] | null;
-            dns?: components["schemas"]["TestProbeResult"] | null;
+            dns?: components["schemas"]["TestDNSProbeResult"] | null;
             imap?: components["schemas"]["TestProbeResult"] | null;
             pop3?: components["schemas"]["TestProbeResult"] | null;
             smtp?: components["schemas"]["TestProbeResult"] | null;
             smtp_submission?: components["schemas"]["TestProbeResult"] | null;
         };
         TestSnapshot: {
-            aliases: components["schemas"]["TestSnapshotAlias"][] | null;
-            bans: components["schemas"]["TestSnapshotBan"][] | null;
-            domains: components["schemas"]["TestSnapshotDomain"][] | null;
-            mailboxes: components["schemas"]["TestSnapshotMailbox"][] | null;
-            messages: components["schemas"]["TestSnapshotMessage"][] | null;
-            pipelines: components["schemas"]["TestSnapshotPipeline"][] | null;
-            queue: components["schemas"]["TestSnapshotOutboundQueue"][] | null;
+            aliases: components["schemas"]["TestSnapshotAlias"][];
+            bans: components["schemas"]["TestSnapshotBan"][];
+            domains: components["schemas"]["TestSnapshotDomain"][];
+            mailboxes: components["schemas"]["TestSnapshotMailbox"][];
+            messages: components["schemas"]["TestSnapshotMessage"][];
+            pipelines: components["schemas"]["TestSnapshotPipeline"][];
+            queue: components["schemas"]["TestSnapshotOutboundQueue"][];
             /** Format: date-time */
             snapshot_at: string;
         };
@@ -4930,6 +5229,27 @@ export interface components {
             count: number;
             transport: string;
         };
+        UnsubscribeMailtoOption: {
+            body: string;
+            /** @example unsubscribe */
+            subject: string;
+            /** @example leave@news.example.com */
+            to: string;
+        };
+        UnsubscribeOptions: {
+            links: string[];
+            mailto: components["schemas"]["UnsubscribeMailtoOption"][];
+            /** @example https://news.example.com/unsubscribe?t=8f2c */
+            one_click?: string;
+        };
+        UnsubscribedOneClick: {
+            /** @example one_click */
+            method: string;
+            /** @example 200 */
+            response_status: number;
+            /** @example https://news.example.com/unsubscribe?t=8f2c */
+            target: string;
+        };
         ValidationDetails: {
             fields: {
                 [key: string]: string;
@@ -4948,6 +5268,13 @@ export interface components {
             client?: "native";
             password: string;
             token?: string;
+        };
+        accountAddresses: {
+            account_id: number;
+            /** Format: idn-email */
+            address: string;
+            receives: components["schemas"]["receivingAddress"][];
+            sends_as: components["schemas"]["sendingAddressMode"][];
         };
         accountResponse: {
             address: string;
@@ -4971,6 +5298,12 @@ export interface components {
             reason: string;
             /** Format: int64 */
             seconds_left: number;
+        };
+        addInstallationSenderRuleRequest: {
+            /** @enum {string} */
+            list_type: "allow" | "block";
+            pattern: string;
+            reason?: string;
         };
         addSenderRuleRequest: {
             pattern: string;
@@ -5287,6 +5620,14 @@ export interface components {
             on_behalf?: boolean;
             to?: string[];
         };
+        gatewaySessionOpenRequest: {
+            /** Format: email */
+            address: string;
+            /** Format: password */
+            password: string;
+            /** @enum {string} */
+            protocol: "imap" | "pop3" | "smtp";
+        };
         grantActor: {
             id: number | null;
             /** @enum {string} */
@@ -5387,13 +5728,9 @@ export interface components {
             services?: string[];
             timeout?: string;
         };
-        protocolSignInRequest: {
-            /** @enum {string} */
-            protocol: "imap" | "pop3" | "smtp";
-        };
         putSieveBody: {
             active?: boolean | null;
-            script: string | null;
+            script: string;
         };
         quietHoursBody: {
             enabled: boolean;
@@ -5415,6 +5752,11 @@ export interface components {
             end: unknown;
             start: unknown;
             time_zone: unknown;
+        };
+        receivingAddress: {
+            /** Format: idn-email */
+            address: string;
+            primary: boolean;
         };
         recoverRequest: {
             client?: string;
@@ -5601,6 +5943,13 @@ export interface components {
             /** Format: email */
             to: string;
         };
+        sendingAddressMode: {
+            /** Format: idn-email */
+            address: string;
+            from: boolean;
+            on_behalf: boolean;
+            primary: boolean;
+        };
         serverCapabilitiesResponse: {
             /** @example mail:read,mail:send */
             capabilities: string[];
@@ -5678,18 +6027,13 @@ export interface components {
         tlsReportStored: {
             stored: number;
         };
-        tlsReportUnprocessable: {
-            error: components["schemas"]["tlsReportUnprocessableError"];
-        };
-        tlsReportUnprocessableError: {
-            /** @enum {string} */
-            code: "validation_failed" | "no_matching_domains";
-            details?: components["schemas"]["ValidationDetails"];
-            message: string;
-        };
         twoFactorStatusResponse: {
             enabled: boolean;
             pending: boolean;
+        };
+        unsubscribeMailtoBody: {
+            from?: string;
+            index?: number;
         };
         updateAPIKeyBody: {
             password: string;
@@ -5788,7 +6132,7 @@ export interface components {
             script: string;
         };
         validateSieveBody: {
-            script: string | null;
+            script: string;
         };
     };
     responses: never;
@@ -5902,6 +6246,7 @@ export interface operations {
     restmailDiscover: {
         parameters: {
             query: {
+                /** @description Exactly one fully-qualified recipient domain, never a single label or a mailbox address. Case, a trailing dot and internationalized names are normalized as for domain creation; a name IDNA refuses is 422 validation_failed even when it matches this pattern. */
                 domain: string;
             };
             header?: never;
@@ -6007,7 +6352,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["tlsReportUnprocessable"];
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
             /** @description rate_limited: too many reports from one address */
@@ -6253,7 +6598,7 @@ export interface operations {
                     "application/json": components["schemas"]["List-accountResponse"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized: no token, a bad one, a session that has ended, or a gateway session that has ended */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -6289,7 +6634,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate */
+            /** @description rate_limited: refused API keys, throttled at login's rate */
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
@@ -6554,7 +6899,7 @@ export interface operations {
                     "application/json": components["schemas"]["Data-accountResponse"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized: no token, a bad one, a session that has ended, or a gateway session that has ended */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -6599,7 +6944,7 @@ export interface operations {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
-            /** @description rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate */
+            /** @description rate_limited: refused API keys, throttled at login's rate */
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
@@ -6712,6 +7057,102 @@ export interface operations {
                 };
             };
             /** @description unavailable: the session check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listAccountAddresses: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-accountAddresses"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, a session that has ended, or a gateway session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused API keys, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After": number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -7175,7 +7616,7 @@ export interface operations {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
-            /** @description rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate */
+            /** @description rate_limited: refused API keys, throttled at login's rate */
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
@@ -7504,7 +7945,7 @@ export interface operations {
                     "application/json": components["schemas"]["Data-contactReplyTimeSetting"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized: no token, a bad one, a session that has ended, or a gateway session that has ended */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -7549,7 +7990,7 @@ export interface operations {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
-            /** @description rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate */
+            /** @description rate_limited: refused API keys, throttled at login's rate */
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
@@ -7613,7 +8054,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized: no token, a bad one, a session that has ended, or a gateway session that has ended */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -7658,7 +8099,7 @@ export interface operations {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
-            /** @description rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate */
+            /** @description rate_limited: refused API keys, throttled at login's rate */
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
@@ -7714,7 +8155,7 @@ export interface operations {
                     "application/json": components["schemas"]["List-Contact"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized: no token, a bad one, a session that has ended, or a gateway session that has ended */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -7759,7 +8200,7 @@ export interface operations {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
-            /** @description rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate */
+            /** @description rate_limited: refused API keys, throttled at login's rate */
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
@@ -7823,7 +8264,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized: no token, a bad one, a session that has ended, or a gateway session that has ended */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -7877,7 +8318,7 @@ export interface operations {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
-            /** @description rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate */
+            /** @description rate_limited: refused API keys, throttled at login's rate */
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
@@ -7950,7 +8391,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized: no token, a bad one, a session that has ended, or a gateway session that has ended */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -7995,7 +8436,7 @@ export interface operations {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
-            /** @description rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate */
+            /** @description rate_limited: refused API keys, throttled at login's rate */
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
@@ -8059,7 +8500,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized: no token, a bad one, a session that has ended, or a gateway session that has ended */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -8104,7 +8545,7 @@ export interface operations {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
-            /** @description rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate */
+            /** @description rate_limited: refused API keys, throttled at login's rate */
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
@@ -8157,7 +8598,7 @@ export interface operations {
                     "application/json": components["schemas"]["List-Contact"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized: no token, a bad one, a session that has ended, or a gateway session that has ended */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -8202,7 +8643,7 @@ export interface operations {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
-            /** @description rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate */
+            /** @description rate_limited: refused API keys, throttled at login's rate */
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
@@ -8252,7 +8693,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized: no token, a bad one, a session that has ended, or a gateway session that has ended */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -8297,7 +8738,7 @@ export interface operations {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
-            /** @description rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate */
+            /** @description rate_limited: refused API keys, throttled at login's rate */
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
@@ -8362,7 +8803,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized: no token, a bad one, a session that has ended, or a gateway session that has ended */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -8407,7 +8848,7 @@ export interface operations {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
-            /** @description rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate */
+            /** @description rate_limited: refused API keys, throttled at login's rate */
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
@@ -8812,7 +9253,7 @@ export interface operations {
                     "application/json": components["schemas"]["List-FolderSummary"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized: no token, a bad one, a session that has ended, or a gateway session that has ended */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -8857,7 +9298,7 @@ export interface operations {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
-            /** @description rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate */
+            /** @description rate_limited: refused API keys, throttled at login's rate */
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
@@ -8921,7 +9362,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized: no token, a bad one, a session that has ended, or a gateway session that has ended */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -8975,7 +9416,7 @@ export interface operations {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
-            /** @description rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate */
+            /** @description rate_limited: refused API keys, throttled at login's rate */
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
@@ -9025,7 +9466,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized: no token, a bad one, a session that has ended, or a gateway session that has ended */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -9070,7 +9511,7 @@ export interface operations {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
-            /** @description rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate */
+            /** @description rate_limited: refused API keys, throttled at login's rate */
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
@@ -9135,7 +9576,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized: no token, a bad one, a session that has ended, or a gateway session that has ended */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -9189,7 +9630,7 @@ export interface operations {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
-            /** @description rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate */
+            /** @description rate_limited: refused API keys, throttled at login's rate */
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
@@ -9247,7 +9688,7 @@ export interface operations {
                     "application/json": components["schemas"]["List-Message"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized: no token, a bad one, a session that has ended, or a gateway session that has ended */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -9292,7 +9733,7 @@ export interface operations {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
-            /** @description rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate */
+            /** @description rate_limited: refused API keys, throttled at login's rate */
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
@@ -9410,7 +9851,10 @@ export interface operations {
     };
     importMessage: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description The import session this message belongs to, from createImportSession. Without it, the message is audited as an import of its own. */
+                import_session?: string;
+            };
             header?: never;
             path: {
                 id: number;
@@ -9441,7 +9885,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized: no token, a bad one, a session that has ended, or a gateway session that has ended */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -9495,7 +9939,213 @@ export interface operations {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
-            /** @description rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate */
+            /** @description rate_limited: refused API keys, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After": number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    createImportSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OpenImportSessionBody"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-ImportSession"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, a session that has ended, or a gateway session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused API keys, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After": number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    closeImportSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                session: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-ImportSessionSummary"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, a session that has ended, or a gateway session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused API keys, throttled at login's rate */
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
@@ -9549,7 +10199,7 @@ export interface operations {
                     "application/json": components["schemas"]["List-QuarantinedMessage"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized: no token, a bad one, a session that has ended, or a gateway session that has ended */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -9594,7 +10244,7 @@ export interface operations {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
-            /** @description rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate */
+            /** @description rate_limited: refused API keys, throttled at login's rate */
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
@@ -9646,7 +10296,7 @@ export interface operations {
                     "application/json": components["schemas"]["Data-QuarantineDeleted"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized: no token, a bad one, a session that has ended, or a gateway session that has ended */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -9691,7 +10341,7 @@ export interface operations {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
-            /** @description rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate */
+            /** @description rate_limited: refused API keys, throttled at login's rate */
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
@@ -9743,7 +10393,7 @@ export interface operations {
                     "application/json": components["schemas"]["Data-QuarantineReleased"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized: no token, a bad one, a session that has ended, or a gateway session that has ended */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -9788,7 +10438,7 @@ export interface operations {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
-            /** @description rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate */
+            /** @description rate_limited: refused API keys, throttled at login's rate */
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
@@ -9839,7 +10489,7 @@ export interface operations {
                     "application/json": components["schemas"]["Data-Setting"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized: no token, a bad one, a session that has ended, or a gateway session that has ended */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -9884,7 +10534,7 @@ export interface operations {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
-            /** @description rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate */
+            /** @description rate_limited: refused API keys, throttled at login's rate */
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
@@ -9948,7 +10598,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized: no token, a bad one, a session that has ended, or a gateway session that has ended */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -9993,7 +10643,7 @@ export interface operations {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
-            /** @description rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate */
+            /** @description rate_limited: refused API keys, throttled at login's rate */
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
@@ -10044,7 +10694,7 @@ export interface operations {
                     "application/json": components["schemas"]["Data-Quota"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized: no token, a bad one, a session that has ended, or a gateway session that has ended */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -10089,7 +10739,7 @@ export interface operations {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
-            /** @description rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate */
+            /** @description rate_limited: refused API keys, throttled at login's rate */
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
@@ -10149,7 +10799,7 @@ export interface operations {
                     "application/json": components["schemas"]["List-Message"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized: no token, a bad one, a session that has ended, or a gateway session that has ended */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -10194,7 +10844,7 @@ export interface operations {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
-            /** @description rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate */
+            /** @description rate_limited: refused API keys, throttled at login's rate */
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
@@ -10265,6 +10915,15 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -10437,7 +11096,7 @@ export interface operations {
                     "application/json": components["schemas"]["Data-SieveScript"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized: no token, a bad one, a session that has ended, or a gateway session that has ended */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -10482,7 +11141,7 @@ export interface operations {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
-            /** @description rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate */
+            /** @description rate_limited: refused API keys, throttled at login's rate */
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
@@ -10555,7 +11214,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized: no token, a bad one, a session that has ended, or a gateway session that has ended */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -10600,7 +11259,7 @@ export interface operations {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
-            /** @description rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate */
+            /** @description rate_limited: refused API keys, throttled at login's rate */
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
@@ -10651,7 +11310,7 @@ export interface operations {
                     "application/json": components["schemas"]["Data-SieveDeleted"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized: no token, a bad one, a session that has ended, or a gateway session that has ended */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -10696,7 +11355,7 @@ export interface operations {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
-            /** @description rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate */
+            /** @description rate_limited: refused API keys, throttled at login's rate */
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
@@ -10760,7 +11419,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized: no token, a bad one, a session that has ended, or a gateway session that has ended */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -10805,7 +11464,7 @@ export interface operations {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
-            /** @description rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate */
+            /** @description rate_limited: refused API keys, throttled at login's rate */
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
@@ -10862,7 +11521,7 @@ export interface operations {
                     "application/json": components["schemas"]["List-AwaitingThread"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized: no token, a bad one, a session that has ended, or a gateway session that has ended */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -10907,7 +11566,7 @@ export interface operations {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
-            /** @description rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate */
+            /** @description rate_limited: refused API keys, throttled at login's rate */
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
@@ -10959,7 +11618,7 @@ export interface operations {
                     "application/json": components["schemas"]["List-Message"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized: no token, a bad one, a session that has ended, or a gateway session that has ended */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -11004,7 +11663,7 @@ export interface operations {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
-            /** @description rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate */
+            /** @description rate_limited: refused API keys, throttled at login's rate */
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
@@ -11074,7 +11733,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized: no token, a bad one, a session that has ended, or a gateway session that has ended */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -11119,7 +11778,7 @@ export interface operations {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
-            /** @description rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate */
+            /** @description rate_limited: refused API keys, throttled at login's rate */
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
@@ -11187,7 +11846,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized: no token, a bad one, a session that has ended, or a gateway session that has ended */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -11232,7 +11891,7 @@ export interface operations {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
-            /** @description rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate */
+            /** @description rate_limited: refused API keys, throttled at login's rate */
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
@@ -11283,7 +11942,7 @@ export interface operations {
                     "application/json": components["schemas"]["Data-vacationSetting"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized: no token, a bad one, a session that has ended, or a gateway session that has ended */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -11328,7 +11987,7 @@ export interface operations {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
-            /** @description rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate */
+            /** @description rate_limited: refused API keys, throttled at login's rate */
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
@@ -11392,7 +12051,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized: no token, a bad one, a session that has ended, or a gateway session that has ended */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -11437,7 +12096,7 @@ export interface operations {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
-            /** @description rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate */
+            /** @description rate_limited: refused API keys, throttled at login's rate */
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
@@ -11486,7 +12145,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized: no token, a bad one, a session that has ended, or a gateway session that has ended */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -11531,7 +12190,7 @@ export interface operations {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
-            /** @description rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate */
+            /** @description rate_limited: refused API keys, throttled at login's rate */
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
@@ -15094,6 +15753,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description request_too_large: the body is over the API's size cap */
             413: {
                 headers: {
@@ -15387,6 +16055,15 @@ export interface operations {
             };
             /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -16510,6 +17187,15 @@ export interface operations {
             };
             /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -19609,6 +20295,15 @@ export interface operations {
                     "application/json": components["schemas"]["Data-QueueAction"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description unauthorized: no token, a bad one, or a session that has ended */
             401: {
                 headers: {
@@ -19921,6 +20616,283 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused API keys, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After": number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listInstallationSenderRules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["List-InstallationSenderRule"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused API keys, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After": number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    addInstallationSenderRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["addInstallationSenderRuleRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-InstallationSenderRule"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused API keys, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After": number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    removeInstallationSenderRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
             /** @description rate_limited: refused API keys, throttled at login's rate */
@@ -21171,7 +22143,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized: no token, a bad one, a session that has ended, or a gateway session that has ended */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -21252,7 +22224,7 @@ export interface operations {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
-            /** @description rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate */
+            /** @description rate_limited: refused API keys, throttled at login's rate */
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
@@ -22238,104 +23210,6 @@ export interface operations {
             };
         };
     };
-    protocolSignIn: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["protocolSignInRequest"];
-            };
-        };
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Data-ProtocolSignedIn"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Request Entity Too Large */
-            413: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ValidationErrorResponse"];
-                };
-            };
-            /** @description rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate */
-            429: {
-                headers: {
-                    /** @description Seconds until a request may be made again */
-                    "Retry-After": number;
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Internal Server Error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description unavailable: the credential or session check could not be made */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
     recoverAccount: {
         parameters: {
             query?: never;
@@ -23023,6 +23897,149 @@ export interface operations {
             };
         };
     };
+    openGatewaySession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["gatewaySessionOpenRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-GatewaySessionOpened"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unauthorized, app_password_required or setup_required: the address and password were refused */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused passwords, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After": number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the password could not be checked */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    closeGatewaySession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     deliverMessage: {
         parameters: {
             query?: never;
@@ -23185,7 +24202,7 @@ export interface operations {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
-            /** @description rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate */
+            /** @description rate_limited: refused API keys, throttled at login's rate */
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
@@ -23294,7 +24311,7 @@ export interface operations {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
-            /** @description rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate */
+            /** @description rate_limited: refused API keys, throttled at login's rate */
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
@@ -23497,7 +24514,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate */
+            /** @description rate_limited: refused API keys, throttled at login's rate */
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
@@ -23591,7 +24608,7 @@ export interface operations {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
-            /** @description rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate */
+            /** @description rate_limited: refused API keys, throttled at login's rate */
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
@@ -23808,6 +24825,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Request Entity Too Large */
             413: {
                 headers: {
@@ -23817,13 +24843,13 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Binding validation, sender policy or scheduling refusal */
+            /** @description validation_failed with details.fields for binding, sender policy or scheduling rules */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ForwardRefusalResponse"];
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
             /** @description Too Many Requests */
@@ -23877,7 +24903,7 @@ export interface operations {
                     "application/json": components["schemas"]["Data-Message"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized: no token, a bad one, a session that has ended, or a gateway session that has ended */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -23922,7 +24948,7 @@ export interface operations {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
-            /** @description rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate */
+            /** @description rate_limited: refused API keys, throttled at login's rate */
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
@@ -23974,7 +25000,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized: no token, a bad one, a session that has ended, or a gateway session that has ended */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -24019,7 +25045,7 @@ export interface operations {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
-            /** @description rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate */
+            /** @description rate_limited: refused API keys, throttled at login's rate */
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
@@ -24083,7 +25109,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized: no token, a bad one, a session that has ended, or a gateway session that has ended */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -24128,7 +25154,7 @@ export interface operations {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
-            /** @description rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate */
+            /** @description rate_limited: refused API keys, throttled at login's rate */
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
@@ -24179,7 +25205,7 @@ export interface operations {
                     "application/json": components["schemas"]["List-MessageAttachment"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized: no token, a bad one, a session that has ended, or a gateway session that has ended */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -24224,7 +25250,7 @@ export interface operations {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
-            /** @description rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate */
+            /** @description rate_limited: refused API keys, throttled at login's rate */
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
@@ -24333,7 +25359,7 @@ export interface operations {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
-            /** @description rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate */
+            /** @description rate_limited: refused API keys, throttled at login's rate */
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
@@ -24511,7 +25537,7 @@ export interface operations {
                     "message/rfc822": string;
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized: no token, a bad one, a session that has ended, or a gateway session that has ended */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -24556,7 +25582,7 @@ export interface operations {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
-            /** @description rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate */
+            /** @description rate_limited: refused API keys, throttled at login's rate */
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
@@ -24607,7 +25633,7 @@ export interface operations {
                     "application/json": components["schemas"]["Data-MessageRecipients"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized: no token, a bad one, a session that has ended, or a gateway session that has ended */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -24652,7 +25678,7 @@ export interface operations {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
-            /** @description rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate */
+            /** @description rate_limited: refused API keys, throttled at login's rate */
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
@@ -24703,7 +25729,7 @@ export interface operations {
                     "application/json": components["schemas"]["Data-MessageSeal"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized: no token, a bad one, a session that has ended, or a gateway session that has ended */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -24748,7 +25774,7 @@ export interface operations {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
-            /** @description rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate */
+            /** @description rate_limited: refused API keys, throttled at login's rate */
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
@@ -24761,6 +25787,334 @@ export interface operations {
             };
             /** @description Internal Server Error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getUnsubscribeOptions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-UnsubscribeOptions"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused API keys, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After": number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    unsubscribeMailto: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["unsubscribeMailtoBody"];
+            };
+        };
+        responses: {
+            /** @description Discarded by the outbound pipeline */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-SendDiscarded"];
+                };
+            };
+            /** @description Sent; the copy kept in Sent */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-Message"];
+                };
+            };
+            /** @description Retained: scheduled for later, or held by a send limit until human release */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-ScheduledMessage"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    /** @description Seconds until another request is allowed */
+                    "Retry-After": number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    unsubscribeOneClick: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-UnsubscribedOneClick"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused API keys, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After": number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
