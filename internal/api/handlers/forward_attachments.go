@@ -131,7 +131,7 @@ func (h *MessageHandler) commitForward(r *http.Request, req sendMessageRequest, 
 		return zero, endpoint.Refuse(500, "internal_error", "Failed to build the forwarded message")
 	}
 	unsigned := raw
-	raw, err = h.signOutboundDKIM(rmail.DomainFromAddress(req.From), raw)
+	raw, err = h.signOutboundDKIM(r.Context(), rmail.DomainFromAddress(req.From), raw)
 	if err != nil {
 		return zero, endpoint.Refuse(503, "deferred", "Try again later")
 	}

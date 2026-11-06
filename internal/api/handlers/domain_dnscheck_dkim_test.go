@@ -99,7 +99,7 @@ func TestDNSCheck_DKIMExpectedIsTheKeyTheServerSignsWith(t *testing.T) {
 			// the record the check says to publish.
 			msg := "From: alice@" + domain.Name + "\r\nTo: bob@example.net\r\nSubject: hi\r\n" +
 				"Date: " + time.Now().UTC().Format(time.RFC1123Z) + "\r\n\r\nHello.\r\n"
-			signed, err := outbound.SignDKIM(tx, dnsCheckTestMasterKey, domain.Name, msg)
+			signed, err := outbound.SignDKIM(context.Background(), tx, dnsCheckTestMasterKey, domain.Name, msg)
 			if err != nil {
 				t.Fatalf("sign: %v", err)
 			}

@@ -1,6 +1,7 @@
 package rollup
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"strconv"
@@ -126,7 +127,7 @@ func TestWorker_RollupSnapshots(t *testing.T) {
 	// Snapshot 1: 5 delivered, 2 rejected.
 	cv.WithLabelValues("inbound", "delivered").Add(5)
 	cv.WithLabelValues("inbound", "rejected").Add(2)
-	if err := w.rollupOnce(now); err != nil {
+	if err := w.rollupOnce(context.Background(), now); err != nil {
 		t.Fatalf("rollupOnce #1: %v", err)
 	}
 	got := rollupValues(t, tx)
@@ -136,7 +137,7 @@ func TestWorker_RollupSnapshots(t *testing.T) {
 
 	// Snapshot 2: +3 delivered (cumulative 8). Same bucket → delta accumulates.
 	cv.WithLabelValues("inbound", "delivered").Add(3)
-	if err := w.rollupOnce(now); err != nil {
+	if err := w.rollupOnce(context.Background(), now); err != nil {
 		t.Fatalf("rollupOnce #2: %v", err)
 	}
 	got = rollupValues(t, tx)
@@ -145,7 +146,7 @@ func TestWorker_RollupSnapshots(t *testing.T) {
 	}
 
 	// Idempotent re-run: no counter change → zero delta → no double count.
-	if err := w.rollupOnce(now); err != nil {
+	if err := w.rollupOnce(context.Background(), now); err != nil {
 		t.Fatalf("rollupOnce #3 (idempotent): %v", err)
 	}
 	got = rollupValues(t, tx)
@@ -169,7 +170,7 @@ func TestWorker_RollupSnapshots(t *testing.T) {
 	reg2, cv2 := terminalCounter()
 	w.gatherer = reg2
 	cv2.WithLabelValues("inbound", "delivered").Add(1)
-	if err := w.rollupOnce(now); err != nil {
+	if err := w.rollupOnce(context.Background(), now); err != nil {
 		t.Fatalf("rollupOnce #4 (reset): %v", err)
 	}
 	got = rollupValues(t, tx)

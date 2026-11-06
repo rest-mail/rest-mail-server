@@ -1,6 +1,7 @@
 package rollup
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"testing"
@@ -43,7 +44,7 @@ func TestDownsampleEnabled(t *testing.T) {
 // truly opt-in.
 func TestDownsampleOnce_DisabledNoop(t *testing.T) {
 	w := &Worker{} // downsampling disabled, nil db
-	if err := w.downsampleOnce(time.Now()); err != nil {
+	if err := w.downsampleOnce(context.Background(), time.Now()); err != nil {
 		t.Fatalf("disabled downsampleOnce should be a no-op, got %v", err)
 	}
 }
@@ -168,7 +169,7 @@ func TestDownsample_CondensesAgedRows(t *testing.T) {
 	seedFine(t, tx, delivered, time.Date(2026, 7, 20, 10, 0, 0, 0, time.UTC), 7)
 
 	w := downsampleTestWorker(tx)
-	if err := w.downsampleOnce(now); err != nil {
+	if err := w.downsampleOnce(context.Background(), now); err != nil {
 		t.Fatalf("downsampleOnce: %v", err)
 	}
 
@@ -220,7 +221,7 @@ func TestDownsample_Idempotent(t *testing.T) {
 
 	w := downsampleTestWorker(tx)
 	for i := 0; i < 3; i++ {
-		if err := w.downsampleOnce(now); err != nil {
+		if err := w.downsampleOnce(context.Background(), now); err != nil {
 			t.Fatalf("downsampleOnce #%d: %v", i, err)
 		}
 	}
@@ -256,7 +257,7 @@ func TestDownsample_CrashSafe(t *testing.T) {
 	w := downsampleTestWorker(tx)
 	w.onBeforeFineDelete = func() error { return errors.New("simulated crash mid-downsample") }
 
-	if err := w.downsampleOnce(now); err == nil {
+	if err := w.downsampleOnce(context.Background(), now); err == nil {
 		t.Fatal("expected downsampleOnce to surface the injected failure")
 	}
 
@@ -270,7 +271,7 @@ func TestDownsample_CrashSafe(t *testing.T) {
 
 	// Recovery run condenses cleanly.
 	w.onBeforeFineDelete = nil
-	if err := w.downsampleOnce(now); err != nil {
+	if err := w.downsampleOnce(context.Background(), now); err != nil {
 		t.Fatalf("recovery downsampleOnce: %v", err)
 	}
 	coarse := coarseByDayOutcome(t, tx)
@@ -298,7 +299,7 @@ func TestDownsample_WithinWindowUntouched(t *testing.T) {
 	seedFine(t, tx, delivered, time.Date(2026, 7, 18, 8, 0, 0, 0, time.UTC), 4)
 
 	w := downsampleTestWorker(tx)
-	if err := w.downsampleOnce(now); err != nil {
+	if err := w.downsampleOnce(context.Background(), now); err != nil {
 		t.Fatalf("downsampleOnce: %v", err)
 	}
 
@@ -336,7 +337,7 @@ func TestDownsample_CoarseRetentionPrune(t *testing.T) {
 
 	w := downsampleTestWorker(tx)
 	w.coarseRetention = 30 * 24 * time.Hour // keep only ~30 days of coarse rows
-	if err := w.downsampleOnce(now); err != nil {
+	if err := w.downsampleOnce(context.Background(), now); err != nil {
 		t.Fatalf("downsampleOnce: %v", err)
 	}
 

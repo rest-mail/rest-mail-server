@@ -45,12 +45,12 @@ func TestSentMessage_CarriesOneVerifyingDKIMSignature(t *testing.T) {
 		t.Fatalf("render the message: %v", err)
 	}
 
-	signed, err := h.signOutboundDKIM(domain, raw)
+	signed, err := h.signOutboundDKIM(context.Background(), domain, raw)
 	if err != nil {
 		t.Fatalf("sign the message: %v", err)
 	}
 	// The queue worker's last step before relay must leave the message alone.
-	relayed, err := outbound.Prepare(h.db, h.masterKey, domain, signed)
+	relayed, err := outbound.Prepare(context.Background(), h.db, h.masterKey, domain, signed)
 	if err != nil {
 		t.Fatalf("prepare for relay: %v", err)
 	}
@@ -255,7 +255,7 @@ func signSentMessage(t *testing.T, h *MessageHandler, domain string) string {
 	if err != nil {
 		t.Fatalf("render the message: %v", err)
 	}
-	signed, err := h.signOutboundDKIM(domain, raw)
+	signed, err := h.signOutboundDKIM(context.Background(), domain, raw)
 	if err != nil {
 		t.Fatalf("sign the message: %v", err)
 	}
@@ -291,9 +291,9 @@ func TestSentMessage_IDNDKIM(t *testing.T) {
 			var signed string
 			var err error
 			if path == "api" {
-				signed, err = h.signOutboundDKIM(domain, raw)
+				signed, err = h.signOutboundDKIM(context.Background(), domain, raw)
 			} else {
-				signed, err = outbound.Prepare(h.db, h.masterKey, domain, raw)
+				signed, err = outbound.Prepare(context.Background(), h.db, h.masterKey, domain, raw)
 			}
 			if err != nil {
 				t.Fatalf("sign IDN message: %v", err)
@@ -321,7 +321,7 @@ func TestSentMessage_IDNDKIM(t *testing.T) {
 		if err := h.db.Model(&stored).Update("name", invalid).Error; err != nil {
 			t.Fatal(err)
 		}
-		if got, err := outbound.SignDKIM(h.db, h.masterKey, invalid, raw); err == nil || got != "" {
+		if got, err := outbound.SignDKIM(context.Background(), h.db, h.masterKey, invalid, raw); err == nil || got != "" {
 			t.Fatalf("invalid hosted IDN signed or relayed unsigned: message length %d, error %v", len(got), err)
 		}
 	})

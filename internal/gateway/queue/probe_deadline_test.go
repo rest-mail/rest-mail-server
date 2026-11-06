@@ -2,6 +2,7 @@ package queue
 
 import (
 	"bytes"
+	"context"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -93,7 +94,7 @@ func TestDeliverRESTMAILErrorBodyBounded(t *testing.T) {
 	// Trust the httptest certificate; allowPrivateDest permits
 	// the loopback endpoint — isolating the body cap as the property under test.
 	w := &Worker{sendDeadline: defaultSendDeadline, restmailRoots: srv.Client().Transport.(*http.Transport).TLSClientConfig.RootCAs, allowPrivateDest: true}
-	err := w.deliverRESTMAILHTTPS(srv.URL, testItem())
+	err := w.deliverRESTMAILHTTPS(context.Background(), srv.URL, testItem())
 	if err == nil {
 		t.Fatal("expected a non-2xx RESTMAIL response to surface as an error")
 	}
