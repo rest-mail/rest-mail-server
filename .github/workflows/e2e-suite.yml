@@ -1,7 +1,8 @@
 name: E2E suite
 
-# The full end-to-end topology and everything run against it, as a reusable
-# workflow: e2e.yml runs it on every code change (its gate is the required
+# The full end-to-end topology and everything run against it, with the JavaScript
+# filter isolation proof in a job beside it, as a reusable workflow: e2e.yml runs
+# it on every code change (its gate is the required
 # check `E2E (full topology)`), contract-fuzz.yml runs it nightly with the
 # contract tests' fuzz phase instead of their gating phases, and
 # contract-faults.yml runs it nightly with the fault run (#654) instead.
@@ -273,30 +274,6 @@ jobs:
           CONTRACT_DESCRIPTION_MODE: ${{ inputs.description-mode }}
         run: chore test:contract-teardown
 
-      - name: JavaScript filter isolation, between two real instances
-        # The real Go API, started and stopped by the instance commands, beside a
-        # second instance on the same testbed: authenticated filter calls, no
-        # egress, no reach into mailnet or the other instance, and testbed DNS
-        # from the API (#122). A skip here proves nothing, so it fails the step.
-        if: inputs.contract-phases == 'gate'
-        env:
-          RESTMAIL_LIVE_JS_FILTER_CONFIGS: isolation-a.test isolation-b.test
-        run: |
-          set -o pipefail
-          for domain in isolation-a.test isolation-b.test; do
-            chore config:scaffold DOMAIN="$domain"
-            # A scaffolded instance has internal mTLS on, and fails closed without
-            # its certificates.
-            CONFIG="$domain" chore instance:certs:issue
-            CONFIG="$domain" chore instance:mtls:issue
-            CONFIG="$domain" chore instance:dns:register
-          done
-          python3 -m unittest scripts/tests/test_js_filter_isolation_live.py -v 2>&1 | tee "$RUNNER_TEMP/jsfilter-isolation.log"
-          if grep -q 'skipped' "$RUNNER_TEMP/jsfilter-isolation.log"; then
-            echo "::error::the isolation test was skipped"
-            exit 1
-          fi
-
       - name: Contract tests (fuzz)
         # Values drawn from each schema, with shrinking and a replayable seed
         # (in the log). Exploratory, so it reports and never fails the run:
@@ -351,3 +328,131 @@ jobs:
       - name: Tear down e2e topology
         if: always()
         run: chore e2e:down
+
+  js-filter-isolation:
+    # The sandbox's own security proof, in a job of its own (#1979): it needs the
+    # testbed and the two instances it starts, not the topology above, and it
+    # shares no runner, container or data with it. It fails the suite as the
+    # topology job does, so the required `E2E (full topology)` check waits for it.
+    name: JS filter isolation
+    if: inputs.contract-phases == 'gate'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Retry transient image pull failures
+        run: echo "$GITHUB_WORKSPACE/scripts/ci/docker-retry" >> "$GITHUB_PATH"
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.10"
+          cache: true
+
+      - name: Install chore (the newest release, attested)
+        # The repo is driven by chores.yml, whose tasks declare `args:`. go-task
+        # parses the file but ignores those declarations, so a task that takes a
+        # parameter silently runs with its default — CI has to use the same runner
+        # as a developer's machine or it is testing something else.
+        #
+        # So it installs what a developer would: the newest release. chores.yml
+        # names the oldest chore that can read it (chore_min_version), and CI
+        # refuses to run below that floor rather than fail on an unknown field.
+        #
+        # Do NOT pipe-execute an install script from the network — that is an
+        # arbitrary-code-execution supply-chain surface. The tarball must match
+        # its release's checksums.txt, and its build attestation must show that
+        # chore's own release pipeline built it, before it is installed.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="$(gh release view --repo antimatter-studios/chore --json tagName --jq .tagName)"
+          version="${tag#v}"
+          min="$(awk '$1 == "chore_min_version:" { print $2 }' chores.yml)"
+          test -n "$min" || { echo "::error::chores.yml has no chore_min_version" >&2; exit 1; }
+          if [ "$(printf '%s\n%s\n' "$min" "$version" | sort -V | head -n1)" != "$min" ]; then
+            echo "::error::the newest chore is $version; chores.yml needs at least $min" >&2
+            exit 1
+          fi
+          tmp="$(mktemp -d)"
+          asset="chore-${version}-linux-x86_64.tar.gz"
+          gh release download "$tag" --repo antimatter-studios/chore \
+            --pattern "$asset" --pattern checksums.txt --dir "$tmp"
+          (cd "$tmp" && awk -v a="$asset" '$2 == a' checksums.txt | sha256sum --check --strict -)
+          gh attestation verify "$tmp/$asset" --repo antimatter-studios/chore
+          tar -xzf "$tmp/$asset" -C "$tmp" chore
+          sudo install -m 0755 "$tmp/chore" /usr/local/bin/chore
+          rm -rf "$tmp"
+          echo "chores.yml needs chore $min or newer"
+          chore --version
+
+      - name: Populate Go module cache
+        # For the `go run` steps on the runner itself. The golang containers of
+        # `test:e2e` and `instance:mtls:issue` use a volume of their own instead
+        # (scripts/source_volume.py).
+        run: go mod download
+
+      - name: Route git@github over HTTPS
+        # testbed:init / mailserver:init clone via `git@github.com:`. The hosted
+        # runner has no SSH key, so rewrite those URLs to anonymous HTTPS — the
+        # rest-mail substrate repos are public.
+        run: git config --global url."https://github.com/".insteadOf "git@github.com:"
+
+      - name: Clone testbed + reference-mailserver substrate (pinned)
+        run: |
+          set -euo pipefail
+          chore testbed:init
+          chore mailserver:init
+          python3 -B scripts/substrate_pins.py preflight
+
+      - name: Bring up the testbed
+        run: chore testbed:up
+
+      - name: JavaScript filter isolation, between two real instances
+        # The real Go API, started and stopped by the instance commands, beside a
+        # second instance on the same testbed: authenticated filter calls, no
+        # egress, no reach into mailnet or the other instance, and testbed DNS
+        # from the API (#122). A skip here proves nothing, so it fails the step.
+        env:
+          RESTMAIL_LIVE_JS_FILTER_CONFIGS: isolation-a.test isolation-b.test
+        run: |
+          set -o pipefail
+          for domain in isolation-a.test isolation-b.test; do
+            chore config:scaffold DOMAIN="$domain"
+            # A scaffolded instance has internal mTLS on, and fails closed without
+            # its certificates.
+            CONFIG="$domain" chore instance:certs:issue
+            CONFIG="$domain" chore instance:mtls:issue
+            CONFIG="$domain" chore instance:dns:register
+          done
+          python3 -m unittest scripts/tests/test_js_filter_isolation_live.py -v 2>&1 | tee "$RUNNER_TEMP/jsfilter-isolation.log"
+          if grep -q 'skipped' "$RUNNER_TEMP/jsfilter-isolation.log"; then
+            echo "::error::the isolation test was skipped"
+            exit 1
+          fi
+
+      - name: Collect container logs
+        if: always()
+        run: |
+          out="$RUNNER_TEMP/js-filter-isolation-logs"
+          mkdir -p "$out"
+          cp "$RUNNER_TEMP/jsfilter-isolation.log" "$out/" 2>/dev/null || true
+          docker ps -a > "$out/docker-ps.txt" 2>&1 || true
+          for c in $(docker ps -aq); do
+            name=$(docker inspect --format '{{.Name}}' "$c" | sed 's|^/||')
+            docker logs "$c" > "$out/container-$name.log" 2>&1 || true
+          done
+
+      - name: Upload container logs
+        if: always()
+        # Only people read this, so losing it must not fail the job.
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: js-filter-isolation-logs
+          path: ${{ runner.temp }}/js-filter-isolation-logs
+          retention-days: 7
+          if-no-files-found: warn

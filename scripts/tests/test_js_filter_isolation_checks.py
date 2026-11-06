@@ -2,9 +2,13 @@
 
 import contextlib
 import io
+import re
 import subprocess
 import unittest
+from pathlib import Path
 from unittest.mock import patch
+
+import yaml
 
 from scripts.tests import test_js_filter_isolation_live as live
 
@@ -145,6 +149,68 @@ class RealInstanceEvidenceTests(unittest.TestCase):
         ):
             self.check.check_api_to_filter(CONFIG)
         self.assertEqual(order, ["wait", "call"])
+
+
+class IsolationJobTests(unittest.TestCase):
+    """The proof left the topology job (#1979); what it runs and fails must not move."""
+
+    def setUp(self):
+        workflows = Path(__file__).resolve().parents[2] / ".github/workflows"
+        self.source = (workflows / "e2e-suite.yml").read_text()
+        suite = yaml.safe_load(self.source)
+        self.jobs = suite["jobs"]
+        self.job = self.jobs["js-filter-isolation"]
+        self.e2e = yaml.safe_load((workflows / "e2e.yml").read_text())["jobs"]
+
+    def step(self, job, name):
+        return next(s for s in job["steps"] if s.get("name") == name)
+
+    def test_it_runs_with_the_gate_and_only_in_its_own_job(self):
+        self.assertEqual(self.job["if"], "inputs.contract-phases == 'gate'")
+        self.assertNotIn(
+            "test_js_filter_isolation_live",
+            yaml.safe_dump(self.jobs["suite"]),
+        )
+
+    def test_it_runs_the_whole_test_on_two_instances_and_a_skip_fails(self):
+        step = next(
+            s
+            for s in self.job["steps"]
+            if "test_js_filter_isolation_live" in s.get("run", "")
+        )
+        self.assertNotIn("continue-on-error", step)
+        self.assertEqual(
+            step["env"]["RESTMAIL_LIVE_JS_FILTER_CONFIGS"],
+            "isolation-a.test isolation-b.test",
+        )
+        self.assertIn("python3 -m unittest scripts/tests/test_js_filter_isolation_live.py", step["run"])
+        self.assertNotIn(" -k ", step["run"])
+        self.assertIn("grep -q 'skipped'", step["run"])
+        for task in ("instance:certs:issue", "instance:mtls:issue", "instance:dns:register"):
+            self.assertIn(task, step["run"])
+
+    def test_the_required_check_waits_for_it(self):
+        # A reusable workflow's result covers every job in it, and the required
+        # `E2E (full topology)` gate reads that result.
+        self.assertIn("e2e-run", self.e2e["e2e"]["needs"])
+        self.assertTrue(self.e2e["e2e-run"]["uses"].endswith("e2e-suite.yml"))
+        self.assertIn("${{ needs.e2e-run.result }}", yaml.safe_dump(self.e2e["e2e"]))
+
+    def test_its_setup_is_the_topology_jobs_setup(self):
+        suite = self.jobs["suite"]
+        for name in (
+            "Checkout",
+            "Retry transient image pull failures",
+            "Set up Go",
+            "Install chore (the newest release, attested)",
+            "Populate Go module cache",
+            "Route git@github over HTTPS",
+        ):
+            with self.subTest(step=name):
+                self.assertEqual(self.step(self.job, name), self.step(suite, name))
+        name = "Clone testbed + reference-mailserver substrate (pinned)"
+        self.assertEqual(self.step(self.job, name)["run"], self.step(suite, name)["run"])
+        self.assertNotIn("TESTBED_REF", self.source)
 
 
 if __name__ == "__main__":
