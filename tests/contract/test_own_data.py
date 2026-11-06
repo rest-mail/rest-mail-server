@@ -176,6 +176,17 @@ SERVER_SETTINGS = (
     "getServerCapabilities",
     "updateServerCapabilities",
 )
+# The DMARC and TLS report, audit and delivery reads, and the TLS report
+# intake, which no link starts from or reaches.
+REPORTS_AND_AUDIT = (
+    "listDmarcReports",
+    "listTlsReports",
+    "receiveTlsReport",
+    "listAuditEntries",
+    "verifyAuditLog",
+    "getDeliveryLogs",
+    "getDashboardStats",
+)
 FOLLOWS_THE_SENT_MESSAGE = {
     "getMessage",
     "updateMessage",
@@ -268,7 +279,8 @@ class Selection(unittest.TestCase):
             - set(QUEUE)
             - set(CREDENTIALS_AND_BANS)
             - set(PIPELINE_READS)
-            - set(SERVER_SETTINGS),
+            - set(SERVER_SETTINGS)
+            - set(REPORTS_AND_AUDIT),
             link_followers(description, "createDomain") | {"createDomain"},
         )
 
@@ -296,6 +308,16 @@ class Selection(unittest.TestCase):
             for start in description_operations(description):
                 self.assertNotIn(operation, link_followers(description, start), start)
         self.assertLessEqual(set(SERVER_SETTINGS), set(own_data.MOVED))
+
+    def test_the_report_and_audit_reads_have_moved_and_no_link_touches_them(self):
+        description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
+        for operation in REPORTS_AND_AUDIT:
+            self.assertEqual(link_followers(description, operation), set())
+            for start in description_operations(description):
+                self.assertNotIn(operation, link_followers(description, start), start)
+        self.assertLessEqual(set(REPORTS_AND_AUDIT), set(own_data.MOVED))
+        # Its success needs the DMARC fixture, which no API call makes.
+        self.assertNotIn("getDmarcReport", own_data.MOVED)
 
     def test_it_selects_every_alias_operation_and_its_links(self):
         description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
