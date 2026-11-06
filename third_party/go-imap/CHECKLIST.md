@@ -1562,7 +1562,6 @@ corresponding command rows rather than counted as separate behavior.
 | IMAP2-CMD-75 | RFC 9051 §6.3.2 | SHOULD | Identify a successful writable SELECT with READ-WRITE in its tagged completion. | TestSelectionExamples |
 | IMAP2-CMD-76 | RFC 9051 §6.3.2 | MUST | When access permits reading but not writing, SELECT the mailbox read-only and announce READ-ONLY. | TestRightsSelectReadOnly |
 | IMAP2-CMD-78 | RFC 9051 §6.3.3 | MUST | Begin the successful EXAMINE tagged response text with READ-ONLY. | TestSelectionExamples |
-| IMAP2-CMD-79 | RFC 9051 §6.3.4 | MUST | Only acknowledge CREATE after creating a new mailbox; refuse extant names and invalid Net-Unicode, or normalize and report OLDNAME. | n/a: no backend mailbox-creation operation or Unicode normalization interface exists. CREATE can acknowledge an extant name (IMAP-CREATE-02); rest-mail/rest-mail-server#374 and #718. Gap: rest-mail/rest-mail-server#1669. |
 | IMAP2-CMD-79 | RFC 9051 §6.3.4 | MUST | Only acknowledge CREATE after creating a new mailbox; refuse extant names and invalid Net-Unicode, or normalize and report OLDNAME. | TestCreateMakesAnEmptyFolder |
 | IMAP2-CMD-80 | RFC 9051 §6.3.4 | MUST | Include Subscribed when an unsolicited LIST announces a newly created mailbox that was automatically subscribed. | n/a: the engine neither auto-subscribes created mailboxes nor sends unsolicited LIST responses. |
 | IMAP2-CMD-81 | RFC 9051 §6.3.4 | MUST | Treat a trailing hierarchy delimiter as a declaration and create the name without that delimiter. | TestCreateMakesAnEmptyFolder |
