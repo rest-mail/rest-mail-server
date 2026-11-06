@@ -455,6 +455,13 @@ func (m *mailbox) MoveUID(uid uint32, dest string) (uint32, error) {
 	return newUID, nil
 }
 
+// KeywordLimit makes the mailbox an imap.KeywordMailbox: the API keeps each
+// message's keywords (PATCH keywords, the IMAP message list's keywords), up
+// to imap.MaxKeywords per message, so SELECT offers \* and STORE, APPEND,
+// FETCH FLAGS and SEARCH KEYWORD use them. REST Mail sets no limit on the
+// distinct keywords of one folder.
+func (m *mailbox) KeywordLimit() int { return 0 }
+
 // DeletedUIDs reports the messages in folder that carry \Deleted now
 // (DeletedMailbox). The mark is the message's imap_deleted state in the API:
 // STORE writes it (Store), every session and device reads it back, and it

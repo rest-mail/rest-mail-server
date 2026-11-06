@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -158,12 +159,24 @@ func (s *Session) handleAppend(tag, args string) (closeConn bool) {
 	// Translate the flags into a neutral FlagUpdate, rejecting any flag the store
 	// cannot honour so the client is not misled into thinking it took effect. This
 	// runs before the continuation: a rejected APPEND must not read the literal.
+	if stores, _ := s.keywordStore(); !stores {
+		// The store keeps no keywords, so APPEND drops them.
+		appendFlags = withoutKeywords(appendFlags)
+	}
 	normalized, flagErr := imap.NormalizeImportFlags(appendFlags)
 	if flagErr != nil {
+		if errors.Is(flagErr, imap.ErrTooManyKeywords) {
+			s.tagged(tag, "NO", keywordLimitRefusal+": "+flagErr.Error())
+			return
+		}
 		s.tagged(tag, "NO", flagErr.Error())
 		return
 	}
 	appendFlags = normalized
+	if s.selected != nil && s.selected.name == folder && s.overKeywordLimit(appendFlags) {
+		s.tagged(tag, "NO", keywordLimitRefusal)
+		return
+	}
 	var flags imap.FlagUpdate
 	for _, flag := range appendFlags {
 		switch strings.ToLower(flag) {
