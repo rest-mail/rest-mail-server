@@ -13,6 +13,7 @@ import (
 
 	goimap "github.com/rest-mail/go-imap/pkg/imap"
 
+	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/connlimiter"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/rawmsg"
@@ -111,6 +112,10 @@ type mailbox struct {
 	// summary (#1498) can name the tool. It is never used to decide how to
 	// serve the client (RFC 2971 §3).
 	clientID goimap.ClientID
+	// imports are this connection's import sessions by account (#1498): one
+	// connection that APPENDs or COPYs is one import, audited as one summary.
+	// Opened at the first import into an account, closed by EndSession.
+	imports map[uint]string
 }
 
 var _ goimap.Mailbox = (*mailbox)(nil)
@@ -125,7 +130,51 @@ var (
 	_ goimap.UTF8Mailbox    = (*mailbox)(nil)
 	_ goimap.DateAppender   = (*mailbox)(nil)
 	_ goimap.IDMailbox      = (*mailbox)(nil)
+	_ goimap.SessionEnder   = (*mailbox)(nil)
 )
+
+// importMessage stores a message through the import operation, counted in this
+// connection's import session for the account. A session the API closed for being
+// idle is replaced; one that cannot be opened leaves the import to be audited on
+// its own, so the API, not the gateway, decides whether the import may happen.
+func (m *mailbox) importMessage(accountID uint, req *apiclient.ImportRequest) (*apiclient.ImportResponse, error) {
+	resp, err := m.api.ImportMessage(m.token, accountID, m.importSession(accountID), req)
+	if apiclient.IsImportSessionGone(err) {
+		delete(m.imports, accountID)
+		resp, err = m.api.ImportMessage(m.token, accountID, m.importSession(accountID), req)
+	}
+	return resp, err
+}
+
+func (m *mailbox) importSession(accountID uint) string {
+	if session, ok := m.imports[accountID]; ok {
+		return session
+	}
+	var body apitypes.OpenImportSessionBody
+	body.ClientName, _ = m.clientID.Get("name")
+	body.ClientVersion, _ = m.clientID.Get("version")
+	session, err := m.api.OpenImportSession(m.token, accountID, body)
+	if err != nil {
+		slog.Warn("imap: could not open an import session; the import is audited on its own", "account_id", accountID, "error", err)
+		return ""
+	}
+	if m.imports == nil {
+		m.imports = map[uint]string{}
+	}
+	m.imports[accountID] = session
+	return session
+}
+
+// EndSession closes this connection's import sessions, which writes their
+// summaries. The library calls it once, at LOGOUT or disconnect.
+func (m *mailbox) EndSession() {
+	for accountID, session := range m.imports {
+		if err := m.api.CloseImportSession(m.token, accountID, session); err != nil {
+			slog.Warn("imap: closing the import session failed; the API closes it when idle", "account_id", accountID, "error", err)
+		}
+	}
+	m.imports = nil
+}
 
 // SetClientID keeps the fields of the client's ID command (RFC 2971) for this
 // session. The library calls it once the session is authenticated, whether the
@@ -323,7 +372,7 @@ func (m *mailbox) CopyUID(uid uint32, dest string) (uint32, error) {
 	received := src.ReceivedAt
 
 	flags := importFlags(goimap.FlagUpdate{Answered: &answered, Seen: &seen, Flagged: &flagged, Draft: &draft, Deleted: &src.IMAPDeleted, Keywords: src.Keywords})
-	resp, err := m.api.ImportMessage(m.token, src.MailboxID, &apiclient.ImportRequest{
+	resp, err := m.importMessage(src.MailboxID, &apiclient.ImportRequest{
 		RawMessage:   []byte(m.rawMessage(src)),
 		Folder:       dest,
 		Flags:        flags,
@@ -386,7 +435,7 @@ func (m *mailbox) appendAt(dest string, f goimap.FlagUpdate, internalDate time.T
 	// message. Done before parsing/storing so both the parsed fields and the
 	// persisted raw are consistent.
 	raw = normalizeToCRLF(raw)
-	resp, err := m.api.ImportMessage(m.token, m.accountID, &apiclient.ImportRequest{
+	resp, err := m.importMessage(m.accountID, &apiclient.ImportRequest{
 		RawMessage:   raw,
 		Folder:       dest,
 		Flags:        importFlags(f),

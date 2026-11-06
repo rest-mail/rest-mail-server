@@ -128,7 +128,10 @@ func runSubcommand(args []string, stdout, stderr io.Writer) (code int, handled b
 		defer stop()
 		return runImportAliases(ctx, args[2:], os.Stdin, os.Getenv("RESTMAIL_API_KEY"), client, stdout, stderr), true
 	case "import-maildir":
-		return runImportMail(context.Background(), "maildir", args[2:], os.Getenv("RESTMAIL_API_KEY"), client, stdout, stderr), true
+		// An interrupt ends the run, which still closes its import session.
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		return runImportMail(ctx, "maildir", args[2:], os.Getenv("RESTMAIL_API_KEY"), client, stdout, stderr), true
 	case "export-maildir":
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
@@ -140,7 +143,10 @@ func runSubcommand(args []string, stdout, stderr io.Writer) (code int, handled b
 		defer stop()
 		return runImportIMAP(ctx, args[2:], os.Getenv("RESTMAIL_API_KEY"), os.Getenv("RESTMAIL_IMAP_PASSWORD"), os.Getenv("RESTMAIL_IMAP_ACCESS_TOKEN"), client, stdout, stderr), true
 	case "import-mbox":
-		return runImportMail(context.Background(), "mbox", args[2:], os.Getenv("RESTMAIL_API_KEY"), client, stdout, stderr), true
+		// An interrupt ends the run, which still closes its import session.
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		return runImportMail(ctx, "mbox", args[2:], os.Getenv("RESTMAIL_API_KEY"), client, stdout, stderr), true
 	case "mail-queue":
 		return runMailQueue(context.Background(), args[2:], os.Getenv("RESTMAIL_API_KEY"), os.Stdin, client, stdout, stderr), true
 	case "tlsa-records":

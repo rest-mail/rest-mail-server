@@ -15452,9 +15452,16 @@ paths:
         Sent, a message whose Message-ID is on one authenticated SMTP submission saved in
         that account's Sent in the last 5 minutes is not stored, whatever always_store says,
         and the answer names the saved message with imported false. Messages without Message-ID use a
-        deterministic SHA-256 import identity; the raw source remains unchanged. Every
-        attempt is audited; successful imports and skips also receive a transactional
-        messages.import audit entry. The decoded message is bounded by SMTP_MAX_MESSAGE_SIZE
+        deterministic SHA-256 import identity; the raw source remains unchanged. The one exception is a leading mbox From_ separator line (RFC 4155), which is dropped so the message starts at its first header, and counted as mbox_separator_stripped; any other header block that does not parse is refused. Every
+        attempt the route can read is audited in a messages.import summary, never one entry
+        per message of a session. With import_session (from createImportSession) it is counted
+        in that session's summary, written once when the session closes; without it, it is
+        written at once as a summary of its one message. A summary counts, per folder, messages
+        imported (in the same transaction as the message), deduplicated (a copy matched to its
+        submission included) and refused (stored
+        nothing, including server failures), and the bytes imported. A request over the body
+        limit, or one that cannot be read as this request, is refused before it is counted.
+        An unknown, closed or other opener's import_session is refused as import_session_not_found. The decoded message is bounded by SMTP_MAX_MESSAGE_SIZE
         (10 MiB by default); the general API body limit may be stricter. Deleted state
         and up to 100 case-insensitive keywords of 1-255 ASCII bytes are preserved.
         Keywords must be RFC 3501 atoms without backslash. Deleted messages use
@@ -15468,6 +15475,14 @@ paths:
         schema:
           minimum: 1
           type: integer
+      - description: The import session this message belongs to, from createImportSession.
+          Without it, the message is audited as an import of its own.
+        in: query
+        name: import_session
+        required: false
+        schema:
+          pattern: ^$|^[0-9a-f]{32}$
+          type: string
       requestBody:
         content:
           application/json:
@@ -15592,6 +15607,215 @@ paths:
       tags:
       - Messages
 
+  /api/v1/accounts/{id}/messages/import-sessions:
+    post:
+      description: Opens an import of many messages into the account, so it is audited
+        as one summary instead of one entry per message. Send the returned id as import_session
+        with each importMessage call, then close it with closeImportSession. Requires
+        mail:import on the account. A session with no import or close for idle_timeout_seconds
+        (one hour) is closed by the server and its summary written. The IMAP gateway
+        opens one at a connection's first APPEND or COPY and closes it at LOGOUT or
+        disconnect, naming the client from its ID command.
+      operationId: createImportSession
+      parameters:
+      - example: 1
+        in: path
+        name: id
+        required: true
+        schema:
+          minimum: 1
+          type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OpenImportSessionBody'
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Data-ImportSession'
+          description: Created
+          links:
+            closeImportSession:
+              operationId: closeImportSession
+              parameters:
+                id: '$request.path.id'
+                session: '$response.body#/data/id'
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 'unauthorized, app_password_required or setup_required: a refused
+            session or HTTP Basic credential'
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        "413":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Request Entity Too Large
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+          description: Unprocessable Entity
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 'rate_limited: refused API keys or HTTP Basic credentials, throttled
+            at login''s rate'
+          headers:
+            Retry-After:
+              description: Seconds until a request may be made again
+              required: true
+              schema:
+                type: integer
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 'unavailable: the credential or session check could not be made'
+      security:
+      - CookieAuth:
+        - mail:import
+      - BearerAuth:
+        - mail:import
+      - APIKeyAuth:
+        - mail:import
+      - BasicAuth:
+        - mail:import
+      summary: Open an import session
+      tags:
+      - Messages
+  /api/v1/accounts/{id}/messages/import-sessions/{session}:
+    delete:
+      description: 'Closes the import session and writes its summary as one messages.import
+        audit entry: account, client, start and end, and per folder the messages imported,
+        deduplicated and refused with the bytes imported. The summary is returned. Only
+        the account that opened the session may close it; a session that does not exist,
+        has closed or belongs to another opener is not found.'
+      operationId: closeImportSession
+      parameters:
+      - example: 1
+        in: path
+        name: id
+        required: true
+        schema:
+          minimum: 1
+          type: integer
+      - example: 00112233445566778899aabbccddeeff
+        in: path
+        name: session
+        required: true
+        schema:
+          pattern: ^[0-9a-f]{32}$
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Data-ImportSessionSummary'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 'unauthorized, app_password_required or setup_required: a refused
+            session or HTTP Basic credential'
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        "413":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 'request_too_large: the body is over the API''s size cap'
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+          description: Unprocessable Entity
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 'rate_limited: refused API keys or HTTP Basic credentials, throttled
+            at login''s rate'
+          headers:
+            Retry-After:
+              description: Seconds until a request may be made again
+              required: true
+              schema:
+                type: integer
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 'unavailable: the credential or session check could not be made'
+      security:
+      - CookieAuth:
+        - mail:import
+      - BearerAuth:
+        - mail:import
+      - APIKeyAuth:
+        - mail:import
+      - BasicAuth:
+        - mail:import
+      summary: Close an import session and write its summary
+      tags:
+      - Messages
 components:
   securitySchemes:
     CookieAuth:
@@ -20310,6 +20534,127 @@ components:
       - internal_date
       type: object
 
+    Data-ImportSession:
+      additionalProperties: false
+      properties:
+        data:
+          $ref: '#/components/schemas/ImportSession'
+      required:
+      - data
+      type: object
+    Data-ImportSessionSummary:
+      additionalProperties: false
+      properties:
+        data:
+          $ref: '#/components/schemas/ImportSessionSummary'
+      required:
+      - data
+      type: object
+    ImportFolderCounts:
+      additionalProperties: false
+      properties:
+        bytes:
+          format: int64
+          type: integer
+        deduplicated:
+          format: int64
+          type: integer
+        imported:
+          format: int64
+          type: integer
+        mbox_separator_stripped:
+          format: int64
+          type: integer
+        refused:
+          format: int64
+          type: integer
+      required:
+      - imported
+      - deduplicated
+      - refused
+      - bytes
+      - mbox_separator_stripped
+      type: object
+    ImportSession:
+      additionalProperties: false
+      properties:
+        account_id:
+          type: integer
+        client_name:
+          type: string
+        client_version:
+          type: string
+        id:
+          type: string
+        idle_timeout_seconds:
+          type: integer
+        started_at:
+          format: date-time
+          type: string
+      required:
+      - id
+      - account_id
+      - started_at
+      - idle_timeout_seconds
+      type: object
+    ImportSessionSummary:
+      additionalProperties: false
+      properties:
+        account_id:
+          type: integer
+        bytes:
+          format: int64
+          type: integer
+        client_name:
+          type: string
+        client_version:
+          type: string
+        deduplicated:
+          format: int64
+          type: integer
+        ended_at:
+          format: date-time
+          type: string
+        folders:
+          additionalProperties:
+            $ref: '#/components/schemas/ImportFolderCounts'
+          type: object
+        id:
+          type: string
+        imported:
+          format: int64
+          type: integer
+        mbox_separator_stripped:
+          format: int64
+          type: integer
+        refused:
+          format: int64
+          type: integer
+        started_at:
+          format: date-time
+          type: string
+      required:
+      - id
+      - account_id
+      - started_at
+      - ended_at
+      - imported
+      - deduplicated
+      - refused
+      - bytes
+      - mbox_separator_stripped
+      - folders
+      type: object
+    OpenImportSessionBody:
+      additionalProperties: false
+      properties:
+        client_name:
+          maxLength: 255
+          type: string
+        client_version:
+          maxLength: 255
+          type: string
+      type: object
     ImportMessageResult:
       additionalProperties: false
       properties:

@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"os"
 	"reflect"
+	"regexp"
 	"strings"
 	"sync"
 	"unicode"
@@ -86,7 +87,11 @@ func (h *MessageImportHandler) importSpooledMessage(r *http.Request, _ struct{})
 		}
 	}
 	in.Body.RawMessage = nil
-	return h.storeImportedMessage(r, in.ID, in.Body, source)
+	result, err = h.storeImportedMessage(r, in.ID, in.Body, source, in.ImportSession)
+	if err != nil {
+		h.auditRefusal(r, in.ID, in.Body.Folder, in.ImportSession, err)
+	}
+	return result, err
 }
 
 // readSpooledBody copies the request's body to a file and reads it once from there. The size caps
@@ -127,28 +132,76 @@ type importSource struct {
 	nul      bool      // a NUL byte was written
 	hash     hash.Hash // when set, finish records the checksum of what was written
 	checksum [sha256.Size]byte
+	// head holds the message's first line until it is whole, to tell an mbox From_
+	// separator from a header; headDone is set once it has been judged and written.
+	head     []byte
+	headDone bool
+	// mboxSeparator is set when a leading From_ line was dropped (#1498).
+	mboxSeparator bool
+	// mbox says a leading From_ line is dropped: set for an imported message only.
+	mbox bool
 }
 
 // newSpooledText is a source with no limit and no checksum: nothing compares a delivery with what
-// is stored, and the route's body cap bounds it.
+// is stored, and the route's body cap bounds it. It keeps a leading From_ line, which only an
+// import drops.
 func newSpooledText() (*importSource, error) {
 	source, err := newImportSource(math.MaxInt64)
 	if err != nil {
 		return nil, err
 	}
 	source.hash = nil
+	source.mbox = false
 	return source, nil
 }
+
+// maxImportFirstLine is RFC 5322's line limit with its CRLF: a longer first line is
+// no From_ separator, and is written as it came.
+const maxImportFirstLine = 1000
+
+// mboxSeparatorLine is the mbox "From_" line (RFC 4155): "From ", the envelope
+// sender as one token, and the asctime(3) date some writers give a zone or
+// year-last offset. A header has a colon before its first space; this has none.
+var mboxSeparatorLine = regexp.MustCompile(`^From [^\s:]\S* +(Mon|Tue|Wed|Thu|Fri|Sat|Sun) +` +
+	`(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) +\d{1,2} +\d{1,2}:\d{2}(:\d{2})?` +
+	`( +([A-Z]{1,5}|[+-]\d{4}))? +\d{4}( +([A-Z]{1,5}|[+-]\d{4}))? *\r?\n$`)
 
 func newImportSource(limit int64) (*importSource, error) {
 	file, remove, err := newImportSpool()
 	if err != nil {
 		return nil, err
 	}
-	return &importSource{file: file, remove: remove, limit: limit, hash: sha256.New()}, nil
+	return &importSource{file: file, remove: remove, limit: limit, hash: sha256.New(), mbox: true}, nil
 }
 
+// write adds decoded octets. The first line is held until it is whole: an mbox From_
+// separator is dropped so the message starts at its first header, and anything
+// else is kept as it came.
 func (s *importSource) write(data []byte) error {
+	if s.headDone || !s.mbox {
+		return s.spool(data)
+	}
+	s.head = append(s.head, data...)
+	end := bytes.IndexByte(s.head, '\n')
+	if end < 0 && len(s.head) < maxImportFirstLine {
+		return nil
+	}
+	return s.judgeHead(end)
+}
+
+// judgeHead writes the held first line, without it when it is a From_ separator, and
+// whatever came after it. end is the index of its LF, or -1 when there is none.
+func (s *importSource) judgeHead(end int) error {
+	head := s.head
+	s.head, s.headDone = nil, true
+	if s.mbox && end >= 0 && end < maxImportFirstLine && mboxSeparatorLine.Match(head[:end+1]) {
+		s.mboxSeparator = true
+		head = head[end+1:]
+	}
+	return s.spool(head)
+}
+
+func (s *importSource) spool(data []byte) error {
 	s.size += int64(len(data))
 	s.nul = s.nul || bytes.IndexByte(data, 0) >= 0
 	if s.tooLarge() {
@@ -165,11 +218,24 @@ func (s *importSource) write(data []byte) error {
 
 func (s *importSource) tooLarge() bool { return s.size > s.limit }
 
-// finish records the checksum of what was written.
-func (s *importSource) finish() {
+// finish writes a first line still held, for a message with no line end, and
+// records the checksum of what was written.
+func (s *importSource) finish() error {
+	if err := s.flushHead(); err != nil {
+		return err
+	}
 	if s.hash != nil {
 		copy(s.checksum[:], s.hash.Sum(nil))
 	}
+	return nil
+}
+
+// flushHead writes a first line still held: the message has ended without a line end.
+func (s *importSource) flushHead() error {
+	if s.headDone {
+		return nil
+	}
+	return s.judgeHead(bytes.IndexByte(s.head, '\n'))
 }
 
 // replace makes the file hold data, for a message the binder decoded.
@@ -184,11 +250,11 @@ func (s *importSource) replace(data []byte) error {
 	if s.hash != nil {
 		s.hash.Reset()
 	}
+	s.head, s.headDone, s.mboxSeparator = nil, false, false
 	if err := s.write(data); err != nil {
 		return err
 	}
-	s.finish()
-	return nil
+	return s.finish()
 }
 
 // reader reads the message from its start, and stops being good when reader is called again.
@@ -296,7 +362,9 @@ func scanSpooledBody(file io.Reader, spec *spooledBodySpec) (importBodyScan, err
 	if errors.Is(err, errNotJSON) {
 		return importBodyScan{standIn: []byte(importNotJSON)}, nil
 	}
-	spec.source.finish()
+	if finished := spec.source.finish(); err == nil {
+		err = finished
+	}
 	return scanned, err
 }
 
@@ -409,6 +477,9 @@ func (s *jsonScanner) importFields(spec *spooledBodySpec) (importBodyScan, error
 				return scanned, err
 			}
 			if err := decoder.finish(); err != nil {
+				return scanned, err
+			}
+			if err := source.flushHead(); err != nil {
 				return scanned, err
 			}
 			switch {

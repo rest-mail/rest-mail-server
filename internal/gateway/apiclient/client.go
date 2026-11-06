@@ -460,12 +460,39 @@ type ImportResponse struct {
 // ImportMessage stores a message in an account as the signed-in user, without
 // delivery rules: an IMAP client's APPEND or COPY. The same message already in the
 // folder answers with that copy and Imported false, unless req.AlwaysStore is set.
-func (c *Client) ImportMessage(token string, accountID uint, req *ImportRequest) (*ImportResponse, error) {
+// session, when not empty, is the import session the message is counted in (#1498).
+func (c *Client) ImportMessage(token string, accountID uint, session string, req *ImportRequest) (*ImportResponse, error) {
 	var resp ImportResponse
-	if err := c.postAuth(fmt.Sprintf("/api/v1/accounts/%d/messages/import", accountID), token, req, &resp); err != nil {
+	path := fmt.Sprintf("/api/v1/accounts/%d/messages/import", accountID)
+	if session != "" {
+		path += "?import_session=" + url.QueryEscape(session)
+	}
+	if err := c.postAuth(path, token, req, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
+}
+
+// OpenImportSession opens an import session, so the imports sent with its id are
+// audited as one summary when CloseImportSession ends it (#1498).
+func (c *Client) OpenImportSession(token string, accountID uint, body apitypes.OpenImportSessionBody) (string, error) {
+	var resp endpoint.Data[apitypes.ImportSession]
+	if err := c.postAuth(fmt.Sprintf("/api/v1/accounts/%d/messages/import-sessions", accountID), token, body, &resp); err != nil {
+		return "", err
+	}
+	return resp.Data.ID, nil
+}
+
+// CloseImportSession closes an import session, which writes its summary.
+func (c *Client) CloseImportSession(token string, accountID uint, session string) error {
+	return c.deleteAuth(fmt.Sprintf("/api/v1/accounts/%d/messages/import-sessions/%s", accountID, url.PathEscape(session)), token)
+}
+
+// IsImportSessionGone reports whether err is the API refusing an import session it
+// no longer has: closed for being idle, so the caller opens another.
+func IsImportSessionGone(err error) bool {
+	var apiErr *APIError
+	return errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound && strings.Contains(apiErr.Body, `"import_session_not_found"`)
 }
 
 // ── Quota ─────────────────────────────────────────────────────────────

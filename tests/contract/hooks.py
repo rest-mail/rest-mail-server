@@ -3493,3 +3493,71 @@ def install_a_sieve_script_where_there_is_none(transaction):
     fixture_call(
         transaction, "DELETE", path[path.index("/api/") :], expect=PROBE_REFUSALS
     )
+
+
+# The documented session that never existed (closeImportSession/session_not_found).
+UNKNOWN_IMPORT_SESSION = "ffeeddccbbaa99887766554433221100"
+
+
+def on_the_admins_import_account(transaction):
+    """The path's account becomes the fixture admin's own, for a request with
+    the fixture admin's session: the example's account 12 is a number, not a
+    fixture. Answers the new path's parts, or None when it is left alone."""
+    if not with_the_fixture_admins_session(transaction):
+        return None
+    path, _, query = transaction.get("fullPath", "").partition("?")
+    parts = path.split("/")
+    if len(parts) < 7 or not positive_id(parts[4]):
+        return None
+    parts[4] = str(mailbox_id(origin_of(transaction), ADMIN))
+    transaction["fullPath"] = "/".join(parts) + ("?" + query if query else "")
+    return parts
+
+
+@hooks.before("createImportSession")
+def open_an_import_session_on_the_admins_account(transaction):
+    # The documented open (201) opens a session on the run's own account; the
+    # after hook closes it, so no session is left for the idle sweeper.
+    if " > 201 > " in transaction.get("name", ""):
+        on_the_admins_import_account(transaction)
+
+
+@hooks.after("createImportSession")
+def close_the_opened_import_session(transaction):
+    data = hooks.get_json(transaction, "real").get("data") or {}
+    session, account = data.get("id"), data.get("account_id")
+    if not isinstance(session, str) or type(account) is not int or account < 1:
+        return
+    fixture_call(
+        transaction,
+        "DELETE",
+        f"/api/v1/accounts/{account:d}/messages/import-sessions/{session}",
+        expect=(404,),
+    )
+
+
+@hooks.before("closeImportSession")
+def close_an_import_session_the_run_opened(transaction):
+    # The documented close (200) needs a session that is open: one is opened
+    # for the run's own account and its id put in the path. The documented
+    # unknown session (404) is asked of the run's own account, so what it
+    # finds missing is the session and not the account.
+    name = transaction.get("name", "")
+    path = transaction.get("fullPath", "").partition("?")[0]
+    if " > 200 > " in name:
+        parts = on_the_admins_import_account(transaction)
+        if parts is None:
+            return
+        opened = fixture_call(
+            transaction,
+            "POST",
+            f"/api/v1/accounts/{parts[4]}/messages/import-sessions",
+            {"client_name": "vertrag", "client_version": "contract"},
+        )
+        session = (opened or {}).get("id")
+        if not isinstance(session, str):
+            raise RuntimeError("the import-session fixture returned no id")
+        parts[-1] = session
+        transaction["fullPath"] = "/".join(parts)
+    elif path.rstrip("/").rsplit("/", 1)[-1] == UNKNOWN_IMPORT_SESSION:
+        on_the_admins_import_account(transaction)

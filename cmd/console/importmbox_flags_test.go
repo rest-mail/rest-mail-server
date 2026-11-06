@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -21,7 +20,7 @@ func TestImportMboxPreservesKeywordsAndDeletedOnAPIWire(t *testing.T) {
 		t.Fatal(err)
 	}
 	var got apitypes.ImportMessageBody
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	server := importSessionServer(t, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if err := json.NewDecoder(request.Body).Decode(&got); err != nil {
 			t.Error(err)
 		}

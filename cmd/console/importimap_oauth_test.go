@@ -178,7 +178,7 @@ func TestImportIMAPOAuthCopiesFolderAndKeepsFailuresPrivate(t *testing.T) {
 						connection.TLSConfig = &tls.Config{RootCAs: x509.NewCertPool()}
 					}
 					var received []apitypes.ImportMessageBody
-					destination := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+					destination := importSessionServer(t, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 						if request.URL.Path != "/api/v1/accounts/12/messages/import" || request.Header.Get("Authorization") != "Bearer FAKE-destination-key" {
 							t.Error("wrong destination operation or credential")
 						}
@@ -272,7 +272,7 @@ func TestImportIMAPOAuthPreservesDeletedAndKeywords(t *testing.T) {
 				connection := newOAuthImportFixture(t, fixture, transport)
 				var mutex sync.Mutex
 				flags := make(map[string][]string)
-				destination := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				destination := importSessionServer(t, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 					var wire struct {
 						Folder string   `json:"folder"`
 						Flags  []string `json:"flags"`

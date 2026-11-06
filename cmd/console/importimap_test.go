@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/http/httptest"
 	"reflect"
 	"strings"
 	"sync"
@@ -31,7 +30,7 @@ func TestImportIMAPPublicAPIAndResumableSummary(t *testing.T) {
 	seen := map[string]bool{}
 	var mu sync.Mutex
 	var received []apitypes.ImportMessageBody
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := importSessionServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		defer mu.Unlock()
 		if r.Method != http.MethodPost || r.URL.Path != "/api/v1/accounts/12/messages/import" || r.Header.Get("Authorization") != "Bearer destination-key-never-log" {
@@ -89,7 +88,7 @@ func TestImportIMAPDryRunAndPartialFailure(t *testing.T) {
 	for _, dry := range []bool{false, true} {
 		t.Run(fmt.Sprint(dry), func(t *testing.T) {
 			var requests atomic.Int32
-			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			srv := importSessionServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if requests.Add(1) == 2 {
 					http.Error(w, "destination-key-never-log private-source-content", http.StatusInsufficientStorage)
 					return

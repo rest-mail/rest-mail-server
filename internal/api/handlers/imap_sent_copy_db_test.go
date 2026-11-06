@@ -268,7 +268,7 @@ func TestOnlyAppendMatchesASubmission(t *testing.T) {
 	client := newIMAPProofClient(t, apiURL)
 	imported := func(alwaysStore bool, raw string) *apiclient.ImportResponse {
 		t.Helper()
-		resp, err := apiclient.New(apiURL).ImportMessage("token", account.ID, &apiclient.ImportRequest{
+		resp, err := apiclient.New(apiURL).ImportMessage("token", account.ID, "", &apiclient.ImportRequest{
 			RawMessage: []byte(raw), Folder: "Sent", InternalDate: time.Now(), AlwaysStore: alwaysStore,
 		})
 		if err != nil {
