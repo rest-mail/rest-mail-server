@@ -66,6 +66,8 @@ tasks:
           --cap-add CHOWN --cap-add DAC_OVERRIDE --cap-add FOWNER \
           --cap-add SETGID --cap-add SETUID \
           --pids-limit 256 --memory 512m --cpus 1"
+        # pg_stat_statements is preloaded as the chart's Postgres preloads it,
+        # for the slow statement view (#1629).
         # POSTGRES_PASSWORD goes through a 0600 env-file rather than an -e flag,
         # so it never sits on the `docker run` command line (host process list,
         # shell history, CI logs). Removed once docker has read it.
@@ -90,7 +92,8 @@ tasks:
           --health-interval 10s \
           --health-timeout 5s \
           --health-retries 5 \
-          {{.POSTGRES_IMAGE}} >$OUTPUT 2>&1
+          {{.POSTGRES_IMAGE}} \
+          -c shared_preload_libraries=pg_stat_statements >$OUTPUT 2>&1
 
   down:
     desc: Stop and remove postgres (preserves the data volume)

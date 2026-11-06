@@ -257,6 +257,8 @@
     "getDeliveryLogs",
     "listAuditEntries",
     "listBans",
+    "listSlowStatements",
+    "resetSlowStatements",
     "unbanIP",
     "verifyAuditLog"
   ],

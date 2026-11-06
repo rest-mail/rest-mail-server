@@ -220,6 +220,13 @@ func autoMigrate(db *gorm.DB) error {
 		slog.Warn("failed to create reply parent index", "error", err)
 	}
 
+	// Statement statistics for the slow-query view (#1629). The chart preloads
+	// the library; a database that does not, or a user that may not create
+	// extensions, leaves the view answering 503 rather than failing the boot.
+	if err := db.Exec(`CREATE EXTENSION IF NOT EXISTS pg_stat_statements`).Error; err != nil {
+		slog.Warn("pg_stat_statements not available; the slow statement view will answer 503", "error", err)
+	}
+
 	// Pipeline indexes
 	db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_contacts_mailbox_email ON contacts(mailbox_id, email)`)
 	db.Exec(`CREATE INDEX IF NOT EXISTS idx_contacts_trust_level ON contacts(mailbox_id, trust_level)`)
