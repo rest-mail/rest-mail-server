@@ -17,5 +17,5 @@ func (h *MessageImportHandler) importMessage(r *http.Request, in importMessageRe
 	if err := source.replace(in.Body.RawMessage); err != nil {
 		return apitypes.ImportMessageResult{}, err
 	}
-	return h.storeImportedMessage(r, in.ID, in.Body, source)
+	return h.storeImportedMessage(r, in.ID, in.Body, source, in.ImportSession)
 }

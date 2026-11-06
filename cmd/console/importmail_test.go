@@ -45,7 +45,7 @@ func mailImportSource(t *testing.T) (string, []byte, time.Time) {
 func TestImportMaildirPublicAPIAndResumableSummary(t *testing.T) {
 	root, raw, date := mailImportSource(t)
 	var received []apitypes.ImportMessageBody
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := importSessionServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost || r.URL.Path != "/api/v1/accounts/12/messages/import" || r.Header.Get("Authorization") != "Bearer private-test-key" {
 			t.Errorf("wrong public import request: %s %s", r.Method, r.URL.Path)
 		}
@@ -146,7 +146,7 @@ func TestImportMaildirRenamesFoldersAndImportsEveryMessage(t *testing.T) {
 		}
 	}
 	folders := map[string]int{}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := importSessionServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var message apitypes.ImportMessageBody
 		if err := json.NewDecoder(r.Body).Decode(&message); err != nil {
 			t.Error(err)

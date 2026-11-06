@@ -69,6 +69,10 @@
       "read": "No route reads one grant: listGrants is the read of the grants a caller may see.",
       "update": "A grant's mode changes only through activateGrant, deactivateGrant and makeGrantEligible, each taking a fresh second factor in its body, so no answer can fill them."
     },
+    "createImportSession": {
+      "read": "No route reads an open session: its counts are written once, as the summary closeImportSession answers and audits.",
+      "update": "A session has nothing a client changes: each importMessage with its id counts into it, and closing it ends it."
+    },
     "createPipeline": {
       "read": "No route reads one pipeline: listPipelines is the read of the pipelines an administrator may see."
     },

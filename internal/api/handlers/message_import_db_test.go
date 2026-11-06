@@ -62,7 +62,7 @@ func importProofDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(append(accountModels, &models.Message{}, &models.Attachment{})...); err != nil {
+	if err := db.AutoMigrate(append(accountModels, &models.Message{}, &models.Attachment{}, &models.ImportSession{})...); err != nil {
 		t.Fatal(err)
 	}
 	if err := rmdb.MigrateAuditLog(db); err != nil {

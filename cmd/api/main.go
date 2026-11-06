@@ -28,6 +28,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/domainstate"
 	"github.com/rest-mail/rest-mail-server/internal/grants"
 	"github.com/rest-mail/rest-mail-server/internal/greylist"
+	"github.com/rest-mail/rest-mail-server/internal/importsession"
 	"github.com/rest-mail/rest-mail-server/internal/metrics"
 	rmime "github.com/rest-mail/rest-mail-server/internal/mime"
 	"github.com/rest-mail/rest-mail-server/internal/rollup"
@@ -311,6 +312,8 @@ func main() {
 	// regardless; this writes the expiry into the audit log.
 	grantSweeper := grants.NewSweeper(database, grants.SweepInterval)
 	grantSweeper.Start()
+	importSweeper := importsession.NewSweeper(database)
+	importSweeper.Start()
 
 	var anchorWorker *auditanchor.Worker
 	if cfg.AuditAnchorEmailEnabled {
@@ -462,6 +465,7 @@ func main() {
 	}
 	domainWatcher.Shutdown()
 	grantSweeper.Shutdown()
+	importSweeper.Shutdown()
 	if anchorWorker != nil {
 		anchorWorker.Shutdown()
 	}

@@ -251,7 +251,7 @@ func TestHeaderSectionIsWhatStripAuthResultsWalks(t *testing.T) {
 		{"Authentication-Results: restmail; spf=pass", ""},
 		{"Authentication-Results: other; spf=pass\r\n\r\nbody", "Authentication-Results: other; spf=pass\r\n\r\n"},
 	} {
-		source, err := newImportSource(1 << 20)
+		source, err := newSpooledText() // as a delivery's raw message is
 		if err != nil {
 			t.Fatal(err)
 		}

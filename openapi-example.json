@@ -3781,6 +3781,235 @@
       }
     }
   },
+  "closeImportSession": {
+    "api_key_ceiling": {
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 1,
+          "session": "00112233445566778899aabbccddeeff"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "closed": {
+      "description": "The summary is also written as one messages.import audit entry, and the session is gone.",
+      "request": {
+        "path": {
+          "id": 12,
+          "session": "00112233445566778899aabbccddeeff"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "id": "00112233445566778899aabbccddeeff",
+            "account_id": 12,
+            "client_name": "imapsync",
+            "client_version": "2.290",
+            "started_at": "2026-11-03T12:00:00Z",
+            "ended_at": "2026-11-03T12:30:00Z",
+            "imported": 2,
+            "deduplicated": 1,
+            "refused": 0,
+            "bytes": 2048,
+            "mbox_separator_stripped": 1,
+            "folders": {
+              "INBOX": {
+                "imported": 2,
+                "deduplicated": 1,
+                "refused": 0,
+                "bytes": 2048,
+                "mbox_separator_stripped": 1
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_id": {
+      "request": {
+        "path": {
+          "id": 0,
+          "session": "00112233445566778899aabbccddeeff"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "requires": {
+        "state": "deleted_account"
+      },
+      "request": {
+        "path": {
+          "id": 12,
+          "session": "00112233445566778899aabbccddeeff"
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "mailbox_not_found",
+            "message": "Destination account not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 12,
+          "session": "00112233445566778899aabbccddeeff"
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {
+        "path": {
+          "id": 12,
+          "session": "00112233445566778899aabbccddeeff"
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_not_found": {
+      "description": "A session that never existed, has closed or was opened by another account.",
+      "request": {
+        "path": {
+          "id": 12,
+          "session": "ffeeddccbbaa99887766554433221100"
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "import_session_not_found",
+            "message": "The import session does not exist, has closed, or was opened by another account for another mailbox"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "store_failure": {
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "path": {
+          "id": 12,
+          "session": "00112233445566778899aabbccddeeff"
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {
+        "path": {
+          "id": 12,
+          "session": "00112233445566778899aabbccddeeff"
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unavailable": {
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {
+        "path": {
+          "id": 12,
+          "session": "00112233445566778899aabbccddeeff"
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
   "confirmTwoFactor": {
     "already_enabled": {
       "summary": "The account has an authenticator already",
@@ -8038,6 +8267,260 @@
           "error": {
             "code": "unauthorized",
             "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
+  "createImportSession": {
+    "api_key_ceiling": {
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "client_name": "imapsync",
+          "client_version": "2.290"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_id": {
+      "request": {
+        "path": {
+          "id": 0
+        },
+        "body": {
+          "client_name": "imapsync",
+          "client_version": "2.290"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "malformed_json": {
+      "description": "The wire body is the raw truncated JSON byte {, with application/json content type: it is refused before anything else is read.",
+      "requires": {
+        "body": "malformed"
+      },
+      "request": {
+        "path": {
+          "id": 12
+        },
+        "body": "{",
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "requires": {
+        "state": "deleted_account"
+      },
+      "request": {
+        "path": {
+          "id": 12
+        },
+        "body": {
+          "client_name": "imapsync",
+          "client_version": "2.290"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "mailbox_not_found",
+            "message": "Destination account not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "opened": {
+      "description": "The session id is sent as import_session with each importMessage call and closed with closeImportSession.",
+      "request": {
+        "path": {
+          "id": 12
+        },
+        "body": {
+          "client_name": "imapsync",
+          "client_version": "2.290"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "id": "00112233445566778899aabbccddeeff",
+            "account_id": 12,
+            "client_name": "imapsync",
+            "client_version": "2.290",
+            "started_at": "2026-11-03T12:00:00Z",
+            "idle_timeout_seconds": 3600
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 12
+        },
+        "body": {
+          "client_name": "imapsync",
+          "client_version": "2.290"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {
+        "path": {
+          "id": 12
+        },
+        "body": {
+          "client_name": "imapsync",
+          "client_version": "2.290"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "store_failure": {
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "path": {
+          "id": 12
+        },
+        "body": {
+          "client_name": "imapsync",
+          "client_version": "2.290"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {
+        "path": {
+          "id": 12
+        },
+        "body": {
+          "client_name": "imapsync",
+          "client_version": "2.290"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unavailable": {
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {
+        "path": {
+          "id": 12
+        },
+        "body": {
+          "client_name": "imapsync",
+          "client_version": "2.290"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
           }
         },
         "mediaType": "application/json"

@@ -1,6 +1,8 @@
 {
   "648": [
+    "closeImportSession",
     "createAlias",
+    "createImportSession",
     "deleteAlias",
     "deleteMailbox",
     "endMailboxSessions",
