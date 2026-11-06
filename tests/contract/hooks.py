@@ -389,7 +389,13 @@ def queued_and_held_mail_of_its_own(transaction):
         transaction["fullPath"] = path + "?" + urllib.parse.urlencode({"recipient": recipient})
     elif path.startswith("/api/v1/admin/queue/bulk-") and status == "200":
         if hooks.get_json(transaction) == {"filter": {}}:
-            a_queue_entry_of_its_own(transaction)
+            # Every entry it makes is pending, which all three actions act
+            # on: the after hook holds the answer to them (#1772).
+            made = a_queue_entry_of_its_own(transaction)
+            hooks.stash["bulk_queue_made"] = {
+                "name": transaction.get("name", ""),
+                "ids": [made["id"]],
+            }
     elif path.startswith("/api/v1/admin/queue/") and len(parts) > 5 and positive_id(parts[5]):
         if parts[5] == "2147483647" or status not in ("200", "204", "400"):
             return
@@ -403,6 +409,62 @@ def queued_and_held_mail_of_its_own(transaction):
             return
         parts[4] = str(an_account_of_its_own(origin_of(transaction), "contract-own-held"))
         transaction["fullPath"] = "/".join(parts) + separator + query
+
+
+# What each bulk action does to an entry it acts on, read back through the
+# API: retry and bounce leave the entry with a new status, delete removes it.
+BULK_QUEUE_OUTCOME = {
+    "/api/v1/admin/queue/bulk-retry": "pending",
+    "/api/v1/admin/queue/bulk-bounce": "bounced",
+    "/api/v1/admin/queue/bulk-delete": None,
+}
+
+
+@hooks.after("bulkRetryQueue")
+@hooks.after("bulkBounceQueue")
+@hooks.after("bulkDeleteQueue")
+def the_bulk_action_changed_the_entries_made(transaction):
+    # A bulk action's 200 says only how many entries it acted on, and
+    # affected: 0 has the same shape as a real change (#1772). After a reset
+    # the empty filter's entries are the ones queued_and_held_mail_of_its_own
+    # made, all eligible, so its answer must count exactly those, and each must
+    # read back as the action left it. Anything else fails the exchange. The
+    # documented filter matches nothing by design and made nothing to check.
+    # An empty filter with nothing made for it fails too: its affected: 0
+    # would prove only the shape again.
+    made = hooks.stash.pop("bulk_queue_made", None)
+    if made is not None and made["name"] != transaction.get("name", ""):
+        made = None
+    real = transaction.get("real") or {}
+    if (
+        not asked_for_a_clean_start()
+        or hooks.get_json(transaction) != {"filter": {}}
+        or str(real.get("statusCode")) != "200"  # The status check fails it.
+    ):
+        return
+    if made is None or not made["ids"]:
+        transaction["fail"] = (
+            "the bulk action's empty filter had no queue entry made for it to act on"
+        )
+        return
+    problems = []
+    data = hooks.get_json(transaction, "real").get("data")
+    affected = data.get("affected") if isinstance(data, dict) else None
+    if affected != len(made["ids"]):
+        problems.append(
+            f"affected {affected!r}, but the hook made {len(made['ids']):d} eligible "
+            f"entr{'y' if len(made['ids']) == 1 else 'ies'}"
+        )
+    outcome = BULK_QUEUE_OUTCOME[transaction["fullPath"].partition("?")[0]]
+    for entry in made["ids"]:
+        found = fixture_call(transaction, "GET", f"/api/v1/admin/queue/{entry:d}", expect=(404,))
+        if outcome is None and found is not None:
+            problems.append(f"entry {entry:d} is still queued ({found.get('status')})")
+        elif outcome is not None and (found or {}).get("status") != outcome:
+            state = "gone" if found is None else found.get("status")
+            problems.append(f"entry {entry:d} is {state}, not {outcome}")
+    if problems:
+        transaction["fail"] = "the bulk action did not change the entries made for it: " + "; ".join(problems)
 
 
 def a_queue_entry_of_its_own(transaction):
