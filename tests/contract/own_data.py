@@ -292,6 +292,32 @@ MOVED = (
     "linkAccount",
     "unlinkAccount",
     "issueClientCredentialsToken",
+    # The sign-in and recovery operations. No link starts from or reaches any
+    # of them. A success that ends a session, rotates one or starts a second
+    # factor acts on an account made for it after its reset (logout, refresh
+    # and enroll), and the mail client sign-in uses an app password of an
+    # account made for it. The rest read, sign the fixture admin in, or are
+    # refusals, and need nothing made.
+    "login",
+    "logout",
+    "refreshToken",
+    "protocolSignIn",
+    "resetAdmin",
+    "recoverAccount",
+    "ownerChallenge",
+    "ownerToken",
+    "ownerStatus",
+    "getTwoFactorStatus",
+    "enrollTwoFactor",
+    "confirmTwoFactor",
+    "disableTwoFactor",
+    "changeOwnPassword",
+    "requestRecoveryEmail",
+    "redeemRecoveryEmail",
+    "getRecoveryEmail",
+    "registerRecoveryEmail",
+    "recoveryEmailLink",
+    "verifyRecoveryEmail",
 )
 
 
