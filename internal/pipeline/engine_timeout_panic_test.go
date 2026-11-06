@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 )
@@ -140,5 +141,65 @@ func TestEngine_BlockingFilter_TimesOut(t *testing.T) {
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("engine did not return: a blocking filter hung the pipeline (no per-filter timeout)")
+	}
+}
+
+// A filter stopped because its caller went away has not timed out, whatever the
+// filter's limit is. A load run logged "timeout 1m0s" for filters that had run for
+// far less, which sent the reader after the wrong limit (#1583). The limit is still
+// named when it is what fired, and either way the message is deferred.
+func TestEngine_AbortedFilter_NamesWhatStoppedIt(t *testing.T) {
+	const limit = 150 * time.Millisecond
+	tests := []struct {
+		name    string
+		context func() (context.Context, context.CancelFunc)
+		want    string
+		notWant string
+	}{
+		{
+			name: "the caller cancelled",
+			context: func() (context.Context, context.CancelFunc) {
+				ctx, cancel := context.WithCancel(context.Background())
+				time.AfterFunc(10*time.Millisecond, cancel)
+				return ctx, cancel
+			},
+			want:    "the caller cancelled it",
+			notWant: "timeout",
+		},
+		{
+			name:    "the filter's limit fired",
+			context: func() (context.Context, context.CancelFunc) { return context.Background(), func() {} },
+			want:    "timeout 150ms",
+			notWant: "cancelled",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			reg := NewRegistry()
+			reg.Register("block", func([]byte) (Filter, error) { return &blockingFilter{name: "block"}, nil })
+			eng := NewEngine(reg, nil)
+			eng.SetFilterTimeout(limit)
+			cfg := &PipelineConfig{
+				Direction: "inbound",
+				Filters:   []FilterConfig{{Name: "block", Type: FilterTypeAction, Enabled: true}},
+				Active:    true,
+			}
+			ctx, cancel := tt.context()
+			defer cancel()
+			res, err := eng.Execute(ctx, cfg, &EmailJSON{})
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if res.FinalAction != ActionDefer {
+				t.Fatalf("final action = %q, want defer", res.FinalAction)
+			}
+			if len(res.Steps) != 1 {
+				t.Fatalf("steps = %d, want 1", len(res.Steps))
+			}
+			got := res.Steps[0].Error
+			if !strings.Contains(got, tt.want) || strings.Contains(got, tt.notWant) {
+				t.Fatalf("step error = %q, want it to say %q and not %q", got, tt.want, tt.notWant)
+			}
+		})
 	}
 }

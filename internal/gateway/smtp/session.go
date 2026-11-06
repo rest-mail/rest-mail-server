@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
 	"net/mail"
 	"strings"
 	"sync"
@@ -1029,7 +1030,11 @@ func (s *session) Data(r io.Reader) (err error) {
 			if reason, refused := aliasRoutingRefusal(err); refused {
 				aliasFailure = reason
 			}
-			slog.Error("smtp: delivery failed", "from", s.mailFrom, "to", rcpt, "error", err)
+			if isDeliveryRefusal(err) {
+				slog.Info("smtp: delivery refused", "from", s.mailFrom, "to", rcpt, "reason", err)
+			} else {
+				slog.Error("smtp: delivery failed", "from", s.mailFrom, "to", rcpt, "error", err)
+			}
 			// Remember a representative reply for the all-failed case.
 			var apiErr *apiclient.APIError
 			if errors.As(err, &apiErr) {
@@ -1074,6 +1079,24 @@ func (s *session) Data(r io.Reader) (err error) {
 			"from", s.mailFrom, "accepted", accepted, "failed", failed)
 	}
 	return nil
+}
+
+// isDeliveryRefusal reports whether the API looked at a delivery and answered no: the
+// four refusals POST /api/v1/messages/deliver declares (no such mailbox, a full one,
+// deferred, rejected). Greylisting answers that way to every new sender, so these are
+// the server working, not a fault to alert on. Anything else, an unreachable API or a
+// timeout among them, is a failure. A filter that fails also answers "deferred", and
+// the API logs that failure itself.
+func isDeliveryRefusal(err error) bool {
+	var apiErr *apiclient.APIError
+	if !errors.As(err, &apiErr) {
+		return false
+	}
+	switch apiErr.StatusCode {
+	case http.StatusNotFound, http.StatusUnprocessableEntity, 451, 550:
+		return true
+	}
+	return false
 }
 
 // prepareSubmitted applies the outbound transforms to a submission for a local mailbox, and
