@@ -11,6 +11,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
 	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/grants"
 	"github.com/rest-mail/rest-mail-server/internal/importsession"
 	"gorm.io/gorm"
 )
@@ -25,6 +26,9 @@ type importSessionFixture struct {
 func newImportSessionFixture(t *testing.T) *importSessionFixture {
 	db := importProofDB(t)
 	fx := seedAccountsFixture(t, db)
+	if err := grants.EnsureImport(db, &fx.user); err != nil {
+		t.Fatal(err)
+	}
 	if err := db.Create(&models.QuotaUsage{MailboxID: fx.user.ID}).Error; err != nil {
 		t.Fatal(err)
 	}
