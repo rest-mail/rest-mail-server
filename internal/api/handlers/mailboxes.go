@@ -205,7 +205,7 @@ func (h *MailboxHandler) update(r *http.Request, in updateMailboxInput) (Mailbox
 			}
 			return nil
 		}
-		err := h.db.Transaction(func(tx *gorm.DB) error {
+		err := preservePostmasters(h.db, req.Active != nil && !*req.Active, func(tx *gorm.DB) error {
 			if err := change(tx); err != nil {
 				return err
 			}
@@ -252,10 +252,7 @@ func (h *MailboxHandler) delete(r *http.Request, in adminAddressPath) (endpoint.
 		return endpoint.Empty{}, err
 	}
 
-	err := h.db.WithContext(r.Context()).Transaction(func(tx *gorm.DB) error {
-		if err := grants.Lock(tx); err != nil {
-			return err
-		}
+	err := preservePostmasters(h.db.WithContext(r.Context()), true, func(tx *gorm.DB) error {
 		var heldBy []models.Grant
 		if err := tx.Preload("Role").Where("holder_kind = ? AND holder_id = ?", models.GrantHolderAccount, mailbox.ID).
 			Order("id").Find(&heldBy).Error; err != nil {

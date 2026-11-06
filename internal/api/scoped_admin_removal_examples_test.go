@@ -25,6 +25,9 @@ func TestScopedAdminRemovalExamples(t *testing.T) {
 			t.Fatalf("incomplete %s", op)
 		}
 		for name, pair := range pairs[op] {
+			if name == "postmaster_required" {
+				continue
+			}
 			t.Run(op+"/"+name, func(t *testing.T) {
 				examplepairs.Proven(t, op, name)
 				s, ok := scenarios[name]
@@ -121,6 +124,9 @@ func TestScopedAdminRemovalExamplesWithVertrag(t *testing.T) {
 	for op, path := range scopedAdminRemovalPaths {
 		scenarios := scopedAdminRemovalScenarios(t, op)
 		for name, pair := range pairs[op] {
+			if name == "postmaster_required" {
+				continue
+			}
 			t.Run(op+"/"+name, func(t *testing.T) {
 				s, ok := scenarios[name]
 				if !ok {

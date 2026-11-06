@@ -553,6 +553,35 @@ All subsections share the pattern: new Zustand store + route + form.
 
 **Received DMARC aggregate reports:** keep the published DNS record's
 `rua=mailto:postmaster@<domain>` and ensure that address can receive mail.
+Creating a domain now creates that ordinary account in the same transaction as
+the domain and its default pipelines. It is active and has the domain's default
+quota (1 GiB unless specified; an explicit zero is unlimited), its normal receive
+grant and quota-usage row, no password or other credential, and no owning account
+(`OwnerID` is unset). As with an ordinary account creation, the creator receives
+the owner grant; existing administrator grants continue to apply. No special
+plan-limit exemption or additional reader is introduced. An administrator can
+install credentials using the normal account-management flow. A fresh bootstrap
+install also provisions postmaster for its new domain; an explicitly chosen
+postmaster bootstrap administrator keeps the normal bootstrap credentials instead.
+Restarting does not backfill existing domains or restore removed receive grants.
+
+To replace the account with an alias, first create an active
+`postmaster@<domain>` alias pointing at a receiving mailbox or external address,
+then delete the postmaster account. Exact accounts take precedence, so disabling
+the account is not a replacement: it still shadows the alias. Deleting or
+disabling the last receiving address, breaking its alias chain, or removing its
+last effective receive grant returns HTTP **409** with error code
+`postmaster_required`; the change and its side effects are rolled back. Shared
+grant-change locking serializes competing replacements. Creating a non-receiving
+account cannot shadow an alias in the last working postmaster route. A domain can only be
+activated once this address is configured, in addition to its valid certificate.
+
+The existing domain-deletion safeguard still refuses domains
+with accounts or aliases; atomic removal of a domain's last postmaster and its
+mail remains an owner policy question rather than an implicit destructive action.
+
+This supersedes the statement "REST Mail does not make it for you" in the
+customer-guide work in PR #1712; that branch is not changed by this implementation.
 The inbound `dmarc_reports_received` step reads `application/gzip`,
 `application/zip` and `text/xml` attachments containing RFC 7489 or RFC 9990
 `feedback` documents. It runs after required authentication and before attachment
@@ -564,6 +593,9 @@ storage. `reporter` is that authenticated domain; `reporting_org` is the report'
 bounded, untrusted organization name, not an identity assertion. The report's
 published-policy domain must be hosted here and its postmaster address must be
 an envelope recipient. No HTTP report intake is provided.
+For a local alias, the pipeline keeps the original SMTP envelope recipient while
+storing the mail in the resolved destination mailbox. A parsed report is still
+delivered as ordinary mail, for both account and alias addresses (#730).
 
 The compressed attachment budget per message is 512 KiB, with at most ten report
 attachments. Each attachment may inflate to at most 512 KiB in total, including

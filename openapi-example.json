@@ -9228,6 +9228,24 @@
         }
       }
     },
+    "postmaster_required": {
+      "description": "The last receiving postmaster address cannot be removed or disabled. The real PostgreSQL-backed route proves this refusal and rollback.",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 409,
+        "body": {
+          "error": {
+            "code": "postmaster_required",
+            "message": "A domain must keep a receiving postmaster address. Create a working postmaster alias before deleting its account; disabling the account still shadows the alias."
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "rate_limited": {
       "summary": "Refused API keys exhaust the per-IP budget",
       "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
@@ -10765,6 +10783,24 @@
         "mediaType": "application/json"
       }
     },
+    "postmaster_required": {
+      "description": "The last receiving postmaster address cannot be removed or disabled. The real PostgreSQL-backed route proves this refusal and rollback.",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 409,
+        "body": {
+          "error": {
+            "code": "postmaster_required",
+            "message": "A domain must keep a receiving postmaster address. Create a working postmaster alias before deleting its account; disabling the account still shadows the alias."
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "rate_limited": {
       "requires": {
         "limit": "rate"
@@ -10981,6 +11017,24 @@
             "message": "Mailbox not found"
           }
         }
+      }
+    },
+    "postmaster_required": {
+      "description": "The last receiving postmaster address cannot be removed or disabled. The real PostgreSQL-backed route proves this refusal and rollback.",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 409,
+        "body": {
+          "error": {
+            "code": "postmaster_required",
+            "message": "A domain must keep a receiving postmaster address. Create a working postmaster alias before deleting its account; disabling the account still shadows the alias."
+          }
+        },
+        "mediaType": "application/json"
       }
     },
     "rate_limited": {
@@ -47895,6 +47949,27 @@
         "mediaType": "application/json"
       }
     },
+    "postmaster_required": {
+      "description": "The last receiving postmaster address cannot be removed or disabled. The real PostgreSQL-backed route proves this refusal and rollback.",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "active": false
+        }
+      },
+      "response": {
+        "status": 409,
+        "body": {
+          "error": {
+            "code": "postmaster_required",
+            "message": "A domain must keep a receiving postmaster address. Create a working postmaster alias before deleting its account; disabling the account still shadows the alias."
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "rate_limited": {
       "requires": {
         "limit": "rate"
@@ -49416,6 +49491,27 @@
             }
           }
         }
+      }
+    },
+    "postmaster_required": {
+      "description": "The last receiving postmaster address cannot be removed or disabled. The real PostgreSQL-backed route proves this refusal and rollback.",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "active": false
+        }
+      },
+      "response": {
+        "status": 409,
+        "body": {
+          "error": {
+            "code": "postmaster_required",
+            "message": "A domain must keep a receiving postmaster address. Create a working postmaster alias before deleting its account; disabling the account still shadows the alias."
+          }
+        },
+        "mediaType": "application/json"
       }
     },
     "rate_limited": {

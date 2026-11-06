@@ -182,15 +182,17 @@ func (h *DomainHandler) Register(rs endpoint.Routes, checks DomainRouteChecks) {
 		Middleware: []endpoint.Middleware{checks.OnList(middleware.CapDomainsRead)}}, h.list)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/admin/domains",
 		OperationID: "createDomain", Summary: "Create a new domain", Tags: tags,
-		Status: http.StatusCreated, Errors: []int{http.StatusConflict},
+		Description: "Atomically creates the domain, its default pipelines and postmaster account. The account is active, receives mail, has the domain's default quota (1 GiB unless specified; explicit zero is unlimited), no credential or password, and no OwnerID. The creator receives the ordinary owner grant. No plan-limit exemption is added. An administrator may replace it with a working alias. " + postmasterRequiredDescription,
+		Status:      http.StatusCreated, Errors: []int{http.StatusConflict},
 		Middleware: []endpoint.Middleware{checks.At(middleware.CapDomainsWrite)}}, h.create)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/admin/domains/{id}",
 		OperationID: "getDomain", Summary: "Get a domain by ID", Tags: tags, Errors: missing,
 		Middleware: []endpoint.Middleware{checks.OnDomain(middleware.CapDomainsRead)}}, h.get)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPatch, Path: "/api/v1/admin/domains/{id}",
 		OperationID: "updateDomain", Summary: "Update a domain", Tags: tags,
-		Errors:     []int{http.StatusNotFound, http.StatusConflict},
-		Middleware: []endpoint.Middleware{checks.OnDomain(middleware.CapDomainsWrite)}}, h.update)
+		Description: "Activation requires a receiving postmaster account or alias as well as a valid certificate. " + postmasterRequiredDescription,
+		Errors:      []int{http.StatusNotFound, http.StatusConflict},
+		Middleware:  []endpoint.Middleware{checks.OnDomain(middleware.CapDomainsWrite)}}, h.update)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodDelete, Path: "/api/v1/admin/domains/{id}",
 		OperationID: "deleteDomain", Summary: "Delete a domain", Tags: tags,
 		Description: domainDeletionDescription,
@@ -307,9 +309,12 @@ func (h *DomainHandler) create(r *http.Request, req createDomainRequest) (Domain
 				return fmt.Errorf("create default %s pipeline: %w", direction, err)
 			}
 		}
-		return nil
+		return provisionPostmaster(tx, r, row.Domain)
 	}); err != nil {
 		return Domain{}, err
+	}
+	if h.cache != nil {
+		h.cache.Invalidate()
 	}
 	return domainOf(row.Domain), nil
 }
@@ -350,6 +355,13 @@ func (h *DomainHandler) update(r *http.Request, in updateDomainRequest) (Domain,
 		// another name (issues #289, #290). Taking one out of service is always
 		// allowed.
 		if *req.Active {
+			configured, err := postmasterConfigured(h.db.WithContext(r.Context()), domain)
+			if err != nil {
+				return Domain{}, err
+			}
+			if !configured {
+				return Domain{}, errPostmasterRequired
+			}
 			if err := h.servableCertificate(r.Context(), domain); err != nil {
 				return Domain{}, err
 			}
@@ -374,17 +386,23 @@ func (h *DomainHandler) update(r *http.Request, in updateDomainRequest) (Domain,
 	}
 
 	if len(updates) > 0 {
-		query := h.db.WithContext(r.Context()).Model(&domain)
-		quotaProof := RequireTwoFactor(r)
-		if req.DefaultQuotaBytes != nil && quotaProof != nil {
-			query = query.Where("default_quota_bytes <= 0 OR (? > 0 AND default_quota_bytes >= ?)", *req.DefaultQuotaBytes, *req.DefaultQuotaBytes)
-		}
-		result := query.Updates(updates)
-		if result.Error != nil {
-			return Domain{}, fmt.Errorf("update domain: %w", result.Error)
-		}
-		if req.DefaultQuotaBytes != nil && quotaProof != nil && result.RowsAffected == 0 {
-			return Domain{}, quotaProof
+		err := preservePostmasters(h.db.WithContext(r.Context()), req.Active != nil, func(tx *gorm.DB) error {
+			query := tx.Model(&domain)
+			quotaProof := RequireTwoFactor(r)
+			if req.DefaultQuotaBytes != nil && quotaProof != nil {
+				query = query.Where("default_quota_bytes <= 0 OR (? > 0 AND default_quota_bytes >= ?)", *req.DefaultQuotaBytes, *req.DefaultQuotaBytes)
+			}
+			result := query.Updates(updates)
+			if result.Error != nil {
+				return fmt.Errorf("update domain: %w", result.Error)
+			}
+			if req.DefaultQuotaBytes != nil && quotaProof != nil && result.RowsAffected == 0 {
+				return quotaProof
+			}
+			return nil
+		})
+		if err != nil {
+			return Domain{}, err
 		}
 	}
 
