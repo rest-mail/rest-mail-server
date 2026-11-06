@@ -52,6 +52,9 @@ class RenameFolderFixture(unittest.TestCase):
             patch.object(self.module, "admin_token", lambda origin: "fixture-token")
         )
         self.enterContext(patch.object(self.module.urllib.request, "urlopen", self.answer))
+        # Each probe's source folder is named for the moment it is made; one
+        # moment here, so the name is known.
+        self.enterContext(patch.object(self.module.time, "time_ns", lambda: 1))
 
     def answer(self, request, timeout):
         self.requests.append(request)
