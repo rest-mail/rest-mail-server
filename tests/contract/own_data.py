@@ -181,6 +181,27 @@ MOVED = (
     "releaseHeldMessage",
     "listScheduledMessages",
     "cancelScheduledMessage",
+    # The credential operations: app passwords, API keys and client secrets.
+    # The app password's and the API key's create each link only to their
+    # revoke, and no link starts from the rest: all moved. Each revoke gets a
+    # credential of its own after its reset, since the created one went with it.
+    "listCredentials",
+    "createAppPassword",
+    "revokeCredential",
+    "listAPIKeys",
+    "createAPIKey",
+    "updateAPIKey",
+    "revokeAPIKey",
+    "listAdminAPIKeys",
+    "listClientSecrets",
+    "createClientSecret",
+    "revokeClientSecret",
+    # The ban operations. createBan's link reaches only deleteBan, which gets a
+    # ban of its own after its reset: all moved.
+    "listBans",
+    "createBan",
+    "deleteBan",
+    "unbanIP",
 )
 
 # deletePipeline, the other, has moved.

@@ -318,6 +318,45 @@ func TestCleanResetEveryMailboxColumn(t *testing.T) {
 	}
 }
 
+// A retained administrator keeps only the credentials it signs in with: one of
+// every other kind, made before the reset, is gone after it, so a kind added
+// later is cleared unless it is kept for a stated reason.
+func TestCleanResetEveryCredentialKind(t *testing.T) {
+	db, _, admin := cleanResetFixture(t)
+	for kind, reason := range resetCredentialKindsKept {
+		if !slices.Contains(models.CredentialKinds, kind) {
+			t.Errorf("kept credential kind %s does not exist", kind)
+		}
+		if reason == "" {
+			t.Errorf("kept credential kind %s has no reason", kind)
+		}
+	}
+	if err := db.Where("account_id = ?", admin.ID).Delete(&models.Credential{}).Error; err != nil {
+		t.Fatal(err)
+	}
+	for _, kind := range models.CredentialKinds {
+		credential := models.Credential{AccountID: admin.ID, Kind: kind, PublicID: "before-reset-" + kind, Scope: models.CredentialScope{}}
+		if err := db.Create(&credential).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := db.Transaction(cleanResetData); err != nil {
+		t.Fatal(err)
+	}
+	var kept []string
+	if err := db.Model(&models.Credential{}).Where("account_id = ?", admin.ID).Order("kind").Pluck("kind", &kept).Error; err != nil {
+		t.Fatal(err)
+	}
+	var want []string
+	for kind := range resetCredentialKindsKept {
+		want = append(want, kind)
+	}
+	slices.Sort(want)
+	if !slices.Equal(kept, want) {
+		t.Errorf("credentials kept across the reset = %v, want %v", kept, want)
+	}
+}
+
 func TestCleanResetMemoryAndStreams(t *testing.T) {
 	db, handler, admin := cleanResetFixture(t)
 	sessions := NewSessionCache(db, time.Hour)
