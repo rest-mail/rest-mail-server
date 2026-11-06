@@ -218,7 +218,18 @@ class AuthorizationConfig(unittest.TestCase):
         config = self.generate()
         self.assertEqual(
             config["provides"],
-            {"state": ["kept", "owner_key", "recoverable_account"], "fault": ["database"]},
+            {
+                "state": [
+                    "active_grant",
+                    "eligible_grant",
+                    "existing_link",
+                    "grant_holder",
+                    "kept",
+                    "owner_key",
+                    "recoverable_account",
+                ],
+                "fault": ["database"],
+            },
         )
         # The examples phase's own configuration and unproven list are kept.
         self.assertEqual(yaml.safe_load(self.config.read_text()), self.settings)
@@ -253,6 +264,17 @@ class AuthorizationConfig(unittest.TestCase):
             ("ownerToken", "not_owner", 403): "refuse_a_token_to_a_key_that_is_not_an_owner",
             ("recoverAccount", "recovered", 200): "recover_an_account_of_its_own",
             ("resetAdmin", "reset", 200): "reset_an_account_of_its_own",
+            ("activateGrant", "activated", 201): "a_grant_of_the_callers_own",
+            ("activateGrant", "already_active", 409): "a_grant_of_the_callers_own",
+            ("activateGrant", "invalid_code", 403): "a_grant_of_the_callers_own",
+            ("deactivateGrant", "not_active", 409): "a_grant_of_the_callers_own",
+            ("deactivateGrant", "switched_off", 200): "a_grant_of_the_callers_own",
+            ("makeGrantEligible", "already_eligible", 409): "a_grant_of_the_callers_own",
+            ("makeGrantEligible", "invalid_code", 403): "a_grant_of_the_callers_own",
+            ("makeGrantEligible", "now_eligible", 200): "a_grant_of_the_callers_own",
+            ("linkAccount", "already_linked", 409): "link_an_account_linked_already",
+            ("unlinkAccount", "unlinked", 204): "unlink_a_link_of_its_own",
+            ("createGrant", "granted", 201): "grant_to_an_account_of_its_own",
         }
         self.assertEqual(needing, sorted(prepared_by))
         _, _, registered = load_hooks()
@@ -260,7 +282,14 @@ class AuthorizationConfig(unittest.TestCase):
             with self.subTest(operation=operation, name=name):
                 if hook is not None:
                     self.assertIn(hook, registered[operation])
-        for own in ("known_password", "enrolled_authenticator", "pending_enrollment"):
+        for own in (
+            "known_password",
+            "enrolled_authenticator",
+            "pending_enrollment",
+            # Other examples name these for the run's own data or an open stream.
+            "two_factor_session",
+            "event_stream",
+        ):
             self.assertNotIn(own, authorization.PROVIDES["state"])
 
     def test_own_account_operations_are_left_out_with_a_reason(self):

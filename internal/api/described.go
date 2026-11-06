@@ -211,7 +211,13 @@ var exampleRequirements = map[string][]string{
 		"send_as_grant", "send_on_behalf_grant", "read_only_mailbox_grant",
 		"active_grant", "active_policy", "calendar_invitation", "client_secret", "discarding_pipeline", "dkim_revocation", "eligible_grant",
 		"enrolled_authenticator", "enrollment_disabled", "event_stream", "existing_device", "existing_grant", "existing_link", "existing_policy", "existing_script",
-		"full_mailbox", "future_time", "held_by_domain_limit", "held_message", "known_password", "mail_host_unconfigured", "own_account", "owner_key",
+		"full_mailbox", "future_time",
+		// An account a new grant names that holds no grant of that role at that
+		// scope, granted by a two-factor session (#1162): the live authorization
+		// run makes one per request, as it cannot provide two_factor_session,
+		// which other examples name for changes to the run's own data.
+		"grant_holder",
+		"held_by_domain_limit", "held_message", "known_password", "mail_host_unconfigured", "own_account", "owner_key",
 		"pending_enrollment", "pending_recovery_email", "quarantined_message", "recovery_email_token", "recovery_email_unconfigured",
 		// An account the request names, not the caller's, enrolled in 2FA, whose
 		// current code and an unspent recovery code the sender holds (#1162):
