@@ -2246,6 +2246,60 @@ def on_a_thread_of_its_own(transaction):
     transaction["fullPath"] = "/".join(parts) + ("?" + query if query else "")
 
 
+def a_thread_awaiting_a_reply(transaction, account):
+    """A message from the fixture admin, imported into its Sent folder, so the
+    account has a thread whose last message is its own."""
+    raw = (
+        f"Message-ID: <awaiting-{time.time_ns()}@restmail.test>\r\n"
+        f"From: {ADMIN}\r\n"
+        "To: someone@example.test\r\n"
+        f"Date: {formatdate(usegmt=True)}\r\n"
+        "Subject: Contract awaiting\r\n\r\nWaiting for a reply.\r\n"
+    ).encode()
+    fixture_call(
+        transaction,
+        "POST",
+        f"/api/v1/accounts/{account:d}/messages/import",
+        {
+            "raw_message": base64.b64encode(raw).decode(),
+            "folder": "Sent",
+            "internal_date": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        },
+    )
+
+
+@hooks.before("listThreads")
+@hooks.before("setThreadDue")
+@hooks.before("snoozeThread")
+@hooks.before("importMessage")
+def on_the_admins_mailbox_after_a_reset(transaction):
+    # The thread and import operations, moved to a clean start: each exchange,
+    # refusals included, resets and seeds first. Their examples name account 1
+    # as the fixture admin's own mailbox; an exchange aimed at a positive
+    # account other than missing's 2147483647 goes to the fixture admin's
+    # mailbox, looked up by address, so it does not depend on which ids the
+    # reset keeps. A list of threads awaiting a reply gets one of its own. The
+    # due date's and the snooze's thread is imported after the reset by their
+    # own hooks (thread_due_hooks.py, thread_snooze_hooks.py), registered after
+    # this one, into the account this leaves in the path. 0, an undecodable id
+    # and every documented 404 keep their ids. A run with no reset changes
+    # nothing here.
+    if not asked_for_a_clean_start():
+        return
+    start_clean(transaction)
+    path, separator, query = transaction["fullPath"].partition("?")
+    parts = path.split("/")
+    if len(parts) < 5 or not positive_id(parts[4]) or parts[4] == "2147483647":
+        return
+    if " > 404" in transaction.get("name", ""):
+        return
+    account = mailbox_id(origin_of(transaction), ADMIN)
+    parts[4] = str(account)
+    transaction["fullPath"] = "/".join(parts) + separator + query
+    if parts[-1] == "threads" and " > 200" in transaction.get("name", ""):
+        a_thread_awaiting_a_reply(transaction, account)
+
+
 @hooks.before("updateDraft")
 def on_a_draft_of_its_own(transaction):
     # updateDraft follows saveDraft's link. After a reset (the own-data phase)
