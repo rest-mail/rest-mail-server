@@ -275,8 +275,7 @@ func (h *MailboxHandler) delete(r *http.Request, in adminAddressPath) (endpoint.
 				return err
 			}
 		}
-		if _, err := repositories.NewCredentialRepository(tx).RevokeKinds(mailbox.ID, time.Now(),
-			models.CredentialKindPassword, models.CredentialKindTOTP, models.CredentialKindRecoveryCode, models.CredentialKindAppPassword, models.CredentialKindAPIKey, models.CredentialKindClientSecret); err != nil {
+		if _, err := repositories.NewCredentialRepository(tx).RevokeKinds(mailbox.ID, time.Now(), models.CredentialKinds...); err != nil {
 			return err
 		}
 		if err := repositories.NewRefreshTokenRepository(tx).RevokeAllForAccount(mailbox.ID); err != nil {
