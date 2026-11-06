@@ -109,10 +109,10 @@ func TestRefreshQueueSize_QueueDue(t *testing.T) {
 }
 
 // alertExpr returns the expression of the named rule in
-// monitoring/alerting-rules.yml.
+// helm/restmail/files/alerting-rules.yml.
 func alertExpr(t *testing.T, name string) string {
 	t.Helper()
-	raw, err := os.ReadFile("../../../monitoring/alerting-rules.yml")
+	raw, err := os.ReadFile("../../../helm/restmail/files/alerting-rules.yml")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,7 +134,7 @@ func alertExpr(t *testing.T, name string) string {
 			}
 		}
 	}
-	t.Fatalf("no %s rule in monitoring/alerting-rules.yml", name)
+	t.Fatalf("no %s rule in helm/restmail/files/alerting-rules.yml", name)
 	return ""
 }
 

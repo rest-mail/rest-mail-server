@@ -1,3 +1,9 @@
+# Prometheus alerting rules for REST Mail, the one copy (#1579):
+#   * the compose stack's Prometheus loads this file (tasks/monitoring.yml
+#     mounts it, monitoring/prometheus.yml lists it);
+#   * the chart's PrometheusRule (templates/prometheusrule.yaml) reads it with
+#     .Files.Get and carries every group except restmail-disk-node, which
+#     only the compose stack's node-exporter can feed.
 groups:
   - name: restmail-alerts
     rules:
@@ -213,14 +219,16 @@ groups:
   # default database volume, little more than Postgres needs for a VACUUM or a
   # burst of WAL, so act now.
   #
-  # Two sources, one pair of alerts each:
-  #   * compose stack: node-exporter (tasks/monitoring.yml) mounts each volume
-  #     read-only under /volumes/<name>, scraped as job "node";
-  #   * Kubernetes: kubelet's volume stats for the chart's PVCs
-  #     (<release>-postgres-data, <release>-api-attachments and Garage's
+  # Two sources, one group of two alerts each:
+  #   * restmail-disk-node, compose stack only: node-exporter
+  #     (tasks/monitoring.yml) mounts each volume read-only under
+  #     /volumes/<name>, scraped as job "node". The chart's PrometheusRule
+  #     leaves this group out;
+  #   * restmail-disk-pvc, Kubernetes: kubelet's volume stats for the chart's
+  #     PVCs (<release>-postgres-data, <release>-api-attachments and Garage's
   #     data-<release>-garage-N). Only when the cluster's Prometheus scrapes
-  #     kubelet, as kube-prometheus-stack does; the chart installs nothing.
-  - name: restmail-disk
+  #     kubelet, as kube-prometheus-stack does.
+  - name: restmail-disk-node
     rules:
       - alert: DiskSpaceLow
         expr: >
@@ -242,6 +250,9 @@ groups:
         annotations:
           summary: "Volume {{ $labels.mountpoint }} is over 90% full"
           description: "Only {{ $value | humanizePercentage }} of the filesystem holding {{ $labels.mountpoint }} is free. When it fills, writes to it fail: the database refuses mail, attachments cannot be stored. Act now."
+
+  - name: restmail-disk-pvc
+    rules:
       - alert: PVCSpaceLow
         expr: >
           kubelet_volume_stats_available_bytes{persistentvolumeclaim=~".+-(postgres-data|api-attachments)|data-.+-garage-[0-9]+"}
@@ -265,8 +276,7 @@ groups:
 
   # DKIM key age and rotation (moved here from docs/dkim-rotation-alerts.md,
   # #1579). They match the same domain, scrape job and instance, so several
-  # API replicas do not cause a many-to-many match. The chart's PrometheusRule
-  # (helm/restmail/templates/prometheusrule.yaml) carries the same two.
+  # API replicas do not cause a many-to-many match.
   - name: restmail-dkim
     rules:
       - alert: DKIMKeyOverdue
