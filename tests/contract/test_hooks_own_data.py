@@ -368,6 +368,9 @@ class OwnDataHooks(unittest.TestCase):
             "createCertificate": "domain_administration_after_a_reset",
             "getCertificate": "domain_administration_after_a_reset",
             "deleteCertificate": "domain_administration_after_a_reset",
+            "linkAccount": "account_links_and_the_token_exchange_after_a_reset",
+            "unlinkAccount": "account_links_and_the_token_exchange_after_a_reset",
+            "issueClientCredentialsToken": "account_links_and_the_token_exchange_after_a_reset",
         }
         # entrypoint.py registers setDomainRelay's and the quiet hours' (below).
         self.assertEqual(
