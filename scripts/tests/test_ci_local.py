@@ -612,6 +612,24 @@ class WorkflowCoverage(unittest.TestCase):
     def test_current_workflow_is_covered(self):
         gate.check_coverage(self.workflow, self.coverage)
 
+    def test_merge_target_uses_its_own_coverage_manifest(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            target = root / "target"
+            runner = root / "runner"
+            for directory, manifest in (
+                (target, self.coverage),
+                (runner, {job: {} for job in self.coverage}),
+            ):
+                (directory / "scripts").mkdir(parents=True)
+                (directory / "scripts/ci-local-coverage.json").write_text(
+                    json.dumps(manifest)
+                )
+            local = gate.Gate(target, root, root, False)
+            local.workflow = self.workflow
+            with patch.object(local, "load_workflow"), patch.object(gate, "ROOT", runner):
+                local.coverage()
+
     def test_any_added_lint_or_test_step_is_red(self):
         for job in ("lint", "constellation", "contract-tooling", "test", "test-api", "test-handlers", "test-contract", "test-imap"):
             workflow = copy.deepcopy(self.workflow)
