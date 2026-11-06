@@ -155,7 +155,7 @@ func TestAliasForwardDeliveryAndSigning(t *testing.T) {
 				peer, finish := relayTestPeer(t, certificate, relayPeerOptions{})
 				worker.relayRoots = roots
 				seedRelay(t, database, domain, models.DomainRelay{Transport: models.OutboundTransportRelay, Host: peer.host, Port: peer.port, TLSMode: models.RelayTLSStartTLS})
-				if err := worker.deliver(row); err != nil {
+				if err := worker.deliver(context.Background(), row); err != nil {
 					t.Fatal(err)
 				}
 				result := finish()

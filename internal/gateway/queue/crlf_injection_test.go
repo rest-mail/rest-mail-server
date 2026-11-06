@@ -1,6 +1,7 @@
 package queue
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
@@ -44,7 +45,7 @@ func TestDeliver_RejectsControlCharAddress(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := w.deliver(tc.item)
+			err := w.deliver(context.Background(), tc.item)
 			if err == nil {
 				t.Fatal("deliver accepted a control-character address; SMTP command injection possible")
 			}

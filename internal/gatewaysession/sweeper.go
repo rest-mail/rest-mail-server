@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/rest-mail/rest-mail-server/internal/db/repositories"
+	"github.com/rest-mail/rest-mail-server/internal/tracing"
 	"gorm.io/gorm"
 )
 
@@ -57,7 +58,10 @@ func (s *Sweeper) loop() {
 		case <-s.stop:
 			return
 		case <-ticker.C:
-			s.SweepOnce(s.now())
+			_ = tracing.Job(context.Background(), "job.gateway_session_sweep", func(context.Context) error {
+				s.SweepOnce(s.now())
+				return nil
+			})
 		}
 	}
 }

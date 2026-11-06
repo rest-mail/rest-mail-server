@@ -16,6 +16,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/audit"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
+	"github.com/rest-mail/rest-mail-server/internal/tracing"
 	"gorm.io/gorm"
 )
 
@@ -128,11 +129,15 @@ func (w *HTTPSWorker) Start() {
 		defer ticker.Stop()
 		for {
 			// Room for every attempt and its backoff, plus the database work.
-			checkCtx, stop := context.WithTimeout(ctx, 50*time.Second)
-			if _, err := w.Check(checkCtx, time.Now()); err != nil && ctx.Err() == nil {
-				slog.Error("audit anchor https: publication failed", "error", err)
-			}
-			stop()
+			_ = tracing.Job(ctx, "job.audit_anchor_https", func(jobCtx context.Context) error {
+				checkCtx, stop := context.WithTimeout(jobCtx, 50*time.Second)
+				defer stop()
+				_, err := w.Check(checkCtx, time.Now())
+				if err != nil && ctx.Err() == nil {
+					slog.ErrorContext(jobCtx, "audit anchor https: publication failed", "error", err)
+				}
+				return err
+			})
 			select {
 			case <-ctx.Done():
 				return

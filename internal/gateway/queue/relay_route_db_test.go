@@ -1,6 +1,7 @@
 package queue
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -72,7 +73,7 @@ func TestRelayRouteFailsClosedOnUndecryptablePassword(t *testing.T) {
 	if !errors.Is(err, models.ErrRelayPasswordUndecryptable) || got != nil {
 		t.Fatalf("got %+v, %v; want ErrRelayPasswordUndecryptable", got, err)
 	}
-	deliverErr := w.deliver(item)
+	deliverErr := w.deliver(context.Background(), item)
 	if !errors.Is(deliverErr, models.ErrRelayPasswordUndecryptable) {
 		t.Fatalf("deliver: %v; want a retryable credentials error", deliverErr)
 	}
@@ -115,7 +116,7 @@ func TestDeliverRoutesThroughConfiguredRelay(t *testing.T) {
 					"hello\r\n",
 			}
 
-			if err := w.deliver(item); err != nil {
+			if err := w.deliver(context.Background(), item); err != nil {
 				t.Fatalf("deliver: %v", err)
 			}
 			result := finish()
@@ -168,7 +169,7 @@ func TestDeliverRelaysNullSenderAsItsSendingDomain(t *testing.T) {
 			"Back on Monday.\r\n",
 	}
 
-	if err := w.deliver(item); err != nil {
+	if err := w.deliver(context.Background(), item); err != nil {
 		t.Fatalf("deliver: %v", err)
 	}
 	result := finish()
