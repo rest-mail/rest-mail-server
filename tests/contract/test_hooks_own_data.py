@@ -349,6 +349,16 @@ class OwnDataHooks(unittest.TestCase):
             "testFilter": "filter_requests_after_a_reset",
             "listCustomFilters": "filter_requests_after_a_reset",
             "validateCustomFilter": "filter_requests_after_a_reset",
+            "getHealth": "public_reads_after_a_reset",
+            "describeServer": "public_reads_after_a_reset",
+            "apiRoot": "public_reads_after_a_reset",
+            "swaggerUI": "public_reads_after_a_reset",
+            "openapiSpec": "public_reads_after_a_reset",
+            "openapiDocument": "public_reads_after_a_reset",
+            "prometheusMetrics": "public_reads_after_a_reset",
+            "mozillaAutoconfig": "public_reads_after_a_reset",
+            "mozillaAutoconfigWellKnown": "public_reads_after_a_reset",
+            "microsoftAutodiscover": "public_reads_after_a_reset",
         }
         # entrypoint.py registers setDomainRelay's and the quiet hours' (below).
         self.assertEqual(

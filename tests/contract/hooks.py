@@ -1134,6 +1134,33 @@ def filter_requests_after_a_reset(transaction):
         a_custom_filter_of_its_own(transaction)
 
 
+@hooks.before("getHealth")
+@hooks.before("describeServer")
+@hooks.before("apiRoot")
+@hooks.before("swaggerUI")
+@hooks.before("openapiSpec")
+@hooks.before("openapiDocument")
+@hooks.before("prometheusMetrics")
+@hooks.before("mozillaAutoconfig")
+@hooks.before("mozillaAutoconfigWellKnown")
+@hooks.before("microsoftAutodiscover")
+def public_reads_after_a_reset(transaction):
+    # The public reads and the mail client discovery reads, moved to a clean
+    # start: each exchange, refusals included, resets and seeds first. The
+    # public reads need nothing made. The discovery reads need the address's
+    # domain hosted and active: the autoconfig reads' later hook prepares it
+    # after this reset, and an autodiscover that succeeds gets it here, since
+    # it has no hook of its own (its request is sent as generated). Registered
+    # ahead of every other hook of these operations. A run with no reset
+    # changes nothing here.
+    if not asked_for_a_clean_start():
+        return
+    start_clean(transaction)
+    path = transaction["fullPath"].partition("?")[0]
+    if path == "/autodiscover/autodiscover.xml" and " > 200 " in transaction.get("name", ""):
+        an_active_domain_for_autoconfig(transaction)
+
+
 @hooks.before("testPipeline")
 @hooks.before("testFilter")
 @hooks.before("testCustomFilter")
