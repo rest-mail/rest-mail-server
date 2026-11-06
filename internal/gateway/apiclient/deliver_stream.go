@@ -56,7 +56,7 @@ func (c *Client) DeliverMessageFrom(req *DeliverRequest, content DeliverContent)
 	httpReq.ContentLength = -1
 	httpReq.Header.Set("Content-Type", "application/json")
 
-	resp, err := c.internalHTTPClient.Do(httpReq)
+	resp, err := c.send(c.internalHTTPClient, httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("POST %s: %w", path, err)
 	}
