@@ -31746,6 +31746,9 @@
     },
     "no_keys": {
       "summary": "The server has no owner or status keys",
+      "requires": {
+        "state": "no_owner_keys"
+      },
       "request": {},
       "response": {
         "status": 409,
@@ -31862,6 +31865,9 @@
     },
     "no_keys": {
       "summary": "The server has no status or owner keys",
+      "requires": {
+        "state": "no_owner_keys"
+      },
       "request": {
         "body": {
           "challenge": "c2lnbiB0aGlzIGNoYWxsZW5nZQ",
@@ -32140,6 +32146,9 @@
     },
     "no_keys": {
       "summary": "The server has no owner keys",
+      "requires": {
+        "state": "no_owner_keys"
+      },
       "request": {
         "body": {
           "purpose": "reset-admin",

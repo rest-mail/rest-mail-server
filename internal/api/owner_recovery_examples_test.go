@@ -14,11 +14,12 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/examplepairs"
 )
 
-// The owner and reset routes are not sent by the live contract run: it has no owner
-// key to sign with and no reset token to redeem. Their pairs that need no setup are
-// proven here instead, through the production router on a server that lists no owner
-// or status keys. Any query other than the owner registry fails the request, so a
-// refusal that is meant to come before the database proves it does.
+// The owner routes' pairs that need no key are proven here, through the production
+// router on a server that lists no owner or status keys: the no_keys pairs, which
+// require that state (no_owner_keys), and the refusals that come before the key
+// check. The live authorization run registers an owner key, so it cannot send the
+// no_keys pairs (#1162). Any query other than the owner registry fails the request,
+// so a refusal that is meant to come before the database proves it does.
 
 type ownerNoKeysConnection struct{ capabilityExampleConnection }
 

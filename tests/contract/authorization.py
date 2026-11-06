@@ -80,7 +80,10 @@ HIDING_REFUSAL = [404]
 # only for an account made for that request, never one of the run's own. The
 # refusals that require the key (not_status_key, not_owner, no_account) get a
 # real fresh challenge too, signed by a key listed nowhere or, for an address no
-# account has, by the run's key, so each reaches the check it documents.
+# account has, by the run's key, so each reaches the check it documents. The
+# owner endpoints' 409s (no_keys) require no_owner_keys, a server listing no
+# owner or status keys: with the run's key registered that never holds here,
+# so they are not provided and not sent; they are proven in process.
 # The grant changes act on the caller's own grant (eligible_grant,
 # active_grant): hooks.py makes one for the two-factor administrator, the admin
 # principal, just before its request, at a domain no one hosts, and removes it
