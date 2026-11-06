@@ -110,6 +110,9 @@
     },
     "setMtaStsPolicy": {
       "update": "This PUT is itself the update: it creates the policy or replaces it at the same path."
+    },
+    "unsubscribeMailto": {
+      "*": "A send of the message a mailto: unsubscribe target asks for, often held by a send limit (202 answers a hold, not a message); sendMessage links the lifecycle of the message a send saves."
     }
   }
 }

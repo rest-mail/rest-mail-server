@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -225,6 +226,21 @@ type oneClickPoster struct {
 
 func defaultOneClickPoster() *oneClickPoster {
 	return &oneClickPoster{blocked: blockedUnsubscribeIP, lookup: net.DefaultResolver.LookupIPAddr, timeout: 15 * time.Second}
+}
+
+// SetOneClickTarget points the one-click POST at a target a test serves itself: every host
+// resolves to ip, ip is allowed although it is not public, and roots are the only trusted
+// certificates. Every other address stays refused, on every redirect hop and on the address
+// dialed. The server never calls it, so its POSTs keep the guarded defaults.
+func (h *MessageHandler) SetOneClickTarget(ip net.IP, roots *x509.CertPool) {
+	h.oneClick = &oneClickPoster{
+		blocked: func(candidate net.IP) bool { return !candidate.Equal(ip) },
+		lookup: func(context.Context, string) ([]net.IPAddr, error) {
+			return []net.IPAddr{{IP: ip}}, nil
+		},
+		tlsConfig: &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS12},
+		timeout:   defaultOneClickPoster().timeout,
+	}
 }
 
 // blockedUnsubscribeIP reports whether the one-click POST must not reach ip. The target is

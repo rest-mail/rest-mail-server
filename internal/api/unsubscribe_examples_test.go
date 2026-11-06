@@ -33,6 +33,9 @@ func TestUnsubscribeExamples(t *testing.T) {
 			t.Fatalf("incomplete examples for %s", operation)
 		}
 		for name, pair := range pairs[operation] {
+			if unsubscribeTargetExample(operation, name) {
+				continue
+			}
 			t.Run(operation+"/"+name, func(t *testing.T) {
 				examplepairs.Proven(t, operation, name)
 				s, ok := scenarios[name]
