@@ -3,6 +3,10 @@
 
 Exit status: 0 passed, 1 failed or could not run, 3 ended WARN, 4 no verdict because
 a time limit was reached. Only 0 counts as passed for enqueue.
+
+On non-Linux hosts, selected Linux-only Go packages run in the CI-pinned golang
+Docker image with the host's Go module and build caches mounted. No host loopback
+aliases or administrative privileges are needed for those packages.
 """
 
 import argparse
@@ -37,6 +41,7 @@ STEP_NAMES = (
     "golangci-lint",
     "Package selection",
     "Loopback aliases",
+    "Linux Go tests",
     "Chart publication",
     "PostgreSQL",
     "Go tests",
@@ -68,6 +73,7 @@ HANDLERS = "internal/api/handlers"
 # all of 127/8 to the loopback interface; macOS answers only 127.0.0.1 until each one
 # is aliased, and a reboot drops the aliases (#1942).
 LOADGEN = "/tests/load/loadgen"
+LINUX_TEST_PACKAGES = ("/tests/load", LOADGEN)
 LOOPBACK_ALIASES = ("127.0.1.1", "127.0.1.2", "127.0.1.3")
 # Packages whose tests read the source of packages they do not import, so selecting
 # changed packages and their importers never selects them: CI failed #1791 on
@@ -769,6 +775,7 @@ class Gate:
         self.env.pop("RESTMAIL_EXAMPLE_PROOFS", None)
         self.env.pop("RESTMAIL_VERTRAG_BINARY", None)
         self.packages = []
+        self.linux_packages = []
         self.guards = []
         self.files = []
         self.api_changed = False
@@ -779,6 +786,9 @@ class Gate:
         self.container_id = None
         self.image = None
         self.created_image = False
+        self.linux_container = None
+        self.linux_image = None
+        self.created_linux_image = False
         self.workflow = None
         self.limited = []
         self.vet_output = []
@@ -1100,11 +1110,21 @@ class Gate:
                 self.packages.append(guard)
         print("Changed paths:\n" + "\n".join(files))
         print("Go test packages:\n" + "\n".join(self.packages))
+        self.linux_packages = [
+            name
+            for name in self.packages
+            if sys.platform != "linux" and name.endswith(LINUX_TEST_PACKAGES)
+        ]
+        if self.linux_packages:
+            print("Go test packages running in Linux:\n" + "\n".join(self.linux_packages))
 
     def loopback_aliases(self):
         # Checked here, not by the test 30 minutes into Go tests (#1942).
-        if not any(name.endswith(LOADGEN) for name in self.packages):
-            return "NOT REQUIRED: tests/load/loadgen is not among the Go test packages"
+        if not any(
+            name.endswith(LOADGEN) and name not in self.linux_packages
+            for name in self.packages
+        ):
+            return "NOT REQUIRED: tests/load/loadgen is not running on the host"
         missing = unbindable_loopbacks()
         if missing:
             raise CouldNotRun(
@@ -1113,6 +1133,82 @@ class Gate:
                 + "; ".join(f"sudo ifconfig lo0 alias {address} up" for address in missing)
             )
         print("Can bind " + ", ".join(LOOPBACK_ALIASES))
+
+    def linux_go_tests(self):
+        """Run the selected Linux-only packages without changing host networking."""
+        if not self.linux_packages:
+            return "NOT REQUIRED: no selected Go packages need a Linux container"
+        try:
+            self.run(["docker", "info"], capture=True)
+        except subprocess.CalledProcessError as error:
+            raise CouldNotRun("start Docker; selected Go tests need Linux") from error
+        self.linux_image = "golang:" + self.env["GOTOOLCHAIN"].removeprefix("go")
+        existed = (
+            subprocess.run(
+                ["docker", "image", "inspect", self.linux_image],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+            ).returncode
+            == 0
+        )
+        if not existed:
+            self.run(["docker", "pull", self.linux_image])
+            self.created_linux_image = True
+        caches = json.loads(
+            self.run(["go", "env", "-json", "GOMODCACHE", "GOCACHE"], capture=True)
+        )
+        mounts = [(self.root, "/workspace", ",readonly")]
+        for key, target in (("GOMODCACHE", "/go/pkg/mod"), ("GOCACHE", "/go-build")):
+            source = Path(caches[key])
+            source.mkdir(parents=True, exist_ok=True)
+            mounts.append((source, target, ""))
+        self.linux_container = f"restmail-{self.loop}-linux-go-{self.run_id}"
+        args = [
+            "docker",
+            "run",
+            "--rm",
+            "--name",
+            self.linux_container,
+            "--label",
+            "rest-mail-loop=" + self.loop,
+            "--label",
+            "rest-mail.gate=" + self.run_id,
+            "--label",
+            os.environ.get("RESTMAIL_LABEL") or "rest-mail.run=local",
+            "--user",
+            f"{os.getuid()}:{os.getgid()}",
+            "--workdir",
+            "/workspace",
+            "--env",
+            "GOTOOLCHAIN=local",
+            "--env",
+            "GOMODCACHE=/go/pkg/mod",
+            "--env",
+            "GOCACHE=/go-build",
+            "--env",
+            "HOME=/tmp",
+            "--env",
+            "ENVIRONMENT=test",
+            "--env",
+            "GOMAXPROCS=" + self.env["GOMAXPROCS"],
+        ]
+        for source, target, options in mounts:
+            args.extend(["--mount", f"type=bind,source={source},target={target}{options}"])
+        self.run_go_test(
+            [
+                *args,
+                self.linux_image,
+                "go",
+                "test",
+                "-race",
+                "-count=1",
+                "-timeout=20m",
+                "-skip",
+                "WithVertrag$",
+                *self.linux_packages,
+            ]
+        )
 
     def chart(self):
         if not any(name.startswith("helm/restmail/") for name in self.files):
@@ -1226,7 +1322,9 @@ class Gate:
 
     def go_tests(self):
         remaining = [
-            name for name in self.packages if not name.endswith(FIXTURE_PACKAGES)
+            name
+            for name in self.packages
+            if not name.endswith(FIXTURE_PACKAGES) and name not in self.linux_packages
         ]
         if not remaining:
             return "NOT REQUIRED: no changed Go packages or importers"
@@ -1602,6 +1700,24 @@ class Gate:
 
     def cleanup(self):
         failures = []
+        if self.linux_container:
+            present = (
+                subprocess.run(
+                    ["docker", "container", "inspect", self.linux_container],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    check=False,
+                ).returncode
+                == 0
+            )
+            if present and subprocess.run(
+                ["docker", "rm", "-fv", self.linux_container], check=False
+            ).returncode:
+                failures.append("docker rm -fv " + self.linux_container)
+        if self.created_linux_image and subprocess.run(
+            ["docker", "image", "rm", self.linux_image], check=False
+        ).returncode:
+            print(f"WARNING: left image {self.linux_image}: docker image rm refused")
         # Its own container alone, by the id `docker run` printed (or its unique
         # name when that never arrived), so a gate ending cannot reach another
         # gate's database on the same machine (#1942).
@@ -1633,6 +1749,7 @@ class Gate:
             self.lint,
             self.selection,
             self.loopback_aliases,
+            self.linux_go_tests,
             self.chart,
             self.postgres,
             self.go_tests,

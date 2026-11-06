@@ -153,6 +153,218 @@ class Selection(unittest.TestCase):
         self.assertEqual(gate.json_stream('{"a":1}\n {"a":2}\n'), [{"a": 1}, {"a": 2}])
 
 
+class LinuxGoTests(unittest.TestCase):
+    def setUp(self):
+        import yaml
+
+        self.temporary = tempfile.TemporaryDirectory(prefix="restmail-2013-tests-")
+        self.addCleanup(self.temporary.cleanup)
+        self.directory = Path(self.temporary.name)
+        self.local = gate.Gate(ROOT, self.directory, self.directory, False, "2013")
+        self.loadgen = "mod/tests/load/loadgen"
+        self.local.workflow = yaml.safe_load(
+            (ROOT / ".github/workflows/ci.yml").read_text()
+        )
+        self.version = next(
+            step["with"]["go-version"]
+            for step in self.local.workflow["jobs"]["lint"]["steps"]
+            if step["name"] == "Set up Go"
+        )
+        self.local.env["GOTOOLCHAIN"] = "go" + self.version
+        self.caches = {
+            "GOMODCACHE": str(self.directory / "module cache"),
+            "GOCACHE": str(self.directory / "build cache"),
+        }
+
+    def select(self, platform, files):
+        packages = [
+            {"ImportPath": self.loadgen, "Dir": str(ROOT / "tests/load/loadgen")},
+            {"ImportPath": "mod/internal/api", "Dir": str(ROOT / "internal/api")},
+        ]
+        with (
+            patch.object(gate.sys, "platform", platform),
+            patch.object(self.local, "run", return_value=""),
+            patch.object(gate, "json_stream", return_value=packages),
+            patch.object(gate, "changed_files", return_value=files),
+            redirect_stdout(io.StringIO()),
+        ):
+            self.local.selection()
+
+    def test_darwin_selects_loadgen_for_linux_and_never_probes_host_aliases(self):
+        self.select("darwin", ["tests/load/loadgen/main.go"])
+        self.assertIn(self.loadgen, self.local.packages)
+        self.assertEqual(self.local.linux_packages, [self.loadgen])
+        with patch.object(gate, "unbindable_loopbacks") as probe:
+            self.assertIn("NOT REQUIRED", self.local.loopback_aliases())
+        probe.assert_not_called()
+
+    def test_linux_keeps_the_existing_host_selection_and_alias_check(self):
+        self.select("linux", ["tests/load/loadgen/main.go"])
+        self.assertEqual(self.local.packages, [self.loadgen])
+        self.assertEqual(self.local.linux_packages, [])
+        with (
+            patch.object(gate, "unbindable_loopbacks", return_value=[]) as probe,
+            redirect_stdout(io.StringIO()),
+        ):
+            self.local.loopback_aliases()
+        probe.assert_called_once_with()
+
+    def test_unselected_linux_packages_do_not_start_docker(self):
+        self.select("darwin", ["README.md"])
+        with patch.object(self.local, "run") as commands:
+            self.assertIn("NOT REQUIRED", self.local.linux_go_tests())
+        commands.assert_not_called()
+
+    def test_all_mode_still_routes_loadgen_to_linux(self):
+        self.local.all_packages = True
+        self.select("darwin", ["README.md"])
+        self.assertEqual(self.local.linux_packages, [self.loadgen])
+        self.assertIn("mod/internal/api", self.local.packages)
+
+    def test_container_uses_ci_pin_host_caches_and_no_host_network_changes(self):
+        self.local.linux_packages = [self.loadgen]
+        with (
+            patch.object(
+                self.local, "run", side_effect=["", json.dumps(self.caches)]
+            ) as commands,
+            patch.object(gate.subprocess, "run") as docker,
+            patch.object(self.local, "run_go_test") as tests,
+        ):
+            docker.return_value.returncode = 0
+            self.local.linux_go_tests()
+        args = tests.call_args.args[0]
+        self.assertEqual(args[:3], ["docker", "run", "--rm"])
+        self.assertEqual(args[args.index("--name") + 1], self.local.linux_container)
+        self.assertTrue(
+            self.local.linux_container.startswith("restmail-2013-linux-go-")
+        )
+        self.assertTrue(self.local.linux_container.endswith(self.local.run_id))
+        self.assertIn("rest-mail-loop=2013", args)
+        self.assertIn("rest-mail.gate=" + self.local.run_id, args)
+        self.assertIn(f"{os.getuid()}:{os.getgid()}", args)
+        self.assertIn(
+            "type=bind,source=" + str(ROOT) + ",target=/workspace,readonly", args
+        )
+        for key, target in (("GOMODCACHE", "/go/pkg/mod"), ("GOCACHE", "/go-build")):
+            self.assertIn(f"type=bind,source={self.caches[key]},target={target}", args)
+            self.assertIn(f"{key}={target}", args)
+        self.assertIn("GOTOOLCHAIN=local", args)
+        self.assertIn("ENVIRONMENT=test", args)
+        self.assertIn("GOMAXPROCS=" + self.local.env["GOMAXPROCS"], args)
+        image_index = args.index("golang:" + self.version)
+        self.assertEqual(
+            args[image_index + 1:],
+            [
+                "go", "test", "-race", "-count=1", "-timeout=20m",
+                "-skip", "WithVertrag$", self.loadgen,
+            ],
+        )
+        for forbidden in ("sudo", "ifconfig", "--privileged", "--network", "-p", "-exec"):
+            self.assertNotIn(forbidden, args)
+        self.assertEqual(
+            commands.call_args.args[0],
+            ["go", "env", "-json", "GOMODCACHE", "GOCACHE"],
+        )
+        docker.assert_called_once_with(
+            ["docker", "image", "inspect", "golang:" + self.version],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+        self.assertFalse(self.local.created_linux_image)
+
+    def test_missing_image_is_pulled_and_tracked_for_cleanup(self):
+        self.local.linux_packages = [self.loadgen]
+        with (
+            patch.object(
+                self.local, "run", side_effect=["", "", json.dumps(self.caches)]
+            ) as commands,
+            patch.object(gate.subprocess, "run") as docker,
+            patch.object(self.local, "run_go_test"),
+        ):
+            docker.return_value.returncode = 1
+            self.local.linux_go_tests()
+        self.assertEqual(
+            commands.call_args_list[1].args[0],
+            ["docker", "pull", "golang:" + self.version],
+        )
+        self.assertTrue(self.local.created_linux_image)
+
+    def test_unavailable_docker_fails_closed_before_any_tests(self):
+        self.local.linux_packages = [self.loadgen]
+        with (
+            patch.object(
+                self.local, "run",
+                side_effect=subprocess.CalledProcessError(1, ["docker", "info"]),
+            ),
+            patch.object(self.local, "run_go_test") as tests,
+            self.assertRaisesRegex(gate.CouldNotRun, "start Docker"),
+        ):
+            self.local.linux_go_tests()
+        tests.assert_not_called()
+
+    def test_container_tests_never_run_again_on_the_host(self):
+        self.local.packages = [self.loadgen, "mod/ordinary"]
+        self.local.linux_packages = [self.loadgen]
+        with patch.object(self.local, "run_go_test") as tests:
+            self.local.go_tests()
+        self.assertEqual(tests.call_count, 1)
+        self.assertNotIn(self.loadgen, tests.call_args.args[0])
+        self.assertIn("mod/ordinary", tests.call_args.args[0])
+        self.assertIn("-exec", tests.call_args.args[0])
+
+    def test_container_failures_and_timeouts_keep_their_verdicts(self):
+        self.local.linux_packages = [self.loadgen]
+        for output, error_type in (
+            ("--- FAIL: TestSources\n", subprocess.CalledProcessError),
+            (gate.TIMEOUT_MARK + " after 20m\n", gate.NoVerdict),
+        ):
+            def run(args, **kwargs):
+                if args[:2] == ["go", "env"]:
+                    return json.dumps(self.caches)
+                if "log" in kwargs:
+                    kwargs["log"].write_text(output)
+                    raise subprocess.CalledProcessError(1, args)
+                return ""
+
+            with (
+                self.subTest(output=output),
+                patch.object(self.local, "run", side_effect=run),
+                patch.object(gate.subprocess, "run") as docker,
+                self.assertRaises(error_type),
+            ):
+                docker.return_value.returncode = 0
+                self.local.linux_go_tests()
+
+    def test_cleanup_removes_only_its_own_surviving_container_and_pulled_image(self):
+        self.local.linux_container = "restmail-2013-linux-go-" + self.local.run_id
+        self.local.linux_image = "golang:" + self.version
+        self.local.created_linux_image = True
+        with patch.object(gate.subprocess, "run") as docker:
+            docker.return_value.returncode = 0
+            self.local.cleanup()
+        self.assertEqual(
+            [call.args[0] for call in docker.call_args_list],
+            [
+                ["docker", "container", "inspect", self.local.linux_container],
+                ["docker", "rm", "-fv", self.local.linux_container],
+                ["docker", "image", "rm", self.local.linux_image],
+            ],
+        )
+
+    def test_cleanup_accepts_an_already_auto_removed_container(self):
+        self.local.linux_container = "restmail-2013-linux-go-" + self.local.run_id
+        with patch.object(gate.subprocess, "run") as docker:
+            docker.return_value.returncode = 1
+            self.local.cleanup()
+        self.assertEqual(docker.call_count, 1)
+
+    def test_linux_step_precedes_database_and_host_tests(self):
+        names = [name for name, action in self.local.steps()]
+        self.assertLess(names.index("Linux Go tests"), names.index("PostgreSQL"))
+        self.assertLess(names.index("Linux Go tests"), names.index("Go tests"))
+
+
 class Verdicts(unittest.TestCase):
     def test_failure_and_unavailable_never_become_passes(self):
         for error, status in (
