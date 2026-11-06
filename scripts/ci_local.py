@@ -849,7 +849,7 @@ class Gate:
         self.load_workflow()
         check_coverage(
             self.workflow,
-            json.loads((ROOT / "scripts/ci-local-coverage.json").read_text()),
+            json.loads((self.root / "scripts/ci-local-coverage.json").read_text()),
         )
 
     def go_toolchain(self):
