@@ -89,8 +89,8 @@ def probe_admin_token(origin):
     return sessions[origin]["token"]
 
 
-def session_address(transaction):
-    """The address of the session the request carries, or None (a credential
+def session_claims(transaction):
+    """The claims of the session the request carries, or None (a credential
     other than a session's, or none)."""
     header = transaction["request"]["headers"].get("Authorization", "")
     if not header.startswith("Bearer "):
@@ -100,7 +100,14 @@ def session_address(transaction):
         claims = json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
     except (IndexError, ValueError):
         return None
-    return claims.get("address") if isinstance(claims, dict) else None
+    return claims if isinstance(claims, dict) else None
+
+
+def session_address(transaction):
+    """The address of the session the request carries, or None (a credential
+    other than a session's, or none)."""
+    claims = session_claims(transaction)
+    return claims.get("address") if claims is not None else None
 
 
 def with_the_fixture_admins_session(transaction):
@@ -734,6 +741,27 @@ def confirm_with_the_admin_password(transaction):
         body["password"] = ADMIN_PASSWORD
     body.pop("expires_at", None)
     hooks.set_json(transaction, body)
+
+
+@hooks.before("linkAccount")
+def no_link_from_a_password_only_session(transaction):
+    # Linking takes a session that signed in with a second factor (#1332). A
+    # password-only session is refused 403 two_factor_required: the
+    # description's 403 says so, its two_factor_required example shows it, and
+    # two_factor_refusal_examples_test.go proves it in-process. The
+    # authorization phase's ordinary principal signs in with a password alone,
+    # and its flat roles (none, where linkAccount names no capability) make the
+    # phase expect the 201 from it, which the description does not give it
+    # (#1942). Its success cell is skipped, so it is reported unsent rather
+    # than judged against that. The fixture admin's requests are sent as the
+    # two-factor administrator (send_as_the_two_factor_admin runs first), so
+    # the examples, the coverage probes and the admin cell are not skipped.
+    claims = session_claims(transaction)
+    if claims is None or " > 201 > " not in transaction.get("name", ""):
+        return
+    if claims.get("mfa") or "otp" in (claims.get("amr") or []):
+        return
+    transaction["skip"] = True
 
 
 @hooks.before("linkAccount")
@@ -1688,6 +1716,26 @@ def a_sending_policy_for_the_send(transaction):
                 recipients = body.get(field)
                 for address in recipients if isinstance(recipients, list) else []:
                     a_signing_mailbox_at(transaction, address)
+
+
+@hooks.before("sendMessage")
+def a_scheduled_send_an_hour_ahead(transaction):
+    # A send must be scheduled a minute to a year ahead (handlers/messages.go),
+    # so no date written into the scheduled example stays valid: it said
+    # 2026-10-27 and was refused from that day on (#1942). The run sends it an
+    # hour from now. Only the 202 is moved: the scheduled_at_* refusals keep
+    # their dates, and the coverage run's probes are not touched, as Vertrag
+    # abandons a probe whose body a hook changed. future_times.py lists this
+    # example as moved by the run, and its test checks that it is.
+    if in_the_coverage_process() or " > 202 > " not in transaction.get("name", ""):
+        return
+    body = hooks.get_json(transaction)
+    if not isinstance(body, dict) or not isinstance(body.get("scheduled_at"), str):
+        return
+    body["scheduled_at"] = time.strftime(
+        "%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() + 3600)
+    )
+    hooks.set_json(transaction, body)
 
 
 @hooks.after("/api/v1/messages/send > * > 422 > application/json")

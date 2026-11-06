@@ -601,6 +601,18 @@ def default_scratch():
     )
 
 
+def loop_label(scratch=None):
+    """The id this gate's containers carry, in their rest-mail-loop label and in
+    their restmail-<id>-postgres name, so that gates sharing the machine can be
+    told apart (#1942): RESTMAIL_LOOP_LABEL when it is set, otherwise the name of
+    the scratch directory. Docker names allow letters, digits, _ . and -, and so
+    does the id."""
+    value = os.environ.get("RESTMAIL_LOOP_LABEL") or Path(
+        scratch or default_scratch()
+    ).name
+    return re.sub(r"[^A-Za-z0-9_.-]+", "-", value).strip("-_.") or "local"
+
+
 def select_packages(packages, files, root):
     paths = {package["ImportPath"] for package in packages}
     if any(
@@ -743,8 +755,9 @@ def verify_vertrag(events, names):
 
 
 class Gate:
-    def __init__(self, root, cache, work, all_packages):
+    def __init__(self, root, cache, work, all_packages, loop=None):
         self.root, self.cache, self.work = root, cache, work
+        self.loop = loop or loop_label()
         self.all_packages = all_packages
         self.python = cache / "venv/bin/python"
         self.env = dict(os.environ)
@@ -759,7 +772,11 @@ class Gate:
         self.guards = []
         self.files = []
         self.api_changed = False
+        # This run's own: a gate finds and removes only the container it made,
+        # by its id, never by a name pattern or a label other gates share (#1942).
+        self.run_id = uuid.uuid4().hex[:10]
         self.container = None
+        self.container_id = None
         self.image = None
         self.created_image = False
         self.workflow = None
@@ -1127,8 +1144,8 @@ class Gate:
         if not existed:
             self.run(["docker", "pull", self.image])
             self.created_image = True
-        self.container = "restmail-1941-postgres-" + uuid.uuid4().hex[:10]
-        self.run(
+        self.container = f"restmail-{self.loop}-postgres-{self.run_id}"
+        created = self.run(
             [
                 "docker",
                 "run",
@@ -1136,7 +1153,9 @@ class Gate:
                 "--name",
                 self.container,
                 "--label",
-                "rest-mail-loop=1941",
+                "rest-mail-loop=" + self.loop,
+                "--label",
+                "rest-mail.gate=" + self.run_id,
                 # So that `chore clean` finds it after a killed run (#1963).
                 "--label",
                 os.environ.get("RESTMAIL_LABEL") or "rest-mail.run=local",
@@ -1153,8 +1172,11 @@ class Gate:
                 self.image,
                 "-c",
                 "max_connections=400",
-            ]
+            ],
+            capture=True,
         )
+        self.container_id = (created or "").strip() or None
+        print(self.container_id or "", flush=True)
         port = (
             self.run(["docker", "port", self.container, "5432/tcp"], capture=True)
             .strip()
@@ -1580,13 +1602,12 @@ class Gate:
 
     def cleanup(self):
         failures = []
-        if (
-            self.container
-            and subprocess.run(
-                ["docker", "rm", "-fv", self.container], check=False
-            ).returncode
-        ):
-            failures.append("docker rm -fv " + self.container)
+        # Its own container alone, by the id `docker run` printed (or its unique
+        # name when that never arrived), so a gate ending cannot reach another
+        # gate's database on the same machine (#1942).
+        own = self.container_id or self.container
+        if own and subprocess.run(["docker", "rm", "-fv", own], check=False).returncode:
+            failures.append("docker rm -fv " + own)
         if (
             self.created_image
             and subprocess.run(
@@ -1687,7 +1708,7 @@ def main(argv=None):
 
     def execute(target, steps=lambda gate: gate.steps()):
         with tempfile.TemporaryDirectory(prefix="run-", dir=parent) as temporary:
-            gate = Gate(target, cache, Path(temporary), args.all)
+            gate = Gate(target, cache, Path(temporary), args.all, loop_label(scratch))
             try:
                 code = run_steps(steps(gate))
             finally:
