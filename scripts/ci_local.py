@@ -13,6 +13,7 @@ import os
 import re
 import shutil
 import signal
+import socket
 import subprocess
 import sys
 import tempfile
@@ -35,6 +36,7 @@ STEP_NAMES = (
     "go build",
     "golangci-lint",
     "Package selection",
+    "Loopback aliases",
     "Chart publication",
     "PostgreSQL",
     "Go tests",
@@ -62,6 +64,11 @@ IMAP_TIMEOUT = "30m"
 VERTRAG_TIMEOUT = "60m"
 TIMEOUT_MARK = "panic: test timed out"
 HANDLERS = "internal/api/handlers"
+# tests/load/loadgen's TestSourcesAreWhatTheServerSees dials from these. Linux routes
+# all of 127/8 to the loopback interface; macOS answers only 127.0.0.1 until each one
+# is aliased, and a reboot drops the aliases (#1942).
+LOADGEN = "/tests/load/loadgen"
+LOOPBACK_ALIASES = ("127.0.1.1", "127.0.1.2", "127.0.1.3")
 
 EXIT_PASSED = 0
 EXIT_FAILED = 1
@@ -619,6 +626,18 @@ def step_digest(step):
     ).hexdigest()
 
 
+def unbindable_loopbacks(addresses=LOOPBACK_ALIASES, open_socket=socket.socket):
+    """The addresses a TCP socket cannot bind on this machine, in order."""
+    missing = []
+    for address in addresses:
+        with open_socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+            try:
+                probe.bind((address, 0))
+            except OSError:
+                missing.append(address)
+    return missing
+
+
 def check_coverage(workflow, coverage):
     for job in ("lint", "test", "test-api"):
         observed = set()
@@ -1007,6 +1026,19 @@ class Gate:
             self.packages.append(api)
         print("Changed paths:\n" + "\n".join(files))
         print("Go test packages:\n" + "\n".join(self.packages))
+
+    def loopback_aliases(self):
+        # Checked here, not by the test 30 minutes into Go tests (#1942).
+        if not any(name.endswith(LOADGEN) for name in self.packages):
+            return "NOT REQUIRED: tests/load/loadgen is not among the Go test packages"
+        missing = unbindable_loopbacks()
+        if missing:
+            raise CouldNotRun(
+                f"cannot bind {', '.join(missing)}, which tests/load/loadgen needs; "
+                "macOS drops loopback aliases on reboot. Add them with: "
+                + "; ".join(f"sudo ifconfig lo0 alias {address} up" for address in missing)
+            )
+        print("Can bind " + ", ".join(LOOPBACK_ALIASES))
 
     def chart(self):
         if not any(name.startswith("helm/restmail/") for name in self.files):
@@ -1465,6 +1497,7 @@ class Gate:
             lambda: self.run(["go", "build", "./..."]),
             self.lint,
             self.selection,
+            self.loopback_aliases,
             self.chart,
             self.postgres,
             self.go_tests,
