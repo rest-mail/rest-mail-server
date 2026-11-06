@@ -12893,7 +12893,6 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
                 $ref: '#/components/schemas/ErrorResponse'
               examples:
                 postmaster_required:
@@ -20808,7 +20807,6 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
                 $ref: '#/components/schemas/ErrorResponse'
               examples:
                 postmaster_required:
