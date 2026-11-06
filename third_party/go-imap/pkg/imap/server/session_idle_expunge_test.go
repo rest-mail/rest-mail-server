@@ -186,8 +186,8 @@ func TestIMAP_Idle_ReportsExternalFlagChange(t *testing.T) {
 	// Flag the second message (UID 9, seq 2) out-of-band.
 	m.mbox.setFlagged("INBOX", 9, true)
 
-	if got := h.readLine(); got != `* 2 FETCH (FLAGS (\Flagged))` {
-		t.Fatalf("flag-change report = %q, want %q", got, `* 2 FETCH (FLAGS (\Flagged))`)
+	if got := h.readLine(); got != `* 2 FETCH (UID 9 FLAGS (\Flagged))` {
+		t.Fatalf("flag-change report = %q, want %q", got, `* 2 FETCH (UID 9 FLAGS (\Flagged))`)
 	}
 
 	h.send("DONE")
