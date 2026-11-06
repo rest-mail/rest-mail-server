@@ -293,16 +293,19 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput, spoo
 	// depends on it: a trusted peer is already accepted, and a non-strict
 	// external sender is accepted regardless of signature.
 	// A message with no signature in its header section has nothing to verify, so it isn't read.
-	aligned := false
+	aligned, keyUnavailable := false, false
 	if !h.deliverAuth.trusted(clientIP) && (h.deliverAuth.strict || fromLocal) && headerNamesDKIMSignature(headerSection) {
 		raw, err := spool.message()
 		if err != nil {
 			return RestmailDelivery{}, restmailReadRefusal("spooled message")
 		}
-		aligned = dkimAlignedWith(r.Context(), raw, fromDomain)
+		aligned, keyUnavailable = dkimAlignedWith(r.Context(), raw, fromDomain)
 		req.RawMessage = raw
 	}
 	if ok, reason := h.deliverAuth.authorize(clientIP, fromDomain, fromLocal, aligned); !ok {
+		if keyUnavailable {
+			return RestmailDelivery{}, restmailReadRefusal("DKIM key")
+		}
 		slog.Warn("restmail: delivery refused by delivery-auth gate (OSI-3)",
 			"reason", reason,
 			"from_domain", fromDomain,

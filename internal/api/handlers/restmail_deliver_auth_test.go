@@ -2,13 +2,42 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 )
+
+func TestRestmailDKIMLookupUsesAbsoluteName(test *testing.T) {
+	previous := net.DefaultResolver
+	net.DefaultResolver = &net.Resolver{
+		PreferGo: true,
+		Dial: func(context.Context, string, string) (net.Conn, error) {
+			return nil, errors.New("DKIM key lookup unavailable")
+		},
+	}
+	test.Cleanup(func() { net.DefaultResolver = previous })
+	for _, name := range []string{"broken._domainkey.restmail.test", "broken._domainkey.restmail.test."} {
+		test.Run(name, func(test *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			defer cancel()
+			_, err := lookupRestmailDKIMTXT(ctx, name)
+			var dnsError *net.DNSError
+			if !errors.As(err, &dnsError) {
+				test.Fatalf("lookup error = %v, want DNS error", err)
+			}
+			if dnsError.Name != "broken._domainkey.restmail.test." {
+				test.Errorf("lookup name = %q, want absolute DKIM key name", dnsError.Name)
+			}
+		})
+	}
+}
 
 func TestRestmailDeliverAuth_EquivalentHostedFromDomains(t *testing.T) {
 	db := openPlusAddrTestDB(t)
