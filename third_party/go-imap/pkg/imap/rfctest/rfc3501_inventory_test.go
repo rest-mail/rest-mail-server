@@ -79,7 +79,7 @@ func TestRFC3501DeletedSurvivesSessions(t *testing.T) {
 	requireOK(t, tagged, "D2")
 	lines, tagged = first.command("N1", "NOOP")
 	requireOK(t, tagged, "N1")
-	requireLine(t, lines, "* 1 FETCH (FLAGS ())")
+	requireLine(t, lines, "* 1 FETCH (UID 4001 FLAGS ())")
 	lines, tagged = first.command("F2", "FETCH 1 FLAGS")
 	requireOK(t, tagged, "F2")
 	if len(lines) != 1 || strings.Contains(lines[0], `\Deleted`) {
