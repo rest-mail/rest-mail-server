@@ -601,6 +601,20 @@ func IsImportSessionGone(err error) bool {
 	return errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound && strings.Contains(apiErr.Body, `"import_session_not_found"`)
 }
 
+// TransferRequest names the messages TransferMessages copies or moves.
+type TransferRequest = apitypes.TransferMessagesBody
+
+// TransferMessages copies, or with req.Move moves, a set of messages of one
+// folder to another in one API transaction: every message or none. It returns
+// the new message IDs in the order of req.MessageIDs.
+func (c *Client) TransferMessages(token string, accountID uint, req *TransferRequest) ([]uint, error) {
+	var resp endpoint.Data[apitypes.TransferMessagesResult]
+	if err := c.postAuth(fmt.Sprintf("/api/v1/accounts/%d/messages/transfer", accountID), token, req, &resp); err != nil {
+		return nil, err
+	}
+	return resp.Data.IDs, nil
+}
+
 // ── Quota ─────────────────────────────────────────────────────────────
 
 type QuotaResponse = endpoint.Data[apitypes.Quota]

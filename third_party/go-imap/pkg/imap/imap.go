@@ -382,6 +382,31 @@ type FolderMailbox interface {
 	RenameFolder(from, to string) error
 }
 
+// SetMailbox is the optional interface a [Mailbox] may also implement to copy
+// or move a whole message set as one operation the store runs atomically.
+// RFC 3501 §6.4.7 and RFC 9051 §6.4.7 say a COPY that fails for any reason
+// MUST leave the destination as it was before the attempt, and a MOVE (RFC
+// 6851 §3.3) fails the same way. The server cannot undo a backend call, so
+// without this interface it copies or moves one message at a time and a later
+// failure leaves the earlier ones done.
+//
+// With it, COPY, UID COPY, MOVE and UID MOVE call CopyMessages or MoveMessages
+// once with every message the command names, in sequence order. On an error
+// the command answers NO and nothing changed: the store must have copied or
+// moved none of them. On success it returns the UID each message got in dest,
+// in the order of uids, for COPYUID when the Mailbox also implements
+// [UIDPlusMailbox]; a zero or repeated UID omits COPYUID as for [Mover].
+// folder is the selected mailbox's store name and dest a store name, as
+// [Folder.Name] holds them. [ErrNoSuchMailbox] still answers NO [TRYCREATE].
+type SetMailbox interface {
+	// CopyMessages duplicates the messages uids of folder into dest, all or
+	// none, and returns the UIDs of the copies in the same order.
+	CopyMessages(folder string, uids []uint32, dest string) ([]uint32, error)
+	// MoveMessages relocates the messages uids of folder to dest, all or
+	// none, and returns the UIDs they have in dest in the same order.
+	MoveMessages(folder string, uids []uint32, dest string) ([]uint32, error)
+}
+
 // UTF8Mailbox is the optional interface a [Mailbox] may also implement to
 // support internationalized email in IMAP ([RFC 6855] UTF8=ACCEPT). When the
 // authenticated Mailbox satisfies it, the server advertises UTF8=ACCEPT and

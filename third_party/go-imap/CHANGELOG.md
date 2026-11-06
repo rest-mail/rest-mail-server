@@ -34,6 +34,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   extant destination; RENAME of INBOX moves its messages to the new name and
   leaves INBOX empty, its inferiors untouched. A Mailbox without it keeps
   implicit folders, as before.
+- Atomic set COPY and MOVE (RFC 3501 §6.4.7, RFC 9051 §6.4.7, RFC 6851
+  §3.3): a Mailbox that implements the new optional `imap.SetMailbox`
+  interface copies or moves the whole message set of COPY, UID COPY, MOVE and
+  UID MOVE in one `CopyMessages` or `MoveMessages` call. On an error the
+  command answers NO with nothing changed and nothing expunged; on success
+  COPYUID maps every source UID to the returned one, still only for a
+  destination the user may read. A Mailbox without it copies and moves one
+  message at a time, as before.
 - `\Deleted` kept by the store (RFC 3501 §§2.3.2, 6.4.2-6.4.3; RFC 4315 §2.1):
   a Mailbox that implements the new optional `imap.DeletedMailbox` interface
   says it keeps the flag, and EXPUNGE, CLOSE and UID EXPUNGE then remove the
