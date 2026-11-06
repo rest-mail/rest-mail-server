@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"strings"
 
 	"github.com/rest-mail/go-imap/pkg/imap"
@@ -96,6 +97,11 @@ func (s *Session) handleSelect(tag, args string, readOnly bool) {
 		s.tagged(tag, "NO", "Failed to select folder")
 		return
 	}
+	uidNext, err := s.uidNext(folder, messages)
+	if err != nil {
+		s.tagged(tag, "NO", "Failed to select folder")
+		return
+	}
 
 	s.readOnly = readOnly
 	s.messages = messages
@@ -134,10 +140,8 @@ func (s *Session) handleSelect(tag, args string, readOnly bool) {
 	}
 	s.send("* OK [UIDVALIDITY %d] UIDs valid", s.resolveUIDValidity(folder))
 	// UIDNEXT (RFC 3501 §2.3.1.1) is the UID that will be assigned to the next
-	// message: it must be strictly greater than every existing UID, i.e.
-	// highest-UID + 1 — not oldest-UID + 1. maxUID() returns 0 for an empty
-	// mailbox, so this yields 1 there.
-	s.send("* OK [UIDNEXT %d] Predicted next UID", s.maxUID()+1)
+	// message; see uidNext.
+	s.send("* OK [UIDNEXT %d] Predicted next UID", uidNext)
 	available := s.availableFlags(messages)
 	s.send("* FLAGS (%s)", available)
 	if readOnly {
@@ -235,9 +239,16 @@ func (s *Session) statusData(folder string, items []string) (string, error) {
 		return "", err
 	}
 
+	// Ask the store for UIDNEXT only when the client asked for it.
+	var uidNext uint32
+	if slices.Contains(items, "UIDNEXT") {
+		if uidNext, err = s.uidNext(folder, messages); err != nil {
+			return "", err
+		}
+	}
+
 	total := len(messages)
 	var unseen, deleted int
-	var maxUID uint32
 	var size int64
 	sizeValid := true
 	for _, m := range messages {
@@ -246,9 +257,6 @@ func (s *Session) statusData(folder string, items []string) (string, error) {
 		}
 		if m.Deleted {
 			deleted++
-		}
-		if m.UID > maxUID {
-			maxUID = m.UID
 		}
 		// RFC8438 SIZE is an unsigned 63-bit sum. Do not let invalid host
 		// metadata produce a negative value or wrap below the real total.
@@ -275,10 +283,8 @@ func (s *Session) statusData(folder string, items []string) (string, error) {
 		case "UNSEEN":
 			fmt.Fprintf(&b, "UNSEEN %d", unseen)
 		case "UIDNEXT":
-			// The UID the next message will be assigned: strictly greater than
-			// every existing UID, i.e. highest-UID + 1 (RFC 3501 §2.3.1.1). An
-			// empty mailbox has maxUID 0, yielding 1.
-			fmt.Fprintf(&b, "UIDNEXT %d", maxUID+1)
+			// The same value SELECT and EXAMINE report; see uidNext.
+			fmt.Fprintf(&b, "UIDNEXT %d", uidNext)
 		case "UIDVALIDITY":
 			// The mailbox's real UIDVALIDITY when the backend supports UIDPLUS,
 			// else the legacy constant 1 — matching SELECT/EXAMINE.
@@ -303,6 +309,35 @@ func (s *Session) statusData(folder string, items []string) (string, error) {
 // uidValidity returns the UIDVALIDITY of folder when the mailbox implements
 // [UIDPlusMailbox] and can report it. The bool is false for a base backend, a
 // backend error, or a zero value — the caller then omits the UIDPLUS resp-code.
+// uidNext is folder's UIDNEXT (RFC 3501 §2.3.1.1, RFC 9051 §2.3.1.1), given
+// the messages it holds now. It must stay put until a message is added and
+// move whenever one is, even one expunged since, so a Mailbox that implements
+// [imap.UIDNextMailbox] supplies it from what the store has assigned. The
+// result is never below the highest UID present plus one, whatever the store
+// says. A Mailbox without the interface, or one that answers 0, gets that
+// highest UID plus one (1 for an empty folder), which falls back when the
+// newest message is expunged. A store error is returned, so the command
+// answers NO rather than report a value that may have gone down.
+func (s *Session) uidNext(folder string, messages []imap.Message) (uint32, error) {
+	var highest uint32
+	for _, m := range messages {
+		if m.UID > highest {
+			highest = m.UID
+		}
+	}
+	next := highest + 1
+	if un, ok := s.mailbox.(imap.UIDNextMailbox); ok {
+		v, err := un.UIDNext(folder)
+		if err != nil {
+			return 0, err
+		}
+		if v > next {
+			next = v
+		}
+	}
+	return next, nil
+}
+
 func (s *Session) uidValidity(folder string) (uint32, bool) {
 	up, ok := s.mailbox.(imap.UIDPlusMailbox)
 	if !ok {
