@@ -1517,7 +1517,8 @@ Initialize the reset **before creating test principals**. Its first successful
 call pins the existing installation administrators in `test_reset_baseline`.
 Administrators created afterward (including the MFA fixture) are ordinary test
 data and are removed on the next reset. Initial administrator accounts, their
-domains, credentials and own grants survive, as do the server capability ceiling,
+domains, credentials and own grants survive, as does the server capability
+ceiling's grant, with its set back to every capability, and so do
 system/retained roles and their capability definitions, the installed capability
 catalog, installation owner recovery keys and the append-only audit log. These
 are the complete retained-table allow-list; the implementation records a reason
@@ -1571,6 +1572,14 @@ an inactive pipeline of its own on a domain of its own, made after its reset
 own on a domain of its own; the logs and the analytics need nothing made. No
 link starts from or reaches the three reads. A run with no reset changes
 nothing in these hooks.
+
+The server settings, `listRoles`, `listCapabilities`, `getServerLimits`,
+`updateServerLimits`, `getServerCapabilities` and `updateServerCapabilities`,
+reset and seed before each exchange too, refusals included
+(`server_settings_after_a_reset`). None needs anything made, and no link starts
+from or reaches any of them. The reset empties `server_limits`, so the limits are
+back at their defaults, and puts the server capability ceiling back to every
+capability, so a ceiling one exchange narrows does not bound the next.
 
 `createAlias`, `getAlias`, `updateAlias` and `deleteAlias` reset and seed before
 each exchange too, refusals included. A create is sent as documented after its
