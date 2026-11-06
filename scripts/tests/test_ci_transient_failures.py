@@ -240,7 +240,6 @@ READ_BY_PEOPLE = {
     "e2e-container-logs",
     "js-filter-isolation-logs",
     "cluster-report",
-    "api-gap-report",
     "load-results",
 }
 # People read these, and a later job reads them too if they arrive. Each download
