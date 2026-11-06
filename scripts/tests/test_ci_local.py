@@ -1098,11 +1098,63 @@ class VertragShards(unittest.TestCase):
                 self.assertEqual(ready[ready.index("-h") + 1], "127.0.0.1")
                 self.assertTrue(local.container.startswith("restmail-1942-postgres-"))
                 self.assertEqual(local.env["DB_PORT"], "49152")
+                self.assertIn("rest-mail.gate=" + local.run_id, create)
+                self.assertTrue(local.container.endswith("-" + local.run_id))
                 local.cleanup()
-                docker.assert_called_with(
-                    ["docker", "rm", "-fv", local.container], check=False
-                )
+                # Removed by the id `docker run` printed: its own container alone.
+                docker.assert_called_with(["docker", "rm", "-fv", "id"], check=False)
                 self.assertFalse(local.created_image)
+
+    def test_two_gates_on_one_machine_never_remove_each_others_database(self):
+        # A gate's Postgres must outlive every other gate's cleanup: gates with
+        # the same loop label share that label, and all share RESTMAIL_LABEL's
+        # default, so a removal by label or name pattern would end them all (#1942).
+        workflow = {"jobs": {"test": {"services": {"postgres": {"image": "postgres:16"}}}}}
+        docker_ids = {}
+        gates = []
+        with tempfile.TemporaryDirectory() as temporary:
+            for number in (1, 2):
+                local = gate.Gate(ROOT, Path(temporary), Path(temporary), False, "1942")
+                local.packages = ["mod/database"]
+                local.workflow = workflow
+                docker_ids[local] = f"{number:064x}"
+                with (
+                    patch.object(
+                        local,
+                        "run",
+                        side_effect=["", docker_ids[local] + "\n", "127.0.0.1:4915%d\n" % number, ""],
+                    ) as commands,
+                    patch.object(gate.subprocess, "run") as docker,
+                ):
+                    docker.return_value.returncode = 0
+                    local.postgres()
+                gates.append((local, commands.call_args_list[1].args[0]))
+            (first, first_create), (second, second_create) = gates
+            self.assertNotEqual(first.container, second.container)
+            self.assertNotEqual(first.run_id, second.run_id)
+            self.assertIn("rest-mail.gate=" + first.run_id, first_create)
+            self.assertNotIn("rest-mail.gate=" + first.run_id, second_create)
+            for ending, other in ((first, second), (second, first)):
+                with patch.object(gate.subprocess, "run") as docker:
+                    docker.return_value.returncode = 0
+                    ending.cleanup()
+                commands = [call.args[0] for call in docker.call_args_list]
+                self.assertEqual(commands, [["docker", "rm", "-fv", docker_ids[ending]]])
+                for command in commands:
+                    joined = " ".join(command)
+                    self.assertNotIn(docker_ids[other], joined)
+                    self.assertNotIn(other.container, joined)
+                    self.assertNotIn("--filter", command)
+                    self.assertNotIn("label=", joined)
+
+    def test_a_container_whose_id_never_arrived_is_removed_by_its_unique_name(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            local = gate.Gate(ROOT, Path(temporary), Path(temporary), False, "1942")
+            local.container = f"restmail-1942-postgres-{local.run_id}"
+            with patch.object(gate.subprocess, "run") as docker:
+                docker.return_value.returncode = 0
+                local.cleanup()
+            docker.assert_called_once_with(["docker", "rm", "-fv", local.container], check=False)
 
 
 class ShardPlan(unittest.TestCase):

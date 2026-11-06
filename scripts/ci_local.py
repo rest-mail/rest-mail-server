@@ -772,7 +772,11 @@ class Gate:
         self.guards = []
         self.files = []
         self.api_changed = False
+        # This run's own: a gate finds and removes only the container it made,
+        # by its id, never by a name pattern or a label other gates share (#1942).
+        self.run_id = uuid.uuid4().hex[:10]
         self.container = None
+        self.container_id = None
         self.image = None
         self.created_image = False
         self.workflow = None
@@ -1140,8 +1144,8 @@ class Gate:
         if not existed:
             self.run(["docker", "pull", self.image])
             self.created_image = True
-        self.container = f"restmail-{self.loop}-postgres-" + uuid.uuid4().hex[:10]
-        self.run(
+        self.container = f"restmail-{self.loop}-postgres-{self.run_id}"
+        created = self.run(
             [
                 "docker",
                 "run",
@@ -1150,6 +1154,8 @@ class Gate:
                 self.container,
                 "--label",
                 "rest-mail-loop=" + self.loop,
+                "--label",
+                "rest-mail.gate=" + self.run_id,
                 # So that `chore clean` finds it after a killed run (#1963).
                 "--label",
                 os.environ.get("RESTMAIL_LABEL") or "rest-mail.run=local",
@@ -1166,8 +1172,11 @@ class Gate:
                 self.image,
                 "-c",
                 "max_connections=400",
-            ]
+            ],
+            capture=True,
         )
+        self.container_id = (created or "").strip() or None
+        print(self.container_id or "", flush=True)
         port = (
             self.run(["docker", "port", self.container, "5432/tcp"], capture=True)
             .strip()
@@ -1593,13 +1602,12 @@ class Gate:
 
     def cleanup(self):
         failures = []
-        if (
-            self.container
-            and subprocess.run(
-                ["docker", "rm", "-fv", self.container], check=False
-            ).returncode
-        ):
-            failures.append("docker rm -fv " + self.container)
+        # Its own container alone, by the id `docker run` printed (or its unique
+        # name when that never arrived), so a gate ending cannot reach another
+        # gate's database on the same machine (#1942).
+        own = self.container_id or self.container
+        if own and subprocess.run(["docker", "rm", "-fv", own], check=False).returncode:
+            failures.append("docker rm -fv " + own)
         if (
             self.created_image
             and subprocess.run(
