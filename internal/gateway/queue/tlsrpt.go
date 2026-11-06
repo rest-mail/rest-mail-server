@@ -1,6 +1,7 @@
 package queue
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
@@ -40,7 +41,7 @@ const tlsrptDay = "2006-01-02"
 // failure, under policy type sts (§4.3.2.2): it is the reason no policy was
 // applied, and what the domain needs to hear. A store that fails is logged:
 // reporting must never hold up mail.
-func (w *Worker) recordTLSSession(recipientDomain, host string, stsPolicy *mtasts.Policy, stsErr error, link *smtpLink, now time.Time) {
+func (w *Worker) recordTLSSession(ctx context.Context, recipientDomain, host string, stsPolicy *mtasts.Policy, stsErr error, link *smtpLink, now time.Time) {
 	if w.db == nil {
 		return
 	}
@@ -66,7 +67,7 @@ func (w *Worker) recordTLSSession(recipientDomain, host string, stsPolicy *mtast
 		row.ResultType, row.FailureReason = failure, reason
 	}
 	if err := w.db.Create(&row).Error; err != nil {
-		slog.Warn("queue: TLS-RPT session not recorded", "domain", domain, "host", host, "error", err)
+		slog.WarnContext(ctx, "queue: TLS-RPT session not recorded", "domain", domain, "host", host, "error", err)
 	}
 }
 

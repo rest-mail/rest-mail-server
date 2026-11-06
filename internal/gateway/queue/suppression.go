@@ -1,6 +1,7 @@
 package queue
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -26,7 +27,7 @@ func (w *Worker) SetSuppressionTTL(ttl time.Duration) {
 // suppress records that the message's recipient does not exist, so its sending
 // domain sends it nothing more until the suppression expires. A sender whose
 // domain isn't hosted here has nothing to record against.
-func (w *Worker) suppress(item models.OutboundQueue, category models.FailureCategory, lastError string, now time.Time) {
+func (w *Worker) suppress(ctx context.Context, item models.OutboundQueue, category models.FailureCategory, lastError string, now time.Time) {
 	domain := strings.ToLower(sendsAs(item))
 	if domain == "" {
 		return
@@ -52,16 +53,16 @@ func (w *Worker) suppress(item models.OutboundQueue, category models.FailureCate
 		DoUpdates: clause.AssignmentColumns([]string{"reason", "failure_category", "last_error", "message_id", "updated_at", "expires_at"}),
 	}).Create(&s).Error
 	if err != nil {
-		slog.Error("queue: failed to record suppression", "domain", domain, "recipient", item.Recipient, "error", err)
+		slog.ErrorContext(ctx, "queue: failed to record suppression", "domain", domain, "recipient", item.Recipient, "error", err)
 		return
 	}
-	slog.Info("queue: recipient suppressed", "domain", domain, "recipient", item.Recipient,
+	slog.InfoContext(ctx, "queue: recipient suppressed", "domain", domain, "recipient", item.Recipient,
 		"failure_category", category, "until", s.ExpiresAt)
 }
 
 // suppression returns the unexpired suppression of the message's recipient by
 // its sending domain, if there is one.
-func (w *Worker) suppression(item models.OutboundQueue, now time.Time) (models.Suppression, bool) {
+func (w *Worker) suppression(ctx context.Context, item models.OutboundQueue, now time.Time) (models.Suppression, bool) {
 	var s models.Suppression
 	domain := strings.ToLower(sendsAs(item))
 	if domain == "" {
@@ -72,7 +73,7 @@ func (w *Worker) suppression(item models.OutboundQueue, now time.Time) (models.S
 		domain, strings.ToLower(item.Recipient), now).Scan(&s)
 	if res.Error != nil {
 		// Failing open: a lookup error must not stop mail; the send is tried.
-		slog.Error("queue: suppression lookup failed", "id", item.ID, "error", res.Error)
+		slog.ErrorContext(ctx, "queue: suppression lookup failed", "id", item.ID, "error", res.Error)
 		return s, false
 	}
 	return s, res.RowsAffected > 0
@@ -80,7 +81,7 @@ func (w *Worker) suppression(item models.OutboundQueue, now time.Time) (models.S
 
 // bounceSuppressed bounces a message to a suppressed recipient without trying
 // it, and tells the sender why and until when.
-func (w *Worker) bounceSuppressed(item models.OutboundQueue, s models.Suppression) {
+func (w *Worker) bounceSuppressed(ctx context.Context, item models.OutboundQueue, s models.Suppression) {
 	// The claim counted an attempt; none was made.
 	item.Attempts--
 	item.FailureCategory = s.FailureCategory
@@ -98,7 +99,7 @@ func (w *Worker) bounceSuppressed(item models.OutboundQueue, s models.Suppressio
 		"last_error_code":  0,
 		"failure_category": s.FailureCategory,
 	})
-	slog.Warn("queue: recipient suppressed, bouncing without trying", "id", item.ID,
+	slog.WarnContext(ctx, "queue: recipient suppressed, bouncing without trying", "id", item.ID,
 		"recipient", item.Recipient, "until", s.ExpiresAt)
-	w.generateBounce(item, &SMTPError{Enhanced: enhanced, Message: reason})
+	w.generateBounce(ctx, item, &SMTPError{Enhanced: enhanced, Message: reason})
 }

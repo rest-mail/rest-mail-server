@@ -202,7 +202,7 @@ func (d *Dispatcher) Step(ctx context.Context, now time.Time) time.Time {
 	// while its push waited gets none.
 	found := map[uint][]target{}
 	for mailbox := range arrived {
-		if d.hold(mailbox, now) {
+		if d.hold(ctx, mailbox, now) {
 			continue
 		}
 		targets, err := d.store.targets(mailbox, now)
@@ -220,7 +220,7 @@ func (d *Dispatcher) Step(ctx context.Context, now time.Time) time.Time {
 			if sent, ok := d.last[k]; ok && now.Sub(sent) < d.window {
 				at = sent.Add(d.window)
 			}
-			if at.After(now) && d.hold(mailbox, at) {
+			if at.After(now) && d.hold(ctx, mailbox, at) {
 				continue
 			}
 			d.waiting[k] = pending{mailbox: mailbox, at: at}
@@ -244,7 +244,7 @@ func (d *Dispatcher) Step(ctx context.Context, now time.Time) time.Time {
 	}
 
 	for mailbox, keys := range due {
-		if d.hold(mailbox, now) {
+		if d.hold(ctx, mailbox, now) {
 			continue
 		}
 		targets, ok := found[mailbox]
@@ -294,11 +294,11 @@ func (d *Dispatcher) Step(ctx context.Context, now time.Time) time.Time {
 	return next
 }
 
-func (d *Dispatcher) hold(mailbox uint, now time.Time) bool {
+func (d *Dispatcher) hold(ctx context.Context, mailbox uint, now time.Time) bool {
 	if store, ok := d.store.(*Store); ok {
 		held, err := store.hold(mailbox, now)
 		if err != nil {
-			slog.Warn("push: could not read quiet hours", "mailbox_id", mailbox, "error", err)
+			slog.WarnContext(ctx, "push: could not read quiet hours", "mailbox_id", mailbox, "error", err)
 			return true
 		}
 		return held
