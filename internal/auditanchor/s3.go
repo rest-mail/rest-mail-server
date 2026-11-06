@@ -22,6 +22,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/config"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
+	"github.com/rest-mail/rest-mail-server/internal/tracing"
 	"gorm.io/gorm"
 )
 
@@ -171,11 +172,15 @@ func (w *S3Worker) Start() {
 		defer ticker.Stop()
 		for {
 			// Room for every attempt and its backoff, plus the database work.
-			checkCtx, stop := context.WithTimeout(ctx, 50*time.Second)
-			if _, err := w.Check(checkCtx, time.Now()); err != nil && ctx.Err() == nil {
-				slog.Error("audit anchor s3: publication failed", "error", err)
-			}
-			stop()
+			_ = tracing.Job(ctx, "job.audit_anchor_s3", func(jobCtx context.Context) error {
+				checkCtx, stop := context.WithTimeout(jobCtx, 50*time.Second)
+				defer stop()
+				_, err := w.Check(checkCtx, time.Now())
+				if err != nil && ctx.Err() == nil {
+					slog.ErrorContext(jobCtx, "audit anchor s3: publication failed", "error", err)
+				}
+				return err
+			})
 			select {
 			case <-ctx.Done():
 				return

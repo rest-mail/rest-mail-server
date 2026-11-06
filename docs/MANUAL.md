@@ -1325,6 +1325,13 @@ A trace holds these spans:
 - **The API's handling**, named by method and route pattern (`GET /api/v1/messages/{id}/raw`), never the raw path. The API follows a `traceparent` only from a gateway whose client certificate it verified on the internal listener, the rule it uses for `X-Request-Id` (§7.11); any other request starts its own trace. A gateway's calls for a connection go to the internal listener, so the connection, its calls and the API's handling of them are one trace; a public client's request starts its own.
 - **Local delivery** (`message.deliver_local`), the **pipeline run** (`pipeline.run`) under it, and one span per **filter** (`pipeline.filter <name>`).
 
+Background work is traced too, one trace per unit of work, each with a root span of its own:
+
+- **Each outbound delivery attempt** (`queue.deliver`), with the MX lookup (`queue.mx_lookup`), the RESTMAIL attempt (`queue.restmail`), each SMTP attempt (`queue.smtp`, by the MX's position in the list, never its name) or the relay (`queue.relay`) under it. The root span holds the queue row's id, the attempt number, the transport it went by (`queue.transport`: `restmail`, `smtp` or `relay`) and the status it left the row in (`queue.status`: `delivered`, `deferred`, `bounced` or `suppressed`), and for a failure its category and SMTP code. A queue row keeps nothing of the request that queued it, so each attempt starts a new trace rather than joining that request's.
+- **Each pass of a periodic job**: `job.scheduled_send`, `job.snooze_return`, `job.send_limit_notices`, `job.push_dispatch` and `job.push_sweep`, `job.dkim_rotation`, `job.tlsrpt_report`, `job.attachment_cleanup`, `job.audit_anchor_email`, `job.audit_anchor_https` and `job.audit_anchor_s3`, `job.grant_expiry`, `job.greylist_purge`, `job.vacation_purge`, `job.gateway_session_sweep`, `job.trace_prune`, `job.rollup_snapshot`, `job.rollup_downsample` and `job.domain_state`.
+
+Each unit of background work gets a job ID, `job-` and a request ID, held as `request_id` on its spans and on the log lines it writes, so a job's trace and logs join as a request's do.
+
 Every span made within a request carries `request_id`, the ID from §7.11, so a trace and its log lines join on it. Spans hold only ids, counts, outcomes and durations: the pipeline and mailbox ids, the filter's name and action, HTTP method, route and status, and for a failure the error's Go type. No span holds an address, subject, body or token, and an error's text is not recorded, since it can name an address. What logs may hold about people is still to be decided (#1580); spans hold none of it until it is.
 
 ## 8. Test stack IPs (dev testbed on `10.99.0.0/16`)
