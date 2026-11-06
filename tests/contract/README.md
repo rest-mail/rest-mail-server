@@ -619,6 +619,9 @@ document. The authorization phase's `ordinary` principal is one, and with no
 roles where the operation names no capability the phase would expect its 201,
 so `hooks.py` skips that cell (`no_link_from_a_password_only_session`, #1942):
 it is reported unsent, and the refusal is proven in-process. `createAPIKey` is made with that administrator's password, except in
+keep theirs. That phase leaves a request unsent when a hook changes its
+credential, so its `admin` principal is not swapped: it signs in as the
+two-factor administrator from the start (`authorization.py`, #1162). `createAPIKey` is made with that administrator's password, except in
 the coverage process ([A hook cannot change a generated body](#a-hook-cannot-change-a-generated-body)).
 `deleteGrant`'s example names grant 1, a fixture principal's own, so the hook
 makes an eligible grant on an account without credentials and deletes that.
@@ -1591,7 +1594,10 @@ The examples and coverage run signs in as the admin. The authorization run
 uses vertrag's authorization phase (v0.29.0 and later): each operation's `security`
 requirements name the capability it needs as OpenAPI 3.1 roles, for example
 `security: [{BearerAuth: [domains:read]}]`. `authorization.py` configures `none`,
-`admin`, `ordinary`, and `app-password` from the fresh E2E fixture. The owned
+`admin`, `ordinary`, and `app-password` from the fresh E2E fixture, except that
+`admin` is the two-factor administrator signed in with an unused second factor:
+credential, link and grant operations need a recent one, which the seeded admin
+never has. The owned
 account has no separate sign-in credential; its access through the admin is
 checked by `TestContractPrincipals`. Agents remain unavailable (#341).
 
