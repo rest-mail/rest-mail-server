@@ -147,6 +147,23 @@ MOVED = (
     "setThreadDue",
     "snoozeThread",
     "importMessage",
+    # The account settings operations. getSieveScript's link reaches only the
+    # delete, and putSieveScript's only the read: all moved. Each gets an
+    # account of its own after its reset, since the examples' 1 is then an
+    # account the fixture admin does not reach, and what a read or remove
+    # needs is made on it.
+    "getVacation",
+    "setVacation",
+    "disableVacation",
+    "getSieveScript",
+    "putSieveScript",
+    "deleteSieveScript",
+    "validateSieveScript",
+    "getQuietHours",
+    "setQuietHours",
+    "getAccountSendLimits",
+    "setAccountSendLimits",
+    "getQuota",
 )
 
 # deletePipeline, the other, has moved.

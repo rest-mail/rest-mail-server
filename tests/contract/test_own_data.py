@@ -111,6 +111,22 @@ MAILBOXES = (
 )
 # The thread and import operations: no link starts from or reaches any of them.
 THREADS_AND_IMPORTS = ("listThreads", "setThreadDue", "snoozeThread", "importMessage")
+# The account settings operations: putSieveScript's link reaches the read, and
+# the read's the delete. No link reaches or starts from the others.
+ACCOUNT_SETTINGS = (
+    "getVacation",
+    "setVacation",
+    "disableVacation",
+    "getSieveScript",
+    "putSieveScript",
+    "deleteSieveScript",
+    "validateSieveScript",
+    "getQuietHours",
+    "setQuietHours",
+    "getAccountSendLimits",
+    "setAccountSendLimits",
+    "getQuota",
+)
 FOLLOWS_THE_SENT_MESSAGE = {
     "getMessage",
     "updateMessage",
@@ -189,7 +205,8 @@ class Selection(unittest.TestCase):
             - FOLLOWS_THE_SENT_MESSAGE
             - set(DRAFTS)
             - set(MAILBOXES)
-            - set(THREADS_AND_IMPORTS),
+            - set(THREADS_AND_IMPORTS)
+            - set(ACCOUNT_SETTINGS),
             link_followers(description, "createDomain") | {"createDomain"},
         )
 
@@ -378,6 +395,16 @@ class Selection(unittest.TestCase):
             for start in description_operations(description):
                 self.assertNotIn(operation, link_followers(description, start), start)
         self.assertLessEqual(set(THREADS_AND_IMPORTS), set(own_data.MOVED))
+
+    def test_it_selects_every_account_setting_and_its_links(self):
+        description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
+        self.assertEqual(
+            link_followers(description, "putSieveScript"),
+            {"getSieveScript", "deleteSieveScript"},
+        )
+        for operation in set(ACCOUNT_SETTINGS) - {"putSieveScript", "getSieveScript"}:
+            self.assertEqual(link_followers(description, operation), set(), operation)
+        self.assertLessEqual(set(ACCOUNT_SETTINGS), set(own_data.MOVED))
 
     def test_everything_that_follows_the_created_domain_has_moved(self):
         description = yaml.safe_load((ROOT / "openapi.yaml").read_text())

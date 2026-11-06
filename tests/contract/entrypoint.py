@@ -28,6 +28,11 @@ dmarc = runpy.run_path(str(directory / "dmarc_report_hooks.py"))
 dmarc["register_dmarc_report_hook"](shared["admin_token"])
 quiet = runpy.run_path(str(directory / "quiet_hours_hooks.py"))
 quiet["register_quiet_hours_hooks"](shared["admin_token"])
+# After the quiet hours hook, which finds the live account for the examples' 1
+# and fixes their time zone: then the reset, and an account of its own, only
+# with a reset asked for (own_data.py).
+for operation in ("getQuietHours", "setQuietHours"):
+    vertrag_hooks.before(operation)(shared["account_settings_of_its_own"])
 contact_draft = runpy.run_path(str(directory / "contact_draft_hooks.py"))
 contact_draft["register_contact_draft_hooks"](shared["fixture_call"], shared["ADMIN"])
 # Last, so that it sees the body every hook above leaves.

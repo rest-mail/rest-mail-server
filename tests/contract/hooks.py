@@ -307,6 +307,63 @@ def a_mailbox_to_administer(transaction):
     transaction["fullPath"] = "/".join(parts) + separator + query
 
 
+# The documented script the account settings' hook installs where an exchange
+# needs one: the coverage process's sieve hook installs the same.
+A_SIEVE_SCRIPT = {"script": "keep;", "active": True}
+
+
+@hooks.before("getVacation")
+@hooks.before("setVacation")
+@hooks.before("disableVacation")
+@hooks.before("getSieveScript")
+@hooks.before("putSieveScript")
+@hooks.before("deleteSieveScript")
+@hooks.before("validateSieveScript")
+@hooks.before("getAccountSendLimits")
+@hooks.before("setAccountSendLimits")
+@hooks.before("getQuota")
+def account_settings_of_its_own(transaction):
+    # The account settings operations, moved to a clean start: each exchange,
+    # refusals included, resets and seeds first. The examples name account 1,
+    # which after a reset is the seeded eve@restmail.test, an account the
+    # fixture admin's session does not reach (404). So an exchange aimed at a
+    # positive account id other than missing's 2147483647 gets an account of its
+    # own on the seeded restmail.test instead, made after the reset. That
+    # includes the 422s, so each is refused for its body. 0 and the
+    # missing id need nothing made. What an exchange reads or removes is made
+    # on that account: the script of a Sieve read and delete, and the vacation
+    # reply a disable turns off. The Sieve install's 201 needs none, and its
+    # 200 (a replace) is not sent in this run, having no example of its own.
+    # Registered before the other hooks of these operations, so they see the
+    # clean start. entrypoint.py registers this for getQuietHours and
+    # setQuietHours too, after their own hook, which finds a live account for
+    # the examples' 1 and fixes their time zone. A run with no reset changes
+    # nothing here.
+    if not asked_for_a_clean_start():
+        return
+    start_clean(transaction)
+    path, separator, query = transaction["fullPath"].partition("?")
+    parts = path.split("/")
+    if len(parts) < 6 or not positive_id(parts[4]) or parts[4] == "2147483647":
+        return
+    account = an_account_of_its_own(origin_of(transaction), "contract-own-settings")
+    parts[4] = str(account)
+    transaction["fullPath"] = "/".join(parts) + separator + query
+    setting = "/".join(parts[5:])
+    method = transaction["request"].get("method", "")
+    status = str(transaction.get("expected", {}).get("statusCode", ""))
+    settings = f"/api/v1/accounts/{account:d}/"
+    if setting == "sieve" and (method, status) in (("GET", "200"), ("DELETE", "200")):
+        fixture_call(transaction, "PUT", settings + "sieve", A_SIEVE_SCRIPT)
+    elif setting == "vacation" and (method, status) == ("DELETE", "204"):
+        fixture_call(
+            transaction,
+            "PUT",
+            settings + "vacation",
+            {"enabled": True, "subject": "Out of office", "body": "I will reply when I return."},
+        )
+
+
 @hooks.before("getDomain")
 def get_a_domain_of_its_own(transaction):
     if not asked_for_a_clean_start():
