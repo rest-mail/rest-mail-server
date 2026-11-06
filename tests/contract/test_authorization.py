@@ -289,8 +289,40 @@ class AuthorizationConfig(unittest.TestCase):
             # Other examples name these for the run's own data or an open stream.
             "two_factor_session",
             "event_stream",
+            # The owner endpoints' 409s: never true while the run's key is
+            # registered for this phase.
+            "no_owner_keys",
         ):
             self.assertNotIn(own, authorization.PROVIDES["state"])
+
+    def test_the_owner_conflicts_are_not_sent_while_the_runs_key_is_registered(self):
+        # The owner endpoints' 409s need a server with no owner or status keys.
+        # This phase registers one, so a pair sent here would answer 200 or
+        # 401 invalid_challenge instead (#1162): each requires a state the
+        # phase does not provide.
+        examples = json.loads(
+            (Path(__file__).resolve().parents[2] / "openapi-example.json").read_text()
+        )
+        conflicts = sorted(
+            (operation, name, pair["response"]["body"]["error"]["code"])
+            for operation, pairs in examples.items()
+            for name, pair in pairs.items()
+            if pair["response"]["status"] == 409
+            and operation in ("ownerChallenge", "ownerStatus", "ownerToken")
+        )
+        self.assertEqual(
+            conflicts,
+            [
+                ("ownerChallenge", "no_keys", "no_owner_keys"),
+                ("ownerStatus", "no_keys", "no_status_keys"),
+                ("ownerToken", "no_keys", "no_owner_keys"),
+            ],
+        )
+        for operation, name, _ in conflicts:
+            with self.subTest(operation=operation):
+                requires = examples[operation][name]["requires"]
+                self.assertEqual(requires, {"state": "no_owner_keys"})
+                self.assertNotIn(requires["state"], authorization.PROVIDES["state"])
 
     def test_own_account_operations_are_left_out_with_a_reason(self):
         self.settings["skip"] = [{"name": "/kept > Kept > 200", "reason": "kept"}]

@@ -1404,7 +1404,13 @@ a hosted domain and mailbox for each address a test send probe uses, and,
   that require the key are sent on a real fresh challenge as well, so the
   placeholder one does not refuse them first: `not_status_key` and `not_owner`
   signed by a key made for that request and registered nowhere, `no_account` by
-  the run's key for a fresh address no account has. `eligible_grant` and
+  the run's key for a fresh address no account has. The owner endpoints'
+  409s (`no_keys`) require the opposite, `no_owner_keys`: a server that
+  lists no owner keys and no status keys. The phase does not provide it, as
+  its key is registered, so it does not send them; the examples phase does
+  not provide it either, as `CONTRACT_ENDPOINT` may name a server with keys.
+  `TestOwnerRecoveryRefusalExamples` proves them on a server with an empty
+  owner registry. `eligible_grant` and
   `active_grant`: a grant change acts on the caller's own grant, so before the
   two-factor administrator's request (the admin principal, and the examples'
   sender) `hooks.py` makes it a grant in the state the example names (an admin
