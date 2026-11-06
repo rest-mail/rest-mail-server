@@ -1289,6 +1289,8 @@ class Gate:
                 # slow statement view's tests (#1629) prove its answers against it.
                 "-c",
                 "shared_preload_libraries=pg_stat_statements",
+                "-c",
+                "pg_stat_statements.max=100000",
             ],
             capture=True,
         )
