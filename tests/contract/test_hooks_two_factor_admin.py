@@ -145,7 +145,7 @@ class TwoFactorAdminHookTests(unittest.TestCase):
         self.assertEqual(json.loads(t["request"]["body"])["permissions"],
                          [{"capability": "mail:read", "scope": "mailbox:a@restmail.test"}])
         request = urlopen.call_args.args[0]
-        self.assertEqual(request.full_url, "http://api:8080/api/v1/admin/mailboxes?limit=1000")
+        self.assertEqual(request.full_url, "http://api:8080/api/v1/admin/mailboxes?limit=200&offset=0")
         self.assertEqual(request.headers["Authorization"], "Bearer admin-token")
 
     def test_a_key_for_no_account_keeps_its_scopes(self):
