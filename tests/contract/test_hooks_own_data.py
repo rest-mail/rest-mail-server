@@ -149,6 +149,13 @@ class OwnDataHooks(unittest.TestCase):
             "updateDomain": "a_certificate_before_going_live",
             "inviteAccount": "invite_an_account_without_credentials",
             "acceptInvitation": "redeem_a_fresh_invitation",
+            "createGrant": "a_grant_operation_from_a_clean_start",
+            "deleteGrant": "delete_a_grant_made_for_it",
+            "activateGrant": "a_grant_operation_from_a_clean_start",
+            "deactivateGrant": "a_grant_operation_from_a_clean_start",
+            "makeGrantEligible": "a_grant_operation_from_a_clean_start",
+            "listGrants": "a_grant_operation_from_a_clean_start",
+            "listMyGrants": "a_grant_operation_from_a_clean_start",
         }
         self.assertEqual(set(hooks), set(own_data.MOVED))
         for operation, hook in hooks.items():
