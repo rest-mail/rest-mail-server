@@ -1075,7 +1075,7 @@ class VertragShards(unittest.TestCase):
 
     def test_postgres_is_named_labelled_ephemeral_and_removed_with_volumes(self):
         with tempfile.TemporaryDirectory() as temporary:
-            local = gate.Gate(ROOT, Path(temporary), Path(temporary), False)
+            local = gate.Gate(ROOT, Path(temporary), Path(temporary), False, "1942")
             local.packages = ["mod/database"]
             import yaml
 
@@ -1091,12 +1091,12 @@ class VertragShards(unittest.TestCase):
                 docker.return_value.returncode = 0
                 local.postgres()
                 create = commands.call_args_list[1].args[0]
-                self.assertIn("rest-mail-loop=1941", create)
+                self.assertIn("rest-mail-loop=1942", create)
                 self.assertIn("127.0.0.1::5432", create)
                 self.assertIn("/var/lib/postgresql/data", create)
                 ready = docker.call_args.args[0]
                 self.assertEqual(ready[ready.index("-h") + 1], "127.0.0.1")
-                self.assertTrue(local.container.startswith("restmail-1941-postgres-"))
+                self.assertTrue(local.container.startswith("restmail-1942-postgres-"))
                 self.assertEqual(local.env["DB_PORT"], "49152")
                 local.cleanup()
                 docker.assert_called_with(
@@ -1252,7 +1252,7 @@ class Wrapper(unittest.TestCase):
 
     def test_the_second_label_comes_from_the_run(self):
         with tempfile.TemporaryDirectory() as temporary:
-            local = gate.Gate(ROOT, Path(temporary), Path(temporary), False)
+            local = gate.Gate(ROOT, Path(temporary), Path(temporary), False, "1942")
             local.packages = ["mod/database"]
             local.workflow = {
                 "jobs": {"test": {"services": {"postgres": {"image": "postgres:16"}}}}
@@ -1268,7 +1268,52 @@ class Wrapper(unittest.TestCase):
                 local.postgres()
             create = commands.call_args_list[1].args[0]
             self.assertIn("rest-mail-loop=test", create)
-            self.assertIn("rest-mail-loop=1941", create)
+            self.assertIn("rest-mail-loop=1942", create)
+
+    def test_each_gate_labels_its_postgres_from_its_own_context(self):
+        # Every gate's container carried #1941's label and name, so gates
+        # sharing the machine could not be told apart (#1942).
+        workflow = {"jobs": {"test": {"services": {"postgres": {"image": "postgres:16"}}}}}
+        cases = [
+            ({"RESTMAIL_LOOP_LABEL": "1942"}, "/home/me/tmp/rest-mail-loop/other", "1942"),
+            ({}, "/home/me/tmp/rest-mail-loop/1942j", "1942j"),
+            ({}, "/home/me/tmp/rest-mail-loop/loop", "loop"),
+            ({"RESTMAIL_LOOP_LABEL": "pr #1810/merge"}, None, "pr-1810-merge"),
+            ({"RESTMAIL_LOOP_LABEL": "///"}, None, "local"),
+        ]
+        for environment, scratch, expected in cases:
+            with self.subTest(environment=environment, scratch=scratch):
+                with patch.dict(os.environ, environment):
+                    os.environ.pop("RESTMAIL_LABEL", None)
+                    if "RESTMAIL_LOOP_LABEL" not in environment:
+                        os.environ.pop("RESTMAIL_LOOP_LABEL", None)
+                    label = gate.loop_label(scratch)
+                    self.assertEqual(label, expected)
+                    with tempfile.TemporaryDirectory() as temporary:
+                        local = gate.Gate(ROOT, Path(temporary), Path(temporary), False, label)
+                        local.packages = ["mod/database"]
+                        local.workflow = workflow
+                        with (
+                            patch.object(
+                                local, "run", side_effect=["", "id", "127.0.0.1:49152\n", ""]
+                            ) as commands,
+                            patch.object(gate.subprocess, "run") as docker,
+                        ):
+                            docker.return_value.returncode = 0
+                            local.postgres()
+                    create = commands.call_args_list[1].args[0]
+                    self.assertIn("rest-mail-loop=" + expected, create)
+                    self.assertNotIn("rest-mail-loop=1941", create)
+                    self.assertRegex(
+                        local.container, rf"^restmail-{re.escape(expected)}-postgres-[0-9a-f]{{10}}$"
+                    )
+
+    def test_the_default_label_is_the_scratch_directorys_name(self):
+        with patch.dict(os.environ, {"RESTMAIL_SCRATCH": "/home/me/tmp/rest-mail-loop/1942j"}):
+            os.environ.pop("RESTMAIL_LOOP_LABEL", None)
+            self.assertEqual(gate.loop_label(), "1942j")
+            with tempfile.TemporaryDirectory() as temporary:
+                self.assertEqual(gate.Gate(ROOT, Path(temporary), Path(temporary), False).loop, "1942j")
 
     def test_directories_go_inside_the_wrappers_when_there_is_one(self):
         with patch.dict(os.environ, {"RESTMAIL_SCRATCH_RUN": "/run/own"}):

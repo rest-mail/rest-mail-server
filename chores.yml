@@ -575,6 +575,9 @@ tasks:
     env:
       # Where the run's own temporary directory goes. The wrapper removes it even after
       # a SIGKILL (#1963). Set it to choose another place, off the SD card.
+      # Its name is also the id the gate's Postgres is named and labelled with
+      # (restmail-<id>-postgres, rest-mail-loop=<id>), unless RESTMAIL_LOOP_LABEL
+      # gives one (#1942).
       RESTMAIL_SCRATCH:
         sh: 'echo "${RESTMAIL_SCRATCH:-$HOME/tmp/rest-mail-ci-local}"'
     cmds:

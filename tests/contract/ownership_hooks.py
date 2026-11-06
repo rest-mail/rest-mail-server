@@ -78,6 +78,21 @@ def own_sender(transaction):
     return address
 
 
+def run_sender(transaction):
+    """The address the request's credential is for in an ownership run, the
+    administrator's included, or None outside one."""
+    if not in_an_ownership_run():
+        return None
+    return credential_address(transaction)
+
+
+def a_refusal(transaction):
+    """Whether the transaction is named for a response other than a success.
+    An ownership cell is built from the success, so only examples are."""
+    status = transaction.get("name", "").split(" > ")[2:3]
+    return bool(status) and not status[0].startswith("2")
+
+
 def an_hour_tomorrow(now):
     start = (now + timedelta(days=1)).replace(minute=0, second=0, microsecond=0)
     return start, start + timedelta(hours=1)
@@ -94,10 +109,16 @@ def a_send_each_link_can_follow(transaction):
     # make what cancelScheduledMessage and respondToCalendar are sent for
     # (the run provides future_time and calendar_invitation). A scheduled send
     # is moved to tomorrow; any other send invites the sender to an hour
-    # tomorrow, which its Sent copy keeps (#1163).
-    address = own_sender(transaction)
+    # tomorrow, which its Sent copy keeps (#1163). The run provides both for
+    # its examples too, which it sends as the administrator, so the
+    # administrator's sends are made the same way: left as written, the
+    # scheduled send was refused 422 and the reply found no invitation, 400
+    # (#1942). Only a send documented to succeed is changed: the refusals
+    # (scheduled_at_past, scheduled_at_too_far and the rest) keep what they
+    # are refused for.
+    address = run_sender(transaction)
     body = hooks.get_json(transaction)
-    if address is None or not isinstance(body, dict):
+    if address is None or not isinstance(body, dict) or a_refusal(transaction):
         return
     start, end = an_hour_tomorrow(datetime.now(UTC))
     if body.get("scheduled_at") is not None:
@@ -135,3 +156,35 @@ def reply_as_the_sender_itself(transaction):
         return
     body["from"] = address
     hooks.set_json(transaction, body)
+
+
+@hooks.after("sendMessage")
+def keep_the_invitation(transaction):
+    # What respondToCalendar's refusal below is sent on: the message the
+    # sender's own invitation made, as only the success is filled by a link.
+    address = run_sender(transaction)
+    sent = hooks.get_json(transaction)
+    if address is None or not isinstance(sent, dict) or sent.get("calendar_event") is None:
+        return
+    try:
+        data = (hooks.get_json(transaction, "real") or {}).get("data") or {}
+    except (ValueError, TypeError, AttributeError):
+        return
+    if isinstance(data.get("id"), int):
+        invitations = hooks.stash.get("ownership_invitations", {})
+        invitations[address.lower()] = data["id"]
+        hooks.stash["ownership_invitations"] = invitations
+
+
+@hooks.before("respondToCalendar")
+def a_foreign_sender_on_an_invitation(transaction):
+    # foreign_sender (403) requires calendar_invitation too, but names message
+    # 1, which no link fills and which holds no invitation: the handler
+    # answers 400 for the message before it reads the sender (#1942). It is
+    # sent on the invitation the same credential's send made.
+    address = run_sender(transaction)
+    if address is None or " > 403 > " not in transaction.get("name", ""):
+        return
+    message = hooks.stash.get("ownership_invitations", {}).get(address.lower())
+    if isinstance(message, int):
+        transaction["fullPath"] = f"/api/v1/messages/{message:d}/calendar-reply"

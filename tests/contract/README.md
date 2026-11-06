@@ -611,7 +611,12 @@ the primary run (#1334). A request carrying the fixture admin's session is sent
 with the two-factor administrator's instead (`mfa_admin.py`: a superadmin
 enrolled in TOTP and signed in with a real second factor; nothing is forged).
 Requests with no credential, and the authorization phase's other principals,
-keep theirs. `createAPIKey` is made with that administrator's password, except in
+keep theirs. `linkAccount` refuses a password-only session 403
+`two_factor_required`, as its 403 and its `two_factor_required` example
+document. The authorization phase's `ordinary` principal is one, and with no
+roles where the operation names no capability the phase would expect its 201,
+so `hooks.py` skips that cell (`no_link_from_a_password_only_session`, #1942):
+it is reported unsent, and the refusal is proven in-process. `createAPIKey` is made with that administrator's password, except in
 the coverage process ([A hook cannot change a generated body](#a-hook-cannot-change-a-generated-body)).
 `deleteGrant`'s example names grant 1, a fixture principal's own, so the hook
 makes an eligible grant on an account without credentials and deletes that.
@@ -1633,7 +1638,27 @@ account, or an object in it, is answered as if it did not exist
 administrator, which an account may not, so `ownership_hooks.py`, loaded after
 `hooks.py`, sends the chain and the attacker's request from, and only to, the
 sender's own address; `run.sh` sets `CONTRACT_OWNERSHIP` for these runs, and
-the draft send then keeps the draft its link filled.
+the draft send then keeps the draft its link filled. The run also sends the
+documented examples, as the administrator, and provides `future_time` and
+`calendar_invitation` for them too, so the administrator's scheduled send is
+moved to tomorrow and its other sends carry an invitation as well. Only the
+success reply is filled by a link: `foreign_sender` (403) names message 1, so
+it is sent on the invitation the same credential's send made, or the handler
+answers 400 for the message before it reads the sender (#1942).
+
+### Times that must be in the future
+
+`scheduled_at`, `snoozed_until` and a new credential's or grant's `expires_at`
+are taken only in the future, so a date written into an example expires: the
+scheduled send's example said 2026-10-27 and was refused 422 from that day on
+(#1942). `future_times.py` lists every such date in `openapi.yaml`,
+`openapi-example.json`, `internal/examplepairs/example-matrix.json` and this
+directory's sources that is past or less than 30 days ahead, unless its example
+is the refusal of that field or the run moves it (`RUN_RELATIVE`: a send must be
+scheduled within a year, so `hooks.py` sends the scheduled example an hour
+ahead). `test_future_times.py` holds the repository to an empty list, checks
+that each moved example is sent a minute to a year ahead, and fails on a field
+the handlers refuse as "not in the future" that the list does not name.
 
 ```sh
 python3 tests/contract/ownership.py openapi.yaml vertrag.yml \

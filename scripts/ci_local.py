@@ -601,6 +601,18 @@ def default_scratch():
     )
 
 
+def loop_label(scratch=None):
+    """The id this gate's containers carry, in their rest-mail-loop label and in
+    their restmail-<id>-postgres name, so that gates sharing the machine can be
+    told apart (#1942): RESTMAIL_LOOP_LABEL when it is set, otherwise the name of
+    the scratch directory. Docker names allow letters, digits, _ . and -, and so
+    does the id."""
+    value = os.environ.get("RESTMAIL_LOOP_LABEL") or Path(
+        scratch or default_scratch()
+    ).name
+    return re.sub(r"[^A-Za-z0-9_.-]+", "-", value).strip("-_.") or "local"
+
+
 def select_packages(packages, files, root):
     paths = {package["ImportPath"] for package in packages}
     if any(
@@ -743,8 +755,9 @@ def verify_vertrag(events, names):
 
 
 class Gate:
-    def __init__(self, root, cache, work, all_packages):
+    def __init__(self, root, cache, work, all_packages, loop=None):
         self.root, self.cache, self.work = root, cache, work
+        self.loop = loop or loop_label()
         self.all_packages = all_packages
         self.python = cache / "venv/bin/python"
         self.env = dict(os.environ)
@@ -1127,7 +1140,7 @@ class Gate:
         if not existed:
             self.run(["docker", "pull", self.image])
             self.created_image = True
-        self.container = "restmail-1941-postgres-" + uuid.uuid4().hex[:10]
+        self.container = f"restmail-{self.loop}-postgres-" + uuid.uuid4().hex[:10]
         self.run(
             [
                 "docker",
@@ -1136,7 +1149,7 @@ class Gate:
                 "--name",
                 self.container,
                 "--label",
-                "rest-mail-loop=1941",
+                "rest-mail-loop=" + self.loop,
                 # So that `chore clean` finds it after a killed run (#1963).
                 "--label",
                 os.environ.get("RESTMAIL_LABEL") or "rest-mail.run=local",
@@ -1687,7 +1700,7 @@ def main(argv=None):
 
     def execute(target, steps=lambda gate: gate.steps()):
         with tempfile.TemporaryDirectory(prefix="run-", dir=parent) as temporary:
-            gate = Gate(target, cache, Path(temporary), args.all)
+            gate = Gate(target, cache, Path(temporary), args.all, loop_label(scratch))
             try:
                 code = run_steps(steps(gate))
             finally:

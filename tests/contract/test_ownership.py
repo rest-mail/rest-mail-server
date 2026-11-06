@@ -746,20 +746,66 @@ class LinkedResourceHooks(unittest.TestCase):
         ):
             self.assertIn(field, event)
 
-    def test_the_administrator_and_other_runs_are_left_alone(self):
+    def test_the_administrators_examples_get_the_states_the_run_provides(self):
+        # The run provides future_time and calendar_invitation, and sends its
+        # examples as the administrator: left as written, the scheduled send
+        # was refused 422 and the reply found no invitation, 400 (#1942).
+        from datetime import UTC, datetime, timedelta
+
+        scheduled = self.sent(
+            self.hooks.a_send_each_link_can_follow,
+            bearer("admin@restmail.test"),
+            {
+                "from": "admin@restmail.test",
+                "to": ["recipient@example.net"],
+                "scheduled_at": "2026-10-27T00:00:00Z",
+            },
+        )
+        when = datetime.strptime(scheduled["scheduled_at"], "%Y-%m-%dT%H:%M:%SZ").replace(
+            tzinfo=UTC
+        )
+        self.assertGreater(when - datetime.now(UTC), timedelta(hours=22))
+        self.assertEqual(scheduled["to"], ["recipient@example.net"])
+        sent = self.sent(
+            self.hooks.a_send_each_link_can_follow,
+            bearer("admin@restmail.test"),
+            {"from": "admin@restmail.test", "to": ["admin@restmail.test"]},
+        )
+        self.assertEqual(sent["calendar_event"]["organizer"], {"address": "admin@restmail.test"})
+        self.assertEqual(sent["to"], ["admin@restmail.test"])
+
+    def test_a_documented_refusal_keeps_what_it_is_refused_for(self):
+        for name, body in (
+            ("scheduled_at_past", {"from": "admin@restmail.test", "scheduled_at": "2020-01-02T03:04:05Z"}),
+            ("scheduled_at_too_far", {"from": "admin@restmail.test", "scheduled_at": "2099-01-01T10:00:00Z"}),
+            ("from_missing", {"to": ["admin@restmail.test"]}),
+        ):
+            with self.subTest(name=name):
+                transaction = {
+                    "name": "/api/v1/messages/send > Send a message > 422 > application/json",
+                    "request": {
+                        "headers": {"Authorization": bearer("admin@restmail.test")},
+                        "body": json.dumps(body),
+                    },
+                }
+                self.hooks.a_send_each_link_can_follow(transaction)
+                self.assertEqual(json.loads(transaction["request"]["body"]), body)
+        success = {
+            "name": "/api/v1/messages/send > Send a message > 201 > application/json",
+            "request": {
+                "headers": {"Authorization": bearer("admin@restmail.test")},
+                "body": json.dumps({"from": "admin@restmail.test", "to": ["admin@restmail.test"]}),
+            },
+        }
+        self.hooks.a_send_each_link_can_follow(success)
+        self.assertIn("calendar_event", json.loads(success["request"]["body"]))
+
+    def test_other_runs_are_left_alone(self):
         example = {
             "from": "admin@restmail.test",
             "to": ["admin@restmail.test"],
             "scheduled_at": "2026-10-27T00:00:00Z",
         }
-        self.assertEqual(
-            self.sent(
-                self.hooks.a_send_each_link_can_follow,
-                bearer("admin@restmail.test"),
-                example,
-            ),
-            example,
-        )
         with patch.dict(os.environ, {"CONTRACT_OWNERSHIP": ""}):
             self.assertEqual(
                 self.sent(
@@ -782,6 +828,45 @@ class LinkedResourceHooks(unittest.TestCase):
             ),
             given,
         )
+
+    def invitation(self, authorization, body, answer):
+        transaction = {
+            "request": {"headers": {"Authorization": authorization}, "body": json.dumps(body)},
+            "real": {"body": json.dumps(answer)},
+        }
+        self.hooks.keep_the_invitation(transaction)
+
+    def reply(self, authorization, status):
+        transaction = {
+            "name": f"/api/v1/messages/{{id}}/calendar-reply > Reply to a calendar invitation > {status} > application/json",
+            "fullPath": "/api/v1/messages/1/calendar-reply",
+            "request": {"headers": {"Authorization": authorization}, "body": "{}"},
+        }
+        self.hooks.a_foreign_sender_on_an_invitation(transaction)
+        return transaction["fullPath"]
+
+    def test_the_foreign_sender_refusal_is_sent_on_the_senders_own_invitation(self):
+        # foreign_sender names message 1, which holds no invitation, so the
+        # handler answered 400 for the message, not 403 for the sender (#1942).
+        self.hooks.hooks.stash.clear()
+        admin = bearer("admin@restmail.test")
+        self.assertEqual(self.reply(admin, 403), "/api/v1/messages/1/calendar-reply")
+        self.invitation(admin, {"from": "admin@restmail.test"}, {"data": {"id": 274}})
+        self.invitation(
+            admin, {"from": "admin@restmail.test", "calendar_event": {"method": "REQUEST"}}, {"data": {"id": 275}}
+        )
+        self.invitation(
+            bearer("other@restmail.test"),
+            {"from": "other@restmail.test", "calendar_event": {"method": "REQUEST"}},
+            {"data": {"id": 300}},
+        )
+        self.assertEqual(self.reply(admin, 403), "/api/v1/messages/275/calendar-reply")
+        self.assertEqual(self.reply(bearer("other@restmail.test"), 403), "/api/v1/messages/300/calendar-reply")
+        # The success is filled by its link, and the other refusals keep their ids.
+        self.assertEqual(self.reply(admin, 200), "/api/v1/messages/1/calendar-reply")
+        self.assertEqual(self.reply(admin, 404), "/api/v1/messages/1/calendar-reply")
+        with patch.dict(os.environ, {"CONTRACT_OWNERSHIP": ""}):
+            self.assertEqual(self.reply(admin, 403), "/api/v1/messages/1/calendar-reply")
 
     def test_a_reply_is_sent_from_the_repliers_own_address(self):
         example = {"from": "admin@restmail.test", "response": "ACCEPTED"}
