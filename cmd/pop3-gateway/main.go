@@ -21,13 +21,14 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/gateway/tlsutil"
 	"github.com/rest-mail/rest-mail-server/internal/grants"
 	"github.com/rest-mail/rest-mail-server/internal/metrics"
+	"github.com/rest-mail/rest-mail-server/internal/requestid"
 )
 
 func main() {
 	logHandler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
 	})
-	slog.SetDefault(slog.New(logHandler))
+	slog.SetDefault(slog.New(requestid.NewHandler(logHandler)))
 
 	slog.Info("starting POP3 gateway")
 
@@ -40,13 +41,13 @@ func main() {
 	switch cfg.LogLevel {
 	case "debug":
 		logHandler = slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug})
-		slog.SetDefault(slog.New(logHandler))
+		slog.SetDefault(slog.New(requestid.NewHandler(logHandler)))
 	case "warn":
 		logHandler = slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelWarn})
-		slog.SetDefault(slog.New(logHandler))
+		slog.SetDefault(slog.New(requestid.NewHandler(logHandler)))
 	case "error":
 		logHandler = slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError})
-		slog.SetDefault(slog.New(logHandler))
+		slog.SetDefault(slog.New(requestid.NewHandler(logHandler)))
 	}
 
 	// Secure-by-construction (production-only): refuse to boot when the POP3

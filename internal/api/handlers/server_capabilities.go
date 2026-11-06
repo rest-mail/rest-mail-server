@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"time"
@@ -37,11 +38,11 @@ func (h *GrantHandler) serverCapabilities(r *http.Request, _ struct{}) (serverCa
 	h = h.forRequest(r)
 	claims := middleware.GetClaims(r)
 	if err := grants.RequireSuperadmin(h.db, claims.AccountID); err != nil {
-		return serverCapabilitiesResponse{}, serverCapabilitiesReadError(err)
+		return serverCapabilitiesResponse{}, serverCapabilitiesReadError(r.Context(), err)
 	}
 	names, overridden, err := grants.ServerCeiling(h.db, time.Now())
 	if err != nil {
-		return serverCapabilitiesResponse{}, serverCapabilitiesReadError(err)
+		return serverCapabilitiesResponse{}, serverCapabilitiesReadError(r.Context(), err)
 	}
 	return toServerCapabilitiesResponse(names, overridden), nil
 }
@@ -69,7 +70,7 @@ func (h *GrantHandler) updateServerCapabilities(r *http.Request, req updateServe
 		return err
 	})
 	if err != nil {
-		return serverCapabilitiesResponse{}, serverCapabilitiesError(err)
+		return serverCapabilitiesResponse{}, serverCapabilitiesError(r.Context(), err)
 	}
 	h.cache.Invalidate()
 	return toServerCapabilitiesResponse(names, false), nil
@@ -89,14 +90,14 @@ func toServerCapabilitiesResponse(names []string, overridden bool) serverCapabil
 // serverCapabilitiesReadError is serverCapabilitiesError for the read: it
 // changes nothing, so a failure is the plain internal error, not a failed
 // grant change.
-func serverCapabilitiesReadError(err error) error {
+func serverCapabilitiesReadError(ctx context.Context, err error) error {
 	if errors.Is(err, grants.ErrSuperadminRequired) {
-		return serverCapabilitiesError(err)
+		return serverCapabilitiesError(ctx, err)
 	}
 	return err
 }
 
-func serverCapabilitiesError(err error) error {
+func serverCapabilitiesError(ctx context.Context, err error) error {
 	var invalid *grants.InvalidCapabilityError
 	switch {
 	case errors.As(err, &invalid):
@@ -106,6 +107,6 @@ func serverCapabilitiesError(err error) error {
 	case errors.Is(err, grants.ErrServerOverridden):
 		return endpoint.Refuse(http.StatusConflict, "server_capabilities_from_environment", err.Error())
 	default:
-		return grantChangeError(err)
+		return grantChangeError(ctx, err)
 	}
 }

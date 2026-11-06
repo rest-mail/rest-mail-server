@@ -119,7 +119,7 @@ func noFallbackWorker(t *testing.T, domain string, mx *noFallbackMX, peer *restP
 		case "/restmail/messages":
 			peer.posts.Add(1)
 			if peer.deferFirst.Add(-1) >= 0 {
-				endpoint.WriteError(rw, endpoint.Refuse(http.StatusServiceUnavailable, "deferred", "Message deferred, retry later"))
+				endpoint.WriteError(r.Context(), rw, endpoint.Refuse(http.StatusServiceUnavailable, "deferred", "Message deferred, retry later"))
 				return
 			}
 			rw.WriteHeader(int(peer.post.Load()))

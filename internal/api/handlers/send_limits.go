@@ -92,7 +92,7 @@ func (h *MessageHandler) reserveLayeredSend(r *http.Request, req sendMessageRequ
 		return nil, nil
 	}
 	if h.broker != nil {
-		h.broker.Publish(hit.OwnerID, SSEEvent{Type: "send_limit_hit", Data: map[string]any{"held_id": held.ID, "scope": hit.Scope, "dimension": hit.Dimension}})
+		h.broker.Publish(r.Context(), hit.OwnerID, SSEEvent{Type: "send_limit_hit", Data: map[string]any{"held_id": held.ID, "scope": hit.Scope, "dimension": hit.Dimension}})
 	}
 	out := scheduledMessageOf(held)
 	return &out, nil

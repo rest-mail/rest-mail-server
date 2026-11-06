@@ -118,9 +118,9 @@ func (h *MessageHandler) SetSendLimits(maxRecipients int, limiter *ratelimit.Sub
 // recordTrace hands a MessageTrace to the async recorder when one is configured.
 // It never blocks or errors — trace persistence must not delay or fail message
 // processing (a nil recorder simply skips capture).
-func (h *MessageHandler) recordTrace(t models.MessageTrace) {
+func (h *MessageHandler) recordTrace(ctx context.Context, t models.MessageTrace) {
 	if h.recorder != nil {
-		h.recorder.Record(t)
+		h.recorder.Record(withRequestID(ctx, t))
 	}
 }
 
@@ -442,7 +442,7 @@ func (h *MessageHandler) updateMessage(r *http.Request, in updateMessageRequest)
 	}
 
 	if h.broker != nil {
-		h.broker.Publish(msg.MailboxID, SSEEvent{
+		h.broker.Publish(r.Context(), msg.MailboxID, SSEEvent{
 			Type: "message_updated",
 			Data: map[string]interface{}{
 				"message_id": msg.ID,
@@ -456,7 +456,7 @@ func (h *MessageHandler) updateMessage(r *http.Request, in updateMessageRequest)
 
 		// Emit folder_update if the message was moved
 		if req.Folder != nil {
-			h.broker.Publish(msg.MailboxID, SSEEvent{
+			h.broker.Publish(r.Context(), msg.MailboxID, SSEEvent{
 				Type: "folder_update",
 				Data: map[string]interface{}{
 					"folder": msg.Folder,
@@ -539,7 +539,7 @@ func (h *MessageHandler) deleteMessage(r *http.Request, in deleteMessageRequest)
 	}
 
 	if h.broker != nil {
-		h.broker.Publish(msg.MailboxID, SSEEvent{
+		h.broker.Publish(r.Context(), msg.MailboxID, SSEEvent{
 			Type: "message_deleted",
 			Data: map[string]interface{}{
 				"message_id": msg.ID,
@@ -853,19 +853,19 @@ func (h *MessageHandler) sendComposedMessage(r *http.Request, req sendMessageReq
 				rejectMsg = "Message rejected by outbound policy"
 			}
 			outTraceBase.Outcome = outcomeRejected
-			h.recordTrace(buildTrace(outTraceBase))
+			h.recordTrace(r.Context(), buildTrace(outTraceBase))
 			return zero, endpoint.Refuse(http.StatusForbidden, "rejected", rejectMsg)
 		case pipeline.ActionQuarantine:
 			outTraceBase.Outcome = outcomeQuarantined
-			h.recordTrace(buildTrace(outTraceBase))
+			h.recordTrace(r.Context(), buildTrace(outTraceBase))
 			return zero, endpoint.Refuse(http.StatusForbidden, "quarantined", "Message held for review by outbound policy")
 		case pipeline.ActionDiscard:
 			outTraceBase.Outcome = outcomeDiscarded
-			h.recordTrace(buildTrace(outTraceBase))
+			h.recordTrace(r.Context(), buildTrace(outTraceBase))
 			return endpoint.Status[any]{Code: http.StatusOK, Value: SendDiscarded{Status: "discarded"}}, nil
 		case pipeline.ActionDefer:
 			outTraceBase.Outcome = outcomeDeferred
-			h.recordTrace(buildTrace(outTraceBase))
+			h.recordTrace(r.Context(), buildTrace(outTraceBase))
 			if h.layeredLimits != nil {
 				held, err := h.reserveLayeredSend(r, req, parts, senderMailbox.ID, "outbound_pipeline")
 				if err != nil {
@@ -1043,7 +1043,7 @@ func (h *MessageHandler) sendComposedMessage(r *http.Request, req sendMessageReq
 		queuedTrace.RFCMessageID = sentMsg.MsgID
 		mid := sentMsg.ID
 		queuedTrace.MessageID = &mid
-		h.recordTrace(buildTrace(*queuedTrace))
+		h.recordTrace(r.Context(), buildTrace(*queuedTrace))
 	}
 
 	// Deliver to each recipient in to + cc + bcc
@@ -1084,7 +1084,7 @@ func (h *MessageHandler) sendComposedMessage(r *http.Request, req sendMessageReq
 				RequireTLS: req.RequireTLS,
 			})
 		default:
-			slog.Error("send: could not look up a recipient", "recipient", rcpt, "error", err)
+			slog.ErrorContext(r.Context(), "send: could not look up a recipient", "recipient", rcpt, "error", err)
 			return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to look up a recipient")
 		}
 	}
@@ -1094,7 +1094,7 @@ func (h *MessageHandler) sendComposedMessage(r *http.Request, req sendMessageReq
 	// client's retry then delivers nothing locally twice.
 	if len(remote) > 0 {
 		if err := db.Transaction(func(tx *gorm.DB) error { return tx.Create(&remote).Error }); err != nil {
-			slog.Error("send: could not queue the message for remote recipients", "error", err)
+			slog.ErrorContext(r.Context(), "send: could not queue the message for remote recipients", "error", err)
 			return zero, endpoint.Refuse(http.StatusServiceUnavailable, "deferred", "Try again later")
 		}
 	}
@@ -1117,7 +1117,7 @@ func (h *MessageHandler) sendComposedMessage(r *http.Request, req sendMessageReq
 			RequireTLS:   req.RequireTLS,
 		})
 		if deliverErr != nil {
-			slog.Warn("local delivery failed for recipient", "recipient", local.address, "error", deliverErr)
+			slog.WarnContext(r.Context(), "local delivery failed for recipient", "recipient", local.address, "error", deliverErr)
 			if h.draftSend != nil {
 				return zero, endpoint.Refuse(http.StatusServiceUnavailable, "deferred", "Try again later")
 			}
@@ -1126,7 +1126,7 @@ func (h *MessageHandler) sendComposedMessage(r *http.Request, req sendMessageReq
 
 	// Publish SSE event for sent message
 	if h.broker != nil {
-		h.broker.Publish(senderMailbox.ID, SSEEvent{
+		h.broker.Publish(r.Context(), senderMailbox.ID, SSEEvent{
 			Type: "message_sent",
 			Data: map[string]interface{}{
 				"message_id": sentMsg.ID,
@@ -1937,7 +1937,7 @@ func (h *MessageHandler) sendDraftInTransaction(r *http.Request, in sendDraftReq
 	// transaction. A failed removal must roll them all back before any worker
 	// can send the message, so the retained draft is safe to retry (#1265).
 	if err := removeSentDraft(r.Context(), h.db, &draft); err != nil {
-		slog.Error("send draft: could not remove draft; rolling back send", "draft_id", draft.ID, "mailbox_id", draft.MailboxID, "error", err)
+		slog.ErrorContext(r.Context(), "send draft: could not remove draft; rolling back send", "draft_id", draft.ID, "mailbox_id", draft.MailboxID, "error", err)
 		return zero, endpoint.Refuse(http.StatusServiceUnavailable, "deferred", "Try again later")
 	}
 	return sent, nil
@@ -2296,7 +2296,7 @@ func (h *MessageHandler) respondToCalendar(r *http.Request, in calendarReplyRequ
 			RawMessage:   rawMessage,
 		})
 		if deliverErr != nil {
-			slog.Warn("calendar reply local delivery failed", "recipient", organizer, "error", deliverErr)
+			slog.WarnContext(r.Context(), "calendar reply local delivery failed", "recipient", organizer, "error", deliverErr)
 		}
 	} else {
 		// Remote delivery: the Sent copy and its queue entry commit together,
@@ -2568,7 +2568,7 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 		switch pipelineResult.FinalAction {
 		case pipeline.ActionReject:
 			traceBase.Outcome = outcomeRejected
-			h.recordTrace(buildTrace(traceBase))
+			h.recordTrace(ctx, buildTrace(traceBase))
 			return nil, fmt.Errorf("rejected: %s", pipelineResult.RejectMsg)
 		case pipeline.ActionQuarantine:
 			preview := params.BodyText
@@ -2591,15 +2591,15 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 				return nil, fmt.Errorf("hold the message in quarantine: %w", err)
 			}
 			traceBase.Outcome = outcomeQuarantined
-			h.recordTrace(buildTrace(traceBase))
+			h.recordTrace(ctx, buildTrace(traceBase))
 			return nil, nil // quarantined, not an error but no message created
 		case pipeline.ActionDiscard:
 			traceBase.Outcome = outcomeDiscarded
-			h.recordTrace(buildTrace(traceBase))
+			h.recordTrace(ctx, buildTrace(traceBase))
 			return nil, nil // discarded, not an error but no message created
 		case pipeline.ActionDefer:
 			traceBase.Outcome = outcomeDeferred
-			h.recordTrace(buildTrace(traceBase))
+			h.recordTrace(ctx, buildTrace(traceBase))
 			return nil, fmt.Errorf("deferred: try again later")
 		case pipeline.ActionContinue:
 			// The required checks passed: the message is accepted, and the rest of
@@ -2624,22 +2624,22 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 	// but only when a forward was actually enqueued, so a redirect that cannot be
 	// honoured never loses the message.
 	forwarded := 0
-	for _, fwd := range buildRedirectForwards(emailJSON, params.RawMessage, params.Sender, []string{mailbox.Address}, rmail.DomainFromAddress(mailbox.Address), authResults) {
+	for _, fwd := range buildRedirectForwards(ctx, emailJSON, params.RawMessage, params.Sender, []string{mailbox.Address}, rmail.DomainFromAddress(mailbox.Address), authResults) {
 		row := fwd
 		// "All instances of the message MUST be tagged in the same manner" (RFC 8689 §4.1).
 		row.RequireTLS = params.RequireTLS
 		if err := h.db.Create(&row).Error; err != nil {
-			slog.Error("deliverToLocal: failed to enqueue sieve redirect",
+			slog.ErrorContext(ctx, "deliverToLocal: failed to enqueue sieve redirect",
 				"recipient", row.Recipient, "error", err)
 			continue
 		}
 		forwarded++
-		slog.Info("deliverToLocal: sieve redirect queued", "recipient", row.Recipient)
+		slog.InfoContext(ctx, "deliverToLocal: sieve redirect queued", "recipient", row.Recipient)
 	}
 	if forwarded > 0 && redirectSuppressesKeep(emailJSON) {
 		if deliveredTrace != nil {
 			deliveredTrace.Outcome = outcomeDelivered
-			h.recordTrace(buildTrace(*deliveredTrace))
+			h.recordTrace(ctx, buildTrace(*deliveredTrace))
 		}
 		return nil, nil
 	}
@@ -2686,7 +2686,7 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 	// Otherwise it is the folder a Sieve fileinto chose, INBOX when none did (#787).
 	folder := params.Folder
 	if folder == "" {
-		folder = sieveFolder(emailJSON, mailbox.Address)
+		folder = sieveFolder(ctx, emailJSON, mailbox.Address)
 	}
 	msg := models.Message{
 		MailboxID:    mailbox.ID,
@@ -2874,12 +2874,12 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 		deliveredTrace.RFCMessageID = msg.MsgID
 		mid := msg.ID
 		deliveredTrace.MessageID = &mid
-		h.recordTrace(buildTrace(*deliveredTrace))
+		h.recordTrace(ctx, buildTrace(*deliveredTrace))
 	}
 
 	// ── SSE notifications ────────────────────────────────────────────
 	if h.broker != nil {
-		h.broker.Publish(mailbox.ID, SSEEvent{
+		h.broker.Publish(ctx, mailbox.ID, SSEEvent{
 			Type: "new_message",
 			Data: map[string]interface{}{
 				"message_id": msg.ID,
@@ -2891,7 +2891,7 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 		var unreadCount int64
 		h.db.Model(&models.Message{}).Where("mailbox_id = ? AND folder = ? AND is_read = ? AND is_deleted = ? AND imap_deleted = false",
 			mailbox.ID, "INBOX", false, false).Count(&unreadCount)
-		h.broker.Publish(mailbox.ID, SSEEvent{
+		h.broker.Publish(ctx, mailbox.ID, SSEEvent{
 			Type: "folder_update",
 			Data: map[string]interface{}{
 				"folder":       "INBOX",

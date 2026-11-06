@@ -165,7 +165,7 @@ func (h *MessageHandler) deliverScheduled(ctx context.Context, row models.Schedu
 	// The refusal is kept as the API writes it, as it was when the send ran
 	// through the route.
 	rec := httptest.NewRecorder()
-	endpoint.WriteError(rec, err)
+	endpoint.WriteError(ctx, rec, err)
 	reason := rec.Body.String()
 	if rec.Code == http.StatusTooManyRequests || rec.Code >= http.StatusInternalServerError {
 		if row.Attempts+1 < scheduledSendMaxAttempts {

@@ -155,7 +155,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		Allow:          netallow.New("api-metrics", cfg.MetricsAllowedCIDRs()),
 		TrustedProxies: trustedProxies,
 	}))
-	r.Use(chimw.RequestID)
+	r.Use(middleware.RequestID)
 	r.Use(handlers.TwoFactorWindow(cfg.FreshTwoFactorWindow))
 	// TrustedRealIP replaces chi's RealIP: it resolves the client IP from
 	// X-Forwarded-For ONLY for trusted-proxy peers and writes it into RemoteAddr, so
@@ -857,7 +857,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	// router, so delivery-side SSE/pipeline behavior is identical.
 	if cfg.InternalMTLSEnabled {
 		ir := chi.NewRouter()
-		ir.Use(chimw.RequestID)
+		ir.Use(middleware.RequestID)
 		// Same trusted-proxy-aware RealIP as the public listener: never trust a
 		// forwarded header from an untrusted peer (see the public middleware above).
 		ir.Use(middleware.TrustedRealIP(trustedProxies))

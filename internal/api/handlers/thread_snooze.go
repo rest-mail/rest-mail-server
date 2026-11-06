@@ -58,7 +58,7 @@ func (h *MessageHandler) snoozeThread(r *http.Request, in snoozeThreadRequest) (
 	}).Create(&row).Error; err != nil {
 		return ThreadSnooze{}, fmt.Errorf("store thread snooze: %w", err)
 	}
-	h.publishThreadSnooze(row)
+	h.publishThreadSnooze(r.Context(), row)
 	return ThreadSnooze{ThreadID: row.ThreadID, SnoozedUntil: row.SnoozedUntil}, nil
 }
 
@@ -72,13 +72,13 @@ func (h *MessageHandler) returnSnoozedThreads(ctx context.Context) {
 		return
 	}
 	for _, row := range returned {
-		h.publishThreadSnooze(row)
+		h.publishThreadSnooze(ctx, row)
 	}
 }
 
-func (h *MessageHandler) publishThreadSnooze(row models.ThreadSnooze) {
+func (h *MessageHandler) publishThreadSnooze(ctx context.Context, row models.ThreadSnooze) {
 	if h.broker != nil {
-		h.broker.Publish(row.MailboxID, SSEEvent{Type: "folder_update", Data: map[string]interface{}{
+		h.broker.Publish(ctx, row.MailboxID, SSEEvent{Type: "folder_update", Data: map[string]interface{}{
 			"mailbox_id": row.MailboxID, "thread_id": row.ThreadID, "snoozed_until": row.SnoozedUntil,
 		}})
 	}

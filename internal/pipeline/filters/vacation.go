@@ -128,7 +128,7 @@ func (f *vacationFilter) Execute(ctx context.Context, email *pipeline.EmailJSON)
 		// The row takes this reply's time, so the interval runs from the latest
 		// reply (#809).
 		if err := recordVacationResponse(db, mailboxID, sender, "", now); err != nil {
-			slog.Warn("vacation: could not record the reply; sending it anyway", "mailbox_id", mailboxID, "error", err)
+			slog.WarnContext(ctx, "vacation: could not record the reply; sending it anyway", "mailbox_id", mailboxID, "error", err)
 		}
 
 		// ── 3c. Queue the actual reply via outbound_queue ─────────

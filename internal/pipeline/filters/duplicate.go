@@ -66,7 +66,7 @@ func (f *duplicateFilter) Execute(ctx context.Context, email *pipeline.EmailJSON
 	// Fire-and-forget webhook delivery in a goroutine
 	payload, err := json.Marshal(email)
 	if err != nil {
-		slog.Error("duplicate: failed to marshal email for webhook", "error", err)
+		slog.ErrorContext(ctx, "duplicate: failed to marshal email for webhook", "error", err)
 	} else {
 		go f.sendWebhook(payload)
 	}

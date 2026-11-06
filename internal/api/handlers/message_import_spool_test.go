@@ -479,7 +479,7 @@ func TestImportDeclaredFieldsAreTheType(t *testing.T) {
 
 type panickingImportBroker struct{}
 
-func (panickingImportBroker) Publish(uint, SSEEvent) { panic("broker") }
+func (panickingImportBroker) Publish(context.Context, uint, SSEEvent) { panic("broker") }
 
 func importedAccount(t *testing.T) (*gorm.DB, uint) {
 	t.Helper()

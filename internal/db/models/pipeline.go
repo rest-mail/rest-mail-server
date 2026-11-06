@@ -67,6 +67,12 @@ type MessageTrace struct {
 	RcptTo   string `gorm:"size:255" json:"rcpt_to"` // first recipient
 	ClientIP string `gorm:"size:64" json:"client_ip"`
 
+	// RequestID is the ID of the request that ran the pipeline (#1580): the one
+	// a gateway sent as X-Request-Id, or the one the API made. The gateway and
+	// API log lines for that message carry the same ID. Nil when the trace was
+	// written outside a request.
+	RequestID *string `gorm:"size:64" json:"request_id"`
+
 	PipelineID  uint   `gorm:"index" json:"pipeline_id"`
 	FinalAction string `gorm:"size:20" json:"final_action"`
 

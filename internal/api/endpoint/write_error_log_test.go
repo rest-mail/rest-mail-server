@@ -35,7 +35,7 @@ func TestACancelledRequestIsNotLoggedAsAHandlerFailure(t *testing.T) {
 			t.Cleanup(func() { slog.SetDefault(previous) })
 
 			got := httptest.NewRecorder()
-			writeError(got, tt.err)
+			writeError(context.Background(), got, tt.err)
 
 			if got.Code != http.StatusInternalServerError {
 				t.Errorf("status = %d, want 500", got.Code)

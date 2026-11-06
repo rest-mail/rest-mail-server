@@ -22,6 +22,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/grants"
 	"github.com/rest-mail/rest-mail-server/internal/metrics"
 	rmime "github.com/rest-mail/rest-mail-server/internal/mime"
+	"github.com/rest-mail/rest-mail-server/internal/requestid"
 	"github.com/rest-mail/rest-mail-server/internal/version"
 )
 
@@ -29,7 +30,7 @@ func main() {
 	logHandler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
 	})
-	slog.SetDefault(slog.New(logHandler))
+	slog.SetDefault(slog.New(requestid.NewHandler(logHandler)))
 
 	slog.Info("starting IMAP gateway")
 
@@ -44,13 +45,13 @@ func main() {
 	switch cfg.LogLevel {
 	case "debug":
 		logHandler = slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug})
-		slog.SetDefault(slog.New(logHandler))
+		slog.SetDefault(slog.New(requestid.NewHandler(logHandler)))
 	case "warn":
 		logHandler = slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelWarn})
-		slog.SetDefault(slog.New(logHandler))
+		slog.SetDefault(slog.New(requestid.NewHandler(logHandler)))
 	case "error":
 		logHandler = slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError})
-		slog.SetDefault(slog.New(logHandler))
+		slog.SetDefault(slog.New(requestid.NewHandler(logHandler)))
 	}
 
 	// Secure-by-construction (production-only): refuse to boot when the IMAP

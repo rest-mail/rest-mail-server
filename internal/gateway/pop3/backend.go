@@ -15,6 +15,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/connlimiter"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/rawmsg"
+	"github.com/rest-mail/rest-mail-server/internal/requestid"
 )
 
 // errAccountLocked is returned when an account is temporarily banned for too
@@ -55,11 +56,17 @@ func (b *Backend) Authenticate(user, pass string) (gopop3.Mailbox, error) {
 // account. utf8 says whether the client sent UTF8 before logging in (RFC
 // 6856): only then does RETR serve raw UTF-8 header fields.
 func (b *Backend) AuthenticateUTF8(user, pass string, utf8 bool) (gopop3.Mailbox, error) {
+	// One ID per session (#1580): on every line logged for it, and sent to
+	// the API on each call the session makes.
+	id := requestid.New()
+	log := slog.Default().With(requestid.Attr, id)
+	api := b.api.WithRequestID(id)
+
 	// Per-account hard stop: reject a banned account WITHOUT calling the auth API,
 	// so a rotating-IP brute-force is throttled and a ban is never lifted by a
 	// lucky correct guess. The per-IP ban is enforced separately by the server.
 	if b.limiter != nil && b.limiter.IsUserBanned(user) {
-		slog.Warn("pop3: auth rejected: account temporarily locked",
+		log.Warn("pop3: auth rejected: account temporarily locked",
 			"user", maskEmail(user),
 			"event", "pop3_auth_banned",
 		)
@@ -69,12 +76,12 @@ func (b *Backend) AuthenticateUTF8(user, pass string, utf8 bool) (gopop3.Mailbox
 	// The connection gets its own session with the API (#1586): the address
 	// and password go once, and every call that follows sends the session's
 	// token. An app password signs in without the API's interactive login (#344).
-	resp, err := b.api.OpenSession(user, pass, "pop3")
+	resp, err := api.OpenSession(user, pass, "pop3")
 	if err != nil {
 		// A failed POP3 login is a security-relevant event (credential stuffing /
 		// enumeration). Log it structured, with the attacker-controlled username
 		// masked, so it is observable alongside the SMTP smtp_auth_failed events.
-		slog.Warn("pop3: auth failed",
+		log.Warn("pop3: auth failed",
 			"user", maskEmail(user),
 			"event", "pop3_auth_failed",
 		)
@@ -90,7 +97,7 @@ func (b *Backend) AuthenticateUTF8(user, pass string, utf8 bool) (gopop3.Mailbox
 		b.limiter.ResetAuthUser(user)
 	}
 	return &mailbox{
-		api:       b.api,
+		api:       api,
 		token:     resp.Token,
 		accountID: resp.User.ID,
 		utf8:      utf8,

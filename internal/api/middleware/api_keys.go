@@ -118,11 +118,11 @@ func (a *APIKeys) Authenticate(fallback func(http.Handler) http.Handler) func(ht
 				writeError(w, http.StatusUnauthorized, "unauthorized", "Invalid or expired API key")
 				return
 			case err != nil:
-				slog.Error("could not check an API key", "error", err)
+				slog.ErrorContext(r.Context(), "could not check an API key", "error", err)
 				writeError(w, http.StatusServiceUnavailable, "unavailable", "Could not verify the credential")
 				return
 			case claims == nil || !claims.IsAPIKey() || claims.TwoFactor:
-				slog.Error("API key verifier returned claims that are not an API key's")
+				slog.ErrorContext(r.Context(), "API key verifier returned claims that are not an API key's")
 				writeError(w, http.StatusServiceUnavailable, "unavailable", "Could not verify the credential")
 				return
 			}

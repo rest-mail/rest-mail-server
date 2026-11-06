@@ -4381,6 +4381,7 @@ export interface components {
             pipeline_id: number;
             rcpt_to: string;
             reason_code: string;
+            request_id: string | null;
             rfc_message_id: string;
             sampled: boolean;
             /** Format: float */

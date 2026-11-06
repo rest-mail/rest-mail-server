@@ -216,8 +216,11 @@ type sendLimitNoticeObserver struct {
 	owner          uint
 }
 
-func (o *sendLimitNoticeObserver) Publish(owner uint, _ SSEEvent) { o.owner = owner; o.events++ }
-func (o *sendLimitNoticeObserver) NewMail(owner uint)             { o.owner = owner; o.pushes++ }
+func (o *sendLimitNoticeObserver) Publish(_ context.Context, owner uint, _ SSEEvent) {
+	o.owner = owner
+	o.events++
+}
+func (o *sendLimitNoticeObserver) NewMail(owner uint) { o.owner = owner; o.pushes++ }
 
 func TestLayeredHumanReleaseKeepsDomainCeilingAndSameHold(t *testing.T) {
 	db, h, owner, child := layeredSendFixture(t)
