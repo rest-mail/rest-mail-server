@@ -121,6 +121,13 @@ func TestResetToken_RefusesExpiredTokensAndBadInput(t *testing.T) {
 	if _, err := ResetAdmin(gdb, token, "short"); !errors.Is(err, ErrPasswordTooShort) {
 		t.Errorf("short password: err = %v", err)
 	}
+	// Long enough, but guessable, or built from the account's own address:
+	// refused once the token names the account, and the token is not spent.
+	for _, guessable := range []string{"Summer2026!!", "password123456", "Tr1cky-Orbit-Lantern-" + adminAddr, "Tr1cky-Orbit-Lantern-admin"} {
+		if _, err := ResetAdmin(gdb, token, guessable); !errors.Is(err, ErrPasswordGuessable) {
+			t.Errorf("guessable password %q: err = %v, want ErrPasswordGuessable", guessable, err)
+		}
+	}
 	if _, err := ResetAdmin(gdb, token, chosenPassword); err != nil {
 		t.Errorf("the token should still work after a refused attempt: %v", err)
 	}

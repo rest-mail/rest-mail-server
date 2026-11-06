@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"reflect"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -58,8 +59,9 @@ func patchExamples(t *testing.T, path, operationID string) (map[string]interface
 	return requests, responses
 }
 
-// Each request example names exactly one response, and updated is the only
-// one the 200 answers: an unnamed 200 would pair with password_short too.
+// Each request example names exactly one response, and updated and
+// updated_password_at_minimum are the only ones the 200 answers: an unnamed 200
+// would pair with password_short too.
 func TestMailboxUpdate_ExamplePairs(t *testing.T) {
 	requests, responses := patchExamples(t, "/api/v1/admin/mailboxes/{id}", "updateMailbox")
 	for name := range requests {
@@ -73,15 +75,36 @@ func TestMailboxUpdate_ExamplePairs(t *testing.T) {
 			t.Errorf("request example %q is named on responses %v, want exactly one", name, statuses)
 		}
 	}
-	if _, ok := responses["200"]["updated"]; !ok || len(responses["200"]) != 1 {
-		t.Errorf("200 examples = %v, want only updated", responses["200"])
+	_, updated := responses["200"]["updated"]
+	_, atMinimum := responses["200"]["updated_password_at_minimum"]
+	if !updated || !atMinimum || len(responses["200"]) != 2 {
+		t.Errorf("200 examples = %v, want only updated and updated_password_at_minimum", responses["200"])
 	}
 	if _, ok := responses["422"]["password_short"]; !ok || len(responses["422"]) != 1 {
 		t.Errorf("422 examples = %v, want only password_short", responses["422"])
 	}
+	minimum, _ := requests["updated_password_at_minimum"].(map[string]interface{})
+	if password, _ := minimum["password"].(string); len(password) != minChosenPasswordLength {
+		t.Errorf("updated_password_at_minimum password = %q, want %d characters", password, minChosenPasswordLength)
+	}
 	short, _ := requests["password_short"].(map[string]interface{})
 	if password, _ := short["password"].(string); password == "" || len(password) >= minChosenPasswordLength {
 		t.Errorf("password_short password = %q, want 1 to %d characters", password, minChosenPasswordLength-1)
+	}
+	// The contract's coverage phase takes the first 200 example, by name, as the
+	// base of its probes, and the probes of the path send it unchanged to fixture
+	// account 1. A base with a password cannot go there: it would replace that
+	// account's password, so the hook moves it, and the probe no longer reaches id 1.
+	names := make([]string, 0, len(responses["200"]))
+	for name := range responses["200"] {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	if len(names) > 0 {
+		base, _ := requests[names[0]].(map[string]interface{})
+		if _, ok := base["password"]; ok {
+			t.Errorf("the first 200 example, %q, sets a password, and coverage would use it as the base of its probes", names[0])
+		}
 	}
 }
 

@@ -10,6 +10,8 @@ import (
 
 	oapifly "github.com/antimatter-studios/go-oapifly"
 	"github.com/rest-mail/rest-mail-server/internal/auth"
+	"github.com/rest-mail/rest-mail-server/internal/bootstrap"
+	"github.com/rest-mail/rest-mail-server/internal/config"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/db/repositories"
 	"github.com/rest-mail/rest-mail-server/internal/examplepairs"
@@ -60,6 +62,18 @@ func withBodyField(t *testing.T, pair oapifly.ExamplePair, key string, value any
 	}
 	pair.Request.Body = raw
 	return pair
+}
+
+// requestPassword is the password the pair's request sends.
+func requestPassword(t *testing.T, pair oapifly.ExamplePair) string {
+	t.Helper()
+	var body struct {
+		Password string `json:"password"`
+	}
+	if err := json.Unmarshal(pair.Request.Body, &body); err != nil {
+		t.Fatal(err)
+	}
+	return body.Password
 }
 
 // restmailTestDomain hosts restmail.test, the pairs' domain, and gives chris@ the
@@ -348,13 +362,50 @@ func TestAccountExamples(t *testing.T) {
 		if id, _ := data["id"].(float64); uint(id) != account.ID || account.DisplayName != "New Account" || !account.Active {
 			t.Fatalf("answered %v for stored %+v", data, account)
 		}
-		if cred, err := repositories.NewCredentialRepository(f.db).MatchPassword(account.ID, "correct-horse-battery", time.Now()); err != nil || cred == nil {
+		password := requestPassword(t, pair)
+		if len(password) != bootstrap.MinChosenPasswordLength {
+			t.Fatalf("the pair sends %d characters, and is the live proof of %d", len(password), bootstrap.MinChosenPasswordLength)
+		}
+		if cred, err := repositories.NewCredentialRepository(f.db).MatchPassword(account.ID, password, time.Now()); err != nil || cred == nil {
 			t.Fatalf("the account's password does not match (%v)", err)
 		}
 		if !ownsMailbox(f, account.Address) {
 			t.Fatal("the creator was not given the account")
 		}
 		data["id"] = want["data"]["id"]
+		rewriteBody(t, rr, got)
+		assertRequirementResponse(t, pair, rr)
+	})
+
+	t.Run("updateMailbox/updated_password_at_minimum", func(t *testing.T) {
+		examplepairs.Proven(t, "updateMailbox", "updated_password_at_minimum")
+		pair := pairs["updateMailbox"]["updated_password_at_minimum"]
+		f := newCredentialFixture(t)
+		domainID := restmailTestDomain(f, true) // chris@ administers restmail.test
+		// A router of its own: this route reads the account's real grants.
+		useRealGrants(t)
+		routers := NewRouters(f.db, f.jwt, &config.Config{Environment: "test"}, nil)
+		t.Cleanup(routers.Close)
+		f.router = routers.Public
+		accountID := restmailTestAccount(f, domainID, "new-account", "New Account", "an old velvet compass password")
+		pair.Request.Path = map[string]any{"id": float64(accountID)}
+		rr := sendAccountExample(f, routes["updateMailbox"], pair, twoFactorSession(f))
+		got, want := createdData(t, pair, rr)
+		password := requestPassword(t, pair)
+		if len(password) != bootstrap.MinChosenPasswordLength {
+			t.Fatalf("the pair sends %d characters, and is the live proof of %d", len(password), bootstrap.MinChosenPasswordLength)
+		}
+		if cred, err := repositories.NewCredentialRepository(f.db).MatchPassword(accountID, password, time.Now()); err != nil || cred == nil {
+			t.Fatalf("the account's new password does not match (%v)", err)
+		}
+		// What this account's row holds, and the pair's stand-ins for it.
+		for _, field := range []string{"id", "domain_id", "domain", "created_at", "updated_at", "last_password_change"} {
+			if value, ok := want["data"][field]; ok {
+				got["data"][field] = value
+			} else {
+				delete(got["data"], field)
+			}
+		}
 		rewriteBody(t, rr, got)
 		assertRequirementResponse(t, pair, rr)
 	})

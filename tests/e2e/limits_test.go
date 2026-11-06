@@ -422,7 +422,7 @@ func (l *limitsRun) recoveryFailures(t *testing.T) {
 	time.Sleep(10 * time.Second) // the sign-in bucket refills; each try spends from it too
 	recoverAs := func(address string) *http.Response {
 		resp, err := newAPIClient().post("/api/v1/auth/recover", map[string]string{"email": address,
-			"totp_code": "000000", "recovery_code": "not-a-recovery-code", "new_password": "a new password 1234"})
+			"totp_code": "000000", "recovery_code": "not-a-recovery-code", "new_password": "a new velvet compass 1234"})
 		requireNoError(t, err)
 		return resp
 	}

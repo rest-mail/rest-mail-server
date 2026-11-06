@@ -262,6 +262,10 @@ func (h *RecoveryEmailHandler) redeem(r *http.Request, req redeemRecoveryEmailRe
 		if err != nil {
 			return err
 		}
+		// The account is known only now; refusing here leaves the token unspent.
+		if problem := bootstrap.ChosenPasswordProblem(req.NewPassword, account.Address); problem != "" {
+			return endpoint.Invalid(map[string]string{"new_password": problem})
+		}
 		accountID = account.ID
 		now := time.Now()
 		if err := tx.Model(account).Updates(map[string]any{"last_password_change": now, "password_change_required": false, "bootstrap_expires_at": nil}).Error; err != nil {

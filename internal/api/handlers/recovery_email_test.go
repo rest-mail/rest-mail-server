@@ -217,6 +217,16 @@ func TestRecoveryEmailVerifiedSingleUsePasswordReset(t *testing.T) {
 	if rr := redeem(verify); rr.Code != 401 {
 		t.Fatalf("wrong-purpose token %d", rr.Code)
 	}
+	// A guessable password, or one built from the account's own address, is
+	// refused once the token names the account, and leaves the token unspent
+	// for the redemption below (#1672).
+	local, _, _ := strings.Cut(account.Address, "@")
+	for _, guessable := range []string{"Summer2026!!", "password123456", "Tr1cky-Orbit-Lantern-" + local} {
+		rr := emailRecoveryCall(routes, "POST", "/api/v1/auth/recover/email/redeem", map[string]string{"token": token, "new_password": guessable})
+		if rr.Code != 422 || !strings.Contains(validationField(t, rr, "new_password"), "too easy to guess") || strings.Contains(rr.Body.String(), guessable) {
+			t.Fatalf("guessable %q: %d %s", guessable, rr.Code, rr.Body)
+		}
+	}
 	if rr := redeem(token); rr.Code != 200 || strings.Contains(rr.Body.String(), "access_token") || len(rr.Result().Cookies()) != 0 {
 		t.Fatalf("reset must require normal sign-in: %d %s", rr.Code, rr.Body)
 	}

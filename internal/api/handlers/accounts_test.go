@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -36,14 +37,14 @@ func openAccountsTestDB(t *testing.T) *gorm.DB {
 
 // accountsFixture is a domain of the test's own with an admin holding
 // accounts:write on it (the admin role at domain:<name>) and a plain user
-// holding nothing, both with the password "s3cret-password".
+// holding nothing, both with the password "s3cret-velvet-compass".
 type accountsFixture struct {
 	domain models.Domain
 	admin  models.Mailbox
 	user   models.Mailbox
 }
 
-const accountsPassword = "s3cret-password"
+const accountsPassword = "s3cret-velvet-compass"
 
 func seedAccountsFixture(t *testing.T, db *gorm.DB) accountsFixture {
 	t.Helper()
@@ -118,6 +119,42 @@ func listAccounts(t *testing.T, h *AccountHandler, accountID uint) []accountResp
 // a grant; without a password it has no credential at all. Refusals: 403 with
 // no capability, 409 when it exists, 422 for a bad address or a domain this
 // server does not host.
+// The same boundary TestMailboxUpdate_ContractPasswordBoundary holds: a password
+// is taken from 12 characters, and what is refused makes no account. The generated
+// probes hold one strong password (fuzz.pin-valid), so they do not vary this boundary.
+func TestCreateAccount_ContractPasswordBoundary(t *testing.T) {
+	db := openAccountsTestDB(t)
+	fx := seedAccountsFixture(t, db)
+	h := NewAccountHandler(db, grants.NewCache(db, grants.CacheTTL), "")
+	for _, length := range []int{1, 11, 12, 13} {
+		t.Run(fmt.Sprintf("length_%d", length), func(t *testing.T) {
+			address := fmt.Sprintf("boundary-%d@%s", length, fx.domain.Name)
+			password := boundaryPassword[:length]
+			rr := httptest.NewRecorder()
+			accountRoutes(h).ServeHTTP(rr, authzRequest(http.MethodPost, "/api/v1/accounts", fx.admin.ID, nil,
+				fmt.Sprintf(`{"address":%q,"password":%q}`, address, password)))
+			if length < minChosenPasswordLength {
+				if rr.Code != http.StatusUnprocessableEntity || validationField(t, rr, "password") == "" {
+					t.Fatalf("status = %d, want 422 naming the password: %s", rr.Code, rr.Body)
+				}
+				var accounts int64
+				db.Model(&models.Mailbox{}).Where("address = ?", address).Count(&accounts)
+				if accounts != 0 {
+					t.Errorf("a refused password made an account")
+				}
+				return
+			}
+			if rr.Code != http.StatusCreated {
+				t.Fatalf("status = %d, want 201: %s", rr.Code, rr.Body)
+			}
+			created := decodeAccount(t, rr)
+			if c, err := repositories.NewCredentialRepository(db).MatchPassword(created.ID, password, time.Now()); err != nil || c == nil {
+				t.Errorf("its password does not match: %v %v", c, err)
+			}
+		})
+	}
+}
+
 func TestCreateAccount(t *testing.T) {
 	db := openAccountsTestDB(t)
 	fx := seedAccountsFixture(t, db)
@@ -195,14 +232,54 @@ func TestCreateAccount(t *testing.T) {
 
 	// With a password, the account can be signed in to.
 	withPassword := "dana@" + fx.domain.Name
-	rr = create(fx.admin.ID, fmt.Sprintf(`{"address":%q,"password":"dana's own password"}`, withPassword))
+	rr = create(fx.admin.ID, fmt.Sprintf(`{"address":%q,"password":"a velvet compass of her own"}`, withPassword))
 	if rr.Code != http.StatusCreated {
 		t.Fatalf("create with a password: %d %s", rr.Code, rr.Body.String())
 	}
 	dana := decodeAccount(t, rr)
-	if c, err := repositories.NewCredentialRepository(db).MatchPassword(dana.ID, "dana's own password", time.Now()); err != nil || c == nil {
+	if c, err := repositories.NewCredentialRepository(db).MatchPassword(dana.ID, "a velvet compass of her own", time.Now()); err != nil || c == nil {
 		t.Errorf("its password does not match: %v %v", c, err)
 	}
+
+	// A guessable password, or one built from the new account's own address,
+	// is refused on the password field and makes no account (#1672).
+	for _, c := range []struct{ local, password string }{
+		{"erin", "Summer2026!!"},
+		{"frank", "password123456"},
+		{"grace", "Tr1cky-Orbit-Lantern-grace"},
+	} {
+		address := c.local + "@" + fx.domain.Name
+		rr := create(fx.admin.ID, fmt.Sprintf(`{"address":%q,"password":%q}`, address, c.password))
+		if field := validationField(t, rr, "password"); rr.Code != http.StatusUnprocessableEntity || !strings.Contains(field, "too easy to guess") {
+			t.Errorf("%s with %q: %d %s, want 422 too easy to guess", address, c.password, rr.Code, rr.Body)
+		}
+		if strings.Contains(rr.Body.String(), c.password) {
+			t.Errorf("the refusal repeats the password: %s", rr.Body)
+		}
+		var made int64
+		db.Model(&models.Mailbox{}).Where("address = ?", address).Count(&made)
+		if made != 0 {
+			t.Errorf("%s was made with a refused password", address)
+		}
+	}
+}
+
+// validationField is a 422 validation_failed answer's message for field, or
+// "" when the answer is not one or names no such field.
+func validationField(t *testing.T, rr *httptest.ResponseRecorder, field string) string {
+	t.Helper()
+	var out struct {
+		Error struct {
+			Code    string `json:"code"`
+			Details struct {
+				Fields map[string]string `json:"fields"`
+			} `json:"details"`
+		} `json:"error"`
+	}
+	if json.Unmarshal(rr.Body.Bytes(), &out) != nil || out.Error.Code != "validation_failed" {
+		return ""
+	}
+	return out.Error.Details.Fields[field]
 }
 
 // TestLinkAccount: linking proves one of an account's passwords and grants the

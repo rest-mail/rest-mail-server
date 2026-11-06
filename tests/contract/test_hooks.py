@@ -317,6 +317,35 @@ class CreateAccountProbes(AdminAPITestCase):
         self.assertFalse(transaction.get("skip"))
         self.assertIn("example.com", [d["name"] for d in self.server.state["domains"]])
 
+    def test_a_new_password_goes_only_to_the_created_account(self):
+        hooks.hooks.stash["created_account"] = {"id": 22, "body": {}}
+        self.addCleanup(hooks.hooks.stash.pop, "created_account", None)
+        transaction = {
+            "fullPath": "/api/v1/admin/mailboxes/1",
+            "request": {"body": json.dumps({"password": "Qv7#mZ2!pL9k"})},
+        }
+        hooks.a_new_password_only_on_the_created_account(transaction)
+        self.assertEqual(transaction["fullPath"], "/api/v1/admin/mailboxes/22")
+        # An id the schema refuses is the probe, and stays.
+        for invalid in ("0", "1.5", "vertrag-not-a-number"):
+            transaction["fullPath"] = "/api/v1/admin/mailboxes/" + invalid
+            hooks.a_new_password_only_on_the_created_account(transaction)
+            self.assertEqual(transaction["fullPath"], "/api/v1/admin/mailboxes/" + invalid)
+        # Without that account, it is not sent at all.
+        del hooks.hooks.stash["created_account"]
+        transaction["fullPath"] = "/api/v1/admin/mailboxes/1"
+        hooks.a_new_password_only_on_the_created_account(transaction)
+        self.assertTrue(transaction.get("skip"))
+        # A refused length and a body without a password keep their path.
+        for body in ({"password": "x" * 11}, {"display_name": "x"}):
+            transaction = {
+                "fullPath": "/api/v1/admin/mailboxes/1",
+                "request": {"body": json.dumps(body)},
+            }
+            hooks.a_new_password_only_on_the_created_account(transaction)
+            self.assertEqual(transaction["fullPath"], "/api/v1/admin/mailboxes/1")
+            self.assertFalse(transaction.get("skip"))
+
     def test_leaves_an_account_it_did_not_create(self):
         self.probe({"address": "admin@restmail.test"})
         self.assertEqual(self.server.state["deleted"], [])

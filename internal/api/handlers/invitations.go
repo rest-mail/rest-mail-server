@@ -58,7 +58,7 @@ func (h *InvitationHandler) RegisterPublic(rs endpoint.Routes, checks SessionRou
 		OperationID: "acceptInvitation", Summary: "Choose your first password with an invitation", Tags: []string{"Auth"},
 		Security: oapifly.Public, Headers: invitationSessionHeaders,
 		Errors:      []int{http.StatusUnauthorized, http.StatusServiceUnavailable},
-		Description: "Redeems an invitation once, chooses a password of 12–72 bytes and signs in. The session can only finish authenticator enrollment until it is confirmed. Owner reset tokens cannot be used here. Native clients send client: native; browsers receive httpOnly session cookies.",
+		Description: "Redeems an invitation once, chooses a password of 12–72 bytes that is not too easy to guess and signs in. The session can only finish authenticator enrollment until it is confirmed. Owner reset tokens cannot be used here. Native clients send client: native; browsers receive httpOnly session cookies.",
 		Middleware:  []endpoint.Middleware{checks.Throttle, checks.Audit("auth.invitation", middleware.AuditStartedSession())}}, h.accept)
 }
 

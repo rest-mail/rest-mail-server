@@ -39,7 +39,7 @@ const (
 	freshDomain   = "fresh.test"
 	freshAdmin    = "admin@" + freshDomain
 	freshDeployPW = "the installer's deploy password"
-	freshAdminPW  = "the admin's own password, chosen"
+	freshAdminPW  = "the operator's own sundial, chosen"
 )
 
 // freshInstall is the server after its first start.
@@ -339,11 +339,11 @@ func TestFreshInstall_EndToEnd(t *testing.T) {
 	// never 401: the secrets were another account's, and bob@'s session goes
 	// on working.
 	var bob, carol freshAccount
-	f.expect(f.do(http.MethodPost, "/api/v1/accounts", adminS.bearer(), `{"address":"bob@fresh.test","password":"bob's own password"}`),
+	f.expect(f.do(http.MethodPost, "/api/v1/accounts", adminS.bearer(), `{"address":"bob@fresh.test","password":"the quokka's sundial ledger"}`),
 		http.StatusCreated, "create bob@", &bob)
-	f.expect(f.do(http.MethodPost, "/api/v1/accounts", adminS.bearer(), `{"address":"carol@fresh.test","password":"carol's own password"}`),
+	f.expect(f.do(http.MethodPost, "/api/v1/accounts", adminS.bearer(), `{"address":"carol@fresh.test","password":"a velvet compass at noon"}`),
 		http.StatusCreated, "create carol@", &carol)
-	bobS := f.signIn("bob@fresh.test", "bob's own password", "")
+	bobS := f.signIn("bob@fresh.test", "the quokka's sundial ledger", "")
 	var bobEnrollment struct {
 		Secret string `json:"secret"`
 	}
@@ -353,7 +353,7 @@ func TestFreshInstall_EndToEnd(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.expect(f.do(http.MethodPost, "/api/v1/auth/2fa/confirm", bobS.bearer(), fmt.Sprintf(`{"totp_code":%q}`, bobCode)), http.StatusNoContent, "confirm Bob", nil)
-	bobS = f.signIn("bob@fresh.test", "bob's own password", bobCode)
+	bobS = f.signIn("bob@fresh.test", "the quokka's sundial ledger", bobCode)
 	if got := addresses(f.accounts(bobS)); !slices.Equal(got, []string{"bob@fresh.test"}) {
 		t.Fatalf("bob@'s accounts before linking: %v", got)
 	}
@@ -374,7 +374,7 @@ func TestFreshInstall_EndToEnd(t *testing.T) {
 		t.Fatalf("bob@'s accounts after the refused links: %v", got)
 	}
 	var linked freshAccount
-	f.expect(f.do(http.MethodPost, "/api/v1/accounts/link", bobS.bearer(), `{"address":"carol@fresh.test","password":"carol's own password"}`),
+	f.expect(f.do(http.MethodPost, "/api/v1/accounts/link", bobS.bearer(), `{"address":"carol@fresh.test","password":"a velvet compass at noon"}`),
 		http.StatusCreated, "link carol@", &linked)
 	if linked.ID != carol.ID {
 		t.Fatalf("linked %+v, want carol@ %d", linked, carol.ID)

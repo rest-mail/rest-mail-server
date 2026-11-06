@@ -1,6 +1,6 @@
 """Count the generated requests a before hook ended in the coverage process.
 
-Vertrag 0.42.0 sends nothing for a probe whose body a hook changed
+Vertrag 0.43.0 sends nothing for a probe whose body a hook changed
 (runner.ErrChangedByHook) or that a hook skipped, and then drops it: it is not in
 the report or the skip count. So this watches from inside the hook worker. It
 writes one line, the operationId, per probe ended, and gate.py holds the counts

@@ -1,15 +1,17 @@
 # Generated requests a before hook ended in the coverage process, by operationId.
-# Vertrag 0.42.0 sends nothing for such a probe and reports nothing about it, so
+# Vertrag 0.43.0 sends nothing for such a probe and reports nothing about it, so
 # lost_probes.py counts them and gate.py holds the counts here. All operations and
 # probes remain selected. A new operation or a larger count fails. A smaller count
 # is noted by the gate: lower it here in the same change once a topology run shows it.
 # Measured with a whole-API run of Vertrag 0.42.0 against a local build, 2026-11-03,
 # after examples and fixture replenishment: 158 probes across 15 operations on main,
 # 107 across 10 after the pins and setup of Part of #1443. A probe counted here was
-# not sent, so it proves nothing.
+# not sent, so it proves nothing. Vertrag 0.43.0 added fuzz.pin-valid and changes no
+# other probe, so these counts were not measured again for it.
 # The local dependency and skip differences do not prove the gate.
 #
-# The server cannot accept what the generator draws, and a pin would be global:
+# The server cannot accept what the generator draws, and a fuzz.pin would be global.
+# fuzz.pin-valid may keep some of these; it has not been tried on them:
 # acceptInvitation: a token only the server can make, per probe, and the served
 # schema lets a request omit it and draw a password of one byte.
 acceptInvitation 8

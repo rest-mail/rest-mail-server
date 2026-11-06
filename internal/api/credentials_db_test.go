@@ -201,7 +201,7 @@ type credentialFixture struct {
 	gateway   http.Handler // the internal listener the mail clients' gateways call, made on first use
 }
 
-const credentialTestPassword = "mailbox-password-123"
+const credentialTestPassword = "walrus-tundra-mailbox-123"
 
 func newCredentialFixture(t *testing.T) *credentialFixture {
 	t.Helper()
@@ -500,7 +500,7 @@ func TestAppPasswords_EndToEnd(t *testing.T) {
 			{http.MethodPost, "/api/v1/admin/grants/1/deactivate", ""},
 			{http.MethodPost, "/api/v1/admin/grants/1/make-eligible", `{"totp_code":"000000"}`},
 			{http.MethodGet, mailbox, ""},
-			{http.MethodPatch, mailbox, `{"password":"a-new-password-456"}`},
+			{http.MethodPatch, mailbox, `{"password":"tangerine-ledger-orbit-456"}`},
 			{http.MethodGet, "/api/v1/admin/domains", ""},
 		} {
 			if rr := f.viaGateway(rt.method, rt.path, appPassword, rt.body); rr.Code != http.StatusUnauthorized {
@@ -760,7 +760,7 @@ func TestAppPasswords_OldPasswordRefusedAfterAChange(t *testing.T) {
 	f := newCredentialFixture(t)
 	path := fmt.Sprintf("/api/v1/accounts/%d/credentials", f.accountID)
 	admin := adminToken(t, f.jwt, []string{middleware.CapAccountsWrite})
-	const newPassword = "a-new-password-456"
+	const newPassword = "tangerine-ledger-orbit-456"
 	if rr := f.do(http.MethodPatch, fmt.Sprintf("/api/v1/admin/mailboxes/%d", f.mailboxID), "Bearer "+admin,
 		fmt.Sprintf(`{"password":%q}`, newPassword)); rr.Code != http.StatusOK {
 		t.Fatalf("set a new password: %d %s", rr.Code, rr.Body.String())
@@ -1002,7 +1002,7 @@ func TestAppPasswords_RevokedByANewPassword(t *testing.T) {
 	})
 
 	// The console's reset (restmail console, users, r) is this same PATCH.
-	if err := api.ResetPassword(admin, f.mailboxID, "a-new-password-456"); err != nil {
+	if err := api.ResetPassword(admin, f.mailboxID, "tangerine-ledger-orbit-456"); err != nil {
 		t.Fatalf("set a new password: %v", err)
 	}
 
@@ -1061,7 +1061,7 @@ func TestAppPasswords_RevokedByANewPassword(t *testing.T) {
 		var all []models.AuditEntry
 		f.db.Order("seq ASC").Find(&all)
 		for _, e := range all {
-			if b, _ := json.Marshal(e); strings.Contains(string(b), "a-new-password-456") {
+			if b, _ := json.Marshal(e); strings.Contains(string(b), "tangerine-ledger-orbit-456") {
 				t.Errorf("entry %d holds the new password: %s", e.Seq, b)
 			}
 		}
@@ -1081,7 +1081,7 @@ func TestAppPasswords_RevokedByANewPassword(t *testing.T) {
 	})
 
 	t.Run("one made under the new password works", func(t *testing.T) {
-		rr := f.do(http.MethodPost, "/api/v1/auth/login", "", fmt.Sprintf(`{"email":%q,"password":"a-new-password-456","client":"native"}`, f.address))
+		rr := f.do(http.MethodPost, "/api/v1/auth/login", "", fmt.Sprintf(`{"email":%q,"password":"tangerine-ledger-orbit-456","client":"native"}`, f.address))
 		if rr.Code != http.StatusOK {
 			t.Fatalf("sign in with the new password: %d %s", rr.Code, rr.Body.String())
 		}
@@ -1099,7 +1099,7 @@ func TestAppPasswords_RevokedByANewPassword(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		f.session, f.password = "Bearer "+proof.AccessToken, "a-new-password-456"
+		f.session, f.password = "Bearer "+proof.AccessToken, "tangerine-ledger-orbit-456"
 		works(t, f.createAppPassword("Thunderbird again"))
 	})
 }
@@ -1123,7 +1123,7 @@ func TestAppPasswords_NewPasswordAndItsRevocationsCommitTogether(t *testing.T) {
 	}
 
 	admin := adminToken(t, f.jwt, []string{middleware.CapAccountsWrite})
-	rr := f.do(http.MethodPatch, fmt.Sprintf("/api/v1/admin/mailboxes/%d", f.mailboxID), "Bearer "+admin, `{"password":"a-new-password-456"}`)
+	rr := f.do(http.MethodPatch, fmt.Sprintf("/api/v1/admin/mailboxes/%d", f.mailboxID), "Bearer "+admin, `{"password":"tangerine-ledger-orbit-456"}`)
 	if rr.Code != http.StatusInternalServerError {
 		t.Fatalf("a new password with no audit log: %d %s", rr.Code, rr.Body.String())
 	}

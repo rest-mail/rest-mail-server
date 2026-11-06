@@ -6,10 +6,8 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/rest-mail/rest-mail-server/internal/auth"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
@@ -32,21 +30,12 @@ const DefaultTokenLifetime = 15 * time.Minute
 // word does not.
 const MinChosenPasswordLength = 12
 
-// PasswordTooShort reports whether password has fewer than
-// MinChosenPasswordLength characters. Characters, not bytes: twelve Japanese
-// or Chinese characters are 36 bytes, and four of them are not twelve.
-func PasswordTooShort(password string) bool {
-	return utf8.RuneCountInString(password) < MinChosenPasswordLength
-}
-
 var (
 	// ErrNoSuchAdmin: reset-admin named an account that does not exist.
 	ErrNoSuchAdmin = errors.New("no such account")
 	// ErrTokenInvalid covers unknown, used, expired and wrong-purpose tokens
 	// alike, so the answer reveals nothing about which.
 	ErrTokenInvalid = errors.New("the token is not valid: unknown, already used, or expired")
-	// ErrPasswordTooShort: a chosen password under MinChosenPasswordLength.
-	ErrPasswordTooShort = fmt.Errorf("the password must be at least %d characters", MinChosenPasswordLength)
 )
 
 // MintResetToken mints a token that lets the account at address choose a new
@@ -117,7 +106,7 @@ func redeem(tx *gorm.DB, token, purpose string) (*models.OneTimeToken, error) {
 // for is having lost it) and must enroll a new one, and every session and app
 // password it had ends.
 func ResetAdmin(database *gorm.DB, token, password string) (*models.Mailbox, error) {
-	if len(password) < MinChosenPasswordLength {
+	if PasswordTooShort(password) {
 		return nil, ErrPasswordTooShort
 	}
 	hash, err := auth.HashPassword(password)
@@ -135,6 +124,11 @@ func ResetAdmin(database *gorm.DB, token, password string) (*models.Mailbox, err
 		}
 		if err := tx.First(&account, *row.AccountID).Error; err != nil {
 			return ErrNoSuchAdmin
+		}
+		// Refusing here undoes the redemption: a guessable password does not
+		// spend the token.
+		if err := CheckChosenPassword(password, account.Address); err != nil {
+			return err
 		}
 		now := time.Now()
 		if err := tx.Model(&account).Updates(map[string]any{
