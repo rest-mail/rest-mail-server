@@ -2498,7 +2498,7 @@ export interface paths {
         put?: never;
         /**
          * Choose your first password with an invitation
-         * @description Redeems an invitation once, chooses a password of 12–72 bytes and signs in. The session can only finish authenticator enrollment until it is confirmed. Owner reset tokens cannot be used here. Native clients send client: native; browsers receive httpOnly session cookies.
+         * @description Redeems an invitation once, chooses a password of 12–72 bytes that is not too easy to guess and signs in. The session can only finish authenticator enrollment until it is confirmed. Owner reset tokens cannot be used here. Native clients send client: native; browsers receive httpOnly session cookies.
          */
         post: operations["acceptInvitation"];
         delete?: never;
@@ -2764,7 +2764,7 @@ export interface paths {
         put?: never;
         /**
          * Let an account back in with a reset token; also hands a server over
-         * @description Redeems a single-use reset_admin token (restmail reset-admin, or an owner key's). The account it names gets the password the redeemer chose, loses its authenticator and must enroll a new one, and its app passwords and every token it was issued are dead at once. A password under 12 bytes is 422 and does not spend the token.
+         * @description Redeems a single-use reset_admin token (restmail reset-admin, or an owner key's). The account it names gets the password the redeemer chose, loses its authenticator and must enroll a new one, and its app passwords and every token it was issued are dead at once. A password under 12 characters or too easy to guess is 422 and does not spend the token.
          */
         post: operations["resetAdmin"];
         delete?: never;
