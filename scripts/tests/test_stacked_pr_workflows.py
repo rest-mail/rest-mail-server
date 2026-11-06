@@ -105,10 +105,11 @@ class StackedPRWorkflows(unittest.TestCase):
                     expected = enabled and not (job_name == "e2e-proofs" and values["github"]["event_name"] == "workflow_dispatch") and not (job_name == "contract-diff" and values["github"]["event_name"] != "pull_request") and not (job_name == "seed-caches" and values["github"]["event_name"] != "push")
                     self.assertEqual(bool(evaluate(field(job, "if", 4), values)), expected)
 
-    def test_stacked_prs_allocate_no_runners_even_with_run_e2e(self):
-        for action in (*DEFAULT_TYPES, "ready_for_review", "edited"):
-            self.assert_jobs(context(action=action, base="feature/parent"), False)
-        self.assert_jobs(context(action="edited", base="feature/parent", changes={"base": {"ref": {"from": "main"}}}), False)
+    def test_stacked_prs_run_real_gates_even_with_run_e2e(self):
+        for action in (*DEFAULT_TYPES, "ready_for_review"):
+            self.assert_jobs(context(action=action, base="feature/parent"), True)
+        for previous in ("main", "feature/other-parent"):
+            self.assert_jobs(context(action="edited", base="feature/parent", changes={"base": {"ref": {"from": previous}}}), True)
 
     def test_main_prs_and_retargeting_start_the_usual_jobs(self):
         for action in (*DEFAULT_TYPES, "ready_for_review"):
@@ -118,7 +119,8 @@ class StackedPRWorkflows(unittest.TestCase):
 
     def test_title_body_and_base_sha_edits_allocate_no_runners(self):
         for changes in ({}, {"title": {"from": "old"}}, {"body": {"from": "old"}}, {"base": {"sha": {"from": "old"}}}):
-            self.assert_jobs(context(action="edited", changes=changes), False)
+            for base in ("main", "feature/parent"):
+                self.assert_jobs(context(action="edited", base=base, changes=changes), False)
 
     def test_push_merge_group_and_dispatch_keep_their_job_decisions(self):
         for event in ("push", "merge_group", "workflow_dispatch"):
@@ -144,7 +146,7 @@ class StackedPRWorkflows(unittest.TestCase):
                 self.assertTrue(evaluate(field(self.jobs["ci.yml"]["test"], "if", 4), values))
                 self.assertTrue(evaluate(field(self.jobs["ci.yml"]["ci"], "if", 4), values))
 
-    def test_required_contexts_report_skipped_on_stacks_but_edits_cannot_replace_them(self):
+    def test_required_contexts_report_real_verdicts_on_stacks_but_edits_cannot_replace_them(self):
         for workflow, (job_name, required_name) in REQUIRED.items():
             job = self.jobs[workflow][job_name]
             for values in (context(), context(base="feature/parent"), context(event="merge_group"),
@@ -215,11 +217,11 @@ class StackedPRWorkflows(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
                 self.assertEqual(output.read_text().strip(), f"run_e2e={expected}")
 
-    def test_label_helper_does_no_work_for_stacks_or_claim_labels(self):
+    def test_label_helper_reruns_stack_contract_gates_but_ignores_claim_labels(self):
         expression = field(self.jobs["ci-labels.yml"]["rerun-contract-gate"], "if", 4)
         for label in ("contract-change", "permission-change", "claimed:macbook", "run-e2e"):
-            self.assertFalse(evaluate(expression, context(base="parent", label=label)))
-            self.assertEqual(bool(evaluate(expression, context(label=label))), label in {"contract-change", "permission-change"})
+            for base in ("main", "parent"):
+                self.assertEqual(bool(evaluate(expression, context(base=base, label=label))), label in {"contract-change", "permission-change"})
 
     @unittest.skipUnless(shutil.which("jq"), "jq is needed to exercise gh's run selection")
     def test_label_helper_ignores_metadata_receipts_even_if_they_conclude_success(self):

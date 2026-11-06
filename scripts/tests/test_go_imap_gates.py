@@ -42,7 +42,7 @@ def git(directory, *args):
 
 class CoverageGateRuns(unittest.TestCase):
     def setUp(self):
-        self.test = job(CI, "test")
+        self.test = job(CI, "test-imap")
 
     def test_race_coverage_includes_external_wire_proofs(self):
         run = step(self.test, "Test the local IMAP compatibility module with coverage")

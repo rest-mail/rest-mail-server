@@ -253,6 +253,8 @@ READ_BY_A_LATER_JOB = {
     "coverage-part-rest",
     "example-proofs-api-${{ matrix.shard }}",
     "coverage-part-api-${{ matrix.shard }}",
+    "example-proofs-handlers-${{ matrix.shard }}",
+    "coverage-part-handlers-${{ matrix.shard }}",
     "live-example-proofs",
 }
 

@@ -18,8 +18,8 @@ name: E2E
 #                  the required-check context. It runs even after a job fails and
 #                  reports success when the heavy job passed OR was legitimately
 #                  skipped for a docs-only change. Because this job always posts,
-#                  the required context is satisfied on main PRs — code or docs.
-# Stacked PRs report skipped checks; retargeting to main runs the usual checks.
+#                  the required context is satisfied on every PR — code or docs.
+# Stack layers use the same opt-in and merge-queue rules as PRs targeting main.
 # Metadata-only edits allocate no runners and cannot replace a required verdict.
 #   * `e2e-proofs` — after the heavy suite, every example that needs setup is proven
 #                  by an in-process test or a live runner; the gate needs it too.
@@ -51,7 +51,7 @@ permissions:
 jobs:
   changes:
     name: Classify changed paths
-    if: github.event_name != 'pull_request' || (github.base_ref == 'main' && (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
+    if: github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != '')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -141,7 +141,7 @@ jobs:
   e2e-run:
     name: E2E (run full suite)
     needs: changes
-    if: needs.changes.outputs.run_e2e == 'true' && (github.event_name != 'pull_request' || (github.base_ref == 'main' && (github.event.action != 'edited' || github.event.changes.base.ref.from != '')))
+    if: needs.changes.outputs.run_e2e == 'true' && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     uses: ./.github/workflows/e2e-suite.yml
     with:
       contract-phases: gate
@@ -154,7 +154,7 @@ jobs:
     # never wrote, counts for nothing. A dispatched run has no CI run to join.
     name: E2E (every example is proven)
     needs: [changes, e2e-run]
-    if: needs.changes.outputs.run_e2e == 'true' && github.event_name != 'workflow_dispatch' && (github.event_name != 'pull_request' || (github.base_ref == 'main' && (github.event.action != 'edited' || github.event.changes.base.ref.from != '')))
+    if: needs.changes.outputs.run_e2e == 'true' && github.event_name != 'workflow_dispatch' && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     runs-on: ubuntu-latest
     timeout-minutes: 70
     permissions:
@@ -198,7 +198,7 @@ jobs:
     # a docs-only PR from being stranded on a never-reported required check.
     name: ${{ github.event_name == 'pull_request' && github.event.action == 'edited' && github.event.changes.base.ref.from == '' && 'E2E (ignored edit)' || 'E2E (full topology)' }}
     needs: [changes, e2e-run, e2e-proofs]
-    if: always() && (github.event_name != 'pull_request' || (github.base_ref == 'main' && (github.event.action != 'edited' || github.event.changes.base.ref.from != '')))
+    if: always() && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
