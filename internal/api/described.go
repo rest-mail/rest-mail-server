@@ -221,6 +221,9 @@ var exampleRequirements = map[string][]string{
 		"inactive_account",
 		// The signing keys a RESTMAIL delivery's signature is checked against over DNS.
 		"dkim_key_published", "dkim_key_lookup_failing",
+		// A received list message whose List-Unsubscribe target the request reaches: a
+		// mailto: address, or a one-click HTTPS target served by the test (#1575).
+		"unsubscribe_target",
 	},
 }
 
