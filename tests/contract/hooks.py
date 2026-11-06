@@ -4907,16 +4907,53 @@ def the_answer_names_the_recipient_made(transaction):
         transaction["fail"] = f"the answer is not for the mailbox made for it ({address}): " + "; ".join(problems)
 
 
+# The address each check's found example names: the in-process fixtures' own
+# mailboxes, which the topology does not have.
+FOUND_ADDRESS = {
+    "checkMailboxAddress": "user@example.com",
+    "restmailCheckMailbox": "user@example.test",
+}
+
+
 @hooks.before("checkMailboxAddress")
+@hooks.before("restmailCheckMailbox")
 def look_up_a_hosted_mailbox(transaction):
-    # found names the in-process fixture's user@example.com; on the topology
-    # the hosted mailbox is the fixture admin's. Other values are the
-    # refusals' and the probes', sent as they are.
+    # found names an in-process fixture's mailbox; on the topology the hosted
+    # mailbox is the fixture admin's, so found asks about that one, and
+    # the_lookup_finds_the_hosted_mailbox checks the answer. Other values are
+    # the refusals' and the probes', sent as they are. After a reset
+    # delivery_after_a_reset has already sent found to a mailbox of its own.
+    hooks.stash.pop("hosted_lookup", None)
+    operation = operation_of(transaction)
     path, _, query = transaction["fullPath"].partition("?")
     pairs = urllib.parse.parse_qsl(query, keep_blank_values=True)
-    if pairs != [("address", "user@example.com")]:
+    if operation not in FOUND_ADDRESS or pairs != [("address", FOUND_ADDRESS[operation])]:
         return
     transaction["fullPath"] = path + "?" + urllib.parse.urlencode({"address": ADMIN})
+    hooks.stash["hosted_lookup"] = transaction.get("name", "")
+
+
+@hooks.after("checkMailboxAddress")
+@hooks.after("restmailCheckMailbox")
+def the_lookup_finds_the_hosted_mailbox(transaction):
+    # A check's 200 has the same shape for a mailbox that is not there
+    # (exists: false), so its status and schema alone pass on a miss (#1801).
+    # The lookup look_up_a_hosted_mailbox sent to the fixture admin must
+    # answer that it exists, with the admin's address. Other lookups are left
+    # alone; a status other than 200 fails on its own.
+    name = hooks.stash.pop("hosted_lookup", None)
+    real = transaction.get("real") or {}
+    if name is None or name != transaction.get("name", "") or str(real.get("statusCode")) != "200":
+        return
+    data = (hooks.get_json(transaction, "real") or {}).get("data")
+    data = data if isinstance(data, dict) else {}
+    problems = []
+    if data.get("exists") is not True:
+        problems.append(f"exists is {data.get('exists')!r}")
+    if str(data.get("address", "")).lower() != ADMIN.lower():
+        problems.append(f"the address is {data.get('address')!r}")
+    if problems:
+        transaction["fail"] = f"the check did not find the hosted mailbox {ADMIN}: " + "; ".join(problems)
 
 
 @hooks.before("deliverMessage")
