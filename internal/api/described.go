@@ -215,6 +215,11 @@ var exampleRequirements = map[string][]string{
 		"enrolled_authenticator", "enrollment_disabled", "event_stream", "existing_device", "existing_grant", "existing_link", "existing_policy", "existing_script",
 		"full_mailbox", "future_time", "held_by_domain_limit", "held_message", "known_password", "mail_host_unconfigured", "own_account", "owner_key",
 		"pending_enrollment", "pending_recovery_email", "quarantined_message", "recovery_email_token", "recovery_email_unconfigured",
+		// An account the request names, not the caller's, enrolled in 2FA, whose
+		// current code and an unspent recovery code the sender holds (#1162):
+		// the live authorization run makes one per request, which it cannot do
+		// for enrolled_authenticator, the caller's own account.
+		"recoverable_account",
 		"revoked_client_secret", "sessions_restricted", "spent_send_limit", "two_factor_off", "two_factor_session", "verified_recovery_email",
 		// What the live run's seeded data cannot be in (#1334): a record the
 		// request meets or misses that the run's own fixtures make otherwise.

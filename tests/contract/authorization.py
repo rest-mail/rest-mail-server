@@ -66,6 +66,15 @@ BEARER = "Authorization: Bearer {$response.body#/data/access_token}"
 # accepts this beside the status a cell requires, on every cell, so
 # authorization_refusals.py holds it to the routes that decision covers.
 HIDING_REFUSAL = [404]
+# What this phase can set up that the examples phase does not (#1162). A
+# recovery names its account in the body, so hooks.py makes a fresh account,
+# enrolled in TOTP, for each principal's request (recover_an_account_of_its_own):
+# the success is sent as every principal without touching the run's own
+# accounts. The states whose target is the caller's own account
+# (known_password, enrolled_authenticator, pending_enrollment) are not provided:
+# their success ends or changes the principal's own sessions, and a hook may not
+# point the request at another account's credential.
+PROVIDES = {"state": ["recoverable_account"]}
 # Operations whose request names no mailbox: they act on the caller's own
 # account, where every signed-in principal holds the capability they declare.
 OWN_ACCOUNT = [
@@ -137,6 +146,13 @@ def main(spec_path, config_path, principals_path, out_path, report_path, run_spe
     config.pop("surface", None)
     config["skip"] = list(config.get("skip") or []) + OWN_ACCOUNT
     config["authorization"] = {"refuse": HIDING_REFUSAL}
+    provides = config.get("provides") or {}
+    config["provides"] = {
+        kind: sorted(set(provides.get(kind) or []) | set(values))
+        for kind, values in {**provides, **PROVIDES}.items()
+    }
+    # The examples phase's unproven list is not this run's: it provides more.
+    config["unproven"] = ".cache/contract/unproven-authorization.json"
     config["reporter"] = ["cli", "junit"]
     config["output"] = ["", os.path.abspath(report_path)]
     config["principals"] = [
