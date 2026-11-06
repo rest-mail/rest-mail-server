@@ -613,7 +613,7 @@ class WorkflowCoverage(unittest.TestCase):
         gate.check_coverage(self.workflow, self.coverage)
 
     def test_any_added_lint_or_test_step_is_red(self):
-        for job in ("lint", "test", "test-api"):
+        for job in ("lint", "constellation", "contract-tooling", "test", "test-api", "test-handlers", "test-contract", "test-imap"):
             workflow = copy.deepcopy(self.workflow)
             workflow["jobs"][job]["steps"].append({"name": "New gate", "run": "false"})
             with (
@@ -623,7 +623,7 @@ class WorkflowCoverage(unittest.TestCase):
                 gate.check_coverage(workflow, self.coverage)
 
     def test_changed_command_is_red_even_with_the_same_name(self):
-        self.workflow["jobs"]["lint"]["steps"][1]["run"] += "\nfalse"
+        self.workflow["jobs"]["constellation"]["steps"][1]["run"] += "\nfalse"
         with self.assertRaisesRegex(RuntimeError, "Check constellation inventory"):
             gate.check_coverage(self.workflow, self.coverage)
 
@@ -766,7 +766,7 @@ class VertragShards(unittest.TestCase):
             self.assertEqual(build.kwargs["env"]["CGO_ENABLED"], "0")
             self.assertEqual(build.args[0][:2], ["go", "vet"])
         manifest = json.loads((ROOT / "scripts/ci-local-coverage.json").read_text())
-        reason = manifest["test"]["Check the IMAP module's 32-bit sequence dispatch"]
+        reason = manifest["test-imap"]["Check the IMAP module's 32-bit sequence dispatch"]
         self.assertIn("CI", reason["exception"])
 
     def test_nested_module_uses_the_same_pinned_go_toolchain(self):

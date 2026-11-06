@@ -4,7 +4,7 @@ run-name: ${{ github.event_name == 'pull_request' && github.event.action == 'edi
 on:
   push:
     branches: [main]
-  # Stack layers report skipped gates until retargeted to main (#1775).
+  # Every stack layer tests its complete head, including the layers below it.
   # Only base-changing edits run jobs; other edits have their own concurrency group
   # and non-required gate name, so they cannot replace or cancel a real verdict.
   # No `labeled` or `unlabeled`: claim labels must not cancel CI (#1593).
@@ -109,7 +109,7 @@ jobs:
 
   contract-diff:
     name: API contract changes
-    if: github.event_name == 'pull_request' && github.base_ref == 'main' && (github.event.action != 'edited' || github.event.changes.base.ref.from != '')
+    if: github.event_name == 'pull_request' && (github.event.action != 'edited' || github.event.changes.base.ref.from != '')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -254,12 +254,10 @@ jobs:
           retention-days: 7
           if-no-files-found: warn
 
-  lint:
-    name: Lint
-    if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.base_ref == 'main' && (github.event.action != 'edited' || github.event.changes.base.ref.from != '')))
+  constellation:
+    name: Check constellation inventory
+    if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     runs-on: ubuntu-latest
-    outputs:
-      go_imap_changed: ${{ steps.go-imap.outputs.go_imap_changed }}
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -267,10 +265,28 @@ jobs:
       - name: Check constellation inventory
         run: python3 -m unittest discover -s scripts/tests -p 'test_*.py'
 
+  contract-tooling:
+    name: Test contract tooling
+    if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
       - name: Test contract tooling
         run: |
           python3 -m pip install --quiet pyyaml
           python3 -m unittest discover -s tests/contract -p 'test_*.py'
+
+  lint:
+    name: Lint
+    if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
+    runs-on: ubuntu-latest
+    outputs:
+      go_imap_changed: ${{ steps.go-imap.outputs.go_imap_changed }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Test load tooling
         run: python3 -m unittest discover -s tests/load -p 'test_*.py'
@@ -335,9 +351,8 @@ jobs:
 
   test:
     name: Test
-    if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.base_ref == 'main' && (github.event.action != 'edited' || github.event.changes.base.ref.from != '')))
+    if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     runs-on: ubuntu-latest
-    needs: lint
     services:
       postgres:
         image: postgres:16-alpine
@@ -362,7 +377,7 @@ jobs:
           go-version: "1.26.10"
           cache: true
 
-      # Only this job and its neighbour use the race detector's builds. Set after setup-go,
+      # The race jobs share their build cache. Set it after setup-go,
       # so that its own cache keeps its own path. seed-caches writes this one, on main.
       - name: Restore the race build cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -382,7 +397,7 @@ jobs:
       # -timeout is per package, and the race detector slows these packages
       # several times over: internal/api/handlers once ran past go test's
       # default 10 minutes. 20 leaves headroom while a hung test still fails.
-      # internal/api alone came close to 20 minutes, so its shards run it (#1307).
+      # internal/api and internal/api/handlers run in their own shards (#1307, #1979).
       # Each package's binary runs through testdb-exec, in a database of its
       # own: packages run side by side, and in one shared database their
       # migrations and audit-log appends deadlocked one another.
@@ -391,7 +406,7 @@ jobs:
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/proofs"
           go build -o "$RUNNER_TEMP/testdb-exec" ./tools/testdb-exec
-          packages=$(go list ./internal/... | grep -vxF github.com/rest-mail/rest-mail-server/internal/api)
+          packages=$(go list ./internal/... | grep -vxF -e github.com/rest-mail/rest-mail-server/internal/api -e github.com/rest-mail/rest-mail-server/internal/api/handlers)
           # shellcheck disable=SC2086 # one package per word
           go test -race -count=1 -timeout=20m -exec "$RUNNER_TEMP/testdb-exec" -coverprofile=coverage-rest.out $packages ./cmd/... ./tests/contract/browser_sessions
         env:
@@ -405,76 +420,6 @@ jobs:
           RESTMAIL_EXAMPLE_PROOFS: ${{ runner.temp }}/proofs/example-proofs-rest.json
           # Full random inputs for the import route's spool tests (#1437).
           RESTMAIL_IMPORT_LONG_PROOF: "1"
-
-      # The module's tests take 4.5 minutes, and its result moves only with its own files or
-      # the Go version named here (#1896), so they run with the gates below, under -race and
-      # with coverage. The Lint job decides, and a missing answer runs them.
-      # A signed 32-bit int cannot hold every valid IMAP sequence endpoint. Run the
-      # actual wire proofs on 386; amd64-only tests hide this bug.
-      - name: Check the IMAP module's 32-bit sequence dispatch
-        if: needs.lint.outputs.go_imap_changed != 'false'
-        working-directory: third_party/go-imap
-        env:
-          GOARCH: "386"
-          CGO_ENABLED: "0"
-        run: go test -count=1 -run '^(TestParseSequenceSet.*|TestResolveSeqNum.*|TestWideSequenceDispatch|TestSearchValidSequenceSet)$' ./pkg/imap/internal/wire ./pkg/imap/rfctest
-
-      - name: Validate the IMAP module's RFC checklist
-        if: needs.lint.outputs.go_imap_changed != 'false'
-        working-directory: third_party/go-imap
-        run: go run ./internal/checklist pkg/imap/rfctest
-
-      # The wire proofs in pkg/imap/rfctest exercise the public library from a separate
-      # package. Instrument all packages so those proofs count too.
-      - name: Test the local IMAP compatibility module with coverage
-        if: needs.lint.outputs.go_imap_changed != 'false'
-        working-directory: third_party/go-imap
-        run: go test -race -count=1 -timeout=10m -covermode=atomic -coverpkg=./... -coverprofile=coverage.out ./...
-
-      - name: Require at least 95% statement coverage
-        if: needs.lint.outputs.go_imap_changed != 'false'
-        working-directory: third_party/go-imap
-        shell: bash
-        run: |
-          set -euo pipefail
-          go tool cover -func=coverage.out | tee coverage.txt | python3 -B .github/scripts/check_coverage.py
-
-      - name: Upload IMAP coverage evidence
-        if: ${{ !cancelled() && needs.lint.outputs.go_imap_changed != 'false' }}
-        continue-on-error: true
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: go-imap-statement-coverage
-          path: |
-            third_party/go-imap/coverage.out
-            third_party/go-imap/coverage.txt
-          retention-days: 7
-          if-no-files-found: ignore
-          overwrite: true
-
-      - name: Test contract fixtures against an empty database
-        run: |
-          set -euo pipefail
-          docker exec "${{ job.services.postgres.id }}" createdb -U restmail restmail_contract_fixture_ci
-          go test -race -count=1 -timeout=20m -v ./tests/contract/fixtures ./tests/contract/fixtureplan
-        env:
-          ENVIRONMENT: test
-          DB_HOST: localhost
-          DB_PORT: "5432"
-          DB_NAME: restmail_contract_fixture_ci
-          DB_USER: restmail
-          DB_PASS: restmail
-
-      # The contract fault switch (#654): the API builds with every fault in
-      # tests/contract/faults.yml, and each one changes its route's answer. The
-      # run above holds the catalogue to the switches without the tags.
-      - name: Test the contract fault switch
-        run: |
-          set -euo pipefail
-          python3 -m pip install --quiet pyyaml
-          tags="$(python3 -B tests/contract/faults.py tags)"
-          go vet -tags "$tags" ./cmd/api ./internal/faultinject
-          go test -race -count=1 -tags "$tags" ./internal/faultinject
 
       # Today only internal/api writes proofs; the report reads whatever is here.
       # Test report needs these uploads, and upload-artifact gives up on a dropped
@@ -522,15 +467,157 @@ jobs:
           if-no-files-found: error
           overwrite: true
 
-  test-api:
-    name: Test internal/api (${{ matrix.shard }} of 4)
-    if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.base_ref == 'main' && (github.event.action != 'edited' || github.event.changes.base.ref.from != '')))
-    # internal/api is the slowest package by far: nearly 1000 s under the race
-    # detector, most of it in PostgreSQL fixtures, against a 20 minute limit per
-    # package (#1307). Each shard runs every fourth of its top-level tests, by
-    # name, against a database of its own, beside the Test job.
+  test-contract:
+    name: Test contract fixtures and faults
+    if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: restmail_test
+          POSTGRES_USER: restmail
+          POSTGRES_PASSWORD: restmail
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U restmail"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.10"
+          cache: true
+
+      # The race jobs share their build cache. Set it after setup-go,
+      # so that its own cache keeps its own path. seed-caches writes this one, on main.
+      - name: Restore the race build cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/go-race
+          key: go-race-${{ runner.os }}-go1.26.10-${{ hashFiles('go.sum') }}-none
+          restore-keys: |
+            go-race-${{ runner.os }}-go1.26.10-${{ hashFiles('go.sum') }}-
+            go-race-${{ runner.os }}-go1.26.10-
+
+      - name: Use the race build cache
+        run: echo "GOCACHE=$HOME/.cache/go-race" >> "$GITHUB_ENV"
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Test contract fixtures against an empty database
+        run: |
+          set -euo pipefail
+          docker exec "${{ job.services.postgres.id }}" createdb -U restmail restmail_contract_fixture_ci
+          go test -race -count=1 -timeout=20m -v ./tests/contract/fixtures ./tests/contract/fixtureplan
+        env:
+          ENVIRONMENT: test
+          DB_HOST: localhost
+          DB_PORT: "5432"
+          DB_NAME: restmail_contract_fixture_ci
+          DB_USER: restmail
+          DB_PASS: restmail
+
+      # The contract fault switch (#654): the API builds with every fault in
+      # tests/contract/faults.yml, and each one changes its route's answer. The
+      # run above holds the catalogue to the switches without the tags.
+      - name: Test the contract fault switch
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet pyyaml
+          tags="$(python3 -B tests/contract/faults.py tags)"
+          go vet -tags "$tags" ./cmd/api ./internal/faultinject
+          go test -race -count=1 -tags "$tags" ./internal/faultinject
+
+  test-imap:
+    name: Test IMAP module
+    if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     runs-on: ubuntu-latest
     needs: lint
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.10"
+          cache: true
+
+      # The race jobs share their build cache. Set it after setup-go,
+      # so that its own cache keeps its own path. seed-caches writes this one, on main.
+      - name: Restore the race build cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/go-race
+          key: go-race-${{ runner.os }}-go1.26.10-${{ hashFiles('go.sum') }}-none
+          restore-keys: |
+            go-race-${{ runner.os }}-go1.26.10-${{ hashFiles('go.sum') }}-
+            go-race-${{ runner.os }}-go1.26.10-
+
+      - name: Use the race build cache
+        run: echo "GOCACHE=$HOME/.cache/go-race" >> "$GITHUB_ENV"
+
+      - name: Download dependencies
+        run: go mod download
+
+      # The module's tests take 4.5 minutes, and its result moves only with its own files or
+      # the Go version named here (#1896), so they run with the gates below, under -race and
+      # with coverage. The Lint job decides, and a missing answer runs them.
+      # A signed 32-bit int cannot hold every valid IMAP sequence endpoint. Run the
+      # actual wire proofs on 386; amd64-only tests hide this bug.
+      - name: Check the IMAP module's 32-bit sequence dispatch
+        if: needs.lint.outputs.go_imap_changed != 'false'
+        working-directory: third_party/go-imap
+        env:
+          GOARCH: "386"
+          CGO_ENABLED: "0"
+        run: go test -count=1 -run '^(TestParseSequenceSet.*|TestResolveSeqNum.*|TestWideSequenceDispatch|TestSearchValidSequenceSet)$' ./pkg/imap/internal/wire ./pkg/imap/rfctest
+
+      - name: Validate the IMAP module's RFC checklist
+        if: needs.lint.outputs.go_imap_changed != 'false'
+        working-directory: third_party/go-imap
+        run: go run ./internal/checklist pkg/imap/rfctest
+
+      # The wire proofs in pkg/imap/rfctest exercise the public library from a separate
+      # package. Instrument all packages so those proofs count too.
+      - name: Test the local IMAP compatibility module with coverage
+        if: needs.lint.outputs.go_imap_changed != 'false'
+        working-directory: third_party/go-imap
+        run: go test -race -count=1 -timeout=10m -covermode=atomic -coverpkg=./... -coverprofile=coverage.out ./...
+
+      - name: Require at least 95% statement coverage
+        if: needs.lint.outputs.go_imap_changed != 'false'
+        working-directory: third_party/go-imap
+        shell: bash
+        run: |
+          set -euo pipefail
+          go tool cover -func=coverage.out | tee coverage.txt | python3 -B .github/scripts/check_coverage.py
+
+      - name: Upload IMAP coverage evidence
+        if: ${{ !cancelled() && needs.lint.outputs.go_imap_changed != 'false' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: go-imap-statement-coverage
+          path: |
+            third_party/go-imap/coverage.out
+            third_party/go-imap/coverage.txt
+          retention-days: 7
+          if-no-files-found: ignore
+          overwrite: true
+
+  test-handlers:
+    name: Test internal/api/handlers (${{ matrix.shard }} of 4)
+    if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
@@ -559,7 +646,134 @@ jobs:
           go-version: "1.26.10"
           cache: true
 
-      # Only this job and its neighbour use the race detector's builds. Set after setup-go,
+      # The race jobs share their build cache. Set it after setup-go,
+      # so that its own cache keeps its own path. seed-caches writes this one, on main.
+      - name: Restore the race build cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/go-race
+          key: go-race-${{ runner.os }}-go1.26.10-${{ hashFiles('go.sum') }}-none
+          restore-keys: |
+            go-race-${{ runner.os }}-go1.26.10-${{ hashFiles('go.sum') }}-
+            go-race-${{ runner.os }}-go1.26.10-
+
+      - name: Use the race build cache
+        run: echo "GOCACHE=$HOME/.cache/go-race" >> "$GITHUB_ENV"
+
+      - name: Download dependencies
+        run: go mod download
+
+      # Every shard lists the same tests and takes those whose position in the
+      # sorted list falls to it, so together the shards run each test once.
+      - name: Choose this shard's tests
+        env:
+          SHARD: ${{ matrix.shard }}
+          SHARDS: "4"
+        run: |
+          set -euo pipefail
+          go test -race -list '.*' ./internal/api/handlers/ | grep -E '^(Test|Example|Fuzz)' | sort > "$RUNNER_TEMP/tests"
+          awk -v n="$SHARDS" -v i="$SHARD" '(NR - 1) % n == i - 1' "$RUNNER_TEMP/tests" > "$RUNNER_TEMP/shard-tests"
+          if [ ! -s "$RUNNER_TEMP/shard-tests" ]; then
+            echo "::error::shard $SHARD of $SHARDS has no tests" >&2
+            exit 1
+          fi
+          echo "shard $SHARD of $SHARDS runs $(wc -l < "$RUNNER_TEMP/shard-tests") of $(wc -l < "$RUNNER_TEMP/tests") tests"
+          echo "RUN_PATTERN=^($(paste -sd '|' "$RUNNER_TEMP/shard-tests"))\$" >> "$GITHUB_ENV"
+
+      - name: Run internal/api/handlers tests with race detector
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/proofs"
+          go test -race -count=1 -timeout=20m -coverprofile=coverage-handlers-${{ matrix.shard }}.out -run "$RUN_PATTERN" ./internal/api/handlers/
+        env:
+          ENVIRONMENT: test
+          DB_HOST: localhost
+          DB_PORT: "5432"
+          DB_NAME: restmail_test
+          DB_USER: restmail
+          DB_PASS: restmail
+          RESTMAIL_IMPORT_LONG_PROOF: "1"
+          RESTMAIL_EXAMPLE_PROOFS: ${{ runner.temp }}/proofs/example-proofs-handlers-${{ matrix.shard }}.json
+
+      - name: Upload example proofs
+        id: upload-proofs
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: example-proofs-handlers-${{ matrix.shard }}
+          path: ${{ runner.temp }}/proofs
+          retention-days: 1
+          if-no-files-found: ignore
+          overwrite: true
+
+      - name: Upload example proofs (second try)
+        if: steps.upload-proofs.outcome == 'failure'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: example-proofs-handlers-${{ matrix.shard }}
+          path: ${{ runner.temp }}/proofs
+          retention-days: 1
+          if-no-files-found: ignore
+          overwrite: true
+
+      - name: Upload coverage
+        id: upload-coverage
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: coverage-part-handlers-${{ matrix.shard }}
+          path: coverage-handlers-${{ matrix.shard }}.out
+          retention-days: 1
+          if-no-files-found: error
+          overwrite: true
+
+      - name: Upload coverage (second try)
+        if: steps.upload-coverage.outcome == 'failure'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: coverage-part-handlers-${{ matrix.shard }}
+          path: coverage-handlers-${{ matrix.shard }}.out
+          retention-days: 1
+          if-no-files-found: error
+          overwrite: true
+
+  test-api:
+    name: Test internal/api (${{ matrix.shard }} of 4)
+    if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
+    # internal/api is the slowest package by far: nearly 1000 s under the race
+    # detector, most of it in PostgreSQL fixtures, against a 20 minute limit per
+    # package (#1307). Each shard runs every fourth of its top-level tests, by
+    # name, against a database of its own, beside the Test job.
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: restmail_test
+          POSTGRES_USER: restmail
+          POSTGRES_PASSWORD: restmail
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U restmail"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.10"
+          cache: true
+
+      # The race jobs share their build cache. Set it after setup-go,
       # so that its own cache keeps its own path. seed-caches writes this one, on main.
       - name: Restore the race build cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -653,11 +867,11 @@ jobs:
 
   test-report:
     name: Test report
-    if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.base_ref == 'main' && (github.event.action != 'edited' || github.event.changes.base.ref.from != '')))
-    # Joins what the Test job and the internal/api shards wrote: the example
+    if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
+    # Joins what Test and both API matrices wrote: the example
     # proofs, judged as one set, and the coverage, as one profile.
     runs-on: ubuntu-latest
-    needs: [test, test-api]
+    needs: [test, test-api, test-handlers, test-contract, test-imap]
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -678,10 +892,12 @@ jobs:
           set -euo pipefail
           shopt -s nullglob
           proofs=("$RUNNER_TEMP"/proofs/*.json)
-          if [ "${#proofs[@]}" -lt 4 ]; then
-            echo "::error::expected example proofs from all 4 internal/api shards, found ${#proofs[@]} files" >&2
-            exit 1
-          fi
+          for shard in 1 2 3 4; do
+            if [ ! -s "$RUNNER_TEMP/proofs/example-proofs-api-$shard.json" ]; then
+              echo "::error::missing example proofs from internal/api shard $shard" >&2
+              exit 1
+            fi
+          done
           python3 scripts/example_proofs.py --defer-live openapi-example.json "${proofs[@]}"
 
       - name: Download coverage
@@ -696,6 +912,12 @@ jobs:
       - name: Merge coverage
         run: |
           set -euo pipefail
+          for profile in rest api-{1..4} handlers-{1..4}; do
+            if [ ! -s "$RUNNER_TEMP/coverage/coverage-$profile.out" ]; then
+              echo "::error::missing coverage profile: $profile" >&2
+              exit 1
+            fi
+          done
           profiles=("$RUNNER_TEMP"/coverage/*.out)
           modes=$(head -qn1 "${profiles[@]}" | sort -u)
           if [ "$(printf '%s\n' "$modes" | wc -l)" != 1 ]; then
@@ -716,7 +938,7 @@ jobs:
 
   attachments-s3:
     name: Garage attachment storage
-    if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.base_ref == 'main' && (github.event.action != 'edited' || github.event.changes.base.ref.from != '')))
+    if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -730,9 +952,9 @@ jobs:
 
   build:
     name: Build
-    if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.base_ref == 'main' && (github.event.action != 'edited' || github.event.changes.base.ref.from != '')))
+    if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     runs-on: ubuntu-latest
-    needs: [test, test-api]
+    needs: [test, test-api, test-handlers, test-contract, test-imap]
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -763,7 +985,7 @@ jobs:
 
   helm:
     name: Helm Chart
-    if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.base_ref == 'main' && (github.event.action != 'edited' || github.event.changes.base.ref.from != '')))
+    if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -789,7 +1011,7 @@ jobs:
 
   webmail:
     name: Webmail Build
-    if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.base_ref == 'main' && (github.event.action != 'edited' || github.event.changes.base.ref.from != '')))
+    if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -848,7 +1070,7 @@ jobs:
 
   admin:
     name: Admin Build
-    if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.base_ref == 'main' && (github.event.action != 'edited' || github.event.changes.base.ref.from != '')))
+    if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -920,7 +1142,7 @@ jobs:
   # from this workflow — makes the job names above free to change.
   js-filter:
     name: JS Filter
-    if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.base_ref == 'main' && (github.event.action != 'edited' || github.event.changes.base.ref.from != '')))
+    if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     # The sidecar that runs javascript filters: its own tests (the sandbox
     # escapes of #160 among them), then the API's filter against it, end to end.
     runs-on: ubuntu-latest
@@ -999,7 +1221,7 @@ jobs:
 
   first-start:
     name: First start
-    if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.base_ref == 'main' && (github.event.action != 'edited' || github.event.changes.base.ref.from != '')))
+    if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     # Proves, against the real image, the path a fresh install takes: the
     # first admin signs in with the bootstrap password the installer chose and
     # is forced to choose their own and enroll 2FA, a domain and a mailbox get
@@ -1040,7 +1262,7 @@ jobs:
 
   webapp-images:
     name: Web app image (${{ matrix.app }})
-    if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.base_ref == 'main' && (github.event.action != 'edited' || github.event.changes.base.ref.from != '')))
+    if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -1126,7 +1348,7 @@ jobs:
 
   guide:
     name: Email, explained
-    if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.base_ref == 'main' && (github.event.action != 'edited' || github.event.changes.base.ref.from != '')))
+    if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     # The guide is checked where it is written, so a broken link, an unsourced
     # chapter or a diagram Archify refuses fails the pull request that broke it
     # (docs/design/email-explained-website.md). Outside links change on other
@@ -1161,8 +1383,8 @@ jobs:
 
   ci:
     name: ${{ github.event_name == 'pull_request' && github.event.action == 'edited' && github.event.changes.base.ref.from == '' && 'CI (ignored edit)' || 'CI' }}
-    needs: [seed-caches, contract-diff, lint, test, test-api, test-report, attachments-s3, build, helm, webmail, admin, js-filter, first-start, webapp-images, guide]
-    if: always() && (github.event_name != 'pull_request' || (github.base_ref == 'main' && (github.event.action != 'edited' || github.event.changes.base.ref.from != '')))
+    needs: [seed-caches, contract-diff, lint, constellation, contract-tooling, test, test-api, test-handlers, test-contract, test-imap, test-report, attachments-s3, build, helm, webmail, admin, js-filter, first-start, webapp-images, guide]
+    if: always() && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     runs-on: ubuntu-latest
     steps:
       - name: Verdict
@@ -1171,8 +1393,13 @@ jobs:
             seed-caches=${{ needs.seed-caches.result }}
             contract-diff=${{ needs.contract-diff.result }}
             lint=${{ needs.lint.result }}
+            constellation=${{ needs.constellation.result }}
+            contract-tooling=${{ needs.contract-tooling.result }}
             test=${{ needs.test.result }}
             test-api=${{ needs.test-api.result }}
+            test-handlers=${{ needs.test-handlers.result }}
+            test-contract=${{ needs.test-contract.result }}
+            test-imap=${{ needs.test-imap.result }}
             test-report=${{ needs.test-report.result }}
             attachments-s3=${{ needs.attachments-s3.result }}
             build=${{ needs.build.result }}

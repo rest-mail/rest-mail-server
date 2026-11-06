@@ -698,7 +698,7 @@ def unbindable_loopbacks(addresses=LOOPBACK_ALIASES, open_socket=socket.socket):
 
 
 def check_coverage(workflow, coverage):
-    for job in ("lint", "test", "test-api"):
+    for job in ("lint", "constellation", "contract-tooling", "test", "test-api", "test-handlers", "test-contract", "test-imap"):
         observed = set()
         for step in workflow["jobs"][job]["steps"]:
             name = step.get("name", step.get("uses", "unnamed step"))
