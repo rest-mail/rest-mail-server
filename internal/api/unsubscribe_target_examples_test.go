@@ -24,7 +24,7 @@ func unsubscribeTargetExample(operation, name string) bool {
 		operation == "unsubscribeOneClick" && (name == "unsubscribed" || name == "target_failed")
 }
 
-func TestUnsubscribeTargetExamples(t *testing.T) {
+func TestUnsubscribeTargetExamplesWithVertrag(t *testing.T) {
 	pairs, err := examplepairs.Read()
 	if err != nil {
 		t.Fatal(err)
