@@ -143,11 +143,10 @@ def sent_as_the_two_factor_admin(transaction):
 # (run.sh's own-data phase): a reset in the primary run would wipe what the
 # operations still to move depend on. See the README, "Moved to a clean start".
 # What a reset does not remove: the setup sessions, whose accounts it keeps with
-# their ids and credentials, and what the hooks below need to carry a link across it.
+# their ids and credentials.
 SURVIVES_A_RESET = (
     "setup_admin_tokens",
     "mfa_admin_sessions",
-    "clean_starts",
 )
 
 
@@ -162,7 +161,6 @@ def start_clean(transaction):
     reset_seed.reset_and_seed(origin, admin_token(origin), fixtures=())
     for key in [k for k in hooks.stash if k not in SURVIVES_A_RESET]:
         del hooks.stash[key]
-    hooks.stash["clean_starts"] = hooks.stash.get("clean_starts", 0) + 1
 
 
 OWN_DOMAIN = "contract-own-domain.test"
@@ -186,22 +184,6 @@ def to_domain(transaction, domain_id):
     parts = path.split("/")
     parts[5] = str(domain_id)
     transaction["fullPath"] = "/".join(parts) + separator + query
-
-
-def the_domain_since_the_reset(transaction):
-    """The domain that stands in for the one createDomain made, once a reset has
-    removed it, made once per reset. It is kept where that domain was, so what
-    reads it (a pipeline's domain_id) keeps working."""
-    if hooks.stash.get("domain_id") is None:
-        domain = fixture_call(
-            transaction,
-            "POST",
-            "/api/v1/admin/domains",
-            {"name": "contract-linked-domain.test", "server_type": "traditional"},
-        )
-        hooks.stash["domain_id"] = domain["id"]
-        hooks.stash["domain"] = domain["name"]
-    return hooks.stash["domain_id"]
 
 
 @hooks.before("domainDNSCheck")
@@ -1411,19 +1393,39 @@ def delete_a_pipeline_of_its_own(transaction):
 
 
 @hooks.before("updatePipeline")
-def a_live_pipeline_for_the_link(transaction):
-    # updatePipeline follows createPipeline's link and has not moved. The
-    # resets before createPipeline's refusals remove the pipeline the link
-    # names, so after a reset each update the link reaches gets a pipeline that
-    # exists. The refusals' ids (0 and missing's 2147483647) stay as they are,
-    # and a run with no reset, which is the primary run, changes nothing here.
-    if not hooks.stash.get("clean_starts"):
+def update_a_pipeline_of_its_own(transaction):
+    # updatePipeline, moved to a clean start: each exchange, refusals included,
+    # resets and seeds first. One aimed at a positive id other than missing's
+    # 2147483647 updates an inactive pipeline of its own, on a domain of its
+    # own, made after the reset; that includes the body refusals (422), so they
+    # meet a pipeline and not a 404. 0 and an undecodable id keep theirs. A run
+    # with no reset changes nothing here.
+    if not asked_for_a_clean_start():
         return
+    start_clean(transaction)
     parts = transaction["fullPath"].partition("?")[0].split("/")
     if len(parts) < 6 or not positive_id(parts[5]) or parts[5] == "2147483647":
         return
-    domain_id = the_domain_since_the_reset(transaction)
+    domain_id = a_domain_of_its_own(transaction)
     to_pipeline(transaction, a_pipeline_of_its_own(transaction, domain_id))
+
+
+@hooks.before("listPipelines")
+@hooks.before("listPipelineLogs")
+@hooks.before("getPipelineAnalytics")
+def pipeline_reads_after_a_reset(transaction):
+    # The pipeline reads, moved to a clean start: each exchange, refusals
+    # included, resets and seeds first. A listing of pipelines that succeeds
+    # gets one of its own, inactive, on a domain of its own, made after the
+    # reset, so it lists more than the seed. The logs and the analytics need
+    # nothing made: nothing earlier is left for them to report. A run with no
+    # reset changes nothing here.
+    if not asked_for_a_clean_start():
+        return
+    start_clean(transaction)
+    path = transaction["fullPath"].partition("?")[0]
+    if path == "/api/v1/admin/pipelines" and " > 200" in transaction.get("name", ""):
+        a_pipeline_of_its_own(transaction, a_domain_of_its_own(transaction))
 
 
 @hooks.before("createCustomFilter")

@@ -202,14 +202,19 @@ MOVED = (
     "createBan",
     "deleteBan",
     "unbanIP",
+    # The rest of the pipeline operations. updatePipeline follows
+    # createPipeline's link, the last that followed one without a reset; it
+    # updates a pipeline of its own after its reset. No link starts from or
+    # reaches the three reads, and the list gets a pipeline of its own.
+    "updatePipeline",
+    "listPipelines",
+    "listPipelineLogs",
+    "getPipelineAnalytics",
 )
-
-# deletePipeline, the other, has moved.
-FOLLOWS_THE_CREATED_PIPELINE = ("updatePipeline",)
 
 
 def configure(config):
-    config["operation-id"] = list(MOVED + FOLLOWS_THE_CREATED_PIPELINE)
+    config["operation-id"] = list(MOVED)
     config.pop("surface", None)
     # The gate's list of what it could not send is its own.
     config["unproven"] = ".cache/contract/unproven-own-data.json"

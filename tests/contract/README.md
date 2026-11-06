@@ -1561,10 +1561,16 @@ exchange too. A create gets a domain of its own; a preview and a delete each get
 a domain and an inactive pipeline of their own, and refusals keep their ids. No
 pipeline id is carried between exchanges any more, so `hooks.stash` holds no
 `pipeline_id`: without a reset, each preview makes its own pipeline on the run's
-domain. `updatePipeline` follows `createPipeline`'s link and has not moved. After
-a reset, an update to a positive id other than missing's gets a pipeline that
-exists, on the domain that stands in for the created one
-(`a_live_pipeline_for_the_link`); a run with no reset changes nothing there.
+domain. `updatePipeline`, which follows `createPipeline`'s link, has moved too:
+an update to a positive id other than missing's, body refusals included, updates
+an inactive pipeline of its own on a domain of its own, made after its reset
+(`update_a_pipeline_of_its_own`); `0`, an undecodable id and missing's
+`2147483647` keep theirs. `listPipelines`, `listPipelineLogs` and
+`getPipelineAnalytics` reset and seed before each exchange as well
+(`pipeline_reads_after_a_reset`). A listing that succeeds gets a pipeline of its
+own on a domain of its own; the logs and the analytics need nothing made. No
+link starts from or reaches the three reads. A run with no reset changes
+nothing in these hooks.
 
 `createAlias`, `getAlias`, `updateAlias` and `deleteAlias` reset and seed before
 each exchange too, refusals included. A create is sent as documented after its
@@ -1890,10 +1896,9 @@ changes their probes. The primary run can start resetting once nothing that has 
 moved is sent after a reset.
 
 A reset removes the pipeline `createPipeline` made, and its id is what the link
-carries. So after a reset, `updatePipeline`, the one unmoved operation left that
-follows such a link, gets a pipeline of its own on a stand-in domain
-(`the_domain_since_the_reset`), made once per reset. A run with no reset changes
-nothing there.
+carries. `updatePipeline`, the last unmoved operation that followed such a link,
+has moved, so no link is carried across a reset any more, and `hooks.stash`
+keeps nothing across one but the setup sessions (`SURVIVES_A_RESET`).
 
 What a reset does and does not touch here:
 
