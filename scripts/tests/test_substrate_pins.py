@@ -35,6 +35,7 @@ def git(repo, *args):
 
 def commit(repo, files):
     for name, text in files.items():
+        (repo / name).parent.mkdir(parents=True, exist_ok=True)
         (repo / name).write_text(text)
     git(repo, "add", "-A")
     git(repo, "commit", "--quiet", "-m", "c")
@@ -134,7 +135,10 @@ class Clones(unittest.TestCase):
             repo = base / "upstream" / name
             repo.mkdir(parents=True)
             git(repo, "init", "--quiet")
-            first = commit(repo, {"chores.yml": TASKS, "README": "one\n"})
+            files = {"chores.yml": TASKS, "README": "one\n"}
+            if name == "reference-mailserver":
+                files["tasks/postgres.yml"] = "docker run --health-interval 10s postgres:16-alpine\n"
+            first = commit(repo, files)
             second = commit(repo, {"README": "two\n", "chores.yml": TASKS + "# two\n"})
             self.upstream[name] = repo
             self.commits[name] = (first, second)
@@ -199,6 +203,23 @@ class Clones(unittest.TestCase):
         tasks = (self.workspace / "reference-mailserver/chores.yml").read_text()
         self.assertEqual(tasks, TASKS)
         self.assertEqual(self.preflight(system="Darwin")[0], 0)
+
+    def test_postgres_health_is_prepared_on_both_platforms_and_other_changes_are_refused(self):
+        for system in ("Linux", "Darwin"):
+            with self.subTest(system=system):
+                self.sync("reference-mailserver", system=system)
+                repo = self.workspace / "reference-mailserver"
+                postgres = repo / "tasks/postgres.yml"
+                self.assertIn("--health-interval 1s", postgres.read_text())
+                postgres.write_text(postgres.read_text() + "mine\n")
+                with self.assertRaisesRegex(RuntimeError, "refusing to overwrite"):
+                    self.sync("reference-mailserver", system=system)
+                self.pin(first=False)
+                with self.assertRaisesRegex(RuntimeError, "uncommitted changes to tasks/postgres.yml"):
+                    self.sync("reference-mailserver", system=system)
+                git(repo, "checkout", "--quiet", "--", "tasks/postgres.yml")
+                git(repo, "checkout", "--quiet", "--", "chores.yml")
+                self.pin(first=True)
 
     def test_sync_is_idempotent_and_moves_a_prepared_clone_to_a_new_pin(self):
         self.sync_all()

@@ -36,16 +36,15 @@ if [ ${#names[@]} -eq 0 ]; then
 	exit 1
 fi
 
+printf '%s\n' "${names[@]}" | python3 -B "$(dirname "$0")/example_pair_shards.py" "$shards" >"$work/shards"
 pids=()
-for ((s = 0; s < shards; s++)); do
-	pick=()
-	for ((i = s; i < ${#names[@]}; i += shards)); do pick+=("${names[i]}"); done
-	[ ${#pick[@]} -gt 0 ] || continue
-	run="^($(IFS='|'; echo "${pick[*]}"))\$"
+s=0
+while IFS= read -r run; do
 	# The tests read the spec and fixtures relative to their package directory.
 	(cd internal/api && exec "$work/api.test" -test.v -test.timeout 25m -test.run "$run") >"$work/shard$s.log" 2>&1 &
 	pids+=("$s:$!")
-done
+	s=$((s + 1))
+done <"$work/shards"
 
 status=0
 for entry in "${pids[@]}"; do

@@ -11,8 +11,8 @@ on:
     inputs:
       contract-phases:
         description: >-
-          "gate" runs the examples and coverage gates, then the authorization
-          matrix and the live requirement proofs report-only; "fuzz" runs the fuzz phase, reports what it
+          "gate" runs the examples and coverage gates; "reports" runs authorization
+          and ownership reports; "live" runs independent live proofs; "fuzz" runs the fuzz phase, reports what it
           finds as an artifact, and fails nothing; "faults" builds the API
           with each fault in tests/contract/faults.yml and fails unless the
           phase each one names turns red.
@@ -127,15 +127,17 @@ jobs:
         env:
           # The gate reports the API code its contract phases ran (#655); see
           # the cover build in tasks/api.yml. Nothing fails on the report.
-          API_COVER: ${{ inputs.contract-phases == 'gate' && 'true' || 'false' }}
+          API_COVER: ${{ (inputs.contract-phases == 'gate' || inputs.contract-phases == 'reports') && 'true' || 'false' }}
         run: chore e2e:up
 
       - name: Run e2e stages
+        if: inputs.contract-phases != 'live'
         run: |
           set -o pipefail
           chore test:e2e 2>&1 | tee "$RUNNER_TEMP/e2e.log"
 
       - name: Assert stages executed (guard against silent skips)
+        if: inputs.contract-phases != 'live'
         # Belt-and-suspenders on top of E2E_REQUIRE_STACK: a green e2e must mean
         # the stages actually RAN. Fail if any top-level stage skipped, or if
         # fewer than all 14 stages reached PASS.
@@ -184,7 +186,7 @@ jobs:
         if: inputs.contract-phases == 'fuzz'
         run: chore test:contract-fixtures
 
-      - name: Contract tests (example pairs, examples, coverage, secret scan and authorization report)
+      - name: Contract tests (example pairs, examples, coverage and secret scan)
         # The same command a person runs (#627), against the topology whose
         # stages just passed. It starts with the registered example-pair
         # boundary checks (chore contract:pairs, about 25 minutes of Vertrag
@@ -197,26 +199,41 @@ jobs:
           CONTRACT_ENDPOINT: http://10.99.0.20:8080
           CONTRACT_LOGS: ${{ runner.temp }}
           CONTRACT_DESCRIPTION_MODE: ${{ inputs.description-mode }}
+          CONTRACT_REPORTS: "false"
           # TestDraftLifecycleExamplesWithVertrag makes its scratch databases on
           # this server, the topology's own, and skips without it.
           DB_HOST: 10.99.0.43
         run: chore contract
 
+      - name: Contract authorization and ownership (report only)
+        if: inputs.contract-phases == 'reports'
+        continue-on-error: true
+        env:
+          CONTRACT_ENDPOINT: http://10.99.0.20:8080
+          CONTRACT_LOGS: ${{ runner.temp }}
+          CONTRACT_DESCRIPTION_MODE: ${{ inputs.description-mode }}
+        run: chore contract:reports
+
       - name: API code coverage of the contract run (report)
-        if: always() && inputs.contract-phases == 'gate'
+        if: always() && (inputs.contract-phases == 'gate' || inputs.contract-phases == 'reports')
         continue-on-error: true
         run: |
           if [ -f .cache/contract/api-coverage/summary.md ]; then
             cat .cache/contract/api-coverage/summary.md >> "$GITHUB_STEP_SUMMARY"
           fi
 
+      - name: Prepare independent live-proof principals
+        if: inputs.contract-phases == 'live'
+        env:
+          CONTRACT_ENDPOINT: http://10.99.0.20:8080
+        run: |
+          chore test:e2e -- -run '^TestContractPrincipals$'
+          chore test:contract-fixtures
+
       - name: Contract live proofs (anonymous, over-cap and real principals; report only)
-        # Real exchanges for the examples that need setup, against the topology the
-        # gate just passed on (#1237). Before the limits suite, which spends the API's
-        # buckets, and the teardown, which clears these principals. What each runner
-        # proved joins the union in e2e.yml, the required check. A failing runner only
-        # proves less here: whether it should turn the run red is the owner's call.
-        if: inputs.contract-phases == 'gate'
+        # Real exchanges on an independent topology with fresh principals (#1237).
+        # Its proofs still join the required union, not its process exit status.
+        if: inputs.contract-phases == 'live'
         continue-on-error: true
         timeout-minutes: 25
         env:
@@ -229,7 +246,7 @@ jobs:
       # fails too, the job fails. overwrite replaces an artifact that did finalize.
       - name: Upload the live proofs
         id: upload-live-proofs
-        if: always() && inputs.contract-phases == 'gate'
+        if: always() && inputs.contract-phases == 'live'
         continue-on-error: true
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -245,7 +262,7 @@ jobs:
           overwrite: true
 
       - name: Upload the live proofs (second try)
-        if: always() && inputs.contract-phases == 'gate' && steps.upload-live-proofs.outcome == 'failure'
+        if: always() && inputs.contract-phases == 'live' && steps.upload-live-proofs.outcome == 'failure'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: live-example-proofs
@@ -314,13 +331,33 @@ jobs:
           done
 
       - name: Upload container logs
-        if: always()
+        if: always() && inputs.contract-phases != 'reports' && inputs.contract-phases != 'live'
         # People read this, and the contract tiers' issue job reads it if it
         # arrives, so losing it must not fail the job.
         continue-on-error: true
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: e2e-container-logs
+          path: ${{ runner.temp }}/e2e-logs
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Upload authorization and ownership reports
+        if: always() && inputs.contract-phases == 'reports'
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-report-logs
+          path: ${{ runner.temp }}/e2e-logs
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Upload live runner logs
+        if: always() && inputs.contract-phases == 'live'
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-live-logs
           path: ${{ runner.temp }}/e2e-logs
           retention-days: 7
           if-no-files-found: warn
@@ -338,6 +375,9 @@ jobs:
     if: inputs.contract-phases == 'gate'
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      RESTMAIL_SKIP_FRONTENDS: "true"
+      RESTMAIL_DEV_GOCACHE_VOLUME: rest-mail-dev-gocache
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

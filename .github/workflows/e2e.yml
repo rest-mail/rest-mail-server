@@ -147,14 +147,32 @@ jobs:
       contract-phases: gate
       description-mode: ${{ inputs.description-mode || 'saved' }}
 
+  e2e-reports:
+    name: E2E (authorization and ownership reports)
+    needs: changes
+    if: needs.changes.outputs.run_e2e == 'true' && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
+    uses: ./.github/workflows/e2e-suite.yml
+    with:
+      contract-phases: reports
+      description-mode: ${{ inputs.description-mode || 'saved' }}
+
+  e2e-live:
+    name: E2E (live proof reports)
+    needs: changes
+    if: needs.changes.outputs.run_e2e == 'true' && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
+    uses: ./.github/workflows/e2e-suite.yml
+    with:
+      contract-phases: live
+      description-mode: ${{ inputs.description-mode || 'saved' }}
+
   e2e-proofs:
     # The whole proof union (#1237): CI's in-process proofs and the live proofs of the
     # suite above, for the same commit. Fails on any example no runner proved, as CI's
     # Test report does. The live runners can only add to it: what they failed at, or
     # never wrote, counts for nothing. A dispatched run has no CI run to join.
     name: E2E (every example is proven)
-    needs: [changes, e2e-run]
-    if: needs.changes.outputs.run_e2e == 'true' && github.event_name != 'workflow_dispatch' && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
+    needs: [changes, e2e-run, e2e-live]
+    if: always() && needs.changes.outputs.run_e2e == 'true' && github.event_name != 'workflow_dispatch' && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     runs-on: ubuntu-latest
     timeout-minutes: 70
     permissions:

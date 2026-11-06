@@ -440,26 +440,29 @@ class Workflows(unittest.TestCase):
         self.e2e = yaml.safe_load((workflows / "e2e.yml").read_text())["jobs"]
         self.ci = yaml.safe_load((workflows / "ci.yml").read_text())["jobs"]
 
-    def test_the_live_stage_runs_after_the_gate_and_reports(self):
+    def test_the_live_stage_runs_after_fresh_principals_and_reports(self):
         names = [step.get("name", "") for step in self.suite["steps"]]
         stage = next(s for s in self.suite["steps"] if s.get("run") == "chore test:contract-live-proofs")
-        gate = next(s for s in self.suite["steps"] if s.get("id") == "contract")
-        self.assertEqual(stage["if"], "inputs.contract-phases == 'gate'")
+        preparation = next(s for s in self.suite["steps"] if s.get("name") == "Prepare independent live-proof principals")
+        self.assertEqual(stage["if"], "inputs.contract-phases == 'live'")
         # A report, while the owner has not said a failing runner should turn the run red.
         self.assertIs(stage["continue-on-error"], True)
         self.assertIn("timeout-minutes", stage)
-        self.assertLess(names.index(gate["name"]), names.index(stage["name"]))
+        self.assertEqual(preparation["if"], stage["if"])
+        self.assertIn("^TestContractPrincipals$", preparation["run"])
+        self.assertIn("chore test:contract-fixtures", preparation["run"])
+        self.assertLess(names.index(preparation["name"]), names.index(stage["name"]))
         # The limits suite spends the API's buckets; the teardown clears every principal.
         self.assertLess(names.index(stage["name"]), names.index("Limits suite"))
         upload = next(s for s in self.suite["steps"] if s.get("with", {}).get("name") == "live-example-proofs")
-        self.assertEqual(upload["if"], "always() && inputs.contract-phases == 'gate'")
+        self.assertEqual(upload["if"], "always() && inputs.contract-phases == 'live'")
         paths = upload["with"]["path"].splitlines()
         self.assertEqual(paths[0], stage["env"]["CONTRACT_LIVE_PROOFS"])
         self.assertEqual(paths[1], "!" + paths[0] + "/**/vertrag.yml")
 
     def test_the_union_gates_the_required_check_and_reads_the_live_results(self):
         union = self.e2e["e2e-proofs"]
-        self.assertEqual(set(union["needs"]), {"changes", "e2e-run"})
+        self.assertEqual(set(union["needs"]), {"changes", "e2e-run", "e2e-live"})
         self.assertEqual(union["permissions"]["actions"], "read")
         download = next(s for s in union["steps"] if s.get("with", {}).get("name") == "live-example-proofs")
         # No artifact counts for nothing; the judgement below says so.

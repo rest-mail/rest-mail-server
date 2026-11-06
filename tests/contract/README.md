@@ -156,9 +156,9 @@ In the `E2E (full topology)` job (`.github/workflows/e2e-suite.yml`), after the
 | `examples` | Each documented request gets its documented answer. Ordered by the spec's links (`--sequence`), so a read, an update or a delete addresses what its create made. | Gate |
 | `coverage` | Every boundary each schema implies (the maximum, one past it, a required property missing) gets a 4xx, never a 2xx or a 5xx. Valid probes skipped because an example failed fail it too. | Gate (below) |
 | `ignored-auth` check | Every authenticated request, sent again with no credential, is refused. | Gate |
-| `authorization` | Every selected operation as each configured principal, checked against the spec's security roles. A signed-in caller refused an object the path names may get the 404 that hides it (#672); `authorization_refusals.py` names any 404 outside that, so an admin route stays 403 and no credential stays 401. | Report only, after the gates |
+| `authorization` | Every selected operation as each configured principal, checked against the spec's security roles. A signed-in caller refused an object the path names may get the 404 that hides it (#672); `authorization_refusals.py` names any 404 outside that, so an admin route stays 403 and no credential stays 401. | Independent report job, after its E2E stages |
 | `ownership` | Each account tenant's principals sent the other tenant's account id, on the operations they are entitled to; every answer must be 403 or 404. | Report only, after authorization |
-| live proofs | Named `principal: anonymous` and `body: over_cap` examples, and a bounded matrix of real principals (`chore test:contract-live-proofs`). What they prove joins the in-process proofs; the union is a gate, a failing runner is not ([details](#live-requirement-proofs-1237)). | Report only, after the gates |
+| live proofs | Named `principal: anonymous` and `body: over_cap` examples, and a bounded matrix of real principals (`chore test:contract-live-proofs`). What they prove joins the in-process proofs; the union is a gate, a failing runner is not ([details](#live-requirement-proofs-1237)). | Independent report job; the proof union still gates |
 | `fuzz` | Values drawn from each schema, shrunk to the smallest failing input, with a replayable seed. | Nightly and on `v*` tags (`contract-fuzz.yml`), never blocks; [one issue per finding](#the-daily-tiers-issues-626) |
 | `own-data` | The operations moved to a clean start, each exchange after a reset and seed, with what follows `createDomain`'s links ([Moved to a clean start](#moved-to-a-clean-start-part-of-1385)). | Gate, before the teardown |
 | faults | The API built with each fault in `faults.yml`, and the phase the fault names run on its operation: it must turn red ([Fault catalogue](#fault-catalogue-654)). | Nightly and on `v*` tags (`contract-faults.yml`), [one issue per failing fault](#the-daily-tiers-issues-626), fails on a fault not caught |
@@ -1784,14 +1784,28 @@ in order:
    (a report of the account, domain and mailbox ownership runs).
 
 The command fails when the example pairs, the setup, the gate or the secret
-scan fail. The authorization and ownership reports never fail it. CI's E2E job
-calls `chore contract`, so a run here whose receipt shows the same server commit
+scan fail. The authorization and ownership reports never fail it. CI's gating job
+calls `chore contract` with `CONTRACT_REPORTS=false`; a separate job runs
+`chore contract:reports` beside it on an independent topology. The report job
+replays the E2E stages: documented account IDs, the first attachment and the
+delivery pipeline depend on their state, not just on the principal fixture.
+The command makes fresh principal, queue, MFA and domain-tenant fixtures and fetches the description
+when no saved copy exists. Neither its result nor its duration decides the required
+E2E result. The live proofs also run beside the gate, with their own principal and
+queue fixtures. Their process exit status remains report-only, but their proof
+artifact still participates in the required proof union. A run here whose receipt shows the same server commit
 and substrate pins has CI's inputs. A recorded local and CI run with equal
 verdicts at the same pins is still open in #1751.
 
 The `contract:pairs` task in `chores.yml` selects `WithVertrag$`. The wrapper
 discovers the matching tests from the compiled `internal/api` test binary before
 sharding them, so new `*WithVertrag` tests run without editing a shared name list.
+The four shards use longest-first assignment to the currently lightest shard,
+with measured times in `example_pair_seconds.json`. That file records the source
+run; it is a scheduling hint, never a test allowlist. New tests receive the median
+known duration, ties break by name and shard number, and every discovered test
+still runs exactly once. Refresh the recorded seconds from top-level test verdicts
+when measurements show drift.
 `test_run.py` checks that the pattern selects every such test, and the wrapper
 fails if no tests match. Without `RESTMAIL_VERTRAG_BINARY` those tests skip, so
 `go test` alone does not run them.
