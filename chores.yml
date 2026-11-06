@@ -2233,6 +2233,12 @@ tasks:
     cmds:
       - python3 -B scripts/check_docker_labels.py
 
+  check:zone-years:
+    desc: 'Fail if a Go test asserts a time zone transition in a year whose tzdata rules can still change (#1942)'
+    dotenv: []
+    cmds:
+      - python3 -B scripts/check_zone_years.py {{.CLI_ARGS}}
+
   purge:
     desc: Remove all rest-mail-* containers (does not touch volumes — use instance:down + postgres:reset for data)
     cmds:

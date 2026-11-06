@@ -19,7 +19,7 @@ func TestQuietHoursUntil(t *testing.T) {
 		{"fall back", "22:00", "08:00", "Europe/Berlin", "2026-10-24T20:00:00Z", "2026-10-25T07:00:00Z"},
 		{"first repeated hour", "01:00", "03:00", "Europe/Berlin", "2026-10-25T00:15:00Z", "2026-10-25T02:00:00Z"},
 		{"second repeated hour", "01:00", "03:00", "Europe/Berlin", "2026-10-25T01:15:00Z", "2026-10-25T02:00:00Z"},
-		{"half hour DST jump", "22:00", "02:15", "Australia/Lord_Howe", "2026-10-03T12:00:00Z", "2026-10-03T15:30:00Z"},
+		{"half hour DST jump", "22:00", "02:15", "Australia/Lord_Howe", "2025-10-04T12:00:00Z", "2025-10-04T15:30:00Z"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			now, err := time.Parse(time.RFC3339, test.now)
