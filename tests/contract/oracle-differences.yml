@@ -2681,16 +2681,6 @@
   difference: "response 404: generated only"
   reason: >-
     The mailbox named is not here: 404 mailbox_not_found.
-- operation: deliverMessage
-  difference: "response 451: generated only"
-  reason: >-
-    The inbound pipeline deferred the message; the gateway answers its SMTP peer 451, the code
-    this answer carries.
-- operation: deliverMessage
-  difference: "response 550: generated only"
-  reason: >-
-    The inbound pipeline rejected the message; the gateway answers its SMTP peer 550 with the
-    pipeline's words, the code this answer carries.
 - operation: checkMailboxAddress
   difference: "parameter query address schema.format: openapi.yaml \"email\", generated absent"
   reason: >-

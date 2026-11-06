@@ -30,7 +30,7 @@ type mockBackend struct {
 
 	local       map[string]bool // addresses CheckMailbox reports as existing
 	checkErr    map[string]bool // addresses where CheckMailbox errors (temp fail)
-	deliverFail map[string]bool // local addresses whose DeliverMessage errors (451)
+	deliverFail map[string]bool // local addresses whose DeliverMessage answers 503 deferred
 
 	// deliverStatus[address] = N: DeliverMessage for that local recipient returns
 	// an APIError with HTTP status N (e.g. 422 mailbox_full), letting a test drive
@@ -127,10 +127,11 @@ func (m *mockBackend) DeliverMessage(req *apiclient.DeliverRequest) (*apiclient.
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.deliverFail[req.Address] {
-		return nil, &apiclient.APIError{StatusCode: 451, Body: "temporary local failure"}
+		return nil, &apiclient.APIError{StatusCode: 503, Body: `{"error":{"code":"deferred","message":"Try again later"}}`}
 	}
 	if status, ok := m.deliverStatus[req.Address]; ok {
-		return nil, &apiclient.APIError{StatusCode: status, Body: `{"error":"mailbox_full"}`}
+		code := map[int]string{403: "rejected", 422: "mailbox_full", 503: "deferred"}[status]
+		return nil, &apiclient.APIError{StatusCode: status, Body: `{"error":{"code":"` + code + `"}}`}
 	}
 	m.deliverReqs = append(m.deliverReqs, req)
 	m.delivered = append(m.delivered, req.Address)

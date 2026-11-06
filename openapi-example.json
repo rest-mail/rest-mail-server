@@ -11581,7 +11581,7 @@
         }
       },
       "response": {
-        "status": 451,
+        "status": 503,
         "body": {
           "error": {
             "code": "deferred",
@@ -11762,6 +11762,29 @@
           "error": {
             "code": "internal_error",
             "message": "Failed to look up mailbox"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "mail_loop": {
+      "summary": "An arrival past the hop limit",
+      "description": "More Received fields than the limit on a message from another server is a mail loop, refused before the mailbox lookup. The SMTP gateway answers its own peer before it gets this far.",
+      "request": {
+        "body": {
+          "address": "admin@restmail.test",
+          "sender": "sender@example.net",
+          "subject": "Hello",
+          "received_tls": true,
+          "raw_message": "UmVjZWl2ZWQ6IGJ5IHJlbGF5LnRlc3QNClJlY2VpdmVkOiBieSByZWxheS50ZXN0DQpSZWNlaXZlZDogYnkgcmVsYXkudGVzdA0KUmVjZWl2ZWQ6IGJ5IHJlbGF5LnRlc3QNClJlY2VpdmVkOiBieSByZWxheS50ZXN0DQpSZWNlaXZlZDogYnkgcmVsYXkudGVzdA0KUmVjZWl2ZWQ6IGJ5IHJlbGF5LnRlc3QNClJlY2VpdmVkOiBieSByZWxheS50ZXN0DQpSZWNlaXZlZDogYnkgcmVsYXkudGVzdA0KUmVjZWl2ZWQ6IGJ5IHJlbGF5LnRlc3QNClJlY2VpdmVkOiBieSByZWxheS50ZXN0DQpSZWNlaXZlZDogYnkgcmVsYXkudGVzdA0KUmVjZWl2ZWQ6IGJ5IHJlbGF5LnRlc3QNClJlY2VpdmVkOiBieSByZWxheS50ZXN0DQpSZWNlaXZlZDogYnkgcmVsYXkudGVzdA0KUmVjZWl2ZWQ6IGJ5IHJlbGF5LnRlc3QNClJlY2VpdmVkOiBieSByZWxheS50ZXN0DQpSZWNlaXZlZDogYnkgcmVsYXkudGVzdA0KUmVjZWl2ZWQ6IGJ5IHJlbGF5LnRlc3QNClJlY2VpdmVkOiBieSByZWxheS50ZXN0DQpSZWNlaXZlZDogYnkgcmVsYXkudGVzdA0KUmVjZWl2ZWQ6IGJ5IHJlbGF5LnRlc3QNClJlY2VpdmVkOiBieSByZWxheS50ZXN0DQpSZWNlaXZlZDogYnkgcmVsYXkudGVzdA0KUmVjZWl2ZWQ6IGJ5IHJlbGF5LnRlc3QNClJlY2VpdmVkOiBieSByZWxheS50ZXN0DQpSZWNlaXZlZDogYnkgcmVsYXkudGVzdA0KUmVjZWl2ZWQ6IGJ5IHJlbGF5LnRlc3QNClJlY2VpdmVkOiBieSByZWxheS50ZXN0DQpSZWNlaXZlZDogYnkgcmVsYXkudGVzdA0KUmVjZWl2ZWQ6IGJ5IHJlbGF5LnRlc3QNClJlY2VpdmVkOiBieSByZWxheS50ZXN0DQpSZWNlaXZlZDogYnkgcmVsYXkudGVzdA0KUmVjZWl2ZWQ6IGJ5IHJlbGF5LnRlc3QNClJlY2VpdmVkOiBieSByZWxheS50ZXN0DQpSZWNlaXZlZDogYnkgcmVsYXkudGVzdA0KUmVjZWl2ZWQ6IGJ5IHJlbGF5LnRlc3QNClJlY2VpdmVkOiBieSByZWxheS50ZXN0DQpSZWNlaXZlZDogYnkgcmVsYXkudGVzdA0KUmVjZWl2ZWQ6IGJ5IHJlbGF5LnRlc3QNClJlY2VpdmVkOiBieSByZWxheS50ZXN0DQpSZWNlaXZlZDogYnkgcmVsYXkudGVzdA0KUmVjZWl2ZWQ6IGJ5IHJlbGF5LnRlc3QNClJlY2VpdmVkOiBieSByZWxheS50ZXN0DQpSZWNlaXZlZDogYnkgcmVsYXkudGVzdA0KUmVjZWl2ZWQ6IGJ5IHJlbGF5LnRlc3QNClJlY2VpdmVkOiBieSByZWxheS50ZXN0DQpSZWNlaXZlZDogYnkgcmVsYXkudGVzdA0KUmVjZWl2ZWQ6IGJ5IHJlbGF5LnRlc3QNClJlY2VpdmVkOiBieSByZWxheS50ZXN0DQpSZWNlaXZlZDogYnkgcmVsYXkudGVzdA0KRnJvbTogc2VuZGVyQGV4YW1wbGUubmV0DQpTdWJqZWN0OiBIZWxsbw0KDQpIZWxsbw0K"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "rejected",
+            "message": "Routing loop detected: too many Received headers"
           }
         },
         "mediaType": "application/json"
@@ -12090,7 +12113,7 @@
         }
       },
       "response": {
-        "status": 550,
+        "status": 403,
         "body": {
           "error": {
             "code": "rejected",
