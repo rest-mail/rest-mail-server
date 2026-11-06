@@ -191,6 +191,33 @@ class ExampleStateHookTest(unittest.TestCase):
                 self.hooks.import_into_an_account_with_room(kept)
                 self.assertEqual(kept["fullPath"], documented)
 
+    def test_the_documented_account_is_asked_to_store_one_message_at_most(self):
+        # Account 12 has room for one 17-byte message on the topology. Every documented
+        # success the hook leaves there must be that same message in the same folder,
+        # which the first one stores and the rest skip as a duplicate. #1810's
+        # match_submission example stored it again in Sent, and answered 409 three times.
+        success = "/api/v1/accounts/{id}/messages/import > Store a message the account already has > 200 > application/json"
+        pairs = json.loads((ROOT / "openapi-example.json").read_text())["importMessage"]
+        stored = {}
+        for name, pair in pairs.items():
+            request = pair["request"]
+            if pair["response"]["status"] != 200 or request["path"]["id"] != 12:
+                continue
+            path = "/api/v1/accounts/12/messages/import"
+            for coverage in (False, True):
+                with self.subTest(example=name, coverage=coverage), patch.dict(os.environ):
+                    os.environ.pop("CONTRACT_COVERAGE", None)
+                    if coverage:
+                        os.environ["CONTRACT_COVERAGE"] = "1"
+                    with patch.object(self.hooks, "mailbox_id", return_value=7):
+                        transaction = self.transaction(success, path, request["body"])
+                        self.hooks.import_into_an_account_with_room(transaction)
+                    self.assertEqual(json.loads(transaction["request"]["body"]), request["body"])
+                    if transaction["fullPath"] == path:
+                        body = request["body"]
+                        stored.setdefault((body.get("folder"), body["raw_message"]), []).append(name)
+        self.assertLessEqual(len(stored), 1, stored)
+
     def test_an_array_body_has_no_password_to_confirm(self):
         transaction = self.transaction(
             "/api/v1/accounts/{id}/credentials > Make an app password > 400 > application/json",
