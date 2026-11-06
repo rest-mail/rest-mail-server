@@ -60,6 +60,22 @@ SENDER_RULES = (
     "removeFromBlocklist",
 )
 
+# Every contact operation of the area map. createContact's link reaches only the
+# update and the delete. listAccounts' link reaches the others but the
+# reply-time setting, and listAccounts is not selected: each of those exchanges
+# carries its own account id, which its hook sends to the seeded account.
+CONTACTS = (
+    "createContact",
+    "updateContact",
+    "deleteContact",
+    "listContacts",
+    "blockSender",
+    "importContacts",
+    "suggestContacts",
+    "getContactReplyTimeSetting",
+    "setContactReplyTimeSetting",
+)
+
 
 def link_followers(description, start):
     """The operations reachable from start through the description's links."""
@@ -124,7 +140,8 @@ class Selection(unittest.TestCase):
             - set(CUSTOM_FILTERS)
             - set(FOLDERS)
             - set(INVITATIONS)
-            - set(GRANTS),
+            - set(GRANTS)
+            - set(CONTACTS),
             link_followers(description, "createDomain") | {"createDomain"},
         )
 
@@ -225,6 +242,30 @@ class Selection(unittest.TestCase):
         self.assertFalse(
             set(SENDER_RULES) & set(own_data.FOLLOWS_THE_CREATED_DOMAIN)
         )
+
+    def test_it_selects_every_contact_operation_and_its_links(self):
+        description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
+        areas = json.loads(
+            (ROOT / "tests/contract/api-areas.json").read_text()
+        )
+        self.assertEqual(set(areas["639"]), set(CONTACTS))
+        self.assertEqual(
+            link_followers(description, "createContact"),
+            {"updateContact", "deleteContact"},
+        )
+        linking = {
+            operation["operationId"]
+            for item in description["paths"].values()
+            for operation in item.values()
+            if isinstance(operation, dict) and "operationId" in operation
+            and link_followers(description, operation["operationId"]) & set(CONTACTS)
+        }
+        self.assertEqual(linking, {"createContact", "listAccounts"})
+        for operation in set(CONTACTS) - {"createContact"}:
+            self.assertEqual(link_followers(description, operation), set())
+        selected = own_data.configure({})["operation-id"]
+        self.assertNotIn("listAccounts", selected)
+        self.assertLessEqual(set(CONTACTS), set(own_data.MOVED))
 
     def test_a_skipped_exchange_is_not_a_pass(self):
         with tempfile.TemporaryDirectory() as directory:
