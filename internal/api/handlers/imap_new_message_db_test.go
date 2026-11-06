@@ -57,13 +57,15 @@ func imapProofAPI(t *testing.T, db *gorm.DB, account models.Mailbox) string {
 			next.ServeHTTP(w, withClaims(r, freshTwoFactorClaims(account.ID, account.Address)))
 		})
 	})
-	router.Post("/api/v1/auth/protocol-sign-in", func(w http.ResponseWriter, _ *http.Request) {
-		var signedIn apiclient.SignInResponse
-		signedIn.Data.User.ID = account.ID
-		signedIn.Data.User.Email = account.Address
-		signedIn.Data.CredentialID, signedIn.Data.CredentialKind = 1, "password"
+	router.Post("/api/v1/gateway-sessions", func(w http.ResponseWriter, _ *http.Request) {
+		opened := apitypes.GatewaySessionOpened{Token: "rmgs_proof", Protocol: "imap", CredentialID: 1, CredentialKind: "password"}
+		opened.User.ID = account.ID
+		opened.User.Email = account.Address
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(signedIn)
+		_ = json.NewEncoder(w).Encode(endpoint.Data[apitypes.GatewaySessionOpened]{Data: opened})
+	})
+	router.Delete("/api/v1/gateway-sessions/current", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
 	})
 	routes := endpoint.Routes{Router: router, Registry: endpoint.NewRegistry()}
 	importer.Register(routes)

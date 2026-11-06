@@ -19,8 +19,10 @@ const (
 	AuthThrottleGrants  = "rate_limited: login's per-IP limit"
 	OwnerThrottleGroup  = "rate_limited: too many requests to the owner endpoints' throttle"
 	TLSRPTThrottleGroup = "rate_limited: too many reports from one address"
-	BasicRefusalGroup   = "rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate"
 	APIKeyRefusalGroup  = "rate_limited: refused API keys, throttled at login's rate"
+	// PasswordRefusalGroup is a gateway opening a mail client's session with a
+	// refused password (#1586), throttled at login's rate.
+	PasswordRefusalGroup = "rate_limited: refused passwords, throttled at login's rate"
 	// HandlerLimitGroup is the bare status text: what a route says when it
 	// lists 429 among its errors. The limit is its handler's (HandlerLimits),
 	// or else the refused API keys' throttle in front of the admin routes.
@@ -41,7 +43,7 @@ var HandlerLimits = map[string]string{
 
 var known = map[string]bool{
 	AuthThrottleShared: true, AuthThrottleGrants: true, OwnerThrottleGroup: true,
-	TLSRPTThrottleGroup: true, BasicRefusalGroup: true, APIKeyRefusalGroup: true,
+	TLSRPTThrottleGroup: true, APIKeyRefusalGroup: true, PasswordRefusalGroup: true,
 	HandlerLimitGroup: true,
 }
 

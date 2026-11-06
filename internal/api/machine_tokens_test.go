@@ -119,7 +119,6 @@ func TestMachineTokenRoutesUseLiveCredentialAndDomainScopes(t *testing.T) {
 		t.Fatalf("pipeline writes %d, want 1", connection.creates)
 	}
 	send("GET", "/api/v1/accounts/12/client-secrets", "", 401)
-	send("POST", "/api/v1/auth/protocol-sign-in", `{"protocol":"imap"}`, 400)
 	connection.granted = false
 	send("GET", "/api/v1/admin/domains/1", "", 403)
 	connection.granted = true

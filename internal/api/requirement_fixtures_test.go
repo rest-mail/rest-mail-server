@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"context"
 	"crypto/ed25519"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"database/sql"
 	"database/sql/driver"
 	"encoding/json"
@@ -136,11 +139,21 @@ func requirementExampleSetup(t *testing.T, operation, name, requirement string, 
 			db = requirementDB(t, requirementConnection{operation: operation, publicKey: string(ssh.MarshalAuthorizedKey(publicKey))})
 		}
 	}
+	if operation == "closeGatewaySession" {
+		// Only the gateway that opened a session closes it, over the internal
+		// listener with its own certificate; the token is the session's.
+		mtlsCfg := *cfg
+		mtlsCfg.InternalMTLSEnabled = true
+		routers := NewRouters(newFailingGormDB(t), jwt, &mtlsCfg, nil)
+		t.Cleanup(routers.Close)
+		return asGateway(imapCN, routers.Internal), "rmgs_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", body
+	}
 	if requirement == "fault=database" {
 		switch {
-		case operation == "protocolSignIn" && name == "storage_unavailable":
+		case operation == "openGatewaySession" && name == "storage_unavailable":
+			// The password is verified; the account read after it fails.
 			routers, _, _ := newGapPairRouter(t, operation)
-			return routers.Public, token, body
+			return asGateway(imapCN, routers.Internal), token, []byte(openBody("imap", "admin@restmail.test", "fixture-password"))
 		case operation == "refreshToken" || operation == "logout":
 			session, err := jwt.GenerateSession(testAdminHolding([]string{"*"}), "admin@example.test", 0, []string{auth.AMRPassword, auth.AMROTP}, false)
 			if err != nil {
@@ -184,4 +197,14 @@ func requirementExampleSetup(t *testing.T, operation, name, requirement string, 
 		router = routers.Public
 	}
 	return router, token, body
+}
+
+// asGateway sends every request to h as the gateway whose verified mTLS
+// client certificate names cn, as the internal listener sees it.
+func asGateway(cn string, h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		leaf := &x509.Certificate{Subject: pkix.Name{CommonName: cn}}
+		r.TLS = &tls.ConnectionState{PeerCertificates: []*x509.Certificate{leaf}, VerifiedChains: [][]*x509.Certificate{{leaf}}}
+		h.ServeHTTP(w, r)
+	})
 }

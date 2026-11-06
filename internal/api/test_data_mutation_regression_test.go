@@ -27,7 +27,7 @@ var testResetScenarioTables = []string{
 	"attachments", "outbound_queue", "messages", "quarantine", "vacation_configs", "vacation_responses",
 	"contacts", "sieve_scripts", "quota_usage", "credentials", "grants", "aliases", "message_traces",
 	"custom_filters", "bans", "restmail_capabilities", "certificates", "domain_sender_rules", "greylist_entries",
-	"mailboxes", "pipelines", "domains", "suppressions", "refresh_tokens", "roles", "role_capabilities",
+	"mailboxes", "pipelines", "domains", "suppressions", "refresh_tokens", "gateway_sessions", "roles", "role_capabilities",
 	"capabilities", "owner_keys", "audit_log", "test_reset_baseline",
 }
 

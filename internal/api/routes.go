@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"time"
@@ -238,22 +239,27 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	)
 	auditLog := auditor.Audit
 
-	// HTTP Basic: the mail routes below also take a credential sent as
-	// address:password, an app password (#344) or one of the account's
-	// passwords, checked against the credentials table on every request, so a
-	// revoked one stops working at once. It is how the protocol gateways sign
-	// mail clients in, one path for both. Each refusal is recorded, and
-	// refusals are throttled at login's rate (see middleware.BasicCredentials).
-	var basicRefusals *middleware.RateLimitConfig
+	// A mail client's password reaches the API only when a protocol gateway
+	// opens a connection session for it (#1586): an app password (#344) or one
+	// of the account's passwords, in the open request's body. There is no HTTP
+	// Basic. Each refusal is recorded, and refusals (of passwords and of API
+	// keys) are throttled at login's rate (see middleware.SessionPasswords).
+	var credentialRefusals *middleware.RateLimitConfig
 	if cfg.AuthRateLimitEnabled {
-		basicRefusals = &middleware.RateLimitConfig{RPS: cfg.AuthRateLimitRPS, Burst: cfg.AuthRateLimitBurst}
+		credentialRefusals = &middleware.RateLimitConfig{RPS: cfg.AuthRateLimitRPS, Burst: cfg.AuthRateLimitBurst}
 	}
-	basicCredentials := middleware.NewBasicCredentials(handlers.BasicVerifier(db), auditor.BasicRefused, basicRefusals)
+	sessionPasswords := middleware.NewSessionPasswords(handlers.PasswordVerifier(db), auditor.CredentialRefused, credentialRefusals)
 	credentialH := handlers.NewCredentialHandler(db)
+	// Protocol gateway connection sessions (#1586): a gateway, identified by its
+	// mTLS client certificate on the internal listener, opens one when a mail
+	// client signs in and sends its token on every call for that connection.
+	gatewaySessionH := handlers.NewGatewaySessionHandler(db, middleware.DefaultGatewayServices)
+	gatewaySessions := middleware.GatewaySessions(middleware.DefaultGatewayServices,
+		repositories.GatewaySessionTokenPrefix, handlers.GatewaySessionVerifier(db))
 	oauthH := handlers.NewOAuthHandler(db, jwtService)
 	machineTokens := repositories.NewCredentialRepository(db).MachineTokenVerifier()
 	apiKeys := middleware.NewAPIKeys(repositories.NewCredentialRepository(db).APIKeyVerifier(),
-		func(r *http.Request, refusal *auth.CredentialRefusal) { auditor.BasicRefused(r, "", refusal) }, basicRefusals)
+		func(r *http.Request, refusal *auth.CredentialRefusal) { auditor.CredentialRefused(r, "", refusal) }, credentialRefusals)
 
 	// Register DB-backed filters that need a database connection.
 	pipeline.DefaultRegistry.Register("extract_attachments", filters.NewExtractAttachmentsWithS3(attachmentStore))
@@ -527,6 +533,11 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		}
 		mailboxH.RegisterAddressCheck(internal)
 		messageH.RegisterDelivery(internal, deliverBodyLimit)
+		gatewaySessionH.Register(internal, handlers.GatewaySessionRouteChecks{
+			Credential: endpoint.Middleware{Wrap: sessionPasswords.Authenticate(), Describes: describedSessionPasswords},
+			Throttle:   describedThrottle(authThrottle),
+			Audit:      describedAudit(auditLog),
+		})
 	}
 	if !cfg.InternalMTLSEnabled {
 		registerInternal(r)
@@ -647,26 +658,18 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	})
 
 	// ═══════════════════════════════════════════════════════════════
-	// Authenticated routes (mail server operations): a session, or a
-	// credential sent with HTTP Basic (an app password, whose scope is its own
-	// mailbox with read, write and send, or one of the account's passwords).
-	// The protocol gateways reach them with Basic.
+	// Authenticated routes (mail server operations): a session, an API key,
+	// or a protocol gateway's connection session (#1586), which reaches what
+	// the mail client's credential reaches: an app password only its own
+	// mailbox, with read, write and send.
 	// ═══════════════════════════════════════════════════════════════
 	r.Group(func(r chi.Router) {
-		r.Use(apiKeys.Authenticate(basicCredentials.Authenticate(jwtService, machineTokens)))
+		r.Use(gatewaySessions(apiKeys.Authenticate(middleware.JWTMiddleware(jwtService, machineTokens))))
 		r.Use(middleware.RejectStaleSessions(sessionCurrent))
 		r.Use(middleware.SetupDone)
 		r.Use(middleware.CSRF())
 		// A contact import goes to disk and is held to its own limit.
 		r.Use(middleware.MaxBodyBytesExcept(cfg.APIMaxBodyBytes, handlers.ContactImportRoute))
-
-		// A protocol gateway signs a mail client in with what it gave as its
-		// password, sent with HTTP Basic. Throttled like login; a refused
-		// credential is recorded by basicCredentials, a successful sign-in
-		// here.
-		credentialH.RegisterProtocolSignIn(publicRoutes(r).
-			Describing(describedMailSession, describedSetupDone).
-			DescribingWhen(middleware.CSRFProtectsMethod, describedCSRF).Describing(describedBodyCap), signInChecks)
 
 		accountH.RegisterReads(publicRoutes(r).
 			Describing(describedMailSession, describedSetupDone).
@@ -859,6 +862,19 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		ir.Use(metrics.HTTPMetrics)
 		ir.Use(middleware.RequireClientCert)
 		registerInternal(ir)
+		// A gateway acting for a mail client in its connection session calls the
+		// mail routes here, with its certificate and the session's token; they
+		// are the public router's, which sees the certificate this listener
+		// verified (#1586). Nothing else reaches the public routes from here.
+		forwardGatewaySession := func(w http.ResponseWriter, req *http.Request) {
+			if _, ok := middleware.GatewaySessionToken(req, repositories.GatewaySessionTokenPrefix); !ok {
+				http.NotFound(w, req)
+				return
+			}
+			r.ServeHTTP(w, req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, nil)))
+		}
+		ir.NotFound(forwardGatewaySession)
+		ir.MethodNotAllowed(forwardGatewaySession)
 		routers.Internal = ir
 	}
 

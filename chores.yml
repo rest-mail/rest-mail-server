@@ -763,13 +763,20 @@ tasks:
         docker exec -- "${CONTRACT_FIXTURE_PROJECT}-api" go run ./tests/contract/fixtures --test-domain=restmail.test --queue-entry-only
 
   test:contract-mtls:
-    desc: Copy the gateway's internal mTLS certificate for the contract run's machine routes (vertrag.yml endpoints)
+    desc: Copy the gateways' internal mTLS certificates for the contract run's internal routes (vertrag.yml endpoints)
     cmds:
       - |
         set -eu
         mkdir -p .cache/contract-mtls
-        for file in internal-ca.crt internal-client.crt internal-client.key; do
+        # Each gateway service has its own certificate (#1586): the SMTP
+        # gateway's (smtp-delivery) for the delivery routes, the IMAP gateway's
+        # for the gateway-session routes.
+        docker cp "{{.RESTMAIL_PROJECT}}-smtp-gateway:/certs/internal-ca.crt" .cache/contract-mtls/internal-ca.crt
+        for file in internal-smtp-delivery.crt internal-smtp-delivery.key; do
           docker cp "{{.RESTMAIL_PROJECT}}-smtp-gateway:/certs/$file" ".cache/contract-mtls/$file"
+        done
+        for file in internal-imap.crt internal-imap.key; do
+          docker cp "{{.RESTMAIL_PROJECT}}-imap-gateway:/certs/$file" ".cache/contract-mtls/$file"
         done
 
   test:contract-retry-fixture:
@@ -1781,7 +1788,8 @@ tasks:
           testbed-certgen)
             # Default (testbed): mint a DEDICATED internal CA + an API server cert
             # (SANs cover the api container IP + localhost + the instance hostname)
-            # + a gateway client cert into the internal mTLS volume, using
+            # + one client cert per gateway service (internal-imap, -pop3,
+            # -smtp-submission, -smtp-delivery) into the internal mTLS volume, using
             # `instance mtls-issue` (built inside a golang container so it is
             # arch-correct for the volume). Idempotent: an existing internal CA is reused and
             # leaves already present are skipped, so it is safe to re-run and safe to
@@ -1805,15 +1813,21 @@ tasks:
           manual)
             # The deployer provisions the internal trust domain out of band (their
             # own CA/PKI) and drops the material into the internal mTLS volume; we
-            # ONLY validate presence and never issue. The five files are the
-            # internal CA certificate + the API server keypair + the gateway client
-            # keypair, which each service's `up` copies to the /certs/internal-*
+            # ONLY validate presence and never issue. The files are the internal CA
+            # certificate + the API server keypair + one client keypair per gateway
+            # service, whose certificate's Common Name names that service
+            # (rest-mail-imap-gateway, rest-mail-pop3-gateway,
+            # rest-mail-smtp-submission, rest-mail-smtp-delivery; internal/mtls,
+            # #1586). Each service's `up` copies its own to the /certs/internal-*
             # paths its env vars point at (INTERNAL_MTLS_CA_CERT / _SERVER_* /
             # _CLIENT_*). The CA's key is not one of them, and is best kept out.
             docker volume create --label "$RESTMAIL_LABEL" --label rest-mail.data=true "{{.INTERNAL_MTLS_VOLUME}}" >/dev/null
             docker run --rm --label "$RESTMAIL_LABEL" -v "{{.INTERNAL_MTLS_VOLUME}}:/internal-mtls:ro" alpine:3 sh -euc '
               missing=0
-              for f in internal-ca.crt internal-server.crt internal-server.key internal-client.crt internal-client.key; do
+              for f in internal-ca.crt internal-server.crt internal-server.key \
+                internal-imap.crt internal-imap.key internal-pop3.crt internal-pop3.key \
+                internal-smtp-submission.crt internal-smtp-submission.key \
+                internal-smtp-delivery.crt internal-smtp-delivery.key; do
                 if [ ! -f "/internal-mtls/$f" ]; then
                   echo "ca_source=manual: MISSING $f — drop the internal CA certificate + server/client cert material into volume {{.INTERNAL_MTLS_VOLUME}}" >&2
                   missing=1

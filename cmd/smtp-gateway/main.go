@@ -141,12 +141,17 @@ func main() {
 		slog.Warn("no TLS certificate configured — running without TLS")
 	}
 
-	// Internal mTLS (gateway → API machine auth): when enabled, the two
-	// tokenless machine routes (recipient check + inbound delivery) go to the
-	// API's dedicated internal listener (API_INTERNAL_BASE_URL) presenting the
-	// gateway client certificate; all token/credential routes keep using the
-	// public API_BASE_URL. Disabled → single plain client, unchanged.
-	var apiOpts []apiclient.Option
+	// Internal mTLS (gateway → API service identity, #1586): the SMTP gateway
+	// is two services. Inbound delivery (recipient check, delivery) presents
+	// the rest-mail-smtp-delivery certificate (INTERNAL_MTLS_CLIENT_*); a mail
+	// client signing in at submission gets a connection session opened with
+	// the rest-mail-smtp-submission certificate (INTERNAL_MTLS_SUBMISSION_*).
+	// Both go to the API's internal listener (API_INTERNAL_BASE_URL).
+	if !cfg.InternalMTLSEnabled {
+		slog.Error("the SMTP gateway needs internal mTLS (INTERNAL_MTLS_ENABLED=true, with its delivery and submission client certificates): mail clients' sessions with the API are opened on the internal listener")
+		os.Exit(1)
+	}
+	var apiOpts, submissionOpts []apiclient.Option
 	if cfg.InternalMTLSEnabled {
 		if cfg.APIInternalBaseURL == "" {
 			slog.Error("internal mTLS enabled but API_INTERNAL_BASE_URL is not set (must point at the API's internal mTLS listener, e.g. https://api:8443)")
@@ -158,6 +163,12 @@ func main() {
 			os.Exit(1)
 		}
 		apiOpts = append(apiOpts, apiclient.WithInternalMTLS(cfg.APIInternalBaseURL, clientTLS))
+		submissionTLS, err := cfg.InternalMTLSSubmissionTLS()
+		if err != nil {
+			slog.Error("internal mTLS enabled but the submission client TLS config is invalid (INTERNAL_MTLS_SUBMISSION_CERT/KEY)", "error", err)
+			os.Exit(1)
+		}
+		submissionOpts = append(submissionOpts, apiclient.WithInternalMTLS(cfg.APIInternalBaseURL, submissionTLS))
 		slog.Info("internal mTLS enabled — machine routes use the internal listener with the gateway client certificate", "internal_base_url", cfg.APIInternalBaseURL)
 	}
 	// OSI-7: size-aware deadline for message-carrying API calls (DeliverMessage
@@ -166,7 +177,10 @@ func main() {
 	// size and the internal floor rate.
 	msgDeadline := cfg.InternalDeliveryDeadline(cfg.SMTPMaxMessageSize)
 	apiOpts = append(apiOpts, apiclient.WithMessageDeadline(msgDeadline))
-	api := apiclient.New(cfg.APIBaseURL, apiOpts...)
+	api := smtpgw.Clients{
+		Delivery:   apiclient.New(cfg.APIBaseURL, apiOpts...),
+		Submission: apiclient.New(cfg.APIBaseURL, submissionOpts...),
+	}
 	slog.Info("API client configured", "base_url", cfg.APIBaseURL, "message_deadline", msgDeadline.String())
 
 	// SMTP gateway needs DB access for the outbound queue worker

@@ -55,7 +55,6 @@ func TestLimits(t *testing.T) {
 	t.Run("TLSRPT", l.tlsrpt)
 	t.Run("PipelineTestThrottle", l.pipelineTestThrottle)
 	t.Run("APIKeyRefusals", l.apiKeyRefusals)
-	t.Run("BasicRefusals", l.basicRefusals)
 	t.Run("SendsComeBack", l.sendsComeBack)
 	t.Run("BodyCaps", l.bodyCaps)
 }
@@ -66,7 +65,6 @@ const (
 	authThrottleGrants  = limitgroups.AuthThrottleGrants
 	ownerThrottleGroup  = limitgroups.OwnerThrottleGroup
 	tlsrptThrottleGroup = limitgroups.TLSRPTThrottleGroup
-	basicRefusalGroup   = limitgroups.BasicRefusalGroup
 	apiKeyRefusalGroup  = limitgroups.APIKeyRefusalGroup
 )
 
@@ -132,6 +130,12 @@ func newLimitsRun(t *testing.T) *limitsRun {
 				continue
 			}
 			o := limitsOperation{strings.ToUpper(method), path}
+			if onInternalListener(path) {
+				// The suite reaches only the public listener; these limits and
+				// caps are proven in-process (internal/api: the refused
+				// passwords' throttle on the session open route, #1586).
+				continue
+			}
 			l.declares[o.String()] = map[string]bool{}
 			for status := range op.Responses {
 				l.declares[o.String()][status] = true
@@ -167,8 +171,8 @@ func (l *limitsRun) declared(t *testing.T) {
 		t.Error(problem)
 	}
 	l.apiKeyLimited = l.limits[apiKeyRefusalGroup]
-	if len(l.limits[authThrottleShared]) == 0 || len(l.limits[basicRefusalGroup]) == 0 {
-		t.Fatalf("the description declares no sign-in or HTTP Basic limit; was it served from the right API? %v", l.limits)
+	if len(l.limits[authThrottleShared]) == 0 || len(l.limits[apiKeyRefusalGroup]) == 0 {
+		t.Fatalf("the description declares no sign-in or refused API key limit; was it served from the right API? %v", l.limits)
 	}
 }
 
@@ -489,8 +493,7 @@ func (l *limitsRun) pipelineTestThrottle(t *testing.T) {
 }
 
 // apiKeyRefusals spends the refused API keys of this IP, and checks every
-// operation behind that throttle (#1269). HTTP Basic refusals and sessions keep
-// their own buckets.
+// operation behind that throttle (#1269). Sessions keep their own bucket.
 func (l *limitsRun) apiKeyRefusals(t *testing.T) {
 	withKey := func(op limitsOperation) *http.Response {
 		return l.call(t, &apiClient{token: refusedAPIKey}, op, map[string]any{})
@@ -498,12 +501,6 @@ func (l *limitsRun) apiKeyRefusals(t *testing.T) {
 	spend := func() *http.Response { return withKey(limitsOperation{"GET", "/api/v1/admin/domains"}) }
 	retry := l.spendThenProbe(t, "refused API keys", spend, l.apiKeyLimited, withKey)
 	l.requireNotLimited(t, "a session on the same routes", l.call(t, l.admin, limitsOperation{"GET", "/api/v1/admin/domains"}, nil))
-	req, err := http.NewRequest(http.MethodGet, apiBaseURL+"/api/v1/accounts", nil)
-	requireNoError(t, err)
-	req.SetBasicAuth(unknownLimitsAddress, "not the password")
-	resp, err := httpClient.Do(req)
-	requireNoError(t, err)
-	l.requireNotLimited(t, "the refused HTTP Basic credentials' bucket", resp)
 	time.Sleep(retry + 250*time.Millisecond)
 	if resp := spend(); resp.StatusCode != http.StatusUnauthorized {
 		t.Errorf("a refused API key after Retry-After: %d %s, want 401", resp.StatusCode, readBody(resp))
@@ -512,31 +509,15 @@ func (l *limitsRun) apiKeyRefusals(t *testing.T) {
 	}
 }
 
-// basicRefusals spends the refused HTTP Basic credentials of this IP, and
-// checks every operation that takes HTTP Basic.
-func (l *limitsRun) basicRefusals(t *testing.T) {
-	basic := func(op limitsOperation) *http.Response {
-		req, err := http.NewRequest(op.method, apiBaseURL+limitsPath(op.path, l.aID), strings.NewReader("{}"))
-		requireNoError(t, err)
-		req.Header.Set("Content-Type", "application/json")
-		req.SetBasicAuth(unknownLimitsAddress, "not the password")
-		resp, err := httpClient.Do(req)
-		requireNoError(t, err)
-		return resp
-	}
-	spend := func() *http.Response { return basic(limitsOperation{"GET", "/api/v1/accounts"}) }
-	retry := l.spendThenProbe(t, "refused HTTP Basic credentials", spend, l.limits[basicRefusalGroup], basic)
-	l.requireNotLimited(t, "a session on the same routes", l.call(t, l.a, limitsOperation{"GET", "/api/v1/accounts"}, nil))
-	time.Sleep(retry + 250*time.Millisecond)
-	if resp := spend(); resp.StatusCode != http.StatusUnauthorized {
-		t.Errorf("a refused credential after Retry-After: %d %s, want 401", resp.StatusCode, readBody(resp))
-	} else {
-		resp.Body.Close()
-	}
-}
-
 // gatewayDeliverPath is deliverMessage, which the mail gateways call.
 const gatewayDeliverPath = "/api/v1/messages/deliver"
+
+// onInternalListener is whether path is served only on the API's internal
+// listener, which takes a gateway's client certificate: a mail client's
+// connection session is opened and closed there (#1586).
+func onInternalListener(path string) bool {
+	return strings.HasPrefix(path, "/api/v1/gateway-sessions")
+}
 
 // bodyCaps declares a body over every cap to each operation that declares a
 // 413, and expects the 413 before a byte of it is sent. TLS-RPT reads before

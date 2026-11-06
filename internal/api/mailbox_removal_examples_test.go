@@ -57,7 +57,7 @@ func TestMailboxRemovalExamples(t *testing.T) {
 			if s.store != nil {
 				calls = s.store.snapshot()[before:]
 			}
-			begins, commits, rollbacks, deletes, credentials, refresh := 0, 0, 0, 0, 0, 0
+			begins, commits, rollbacks, deletes, credentials, refresh, gateway := 0, 0, 0, 0, 0, 0, 0
 			for _, q := range calls {
 				switch q.query {
 				case "BEGIN":
@@ -93,14 +93,17 @@ func TestMailboxRemovalExamples(t *testing.T) {
 				if strings.HasPrefix(q.query, `UPDATE "refresh_tokens"`) {
 					refresh++
 				}
+				if strings.HasPrefix(q.query, `UPDATE "gateway_sessions"`) {
+					gateway++
+				}
 			}
 			wantDelete := rr.Code == 204 || name == "delete_unavailable"
 			if (deletes == 1) != wantDelete || deletes > 1 {
 				t.Fatalf("mailbox deletes:%d want%t", deletes, wantDelete)
 			}
 			if rr.Code == 204 {
-				if begins != 1 || commits != 1 || rollbacks != 0 || credentials != 1 || refresh != 1 {
-					t.Fatalf("incomplete committed revocation:%d/%d/%d/%d/%d", begins, commits, rollbacks, credentials, refresh)
+				if begins != 1 || commits != 1 || rollbacks != 0 || credentials != 1 || refresh != 1 || gateway != 1 {
+					t.Fatalf("incomplete committed revocation:%d/%d/%d/%d/%d/%d", begins, commits, rollbacks, credentials, refresh, gateway)
 				}
 			} else {
 				if commits != 0 || (begins > 0 && rollbacks != 1) {

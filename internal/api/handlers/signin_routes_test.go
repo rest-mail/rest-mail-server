@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -26,12 +25,6 @@ var passingSignInChecks = SessionRouteChecks{
 func serveAuth(h *AuthHandler, w http.ResponseWriter, r *http.Request) {
 	routes := chi.NewRouter()
 	h.RegisterSignIn(endpoint.Routes{Router: routes, Registry: endpoint.NewRegistry()}, passingSignInChecks)
-	routes.ServeHTTP(w, r)
-}
-
-func serveProtocolSignIn(h *CredentialHandler, w http.ResponseWriter, r *http.Request) {
-	routes := chi.NewRouter()
-	h.RegisterProtocolSignIn(endpoint.Routes{Router: routes, Registry: endpoint.NewRegistry()}, passingSignInChecks)
 	routes.ServeHTTP(w, r)
 }
 
@@ -65,16 +58,6 @@ func ownerRoute(h *OwnerHandler, name string) http.HandlerFunc {
 // authRoute is the sign-in routes through their registration, as a handler.
 func authRoute(h *AuthHandler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) { serveAuth(h, w, r) }
-}
-
-// The protocol sign-in answer writes the bytes the map it replaced wrote.
-func TestProtocolSignedInJSONParity(t *testing.T) {
-	user := userInfo{ID: 3, Email: "a@example.test", DisplayName: "A"}
-	old, _ := json.Marshal(map[string]any{"user": user, "credential_id": uint(7), "credential_kind": "app_password"})
-	current, _ := json.Marshal(ProtocolSignedIn{CredentialID: 7, CredentialKind: "app_password", User: user})
-	if string(old) != string(current) {
-		t.Fatalf("response JSON changed:\nold %s\nnew %s", old, current)
-	}
 }
 
 // What binding refuses, it refuses before any account is looked up: a handler with no

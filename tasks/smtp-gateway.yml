@@ -76,9 +76,10 @@ vars:
   SMTP_GATEWAY_ENVIRONMENT: '{{.SMTP_GATEWAY_ENVIRONMENT | default "development"}}'
   SMTP_GATEWAY_MAILNET_ONLY: '{{.SMTP_GATEWAY_MAILNET_ONLY | default "false"}}'
   # Internal mTLS (gateway → API). Off by default; when "true" the gateway
-  # presents /certs/internal-client.* on the two machine routes and sends them
-  # to SMTP_GATEWAY_API_INTERNAL_BASE_URL (the API's https internal listener);
-  # all other routes keep using SMTP_GATEWAY_API_BASE_URL (public).
+  # presents /certs/internal-smtp-delivery.* on the two inbound delivery routes and
+  # /certs/internal-smtp-submission.* when it opens a signed-in mail client's
+  # session (#1586), both to SMTP_GATEWAY_API_INTERNAL_BASE_URL (the API's https
+  # internal listener). Submission needs it on.
   SMTP_GATEWAY_INTERNAL_MTLS: '{{.SMTP_GATEWAY_INTERNAL_MTLS | default "false"}}'
   SMTP_GATEWAY_API_INTERNAL_BASE_URL: '{{.SMTP_GATEWAY_API_INTERNAL_BASE_URL | default ""}}'
 
@@ -166,12 +167,14 @@ tasks:
           --sysctl net.ipv4.ip_unprivileged_port_start=0 \
           --pids-limit 512 --memory 1g --cpus 1.5"
         # Its certificates: its own keypair, the testbed CA certificate to trust
-        # peers with and, with internal mTLS on, the internal CA certificate and the
-        # gateways' client keypair. Copied into a volume of its own, owned by the
+        # peers with and, with internal mTLS on, the internal CA certificate and its
+        # two client keypairs (internal-smtp-delivery.* for inbound delivery and
+        # internal-smtp-submission.* for submission, whose names tell the API which
+        # gateway service is calling, #1586). Copied into a volume of its own, owned by the
         # user it runs as, so it never mounts a CA key (#193).
         INTERNAL=""
         if [ "{{.SMTP_GATEWAY_INTERNAL_MTLS}}" = "true" ]; then
-          INTERNAL="{{.SMTP_GATEWAY_INTERNAL_MTLS_VOLUME}}:internal-ca.crt,internal-client.crt,internal-client.key"
+          INTERNAL="{{.SMTP_GATEWAY_INTERNAL_MTLS_VOLUME}}:internal-ca.crt,internal-smtp-delivery.crt,internal-smtp-delivery.key,internal-smtp-submission.crt,internal-smtp-submission.key"
         fi
         "{{.TASKFILE_DIR}}/stage-certs.sh" {{.SMTP_GATEWAY_OWN_CERTS_VOLUME}} 10001:10001 \
           "{{.SMTP_GATEWAY_CERTS_VOLUME}}:$(basename {{.SMTP_GATEWAY_TLS_CERT_PATH}}),$(basename {{.SMTP_GATEWAY_TLS_KEY_PATH}}),ca.crt?" \
@@ -235,8 +238,10 @@ tasks:
           -e INTERNAL_MTLS_ENABLED={{.SMTP_GATEWAY_INTERNAL_MTLS}} \
           -e API_INTERNAL_BASE_URL={{.SMTP_GATEWAY_API_INTERNAL_BASE_URL}} \
           -e INTERNAL_MTLS_CA_CERT=/certs/internal-ca.crt \
-          -e INTERNAL_MTLS_CLIENT_CERT=/certs/internal-client.crt \
-          -e INTERNAL_MTLS_CLIENT_KEY=/certs/internal-client.key \
+          -e INTERNAL_MTLS_CLIENT_CERT=/certs/internal-smtp-delivery.crt \
+          -e INTERNAL_MTLS_CLIENT_KEY=/certs/internal-smtp-delivery.key \
+          -e INTERNAL_MTLS_SUBMISSION_CERT=/certs/internal-smtp-submission.crt \
+          -e INTERNAL_MTLS_SUBMISSION_KEY=/certs/internal-smtp-submission.key \
           {{.SMTP_GATEWAY_IMAGE}} >$OUTPUT 2>&1
 
   down:

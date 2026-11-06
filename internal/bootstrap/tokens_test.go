@@ -23,7 +23,7 @@ const chosenPassword = "a passphrase only the owner knows"
 
 func migrateTokens(t *testing.T, gdb *gorm.DB) {
 	t.Helper()
-	if err := gdb.AutoMigrate(&models.OneTimeToken{}, &models.Credential{}, &models.RefreshToken{}); err != nil {
+	if err := gdb.AutoMigrate(&models.OneTimeToken{}, &models.Credential{}, &models.RefreshToken{}, &models.GatewaySession{}); err != nil {
 		t.Skipf("token DB test skipped: migrate failed (%v)", err)
 	}
 	if err := gdb.Exec("TRUNCATE one_time_tokens RESTART IDENTITY").Error; err != nil {
@@ -263,7 +263,7 @@ func openScratchDatabase(t *testing.T) *gorm.DB {
 	})
 	if err := scratch.AutoMigrate(&models.Domain{}, &models.Mailbox{}, &models.Pipeline{}, &models.Role{}, &models.Capability{},
 		&models.RoleCapability{}, &models.Grant{}, &models.GrantActivation{}, &models.OneTimeToken{}, &models.Credential{},
-		&models.RefreshToken{}); err != nil {
+		&models.RefreshToken{}, &models.GatewaySession{}); err != nil {
 		t.Fatalf("migrate scratch database: %v", err)
 	}
 	if err := rmdb.MigrateAuditLog(scratch); err != nil {

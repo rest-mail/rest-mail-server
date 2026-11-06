@@ -124,9 +124,9 @@ type ScopeOf func(r *http.Request) (scope string, found bool, err error)
 // A session is eligible, and so is a request made with an API key, which
 // passes only where its account's live grants and its own permissions both
 // allow capability at the same scope (CredentialAllows): a key never holds
-// more than its account does now. A request made with a credential over HTTP
-// Basic (an app password, a gateway's password) is refused, whatever its
-// account holds.
+// more than its account does now. A request made in a protocol gateway's
+// connection session (an app password's or a password's) is refused, whatever
+// its account holds.
 func RequireCapability(held HeldGrants, capability string, target ScopeOf) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -178,8 +178,8 @@ type SessionCurrent func(accountID uint, epoch int) (bool, error)
 // minutes; without this, one taken before a password change or a reset keeps
 // working until it expires — long enough, after a reset has wiped the
 // authenticator, for its holder to enroll their own and take the account
-// back. A request made with a credential over HTTP Basic passes: the
-// credential was checked just now.
+// back. A gateway connection session passes: its session and credential were
+// checked just now.
 func RejectStaleSessions(current SessionCurrent) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

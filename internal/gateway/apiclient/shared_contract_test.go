@@ -4,45 +4,11 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
 	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
 )
-
-func TestProtocolSignInKeepsTransportCredentialOutOfJSON(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var body apitypes.ProtocolSignInRequest
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Protocol != "imap" {
-			t.Error("protocol request did not match the registered body")
-			http.Error(w, "invalid request", http.StatusBadRequest)
-			return
-		}
-		address, password, ok := r.BasicAuth()
-		if !ok || address != "user@example.com" || password != "test-password" {
-			t.Error("missing protocol credentials")
-		}
-		_ = json.NewEncoder(w).Encode(endpoint.Data[apitypes.ProtocolSignedIn]{Data: apitypes.ProtocolSignedIn{
-			User: apitypes.UserInfo{ID: 7, Email: address}, CredentialID: 3, CredentialKind: "app_password",
-		}})
-	}))
-	defer srv.Close()
-	response, err := New(srv.URL).SignIn("user@example.com", "test-password", "imap")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if response.Data.User.ID != 7 || response.Data.CredentialID != 3 || response.Data.CredentialKind != "app_password" || !strings.HasPrefix(response.AccessToken, "Basic ") {
-		t.Fatal("protocol identity or local Authorization header was lost")
-	}
-	raw, err := json.Marshal(response)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(string(raw), response.AccessToken) || strings.Contains(string(raw), "access_token") {
-		t.Fatal("local protocol credentials escaped into the response JSON")
-	}
-}
 
 func TestTypedMessageUpdatePreservesFalseFlags(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

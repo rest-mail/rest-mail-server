@@ -143,56 +143,61 @@ func New(baseURL string, opts ...Option) *Client {
 
 type LoginResponse = endpoint.Data[apitypes.LoginResponse]
 
-type protocolSignInEnvelope = endpoint.Data[apitypes.ProtocolSignedIn]
+type gatewaySessionEnvelope = endpoint.Data[apitypes.GatewaySessionOpened]
 
-// SignInResponse combines the protocol response with the local Authorization header.
-// The credential stays out of JSON; it is transport state, not an API response field.
-type SignInResponse struct {
-	protocolSignInEnvelope
-	AccessToken string `json:"-"`
-}
+// gatewaySessionPrefix starts a connection session token.
+const gatewaySessionPrefix = "rmgs_"
 
-// SignIn signs a mail client in over protocol ("imap", "pop3" or "smtp") with
-// what it gave as its password: one of the account's passwords, or an app
-// password (#344). It is the one way the gateways sign in. No session is made:
-// the response's AccessToken holds the address and password as HTTP Basic
-// credentials, which every call that follows sends, and the API checks them
-// against the account's credentials each time, so a revoked app password or a
-// changed password stops working at the next call. An account with
-// two-factor authentication signs in only with an app password.
-func (c *Client) SignIn(email, password, protocol string) (*SignInResponse, error) {
-	jsonBody, err := json.Marshal(apitypes.ProtocolSignInRequest{Protocol: protocol})
+// OpenSession opens a connection session for a mail client that signed in over
+// protocol ("imap", "pop3" or "smtp") with what it gave as its password (#1586).
+// The address and password go once, in the body (there is no HTTP Basic), to
+// the API's internal listener with the gateway's own client certificate, which tells the API which gateway service
+// is asking. The answer's Token is what every call for the connection then
+// sends, and CloseSession ends it at logout or disconnect. The API checks the
+// session on every call, so a revoked app password fails at the next one.
+func (c *Client) OpenSession(email, password, protocol string) (*apitypes.GatewaySessionOpened, error) {
+	jsonBody, err := json.Marshal(apitypes.GatewaySessionOpenRequest{Protocol: protocol, Address: email, Password: password})
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequest("POST", c.baseURL+"/api/v1/auth/protocol-sign-in", bytes.NewReader(jsonBody))
+	req, err := http.NewRequest("POST", c.internalBaseURL+"/api/v1/gateway-sessions", bytes.NewReader(jsonBody))
 	if err != nil {
 		return nil, err
 	}
-	req.SetBasicAuth(email, password)
 	req.Header.Set("Content-Type", "application/json")
-	httpResp, err := c.httpClient.Do(req)
+	httpResp, err := c.internalHTTPClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("POST /api/v1/auth/protocol-sign-in: %w", err)
+		return nil, fmt.Errorf("POST /api/v1/gateway-sessions: %w", err)
 	}
 	defer httpResp.Body.Close()
-
-	var resp SignInResponse
+	var resp gatewaySessionEnvelope
 	if err := c.decodeResponse(httpResp, &resp); err != nil {
 		return nil, err
 	}
-	resp.AccessToken = req.Header.Get("Authorization")
-	return &resp, nil
+	if !strings.HasPrefix(resp.Data.Token, gatewaySessionPrefix) {
+		return nil, errors.New("POST /api/v1/gateway-sessions: the answer holds no session token")
+	}
+	return &resp.Data, nil
 }
 
-// authorize sets the Authorization header of a call made with token: HTTP Basic
-// credentials as SignIn returns them, or else a JWT access token, sent as
-// Bearer.
-func authorize(req *http.Request, token string) {
-	if strings.HasPrefix(token, "Basic ") {
-		req.Header.Set("Authorization", token)
-		return
+// CloseSession ends a connection session OpenSession opened.
+func (c *Client) CloseSession(token string) error {
+	return c.deleteAuth("/api/v1/gateway-sessions/current", token)
+}
+
+// destination is where a call made with token goes: a connection session's
+// to the internal listener, with the gateway's client certificate, which the
+// API requires of it; any other to the public API.
+func (c *Client) destination(token string) (string, *http.Client) {
+	if strings.HasPrefix(token, gatewaySessionPrefix) {
+		return c.internalBaseURL, c.internalHTTPClient
 	}
+	return c.baseURL, c.httpClient
+}
+
+// authorize sets the Authorization header of a call made with token (a
+// connection session's, or a JWT access token), sent as Bearer.
+func authorize(req *http.Request, token string) {
 	req.Header.Set("Authorization", "Bearer "+token)
 }
 
@@ -410,12 +415,13 @@ func (c *Client) GetMessage(token string, msgID uint) (*MessageDetailResponse, e
 // returns an empty string with a nil error, letting callers fall back to a
 // reconstructed message.
 func (c *Client) GetRawMessage(token string, msgID uint) (string, error) {
-	req, err := http.NewRequest("GET", c.baseURL+fmt.Sprintf("/api/v1/messages/%d/raw", msgID), nil)
+	base, client := c.destination(token)
+	req, err := http.NewRequest("GET", base+fmt.Sprintf("/api/v1/messages/%d/raw", msgID), nil)
 	if err != nil {
 		return "", err
 	}
 	authorize(req, token)
-	resp, err := c.httpClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("GET raw message %d: %w", msgID, err)
 	}
@@ -685,12 +691,13 @@ func (c *Client) postInternal(ctx context.Context, path string, body interface{}
 }
 
 func (c *Client) getAuth(path, token string, out interface{}) error {
-	req, err := http.NewRequest("GET", c.baseURL+path, nil)
+	base, client := c.destination(token)
+	req, err := http.NewRequest("GET", base+path, nil)
 	if err != nil {
 		return err
 	}
 	authorize(req, token)
-	resp, err := c.httpClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("GET %s: %w", path, err)
 	}
@@ -703,13 +710,14 @@ func (c *Client) postAuth(path, token string, body interface{}, out interface{})
 	if err != nil {
 		return err
 	}
-	req, err := http.NewRequest("POST", c.baseURL+path, bytes.NewReader(jsonBody))
+	base, client := c.destination(token)
+	req, err := http.NewRequest("POST", base+path, bytes.NewReader(jsonBody))
 	if err != nil {
 		return err
 	}
 	authorize(req, token)
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := c.httpClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("POST %s: %w", path, err)
 	}
@@ -725,13 +733,14 @@ func (c *Client) patchAuth(path, token string, body interface{}, out interface{}
 	if err != nil {
 		return err
 	}
-	req, err := http.NewRequest("PATCH", c.baseURL+path, bytes.NewReader(jsonBody))
+	base, client := c.destination(token)
+	req, err := http.NewRequest("PATCH", base+path, bytes.NewReader(jsonBody))
 	if err != nil {
 		return err
 	}
 	authorize(req, token)
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := c.httpClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("PATCH %s: %w", path, err)
 	}
@@ -743,12 +752,13 @@ func (c *Client) patchAuth(path, token string, body interface{}, out interface{}
 }
 
 func (c *Client) deleteAuth(path, token string) error {
-	req, err := http.NewRequest("DELETE", c.baseURL+path, nil)
+	base, client := c.destination(token)
+	req, err := http.NewRequest("DELETE", base+path, nil)
 	if err != nil {
 		return err
 	}
 	authorize(req, token)
-	resp, err := c.httpClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("DELETE %s: %w", path, err)
 	}

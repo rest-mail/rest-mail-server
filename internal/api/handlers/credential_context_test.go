@@ -122,7 +122,6 @@ var credentialContextRoutes = []struct{ name, method, path, body string }{
 	{"key create", "POST", "/api/v1/accounts/7/api-keys", `{"name":"phone","password":"fixture-password","permissions":[{"capability":"mail:read","scope":"mailbox:reader@example.test"}]}`},
 	{"app revoke", "DELETE", "/api/v1/accounts/7/credentials/21", ""},
 	{"key revoke", "DELETE", "/api/v1/accounts/7/api-keys/21", ""},
-	{"protocol sign-in", "POST", "/api/v1/auth/protocol-sign-in", `{"protocol":"imap"}`},
 }
 
 func credentialContextRouter(h *CredentialHandler) http.Handler {
@@ -131,7 +130,6 @@ func credentialContextRouter(h *CredentialHandler) http.Handler {
 	noop := endpoint.Middleware{Wrap: func(n http.Handler) http.Handler { return n }}
 	checks := SessionRouteChecks{Throttle: noop, Audit: func(string, ...middleware.AuditOption) endpoint.Middleware { return noop }}
 	h.Register(rs, checks)
-	h.RegisterProtocolSignIn(rs, checks)
 	return router
 }
 func credentialContextRequest(t *testing.T, index int) *http.Request {
@@ -140,10 +138,6 @@ func credentialContextRequest(t *testing.T, index int) *http.Request {
 	ctx, cancel := context.WithTimeout(context.WithValue(t.Context(), credentialContextKey{}, true), 4*time.Second)
 	t.Cleanup(cancel)
 	claims := freshTwoFactorClaims(7, "reader@example.test")
-	if index == 6 {
-		claims.CredentialID = 11
-		claims.CredentialKind = "app_password"
-	}
 	ctx = context.WithValue(ctx, middleware.ClaimsKey, claims)
 	r := httptest.NewRequest(route.method, route.path, strings.NewReader(route.body)).WithContext(ctx)
 	r.Header.Set("Content-Type", "application/json")
@@ -171,9 +165,6 @@ func TestCredentialRoutesCarryRequestContext(t *testing.T) {
 	for index, route := range credentialContextRoutes {
 		t.Run(route.name, func(t *testing.T) {
 			steps := credentialAccessSteps()
-			if index == 6 {
-				steps = steps[:1]
-			}
 			steps[0].fail = true
 			steps = steps[:1]
 			d := &credentialContextDB{steps: steps}
@@ -188,12 +179,10 @@ func TestCredentialRoutesCarryRequestContext(t *testing.T) {
 	}
 }
 func TestCredentialReadAndRevokeStagesFollowCancellation(t *testing.T) {
-	for _, index := range []int{0, 1, 4, 5, 6} {
+	for _, index := range []int{0, 1, 4, 5} {
 		route := credentialContextRoutes[index]
 		base := credentialAccessSteps()
-		if index == 6 {
-			base = base[:1]
-		} else if index < 2 {
+		if index < 2 {
 			base = append(base, credentialSQLStep{sql: `FROM "credentials"`, columns: []string{"id"}})
 		} else {
 			base = append(base, credentialSQLStep{sql: `UPDATE "credentials"`, affected: 1})
@@ -254,9 +243,6 @@ func TestCredentialAbsenceMetadataAndRefusalsStayStable(t *testing.T) {
 			rr := httptest.NewRecorder()
 			credentialContextRouter(NewCredentialHandler(credentialContextGorm(t, d))).ServeHTTP(rr, r)
 			want := 403
-			if index == 6 {
-				want = 400
-			}
 			if rr.Code != want || d.calls.Load() != 0 {
 				t.Fatalf("status=%d body=%s SQL=%d", rr.Code, rr.Body, d.calls.Load())
 			}
@@ -374,14 +360,10 @@ func TestCredentialSuccessfulWritesAndAuditUseRequestContext(t *testing.T) {
 		{sql: `FROM "mailboxes"`, columns: []string{"id"}, values: []driver.Value{int64(7)}},
 		{sql: `FROM "credentials"`, columns: []string{"id", "secret_hash"}, values: []driver.Value{int64(11), string(hash)}},
 	}
-	for _, index := range []int{2, 3, 4, 5, 6} {
+	for _, index := range []int{2, 3, 4, 5} {
 		base := credentialAccessSteps()
 		status := 204
-		if index == 6 {
-			// Protocol sign-in looks the account up, then loads what it holds
-			// to check mailbox:session (#324): the access steps, all of them.
-			status = 200
-		} else if index == 2 || index == 3 {
+		if index == 2 || index == 3 {
 			status = 201
 			base = append(base, password...)
 			if index == 3 {

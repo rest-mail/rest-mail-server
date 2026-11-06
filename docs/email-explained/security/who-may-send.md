@@ -131,10 +131,10 @@ to check:
   FROM` before sign-in with `530`
   ([`internal/gateway/smtp/session.go`](../../../internal/gateway/smtp/session.go)).
 - **One sign-in path for every protocol.** SMTP, IMAP and POP3 all check a
-  password through the same API call, `POST /api/v1/auth/protocol-sign-in`, so the
-  rules are the same everywhere.
+  password through the same API call, `POST /api/v1/gateway-sessions`, which
+  opens a session for that one connection, so the rules are the same everywhere.
 - **App passwords:** named, revocable, for mail apps and automations, usable
-  over IMAP, POP3, SMTP and the REST API. An account with two-factor
+  over IMAP, POP3 and SMTP. An account with two-factor
   authentication can only sign in to mail apps with one; its own password is
   refused ([`internal/auth/app_password.go`](../../../internal/auth/app_password.go)).
 - **Only your own addresses.** A signed-in account may send only from addresses

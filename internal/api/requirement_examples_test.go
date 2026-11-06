@@ -146,9 +146,6 @@ func TestRequirementExamplesThroughTheProductionRouter(t *testing.T) {
 				if requirement != "principal=anonymous" && op != "issueClientCredentialsToken" && req.Header.Get("Authorization") == "" {
 					req.Header.Set("Authorization", "Bearer "+credential)
 				}
-				if op == "protocolSignIn" && requirement == "fault=database" {
-					req.SetBasicAuth("admin@restmail.test", "fixture-password")
-				}
 				rr := httptest.NewRecorder()
 				router.ServeHTTP(rr, req)
 				if rr.Code != pair.Response.Status {

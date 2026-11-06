@@ -320,6 +320,12 @@ type Config struct {
 	InternalMTLSServerKey  string // server key for the internal listener (API side)
 	InternalMTLSClientCert string // gateway client cert (gateway side)
 	InternalMTLSClientKey  string // gateway client key (gateway side)
+	// The SMTP gateway serves two services, each with its own client
+	// certificate (#1586): InternalMTLSClientCert/Key is inbound delivery's,
+	// and these are submission's, with which it opens a signed-in mail
+	// client's connection session.
+	InternalMTLSSubmissionCert string
+	InternalMTLSSubmissionKey  string
 
 	// Observability retention/rollup (PR4). These are volume/cost knobs, NOT
 	// security controls: they bound how much per-message trace detail is stored
@@ -580,13 +586,15 @@ func Load() (*Config, error) {
 		ACMEDirectory: getEnv("ACME_DIRECTORY", "https://acme-v02.api.letsencrypt.org/directory"),
 		ACMEStaging:   getEnvBool("ACME_STAGING", false),
 
-		InternalMTLSEnabled:    getEnvBool("INTERNAL_MTLS_ENABLED", false),
-		InternalMTLSPort:       getEnvInt("INTERNAL_MTLS_PORT", DefaultInternalMTLSPort),
-		InternalMTLSCACert:     getEnv("INTERNAL_MTLS_CA_CERT", ""),
-		InternalMTLSServerCert: getEnv("INTERNAL_MTLS_SERVER_CERT", ""),
-		InternalMTLSServerKey:  getEnv("INTERNAL_MTLS_SERVER_KEY", ""),
-		InternalMTLSClientCert: getEnv("INTERNAL_MTLS_CLIENT_CERT", ""),
-		InternalMTLSClientKey:  getEnv("INTERNAL_MTLS_CLIENT_KEY", ""),
+		InternalMTLSEnabled:        getEnvBool("INTERNAL_MTLS_ENABLED", false),
+		InternalMTLSPort:           getEnvInt("INTERNAL_MTLS_PORT", DefaultInternalMTLSPort),
+		InternalMTLSCACert:         getEnv("INTERNAL_MTLS_CA_CERT", ""),
+		InternalMTLSServerCert:     getEnv("INTERNAL_MTLS_SERVER_CERT", ""),
+		InternalMTLSServerKey:      getEnv("INTERNAL_MTLS_SERVER_KEY", ""),
+		InternalMTLSClientCert:     getEnv("INTERNAL_MTLS_CLIENT_CERT", ""),
+		InternalMTLSClientKey:      getEnv("INTERNAL_MTLS_CLIENT_KEY", ""),
+		InternalMTLSSubmissionCert: getEnv("INTERNAL_MTLS_SUBMISSION_CERT", ""),
+		InternalMTLSSubmissionKey:  getEnv("INTERNAL_MTLS_SUBMISSION_KEY", ""),
 
 		RollupInterval: getEnvDuration("ROLLUP_INTERVAL", DefaultRollupInterval),
 
@@ -1001,6 +1009,12 @@ func (c *Config) InternalMTLSClientTLS() (*tls.Config, error) {
 // MIMELimits are the inbound message limits, for rmime.SetLimits at startup.
 func (c *Config) MIMELimits() rmime.Limits {
 	return rmime.Limits{MaxReceived: c.SMTPMaxReceivedHeaders, MaxNestingDepth: c.MIMEMaxNestingDepth, MaxParts: c.MIMEMaxParts}
+}
+
+// InternalMTLSSubmissionTLS is the SMTP gateway's client TLS for its
+// submission service: the rest-mail-smtp-submission certificate.
+func (c *Config) InternalMTLSSubmissionTLS() (*tls.Config, error) {
+	return mtls.ClientTLSConfig(c.InternalMTLSCACert, c.InternalMTLSSubmissionCert, c.InternalMTLSSubmissionKey)
 }
 
 func getEnv(key, fallback string) string {

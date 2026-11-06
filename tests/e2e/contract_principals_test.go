@@ -133,9 +133,12 @@ func TestContractPrincipals(t *testing.T) {
 		{"ordinary", user.get, folders(other.ID), http.StatusNotFound},
 		{"other", otherUser.get, folders(other.ID), http.StatusOK},
 		{"other", otherUser.get, folders(ordinary.ID), http.StatusNotFound},
+		// There is no HTTP Basic (#1586): an app password reaches its mailbox
+		// only in a session its gateway opens (stage 14 signs it in over IMAPS
+		// and SMTPS), and sent to the API with Basic it reaches nothing.
 		{"app password", basic.get, adminRoute, http.StatusUnauthorized},
-		{"app password", basic.get, folders(ordinary.ID), http.StatusOK},
-		{"app password", basic.get, folders(owned.ID), http.StatusNotFound},
+		{"app password", basic.get, folders(ordinary.ID), http.StatusUnauthorized},
+		{"app password", basic.get, folders(owned.ID), http.StatusUnauthorized},
 		{"no credentials", anonymous.get, adminRoute, http.StatusUnauthorized},
 		{"no credentials", anonymous.get, folders(ordinary.ID), http.StatusUnauthorized},
 		{"no credentials", anonymous.get, folders(owned.ID), http.StatusUnauthorized},
@@ -201,8 +204,7 @@ func writeContractPrincipals(t *testing.T, principals map[string]contractPrincip
 	requireNoError(t, os.WriteFile(contractPrincipalsFile, data, 0o644))
 }
 
-// basicClient sends an app password with HTTP Basic, as a mail client's
-// gateway does.
+// basicClient sends an app password with HTTP Basic, which the API refuses.
 type basicClient struct {
 	address, password string
 }

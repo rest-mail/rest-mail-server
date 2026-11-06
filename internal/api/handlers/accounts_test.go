@@ -24,7 +24,7 @@ import (
 func openAccountsTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	db := openAuthzTestDB(t)
-	if err := db.AutoMigrate(&models.QuotaUsage{}, &models.RefreshToken{}); err != nil {
+	if err := db.AutoMigrate(&models.QuotaUsage{}, &models.RefreshToken{}, &models.GatewaySession{}); err != nil {
 		t.Skipf("accounts DB test skipped: migrate failed (%v)", err)
 	}
 	if err := rmdb.MigrateAuditLog(db); err != nil {

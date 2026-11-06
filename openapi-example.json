@@ -1677,7 +1677,7 @@
       }
     },
     "found": {
-      "description": "Real registered routes authenticate JWT/Basic/scoped keys and current holder grants/CSRF before contact operations. Local SQL verifies row/mailbox selectors, create fields, partial updates and reload outcomes. Fixed rows do not prove PostgreSQL/audit persistence or uniqueness constraints.",
+      "description": "Real registered routes authenticate JWT/gateway-session/scoped keys and current holder grants/CSRF before contact operations. Local SQL verifies row/mailbox selectors, create fields, partial updates and reload outcomes. Fixed rows do not prove PostgreSQL/audit persistence or uniqueness constraints.",
       "request": {
         "path": {
           "id": 1
@@ -3781,6 +3781,65 @@
       }
     }
   },
+  "closeGatewaySession": {
+    "closed": {
+      "summary": "The gateway closes the connection's session at LOGOUT",
+      "request": {},
+      "response": {
+        "status": 204
+      }
+    },
+    "gateway_required": {
+      "summary": "The caller's certificate names no gateway",
+      "requires": {
+        "network": "without_gateway_certificate"
+      },
+      "request": {},
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "gateway_required",
+            "message": "Only a protocol gateway, with its own client certificate, may do this"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_required": {
+      "summary": "No session token",
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {},
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "session_required",
+            "message": "Send the session's token as Bearer"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "storage_unavailable": {
+      "requires": {
+        "fault": "database"
+      },
+      "request": {},
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Failed to close the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
   "closeImportSession": {
     "api_key_ceiling": {
       "requires": {
@@ -5762,7 +5821,7 @@
       }
     },
     "credential": {
-      "summary": "HTTP Basic credentials cannot authenticate a session-only route",
+      "summary": "A mail client's gateway session cannot authenticate a session-only route",
       "requires": {
         "principal": "without_capability"
       },
@@ -5779,7 +5838,7 @@
         "body": {
           "error": {
             "code": "unauthorized",
-            "message": "Invalid authorization header format"
+            "message": "Invalid or expired token"
           }
         },
         "mediaType": "application/json"
@@ -6934,7 +6993,7 @@
       }
     },
     "found": {
-      "description": "Real registered routes authenticate JWT/Basic/scoped keys and current holder grants/CSRF before contact operations. Local SQL verifies row/mailbox selectors, create fields, partial updates and reload outcomes. Fixed rows do not prove PostgreSQL/audit persistence or uniqueness constraints.",
+      "description": "Real registered routes authenticate JWT/gateway-session/scoped keys and current holder grants/CSRF before contact operations. Local SQL verifies row/mailbox selectors, create fields, partial updates and reload outcomes. Fixed rows do not prove PostgreSQL/audit persistence or uniqueness constraints.",
       "request": {
         "path": {
           "id": 1
@@ -7692,7 +7751,7 @@
       }
     },
     "found": {
-      "description": "Real production routes authenticate JWT/Basic/scoped keys and check current holder grants and CSRF before folder storage. Local SQL verifies exact mailbox/name counts, deleted zero-byte markers and message/marker rename selectors, including lookup/write failures. Fixed rows do not prove PostgreSQL durability or concurrency serialization.",
+      "description": "Real production routes authenticate JWT/gateway-session/scoped keys and check current holder grants and CSRF before folder storage. Local SQL verifies exact mailbox/name counts, deleted zero-byte markers and message/marker rename selectors, including lookup/write failures. Fixed rows do not prove PostgreSQL durability or concurrency serialization.",
       "request": {
         "path": {
           "id": 1
@@ -13275,7 +13334,7 @@
   },
   "disableVacation": {
     "found": {
-      "description": "The real registered route, JWT/Basic/scoped-key checks, current holder ceilings and CSRF guards precede mailbox-bound configuration reads and writes. Local SQL verifies selectors, all configuration fields and date clearing; lookup errors do not become creation or success. Fixed rows do not prove PostgreSQL/audit persistence or actual vacation delivery; owner-blocked pipeline migration #772 remains unchanged.",
+      "description": "The real registered route, JWT/gateway-session/scoped-key checks, current holder ceilings and CSRF guards precede mailbox-bound configuration reads and writes. Local SQL verifies selectors, all configuration fields and date clearing; lookup errors do not become creation or success. Fixed rows do not prove PostgreSQL/audit persistence or actual vacation delivery; owner-blocked pipeline migration #772 remains unchanged.",
       "request": {
         "path": {
           "id": 1
@@ -30697,6 +30756,229 @@
       }
     }
   },
+  "openGatewaySession": {
+    "credential_required": {
+      "summary": "No address or password in the body (there is no HTTP Basic)",
+      "request": {
+        "body": {
+          "protocol": "imap"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "credential_required",
+            "message": "Send the account's address, and its password or an app password"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "credential_unavailable": {
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "body": {
+          "protocol": "imap",
+          "address": "contract-ordinary@restmail.test",
+          "password": "rm_AAAAAAAAAAAA_secretsecretsecretsecretsecretsecretsecretsec"
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the credential"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "gateway_required": {
+      "summary": "The caller's certificate names no gateway that signs mail clients in",
+      "requires": {
+        "network": "without_gateway_certificate"
+      },
+      "request": {
+        "body": {
+          "protocol": "imap",
+          "address": "contract-ordinary@restmail.test",
+          "password": "rm_AAAAAAAAAAAA_secretsecretsecretsecretsecretsecretsecretsec"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "gateway_required",
+            "message": "Only a protocol gateway, with its own client certificate, may do this"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "malformed_json": {
+      "requires": {
+        "body": "malformed"
+      },
+      "request": {
+        "body": "{",
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "opened": {
+      "summary": "The IMAP gateway opens a session for a mail client's app password",
+      "request": {
+        "body": {
+          "protocol": "imap",
+          "address": "contract-ordinary@restmail.test",
+          "password": "rm_AAAAAAAAAAAA_secretsecretsecretsecretsecretsecretsecretsec"
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "token": "rmgs_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+            "protocol": "imap",
+            "credential_id": 1,
+            "credential_kind": "app_password",
+            "user": {
+              "id": 1,
+              "email": "contract-ordinary@restmail.test",
+              "display_name": "Contract Ordinary"
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "protocol_not_served": {
+      "summary": "A protocol other than the one the gateway serves",
+      "request": {
+        "body": {
+          "protocol": "pop3",
+          "address": "contract-ordinary@restmail.test",
+          "password": "rm_AAAAAAAAAAAA_secretsecretsecretsecretsecretsecretsecretsec"
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "protocol": "must be \"imap\", the protocol this gateway serves"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "body": {
+          "protocol": "imap",
+          "address": "contract-ordinary@restmail.test",
+          "password": "rm_AAAAAAAAAAAA_secretsecretsecretsecretsecretsecretsecretsec"
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {
+        "body": {
+          "protocol": "imap",
+          "address": "contract-ordinary@restmail.test",
+          "password": "rm_AAAAAAAAAAAA_secretsecretsecretsecretsecretsecretsecretsec"
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "storage_unavailable": {
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "body": {
+          "protocol": "imap",
+          "address": "contract-ordinary@restmail.test",
+          "password": "rm_AAAAAAAAAAAA_secretsecretsecretsecretsecretsecretsecretsec"
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Failed to load the account"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "summary": "A wrong password",
+      "request": {
+        "body": {
+          "protocol": "imap",
+          "address": "contract-ordinary@restmail.test",
+          "password": "rm_AAAAAAAAAAAA_wrongwrongwrongwrongwrongwrongwrongwrongwr"
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Invalid address or password"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
   "openapiDocument": {
     "available": {
       "summary": "The public operation answers without credentials",
@@ -31570,259 +31852,6 @@
       }
     }
   },
-  "protocolSignIn": {
-    "csrf_mismatch": {
-      "summary": "A cookie session sends no CSRF header",
-      "requires": {
-        "principal": "without_capability"
-      },
-      "request": {
-        "body": {
-          "protocol": "imap"
-        }
-      },
-      "response": {
-        "status": 403,
-        "body": {
-          "error": {
-            "code": "csrf_failed",
-            "message": "Missing or invalid CSRF token"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "internal_error": {
-      "summary": "A database failure prevents HTTP Basic credential verification",
-      "requires": {
-        "fault": "database"
-      },
-      "request": {
-        "body": {
-          "protocol": "imap"
-        }
-      },
-      "response": {
-        "status": 503,
-        "body": {
-          "error": {
-            "code": "unavailable",
-            "message": "Could not verify the credential"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "invalid_body": {
-      "request": {
-        "body": [],
-        "invalid": true
-      },
-      "response": {
-        "status": 422,
-        "body": {
-          "error": {
-            "code": "validation_failed",
-            "message": "Request body failed validation",
-            "details": {
-              "fields": {
-                "body": "the body is not a JSON object"
-              }
-            }
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "malformed_json": {
-      "description": "The wire body is the raw truncated JSON byte {, with application/json content type: it is refused before anything else is read.",
-      "requires": {
-        "body": "malformed"
-      },
-      "request": {
-        "body": "{",
-        "invalid": true
-      },
-      "response": {
-        "status": 400,
-        "body": {
-          "error": {
-            "code": "bad_request",
-            "message": "Invalid request body"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "protocol_missing": {
-      "request": {
-        "body": {},
-        "invalid": true
-      },
-      "response": {
-        "status": 422,
-        "body": {
-          "error": {
-            "code": "validation_failed",
-            "message": "Request body failed validation",
-            "details": {
-              "fields": {
-                "protocol": "must be \"imap\", \"pop3\" or \"smtp\""
-              }
-            }
-          }
-        }
-      }
-    },
-    "rate_limited": {
-      "summary": "The limit is already spent",
-      "requires": {
-        "limit": "rate"
-      },
-      "request": {
-        "body": {
-          "protocol": "imap"
-        }
-      },
-      "response": {
-        "status": 429,
-        "body": {
-          "error": {
-            "code": "rate_limited",
-            "message": "Too many requests; please slow down"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "request_too_large": {
-      "summary": "The request exceeds the transport body cap",
-      "requires": {
-        "body": "over_cap"
-      },
-      "request": {
-        "body": {
-          "protocol": "imap"
-        }
-      },
-      "response": {
-        "status": 413,
-        "body": {
-          "error": {
-            "code": "request_too_large",
-            "message": "Request body too large"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "session_unavailable": {
-      "summary": "The current-session lookup fails",
-      "requires": {
-        "fault": "session_store"
-      },
-      "request": {
-        "body": {
-          "protocol": "imap"
-        }
-      },
-      "response": {
-        "status": 503,
-        "body": {
-          "error": {
-            "code": "unavailable",
-            "message": "Could not verify the session"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "sessions_restricted": {
-      "summary": "The server's capabilities leave the mailbox no session",
-      "description": "Precondition: the server ceiling no longer holds mailbox:session. Being an administrator does not stand in for it.",
-      "requires": {
-        "state": "sessions_restricted"
-      },
-      "request": {
-        "body": {
-          "protocol": "imap"
-        }
-      },
-      "response": {
-        "status": 403,
-        "body": {
-          "error": {
-            "code": "access_restricted",
-            "message": "This server is not accepting sign-ins for this account right now"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "signed_in": {
-      "request": {
-        "body": {
-          "protocol": "imap"
-        }
-      },
-      "response": {
-        "status": 200,
-        "body": {
-          "data": {
-            "user": {
-              "id": 1,
-              "email": "contract-ordinary@restmail.test",
-              "display_name": "Contract Ordinary"
-            },
-            "credential_id": 1,
-            "credential_kind": "app_password"
-          }
-        }
-      }
-    },
-    "storage_unavailable": {
-      "description": "HTTP Basic authentication succeeds for admin@restmail.test with fixture-password; the subsequent protocol account read fails. A credential-verification fault would instead answer 503.",
-      "requires": {
-        "fault": "database"
-      },
-      "request": {
-        "body": {
-          "protocol": "imap"
-        }
-      },
-      "response": {
-        "status": 500,
-        "body": {
-          "error": {
-            "code": "internal_error",
-            "message": "Failed to load the account"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "unauthenticated": {
-      "summary": "No credential is sent",
-      "requires": {
-        "principal": "anonymous"
-      },
-      "request": {
-        "body": {
-          "protocol": "imap"
-        }
-      },
-      "response": {
-        "status": 401,
-        "body": {
-          "error": {
-            "code": "unauthorized",
-            "message": "Missing authorization header"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    }
-  },
   "putSieveScript": {
     "created": {
       "request": {
@@ -31851,7 +31880,7 @@
       }
     },
     "found": {
-      "description": "Real registered route, JWT/Basic/scoped-key verification, holder grants and CSRF precede installation. Local SQL asserts exact mailbox selection, script bytes/hash, active defaults and explicit false, persistence-clock markers and lookup/create/update failures. Fixed rows do not prove PostgreSQL durability or delivery execution; PostgreSQL regression cases run when TEST_DATABASE_URL is configured.",
+      "description": "Real registered route, JWT/gateway-session/scoped-key verification, holder grants and CSRF precede installation. Local SQL asserts exact mailbox selection, script bytes/hash, active defaults and explicit false, persistence-clock markers and lookup/create/update failures. Fixed rows do not prove PostgreSQL durability or delivery execution; PostgreSQL regression cases run when TEST_DATABASE_URL is configured.",
       "requires": {
         "state": "existing_script"
       },
@@ -34750,7 +34779,7 @@
       }
     },
     "found": {
-      "description": "Real production routes authenticate JWT/Basic/scoped keys and check current holder grants and CSRF before folder storage. Local SQL verifies exact mailbox/name counts, deleted zero-byte markers and message/marker rename selectors, including lookup/write failures. Fixed rows do not prove PostgreSQL durability or concurrency serialization.",
+      "description": "Real production routes authenticate JWT/gateway-session/scoped keys and check current holder grants and CSRF before folder storage. Local SQL verifies exact mailbox/name counts, deleted zero-byte markers and message/marker rename selectors, including lookup/write failures. Fixed rows do not prove PostgreSQL durability or concurrency serialization.",
       "request": {
         "path": {
           "folder": "Work",
@@ -41645,7 +41674,7 @@
   },
   "setVacation": {
     "found": {
-      "description": "The real registered route, JWT/Basic/scoped-key checks, current holder ceilings and CSRF guards precede mailbox-bound configuration reads and writes. Local SQL verifies selectors, all configuration fields and date clearing; lookup errors do not become creation or success. Fixed rows do not prove PostgreSQL/audit persistence or actual vacation delivery; owner-blocked pipeline migration #772 remains unchanged.",
+      "description": "The real registered route, JWT/gateway-session/scoped-key checks, current holder ceilings and CSRF guards precede mailbox-bound configuration reads and writes. Local SQL verifies selectors, all configuration fields and date clearing; lookup errors do not become creation or success. Fixed rows do not prove PostgreSQL/audit persistence or actual vacation delivery; owner-blocked pipeline migration #772 remains unchanged.",
       "request": {
         "path": {
           "id": 1
@@ -46030,7 +46059,7 @@
   },
   "updateContact": {
     "found": {
-      "description": "Real registered routes authenticate JWT/Basic/scoped keys and current holder grants/CSRF before contact operations. Local SQL verifies row/mailbox selectors, create fields, partial updates and reload outcomes. Fixed rows do not prove PostgreSQL/audit persistence or uniqueness constraints.",
+      "description": "Real registered routes authenticate JWT/gateway-session/scoped keys and current holder grants/CSRF before contact operations. Local SQL verifies row/mailbox selectors, create fields, partial updates and reload outcomes. Fixed rows do not prove PostgreSQL/audit persistence or uniqueness constraints.",
       "request": {
         "path": {
           "cid": 1,

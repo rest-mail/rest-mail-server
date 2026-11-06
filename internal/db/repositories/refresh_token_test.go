@@ -31,7 +31,7 @@ func openRefreshTokenTestDB(t *testing.T) *gorm.DB {
 		testdb.Unreachable(t, "refresh-token repo test skipped: no database reachable (%v)", err)
 	}
 	reuseConnections(t, gdb)
-	if err := gdb.AutoMigrate(&models.RefreshToken{}); err != nil {
+	if err := gdb.AutoMigrate(&models.RefreshToken{}, &models.GatewaySession{}); err != nil {
 		t.Skipf("refresh-token repo test skipped: migrate failed (%v)", err)
 	}
 	return gdb

@@ -85,7 +85,7 @@ type Claims struct {
 	MachineCredentialID uint `json:"machine_credential_id,omitempty"`
 
 	// CredentialID and CredentialKind identify the credential just checked:
-	// HTTP Basic, an API key, or a machine token's live credential. Zero for
+	// a gateway session's credential, an API key, or a machine token's live credential. Zero for
 	// a human session. They are never serialized into a token.
 	CredentialID   uint   `json:"-"`
 	CredentialKind string `json:"-"`
@@ -94,6 +94,13 @@ type Claims struct {
 	// a scope only where both allow it. Empty, it may do nothing. They are
 	// loaded from the credential, never serialized into a token.
 	APIKeyPermissions []ScopedPermission `json:"-"`
+	// GatewaySessionID, GatewayService and GatewayProtocol are set when the
+	// request was made by a protocol gateway in a mail client's connection
+	// session (#1586): which session, which gateway service, which protocol.
+	// They are loaded from the session row, never serialized into a token.
+	GatewaySessionID uint   `json:"-"`
+	GatewayService   string `json:"-"`
+	GatewayProtocol  string `json:"-"`
 }
 
 // IsAPIKey reports whether the request was made with an API key.

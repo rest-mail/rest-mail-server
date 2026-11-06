@@ -22,7 +22,7 @@ const ownerPassword = "a passphrase only the owner chose"
 // yet — with the one-time token table to hand it over with.
 func newInstalledServer(t *testing.T) *firstSignIn {
 	t.Helper()
-	if err := openLoginTestDB(t).AutoMigrate(&models.OneTimeToken{}, &models.RefreshToken{}); err != nil {
+	if err := openLoginTestDB(t).AutoMigrate(&models.OneTimeToken{}, &models.RefreshToken{}, &models.GatewaySession{}); err != nil {
 		t.Skipf("reset DB test skipped: migrate failed (%v)", err)
 	}
 	f := newFirstSignIn(t)
