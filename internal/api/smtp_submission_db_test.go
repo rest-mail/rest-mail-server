@@ -129,18 +129,34 @@ func newSubmissionFixture(t *testing.T) *submissionFixture {
 		"rm1._domainkey.example.test": {record},
 	})
 
-	api, addr, rootCAs := startSubmission(t, f.db, f.router)
+	api, addr, rootCAs := startSubmission(t, f.db, f.router, f.gatewayRouter())
 	return &submissionFixture{credentialFixture: f, api: api, addr: addr, rootCAs: rootCAs}
 }
 
-// startSubmission puts the SMTP gateway's submission port in front of router:
-// it returns the API client the gateway uses, the port's address, and the
-// roots the port's certificate verifies against.
-func startSubmission(t *testing.T, db *gorm.DB, router http.Handler) (*apiclient.Client, string, *x509.CertPool) {
+// gatewayAPI is the API client of the gateway whose client certificate names
+// cn: the routes it calls on the internal listener go to internal, as that
+// gateway, and the rest to public.
+func gatewayAPI(t *testing.T, public, internal http.Handler, cn string) *apiclient.Client {
 	t.Helper()
-	srv := httptest.NewServer(router)
-	t.Cleanup(srv.Close)
-	api := apiclient.New(srv.URL)
+	pub := httptest.NewServer(public)
+	t.Cleanup(pub.Close)
+	in := httptest.NewServer(asGateway(cn, internal))
+	t.Cleanup(in.Close)
+	return apiclient.New(pub.URL, apiclient.WithInternalMTLS(in.URL, nil))
+}
+
+// startSubmission puts the SMTP gateway's submission port in front of the
+// API's public and internal routers, with the gateway's two clients as
+// cmd/smtp-gateway makes them: delivery with the SMTP delivery certificate,
+// sign-in sessions with the submission one (#1586). It returns the delivery
+// client, the port's address, and the roots the port's certificate verifies
+// against.
+func startSubmission(t *testing.T, db *gorm.DB, public, internal http.Handler) (*apiclient.Client, string, *x509.CertPool) {
+	t.Helper()
+	api := smtpgw.Clients{
+		Delivery:   gatewayAPI(t, public, internal, deliveryCN),
+		Submission: gatewayAPI(t, public, internal, submissionCN),
+	}
 
 	// The submission port's certificate: httptest's, which is valid for
 	// 127.0.0.1.
@@ -160,7 +176,7 @@ func startSubmission(t *testing.T, db *gorm.DB, router http.Handler) (*apiclient
 		t.Fatalf("start the SMTP gateway: %v", err)
 	}
 	t.Cleanup(gateway.Shutdown)
-	return api, listener.Addr().String(), rootCAs
+	return api.Delivery, listener.Addr().String(), rootCAs
 }
 
 // dial opens a submission session signed in as address with password.

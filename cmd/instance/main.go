@@ -183,9 +183,10 @@ usage:
       With -check-interval, repeat checks until SIGINT/SIGTERM; requires a
       positive -renew-before. Failed checks retry after the interval.
 
-  instance mtls-issue -out <dir> [-server-dns api,localhost] [-server-ip 127.0.0.1] [-client-cn rest-mail-gateway]
+  instance mtls-issue -out <dir> [-server-dns api,localhost] [-server-ip 127.0.0.1]
       Mint the gateway→API internal mTLS material into <dir>: a dedicated
-      internal CA, the API server cert and the gateway client cert.
+      internal CA, the API server cert and one client cert per gateway
+      service (internal-imap, -pop3, -smtp-submission, -smtp-delivery).
       Idempotent: an existing CA is reused, present leaves are kept unless
       the server SANs changed.
 `)

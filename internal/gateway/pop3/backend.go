@@ -66,8 +66,10 @@ func (b *Backend) AuthenticateUTF8(user, pass string, utf8 bool) (gopop3.Mailbox
 		return nil, errAccountLocked
 	}
 
-	// An app password signs in without the API's interactive login (#344).
-	resp, err := b.api.SignIn(user, pass, "pop3")
+	// The connection gets its own session with the API (#1586): the address
+	// and password go once, and every call that follows sends the session's
+	// token. An app password signs in without the API's interactive login (#344).
+	resp, err := b.api.OpenSession(user, pass, "pop3")
 	if err != nil {
 		// A failed POP3 login is a security-relevant event (credential stuffing /
 		// enumeration). Log it structured, with the attacker-controlled username
@@ -89,10 +91,15 @@ func (b *Backend) AuthenticateUTF8(user, pass string, utf8 bool) (gopop3.Mailbox
 	}
 	return &mailbox{
 		api:       b.api,
-		token:     resp.AccessToken,
-		accountID: resp.Data.User.ID,
+		token:     resp.Token,
+		accountID: resp.User.ID,
 		utf8:      utf8,
 	}, nil
+}
+
+// Close ends the connection's session with the API, at QUIT or disconnect.
+func (m *mailbox) Close() error {
+	return m.api.CloseSession(m.token)
 }
 
 // mailbox is one authenticated POP3 maildrop: the account's INBOX.

@@ -49,7 +49,7 @@ func SessionOnly(next http.Handler) http.Handler {
 //
 // The key is checked on every request, so one that is revoked or expires, or
 // whose account is disabled, stops working at the next request. Every refusal
-// is recorded, and refusals are throttled as BasicCredentials throttles them:
+// is recorded, and refusals are throttled as SessionPasswords throttles them:
 // a guess is charged to the client's IP, a refusal of a key whose secret
 // matched to that key, and requests that succeed cost nothing.
 type APIKeys struct {
@@ -78,7 +78,7 @@ func apiKeyFromRequest(r *http.Request) (string, bool) {
 	return token, true
 }
 
-// Authenticate is fallback (JWTMiddleware, or BasicCredentials.Authenticate)
+// Authenticate is fallback (JWTMiddleware)
 // that also takes an API key.
 func (a *APIKeys) Authenticate(fallback func(http.Handler) http.Handler) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {

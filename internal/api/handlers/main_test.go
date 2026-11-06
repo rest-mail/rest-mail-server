@@ -199,6 +199,7 @@ var accountModels = []interface{}{
 	&models.ThreadSnooze{},
 	&models.Role{}, &models.Capability{}, &models.RoleCapability{},
 	&models.Grant{}, &models.GrantActivation{}, &models.RefreshToken{},
+	&models.GatewaySession{},
 }
 
 func closeTestDB() {

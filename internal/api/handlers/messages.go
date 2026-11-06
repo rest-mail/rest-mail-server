@@ -1386,7 +1386,7 @@ type renameFolderRequest struct {
 
 // folderSchemes are what the mail routes take; the handlers check the account is reachable
 // with mail:read to read and mail:write to change.
-var folderSchemes = []string{"CookieAuth", "BearerAuth", "APIKeyAuth", "BasicAuth"}
+var folderSchemes = []string{"CookieAuth", "BearerAuth", "APIKeyAuth", "GatewaySessionAuth"}
 
 var (
 	errMailboxAccess = errAccountNotFound

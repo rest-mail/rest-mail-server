@@ -72,6 +72,9 @@ type session struct {
 	authenticated bool
 	authEmail     string
 	accountID     uint
+	// apiSession is the signed-in connection's session token with the API
+	// (#1586), closed at QUIT or disconnect.
+	apiSession string
 	// credentialID and credentialKind are the credential the session signed
 	// in with: one of the account's passwords, or an app password. It is
 	// checked again before each MAIL FROM. An app password's scope is its own
@@ -312,7 +315,9 @@ func (s *session) login(username, password string) error {
 		return tooManyAuthFailures
 	}
 
-	resp, err := s.api.SignIn(username, password, "smtp")
+	// The connection gets its own session with the API (#1586), opened with
+	// the submission service's certificate and closed at QUIT or disconnect.
+	resp, err := s.api.OpenSession(username, password, "smtp")
 	if err != nil {
 		// OSI-5: the attempted username is attacker-controlled and high-volume on
 		// this path (credential-stuffing / user-enumeration probes), so it is
@@ -355,11 +360,13 @@ func (s *session) login(username, password string) error {
 
 	s.limiter.ResetAuth(ip)
 	s.limiter.ResetAuthUser(username)
+	s.closeAPISession()
 	s.authenticated = true
 	s.authEmail = username
-	s.accountID = resp.Data.User.ID
-	s.credentialID = resp.Data.CredentialID
-	s.credentialKind = resp.Data.CredentialKind
+	s.accountID = resp.User.ID
+	s.credentialID = resp.CredentialID
+	s.credentialKind = resp.CredentialKind
+	s.apiSession = resp.Token
 
 	slog.Info("smtp: authenticated", "remote", s.remoteAddr(), "user", username)
 	return nil
@@ -427,6 +434,7 @@ func (s *session) Mail(from string, opts *gosmtp.MailOptions) error {
 		if !usable {
 			slog.Warn("smtp: credential no longer usable", "user", maskEmail(s.authEmail), "event", "smtp_credential_unusable")
 			s.authenticated, s.authEmail, s.accountID, s.credentialID, s.credentialKind = false, "", 0, 0, ""
+			s.closeAPISession()
 			return &gosmtp.SMTPError{
 				Code:         530,
 				EnhancedCode: gosmtp.EnhancedCode{5, 7, 0},
@@ -1147,8 +1155,21 @@ func (s *session) Reset() {
 	s.requireTLS = false
 }
 
-// Logout is called when the connection is closed.
+// Logout is called when the connection is closed, at QUIT or disconnect: the
+// signed-in connection's session with the API ends with it.
 func (s *session) Logout() error {
 	s.endTransaction(txAborted)
+	s.closeAPISession()
 	return nil
+}
+
+// closeAPISession closes the connection's session with the API, if it has one.
+func (s *session) closeAPISession() {
+	if s.apiSession == "" {
+		return
+	}
+	if err := s.api.CloseSession(s.apiSession); err != nil {
+		slog.Warn("smtp: could not close the connection's API session", "error", err)
+	}
+	s.apiSession = ""
 }

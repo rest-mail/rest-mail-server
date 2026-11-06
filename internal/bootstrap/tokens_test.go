@@ -238,7 +238,7 @@ func openScratchDatabase(t *testing.T, extraModels ...any) *gorm.DB {
 	setup := []testdb.Setup{testdb.Models(
 		&models.Domain{}, &models.Mailbox{}, &models.Pipeline{}, &models.Role{}, &models.Capability{},
 		&models.RoleCapability{}, &models.Grant{}, &models.GrantActivation{}, &models.OneTimeToken{}, &models.Credential{},
-		&models.RefreshToken{}), {Name: "audit-log", Run: rmdb.MigrateAuditLog}}
+		&models.RefreshToken{}, &models.GatewaySession{}), {Name: "audit-log", Run: rmdb.MigrateAuditLog}}
 	if len(extraModels) != 0 {
 		setup = append(setup, testdb.Models(extraModels...))
 	}

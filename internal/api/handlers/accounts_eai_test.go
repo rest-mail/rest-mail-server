@@ -86,7 +86,7 @@ func TestAccountsEAI(t *testing.T) {
 			t.Errorf("login %q: %d %s", address, rr.Code, rr.Body.String())
 		}
 		for _, password := range []string{accountsPassword, appPassword} {
-			_, mailbox, err := repo.VerifyBasic(address, password, time.Now(), nil)
+			_, mailbox, err := repo.VerifyPassword(address, password, time.Now(), nil)
 			if err != nil || mailbox == nil || mailbox.ID != account.ID {
 				t.Fatalf("protocol sign-in %q: mailbox=%v, err=%v", address, mailbox, err)
 			}
@@ -97,7 +97,7 @@ func TestAccountsEAI(t *testing.T) {
 		if rr := doLogin(login, map[string]string{"email": address, "password": accountsPassword}); rr.Code != http.StatusUnauthorized {
 			t.Errorf("wrong identity %q: %d %s", address, rr.Code, rr.Body.String())
 		}
-		if _, _, err := repo.VerifyBasic(address, appPassword, time.Now(), nil); err == nil {
+		if _, _, err := repo.VerifyPassword(address, appPassword, time.Now(), nil); err == nil {
 			t.Errorf("app password accepted for wrong identity %q", address)
 		}
 	}
@@ -137,7 +137,7 @@ func TestAccountsEAILegacy(t *testing.T) {
 	legacy := seed("mu\u0308nchen", accountsPassword)
 	canonical := "münchen@" + fx.domain.Name
 	for _, address := range []string{legacy.Address, canonical} {
-		_, mb, err := repo.VerifyBasic(address, accountsPassword, time.Now(), nil)
+		_, mb, err := repo.VerifyPassword(address, accountsPassword, time.Now(), nil)
 		if err != nil || mb == nil || mb.ID != legacy.ID || mb.Address != legacy.Address {
 			t.Fatalf("legacy sign-in %q: %v, %v", address, mb, err)
 		}
@@ -177,7 +177,7 @@ func TestAccountsEAILegacy(t *testing.T) {
 		{legacy.Address, "different-password", 0},
 		{twin.Address, appPassword, 0},
 	} {
-		_, mb, err := repo.VerifyBasic(tc.address, tc.password, time.Now(), nil)
+		_, mb, err := repo.VerifyPassword(tc.address, tc.password, time.Now(), nil)
 		if tc.want == 0 {
 			if err == nil {
 				t.Errorf("credential crossed identities for %q", tc.address)

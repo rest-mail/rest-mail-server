@@ -22,7 +22,7 @@ import (
 func openAccountsTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	db := openAuthzTestDB(t)
-	if err := migrateModels(db, &models.QuotaUsage{}, &models.RefreshToken{}); err != nil {
+	if err := migrateModels(db, &models.QuotaUsage{}, &models.RefreshToken{}, &models.GatewaySession{}); err != nil {
 		t.Skipf("accounts DB test skipped: migrate failed (%v)", err)
 	}
 	if err := migrateAuditLog(db); err != nil {

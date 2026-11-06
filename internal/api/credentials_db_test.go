@@ -197,6 +197,8 @@ type credentialFixture struct {
 	mailboxID uint
 	accountID uint
 	session   string // the mailbox's access token, from signing in with its password
+	cfg       *config.Config
+	gateway   http.Handler // the internal listener the mail clients' gateways call, made on first use
 }
 
 const credentialTestPassword = "mailbox-password-123"
@@ -212,7 +214,7 @@ func newCredentialFixtureWith(t *testing.T, cfg *config.Config) *credentialFixtu
 	jwtSvc := auth.NewJWTService(routerTestSecret, 5*time.Minute, 24*time.Hour)
 	routers := NewRouters(db, jwtSvc, cfg, nil)
 	t.Cleanup(routers.Close)
-	f := &credentialFixture{t: t, db: db, router: routers.Public, routers: routers, jwt: jwtSvc, password: credentialTestPassword}
+	f := &credentialFixture{t: t, db: db, router: routers.Public, routers: routers, jwt: jwtSvc, password: credentialTestPassword, cfg: cfg}
 
 	domain := models.Domain{Name: "example.test", Active: true}
 	if err := db.Create(&domain).Error; err != nil {
@@ -301,10 +303,83 @@ func (f *credentialFixture) do(method, path, authorization, body string) *httpte
 	return rr
 }
 
-func basic(address, password string) string {
-	req, _ := http.NewRequest(http.MethodGet, "/", nil)
-	req.SetBasicAuth(address, password)
-	return req.Header.Get("Authorization")
+// gatewayRouter is the internal listener of this fixture's server, as the
+// gateways reach it: the same database and configuration, with internal mTLS.
+func (f *credentialFixture) gatewayRouter() http.Handler {
+	f.t.Helper()
+	if f.gateway == nil {
+		cfg := *f.cfg
+		cfg.InternalMTLSEnabled = true
+		routers := NewRouters(f.db, f.jwt, &cfg, nil)
+		f.t.Cleanup(routers.Close)
+		f.gateway = routers.Internal
+	}
+	return f.gateway
+}
+
+// viaGateway sends a request to the internal listener as the IMAP gateway,
+// with its client certificate.
+func (f *credentialFixture) viaGateway(method, path, authorization, body string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(method, path, strings.NewReader(body))
+	if authorization != "" {
+		req.Header.Set("Authorization", authorization)
+	}
+	if body != "" {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	req.RemoteAddr = "192.0.2.10:50000"
+	rr := httptest.NewRecorder()
+	asGateway(imapCN, f.gatewayRouter()).ServeHTTP(rr, req)
+	return rr
+}
+
+// mailSignIn is a mail client signing in with address and password: its
+// gateway opens a connection session (#1586). It returns the session's
+// Authorization header, or "" and the refusal.
+func (f *credentialFixture) mailSignIn(address, password string) (string, *httptest.ResponseRecorder) {
+	rr := f.viaGateway(http.MethodPost, "/api/v1/gateway-sessions", "", openBody("imap", address, password))
+	if rr.Code != http.StatusCreated {
+		return "", rr
+	}
+	var resp struct {
+		Data struct {
+			Token string `json:"token"`
+		} `json:"data"`
+	}
+	decodeInto(f.t, rr, &resp)
+	return "Bearer " + resp.Data.Token, rr
+}
+
+// mailSession is the Authorization header of a session a mail client opened
+// with address and password; the sign-in must succeed.
+func (f *credentialFixture) mailSession(address, password string) string {
+	f.t.Helper()
+	session, rr := f.mailSignIn(address, password)
+	if session == "" {
+		f.t.Fatalf("a mail client signing in as %s: %d %s", address, rr.Code, rr.Body.String())
+	}
+	return session
+}
+
+// mail sends one request as a mail client signed in with address and
+// password, in a session its gateway opens for it. A refused sign-in is the
+// answer.
+func (f *credentialFixture) mail(method, path, address, password, body string) *httptest.ResponseRecorder {
+	session, rr := f.mailSignIn(address, password)
+	if session == "" {
+		return rr
+	}
+	return f.viaGateway(method, path, session, body)
+}
+
+// gatewayClient is the API client of a gateway whose certificate names cn:
+// its sessions go to this fixture's internal listener, everything else to
+// public.
+func (f *credentialFixture) gatewayClient(public, cn string) *apiclient.Client {
+	f.t.Helper()
+	internal := httptest.NewServer(asGateway(cn, f.gatewayRouter()))
+	f.t.Cleanup(internal.Close)
+	return apiclient.New(public, apiclient.WithInternalMTLS(internal.URL, nil))
 }
 
 type createdCredential struct {
@@ -352,7 +427,7 @@ func TestAppPasswords_EndToEnd(t *testing.T) {
 	if !auth.IsAppPassword(created.Password) || !strings.HasPrefix(created.Password, "rm_"+created.PublicID+"_") {
 		t.Fatalf("created %+v", created)
 	}
-	appPassword := basic(f.address, created.Password)
+	appPassword := f.mailSession(f.address, created.Password)
 	folders := fmt.Sprintf("/api/v1/accounts/%d/folders", f.accountID)
 
 	t.Run("listed without its secret or hash", func(t *testing.T) {
@@ -370,8 +445,8 @@ func TestAppPasswords_EndToEnd(t *testing.T) {
 		}
 	})
 
-	t.Run("works with HTTP Basic", func(t *testing.T) {
-		if rr := f.do(http.MethodGet, folders, appPassword, ""); rr.Code != http.StatusOK {
+	t.Run("works in a gateway session", func(t *testing.T) {
+		if rr := f.viaGateway(http.MethodGet, folders, appPassword, ""); rr.Code != http.StatusOK {
 			t.Fatalf("folders with the app password: %d %s", rr.Code, rr.Body.String())
 		}
 		var cred models.Credential
@@ -398,21 +473,21 @@ func TestAppPasswords_EndToEnd(t *testing.T) {
 			{http.MethodPost, "/api/v1/auth/2fa/disable", `{}`},
 			{http.MethodPost, "/api/v1/accounts", `{"address":"x@example.test","password":"y"}`},
 		} {
-			if rr := f.do(rt.method, rt.path, appPassword, rt.body); rr.Code != http.StatusUnauthorized {
+			if rr := f.viaGateway(rt.method, rt.path, appPassword, rt.body); rr.Code != http.StatusUnauthorized {
 				t.Errorf("%s %s with an app password: %d %s", rt.method, rt.path, rr.Code, rr.Body.String())
 			}
 		}
 		if f.credentialCount() != before {
 			t.Error("an app password created a credential")
 		}
-		if rr := f.do(http.MethodGet, folders, appPassword, ""); rr.Code != http.StatusOK {
+		if rr := f.viaGateway(http.MethodGet, folders, appPassword, ""); rr.Code != http.StatusOK {
 			t.Errorf("the app password stopped working after its attempts: %d", rr.Code)
 		}
 	})
 
 	t.Run("reaches no admin route", func(t *testing.T) {
-		// The admin routes take a session's token alone: Basic is refused
-		// before RequireCapability, so an app password never has its grants read
+		// The admin routes take a session's token alone: a gateway session is
+		// refused before RequireCapability, so an app password never has its grants read
 		// (#345) and can change none, nor switch one on (#346), nor its own
 		// mailbox's password.
 		mailbox := fmt.Sprintf("/api/v1/admin/mailboxes/%d", f.mailboxID)
@@ -428,19 +503,19 @@ func TestAppPasswords_EndToEnd(t *testing.T) {
 			{http.MethodPatch, mailbox, `{"password":"a-new-password-456"}`},
 			{http.MethodGet, "/api/v1/admin/domains", ""},
 		} {
-			if rr := f.do(rt.method, rt.path, appPassword, rt.body); rr.Code != http.StatusUnauthorized {
+			if rr := f.viaGateway(rt.method, rt.path, appPassword, rt.body); rr.Code != http.StatusUnauthorized {
 				t.Errorf("%s %s with an app password: %d %s", rt.method, rt.path, rr.Code, rr.Body.String())
 			}
 		}
-		if rr := f.do(http.MethodGet, folders, appPassword, ""); rr.Code != http.StatusOK {
+		if rr := f.viaGateway(http.MethodGet, folders, appPassword, ""); rr.Code != http.StatusOK {
 			t.Errorf("the app password stopped working after its attempts: %d", rr.Code)
 		}
 	})
 
-	t.Run("a protocol sign-in is recorded with its credential", func(t *testing.T) {
-		rr := f.do(http.MethodPost, "/api/v1/auth/protocol-sign-in", appPassword, `{"protocol":"imap"}`)
-		if rr.Code != http.StatusOK {
-			t.Fatalf("protocol sign-in: %d %s", rr.Code, rr.Body.String())
+	t.Run("opening a gateway session is recorded with its credential", func(t *testing.T) {
+		rr := f.viaGateway(http.MethodPost, "/api/v1/gateway-sessions", "", openBody("imap", f.address, created.Password))
+		if rr.Code != http.StatusCreated {
+			t.Fatalf("open a session: %d %s", rr.Code, rr.Body.String())
 		}
 		var resp struct {
 			Data struct {
@@ -452,17 +527,23 @@ func TestAppPasswords_EndToEnd(t *testing.T) {
 		}
 		decodeInto(t, rr, &resp)
 		if resp.Data.User.ID != f.accountID || resp.Data.CredentialID != created.ID {
-			t.Errorf("protocol sign-in answered %+v", resp.Data)
+			t.Errorf("the session opened for %+v", resp.Data)
 		}
-		es := f.entries("auth.protocol_sign_in")
-		if len(es) != 1 || es[0].CredentialID == nil || *es[0].CredentialID != created.ID ||
-			es[0].Outcome != models.AuditOutcomeSuccess || es[0].Target["protocol"] != "imap" ||
-			es[0].ActorID == nil || *es[0].ActorID != f.mailboxID {
-			t.Errorf("protocol sign-in entries: %+v", es)
+		// This one and appPassword's.
+		es := f.entries("auth.gateway_session_open")
+		if len(es) != 2 {
+			t.Fatalf("%d session openings recorded, want 2: %+v", len(es), es)
 		}
-		// A session cannot use it.
-		if rr := f.do(http.MethodPost, "/api/v1/auth/protocol-sign-in", f.session, `{"protocol":"imap"}`); rr.Code != http.StatusBadRequest {
-			t.Errorf("protocol sign-in with a session: %d", rr.Code)
+		for _, e := range es {
+			if e.CredentialID == nil || *e.CredentialID != created.ID ||
+				e.Outcome != models.AuditOutcomeSuccess || e.Target["protocol"] != "imap" ||
+				e.ActorID == nil || *e.ActorID != f.mailboxID {
+				t.Errorf("session opening entry: %+v", e)
+			}
+		}
+		// A session's token opens none: only the mail client's password does.
+		if rr := f.viaGateway(http.MethodPost, "/api/v1/gateway-sessions", f.session, `{"protocol":"imap"}`); rr.Code != http.StatusBadRequest {
+			t.Errorf("opening a gateway session with a session's token: %d", rr.Code)
 		}
 	})
 
@@ -471,18 +552,18 @@ func TestAppPasswords_EndToEnd(t *testing.T) {
 		if strings.HasSuffix(created.Password, "A") {
 			wrong = created.Password[:len(created.Password)-1] + "B"
 		}
-		if rr := f.do(http.MethodGet, folders, basic(f.address, wrong), ""); rr.Code != http.StatusUnauthorized {
+		if rr := f.mail(http.MethodGet, folders, f.address, wrong, ""); rr.Code != http.StatusUnauthorized {
 			t.Fatalf("a wrong secret: %d", rr.Code)
 		}
-		// The account's own password is a credential too, and Basic takes it:
-		// it is how the gateways sign in, one path for both.
-		if rr := f.do(http.MethodGet, folders, basic(f.address, credentialTestPassword), ""); rr.Code != http.StatusOK {
-			t.Fatalf("the account's own password with Basic: %d", rr.Code)
+		// The account's own password is a credential too, and opens a session
+		// the same way: one path for both.
+		if rr := f.mail(http.MethodGet, folders, f.address, credentialTestPassword, ""); rr.Code != http.StatusOK {
+			t.Fatalf("the account's own password: %d", rr.Code)
 		}
-		if rr := f.do(http.MethodGet, folders, basic(f.address, "not the password"), ""); rr.Code != http.StatusUnauthorized {
-			t.Fatalf("a wrong password with Basic: %d", rr.Code)
+		if rr := f.mail(http.MethodGet, folders, f.address, "not the password", ""); rr.Code != http.StatusUnauthorized {
+			t.Fatalf("a wrong password: %d", rr.Code)
 		}
-		es := f.entries(middleware.AuditActionBasicRefused)
+		es := f.entries(middleware.AuditActionCredentialRefused)
 		if len(es) != 2 || es[0].Target["reason"] != auth.CredentialWrongSecret || es[0].CredentialID != nil ||
 			es[1].Target["reason"] != auth.CredentialWrongPassword || es[0].ActorName != f.address {
 			t.Errorf("refusal entries: %+v", es)
@@ -494,10 +575,13 @@ func TestAppPasswords_EndToEnd(t *testing.T) {
 		if rr.Code != http.StatusNoContent {
 			t.Fatalf("revoke: %d %s", rr.Code, rr.Body.String())
 		}
-		if rr := f.do(http.MethodGet, folders, appPassword, ""); rr.Code != http.StatusUnauthorized {
-			t.Fatalf("folders after revoking: %d", rr.Code)
+		if rr := f.viaGateway(http.MethodGet, folders, appPassword, ""); rr.Code != http.StatusUnauthorized {
+			t.Fatalf("folders in the open session after revoking: %d", rr.Code)
 		}
-		es := f.entries(middleware.AuditActionBasicRefused)
+		if rr := f.mail(http.MethodGet, folders, f.address, created.Password, ""); rr.Code != http.StatusUnauthorized {
+			t.Fatalf("signing in again after revoking: %d", rr.Code)
+		}
+		es := f.entries(middleware.AuditActionCredentialRefused)
 		last := es[len(es)-1]
 		if last.Target["reason"] != auth.CredentialRevoked || last.CredentialID == nil || *last.CredentialID != created.ID {
 			t.Errorf("refusal after revoking: %+v", last)
@@ -561,15 +645,18 @@ func TestAppPasswords_Expiry(t *testing.T) {
 		t.Fatal("no expires_at in the answer")
 	}
 	folders := fmt.Sprintf("/api/v1/accounts/%d/folders", f.accountID)
-	appPassword := basic(f.address, resp.Data.Password)
-	if rr := f.do(http.MethodGet, folders, appPassword, ""); rr.Code != http.StatusOK {
+	appPassword := f.mailSession(f.address, resp.Data.Password)
+	if rr := f.viaGateway(http.MethodGet, folders, appPassword, ""); rr.Code != http.StatusOK {
 		t.Fatalf("before expiry: %d", rr.Code)
 	}
 	f.db.Model(&models.Credential{}).Where("id = ?", resp.Data.ID).Update("expires_at", time.Now().Add(-time.Second))
-	if rr := f.do(http.MethodGet, folders, appPassword, ""); rr.Code != http.StatusUnauthorized {
-		t.Fatalf("after expiry: %d", rr.Code)
+	if rr := f.viaGateway(http.MethodGet, folders, appPassword, ""); rr.Code != http.StatusUnauthorized {
+		t.Fatalf("the open session after expiry: %d", rr.Code)
 	}
-	es := f.entries(middleware.AuditActionBasicRefused)
+	if rr := f.mail(http.MethodGet, folders, f.address, resp.Data.Password, ""); rr.Code != http.StatusUnauthorized {
+		t.Fatalf("signing in after expiry: %d", rr.Code)
+	}
+	es := f.entries(middleware.AuditActionCredentialRefused)
 	if len(es) != 1 || es[0].Target["reason"] != auth.CredentialExpired {
 		t.Errorf("refusal entries: %+v", es)
 	}
@@ -637,7 +724,7 @@ func TestAppPasswords_CreatingNeedsTheCurrentPassword(t *testing.T) {
 
 	t.Run("with the right one, made", func(t *testing.T) {
 		created := f.createAppPassword("Thunderbird")
-		if rr := f.do(http.MethodGet, fmt.Sprintf("/api/v1/accounts/%d/folders", f.accountID), basic(f.address, created.Password), ""); rr.Code != http.StatusOK {
+		if rr := f.mail(http.MethodGet, fmt.Sprintf("/api/v1/accounts/%d/folders", f.accountID), f.address, created.Password, ""); rr.Code != http.StatusOK {
 			t.Errorf("folders with the app password: %d %s", rr.Code, rr.Body.String())
 		}
 	})
@@ -725,9 +812,9 @@ func TestAppPasswords_CreatingIsThrottledLikeLogin(t *testing.T) {
 	}
 }
 
-// Basic refusals past the budget are answered 429 by the production router,
+// Refused sign-ins past the budget are answered 429 by the production router,
 // with the whole-second Retry-After every 429 documents.
-func TestBasicCredentials_RefusalsPastTheBudgetAreThrottled(t *testing.T) {
+func TestSessionPasswords_RefusalsPastTheBudgetAreThrottled(t *testing.T) {
 	f := newCredentialFixtureWith(t, &config.Config{
 		Environment:          "test",
 		AuthRateLimitEnabled: true,
@@ -737,7 +824,7 @@ func TestBasicCredentials_RefusalsPastTheBudgetAreThrottled(t *testing.T) {
 	})
 	folders := fmt.Sprintf("/api/v1/accounts/%d/folders", f.accountID)
 	for i := 0; i < 10; i++ {
-		rr := f.do(http.MethodGet, folders, basic("nobody@example.test", "a guess"), "")
+		rr := f.mail(http.MethodGet, folders, "nobody@example.test", "a guess", "")
 		if rr.Code == http.StatusTooManyRequests {
 			if i == 0 {
 				t.Fatal("the first refusal was already throttled")
@@ -749,7 +836,7 @@ func TestBasicCredentials_RefusalsPastTheBudgetAreThrottled(t *testing.T) {
 			t.Fatalf("guess %d: %d %s, want 401", i+1, rr.Code, rr.Body.String())
 		}
 	}
-	t.Fatal("10 refused Basic credentials were never throttled")
+	t.Fatal("10 refused sign-ins were never throttled")
 }
 
 func TestAppPasswords_ReachOnlyTheirOwnMailbox(t *testing.T) {
@@ -765,22 +852,22 @@ func TestAppPasswords_ReachOnlyTheirOwnMailbox(t *testing.T) {
 		t.Fatalf("the session on a linked mailbox: %d %s", rr.Code, rr.Body.String())
 	}
 
-	appPassword := basic(f.address, f.createAppPassword("laptop").Password)
-	if rr := f.do(http.MethodGet, linkedFolders, appPassword, ""); rr.Code != http.StatusNotFound {
+	appPassword := f.mailSession(f.address, f.createAppPassword("laptop").Password)
+	if rr := f.viaGateway(http.MethodGet, linkedFolders, appPassword, ""); rr.Code != http.StatusNotFound {
 		t.Errorf("the app password on a linked mailbox: %d %s", rr.Code, rr.Body.String())
 	}
-	rr := f.do(http.MethodGet, "/api/v1/accounts", appPassword, "")
+	rr := f.viaGateway(http.MethodGet, "/api/v1/accounts", appPassword, "")
 	if rr.Code != http.StatusOK || strings.Contains(rr.Body.String(), "receipts@") || !strings.Contains(rr.Body.String(), f.address) {
 		t.Errorf("accounts listed for the app password: %d %s", rr.Code, rr.Body.String())
 	}
-	rr = f.do(http.MethodPost, "/api/v1/messages/send", appPassword, `{"from":"receipts@example.test","to":["x@example.org"],"subject":"s","body_text":"b"}`)
+	rr = f.viaGateway(http.MethodPost, "/api/v1/messages/send", appPassword, `{"from":"receipts@example.test","to":["x@example.org"],"subject":"s","body_text":"b"}`)
 	if rr.Code != http.StatusNotFound || rr.Body.String() != `{"error":{"code":"not_found","message":"Account not found"}}`+"\n" {
 		t.Errorf("sending as a linked mailbox with the app password: %d %s", rr.Code, rr.Body.String())
 	}
 	// An app password never makes credentials; the session of an owner
 	// does, for an account it owns (mailbox:manage), proving its own
 	// password.
-	rr = f.do(http.MethodPost, fmt.Sprintf("/api/v1/accounts/%d/credentials", receipts), appPassword, fmt.Sprintf(`{"name":"x","password":%q}`, credentialTestPassword))
+	rr = f.viaGateway(http.MethodPost, fmt.Sprintf("/api/v1/accounts/%d/credentials", receipts), appPassword, fmt.Sprintf(`{"name":"x","password":%q}`, credentialTestPassword))
 	if rr.Code != http.StatusUnauthorized {
 		t.Errorf("an app password making a credential: %d %s", rr.Code, rr.Body.String())
 	}
@@ -792,7 +879,7 @@ func TestAppPasswords_ReachOnlyTheirOwnMailbox(t *testing.T) {
 	decodeInto(t, rr, &struct {
 		Data *createdCredential `json:"data"`
 	}{&made})
-	if rr := f.do(http.MethodGet, linkedFolders, basic("receipts@example.test", made.Password), ""); rr.Code != http.StatusOK {
+	if rr := f.mail(http.MethodGet, linkedFolders, "receipts@example.test", made.Password, ""); rr.Code != http.StatusOK {
 		t.Errorf("receipts@'s own app password: %d %s", rr.Code, rr.Body.String())
 	}
 	// An account it does not own is answered as one that does not exist.
@@ -811,7 +898,7 @@ func TestAppPasswords_GatewaySignIn(t *testing.T) {
 	srv := httptest.NewServer(f.router)
 	t.Cleanup(srv.Close)
 	created := f.createAppPassword("Thunderbird")
-	api := apiclient.New(srv.URL)
+	api, pop3API := f.gatewayClient(srv.URL, imapCN), f.gatewayClient(srv.URL, pop3CN)
 
 	imapMailbox, err := imapgw.NewBackend(api, nil).Authenticate(f.address, created.Password)
 	if err != nil {
@@ -820,7 +907,7 @@ func TestAppPasswords_GatewaySignIn(t *testing.T) {
 	if _, err := imapMailbox.Folders(); err != nil {
 		t.Fatalf("IMAP LIST: %v", err)
 	}
-	pop3Mailbox, err := pop3gw.NewBackend(api, nil).Authenticate(f.address, created.Password)
+	pop3Mailbox, err := pop3gw.NewBackend(pop3API, nil).Authenticate(f.address, created.Password)
 	if err != nil {
 		t.Fatalf("POP3 sign-in with the app password: %v", err)
 	}
@@ -831,8 +918,8 @@ func TestAppPasswords_GatewaySignIn(t *testing.T) {
 	if _, err := imapgw.NewBackend(api, nil).Authenticate(f.address, credentialTestPassword); err != nil {
 		t.Fatalf("IMAP sign-in with the mailbox's password: %v", err)
 	}
-	if n := len(f.entries("auth.protocol_sign_in")); n != 3 {
-		t.Errorf("%d protocol sign-ins recorded, want 3", n)
+	if n := len(f.entries("auth.gateway_session_open")); n != 3 {
+		t.Errorf("%d gateway sessions opened, want 3", n)
 	}
 	if es := f.entries("auth.sign_in"); len(es) != 1 { // the fixture's; the gateways never sign in interactively
 		t.Errorf("%d interactive sign-ins recorded, want 1", len(es))
@@ -862,7 +949,7 @@ func TestAppPasswords_RevokedByANewPassword(t *testing.T) {
 	f := newCredentialFixture(t)
 	srv := httptest.NewServer(f.router)
 	t.Cleanup(srv.Close)
-	api := apiclient.New(srv.URL)
+	api, pop3API := f.gatewayClient(srv.URL, imapCN), f.gatewayClient(srv.URL, pop3CN)
 	admin := adminToken(t, f.jwt, []string{middleware.CapAccountsWrite})
 	// Each test admin has an id of its own, holding its grants (#345).
 	adminClaims, err := f.jwt.ValidateAccessToken(admin)
@@ -875,7 +962,7 @@ func TestAppPasswords_RevokedByANewPassword(t *testing.T) {
 	thunderbird, n8n := f.createAppPassword("Thunderbird"), f.createAppPassword("n8n")
 	works := func(t *testing.T, created createdCredential) {
 		t.Helper()
-		if rr := f.do(http.MethodGet, folders, basic(f.address, created.Password), ""); rr.Code != http.StatusOK {
+		if rr := f.mail(http.MethodGet, folders, f.address, created.Password, ""); rr.Code != http.StatusOK {
 			t.Errorf("folders with %d: %d %s", created.ID, rr.Code, rr.Body.String())
 		}
 	}
@@ -895,7 +982,7 @@ func TestAppPasswords_RevokedByANewPassword(t *testing.T) {
 	if err != nil {
 		t.Fatalf("IMAP sign-in with the app password: %v", err)
 	}
-	pop3Mailbox, err := pop3gw.NewBackend(api, nil).Authenticate(f.address, n8n.Password)
+	pop3Mailbox, err := pop3gw.NewBackend(pop3API, nil).Authenticate(f.address, n8n.Password)
 	if err != nil {
 		t.Fatalf("POP3 sign-in with the app password: %v", err)
 	}
@@ -921,11 +1008,11 @@ func TestAppPasswords_RevokedByANewPassword(t *testing.T) {
 
 	t.Run("they stop at the next request", func(t *testing.T) {
 		for _, created := range []createdCredential{thunderbird, n8n} {
-			if rr := f.do(http.MethodGet, folders, basic(f.address, created.Password), ""); rr.Code != http.StatusUnauthorized {
+			if rr := f.mail(http.MethodGet, folders, f.address, created.Password, ""); rr.Code != http.StatusUnauthorized {
 				t.Errorf("folders with %d after a new password: %d", created.ID, rr.Code)
 			}
 		}
-		es := f.entries(middleware.AuditActionBasicRefused)
+		es := f.entries(middleware.AuditActionCredentialRefused)
 		if len(es) == 0 || es[len(es)-1].Target["reason"] != auth.CredentialRevoked {
 			t.Errorf("refusals after a new password: %+v", es)
 		}
@@ -984,7 +1071,7 @@ func TestAppPasswords_RevokedByANewPassword(t *testing.T) {
 	})
 
 	t.Run("another mailbox's are untouched", func(t *testing.T) {
-		if rr := f.do(http.MethodGet, danaFolders, basic("dana@example.test", danaPassword), ""); rr.Code != http.StatusOK {
+		if rr := f.mail(http.MethodGet, danaFolders, "dana@example.test", danaPassword, ""); rr.Code != http.StatusOK {
 			t.Errorf("dana@'s app password after chris@'s new password: %d %s", rr.Code, rr.Body.String())
 		}
 		var row models.Credential

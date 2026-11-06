@@ -67,6 +67,9 @@ const (
 
 const migrationDomain = "example.test"
 
+// imapGatewayCN names the IMAP gateway in its internal mTLS client certificate.
+const imapGatewayCN = "rest-mail-imap-gateway"
+
 // migrationServer is the destination of a migration, with what an administrator
 // of its domain would use: a session signed in with a second factor to make
 // accounts, and an API key to import mail.
@@ -85,15 +88,27 @@ func newMigrationServer(t *testing.T) *migrationServer {
 	db := migrationDatabase(t)
 
 	jwt := auth.NewJWTService("migration-test-signing-key-of-no-value", 5*time.Minute, time.Hour)
-	routers := api.NewRouters(db, jwt, &config.Config{Environment: "test", SMTPMaxMessageSize: 1 << 20, APIMaxBodyBytes: 4 << 20}, nil)
+	routers := api.NewRouters(db, jwt, &config.Config{Environment: "test", SMTPMaxMessageSize: 1 << 20, APIMaxBodyBytes: 4 << 20,
+		InternalMTLSEnabled: true}, nil)
 	t.Cleanup(routers.Close)
 	apiServer := httptest.NewServer(routers.Public)
 	t.Cleanup(apiServer.Close)
 
 	s := &migrationServer{db: db, apiURL: apiServer.URL, client: apiServer.Client()}
 	s.session, s.apiKey = migrationCredentials(t, db, jwt)
-	s.imapAddr, s.imapTLS = startIMAPGateway(t, apiServer.URL)
+	s.imapAddr, s.imapTLS = startIMAPGateway(t, apiServer.URL, routers.Internal)
 	return s
+}
+
+// asIMAPGateway serves internal as the internal listener does to the IMAP
+// gateway: every request carries the gateway's verified client certificate.
+// The TLS handshake that checks it is the listener's, not under test here.
+func asIMAPGateway(internal http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		leaf := &x509.Certificate{Subject: pkix.Name{CommonName: imapGatewayCN}}
+		r.TLS = &tls.ConnectionState{PeerCertificates: []*x509.Certificate{leaf}, VerifiedChains: [][]*x509.Certificate{{leaf}}}
+		internal.ServeHTTP(w, r)
+	})
 }
 
 // migrationConfig is the database server the migration tests' databases go on.
@@ -253,13 +268,18 @@ func migrationCredentials(t *testing.T, db *gorm.DB, jwt *auth.JWTService) (stri
 }
 
 // startIMAPGateway serves REST Mail's IMAP as cmd/imap-gateway does: the
-// gateway's backend over the API client, on an implicit TLS port.
-func startIMAPGateway(t *testing.T, apiURL string) (string, *tls.Config) {
+// gateway's backend over the API client, on an implicit TLS port. Sign-in
+// opens a gateway session on the internal listener, as the IMAP gateway
+// (#1586).
+func startIMAPGateway(t *testing.T, apiURL string, internal http.Handler) (string, *tls.Config) {
 	t.Helper()
 	certificate, roots := migrationCertificate(t)
 	limiter := connlimiter.New(connlimiter.Config{MaxPerIP: 20, MaxGlobal: 1000})
 	limiter.SetProtocol("imap")
-	client := apiclient.New(apiURL, apiclient.WithMessageDeadline(30*time.Second))
+	internalServer := httptest.NewServer(asIMAPGateway(internal))
+	t.Cleanup(internalServer.Close)
+	client := apiclient.New(apiURL, apiclient.WithMessageDeadline(30*time.Second),
+		apiclient.WithInternalMTLS(internalServer.URL, nil))
 	server := imapserver.New("imap."+migrationDomain, imapgw.NewBackend(client, limiter),
 		&tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{certificate}}, limiter)
 	listener, err := net.Listen("tcp", "127.0.0.1:0")

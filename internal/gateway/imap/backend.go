@@ -69,8 +69,10 @@ func (b *Backend) Authenticate(user, pass string) (goimap.Mailbox, error) {
 		return nil, errAccountLocked
 	}
 
-	// An app password signs in without the API's interactive login (#344).
-	resp, err := b.api.SignIn(user, pass, "imap")
+	// The connection gets its own session with the API (#1586): the address
+	// and password go once, and every call that follows sends the session's
+	// token. An app password signs in without the API's interactive login (#344).
+	resp, err := b.api.OpenSession(user, pass, "imap")
 	if err != nil {
 		// A failed IMAP login is a security-relevant event (credential stuffing /
 		// enumeration). Log it structured, with the attacker-controlled username
@@ -93,9 +95,14 @@ func (b *Backend) Authenticate(user, pass string) (goimap.Mailbox, error) {
 	return &mailbox{
 		api:       b.api,
 		email:     user,
-		token:     resp.AccessToken,
-		accountID: resp.Data.User.ID,
+		token:     resp.Token,
+		accountID: resp.User.ID,
 	}, nil
+}
+
+// Close ends the connection's session with the API, at LOGOUT or disconnect.
+func (m *mailbox) Close() error {
+	return m.api.CloseSession(m.token)
 }
 
 // mailbox is one authenticated account's view of its mail, for one session.
@@ -118,7 +125,7 @@ type mailbox struct {
 	imports map[uint]string
 }
 
-var _ goimap.Mailbox = (*mailbox)(nil)
+var _ goimap.MailboxCloser = (*mailbox)(nil)
 
 // The mailbox also satisfies the library's optional UIDPLUS (RFC 4315) and atomic
 // MOVE (RFC 6851) interfaces, so the server advertises UIDPLUS and emits

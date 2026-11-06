@@ -2,6 +2,7 @@ package apiclient
 
 import (
 	"encoding/json"
+	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -1223,25 +1224,41 @@ func TestListMessages_DecodesRawSize(t *testing.T) {
 	}
 }
 
-// SignIn is the one way the gateways sign a mail client in: HTTP Basic to
-// protocol-sign-in, whatever the password is, and the same Basic credentials
-// on every call after.
-func TestSignIn_OnePathForEveryPassword(t *testing.T) {
+// OpenSession is the one way the gateways sign a mail client in, whatever the
+// password is: the address and password go once, in the body, never as HTTP
+// Basic, and every call after sends only the session's token, closed at the end
+// (#1586).
+func TestOpenSession_OnePathForEveryPasswordAndNoBasic(t *testing.T) {
 	srv, mux := newTestServer(t)
-	var seen []string
-	mux.HandleFunc("/api/v1/auth/protocol-sign-in", func(w http.ResponseWriter, r *http.Request) {
-		user, pass, ok := r.BasicAuth()
-		if !ok || user != "chris@example.test" {
-			w.WriteHeader(http.StatusUnauthorized)
+	var seen, auths []string
+	mux.HandleFunc("POST /api/v1/gateway-sessions", func(w http.ResponseWriter, r *http.Request) {
+		var body apitypes.GatewaySessionOpenRequest
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Address != "chris@example.test" || body.Protocol != "pop3" {
+			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		seen = append(seen, pass)
+		if h := r.Header.Get("Authorization"); h != "" {
+			t.Errorf("the open call carried Authorization %q", h)
+		}
+		seen = append(seen, body.Password)
 		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{"data": map[string]interface{}{
-			"user":            map[string]interface{}{"id": 7, "email": user},
+			"token":           "rmgs_conn",
+			"protocol":        "pop3",
+			"user":            map[string]interface{}{"id": 7, "email": body.Address},
 			"credential_id":   3,
 			"credential_kind": "password",
 		}})
+	})
+	mux.HandleFunc("GET /api/v1/accounts/7/folders", func(w http.ResponseWriter, r *http.Request) {
+		auths = append(auths, r.Header.Get("Authorization"))
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[]}`))
+	})
+	mux.HandleFunc("DELETE /api/v1/gateway-sessions/current", func(w http.ResponseWriter, r *http.Request) {
+		auths = append(auths, r.Header.Get("Authorization"))
+		w.WriteHeader(http.StatusNoContent)
 	})
 	mux.HandleFunc("/api/v1/auth/login", func(w http.ResponseWriter, r *http.Request) {
 		t.Error("a gateway signed in interactively")
@@ -1249,17 +1266,27 @@ func TestSignIn_OnePathForEveryPassword(t *testing.T) {
 
 	c := New(srv.URL)
 	for _, password := range []string{"the account's own password", "rm_AAAAAAAAAAAA_secretsecretsecretsecretsecretsecretsecretsec"} {
-		resp, err := c.SignIn("chris@example.test", password, "imap")
+		resp, err := c.OpenSession("chris@example.test", password, "pop3")
 		if err != nil {
-			t.Fatalf("SignIn(%q): %v", password, err)
+			t.Fatalf("OpenSession(%q): %v", password, err)
 		}
-		if resp.Data.User.ID != 7 || resp.Data.CredentialID != 3 || resp.Data.CredentialKind != "password" ||
-			!strings.HasPrefix(resp.AccessToken, "Basic ") {
-			t.Errorf("SignIn(%q) = %+v", password, resp.Data)
+		if resp.User.ID != 7 || resp.CredentialID != 3 || resp.CredentialKind != "password" || resp.Token != "rmgs_conn" {
+			t.Errorf("OpenSession(%q) = %+v", password, resp)
+		}
+		if _, err := c.ListFolders(resp.Token, resp.User.ID); err != nil {
+			t.Fatal(err)
+		}
+		if err := c.CloseSession(resp.Token); err != nil {
+			t.Fatal(err)
 		}
 	}
 	if len(seen) != 2 {
-		t.Errorf("protocol sign-ins seen: %v", seen)
+		t.Errorf("sessions opened: %v", seen)
+	}
+	for i, a := range auths {
+		if a != "Bearer rmgs_conn" {
+			t.Errorf("call %d after the open sent Authorization %q, want the session token", i, a)
+		}
 	}
 }
 

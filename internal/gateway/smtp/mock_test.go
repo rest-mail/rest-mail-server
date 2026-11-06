@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/connlimiter"
 	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
@@ -44,15 +45,18 @@ type mockBackend struct {
 	checkErrAfter map[string]int
 	checkCount    map[string]int // per-address CheckMailbox invocation count
 
-	// loginErr, when non-nil, is returned by SignIn instead of verifying
+	// loginErr, when non-nil, is returned by OpenSession instead of verifying
 	// credentials — used to simulate a transient API/network failure.
 	loginErr   error
-	loginCalls int // number of times SignIn was invoked (brute-force hard-stop assertions)
+	loginCalls int // number of times OpenSession was invoked (brute-force hard-stop assertions)
 
-	// appPassword, when set, is an app password SignIn also accepts for user,
+	// appPassword, when set, is an app password OpenSession also accepts for user,
 	// signing in with credentialID.
 	appPassword  string
 	credentialID uint
+
+	opened []string // session tokens OpenSession handed out
+	closed []string // session tokens CloseSession closed
 
 	delivered   []string                    // recorded successful local deliveries (by Address)
 	deliverReqs []*apiclient.DeliverRequest // full deliver requests, for asserting captured fields
@@ -73,34 +77,46 @@ func newMockBackend() *mockBackend {
 	}
 }
 
-func (m *mockBackend) SignIn(email, password, _ string) (*apiclient.SignInResponse, error) {
+func (m *mockBackend) OpenSession(email, password, _ string) (*apitypes.GatewaySessionOpened, error) {
 	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.loginCalls++
-	loginErr := m.loginErr
-	appPassword, credentialID := m.appPassword, m.credentialID
-	m.mu.Unlock()
-	if loginErr != nil {
-		return nil, loginErr
+	if m.loginErr != nil {
+		return nil, m.loginErr
 	}
-	resp := &apiclient.SignInResponse{}
+	resp := &apitypes.GatewaySessionOpened{Protocol: "smtp"}
 	switch {
 	case email == m.user && password == m.pass:
 		// The account's password: a credential too, of the kind that may send
 		// as the accounts it owns.
-		resp.AccessToken = m.token
-		resp.Data.CredentialID, resp.Data.CredentialKind = 1, "password"
-	case email == m.user && appPassword != "" && password == appPassword:
-		resp.AccessToken = "Basic app-password"
-		resp.Data.CredentialID, resp.Data.CredentialKind = credentialID, "app_password"
+		resp.CredentialID, resp.CredentialKind = 1, "password"
+	case email == m.user && m.appPassword != "" && password == m.appPassword:
+		resp.CredentialID, resp.CredentialKind = m.credentialID, "app_password"
 	default:
 		return nil, &apiclient.APIError{StatusCode: 401, Body: "invalid credentials"}
 	}
-	resp.Data.User.ID = m.accountID
-	resp.Data.User.Email = email
+	resp.Token = fmt.Sprintf("rmgs_%d", len(m.opened)+1)
+	m.opened = append(m.opened, resp.Token)
+	resp.User.ID = m.accountID
+	resp.User.Email = email
 	return resp, nil
 }
 
-// loginCallCount returns how many times SignIn has been invoked.
+func (m *mockBackend) CloseSession(token string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.closed = append(m.closed, token)
+	return nil
+}
+
+// sessions returns the session tokens opened and closed so far.
+func (m *mockBackend) sessions() (opened, closed []string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]string(nil), m.opened...), append([]string(nil), m.closed...)
+}
+
+// loginCallCount returns how many times OpenSession has been invoked.
 func (m *mockBackend) loginCallCount() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()

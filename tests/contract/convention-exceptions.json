@@ -88,6 +88,11 @@
     "linkAccount": {
       "update": "A link has no fields of its own to change: it exists or it does not."
     },
+    "openGatewaySession": {
+      "read": "No route reads a connection session: the gateway holds its token for the connection's life and every call it makes with it is the check.",
+      "update": "A connection session has nothing to change: it is opened at sign-in and closed at logout.",
+      "delete": "closeGatewaySession closes the session its Bearer token names, at /api/v1/gateway-sessions/current, so there is no id in the answer to link to it."
+    },
     "putSieveScript": {
       "update": "This PUT is itself the update: it creates the script or replaces it at the same path."
     },

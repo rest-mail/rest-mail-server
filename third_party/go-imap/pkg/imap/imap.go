@@ -142,6 +142,14 @@ type CommandObserver interface {
 	ObserveCommand(name string, d time.Duration)
 }
 
+// MailboxCloser is a [Mailbox] that holds something for its session, such as a
+// session with the store it reads: the server calls Close once, when the
+// session ends, at LOGOUT or when the connection closes.
+type MailboxCloser interface {
+	Mailbox
+	Close() error
+}
+
 // Mailbox is a single authenticated account's view of its mail. Every method is
 // scoped to the user that [Backend.Authenticate] accepted; a Mailbox is used by
 // one session, though [Mailbox.Messages] may be called concurrently by the IDLE

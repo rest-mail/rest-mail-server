@@ -129,7 +129,7 @@ func isBase62(s string) bool {
 	return true
 }
 
-// Why a credential presented with HTTP Basic (an app password, or an
+// Why a mail client's credential (an app password, or an
 // account's password through a protocol gateway) was refused. The audit log
 // records which; whoever presented it is told only that the address or the
 // password is wrong.
