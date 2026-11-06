@@ -58,6 +58,15 @@ type Session struct {
 	// serverID what the session says in return (SetServerID).
 	clientID imap.ClientID
 	serverID []wire.IDPair
+	// condstore is true once the client has issued a CONDSTORE enabling
+	// command (RFC 7162 §3.1); every untagged FETCH then carries MODSEQ.
+	condstore bool
+	// qresync is true once ENABLE QRESYNC succeeded (RFC 7162 §3.2.3):
+	// expunges are then reported with VANISHED, and every FETCH carries UID.
+	qresync bool
+	// noModSeq is true while the selected mailbox keeps no mod-sequences, as
+	// SELECT reported with NOMODSEQ (RFC 7162 §3.1.2.2).
+	noModSeq bool
 }
 
 type authState struct {

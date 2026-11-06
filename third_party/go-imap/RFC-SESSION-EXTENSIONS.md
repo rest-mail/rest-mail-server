@@ -33,7 +33,8 @@ The guard is a structural review guard, not an independent conformance oracle.
   literal framing and a live IDLE new-mail/expunge/flag transcript have dedicated
   proofs. Existing command/state proofs remain intact. IDLE's current NO policy
   requires a selected mailbox; no account-wide notification support is implied.
-- Binary APPEND storage, MULTIAPPEND, EXTERNAL and CONDSTORE are not added. Their
+- Binary APPEND storage, MULTIAPPEND and EXTERNAL are not added; CONDSTORE has
+  its own RFC 7162 rows. Their
   absence must not be hidden by mapping the shared negotiation machinery.
 
 ## Source crosswalk
@@ -110,7 +111,7 @@ Source: [https://www.rfc-editor.org/rfc/rfc5161.txt](https://www.rfc-editor.org/
 | RFC5161 §1 | `IMAP-EXT-CAP-01` | ENABLE advertisement; descriptive overview introduces no extra enable-able extension. |
 | RFC5161 §2 | — | Document context, conventions, acknowledgements, references or legal metadata; no independent server protocol requirement. |
 | RFC5161 §3 | `IMAP-ENABLE-01` | Protocol-change overview. |
-| RFC5161 §3.1 | `IMAP-ENABLE-01`, `IMAP-ENABLE-02`, `IMAP-ENABLE-03`, `IMAP-ENABLE-04`, `IMAP-ENABLE-05`, `IMAP-ENABLE-06`, `IMAP-ENABLE-07`, `IMAP-ENABLE-08` | Ignore unknown/non-enable-able names; persistent additive mode, response/capability invariants, state, pipelining and client duties. CONDSTORE example is unsupported and ignored. |
+| RFC5161 §3.1 | `IMAP-ENABLE-01`, `IMAP-ENABLE-02`, `IMAP-ENABLE-03`, `IMAP-ENABLE-04`, `IMAP-ENABLE-05`, `IMAP-ENABLE-06`, `IMAP-ENABLE-07`, `IMAP-ENABLE-08` | Ignore unknown/non-enable-able names; persistent additive mode, response/capability invariants, state, pipelining and client duties. CONDSTORE is enabled only with a store that keeps mod-sequences (RFC 7162 rows). |
 | RFC5161 §3.2 | `IMAP-ENABLE-02` | ENABLED lists only enabled names and can be empty. |
 | RFC5161 §3.3 | `IMAP-ENABLE-08` | Extension-designer advice, not engine behavior. |
 | RFC5161 §4 | `IMAP-ENABLE-04`, `IMAP-ENABLE-05` | Case-insensitive capability atoms, required arguments and response syntax. |

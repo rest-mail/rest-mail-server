@@ -50,13 +50,16 @@ func (s *Session) reconcile(messages []imap.Message) {
 	// each "* n EXPUNGE" carries the sequence number the message still holds at the
 	// instant it is removed; lower sequence numbers are unaffected by the splice
 	// (RFC 3501 §7.4.1 renumbering rule).
-	survivors := append([]imap.Message(nil), s.messages...)
-	for i := len(survivors) - 1; i >= 0; i-- {
-		if _, ok := fresh[survivors[i].UID]; !ok {
-			s.send("* %d EXPUNGE", i+1)
-			survivors = append(survivors[:i], survivors[i+1:]...)
+	// A session that enabled QRESYNC is told with one VANISHED instead (RFC
+	// 7162 §3.2.10).
+	var gone []int
+	for i := len(s.messages) - 1; i >= 0; i-- {
+		if _, ok := fresh[s.messages[i].UID]; !ok {
+			gone = append(gone, i+1)
 		}
 	}
+	s.removeMessages(gone)
+	survivors := s.messages
 
 	// 2) FLAGS changes on messages that survived. Their sequence numbers are the
 	// post-expunge indices; arrivals reported below only append, so they do not
@@ -68,9 +71,13 @@ func (s *Session) reconcile(messages []imap.Message) {
 			delete(s.deleted, message.UID)
 		}
 	}
+	// Once CONDSTORE is on, a FETCH also carries UID and MODSEQ, and a
+	// changed mod-sequence is reported too (RFC 7162 §§3.1, 3.2.4).
 	for i, old := range survivors {
-		if nm := fresh[old.UID]; buildFlags(nm) != buildFlags(old) || nm.Deleted != old.Deleted {
-			s.send("* %d FETCH (UID %d FLAGS (%s))", i+1, nm.UID, s.flagString(nm))
+		nm := fresh[old.UID]
+		if buildFlags(nm) != buildFlags(old) || nm.Deleted != old.Deleted || (s.condstore && nm.ModSeq != old.ModSeq) {
+			// UID in every unsolicited FETCH (RFC 9051 §7.5.2).
+			s.send("* %d FETCH (%s)", i+1, s.storeFetch(nm, true, true))
 		}
 	}
 

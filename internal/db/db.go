@@ -191,6 +191,11 @@ func autoMigrate(db *gorm.DB) error {
 	if err := MigrateFolderUIDMarks(db); err != nil {
 		return fmt.Errorf("folder UID marks: %w", err)
 	}
+	// Each folder's mod-sequence, each message's, and the UIDs that left, for
+	// IMAP CONDSTORE and QRESYNC (go-imap#162).
+	if err := MigrateFolderModSeqs(db); err != nil {
+		return fmt.Errorf("folder mod-sequences: %w", err)
+	}
 
 	// Create composite unique index for mailboxes (domain_id, local_part)
 	if !db.Migrator().HasIndex(&models.Mailbox{}, "idx_mailboxes_domain_localpart") {
