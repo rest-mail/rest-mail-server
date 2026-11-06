@@ -6,12 +6,15 @@
 package imap
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
 	"time"
 
 	goimap "github.com/rest-mail/go-imap/pkg/imap"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
@@ -20,6 +23,7 @@ import (
 	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
 	"github.com/rest-mail/rest-mail-server/internal/metrics"
 	"github.com/rest-mail/rest-mail-server/internal/requestid"
+	"github.com/rest-mail/rest-mail-server/internal/tracing"
 )
 
 // errAccountLocked is returned when an account is temporarily banned for too
@@ -63,7 +67,12 @@ func (b *Backend) Authenticate(user, pass string) (goimap.Mailbox, error) {
 	// the API on each call the session makes.
 	id := requestid.New()
 	log := slog.Default().With(requestid.Attr, id)
-	api := b.api.WithRequestID(id)
+	// The session's span (#1580): each call to the API is its child, and
+	// it ends when the mailbox closes. A failed login ends it here.
+	_, span := tracing.Tracer().Start(context.Background(), "imap.session",
+		trace.WithSpanKind(trace.SpanKindServer),
+		trace.WithAttributes(tracing.RequestIDKey.String(id)))
+	api := b.api.WithRequestID(id).WithSpan(span)
 
 	// Per-account hard stop: reject a banned account WITHOUT calling the auth API,
 	// so a rotating-IP brute-force is throttled and a ban is never lifted by a
@@ -73,6 +82,8 @@ func (b *Backend) Authenticate(user, pass string) (goimap.Mailbox, error) {
 			"user", maskEmail(user),
 			"event", "imap_auth_banned",
 		)
+		span.SetAttributes(attribute.String("auth.outcome", "locked"))
+		span.End()
 		return nil, errAccountLocked
 	}
 
@@ -94,12 +105,16 @@ func (b *Backend) Authenticate(user, pass string) (goimap.Mailbox, error) {
 		if b.limiter != nil && apiclient.IsAuthRejection(err) {
 			b.limiter.RecordAuthFailUser(user)
 		}
+		span.SetAttributes(attribute.String("auth.outcome", "auth_failed"))
+		tracing.End(span, err)
 		return nil, err
 	}
+	span.SetAttributes(attribute.String("auth.outcome", "authenticated"))
 	if b.limiter != nil {
 		b.limiter.ResetAuthUser(user)
 	}
 	return &mailbox{
+		span:      span,
 		api:       api,
 		log:       log,
 		email:     user,
@@ -118,12 +133,18 @@ func (m *mailbox) logger() *slog.Logger {
 
 // Close ends the connection's session with the API, at LOGOUT or disconnect.
 func (m *mailbox) Close() error {
-	return m.api.CloseSession(m.token)
+	err := m.api.CloseSession(m.token)
+	if m.span != nil {
+		m.span.End()
+	}
+	return err
 }
 
 // mailbox is one authenticated account's view of its mail, for one session.
 type mailbox struct {
-	api *apiclient.Client
+	// span is the session's span (#1580), ended by Close.
+	span trace.Span
+	api  *apiclient.Client
 	// log carries the session's request ID (#1580); nil logs without it.
 	log       *slog.Logger
 	email     string

@@ -23,6 +23,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/metrics"
 	rmime "github.com/rest-mail/rest-mail-server/internal/mime"
 	"github.com/rest-mail/rest-mail-server/internal/requestid"
+	"github.com/rest-mail/rest-mail-server/internal/tracing"
 	"github.com/rest-mail/rest-mail-server/internal/version"
 )
 
@@ -53,6 +54,15 @@ func main() {
 		logHandler = slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError})
 		slog.SetDefault(slog.New(requestid.NewHandler(logHandler)))
 	}
+
+	// Distributed tracing (#1580): off unless OTEL_EXPORTER_OTLP_ENDPOINT (or
+	// OTEL_EXPORTER_OTLP_TRACES_ENDPOINT) is set; spans are flushed at shutdown.
+	shutdownTracing, err := tracing.Setup(context.Background(), "rest-mail-imap-gateway")
+	if err != nil {
+		slog.Error("failed to start tracing", "error", err)
+		os.Exit(1)
+	}
+	defer tracing.ShutdownWithin(shutdownTracing, 5*time.Second)
 
 	// Secure-by-construction (production-only): refuse to boot when the IMAP
 	// listeners would serve plaintext where they shouldn't — no TLS keypair to

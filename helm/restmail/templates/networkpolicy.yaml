@@ -376,4 +376,31 @@ spec:
           port: 8080
 {{- end }}
 {{- end }}
+{{- if and .Values.tracing.otlpEndpoint .Values.tracing.networkPolicy.to }}
+---
+# Span export to the OTLP collector (#1580), from the API and the three
+# gateways, scoped to the configured peers and port.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "restmail.fullname" . }}-otlp-egress
+  labels:
+    {{- include "restmail.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "restmail.selectorLabels" . | nindent 6 }}
+    matchExpressions:
+      - key: app.kubernetes.io/component
+        operator: In
+        values: [api, smtp-gateway, imap-gateway, pop3-gateway]
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        {{- toYaml .Values.tracing.networkPolicy.to | nindent 8 }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.tracing.networkPolicy.port }}
+{{- end }}
 {{- end }}
