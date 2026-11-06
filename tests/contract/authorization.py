@@ -81,7 +81,28 @@ HIDING_REFUSAL = [404]
 # refusals that require the key (not_status_key, not_owner, no_account) get a
 # real fresh challenge too, signed by a key listed nowhere or, for an address no
 # account has, by the run's key, so each reaches the check it documents.
-PROVIDES = {"state": ["owner_key", "recoverable_account"]}
+# The grant changes act on the caller's own grant (eligible_grant,
+# active_grant): hooks.py makes one for the two-factor administrator, the admin
+# principal, just before its request, at a domain no one hosts, and removes it
+# after (a_grant_of_the_callers_own). A link given up or met again
+# (existing_link) is a fresh account linked to that administrator just before
+# (a_throwaway_link). A new grant's holder (grant_holder) is an account made for
+# that request. The other principals hold no second factor, so their requests go
+# out as documented and are refused. event_stream (accountEvents) is not
+# provided: the stream stays open while the session lives, and only ending
+# the principal's session would close it.
+# two_factor_session is not provided: other examples name it for changes to the
+# run's own data (server limits and capabilities, a seeded mailbox).
+PROVIDES = {
+    "state": [
+        "active_grant",
+        "eligible_grant",
+        "existing_link",
+        "grant_holder",
+        "owner_key",
+        "recoverable_account",
+    ]
+}
 # Operations whose request names no mailbox: they act on the caller's own
 # account, where every signed-in principal holds the capability they declare.
 OWN_ACCOUNT = [
