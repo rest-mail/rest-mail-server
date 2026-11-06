@@ -156,6 +156,34 @@ class CertificateProbes(unittest.TestCase):
             self.assertNotEqual(body["cert_pem"], self.pinned["cert_pem"])
         self.assertFalse(self.stub.stash.get("probe_certificates_installed"))
 
+    def test_documented_certificates_are_expired_with_or_without_a_stashed_domain(self):
+        for stash in (
+            {}, {"domain": "run.test"}, {"domain_id": 7}, {"domain": "run.test", "domain_id": 7}
+        ):
+            for material in ({"cert_pem": "certificate", "key_pem": "key"}, self.pinned):
+                with self.subTest(stash=stash, pinned=material is self.pinned):
+                    self.stub.stash = dict(stash)
+                    for _ in range(self.hooks.DOCUMENTED_SENDS):
+                        sent = transaction({**material, "domain_id": 1, "auto_renew": False})
+                        self.hooks.a_self_signed_certificate(sent)
+                        body = json.loads(sent["request"]["body"])
+                        checked = subprocess.run(
+                            ["openssl", "x509", "-noout", "-checkend", "0"],
+                            input=body["cert_pem"], capture_output=True, text=True,
+                        )
+                        self.assertEqual(checked.returncode, 1, checked.stdout)
+                        self.assertEqual(body["domain_id"], stash.get("domain_id", 1))
+                        self.assertFalse(body["auto_renew"])
+                        issuer = self.read_pem(
+                            ["x509", "-noout", "-issuer", "-nameopt", "RFC2253"], body["cert_pem"]
+                        ).strip().removeprefix("issuer=")
+                        self.assertEqual(issuer, "CN=" + stash.get("domain", "example.org"))
+                        self.assertNotEqual(issuer, self.hooks.PROBE_CERTIFICATE_ISSUER)
+                        self.assertEqual(
+                            self.read_pem(["x509", "-noout", "-pubkey"], body["cert_pem"]),
+                            self.read_pem(["pkey", "-pubout"], body["key_pem"]),
+                        )
+
     def test_a_probe_goes_out_as_drawn_and_is_remembered(self):
         for _ in range(self.hooks.DOCUMENTED_SENDS):
             self.hooks.a_self_signed_certificate(transaction(self.pinned))

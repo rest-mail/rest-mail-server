@@ -50,6 +50,7 @@ from identities import address_key, domain_key
 from api_keys_live import totp  # noqa: E402
 from queue_entry_hooks import a_disposable_queue_entry
 from lost_probes import DOCUMENTED_SENDS  # noqa: E402
+from probes import probe_certificate
 
 PRINCIPALS = os.environ.get("CONTRACT_PRINCIPALS", ".cache/contract-principals.json")
 
@@ -1430,29 +1431,8 @@ def a_self_signed_certificate(transaction):
     # The server refuses a certificate that does not name the domain it is
     # uploaded for (#1704), so it is made for that domain's own name.
     name = certificate_name_for(transaction, body["domain_id"])
-    with tempfile.TemporaryDirectory() as d:
-        key, cert = os.path.join(d, "tls.key"), os.path.join(d, "tls.crt")
-        openssl(
-            "req",
-            "-x509",
-            "-newkey",
-            "rsa:2048",
-            "-nodes",
-            "-days",
-            "30",
-            "-subj",
-            "/CN=" + name,
-            "-addext",
-            "subjectAltName=DNS:" + name,
-            "-keyout",
-            key,
-            "-out",
-            cert,
-        )
-        with open(cert) as cert_file, open(key) as key_file:
-            body["cert_pem"] = cert_file.read()
-            body["key_pem"] = key_file.read()
-            hooks.set_json(transaction, body)
+    body["cert_pem"], body["key_pem"] = probe_certificate(name)
+    hooks.set_json(transaction, body)
 
 
 def a_standing_domain_for_the_certificate(transaction):

@@ -471,10 +471,12 @@ admin's domain. A hook cannot change that, and the mail gateways serve a domain'
 certificates by name. So this one is already expired: the handler accepts it, and neither
 the gateways nor `updateDomain`'s certificate check count it. `a_self_signed_certificate` leaves them
 as drawn, and the first hook after them, `remove_the_probe_certificates`, deletes each
-certificate with that issuer. The documented sends before them keep a certificate of
-their own, which `getCertificate`'s link needs, on the run's domain when the run has
-one. A run narrowed to `createCertificate` alone has no hook after its probes, so
-their certificates stay on its disposable database.
+certificate with that issuer. The documented sends before them use the same expired
+material generator, with their own issuer, so `getCertificate`'s link still finds
+them after probe cleanup. They stay expired even when no run domain has been
+stashed and the request still names domain 1 (`restmail.test`); no gateway can load
+them between creation and cleanup. A run narrowed to `createCertificate` alone has
+no hook after its probes, so their expired certificates stay on its disposable database.
 
 `createDomain` needs no pin, because its setup makes the generated name free. Its
 hook removes what earlier probes put at `example.com`, and the first hook after its
