@@ -14,11 +14,14 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/grants"
 )
 
-// Every example pair of the subscription routes (#1675), sent to the production
-// routes over PostgreSQL. A pair for account 1 goes to the fixture's account,
-// which is new and so subscribed to its standard folders.
+// Every subscription pair (#1675), with PostgreSQL for storage and production
+// refusal fixtures for budgets and dependency faults. A pair for account 1 goes
+// to the fixture's account, newly subscribed to its standard folders.
 func TestFolderSubscriptionExamples(t *testing.T) {
 	f := newCredentialFixture(t)
+	unavailable, failed, _, jwt := authReadBatchRouters(t)
+	faultToken := "Bearer " + mailboxToken(t, jwt)
+	limited := apiKeyRefusalLimited(t)
 	pairs, err := examplepairs.Read()
 	if err != nil {
 		t.Fatal(err)
@@ -51,7 +54,7 @@ func TestFolderSubscriptionExamples(t *testing.T) {
 			t.Run(op.id+"/"+name, func(t *testing.T) {
 				examplepairs.Proven(t, op.id, name)
 				id := fmt.Sprint(f.mailboxID)
-				if name == "invalid_id" || name == "missing" {
+				if pair.Request.Path["id"] != float64(1) {
 					id = fmt.Sprintf("%.0f", pair.Request.Path["id"])
 				}
 				uri := strings.ReplaceAll(op.path, "{id}", id)
@@ -67,17 +70,24 @@ func TestFolderSubscriptionExamples(t *testing.T) {
 				}
 				req := httptest.NewRequest(op.method, uri, nil)
 				req.RemoteAddr = "192.0.2.10:50000"
+				router := f.router
+				switch requirementOf(pair) {
+				case "limit=rate":
+					router = limited
+				case "body=over_cap":
+					router, token = failed, faultToken
+					req.ContentLength = 9
+				case "fault=session_store":
+					router, token = unavailable, faultToken
+				case "fault=database":
+					router, token = failed, faultToken
+				}
 				if token != "" {
 					req.Header.Set("Authorization", token)
 				}
 				rr := httptest.NewRecorder()
-				f.router.ServeHTTP(rr, req)
-				if rr.Code != pair.Response.Status {
-					t.Fatalf("want %d: %d %s", pair.Response.Status, rr.Code, rr.Body)
-				}
-				if len(pair.Response.Body) > 0 {
-					assertPublicExampleBody(t, pair.Response.Body, rr.Body.Bytes())
-				}
+				router.ServeHTTP(rr, req)
+				assertRequirementResponse(t, pair, rr)
 			})
 		}
 	}
