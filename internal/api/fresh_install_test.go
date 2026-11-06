@@ -163,9 +163,10 @@ func (f *freshInstall) inFolder(accountID uint, folder, subject string) bool {
 func TestFreshInstall_EndToEnd(t *testing.T) {
 	db := createScratchDB(t, "fresh_install")
 	useRealGrants(t)
-	// The submission port delivers local mail through the inbound pipeline,
-	// which looks up SPF and DMARC: nothing is published for fresh.test.
-	serveTXT(t, map[string][]string{})
+	// The submission port queues local mail, and the worker brings it back in
+	// through the MX and the inbound pipeline, which looks up SPF and DMARC. The
+	// MX is all that is published for fresh.test.
+	serveZone(t, dnsZone{mx: map[string]string{freshDomain: localSendMX}, a: map[string]string{localSendMX: "127.0.0.1"}})
 
 	// 1. The first start, on an empty database: the bootstrap account is
 	// admin@<mail domain>, its domain comes with it, and it holds admin,
@@ -313,6 +314,13 @@ func TestFreshInstall_EndToEnd(t *testing.T) {
 	if err := send(c, freshAdmin, "chris@fresh.test", submittedMessage(freshAdmin, "chris@fresh.test", received)); err != nil {
 		t.Fatalf("send to chris@ over SMTP: %v", err)
 	}
+	// The test has no internet for the earlier message to someone@elsewhere.test
+	// to reach: it stays on the queue rather than bounce into chris@'s INBOX.
+	if err := db.Exec("UPDATE outbound_queue SET next_attempt = now() + interval '1 day' WHERE recipient = 'someone@elsewhere.test'").Error; err != nil {
+		t.Fatal(err)
+	}
+	startMailRoute(t, db, f.router)
+	deliveredPastGreylist(t, db, "chris@fresh.test")
 	var inbox []struct {
 		Subject string `json:"subject"`
 	}

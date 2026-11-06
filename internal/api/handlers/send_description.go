@@ -5,6 +5,9 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 )
 
+// queuedDeliveryDescription is what a send's success says about delivery (#1564).
+const queuedDeliveryDescription = "A 201 means the message is durably queued, not that it has arrived. Every recipient, on this server or elsewhere, gets it through the outbound queue, signed where the sender domain has a DKIM key, and through the receiving domain's normal inbound checks. The answer does not wait for delivery: a later temporary refusal is retried, and a permanent one fails that recipient's queue entry and bounces to the sender as a DSN. "
+
 const delegatedSendingDescription = "Sending from your own mailbox requires mail:send. From another mailbox requires mail:send_as on that mailbox. Set on_behalf to true to require mail:send_on_behalf instead: From stays the represented mailbox and RFC 5322 Sender is the authenticated account's own address. Read access grants neither mode. An unknown sender and a sender the caller has no link to return the same 404 not_found. A visible sender without the selected sending capability returns 403 forbidden. Parsed fields that break sender policy or scheduling rules return 422 validation_failed with details.fields naming them. Both modes audit the real account, credential and represented mailbox."
 
 // These alternatives describe the capability selected by the handler, not a
