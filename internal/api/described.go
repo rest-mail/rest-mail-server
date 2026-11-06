@@ -231,7 +231,7 @@ var exampleRequirements = map[string][]string{
 		// request meets or misses that the run's own fixtures make otherwise.
 		"concurrent_change", "deleted_account", "existing_contact", "existing_domain", "existing_draft", "existing_folder",
 		"last_superadmin", "missing_recipient", "no_authenticator", "no_master_key", "uncertified_domain", "unhosted_domain",
-		"acme_enabled", "acme_issued_token",
+		"acme_enabled", "acme_issued_token", "expunged_messages",
 		// The live run's accounts stay active: others sign in as them.
 		"inactive_account",
 		// The signing keys a RESTMAIL delivery's signature is checked against over DNS.
