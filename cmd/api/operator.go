@@ -210,6 +210,10 @@ func openDatabase(stderr io.Writer) (*gorm.DB, *config.Config, int) {
 	return database, cfg, exitOK
 }
 
+// operatorDatabaseWait is how long an operator command waits for the database. A
+// variable only so a test can wait out a shorter one.
+var operatorDatabaseWait = 30 * time.Second
+
 // connectOperatorDatabase configures a quiet operator connection without
 // changing schema or seeding data. Observation commands use this path.
 func connectOperatorDatabase(stderr io.Writer) (*gorm.DB, *config.Config, int) {
@@ -217,7 +221,7 @@ func connectOperatorDatabase(stderr io.Writer) (*gorm.DB, *config.Config, int) {
 	if err != nil {
 		return nil, nil, fail(stderr, exitFailed, "config", err.Error())
 	}
-	database, err := db.WaitForDB(cfg, 30*time.Second)
+	database, err := db.WaitForDB(cfg, operatorDatabaseWait)
 	if err != nil {
 		return nil, nil, fail(stderr, exitFailed, "database", err.Error())
 	}

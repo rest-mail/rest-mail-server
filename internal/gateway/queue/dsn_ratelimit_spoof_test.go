@@ -45,6 +45,7 @@ func openDSNTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		testdb.Unreachable(t, "DSN rate-limit test skipped: no database reachable (%v)", err)
 	}
+	reuseConnections(t, gdb)
 	if err := gdb.AutoMigrate(&models.Message{}); err != nil {
 		t.Skipf("DSN rate-limit test skipped: migrate failed (%v)", err)
 	}

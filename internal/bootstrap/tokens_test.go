@@ -235,6 +235,9 @@ func openScratchDatabase(t *testing.T) *gorm.DB {
 		DBName: envOr("DB_NAME", "restmail"),
 		DBUser: envOr("DB_USER", "restmail"),
 		DBPass: envOr("DB_PASS", "restmail"),
+		// Both pools close in the cleanup below. With no idle connections, every
+		// migration statement connects and authenticates all over again.
+		DBMaxIdleConns: 2,
 	}
 	admin, err := rmdb.Connect(&cfg)
 	if err != nil {

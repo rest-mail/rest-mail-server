@@ -20,7 +20,7 @@ import (
 func openResetWorkerDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	cfg := &config.Config{DBHost: envOr("DB_HOST", "localhost"), DBPort: envIntOr("DB_PORT", 5432),
-		DBName: "postgres", DBUser: envOr("DB_USER", "restmail"), DBPass: envOr("DB_PASS", "restmail")}
+		DBName: "postgres", DBUser: envOr("DB_USER", "restmail"), DBPass: envOr("DB_PASS", "restmail"), DBMaxIdleConns: 2}
 	admin, err := rmdb.Connect(cfg)
 	if err != nil {
 		testdb.Unreachable(t, "test reset worker database unavailable: %v", err)
