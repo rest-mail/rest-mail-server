@@ -5,8 +5,17 @@ import (
 	"strings"
 )
 
+// MaxKeywordLength is the longest keyword the server accepts, in bytes.
 const MaxKeywordLength = 255
+
+// MaxKeywords is the most keywords one message may carry. A STORE or APPEND
+// that would give a message more is refused, so a client cannot grow one
+// message's flag list, and every FETCH FLAGS of it, without bound.
 const MaxKeywords = 100
+
+// ErrTooManyKeywords is the error NormalizeImportFlags returns for a flag list
+// over [MaxKeywords] keywords.
+var ErrTooManyKeywords = fmt.Errorf("at most %d keywords per message", MaxKeywords)
 
 func NormalizeImportFlags(flags []string) ([]string, error) {
 	result := make([]string, 0, len(flags))
@@ -38,7 +47,7 @@ func NormalizeImportFlags(flags []string) ([]string, error) {
 				keywords++
 			}
 			if keywords > MaxKeywords {
-				return nil, fmt.Errorf("at most %d keywords per message", MaxKeywords)
+				return nil, ErrTooManyKeywords
 			}
 		}
 		if !seen[key] {

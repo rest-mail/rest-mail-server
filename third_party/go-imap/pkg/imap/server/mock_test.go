@@ -112,6 +112,10 @@ func (m *mockMailbox) Fetch(uid uint32) ([]byte, error) {
 	return raw, nil
 }
 
+// KeywordLimit makes mockMailbox an imap.KeywordMailbox with no folder limit,
+// so STORE and APPEND pass keywords through to the recorded updates.
+func (m *mockMailbox) KeywordLimit() int { return 0 }
+
 func (m *mockMailbox) Store(uid uint32, f imap.FlagUpdate) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()

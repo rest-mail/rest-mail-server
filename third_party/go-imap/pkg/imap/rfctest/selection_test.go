@@ -34,6 +34,10 @@ func (m *selectionMailbox) Move(uint32, string) error           { m.moves++; ret
 // UIDPLUS operations are not used by the selection tests.
 type exampleMailbox struct{ *selectionMailbox }
 
+// KeywordLimit makes exampleMailbox an imap.KeywordMailbox, as the RFC
+// examples' server is: its PERMANENTFLAGS end with \*.
+func (*exampleMailbox) KeywordLimit() int { return 0 }
+
 func (*exampleMailbox) UIDValidity(string) (uint32, error) { return 3857529045, nil }
 func (*exampleMailbox) AppendUID(string, imap.FlagUpdate, []byte) (uint32, error) {
 	return 0, errors.New("unused")
