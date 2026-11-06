@@ -17,7 +17,8 @@ server commit runs against the same substrate everywhere.
 then preflight. RESTMAIL_SUBSTRATE=unpinned leaves an existing clone where it is (to
 run a substrate branch) and turns the preflight's failures into warnings.
 
-The one platform preparation is for native-Linux Docker: reference-mailserver's
+The reference PostgreSQL health check runs every second on both platforms.
+The platform preparation is for native-Linux Docker: reference-mailserver's
 dkim:provision chmods a container-root-owned key from the host, which only Docker
 Desktop's host-owned bind mounts allow. On Linux the chmod runs in a container.
 """
@@ -149,6 +150,20 @@ def is_prepared(repo):
     return name, read_file(os.path.join(repo, name)) == expected
 
 
+def prepared_files(name, repo, system):
+    if name != "reference-mailserver":
+        return {}
+    postgres = "tasks/postgres.yml"
+    text = git_out(repo, "show", "HEAD:" + postgres)
+    if "--health-interval 10s" not in text and "--health-interval 1s" not in text:
+        raise ValueError("reference-mailserver's PostgreSQL health check changed upstream")
+    prepared = {postgres: text.replace("--health-interval 10s", "--health-interval 1s")}
+    if needs_preparation(name, system):
+        task = task_file(repo)
+        prepared[task] = prepared_text(git_out(repo, "show", "HEAD:" + task))
+    return prepared
+
+
 def sync(name, commit, workspace=None, remote=None, system=None, out=sys.stdout):
     """Clone name when absent, check out its pin and prepare it for this platform."""
     workspace = workspace or WORKSPACE
@@ -168,9 +183,8 @@ def sync(name, commit, workspace=None, remote=None, system=None, out=sys.stdout)
     move = head != commit and not unpinned()
     if move:
         changed = changed_paths(repo)
-        if needs_preparation(name, system):
-            prepared, ok = is_prepared(repo)
-            if prepared in changed and ok:
+        for prepared, text in prepared_files(name, repo, system).items():
+            if prepared in changed and read_file(os.path.join(repo, prepared)) == text:
                 # Our own preparation, not the person's work: undo it before moving.
                 git_out(repo, "checkout", "--quiet", "--", prepared)
                 changed.discard(prepared)
@@ -189,14 +203,16 @@ def sync(name, commit, workspace=None, remote=None, system=None, out=sys.stdout)
     at = git_out(repo, "rev-parse", "HEAD").strip()
     note = "" if at == commit else f" (unpinned; the pin is {commit})"
     print(f"  {name} @ {at}{note}", file=out)
-    if needs_preparation(name, system):
-        prepared = task_file(repo)
+    for prepared, text in prepared_files(name, repo, system).items():
         path = os.path.join(repo, prepared)
-        text = prepared_text(git_out(repo, "show", "HEAD:" + prepared))
-        if read_file(path) != text:
+        current = read_file(path)
+        if current != text:
+            if prepared == "tasks/postgres.yml" and current != git_out(repo, "show", "HEAD:" + prepared):
+                raise RuntimeError(f"{name} has uncommitted changes to {prepared}; refusing to overwrite them")
             with open(path, "w", encoding="utf-8") as handle:
                 handle.write(text)
-        print(f"  {name}: {prepared} dkim:provision chmods in a container (Linux)", file=out)
+        reason = "PostgreSQL health interval 1s" if prepared == "tasks/postgres.yml" else "dkim:provision chmods in a container (Linux)"
+        print(f"  {name}: {prepared} {reason}", file=out)
     return at
 
 
@@ -213,14 +229,14 @@ def inspect(name, commit, workspace=None, system=None):
         problems.append(f"{name} is at {head}, its pin is {commit}: run {INIT[name]}")
     allowed = set()
     detail = ""
-    if needs_preparation(name, system):
-        prepared, ok = is_prepared(repo)
-        if ok:
-            detail = "dkim:provision chmod in a container"
+    for prepared, text in prepared_files(name, repo, system).items():
+        if read_file(os.path.join(repo, prepared)) == text:
+            reason = "PostgreSQL health interval 1s" if prepared == "tasks/postgres.yml" else "dkim:provision chmod in a container"
+            detail = "; ".join(filter(None, (detail, reason)))
             allowed.add(prepared)
         else:
             problems.append(
-                f"{name}'s {prepared} is not prepared for native-Linux Docker: run {INIT[name]}"
+                f"{name}'s {prepared} is not prepared for {'native-Linux Docker' if needs_preparation(name, system) else 'fast health checks'}: run {INIT[name]}"
             )
     changed = changed_paths(repo) - allowed
     if changed:

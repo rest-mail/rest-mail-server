@@ -410,6 +410,15 @@ class ContractCommand(unittest.TestCase):
                 )
                 self.assertEqual(result.returncode, expected, result.stderr)
 
+    def test_ci_can_run_the_same_gates_without_serial_reports(self):
+        result, calls = self.run_command(CONTRACT_REPORTS="false")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("run:gate --tag Domains", calls)
+        self.assertIn("scan", calls)
+        self.assertIn("chore:test:contract-api-keys", calls)
+        self.assertNotIn("run:authorization --tag Domains", calls)
+        self.assertNotIn("run:ownership --tag Domains", calls)
+
     def test_fixture_failure_prevents_contract_checks(self):
         result, calls = self.run_command(FIXTURE_EXIT="1")
         self.assertEqual(result.returncode, 1, result.stderr)

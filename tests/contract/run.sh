@@ -91,7 +91,7 @@ PATH="$(dirname "$CONTRACT_VERTRAG"):$PATH"
 export PATH
 "$CONTRACT_VERTRAG" version
 python3 -B -c 'import yaml' 2>/dev/null || pip install --quiet pyyaml
-if [ "$phase" != authorization ] && [ "$phase" != ownership ]; then
+if [ ! -s "$served" ] || { [ "$phase" != authorization ] && [ "$phase" != ownership ]; }; then
   python3 -B tests/contract/description.py vertrag.yml "$served"
 fi
 test -s "$served"

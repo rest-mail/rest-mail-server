@@ -659,13 +659,34 @@ tasks:
         tests/contract/run.sh gate {{.CLI_ARGS}} || code=$?
         scan=0
         python3 -B tests/contract/secret_scan.py .cache/contract/examples.har --audit-from .cache/contract/vertrag-run.yml || scan=$?
-        chore test:contract-fixtures || echo "the queue fixtures could not be replenished; the authorization run's queue links find no held entry"
+        if [ "${CONTRACT_REPORTS:-true}" != false ]; then
+          chore test:contract-fixtures || echo "the queue fixtures could not be replenished; the authorization run's queue links find no held entry"
+          tests/contract/run.sh authorization {{.CLI_ARGS}} || echo "the authorization phase is a report, not a gate"
+          chore test:contract-domain-tenants || echo "the domain tenants could not be prepared; the ownership run of domains is not sent"
+          tests/contract/run.sh ownership {{.CLI_ARGS}} || echo "the ownership phase is a report, not a gate"
+        fi
+        chore api:coverage:report || echo "the API's coverage is a report, not a gate"
+        if [ "$code" -ne 0 ]; then exit "$code"; fi
+        exit "$scan"
+
+  contract:reports:
+    desc: 'Authorization and ownership reports on an independent disposable topology, with fresh principals and fixtures'
+    cmds:
+      - |
+        set -eu
+        python3 -B tests/contract/report_files.py --reset-run .cache/contract
+        export CONTRACT_DEFER_SUMMARY=1
+        trap 'python3 -B tests/contract/summary.py .cache/contract authorization ownership ownership-domains ownership-mailboxes ownership-messages' EXIT
+        if [ ! -s .cache/contract-principals.json ]; then
+          API_BASE_URL="${CONTRACT_ENDPOINT:-http://10.99.0.20:8080}" E2E_REQUIRE_STACK=1 chore test:e2e -- -run '^TestContractPrincipals$'
+        fi
+        chore test:contract-fixtures
+        chore test:contract-mfa-admin
+        chore api:coverage:reset || echo "the API's coverage counters could not be reset; its coverage report is not this run's alone"
         tests/contract/run.sh authorization {{.CLI_ARGS}} || echo "the authorization phase is a report, not a gate"
         chore test:contract-domain-tenants || echo "the domain tenants could not be prepared; the ownership run of domains is not sent"
         tests/contract/run.sh ownership {{.CLI_ARGS}} || echo "the ownership phase is a report, not a gate"
         chore api:coverage:report || echo "the API's coverage is a report, not a gate"
-        if [ "$code" -ne 0 ]; then exit "$code"; fi
-        exit "$scan"
 
   contract:pairs:
     desc: 'The registered example-pair boundary checks (internal/api *WithVertrag), in parallel shards; a gate in CI, no topology needed'
@@ -986,23 +1007,6 @@ tasks:
       - task: testbed:up
       - task: mailserver:init
       - task: mailserver:certs:issue
-      # Reference servers are driven DIRECTLY (not via includes — see the note
-      # above `tasks:` about the var-flatten hazard). mail1 uses the reference
-      # repo's defaults; mail2 supplies its per-instance identity + IPs.
-      - '"${CHORE_BIN:-chore}" -C .workspace/reference-mailserver up CONFIG=mail1'
-      - >-
-        "${CHORE_BIN:-chore}" -C .workspace/reference-mailserver up CONFIG=mail2
-        HOSTNAME=mail2.test
-        POSTGRES_IP=10.99.0.42 POSTFIX_IP=10.99.0.12 DOVECOT_IP=10.99.0.112
-        RSPAMD_IP=10.99.0.23 FAIL2BAN_IP=10.99.0.24
-      # Provision DKIM signing for the reference servers so they sign outbound
-      # mail — restmail then verifies it (dkim=pass) over the simulated internet.
-      - task: mailserver:wait
-        vars: {CONFIG: mail1}
-      - task: mailserver:wait
-        vars: {CONFIG: mail2}
-      - '"${CHORE_BIN:-chore}" -C .workspace/reference-mailserver dkim:provision CONFIG=mail1'
-      - '"${CHORE_BIN:-chore}" -C .workspace/reference-mailserver dkim:provision CONFIG=mail2 HOSTNAME=mail2.test'
       # restmail.test (the rest-mail instance) — config is testbed-owned.
       - task: instance:certs:issue
         vars: {CONFIG: restmail.test}
@@ -1016,7 +1020,9 @@ tasks:
         vars: {CONFIG: restmail.test}
       - task: instance:dns:register
         vars: {CONFIG: restmail.test}
-      - RESTMAIL_INTERNAL_MTLS=true "${CHORE_BIN:-chore}" instance:up CONFIG=restmail.test
+      - task: e2e:instances
+      - '"${CHORE_BIN:-chore}" -C .workspace/reference-mailserver dkim:provision CONFIG=mail1 HOSTNAME=mail1.test'
+      - '"${CHORE_BIN:-chore}" -C .workspace/reference-mailserver dkim:provision CONFIG=mail2 HOSTNAME=mail2.test'
       - task: instance:dkim
         vars: {CONFIG: restmail.test}
       # Fail the bring-up loudly if a domain's provisioned DKIM selector has
@@ -1024,6 +1030,42 @@ tasks:
       # signing/publishing under the wrong selector.
       - task: instance:dkim:check
         vars: {CONFIG: restmail.test}
+
+  e2e:instances:
+    desc: Start all three instances together; finish only when every instance answers healthy
+    cmds:
+      - |
+        "${CHORE_BIN:-chore}" e2e:mail1 & mail1=$!
+        "${CHORE_BIN:-chore}" e2e:mail2 & mail2=$!
+        "${CHORE_BIN:-chore}" e2e:restmail & restmail=$!
+        status=0
+        for pid in "$mail1" "$mail2" "$restmail"; do
+          wait "$pid" || status=1
+        done
+        exit "$status"
+
+  e2e:mail1:
+    desc: Start and wait for the first reference instance
+    cmds:
+      - '"${CHORE_BIN:-chore}" -C .workspace/reference-mailserver up CONFIG=mail1 HOSTNAME=mail1.test'
+      - task: mailserver:wait
+        vars: {CONFIG: mail1}
+
+  e2e:mail2:
+    desc: Start and wait for the second reference instance
+    cmds:
+      - >-
+        "${CHORE_BIN:-chore}" -C .workspace/reference-mailserver up CONFIG=mail2
+        HOSTNAME=mail2.test
+        POSTGRES_IP=10.99.0.42 POSTFIX_IP=10.99.0.12 DOVECOT_IP=10.99.0.112
+        RSPAMD_IP=10.99.0.23 FAIL2BAN_IP=10.99.0.24
+      - task: mailserver:wait
+        vars: {CONFIG: mail2}
+
+  e2e:restmail:
+    desc: Start and wait for the headless internal-mTLS instance
+    cmds:
+      - RESTMAIL_SKIP_FRONTENDS=true RESTMAIL_INTERNAL_MTLS=true "${CHORE_BIN:-chore}" instance:up CONFIG=restmail.test
 
   e2e:down:
     desc: 'Tear down the e2e topology (preserves data volumes)'
@@ -1103,7 +1145,7 @@ tasks:
           # became a filename and never matched, while `220` for SMTP passed. That
           # looked exactly like Dovecot failing to greet for 180s.
           set -f
-          fail=0
+          pids=""
           # IMAP and POP3 are implicit TLS now, so their greeting only arrives after a
           # handshake — `nc` would wait forever for one. The handshake is itself a
           # readiness signal a bare connect is not: only a serving process completes it.
@@ -1118,13 +1160,14 @@ tasks:
           for spec in "smtp {{.RESTMAIL_SMTP_IP}} {{.RESTMAIL_SMTP_PORT_INBOUND}} plain" \
                       "imap {{.RESTMAIL_IMAP_IP}} {{.RESTMAIL_IMAP_TLS_PORT}} tls" \
                       "pop3 {{.RESTMAIL_POP3_IP}} {{.RESTMAIL_POP3_TLS_PORT}} tls"; do
+            (
             set -- $spec; name=$1; ip=$2; port=$3; mode=$4
             case $name in
               smtp) expect="220" ;;
               imap) expect="* OK" ;;
               pop3) expect="+OK" ;;
             esac
-            [ -n "$ip" ] && [ -n "$port" ] || continue
+            [ -n "$ip" ] && [ -n "$port" ] || exit 0
             ready=""; i=0
             while [ $i -lt {{.WAIT_SECONDS}} ]; do
               # Feed the connection from a sleep rather than /dev/null: busybox nc
@@ -1160,9 +1203,13 @@ tasks:
               echo "  $name ready on $ip:$port"
             else
               echo "ERROR: $name never greeted on $ip:$port within {{.WAIT_SECONDS}}s" >&2
-              fail=1
+              exit 1
             fi
+            ) &
+            pids="$pids $!"
           done
+          fail=0
+          for pid in $pids; do wait "$pid" || fail=1; done
           exit $fail'
         docker run --rm --label "$RESTMAIL_LABEL" --network {{.RESTMAIL_NETWORK}} --entrypoint sh alpine/openssl -c "$probe"
 
@@ -1183,9 +1230,10 @@ tasks:
           # became a filename and never matched, while `220` for SMTP passed. That
           # looked exactly like Dovecot failing to greet for 180s.
           set -f
-          fail=0
+          pids=""
           for spec in "smtp mailref-'"$ref"'-postfix 25 220" \
                       "imap mailref-'"$ref"'-dovecot 143 *"; do
+            (
             set -- $spec; name=$1; host=$2; port=$3; expect=$4
             ready=""; i=0
             while [ $i -lt 180 ]; do
@@ -1200,9 +1248,13 @@ tasks:
               echo "  '"$ref"' $name ready"
             else
               echo "ERROR: '"$ref"' $name never greeted on $host:$port within 180s" >&2
-              fail=1
+              exit 1
             fi
+            ) &
+            pids="$pids $!"
           done
+          fail=0
+          for pid in $pids; do wait "$pid" || fail=1; done
           exit $fail'
         docker run --rm --label "$RESTMAIL_LABEL" --network testbed_mailnet alpine:3.20 sh -c "$probe"
 
@@ -2020,14 +2072,20 @@ tasks:
       - task: postgres:up
       - |
         echo "  waiting for postgres to become healthy..."
+        ready=false
         for i in $(seq 1 30); do
           status=$(docker inspect -f '{{`{{.State.Health.Status}}`}}' {{.RESTMAIL_PROJECT}}-postgres 2>/dev/null || echo "starting")
           if [ "$status" = "healthy" ]; then
             echo "  postgres healthy"
+            ready=true
             break
           fi
           sleep 1
         done
+        if [ "$ready" != true ]; then
+          echo "ERROR: postgres did not become healthy within 30s" >&2
+          exit 1
+        fi
       - task: garage:up
       - task: js-filter:up
       - task: api:up
@@ -2037,9 +2095,18 @@ tasks:
       - task: imap-gateway:up
       - task: pop3-gateway:up
       - task: gateways:wait
-      - task: webmail:up
-      - task: admin:up
+      - task: instance:frontends:up
       - task: status
+
+  instance:frontends:up:
+    desc: Start both frontends unless this instance is explicitly headless
+    cmds:
+      - |
+        set -e
+        if [ "${RESTMAIL_SKIP_FRONTENDS:-false}" != true ]; then
+          "${CHORE_BIN:-chore}" webmail:up
+          "${CHORE_BIN:-chore}" admin:up
+        fi
 
   # A reference instance is a traditional Postfix/Dovecot server, and its stack is
   # defined in rest-mail/reference-mailserver. This repo does NOT reimplement it:

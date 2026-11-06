@@ -87,7 +87,7 @@ tasks:
           --env-file "$SECRETS_ENV" \
           -v {{.POSTGRES_DATA_VOLUME}}:/var/lib/postgresql/data \
           --health-cmd 'pg_isready -U {{.POSTGRES_DB_USER}}' \
-          --health-interval 10s \
+          --health-interval 1s \
           --health-timeout 5s \
           --health-retries 5 \
           {{.POSTGRES_IMAGE}} >$OUTPUT 2>&1
