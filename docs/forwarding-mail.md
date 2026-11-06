@@ -22,7 +22,7 @@ insufficient sender quota receives 422 with `mailbox_full`.
 
 A missing, changed or unreadable source object fails the forward. The server
 does not silently send a message with fewer attachments. Sent, attachment
-references, quota and recipient queue or local-delivery rows commit together.
+references, quota and recipient queue rows commit together.
 Notifications and queued traces are published after commit.
 
 Object storage is outside the database transaction. A failed transaction can

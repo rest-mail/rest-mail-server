@@ -2,6 +2,8 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -13,9 +15,47 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
 	"github.com/rest-mail/rest-mail-server/internal/api/middleware"
 	"github.com/rest-mail/rest-mail-server/internal/auth"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/db/repositories"
+	"gorm.io/gorm"
 )
 
 // composeRoute is the compose routes, sending among them, through their registration.
+// deliverQueued does for a handler test what the queue worker and the SMTP gateway
+// do in a real install: each pending queue row of sent to a mailbox on this server
+// comes back in through the inbound route's delivery, and the row is marked
+// delivered. internal/api's TestLocalSendPassesDMARCOnItsSignature runs the real
+// worker and gateway; a row for anyone else stays pending.
+func deliverQueued(t *testing.T, h *MessageHandler, db *gorm.DB, sent models.Message) {
+	t.Helper()
+	var rows []models.OutboundQueue
+	if err := db.Where("message_id = ? AND status = ?", sent.ID, "pending").Order("id").Find(&rows).Error; err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range rows {
+		var mailbox models.Mailbox
+		err := repositories.FindActiveMailboxByAddress(db, row.Recipient, &mailbox)
+		if errors.Is(err, gorm.ErrRecordNotFound) || errors.Is(err, repositories.ErrMailboxUnavailable) {
+			continue
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := h.deliverToLocal(context.Background(), localDeliveryParams{
+			Mailbox: mailbox, Sender: sent.Sender, SenderName: sent.SenderName,
+			RecipientsTo: json.RawMessage(sent.RecipientsTo), RecipientsCc: json.RawMessage(sent.RecipientsCc),
+			Subject: sent.Subject, BodyText: sent.BodyText, BodyHTML: sent.BodyHTML,
+			MessageID: sent.MsgID, InReplyTo: sent.InReplyTo, References: sent.References,
+			RawMessage: row.RawMessage, RequireTLS: row.RequireTLS,
+		}); err != nil {
+			t.Fatalf("deliver to %s: %v", row.Recipient, err)
+		}
+		if err := db.Model(&row).Update("status", "delivered").Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 func composeRoute(h *MessageHandler) http.HandlerFunc {
 	routes := chi.NewRouter()
 	h.RegisterCompose(endpoint.Routes{Router: routes, Registry: endpoint.NewRegistry()})

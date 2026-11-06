@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -15,19 +16,35 @@ import (
 	"testing"
 	"time"
 
-	dkim "github.com/rest-mail/go-dkim/pkg/dkim"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/connlimiter"
 	smtpgw "github.com/rest-mail/rest-mail-server/internal/gateway/smtp"
+	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 	"golang.org/x/net/dns/dnsmessage"
 	"gorm.io/gorm"
 )
+
+// dnsZone is what serveZone answers from, with lower-case names without the
+// trailing dot: TXT records, the one MX host of a domain, and a host's IPv4 address.
+type dnsZone struct {
+	txt map[string][]string
+	mx  map[string]string
+	a   map[string]string
+}
 
 // serveTXT answers DNS queries on the loopback from records (lower-case names
 // without the trailing dot), and points this process's resolver at it until
 // the test ends. A name it has no records for does not exist.
 func serveTXT(t *testing.T, records map[string][]string) {
+	t.Helper()
+	serveZone(t, dnsZone{txt: records})
+}
+
+// serveZone answers DNS queries on the loopback from zone, and points this
+// process's resolver at it until the test ends. A name zone has no records for
+// does not exist.
+func serveZone(t *testing.T, zone dnsZone) {
 	t.Helper()
 	pc, err := net.ListenPacket("udp", "127.0.0.1:0")
 	if err != nil {
@@ -40,7 +57,7 @@ func serveTXT(t *testing.T, records map[string][]string) {
 			if err != nil {
 				return
 			}
-			if answer, ok := answerTXT(buf[:n], records); ok {
+			if answer, ok := answerZone(buf[:n], zone); ok {
 				_, _ = pc.WriteTo(answer, from)
 			}
 		}
@@ -59,7 +76,7 @@ func serveTXT(t *testing.T, records map[string][]string) {
 	})
 }
 
-func answerTXT(query []byte, records map[string][]string) ([]byte, bool) {
+func answerZone(query []byte, zone dnsZone) ([]byte, bool) {
 	var p dnsmessage.Parser
 	header, err := p.Start(query)
 	if err != nil {
@@ -69,16 +86,21 @@ func answerTXT(query []byte, records map[string][]string) ([]byte, bool) {
 	if err != nil {
 		return nil, false
 	}
-	txts, known := records[strings.TrimSuffix(strings.ToLower(q.Name.String()), ".")]
+	name := strings.TrimSuffix(strings.ToLower(q.Name.String()), ".")
+	txts, hasTXT := zone.txt[name]
+	mx, hasMX := zone.mx[name]
+	address, hasA := zone.a[name]
 	reply := dnsmessage.Header{ID: header.ID, Response: true, Authoritative: true, RecursionDesired: header.RecursionDesired}
-	if !known {
+	if !hasTXT && !hasMX && !hasA {
 		reply.RCode = dnsmessage.RCodeNameError
 	}
 	b := dnsmessage.NewBuilder(nil, reply)
 	if b.StartQuestions() != nil || b.Question(q) != nil || b.StartAnswers() != nil {
 		return nil, false
 	}
-	if q.Type == dnsmessage.TypeTXT {
+	head := dnsmessage.ResourceHeader{Name: q.Name, Class: dnsmessage.ClassINET, TTL: 60}
+	switch {
+	case q.Type == dnsmessage.TypeTXT:
 		for _, txt := range txts {
 			// A TXT string holds at most 255 bytes; longer values are split.
 			var parts []string
@@ -86,9 +108,19 @@ func answerTXT(query []byte, records map[string][]string) ([]byte, bool) {
 				parts, txt = append(parts, txt[:255]), txt[255:]
 			}
 			parts = append(parts, txt)
-			if b.TXTResource(dnsmessage.ResourceHeader{Name: q.Name, Class: dnsmessage.ClassINET, TTL: 60}, dnsmessage.TXTResource{TXT: parts}) != nil {
+			if b.TXTResource(head, dnsmessage.TXTResource{TXT: parts}) != nil {
 				return nil, false
 			}
+		}
+	case q.Type == dnsmessage.TypeMX && hasMX:
+		host, err := dnsmessage.NewName(mx + ".")
+		if err != nil || b.MXResource(head, dnsmessage.MXResource{Pref: 10, MX: host}) != nil {
+			return nil, false
+		}
+	case q.Type == dnsmessage.TypeA && hasA:
+		ip := net.ParseIP(address).To4()
+		if ip == nil || b.AResource(head, dnsmessage.AResource{A: [4]byte(ip)}) != nil {
+			return nil, false
 		}
 	}
 	answer, err := b.Finish()
@@ -104,30 +136,40 @@ type submissionFixture struct {
 	api     *apiclient.Client
 	addr    string
 	rootCAs *x509.CertPool
+	routeUp *bool // set once the mail route around the fixture is running
 }
 
 func newSubmissionFixture(t *testing.T) *submissionFixture {
 	t.Helper()
 	f := newCredentialFixture(t)
 
-	private, public, err := dkim.GenerateKey(2048)
-	if err != nil {
-		t.Fatalf("generate a DKIM key: %v", err)
-	}
-	record, err := dkim.RecordValue(public)
-	if err != nil {
-		t.Fatalf("DKIM record: %v", err)
-	}
-	// Stored as plaintext, as it is with no MASTER_KEY.
-	if err := f.db.Model(&models.Domain{}).Where("name = ?", "example.test").
-		Updates(models.Domain{DKIMSelector: "rm1", DKIMPrivateKey: private}).Error; err != nil {
-		t.Fatalf("set the domain's DKIM key: %v", err)
-	}
-	serveTXT(t, map[string][]string{
-		"example.test":                {"v=spf1 ip4:192.0.2.25 -all"},
-		"_dmarc.example.test":         {"v=DMARC1; p=reject"},
-		"rm1._domainkey.example.test": {record},
+	record := giveDomainDKIMKey(t, f.db, "example.test")
+	serveZone(t, dnsZone{
+		txt: map[string][]string{
+			"example.test":                {"v=spf1 ip4:192.0.2.25 -all"},
+			"_dmarc.example.test":         {"v=DMARC1; p=reject"},
+			"rm1._domainkey.example.test": {record},
+		},
+		mx: map[string]string{"example.test": localSendMX},
+		a:  map[string]string{localSendMX: "127.0.0.1"},
 	})
+	// The inbound checks a domain runs, without the greylist that would hold a
+	// first message from this server back for minutes.
+	var domain models.Domain
+	if err := f.db.Where("name = ?", "example.test").First(&domain).Error; err != nil {
+		t.Fatal(err)
+	}
+	steps, err := json.Marshal([]pipeline.FilterConfig{
+		{Name: "spf_check", Type: pipeline.FilterTypeAction, Enabled: true, Unskippable: true},
+		{Name: "dkim_verify", Type: pipeline.FilterTypeTransform, Enabled: true, Unskippable: true},
+		{Name: "dmarc_check", Type: pipeline.FilterTypeAction, Enabled: true, Unskippable: true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.db.Create(&models.Pipeline{DomainID: domain.ID, Direction: "inbound", Active: true, Filters: steps}).Error; err != nil {
+		t.Fatal(err)
+	}
 
 	api, addr, rootCAs := startSubmission(t, f.db, f.router, f.gatewayRouter())
 	return &submissionFixture{credentialFixture: f, api: api, addr: addr, rootCAs: rootCAs}
@@ -251,11 +293,11 @@ func (f *submissionFixture) inInbox(subject string) bool {
 }
 
 // Mail submitted over SMTP to a mailbox on this server, its own included,
-// reaches it, however the session signed in: through the real SMTP gateway,
-// the router and its inbound pipeline, with SPF -all, DMARC p=reject and the
-// domain's DKIM key published. E2E stage 14 failed here with 550 5.7.1: the
-// gateway delivered the message unsigned, from the submitting client's
-// address, which SPF failed and DMARC refused.
+// reaches it, however the session signed in: through the real SMTP gateway, the
+// outbound queue and worker, and the inbound port with its pipeline, with SPF
+// -all, DMARC p=reject and the domain's DKIM key published. E2E stage 14 failed
+// here with 550 5.7.1: the gateway delivered the message unsigned, from the
+// submitting client's address, which SPF failed and DMARC refused.
 func TestSMTPSubmission_ToALocalMailbox(t *testing.T) {
 	f := newSubmissionFixture(t)
 
@@ -275,9 +317,7 @@ func TestSMTPSubmission_ToALocalMailbox(t *testing.T) {
 		if err := send(c, f.address, f.address, submittedMessage(f.address, f.address, subject)); err != nil {
 			t.Fatalf("send to its own mailbox: %v", err)
 		}
-		if !f.inInbox(subject) {
-			t.Error("not in the INBOX")
-		}
+		f.wantInInboxSigned(subject)
 	})
 
 	t.Run("with an app password", func(t *testing.T) {
@@ -287,10 +327,58 @@ func TestSMTPSubmission_ToALocalMailbox(t *testing.T) {
 		if err := send(c, f.address, f.address, submittedMessage(f.address, f.address, subject)); err != nil {
 			t.Fatalf("send to its own mailbox: %v", err)
 		}
-		if !f.inInbox(subject) {
-			t.Error("not in the INBOX")
-		}
+		f.wantInInboxSigned(subject)
 	})
+}
+
+// A submission whose domain has a key that cannot sign is accepted and queued,
+// and the worker holds it on the queue rather than let it leave unsigned.
+func TestSMTPSubmission_ThatCannotBeSignedWaitsOnTheQueue(t *testing.T) {
+	f := newSubmissionFixture(t)
+	if err := f.db.Model(&models.Domain{}).Where("name = ?", "example.test").Update("dkim_private_key", "not a key").Error; err != nil {
+		t.Fatal(err)
+	}
+	subject := "the key cannot sign"
+	c := f.dial(f.address, credentialTestPassword)
+	if err := send(c, f.address, f.address, submittedMessage(f.address, f.address, subject)); err != nil {
+		t.Fatalf("submit: %v", err)
+	}
+	startMailRoute(t, f.db, f.router)
+	row := queueRow(t, f.db, f.address, "deferred", "delivered", "bounced")
+	if row.Status != "deferred" {
+		t.Errorf("queue row: %s: %s; want deferred", row.Status, row.LastError)
+	}
+	if f.inInbox(subject) {
+		t.Error("delivered unsigned")
+	}
+}
+
+// wantInInboxSigned runs the mail route until the message has arrived, and checks
+// that it arrived with the verdicts the signature earned.
+func (f *submissionFixture) wantInInboxSigned(subject string) {
+	f.t.Helper()
+	if f.routeUp == nil {
+		f.routeUp = new(bool)
+		startMailRoute(f.t, f.db, f.router)
+	}
+	deadline := time.Now().Add(30 * time.Second)
+	for !f.inInbox(subject) {
+		if time.Now().After(deadline) {
+			var rows []models.OutboundQueue
+			f.db.Find(&rows)
+			f.t.Fatalf("%q not in the INBOX; the queue: %+v", subject, rows)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	var copy models.Message
+	if err := f.db.Where("mailbox_id = ? AND folder = ? AND subject = ?", f.mailboxID, "INBOX", subject).First(&copy).Error; err != nil {
+		f.t.Fatal(err)
+	}
+	for _, want := range []string{"DKIM-Signature:", "dkim=pass", "dmarc=pass"} {
+		if !strings.Contains(copy.RawMessage, want) {
+			f.t.Errorf("stored copy has no %q; its verdicts: %s", want, authenticationResults(copy.RawMessage))
+		}
+	}
 }
 
 // An app password sends only as its own mailbox, never as an account its
