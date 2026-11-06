@@ -322,6 +322,50 @@ func TestCleanResetEveryDomainColumn(t *testing.T) {
 	}
 }
 
+func TestCleanResetEveryMailboxColumn(t *testing.T) {
+	db, handler, admin := cleanResetFixture(t)
+	if err := db.Model(&admin).Updates(map[string]any{
+		"quiet_hours_enabled": true, "quiet_hours_start": "22:00", "quiet_hours_end": "07:00",
+		"quiet_hours_time_zone": "UTC", "contact_reply_time_enabled": true, "quota_bytes": 5,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	resetFixture(t, handler)
+	var kept models.Mailbox
+	if err := db.First(&kept, admin.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if kept.QuietHoursEnabled || kept.QuietHoursStart != "" || kept.QuietHoursEnd != "" ||
+		kept.QuietHoursTimeZone != "" || kept.ContactReplyTimeEnabled || kept.QuotaBytes != 1073741824 {
+		t.Errorf("the retained administrator kept its settings across the reset: %+v", kept)
+	}
+	var columns []string
+	if err := db.Raw(`SELECT column_name FROM information_schema.columns
+		WHERE table_schema = current_schema() AND table_name = 'mailboxes'`).Scan(&columns).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(columns) == 0 {
+		t.Fatal("no mailbox columns")
+	}
+	for _, column := range columns {
+		_, reset := resetMailboxSettings[column]
+		reason, kept := resetMailboxKept[column]
+		switch {
+		case reset && kept:
+			t.Errorf("mailbox column %s is both reset and kept", column)
+		case kept && reason == "":
+			t.Errorf("kept mailbox column %s has no reason", column)
+		case !reset && !kept:
+			t.Errorf("mailbox column %s is neither reset nor kept", column)
+		}
+	}
+	for column := range resetMailboxSettings {
+		if !slices.Contains(columns, column) {
+			t.Errorf("reset mailbox column %s does not exist", column)
+		}
+	}
+}
+
 func TestCleanResetMemoryAndStreams(t *testing.T) {
 	db, handler, admin := cleanResetFixture(t)
 	sessions := NewSessionCache(db, time.Hour)

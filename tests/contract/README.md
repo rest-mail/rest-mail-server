@@ -1797,12 +1797,35 @@ the account this leaves in the path. `0`, an undecodable id and every documented
 reads or writes a stash value. The due dates and snoozes live in tables the reset
 empties.
 
+The account settings operations reset and seed before each exchange as well,
+refusals included (`account_settings_of_its_own`): `getVacation`, `setVacation`,
+`disableVacation`, `getSieveScript`, `putSieveScript`, `deleteSieveScript`,
+`validateSieveScript`, `getQuietHours`, `setQuietHours`, `getAccountSendLimits`,
+`setAccountSendLimits` and `getQuota`. The examples name account `1`, which after
+a reset is the seeded `eve@restmail.test`, an account the fixture admin's session
+does not reach (404). So an exchange aimed at a positive account id other than
+missing's `2147483647` gets an account of its own on the seeded `restmail.test`
+(`contract-own-settings-<time>@restmail.test`, made with the two-factor session),
+the 422s included. What the exchange reads, replaces or removes is made on that
+account after the reset: a script for the Sieve read and delete, and a vacation
+reply for the disable. The install's 201 needs none; its 200, a replace, has no
+example of its own and is not sent in this phase. `0` and
+missing's id keep theirs. The hook is registered before these operations' other
+hooks, except for the quiet hours: `entrypoint.py` registers it after their own
+hook, which finds a live account for the examples' `1` and fixes their time zone.
+`putSieveScript`'s link reaches the read and the read's the delete, and no other
+link reaches or starts from these, so nothing that follows them is left unmoved.
+No stash value is involved. The reset also puts the retained administrators'
+account settings (quiet hours, the contact setting, the quota) back to a new
+account's, as it does for their domains' (`resetMailboxSettings`, held to every
+column of `mailboxes` by `TestCleanResetEveryMailboxColumn`).
+
 This happens only with `CONTRACT_RESET_SEED=1`, which `tests/contract/run.sh own-data`
 sets, and that phase is a gate of its own, sent by `chore test:contract-teardown`
 just before the teardown. It sends the moved operations with everything that follows
 `createDomain`'s, `createPipeline`'s, `createAlias`'s, `createCustomFilter`'s,
-`createFolder`'s, `createContact`'s, `sendMessage`'s, `saveDraft`'s and
-`createAccount`'s links
+`createFolder`'s, `createContact`'s, `sendMessage`'s, `saveDraft`'s,
+`createAccount`'s and `putSieveScript`'s links
 (`own_data.py`), and fails on a skipped
 exchange as well as a failed one.
 

@@ -52,6 +52,41 @@ var resetDomainKept = map[string]string{
 	"updated_at":  "Bookkeeping, not a setting.",
 }
 
+// resetMailboxSettings puts each account the reset keeps (the initial
+// administrators) back to a new account's settings, as resetDomainSettings does
+// for their domains. The row survives so its sessions keep working, and without
+// this a quiet hours window, contact setting or quota set on it before the reset
+// would still be there after it (#1385).
+var resetMailboxSettings = map[string]string{
+	"contact_reply_time_enabled": "DEFAULT",
+	"quiet_hours_enabled":        "DEFAULT",
+	"quiet_hours_start":          "DEFAULT",
+	"quiet_hours_end":            "DEFAULT",
+	"quiet_hours_time_zone":      "DEFAULT",
+	"quota_bytes":                "DEFAULT",
+	"quota_used_bytes":           "DEFAULT",
+}
+
+// resetMailboxKept are the account columns the reset leaves as they are, and
+// why. Every other column must be in resetMailboxSettings.
+var resetMailboxKept = map[string]string{
+	"id":                       "The retained administrators' sessions and grants name the account by id.",
+	"domain_id":                "The account's address is on that domain, which the reset keeps.",
+	"local_part":               "Part of the address the retained administrator signs in with.",
+	"address":                  "The retained administrator signs in with it.",
+	"display_name":             "Part of who the retained administrator is, given when the installation was made.",
+	"active":                   "The reset caller signs in with this account, so it stays as it is.",
+	"last_login_at":            "Bookkeeping, not a setting.",
+	"password_change_required": "Part of the retained credentials: the reset keeps them as they are.",
+	"two_factor_required":      "Part of the retained credentials: the reset keeps them as they are.",
+	"credential_epoch":         "Stamped into the retained sessions, which must keep working across the reset.",
+	"bootstrap_expires_at":     "Part of the retained credentials: the reset keeps them as they are.",
+	"owner_id":                 "Initial administrators are not owned accounts; the reset keeps who owns what among them.",
+	"last_password_change":     "Part of the retained credentials: the reset keeps them as they are.",
+	"created_at":               "Bookkeeping, not a setting.",
+	"updated_at":               "Bookkeeping, not a setting.",
+}
+
 func (h *TestHandler) OnReset(reset func()) {
 	if !h.productionLocked() {
 		h.resetState = append(h.resetState, reset)
@@ -141,6 +176,16 @@ func cleanResetData(tx *gorm.DB) error {
 			AS baseline(id bigint, dkim_selector text, dkim_private_key text, dkim_created_at timestamptz)
 			WHERE domains.id = baseline.id`).Error; err != nil {
 			return fmt.Errorf("restore the retained domains' provisioned DKIM keys: %w", err)
+		}
+	}
+	if containsResetTable(tables, "mailboxes") {
+		assignments := make([]string, 0, len(resetMailboxSettings))
+		for column, value := range resetMailboxSettings {
+			assignments = append(assignments, resetIdentifier(column)+" = "+value)
+		}
+		sort.Strings(assignments)
+		if err := tx.Exec("UPDATE mailboxes SET " + strings.Join(assignments, ", ")).Error; err != nil {
+			return fmt.Errorf("restart the retained accounts' settings: %w", err)
 		}
 	}
 	// The retained accounts lost their messages and their usage row with them,
