@@ -137,7 +137,7 @@ jobs:
       - name: Assert stages executed (guard against silent skips)
         # Belt-and-suspenders on top of E2E_REQUIRE_STACK: a green e2e must mean
         # the stages actually RAN. Fail if any top-level stage skipped, or if
-        # fewer than all 14 stages reached PASS.
+        # fewer than all 15 stages reached PASS.
         run: |
           log="$RUNNER_TEMP/e2e.log"
           skipped=$(grep -cE -- '--- SKIP: TestStages/Stage[0-9]+_[A-Za-z]+ \(' "$log" || true)
@@ -148,11 +148,11 @@ jobs:
             grep -E -- '--- SKIP: TestStages/Stage' "$log" || true
             exit 1
           fi
-          if [ "$passed" -lt 14 ]; then
-            echo "::error::expected all 14 e2e stages to PASS, only $passed did"
+          if [ "$passed" -lt 15 ]; then
+            echo "::error::expected all 15 e2e stages to PASS, only $passed did"
             exit 1
           fi
-          echo "all 14 e2e stages executed and passed"
+          echo "all 15 e2e stages executed and passed"
 
       - name: Copy a mailbox into REST Mail with imapsync
         # What an operator cutting over from Dovecot reaches for (#734): folders,

@@ -990,6 +990,9 @@ tasks:
       # above `tasks:` about the var-flatten hazard). mail1 uses the reference
       # repo's defaults; mail2 supplies its per-instance identity + IPs.
       - '"${CHORE_BIN:-chore}" -C .workspace/reference-mailserver up CONFIG=mail1'
+      # mail2 is the receiver that judges restmail.test's outbound mail (stage 15):
+      # this overlay has its rspamd check DKIM, SPF and DMARC and record the verdict.
+      - cp tests/e2e/testdata/rspamd-verdict/*.conf .workspace/reference-mailserver/configs/mail2/rspamd-overlay/
       - >-
         "${CHORE_BIN:-chore}" -C .workspace/reference-mailserver up CONFIG=mail2
         HOSTNAME=mail2.test
