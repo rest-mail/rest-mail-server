@@ -17,7 +17,7 @@ import (
 // exactly what sendMessage accepts as From (#1611).
 func TestListAccountAddresses(t *testing.T) {
 	base := openAccountsTestDB(t)
-	if err := base.AutoMigrate(&models.Alias{}, &models.Message{}, &models.Contact{}); err != nil {
+	if err := migrateModels(base, &models.Alias{}, &models.Message{}, &models.Contact{}); err != nil {
 		t.Skipf("account addresses DB test skipped: migrate failed (%v)", err)
 	}
 	// The sends below store real Sent messages; a transaction keeps them, and
