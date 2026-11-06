@@ -145,7 +145,6 @@ SURVIVES_A_RESET = (
     "mfa_admin_sessions",
     "clean_starts",
     "linked_domain_ids",
-    "created_sender_rules",
 )
 
 
@@ -203,12 +202,6 @@ def the_domain_since_the_reset(transaction):
     return hooks.stash["domain_id"]
 
 
-@hooks.before("listAllowlist")
-@hooks.before("addToAllowlist")
-@hooks.before("removeFromAllowlist")
-@hooks.before("listBlocklist")
-@hooks.before("addToBlocklist")
-@hooks.before("removeFromBlocklist")
 @hooks.before("domainDNSCheck")
 @hooks.before("getDomainRelay")
 @hooks.before("listSuppressions")
@@ -233,11 +226,6 @@ def a_live_domain_for_the_link(transaction):
         return
     domain_id = the_domain_since_the_reset(transaction)
     to_domain(transaction, domain_id)
-    # An entry the link names is added again on this domain (on_the_added_sender_rule).
-    if len(parts) > 7 and parts[6] in ("allowlist", "blocklist"):
-        rules = hooks.stash.get("created_sender_rules", {})
-        for parent in [p for p in rules if p.endswith("/" + parts[6])]:
-            rules["/".join(parts[:5] + [str(domain_id), parts[6]])] = rules.pop(parent)
     # The key the link names went with the domain.
     if parts[4] == "dkim" and " > 204" in transaction.get("name", ""):
         with (Path(__file__).resolve().parent / "fixtures" / "dkim-key.pem").open() as key:
@@ -2497,6 +2485,10 @@ def remove_a_previous_sender_rule_probe(transaction):
     # earlier one added, a 409. Claim an absent pattern before its first add,
     # then remove only that probe's entry when generated bodies repeat it.
     # Existing entries and all generated request bytes stay untouched.
+    # After a reset (the own-data phase) the add is sent to a domain of its own
+    # (on_a_domain_of_its_own), where no earlier probe's entry is left, so
+    # created_sender_rule_probes, which the reset clears, starts empty.
+    on_a_domain_of_its_own(transaction)
     body = hooks.get_json(transaction)
     pattern = body.get("pattern") if isinstance(body, dict) else None
     path = sender_rules_path(transaction)
@@ -2528,71 +2520,61 @@ def remove_a_previous_sender_rule_probe(transaction):
             raise RuntimeError("could not remove the previous sender rule probe")
 
 
-@hooks.after("addToAllowlist")
-@hooks.after("addToBlocklist")
-def keep_the_added_sender_rule(transaction):
-    # Only the example runs after hooks, and its id is what
-    # removeFromAllowlist and removeFromBlocklist are linked to. Probes
-    # repeating its pattern remove that entry above, so remember what to
-    # restore.
-    data = hooks.get_json(transaction, "real").get("data") or {}
-    if not data.get("id"):
+def on_a_domain_of_its_own(transaction):
+    """With a reset asked for, reset before this sender rule exchange, refusals
+    included, and send one aimed at a positive domain id other than missing's
+    2147483647 to a domain of its own: the reset removed the domain
+    createDomain's link names. A refusal for its body or entry is then refused
+    for that, not for a domain that is gone."""
+    if not asked_for_a_clean_start():
         return
-    path = sender_rules_path(transaction)
-    created = hooks.stash.get("created_sender_rules", {})
-    created[path] = {"id": data["id"], "body": hooks.get_json(transaction)}
-    hooks.stash["created_sender_rules"] = created
+    start_clean(transaction)
+    parts = transaction["fullPath"].partition("?")[0].split("/")
+    if len(parts) > 5 and positive_id(parts[5]) and parts[5] != "2147483647":
+        to_domain(transaction, a_domain_of_its_own(transaction))
+
+
+@hooks.before("listAllowlist")
+@hooks.before("listBlocklist")
+def list_sender_rules_from_a_clean_start(transaction):
+    # The list needs nothing in it: after a reset it reads a domain of its own.
+    on_a_domain_of_its_own(transaction)
+
+
+# The entry removeFromAllowlist and removeFromBlocklist are sent to when the id
+# they carry has none: the add's link names one that a probe repeating its
+# pattern or the documented remove may since have removed, and a reset removes
+# it too.
+OWN_SENDER_RULE = {"pattern": "@contract-own-rule.test"}
 
 
 @hooks.before("removeFromAllowlist")
 @hooks.before("removeFromBlocklist")
-def on_the_added_sender_rule(transaction):
-    # Follow the linked entry to its current id, adding it again when a probe
-    # removed it without a successful add of its own to replace it. Any other
-    # id (the 404 examples, path parameter probes) is left alone.
+def on_a_sender_rule_of_its_own(transaction):
+    # Each exchange the link (or coverage's placeholder 1) reaches is sent to an
+    # entry that exists: after a reset always one of its own, on a domain of its
+    # own, and otherwise one of its own only when the list has no entry with the
+    # id it carries. The refusals keep their ids: missing's 2147483647, a
+    # non-positive or undecodable id, every exchange documented to answer 404,
+    # and a domain that is not there (left to the probe).
+    on_a_domain_of_its_own(transaction)
     path, _, query = transaction["fullPath"].partition("?")
     parent, _, entry_id = path.rpartition("/")
-    created = hooks.stash.get("created_sender_rules", {}).get(parent)
-    coverage_placeholder = os.environ.get("CONTRACT_COVERAGE") == "1" and entry_id == "1"
-    if (
-        not created
-        and coverage_placeholder
-        and " > 204" in transaction.get("name", "")
-        and sender_rules_path({"fullPath": parent}) is not None
-    ):
-        created = {"id": 1, "body": {"pattern": "contract-remove@restmail.test"}}
-    if not created or (entry_id != str(created["id"]) and not coverage_placeholder):
+    if not positive_id(entry_id) or entry_id == "2147483647":
         return
-    origin = "{}//{}:{}".format(
-        transaction["protocol"],
-        transaction["host"],
-        transaction["port"],
-    )
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": "Bearer " + admin_token(origin),
-    }
-    pattern = created["body"]["pattern"]
-    rules = sender_rules(origin, parent, headers)
+    if " > 404" in transaction.get("name", ""):
+        return
+    if sender_rules_path({"fullPath": parent}) is None:
+        return
+    origin = origin_of(transaction)
+    rules = sender_rules(origin, parent, {"Authorization": "Bearer " + admin_token(origin)})
     if rules is None:
         return
-    rule = next(
-        (
-            r
-            for r in rules
-            if r.get("pattern") == pattern
-        ),
-        None,
-    )
+    if any(str(r.get("id")) == entry_id for r in rules):
+        return
+    rule = next((r for r in rules if r.get("pattern") == OWN_SENDER_RULE["pattern"]), None)
     if rule is None:
-        request = urllib.request.Request(
-            origin + parent,
-            data=json.dumps(created["body"]).encode(),
-            headers=headers,
-            method="POST",
-        )
-        with urllib.request.urlopen(request, timeout=10) as response:
-            rule = json.load(response)["data"]
+        rule = fixture_call(transaction, "POST", parent, OWN_SENDER_RULE)
     transaction["fullPath"] = (
         parent + "/" + str(rule["id"]) + ("?" + query if query else "")
     )
