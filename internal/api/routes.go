@@ -807,6 +807,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 
 		// Queue management
 		queueH.Register(admin, handlers.QueueRouteChecks{At: describedCapability(needs)})
+		handlers.NewReputationHandler(db).Register(admin, describedCapability(needs))
 
 		policyChecks := handlers.DomainPolicyRouteChecks{
 			OnDomain: describedCapability(needsOnDomain),

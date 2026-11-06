@@ -13863,6 +13863,44 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/admin/reputation:
+    get:
+      operationId: getReputation
+      description: "Per hosted domain, over a window of the last `days` days (default 7, at most 90) and the same length before it: DMARC pass and fail message counts from received aggregate reports whose period ends in the window, a message counting as a pass when DKIM or SPF passed; outbound delivered, bounced and deferred counts for mail queued in the window and sent as the domain, with bounces by failure category and the bounce rate (bounced over delivered plus bounced, expired counting as bounced); and whether the domain's outbound mail is stopped. Complaints are always null: the server does not record complaint reports yet. The current DNSBL listings of the server's sending IPs are given once, since every domain sends from them. Rates are null when there is nothing to divide. Domains come worst first: by bounce rate, then by name. Only data the server already stores is read."
+      tags: ["Admin: Domains"]
+      security:
+        - CookieAuth: [queue:read]
+        - BearerAuth: [queue:read]
+        - APIKeyAuth: [queue:read]
+      summary: Read each domain's sending reputation
+      parameters:
+        - name: days
+          in: query
+          required: false
+          description: The window's length in days, ending now; 7 when left out.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 90
+      responses:
+        "200":
+          description: Each hosted domain's figures, worst bounce rate first, and the server's DNSBL listings
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Reputation"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          description: Authentication refusals exceeded the configured rate limit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/v1/admin/domains/{id}/dns:
     parameters:
       - $ref: "#/components/parameters/ResourceId"
@@ -18501,6 +18539,154 @@ components:
         updated_at:
           type: string
           format: date-time
+
+    Reputation:
+      description: The reputation view (#1590), over the last `days` days ending at `to`.
+      type: object
+      additionalProperties: false
+      required: [from, to, days, dnsbl, domains]
+      properties:
+        from:
+          type: string
+          format: date-time
+        to:
+          type: string
+          format: date-time
+        days:
+          type: integer
+        dnsbl:
+          $ref: "#/components/schemas/ReputationDNSBL"
+        domains:
+          type: array
+          items:
+            $ref: "#/components/schemas/DomainReputation"
+
+    ReputationDNSBL:
+      description: The pairs of the server's sending IPs and blocklists whose latest recorded DNSBL event is a listing. Every domain sends from these IPs.
+      type: object
+      additionalProperties: false
+      required: [listed, listings]
+      properties:
+        listed:
+          type: boolean
+        listings:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReputationDNSBLListing"
+
+    ReputationDNSBLListing:
+      type: object
+      additionalProperties: false
+      required: [ip, provider, zone, since, reason]
+      properties:
+        ip:
+          type: string
+        provider:
+          type: string
+        zone:
+          type: string
+        since:
+          type: string
+          format: date-time
+        reason:
+          type: string
+
+    DomainReputation:
+      description: One hosted domain's figures for the window (current) and the window of the same length before it (previous), against which a spike shows.
+      type: object
+      additionalProperties: false
+      required: [domain_id, domain, outbound_stop, current, previous]
+      properties:
+        domain_id:
+          type: integer
+        domain:
+          type: string
+        outbound_stop:
+          description: The operator's stop on the domain's outbound mail, or null while it sends
+          oneOf:
+            - $ref: "#/components/schemas/DomainOutboundStop"
+            - type: "null"
+        current:
+          $ref: "#/components/schemas/ReputationFigures"
+        previous:
+          $ref: "#/components/schemas/ReputationFigures"
+
+    ReputationFigures:
+      type: object
+      additionalProperties: false
+      required: [dmarc, outbound, complaints]
+      properties:
+        dmarc:
+          $ref: "#/components/schemas/ReputationDMARC"
+        outbound:
+          $ref: "#/components/schemas/ReputationOutbound"
+        complaints:
+          description: "Always null: complaint reports are not recorded yet (#733)"
+          type: ["integer", "null"]
+          format: int64
+
+    ReputationDMARC:
+      description: Messages received DMARC aggregate reports evaluated, a pass when DKIM or SPF passed.
+      type: object
+      additionalProperties: false
+      required: [pass, fail, pass_rate]
+      properties:
+        pass:
+          type: integer
+          format: int64
+        fail:
+          type: integer
+          format: int64
+        pass_rate:
+          description: pass over pass plus fail, from 0 to 1; null without reported messages
+          type: ["number", "null"]
+          format: double
+
+    ReputationOutbound:
+      description: Mail queued in the window and sent as the domain, by where it stands.
+      type: object
+      additionalProperties: false
+      required: [delivered, bounced, deferred, bounce_rate, bounces]
+      properties:
+        delivered:
+          type: integer
+          format: int64
+        bounced:
+          type: integer
+          format: int64
+        deferred:
+          type: integer
+          format: int64
+        bounce_rate:
+          description: bounced over delivered plus bounced, from 0 to 1; null with neither
+          type: ["number", "null"]
+          format: double
+        bounces:
+          $ref: "#/components/schemas/ReputationBounces"
+
+    ReputationBounces:
+      description: The bounced mail by why it bounced.
+      type: object
+      additionalProperties: false
+      required: [bad_mailbox, bad_domain, policy, other_permanent, expired]
+      properties:
+        bad_mailbox:
+          type: integer
+          format: int64
+        bad_domain:
+          type: integer
+          format: int64
+        policy:
+          type: integer
+          format: int64
+        other_permanent:
+          description: Bounced with any other or no recorded category
+          type: integer
+          format: int64
+        expired:
+          description: Retried until its queue lifetime ran out
+          type: integer
+          format: int64
 
     DomainOutboundStop:
       description: An operator's stop on a domain's outbound mail (#1590). The domain's mail is queued and held while it stands.
