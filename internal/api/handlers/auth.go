@@ -670,7 +670,7 @@ func (h *AuthHandler) RegisterSignIn(rs endpoint.Routes, checks SessionRouteChec
 		OperationID: "resetAdmin", Summary: "Let an account back in with a reset token; also hands a server over", Tags: tags,
 		Description: "Redeems a single-use reset_admin token (restmail reset-admin, or an owner key's). The account it names " +
 			"gets the password the redeemer chose, loses its authenticator and must enroll a new one, and its app passwords " +
-			"and every token it was issued are dead at once. A password under 12 bytes is 422 and does not spend the token.",
+			"and every token it was issued are dead at once. A password under 12 characters or too easy to guess is 422 and does not spend the token.",
 		Security: oapifly.Public, Headers: sessionCookies, Errors: []int{http.StatusUnauthorized},
 		Middleware: []endpoint.Middleware{checks.Throttle, checks.Audit("auth.reset", middleware.AuditStartedSession())}}, h.reset)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/auth/recover",
@@ -759,14 +759,14 @@ func (h *AuthHandler) changePassword(r *http.Request, req changePasswordRequest)
 		// 403, never 401: the session is still good, only the password is wrong.
 		return passwordChanged{}, endpoint.Refuse(http.StatusForbidden, "invalid_password", "Current password is incorrect")
 	}
-	if bootstrap.PasswordTooShort(req.NewPassword) {
-		return passwordChanged{}, endpoint.Invalid(map[string]string{
-			"new_password": fmt.Sprintf("must be at least %d characters", minChosenPasswordLength),
-		})
-	}
 	// The point of a forced change is a credential nobody else has seen.
+	// Checked before strength: an unchanged password is refused whatever its
+	// score, and saying so is the more useful answer.
 	if req.NewPassword == req.CurrentPassword {
 		return passwordChanged{}, endpoint.Invalid(map[string]string{"new_password": "must differ from the current password"})
+	}
+	if problem := bootstrap.ChosenPasswordProblem(req.NewPassword, account.Address); problem != "" {
+		return passwordChanged{}, endpoint.Invalid(map[string]string{"new_password": problem})
 	}
 
 	hash, err := hashPassword(req.NewPassword)
@@ -892,7 +892,7 @@ func redeemRefusal(ctx context.Context, err error) error {
 	switch {
 	case errors.Is(err, bootstrap.ErrTokenInvalid):
 		return endpoint.Refuse(http.StatusUnauthorized, "invalid_token", err.Error())
-	case errors.Is(err, bootstrap.ErrPasswordTooShort):
+	case errors.Is(err, bootstrap.ErrPasswordTooShort), errors.Is(err, bootstrap.ErrPasswordGuessable):
 		return endpoint.Invalid(map[string]string{"password": err.Error()})
 	}
 	slog.ErrorContext(ctx, "redeeming a one-time token failed", "error", err)
@@ -946,8 +946,8 @@ func (h *AuthHandler) recoverAccount(r *http.Request, req recoverRequest) (endpo
 	if req.RecoveryCode == "" {
 		problems["recovery_code"] = "required: one of the account's recovery codes"
 	}
-	if bootstrap.PasswordTooShort(req.NewPassword) {
-		problems["new_password"] = fmt.Sprintf("must be at least %d characters", minChosenPasswordLength)
+	if problem := bootstrap.ChosenPasswordProblem(req.NewPassword, req.Email); problem != "" {
+		problems["new_password"] = problem
 	}
 	if req.Client != "" && req.Client != clientNative {
 		problems["client"] = `must be "native" or omitted`

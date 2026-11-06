@@ -80,7 +80,7 @@ func testStage8ConsoleFlows(t *testing.T) {
 		// second factor.
 		mb := getMailboxByAddress(t, adminClient, "consoleuser@restmail.test")
 		resp, err := twoFactorAdmin(t).patch(fmt.Sprintf("/api/v1/admin/mailboxes/%d", mb.ID),
-			map[string]string{"password": "newpassword123"})
+			map[string]string{"password": "tangerine-ledger-orbit-123"})
 		requireNoError(t, err)
 		if resp.StatusCode >= 400 {
 			body := readBody(resp)
@@ -90,7 +90,7 @@ func testStage8ConsoleFlows(t *testing.T) {
 
 		// Verify new password works
 		testClient := newAPIClient()
-		err = testClient.login("consoleuser@restmail.test", "newpassword123")
+		err = testClient.login("consoleuser@restmail.test", "tangerine-ledger-orbit-123")
 		if err != nil {
 			t.Fatalf("login with new password failed: %v", err)
 		}

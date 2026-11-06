@@ -131,6 +131,16 @@ func TestResetPassword_Refusals(t *testing.T) {
 	if status, _, errOut := resetWith([]string{"--address", adminAddress}, "short"); status != exitUsage || errorCodeIn(t, errOut) != "password_too_short" {
 		t.Errorf("short: status %d, %s", status, errOut)
 	}
+	// Long enough for a reset password, but a common one, and one built from
+	// the account's own address: both refused before the database is touched.
+	if status, _, errOut := resetWith([]string{"--address", adminAddress}, "password1234567890"); status != exitUsage || errorCodeIn(t, errOut) != "password_guessable" {
+		t.Errorf("guessable: status %d, %s", status, errOut)
+	} else if strings.Contains(errOut, "password1234567890") {
+		t.Error("the refusal repeats the password")
+	}
+	if status, _, errOut := resetWith([]string{"--address", adminAddress}, "Tr1cky-Orbit-"+adminAddress); status != exitUsage || errorCodeIn(t, errOut) != "password_guessable" {
+		t.Errorf("own address: status %d, %s", status, errOut)
+	}
 	if status, _, errOut := resetWith(nil, "a-freshly-generated-password"); status != exitUsage {
 		t.Errorf("no address: status %d, %s", status, errOut)
 	}

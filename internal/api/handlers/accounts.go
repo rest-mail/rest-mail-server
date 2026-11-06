@@ -257,8 +257,10 @@ func (h *AccountHandler) create(r *http.Request, req createAccountRequest) (acco
 	} else if _, err := grants.ParseScope(grants.Mailbox(address)); err != nil {
 		problems["address"] = "must be a mail address: local@domain"
 	}
-	if req.Password != "" && bootstrap.PasswordTooShort(req.Password) {
-		problems["password"] = fmt.Sprintf("must be at least %d characters", minChosenPasswordLength)
+	if req.Password != "" {
+		if problem := bootstrap.ChosenPasswordProblem(req.Password, address); problem != "" {
+			problems["password"] = problem
+		}
 	}
 	var importedHash string
 	if req.PasswordHash != "" {

@@ -96,6 +96,13 @@ func TestInvitationPersistence(t *testing.T) {
 		if _, err := ResetAdmin(gdb, token, chosenPassword); !errors.Is(err, ErrTokenInvalid) {
 			t.Fatalf("invitation accepted as owner reset: %v", err)
 		}
+		// A guessable first password, or one built from the account's own
+		// address, is refused and leaves the invitation to be used again.
+		for _, guessable := range []string{"Summer2026!!", "password123456", "Tr1cky-Orbit-Lantern-first", "Tr1cky-Orbit-Lantern-invitation.example"} {
+			if _, err := AcceptInvitation(ctx, gdb, token, guessable); !errors.Is(err, ErrPasswordGuessable) {
+				t.Fatalf("guessable password %q: err = %v, want ErrPasswordGuessable", guessable, err)
+			}
+		}
 		accepted, err := AcceptInvitation(ctx, gdb, token, chosenPassword)
 		if err != nil {
 			t.Fatal(err)

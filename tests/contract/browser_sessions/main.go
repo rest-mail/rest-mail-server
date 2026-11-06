@@ -236,6 +236,12 @@ func noSessionCookies(cookies []*http.Cookie) error {
 
 var pathParameter = regexp.MustCompile(`\{[^{}]+\}`)
 
+// refusedStartPassword is what the refused reset and recovery send. Those refusals
+// are about the token and the codes, so the password has to pass the chosen-password
+// rule, which comes first on a recovery and takes nothing from the account's address:
+// the throwaway contract-recover-<n>@restmail.test.
+const refusedStartPassword = "amber-quorum-lantern-unused-58"
+
 func prove(endpoint string, spec description, fixture principal, starts ...sessionStarts) (result report, err error) {
 	if !strings.HasSuffix(fixture.Address, "@restmail.test") || fixture.Password == "" {
 		return result, errors.New("requires an existing restmail.test fixture")
@@ -372,9 +378,9 @@ func prove(endpoint string, spec description, fixture principal, starts ...sessi
 	// Reset and recovery are public and rely on SameSite=Strict: a browser that carries a
 	// session but no CSRF header reaches them, and a refusal starts no session. A wrong
 	// token spends nothing, and a refused recovery is charged only to a throwaway address.
-	refusedReset, _ := json.Marshal(map[string]string{"token": "contract-invalid-token", "password": "contract-unused-password"})
+	refusedReset, _ := json.Marshal(map[string]string{"token": "contract-invalid-token", "password": refusedStartPassword})
 	refusedRecovery, _ := json.Marshal(map[string]string{"email": fmt.Sprintf("contract-recover-%d@restmail.test", time.Now().UnixNano()),
-		"totp_code": "000000", "recovery_code": "contract-invalid-code", "new_password": "contract-unused-password"})
+		"totp_code": "000000", "recovery_code": "contract-invalid-code", "new_password": refusedStartPassword})
 	for _, refusal := range []struct {
 		label, path, code string
 		payload           []byte

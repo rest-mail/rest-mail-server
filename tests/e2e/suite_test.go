@@ -45,8 +45,9 @@ var (
 )
 
 // accountPassword is the password of every account the suite makes on REST
-// Mail; the server takes no password shorter than 12 characters.
-const accountPassword = "password1234"
+// Mail; the server takes no password shorter than 12 characters, easy to
+// guess, or built from the account's address.
+const accountPassword = "Tangerine-Ledger-Orbit-9417"
 
 func envOr(key, fallback string) string {
 	if v := os.Getenv(key); v != "" {

@@ -58,6 +58,10 @@ func TestMailboxUpdate_ContractPasswordSchema(t *testing.T) {
 	}
 }
 
+// boundaryPassword's prefixes are the boundary's passwords: random enough that
+// only their length decides, so the twelve-character one is accepted.
+const boundaryPassword = "Qv7#mZ2!pL9kR4"
+
 func TestMailboxUpdate_ContractPasswordBoundary(t *testing.T) {
 	// Password changes touch the append-only audit log, so use its existing
 	// isolated database helper rather than migrating or writing shared tables.
@@ -81,7 +85,7 @@ func TestMailboxUpdate_ContractPasswordBoundary(t *testing.T) {
 			if err := db.First(&mb, mb.ID).Error; err != nil {
 				t.Fatal(err)
 			}
-			password := strings.Repeat("x", length)
+			password := boundaryPassword[:length]
 			body := fmt.Sprintf(`{"password":%q,"display_name":"Updated","active":false}`, password)
 			rr := mailboxUpdate(t, h, mb.ID, body)
 			want := http.StatusOK
@@ -120,6 +124,26 @@ func TestMailboxUpdate_ContractPasswordBoundary(t *testing.T) {
 			}
 			if credential, err := credentials.MatchPassword(mb.ID, password, time.Now()); err != nil || credential == nil {
 				t.Fatalf("expected password does not match: %v", err)
+			}
+		})
+	}
+	// Long enough is not enough (#1672): a guessable password, or one built
+	// from the mailbox's own address, is refused and the old one still works.
+	for _, c := range []struct{ name, password string }{
+		{"password-guessable", "Summer2026!!"},
+		{"password-own-name", "Tr1cky-Orbit-Lantern-password-own-name"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			mb := seedMailbox(t, db, c.name)
+			rr := mailboxUpdate(t, h, mb.ID, fmt.Sprintf(`{"password":%q}`, c.password))
+			if rr.Code != http.StatusUnprocessableEntity || !strings.Contains(validationField(t, rr, "password"), "too easy to guess") {
+				t.Fatalf("status = %d, want 422 too easy to guess: %s", rr.Code, rr.Body)
+			}
+			if strings.Contains(rr.Body.String(), c.password) {
+				t.Errorf("the refusal repeats the password: %s", rr.Body)
+			}
+			if credential, err := repositories.NewCredentialRepository(db).MatchPassword(mb.ID, "password123", time.Now()); err != nil || credential == nil {
+				t.Fatalf("the old password stopped working: %v", err)
 			}
 		})
 	}

@@ -102,6 +102,9 @@ func AcceptInvitation(ctx context.Context, database *gorm.DB, token, password st
 		if err != nil {
 			return err
 		}
+		if err := CheckChosenPassword(password, account.Address); err != nil {
+			return err
+		}
 		if _, err := redeem(tx, token, models.OneTimeTokenInvitation); err != nil {
 			return err
 		}

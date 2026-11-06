@@ -254,7 +254,7 @@ func TestMailboxPasswordChangeRevokesSessions(t *testing.T) {
 	}
 	seedLedger(t, db, pair, mb.ID)
 
-	if rr := mailboxUpdate(t, mbH, mb.ID, `{"password":"newpassword123"}`); rr.Code != http.StatusOK {
+	if rr := mailboxUpdate(t, mbH, mb.ID, `{"password":"tangerine-ledger-orbit-123"}`); rr.Code != http.StatusOK {
 		t.Fatalf("password change: expected 200, got %d (%s)", rr.Code, rr.Body.String())
 	}
 
@@ -424,6 +424,16 @@ func TestAccountPasswordChangeRevokesSessions(t *testing.T) {
 	}
 	if rr := change("wrong", "a brand new passphrase"); rr.Code != http.StatusForbidden || !strings.Contains(rr.Body.String(), `"code":"invalid_password"`) {
 		t.Fatalf("wrong current password: %d %s", rr.Code, rr.Body.String())
+	}
+	// A guessable new password, or one built from the account's own address,
+	// is refused on new_password and changes nothing (#1672).
+	for _, guessable := range []string{"Summer2026!!", "password123456", "Tr1cky-Orbit-Lantern-own-pw"} {
+		if rr := change("password123", guessable); rr.Code != http.StatusUnprocessableEntity || !strings.Contains(validationField(t, rr, "new_password"), "too easy to guess") || strings.Contains(rr.Body.String(), guessable) {
+			t.Fatalf("guessable %q: %d %s", guessable, rr.Code, rr.Body.String())
+		}
+	}
+	if got := ledgerStatus(t, tx, pair.RefreshJTI); got == models.RefreshTokenRevoked {
+		t.Fatal("a refused password change ended the session")
 	}
 	if rr := change("password123", "a brand new passphrase"); rr.Code != http.StatusOK {
 		t.Fatalf("change: %d %s", rr.Code, rr.Body.String())
