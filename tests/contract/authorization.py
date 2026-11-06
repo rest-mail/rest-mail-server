@@ -15,7 +15,8 @@ vertrag.yml: vertrag.yml with `principals` added and the surface gate left out
 
     principal          credential                           roles
     none               nothing                              -
-    admin              signs in (bearer)                    every role the spec names: superadmin at *
+    admin              signs in with a second factor        every role the spec names: superadmin at *
+                       (bearer)
     ordinary           signs in (bearer)                    none: no grants
     app-password       Basic, the ordinary account's        none: read, write and send on its own mailbox
 
@@ -26,6 +27,14 @@ cell whose ids the description's links supply is sent on a resource made for
 it as its owner (vertrag#81); an operation no link leads to still sends its
 example ids.
 Keep this run report-only until these fixture and scope mismatches are resolved.
+The admin principal is the contract's two-factor administrator (mfa_admin.py),
+a superadmin as the fixture admin is, signed in with an unused second factor.
+Creating credentials, linking accounts and changing grants take a session that
+proved one recently, which the fixture admin's never has. The examples phase
+swaps the fixture admin's session for this administrator's in a hook, but this
+phase ends a request whose credential a hook changes unsent ("a hook changed
+the credential"), so its admin is that administrator from the start (#1162).
+
 The account with no password cannot sign in, so it has no separate credential
 from `none`; there is no agent principal until the model has agents (#341).
 
@@ -45,6 +54,7 @@ import json
 import os
 import sys
 
+import mfa_admin
 import yaml
 from reports import spec_location
 
@@ -90,18 +100,23 @@ def roles(spec_path):
     return sorted(found)
 
 
-def sign_in(principal):
+def sign_in(principal, factor=None):
+    """Vertrag signs each principal in once, before any cell is sent; a second
+    factor, a one-time code, is spent by that one sign-in."""
+    factor = factor or {}
     return {
         # Vertrag 0.31 refuses a login body field that is in neither list: the
-        # password is redacted, the address and client are shown (vertrag#87).
+        # password and any second factor are redacted, the address and client
+        # are shown (vertrag#87).
         "login": {
             "path": LOGIN,
             "body": {
                 "email": principal["address"],
                 "password": principal["password"],
                 "client": "native",
+                **factor,
             },
-            "secrets": ["password"],
+            "secrets": ["password", *factor],
             "public": ["email", "client"],
         },
         "header": BEARER,
@@ -126,7 +141,14 @@ def main(spec_path, config_path, principals_path, out_path, report_path, run_spe
     config["output"] = ["", os.path.abspath(report_path)]
     config["principals"] = [
         {"name": "none"},
-        {"name": "admin", "auth": sign_in(fixture["admin"]), "roles": roles(spec_path)},
+        {
+            "name": "admin",
+            "auth": sign_in(
+                {"address": mfa_admin.ADDRESS, "password": mfa_admin.PASSWORD},
+                mfa_admin.factor(),
+            ),
+            "roles": roles(spec_path),
+        },
         {"name": "ordinary", "auth": sign_in(fixture["ordinary"]), "roles": []},
         {
             "name": "app-password",

@@ -111,7 +111,8 @@ def session_address(transaction):
 
 def with_the_fixture_admins_session(transaction):
     """Whether the request carries the fixture admin's own session. The
-    authorization phase's principals and an unauthenticated 401 do not."""
+    authorization phase's principals and an unauthenticated 401 do not: its
+    admin principal is the two-factor administrator (authorization.py)."""
     return session_address(transaction) == ADMIN
 
 
@@ -122,6 +123,15 @@ def as_the_two_factor_admin(transaction):
         return False
     transaction["request"]["headers"]["Authorization"] = "Bearer " + mfa_admin_token(origin_of(transaction))
     return True
+
+
+def sent_as_the_two_factor_admin(transaction):
+    """Whether the request goes out as the two-factor administrator: the
+    fixture admin's session is swapped for its (as_the_two_factor_admin), or
+    it already carries it, as the authorization phase's admin principal does.
+    That phase ends a request whose credential a hook changes unsent, so its
+    admin signs in as this administrator rather than being swapped."""
+    return as_the_two_factor_admin(transaction) or session_address(transaction) == mfa_admin.ADDRESS
 
 
 # The operations moved to a clean start, and only in the run that asks for it
@@ -301,7 +311,7 @@ def send_as_the_two_factor_admin(transaction):
 @hooks.before("createClientSecret")
 def an_app_password_from_the_two_factor_admin(transaction):
     # Making a credential also takes the maker's current password.
-    if not as_the_two_factor_admin(transaction):
+    if not sent_as_the_two_factor_admin(transaction):
         return
     body = hooks.get_json(transaction)
     if isinstance(body, dict) and "password" in body:
@@ -367,7 +377,7 @@ def an_api_key_from_the_two_factor_admin(transaction):
     if a_later_request_of_the_coverage_process(transaction):
         an_api_key_probe_as_the_probe_admin(transaction)
         return
-    if not as_the_two_factor_admin(transaction):
+    if not sent_as_the_two_factor_admin(transaction):
         return
     body = hooks.get_json(transaction)
     # The body_array refusal sends a JSON array, which has no password to set,
