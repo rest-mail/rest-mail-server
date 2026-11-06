@@ -2,11 +2,11 @@ version: "3"
 
 # rest-mail/tasks/monitoring — Taskfile
 #
-# Drives the prometheus + grafana + postgres-exporter trio via plain
+# Drives prometheus + grafana + postgres-exporter + node-exporter via plain
 # `docker run` (no compose). Included by the main Taskfile under namespace
 # `monitoring`.
 #
-# All three containers join the testbed's mailnet network at static IPs
+# All four containers join the testbed's mailnet network at static IPs
 # so they can scrape peers (and each other) by name. Prometheus and
 # Grafana keep state in named volumes so containers can be recreated
 # without losing data.
@@ -56,6 +56,19 @@ vars:
   MONITORING_DB_USER: '{{.MONITORING_DB_USER | default "restmail"}}'
   MONITORING_DB_PASS: '{{.MONITORING_DB_PASS | default "restmail"}}'
 
+  # node-exporter: free space on the volumes REST Mail writes (#1579). Pinned
+  # by digest (the multi-arch index of v1.10.2).
+  NODE_EXPORTER_UPSTREAM_IMAGE: '{{.NODE_EXPORTER_UPSTREAM_IMAGE | default "prom/node-exporter:v1.10.2@sha256:3ac34ce007accad95afed72149e0d2b927b7e42fd1c866149b945b84737c62c3"}}'
+  NODE_EXPORTER_IMAGE: '{{.MONITORING_REGISTRY}}/node-exporter:v1.10.2'
+  NODE_EXPORTER_IP: '{{.NODE_EXPORTER_IP | default "10.99.0.33"}}'
+  NODE_EXPORTER_NAME: '{{.MONITORING_PROJECT}}-node-exporter'
+  # The volumes it measures, named as tasks/postgres.yml, tasks/api.yml and
+  # tasks/garage.yml create them under the same project.
+  NODE_EXPORTER_DB_VOLUME: '{{.NODE_EXPORTER_DB_VOLUME | default (printf "%s-postgres-data" .MONITORING_PROJECT)}}'
+  NODE_EXPORTER_ATTACHMENTS_VOLUME: '{{.NODE_EXPORTER_ATTACHMENTS_VOLUME | default (printf "%s-attachments" .MONITORING_PROJECT)}}'
+  NODE_EXPORTER_GARAGE_VOLUME: '{{.NODE_EXPORTER_GARAGE_VOLUME | default (printf "%s-garage-data" .MONITORING_PROJECT)}}'
+  NODE_EXPORTER_CERTS_VOLUME: '{{.NODE_EXPORTER_CERTS_VOLUME | default (printf "%s-api-certs" .MONITORING_PROJECT)}}'
+
 tasks:
 
   # ════════════════════════════════════════════════════════
@@ -63,11 +76,12 @@ tasks:
   # ════════════════════════════════════════════════════════
 
   up:
-    desc: Bring up the monitoring stack (prometheus + grafana + postgres-exporter)
+    desc: Bring up the monitoring stack (prometheus + grafana + postgres-exporter + node-exporter)
     cmds:
       - task: prometheus:up
       - task: grafana:up
       - task: postgres-exporter:up
+      - task: node-exporter:up
       - |
         echo ""
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -77,9 +91,10 @@ tasks:
         echo "  Grafana          →  http://localhost:{{.GRAFANA_PORT}}  ({{.GRAFANA_IP}})"
         echo "                      user: {{.GRAFANA_ADMIN_USER}}  pass: (as set via GRAFANA_ADMIN_PASSWORD)"
         echo "  postgres-exporter→  {{.POSTGRES_EXPORTER_IP}}  (scraped by prometheus)"
+        echo "  node-exporter    →  {{.NODE_EXPORTER_IP}}  (volume free space, scraped by prometheus)"
         echo ""
         echo "  chore monitoring:logs        list per-service log commands"
-        echo "  chore monitoring:down        stop all three containers"
+        echo "  chore monitoring:down        stop all four containers"
         echo "  chore monitoring:restart     down + up"
         echo "  VERBOSE=1 chore …            raw docker output"
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -87,6 +102,7 @@ tasks:
   down:
     desc: Stop and remove all monitoring containers (preserves data volumes)
     cmds:
+      - task: node-exporter:down
       - task: postgres-exporter:down
       - task: grafana:down
       - task: prometheus:down
@@ -106,13 +122,14 @@ tasks:
         echo "    chore monitoring:prometheus:logs"
         echo "    chore monitoring:grafana:logs"
         echo "    chore monitoring:postgres-exporter:logs"
+        echo "    chore monitoring:node-exporter:logs"
         echo ""
         echo "  or run them in parallel in separate shells."
 
   ps:
     desc: Show monitoring container status
     cmds:
-      - docker ps -a --filter "name={{.PROMETHEUS_NAME}}" --filter "name={{.GRAFANA_NAME}}" --filter "name={{.POSTGRES_EXPORTER_NAME}}"
+      - docker ps -a --filter "name={{.PROMETHEUS_NAME}}" --filter "name={{.GRAFANA_NAME}}" --filter "name={{.POSTGRES_EXPORTER_NAME}}" --filter "name={{.NODE_EXPORTER_NAME}}"
 
   # ════════════════════════════════════════════════════════
   # prometheus
@@ -293,3 +310,70 @@ tasks:
     desc: Tail postgres-exporter logs
     cmds:
       - docker logs -f --tail=100 {{.POSTGRES_EXPORTER_NAME}}
+
+  # ════════════════════════════════════════════════════════
+  # node-exporter
+  # ════════════════════════════════════════════════════════
+
+  node-exporter:up:
+    desc: Start (or recreate) node-exporter, which reports free space on the database, attachment and certificate volumes
+    cmds:
+      - |
+        if ! docker image inspect {{.NODE_EXPORTER_IMAGE}} >/dev/null 2>&1; then
+          echo "  pulling {{.NODE_EXPORTER_UPSTREAM_IMAGE}} and tagging as {{.NODE_EXPORTER_IMAGE}}"
+          docker pull {{.NODE_EXPORTER_UPSTREAM_IMAGE}} >$OUTPUT 2>&1
+          docker tag {{.NODE_EXPORTER_UPSTREAM_IMAGE}} {{.NODE_EXPORTER_IMAGE}}
+        fi
+      - |
+        echo "  starting node-exporter ({{.NODE_EXPORTER_NAME}} @ {{.NODE_EXPORTER_IP}})"
+        docker rm -f {{.NODE_EXPORTER_NAME}} >$OUTPUT 2>&1 || true
+        # Each volume is mounted read-only under /volumes/<name>. The
+        # filesystem collector reads the container's own mount table, so every
+        # mount shows up as node_filesystem_*{mountpoint="/volumes/<name>"}
+        # with the size and free space of the filesystem holding that volume.
+        # Read-only mounts report node_filesystem_readonly=1; the alerts do not
+        # filter on it. Only the filesystem collector runs: the others would
+        # describe this container, not the host. A volume not created yet is
+        # skipped, so the exporter still starts with part of the stack down.
+        MOUNTS=""
+        for pair in \
+          "{{.NODE_EXPORTER_DB_VOLUME}}:postgres-data" \
+          "{{.NODE_EXPORTER_ATTACHMENTS_VOLUME}}:attachments" \
+          "{{.NODE_EXPORTER_GARAGE_VOLUME}}:garage-data" \
+          "{{.NODE_EXPORTER_CERTS_VOLUME}}:certs"; do
+          vol="${pair%%:*}"; name="${pair##*:}"
+          if docker volume inspect "$vol" >/dev/null 2>&1; then
+            MOUNTS="$MOUNTS -v $vol:/volumes/$name:ro"
+          else
+            echo "  volume $vol not found, /volumes/$name not measured"
+          fi
+        done
+        docker run -d --name {{.NODE_EXPORTER_NAME}} \
+          --restart unless-stopped \
+          --network {{.MONITORING_NETWORK}} \
+          --ip {{.NODE_EXPORTER_IP}} \
+          --network-alias node-exporter \
+          --read-only \
+          --cap-drop ALL \
+          --security-opt no-new-privileges \
+          $MOUNTS \
+          {{.NODE_EXPORTER_IMAGE}} \
+          --collector.disable-defaults \
+          --collector.filesystem \
+          --collector.filesystem.mount-points-exclude='^/(dev|proc|sys|etc)($|/)' >$OUTPUT 2>&1
+
+  node-exporter:down:
+    desc: Stop and remove the node-exporter container
+    cmds:
+      - |
+        if docker ps -aq --filter "name=^/{{.NODE_EXPORTER_NAME}}$" | grep -q .; then
+          echo "  stopping {{.NODE_EXPORTER_NAME}}"
+          docker rm -f {{.NODE_EXPORTER_NAME}} >$OUTPUT 2>&1
+        else
+          echo "  {{.NODE_EXPORTER_NAME}} not running"
+        fi
+
+  node-exporter:logs:
+    desc: Tail node-exporter logs
+    cmds:
+      - docker logs -f --tail=100 {{.NODE_EXPORTER_NAME}}

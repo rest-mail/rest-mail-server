@@ -29,3 +29,10 @@ scrape_configs:
   - job_name: 'postgres'
     static_configs:
       - targets: ['postgres-exporter:9187']
+
+  # node-exporter (tasks/monitoring.yml) sees the database, attachment and
+  # certificate volumes, mounted read-only under /volumes, for the disk-space
+  # alerts (#1579). Only its filesystem collector runs.
+  - job_name: 'node'
+    static_configs:
+      - targets: ['node-exporter:9100']
