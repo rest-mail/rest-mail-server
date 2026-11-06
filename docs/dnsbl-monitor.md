@@ -73,7 +73,7 @@ Metrics:
 `provider_error`, `indeterminate` and `unsupported` answers are counted but do
 not change `restmail_dnsbl_listed`: an error never clears a listing and never
 makes an unknown IP look clean. A check cut short by shutdown is not counted.
-`monitoring/alerting-rules.yml` alerts on a listing separately from a provider
+`helm/restmail/files/alerting-rules.yml` alerts on a listing separately from a provider
 that is not answering.
 
 ## Durable history

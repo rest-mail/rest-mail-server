@@ -474,10 +474,21 @@ That tap **pulls**: a person runs its sync, which reads this project's public re
 
 Prometheus metrics at `/metrics`. Grafana dashboards under [monitoring/](../monitoring/). Enable with `chore monitoring:up` (Prometheus at `:9090`, Grafana at `:3001`, postgres-exporter and node-exporter included).
 
-**Disk space.** The `restmail-disk` group in `monitoring/alerting-rules.yml` warns when a volume REST Mail writes is over 80% full for 30 minutes (`DiskSpaceLow`, `PVCSpaceLow`) and pages when it is over 90% full for 5 minutes (`DiskSpaceCritical`, `PVCSpaceCritical`). A full database volume stops every write, so mail is refused. The limits are a share of the volume rather than a number of GB, so one rule fits a certificate volume of a few MB and a 50Gi Garage volume; at 90% the chart's default 20Gi database has about 2Gi left. The dashboard's Disk row shows the same numbers.
+**Alert rules.** [helm/restmail/files/alerting-rules.yml](../helm/restmail/files/alerting-rules.yml) is the one copy of REST Mail's Prometheus alerts. The compose stack's Prometheus loads it (`chore monitoring:up`), and the chart's `PrometheusRule` (`metrics.prometheusRule.enabled=true`, off by default; needs the Prometheus Operator CRD) reads the same file, so the two cannot drift. The chart carries every group except `restmail-disk-node`:
+
+| Group | Alerts | Compose | Chart |
+| --- | --- | --- | --- |
+| `restmail-alerts` | queue backlog, age, errors and stalled workers; certificate expiry and missing certificates; auth failures; HTTP errors and latency; database connection errors and pool saturation; pipeline filter errors; SMTP/IMAP connections stopped; DNSBL listing, provider and staleness | yes | yes |
+| `restmail-disk-node` | `DiskSpaceLow`, `DiskSpaceCritical` (node-exporter) | yes | no |
+| `restmail-disk-pvc` | `PVCSpaceLow`, `PVCSpaceCritical` (kubelet volume stats) | no series | yes |
+| `restmail-dkim` | `DKIMKeyOverdue`, `DKIMPublicationStuck` | yes | yes |
+
+The chart's render test checks its rendered groups equal the file's, rule for rule.
+
+**Disk space.** The `restmail-disk-node` and `restmail-disk-pvc` groups warn when a volume REST Mail writes is over 80% full for 30 minutes (`DiskSpaceLow`, `PVCSpaceLow`) and pages when it is over 90% full for 5 minutes (`DiskSpaceCritical`, `PVCSpaceCritical`). A full database volume stops every write, so mail is refused. The limits are a share of the volume rather than a number of GB, so one rule fits a certificate volume of a few MB and a 50Gi Garage volume; at 90% the chart's default 20Gi database has about 2Gi left. The dashboard's Disk row shows the same numbers.
 
 - **Compose stack:** `chore monitoring:up` starts node-exporter (pinned by digest, filesystem collector only), which mounts the database (`<project>-postgres-data`), attachment (`<project>-attachments`, `<project>-garage-data`) and certificate (`<project>-api-certs`) volumes read-only under `/volumes/<name>`. Prometheus scrapes it as job `node`. A volume that does not exist yet is skipped; restart node-exporter (`chore monitoring:node-exporter:up`) after creating it. Docker volumes share the host's filesystem, so on one host these read the same disk.
-- **Kubernetes:** `PVCSpaceLow` and `PVCSpaceCritical` read kubelet's `kubelet_volume_stats_*` for the chart's PVCs: `<release>-postgres-data`, `<release>-api-attachments` and Garage's `data-<release>-garage-N`. They need the cluster's Prometheus to scrape kubelet, which kube-prometheus-stack does by default. The chart installs nothing for them. Load the `restmail-disk` group into that Prometheus. On Kubernetes the certificates live in Secrets and the database, not on a volume.
+- **Kubernetes:** `PVCSpaceLow` and `PVCSpaceCritical` read kubelet's `kubelet_volume_stats_*` for the chart's PVCs: `<release>-postgres-data`, `<release>-api-attachments` and Garage's `data-<release>-garage-N`. They need the cluster's Prometheus to scrape kubelet, which kube-prometheus-stack does by default. The chart's `PrometheusRule` carries them. On Kubernetes the certificates live in Secrets and the database, not on a volume.
 
 ### 4.10 E2E test suite
 

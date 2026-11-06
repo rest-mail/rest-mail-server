@@ -18,10 +18,9 @@ endpoint for the record to publish and retirement/revocation deadlines.
 
 ## Plain Prometheus
 
-The two alerts ship in `monitoring/alerting-rules.yml`, group `restmail-dkim`,
-which `monitoring/prometheus.yml` already loads. For another Prometheus, copy
-that group into a rule file listed in its `rule_files`. The chart's render
-tests check the group against the chart's rules. They match the same domain,
+The two alerts ship in `helm/restmail/files/alerting-rules.yml`, group
+`restmail-dkim`, which `monitoring/prometheus.yml` already loads. For another Prometheus, copy
+that group into a rule file listed in its `rule_files`. They match the same domain,
 scrape job and instance, so multiple API replicas do not cause a many-to-many
 match or mix separate deployments' policies.
 
@@ -37,7 +36,9 @@ operator's cue to publish the reported TXT record.
 ## Helm with Prometheus Operator
 
 The chart emits no Operator resource by default. With the Prometheus Operator
-CRD already installed, enable the two alerts on an existing release using:
+CRD already installed, enable the chart's `PrometheusRule` on an existing
+release. It carries these two alerts with the rest of
+`helm/restmail/files/alerting-rules.yml` (see the chart README's Alerts):
 
 ```sh
 helm upgrade restmail ./helm/restmail --reuse-values \

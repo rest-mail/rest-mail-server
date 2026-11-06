@@ -234,18 +234,40 @@ The chart runs on any conformant Kubernetes cluster (1.27+) and assumes:
    before disabling an existing attachment volume.
 
    **Disk-space alerts** for these PVCs (and Garage's `data-<release>-garage-N`)
-   are in the `restmail-disk` group of
-   [monitoring/alerting-rules.yml](../../monitoring/alerting-rules.yml)
-   (`PVCSpaceLow` at 80% used, `PVCSpaceCritical` at 90%). They read kubelet's
+   are the `restmail-disk-pvc` group of the chart's `PrometheusRule`
+   (`PVCSpaceLow` at 80% used, `PVCSpaceCritical` at 90%; see
+   [Alerts](#alerts)). They read kubelet's
    `kubelet_volume_stats_available_bytes` and
    `kubelet_volume_stats_capacity_bytes`, so they need the cluster's Prometheus
-   to scrape kubelet, as kube-prometheus-stack does by default. The chart
-   installs nothing for them. See
+   to scrape kubelet, as kube-prometheus-stack does by default. See
    [Metrics & monitoring](../../docs/MANUAL.md#49-metrics--monitoring).
 6. **NetworkPolicy-enforcing CNI** (Calico, Cilium, Weave, …). The chart ships
    default-deny NetworkPolicies. On a cluster whose CNI does not enforce them,
    set `networkPolicy.enabled=false` (the policies are then simply inert, but
    disabling them documents the intent).
+
+## Alerts
+
+`metrics.prometheusRule.enabled=true` (off by default) renders one
+Prometheus Operator `PrometheusRule`, named after the release, labelled with
+`metrics.prometheusRule.labels` so your Prometheus's rule selector picks it up.
+It needs the Operator's CRD; the chart installs neither the Operator nor a
+ServiceMonitor.
+
+Its rules are read from [files/alerting-rules.yml](files/alerting-rules.yml),
+the same file the compose stack's Prometheus loads, so the two cannot drift.
+It carries every group of that file except `restmail-disk-node`, which reads
+node-exporter series only the compose stack scrapes:
+
+| Group | Alerts |
+|-------|--------|
+| `restmail-alerts` | `QueueBacklogHigh`, `QueueErrorRateHigh`, `QueueWorkerStalled`, `QueueOldestMessageOld`, `CertificateExpiringSoon`, `DomainCertificateMissing`, `AuthFailureRateHigh`, `HTTPErrorRateHigh`, `APIResponseTimeSlow`, `DatabaseConnectionErrors`, `DatabasePoolSaturated`, `PipelineFilterErrorRateHigh`, `SMTPConnectionsStopped`, `IMAPConnectionsStopped`, `DNSBLSendingIPListed`, `DNSBLProviderNotAnswering`, `DNSBLAnswerStale` |
+| `restmail-disk-pvc` | `PVCSpaceLow`, `PVCSpaceCritical` (kubelet volume stats; Prometheus must scrape kubelet) |
+| `restmail-dkim` | `DKIMKeyOverdue`, `DKIMPublicationStuck` |
+
+`tests/render-test.sh` checks the rendered groups equal the file's, rule for
+rule (`tests/alerting-rules-test.py`). See
+[Metrics & monitoring](../../docs/MANUAL.md#49-metrics--monitoring).
 
 ## Security posture
 
