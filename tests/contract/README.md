@@ -1845,7 +1845,12 @@ the database:
   of its own, and retry's 400 (`already_bounced`) gets one bounced first, so it is
   refused for that and not for an entry that is gone.
 - A bulk action's empty filter selects every entry, so it gets one to act on. The
-  documented filter selects nothing by design and needs nothing.
+  documented filter selects nothing by design and needs nothing. After the empty
+  filter's 200, `the_bulk_action_changed_the_entries_made` holds its `affected` to
+  the number of entries made for it, all pending and so eligible for each action,
+  and reads each back: pending after a retry, bounced after a bounce, gone after a
+  delete. A wrong count, an entry not changed, or no entry made fails the exchange
+  (`transaction["fail"]`), so `affected: 0` no longer passes on its shape (#1772).
 - `listHeldMessages`' 200 (`none_held`) names an account that holds nothing, and
   the reset removed `1`, so it gets an account of its own
   (`contract-own-held-<time>@restmail.test`).
