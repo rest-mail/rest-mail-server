@@ -1619,8 +1619,8 @@ are refused for their bodies and not for a domain that is gone. A non-positive
 or undecodable id and missing's keep theirs. A request that sets `active` to
 true gets a self-signed certificate for that domain first, made in the hook
 (the documented examples set none). No link starts from `updateDomain`, so
-nothing that follows it is left unmoved, and it no longer gets
-`a_live_domain_for_the_link`'s stand-in. Whether a domain is certified is read
+nothing that follows it is left unmoved, and it gets no stand-in domain.
+Whether a domain is certified is read
 from the API (`listCertificates`), so `hooks.stash` holds no
 `certified_domains`.
 
@@ -1654,8 +1654,7 @@ The domain sender rule operations (`listAllowlist`, `addToAllowlist`,
 `removeFromBlocklist`) reset and seed before each exchange too, refusals
 included. Each follows `createDomain`'s link, which the reset empties, so an
 exchange aimed at a positive domain id other than missing's `2147483647` is sent
-to a domain of its own (`contract-own-domain.test`), and they no longer get
-`a_live_domain_for_the_link`'s stand-in. A list reads that domain's empty list,
+to a domain of its own (`contract-own-domain.test`), not a stand-in. A list reads that domain's empty list,
 and an add is sent there as documented, the 422 included. A remove documented to
 succeed gets an entry of its own there (`@contract-own-rule.test`), since the
 entry the add's link names is gone; the 404 and a non-positive or undecodable
@@ -1747,6 +1746,21 @@ its own domains' kind and active state again. Every column of `domains` is
 either reset or kept for a stated reason (`resetDomainKept`), and
 `TestCleanResetEveryDomainColumn` fails on a column that is neither.
 
+`createDomain` and the rest of what its link reaches move too, with
+`deleteDomain` and `mtaStsPolicyFile`, so nothing that follows `createDomain` is
+left unmoved and `own_data.py` has no list of unmoved followers of it. Each
+exchange, refusals included, resets and seeds first. The documented successes of
+`domainDNSCheck`, `getDomainRelay`, `setDomainRelay` and `listSuppressions` are
+sent to a domain of its own (`a_domain_setting_of_its_own`); their refusals keep
+their ids (`0`, `not-an-integer`, missing's `2147483647`, and the relay's 422s on
+the seeded `restmail.test`, id `1` again after the reset). `createDomain`'s
+documented create meets no leftover after its reset. `deleteDomain`'s 204 deletes
+a domain made for it, and `has_accounts` names the seeded fixture domain.
+`mtaStsPolicyFile` asks for a domain of its own, with an active policy for the
+200 and an inactive one for the documented `inactive_policy` 404. The
+`linked_domain_ids` stash value lost its last reader with these, so it is gone,
+and `start_clean` keeps only the sessions and the reset count.
+
 This happens only with `CONTRACT_RESET_SEED=1`, which `tests/contract/run.sh own-data`
 sets, and that phase is a gate of its own, sent by `chore test:contract-teardown`
 just before the teardown. It sends the moved operations with everything that follows
@@ -1764,11 +1778,11 @@ and ownership stay in their own processes without a reset too, so nothing here
 changes their probes. The primary run can start resetting once nothing that has not
 moved is sent after a reset.
 
-A reset removes the domain `createDomain` made, and its id is what the links carry.
-So after a reset, an unmoved operation that follows one of those links gets a stand-in
-domain (`a_live_domain_for_the_link`), made once per reset and kept where the created
-domain was. An allowlist or blocklist entry the link names is added again. A run with
-no reset changes nothing there.
+A reset removes the pipeline `createPipeline` made, and its id is what the link
+carries. So after a reset, `updatePipeline`, the one unmoved operation left that
+follows such a link, gets a pipeline of its own on a stand-in domain
+(`the_domain_since_the_reset`), made once per reset. A run with no reset changes
+nothing there.
 
 What a reset does and does not touch here:
 
