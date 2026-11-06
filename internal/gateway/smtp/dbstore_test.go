@@ -108,6 +108,17 @@ func TestDBStore_PersistSubmittedMessageLinksQueue(t *testing.T) {
 		t.Errorf("persisted message folder = %q, want Sent", stored.Folder)
 	}
 
+	// A local recipient that refused the submission is kept on the persisted row.
+	if err := store.RecordLocalRefusals(*ref, []models.LocalRefusal{{Address: "bob@example.test", Category: models.FailureMailboxFull}}); err != nil {
+		t.Fatalf("RecordLocalRefusals: %v", err)
+	}
+	if err := db.First(&stored, *ref).Error; err != nil {
+		t.Fatalf("reload persisted message %d: %v", *ref, err)
+	}
+	if want := `"category": "mailbox_full"`; !strings.Contains(string(stored.LocalRefusals), want) {
+		t.Errorf("persisted refusals = %s, want %s", stored.LocalRefusals, want)
+	}
+
 	// An outbound row enqueued with the reference must carry the link.
 	if err := store.EnqueueOutbound(OutboundMessage{
 		Sender:     senderAddr,

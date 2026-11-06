@@ -4643,7 +4643,8 @@ paths:
       description: 'For a message this account sent: each recipient''s state (queued, retrying, delivered,
         failed, or unknown when no delivery record was kept), the reason in a sentence derived from the
         failure category, the attempts made and when the last one was. A remote recipient is read from its
-        outbound queue row; a local one from the copy the send put in that mailbox. The remote server''s
+        outbound queue row; a local one from the copy the send put in that mailbox, or from the refusal
+        recorded when that mailbox refused it, which is failed and is not tried again. The remote server''s
         own reply is never returned, only the category''s reason. A message this account did not send has
         no recipients. Uses the same mail:read authorization as reading the message; another account''s
         message is 404.'

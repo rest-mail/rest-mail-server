@@ -58,6 +58,14 @@ func MessageReplyParentSQL(prefix string) string {
 	return `left(btrim(COALESCE(NULLIF(` + prefix + `in_reply_to, ''), (regexp_match(` + prefix + `"references", '([^\s<>]+)[\s<>]*$'))[1], ''), '<> '), 255)`
 }
 
+// LocalRefusal is one recipient on this server that refused a sent message, and the kind
+// of refusal. What the refusing filter said is not kept: only the category reaches the
+// sender.
+type LocalRefusal struct {
+	Address  string          `json:"address"`
+	Category FailureCategory `json:"category"`
+}
+
 type Message struct {
 	ID        uint   `gorm:"primaryKey" json:"id"`
 	MailboxID uint   `gorm:"not null;index:idx_messages_mailbox_folder;index:idx_messages_mailbox_deleted" json:"mailbox_id"`
@@ -84,6 +92,11 @@ type Message struct {
 	RawMessage   string     `gorm:"type:text" json:"-"`
 	AuthResults  JSONB      `gorm:"type:jsonb;default:null" json:"-"`
 	SealedHash   string     `gorm:"size:64;default:null" json:"sealed_hash,omitempty"`
+	// LocalRefusals are the recipients on this server that refused this Sent copy when it
+	// was sent, as a JSON array of LocalRefusal. A refused local recipient leaves no queue
+	// row and no delivered copy, and is not tried again, so this is its only record (#1899).
+	// NULL when none refused.
+	LocalRefusals JSONB `gorm:"type:jsonb;default:null" json:"-"`
 	// RuleClass is the class a Sieve rule assigned at delivery, recorded once with the message
 	// so the answer stays the same when the script later changes. NULL on every row delivered
 	// before this column existed, with no backfill, and when no rule assigned one.

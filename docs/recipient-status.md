@@ -34,13 +34,35 @@ A remote recipient is read from its outbound queue row:
 | `bounced`, `expired` | `failed` |
 
 A local recipient has no queue row. It is `delivered` when the copy the send put
-into that mailbox is still there, and `unknown` otherwise (the copy was deleted
-for good, or local delivery refused it; a refusal is not recorded). Only a copy
-from the account's own address counts, so a message made to look sent, such as
-an import, cannot be used to ask whether another mailbox holds a message.
+into that mailbox is still there. Only a copy from the account's own address
+counts, so a message made to look sent, such as an import, cannot be used to ask
+whether another mailbox holds a message.
+
+A local recipient that refused the message is `failed`, because a local delivery
+is not tried again. The refusal is recorded on the Sent copy when the message is
+sent through the API, as a calendar reply, or by SMTP submission when the
+submission also has a remote recipient. A submission with only local recipients
+keeps no Sent copy, and its SMTP client gets the refusal.
+
+| Refusal | `category` |
+| --- | --- |
+| The mailbox is over quota | `mailbox_full` |
+| The inbound pipeline rejected the message | `policy` |
+| The mailbox cannot receive mail | `bad_mailbox` |
+| Any other failure, such as a deferred delivery | `other_transient` |
+
+What the refusing filter said is not returned, only the reason derived from the
+category.
+
+Any other local recipient is `unknown`:
+
+- The copy was deleted for good.
+- The recipient's filtering held or dropped the message without refusing it:
+  quarantine, a discard, or a Sieve redirect that keeps no copy. A sender is not
+  told about these.
 
 A Bcc recipient is not in the Sent copy's headers. A remote one is listed from
-its queue row; a local one is not listed.
+its queue row. A local one is listed only when it refused the message.
 
 ## What is withheld
 
