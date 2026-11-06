@@ -129,6 +129,30 @@ func TestSMTPAliasRoutingRefusalAtDATAStoresNothing(t *testing.T) {
 	}
 }
 
+// A submission goes on the queue without a local delivery (#1564), and the recheck still
+// hears a route that broke after RCPT: nothing is queued for any recipient.
+func TestSMTPAliasRoutingRefusalAtDATARefusesASubmission(t *testing.T) {
+	backend, store := newMockBackend(), newMockStore()
+	backend.local["alias@local.test"] = true
+	check := &answeredAddressCheck{mockBackend: backend, address: "alias@local.test", passes: 1, status: 403, body: aliasRefusedBody}
+	harness := newSMTPHarness(t, backend, store, true, func(server *Server) { server.api = check })
+	harness.ehlo()
+	if reply := harness.authPlain(backend.user, backend.pass); replyCode(reply) != "235" {
+		t.Fatal(reply)
+	}
+	for _, command := range []string{"MAIL FROM:<" + backend.user + ">", "RCPT TO:<someone@remote.test>", "RCPT TO:<alias@local.test>"} {
+		if reply := harness.cmd("%s", command); replyCode(reply) != "250" {
+			t.Fatalf("%s: %s", command, reply)
+		}
+	}
+	if reply := harness.dataBody("From: " + backend.user + "\r\nTo: someone@remote.test\r\nSubject: late refusal\r\n\r\nbody\r\n"); replyCode(reply) != "550" || !strings.Contains(reply, rmail.AliasRoutingRefusal) {
+		t.Fatalf("DATA = %q, want a permanent 550 with the routing reason", reply)
+	}
+	if delivered, queued := backend.deliveredTo(), store.queued(); len(delivered) != 0 || len(queued) != 0 {
+		t.Fatalf("refused transaction stored something: delivered %v, queued %v", delivered, queued)
+	}
+}
+
 // Any other 403 says nothing about the recipient, so it stays a temporary failure: a
 // sending server retries instead of bouncing mail over a fault on this side.
 func TestSMTPOtherForbiddenAddressCheckStaysTemporary(t *testing.T) {
