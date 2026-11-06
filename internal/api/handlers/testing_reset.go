@@ -7,6 +7,7 @@ import (
 
 	"github.com/rest-mail/rest-mail-server/internal/api/middleware"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/grants"
 	"gorm.io/gorm"
 )
 
@@ -19,7 +20,7 @@ var resetRetainedTables = map[string]string{
 	"credentials":         "Only retained administrators' sign-in credentials survive (resetCredentialKindsKept) so their sign-in and MFA remain usable.",
 	"grants":              "Only retained administrators' own grants and the installation server ceiling survive.",
 	"roles":               "System roles and roles used by retained grants define the installation's authorization vocabulary.",
-	"role_capabilities":   "Only definitions belonging to retained roles survive.",
+	"role_capabilities":   "Only definitions belonging to retained roles survive; the server role's set goes back to every capability.",
 	"capabilities":        "The installed capability catalog is schema/bootstrap data, not fixture data.",
 	"owner_keys":          "Installation recovery trust must not be erased by fixture cleanup.",
 	"audit_log":           "The append-only, hash-chained audit log cannot be deleted without destroying integrity.",
@@ -186,6 +187,17 @@ func cleanResetData(tx *gorm.DB) error {
 		sort.Strings(assignments)
 		if err := tx.Exec("UPDATE mailboxes SET " + strings.Join(assignments, ", ")).Error; err != nil {
 			return fmt.Errorf("restart the retained accounts' settings: %w", err)
+		}
+	}
+	// The server role is a system role, so it and its capabilities survive, and
+	// a ceiling narrowed before the reset would bound every account after it.
+	// It goes back to every capability, as a new installation starts (#1385).
+	if containsResetTable(tables, "role_capabilities") && containsResetTable(tables, "capabilities") {
+		if err := tx.Exec(`INSERT INTO role_capabilities (role_id, capability_id)
+			SELECT roles.id, capabilities.id FROM roles CROSS JOIN capabilities
+			WHERE roles.name = ? AND capabilities.name <> ? ON CONFLICT DO NOTHING`,
+			models.RoleServer, grants.Wildcard).Error; err != nil {
+			return fmt.Errorf("restart the server capability ceiling: %w", err)
 		}
 	}
 	// The retained accounts lost their messages and their usage row with them,
