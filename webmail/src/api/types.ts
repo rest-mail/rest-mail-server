@@ -5919,11 +5919,11 @@ export interface components {
             headers?: {
                 [key: string]: unknown;
             };
-            in_reply_to?: string;
-            message_id?: string;
+            in_reply_to?: string & unknown;
+            message_id?: string & unknown;
             raw_message?: string;
             recipients?: string[] | null;
-            references?: string;
+            references?: string & unknown;
             sender?: string;
             subject?: string;
             to?: string[] | null;
