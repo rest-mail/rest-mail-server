@@ -127,6 +127,23 @@ ACCOUNT_SETTINGS = (
     "setAccountSendLimits",
     "getQuota",
 )
+# The delivery queue, held and scheduled mail operations: listQueue, what its
+# link reaches, and the rest, which no link reaches.
+QUEUE = (
+    "listQueue",
+    "getQueueStats",
+    "getQueueEntry",
+    "retryQueueEntry",
+    "bounceQueueEntry",
+    "deleteQueueEntry",
+    "bulkRetryQueue",
+    "bulkBounceQueue",
+    "bulkDeleteQueue",
+    "listHeldMessages",
+    "releaseHeldMessage",
+    "listScheduledMessages",
+    "cancelScheduledMessage",
+)
 FOLLOWS_THE_SENT_MESSAGE = {
     "getMessage",
     "updateMessage",
@@ -215,7 +232,8 @@ class Selection(unittest.TestCase):
             - set(DRAFTS)
             - set(MAILBOXES)
             - set(THREADS_AND_IMPORTS)
-            - set(ACCOUNT_SETTINGS),
+            - set(ACCOUNT_SETTINGS)
+            - set(QUEUE),
             link_followers(description, "createDomain") | {"createDomain"},
         )
 
@@ -390,6 +408,16 @@ class Selection(unittest.TestCase):
                 self.assertEqual(link_followers(description, operation), set())
         self.assertLessEqual(set(DKIM), link_followers(description, "createDomain"))
         self.assertLessEqual(set(DKIM), set(own_data.MOVED))
+
+    def test_it_selects_every_queue_operation_and_its_links(self):
+        description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
+        self.assertEqual(
+            link_followers(description, "listQueue"),
+            {"getQueueEntry", "retryQueueEntry", "bounceQueueEntry", "deleteQueueEntry"},
+        )
+        for operation in set(QUEUE) - link_followers(description, "listQueue") - {"listQueue"}:
+            self.assertEqual(link_followers(description, operation), set(), operation)
+        self.assertLessEqual(set(QUEUE), set(own_data.MOVED))
 
     def test_it_selects_every_mailbox_operation_and_its_links(self):
         description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
