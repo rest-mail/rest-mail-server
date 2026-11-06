@@ -6,8 +6,10 @@ import stat
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import authorization
+import mfa_admin
 import yaml
 
 
@@ -72,6 +74,13 @@ class AuthorizationConfig(unittest.TestCase):
         self.principals.write_text(json.dumps(self.fixture))
         self.output = self.root / "generated.yml"
         self.report = self.root / "authorization.xml"
+        # The two-factor administrator's unused second factor, spent by the
+        # admin principal's one sign-in.
+        factor = mock.patch.object(
+            mfa_admin, "factor", return_value={"recovery_code": "recovery fixture"}
+        )
+        self.factor = factor.start()
+        self.addCleanup(factor.stop)
 
     def generate(self):
         self.assertEqual(
@@ -109,21 +118,22 @@ class AuthorizationConfig(unittest.TestCase):
             [p["name"] for p in config["principals"]],
             ["none", "admin", "ordinary", "app-password"],
         )
-        for principal, fixture_name in ((admin, "admin"), (ordinary, "ordinary")):
-            self.assertEqual(
-                principal["auth"]["login"],
-                {
-                    "path": "/api/v1/auth/login",
-                    "body": {
-                        "email": self.fixture[fixture_name]["address"],
-                        "password": self.fixture[fixture_name]["password"],
-                        "client": "native",
-                    },
-                    "secrets": ["password"],
-                    "public": ["email", "client"],
+        self.assertEqual(
+            ordinary["auth"]["login"],
+            {
+                "path": "/api/v1/auth/login",
+                "body": {
+                    "email": self.fixture["ordinary"]["address"],
+                    "password": self.fixture["ordinary"]["password"],
+                    "client": "native",
                 },
-            )
-            self.assertEqual(principal["auth"]["header"], authorization.BEARER)
+                "secrets": ["password"],
+                "public": ["email", "client"],
+            },
+        )
+        self.assertEqual(ordinary["auth"]["header"], authorization.BEARER)
+        self.assertEqual(admin["auth"]["header"], authorization.BEARER)
+        self.factor.assert_called_once_with()
         self.assertEqual(admin["roles"], authorization.roles(self.spec))
         self.assertEqual(ordinary["roles"], [])
         self.assertEqual(app["roles"], [])
@@ -131,6 +141,34 @@ class AuthorizationConfig(unittest.TestCase):
         self.assertEqual(
             base64.b64decode(encoded).decode(), "user@example.test:app:fixture"
         )
+
+    def test_admin_signs_in_as_the_two_factor_administrator_with_a_second_factor(self):
+        # Creating credentials, linking accounts and changing grants take a
+        # recent second factor. A hook that swapped the admin's session for one
+        # would leave the cell unsent, so the admin is that administrator, and
+        # its factor is a secret the report redacts like the password.
+        admin = self.generate()["principals"][1]
+        self.assertEqual(
+            admin["auth"]["login"],
+            {
+                "path": "/api/v1/auth/login",
+                "body": {
+                    "email": mfa_admin.ADDRESS,
+                    "password": mfa_admin.PASSWORD,
+                    "client": "native",
+                    "recovery_code": "recovery fixture",
+                },
+                "secrets": ["password", "recovery_code"],
+                "public": ["email", "client"],
+            },
+        )
+
+    def test_an_unenrolled_two_factor_administrator_fails_before_replacing_configuration(self):
+        self.output.write_text("previous configuration")
+        self.factor.side_effect = RuntimeError("not enrolled")
+        with self.assertRaises(RuntimeError):
+            self.generate()
+        self.assertEqual(self.output.read_text(), "previous configuration")
 
     def test_live_url_uses_saved_bytes_for_role_inventory(self):
         url = "https://fixture.test/api/docs/openapi.json?revision=one"
