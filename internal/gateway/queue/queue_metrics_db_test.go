@@ -1,6 +1,7 @@
 package queue
 
 import (
+	"context"
 	"database/sql"
 	"os"
 	"strings"
@@ -227,7 +228,7 @@ func testProcessCountsAttempt(t *testing.T) {
 
 	processed := testutil.ToFloat64(metrics.QueueProcessed)
 	errs := testutil.ToFloat64(metrics.QueueErrors)
-	NewWorker(gdb, "mail.local.test", 1, time.Second).process(item, now)
+	NewWorker(gdb, "mail.local.test", 1, time.Second).process(context.Background(), item, now)
 
 	if got := testutil.ToFloat64(metrics.QueueProcessed); got != processed+1 {
 		t.Errorf("restmail_queue_processed_total = %v after one attempt, want %v", got, processed+1)

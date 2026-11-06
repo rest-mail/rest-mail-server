@@ -123,3 +123,32 @@ func ShutdownWithin(shutdown func(context.Context) error, d time.Duration) {
 		slog.Warn("tracing: flushing spans at shutdown failed", "error", err)
 	}
 }
+
+// JobPrefix starts every job ID, so a background job's ID is told apart from a
+// request's at a glance.
+const JobPrefix = "job-"
+
+// NewJobID makes a job ID: JobPrefix and a request ID (requestid.New).
+func NewJobID() string { return JobPrefix + requestid.New() }
+
+// StartJob starts the root span of one unit of background work — a queue
+// delivery attempt, one pass of a periodic job — named name. It begins a new
+// trace, never under a span ctx may carry, and makes the job its own ID
+// (NewJobID). The returned context carries that ID as its request ID, so the
+// job's spans hold it as request_id and every line logged with the context
+// (slog.InfoContext and the like, through requestid.Handler) holds it too: a
+// job's logs and trace join on it as a request's do.
+func StartJob(ctx context.Context, name string, opts ...trace.SpanStartOption) (context.Context, trace.Span) {
+	ctx = requestid.NewContext(ctx, NewJobID())
+	opts = append([]trace.SpanStartOption{trace.WithNewRoot(), trace.WithAttributes(attribute.String("job.name", name))}, opts...)
+	return Start(ctx, name, opts...)
+}
+
+// Job runs fn as one unit of background work under a StartJob span named name,
+// and ends the span with the error fn returns.
+func Job(ctx context.Context, name string, fn func(context.Context) error) error {
+	ctx, span := StartJob(ctx, name)
+	err := fn(ctx)
+	End(span, err)
+	return err
+}

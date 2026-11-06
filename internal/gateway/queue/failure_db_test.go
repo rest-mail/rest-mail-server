@@ -1,6 +1,7 @@
 package queue
 
 import (
+	"context"
 	"fmt"
 	"net/textproto"
 	"testing"
@@ -75,7 +76,7 @@ func TestRecordFailure(t *testing.T) {
 
 	t.Run("a permanent failure bounces at once", func(t *testing.T) {
 		item := queued(t, gdb, 1, time.Minute, now)
-		w.recordFailure(item, rcptRefusal(550, "5.1.1 The email account that you tried to reach does not exist."), now)
+		w.recordFailure(context.Background(), item, rcptRefusal(550, "5.1.1 The email account that you tried to reach does not exist."), now)
 		got := reload(item)
 		if got.Status != "bounced" || got.FailureCategory != models.FailureBadMailbox || got.LastErrorCode != 550 {
 			t.Errorf("status %q, category %q, code %d; want bounced, bad_mailbox, 550", got.Status, got.FailureCategory, got.LastErrorCode)
@@ -83,7 +84,7 @@ func TestRecordFailure(t *testing.T) {
 	})
 	t.Run("a transient failure is deferred on its category's schedule", func(t *testing.T) {
 		item := queued(t, gdb, 1, time.Minute, now)
-		w.recordFailure(item, rcptRefusal(452, "4.2.2 The recipient's inbox is out of storage space."), now)
+		w.recordFailure(context.Background(), item, rcptRefusal(452, "4.2.2 The recipient's inbox is out of storage space."), now)
 		got := reload(item)
 		if got.Status != "deferred" || got.FailureCategory != models.FailureMailboxFull {
 			t.Fatalf("status %q, category %q; want deferred, mailbox_full", got.Status, got.FailureCategory)
@@ -94,7 +95,7 @@ func TestRecordFailure(t *testing.T) {
 	})
 	t.Run("a transient failure bounces once its category's maximum age is up", func(t *testing.T) {
 		item := queued(t, gdb, 6, 116*time.Hour, now) // 8h to the next try, past five days
-		w.recordFailure(item, rcptRefusal(452, "4.2.2 The recipient's inbox is out of storage space."), now)
+		w.recordFailure(context.Background(), item, rcptRefusal(452, "4.2.2 The recipient's inbox is out of storage space."), now)
 		if got := reload(item); got.Status != "bounced" || got.FailureCategory != models.FailureMailboxFull {
 			t.Errorf("status %q, category %q; want bounced, mailbox_full", got.Status, got.FailureCategory)
 		}

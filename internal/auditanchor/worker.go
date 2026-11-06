@@ -10,6 +10,7 @@ import (
 
 	"github.com/rest-mail/rest-mail-server/internal/audit"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/tracing"
 	"gorm.io/gorm"
 )
 
@@ -46,11 +47,15 @@ func (w *Worker) Start() {
 		ticker := time.NewTicker(time.Minute)
 		defer ticker.Stop()
 		for {
-			checkCtx, stop := context.WithTimeout(ctx, 15*time.Second)
-			if _, err := w.Check(checkCtx, time.Now()); err != nil && ctx.Err() == nil {
-				slog.Error("audit anchor email: publication failed", "error", err)
-			}
-			stop()
+			_ = tracing.Job(ctx, "job.audit_anchor_email", func(jobCtx context.Context) error {
+				checkCtx, stop := context.WithTimeout(jobCtx, 15*time.Second)
+				defer stop()
+				_, err := w.Check(checkCtx, time.Now())
+				if err != nil && ctx.Err() == nil {
+					slog.ErrorContext(jobCtx, "audit anchor email: publication failed", "error", err)
+				}
+				return err
+			})
 			select {
 			case <-ctx.Done():
 				return

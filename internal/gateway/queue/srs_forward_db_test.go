@@ -1,6 +1,7 @@
 package queue
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -90,7 +91,7 @@ func TestForwardThroughARelayIsRewritten(t *testing.T) {
 		TLSMode: models.RelayTLSStartTLS, Username: relayTestUser, PasswordEnc: enc,
 	})
 
-	if err := w.deliver(forwardRow("alice@orig.example", forwarder)); err != nil {
+	if err := w.deliver(context.Background(), forwardRow("alice@orig.example", forwarder)); err != nil {
 		t.Fatalf("deliver: %v", err)
 	}
 	if got := mailCommand(finish().commands); !strings.HasPrefix(got, "MAIL FROM:<SRS0=") {
