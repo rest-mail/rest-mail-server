@@ -211,13 +211,13 @@ class AuthorizationConfig(unittest.TestCase):
         # standing in for each other.
         self.assertEqual(self.generate()["authorization"], {"refuse": [404]})
 
-    def test_the_phase_provides_a_recoverable_account_beside_the_runs_own(self):
+    def test_the_phase_provides_its_own_states_beside_the_runs_own(self):
         self.settings["provides"] = {"state": ["kept"], "fault": ["database"]}
         self.config.write_text(yaml.safe_dump(self.settings))
         config = self.generate()
         self.assertEqual(
             config["provides"],
-            {"state": ["kept", "recoverable_account"], "fault": ["database"]},
+            {"state": ["kept", "owner_key", "recoverable_account"], "fault": ["database"]},
         )
         # The examples phase's own configuration and unproven list are kept.
         self.assertEqual(yaml.safe_load(self.config.read_text()), self.settings)
@@ -225,23 +225,35 @@ class AuthorizationConfig(unittest.TestCase):
             config["unproven"], ".cache/contract/unproven-authorization.json"
         )
 
-    def test_only_recoverys_success_needs_the_provided_state(self):
-        # A provided state proves every pair requiring it, so it names one a
-        # hook prepares for every principal (hooks.py,
-        # recover_an_account_of_its_own) and no state of the caller's own
-        # account, whose success would end the principal's sessions.
+    def test_only_the_successes_hooks_prepare_need_the_provided_states(self):
+        # A provided state proves every pair requiring it, so each names one a
+        # hook prepares for every principal (hooks.py:
+        # recover_an_account_of_its_own, sign_the_status_with_the_runs_owner_key,
+        # mint_for_an_account_of_its_own, reset_an_account_of_its_own; a
+        # challenge needs only the registered key) and no state of the
+        # caller's own account, whose success would end the principal's
+        # sessions. The owner refusals that also require owner_key are not
+        # sent here: the phase sends each operation's documented success.
         examples = json.loads(
             (Path(__file__).resolve().parents[2] / "openapi-example.json").read_text()
         )
         needing = sorted(
-            (operation, name)
+            (operation, name, pair["response"]["status"])
             for operation, pairs in examples.items()
             for name, pair in pairs.items()
             if (pair.get("requires") or {}).get("state")
             in authorization.PROVIDES["state"]
         )
-        self.assertEqual(needing, [("recoverAccount", "recovered")])
-        self.assertEqual(examples["recoverAccount"]["recovered"]["response"]["status"], 200)
+        self.assertEqual(needing, [
+            ("ownerChallenge", "issued", 200),
+            ("ownerStatus", "not_status_key", 403),
+            ("ownerStatus", "status", 200),
+            ("ownerToken", "minted", 200),
+            ("ownerToken", "no_account", 404),
+            ("ownerToken", "not_owner", 403),
+            ("recoverAccount", "recovered", 200),
+            ("resetAdmin", "reset", 200),
+        ])
         for own in ("known_password", "enrolled_authenticator", "pending_enrollment"):
             self.assertNotIn(own, authorization.PROVIDES["state"])
 
