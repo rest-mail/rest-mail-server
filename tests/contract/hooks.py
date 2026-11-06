@@ -575,7 +575,10 @@ def delete_a_grant_made_for_it(transaction):
         start_clean(transaction)
     path, _, query = transaction["fullPath"].partition("?")
     parent, _, grant_id = path.rpartition("/")
-    if grant_id != "1":
+    # createGrant's link (#1780) names the grant its exchange made, which the
+    # next reset removes, so a documented delete after a reset gets one too.
+    linked_after_reset = asked_for_a_clean_start() and " > 204" in transaction.get("name", "")
+    if grant_id != "1" and not linked_after_reset:
         return
     origin = origin_of(transaction)
     holder = an_account_without_credentials(origin)
