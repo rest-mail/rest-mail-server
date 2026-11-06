@@ -88,11 +88,14 @@
     "listAttachments",
     "listFolders",
     "listMessages",
+    "listSubscriptions",
     "listThreads",
     "renameFolder",
     "searchMessages",
     "setThreadDue",
     "snoozeThread",
+    "subscribeFolder",
+    "unsubscribeFolder",
     "updateMessage"
   ],
   "638": [

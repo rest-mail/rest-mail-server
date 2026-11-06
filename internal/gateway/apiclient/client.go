@@ -356,6 +356,35 @@ func (c *Client) ListFolders(token string, accountID uint) (*FolderListResponse,
 	return &resp, nil
 }
 
+// FolderName is one name on an account's subscription list.
+type FolderName struct {
+	Name string `json:"name"`
+}
+
+// ListSubscriptions returns the account's IMAP subscription list (#1675): names,
+// subscribed folders or not, in name order.
+func (c *Client) ListSubscriptions(token string, accountID uint) ([]string, error) {
+	var resp endpoint.List[FolderName]
+	if err := c.getAuth(fmt.Sprintf("/api/v1/accounts/%d/subscriptions", accountID), token, &resp); err != nil {
+		return nil, err
+	}
+	names := make([]string, 0, len(resp.Data))
+	for _, f := range resp.Data {
+		names = append(names, f.Name)
+	}
+	return names, nil
+}
+
+// Subscribe adds folder to the account's subscription list; a name already on it is not an error.
+func (c *Client) Subscribe(token string, accountID uint, folder string) error {
+	return c.putAuth(fmt.Sprintf("/api/v1/accounts/%d/subscriptions/%s", accountID, url.PathEscape(folder)), token)
+}
+
+// Unsubscribe removes folder from the account's subscription list; a name not on it is not an error.
+func (c *Client) Unsubscribe(token string, accountID uint, folder string) error {
+	return c.deleteAuth(fmt.Sprintf("/api/v1/accounts/%d/subscriptions/%s", accountID, url.PathEscape(folder)), token)
+}
+
 // ── Messages ──────────────────────────────────────────────────────────
 
 type MessageSummary = apitypes.Message
@@ -779,6 +808,21 @@ func (c *Client) patchAuth(path, token string, body interface{}, out interface{}
 	if out != nil {
 		return c.decodeResponse(resp, out)
 	}
+	return c.checkStatus(resp)
+}
+
+// putAuth sends a bodiless PUT and checks only its status.
+func (c *Client) putAuth(path, token string) error {
+	req, err := http.NewRequest("PUT", c.baseURL+path, nil)
+	if err != nil {
+		return err
+	}
+	authorize(req, token)
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("PUT %s: %w", path, err)
+	}
+	defer resp.Body.Close()
 	return c.checkStatus(resp)
 }
 

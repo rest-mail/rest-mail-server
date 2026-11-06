@@ -3441,6 +3441,117 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/v1/accounts/{id}/subscriptions:
+    parameters:
+      - $ref: "#/components/parameters/AccountId"
+    get:
+      operationId: listSubscriptions
+      tags: [Folders]
+      security:
+        - CookieAuth: [mail:read]
+        - BearerAuth: [mail:read]
+        - APIKeyAuth: [mail:read]
+        - GatewaySessionAuth: [mail:read]
+      summary: List the account's subscribed folder names
+      responses:
+        "200":
+          description: The subscribed names, folders or not, by name
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/FolderName"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          description: Too many requests (rate_limited)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          headers:
+            Retry-After:
+              description: Seconds until another request is allowed
+              required: true
+              schema:
+                type: integer
+
+  /api/v1/accounts/{id}/subscriptions/{folder}:
+    parameters:
+      - $ref: "#/components/parameters/AccountId"
+      - $ref: "#/components/parameters/FolderName"
+    put:
+      operationId: subscribeFolder
+      tags: [Folders]
+      security:
+        - CookieAuth: [mail:write]
+        - BearerAuth: [mail:write]
+        - APIKeyAuth: [mail:write]
+        - GatewaySessionAuth: [mail:write]
+      summary: Subscribe to a folder name
+      responses:
+        "200":
+          description: The name is subscribed
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/FolderName"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          description: Too many requests (rate_limited)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          headers:
+            Retry-After:
+              description: Seconds until another request is allowed
+              required: true
+              schema:
+                type: integer
+        "422":
+          description: Request failed validation (validation_failed), with details.fields naming each failing field
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+    delete:
+      operationId: unsubscribeFolder
+      tags: [Folders]
+      security:
+        - CookieAuth: [mail:write]
+        - BearerAuth: [mail:write]
+        - APIKeyAuth: [mail:write]
+        - GatewaySessionAuth: [mail:write]
+      summary: Unsubscribe from a folder name
+      responses:
+        "204":
+          description: The name is not subscribed
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          description: Too many requests (rate_limited)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          headers:
+            Retry-After:
+              description: Seconds until another request is allowed
+              required: true
+              schema:
+                type: integer
+
   # ═══════════════════════════════════════════════════════════════
   # Messages
   # ═══════════════════════════════════════════════════════════════

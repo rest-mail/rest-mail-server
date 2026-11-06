@@ -156,6 +156,7 @@ var (
 	_ goimap.DateAppender   = (*mailbox)(nil)
 	_ goimap.IDMailbox      = (*mailbox)(nil)
 	_ goimap.SessionEnder   = (*mailbox)(nil)
+	_ goimap.Subscriber     = (*mailbox)(nil)
 )
 
 // importMessage stores a message through the import operation, counted in this
@@ -208,6 +209,23 @@ func (m *mailbox) SetClientID(id goimap.ClientID) { m.clientID = id }
 
 // ClientID returns what the client said it is with ID, or nil if it sent none.
 func (m *mailbox) ClientID() goimap.ClientID { return m.clientID }
+
+// Subscriptions is the account's subscription list, kept by the API (#1675), so
+// LSUB and LIST (SUBSCRIBED) answer what SUBSCRIBE and UNSUBSCRIBE left, a
+// deleted folder's name included (RFC 9051 §6.3.7).
+func (m *mailbox) Subscriptions() ([]string, error) {
+	return m.api.ListSubscriptions(m.token, m.accountID)
+}
+
+// Subscribe adds name to the account's subscription list (SUBSCRIBE).
+func (m *mailbox) Subscribe(name string) error {
+	return m.api.Subscribe(m.token, m.accountID, name)
+}
+
+// Unsubscribe removes name from the account's subscription list (UNSUBSCRIBE).
+func (m *mailbox) Unsubscribe(name string) error {
+	return m.api.Unsubscribe(m.token, m.accountID, name)
+}
 
 // EnableUTF8 switches this session to UTF-8 (RFC 6855 UTF8=ACCEPT). The
 // library advertises the capability because the mailbox implements this, and
