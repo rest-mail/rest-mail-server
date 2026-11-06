@@ -1,12 +1,14 @@
 package grants
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"strconv"
 	"time"
 
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/tracing"
 	"gorm.io/gorm"
 )
 
@@ -265,9 +267,13 @@ func (s *Sweeper) run() {
 	for {
 		select {
 		case <-ticker.C:
-			if _, err := EndExpired(s.db, time.Now()); err != nil {
-				slog.Error("grants: recording activations that ran out failed", "error", err)
-			}
+			_ = tracing.Job(context.Background(), "job.grant_expiry", func(ctx context.Context) error {
+				_, err := EndExpired(s.db.WithContext(ctx), time.Now())
+				if err != nil {
+					slog.ErrorContext(ctx, "grants: recording activations that ran out failed", "error", err)
+				}
+				return err
+			})
 		case <-s.stop:
 			return
 		}

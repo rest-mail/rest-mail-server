@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/tracing"
 	"gorm.io/gorm"
 )
 
@@ -74,7 +75,10 @@ func (p *Purger) loop() {
 		case <-p.stop:
 			return
 		case <-ticker.C:
-			p.PurgeOnce(p.now())
+			_ = tracing.Job(context.Background(), "job.vacation_purge", func(context.Context) error {
+				p.PurgeOnce(p.now())
+				return nil
+			})
 		}
 	}
 }

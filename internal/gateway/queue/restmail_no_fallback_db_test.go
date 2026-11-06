@@ -202,7 +202,7 @@ func TestNoSMTPFallback_CachedRESTMAILFails(t *testing.T) {
 			w, gdb, item := noFallbackWorker(t, domain, mx, peer, nil)
 			cacheRESTMAIL(t, gdb, domain, true)
 
-			err := w.deliver(item)
+			err := w.deliver(context.Background(), item)
 			noSMTP(t, gdb, item, mx, err, tc.permanent)
 			if peer.posts.Load() != 1 {
 				t.Fatalf("%d RESTMAIL POSTs, want 1", peer.posts.Load())
@@ -233,7 +233,7 @@ func TestNoSMTPFallback_ProbeUpgradedFails(t *testing.T) {
 			peer.post.Store(int32(tc.post))
 			w, gdb, item := noFallbackWorker(t, domain, mx, peer, nil)
 
-			err := w.deliver(item)
+			err := w.deliver(context.Background(), item)
 			noSMTP(t, gdb, item, mx, err, tc.permanent)
 			cachedSupported(t, gdb, domain)
 		})
@@ -260,7 +260,7 @@ func TestNoSMTPFallback_PinnedRowNeverDowngrades(t *testing.T) {
 			w, gdb, item := noFallbackWorker(t, domain, mx, peer, pinned)
 			tc.cache(t, gdb, domain)
 
-			err := w.deliver(item)
+			err := w.deliver(context.Background(), item)
 			noSMTP(t, gdb, item, mx, err, false)
 		})
 		t.Run(tc.name+", peer up", func(t *testing.T) {
@@ -272,7 +272,7 @@ func TestNoSMTPFallback_PinnedRowNeverDowngrades(t *testing.T) {
 			w, gdb, item := noFallbackWorker(t, domain, mx, peer, pinned)
 			tc.cache(t, gdb, domain)
 
-			if err := w.deliver(item); err != nil {
+			if err := w.deliver(context.Background(), item); err != nil {
 				t.Fatalf("pinned delivery: %v", err)
 			}
 			if mx.mails.Load() != 0 || peer.posts.Load() != 1 {
@@ -292,7 +292,7 @@ func TestNoSMTPFallback_NeverIdentifiedUsesSMTP(t *testing.T) {
 	peer.post.Store(http.StatusCreated)
 	w, gdb, item := noFallbackWorker(t, domain, mx, peer, nil)
 
-	if err := w.deliver(item); err != nil {
+	if err := w.deliver(context.Background(), item); err != nil {
 		t.Fatalf("SMTP delivery: %v", err)
 	}
 	if mx.mails.Load() != 1 || peer.posts.Load() != 0 {
@@ -328,13 +328,13 @@ func TestNoSMTPFallback_GreylistDeferredThenAccepted(t *testing.T) {
 			}
 
 			now := time.Now()
-			err := w.deliver(item)
+			err := w.deliver(context.Background(), item)
 			noSMTP(t, gdb, item, mx, err, false)
 			if got := ClassifyFailure(err); got != models.FailureGreylisted {
 				t.Fatalf("deferred answer classified %s, want %s: %v", got, models.FailureGreylisted, err)
 			}
 			item.Attempts = 1
-			w.recordFailure(item, err, now)
+			w.recordFailure(context.Background(), item, err, now)
 			row := readRow(t, gdb, item.ID)
 			if row.Status != "deferred" || row.FailureCategory != models.FailureGreylisted {
 				t.Fatalf("row status %q, category %q: want deferred, greylisted", row.Status, row.FailureCategory)
@@ -345,7 +345,7 @@ func TestNoSMTPFallback_GreylistDeferredThenAccepted(t *testing.T) {
 
 			// The retry: the EHLO no longer advertising RESTMAIL changes nothing.
 			mx.restmail.Store(false)
-			if err := w.deliver(row); err != nil {
+			if err := w.deliver(context.Background(), row); err != nil {
 				t.Fatalf("retry: %v", err)
 			}
 			if mx.mails.Load() != 0 || peer.posts.Load() != 2 {

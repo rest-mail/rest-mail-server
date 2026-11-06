@@ -19,6 +19,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
 	"github.com/rest-mail/rest-mail-server/internal/outbound"
+	"github.com/rest-mail/rest-mail-server/internal/tracing"
 	"gorm.io/gorm"
 )
 
@@ -47,7 +48,10 @@ func (w *Worker) tlsReportLoop() {
 		case <-w.shutdown:
 			return
 		case <-ticker.C:
-			w.sendTLSReports(time.Now())
+			_ = tracing.Job(context.Background(), "job.tlsrpt_report", func(context.Context) error {
+				w.sendTLSReports(time.Now())
+				return nil
+			})
 		}
 	}
 }
