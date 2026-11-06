@@ -21,6 +21,7 @@ func TestAliasUpdate_ExamplePairs(t *testing.T) {
 	want := map[string][]string{
 		"request": {"destination_invalid", "missing", "updated"},
 		"404":     {"missing"},
+		"409":     {"postmaster_required"},
 		"200":     {"updated"},
 		"422":     {"destination_invalid"},
 	}
