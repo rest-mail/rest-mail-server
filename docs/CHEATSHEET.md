@@ -107,7 +107,7 @@ chore testbed:down:clean   # DESTRUCTIVE — also remove the network + certs + D
 ## Optional extras
 
 ```sh
-chore monitoring:up | :down          # prometheus + grafana + postgres-exporter
+chore monitoring:up | :down          # prometheus + grafana + postgres-exporter + node-exporter
 chore website:init | :up | :down     # the marketing website (separate subproject)
 ```
 

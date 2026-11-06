@@ -169,7 +169,7 @@ The stack no longer uses a single `docker-compose.yml`. Each service is its own 
 A shared **testbed** (the `mailnet` network, the certs volume, and the dnsmasq fragments volume) underpins everything and is brought up with `chore testbed:up`. Traditional reference Postfix/Dovecot servers (`mail1.test`, `mail2.test`) are not part of this repo — they come from the separate `rest-mail/reference-mailserver` project and are wired in for the e2e topology (`chore e2e:up`).
 
 Optional add-on:
-- `chore monitoring:up` — Prometheus + Grafana + postgres-exporter.
+- `chore monitoring:up` — Prometheus + Grafana + postgres-exporter + node-exporter.
 
 Containers resolve names through the testbed dnsmasq (`10.99.0.10`). Persistence uses named volumes (per-service data/logs volumes plus the shared `testbed_certs`). Certificates are issued into `testbed_certs` and `<project>-internal-mtls`, which also hold the CAs' private keys, so no service mounts either: each one gets `<container>-certs`, holding copies of only its own files, made right before it starts. The gateways run as uid 10001 with every capability dropped.
 
@@ -472,7 +472,12 @@ That tap **pulls**: a person runs its sync, which reads this project's public re
 
 ### 4.9 Metrics & monitoring
 
-Prometheus metrics at `/metrics`. Grafana dashboards under [monitoring/](../monitoring/). Enable with `chore monitoring:up` (Prometheus at `:9090`, Grafana at `:3001`, postgres-exporter included).
+Prometheus metrics at `/metrics`. Grafana dashboards under [monitoring/](../monitoring/). Enable with `chore monitoring:up` (Prometheus at `:9090`, Grafana at `:3001`, postgres-exporter and node-exporter included).
+
+**Disk space.** The `restmail-disk` group in `monitoring/alerting-rules.yml` warns when a volume REST Mail writes is over 80% full for 30 minutes (`DiskSpaceLow`, `PVCSpaceLow`) and pages when it is over 90% full for 5 minutes (`DiskSpaceCritical`, `PVCSpaceCritical`). A full database volume stops every write, so mail is refused. The limits are a share of the volume rather than a number of GB, so one rule fits a certificate volume of a few MB and a 50Gi Garage volume; at 90% the chart's default 20Gi database has about 2Gi left. The dashboard's Disk row shows the same numbers.
+
+- **Compose stack:** `chore monitoring:up` starts node-exporter (pinned by digest, filesystem collector only), which mounts the database (`<project>-postgres-data`), attachment (`<project>-attachments`, `<project>-garage-data`) and certificate (`<project>-api-certs`) volumes read-only under `/volumes/<name>`. Prometheus scrapes it as job `node`. A volume that does not exist yet is skipped; restart node-exporter (`chore monitoring:node-exporter:up`) after creating it. Docker volumes share the host's filesystem, so on one host these read the same disk.
+- **Kubernetes:** `PVCSpaceLow` and `PVCSpaceCritical` read kubelet's `kubelet_volume_stats_*` for the chart's PVCs: `<release>-postgres-data`, `<release>-api-attachments` and Garage's `data-<release>-garage-N`. They need the cluster's Prometheus to scrape kubelet, which kube-prometheus-stack does by default. The chart installs nothing for them. Load the `restmail-disk` group into that Prometheus. On Kubernetes the certificates live in Secrets and the database, not on a volume.
 
 ### 4.10 E2E test suite
 
@@ -1352,7 +1357,7 @@ These are the default static IPs for the `restmail.test` instance (overridable p
 | admin | `10.99.0.27` |
 | postgres | `10.99.0.43` |
 
-**Monitoring add-on (`chore monitoring:up`):** prometheus `10.99.0.30`, grafana `10.99.0.31`, postgres-exporter `10.99.0.32`.
+**Monitoring add-on (`chore monitoring:up`):** prometheus `10.99.0.30`, grafana `10.99.0.31`, postgres-exporter `10.99.0.32`, node-exporter `10.99.0.33`.
 
 **Reference servers (e2e, from `rest-mail/reference-mailserver`):** e.g. `mail2.test` Postfix `10.99.0.12`, Dovecot `10.99.0.112`, Postgres `10.99.0.42`; rspamd `10.99.0.23`, fail2ban `10.99.0.24`.
 
