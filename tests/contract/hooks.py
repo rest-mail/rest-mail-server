@@ -836,6 +836,24 @@ def no_link_from_a_password_only_session(transaction):
 
 
 @hooks.before("linkAccount")
+def link_an_account_linked_already(transaction):
+    # already_linked (existing_link) proves an account the caller holds a link
+    # to: the two-factor administrator's request names one linked to it just
+    # before, never the seeded eve. It runs before link_a_seeded_account, which
+    # then leaves the body alone: it names none of that hook's fixtures.
+    if f" > {ALREADY_LINKED_SUMMARY} > " not in transaction.get("name", ""):
+        return
+    if session_address(transaction) != mfa_admin.ADDRESS:
+        return
+    body = hooks.get_json(transaction)
+    if not isinstance(body, dict):
+        return
+    address, _ = a_throwaway_link(origin_of(transaction))
+    body.update({"address": address, "password": LINKED_PASSWORD})
+    hooks.set_json(transaction, body)
+
+
+@hooks.before("linkAccount")
 def link_a_seeded_account(transaction):
     body = hooks.get_json(transaction)
     # Supply only the fixture secret the named examples ask for. Preserve
@@ -4087,3 +4105,173 @@ def close_an_import_session_the_run_opened(transaction):
         transaction["fullPath"] = "/".join(parts) + separator + query
     elif path.rstrip("/").rsplit("/", 1)[-1] == UNKNOWN_IMPORT_SESSION:
         on_the_admins_import_account(transaction)
+
+
+# The grant examples that need the caller to hold a grant in a given state
+# (#1162): eligible_grant and active_grant. A grant change acts only on the
+# caller's own grant, so the grant is made for the two-factor administrator,
+# the examples' sender and the authorization phase's admin principal, just
+# before the request: an admin role at a domain no one hosts, named by the time,
+# which gives a superadmin at * nothing it lacked. Keyed by the action and the
+# example's summary; the value is the state to prepare and whether the body
+# gets an unused second factor of that administrator's (the examples carry a
+# placeholder code; invalid_code keeps its wrong one).
+GRANT_STATES = {
+    ("activate", "An eligible grant is switched on for an hour"): ("eligible", True),
+    ("activate", "The grant is on already"): ("switched_on", True),
+    ("activate", "The second factor does not match"): ("eligible", False),
+    ("deactivate", "The running activation ends"): ("switched_on", None),
+    ("deactivate", "Nothing to switch off"): ("eligible", None),
+    ("make-eligible", "An active grant becomes eligible"): ("active", True),
+    ("make-eligible", "The second factor does not match"): ("active", False),
+    ("make-eligible", "The grant is eligible already"): ("eligible", True),
+}
+# The grant id every one of those examples names.
+EXAMPLE_GRANT_ID = "7"
+
+
+def session_account_id(transaction):
+    """The account id of the session the request carries, or None."""
+    header = transaction["request"]["headers"].get("Authorization", "")
+    if not header.startswith("Bearer "):
+        return None
+    try:
+        payload = header[len("Bearer "):].split(".")[1]
+        claims = json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
+    except (IndexError, ValueError):
+        return None
+    return claims.get("account_id") if isinstance(claims, dict) else None
+
+
+def as_the_two_factor_admin_call(origin, method, path, body=None):
+    """A setup request of the hooks' own, as the two-factor administrator."""
+    request = urllib.request.Request(
+        origin + path,
+        data=None if body is None else json.dumps(body).encode(),
+        headers={"Content-Type": "application/json", "Authorization": "Bearer " + mfa_admin_token(origin)},
+        method=method,
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        raw = response.read()
+    return json.loads(raw).get("data") if raw else None
+
+
+def a_throwaway_grant(origin, holder, state):
+    """A grant held by holder in the state asked for: eligible, active, or
+    eligible and switched on (switched_on). Returns its id."""
+    grant = as_the_two_factor_admin_call(origin, "POST", "/api/v1/admin/grants", {
+        "holder": {"kind": "account", "id": holder},
+        "role": "admin",
+        "scope": f"domain:grant-{time.time_ns():d}.test",
+        "mode": "active" if state == "active" else "eligible",
+    })
+    if state == "switched_on":
+        as_the_two_factor_admin_call(
+            origin, "POST", f"/api/v1/admin/grants/{grant['id']:d}/activate",
+            {"reason": "contract run: a grant to switch off", "minutes": 5, **mfa_admin.factor()},
+        )
+        # Switching on is throttled like sign-in.
+        time.sleep(1.1)
+    return grant["id"]
+
+
+@hooks.before("activateGrant")
+@hooks.before("deactivateGrant")
+@hooks.before("makeGrantEligible")
+def a_grant_of_the_callers_own(transaction):
+    # Only the two-factor administrator's requests: it is the one principal
+    # that holds the second factor these changes take. Another principal's
+    # request is sent as it is, on the example's grant 7, which is not its own.
+    path, _, query = transaction["fullPath"].partition("?")
+    parent, _, action = path.rpartition("/")
+    base, _, grant_id = parent.rpartition("/")
+    summary = transaction.get("name", "").split(" > ")[1:2]
+    wanted = GRANT_STATES.get((action, summary[0] if summary else ""))
+    if wanted is None or grant_id != EXAMPLE_GRANT_ID:
+        return
+    if session_address(transaction) != mfa_admin.ADDRESS:
+        return
+    state, fresh_factor = wanted
+    origin = origin_of(transaction)
+    made = a_throwaway_grant(origin, session_account_id(transaction), state)
+    hooks.stash.setdefault("throwaway_grants", {})[transaction["name"]] = made
+    transaction["fullPath"] = f"{base}/{made:d}/{action}" + ("?" + query if query else "")
+    if fresh_factor:
+        body = hooks.get_json(transaction)
+        if isinstance(body, dict):
+            body.pop("totp_code", None)
+            body.pop("recovery_code", None)
+            body.update(mfa_admin.factor())
+            hooks.set_json(transaction, body)
+
+
+@hooks.after("activateGrant")
+@hooks.after("deactivateGrant")
+@hooks.after("makeGrantEligible")
+def remove_the_throwaway_grant(transaction):
+    # The grant made for the request is removed after it, whatever the answer.
+    made = hooks.stash.get("throwaway_grants", {}).pop(transaction.get("name", ""), None)
+    if made is None:
+        return
+    try:
+        as_the_two_factor_admin_call(origin_of(transaction), "DELETE", f"/api/v1/admin/grants/{made:d}")
+    except urllib.error.HTTPError as error:
+        if error.code != 404:
+            raise
+
+
+# The password of each account linked for unlinkAccount's unlinked and
+# linkAccount's already_linked examples (existing_link). Not a secret: it
+# proves only a disposable account made for one request.
+LINKED_PASSWORD = "contract-linked-account"
+UNLINKED_SUMMARY = "The link is given up"
+ALREADY_LINKED_SUMMARY = "The account is linked already"
+
+
+def a_throwaway_link(origin):
+    """A fresh account with a password, linked to the two-factor
+    administrator: its address and id."""
+    address = fresh_address("linked")
+    a_new_account(origin, address, "Linked", LINKED_PASSWORD)
+    # Linking is throttled like sign-in.
+    time.sleep(1.1)
+    linked = as_the_two_factor_admin_call(
+        origin, "POST", "/api/v1/accounts/link", {"address": address, "password": LINKED_PASSWORD}
+    )
+    time.sleep(1.1)
+    return address, linked["id"]
+
+
+@hooks.before("unlinkAccount")
+def unlink_a_link_of_its_own(transaction):
+    # unlinked (existing_link) names account 2, a seeded account. The
+    # two-factor administrator's request gives up a link made for it alone,
+    # just before; other principals' requests are sent as they are.
+    if f" > {UNLINKED_SUMMARY} > " not in transaction.get("name", ""):
+        return
+    if session_address(transaction) != mfa_admin.ADDRESS:
+        return
+    path, _, query = transaction["fullPath"].partition("?")
+    base, _, _ = path.rpartition("/")
+    _, account = a_throwaway_link(origin_of(transaction))
+    transaction["fullPath"] = f"{base}/{account:d}" + ("?" + query if query else "")
+
+
+
+GRANTED_SUMMARY = "An eligible admin grant on one domain"
+
+
+@hooks.before("createGrant")
+def grant_to_an_account_of_its_own(transaction):
+    # granted (grant_holder) names account 2, a seeded account. Each request
+    # expecting it, every principal's in the authorization phase, names an
+    # account made for it alone, without credentials, just before: the eligible
+    # grant it gets touches none of the run's own accounts. Made as the
+    # two-factor administrator; refusals keep the documented holder.
+    if f" > {GRANTED_SUMMARY} > " not in transaction.get("name", ""):
+        return
+    body = hooks.get_json(transaction)
+    if not isinstance(body, dict) or not isinstance(body.get("holder"), dict):
+        return
+    body["holder"]["id"] = an_account_of_its_own(origin_of(transaction), "grant-holder")
+    hooks.set_json(transaction, body)
