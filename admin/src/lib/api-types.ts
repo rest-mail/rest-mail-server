@@ -4079,6 +4079,7 @@ export interface components {
             role: "inbox" | "sent" | "drafts" | "trash" | "junk" | "archive" | null;
             /** Format: int64 */
             total: number;
+            uid_next: number;
             /** Format: int64 */
             unread: number;
         };
