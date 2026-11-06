@@ -933,10 +933,6 @@
 - operation: createBan
   difference: "response 400: generated only"
   reason: "Malformed JSON or a body in the wrong media type is 400 bad_request. Parsed input that breaks a shape or field rule is 422 validation_failed with details.fields (#672)."
-- operation: deleteBan
-  difference: "response 404: openapi.yaml only"
-  reason: >-
-    Deleting a nonexistent ban ID is idempotent and returns 204. The handler does not check RowsAffected and has no reachable 404.
 - operation: getDashboardStats
   difference: "response 200 application/json.properties.data.properties.inboundTransportSecurity.properties.plaintextPercent.format: openapi.yaml absent, generated \"double\""
   reason: >-
