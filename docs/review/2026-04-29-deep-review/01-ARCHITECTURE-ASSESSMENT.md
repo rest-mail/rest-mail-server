@@ -1,5 +1,7 @@
 # 01 — Architecture Assessment
 
+> A dated snapshot from 2026-04-29, kept for the decisions below and what rests on them. The open problems it listed moved to the issue tracker; [#1563](https://github.com/rest-mail/rest-mail-server/issues/1563) leads to where each one went.
+
 ## What's been built
 
 The current stack, by the numbers:
@@ -75,74 +77,6 @@ Worth noting: *this is unusual*. Most teams stop at docker-compose forever. The 
 
 Each gateway and the API have a `dev` Dockerfile target that uses `air` to rebuild and restart on file change. That's a meaningful productivity multiplier. The tradeoff is that dev mode bind-mounts the project root (`-v $(pwd):/app`), which means the dev container's filesystem is your laptop's filesystem — fine, but it's why the dev image isn't suitable for prod.
 
-## Where the cracks are
-
-### Crack #1: hardcoded `mail3.test` everywhere
-
-`grep -r mail3.test internal/` returns hits in:
-
-- TLS cert paths (`/certs/mail3.test.crt`, `/certs/mail3.test.key`)
-- Hostnames (`GATEWAY_HOSTNAME: mail3.test`)
-- Default DB host derivations (`{{.PROJECT}}-postgres`)
-- Banner messages
-- Docs
-- Pipeline-filter test fixtures
-
-Spinning up a mail4.test or a customer-specific instance today is a search-and-replace exercise. [02-PARAMETERIZATION.md](02-PARAMETERIZATION.md) has the fix.
-
-### Crack #2: the queue's failure model is binary
-
-Look at `internal/gateway/queue/`. A queued outbound message has the states "pending", "delivered", "failed". When delivery fails, "failed" is terminal. There's no:
-
-- Bounced-with-soft-fail-retry-N-times state
-- Per-recipient state when one address bounces and the others go through
-- Bounce category (4xx temp vs 5xx permanent vs reputation block vs rate limit)
-- DSN parsing back to the original sender — `tests/e2e/stage12_bounce_dsn_test.go` exists but the prod path is shallow
-
-For a product you'd hand to customers, you need at least:
-
-- Per-recipient queue state (one message → many recipients → many independent delivery attempts)
-- Bounce category extracted from the DSN and stored
-- Suppression list keyed on (recipient, reason) so a hard-bounced address doesn't get retried for 90 days
-
-### Crack #3: multi-tenancy is implicit
-
-Reading `internal/api/middleware/`, the AuthZ check is essentially "is this token valid; what mailbox does it belong to". There's no:
-
-- Domain-scoped admin (a customer with mail4.test should be able to manage mail4.test mailboxes but not see mail5.test)
-- Platform admin / domain admin / mailbox user / API client tier system
-- Audit log of admin actions
-
-If two real organizations share the same RESTMAIL deployment, the boundary that prevents one from seeing the other's mail is "we trust the developer wrote the right WHERE clause." That's a vulnerability waiting to happen. Detail in [05-SECURITY-AND-COMPLIANCE.md](05-SECURITY-AND-COMPLIANCE.md).
-
-### Crack #4: SMTP outbound retries are time-based, not reputation-based
-
-`internal/gateway/queue/worker.go` retries on a fixed schedule. Good upstream MTAs (postfix's "delay backoff", e.g.) instead retry differently based on:
-
-- Was the bounce a 421/451 (temp) vs 5xx (perm)? Don't retry the perm.
-- Has the receiving MTA started rate-limiting us? Back off harder than the default schedule.
-- Is the recipient on a known-flaky mailbox provider (Yahoo, AOL)? Different schedule than Gmail.
-
-The current implementation is the textbook implementation, and it'll work fine until you're sending real volume and start tripping rate limits.
-
-### Crack #5: cert lifecycle is half-built
-
-`internal/acme/` is implemented and there's an `internal/api/handlers/certificates.go`. But:
-
-- There's no scheduled job that runs `task: renew-near-expiry` — renewal is on-demand only as far as I can tell from the code.
-- DNS-01 vs HTTP-01 selection is implicit; for self-hosted deployments you usually need DNS-01 (because port 80 might not be reachable from public internet).
-- The ACME account key rotates via `cmd/rotate-key` — but the runbook for "we rotated the key, now what" isn't documented.
-
-### Crack #6: the "indistinguishability" claim is fragile
-
-`tests/e2e/stage5_indistinguishability_test.go` asserts that the RESTMAIL gateway behaves like a traditional postfix+dovecot pair (same CAPABILITY responses, same STARTTLS dance, etc.). That's a great claim and a great test. But:
-
-- It only tests the *protocol* surface. Headers added by RESTMAIL but not by postfix (e.g. our X-Pipeline-Verdict ones) are still observable to a sender comparing.
-- Header order differs. Most receivers don't care, but some spam classifiers do.
-- The test is brittle: every CAPABILITY string change is a test break.
-
-Indistinguishability is a moving target as long as you're inventing new headers.
-
 ## What's load-bearing
 
 These are the parts where if you change them sideways, three other things stop working:
@@ -152,25 +86,6 @@ These are the parts where if you change them sideways, three other things stop w
 3. **`internal/pipeline/engine.go`** — every inbound and outbound message goes through it. Changes here need full e2e coverage.
 4. **`internal/gateway/apiclient/`** — the gateways' contract with the API. Breaking it breaks SMTP+IMAP+POP3 simultaneously.
 
-## Things that smell like they're going to bite you
-
-1. **`internal/gateway/queue/worker.go` runs in-process with the gateway**, not as a separate worker. If the SMTP gateway's process restarts, in-flight retries reset. For dev that's fine; for prod you want the queue worker to be its own process with its own DB-backed lock so you can scale gateway and worker independently.
-2. **The `js-filter` sidecar uses `vm.runInNewContext`**, which is sandbox-ish but not security-grade. A user with permission to write a JS filter who's clever about prototype pollution could read process env. The sidecar process being separate from the API is the only thing saving you. Detail in [05-SECURITY-AND-COMPLIANCE.md](05-SECURITY-AND-COMPLIANCE.md).
-3. **`internal/api/handlers/events.go` (SSE)** opens a persistent connection per browser. A few hundred concurrent webmail users => a few hundred hanging file descriptors. Test it under load before you discover it.
-4. **The `digest` package** suggests a daily-summary feature but I didn't see a scheduler. If it's there, it's not visible from `cmd/`. If it's *not* there, the digest will never fire.
-
-## What's missing relative to "a real mail server"
-
-Not a feature gap (those moved to the issue tracker, #1563) — this is architectural:
-
-- **No tenancy boundary.** Domain ownership exists but it's not enforced as a hard wall.
-- **No multi-region.** Not a "we should add this tomorrow" item, but it's the kind of thing that influences DB layout and you want to plan for.
-- **No idempotency keys on outbound send.** A retried API call that says "send this message" might double-send. Idempotency keys on `POST /messages/send` would fix it.
-- **No audit log of admin actions.** Who changed the pipeline filter for mail3.test from `dmarc:reject` to `dmarc:none`? Currently: nobody knows.
-- **No backup/restore tooling.** `pg_dump` works, but there's no `task backup:create / backup:restore` flow for the mail filesystem (attachments + maildir + signing keys).
-
 ## Verdict
 
-The architecture is *good*. Better than most "we built our own mail server" projects of comparable age. The remaining work is mostly filling in operational gaps (queue surgery, reputation visibility, tenancy enforcement) rather than redesigning anything fundamental.
-
-The one thing that needs doing *first* before more features land: **parameterization** ([02-PARAMETERIZATION.md](02-PARAMETERIZATION.md)). Right now the cost of "spin up a customer instance" is high enough that you'll resist doing it, and that resistance will compound.
+The architecture is *good*. Better than most "we built our own mail server" projects of comparable age. What it left to do was mostly operational, not a redesign of anything fundamental.
