@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"testing"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -371,18 +372,46 @@ func (s *JWTService) ValidateRefreshToken(tokenStr string) (*Claims, error) {
 	return claims, nil
 }
 
-// DummyPasswordHash is a valid {BLF-CRYPT} bcrypt hash (cost 10, matching
-// HashPassword) of a fixed throwaway password. The login path runs CheckPassword
+// PasswordHashCost is the bcrypt cost of a new password (#1642). A sign-in with
+// a cheaper hash replaces it at this cost (PasswordNeedsRehash).
+const PasswordHashCost = 12
+
+// passwordCost is the cost HashPassword uses and PasswordNeedsRehash holds a
+// stored hash to: PasswordHashCost, except in a test binary that lowered it.
+var passwordCost = PasswordHashCost
+
+// DummyPasswordHash is a valid {BLF-CRYPT} bcrypt hash (at PasswordHashCost,
+// matching HashPassword) of a fixed throwaway password. The login path runs CheckPassword
 // against it when no account matches, so an unknown user costs the same bcrypt
 // comparison as a wrong password — a missing account and a wrong password become
 // indistinguishable by timing (OSI-24 user-enumeration defense-in-depth). It is
 // never a valid credential: no real password hashes to it, and it is only ever
 // used as the comparison target for the not-found branch.
-const DummyPasswordHash = "{BLF-CRYPT}$2a$10$aA7IA.HJ0RwvnriddDdy0OX/T7cjApOOFFehVikg6m7FO01jW4iCu"
+var DummyPasswordHash = "{BLF-CRYPT}$2a$12$5FMdJ3dUEQzOsG.xfNiIm.6U4S.hQJf1yhW8mtScdEjT.o6F/ul7e"
 
-// HashPassword hashes a password using bcrypt with cost 10, compatible with Dovecot's {BLF-CRYPT}.
+// LowerPasswordCostForTests makes this test binary hash passwords, and its
+// dummy comparison, at cost. bcrypt is slow on purpose and many times slower
+// under the race detector, so a package whose tests sign in many times calls
+// this from TestMain. Nothing outside a TestMain may call it.
+func LowerPasswordCostForTests(cost int) {
+	if !testing.Testing() {
+		panic("auth: a lower password cost is only for test binaries")
+	}
+	passwordCost = cost
+	hash, err := hashAtCost("dummy password for a test binary", cost)
+	if err != nil {
+		panic(err)
+	}
+	DummyPasswordHash = hash
+}
+
+// HashPassword hashes a password using bcrypt at PasswordHashCost, compatible with Dovecot's {BLF-CRYPT}.
 func HashPassword(password string) (string, error) {
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), hashCost())
+	return hashAtCost(password, passwordHashCost())
+}
+
+func hashAtCost(password string, cost int) (string, error) {
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), cost)
 	if err != nil {
 		return "", fmt.Errorf("failed to hash password: %w", err)
 	}
