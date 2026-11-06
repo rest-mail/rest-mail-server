@@ -161,7 +161,9 @@ var (
 const rbacStateSQL = `SELECT md5(
 	COALESCE((SELECT string_agg(c::text, ',' ORDER BY c.id) FROM capabilities c), '') || '|' ||
 	COALESCE((SELECT string_agg(r::text, ',' ORDER BY r.id) FROM roles r), '') || '|' ||
-	COALESCE((SELECT string_agg(l::text, ',' ORDER BY l.role_id, l.capability_id) FROM role_capabilities l), ''))`
+	COALESCE((SELECT string_agg(l::text, ',' ORDER BY l.role_id, l.capability_id) FROM role_capabilities l), '') || '|' ||
+	COALESCE((SELECT string_agg(c.id::text || ':' || c.scope::text, ',' ORDER BY c.id)
+		FROM credentials c WHERE c.scope::text ~ '"mailboxes:(read|write|delete)"'), ''))`
 
 // ensureRBAC is bootstrap.EnsureRBAC, without its few hundred statements where they
 // would change nothing.
