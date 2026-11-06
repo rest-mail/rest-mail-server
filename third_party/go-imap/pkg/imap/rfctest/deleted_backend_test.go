@@ -123,9 +123,10 @@ func TestDeletedMarkReachesEverySession(t *testing.T) {
 	_, tagged := desktop.command("D1", `STORE 2 +FLAGS (\Deleted)`)
 	requireOK(t, tagged, "D1")
 
+	// Unsolicited FETCH carries the UID (RFC 9051 §7.5.2).
 	lines, tagged := phone.command("N1", "NOOP")
 	requireOK(t, tagged, "N1")
-	requireLine(t, lines, `* 2 FETCH (FLAGS (\Deleted))`)
+	requireLine(t, lines, `* 2 FETCH (UID 20 FLAGS (\Deleted))`)
 	requireDeletedFlag(t, phone, "2", true)
 
 	_ = desktop.conn.Close()
