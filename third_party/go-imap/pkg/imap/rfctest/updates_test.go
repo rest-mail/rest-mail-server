@@ -70,7 +70,7 @@ func TestNoopReportsOtherSourcesChanges(t *testing.T) {
 	shared.deliver(5004)
 	lines, tagged := c.command("N1", "NOOP")
 	requireOK(t, tagged, "N1")
-	requireExactly(t, lines, "* 1 EXPUNGE", `* 1 FETCH (FLAGS (\Flagged))`, "* 3 EXISTS")
+	requireExactly(t, lines, "* 1 EXPUNGE", `* 1 FETCH (UID 5002 FLAGS (\Flagged))`, "* 3 EXISTS")
 	lines, tagged = c.command("F1", "FETCH 1:* (UID)")
 	requireOK(t, tagged, "F1")
 	requireExactly(t, lines, `* 1 FETCH (UID 5002 FLAGS (\Flagged))`, "* 2 FETCH (UID 5003 FLAGS ())", "* 3 FETCH (UID 5004 FLAGS ())")
@@ -113,7 +113,7 @@ func TestCheckReportsLikeNoop(t *testing.T) {
 			shared.deliver(9)
 			lines, tagged := c.command("C1", "CHECK")
 			requireOK(t, tagged, "C1")
-			requireExactly(t, lines, "* 1 EXPUNGE", `* 1 FETCH (FLAGS (\Seen))`, "* 2 EXISTS")
+			requireExactly(t, lines, "* 1 EXPUNGE", `* 1 FETCH (UID 8 FLAGS (\Seen))`, "* 2 EXISTS")
 		})
 	}
 }
