@@ -65,8 +65,8 @@ func (p *Purger) loop() {
 		case <-p.stop:
 			return
 		case <-ticker.C:
-			_ = tracing.Job(context.Background(), "job.greylist_purge", func(context.Context) error {
-				p.PurgeOnce(p.now())
+			_ = tracing.Job(context.Background(), "job.greylist_purge", func(ctx context.Context) error {
+				p.PurgeOnce(ctx, p.now())
 				return nil
 			})
 		}
@@ -76,19 +76,19 @@ func (p *Purger) loop() {
 // PurgeOnce deletes every greylist entry past its TTL horizon and returns the
 // number of rows removed. Errors are logged and swallowed — a failed purge must
 // never crash the process; the next tick retries.
-func (p *Purger) PurgeOnce(now time.Time) int64 {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+func (p *Purger) PurgeOnce(ctx context.Context, now time.Time) int64 {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	db := p.db.WithContext(ctx)
 
 	res := db.Where("expires_at < ?", now).Delete(&models.GreylistEntry{})
 	if res.Error != nil {
-		slog.Warn("greylist purger: expiry delete failed", "error", res.Error)
+		slog.WarnContext(ctx, "greylist purger: expiry delete failed", "error", res.Error)
 		return 0
 	}
 	deleted := res.RowsAffected
 	if deleted > 0 {
-		slog.Info("greylist purger: deleted expired entries", "count", deleted)
+		slog.InfoContext(ctx, "greylist purger: deleted expired entries", "count", deleted)
 	}
 	return deleted
 }

@@ -32,9 +32,9 @@ func TestTLSRequiredNo_IgnoresTheRecipientsPolicy(t *testing.T) {
 	deliver := func(raw string) ([]string, error) {
 		item := tlsTestItem()
 		item.RawMessage = raw
-		policy, stsErr := w.recipientPolicy(item, item.Domain)
+		policy, stsErr := w.recipientPolicy(context.Background(), item, item.Domain)
 		settings, finish := relayTestPeer(t, cert, relayPeerOptions{noAUTH: true})
-		err := w.deliverSMTP(net.JoinHostPort(settings.host, strconv.Itoa(settings.port)), settings.host, item, policy, stsErr)
+		err := w.deliverSMTP(context.Background(), net.JoinHostPort(settings.host, strconv.Itoa(settings.port)), settings.host, item, policy, stsErr)
 		return finish().commands, err
 	}
 

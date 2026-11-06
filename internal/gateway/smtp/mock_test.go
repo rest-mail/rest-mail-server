@@ -2,6 +2,7 @@ package smtp
 
 import (
 	"bufio"
+	"context"
 	"crypto/tls"
 	"encoding/base64"
 	"fmt"
@@ -216,7 +217,7 @@ const mockSignature = "DKIM-Signature: v=1; a=rsa-sha256; d=mock; b=mock\r\n"
 
 // PrepareSubmitted strips the Bcc header as outbound.Prepare does, and signs
 // with mockSignature.
-func (s *mockStore) PrepareSubmitted(_, raw string) (string, error) {
+func (s *mockStore) PrepareSubmitted(_ context.Context, _, raw string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.prepared++

@@ -43,7 +43,7 @@ func TestDeliverSMTP_DANEMatchingRecordAuthenticates(t *testing.T) {
 	records := []dane.TLSA{eeRecordFor(t, cert.Certificate[0])}
 	authenticated := transportCount(transportAuthenticated)
 
-	err := daneTestWorker().deliverSMTPWith(net.JoinHostPort(settings.host, strconv.Itoa(settings.port)), settings.host, tlsTestItem(), nil, nil, records)
+	err := daneTestWorker().deliverSMTPWith(context.Background(), net.JoinHostPort(settings.host, strconv.Itoa(settings.port)), settings.host, tlsTestItem(), nil, nil, records)
 	if err != nil {
 		t.Fatalf("deliver: %v", err)
 	}
@@ -63,7 +63,7 @@ func TestDeliverSMTP_DANEMismatchDefersWithoutCleartext(t *testing.T) {
 	settings, finish := relayTestPeer(t, cert, relayPeerOptions{noAUTH: true})
 	wrong := dane.TLSA{Usage: dane.UsageDANEEE, Selector: 1, MatchingType: 1, Data: bytes.Repeat([]byte{7}, 32)}
 
-	err := daneTestWorker().deliverSMTPWith(net.JoinHostPort(settings.host, strconv.Itoa(settings.port)), settings.host, tlsTestItem(), nil, nil, []dane.TLSA{wrong})
+	err := daneTestWorker().deliverSMTPWith(context.Background(), net.JoinHostPort(settings.host, strconv.Itoa(settings.port)), settings.host, tlsTestItem(), nil, nil, []dane.TLSA{wrong})
 	var se *SMTPError
 	if !errors.As(err, &se) || se.Code != 451 || se.Enhanced != "4.7.5" {
 		t.Fatalf("got %v, want a 451 4.7.5 DANE refusal", err)
@@ -79,7 +79,7 @@ func TestDeliverSMTP_DANEWithoutSTARTTLSDefers(t *testing.T) {
 	settings, finish := relayTestPeer(t, cert, relayPeerOptions{noAUTH: true, noSTARTTLS: true})
 	records := []dane.TLSA{eeRecordFor(t, cert.Certificate[0])}
 
-	err := daneTestWorker().deliverSMTPWith(net.JoinHostPort(settings.host, strconv.Itoa(settings.port)), settings.host, tlsTestItem(), nil, nil, records)
+	err := daneTestWorker().deliverSMTPWith(context.Background(), net.JoinHostPort(settings.host, strconv.Itoa(settings.port)), settings.host, tlsTestItem(), nil, nil, records)
 	var se *SMTPError
 	if !errors.As(err, &se) || se.Code != 451 || !strings.Contains(se.Message, "STARTTLS") {
 		t.Fatalf("got %v, want a 451 DANE refusal naming STARTTLS", err)
@@ -99,7 +99,7 @@ func TestDeliverSMTP_DANEHostIgnoresMTASTS(t *testing.T) {
 	policy := &mtasts.Policy{Mode: mtasts.ModeEnforce, MX: []string{settings.host}, MaxAge: 86400}
 	records := []dane.TLSA{eeRecordFor(t, cert.Certificate[0])}
 
-	if err := w.deliverSMTPWith(net.JoinHostPort(settings.host, strconv.Itoa(settings.port)), settings.host, tlsTestItem(), policy, nil, records); err != nil {
+	if err := w.deliverSMTPWith(context.Background(), net.JoinHostPort(settings.host, strconv.Itoa(settings.port)), settings.host, tlsTestItem(), policy, nil, records); err != nil {
 		t.Fatalf("deliver: %v", err)
 	}
 	if result := finish(); !strings.Contains(result.data, "hello") {
@@ -116,7 +116,7 @@ func TestDeliverSMTP_DANESatisfiesREQUIRETLS(t *testing.T) {
 	item.RequireTLS = true
 	records := []dane.TLSA{eeRecordFor(t, cert.Certificate[0])}
 
-	if err := daneTestWorker().deliverSMTPWith(net.JoinHostPort(settings.host, strconv.Itoa(settings.port)), settings.host, item, nil, nil, records); err != nil {
+	if err := daneTestWorker().deliverSMTPWith(context.Background(), net.JoinHostPort(settings.host, strconv.Itoa(settings.port)), settings.host, item, nil, nil, records); err != nil {
 		t.Fatalf("deliver: %v", err)
 	}
 	result := finish()
@@ -179,7 +179,7 @@ func TestDANERecordsPerHost(t *testing.T) {
 	} {
 		w := daneTestWorker()
 		w.dane = tc.lookup
-		records, err := w.daneRecords("example.test", "mx.example.test", false)
+		records, err := w.daneRecords(context.Background(), "example.test", "mx.example.test", false)
 		var se *SMTPError
 		if len(records) != tc.records || tc.wantDefers != (errors.As(err, &se) && se.Code == 451) {
 			t.Errorf("%s: %d records, err %v", name, len(records), err)

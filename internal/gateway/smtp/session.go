@@ -1122,7 +1122,7 @@ func (s *session) prepareSubmitted(whole func() (string, error)) (*spoolFile, er
 	if err != nil {
 		return nil, err
 	}
-	prepared, err := s.store.PrepareSubmitted(s.mailFrom, raw)
+	prepared, err := s.store.PrepareSubmitted(s.ctx, s.mailFrom, raw)
 	if err != nil {
 		return nil, err
 	}

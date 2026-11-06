@@ -57,8 +57,8 @@ func (w *Worker) daneMXSecure(dnsDomain string) (bool, error) {
 // client can use. A bogus or failed lookup is a temporary failure for this host; the
 // next MX is tried, and the message is never sent to this one without DANE.
 // A bogus lookup is also recorded for the domain's TLS-RPT report when report is set.
-func (w *Worker) daneRecords(domain, host string, report bool) ([]dane.TLSA, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), daneLookupTimeout)
+func (w *Worker) daneRecords(ctx context.Context, domain, host string, report bool) ([]dane.TLSA, error) {
+	ctx, cancel := context.WithTimeout(ctx, daneLookupTimeout)
 	defer cancel()
 	records, sec, err := w.dane.TLSA(ctx, host, 25)
 	switch {
@@ -66,7 +66,7 @@ func (w *Worker) daneRecords(domain, host string, report bool) ([]dane.TLSA, err
 		return nil, &SMTPError{Code: 451, Enhanced: "4.4.3", RemoteMTA: host, Message: "DANE: the validating resolver gave no answer for " + host + "'s TLSA records"}
 	case sec == dane.Bogus:
 		if report {
-			w.recordDANESession(domain, host, nil, nil, time.Now())
+			w.recordDANESession(ctx, domain, host, nil, nil, time.Now())
 		}
 		return nil, &SMTPError{Code: 451, Enhanced: "4.4.3", RemoteMTA: host, Message: "DANE: " + host + "'s TLSA records failed DNSSEC validation"}
 	case sec != dane.Secure:
@@ -101,7 +101,7 @@ const (
 // domain's TLS-RPT report: policy type tlsa, whose policy strings are the host's TLSA
 // records in presentation form (RFC 8460 §4.2). link is nil when the session never
 // started because the host's TLSA records failed DNSSEC validation (dnssec-invalid).
-func (w *Worker) recordDANESession(recipientDomain, host string, records []dane.TLSA, link *smtpLink, now time.Time) {
+func (w *Worker) recordDANESession(ctx context.Context, recipientDomain, host string, records []dane.TLSA, link *smtpLink, now time.Time) {
 	if w.db == nil {
 		return
 	}
@@ -134,6 +134,6 @@ func (w *Worker) recordDANESession(recipientDomain, host string, records []dane.
 		row.ReceivingIP, row.SendingIP = link.remoteIP, link.localIP
 	}
 	if err := w.db.Create(&row).Error; err != nil {
-		slog.Warn("queue: TLS-RPT DANE session not recorded", "domain", domain, "host", host, "error", err)
+		slog.WarnContext(ctx, "queue: TLS-RPT DANE session not recorded", "domain", domain, "host", host, "error", err)
 	}
 }

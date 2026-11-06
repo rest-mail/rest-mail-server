@@ -1,6 +1,7 @@
 package domainstate
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strconv"
@@ -103,7 +104,7 @@ func TestWatcher_TakesUnservableDomainsOutOfService(t *testing.T) {
 	// database is shared, so the totals below are "at least ours": the assertions
 	// that matter are about these four domains by name.
 	w := NewWatcher(tx, time.Hour)
-	took, err := w.Check()
+	took, err := w.Check(context.Background())
 	if err != nil {
 		t.Fatalf("check: %v", err)
 	}
@@ -140,7 +141,7 @@ func TestWatcher_TakesUnservableDomainsOutOfService(t *testing.T) {
 
 	// A second pass has nothing left to do: a domain is counted once, when it
 	// leaves service, and not again on every pass.
-	took, err = w.Check()
+	took, err = w.Check(context.Background())
 	if err != nil {
 		t.Fatalf("second check: %v", err)
 	}
