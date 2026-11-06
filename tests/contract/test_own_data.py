@@ -33,6 +33,10 @@ CUSTOM_FILTERS = (
 # link: the rename, and the delete after it.
 FOLDERS = ("createFolder", "renameFolder", "deleteFolder")
 
+# What read or wrote the invitable account count, of the invitation operations.
+# No link starts from or reaches either.
+INVITATIONS = ("inviteAccount", "acceptInvitation")
+
 
 def link_followers(description, start):
     """The operations reachable from start through the description's links."""
@@ -53,6 +57,16 @@ def link_followers(description, start):
                 seen.add(follower)
                 waiting.append(follower)
     return seen
+
+
+def description_operations(description):
+    """Every operation id the description declares."""
+    return [
+        operation["operationId"]
+        for item in description["paths"].values()
+        for operation in item.values()
+        if isinstance(operation, dict) and "operationId" in operation
+    ]
 
 
 class Selection(unittest.TestCase):
@@ -81,7 +95,12 @@ class Selection(unittest.TestCase):
         description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
         selected = set(own_data.MOVED + own_data.FOLLOWS_THE_CREATED_DOMAIN)
         self.assertEqual(
-            selected - set(PIPELINES) - set(ALIASES) - set(CUSTOM_FILTERS) - set(FOLDERS),
+            selected
+            - set(PIPELINES)
+            - set(ALIASES)
+            - set(CUSTOM_FILTERS)
+            - set(FOLDERS)
+            - set(INVITATIONS),
             link_followers(description, "createDomain") | {"createDomain"},
         )
 
@@ -117,6 +136,16 @@ class Selection(unittest.TestCase):
             set(FOLDERS),
         )
         self.assertLessEqual(set(FOLDERS), set(own_data.MOVED))
+
+    def test_it_selects_the_invitation_operations_which_no_link_reaches(self):
+        description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
+        for operation in INVITATIONS:
+            self.assertEqual(link_followers(description, operation), set())
+        reached = set()
+        for operation in description_operations(description):
+            reached |= link_followers(description, operation)
+        self.assertFalse(reached & set(INVITATIONS))
+        self.assertLessEqual(set(INVITATIONS), set(own_data.MOVED))
 
     def test_a_skipped_exchange_is_not_a_pass(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -3027,12 +3027,26 @@ def on_the_created_account(transaction):
 
 def an_account_without_credentials(origin):
     """A fresh restmail.test account made without a password, so invitable."""
-    count = hooks.stash.get("invitable_accounts", 0) + 1
-    hooks.stash["invitable_accounts"] = count
-    address = f"invited-{time.time_ns()}-{count}@restmail.test"
+    return an_account_of_its_own(origin, "invited")
+
+
+# The password of the account made for inviteAccount's existing_credentials
+# example: the 409 needs one that holds a password, and the reset removed the
+# fixture admin's id 1. Never sent anywhere else.
+CREDENTIALED_PASSWORD = "contract-credentialed-account"
+
+
+def an_account_of_its_own(origin, prefix, password=None):
+    """A fresh restmail.test account, with a password only when one is given.
+    Its address is named by the time it is made, not by a count kept in the
+    stash, so nothing is carried between exchanges. restmail.test is seeded, so
+    it is there after a reset too. Making one takes a two-factor session."""
+    body = {"address": f"{prefix}-{time.time_ns():d}@restmail.test", "display_name": "Invited"}
+    if password is not None:
+        body["password"] = password
     request = urllib.request.Request(
         origin + "/api/v1/accounts",
-        data=json.dumps({"address": address, "display_name": "Invited"}).encode(),
+        data=json.dumps(body).encode(),
         headers={
             "Content-Type": "application/json",
             "Authorization": "Bearer " + mfa_admin_token(origin),
@@ -3142,6 +3156,12 @@ def invite_an_account_without_credentials(transaction):
     # and differ only in the state of that account. Each is given an account in
     # its state: a fresh one made without a password, the fixture admin (1),
     # who has one, and an id no account holds. Coverage probes keep their ids.
+    # After a reset (the own-data phase) every exchange, refusals included,
+    # starts clean, and existing_credentials gets an account of its own that
+    # holds a password: the reset removed the fixture admin's id 1.
+    clean = asked_for_a_clean_start()
+    if clean:
+        start_clean(transaction)
     path, _, query = transaction["fullPath"].partition("?")
     mailboxes, placeholder, _ = path.rstrip("/").rsplit("/", 2)
     name = transaction.get("name", "")
@@ -3157,15 +3177,14 @@ def invite_an_account_without_credentials(transaction):
         return
     if " > 409 > " in name:
         account_id = 1
+        if clean:
+            account_id = an_account_of_its_own(
+                origin_of(transaction), "credentialed", CREDENTIALED_PASSWORD
+            )
     elif " > 404 > " in name:
         account_id = 2147483647
     elif " > 201 > " in name:
-        origin = "{}//{}:{}".format(
-            transaction["protocol"],
-            transaction["host"],
-            transaction["port"],
-        )
-        account_id = an_account_without_credentials(origin)
+        account_id = an_account_without_credentials(origin_of(transaction))
     else:
         return
     transaction["fullPath"] = f"{mailboxes}/{account_id:d}/invitation" + (
@@ -3175,6 +3194,11 @@ def invite_an_account_without_credentials(transaction):
 
 @hooks.before("acceptInvitation")
 def redeem_a_fresh_invitation(transaction):
+    # After a reset (the own-data phase) every exchange, refusals included,
+    # starts clean. The accepted example still gets an account and invitation
+    # of its own below; the refusals reach the handler unchanged.
+    if asked_for_a_clean_start():
+        start_clean(transaction)
     body = hooks.get_json(transaction)
     # The accepted example and every coverage probe of its 200 need an unspent
     # invitation: coverage runs no after hooks, and a schema-valid body with an

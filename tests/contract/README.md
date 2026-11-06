@@ -1502,6 +1502,20 @@ nothing that follows it is left unmoved, and it no longer gets
 from the API (`listCertificates`), so `hooks.stash` holds no
 `certified_domains`.
 
+`inviteAccount` and `acceptInvitation` reset and seed before each exchange too,
+refusals included, and each makes the account it invites after its reset, on the
+seeded `restmail.test`, with the two-factor session (making an account takes
+one). `created` invites an account made without a password. `existing_credentials`
+named the fixture admin's id `1`, which the reset removes, so it gets an account
+of its own made with a password, and is refused with 409 for that account's
+credentials. `missing` keeps `2147483647`. `accepted` redeems a new invitation
+for an account of its own, as before, and the refusals (`invalid_token`,
+`invalid_field`, `body_array`) reach the handler unchanged. No link starts from
+or reaches either operation. The accounts are named by the time they are made,
+not by a count, so `hooks.stash` holds no `invitable_accounts`. `deleteGrant`'s
+hook makes its grant's holder the same way, so it reads no stash value through
+that helper any more; grants have not moved.
+
 This happens only with `CONTRACT_RESET_SEED=1`, which `tests/contract/run.sh own-data`
 sets, and that phase is a gate of its own, sent by `chore test:contract-teardown`
 just before the teardown. It sends the moved operations with everything that follows
