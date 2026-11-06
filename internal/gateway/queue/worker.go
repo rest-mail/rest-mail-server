@@ -29,6 +29,9 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/outbound"
 	"github.com/rest-mail/rest-mail-server/internal/srs"
 	"github.com/rest-mail/rest-mail-server/internal/testreset"
+	"github.com/rest-mail/rest-mail-server/internal/tracing"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -589,7 +592,17 @@ func (w *Worker) processNext(workerID int) {
 		return
 	}
 
-	slog.Info("queue: processing",
+	// Each claimed attempt is one background job (#1580): a trace of its own
+	// with a job ID its spans and context-logged lines carry. The row stores
+	// nothing linking it to the request that queued it, so every attempt starts
+	// a new trace rather than continuing that request's.
+	ctx, span := tracing.StartJob(context.Background(), "queue.deliver", trace.WithAttributes(
+		attribute.Int64("queue.id", int64(item.ID)),
+		attribute.Int("queue.attempt", item.Attempts),
+	))
+	defer span.End()
+
+	slog.InfoContext(ctx, "queue: processing",
 		"worker", workerID,
 		"id", item.ID,
 		"sender", item.Sender,
@@ -598,7 +611,7 @@ func (w *Worker) processNext(workerID int) {
 		"attempt", item.Attempts, // the claim above counted it already
 	)
 
-	w.process(item, now)
+	w.process(ctx, item, now)
 }
 
 // claim takes the next message due for an attempt and marks it delivering, using
@@ -649,19 +662,20 @@ func (w *Worker) claim(now time.Time) (models.OutboundQueue, error) {
 // counts in restmail_queue_processed_total, so a queue that is being worked
 // is never mistaken for a stalled one (#1630); a failed attempt also counts
 // in restmail_queue_errors_total.
-func (w *Worker) process(item models.OutboundQueue, now time.Time) {
+func (w *Worker) process(ctx context.Context, item models.OutboundQueue, now time.Time) {
 	defer metrics.QueueProcessed.Inc()
 
 	// A recipient that hard bounced from this sending domain isn't tried
 	// again until its suppression expires (#141).
 	if s, ok := w.suppression(item, now); ok {
+		setOutcome(ctx, "suppressed")
 		w.bounceSuppressed(item, s)
 		return
 	}
 
 	// Attempt delivery, holding the row for as long as that takes.
 	stopHeartbeat := w.startHeartbeat(item)
-	deliveryErr := w.deliver(item)
+	deliveryErr := w.deliver(ctx, item)
 	stopHeartbeat()
 
 	if deliveryErr == nil {
@@ -673,19 +687,20 @@ func (w *Worker) process(item models.OutboundQueue, now time.Time) {
 		// the gateway process; the counter surfaces on that process's /metrics.
 		metrics.MessagesSent.Inc()
 		metrics.PipelineTerminal.WithLabelValues("outbound", "delivered").Inc()
-		slog.Info("queue: delivered", "id", item.ID, "recipient", item.Recipient)
+		setOutcome(ctx, "delivered")
+		slog.InfoContext(ctx, "queue: delivered", "id", item.ID, "recipient", item.Recipient)
 		return
 	}
 
 	metrics.QueueErrors.Inc()
-	w.recordFailure(item, deliveryErr, time.Now())
+	w.recordFailure(ctx, item, deliveryErr, time.Now())
 }
 
 // recordFailure decides what a failed attempt means for the message: a
 // permanent failure bounces it at once, a transient one is retried on its
 // category's schedule until that runs out, and then it bounces. Either bounce
 // sends the sender a DSN.
-func (w *Worker) recordFailure(item models.OutboundQueue, deliveryErr error, now time.Time) {
+func (w *Worker) recordFailure(ctx context.Context, item models.OutboundQueue, deliveryErr error, now time.Time) {
 	// deliver() wraps the underlying failure (fmt.Errorf("all MX hosts failed:
 	// %w", …)), so the SMTP reply, when there was one, is recovered with
 	// errors.As (smtpErrorFrom), never a type assertion that would miss it.
@@ -697,7 +712,13 @@ func (w *Worker) recordFailure(item models.OutboundQueue, deliveryErr error, now
 	category := ClassifyFailure(deliveryErr)
 	item.FailureCategory = category
 
-	slog.Warn("queue: delivery failed",
+	// The attempt's span keeps the failure's Go type and category, never its
+	// text, which can hold an address.
+	span := trace.SpanFromContext(ctx)
+	tracing.Fail(span, deliveryErr)
+	span.SetAttributes(attribute.String("queue.failure_category", string(category)), attribute.Int("queue.smtp_code", errorCode))
+
+	slog.WarnContext(ctx, "queue: delivery failed",
 		"id", item.ID,
 		"recipient", item.Recipient,
 		"attempt", item.Attempts,
@@ -717,19 +738,21 @@ func (w *Worker) recordFailure(item models.OutboundQueue, deliveryErr error, now
 			failed["status"] = "deferred"
 			failed["next_attempt"] = next
 			w.db.Model(&item).Updates(failed)
+			setOutcome(ctx, "deferred")
 			return
 		}
 	}
 
 	failed["status"] = "bounced"
 	w.db.Model(&item).Updates(failed)
+	setOutcome(ctx, "bounced")
 	if category.Suppresses() {
 		w.suppress(item, category, deliveryErr.Error(), now)
 	}
 	if category.Permanent() {
-		slog.Warn("queue: permanent failure, bouncing", "id", item.ID, "smtp_code", errorCode, "failure_category", category)
+		slog.WarnContext(ctx, "queue: permanent failure, bouncing", "id", item.ID, "smtp_code", errorCode, "failure_category", category)
 	} else {
-		slog.Warn("queue: message bounced, retries ran out", "id", item.ID, "recipient", item.Recipient, "failure_category", category)
+		slog.WarnContext(ctx, "queue: message bounced, retries ran out", "id", item.ID, "recipient", item.Recipient, "failure_category", category)
 	}
 	// Report the SMTP status when we have one, so a retry budget exhausted on
 	// repeated 4xx bounces as a persistent-transient 4.x.y, not a fabricated
@@ -791,7 +814,7 @@ func (w *Worker) mxHosts(ctx context.Context, dnsDomain string) ([]*net.MX, erro
 // the primary MX supports the RESTMAIL protocol for direct HTTPS delivery and
 // uses standard SMTP only if it does not; once RESTMAIL is chosen the message
 // never goes by SMTP (#291).
-func (w *Worker) deliver(item models.OutboundQueue) error {
+func (w *Worker) deliver(ctx context.Context, item models.OutboundQueue) error {
 	// Defense in depth against SMTP command / header injection (#166): never write
 	// a control-character-bearing address into a MAIL FROM / RCPT TO command or the
 	// RESTMAIL HTTPS payload. net/smtp does not sanitize its arguments, so a
@@ -812,7 +835,11 @@ func (w *Worker) deliver(item models.OutboundQueue) error {
 		return err
 	}
 	if relay != nil {
-		return w.deliverViaRelay(*relay, item)
+		setTransport(ctx, "relay")
+		_, span := tracing.Start(ctx, "queue.relay")
+		err := w.deliverViaRelay(*relay, item)
+		tracing.End(span, err)
+		return err
 	}
 
 	// Keep the queue's Unicode domain for storage/cache identity, but use its
@@ -821,9 +848,12 @@ func (w *Worker) deliver(item models.OutboundQueue) error {
 	if err != nil {
 		return &SMTPError{Code: 550, Enhanced: "5.1.2", Message: "invalid recipient domain"}
 	}
-	mxCtx, mxCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	mxCtx, mxSpan := tracing.Start(ctx, "queue.mx_lookup")
+	mxCtx, mxCancel := context.WithTimeout(mxCtx, 30*time.Second)
 	mxRecords, err := w.mxHosts(mxCtx, dnsDomain)
 	mxCancel()
+	mxSpan.SetAttributes(attribute.Int("queue.mx_count", len(mxRecords)))
+	tracing.End(mxSpan, err)
 	if err != nil {
 		return err
 	}
@@ -857,7 +887,11 @@ func (w *Worker) deliver(item models.OutboundQueue) error {
 	// A message already pinned to RESTMAIL goes by RESTMAIL and nothing else
 	// (#291): see deliverPinnedRESTMAIL.
 	if item.Transport == models.TransportRESTMAIL {
-		return w.deliverPinnedRESTMAIL(item, firstHost, dnsDomain, stsPolicy, enforcing, daneSecure)
+		setTransport(ctx, "restmail")
+		_, span := tracing.Start(ctx, "queue.restmail")
+		err := w.deliverPinnedRESTMAIL(item, firstHost, dnsDomain, stsPolicy, enforcing, daneSecure)
+		tracing.End(span, err)
+		return err
 	}
 
 	// RESTMAIL upgrade path, gated by the MTA-STS policy resolved above (#168). The
@@ -886,11 +920,15 @@ func (w *Worker) deliver(item models.OutboundQueue) error {
 		if cap.Supported {
 			discoveryURL := w.restmailDiscoveryURLOf(firstHost, dnsDomain)
 			if restmailUpgradePermitted(discoveryURL, stsPolicy, enforcing) {
-				slog.Info("queue: using cached RESTMAIL capability", "domain", item.Domain, "mx", firstHost)
+				slog.InfoContext(ctx, "queue: using cached RESTMAIL capability", "domain", item.Domain, "mx", firstHost)
 				if err := w.pinRESTMAIL(item); err != nil {
 					return err
 				}
-				return restmailFailure(firstHost, item, w.deliverRESTMAILDiscovered(discoveryURL, item))
+				setTransport(ctx, "restmail")
+				_, span := tracing.Start(ctx, "queue.restmail", trace.WithAttributes(attribute.Bool("queue.restmail.cached", true)))
+				err := w.deliverRESTMAILDiscovered(discoveryURL, item)
+				tracing.End(span, err)
+				return restmailFailure(firstHost, item, err)
 			}
 			// Enforce-mode policy does not name this MX host: refuse the
 			// upgrade and deliver over the policy-guarded SMTP path. This is
@@ -903,16 +941,22 @@ func (w *Worker) deliver(item models.OutboundQueue) error {
 	} else if !item.RequireTLS && !daneSecure {
 		// No cache or expired — do EHLO probe (gated by the policy inside tryRESTMAIL).
 		// Once the probe has taken the upgrade, its outcome is final either way.
-		if upgraded, err := w.tryRESTMAIL(firstHost, dnsDomain, item, stsPolicy, enforcing); upgraded {
+		_, span := tracing.Start(ctx, "queue.restmail", trace.WithAttributes(attribute.Bool("queue.restmail.cached", false)))
+		upgraded, err := w.tryRESTMAIL(firstHost, dnsDomain, item, stsPolicy, enforcing)
+		span.SetAttributes(attribute.Bool("queue.restmail.upgraded", upgraded))
+		tracing.End(span, err)
+		if upgraded {
+			setTransport(ctx, "restmail")
 			return err
 		}
 	}
 
 	// SMTP delivery, for a peer never identified as a REST Mail server (or one the
 	// gates above keep off RESTMAIL).
+	setTransport(ctx, "smtp")
 	w.noteSMTP(item)
 	var lastErr, transientErr error
-	for _, mx := range mxRecords {
+	for i, mx := range mxRecords {
 		host := strings.TrimSuffix(mx.Host, ".")
 
 		// A host with usable TLSA records is DANE's, and its records, not MTA-STS,
@@ -938,7 +982,12 @@ func (w *Worker) deliver(item models.OutboundQueue) error {
 				"host", host, "domain", item.Domain, "mode", stsPolicy.Mode)
 		}
 
+		_, span := tracing.Start(ctx, "queue.smtp", trace.WithAttributes(
+			attribute.Int("queue.mx_index", i),
+			attribute.Bool("queue.dane", records != nil),
+		))
 		lastErr = w.deliverToHost(host, item, stsPolicy, stsErr, records)
+		tracing.End(span, lastErr)
 		if lastErr == nil {
 			return nil
 		}
@@ -2070,4 +2119,16 @@ func mailRequireTLS(c *smtp.Client, from string) error {
 	defer c.Text.EndResponse(id)
 	_, _, err = c.Text.ReadResponse(250)
 	return err
+}
+
+// setTransport records on the delivery attempt's span (#1580) which transport
+// it went by last: relay, restmail or smtp.
+func setTransport(ctx context.Context, transport string) {
+	trace.SpanFromContext(ctx).SetAttributes(attribute.String("queue.transport", transport))
+}
+
+// setOutcome records on the delivery attempt's span (#1580) the status the
+// attempt left the row in: delivered, deferred, bounced or suppressed.
+func setOutcome(ctx context.Context, status string) {
+	trace.SpanFromContext(ctx).SetAttributes(attribute.String("queue.status", status))
 }

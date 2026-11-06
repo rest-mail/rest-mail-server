@@ -42,6 +42,6 @@ func (h *MessageHandler) dispatchSendLimitNotices(ctx context.Context) {
 		return nil
 	})
 	if err != nil {
-		slog.Warn("send limits: could not dispatch owner notifications", "error", err)
+		slog.WarnContext(ctx, "send limits: could not dispatch owner notifications", "error", err)
 	}
 }
