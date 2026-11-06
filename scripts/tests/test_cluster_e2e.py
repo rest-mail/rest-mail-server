@@ -81,7 +81,8 @@ class ArgumentTests(unittest.TestCase):
         self.assertEqual(cluster_e2e.STEPS, ("health", "description", "admin-sign-in", "mailbox",
                                              "domain-live", "smtp-rcpt", "imap-sign-in", "filter-validate",
                                              "contract-examples", "dkim-key", "mail-out", "mail-in",
-                                             "pop3-retrieve", "dkim-receive", "restmail-peer"))
+                                             "pop3-retrieve", "dkim-receive", "restmail-peer",
+                                             "mta-sts-enforce", "mta-sts-mismatch"))
         for step in cluster_e2e.STEPS:
             self.assertTrue(callable(getattr(cluster_e2e.Stages, step.replace("-", "_"))), step)
 
@@ -703,8 +704,10 @@ class EntryPointTests(unittest.TestCase):
         self.assertEqual(values, {"enabled": True, "className": "nginx", "host": host,
                                   "tls": {"enabled": True, "secretName": "restmail-ci-tls"}})
         steps = {step["name"]: step.get("run", "") for step in workflow["jobs"]["install"]["steps"]}
-        self.assertIn('issue "$NAMESPACE" restmail-ci-tls "$INGRESS_HOST"', steps["Create the TLS Secrets"])
-        self.assertIn("subjectAltName=DNS:$3", steps["Create the TLS Secrets"])
+        self.assertIn('issue "$NAMESPACE" restmail-ci-tls "$INGRESS_HOST" "$(install_names "$NAMESPACE" "$INGRESS_HOST" "$MAIL_DOMAIN")"',
+                      steps["Create the TLS Secrets"])
+        self.assertIn('subjectAltName=$4', steps["Create the TLS Secrets"])
+        self.assertIn('echo "DNS:$2,', steps["Create the TLS Secrets"])
         controller = steps["Install the ingress controller"]
         self.assertIn('sha256sum -c -', controller)
         self.assertRegex(workflow["env"]["INGRESS_NGINX_SHA256"], r"^[0-9a-f]{64}$")
@@ -922,6 +925,77 @@ class RestmailPeerTests(unittest.TestCase):
         self.assertIn('--peer-namespace "$PEER_NAMESPACE"', steps["Deploy the reference mail server"])
         self.assertIn('sha256sum -c -', steps["Stages 1 to 3 against the install"])
         self.assertRegex(env["DKIMPY_SHA256"], r"^[0-9a-f]{64}$")
+
+
+class MTASTSTests(unittest.TestCase):
+    # Lines as the queue's slog JSON handler writes them (internal/gateway/queue/worker.go).
+    ENFORCE_LOG = "\n".join([
+        '{"level":"INFO","msg":"queue: processing","recipient":"reference@reference.test","domain":"reference.test"}',
+        '{"level":"INFO","msg":"queue: MTA-STS policy found","domain":"reference.test","mode":"enforce","mx_count":1,"enforce":true}',
+        '{"level":"INFO","msg":"queue: delivered over SMTP","host":"mail.reference.test","domain":"reference.test","transport":"authenticated"}',
+        '{"level":"INFO","msg":"queue: delivered","id":7,"recipient":"reference@reference.test"}',
+        'not json',
+    ])
+    MISMATCH_LOG = "\n".join([
+        '{"level":"INFO","msg":"queue: MTA-STS policy found","domain":"sts-mismatch.test","mode":"enforce","mx_count":1,"enforce":true}',
+        '{"level":"WARN","msg":"queue: MTA-STS enforce \u2014 MX host not named by policy, skipping","host":"mail.sts-mismatch.test","domain":"sts-mismatch.test"}',
+        '{"level":"WARN","msg":"queue: delivery failed","id":8,"recipient":"reference@sts-mismatch.test","attempt":1,'
+        '"error":"all MX hosts failed: MTA-STS enforce: MX host not named by policy (domain=sts-mismatch.test mx=mail.sts-mismatch.test)",'
+        '"smtp_code":0,"failure_category":"tls"}',
+    ])
+
+    def test_enforce_trail(self):
+        trail = cluster_e2e.sts_trail(self.ENFORCE_LOG, "reference.test")
+        self.assertEqual(trail["policies"], [("enforce", True)])
+        self.assertEqual(trail["delivered"], [("mail.reference.test", "authenticated")])
+        self.assertEqual((trail["skipped"], trail["refused"], trail["failed"]), ([], [], []))
+        self.assertEqual(cluster_e2e.sts_trail(self.ENFORCE_LOG, "other.test")["delivered"], [])
+
+    def test_mismatch_trail(self):
+        trail = cluster_e2e.sts_trail(self.MISMATCH_LOG, "sts-mismatch.test", "reference@sts-mismatch.test")
+        self.assertEqual(trail["skipped"], ["mail.sts-mismatch.test"])
+        self.assertEqual(trail["delivered"], [])
+        self.assertEqual(len(trail["failed"]), 1)
+        self.assertIn("MX host not named by policy", trail["failed"][0])
+        self.assertEqual(cluster_e2e.sts_trail(self.MISMATCH_LOG, "sts-mismatch.test", "x@y.test")["failed"], [])
+
+    def test_the_log_messages_are_the_queues(self):
+        source = (ROOT / "internal/gateway/queue/worker.go").read_text()
+        for msg in (cluster_e2e.STS_POLICY_FOUND, cluster_e2e.SMTP_DELIVERED, cluster_e2e.STS_MX_SKIPPED,
+                    cluster_e2e.STS_REFUSED, cluster_e2e.DELIVERY_FAILED):
+            self.assertIn(f'"{msg}"', source)
+        self.assertIn('transportAuthenticated = "authenticated"', source)
+
+    def test_policy_fetches_count_only_served_policies(self):
+        log = "\n".join([
+            'mta-sts 10.244.0.9 host=mta-sts.reference.test "GET /.well-known/mta-sts.txt HTTP/1.1" 200 -',
+            'mta-sts 10.244.0.9 host=mta-sts.reference.test "GET /.well-known/mta-sts.txt HTTP/1.1" 404 -',
+            'mta-sts 10.244.0.9 host=mta-sts.sts-mismatch.test "GET /.well-known/mta-sts.txt HTTP/1.1" 200 -',
+        ])
+        self.assertEqual(cluster_e2e.policy_fetches(log, "mta-sts.reference.test"), 1)
+        self.assertEqual(cluster_e2e.policy_fetches(log, "mta-sts.sts-mismatch.test"), 1)
+
+    def test_without_a_reference_namespace_the_steps_say_what_they_need(self):
+        stage = cluster_e2e.Stages(cluster_e2e.parse_args(["--commit", "c"]), cluster=None)
+        stage.state.update(token="t", admin="admin@restmail-ci.test")
+        for step in (stage.mta_sts_enforce, stage.mta_sts_mismatch):
+            with self.subTest(step=step.__name__), self.assertRaisesRegex(cluster_e2e.StepFailed, "--reference-namespace"):
+                step()
+
+    def test_the_gateway_trusts_the_charts_ca_for_smtp_and_policy_fetches(self):
+        entrypoint = (ROOT / "projects/smtp-gateway/entrypoint.sh").read_text()
+        self.assertIn('ca="${TRUSTED_CA_CERT:-/certs/ca.crt}"', entrypoint)
+        self.assertIn("export SSL_CERT_FILE=/tmp/ca-certificates.crt", entrypoint)
+        template = (ROOT / "helm/restmail/templates/smtp-gateway-deployment.yaml").read_text()
+        self.assertRegex(template, r"name: TRUSTED_CA_CERT\s+value: /etc/restmail-trusted-ca/ca\.crt")
+        steps = {s["name"]: s.get("run", "") for s in
+                 yaml.safe_load((ROOT / ".github/workflows/cluster-e2e.yml").read_text())["jobs"]["install"]["steps"]}
+        self.assertIn('issue "$REFERENCE_NAMESPACE" reference-mail-tls', steps["Create the TLS Secrets"])
+
+    def test_the_mta_sts_steps_come_after_mail_out(self):
+        steps = list(cluster_e2e.STEPS)
+        self.assertLess(steps.index("mail-out"), steps.index("mta-sts-enforce"))
+        self.assertLess(steps.index("mta-sts-enforce"), steps.index("mta-sts-mismatch"))
 
 
 if __name__ == "__main__":
