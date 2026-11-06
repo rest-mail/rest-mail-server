@@ -45881,7 +45881,7 @@ export interface operations {
                     "application/json": components["schemas"]["Data-SendDiscarded"];
                 };
             };
-            /** @description Sent; the copy kept in Sent */
+            /** @description Queued for every recipient; the copy kept in Sent */
             201: {
                 headers: {
                     /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
