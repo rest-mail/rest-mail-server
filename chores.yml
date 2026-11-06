@@ -664,7 +664,10 @@ tasks:
         python3 -B tests/contract/secret_scan.py .cache/contract/examples.har --audit-from .cache/contract/vertrag-run.yml || scan=$?
         if [ "${CONTRACT_REPORTS:-true}" != false ]; then
           chore test:contract-fixtures || echo "the queue fixtures could not be replenished; the authorization run's queue links find no held entry"
+          owner=0
+          chore test:contract-owner-key -- add || { owner=$?; echo "the owner key could not be registered; the owner endpoints' successes are not sent"; }
           tests/contract/run.sh authorization {{.CLI_ARGS}} || echo "the authorization phase is a report, not a gate"
+          if [ "$owner" -eq 0 ]; then chore test:contract-owner-key -- revoke; fi
           chore test:contract-domain-tenants || echo "the domain tenants could not be prepared; the ownership run of domains is not sent"
           tests/contract/run.sh ownership {{.CLI_ARGS}} || echo "the ownership phase is a report, not a gate"
         fi
@@ -691,7 +694,10 @@ tasks:
         chore test:contract-fixtures
         chore test:contract-mfa-admin
         chore api:coverage:reset || echo "the API's coverage counters could not be reset; its coverage report is not this run's alone"
+        owner=0
+        chore test:contract-owner-key -- add || { owner=$?; echo "the owner key could not be registered; the owner endpoints' successes are not sent"; }
         tests/contract/run.sh authorization {{.CLI_ARGS}} || echo "the authorization phase is a report, not a gate"
+        if [ "$owner" -eq 0 ]; then chore test:contract-owner-key -- revoke; fi
         chore test:contract-domain-tenants || echo "the domain tenants could not be prepared; the ownership run of domains is not sent"
         tests/contract/run.sh ownership {{.CLI_ARGS}} || echo "the ownership phase is a report, not a gate"
         chore api:coverage:report || echo "the API's coverage is a report, not a gate"
@@ -764,6 +770,37 @@ tasks:
         fi
         docker exec -- "${CONTRACT_FIXTURE_PROJECT}-api" go run ./tests/contract/fixtures --test-domain=restmail.test
       - task: test:contract-mtls
+
+  test:contract-owner-key:
+    desc: 'Register (add) or revoke (revoke) the throwaway owner key of the authorization phase on the disposable restmail.test topology (#1162); the private half stays in .cache/contract/owner-key.json'
+    env:
+      CONTRACT_FIXTURE_CONFIG: '{{.CONFIG}}'
+      CONTRACT_FIXTURE_PROJECT: '{{.RESTMAIL_PROJECT}}'
+    cmds:
+      - |
+        set -eu
+        if [ "$CONTRACT_FIXTURE_CONFIG" != "restmail.test" ] || [ -z "$CONTRACT_FIXTURE_PROJECT" ]; then
+          echo "the contract owner key needs the disposable restmail.test config" >&2
+          exit 1
+        fi
+        registered=.cache/contract/owner-key-registered.json
+        case "{{.CLI_ARGS}}" in
+        add)
+          # The documented operator action; only the public key crosses.
+          python3 -B tests/contract/owner_key.py new |
+            docker exec -i -- "${CONTRACT_FIXTURE_PROJECT}-api" go run ./cmd/api owner-key add > "$registered"
+          ;;
+        revoke)
+          # Revoked, the key opens nothing, and the seed is deleted.
+          fingerprint="$(python3 -c 'import json,sys; [f] = json.load(open(sys.argv[1]))["fingerprints"]; print(f)' "$registered")"
+          docker exec -- "${CONTRACT_FIXTURE_PROJECT}-api" go run ./cmd/api owner-key revoke --fingerprint "$fingerprint" >/dev/null
+          rm -f -- .cache/contract/owner-key.json "$registered"
+          ;;
+        *)
+          echo "usage: chore test:contract-owner-key -- add|revoke" >&2
+          exit 2
+          ;;
+        esac
 
   test:contract-held-mail-fixture:
     desc: Replenish disposable quarantine and suppression targets without changing the queue
