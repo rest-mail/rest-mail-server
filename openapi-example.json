@@ -9386,6 +9386,23 @@
         "mediaType": "application/json"
       }
     },
+    "missing": {
+      "request": {
+        "path": {
+          "id": 2147483647
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Ban not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "rate_limited": {
       "summary": "Refused API keys exhaust the per-IP budget",
       "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
