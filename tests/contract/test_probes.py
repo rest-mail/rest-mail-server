@@ -17,7 +17,8 @@ import yaml
 ROOT = Path(__file__).resolve().parents[2]
 COVERAGE_PINS = [
     "private_key", "snoozed_until", "scheduled_at", "expires_at", "permissions",
-    "time_zone", "script", "raw_message", "recipients", "date",
+    "time_zone", "script", "raw_message", "recipients", "date", "filter_name", "cert_pem",
+    "key_pem",
 ]
 
 
@@ -224,8 +225,12 @@ class ProbeConfig(unittest.TestCase):
     def test_only_the_key_and_the_two_dates_are_held_and_paths_survive_generated_config_location(
         self,
     ):
+        fuzz = dict(self.config["fuzz"])
+        fuzz["pin"] = dict(fuzz["pin"])
+        self.assertTrue(fuzz["pin"].pop("cert_pem").startswith("-----BEGIN CERTIFICATE-----"))
+        self.assertIn("PRIVATE KEY-----", fuzz["pin"].pop("key_pem"))
         self.assertEqual(
-            self.config["fuzz"],
+            fuzz,
             {
                 "pin": {
                     "private_key": probes.DKIM_KEY.read_text(),
@@ -238,6 +243,7 @@ class ProbeConfig(unittest.TestCase):
                     "raw_message": probes.RAW_MESSAGE,
                     "recipients": probes.RECIPIENTS,
                     "date": probes.DELIVERY_DATE,
+                    "filter_name": probes.FILTER_NAME,
                 },
                 "pin-valid": self.base["fuzz"]["pin-valid"],
             },

@@ -46,7 +46,7 @@ interface PipelineState {
   ) => Promise<PipelineTestResult>;
   testFilter: (
     filterName: string,
-    config: unknown,
+    config: RequestBody<"testFilter">["config"],
     email: RequestBody<"testPipeline">["email"],
   ) => Promise<FilterTestResult>;
   fetchTraces: (params: TraceQueryParams) => Promise<void>;
@@ -253,7 +253,7 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
 
   testFilter: async (
     filterName: string,
-    config: unknown,
+    config: RequestBody<"testFilter">["config"],
     email: RequestBody<"testPipeline">["email"],
   ) => {
     set({ isLoading: true, error: null });

@@ -22,7 +22,9 @@ Usage: probes.py <vertrag.yml> <out.yml> <report.xml> [--no-pin[=<name,name>]]
 import base64
 import json
 import os
+import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -71,12 +73,54 @@ RAW_MESSAGE = base64.b64encode(
 # recipient_wrong_type, date_wrong_type.
 RECIPIENTS = ["eve@restmail.test"]
 DELIVERY_DATE = "Sat, 17 Oct 2026 12:00:00 +0000"
+# A schema cannot say a filter must be registered either, and the generator's "x" names
+# none. The body refers to a schema with references of its own, so its description holds
+# it inline (describedTestFilterBody, internal/api/handlers/pipeline.go), or this would
+# not engage. Refusals: filter_name_missing, filter_name_empty, filter_name_wrong_type.
+FILTER_NAME = "header_validate"
+# Nor can it make a certificate. The probes' domain_id is the fixture admin's domain, and
+# the mail gateways serve a domain's current certificates by name (tlsutil.DBCertLoader),
+# caching what they load. So this one is made for each configuration and is already
+# expired, which they skip and the handler accepts. Vertrag prints what it pins, so its key
+# is used for nothing else. A hook removes what the probes install, by this issuer
+# (remove_the_probe_certificates). Refusals: cert_missing, cert_empty, cert_wrong_type,
+# cert_invalid, key_missing, key_empty, key_wrong_type.
+PROBE_CERTIFICATE_NAME = "contract-probe-certificate"
+PROBE_CERTIFICATE_PERIOD = ("20200101000000Z", "20200102000000Z")
 # A schema cannot say a mailbox must exist either. Fuzz draws a mailbox_id or an
 # address that names nothing and reads the 404 as a disagreement, so the rest of
 # delivery is never reached. The fuzz run holds mailbox_id at the recipient the
 # fixtures make (fixtures --delivery-recipient). The coverage run does not: it has
 # no valid delivery probe to hold, and a pin would stop its two mailbox_id probes.
 FIXTURE_PLAN = Path(__file__).resolve().parent / "fixtureplan/defaults.json"
+
+
+def probe_certificate():
+    """A self-signed, expired certificate and its key, as the PEM createCertificate takes.
+
+    `openssl ca` is what states the dates on every OpenSSL version: `req -x509` only
+    takes -not_after from 3.4."""
+    with tempfile.TemporaryDirectory() as name:
+        directory = Path(name)
+        key, request, certificate = directory / "tls.key", directory / "tls.csr", directory / "tls.crt"
+        (directory / "index.txt").write_text("")
+        (directory / "serial").write_text("01\n")
+        (directory / "ca.cnf").write_text(
+            "[ca]\ndefault_ca = probe\n"
+            f"[probe]\ndatabase = {directory}/index.txt\nnew_certs_dir = {directory}\n"
+            f"serial = {directory}/serial\ndefault_md = sha256\npolicy = names\n"
+            "[names]\ncommonName = supplied\n"
+        )
+        start, end = PROBE_CERTIFICATE_PERIOD
+        for arguments in (
+            ["req", "-new", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:P-256", "-nodes",
+             "-subj", "/CN=" + PROBE_CERTIFICATE_NAME, "-keyout", str(key), "-out", str(request)],
+            ["ca", "-batch", "-config", str(directory / "ca.cnf"), "-selfsign", "-notext",
+             "-startdate", start, "-enddate", end,
+             "-keyfile", str(key), "-in", str(request), "-out", str(certificate)],
+        ):
+            subprocess.run(["openssl", *arguments], check=True, capture_output=True)
+        return certificate.read_text(), key.read_text()
 
 
 def fuzz_pins():
@@ -120,6 +164,7 @@ def main(config_path, out_path, report_path, pin=True, unpinned=()):
     config.setdefault("exclude-matching", []).append(REFUSALS)
     # Public test fixture: a schema generator cannot construct a signing key.
     if pin:
+        certificate, certificate_key = probe_certificate()
         pins = {
             "private_key": DKIM_KEY.read_text(),
             "snoozed_until": SNOOZE_UNTIL,
@@ -131,6 +176,9 @@ def main(config_path, out_path, report_path, pin=True, unpinned=()):
             "raw_message": RAW_MESSAGE,
             "recipients": RECIPIENTS,
             "date": DELIVERY_DATE,
+            "filter_name": FILTER_NAME,
+            "cert_pem": certificate,
+            "key_pem": certificate_key,
         }
         if Path(report_path).stem == "fuzz":
             pins.update(fuzz_pins())

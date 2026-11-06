@@ -89,8 +89,6 @@
   by messages, with string values or lists of strings.
 '#/components/schemas/testCustomFilterRequestBody/properties/email': 'JavaScript test
   inputs are caller supplied JSON; the sidecar contract is tracked in #677.'
-'#/components/schemas/testFilterRequestBody/properties/config': Filter configuration
-  is plugin specific JSON, validated by the selected filter (#649).
 '#/components/schemas/updateCustomFilterRequestBody/properties/config': Filter configuration
   is plugin specific JSON, validated by the selected filter (#649).
 '#/components/schemas/updatePipelineRequestBody/properties/filters': Each pipeline
@@ -109,3 +107,5 @@
 '#/components/schemas/openAPIDescription': OpenAPI 3.1 documents use the external OpenAPI vocabulary and extension fields; this is a document, not a REST Mail resource object.
 '#/components/schemas/openAPIDescription/properties/info': OpenAPI 3.1 documents use the external OpenAPI vocabulary and extension fields; this is a document, not a REST Mail resource object.
 '#/components/schemas/openAPIDescription/properties/paths': OpenAPI 3.1 documents use the external OpenAPI vocabulary and extension fields; this is a document, not a REST Mail resource object.
+'#/paths/~1api~1v1~1admin~1pipelines~1test-filter/post/requestBody/content/application~1json/schema/properties/config': Filter
+  configuration is plugin specific JSON, validated by the selected filter (#649).
