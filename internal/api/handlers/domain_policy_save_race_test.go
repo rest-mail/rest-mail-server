@@ -13,6 +13,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/api/middleware"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 // The MTA-STS and relay saves read their row and then write it (#1164). These
@@ -57,6 +58,7 @@ func (p *policyRacer) reached() {
 func policyRaceDB(t *testing.T, table string) *gorm.DB {
 	t.Helper()
 	db := openScratchDB(t, "policyrace", []any{&models.Domain{}, &models.Mailbox{}, &models.Alias{}, &models.Role{}, &models.Capability{}, &models.RoleCapability{}, &models.Grant{}, &models.GrantActivation{}, &models.Credential{}, &models.Pipeline{}, &models.CustomFilter{}, &models.DomainSenderRule{}, &models.Certificate{}, &models.DKIMRotationKey{}, &models.MTASTSPolicy{}, &models.DomainRelay{}, &models.Suppression{}, withAudit})
+	db.Logger = logger.Default.LogMode(logger.Silent)
 	pool, err := db.DB()
 	if err != nil {
 		t.Fatal(err)

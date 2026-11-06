@@ -14,6 +14,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	rmime "github.com/rest-mail/rest-mail-server/internal/mime"
 	"github.com/rest-mail/rest-mail-server/internal/pipeline"
+	"gorm.io/gorm/logger"
 )
 
 func TestForwardAttachmentsPostgresPersistenceQuotaAndRollback(t *testing.T) {
@@ -21,6 +22,7 @@ func TestForwardAttachmentsPostgresPersistenceQuotaAndRollback(t *testing.T) {
 		t.Skip("PostgreSQL forward persistence/concurrency proof runs in CI with DB_HOST; no local database is started")
 	}
 	db := openScratchDB(t, "forwardproof", []any{withForeignKeys, &models.Domain{}, &models.Mailbox{}, &models.QuotaUsage{}, &models.Message{}, &models.Attachment{}, &models.OutboundQueue{}, &models.Contact{}})
+	db.Logger = logger.Default.LogMode(logger.Silent)
 	pool, err := db.DB()
 	if err != nil {
 		t.Fatal(err)

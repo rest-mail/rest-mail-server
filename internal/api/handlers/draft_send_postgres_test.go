@@ -13,13 +13,16 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
-func draftSendPostgres(t *testing.T) *gorm.DB {
+func draftSendPostgres(t *testing.T, extraModels ...any) *gorm.DB {
 	t.Helper()
 	setup := append([]any{withForeignKeys}, accountModels...)
 	setup = append(setup, &models.Message{}, &models.OutboundQueue{}, &models.Contact{}, &models.Attachment{}, &models.Pipeline{}, &models.SieveScript{})
+	setup = append(setup, extraModels...)
 	db := openScratchDB(t, "draftsend", setup)
+	db.Logger = logger.Default.LogMode(logger.Silent)
 	pool, err := db.DB()
 	if err != nil {
 		t.Fatal(err)

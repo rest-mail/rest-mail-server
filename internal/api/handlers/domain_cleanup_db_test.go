@@ -16,6 +16,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/grants"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 func TestDomainCleanupPostgresLifecycleRetentionAndRollback(t *testing.T) {
@@ -25,6 +26,7 @@ func TestDomainCleanupPostgresLifecycleRetentionAndRollback(t *testing.T) {
 	liveModels := []any{&models.Pipeline{}, &models.CustomFilter{}, &models.DomainSenderRule{}, &models.Certificate{}, &models.DKIMRotationKey{}, &models.MTASTSPolicy{}, &models.DomainRelay{}, &models.Suppression{}}
 	all := append([]any{&models.Domain{}, &models.Mailbox{}, &models.Alias{}, &models.Role{}, &models.Capability{}, &models.RoleCapability{}, &models.Grant{}, &models.GrantActivation{}, &models.Credential{}, &models.TLSReport{}, &models.MessageTrace{}, &models.DMARCAggregateRecord{}}, liveModels...)
 	db := openScratchDB(t, "domaincleanup", append(all, withAudit))
+	db.Logger = logger.Default.LogMode(logger.Silent)
 	pool, err := db.DB()
 	if err != nil {
 		t.Fatal(err)

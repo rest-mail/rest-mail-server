@@ -13,6 +13,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/testdb"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 func testDB(t *testing.T) *gorm.DB {
@@ -31,7 +32,9 @@ func testDB(t *testing.T) *gorm.DB {
 		return fallback
 	}
 	cfg := config.Config{DBHost: os.Getenv("DB_HOST"), DBPort: port, DBName: configured("DB_NAME", "restmail"), DBUser: configured("DB_USER", "restmail"), DBPass: configured("DB_PASS", "restmail"), DBMaxIdleConns: 2}
-	return testdb.Clone(t, &cfg, "sendlimits", testdb.Models(&models.Mailbox{}, &models.SendLimitPolicy{}, &models.SendLimitCounter{}, &models.SendLimitNotice{}, &models.AuditEntry{}, &models.Message{}))
+	database := testdb.Clone(t, &cfg, "sendlimits", testdb.Models(&models.Mailbox{}, &models.SendLimitPolicy{}, &models.SendLimitCounter{}, &models.SendLimitNotice{}, &models.AuditEntry{}, &models.Message{}))
+	database.Logger = logger.Default.LogMode(logger.Silent)
+	return database
 }
 
 func seed(t *testing.T, db *gorm.DB, local string, owner *uint, domain uint) models.Mailbox {

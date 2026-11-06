@@ -18,14 +18,18 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/grants"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 // importProofDB copies a migrated database with its own import tables and roles.
-func importProofDB(t *testing.T) *gorm.DB {
+func importProofDB(t *testing.T, extraModels ...any) *gorm.DB {
 	t.Helper()
 	setup := append([]any{withForeignKeys}, accountModels...)
-	setup = append(setup, &models.Message{}, &models.Attachment{}, withAudit, withRoles)
+	setup = append(setup, &models.Message{}, &models.Attachment{})
+	setup = append(setup, extraModels...)
+	setup = append(setup, withAudit, withRoles)
 	db := openScratchDB(t, "importproof", setup)
+	db.Logger = logger.Default.LogMode(logger.Silent)
 	pool, err := db.DB()
 	if err != nil {
 		t.Fatal(err)
