@@ -470,7 +470,7 @@ func TestTLSIngestionExamplesWithVertrag(t *testing.T) {
 				t.Fatal(err)
 			}
 			s := tlsIngestionScenario(t, name)
-			server := httptest.NewServer(s.handler)
+			server := servedAsDescribed(s.handler)
 			defer server.Close()
 			ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 			defer cancel()
