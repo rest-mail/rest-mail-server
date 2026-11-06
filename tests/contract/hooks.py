@@ -2071,6 +2071,13 @@ def created_folder_path(transaction):
 
 @hooks.before("createFolder")
 def remove_a_previous_folder_probe(transaction):
+    # After a reset (the own-data phase) a create is sent as documented, to a
+    # mailbox of its own: the reset removed every folder an earlier exchange
+    # made, so there is nothing to remove first.
+    if asked_for_a_clean_start():
+        start_clean(transaction)
+        to_a_mailbox_of_its_own(transaction)
+        return
     # Valid probes repeat the example's name. Only reuse destinations that
     # were absent before this operation tried them, leaving requests untouched:
     # rewriting its body would make vertrag skip the boundary being tested.
@@ -2119,38 +2126,66 @@ def remove_a_previous_folder_probe(transaction):
             raise
 
 
+OWN_MAILBOX = "contract-own-folders@"
+
+
+def a_mailbox_of_its_own(transaction):
+    """A mailbox made for this exchange after its reset, on a domain of its
+    own. Making one takes a session signed in with a second factor."""
+    a_domain_of_its_own(transaction)
+    origin = origin_of(transaction)
+    request = urllib.request.Request(
+        origin + "/api/v1/accounts",
+        data=json.dumps({"address": OWN_MAILBOX + OWN_DOMAIN}).encode(),
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": "Bearer " + mfa_admin_token(origin),
+        },
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        return json.load(response)["data"]["id"]
+
+
+def to_a_mailbox_of_its_own(transaction):
+    """After a reset, send a folder exchange to a mailbox made for it: the reset
+    removed the mailbox its example names. Only the account id in the path
+    changes. A non-positive or undecodable id and missing's 2147483647 keep
+    theirs, so they are refused as documented."""
+    path, separator, query = transaction["fullPath"].partition("?")
+    parts = path.split("/")
+    if len(parts) < 5 or not positive_id(parts[4]) or parts[4] == "2147483647":
+        return
+    parts[4] = str(a_mailbox_of_its_own(transaction))
+    transaction["fullPath"] = "/".join(parts) + separator + query
+
+
+def a_folder_of_its_own(transaction, parent, prefix):
+    """A folder made for this exchange in the account parent names. Each one has
+    a new name, so nothing is carried between exchanges."""
+    folder = f"{prefix}-{time.time_ns():d}"
+    fixture_call(transaction, "POST", parent, {"name": folder}, expect=())
+    return folder
+
+
 @hooks.before("renameFolder")
 def give_each_rename_probe_a_folder(transaction):
     # A successful rename consumes its source folder. Each boundary probe
     # needs its own source, or a later valid request sees the earlier one's
     # 404. Hooks see the operation's original name in every phase, so prepare
     # the example too. Keep the body and account ID exactly as generated.
+    # After a reset (the own-data phase) every exchange, refusals included,
+    # starts clean first and is sent to a mailbox of its own.
+    if asked_for_a_clean_start():
+        start_clean(transaction)
+        to_a_mailbox_of_its_own(transaction)
     path = transaction["fullPath"].split("?")[0]
     parent, _, _ = path.rpartition("/")
     account_id = parent.split("/")[-2]
     if not account_id.isdecimal() or int(account_id) < 1:
         return
-    serial = hooks.stash.get("rename_probe", 0) + 1
-    hooks.stash["rename_probe"] = serial
-    folder = f"contract-rename-{serial:d}"
-    origin = "{}//{}:{}".format(
-        transaction["protocol"],
-        transaction["host"],
-        transaction["port"],
-    )
-    request = urllib.request.Request(
-        origin + parent,
-        data=json.dumps({"name": folder}).encode(),
-        headers={
-            "Content-Type": "application/json",
-            "Authorization": "Bearer " + admin_token(origin),
-        },
-        method="POST",
-    )
     try:
-        with urllib.request.urlopen(request, timeout=10) as response:
-            if response.status != 201:
-                raise RuntimeError("could not create a folder for the rename probe")
+        folder = a_folder_of_its_own(transaction, parent, "contract-rename")
     except urllib.error.HTTPError as error:
         if error.code in (400, 403, 404):
             # An account the run cannot reach, such as a generated ID no
@@ -2158,6 +2193,11 @@ def give_each_rename_probe_a_folder(transaction):
             # createFolder's hook leaves it to (#1163).
             return
         raise
+    origin = "{}//{}:{}".format(
+        transaction["protocol"],
+        transaction["host"],
+        transaction["port"],
+    )
     transaction["fullPath"] = parent + "/" + folder
     # A rename onto a folder that exists is 409 already_exists (#757), and the
     # earlier probes left the destination behind: remove it, as createFolder's
@@ -2186,6 +2226,29 @@ def give_each_rename_probe_a_folder(transaction):
     except urllib.error.HTTPError as error:
         if error.code not in (400, 404):
             raise
+
+
+@hooks.before("deleteFolder")
+def a_folder_to_delete_of_its_own(transaction):
+    # deleteFolder follows renameFolder's link, which names the folder the
+    # rename made. After a reset (the own-data phase) that folder and its
+    # mailbox are gone, so every exchange starts clean and is sent to a mailbox
+    # of its own, and a delete documented to succeed gets a folder of its own.
+    # The refusals keep their folders: a missing one (404) and a system folder
+    # (422). A run with no reset, which is the primary run, changes nothing here.
+    if not asked_for_a_clean_start():
+        return
+    start_clean(transaction)
+    to_a_mailbox_of_its_own(transaction)
+    if " > 204" not in transaction.get("name", ""):
+        return
+    path, _, query = transaction["fullPath"].partition("?")
+    parent, _, _ = path.rpartition("/")
+    account_id = parent.split("/")[-2]
+    if not positive_id(account_id) or account_id == "2147483647":
+        return
+    folder = a_folder_of_its_own(transaction, parent, "contract-delete")
+    transaction["fullPath"] = parent + "/" + folder + ("?" + query if query else "")
 
 
 # The internal listener the gateways call, and the IMAP gateway's client
