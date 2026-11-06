@@ -2,10 +2,10 @@
 
 MOVED resets and seeds before each exchange and makes the data that exchange
 needs (hooks.py, start_clean). A reset removes what createDomain,
-createPipeline, createAlias, createCustomFilter, createFolder and createContact
-made, so the run also sends everything that follows their links, which must
-still pass with that domain, pipeline, alias, custom filter, folder or contact
-gone: the same operations without a reset are the comparison.
+createPipeline, createAlias, createCustomFilter, createFolder, createContact
+and createAccount made, so the run also sends everything that follows their
+links, which must still pass with that domain, pipeline, alias, custom filter,
+folder, contact or account gone: the same operations without a reset are the comparison.
 
 A reset also removes every principal and fixture the other phases use, and the
 primary run still has operations that depend on them, so this is sent after
@@ -129,6 +129,16 @@ MOVED = (
     # each on a domain of its own after its reset.
     "stopDomainOutbound",
     "restartDomainOutbound",
+    # The mailbox administration operations. createAccount's link reaches only
+    # the read, update and delete of a mailbox: all moved. Each of those, and
+    # endMailboxSessions, gets an account of its own after its reset, since the
+    # created one went with it. No link reaches the list.
+    "createAccount",
+    "getMailbox",
+    "updateMailbox",
+    "deleteMailbox",
+    "listMailboxes",
+    "endMailboxSessions",
 )
 
 # deletePipeline, the other, has moved.

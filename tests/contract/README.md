@@ -1761,11 +1761,30 @@ a domain made for it, and `has_accounts` names the seeded fixture domain.
 `linked_domain_ids` stash value lost its last reader with these, so it is gone,
 and `start_clean` keeps only the sessions and the reset count.
 
+The mailbox administration operations, `createAccount`, `getMailbox`,
+`updateMailbox`, `deleteMailbox`, `listMailboxes` and `endMailboxSessions`, reset
+and seed before each exchange too, refusals included (`a_mailbox_to_administer`,
+registered before the operations' other hooks). `createAccount`'s documented
+create then meets no earlier probe's account, and a list reads the seeded
+mailboxes. An exchange aimed at a positive mailbox id other than missing's
+`2147483647` gets an account of its own on the seeded `restmail.test`
+(`contract-own-mailbox-<time>@restmail.test`, made with the two-factor session),
+because both the `found` example's `1` and the id `createAccount`'s link names are
+gone after the reset. That includes `updateMailbox`'s 422, so it is refused for its
+body and not for a mailbox that is gone. `0`, an undecodable id and missing's id
+keep theirs. `createAccount`'s link reaches only the read, update and delete, and
+no link reaches the list or the sessions' end, so nothing that follows these is
+left unmoved. `created_account` stays, because without a reset (the primary run
+and coverage) the read, update and delete still follow the created account to its
+current id, made again when a probe removed it; the reset clears it, so it carries
+nothing across one.
+
 This happens only with `CONTRACT_RESET_SEED=1`, which `tests/contract/run.sh own-data`
 sets, and that phase is a gate of its own, sent by `chore test:contract-teardown`
 just before the teardown. It sends the moved operations with everything that follows
 `createDomain`'s, `createPipeline`'s, `createAlias`'s, `createCustomFilter`'s,
-`createFolder`'s, `createContact`'s, `sendMessage`'s and `saveDraft`'s links
+`createFolder`'s, `createContact`'s, `sendMessage`'s, `saveDraft`'s and
+`createAccount`'s links
 (`own_data.py`), and fails on a skipped
 exchange as well as a failed one.
 

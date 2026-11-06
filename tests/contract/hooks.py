@@ -281,6 +281,35 @@ def the_stale_key_example_on_a_live_domain(transaction):
     transaction["fullPath"] = "/api/v1/admin/domains/1/dns" + (separator + query if separator else "")
 
 
+@hooks.before("createAccount")
+@hooks.before("listMailboxes")
+@hooks.before("getMailbox")
+@hooks.before("updateMailbox")
+@hooks.before("deleteMailbox")
+@hooks.before("endMailboxSessions")
+def a_mailbox_to_administer(transaction):
+    # The mailbox administration operations, moved to a clean start: each
+    # exchange, refusals included, resets and seeds first. createAccount's
+    # documented create then meets no earlier probe's account, and a list reads
+    # the seeded mailboxes. An exchange aimed at a positive mailbox id other
+    # than missing's 2147483647 (the found example's 1 or the id createAccount's
+    # link names, both gone after the reset) gets an account of its own on the
+    # seeded restmail.test, the 422 included, so it is refused for its body and
+    # not for a mailbox that is gone. 0, an undecodable id and the missing id
+    # need nothing made. Registered before the other hooks of these
+    # operations, so they see the clean start. A run with no reset changes
+    # nothing here.
+    if not asked_for_a_clean_start():
+        return
+    start_clean(transaction)
+    path, separator, query = transaction["fullPath"].partition("?")
+    parts = path.split("/")
+    if len(parts) < 6 or not positive_id(parts[5]) or parts[5] == "2147483647":
+        return
+    parts[5] = str(an_account_of_its_own(origin_of(transaction), "contract-own-mailbox"))
+    transaction["fullPath"] = "/".join(parts) + separator + query
+
+
 @hooks.before("getDomain")
 def get_a_domain_of_its_own(transaction):
     if not asked_for_a_clean_start():
