@@ -112,13 +112,13 @@ func (h *InvitationHandler) accept(r *http.Request, req acceptInvitationRequest)
 		return zero, endpoint.Invalid(problems)
 	}
 	if strings.TrimSpace(req.Token) == "" {
-		return zero, redeemRefusal(bootstrap.ErrTokenInvalid)
+		return zero, redeemRefusal(r.Context(), bootstrap.ErrTokenInvalid)
 	}
 	if !h.enrollmentAvailable {
 		return zero, errInvitationUnavailable
 	}
 	if err := r.Context().Err(); err != nil {
-		return zero, redeemRefusal(err)
+		return zero, redeemRefusal(r.Context(), err)
 	}
 	// Spending the invitation, installing the password and preparing its session
 	// are one commit. A failed session must leave the invitation retryable.
@@ -127,7 +127,7 @@ func (h *InvitationHandler) accept(r *http.Request, req acceptInvitationRequest)
 	err := h.db.WithContext(r.Context()).Transaction(func(tx *gorm.DB) error {
 		account, err := bootstrap.AcceptInvitation(r.Context(), tx, req.Token, req.Password)
 		if err != nil {
-			return redeemRefusal(err)
+			return redeemRefusal(r.Context(), err)
 		}
 		accountID = account.ID
 		sessionHandler := NewAuthHandler(tx, h.auth.jwtService, h.auth.masterKey, h.auth.sessions)

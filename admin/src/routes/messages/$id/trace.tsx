@@ -107,7 +107,7 @@ function MessageTracePage() {
             >
               Stage timeline
             </h2>
-            <TraceTimeline stages={currentTrace.stages} />
+            <TraceTimeline stages={currentTrace.stages} requestId={currentTrace.request_id} />
           </div>
         </div>
       ) : null}

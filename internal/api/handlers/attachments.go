@@ -178,7 +178,7 @@ func (h *AttachmentHandler) s3Attachment(r *http.Request, att *models.Attachment
 		return endpoint.Served{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Attachment object not found")
 	}
 	if err != nil {
-		slog.Error("opening attachment object failed", "attachment_id", att.ID, "error", err)
+		slog.ErrorContext(r.Context(), "opening attachment object failed", "attachment_id", att.ID, "error", err)
 		return endpoint.Served{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to open attachment object")
 	}
 	if file.ETag != "" {

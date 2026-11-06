@@ -92,7 +92,7 @@ func (h *DKIMHandler) setKey(r *http.Request, in setDKIMKeyRequest) (dkimEntry, 
 	}
 
 	if h.masterKey == "" {
-		slog.Warn("DKIM private key stored in plaintext: MASTER_KEY not configured")
+		slog.WarnContext(r.Context(), "DKIM private key stored in plaintext: MASTER_KEY not configured")
 	}
 	// OSI-8: encrypt at rest with a version-tagged (dkim:v1:) ciphertext, the
 	// only form the signer reads when a MASTER_KEY is set; it fails closed on

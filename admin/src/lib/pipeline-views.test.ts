@@ -21,6 +21,7 @@ const trace: components["schemas"]["MessageTrace"] = {
   mail_from: "",
   rcpt_to: "",
   client_ip: "",
+  request_id: null,
   pipeline_id: 1,
   final_action: "continue",
   outcome: "delivered",

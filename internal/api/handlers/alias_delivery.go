@@ -97,11 +97,11 @@ func (h *MessageHandler) deliverToRecipient(ctx context.Context, recipient repos
 		case pipeline.ActionContinue:
 		case pipeline.ActionDefer:
 			deliveredTrace.Outcome = outcomeDeferred
-			h.recordTrace(buildTrace(*deliveredTrace))
+			h.recordTrace(ctx, buildTrace(*deliveredTrace))
 			return nil, fmt.Errorf("deferred: alias pipeline deferred delivery")
 		default:
 			deliveredTrace.Outcome = outcomeRejected
-			h.recordTrace(buildTrace(*deliveredTrace))
+			h.recordTrace(ctx, buildTrace(*deliveredTrace))
 			return nil, fmt.Errorf("rejected: alias pipeline: %s %s", result.FinalAction, result.RejectMsg)
 		}
 		auth = result.Auth
@@ -118,7 +118,7 @@ func (h *MessageHandler) deliverToRecipient(ctx context.Context, recipient repos
 		email.Metadata = make(map[string]string)
 	}
 	email.Metadata[redirectMetaTargets] = string(targets)
-	forwards := buildRedirectForwards(email, params.RawMessage, params.Sender, []string{recipient.DeliveredTo}, recipient.ForwardingDomain, auth)
+	forwards := buildRedirectForwards(ctx, email, params.RawMessage, params.Sender, []string{recipient.DeliveredTo}, recipient.ForwardingDomain, auth)
 	if len(forwards) != 1 {
 		return nil, fmt.Errorf("rejected: alias forwarding loop or invalid destination")
 	}
@@ -137,7 +137,7 @@ func (h *MessageHandler) deliverToRecipient(ctx context.Context, recipient repos
 	}
 	if deliveredTrace != nil {
 		deliveredTrace.Outcome = outcomeDelivered
-		h.recordTrace(buildTrace(*deliveredTrace))
+		h.recordTrace(ctx, buildTrace(*deliveredTrace))
 	}
 	return nil, nil
 }

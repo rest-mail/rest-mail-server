@@ -32,6 +32,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/importsession"
 	"github.com/rest-mail/rest-mail-server/internal/metrics"
 	rmime "github.com/rest-mail/rest-mail-server/internal/mime"
+	"github.com/rest-mail/rest-mail-server/internal/requestid"
 	"github.com/rest-mail/rest-mail-server/internal/rollup"
 	"github.com/rest-mail/rest-mail-server/internal/trace"
 	"github.com/rest-mail/rest-mail-server/internal/vacation"
@@ -77,7 +78,7 @@ func main() {
 	logHandler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
 	})
-	slog.SetDefault(slog.New(logHandler))
+	slog.SetDefault(slog.New(requestid.NewHandler(logHandler)))
 
 	slog.Info("starting restmail API server")
 
@@ -99,13 +100,13 @@ func main() {
 	switch cfg.LogLevel {
 	case "debug":
 		logHandler = slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug})
-		slog.SetDefault(slog.New(logHandler))
+		slog.SetDefault(slog.New(requestid.NewHandler(logHandler)))
 	case "warn":
 		logHandler = slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelWarn})
-		slog.SetDefault(slog.New(logHandler))
+		slog.SetDefault(slog.New(requestid.NewHandler(logHandler)))
 	case "error":
 		logHandler = slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError})
-		slog.SetDefault(slog.New(logHandler))
+		slog.SetDefault(slog.New(requestid.NewHandler(logHandler)))
 	}
 
 	// The DNSBL monitor is off unless the operator's config file enables it

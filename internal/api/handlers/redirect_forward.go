@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"strings"
@@ -54,7 +55,7 @@ func redirectSuppressesKeep(finalEmail *pipeline.EmailJSON) bool {
 //
 // It performs no I/O; the caller persists the returned rows. Returns nil when
 // there is nothing to forward.
-func buildRedirectForwards(finalEmail *pipeline.EmailJSON, originalRaw, sender string, recipients []string, domain string, auth []pipeline.AuthResult) []models.OutboundQueue {
+func buildRedirectForwards(ctx context.Context, finalEmail *pipeline.EmailJSON, originalRaw, sender string, recipients []string, domain string, auth []pipeline.AuthResult) []models.OutboundQueue {
 	if finalEmail == nil || finalEmail.Metadata == nil {
 		return nil
 	}
@@ -89,7 +90,7 @@ func buildRedirectForwards(finalEmail *pipeline.EmailJSON, originalRaw, sender s
 			continue
 		}
 		if _, loop := seen[key]; loop {
-			slog.Warn("delivery: sieve redirect suppressed to avoid a mail loop",
+			slog.WarnContext(ctx, "delivery: sieve redirect suppressed to avoid a mail loop",
 				"target", target)
 			continue
 		}

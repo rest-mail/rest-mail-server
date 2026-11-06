@@ -27,7 +27,7 @@ type fakeAppPasswords struct {
 	err     error                   // when set, the check fails outright
 }
 
-func (f *fakeAppPasswords) verify(address, password string) (*auth.Claims, error) {
+func (f *fakeAppPasswords) verify(_ context.Context, address, password string) (*auth.Claims, error) {
 	f.calls++
 	switch {
 	case f.err != nil:

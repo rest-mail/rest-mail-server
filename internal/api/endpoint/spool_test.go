@@ -2,6 +2,7 @@ package endpoint
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"io"
 	"net/http"
@@ -146,7 +147,7 @@ func TestCheckSpooledRefusesAsABoundBodyIs(t *testing.T) {
 				return
 			}
 			got := httptest.NewRecorder()
-			writeError(got, err)
+			writeError(context.Background(), got, err)
 			if got.Code != want.Code || got.Body.String() != want.Body.String() {
 				t.Fatalf("answered %d %s, where the binder answered %d %s", got.Code, got.Body, want.Code, want.Body)
 			}

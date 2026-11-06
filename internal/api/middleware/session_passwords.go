@@ -18,7 +18,7 @@ import (
 // runs with: those of the account it belongs to, with CredentialID and
 // CredentialKind set (handlers.PasswordVerifier, in production). A credential it refuses is an *auth.CredentialRefusal; any
 // other error means it could not be checked.
-type PasswordVerify func(address, password string) (*auth.Claims, error)
+type PasswordVerify func(ctx context.Context, address, password string) (*auth.Claims, error)
 
 // PasswordRefusedFunc records a refused credential: Auditor.PasswordRefused, in
 // production.
@@ -109,7 +109,7 @@ func (a *SessionPasswords) Authenticate() func(http.Handler) http.Handler {
 				}
 			}
 
-			claims, err := a.verify(address, password)
+			claims, err := a.verify(r.Context(), address, password)
 			var refusal *auth.CredentialRefusal
 			switch {
 			case errors.As(err, &refusal):
@@ -140,7 +140,7 @@ func (a *SessionPasswords) Authenticate() func(http.Handler) http.Handler {
 				}
 				return
 			case err != nil:
-				slog.Error("could not check a credential", "error", err)
+				slog.ErrorContext(r.Context(), "could not check a credential", "error", err)
 				writeError(w, http.StatusServiceUnavailable, "unavailable", "Could not verify the credential")
 				return
 			}

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -83,11 +84,11 @@ func TestWithSieveScript(t *testing.T) {
 func TestSieveFolderAndFlags(t *testing.T) {
 	email := func(meta map[string]string) *pipeline.EmailJSON { return &pipeline.EmailJSON{Metadata: meta} }
 	for folder, want := range map[string]string{"": "INBOX", "Work": "Work", "inbox": "INBOX", "a/../b": "INBOX", " Work": "INBOX"} {
-		if got := sieveFolder(email(map[string]string{"deliver_to_folder": folder}), "u@example.test"); got != want {
+		if got := sieveFolder(context.Background(), email(map[string]string{"deliver_to_folder": folder}), "u@example.test"); got != want {
 			t.Errorf("fileinto %q delivers to %q, want %q", folder, got, want)
 		}
 	}
-	if got := sieveFolder(email(nil), "u@example.test"); got != "INBOX" {
+	if got := sieveFolder(context.Background(), email(nil), "u@example.test"); got != "INBOX" {
 		t.Errorf("no metadata delivers to %q", got)
 	}
 	got := sieveFlagsOf(email(map[string]string{"imap_flags": `\Seen \flagged $Label \Deleted \Draft`}))

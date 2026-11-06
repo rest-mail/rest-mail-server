@@ -1,11 +1,13 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"time"
 
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/pipeline"
+	"github.com/rest-mail/rest-mail-server/internal/requestid"
 )
 
 // traceRecorder is the async sink the delivery handlers hand a MessageTrace to.
@@ -64,6 +66,21 @@ func quarantineReason(result *pipeline.ExecutionResult) string {
 		}
 	}
 	return "pipeline"
+}
+
+// withRequestID stamps a trace with the ID of the request it was written in
+// (#1580), so the trace view names the request_id its log lines carry. A trace
+// already stamped keeps its ID: a handler copy that buffers traces for a
+// transaction hands them on later with no request in reach. With no ID in the
+// context the column stays NULL; none is made up.
+func withRequestID(ctx context.Context, t models.MessageTrace) models.MessageTrace {
+	if t.RequestID != nil {
+		return t
+	}
+	if id := requestid.FromContext(ctx); requestid.Valid(id) {
+		t.RequestID = &id
+	}
+	return t
 }
 
 // traceInputs carries everything buildTrace needs from a terminal site. It keeps

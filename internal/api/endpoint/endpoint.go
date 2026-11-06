@@ -290,12 +290,12 @@ func Register[Req, Resp any](rs Routes, op Operation, handler func(*http.Request
 	rs.Router.With(wraps...).Method(op.Method, op.Path, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		var in Req
 		if err := bind(req, &in, shape); err != nil {
-			writeError(w, err)
+			writeError(req.Context(), w, err)
 			return
 		}
 		out, err := handler(req, in)
 		if err != nil {
-			writeError(w, err)
+			writeError(req.Context(), w, err)
 			return
 		}
 		answer := any(out)
@@ -304,7 +304,7 @@ func Register[Req, Resp any](rs Routes, op Operation, handler func(*http.Request
 			return
 		}
 		if stream, ok := answer.(Stream); ok {
-			stream.stream(w, op.Status)
+			stream.stream(req.Context(), w, op.Status)
 			return
 		}
 		if headed, ok := answer.(headedResponse); ok {
@@ -317,7 +317,7 @@ func Register[Req, Resp any](rs Routes, op Operation, handler func(*http.Request
 				declared = declared || status == additional
 			}
 			if !declared {
-				writeError(w, fmt.Errorf("endpoint: undeclared success status %d", status))
+				writeError(req.Context(), w, fmt.Errorf("endpoint: undeclared success status %d", status))
 				return
 			}
 		}
@@ -518,14 +518,14 @@ func write(w http.ResponseWriter, status int, out interface{}) {
 	respond.Data(w, status, out)
 }
 
-func writeError(w http.ResponseWriter, err error) {
+func writeError(ctx context.Context, w http.ResponseWriter, err error) {
 	var refusal *Error
 	if !errors.As(err, &refusal) {
 		if errors.Is(err, context.Canceled) {
 			// The caller went away: nothing failed, and nobody reads this answer.
-			slog.Info("api: request cancelled", "error", err)
+			slog.InfoContext(ctx, "api: request cancelled", "error", err)
 		} else {
-			slog.Error("api: handler failed", "error", err)
+			slog.ErrorContext(ctx, "api: handler failed", "error", err)
 		}
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Internal server error")
 		return
@@ -553,7 +553,7 @@ func writeError(w http.ResponseWriter, err error) {
 // WriteError writes err as a registered route would answer it: the refusal it is, with its
 // headers, or 500 for anything else. It is for a handler not yet registered that shares
 // code with registered ones.
-func WriteError(w http.ResponseWriter, err error) { writeError(w, err) }
+func WriteError(ctx context.Context, w http.ResponseWriter, err error) { writeError(ctx, w, err) }
 
 // shape is what a request type takes from a request, read once at registration by the rules
 // go-oapifly's Endpoint.Request describes it with.

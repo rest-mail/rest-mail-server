@@ -56,9 +56,9 @@ func NewRestmailHandler(db *gorm.DB, engine *pipeline.Engine, recorder traceReco
 
 // recordTrace hands a MessageTrace to the async recorder when configured. Never
 // blocks or errors — trace persistence must not delay or fail delivery.
-func (h *RestmailHandler) recordTrace(t models.MessageTrace) {
+func (h *RestmailHandler) recordTrace(ctx context.Context, t models.MessageTrace) {
 	if h.recorder != nil {
-		h.recorder.Record(t)
+		h.recorder.Record(withRequestID(ctx, t))
 	}
 }
 
@@ -204,7 +204,7 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput, spoo
 	// verifies or stores the message (RFC 8601 §5).
 	headerSection, err := spool.headerSection()
 	if err != nil {
-		return RestmailDelivery{}, restmailReadRefusal("spooled message")
+		return RestmailDelivery{}, restmailReadRefusal(r.Context(), "spooled message")
 	}
 	// A message from another server with more Received: fields than the hop limit is a mail
 	// loop (RFC 5321 §6.3, #1647), refused as the SMTP gateway refuses it.
@@ -219,11 +219,11 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput, spoo
 			return RestmailDelivery{}, endpoint.Refuse(http.StatusForbidden, "rejected", "Message structure too complex: too deeply nested or too many MIME parts")
 		}
 		if err != nil {
-			return RestmailDelivery{}, restmailReadRefusal("spooled message")
+			return RestmailDelivery{}, restmailReadRefusal(r.Context(), "spooled message")
 		}
 		parsedHeaders, err := rmime.ParseHeaders(strings.NewReader(headerSection))
 		if err != nil {
-			slog.Warn("restmail: failed to parse raw_message", "error", err)
+			slog.WarnContext(r.Context(), "restmail: failed to parse raw_message", "error", err)
 			// Fall through to use whatever structured fields were provided
 		} else {
 			if len(parsedHeaders.From) > 0 && req.From == "" {
@@ -284,7 +284,7 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput, spoo
 			var d models.Domain
 			err := h.db.WithContext(r.Context()).Where("name = ?", fromDomain).First(&d).Error
 			if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-				return RestmailDelivery{}, restmailReadRefusal("sender domain")
+				return RestmailDelivery{}, restmailReadRefusal(r.Context(), "sender domain")
 			}
 			fromLocal = err == nil
 		}
@@ -297,16 +297,16 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput, spoo
 	if !h.deliverAuth.trusted(clientIP) && (h.deliverAuth.strict || fromLocal) && headerNamesDKIMSignature(headerSection) {
 		raw, err := spool.message()
 		if err != nil {
-			return RestmailDelivery{}, restmailReadRefusal("spooled message")
+			return RestmailDelivery{}, restmailReadRefusal(r.Context(), "spooled message")
 		}
 		aligned, keyUnavailable = dkimAlignedWith(r.Context(), raw, fromDomain)
 		req.RawMessage = raw
 	}
 	if ok, reason := h.deliverAuth.authorize(clientIP, fromDomain, fromLocal, aligned); !ok {
 		if keyUnavailable {
-			return RestmailDelivery{}, restmailReadRefusal("DKIM key")
+			return RestmailDelivery{}, restmailReadRefusal(r.Context(), "DKIM key")
 		}
-		slog.Warn("restmail: delivery refused by delivery-auth gate (OSI-3)",
+		slog.WarnContext(r.Context(), "restmail: delivery refused by delivery-auth gate (OSI-3)",
 			"reason", reason,
 			"from_domain", fromDomain,
 			"client_ip", clientIP,
@@ -337,7 +337,7 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput, spoo
 			continue
 		}
 		if err != nil {
-			return RestmailDelivery{}, restmailReadRefusal("recipient identity")
+			return RestmailDelivery{}, restmailReadRefusal(r.Context(), "recipient identity")
 		}
 		recipients[rcpt] = restmailRecipient{mailbox: resolved.Mailbox, deliveredTo: resolved.DeliveredTo}
 		resolvedRecipients[rcpt] = resolved
@@ -351,7 +351,7 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput, spoo
 	// the row need the message whole, parsed for the body, attachments and calendar events.
 	var parsed *pipeline.EmailJSON
 	if parsed, err = spool.readRestmailMessage(&req); err != nil {
-		return RestmailDelivery{}, restmailReadRefusal("spooled message")
+		return RestmailDelivery{}, restmailReadRefusal(r.Context(), "spooled message")
 	}
 
 	// Only receive-capable identities reach filters. In a mixed delivery a
@@ -409,7 +409,7 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput, spoo
 
 	pipelineCfg, err := h.inboundPipeline(r.Context(), domainName)
 	if err != nil {
-		return RestmailDelivery{}, restmailReadRefusal("inbound pipeline")
+		return RestmailDelivery{}, restmailReadRefusal(r.Context(), "inbound pipeline")
 	}
 
 	// Run the inbound pipeline.
@@ -433,7 +433,7 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput, spoo
 		if err != nil {
 			// Fail-CLOSED on a pipeline error (OSI-18): temp-fail so the peer
 			// retries rather than delivering mail that skipped inbound filtering.
-			slog.Error("restmail: pipeline error, deferring delivery", "error", err)
+			slog.ErrorContext(r.Context(), "restmail: pipeline error, deferring delivery", "error", err)
 			return RestmailDelivery{}, endpoint.Refuse(http.StatusServiceUnavailable, "deferred", "Message deferred, retry later")
 		} else {
 			rmTrace := traceInputs{
@@ -447,18 +447,18 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput, spoo
 			switch result.FinalAction {
 			case pipeline.ActionReject:
 				rmTrace.Outcome = outcomeRejected
-				h.recordTrace(buildTrace(rmTrace))
+				h.recordTrace(r.Context(), buildTrace(rmTrace))
 				return RestmailDelivery{}, endpoint.Refuse(http.StatusForbidden, "rejected", "Message rejected by policy")
 			case pipeline.ActionDefer:
 				// Fail-closed temp-fail (OSI-18): a deferred pipeline outcome (incl. a
 				// filter that failed to instantiate/execute) must not be delivered —
 				// the peer retries.
 				rmTrace.Outcome = outcomeDeferred
-				h.recordTrace(buildTrace(rmTrace))
+				h.recordTrace(r.Context(), buildTrace(rmTrace))
 				return RestmailDelivery{}, endpoint.Refuse(http.StatusServiceUnavailable, "deferred", "Message deferred, retry later")
 			case pipeline.ActionDiscard:
 				rmTrace.Outcome = outcomeDiscarded
-				h.recordTrace(buildTrace(rmTrace))
+				h.recordTrace(r.Context(), buildTrace(rmTrace))
 				return RestmailDelivery{Delivered: append(delivered, to...), Failed: failed}, nil
 			case pipeline.ActionQuarantine:
 				var holds []models.Quarantine
@@ -468,11 +468,11 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput, spoo
 					}
 				}
 				if err := h.storeHolds(r.Context(), holds); err != nil {
-					slog.Error("restmail: could not hold the message in quarantine, deferring delivery", "error", err)
+					slog.ErrorContext(r.Context(), "restmail: could not hold the message in quarantine, deferring delivery", "error", err)
 					return RestmailDelivery{}, endpoint.Refuse(http.StatusServiceUnavailable, "deferred", "Message deferred, retry later")
 				}
 				rmTrace.Outcome = outcomeQuarantined
-				h.recordTrace(buildTrace(rmTrace))
+				h.recordTrace(r.Context(), buildTrace(rmTrace))
 				return RestmailDelivery{Delivered: delivered, Failed: append(failed, to...)}, nil
 			}
 			// Fall-through (continue / any non-terminal action): the message will
@@ -493,15 +493,15 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput, spoo
 			// actually enqueued, so a redirect that cannot be honoured never loses
 			// the message.
 			forwarded := 0
-			for _, fwd := range buildRedirectForwards(result.FinalEmail, req.RawMessage, req.From, to, domainName, authResults) {
+			for _, fwd := range buildRedirectForwards(r.Context(), result.FinalEmail, req.RawMessage, req.From, to, domainName, authResults) {
 				row := fwd
 				if err := h.db.WithContext(r.Context()).Create(&row).Error; err != nil {
-					slog.Error("restmail: failed to enqueue sieve redirect",
+					slog.ErrorContext(r.Context(), "restmail: failed to enqueue sieve redirect",
 						"recipient", row.Recipient, "error", err)
 					continue
 				}
 				forwarded++
-				slog.Info("restmail: sieve redirect queued", "recipient", row.Recipient)
+				slog.InfoContext(r.Context(), "restmail: sieve redirect queued", "recipient", row.Recipient)
 			}
 			suppressLocalKeep = forwarded > 0 && redirectSuppressesKeep(result.FinalEmail)
 		}
@@ -512,7 +512,7 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput, spoo
 	if suppressLocalKeep {
 		if deliveredTrace != nil {
 			deliveredTrace.Outcome = outcomeDelivered
-			h.recordTrace(buildTrace(*deliveredTrace))
+			h.recordTrace(r.Context(), buildTrace(*deliveredTrace))
 		}
 		return RestmailDelivery{Delivered: append(delivered, to...), Failed: failed}, nil
 	}
@@ -536,7 +536,7 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput, spoo
 	// no recipient gets the message twice when the peer retries.
 	sieved, err := h.runRecipientScripts(r.Context(), pipelineCfg, sharedEmail, to, recipients)
 	if err != nil {
-		slog.Error("restmail: a recipient's Sieve script could not run, deferring delivery", "error", err)
+		slog.ErrorContext(r.Context(), "restmail: a recipient's Sieve script could not run, deferring delivery", "error", err)
 		return RestmailDelivery{}, endpoint.Refuse(http.StatusServiceUnavailable, "deferred", "Message deferred, retry later")
 	}
 	// The holds the recipients' scripts ask for are stored before anything is
@@ -550,7 +550,7 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput, spoo
 		}
 	}
 	if err := h.storeHolds(r.Context(), holds); err != nil {
-		slog.Error("restmail: could not hold the message in quarantine, deferring delivery", "error", err)
+		slog.ErrorContext(r.Context(), "restmail: could not hold the message in quarantine, deferring delivery", "error", err)
 		return RestmailDelivery{}, endpoint.Refuse(http.StatusServiceUnavailable, "deferred", "Message deferred, retry later")
 	}
 
@@ -582,10 +582,10 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput, spoo
 				continue
 			}
 			forwarded := 0
-			for _, fwd := range buildRedirectForwards(final, req.RawMessage, req.From, []string{rcpt}, domainName, authResults) {
+			for _, fwd := range buildRedirectForwards(r.Context(), final, req.RawMessage, req.From, []string{rcpt}, domainName, authResults) {
 				row := fwd
 				if err := h.db.WithContext(r.Context()).Create(&row).Error; err != nil {
-					slog.Error("restmail: failed to enqueue sieve redirect", "recipient", row.Recipient, "error", err)
+					slog.ErrorContext(r.Context(), "restmail: failed to enqueue sieve redirect", "recipient", row.Recipient, "error", err)
 					continue
 				}
 				forwarded++
@@ -617,7 +617,7 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput, spoo
 
 		msg := models.Message{
 			MailboxID:    mailbox.ID,
-			Folder:       sieveFolder(final, mailbox.Address),
+			Folder:       sieveFolder(r.Context(), final, mailbox.Address),
 			IsRead:       flags.seen,
 			IsFlagged:    flags.flagged,
 			IsDraft:      flags.draft,
@@ -698,7 +698,7 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput, spoo
 	// delivered because the pipeline permitted delivery.
 	if deliveredTrace != nil {
 		deliveredTrace.Outcome = outcomeDelivered
-		h.recordTrace(buildTrace(*deliveredTrace))
+		h.recordTrace(r.Context(), buildTrace(*deliveredTrace))
 	}
 
 	if len(delivered) == 0 {
@@ -949,8 +949,8 @@ func (h *RestmailHandler) inboundPipeline(ctx context.Context, domainName string
 		Direction: stored.Direction, Filters: pipeline.WithDMARCReportsStep(pipeline.WithVacationStep(filters)), Active: stored.Active}, nil
 }
 
-func restmailReadRefusal(stage string) error {
-	slog.Error("restmail: delivery lookup failed, deferring message", "stage", stage)
+func restmailReadRefusal(ctx context.Context, stage string) error {
+	slog.ErrorContext(ctx, "restmail: delivery lookup failed, deferring message", "stage", stage)
 	return endpoint.Refuse(http.StatusServiceUnavailable, "deferred", "Message deferred, retry later")
 }
 

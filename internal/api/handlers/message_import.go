@@ -369,7 +369,7 @@ func (h *MessageImportHandler) storeImportedMessage(r *http.Request, accountID u
 	// An open client learns of the message; a phone is not told, since this is
 	// mail the account already has.
 	if result.Imported && h.broker != nil {
-		h.broker.Publish(uint(accountID), SSEEvent{Type: "new_message", Data: map[string]interface{}{
+		h.broker.Publish(r.Context(), uint(accountID), SSEEvent{Type: "new_message", Data: map[string]interface{}{
 			"message_id": result.ID, "folder": result.Folder, "sender": msg.Sender, "subject": msg.Subject,
 		}})
 	}

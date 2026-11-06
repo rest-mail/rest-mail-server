@@ -331,7 +331,7 @@ func TestDeliveredMessageHoldsOnlyWhatItNeeds(t *testing.T) {
 
 type panickingDeliveryBroker struct{}
 
-func (panickingDeliveryBroker) Publish(uint, SSEEvent) { panic("broker") }
+func (panickingDeliveryBroker) Publish(context.Context, uint, SSEEvent) { panic("broker") }
 
 // Every way out of the routes leaves no file: each answer, a client gone mid-request and a panic.
 func TestDeliveryLeavesNoFile(t *testing.T) {

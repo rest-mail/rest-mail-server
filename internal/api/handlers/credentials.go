@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -235,7 +236,7 @@ func (h *CredentialHandler) create(r *http.Request, in createCredentialRequest) 
 
 	cred, password, err := h.repo.CreateAppPassword(accountID, claims.AccountID, req.Name, req.ExpiresAt)
 	if err != nil {
-		slog.Error("creating an app password failed", "account_id", accountID, "error", err)
+		slog.ErrorContext(r.Context(), "creating an app password failed", "account_id", accountID, "error", err)
 		return createdAppPassword{}, fmt.Errorf("create the app password: %w", err)
 	}
 	return createdAppPassword{credentialResponse: toCredentialResponse(cred), Password: password}, nil
@@ -334,7 +335,7 @@ func revokeAppPasswordsForNewPassword(tx *gorm.DB, r *http.Request, accountID ui
 func PasswordVerifier(db *gorm.DB) middleware.PasswordVerify {
 	repo := repositories.NewCredentialRepository(db)
 	checks := newPasswordChecks(passwordCheckTTL)
-	return func(address, secret string) (*auth.Claims, error) {
+	return func(ctx context.Context, address, secret string) (*auth.Claims, error) {
 		now := time.Now()
 		cred, account, err := checks.verify(repo, address, secret, now)
 		if err != nil {
@@ -342,7 +343,7 @@ func PasswordVerifier(db *gorm.DB) middleware.PasswordVerify {
 		}
 		if cred.LastUsedAt == nil || now.Sub(*cred.LastUsedAt) >= repositories.LastUsedEvery {
 			if err := repo.TouchLastUsed(cred.ID, now); err != nil {
-				slog.Warn("could not record a credential's use", "credential_id", cred.ID, "error", err)
+				slog.WarnContext(ctx, "could not record a credential's use", "credential_id", cred.ID, "error", err)
 			}
 		}
 		return &auth.Claims{

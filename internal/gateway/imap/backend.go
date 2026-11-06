@@ -19,6 +19,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/gateway/rawmsg"
 	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
 	"github.com/rest-mail/rest-mail-server/internal/metrics"
+	"github.com/rest-mail/rest-mail-server/internal/requestid"
 )
 
 // errAccountLocked is returned when an account is temporarily banned for too
@@ -58,11 +59,17 @@ func (b *Backend) ObserveCommand(name string, d time.Duration) {
 var _ goimap.CommandObserver = (*Backend)(nil)
 
 func (b *Backend) Authenticate(user, pass string) (goimap.Mailbox, error) {
+	// One ID per session (#1580): on every line logged for it, and sent to
+	// the API on each call the session makes.
+	id := requestid.New()
+	log := slog.Default().With(requestid.Attr, id)
+	api := b.api.WithRequestID(id)
+
 	// Per-account hard stop: reject a banned account WITHOUT calling the auth API,
 	// so a rotating-IP brute-force is throttled and a ban is never lifted by a
 	// lucky correct guess. The per-IP ban is enforced separately by the server.
 	if b.limiter != nil && b.limiter.IsUserBanned(user) {
-		slog.Warn("imap: auth rejected: account temporarily locked",
+		log.Warn("imap: auth rejected: account temporarily locked",
 			"user", maskEmail(user),
 			"event", "imap_auth_banned",
 		)
@@ -72,12 +79,12 @@ func (b *Backend) Authenticate(user, pass string) (goimap.Mailbox, error) {
 	// The connection gets its own session with the API (#1586): the address
 	// and password go once, and every call that follows sends the session's
 	// token. An app password signs in without the API's interactive login (#344).
-	resp, err := b.api.OpenSession(user, pass, "imap")
+	resp, err := api.OpenSession(user, pass, "imap")
 	if err != nil {
 		// A failed IMAP login is a security-relevant event (credential stuffing /
 		// enumeration). Log it structured, with the attacker-controlled username
 		// masked, so it is observable alongside the SMTP smtp_auth_failed events.
-		slog.Warn("imap: auth failed",
+		log.Warn("imap: auth failed",
 			"user", maskEmail(user),
 			"event", "imap_auth_failed",
 		)
@@ -93,11 +100,20 @@ func (b *Backend) Authenticate(user, pass string) (goimap.Mailbox, error) {
 		b.limiter.ResetAuthUser(user)
 	}
 	return &mailbox{
-		api:       b.api,
+		api:       api,
+		log:       log,
 		email:     user,
 		token:     resp.Token,
 		accountID: resp.User.ID,
 	}, nil
+}
+
+// logger is the session's logger, carrying its request ID when it has one.
+func (m *mailbox) logger() *slog.Logger {
+	if m.log != nil {
+		return m.log
+	}
+	return slog.Default()
 }
 
 // Close ends the connection's session with the API, at LOGOUT or disconnect.
@@ -107,7 +123,9 @@ func (m *mailbox) Close() error {
 
 // mailbox is one authenticated account's view of its mail, for one session.
 type mailbox struct {
-	api       *apiclient.Client
+	api *apiclient.Client
+	// log carries the session's request ID (#1580); nil logs without it.
+	log       *slog.Logger
 	email     string
 	token     string
 	accountID uint
@@ -162,7 +180,7 @@ func (m *mailbox) importSession(accountID uint) string {
 	body.ClientVersion, _ = m.clientID.Get("version")
 	session, err := m.api.OpenImportSession(m.token, accountID, body)
 	if err != nil {
-		slog.Warn("imap: could not open an import session; the import is audited on its own", "account_id", accountID, "error", err)
+		m.logger().Warn("imap: could not open an import session; the import is audited on its own", "account_id", accountID, "error", err)
 		return ""
 	}
 	if m.imports == nil {
@@ -177,7 +195,7 @@ func (m *mailbox) importSession(accountID uint) string {
 func (m *mailbox) EndSession() {
 	for accountID, session := range m.imports {
 		if err := m.api.CloseImportSession(m.token, accountID, session); err != nil {
-			slog.Warn("imap: closing the import session failed; the API closes it when idle", "account_id", accountID, "error", err)
+			m.logger().Warn("imap: closing the import session failed; the API closes it when idle", "account_id", accountID, "error", err)
 		}
 	}
 	m.imports = nil
