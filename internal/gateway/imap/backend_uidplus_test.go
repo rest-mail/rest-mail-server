@@ -61,6 +61,9 @@ type fakeAPI struct {
 	patches []patchRecord
 	deletes []uint
 	imports []apiclient.ImportRequest
+	// marks is the highest ID each folder held before a delete removed it,
+	// so the folder listing's uid_next does not fall, as the API keeps it.
+	marks map[string]uint
 	// importStatus, when non-zero, is the HTTP status the import endpoint
 	// returns instead of a normal 200; importBody is the JSON body to send with
 	// it. Together they let a test simulate a quarantined/discarded delivery
@@ -137,6 +140,7 @@ func (f *fakeAPI) handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /api/v1/gateway-sessions", f.login)
 	mux.HandleFunc("DELETE /api/v1/gateway-sessions/current", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
+	mux.HandleFunc("GET /api/v1/accounts/{acct}/folders", f.listFolders)
 	mux.HandleFunc("GET /api/v1/accounts/{acct}/folders/{folder}/messages", f.listMessages)
 	mux.HandleFunc("POST /api/v1/accounts/{acct}/messages/import", f.importMessage)
 	mux.HandleFunc("POST /api/v1/accounts/{acct}/messages/transfer", f.transfer)
@@ -400,10 +404,37 @@ func (f *fakeAPI) patch(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+// listFolders lists the standard folders, as the API always does, and every
+// folder a message is in or was in, with uid_next one above the highest ID it
+// has held.
+func (f *fakeAPI) listFolders(w http.ResponseWriter, r *http.Request) {
+	f.mu.Lock()
+	highest := map[string]uint{"INBOX": 0, "Sent": 0, "Drafts": 0, "Trash": 0, "Spam": 0, "Archive": 0}
+	for folder, id := range f.marks {
+		highest[folder] = max(highest[folder], id)
+	}
+	for _, m := range f.msgs {
+		highest[m.folder] = max(highest[m.folder], m.id)
+	}
+	f.mu.Unlock()
+	var resp apiclient.FolderListResponse
+	for folder, id := range highest {
+		resp.Data = append(resp.Data, apiclient.Folder{Folder: folder, UIDNext: uint64(id) + 1})
+	}
+	slices.SortFunc(resp.Data, func(a, b apiclient.Folder) int { return strings.Compare(a.Folder, b.Folder) })
+	writeJSON(w, resp)
+}
+
 func (f *fakeAPI) delete(w http.ResponseWriter, r *http.Request) {
 	id := pathID(r)
 	f.mu.Lock()
 	f.deletes = append(f.deletes, id)
+	if m := f.msgs[id]; m != nil {
+		if f.marks == nil {
+			f.marks = map[string]uint{}
+		}
+		f.marks[m.folder] = max(f.marks[m.folder], id)
+	}
 	delete(f.msgs, id)
 	f.mu.Unlock()
 	w.WriteHeader(http.StatusOK)

@@ -1352,8 +1352,9 @@ func (h *MessageHandler) deliverMessage(r *http.Request, req deliverMessageBody,
 	return endpoint.Status[any]{Code: http.StatusCreated, Value: messageOf(*msg)}, nil
 }
 
-// FolderSummary is a folder of an account, with how many messages it holds and how many of
-// them are unread. The standard folders are always listed, empty or not.
+// FolderSummary is a folder of an account, with how many messages it holds, how many of
+// them are unread, and its IMAP UIDNEXT. The standard folders are always listed, empty or
+// not.
 type FolderSummary = apitypes.FolderSummary
 
 // FolderName is a folder as it was created or renamed.
@@ -1489,7 +1490,7 @@ func (h *MessageHandler) listFolders(r *http.Request, in accountPath) (endpoint.
 
 	var folders []FolderSummary
 	if err := h.db.Model(&models.Message{}).
-		Select("folder, COUNT(CASE WHEN is_deleted = false AND imap_deleted = false AND "+visibleThreads+" THEN 1 END) as total, COUNT(CASE WHEN is_deleted = false AND imap_deleted = false AND is_read = false AND "+visibleThreads+" THEN 1 END) as unread").
+		Select("folder, COUNT(CASE WHEN is_deleted = false AND imap_deleted = false AND "+visibleThreads+" THEN 1 END) as total, COUNT(CASE WHEN is_deleted = false AND imap_deleted = false AND is_read = false AND "+visibleThreads+" THEN 1 END) as unread, MAX(id) as highest_id").
 		Where("mailbox_id = ?", mailboxID).
 		Group("folder").
 		Order("folder ASC").
@@ -1511,6 +1512,21 @@ func (h *MessageHandler) listFolders(r *http.Request, in accountPath) (endpoint.
 			name := string(role)
 			folders[i].Role = &name
 		}
+	}
+
+	// UIDNEXT outlives the messages: the mark keeps the highest ID a folder has ever
+	// held, expunged ones included (#804). A row's own ID covers one stored before
+	// the mark existed.
+	var marks []models.FolderUIDMark
+	if err := h.db.Where("mailbox_id = ?", mailboxID).Find(&marks).Error; err != nil {
+		return endpoint.List[FolderSummary]{}, fmt.Errorf("list folder UID marks: %w", err)
+	}
+	highest := make(map[string]uint64, len(marks))
+	for _, m := range marks {
+		highest[m.Folder] = m.HighestUID
+	}
+	for i := range folders {
+		folders[i].UIDNext = max(folders[i].HighestID, highest[folders[i].Folder]) + 1
 	}
 
 	return endpoint.List[FolderSummary]{Data: folders}, nil
