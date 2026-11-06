@@ -166,6 +166,7 @@
     "deleteDomain",
     "domainDNSCheck",
     "getDomain",
+    "getReputation",
     "listDomains",
     "restartDomainOutbound",
     "stopDomainOutbound",
