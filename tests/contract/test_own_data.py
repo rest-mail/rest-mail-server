@@ -29,6 +29,10 @@ CUSTOM_FILTERS = (
     "deleteCustomFilter",
 )
 
+# What read or wrote the folders the run kept, and what follows createFolder's
+# link: the rename, and the delete after it.
+FOLDERS = ("createFolder", "renameFolder", "deleteFolder")
+
 
 def link_followers(description, start):
     """The operations reachable from start through the description's links."""
@@ -77,7 +81,7 @@ class Selection(unittest.TestCase):
         description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
         selected = set(own_data.MOVED + own_data.FOLLOWS_THE_CREATED_DOMAIN)
         self.assertEqual(
-            selected - set(PIPELINES) - set(ALIASES) - set(CUSTOM_FILTERS),
+            selected - set(PIPELINES) - set(ALIASES) - set(CUSTOM_FILTERS) - set(FOLDERS),
             link_followers(description, "createDomain") | {"createDomain"},
         )
 
@@ -105,6 +109,14 @@ class Selection(unittest.TestCase):
             set(CUSTOM_FILTERS),
         )
         self.assertLessEqual(set(CUSTOM_FILTERS), set(own_data.MOVED))
+
+    def test_it_selects_every_folder_operation_and_its_links(self):
+        description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
+        self.assertEqual(
+            link_followers(description, "createFolder") | {"createFolder"},
+            set(FOLDERS),
+        )
+        self.assertLessEqual(set(FOLDERS), set(own_data.MOVED))
 
     def test_a_skipped_exchange_is_not_a_pass(self):
         with tempfile.TemporaryDirectory() as directory:

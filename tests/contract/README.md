@@ -1472,10 +1472,28 @@ follows it is left unmoved. No custom filter is carried between exchanges, so
 example aimed at placeholder `1` gets a new filter of its own
 (`on_a_custom_filter_of_its_own`), and other ids are sent as before.
 
+`createFolder`, `renameFolder` and `deleteFolder` reset and seed before each
+exchange too, refusals included. The reset removes the mailbox their examples
+name (`1`), so each exchange with a positive account id is sent to a mailbox of
+its own (`contract-own-folders@contract-own-domain.test`, made after the reset
+with the two-factor session, since making a mailbox takes one). A create is then
+sent as documented: no earlier exchange's folder is left to remove. A rename
+gets a new source folder, as before. A delete documented to succeed gets a
+folder of its own, since the folder the rename's link names is gone, and the
+refusals keep their folders: `Missing` is refused as absent and `Archive` as a
+system folder, in a mailbox that exists. A non-positive or undecodable account
+id and missing's `2147483647` keep theirs. `createFolder`'s link reaches the
+rename, and the rename's reaches the delete, so nothing that follows it is left
+unmoved. Rename sources are named by the time they are made, not by a count, so
+`hooks.stash` holds no `rename_probe`. `created_folders` stays, because a create
+without a reset (the primary run and coverage) still removes only the repeated
+probe folders it made.
+
 This happens only with `CONTRACT_RESET_SEED=1`, which `tests/contract/run.sh own-data`
 sets, and that phase is a gate of its own, sent by `chore test:contract-teardown`
 just before the teardown. It sends the moved operations with everything that follows
-`createDomain`'s, `createPipeline`'s, `createAlias`'s and `createCustomFilter`'s links
+`createDomain`'s, `createPipeline`'s, `createAlias`'s, `createCustomFilter`'s and
+`createFolder`'s links
 (`own_data.py`), and fails on a skipped
 exchange as well as a failed one.
 
