@@ -334,9 +334,22 @@ MOVED = (
 )
 
 
+# What the own-data run sets up that the primary run's seeded data cannot be in
+# (x-requires state, #1334): its hooks make each after the exchange's reset.
+# calendar_invitation is respondToCalendar's accepted and foreign_sender: the
+# seeded account sends itself an invitation and the reply names its message.
+# accountEvents' stream (event_stream) is not provided: its example is a
+# literal stream the live server never sends, compared byte for byte (#1385).
+PROVIDES = {"state": ["calendar_invitation"]}
+
+
 def configure(config):
     config["operation-id"] = list(MOVED)
     config.pop("surface", None)
+    provides = config.get("provides") or {}
+    for key, values in PROVIDES.items():
+        provides[key] = sorted(set(provides.get(key, [])) | set(values))
+    config["provides"] = provides
     # The gate's list of what it could not send is its own.
     config["unproven"] = ".cache/contract/unproven-own-data.json"
     return config
