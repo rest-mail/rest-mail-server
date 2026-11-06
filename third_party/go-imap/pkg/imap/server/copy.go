@@ -87,8 +87,11 @@ func (s *Session) handleUIDMove(tag, args string) {
 // copyMessages copies the messages at the given sequence numbers into dest and
 // returns a COPYUID response code body (without the surrounding brackets) when
 // the mailbox implements [UIDPlusMailbox], or "" otherwise. It is shared by COPY
-// and UID COPY. It stops at the first backend failure and returns no COPYUID
-// on failure. The per-message backend API cannot roll back earlier copies.
+// and UID COPY. A mailbox that implements [imap.SetMailbox] copies the whole
+// set in one call, so a failure leaves the destination unchanged (RFC 3501
+// §6.4.7). Otherwise it stops at the first backend failure and returns no
+// COPYUID on failure; the per-message backend API cannot roll back earlier
+// copies.
 func (s *Session) copyMessages(seqNums []int, dest string) (string, error) {
 	// "INBOX" is case-insensitive (RFC 3501 §5.1): fold an any-case destination to
 	// the one real INBOX. Shared by COPY and UID COPY.
@@ -99,9 +102,8 @@ func (s *Session) copyMessages(seqNums []int, dest string) (string, error) {
 	if err := s.destinationRefusal(dest); err != nil {
 		return "", err
 	}
-	up, uidPlus := s.mailbox.(imap.UIDPlusMailbox)
+	_, uidPlus := s.mailbox.(imap.UIDPlusMailbox)
 	var srcUIDs, dstUIDs []uint32
-	seen := make(map[int]bool)
 	// A copy into the selected mailbox changes its size, and that goes out before
 	// the tagged answer even if a later message fails (RFC 3501 §5.2).
 	copied := false
@@ -110,29 +112,22 @@ func (s *Session) copyMessages(seqNums []int, dest string) (string, error) {
 			s.notifyAppendToSelected(dest)
 		}
 	}()
-
-	for _, seq := range seqNums {
-		if seq < 1 || seq > len(s.messages) || seen[seq] {
-			continue
-		}
-		seen[seq] = true
-		msg := s.messages[seq-1]
-		if uidPlus {
-			newUID, err := up.CopyUID(msg.UID, dest)
+	if set, ok := s.mailbox.(imap.SetMailbox); ok {
+		srcUIDs = s.uidsAt(seqNums)
+		if len(srcUIDs) > 0 {
+			var err error
+			dstUIDs, err = set.CopyMessages(s.selected.name, srcUIDs, dest)
 			if err != nil {
-				slog.Warn("imap: copy failed", "uid", msg.UID, "error", err)
+				slog.Warn("imap: copy failed", "messages", len(srcUIDs), "error", err)
 				return "", err
 			}
 			copied = true
-			srcUIDs = append(srcUIDs, msg.UID)
-			dstUIDs = append(dstUIDs, newUID)
-			continue
+			if len(dstUIDs) != len(srcUIDs) {
+				dstUIDs = nil
+			}
 		}
-		if err := s.mailbox.Copy(msg.UID, dest); err != nil {
-			slog.Warn("imap: copy failed", "uid", msg.UID, "error", err)
-			return "", err
-		}
-		copied = true
+	} else if err := s.copyEach(seqNums, dest, &srcUIDs, &dstUIDs, &copied); err != nil {
+		return "", err
 	}
 
 	// COPYUID only to a user who may read the destination (RFC 9051 §§6.4.7,
@@ -144,6 +139,47 @@ func (s *Session) copyMessages(seqNums []int, dest string) (string, error) {
 		}
 	}
 	return "", nil
+}
+
+// uidsAt is the UIDs of the messages at seqNums, in that order, with sequence
+// numbers out of range or named twice left out.
+func (s *Session) uidsAt(seqNums []int) []uint32 {
+	var uids []uint32
+	for _, seq := range s.seqsOnce(seqNums) {
+		uids = append(uids, s.messages[seq-1].UID)
+	}
+	return uids
+}
+
+// copyEach copies the messages one backend call at a time, for a mailbox
+// without [imap.SetMailbox], collecting the UIDs COPYUID reports.
+func (s *Session) copyEach(seqNums []int, dest string, srcUIDs, dstUIDs *[]uint32, copied *bool) error {
+	up, uidPlus := s.mailbox.(imap.UIDPlusMailbox)
+	seen := make(map[int]bool)
+	for _, seq := range seqNums {
+		if seq < 1 || seq > len(s.messages) || seen[seq] {
+			continue
+		}
+		seen[seq] = true
+		msg := s.messages[seq-1]
+		if uidPlus {
+			newUID, err := up.CopyUID(msg.UID, dest)
+			if err != nil {
+				slog.Warn("imap: copy failed", "uid", msg.UID, "error", err)
+				return err
+			}
+			*copied = true
+			*srcUIDs = append(*srcUIDs, msg.UID)
+			*dstUIDs = append(*dstUIDs, newUID)
+			continue
+		}
+		if err := s.mailbox.Copy(msg.UID, dest); err != nil {
+			slog.Warn("imap: copy failed", "uid", msg.UID, "error", err)
+			return err
+		}
+		*copied = true
+	}
+	return nil
 }
 
 // failText is the tagged NO text for a failed APPEND, COPY or MOVE. A backend
@@ -204,6 +240,26 @@ func (s *Session) moveMessages(tag, cmdName string, seqNums []int, dest string) 
 	var srcUIDs, dstUIDs []uint32
 	var doneSeq []int
 	var moveErr error
+	if set, ok := s.mailbox.(imap.SetMailbox); ok {
+		// One call moves the whole set or none of it (RFC 6851 §3.3), so a
+		// failure answers NO with nothing expunged.
+		hasMover = true
+		doneSeq = s.seqsOnce(seqNums)
+		srcUIDs = s.uidsAt(seqNums)
+		if len(srcUIDs) > 0 {
+			var err error
+			dstUIDs, err = set.MoveMessages(s.selected.name, srcUIDs, dest)
+			if err != nil {
+				slog.Warn("imap: move failed", "messages", len(srcUIDs), "error", err)
+				s.tagged(tag, "NO", failText(err, cmdName+" failed"))
+				return
+			}
+			if len(dstUIDs) != len(srcUIDs) {
+				dstUIDs = nil
+			}
+		}
+		seqNums = nil
+	}
 	seen := make(map[int]bool)
 	for _, seq := range seqNums {
 		if seq < 1 || seq > len(s.messages) || seen[seq] {
@@ -260,6 +316,20 @@ func (s *Session) moveMessages(tag, cmdName string, seqNums []int, dest string) 
 		return
 	}
 	s.tagged(tag, "OK", cmdName+" completed")
+}
+
+// seqsOnce is seqNums in range, each once, in the order uidsAt takes them.
+func (s *Session) seqsOnce(seqNums []int) []int {
+	var out []int
+	seen := make(map[int]bool)
+	for _, seq := range seqNums {
+		if seq < 1 || seq > len(s.messages) || seen[seq] {
+			continue
+		}
+		seen[seq] = true
+		out = append(out, seq)
+	}
+	return out
 }
 
 // joinUIDs renders a UID slice as a comma-separated IMAP sequence set, preserving

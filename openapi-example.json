@@ -45100,6 +45100,225 @@
       }
     }
   },
+  "transferMessages": {
+    "body_array": {
+      "summary": "The body is not a JSON object",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": [],
+        "mediaType": "application/json",
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "body": "the body is not a JSON object"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "copied": {
+      "summary": "Two INBOX messages are copied to Archive",
+      "description": "Each copy is a new message with a new, higher ID, listed in the order of message_ids; the originals stay. Both are copied in one transaction.",
+      "requires": {
+        "state": "own_account"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "source_folder": "INBOX",
+          "message_ids": [
+            2,
+            1
+          ],
+          "folder": "Archive"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "ids": [
+              41,
+              42
+            ]
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_id": {
+      "summary": "A zero account id is refused before the handler",
+      "request": {
+        "path": {
+          "id": 0
+        },
+        "body": {
+          "source_folder": "INBOX",
+          "message_ids": [
+            2,
+            1
+          ],
+          "folder": "Archive"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "mailbox_full": {
+      "summary": "The copies would exceed the quota",
+      "description": "Nothing is copied.",
+      "requires": {
+        "state": "full_mailbox"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "source_folder": "INBOX",
+          "message_ids": [
+            2,
+            1
+          ],
+          "folder": "Archive"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 409,
+        "body": {
+          "error": {
+            "code": "mailbox_full",
+            "message": "The account has insufficient quota for the copies"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "summary": "One named message is not in the source folder",
+      "description": "Nothing is copied: the message that is there is not copied either.",
+      "requires": {
+        "state": "own_account"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "source_folder": "INBOX",
+          "message_ids": [
+            2,
+            2147483647
+          ],
+          "folder": "Archive"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "message_not_found",
+            "message": "Message not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "moved": {
+      "summary": "Two INBOX messages are moved to Archive",
+      "description": "Each moved message is a new message with a new, higher ID, listed in the order of message_ids, and the originals are gone, in one transaction.",
+      "requires": {
+        "state": "own_account"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "source_folder": "INBOX",
+          "message_ids": [
+            2,
+            1
+          ],
+          "folder": "Archive",
+          "move": true
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "ids": [
+              41,
+              42
+            ]
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "no_messages": {
+      "summary": "No message is named",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "source_folder": "INBOX",
+          "message_ids": [],
+          "folder": "Archive"
+        },
+        "mediaType": "application/json",
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "message_ids": "must have at least 1 item"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
   "unbanIP": {
     "domain_scope": {
       "requires": {

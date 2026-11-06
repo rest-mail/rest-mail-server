@@ -138,6 +138,11 @@ so it is corrected.
   folders: CREATE then answers once the folder exists, DELETE removes it for
   good and RENAME renames it with its inferiors, INBOX by moving its messages.
   A Mailbox without it keeps implicit folders.
+- Atomic set COPY and MOVE (RFC 3501 §6.4.7, RFC 6851 §3.3, go-imap#161).
+  Upstream calls the backend once per message, so a later failure leaves the
+  earlier copies in the destination. The optional `imap.SetMailbox`
+  interface hands the store the whole set in one call, all or none; a Mailbox
+  without it keeps the per-message path.
 - `\Deleted` kept by the store (RFC 3501 §2.3.2, go-imap#159). Upstream keeps
   the mark in the session until EXPUNGE, so the user's other devices never see
   it and a dropped connection loses it. The optional `imap.DeletedMailbox`
