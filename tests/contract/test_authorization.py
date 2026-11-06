@@ -11,6 +11,7 @@ from unittest import mock
 import authorization
 import mfa_admin
 import yaml
+from test_hooks_two_factor_admin import load_hooks
 
 
 class AuthorizationConfig(unittest.TestCase):
@@ -225,15 +226,14 @@ class AuthorizationConfig(unittest.TestCase):
             config["unproven"], ".cache/contract/unproven-authorization.json"
         )
 
-    def test_only_the_successes_hooks_prepare_need_the_provided_states(self):
-        # A provided state proves every pair requiring it, so each names one a
-        # hook prepares for every principal (hooks.py:
-        # recover_an_account_of_its_own, sign_the_status_with_the_runs_owner_key,
-        # mint_for_an_account_of_its_own, reset_an_account_of_its_own; a
-        # challenge needs only the registered key) and no state of the
-        # caller's own account, whose success would end the principal's
-        # sessions. The owner refusals that also require owner_key are not
-        # sent here: the phase sends each operation's documented success.
+    def test_each_pair_needing_a_provided_state_has_a_hook_that_prepares_it(self):
+        # A provided state proves every pair requiring it, so the phase sends
+        # each of them (its examples run first), and each names one a hook in
+        # hooks.py prepares for every principal: the successes on accounts made
+        # for them, the owner refusals on a fresh challenge that reaches the
+        # check they document (a challenge needs only the registered key). No
+        # state of the caller's own account is provided: its success would end
+        # the principal's sessions.
         examples = json.loads(
             (Path(__file__).resolve().parents[2] / "openapi-example.json").read_text()
         )
@@ -244,16 +244,22 @@ class AuthorizationConfig(unittest.TestCase):
             if (pair.get("requires") or {}).get("state")
             in authorization.PROVIDES["state"]
         )
-        self.assertEqual(needing, [
-            ("ownerChallenge", "issued", 200),
-            ("ownerStatus", "not_status_key", 403),
-            ("ownerStatus", "status", 200),
-            ("ownerToken", "minted", 200),
-            ("ownerToken", "no_account", 404),
-            ("ownerToken", "not_owner", 403),
-            ("recoverAccount", "recovered", 200),
-            ("resetAdmin", "reset", 200),
-        ])
+        prepared_by = {
+            ("ownerChallenge", "issued", 200): None,
+            ("ownerStatus", "not_status_key", 403): "refuse_a_status_key_that_is_not_listed",
+            ("ownerStatus", "status", 200): "sign_the_status_with_the_runs_owner_key",
+            ("ownerToken", "minted", 200): "mint_for_an_account_of_its_own",
+            ("ownerToken", "no_account", 404): "refuse_a_token_for_an_account_that_does_not_exist",
+            ("ownerToken", "not_owner", 403): "refuse_a_token_to_a_key_that_is_not_an_owner",
+            ("recoverAccount", "recovered", 200): "recover_an_account_of_its_own",
+            ("resetAdmin", "reset", 200): "reset_an_account_of_its_own",
+        }
+        self.assertEqual(needing, sorted(prepared_by))
+        _, _, registered = load_hooks()
+        for (operation, name, _), hook in prepared_by.items():
+            with self.subTest(operation=operation, name=name):
+                if hook is not None:
+                    self.assertIn(hook, registered[operation])
         for own in ("known_password", "enrolled_authenticator", "pending_enrollment"):
             self.assertNotIn(own, authorization.PROVIDES["state"])
 

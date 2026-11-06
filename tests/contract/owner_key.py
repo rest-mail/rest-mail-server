@@ -151,17 +151,29 @@ def _post(base_url, path, body):
         return json.load(response)["data"]
 
 
-def signed_answer(base_url, purpose, address="", path=None):
-    """A fresh challenge from the server, signed by the run's owner key for
-    purpose and address: the challenge, public_key and signature fields of an
-    owner request. The challenge is unspent until the request it goes into."""
-    seed = _seed(path)
+def _answer(base_url, seed, purpose, address):
     challenge = _post(base_url, "/api/v1/auth/owner/challenge", {})["challenge"]
     return {
         "challenge": challenge,
         "public_key": authorized_key(seed),
         "signature": ssh_signature(seed, owner_message(challenge, purpose, address)),
     }
+
+
+def signed_answer(base_url, purpose, address="", path=None):
+    """A fresh challenge from the server, signed by the run's owner key for
+    purpose and address: the challenge, public_key and signature fields of an
+    owner request. The challenge is unspent until the request it goes into."""
+    return _answer(base_url, _seed(path), purpose, address)
+
+
+def unlisted_answer(base_url, purpose, address=""):
+    """A fresh challenge signed as signed_answer signs it, but by a key made
+    for this one answer and registered nowhere: what an owner endpoint refuses
+    as not one of its keys. The challenge is valid, so the refusal is the key's
+    and not the challenge's; it stays unspent, since only a listed key's
+    verified signature spends one."""
+    return _answer(base_url, os.urandom(32), purpose, address)
 
 
 def reset_token(base_url, address, path=None):
