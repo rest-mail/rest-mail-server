@@ -82,7 +82,7 @@ class LostProbeCountTests(unittest.TestCase):
             register = runpy.run_path(str(ROOT / "tests/contract/quiet_hours_hooks.py"))[
                 "register_quiet_hours_hooks"
             ]
-            prepare = register(lambda origin: "setup-session")
+            prepare = register(lambda origin: "setup-session", lambda: False)
         for _ in range(3):
             transaction = {
                 "name": "/api/v1/accounts/{id}/quiet-hours > Set quiet hours > 200 > application/json",

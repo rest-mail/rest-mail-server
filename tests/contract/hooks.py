@@ -318,9 +318,9 @@ def account_settings_of_its_own(transaction):
     # 200 (a replace) is not sent in this run, having no example of its own.
     # Registered before the other hooks of these operations, so they see the
     # clean start. entrypoint.py registers this for getQuietHours and
-    # setQuietHours too, after their own hook, which finds a live account for
-    # the examples' 1 and fixes their time zone. A run with no reset changes
-    # nothing here.
+    # setQuietHours too, after their own hook, which fixes their time zone and
+    # leaves the examples' 1 to this one (it finds a live account only in a run
+    # with no reset). A run with no reset changes nothing here.
     if not asked_for_a_clean_start():
         return
     start_clean(transaction)
