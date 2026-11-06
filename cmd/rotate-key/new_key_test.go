@@ -11,6 +11,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/config"
 	"github.com/rest-mail/rest-mail-server/internal/crypto"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/testdb"
 )
 
 // runMainEnv makes the test binary run the command itself, so a test can read
@@ -22,7 +23,7 @@ func TestMain(m *testing.M) {
 		main()
 		os.Exit(0)
 	}
-	os.Exit(m.Run())
+	os.Exit(testdb.Finish(m.Run()))
 }
 
 // A new key the server would refuse must be refused before any row changes:

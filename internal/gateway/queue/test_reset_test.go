@@ -2,15 +2,12 @@ package queue
 
 import (
 	"context"
-	"fmt"
 	"net"
-	"os"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/rest-mail/rest-mail-server/internal/config"
-	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/testdb"
 	"github.com/rest-mail/rest-mail-server/internal/testreset"
@@ -21,42 +18,7 @@ func openResetWorkerDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	cfg := &config.Config{DBHost: envOr("DB_HOST", "localhost"), DBPort: envIntOr("DB_PORT", 5432),
 		DBName: "postgres", DBUser: envOr("DB_USER", "restmail"), DBPass: envOr("DB_PASS", "restmail"), DBMaxIdleConns: 2}
-	admin, err := rmdb.Connect(cfg)
-	if err != nil {
-		testdb.Unreachable(t, "test reset worker database unavailable: %v", err)
-	}
-	adminPool, err := admin.DB()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = adminPool.Close() })
-	name := fmt.Sprintf("restmail_reset_worker_%d_%d", os.Getpid(), time.Now().UnixNano())
-	if err := admin.Exec("CREATE DATABASE " + name).Error; err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		if err := admin.Exec("DROP DATABASE " + name).Error; err != nil {
-			t.Error(err)
-		}
-	})
-	cfg.DBName = name
-	database, err := rmdb.Connect(cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	pool, err := database.DB()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = pool.Close() })
-	var current string
-	if err := database.Raw("SELECT current_database()").Scan(&current).Error; err != nil || current != name {
-		t.Fatalf("scratch database = %q: %v", current, err)
-	}
-	if err := database.AutoMigrate(&models.Domain{}, &models.Mailbox{}, &models.Message{}, &models.OutboundQueue{}, &models.Suppression{}, &models.DomainRelay{}); err != nil {
-		t.Fatal(err)
-	}
-	return database
+	return testdb.Clone(t, cfg, "resetworker", testdb.Models(&models.Domain{}, &models.Mailbox{}, &models.Message{}, &models.OutboundQueue{}, &models.Suppression{}, &models.DomainRelay{}))
 }
 
 type resetDeliveryResolver struct {

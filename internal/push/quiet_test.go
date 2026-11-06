@@ -28,32 +28,7 @@ func quietTestDB(t *testing.T) *gorm.DB {
 	}
 	port, _ := strconv.Atoi(env("DB_PORT", "5432"))
 	cfg := config.Config{DBHost: env("DB_HOST", "localhost"), DBPort: port, DBName: env("DB_NAME", "restmail"), DBUser: env("DB_USER", "restmail"), DBPass: env("DB_PASS", "restmail"), DBMaxOpenConns: 8, DBMaxIdleConns: 2}
-	admin, err := rmdb.Connect(&cfg)
-	if err != nil {
-		testdb.Unreachable(t, "quiet-hours database unavailable: %v", err)
-	}
-	name := fmt.Sprintf("quiet_notifications_%d_%d", os.Getpid(), time.Now().UnixNano())
-	if err := admin.Exec("CREATE DATABASE " + name).Error; err != nil {
-		t.Fatal(err)
-	}
-	cfg.DBName = name
-	database, err := rmdb.Connect(&cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		connection, _ := database.DB()
-		_ = connection.Close()
-		if err := admin.Exec("DROP DATABASE " + name + " WITH (FORCE)").Error; err != nil {
-			t.Error(err)
-		}
-		connection, _ = admin.DB()
-		_ = connection.Close()
-	})
-	if err := rmdb.AutoMigrate(database); err != nil {
-		t.Fatal(err)
-	}
-	return database
+	return testdb.Clone(t, &cfg, "quietnotifications", testdb.Setup{Name: "server-schema", Run: rmdb.AutoMigrate})
 }
 
 func TestQuietHoursDurableSummary(t *testing.T) {

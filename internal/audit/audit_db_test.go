@@ -1,7 +1,6 @@
 package audit
 
 import (
-	"fmt"
 	"os"
 	"strconv"
 	"strings"
@@ -37,32 +36,7 @@ func openAuditDB(t *testing.T) *gorm.DB {
 		DBUser: envOr("DB_USER", "restmail"),
 		DBPass: envOr("DB_PASS", "restmail"),
 	}
-	admin, err := rmdb.Connect(&cfg)
-	if err != nil {
-		testdb.Unreachable(t, "audit DB test skipped: no database reachable (%v)", err)
-	}
-	name := fmt.Sprintf("restmail_audit_%d_%d", os.Getpid(), time.Now().UnixNano())
-	if err := admin.Exec("CREATE DATABASE " + name).Error; err != nil {
-		t.Skipf("audit DB test skipped: cannot create a database (%v)", err)
-	}
-	cfg.DBName = name
-	scratch, err := rmdb.Connect(&cfg)
-	if err != nil {
-		t.Fatalf("connect to scratch database: %v", err)
-	}
-	t.Cleanup(func() {
-		if sqlDB, err := scratch.DB(); err == nil {
-			_ = sqlDB.Close()
-		}
-		admin.Exec("DROP DATABASE IF EXISTS " + name)
-		if sqlDB, err := admin.DB(); err == nil {
-			_ = sqlDB.Close()
-		}
-	})
-	if err := rmdb.MigrateAuditLog(scratch); err != nil {
-		t.Fatalf("migrate the audit log: %v", err)
-	}
-	// Every start runs it again.
+	scratch := testdb.Clone(t, &cfg, "audit", testdb.Setup{Name: "audit-log", Run: rmdb.MigrateAuditLog})
 	if err := rmdb.MigrateAuditLog(scratch); err != nil {
 		t.Fatalf("migrate the audit log a second time: %v", err)
 	}

@@ -3,7 +3,6 @@ package bootstrap
 import (
 	"errors"
 	"fmt"
-	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -23,9 +22,6 @@ const chosenPassword = "a passphrase only the owner knows"
 
 func migrateTokens(t *testing.T, gdb *gorm.DB) {
 	t.Helper()
-	if err := gdb.AutoMigrate(&models.OneTimeToken{}, &models.Credential{}, &models.RefreshToken{}); err != nil {
-		t.Skipf("token DB test skipped: migrate failed (%v)", err)
-	}
 	if err := gdb.Exec("TRUNCATE one_time_tokens RESTART IDENTITY").Error; err != nil {
 		t.Fatal(err)
 	}
@@ -226,7 +222,7 @@ func TestTokens_StoredOnlyAsHashes(t *testing.T) {
 // openScratchDatabase gives a test a whole database of its own, dropped
 // afterwards. Tests that need concurrent connections use it directly; fresh-
 // install tests use openBootstrapTestDB's rolled-back transaction on top.
-func openScratchDatabase(t *testing.T) *gorm.DB {
+func openScratchDatabase(t *testing.T, extraModels ...any) *gorm.DB {
 	t.Helper()
 	port, _ := strconv.Atoi(envOr("DB_PORT", "5432"))
 	cfg := config.Config{
@@ -239,35 +235,12 @@ func openScratchDatabase(t *testing.T) *gorm.DB {
 		// migration statement connects and authenticates all over again.
 		DBMaxIdleConns: 2,
 	}
-	admin, err := rmdb.Connect(&cfg)
-	if err != nil {
-		testdb.Unreachable(t, "scratch database skipped: no database reachable (%v)", err)
-	}
-	name := fmt.Sprintf("restmail_scratch_%d_%d", os.Getpid(), time.Now().UnixNano())
-	if err := admin.Exec("CREATE DATABASE " + name).Error; err != nil {
-		t.Skipf("scratch database skipped: cannot create a database (%v)", err)
-	}
-	cfg.DBName = name
-	scratch, err := rmdb.Connect(&cfg)
-	if err != nil {
-		t.Fatalf("connect to scratch database: %v", err)
-	}
-	t.Cleanup(func() {
-		if sqlDB, err := scratch.DB(); err == nil {
-			_ = sqlDB.Close()
-		}
-		admin.Exec("DROP DATABASE IF EXISTS " + name)
-		if sqlDB, err := admin.DB(); err == nil {
-			_ = sqlDB.Close()
-		}
-	})
-	if err := scratch.AutoMigrate(&models.Domain{}, &models.Mailbox{}, &models.Pipeline{}, &models.Role{}, &models.Capability{},
+	setup := []testdb.Setup{testdb.Models(
+		&models.Domain{}, &models.Mailbox{}, &models.Pipeline{}, &models.Role{}, &models.Capability{},
 		&models.RoleCapability{}, &models.Grant{}, &models.GrantActivation{}, &models.OneTimeToken{}, &models.Credential{},
-		&models.RefreshToken{}); err != nil {
-		t.Fatalf("migrate scratch database: %v", err)
+		&models.RefreshToken{}), {Name: "audit-log", Run: rmdb.MigrateAuditLog}}
+	if len(extraModels) != 0 {
+		setup = append(setup, testdb.Models(extraModels...))
 	}
-	if err := rmdb.MigrateAuditLog(scratch); err != nil {
-		t.Fatalf("migrate scratch database: %v", err)
-	}
-	return scratch
+	return testdb.Clone(t, &cfg, "bootstrap", setup...)
 }

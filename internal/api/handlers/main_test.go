@@ -10,6 +10,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/config"
 	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/testdb"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
@@ -25,7 +26,7 @@ func TestMain(m *testing.M) {
 		return minCostHashPassword(auth.NormalizeRecoveryCode(code))
 	}
 	code := m.Run()
-	dropScratchTemplates()
+	code = testdb.Finish(code)
 	closeTestDB()
 	os.Exit(code)
 }

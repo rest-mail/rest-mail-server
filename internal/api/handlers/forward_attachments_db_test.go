@@ -10,52 +10,22 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/rest-mail/rest-mail-server/internal/attachmentstore"
-	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	rmime "github.com/rest-mail/rest-mail-server/internal/mime"
 	"github.com/rest-mail/rest-mail-server/internal/pipeline"
-	"gorm.io/driver/postgres"
-	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
 )
 
 func TestForwardAttachmentsPostgresPersistenceQuotaAndRollback(t *testing.T) {
 	if os.Getenv("DB_HOST") == "" {
 		t.Skip("PostgreSQL forward persistence/concurrency proof runs in CI with DB_HOST; no local database is started")
 	}
-	base, err := rmdb.Connect(testDBConfig())
-	if err != nil {
-		t.Fatal("could not connect to the configured PostgreSQL test database")
-	}
-	basePool, err := base.DB()
+	db := openScratchDB(t, "forwardproof", []any{withForeignKeys, &models.Domain{}, &models.Mailbox{}, &models.QuotaUsage{}, &models.Message{}, &models.Attachment{}, &models.OutboundQueue{}, &models.Contact{}})
+	pool, err := db.DB()
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = basePool.Close() })
-	schema := fmt.Sprintf("forward_proof_%d", time.Now().UnixNano())
-	if err := base.Exec(`CREATE SCHEMA "` + schema + `"`).Error; err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = base.Exec(`DROP SCHEMA "` + schema + `" CASCADE`).Error })
-	dialector := base.Dialector.(*postgres.Dialector)
-	connection, err := pgx.ParseConfig(dialector.Config.DSN)
-	if err != nil {
-		t.Fatal("could not derive isolated test connection")
-	}
-	connection.RuntimeParams["search_path"] = schema
-	pool := stdlib.OpenDB(*connection)
 	pool.SetMaxOpenConns(4)
-	t.Cleanup(func() { _ = pool.Close() })
-	db, err := gorm.Open(postgres.New(postgres.Config{Conn: pool}), &gorm.Config{DisableAutomaticPing: true, Logger: logger.Default.LogMode(logger.Silent)})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := migrateModels(db, &models.Domain{}, &models.Mailbox{}, &models.QuotaUsage{}, &models.Message{}, &models.Attachment{}, &models.OutboundQueue{}, &models.Contact{}); err != nil {
-		t.Fatal(err)
-	}
 	domain := models.Domain{Name: "forward.example.test"}
 	if err := db.Create(&domain).Error; err != nil {
 		t.Fatal(err)
