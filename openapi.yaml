@@ -3655,6 +3655,21 @@ paths:
               },
               "X-Frame-Options": {
                 "$ref": "#/components/headers/X-Frame-Options"
+              },
+              "Content-Security-Policy": {
+                "$ref": "#/components/headers/Content-Security-Policy"
+              },
+              "Referrer-Policy": {
+                "$ref": "#/components/headers/Referrer-Policy"
+              },
+              "Strict-Transport-Security": {
+                "$ref": "#/components/headers/Strict-Transport-Security"
+              },
+              "X-Content-Type-Options": {
+                "$ref": "#/components/headers/X-Content-Type-Options"
+              },
+              "X-Frame-Options": {
+                "$ref": "#/components/headers/X-Frame-Options"
               }
             }
           },
@@ -3668,6 +3683,21 @@ paths:
             },
             "description": "unauthorized: no token, a bad one, or a session that has ended",
             "headers": {
+              "Content-Security-Policy": {
+                "$ref": "#/components/headers/Content-Security-Policy"
+              },
+              "Referrer-Policy": {
+                "$ref": "#/components/headers/Referrer-Policy"
+              },
+              "Strict-Transport-Security": {
+                "$ref": "#/components/headers/Strict-Transport-Security"
+              },
+              "X-Content-Type-Options": {
+                "$ref": "#/components/headers/X-Content-Type-Options"
+              },
+              "X-Frame-Options": {
+                "$ref": "#/components/headers/X-Frame-Options"
+              },
               "Content-Security-Policy": {
                 "$ref": "#/components/headers/Content-Security-Policy"
               },
@@ -3769,6 +3799,21 @@ paths:
               },
               "X-Frame-Options": {
                 "$ref": "#/components/headers/X-Frame-Options"
+              },
+              "Content-Security-Policy": {
+                "$ref": "#/components/headers/Content-Security-Policy"
+              },
+              "Referrer-Policy": {
+                "$ref": "#/components/headers/Referrer-Policy"
+              },
+              "Strict-Transport-Security": {
+                "$ref": "#/components/headers/Strict-Transport-Security"
+              },
+              "X-Content-Type-Options": {
+                "$ref": "#/components/headers/X-Content-Type-Options"
+              },
+              "X-Frame-Options": {
+                "$ref": "#/components/headers/X-Frame-Options"
               }
             }
           },
@@ -3782,6 +3827,21 @@ paths:
             },
             "description": "Not Found",
             "headers": {
+              "Content-Security-Policy": {
+                "$ref": "#/components/headers/Content-Security-Policy"
+              },
+              "Referrer-Policy": {
+                "$ref": "#/components/headers/Referrer-Policy"
+              },
+              "Strict-Transport-Security": {
+                "$ref": "#/components/headers/Strict-Transport-Security"
+              },
+              "X-Content-Type-Options": {
+                "$ref": "#/components/headers/X-Content-Type-Options"
+              },
+              "X-Frame-Options": {
+                "$ref": "#/components/headers/X-Frame-Options"
+              },
               "Content-Security-Policy": {
                 "$ref": "#/components/headers/Content-Security-Policy"
               },
@@ -3883,6 +3943,21 @@ paths:
               },
               "X-Frame-Options": {
                 "$ref": "#/components/headers/X-Frame-Options"
+              },
+              "Content-Security-Policy": {
+                "$ref": "#/components/headers/Content-Security-Policy"
+              },
+              "Referrer-Policy": {
+                "$ref": "#/components/headers/Referrer-Policy"
+              },
+              "Strict-Transport-Security": {
+                "$ref": "#/components/headers/Strict-Transport-Security"
+              },
+              "X-Content-Type-Options": {
+                "$ref": "#/components/headers/X-Content-Type-Options"
+              },
+              "X-Frame-Options": {
+                "$ref": "#/components/headers/X-Frame-Options"
               }
             }
           },
@@ -3896,6 +3971,21 @@ paths:
             },
             "description": "Unprocessable Entity",
             "headers": {
+              "Content-Security-Policy": {
+                "$ref": "#/components/headers/Content-Security-Policy"
+              },
+              "Referrer-Policy": {
+                "$ref": "#/components/headers/Referrer-Policy"
+              },
+              "Strict-Transport-Security": {
+                "$ref": "#/components/headers/Strict-Transport-Security"
+              },
+              "X-Content-Type-Options": {
+                "$ref": "#/components/headers/X-Content-Type-Options"
+              },
+              "X-Frame-Options": {
+                "$ref": "#/components/headers/X-Frame-Options"
+              },
               "Content-Security-Policy": {
                 "$ref": "#/components/headers/Content-Security-Policy"
               },
@@ -3997,6 +4087,21 @@ paths:
               },
               "X-Frame-Options": {
                 "$ref": "#/components/headers/X-Frame-Options"
+              },
+              "Content-Security-Policy": {
+                "$ref": "#/components/headers/Content-Security-Policy"
+              },
+              "Referrer-Policy": {
+                "$ref": "#/components/headers/Referrer-Policy"
+              },
+              "Strict-Transport-Security": {
+                "$ref": "#/components/headers/Strict-Transport-Security"
+              },
+              "X-Content-Type-Options": {
+                "$ref": "#/components/headers/X-Content-Type-Options"
+              },
+              "X-Frame-Options": {
+                "$ref": "#/components/headers/X-Frame-Options"
               }
             }
           },
@@ -4010,6 +4115,21 @@ paths:
             },
             "description": "unavailable: the session check could not be made",
             "headers": {
+              "Content-Security-Policy": {
+                "$ref": "#/components/headers/Content-Security-Policy"
+              },
+              "Referrer-Policy": {
+                "$ref": "#/components/headers/Referrer-Policy"
+              },
+              "Strict-Transport-Security": {
+                "$ref": "#/components/headers/Strict-Transport-Security"
+              },
+              "X-Content-Type-Options": {
+                "$ref": "#/components/headers/X-Content-Type-Options"
+              },
+              "X-Frame-Options": {
+                "$ref": "#/components/headers/X-Frame-Options"
+              },
               "Content-Security-Policy": {
                 "$ref": "#/components/headers/Content-Security-Policy"
               },
@@ -4164,6 +4284,21 @@ paths:
               },
               "X-Frame-Options": {
                 "$ref": "#/components/headers/X-Frame-Options"
+              },
+              "Content-Security-Policy": {
+                "$ref": "#/components/headers/Content-Security-Policy"
+              },
+              "Referrer-Policy": {
+                "$ref": "#/components/headers/Referrer-Policy"
+              },
+              "Strict-Transport-Security": {
+                "$ref": "#/components/headers/Strict-Transport-Security"
+              },
+              "X-Content-Type-Options": {
+                "$ref": "#/components/headers/X-Content-Type-Options"
+              },
+              "X-Frame-Options": {
+                "$ref": "#/components/headers/X-Frame-Options"
               }
             }
           },
@@ -4177,6 +4312,21 @@ paths:
             },
             "description": "Bad Request",
             "headers": {
+              "Content-Security-Policy": {
+                "$ref": "#/components/headers/Content-Security-Policy"
+              },
+              "Referrer-Policy": {
+                "$ref": "#/components/headers/Referrer-Policy"
+              },
+              "Strict-Transport-Security": {
+                "$ref": "#/components/headers/Strict-Transport-Security"
+              },
+              "X-Content-Type-Options": {
+                "$ref": "#/components/headers/X-Content-Type-Options"
+              },
+              "X-Frame-Options": {
+                "$ref": "#/components/headers/X-Frame-Options"
+              },
               "Content-Security-Policy": {
                 "$ref": "#/components/headers/Content-Security-Policy"
               },
@@ -4278,6 +4428,21 @@ paths:
               },
               "X-Frame-Options": {
                 "$ref": "#/components/headers/X-Frame-Options"
+              },
+              "Content-Security-Policy": {
+                "$ref": "#/components/headers/Content-Security-Policy"
+              },
+              "Referrer-Policy": {
+                "$ref": "#/components/headers/Referrer-Policy"
+              },
+              "Strict-Transport-Security": {
+                "$ref": "#/components/headers/Strict-Transport-Security"
+              },
+              "X-Content-Type-Options": {
+                "$ref": "#/components/headers/X-Content-Type-Options"
+              },
+              "X-Frame-Options": {
+                "$ref": "#/components/headers/X-Frame-Options"
               }
             }
           },
@@ -4291,6 +4456,21 @@ paths:
             },
             "description": "Forbidden",
             "headers": {
+              "Content-Security-Policy": {
+                "$ref": "#/components/headers/Content-Security-Policy"
+              },
+              "Referrer-Policy": {
+                "$ref": "#/components/headers/Referrer-Policy"
+              },
+              "Strict-Transport-Security": {
+                "$ref": "#/components/headers/Strict-Transport-Security"
+              },
+              "X-Content-Type-Options": {
+                "$ref": "#/components/headers/X-Content-Type-Options"
+              },
+              "X-Frame-Options": {
+                "$ref": "#/components/headers/X-Frame-Options"
+              },
               "Content-Security-Policy": {
                 "$ref": "#/components/headers/Content-Security-Policy"
               },
@@ -4392,6 +4572,21 @@ paths:
               },
               "X-Frame-Options": {
                 "$ref": "#/components/headers/X-Frame-Options"
+              },
+              "Content-Security-Policy": {
+                "$ref": "#/components/headers/Content-Security-Policy"
+              },
+              "Referrer-Policy": {
+                "$ref": "#/components/headers/Referrer-Policy"
+              },
+              "Strict-Transport-Security": {
+                "$ref": "#/components/headers/Strict-Transport-Security"
+              },
+              "X-Content-Type-Options": {
+                "$ref": "#/components/headers/X-Content-Type-Options"
+              },
+              "X-Frame-Options": {
+                "$ref": "#/components/headers/X-Frame-Options"
               }
             }
           },
@@ -4449,6 +4644,21 @@ paths:
               },
               "X-Frame-Options": {
                 "$ref": "#/components/headers/X-Frame-Options"
+              },
+              "Content-Security-Policy": {
+                "$ref": "#/components/headers/Content-Security-Policy"
+              },
+              "Referrer-Policy": {
+                "$ref": "#/components/headers/Referrer-Policy"
+              },
+              "Strict-Transport-Security": {
+                "$ref": "#/components/headers/Strict-Transport-Security"
+              },
+              "X-Content-Type-Options": {
+                "$ref": "#/components/headers/X-Content-Type-Options"
+              },
+              "X-Frame-Options": {
+                "$ref": "#/components/headers/X-Frame-Options"
               }
             }
           },
@@ -4462,6 +4672,21 @@ paths:
             },
             "description": "Unprocessable Entity",
             "headers": {
+              "Content-Security-Policy": {
+                "$ref": "#/components/headers/Content-Security-Policy"
+              },
+              "Referrer-Policy": {
+                "$ref": "#/components/headers/Referrer-Policy"
+              },
+              "Strict-Transport-Security": {
+                "$ref": "#/components/headers/Strict-Transport-Security"
+              },
+              "X-Content-Type-Options": {
+                "$ref": "#/components/headers/X-Content-Type-Options"
+              },
+              "X-Frame-Options": {
+                "$ref": "#/components/headers/X-Frame-Options"
+              },
               "Content-Security-Policy": {
                 "$ref": "#/components/headers/Content-Security-Policy"
               },
@@ -4570,6 +4795,21 @@ paths:
               },
               "X-Frame-Options": {
                 "$ref": "#/components/headers/X-Frame-Options"
+              },
+              "Content-Security-Policy": {
+                "$ref": "#/components/headers/Content-Security-Policy"
+              },
+              "Referrer-Policy": {
+                "$ref": "#/components/headers/Referrer-Policy"
+              },
+              "Strict-Transport-Security": {
+                "$ref": "#/components/headers/Strict-Transport-Security"
+              },
+              "X-Content-Type-Options": {
+                "$ref": "#/components/headers/X-Content-Type-Options"
+              },
+              "X-Frame-Options": {
+                "$ref": "#/components/headers/X-Frame-Options"
               }
             }
           },
@@ -4627,6 +4867,21 @@ paths:
               },
               "X-Frame-Options": {
                 "$ref": "#/components/headers/X-Frame-Options"
+              },
+              "Content-Security-Policy": {
+                "$ref": "#/components/headers/Content-Security-Policy"
+              },
+              "Referrer-Policy": {
+                "$ref": "#/components/headers/Referrer-Policy"
+              },
+              "Strict-Transport-Security": {
+                "$ref": "#/components/headers/Strict-Transport-Security"
+              },
+              "X-Content-Type-Options": {
+                "$ref": "#/components/headers/X-Content-Type-Options"
+              },
+              "X-Frame-Options": {
+                "$ref": "#/components/headers/X-Frame-Options"
               }
             }
           },
@@ -4640,6 +4895,21 @@ paths:
             },
             "description": "unavailable: the session check could not be made",
             "headers": {
+              "Content-Security-Policy": {
+                "$ref": "#/components/headers/Content-Security-Policy"
+              },
+              "Referrer-Policy": {
+                "$ref": "#/components/headers/Referrer-Policy"
+              },
+              "Strict-Transport-Security": {
+                "$ref": "#/components/headers/Strict-Transport-Security"
+              },
+              "X-Content-Type-Options": {
+                "$ref": "#/components/headers/X-Content-Type-Options"
+              },
+              "X-Frame-Options": {
+                "$ref": "#/components/headers/X-Frame-Options"
+              },
               "Content-Security-Policy": {
                 "$ref": "#/components/headers/Content-Security-Policy"
               },
@@ -4781,6 +5051,21 @@ paths:
               },
               "X-Frame-Options": {
                 "$ref": "#/components/headers/X-Frame-Options"
+              },
+              "Content-Security-Policy": {
+                "$ref": "#/components/headers/Content-Security-Policy"
+              },
+              "Referrer-Policy": {
+                "$ref": "#/components/headers/Referrer-Policy"
+              },
+              "Strict-Transport-Security": {
+                "$ref": "#/components/headers/Strict-Transport-Security"
+              },
+              "X-Content-Type-Options": {
+                "$ref": "#/components/headers/X-Content-Type-Options"
+              },
+              "X-Frame-Options": {
+                "$ref": "#/components/headers/X-Frame-Options"
               }
             }
           },
@@ -4794,6 +5079,21 @@ paths:
             },
             "description": "unauthorized: no token, a bad one, or a session that has ended",
             "headers": {
+              "Content-Security-Policy": {
+                "$ref": "#/components/headers/Content-Security-Policy"
+              },
+              "Referrer-Policy": {
+                "$ref": "#/components/headers/Referrer-Policy"
+              },
+              "Strict-Transport-Security": {
+                "$ref": "#/components/headers/Strict-Transport-Security"
+              },
+              "X-Content-Type-Options": {
+                "$ref": "#/components/headers/X-Content-Type-Options"
+              },
+              "X-Frame-Options": {
+                "$ref": "#/components/headers/X-Frame-Options"
+              },
               "Content-Security-Policy": {
                 "$ref": "#/components/headers/Content-Security-Policy"
               },
@@ -4895,6 +5195,21 @@ paths:
               },
               "X-Frame-Options": {
                 "$ref": "#/components/headers/X-Frame-Options"
+              },
+              "Content-Security-Policy": {
+                "$ref": "#/components/headers/Content-Security-Policy"
+              },
+              "Referrer-Policy": {
+                "$ref": "#/components/headers/Referrer-Policy"
+              },
+              "Strict-Transport-Security": {
+                "$ref": "#/components/headers/Strict-Transport-Security"
+              },
+              "X-Content-Type-Options": {
+                "$ref": "#/components/headers/X-Content-Type-Options"
+              },
+              "X-Frame-Options": {
+                "$ref": "#/components/headers/X-Frame-Options"
               }
             }
           },
@@ -4908,6 +5223,21 @@ paths:
             },
             "description": "Not Found",
             "headers": {
+              "Content-Security-Policy": {
+                "$ref": "#/components/headers/Content-Security-Policy"
+              },
+              "Referrer-Policy": {
+                "$ref": "#/components/headers/Referrer-Policy"
+              },
+              "Strict-Transport-Security": {
+                "$ref": "#/components/headers/Strict-Transport-Security"
+              },
+              "X-Content-Type-Options": {
+                "$ref": "#/components/headers/X-Content-Type-Options"
+              },
+              "X-Frame-Options": {
+                "$ref": "#/components/headers/X-Frame-Options"
+              },
               "Content-Security-Policy": {
                 "$ref": "#/components/headers/Content-Security-Policy"
               },
@@ -5009,6 +5339,21 @@ paths:
               },
               "X-Frame-Options": {
                 "$ref": "#/components/headers/X-Frame-Options"
+              },
+              "Content-Security-Policy": {
+                "$ref": "#/components/headers/Content-Security-Policy"
+              },
+              "Referrer-Policy": {
+                "$ref": "#/components/headers/Referrer-Policy"
+              },
+              "Strict-Transport-Security": {
+                "$ref": "#/components/headers/Strict-Transport-Security"
+              },
+              "X-Content-Type-Options": {
+                "$ref": "#/components/headers/X-Content-Type-Options"
+              },
+              "X-Frame-Options": {
+                "$ref": "#/components/headers/X-Frame-Options"
               }
             }
           },
@@ -5022,6 +5367,21 @@ paths:
             },
             "description": "Unprocessable Entity",
             "headers": {
+              "Content-Security-Policy": {
+                "$ref": "#/components/headers/Content-Security-Policy"
+              },
+              "Referrer-Policy": {
+                "$ref": "#/components/headers/Referrer-Policy"
+              },
+              "Strict-Transport-Security": {
+                "$ref": "#/components/headers/Strict-Transport-Security"
+              },
+              "X-Content-Type-Options": {
+                "$ref": "#/components/headers/X-Content-Type-Options"
+              },
+              "X-Frame-Options": {
+                "$ref": "#/components/headers/X-Frame-Options"
+              },
               "Content-Security-Policy": {
                 "$ref": "#/components/headers/Content-Security-Policy"
               },
@@ -5123,6 +5483,21 @@ paths:
               },
               "X-Frame-Options": {
                 "$ref": "#/components/headers/X-Frame-Options"
+              },
+              "Content-Security-Policy": {
+                "$ref": "#/components/headers/Content-Security-Policy"
+              },
+              "Referrer-Policy": {
+                "$ref": "#/components/headers/Referrer-Policy"
+              },
+              "Strict-Transport-Security": {
+                "$ref": "#/components/headers/Strict-Transport-Security"
+              },
+              "X-Content-Type-Options": {
+                "$ref": "#/components/headers/X-Content-Type-Options"
+              },
+              "X-Frame-Options": {
+                "$ref": "#/components/headers/X-Frame-Options"
               }
             }
           },
@@ -5136,6 +5511,21 @@ paths:
             },
             "description": "unavailable: the session check could not be made",
             "headers": {
+              "Content-Security-Policy": {
+                "$ref": "#/components/headers/Content-Security-Policy"
+              },
+              "Referrer-Policy": {
+                "$ref": "#/components/headers/Referrer-Policy"
+              },
+              "Strict-Transport-Security": {
+                "$ref": "#/components/headers/Strict-Transport-Security"
+              },
+              "X-Content-Type-Options": {
+                "$ref": "#/components/headers/X-Content-Type-Options"
+              },
+              "X-Frame-Options": {
+                "$ref": "#/components/headers/X-Frame-Options"
+              },
               "Content-Security-Policy": {
                 "$ref": "#/components/headers/Content-Security-Policy"
               },
@@ -5273,6 +5663,21 @@ paths:
               },
               "X-Frame-Options": {
                 "$ref": "#/components/headers/X-Frame-Options"
+              },
+              "Content-Security-Policy": {
+                "$ref": "#/components/headers/Content-Security-Policy"
+              },
+              "Referrer-Policy": {
+                "$ref": "#/components/headers/Referrer-Policy"
+              },
+              "Strict-Transport-Security": {
+                "$ref": "#/components/headers/Strict-Transport-Security"
+              },
+              "X-Content-Type-Options": {
+                "$ref": "#/components/headers/X-Content-Type-Options"
+              },
+              "X-Frame-Options": {
+                "$ref": "#/components/headers/X-Frame-Options"
               }
             }
           },
@@ -5286,6 +5691,21 @@ paths:
             },
             "description": "Bad Request",
             "headers": {
+              "Content-Security-Policy": {
+                "$ref": "#/components/headers/Content-Security-Policy"
+              },
+              "Referrer-Policy": {
+                "$ref": "#/components/headers/Referrer-Policy"
+              },
+              "Strict-Transport-Security": {
+                "$ref": "#/components/headers/Strict-Transport-Security"
+              },
+              "X-Content-Type-Options": {
+                "$ref": "#/components/headers/X-Content-Type-Options"
+              },
+              "X-Frame-Options": {
+                "$ref": "#/components/headers/X-Frame-Options"
+              },
               "Content-Security-Policy": {
                 "$ref": "#/components/headers/Content-Security-Policy"
               },
@@ -5387,6 +5807,21 @@ paths:
               },
               "X-Frame-Options": {
                 "$ref": "#/components/headers/X-Frame-Options"
+              },
+              "Content-Security-Policy": {
+                "$ref": "#/components/headers/Content-Security-Policy"
+              },
+              "Referrer-Policy": {
+                "$ref": "#/components/headers/Referrer-Policy"
+              },
+              "Strict-Transport-Security": {
+                "$ref": "#/components/headers/Strict-Transport-Security"
+              },
+              "X-Content-Type-Options": {
+                "$ref": "#/components/headers/X-Content-Type-Options"
+              },
+              "X-Frame-Options": {
+                "$ref": "#/components/headers/X-Frame-Options"
               }
             }
           },
@@ -5400,6 +5835,21 @@ paths:
             },
             "description": "Request Entity Too Large",
             "headers": {
+              "Content-Security-Policy": {
+                "$ref": "#/components/headers/Content-Security-Policy"
+              },
+              "Referrer-Policy": {
+                "$ref": "#/components/headers/Referrer-Policy"
+              },
+              "Strict-Transport-Security": {
+                "$ref": "#/components/headers/Strict-Transport-Security"
+              },
+              "X-Content-Type-Options": {
+                "$ref": "#/components/headers/X-Content-Type-Options"
+              },
+              "X-Frame-Options": {
+                "$ref": "#/components/headers/X-Frame-Options"
+              },
               "Content-Security-Policy": {
                 "$ref": "#/components/headers/Content-Security-Policy"
               },
@@ -5508,6 +5958,21 @@ paths:
               },
               "X-Frame-Options": {
                 "$ref": "#/components/headers/X-Frame-Options"
+              },
+              "Content-Security-Policy": {
+                "$ref": "#/components/headers/Content-Security-Policy"
+              },
+              "Referrer-Policy": {
+                "$ref": "#/components/headers/Referrer-Policy"
+              },
+              "Strict-Transport-Security": {
+                "$ref": "#/components/headers/Strict-Transport-Security"
+              },
+              "X-Content-Type-Options": {
+                "$ref": "#/components/headers/X-Content-Type-Options"
+              },
+              "X-Frame-Options": {
+                "$ref": "#/components/headers/X-Frame-Options"
               }
             }
           },
@@ -5521,6 +5986,21 @@ paths:
             },
             "description": "Internal Server Error",
             "headers": {
+              "Content-Security-Policy": {
+                "$ref": "#/components/headers/Content-Security-Policy"
+              },
+              "Referrer-Policy": {
+                "$ref": "#/components/headers/Referrer-Policy"
+              },
+              "Strict-Transport-Security": {
+                "$ref": "#/components/headers/Strict-Transport-Security"
+              },
+              "X-Content-Type-Options": {
+                "$ref": "#/components/headers/X-Content-Type-Options"
+              },
+              "X-Frame-Options": {
+                "$ref": "#/components/headers/X-Frame-Options"
+              },
               "Content-Security-Policy": {
                 "$ref": "#/components/headers/Content-Security-Policy"
               },
@@ -12899,6 +13379,40 @@ paths:
                   value: {"error": {"code": "validation_failed", "message": "Request body failed validation", "details": {"fields": {"address": "mailbox_id or address required"}}}}
                 recipient_missing:
                   value: {"error": {"code": "validation_failed", "message": "Request body failed validation", "details": {"fields": {"address": "mailbox_id or address required"}}}}
+          "headers":
+            "Content-Security-Policy":
+              "$ref": "#/components/headers/Content-Security-Policy"
+            "Referrer-Policy":
+              "$ref": "#/components/headers/Referrer-Policy"
+            "Strict-Transport-Security":
+              "$ref": "#/components/headers/Strict-Transport-Security"
+            "X-Content-Type-Options":
+              "$ref": "#/components/headers/X-Content-Type-Options"
+            "X-Frame-Options":
+              "$ref": "#/components/headers/X-Frame-Options"
+        "403":
+          description: "rejected: the inbound pipeline refused the message; the SMTP gateway answers its peer 550 5.7.1"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          "headers":
+            "Content-Security-Policy":
+              "$ref": "#/components/headers/Content-Security-Policy"
+            "Referrer-Policy":
+              "$ref": "#/components/headers/Referrer-Policy"
+            "Strict-Transport-Security":
+              "$ref": "#/components/headers/Strict-Transport-Security"
+            "X-Content-Type-Options":
+              "$ref": "#/components/headers/X-Content-Type-Options"
+            "X-Frame-Options":
+              "$ref": "#/components/headers/X-Frame-Options"
+        "503":
+          description: "deferred: the inbound pipeline deferred the message; the SMTP gateway answers its peer 451 4.3.0"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
           "headers":
             "Content-Security-Policy":
               "$ref": "#/components/headers/Content-Security-Policy"
