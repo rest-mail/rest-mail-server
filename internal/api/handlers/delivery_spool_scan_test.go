@@ -130,7 +130,7 @@ func bindDeliveryBody(t *testing.T, route, contentType string, body []byte) (ref
 	var boundText, boundHTML string
 	if route == "gateway" {
 		var req deliverMessageBody
-		spool, err = spoolDelivery(r, &req, spooledBodySpec{declared: deliveryDeclaredFields}, func() []byte { return req.RawMessage })
+		spool, err = spoolDelivery(r, &req, spooledBodySpec{declared: deliveryDeclaredFields, ignored: deliveryImportOnlyFields}, func() []byte { return req.RawMessage })
 		boundText, boundHTML = req.BodyText, req.BodyHTML
 	} else {
 		var in restmailDeliverInput
@@ -201,8 +201,13 @@ func TestDeliveryStandInAnswersAsTheWholeBodyDoes(t *testing.T) {
 			r.Header.Set("Content-Type", contentType)
 		}
 		if route == "gateway" {
+			// The whole-body route leaves out the fields only an import takes, as the stand-in does (#1474).
+			stripped := []byte(body)
+			stripDeliveryImportFields(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+				stripped, _ = io.ReadAll(r.Body)
+			})).ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body)))
 			var req deliverMessageBody
-			if err := endpoint.BindRequest(r, &req, []byte(body)); err != nil {
+			if err := endpoint.BindRequest(r, &req, stripped); err != nil {
 				return refusalText(err), "", "", ""
 			}
 			return "", string(req.RawMessage), req.BodyText, req.BodyHTML

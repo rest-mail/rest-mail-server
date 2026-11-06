@@ -4894,8 +4894,8 @@ def delivery_after_a_reset(transaction):
     # listener (setup_origin). A documented success of a delivery or a mailbox
     # check is sent to a mailbox of its own, made after the reset, and its
     # after hook checks the answer names that mailbox. Refusals keep what they
-    # name: an empty or missing address, nobody@restmail.test, missing's
-    # 2147483647, unavailable@example.com. Discovery asks about the seeded
+    # name: an empty or missing address, nobody@restmail.test,
+    # unavailable@example.com. Discovery asks about the seeded
     # restmail.test, and the capabilities need nothing made. A RESTMAIL
     # delivery also gets restmail.test an inbound pipeline that does not
     # greylist, since the default one defers a new sender.

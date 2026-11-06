@@ -164,7 +164,7 @@ func TestRESTMAILDeliveryReadFaultsDeferBeforeSideEffects(t *testing.T) {
 	})
 }
 func TestGatewayDeliveryLookupFaultsAreNotMissingRecipients(t *testing.T) {
-	for _, body := range []string{`{"mailbox_id":2}`, `{"address":"one@example.test"}`} {
+	for _, body := range []string{`{"address":"one@example.test","mailbox_id":2}`, `{"address":"one@example.test"}`} {
 		t.Run(body, func(t *testing.T) {
 			d := &deliveryReadDB{steps: []deliveryReadStep{{table: "mailboxes", err: errors.New("private lookup failure")}}}
 			rr := httptest.NewRecorder()
@@ -174,7 +174,7 @@ func TestGatewayDeliveryLookupFaultsAreNotMissingRecipients(t *testing.T) {
 	}
 }
 func TestGatewayDeliveryMissingRecipientKeepsNotFound(t *testing.T) {
-	for _, body := range []string{`{"mailbox_id":2}`, `{"address":"missing@example.test"}`} {
+	for _, body := range []string{`{"address":"missing@example.test","mailbox_id":2}`, `{"address":"missing@example.test"}`} {
 		t.Run(body, func(t *testing.T) {
 			d := &deliveryReadDB{steps: []deliveryReadStep{{table: "mailboxes", columns: []string{"id"}}}}
 			if strings.Contains(body, `"address"`) {
@@ -195,7 +195,7 @@ func TestDeliveryReadCancellationReachesDatabase(t *testing.T) {
 			status, code := 503, "deferred"
 			if gateway {
 				table = "mailboxes"
-				body = `{"mailbox_id":2}`
+				body = `{"address":"one@example.test"}`
 				path = "/api/v1/messages/deliver"
 				status, code = 500, "internal_error"
 			}

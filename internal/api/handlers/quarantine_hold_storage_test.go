@@ -159,7 +159,7 @@ func TestGatewayDeliveryFailsWhenTheHoldCannotBeStored(t *testing.T) {
 			endpoint.Middleware{Wrap: func(next http.Handler) http.Handler { return next }})
 		rr := httptest.NewRecorder()
 		router.ServeHTTP(rr, deliveryRequest(t,
-			`{"mailbox_id":2,"sender":"sender@remote.example","subject":"held","body_text":"x"}`, "/api/v1/messages/deliver"))
+			`{"address":"one@example.test","sender":"sender@remote.example","subject":"held","body_text":"x"}`, "/api/v1/messages/deliver"))
 		return rr
 	}
 

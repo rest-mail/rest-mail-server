@@ -81,7 +81,9 @@ func deliveryWireCases() []deliveryWireCase {
 	gateway("text_and_message", `{`+address+`,"body_text":"text","body_html":"<p>html</p>",`+raw(plain)+`}`)
 	gateway("text_with_escapes", `{`+address+`,"body_text":"café 😀 \ud83d \\ \" \/ \b\f\n\r\t","message_id":"<e@remote.test>"}`)
 	gateway("text_not_utf8", "{"+address+",\"body_text\":\"a\xffb\xc3\",\"message_id\":\"<u@remote.test>\"}")
-	gateway("all_fields", `{"mailbox_id":MAILBOX,"sender":"someone@remote.test","sender_name":"Some One","recipients_to":["owner@spool.test"],"recipients_cc":["cc@remote.test"],"subject":"s","body_text":"t","body_html":"h","message_id":"<all@remote.test>","in_reply_to":"<p@remote.test>","references":"<r@remote.test> <p@remote.test>",`+raw(plain)+`,"client_ip":"192.0.2.1","helo_name":"mx.remote.test","folder":"Archive","is_answered":true,"is_read":true,"is_flagged":true,"is_starred":true,"is_draft":true,"received_at":"2020-01-02T03:04:05Z","received_tls":true,"tls_version":"TLS1.3","require_tls":true}`)
+	// Every declared field is stored; the import-only ones (mailbox_id, folder, flags,
+	// received_at) are sent too and left out (#1474).
+	gateway("all_fields", `{"address":"owner@spool.test","mailbox_id":MAILBOX,"sender":"someone@remote.test","sender_name":"Some One","recipients_to":["owner@spool.test"],"recipients_cc":["cc@remote.test"],"subject":"s","body_text":"t","body_html":"h","message_id":"<all@remote.test>","in_reply_to":"<p@remote.test>","references":"<r@remote.test> <p@remote.test>",`+raw(plain)+`,"client_ip":"192.0.2.1","helo_name":"mx.remote.test","folder":"Archive","is_answered":true,"is_read":true,"is_flagged":true,"is_starred":true,"is_draft":true,"received_at":"2020-01-02T03:04:05Z","received_tls":true,"tls_version":"TLS1.3","require_tls":true}`)
 	gateway("folder_inbox_any_case", `{`+address+`,"folder":"inbox",`+raw(plain)+`}`)
 	gateway("field_order", `{`+raw(plain)+`,"body_text":"t",`+address+`}`)
 	gateway("raw_empty", `{`+address+`,"raw_message":"","body_text":"t","message_id":"<z@remote.test>"}`)
