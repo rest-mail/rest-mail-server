@@ -29,10 +29,12 @@ snooze["register_thread_snooze_hook"](shared["admin_token"])
 dmarc = runpy.run_path(str(directory / "dmarc_report_hooks.py"))
 dmarc["register_dmarc_report_hook"](shared["admin_token"])
 quiet = runpy.run_path(str(directory / "quiet_hours_hooks.py"))
-quiet["register_quiet_hours_hooks"](shared["admin_token"])
-# After the quiet hours hook, which finds the live account for the examples' 1
-# and fixes their time zone: then the reset, and an account of its own, only
-# with a reset asked for (own_data.py).
+quiet["register_quiet_hours_hooks"](
+    shared["admin_token"], shared["asked_for_a_clean_start"]
+)
+# After the quiet hours hook, which fixes their time zone and, only without a
+# reset asked for, finds a live account for the examples' 1: then the reset,
+# and an account of its own, only with a reset asked for (own_data.py).
 for operation in ("getQuietHours", "setQuietHours"):
     vertrag_hooks.before(operation)(shared["account_settings_of_its_own"])
 contact_draft = runpy.run_path(str(directory / "contact_draft_hooks.py"))

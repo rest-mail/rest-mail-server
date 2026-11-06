@@ -1818,7 +1818,10 @@ reply for the disable. The install's 201 needs none; its 200, a replace, has no
 example of its own and is not sent in this phase. `0` and
 missing's id keep theirs. The hook is registered before these operations' other
 hooks, except for the quiet hours: `entrypoint.py` registers it after their own
-hook, which finds a live account for the examples' `1` and fixes their time zone.
+hook, which fixes their time zone. In a run with no reset that hook also sends the
+examples' `1` to the first account the fixture admin lists; with a reset asked
+for it leaves the `1`, so the quiet hours' successes reach only the account made
+after the reset, and fail without it (#1767).
 `putSieveScript`'s link reaches the read and the read's the delete, and no other
 link reaches or starts from these, so nothing that follows them is left unmoved.
 No stash value is involved. The reset also puts the retained administrators'
