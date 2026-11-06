@@ -210,7 +210,8 @@ func (h *TestHandler) probeServices(r *http.Request, req probeServicesRequest) (
 		case "pop3":
 			results.POP3 = probePtr(probeTCP(r.Context(), req.Host, h.cfg.POP3TLSPort, timeout))
 		case "dns":
-			results.DNS = probePtr(h.probeDNS(r.Context(), "mail1.test", timeout))
+			dns := h.probeDNS(r.Context(), "mail1.test", timeout)
+			results.DNS = &dns
 		case "db":
 			result, err := probeDB(r.Context(), h.db, timeout)
 			if err != nil {
@@ -496,28 +497,29 @@ func probeTCP(ctx context.Context, host string, port int, timeout time.Duration)
 	}
 }
 
-func (h *TestHandler) probeDNS(ctx context.Context, domain string, timeout time.Duration) TestProbeResult {
+func (h *TestHandler) probeDNS(ctx context.Context, domain string, timeout time.Duration) TestDNSProbeResult {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	start := time.Now()
 	records, err := h.resolver.LookupMX(ctx, domain)
 	latency := time.Since(start)
 	if err != nil {
-		return TestProbeResult{
-			Status:  "error",
-			Domain:  domain,
-			Error:   err.Error(),
-			Latency: latency.String(),
+		return TestDNSProbeResult{
+			Status:    "error",
+			Domain:    domain,
+			Error:     err.Error(),
+			Latency:   latency.String(),
+			MXRecords: []string{},
 		}
 	}
 	mxs := make([]string, len(records))
 	for i, mx := range records {
 		mxs[i] = fmt.Sprintf("%s (pref %d)", mx.Host, mx.Pref)
 	}
-	return TestProbeResult{
+	return TestDNSProbeResult{
 		Status:    "ok",
 		Domain:    domain,
-		MXRecords: &mxs,
+		MXRecords: mxs,
 		Latency:   latency.String(),
 	}
 }

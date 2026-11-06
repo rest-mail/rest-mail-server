@@ -35,8 +35,15 @@ func TestMessageTraceTypedStagesKeepEngineJSON(t *testing.T) {
 			}
 			before, _ := json.Marshal(row)
 			after, _ := json.Marshal(wire)
-			var original, typed any
-			if json.Unmarshal(before, &original) != nil || json.Unmarshal(after, &typed) != nil || !reflect.DeepEqual(original, typed) {
+			var original, typed map[string]any
+			if json.Unmarshal(before, &original) != nil || json.Unmarshal(after, &typed) != nil {
+				t.Fatalf("trace did not decode: %s -> %s", before, after)
+			}
+			// The one intended change: no timeline answers [], never null (#622).
+			if original["stages"] == nil {
+				original["stages"] = []any{}
+			}
+			if !reflect.DeepEqual(original, typed) {
 				t.Fatalf("trace changed: %s -> %s", before, after)
 			}
 		})
@@ -57,7 +64,7 @@ func TestMessageTraceTypedStagesDoNotExposeUndeclaredFields(t *testing.T) {
 			t.Fatal("stored undeclared data escaped the typed response")
 		}
 	}
-	if wire.Stages == nil || len(*wire.Stages) != 1 || (*wire.Stages)[0].Duration != pipeline.Elapsed(3*time.Millisecond) {
+	if len(wire.Stages) != 1 || wire.Stages[0].Duration != pipeline.Elapsed(3*time.Millisecond) {
 		t.Fatal("declared stage data was not retained")
 	}
 }

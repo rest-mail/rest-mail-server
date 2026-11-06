@@ -255,21 +255,22 @@ func TestServiceProbeLocalDNSRecords(t *testing.T) {
 			if rr.Code != 200 {
 				t.Fatalf("status%d:%s", rr.Code, rr.Body)
 			}
-			var body struct{ Data map[string]TestProbeResult }
+			var body struct{ Data map[string]TestDNSProbeResult }
 			if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
 				t.Fatal(err)
 			}
 			result, ok := body.Data["dns"]
-			if !ok || len(body.Data) != 1 || result.Domain != "mail1.test" || result.Address != "" {
+			if !ok || len(body.Data) != 1 || result.Domain != "mail1.test" {
 				t.Fatal("DNS probe result fields changed")
 			}
-			checkServiceProbeLatency(t, result)
+			checkServiceProbeLatency(t, TestProbeResult{Status: result.Status, Latency: result.Latency})
 			if failed {
-				if result.Status != "error" || result.Error == "" || result.MXRecords != nil {
-					t.Fatal("failed DNS query reported records")
+				// The wire answer itself, since decoding null would also leave a nil slice.
+				if result.Status != "error" || result.Error == "" || !strings.Contains(rr.Body.String(), `"mx_records":[]`) {
+					t.Fatalf("failed DNS query does not answer an empty list of records: %s", rr.Body)
 				}
 			} else {
-				if result.Status != "ok" || result.Error != "" || result.MXRecords == nil || strings.Join(*result.MXRecords, ",") != "mx.mail1.test. (pref 10),backup.mail1.test. (pref 20)" {
+				if result.Status != "ok" || result.Error != "" || strings.Join(result.MXRecords, ",") != "mx.mail1.test. (pref 10),backup.mail1.test. (pref 20)" {
 					t.Fatal("MX records or preferences changed")
 				}
 			}

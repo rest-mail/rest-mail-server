@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	oapifly "github.com/antimatter-studios/go-oapifly"
+	"github.com/go-chi/chi/v5"
 )
 
 type upstreamFailure struct {
@@ -49,5 +50,40 @@ func TestForwardedPreservesUpstreamStatusAndBytes(t *testing.T) {
 		if strings.Contains(rr.Body.String(), `"data"`) {
 			t.Fatal("unexpected data envelope")
 		}
+	}
+}
+
+// The writer's normalization reaches a list through a pointer, a status wrapper and a nested
+// list, and a list left nil answers []. A pointer to a slice is the one shape it cannot help:
+// nil is its null, so the description guard (TestNoSuccessListIsNullable) refuses that type.
+func TestWriterAnswersListsAcrossPointersAndWrappers(t *testing.T) {
+	type row struct {
+		Tags []string `json:"tags"`
+	}
+	type answer struct {
+		Rows []row    `json:"rows"`
+		More []string `json:"more"`
+	}
+	for name, register := range map[string]func(Routes){
+		"value": func(rs Routes) {
+			Register(rs, Operation{Method: http.MethodGet, Path: "/lists"}, func(*http.Request, struct{}) (answer, error) {
+				return answer{Rows: []row{{}}}, nil
+			})
+		},
+		"pointer": func(rs Routes) {
+			Register(rs, Operation{Method: http.MethodGet, Path: "/lists"}, func(*http.Request, struct{}) (*answer, error) {
+				return &answer{Rows: []row{{}}}, nil
+			})
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := chi.NewRouter()
+			register(Routes{Router: r, Registry: NewRegistry()})
+			rr := httptest.NewRecorder()
+			r.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/lists", nil))
+			if want := `{"data":{"rows":[{"tags":[]}],"more":[]}}`; strings.TrimSpace(rr.Body.String()) != want {
+				t.Fatalf("got %s, want %s", rr.Body, want)
+			}
+		})
 	}
 }

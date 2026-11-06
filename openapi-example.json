@@ -15541,7 +15541,7 @@
                 "count": 2
               }
             ],
-            "recentActivity": null,
+            "recentActivity": [],
             "inboundTransportSecurity": {
               "totalInboundMX": 0,
               "overTLS": 0,

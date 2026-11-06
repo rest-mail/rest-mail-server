@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"time"
@@ -55,9 +56,9 @@ type MessageTrace struct {
 
 	ReasonCode string `json:"reason_code"`
 
-	SpamScore  *float32               `json:"spam_score,omitempty"`
-	DurationMS int64                  `json:"duration_ms"`
-	Stages     *[]pipeline.StepResult `json:"stages"`
+	SpamScore  *float32              `json:"spam_score,omitempty"`
+	DurationMS int64                 `json:"duration_ms"`
+	Stages     []pipeline.StepResult `json:"stages"`
 
 	Sampled bool `json:"sampled"`
 
@@ -66,13 +67,17 @@ type MessageTrace struct {
 	ExpiresAt *time.Time `json:"expires_at,omitempty"`
 }
 
-// messageTraceOf crosses the stored JSON boundary before answering it. A nil
-// timeline stays null; populated stages use the engine's closed wire types.
+// messageTraceOf crosses the stored JSON boundary before answering it. A trace saved
+// without a timeline (no column value, or a stored JSON null) answers [], and populated
+// stages use the engine's closed wire types.
 func messageTraceOf(row models.MessageTrace) (MessageTrace, error) {
-	var stages *[]pipeline.StepResult
+	stages := []pipeline.StepResult{}
 	if len(row.Stages) > 0 {
 		if err := json.Unmarshal(row.Stages, &stages); err != nil {
 			return MessageTrace{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to read pipeline trace stages")
+		}
+		if stages == nil {
+			stages = []pipeline.StepResult{}
 		}
 	}
 	return MessageTrace{
@@ -140,6 +145,36 @@ type ScriptValidation struct {
 	Error  string        `json:"error,omitempty"`
 	Phase  string        `json:"phase,omitempty"`
 	DryRun *ScriptResult `json:"dry_run,omitempty"`
+}
+
+// scriptLogsListed is a sidecar answer with its logs as a list, never null: the sidecar owns
+// the rest of its answer, and the bytes are forwarded as they are, but the list is the API's
+// promise (#622). Only the answer's own logs are looked at, and a dry run's, so a script's
+// result stays what the script returned, even a field of its own named logs.
+func scriptLogsListed(body []byte) []byte {
+	var answer map[string]json.RawMessage
+	if err := json.Unmarshal(body, &answer); err != nil || answer == nil {
+		return body
+	}
+	changed := false
+	if logs, ok := answer["logs"]; ok && string(logs) == "null" {
+		answer["logs"] = json.RawMessage("[]")
+		changed = true
+	}
+	if dryRun, ok := answer["dry_run"]; ok {
+		if listed := scriptLogsListed(dryRun); !bytes.Equal(listed, dryRun) {
+			answer["dry_run"] = listed
+			changed = true
+		}
+	}
+	if !changed {
+		return body
+	}
+	listed, err := json.Marshal(answer)
+	if err != nil {
+		return body
+	}
+	return listed
 }
 
 type ScriptFailure struct {

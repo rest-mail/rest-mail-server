@@ -12,7 +12,8 @@ What a route should answer, for a developer adding one. This file records only w
 | The account or object does not exist | 404, identical to the row above | [2026-11-01, #672](https://github.com/rest-mail/rest-mail-server/issues/672#issuecomment-6563382794) | `TestAccountRefusals_ANoLinkCallerCannotTellAnAccountExists` |
 | The caller can see the account or object, and this action is not allowed | 403 | [2026-11-01, #672](https://github.com/rest-mail/rest-mail-server/issues/672#issuecomment-6563382794) | `TestMailStateRequirementExamples/updateMessage/read_only`, `TestMailStateRequirementExamples/releaseQuarantine/read_only` |
 | The caller lacks the role for an admin route | 403 | [2026-11-01, #672](https://github.com/rest-mail/rest-mail-server/issues/672#issuecomment-6563382794) | `TestRequireCapability_AdminMissingCapability` |
-| An endpoint returns a list and there is no data | `[]`, never `null` | [2026-10-23, #622](https://github.com/rest-mail/rest-mail-server/issues/622), under Decided | `TestRegisteredRoutesAnswer` (the `/empty` case) |
+| An endpoint returns a list and there is no data | `[]`, never `null` | [2026-10-23, #622](https://github.com/rest-mail/rest-mail-server/issues/622), under Decided | `TestRegisteredRoutesAnswer` (the `/empty` case), `TestNoSuccessListIsNullable`, `TestDashboardStatsRecentActivityIsNeverNull` |
+| A route creates something | Its success links the read, update and delete routes of what it made, or a recorded reason says why not | [#656](https://github.com/rest-mail/rest-mail-server/issues/656), inherited by [#1749](https://github.com/rest-mail/rest-mail-server/issues/1749) | `TestEveryCreateLeadsToItsLifecycle`, `TestCreatesPersistAndEndAt404` |
 
 ### Bad input: 400 or 422
 
@@ -44,9 +45,29 @@ The owner's words:
 
 A registered route gets this from `oapifly.EmptyLists`, which the endpoint writer calls on every response. go-oapifly's own test is `TestEmptyListsEncodeAsEmpty`.
 
+Two things get past that writer, so they have their own checks:
+
+- **A pointer to a slice.** `EmptyLists` cannot tell a nil `*[]T` from a value, so it answers `null`, and the description calls the field nullable. Use `[]T`, even for a list only some answers carry. `TestNoSuccessListIsNullable` reads the generated description and refuses the type, whether or not any route has been caught answering `null`.
+- **`endpoint.Forwarded`.** It writes another program's bytes untouched. A forwarded answer that declares a list has to keep this promise itself: `scriptLogsListed` does it for the JavaScript sidecar's `logs` (`TestForwardedScriptAnswerKeepsLogsAList`), and leaves a script's own `result` alone.
+
+`tests/contract/convention-exceptions.json` is where an exception would go, with its reason. It holds no nullable list today.
+
+### Creates: lead to what they made
+
+A create's success response links the read, update and delete of what it made, so a client and a sequenced contract run can follow them with real ids. `internal/api/described_links.go` holds the links, and `openapi.yaml` states the same ones (`TestOracleStatesTheGeneratedLinks`).
+
+Nothing here asks for a route that does not exist. Where a create has no such route, or should not link one, `tests/contract/convention-exceptions.json` records why, verb by verb, and `TestEveryCreateLeadsToItsLifecycle` fails on a create with neither a link nor a reason, and on a reason nothing needs any more. `create_resource` in the same file says where a create's resource lives when that is not under its own path.
+
+`TestCreatesPersistAndEndAt404` follows those links on the real router and a real database: create, read, update, read, delete, then a read answering 404. A resource with no read of its own proves this through its list. Two differ on purpose: a message's first delete moves it to Trash, so it takes a second; and a mailbox always has a Sieve script, so the read after a delete answers an empty one. What a delete answers for something already gone stays open under [#672](https://github.com/rest-mail/rest-mail-server/issues/672).
+
 ### Where the tests are
 
 - `TestRegisteredRoutesAnswer`: `internal/api/endpoint/endpoint_test.go`
+- `TestNoSuccessListIsNullable`, `TestEveryCreateLeadsToItsLifecycle`: `internal/api/convention_guard_test.go`
+- `TestDashboardStatsRecentActivityIsNeverNull`: `internal/api/handlers/admin_observability_parity_test.go`
+- `TestForwardedScriptAnswerKeepsLogsAList`: `internal/api/handlers/never_null_list_test.go`
+- `TestCreatesPersistAndEndAt404`: `internal/api/create_lifecycle_db_test.go`
+- `TestOracleStatesTheGeneratedLinks`: `internal/api/described_links_test.go`
 - `TestBulkQueue_SelectionBoundaries`: `internal/api/handlers/contract_queue_selection_test.go`
 - `TestDomainCreate_EmptyNameContract`: `internal/api/handlers/domain_create_contract_test.go`
 - `TestAccountRefusals_ANoLinkCallerCannotTellAnAccountExists`: `internal/api/account_refusal_cells_test.go`
@@ -56,8 +77,6 @@ A registered route gets this from `oapifly.EmptyLists`, which the endpoint write
 ## Where the code disagrees
 
 These were found while writing this file, by reading the handlers' 400, 403 and 422 refusals, the 400 and 422 pairs in `openapi-example.json`, and the generated description's list fields. That is a search, not a proof of every route, so there may be more. No behaviour was changed, and none of these is settled here.
-
-**A list that answers `null`.** `getDashboardStats` answers `"recentActivity": null` when there is no recent activity, and `TestDashboardStatsKeepsNullRecentActivity` pins it. The field is a `*[]RecentActivity`, which `EmptyLists` leaves alone. The generated description also declares these response lists nullable: `MessageTrace.stages`, `TestProbeResult.mx_records` and the seven lists of `TestSnapshot`. Whether those ever answer `null` has not been checked.
 
 **A 422 that is not `validation_failed`, or has no fields.** The decision says 422 `validation_failed`, with the failing fields. These answer otherwise:
 

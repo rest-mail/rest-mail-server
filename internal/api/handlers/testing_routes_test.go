@@ -97,11 +97,17 @@ func TestSnapshotJSONRoundTripThroughBinding(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		want, err := snapshotJSON[any](original)
+		want, err := snapshotJSON[map[string]any](original)
 		if err != nil {
 			t.Fatal(err)
 		}
-		var got any
+		// The one intended change: a table with no rows answers [], never null (#622).
+		for _, table := range []string{"domains", "mailboxes", "aliases", "messages", "queue", "pipelines", "bans"} {
+			if want[table] == nil {
+				want[table] = []any{}
+			}
+		}
+		var got map[string]any
 		if err := json.Unmarshal(body, &got); err != nil {
 			t.Fatal(err)
 		}

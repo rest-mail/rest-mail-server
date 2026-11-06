@@ -747,7 +747,7 @@ func (h *PipelineHandler) testCustomFilter(r *http.Request, in testCustomFilterR
 		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Invalid sidecar response")
 	}
 
-	return endpoint.Forwarded[ScriptExecution]{Status: sidecarResp.StatusCode, Body: respBody}, nil
+	return endpoint.Forwarded[ScriptExecution]{Status: sidecarResp.StatusCode, Body: scriptLogsListed(respBody)}, nil
 }
 
 // ValidateCustomFilter syntax-checks a JavaScript filter script via the sidecar.
@@ -784,7 +784,7 @@ func (h *PipelineHandler) validateCustomFilter(r *http.Request, in validateCusto
 		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Invalid sidecar response")
 	}
 
-	return endpoint.Forwarded[ScriptValidation]{Status: http.StatusOK, Body: respBody}, nil
+	return endpoint.Forwarded[ScriptValidation]{Status: http.StatusOK, Body: scriptLogsListed(respBody)}, nil
 }
 
 type createPipelineRequestBody struct {

@@ -71,7 +71,7 @@ type DashboardStats struct {
 	MessageVolume []MessageVolumeData `json:"messageVolume"`
 	// A pointer preserves the existing null when there is no recent activity;
 	// endpoint's ordinary nil slices are normalized to empty arrays.
-	RecentActivity           *[]RecentActivity        `json:"recentActivity"`
+	RecentActivity           []RecentActivity         `json:"recentActivity"`
 	InboundTransportSecurity InboundTransportSecurity `json:"inboundTransportSecurity"`
 }
 
@@ -127,9 +127,7 @@ func (h *StatsHandler) dashboardStats(r *http.Request, _ struct{}) (DashboardSta
 		// Log error but don't fail the request
 		recentActivity = []RecentActivity{}
 	}
-	if recentActivity != nil {
-		stats.RecentActivity = &recentActivity
-	}
+	stats.RecentActivity = recentActivity
 
 	// Inbound transport-security (always-on). Never fail the whole dashboard on
 	// an aggregate error — fall back to the zero value, as the other panels do.
