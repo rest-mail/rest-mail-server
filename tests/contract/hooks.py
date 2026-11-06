@@ -1040,6 +1040,12 @@ def a_live_pipeline_for_the_link(transaction):
 
 @hooks.before("createCustomFilter")
 def a_custom_filter_on_the_created_domain(transaction):
+    # After a reset (the own-data phase) a create is sent as documented: no
+    # earlier exchange's filter is left, and the created example names no
+    # domain, so it needs none made.
+    if asked_for_a_clean_start():
+        start_clean(transaction)
+        return
     on_the_created_domain(transaction)
 
 
@@ -1097,11 +1103,26 @@ def a_pipeline_for_the_coverage_placeholder(transaction):
     )
 
 
-@hooks.after("createCustomFilter")
-def keep_the_created_custom_filter(transaction):
-    data = hooks.get_json(transaction, "real").get("data") or {}
-    if data.get("id"):
-        hooks.stash["created_custom_filter_id"] = data["id"]
+# A disabled custom filter whose script testCustomFilter can run: it refuses a
+# config without one.
+CUSTOM_FILTER = {
+    "filter_type": "action",
+    "direction": "inbound",
+    "config": {"script": 'function filter(email) {\n  return { action: "continue" };\n}\n'},
+    "enabled": False,
+}
+
+
+def a_custom_filter_of_its_own(transaction):
+    """A custom filter made for this exchange, with no domain, as the documented
+    create makes one. Every exchange gets a new one, since one before it may
+    have deleted or rewritten the last, so nothing is carried between them."""
+    return fixture_call(
+        transaction,
+        "POST",
+        "/api/v1/admin/custom-filters",
+        dict(CUSTOM_FILTER, name=f"contract-own-filter-{time.time_ns()}"),
+    )["id"]
 
 
 @hooks.before("getCustomFilter")
@@ -1113,12 +1134,8 @@ def a_custom_filter_for_the_coverage_placeholder(transaction):
         transaction,
         "custom-filters",
         {
+            **CUSTOM_FILTER,
             "name": f"contract-probe-{time.time_ns()}",
-            "filter_type": "action",
-            "direction": "inbound",
-            # testCustomFilter runs this, and refuses a config without a script.
-            "config": {"script": 'function filter(email) {\n  return { action: "continue" };\n}\n'},
-            "enabled": False,
         },
     )
 
@@ -1127,19 +1144,33 @@ def a_custom_filter_for_the_coverage_placeholder(transaction):
 @hooks.before("updateCustomFilter")
 @hooks.before("deleteCustomFilter")
 @hooks.before("testCustomFilter")
-def on_the_created_custom_filter(transaction):
-    """Give the success pair its real fixture, leaving negative and generated IDs alone."""
-    if os.environ.get("CONTRACT_COVERAGE") == "1" or " > 200 > " not in transaction.get("name", ""):
+def on_a_custom_filter_of_its_own(transaction):
+    """Send each exchange to a custom filter that exists, made for it.
+
+    After a reset (the own-data phase) that is every exchange with a positive
+    id, refusals included, so a 422 is refused for its body and not for a
+    filter the reset removed. Without one (the primary run) it is the success
+    pair's placeholder 1, as before. Missing's 2147483647, a non-positive or
+    undecodable id and every documented 404 keep their ids, and coverage's
+    placeholder has a hook of its own above."""
+    if asked_for_a_clean_start():
+        start_clean(transaction)
+    if os.environ.get("CONTRACT_COVERAGE") == "1":
         return
-    created = hooks.stash.get("created_custom_filter_id")
     path, separator, query = transaction["fullPath"].partition("?")
     prefix = "/api/v1/admin/custom-filters/"
-    if not created or not path.startswith(prefix):
+    if not path.startswith(prefix):
         return
     resource, slash, suffix = path[len(prefix):].partition("/")
-    if resource != "1":
+    name = transaction.get("name", "")
+    if asked_for_a_clean_start():
+        if not positive_id(resource) or resource == "2147483647" or " > 404" in name:
+            return
+    elif resource != "1" or " > 200 > " not in name:
         return
-    transaction["fullPath"] = prefix + str(created) + slash + suffix + separator + query
+    transaction["fullPath"] = (
+        prefix + str(a_custom_filter_of_its_own(transaction)) + slash + suffix + separator + query
+    )
 
 
 def openssl(*args):
