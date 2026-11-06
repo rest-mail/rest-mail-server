@@ -6,16 +6,20 @@
 package pop3
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"strconv"
 
 	gopop3 "github.com/rest-mail/go-pop3/pkg/pop3"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/connlimiter"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/rawmsg"
 	"github.com/rest-mail/rest-mail-server/internal/requestid"
+	"github.com/rest-mail/rest-mail-server/internal/tracing"
 )
 
 // errAccountLocked is returned when an account is temporarily banned for too
@@ -60,7 +64,12 @@ func (b *Backend) AuthenticateUTF8(user, pass string, utf8 bool) (gopop3.Mailbox
 	// the API on each call the session makes.
 	id := requestid.New()
 	log := slog.Default().With(requestid.Attr, id)
-	api := b.api.WithRequestID(id)
+	// The session's span (#1580): each call to the API is its child, and
+	// it ends when the mailbox closes. A failed login ends it here.
+	_, span := tracing.Tracer().Start(context.Background(), "pop3.session",
+		trace.WithSpanKind(trace.SpanKindServer),
+		trace.WithAttributes(tracing.RequestIDKey.String(id)))
+	api := b.api.WithRequestID(id).WithSpan(span)
 
 	// Per-account hard stop: reject a banned account WITHOUT calling the auth API,
 	// so a rotating-IP brute-force is throttled and a ban is never lifted by a
@@ -70,6 +79,8 @@ func (b *Backend) AuthenticateUTF8(user, pass string, utf8 bool) (gopop3.Mailbox
 			"user", maskEmail(user),
 			"event", "pop3_auth_banned",
 		)
+		span.SetAttributes(attribute.String("auth.outcome", "locked"))
+		span.End()
 		return nil, errAccountLocked
 	}
 
@@ -91,12 +102,16 @@ func (b *Backend) AuthenticateUTF8(user, pass string, utf8 bool) (gopop3.Mailbox
 		if b.limiter != nil && apiclient.IsAuthRejection(err) {
 			b.limiter.RecordAuthFailUser(user)
 		}
+		span.SetAttributes(attribute.String("auth.outcome", "auth_failed"))
+		tracing.End(span, err)
 		return nil, err
 	}
+	span.SetAttributes(attribute.String("auth.outcome", "authenticated"))
 	if b.limiter != nil {
 		b.limiter.ResetAuthUser(user)
 	}
 	return &mailbox{
+		span:      span,
 		api:       api,
 		token:     resp.Token,
 		accountID: resp.User.ID,
@@ -106,11 +121,17 @@ func (b *Backend) AuthenticateUTF8(user, pass string, utf8 bool) (gopop3.Mailbox
 
 // Close ends the connection's session with the API, at QUIT or disconnect.
 func (m *mailbox) Close() error {
-	return m.api.CloseSession(m.token)
+	err := m.api.CloseSession(m.token)
+	if m.span != nil {
+		m.span.End()
+	}
+	return err
 }
 
 // mailbox is one authenticated POP3 maildrop: the account's INBOX.
 type mailbox struct {
+	// span is the session's span (#1580), ended by Close.
+	span      trace.Span
 	api       *apiclient.Client
 	token     string
 	accountID uint

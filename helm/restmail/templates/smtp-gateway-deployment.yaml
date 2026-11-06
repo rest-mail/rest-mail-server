@@ -107,6 +107,7 @@ spec:
             {{- include "restmail.apiCredsEnv" . | nindent 12 }}
             {{- include "restmail.srsEnv" . | nindent 12 }}
             {{- include "restmail.dbEnv" . | nindent 12 }}
+            {{- include "restmail.tracingEnv" . | nindent 12 }}
             {{- include "restmail.tlsEnv" . | nindent 12 }}
             {{- if .Values.internalMtls.enabled }}
             {{- include "restmail.internalMtls.clientEnv" . | nindent 12 }}
