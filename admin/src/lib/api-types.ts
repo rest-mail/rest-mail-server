@@ -13255,15 +13255,35 @@ export interface operations {
             /** @description OK */
             200: {
                 headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["List-VanishedUID"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized: no token, a bad one, a session that has ended, or a gateway session that has ended */
             401: {
                 headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -13273,6 +13293,16 @@ export interface operations {
             /** @description Forbidden */
             403: {
                 headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -13282,6 +13312,16 @@ export interface operations {
             /** @description Not Found */
             404: {
                 headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -13291,6 +13331,16 @@ export interface operations {
             /** @description request_too_large: the body is over the API's size cap */
             413: {
                 headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -13300,17 +13350,37 @@ export interface operations {
             /** @description Unprocessable Entity */
             422: {
                 headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
-            /** @description rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate */
+            /** @description rate_limited: refused API keys, throttled at login's rate */
             429: {
                 headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
                     /** @description Seconds until a request may be made again */
                     "Retry-After": number;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -13320,6 +13390,16 @@ export interface operations {
             /** @description Internal Server Error */
             500: {
                 headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -13329,6 +13409,16 @@ export interface operations {
             /** @description unavailable: the credential or session check could not be made */
             503: {
                 headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -43929,6 +44019,16 @@ export interface operations {
             /** @description Conflict */
             409: {
                 headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
                     [name: string]: unknown;
                 };
                 content: {
