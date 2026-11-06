@@ -12470,6 +12470,11 @@ paths:
         The domain is created but not live: `active` is false. Mail for a domain
         is only ever carried over TLS, so it goes live only once it has a
         certificate of its own, by a separate PATCH setting `active` to true.
+        The domain, pipelines and postmaster account are created atomically.
+        The ordinary active account receives mail, uses the domain's default quota
+        (1 GiB unless specified; explicit zero is unlimited), has no credential or
+        OwnerID, and gives its creator the ordinary owner grant. No plan-limit
+        exemption is added. An administrator can replace it with a working alias.
       requestBody:
         required: true
         content:
@@ -12797,7 +12802,9 @@ paths:
         Setting `active` to true makes the domain live, and is refused with 409
         `certificate_required` unless the domain has a currently valid
         certificate: mail for it is only ever carried over TLS. Setting `active`
-        to false takes it out of service and is always allowed. Setting
+        to false takes it out of service. A receiving postmaster account or alias
+        is also required before activation (409 `postmaster_required` otherwise).
+        A change cannot break another domain's postmaster alias route. Setting
         `sending_policy` to `""` clears it; any value other than
         `transactional`, `bulk` or `""` is refused with 422 `validation_failed`.
         Setting `dmarc_policy` changes the p= the domain's DMARC record asks
@@ -12880,12 +12887,19 @@ paths:
               "$ref": "#/components/headers/X-Content-Type-Options"
             "X-Frame-Options":
               "$ref": "#/components/headers/X-Frame-Options"
-        "409":
+        '409':
           description: The domain has no currently valid certificate, so it cannot go live
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                postmaster_required:
+                  value:
+                    error:
+                      code: postmaster_required
+                      message: A domain must keep a receiving postmaster address. Create a working postmaster alias before deleting its account; disabling the account still shadows the alias.
           "headers":
             "Content-Security-Policy":
               "$ref": "#/components/headers/Content-Security-Policy"
@@ -12897,6 +12911,7 @@ paths:
               "$ref": "#/components/headers/X-Content-Type-Options"
             "X-Frame-Options":
               "$ref": "#/components/headers/X-Frame-Options"
+
         "422":
           description: Request body failed validation
           content:
@@ -13325,6 +13340,29 @@ paths:
               "$ref": "#/components/headers/X-Content-Type-Options"
             "X-Frame-Options":
               "$ref": "#/components/headers/X-Frame-Options"
+        '409':
+          description: The change would remove the last receiving postmaster address
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                postmaster_required:
+                  value:
+                    error:
+                      code: postmaster_required
+                      message: A domain must keep a receiving postmaster address. Create a working postmaster alias before deleting its account; disabling the account still shadows the alias.
+          "headers":
+            "Content-Security-Policy":
+              "$ref": "#/components/headers/Content-Security-Policy"
+            "Referrer-Policy":
+              "$ref": "#/components/headers/Referrer-Policy"
+            "Strict-Transport-Security":
+              "$ref": "#/components/headers/Strict-Transport-Security"
+            "X-Content-Type-Options":
+              "$ref": "#/components/headers/X-Content-Type-Options"
+            "X-Frame-Options":
+              "$ref": "#/components/headers/X-Frame-Options"
         "404":
           description: Mailbox not found
           content:
@@ -13509,8 +13547,18 @@ paths:
               "$ref": "#/components/headers/X-Content-Type-Options"
             "X-Frame-Options":
               "$ref": "#/components/headers/X-Frame-Options"
-        "409":
+        '409':
           description: It holds the last superadmin (`last_superadmin`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                postmaster_required:
+                  value:
+                    error:
+                      code: postmaster_required
+                      message: A domain must keep a receiving postmaster address. Create a working postmaster alias before deleting its account; disabling the account still shadows the alias.
           "headers":
             "Content-Security-Policy":
               "$ref": "#/components/headers/Content-Security-Policy"
@@ -14019,6 +14067,29 @@ paths:
               "$ref": "#/components/headers/X-Content-Type-Options"
             "X-Frame-Options":
               "$ref": "#/components/headers/X-Frame-Options"
+        '409':
+          description: The change would remove the last receiving postmaster address
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                postmaster_required:
+                  value:
+                    error:
+                      code: postmaster_required
+                      message: A domain must keep a receiving postmaster address. Create a working postmaster alias before deleting its account; disabling the account still shadows the alias.
+          "headers":
+            "Content-Security-Policy":
+              "$ref": "#/components/headers/Content-Security-Policy"
+            "Referrer-Policy":
+              "$ref": "#/components/headers/Referrer-Policy"
+            "Strict-Transport-Security":
+              "$ref": "#/components/headers/Strict-Transport-Security"
+            "X-Content-Type-Options":
+              "$ref": "#/components/headers/X-Content-Type-Options"
+            "X-Frame-Options":
+              "$ref": "#/components/headers/X-Frame-Options"
         "404":
           description: Alias not found
           content:
@@ -14110,6 +14181,29 @@ paths:
       responses:
         "204":
           description: Alias deleted
+          "headers":
+            "Content-Security-Policy":
+              "$ref": "#/components/headers/Content-Security-Policy"
+            "Referrer-Policy":
+              "$ref": "#/components/headers/Referrer-Policy"
+            "Strict-Transport-Security":
+              "$ref": "#/components/headers/Strict-Transport-Security"
+            "X-Content-Type-Options":
+              "$ref": "#/components/headers/X-Content-Type-Options"
+            "X-Frame-Options":
+              "$ref": "#/components/headers/X-Frame-Options"
+        '409':
+          description: The change would remove the last receiving postmaster address
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                postmaster_required:
+                  value:
+                    error:
+                      code: postmaster_required
+                      message: A domain must keep a receiving postmaster address. Create a working postmaster alias before deleting its account; disabling the account still shadows the alias.
           "headers":
             "Content-Security-Policy":
               "$ref": "#/components/headers/Content-Security-Policy"
@@ -20708,12 +20802,19 @@ paths:
               "$ref": "#/components/headers/X-Frame-Options"
         "404":
           $ref: "#/components/responses/NotFound"
-        "409":
+        '409':
           description: The last superadmin grant (last_superadmin)
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                postmaster_required:
+                  value:
+                    error:
+                      code: postmaster_required
+                      message: A domain must keep a receiving postmaster address. Create a working postmaster alias before deleting its account; disabling the account still shadows the alias.
           "headers":
             "Content-Security-Policy":
               "$ref": "#/components/headers/Content-Security-Policy"

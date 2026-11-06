@@ -95,7 +95,7 @@ func connectTestDB() (*gorm.DB, error) {
 // accountModels are the tables an account lives in: its mailbox, its
 // credentials, and the roles and grants that say what it may do.
 var accountModels = []interface{}{
-	&models.Domain{}, &models.Mailbox{}, &models.QuotaUsage{}, &models.Credential{},
+	&models.Domain{}, &models.Mailbox{}, &models.Alias{}, &models.QuotaUsage{}, &models.Credential{},
 	&models.ThreadDue{},
 	&models.ThreadSnooze{},
 	&models.Role{}, &models.Capability{}, &models.RoleCapability{},

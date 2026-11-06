@@ -145,7 +145,16 @@ func (c *domainCleanupConnection) QueryContext(ctx context.Context, q string, ar
 	if strings.Contains(q, `FROM "grants"`) {
 		return importRows(c.ledger.grants...), nil
 	}
+	if strings.HasPrefix(q, `INSERT INTO "mailboxes"`) || strings.HasPrefix(q, `INSERT INTO "grants"`) {
+		return invitationRows([]string{"id"}, []driver.Value{int64(100)}), nil
+	}
+	if strings.HasPrefix(q, `INSERT INTO "quota_usage"`) {
+		return invitationRows([]string{"mailbox_id"}, []driver.Value{int64(100)}), nil
+	}
 	if strings.Contains(q, `FROM "roles"`) {
+		if strings.HasPrefix(q, `SELECT "name"`) {
+			return invitationRows([]string{"name"}, []driver.Value{"receiver"}), nil
+		}
 		return importRows(map[string]any{"id": int64(7), "name": "domain-reader"}), nil
 	}
 	if strings.Contains(q, `FROM "grant_activations"`) {

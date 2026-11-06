@@ -62,7 +62,7 @@ func openAliasUpdateScratchDB(t *testing.T) *gorm.DB {
 		t.Fatalf("scratch database identity = %q, want %q, err = %v", current, name, err)
 	}
 	t.Logf("verified isolated scratch database %s before migrations/writes", current)
-	if err := scratch.AutoMigrate(&models.Domain{}, &models.Alias{}); err != nil {
+	if err := scratch.AutoMigrate(&models.Domain{}, &models.Alias{}, &models.Mailbox{}); err != nil {
 		t.Fatal(err)
 	}
 	// Match the production migration, which creates this composite index

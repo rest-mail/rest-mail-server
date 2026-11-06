@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
@@ -81,11 +82,9 @@ func TestAliasMutationReloadFailureIsReported(t *testing.T) {
 	}
 	stored := seedAlias(t, db, domain, "sales@restmail.test")
 	const callback = "alias_mutation_reload_failure"
-	reads := 0
 	if err := db.Callback().Query().After("gorm:query").Register(callback, func(db *gorm.DB) {
-		if db.Statement.Table == "aliases" {
-			reads++
-			if reads == 2 {
+		if db.Statement.Table == "aliases" && strings.HasPrefix(db.Statement.SQL.String(), `SELECT * FROM "aliases"`) {
+			if _, reload := db.Statement.Preloads["Domain"]; reload {
 				_ = db.AddError(errors.New("private alias reload dependency failure"))
 			}
 		}

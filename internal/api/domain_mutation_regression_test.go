@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
+	"fmt"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -89,6 +90,46 @@ func (c *domainMutationConnection) mutation(q string, args []driver.NamedValue) 
 }
 
 func (c *domainMutationConnection) QueryContext(ctx context.Context, q string, args []driver.NamedValue) (driver.Rows, error) {
+	if strings.Contains(q, "EXISTS (SELECT 1 FROM mailboxes") {
+		return &authReadSnapshotRows{columns: []string{"id"}}, nil
+	}
+	if strings.HasPrefix(q, `INSERT INTO "quota_usage"`) {
+		return &authReadSnapshotRows{columns: []string{"mailbox_id"}, rows: [][]driver.Value{{int64(100)}}}, nil
+	}
+	if strings.HasPrefix(q, `INSERT INTO "mailboxes"`) {
+		c.record(q, args)
+		return &authReadSnapshotRows{columns: []string{"id"}, rows: [][]driver.Value{{int64(100)}}}, nil
+	}
+	if strings.HasPrefix(q, `INSERT INTO "grants"`) {
+		return &authReadSnapshotRows{columns: []string{"id"}, rows: [][]driver.Value{{int64(100)}}}, nil
+	}
+	if strings.Contains(q, `FROM "roles"`) {
+		if strings.HasPrefix(q, `SELECT "name"`) {
+			return &authReadSnapshotRows{columns: []string{"name"}, rows: [][]driver.Value{{"receiver"}}}, nil
+		}
+		if strings.Contains(q, "count(*)") {
+			return &authReadSnapshotRows{columns: []string{"count"}, rows: [][]driver.Value{{int64(0)}}}, nil
+		}
+		return &authReadSnapshotRows{columns: []string{"id", "name"}, rows: [][]driver.Value{{int64(20), "receiver"}}}, nil
+	}
+	if strings.Contains(q, "FROM audit_log") {
+		return &authReadSnapshotRows{columns: []string{"seq", "hash"}}, nil
+	}
+	if strings.Contains(q, `FROM "mailboxes"`) && strings.Contains(q, "address =") && len(args) > 0 && strings.HasPrefix(fmt.Sprint(args[0].Value), "postmaster@") {
+		// The postmaster belongs to the domain being changed: a mailbox on any other domain
+		// would need that domain to be live.
+		domainID := driver.Value(int64(1))
+		if c.current != nil {
+			domainID = c.current["id"]
+		}
+		return &authReadSnapshotRows{columns: []string{"id", "domain_id", "address", "active"}, rows: [][]driver.Value{{int64(100), domainID, args[0].Value, true}}}, nil
+	}
+	if strings.Contains(q, "FROM grants AS g") && len(args) > 2 && args[2].Value == int64(100) {
+		return &authReadSnapshotRows{columns: []string{"scope", "capability"}, rows: [][]driver.Value{{"*", models.CapMailReceive}}}, nil
+	}
+	if strings.Contains(q, `SELECT "address","owner_id" FROM "mailboxes"`) && len(args) > 0 && args[0].Value == int64(100) {
+		return &authReadSnapshotRows{columns: []string{"address", "owner_id"}}, nil
+	}
 	if strings.HasPrefix(q, `INSERT INTO "domains"`) {
 		c.mutation(q, args)
 		f, err := exampleInsertFields(q, args)
@@ -174,6 +215,9 @@ func (c *domainMutationConnection) QueryContext(ctx context.Context, q string, a
 }
 
 func (c *domainMutationConnection) ExecContext(_ context.Context, q string, args []driver.NamedValue) (driver.Result, error) {
+	if strings.HasPrefix(q, "SAVEPOINT ") || strings.HasPrefix(q, "ROLLBACK TO SAVEPOINT ") || strings.Contains(q, "pg_advisory_xact_lock") || strings.HasPrefix(q, `INSERT INTO "audit_log"`) || strings.HasPrefix(q, `INSERT INTO "quota_usage"`) || strings.HasPrefix(q, `UPDATE "mailboxes"`) {
+		return driver.RowsAffected(1), nil
+	}
 	if !strings.HasPrefix(q, `UPDATE "domains" SET`) {
 		return nil, errors.New("unexpected ancillary domain write")
 	}

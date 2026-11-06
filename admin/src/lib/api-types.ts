@@ -1069,11 +1069,17 @@ export interface paths {
         get: operations["getAlias"];
         put?: never;
         post?: never;
-        /** Delete an alias */
+        /**
+         * Delete an alias
+         * @description A domain must retain a receiving postmaster address. A change that removes its last working account or alias, including disabling a destination or removing its receive grant, returns 409 postmaster_required. To replace the account, create a working alias at postmaster@<domain> first, then delete the account; a disabled account still shadows an alias.
+         */
         delete: operations["deleteAlias"];
         options?: never;
         head?: never;
-        /** Update an alias */
+        /**
+         * Update an alias
+         * @description A domain must retain a receiving postmaster address. A change that removes its last working account or alias, including disabling a destination or removing its receive grant, returns 409 postmaster_required. To replace the account, create a working alias at postmaster@<domain> first, then delete the account; a disabled account still shadows an alias.
+         */
         patch: operations["updateAlias"];
         trace?: never;
     };
@@ -1453,7 +1459,10 @@ export interface paths {
         /** List all domains */
         get: operations["listDomains"];
         put?: never;
-        /** Create a new domain */
+        /**
+         * Create a new domain
+         * @description Atomically creates the domain, its default pipelines and postmaster account. The account is active, receives mail, has the domain's default quota (1 GiB unless specified; explicit zero is unlimited), no credential or password, and no OwnerID. The creator receives the ordinary owner grant. No plan-limit exemption is added. An administrator may replace it with a working alias. A domain must retain a receiving postmaster address. A change that removes its last working account or alias, including disabling a destination or removing its receive grant, returns 409 postmaster_required. To replace the account, create a working alias at postmaster@<domain> first, then delete the account; a disabled account still shadows an alias.
+         */
         post: operations["createDomain"];
         delete?: never;
         options?: never;
@@ -1479,7 +1488,10 @@ export interface paths {
         delete: operations["deleteDomain"];
         options?: never;
         head?: never;
-        /** Update a domain */
+        /**
+         * Update a domain
+         * @description Activation requires a receiving postmaster account or alias as well as a valid certificate. A domain must retain a receiving postmaster address. A change that removes its last working account or alias, including disabling a destination or removing its receive grant, returns 409 postmaster_required. To replace the account, create a working alias at postmaster@<domain> first, then delete the account; a disabled account still shadows an alias.
+         */
         patch: operations["updateDomain"];
         trace?: never;
     };
@@ -1710,7 +1722,10 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Remove a grant */
+        /**
+         * Remove a grant
+         * @description A domain must retain a receiving postmaster address. A change that removes its last working account or alias, including disabling a destination or removing its receive grant, returns 409 postmaster_required. To replace the account, create a working alias at postmaster@<domain> first, then delete the account; a disabled account still shadows an alias.
+         */
         delete: operations["deleteGrant"];
         options?: never;
         head?: never;
@@ -1813,11 +1828,17 @@ export interface paths {
         get: operations["getMailbox"];
         put?: never;
         post?: never;
-        /** Delete an account */
+        /**
+         * Delete an account
+         * @description A domain must retain a receiving postmaster address. A change that removes its last working account or alias, including disabling a destination or removing its receive grant, returns 409 postmaster_required. To replace the account, create a working alias at postmaster@<domain> first, then delete the account; a disabled account still shadows an alias.
+         */
         delete: operations["deleteMailbox"];
         options?: never;
         head?: never;
-        /** Update an account */
+        /**
+         * Update an account
+         * @description A domain must retain a receiving postmaster address. A change that removes its last working account or alias, including disabling a destination or removing its receive grant, returns 409 postmaster_required. To replace the account, create a working alias at postmaster@<domain> first, then delete the account; a disabled account still shadows an alias.
+         */
         patch: operations["updateMailbox"];
         trace?: never;
     };
@@ -19596,6 +19617,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description request_too_large: the body is over the API's size cap */
             413: {
                 headers: {
@@ -19799,6 +19829,15 @@ export interface operations {
                     "X-Content-Type-Options": string;
                     /** @description DENY */
                     "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
                     [name: string]: unknown;
                 };
                 content: {
@@ -31373,6 +31412,15 @@ export interface operations {
                     "X-Content-Type-Options": string;
                     /** @description DENY */
                     "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
                     [name: string]: unknown;
                 };
                 content: {
