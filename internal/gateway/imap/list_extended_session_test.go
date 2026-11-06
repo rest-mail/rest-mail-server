@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -23,6 +24,38 @@ import (
 // "music" that is not a folder.
 func dialListExtended(t *testing.T) *imapClient {
 	t.Helper()
+	c, _ := dialListExtendedWith(t, []string{"INBOX", "Fruit", "Fruit/Apple", "Fruit/Banana", "Tofu", "Vegetable",
+		"Vegetable/Broccoli", "Vegetable/Corn", "Sent", "music/rock"})
+	return c
+}
+
+// fakeSubscriptions is the API's subscription list for one account, as the
+// session test's fake API keeps it.
+type fakeSubscriptions struct {
+	mu    sync.Mutex
+	names map[string]bool
+}
+
+func (f *fakeSubscriptions) list() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]string, 0, len(f.names))
+	for name := range f.names {
+		out = append(out, name)
+	}
+	slices.Sort(out)
+	return out
+}
+
+// dialListExtendedWith is dialListExtended with the account subscribed to
+// subscribed, on a fake API that keeps the list as the real one does: PUT and
+// DELETE on /subscriptions/{folder}, the folder path-escaped.
+func dialListExtendedWith(t *testing.T, subscribed []string) (*imapClient, *fakeSubscriptions) {
+	t.Helper()
+	subs := &fakeSubscriptions{names: map[string]bool{}}
+	for _, name := range subscribed {
+		subs.names[name] = true
+	}
 	mux := http.NewServeMux()
 	reply := func(w http.ResponseWriter, body string) {
 		w.Header().Set("Content-Type", "application/json")
@@ -35,6 +68,35 @@ func dialListExtended(t *testing.T) *imapClient {
 		reply(w, `{"data":[{"name":"INBOX"},{"name":"Fruit"},{"name":"Fruit/Apple"},{"name":"Fruit/Banana"},`+
 			`{"name":"Tofu"},{"name":"Vegetable"},{"name":"Vegetable/Broccoli"},{"name":"Vegetable/Corn"},`+
 			`{"name":"Sent"},{"name":"music/rock"}]}`)
+	})
+	mux.HandleFunc("GET /api/v1/accounts/1/subscriptions", func(w http.ResponseWriter, r *http.Request) {
+		body := `{"data":[`
+		for i, name := range subs.list() {
+			if i > 0 {
+				body += ","
+			}
+			body += fmt.Sprintf(`{"name":%q}`, name)
+		}
+		reply(w, body+`]}`)
+	})
+	mux.HandleFunc("/api/v1/accounts/1/subscriptions/{folder}", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") == "" {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		name := r.PathValue("folder")
+		subs.mu.Lock()
+		defer subs.mu.Unlock()
+		switch r.Method {
+		case http.MethodPut:
+			subs.names[name] = true
+			reply(w, fmt.Sprintf(`{"data":{"name":%q}}`, name))
+		case http.MethodDelete:
+			delete(subs.names, name)
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			http.Error(w, "method", http.StatusMethodNotAllowed)
+		}
 	})
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
@@ -56,7 +118,7 @@ func dialListExtended(t *testing.T) *imapClient {
 	c := &imapClient{t: t, conn: client, r: bufio.NewReader(client)}
 	c.read() // greeting
 	c.do("a1", "LOGIN dana@example.test pw")
-	return c
+	return c, subs
 }
 
 // listExactly sends command and requires exactly want as its untagged replies.
@@ -72,8 +134,8 @@ func (c *imapClient) listExactly(tag, command string, want ...string) {
 // §6.3.9) from the gateway: the CHILDREN return option (example 3), several
 // patterns (examples 7 and 11), "music" that is not a folder answered
 // \NonExistent \HasChildren (example 11), the SUBSCRIBED options and LSUB, and
-// CHILDINFO under RECURSIVEMATCH (example 8). REST Mail keeps no subscription
-// list, so every folder is subscribed (#718).
+// CHILDINFO under RECURSIVEMATCH (example 8). The account here is subscribed to
+// every folder it has.
 func TestListExtendedThroughTheSession(t *testing.T) {
 	c := dialListExtended(t)
 	if caps := c.do("a2", "CAPABILITY"); !strings.Contains(caps, " LIST-EXTENDED") {
@@ -117,4 +179,42 @@ func TestListExtendedRefusalsThroughTheSession(t *testing.T) {
 			t.Errorf("%s: %q, want a tagged BAD and nothing before it", command, line)
 		}
 	}
+}
+
+// SUBSCRIBE and UNSUBSCRIBE change the account's list in the API (#1675), and
+// LSUB and LIST (SUBSCRIBED) read it back: RFC 3501 §6.3.6 has SUBSCRIBE add
+// "the specified mailbox name to the server's set of "active" or "subscribed"
+// mailboxes as returned by the LSUB command", §6.3.7 has UNSUBSCRIBE remove it.
+func TestSubscribePersistsThroughTheSession(t *testing.T) {
+	c, subs := dialListExtendedWith(t, []string{"INBOX"})
+	c.listExactly("a2", `LSUB "" "*"`, `* LSUB () "/" "INBOX"`)
+	c.do("a3", `SUBSCRIBE "Fruit/Apple"`)
+	c.do("a4", `SUBSCRIBE Tofu`)
+	c.do("a5", `SUBSCRIBE Tofu`) // already subscribed: still OK, still one name
+	if got := subs.list(); !slices.Equal(got, []string{"Fruit/Apple", "INBOX", "Tofu"}) {
+		t.Fatalf("API list after SUBSCRIBE: %q", got)
+	}
+	c.listExactly("a6", `LSUB "" "*"`,
+		`* LSUB () "/" "INBOX"`, `* LSUB () "/" "Fruit/Apple"`, `* LSUB () "/" "Tofu"`)
+	c.listExactly("a7", `LIST (SUBSCRIBED) "" "*"`,
+		`* LIST (\Subscribed) "/" "INBOX"`, `* LIST (\Subscribed) "/" "Fruit/Apple"`, `* LIST (\Subscribed) "/" "Tofu"`)
+	c.do("a8", `UNSUBSCRIBE Tofu`)
+	c.do("a9", `UNSUBSCRIBE Tofu`) // not subscribed: still OK
+	if got := subs.list(); !slices.Equal(got, []string{"Fruit/Apple", "INBOX"}) {
+		t.Fatalf("API list after UNSUBSCRIBE: %q", got)
+	}
+	c.listExactly("a10", `LSUB "" "%"`, `* LSUB () "/" "INBOX"`, `* LSUB (\Noselect) "/" "Fruit"`)
+	c.listExactly("a11", `LIST "" "Tofu" RETURN (SUBSCRIBED)`, `* LIST () "/" "Tofu"`)
+}
+
+// A subscribed name with no folder behind it stays on the list (RFC 9051
+// §6.3.7: the server "SHOULD NOT unilaterally remove an existing mailbox name
+// from the subscription list even if a mailbox by that name no longer
+// exists"), and LIST (SUBSCRIBED) answers it \NonExistent (RFC 5258 §3.1,
+// example 2's Fruit/Peach).
+func TestDeletedFolderStaysSubscribedThroughTheSession(t *testing.T) {
+	c, _ := dialListExtendedWith(t, []string{"INBOX", "Fruit/Peach"})
+	c.listExactly("a2", `LIST (SUBSCRIBED) "" "*"`,
+		`* LIST (\Subscribed) "/" "INBOX"`, `* LIST (\Subscribed \NonExistent) "/" "Fruit/Peach"`)
+	c.listExactly("a3", `LSUB "" "Fruit/*"`, `* LSUB () "/" "Fruit/Peach"`)
 }
