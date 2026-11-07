@@ -177,7 +177,14 @@ class CertificateProbes(unittest.TestCase):
                         issuer = self.read_pem(
                             ["x509", "-noout", "-issuer", "-nameopt", "RFC2253"], body["cert_pem"]
                         ).strip().removeprefix("issuer=")
-                        self.assertEqual(issuer, "CN=" + stash.get("domain", "example.org"))
+                        domain_name = {1: "example.org", 7: "run.test"}[stash.get("domain_id", 1)]
+                        self.assertEqual(issuer, "CN=" + domain_name)
+                        alternatives = self.read_pem(
+                            ["x509", "-noout", "-ext", "subjectAltName"], body["cert_pem"]
+                        ).splitlines()[-1]
+                        self.assertEqual(
+                            [item.strip() for item in alternatives.split(",")], ["DNS:" + domain_name],
+                        )
                         self.assertNotEqual(issuer, self.hooks.PROBE_CERTIFICATE_ISSUER)
                         self.assertEqual(
                             self.read_pem(["x509", "-noout", "-pubkey"], body["cert_pem"]),
