@@ -25,7 +25,7 @@ const (
 	// stays below the reclaim interval's margin, so one missed beat is harmless.
 	defaultHeartbeat = time.Minute
 	// heartbeatWriteTimeout bounds one refresh, so a stuck database cannot hold up
-	// the end of an attempt. stop cancels a refresh still running.
+	// the end of an attempt. stop waits for a refresh still running to finish.
 	heartbeatWriteTimeout = 30 * time.Second
 )
 
@@ -98,6 +98,15 @@ func (w *Worker) startHeartbeat(item models.OutboundQueue) (stop func()) {
 	if every <= 0 {
 		every = defaultHeartbeat
 	}
+	ticker := time.NewTicker(every)
+	stopHeartbeat := w.startHeartbeatWithTicks(item, ticker.C)
+	return func() {
+		ticker.Stop()
+		stopHeartbeat()
+	}
+}
+
+func (w *Worker) startHeartbeatWithTicks(item models.OutboundQueue, ticks <-chan time.Time) (stop func()) {
 	db := w.heartbeatDB
 	if db == nil {
 		db = w.db
@@ -106,14 +115,18 @@ func (w *Worker) startHeartbeat(item models.OutboundQueue) (stop func()) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		ticker := time.NewTicker(every)
-		defer ticker.Stop()
 		for {
+			if ctx.Err() != nil {
+				return
+			}
 			select {
 			case <-ctx.Done():
 				return
-			case <-ticker.C:
-				if !refreshClaim(ctx, db, item) {
+			case <-ticks:
+				if ctx.Err() != nil {
+					return
+				}
+				if !refreshClaim(context.Background(), db, item) {
 					return
 				}
 			}
