@@ -65,6 +65,9 @@ ENV NGINX_BASE_PATH=${NGINX_BASE_PATH}
 # config: a read-only root filesystem then needs only conf.d and /tmp writable.
 # Modes are set outright, not taken from the checkout (see the builder).
 USER root
+# CVE-2026-107891 and CVE-2026-85091 (#2010): remove this upgrade once
+# the pinned nginx base includes the fixes.
+RUN apk upgrade --no-cache musl musl-utils zlib
 # WORKDIR makes the directory 0755 first, because COPY --chmod would give a
 # directory it makes the mode of the file, and nginx could not then enter it.
 WORKDIR /etc/nginx/restmail

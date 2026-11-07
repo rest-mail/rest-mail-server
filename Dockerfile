@@ -56,7 +56,7 @@ CMD ["air", "-c", ".air.toml"]
 # ── Stage 4: prod (minimal Alpine runtime, non-root) ─────────────────
 # 3.24, not 3.20: an end-of-life release gets no fixes, so its image scan stays
 # quiet while its packages age (#1947).
-FROM alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a AS prod
+FROM alpine:3.24.4@sha256:93b41ef40b1677fce8fcc64ff4af09daddfacf5040afde618bc46c1e2d1cc7d4 AS prod
 # Create an unprivileged runtime user (OSI-17). The entrypoint trusts the
 # project CA at runtime via update-ca-certificates, so the CA anchor dirs are
 # chowned to that user; /attachments is pre-created + owned so the named
