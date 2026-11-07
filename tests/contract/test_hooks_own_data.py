@@ -106,6 +106,10 @@ class FixtureAPI(BaseHTTPRequestHandler):
     def do_GET(self):
         self.server.calls.append(("GET", self.path, None))
         path, _, query = self.path.partition("?")
+        entry = re.fullmatch(r"/api/v1/admin/queue/(\d+)", path)
+        if entry and int(entry[1]) in self.server.queue:
+            recipient, status, _ = self.server.queue[int(entry[1])]
+            return self.answer(200, {"id": int(entry[1]), "recipient": recipient, "status": status})
         if path != "/api/v1/admin/queue":
             return self.answer(404)
         wanted = parse_qs(query)["recipient"]
@@ -154,7 +158,10 @@ class OwnDataHooks(unittest.TestCase):
         self.stub.before = lambda name: (
             lambda fn: self.registered.append((name, fn.__name__)) or fn
         )
-        self.stub.after = lambda _: lambda fn: fn
+        self.registered_after = []
+        self.stub.after = lambda name: (
+            lambda fn: self.registered_after.append((name, fn.__name__)) or fn
+        )
         self.stub.get_json = lambda transaction, which="request": json.loads(
             transaction[which]["body"]
         )
@@ -895,6 +902,124 @@ class OwnDataHooks(unittest.TestCase):
             self.hooks.queued_and_held_mail_of_its_own(transaction)
             self.assertEqual(len(self.server.queue), made)
             self.assertEqual(transaction["fullPath"], "/api/v1/admin/queue/bulk-retry")
+
+    BULK_ACTIONS = (
+        ("bulkRetryQueue", "/api/v1/admin/queue/bulk-retry", "pending"),
+        ("bulkBounceQueue", "/api/v1/admin/queue/bulk-bounce", "bounced"),
+        ("bulkDeleteQueue", "/api/v1/admin/queue/bulk-delete", None),
+    )
+
+    def bulk_exchange(self, path, body):
+        """The empty filter's (or another body's) 200, through the before hook."""
+        transaction = self.transaction(200, path, name=path + " > Bulk")
+        transaction["request"]["body"] = json.dumps(body)
+        self.hooks.queued_and_held_mail_of_its_own(transaction)
+        return transaction
+
+    def answered(self, transaction, affected, status=200):
+        transaction["real"] = {
+            "statusCode": status,
+            "body": json.dumps({"data": {"affected": affected}}),
+        }
+        self.hooks.the_bulk_action_changed_the_entries_made(transaction)
+        return transaction.get("fail")
+
+    def test_the_bulk_actions_check_what_they_changed_after_the_exchange(self):
+        for operation, _, _ in self.BULK_ACTIONS:
+            self.assertIn(
+                (operation, "the_bulk_action_changed_the_entries_made"),
+                self.registered_after,
+            )
+
+    def test_a_bulk_empty_filter_passes_when_it_changed_the_entry_made(self):
+        self.clean_starts_on()
+        for _, path, outcome in self.BULK_ACTIONS:
+            transaction = self.bulk_exchange(path, {"filter": {}})
+            (entry,) = self.server.queue
+            # What the server's action does to the entry.
+            if outcome is None:
+                del self.server.queue[entry]
+            else:
+                self.server.queue[entry][1] = outcome
+            self.assertIsNone(self.answered(transaction, 1), path)
+            self.assertNotIn("bulk_queue_made", self.stub.stash)
+
+    def test_a_bulk_empty_filter_that_acted_on_nothing_fails(self):
+        # The control: an answer of affected 0, with the entry made left as
+        # it was, is what a handler selecting nothing sends.
+        self.clean_starts_on()
+        for _, path, outcome in self.BULK_ACTIONS:
+            transaction = self.bulk_exchange(path, {"filter": {}})
+            (entry,) = self.server.queue
+            failure = self.answered(transaction, 0)
+            self.assertIn("affected 0, but the hook made 1 eligible entry", failure)
+            if outcome is None:
+                self.assertIn(f"entry {entry:d} is still queued (pending)", failure)
+            elif outcome == "bounced":
+                self.assertIn(f"entry {entry:d} is pending, not bounced", failure)
+
+    def test_a_bulk_empty_filter_fails_on_a_wrong_count_or_an_unchanged_entry(self):
+        self.clean_starts_on()
+        # The right count, but the entry is not as the action leaves it.
+        transaction = self.bulk_exchange("/api/v1/admin/queue/bulk-bounce", {"filter": {}})
+        (entry,) = self.server.queue
+        self.assertEqual(
+            self.answered(transaction, 1),
+            "the bulk action did not change the entries made for it: "
+            f"entry {entry:d} is pending, not bounced",
+        )
+        # The entry changed, but the count is not what was made.
+        transaction = self.bulk_exchange("/api/v1/admin/queue/bulk-delete", {"filter": {}})
+        self.server.queue.clear()
+        self.assertEqual(
+            self.answered(transaction, 2),
+            "the bulk action did not change the entries made for it: "
+            "affected 2, but the hook made 1 eligible entry",
+        )
+        # A retried entry that is gone is not pending.
+        transaction = self.bulk_exchange("/api/v1/admin/queue/bulk-retry", {"filter": {}})
+        (entry,) = self.server.queue
+        del self.server.queue[entry]
+        self.assertIn(f"entry {entry:d} is gone, not pending", self.answered(transaction, 1))
+
+    def test_a_bulk_empty_filter_with_nothing_made_for_it_fails(self):
+        # The control: a hook that makes nothing after the reset leaves an
+        # affected: 0 that proves only the shape.
+        self.clean_starts_on()
+        for _, path, _ in self.BULK_ACTIONS:
+            transaction = self.transaction(200, path, name=path + " > Bulk")
+            transaction["request"]["body"] = json.dumps({"filter": {}})
+            self.assertEqual(
+                self.answered(transaction, 0),
+                "the bulk action's empty filter had no queue entry made for it to act on",
+            )
+        # Nor does an entry made for another exchange count.
+        transaction = self.bulk_exchange("/api/v1/admin/queue/bulk-retry", {"filter": {}})
+        other = dict(transaction, name="/other > 200")
+        self.assertIn("had no queue entry made", self.answered(other, 1))
+
+    def test_other_bulk_exchanges_are_left_to_the_contract(self):
+        self.clean_starts_on()
+        # The documented filter made nothing, so its answer is not held to
+        # a count.
+        transaction = self.bulk_exchange(
+            "/api/v1/admin/queue/bulk-retry",
+            {"filter": {"domain": "example.test", "status": "deferred"}},
+        )
+        self.assertIsNone(self.answered(transaction, 0))
+        # A refusal the status check already fails, and an after hook of
+        # another exchange than the one the entry was made for.
+        transaction = self.bulk_exchange("/api/v1/admin/queue/bulk-retry", {"filter": {}})
+        self.assertIsNone(self.answered(transaction, 0, status=500))
+        calls = len(self.server.calls)
+        # Without a reset nothing was made, and nothing is checked.
+        os.environ.pop("CONTRACT_RESET_SEED")
+        self.stub.stash.pop("bulk_queue_made", None)
+        transaction = self.transaction(200, "/api/v1/admin/queue/bulk-retry")
+        transaction["request"]["body"] = json.dumps({"filter": {}})
+        self.hooks.queued_and_held_mail_of_its_own(transaction)
+        self.assertIsNone(self.answered(transaction, 0))
+        self.assertEqual(len(self.server.calls), calls)
 
     def test_the_held_list_names_an_account_of_its_own(self):
         self.clean_starts_on()
