@@ -11,6 +11,7 @@ import types
 import unittest
 import unittest.mock
 from unittest.mock import patch
+import urllib.error
 import urllib.parse
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -73,7 +74,12 @@ class FixtureAPI(BaseHTTPRequestHandler):
         body = self.read_body()
         if not body.get("private_key", "").startswith("-----BEGIN"):
             return self.answer(400)
-        self.server.state["signing"].add(int(self.path.rsplit("/", 1)[1]))
+        domain_id = int(self.path.rsplit("/", 1)[1])
+        domain = next(domain for domain in self.server.state["domains"] if domain["id"] == domain_id)
+        refusal = self.server.state.get("signing_refusals", {}).get(domain["name"])
+        if refusal:
+            return self.answer(*refusal)
+        self.server.state["signing"].add(domain_id)
         self.answer(200, {"data": {"selector": body["selector"]}})
 
     def do_GET(self):
@@ -177,6 +183,49 @@ class SendMessageProbes(unittest.TestCase):
         # valid's queue entry is what the queue operations' links retry.
         self.send({"from": "admin@restmail.test", "to": ["someone@imap.restmail.test"]})
         self.assertEqual([m["address"] for m in self.server.state["mailboxes"]], ["admin@restmail.test"])
+
+    def test_an_invalid_domain_cannot_abort_a_generated_sender_or_recipient_probe(self):
+        domain = "a" * 64 + ".example"
+        address = "ascii@" + domain
+        self.server.state["signing_refusals"] = {
+            domain: (422, {"error": {"code": "validation_failed", "details": {"fields": {
+                "private_key": f"does not sign for {domain}: invalid domain: idna: invalid label"
+            }}}})
+        }
+        for field in ("from", "to", "cc", "bcc"):
+            with self.subTest(field=field):
+                body = {"from": "someone@example.com", "to": ["someone@example.com"]}
+                body[field] = address if field == "from" else [address]
+                self.send(body)
+                self.assertNotIn(address, [mailbox["address"] for mailbox in self.server.state["mailboxes"]])
+                self.assertFalse(any(key.endswith("\n" + address)
+                                     for key in self.stub.stash.get("sender_mailboxes", {})))
+
+    def test_unexpected_signing_fixture_failures_still_abort_the_probe(self):
+        cases = (
+            (422, {"error": {"code": "validation_failed", "details": {"fields": {"private_key": "invalid key"}}}}),
+            (422, {"error": {"code": "validation_failed", "details": {"fields": {"selector": "invalid selector"}}}}),
+            (422, {"error": {"code": "validation_failed", "details": {"fields": {"private_key":
+                "does not sign for another.example: invalid domain: invalid label"}}}}),
+            (422, {"error": {"code": "validation_failed", "details": {"fields": {"private_key": None}}}}),
+            (422, {"error": {"code": "validation_failed", "details": {"fields": []}}}),
+            (422, {"error": {"code": "validation_failed", "details": None}}),
+            (422, {"error": {"code": "validation_failed"}}),
+            (422, {"error": {"code": "another_error", "details": {"fields": {"private_key":
+                "does not sign for example.com: invalid domain: invalid label"}}}}),
+            (422, {"error": None}),
+            (422, []),
+            (422, None),
+            (403, {"error": {"code": "forbidden"}}),
+            (500, {"error": {"code": "internal_error"}}),
+        )
+        for refusal in cases:
+            with self.subTest(refusal=refusal):
+                self.server.state["signing_refusals"] = {"example.com": refusal}
+                with self.assertRaises(urllib.error.HTTPError) as caught:
+                    self.send({"from": "someone@example.com", "to": ["someone@example.com"]})
+                self.assertEqual(caught.exception.code, refusal[0])
+                caught.exception.close()
 
     def test_malformed_or_unhostable_senders_are_left_to_the_probe(self):
         for sender in ("", "no-at-sign", "a@b@c", "someone@localhost", 42, "someone@example.invalid"):

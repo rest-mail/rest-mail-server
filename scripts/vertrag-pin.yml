@@ -1,4 +1,4 @@
 # Managed by scripts/vertrag_pin.py bump; consumed by every Vertrag installer.
 # SHA256 covers vertrag-${VERTRAG_VERSION}-linux-x86_64.tar.gz from checksums.txt.
-VERTRAG_VERSION: 0.42.0
-VERTRAG_SHA256: cbf80fa6a94c9b06c8c2f2cd8ee9dce6d1209d62898fd7ae1cf61c7c5cfa3167
+VERTRAG_VERSION: 0.44.0
+VERTRAG_SHA256: 1a028c25c1db3beeeea2a27d29e806df0c424816d42126c6d940a5efbdd10005
