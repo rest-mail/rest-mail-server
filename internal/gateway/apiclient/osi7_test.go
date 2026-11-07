@@ -1,8 +1,11 @@
 package apiclient
 
 import (
+	"context"
 	"crypto/tls"
+	"errors"
 	"net/http"
+	"sync"
 	"testing"
 	"time"
 )
@@ -71,22 +74,43 @@ func TestWithMessageDeadline_DefaultAndGuard(t *testing.T) {
 // deadline, and the same delivery succeeds under a generous one — i.e. a large
 // message is no longer stranded by too-short a timeout.
 func TestDeliverMessage_SizeAwareDeadlineGoverns(t *testing.T) {
+	entered := make(chan struct{}, 1)
+	release := make(chan struct{})
+	releaseAPI := sync.OnceFunc(func() { close(release) })
+	defer releaseAPI()
 	srv, mux := newTestServer(t)
 	mux.HandleFunc("/api/v1/messages/deliver", func(w http.ResponseWriter, r *http.Request) {
-		time.Sleep(150 * time.Millisecond)
+		entered <- struct{}{}
+		select {
+		case <-r.Context().Done():
+			return
+		case <-release:
+		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"data":{"id":1,"mailbox_id":2,"subject":"ok"}}`))
 	})
 
 	t.Run("too-short deadline times out", func(t *testing.T) {
 		c := New(srv.URL, WithMessageDeadline(20*time.Millisecond))
-		if _, err := c.DeliverMessage(&DeliverRequest{Address: "a@local", RawMessage: []byte("hi")}); err == nil {
-			t.Fatal("expected a timeout error under a 20ms deadline against a 150ms API")
+		if _, err := c.DeliverMessage(&DeliverRequest{Address: "a@local", RawMessage: []byte("hi")}); !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("error = %v, want a deadline exceeded while the API is blocked", err)
+		}
+		select {
+		case <-entered:
+		case <-time.After(2 * time.Second):
+			t.Fatal("the request did not reach the blocked API")
 		}
 	})
 
 	t.Run("generous deadline succeeds", func(t *testing.T) {
 		c := New(srv.URL, WithMessageDeadline(2*time.Second))
+		go func() {
+			select {
+			case <-entered:
+				releaseAPI()
+			case <-t.Context().Done():
+			}
+		}()
 		resp, err := c.DeliverMessage(&DeliverRequest{Address: "a@local", RawMessage: []byte("hi")})
 		if err != nil {
 			t.Fatalf("expected success under a 2s deadline, got %v", err)

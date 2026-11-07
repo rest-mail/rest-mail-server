@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 )
 
@@ -91,17 +92,28 @@ func TestTarpitSleepAbortsOnCancelledContext(t *testing.T) {
 // TestTarpitSleepAbortsWhenCancelledMidSleep proves cancellation during the
 // sleep unblocks it promptly (the shutdown path).
 func TestTarpitSleepAbortsWhenCancelledMidSleep(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	go func() {
-		time.Sleep(20 * time.Millisecond)
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		done := make(chan struct{})
+		go func() {
+			tarpitSleep(ctx, 30*time.Second)
+			close(done)
+		}()
+		synctest.Wait()
+		select {
+		case <-done:
+			t.Fatal("tarpitSleep returned before cancellation")
+		default:
+		}
 		cancel()
-	}()
-
-	start := time.Now()
-	tarpitSleep(ctx, 30*time.Second)
-	if elapsed := time.Since(start); elapsed > 3*time.Second {
-		t.Fatalf("tarpitSleep did not abort on mid-sleep cancel, took %v", elapsed)
-	}
+		synctest.Wait()
+		select {
+		case <-done:
+		default:
+			t.Fatal("tarpitSleep did not abort on mid-sleep cancel")
+		}
+	})
 }
 
 // sleepRecorder is a fake tarpit sleeper: it records the requested delays and

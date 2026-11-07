@@ -11,8 +11,6 @@ import (
 	"errors"
 	"strings"
 	"testing"
-
-	dkim "github.com/rest-mail/go-dkim/pkg/dkim"
 )
 
 // pkcs8PEM encodes key as a PEM "PRIVATE KEY" block, the form openssl genpkey
@@ -28,14 +26,8 @@ func pkcs8PEM(t *testing.T, key any) string {
 
 // A key the domain can sign with is accepted, in each form go-dkim signs with.
 func TestCheckDKIMKey_AcceptsKeysThatSign(t *testing.T) {
-	pkcs1, _, err := dkim.GenerateKey(2048)
-	if err != nil {
-		t.Fatalf("generate RSA key: %v", err)
-	}
-	rsaKey, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		t.Fatalf("generate RSA key: %v", err)
-	}
+	key := rsaKey(t)
+	pkcs1 := string(pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)}))
 	_, edKey, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatalf("generate Ed25519 key: %v", err)
@@ -45,7 +37,7 @@ func TestCheckDKIMKey_AcceptsKeysThatSign(t *testing.T) {
 		name, selector, key string
 	}{
 		{"RSA 2048, PKCS#1", "default", pkcs1},
-		{"RSA 2048, PKCS#8", "rm2026", pkcs8PEM(t, rsaKey)},
+		{"RSA 2048, PKCS#8", "rm2026", pkcs8PEM(t, key)},
 		{"Ed25519, PKCS#8", "ed1", pkcs8PEM(t, edKey)},
 		{"dotted selector", "mail.2026-10", pkcs1},
 	}
@@ -61,10 +53,7 @@ func TestCheckDKIMKey_AcceptsKeysThatSign(t *testing.T) {
 // Each key or selector go-dkim would not sign with, or that this server will
 // not sign with, is refused, naming the field at fault.
 func TestCheckDKIMKey_Refusals(t *testing.T) {
-	good, _, err := dkim.GenerateKey(2048)
-	if err != nil {
-		t.Fatalf("generate RSA key: %v", err)
-	}
+	good := string(pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(rsaKey(t))}))
 	small, err := rsa.GenerateKey(rand.Reader, 1024)
 	if err != nil {
 		t.Fatalf("generate RSA key: %v", err)

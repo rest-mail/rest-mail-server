@@ -2,6 +2,7 @@ package connlimiter
 
 import (
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -108,33 +109,35 @@ func TestGlobalLimit(t *testing.T) {
 }
 
 func TestAuthBan(t *testing.T) {
-	l := New(Config{
-		MaxPerIP:        100,
-		MaxGlobal:       100,
-		AuthMaxFails:    3,
-		AuthBanWindow:   10 * time.Second,
-		AuthBanDuration: 1 * time.Second,
+	synctest.Test(t, func(t *testing.T) {
+		l := New(Config{
+			MaxPerIP:        100,
+			MaxGlobal:       100,
+			AuthMaxFails:    3,
+			AuthBanWindow:   10 * time.Second,
+			AuthBanDuration: 1 * time.Second,
+		})
+
+		if l.IsBanned("1.2.3.4") {
+			t.Fatal("should not be banned initially")
+		}
+
+		l.RecordAuthFail("1.2.3.4")
+		l.RecordAuthFail("1.2.3.4")
+		if l.IsBanned("1.2.3.4") {
+			t.Fatal("should not be banned after 2 failures")
+		}
+
+		l.RecordAuthFail("1.2.3.4")
+		if !l.IsBanned("1.2.3.4") {
+			t.Fatal("should be banned after 3 failures")
+		}
+
+		time.Sleep(1100 * time.Millisecond)
+		if l.IsBanned("1.2.3.4") {
+			t.Fatal("ban should have expired")
+		}
 	})
-
-	if l.IsBanned("1.2.3.4") {
-		t.Fatal("should not be banned initially")
-	}
-
-	l.RecordAuthFail("1.2.3.4")
-	l.RecordAuthFail("1.2.3.4")
-	if l.IsBanned("1.2.3.4") {
-		t.Fatal("should not be banned after 2 failures")
-	}
-
-	l.RecordAuthFail("1.2.3.4")
-	if !l.IsBanned("1.2.3.4") {
-		t.Fatal("should be banned after 3 failures")
-	}
-
-	time.Sleep(1100 * time.Millisecond)
-	if l.IsBanned("1.2.3.4") {
-		t.Fatal("ban should have expired")
-	}
 }
 
 // TestAuthBanPerAccountAcrossIPs reproduces the distributed brute-force from
@@ -142,48 +145,50 @@ func TestAuthBan(t *testing.T) {
 // per-IP threshold, yet all the failures target ONE account. The per-IP tracker
 // must stay silent while the per-account tracker bans the account.
 func TestAuthBanPerAccountAcrossIPs(t *testing.T) {
-	l := New(Config{
-		MaxPerIP:        100,
-		MaxGlobal:       100,
-		AuthMaxFails:    3,
-		AuthBanWindow:   10 * time.Second,
-		AuthBanDuration: 1 * time.Second,
-	})
+	synctest.Test(t, func(t *testing.T) {
+		l := New(Config{
+			MaxPerIP:        100,
+			MaxGlobal:       100,
+			AuthMaxFails:    3,
+			AuthBanWindow:   10 * time.Second,
+			AuthBanDuration: 1 * time.Second,
+		})
 
-	const victim = "victim@example.com"
-	// Three failures, each from a DIFFERENT source IP (one failure per IP — well
-	// under the per-IP threshold), all against the same account.
-	ips := []string{"10.0.0.1", "10.0.0.2", "10.0.0.3"}
-	for _, ip := range ips {
-		l.RecordAuthFail(ip)         // per-IP, as the gateway records it
-		l.RecordAuthFailUser(victim) // per-account, the new dimension
-	}
-
-	// No single IP crossed the per-IP threshold, so none is banned.
-	for _, ip := range ips {
-		if l.IsBanned(ip) {
-			t.Fatalf("IP %s should NOT be banned (only 1 failure)", ip)
+		const victim = "victim@example.com"
+		// Three failures, each from a DIFFERENT source IP (one failure per IP — well
+		// under the per-IP threshold), all against the same account.
+		ips := []string{"10.0.0.1", "10.0.0.2", "10.0.0.3"}
+		for _, ip := range ips {
+			l.RecordAuthFail(ip)         // per-IP, as the gateway records it
+			l.RecordAuthFailUser(victim) // per-account, the new dimension
 		}
-	}
-	// The account, having seen 3 failures across those IPs, IS banned.
-	if !l.IsUserBanned(victim) {
-		t.Fatal("account should be banned after 3 failures across rotating IPs")
-	}
 
-	// A fresh, never-seen IP attempting the banned account is still stopped by the
-	// per-account ban (the hard-stop the gateways consult before calling Login).
-	if l.IsBanned("10.0.0.99") {
-		t.Fatal("fresh IP should not be per-IP banned")
-	}
-	if !l.IsUserBanned(victim) {
-		t.Fatal("account ban must apply regardless of source IP")
-	}
+		// No single IP crossed the per-IP threshold, so none is banned.
+		for _, ip := range ips {
+			if l.IsBanned(ip) {
+				t.Fatalf("IP %s should NOT be banned (only 1 failure)", ip)
+			}
+		}
+		// The account, having seen 3 failures across those IPs, IS banned.
+		if !l.IsUserBanned(victim) {
+			t.Fatal("account should be banned after 3 failures across rotating IPs")
+		}
 
-	// The account ban expires like the per-IP one.
-	time.Sleep(1100 * time.Millisecond)
-	if l.IsUserBanned(victim) {
-		t.Fatal("account ban should have expired")
-	}
+		// A fresh, never-seen IP attempting the banned account is still stopped by the
+		// per-account ban (the hard-stop the gateways consult before calling Login).
+		if l.IsBanned("10.0.0.99") {
+			t.Fatal("fresh IP should not be per-IP banned")
+		}
+		if !l.IsUserBanned(victim) {
+			t.Fatal("account ban must apply regardless of source IP")
+		}
+
+		// The account ban expires like the per-IP one.
+		time.Sleep(1100 * time.Millisecond)
+		if l.IsUserBanned(victim) {
+			t.Fatal("account ban should have expired")
+		}
+	})
 }
 
 // TestAuthBanPerAccountCaseInsensitive verifies the account key is normalized so

@@ -16,6 +16,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/emersion/go-sasl"
@@ -81,23 +82,25 @@ func TestRecorderCountsTimeoutsFromAnyClientAddressAsOneKind(t *testing.T) {
 }
 
 func TestPacedOffersTheRateAndCountsSaturation(t *testing.T) {
-	r := newRecorder()
-	paced(context.Background(), 50, 200*time.Millisecond, 100, r, func(context.Context) error { return nil })
-	if res := r.result("x", 50, "msg/s", time.Second); res.OK != 10 || res.Errors != 0 {
-		t.Fatalf("ok=%d errors=%d, want 10 and 0", res.OK, res.Errors)
-	}
+	synctest.Test(t, func(t *testing.T) {
+		r := newRecorder()
+		paced(context.Background(), 50, 200*time.Millisecond, 100, r, func(context.Context) error { return nil })
+		if res := r.result("x", 50, "msg/s", time.Second); res.OK != 10 || res.Errors != 0 {
+			t.Fatalf("ok=%d errors=%d, want 10 and 0", res.OK, res.Errors)
+		}
 
-	// One slot, operations that outlast the interval: the rest are counted
-	// as saturation, never silently not sent.
-	r = newRecorder()
-	paced(context.Background(), 100, 100*time.Millisecond, 1, r, func(context.Context) error {
-		time.Sleep(150 * time.Millisecond)
-		return nil
+		// One slot, operations that outlast the interval: the rest are counted
+		// as saturation, never silently not sent.
+		r = newRecorder()
+		paced(context.Background(), 100, 100*time.Millisecond, 1, r, func(context.Context) error {
+			time.Sleep(150 * time.Millisecond)
+			return nil
+		})
+		res := r.result("x", 100, "msg/s", time.Second)
+		if res.Attempted != 10 || res.ErrorKinds[errSaturated.Error()] != 9 {
+			t.Fatalf("attempted=%d saturated=%d, want 10 and 9", res.Attempted, res.ErrorKinds[errSaturated.Error()])
+		}
 	})
-	res := r.result("x", 100, "msg/s", time.Second)
-	if res.Attempted != 10 || res.ErrorKinds[errSaturated.Error()] != 9 {
-		t.Fatalf("attempted=%d saturated=%d, want 10 and 9", res.Attempted, res.ErrorKinds[errSaturated.Error()])
-	}
 }
 
 func TestSMTPAgainstSink(t *testing.T) {
@@ -501,8 +504,7 @@ func TestSourcesAreWhatTheServerSees(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = l.Close() }()
-	var mu sync.Mutex
-	seen := map[string]int{}
+	accepted := make(chan string, 6)
 	go func() {
 		for {
 			c, err := l.Accept()
@@ -510,9 +512,7 @@ func TestSourcesAreWhatTheServerSees(t *testing.T) {
 				return
 			}
 			host, _, _ := net.SplitHostPort(c.RemoteAddr().String())
-			mu.Lock()
-			seen[host]++
-			mu.Unlock()
+			accepted <- host
 			_ = c.Close()
 		}
 	}()
@@ -527,18 +527,16 @@ func TestSourcesAreWhatTheServerSees(t *testing.T) {
 		}
 		_ = c.Close()
 	}
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		mu.Lock()
-		total := seen["127.0.1.1"] + seen["127.0.1.2"] + seen["127.0.1.3"]
-		mu.Unlock()
-		if total == 6 {
-			break
+	seen := map[string]int{}
+	deadline := time.After(5 * time.Second)
+	for range 6 {
+		select {
+		case host := <-accepted:
+			seen[host]++
+		case <-deadline:
+			t.Fatalf("seen = %v, want six accepted connections", seen)
 		}
-		time.Sleep(10 * time.Millisecond)
 	}
-	mu.Lock()
-	defer mu.Unlock()
 	for _, addr := range []string{"127.0.1.1", "127.0.1.2", "127.0.1.3"} {
 		if seen[addr] != 2 {
 			t.Fatalf("seen = %v, want each address twice", seen)

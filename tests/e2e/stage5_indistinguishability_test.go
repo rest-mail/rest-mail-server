@@ -220,7 +220,7 @@ func testStage5Indistinguishability(t *testing.T) {
 
 		// Wait for the message on alice's side
 		// Use IMAP to check raw headers
-		time.Sleep(5 * time.Second) // Give time for relay
+		waitForImapMessage(t, mail1IMAPAddr, "alice@mail1.test", adminPassword, subject, 60*time.Second)
 		ic := dialIMAP(t, mail1IMAPAddr)
 		defer ic.close()
 		ic.login(t, "alice@mail1.test", adminPassword)
