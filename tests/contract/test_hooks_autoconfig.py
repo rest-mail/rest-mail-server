@@ -25,7 +25,7 @@ class AutoconfigFixtureTests(unittest.TestCase):
 
         def before(pattern):
             def register(function):
-                self.registered[pattern] = function
+                self.registered.setdefault(pattern, []).append(function)
                 return function
             return register
 
@@ -111,7 +111,8 @@ class AutoconfigFixtureTests(unittest.TestCase):
                         "body": ""},
         }
         before = copy.deepcopy(transaction)
-        self.registered[operation](transaction)
+        for prepare in self.registered[operation]:
+            prepare(transaction)
         self.assertEqual(transaction, before)
 
     def discover(self, domain):
@@ -121,10 +122,15 @@ class AutoconfigFixtureTests(unittest.TestCase):
             "request": {"headers": {}, "body": ""},
         }
         before = copy.deepcopy(transaction)
-        self.registered["restmailDiscover"](transaction)
+        for prepare in self.registered["restmailDiscover"]:
+            prepare(transaction)
         self.assertEqual(transaction, before)
 
     def test_coverage_hosts_the_domain_restmail_discovery_generates(self):
+        self.assertEqual(
+            [prepare.__name__ for prepare in self.registered["restmailDiscover"]],
+            ["an_active_domain_for_discovery_coverage", "delivery_after_a_reset"],
+        )
         with patch.dict(os.environ, {"CONTRACT_COVERAGE": "1"}):
             self.discover("example.com")
         self.assertTrue(self.domains[1]["active"])
