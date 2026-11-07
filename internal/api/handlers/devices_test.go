@@ -27,6 +27,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/api/middleware"
 	"github.com/rest-mail/rest-mail-server/internal/audit"
 	"github.com/rest-mail/rest-mail-server/internal/auth"
+	"github.com/rest-mail/rest-mail-server/internal/bootstrap"
 	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/db/repositories"
@@ -132,6 +133,11 @@ func newPushEnv(t *testing.T) *pushEnv {
 	if err := rmdb.MigrateQuietNotifications(db); err != nil {
 		t.Fatalf("quiet notification outbox migrate failed: %v", err)
 	}
+	// Sign-in needs the built-in roles; seed them here instead of relying on an
+	// earlier test in the package having done it (#1385).
+	if err := bootstrap.EnsureRBAC(db); err != nil {
+		t.Fatalf("seed roles: %v", err)
+	}
 	tx := db.Begin()
 	t.Cleanup(func() { tx.Rollback() })
 
@@ -145,6 +151,7 @@ func newPushEnv(t *testing.T) *pushEnv {
 
 	auditor := middleware.NewAuditor(func(entry *models.AuditEntry) error { return audit.Append(tx, entry) }, nil, e.jwt)
 	h := NewDeviceHandler(tx, pushTestTopic)
+	h.SetWebPush(pushTestWebPushKey)
 	r := chi.NewRouter()
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.JWTMiddleware(e.jwt))
@@ -358,8 +365,9 @@ func TestDevicesRegisterListRemove(t *testing.T) {
 	}
 
 	platforms, ids := e.devices(t, s)
-	if len(platforms) != 1 || platforms[0] != "apns" || len(ids) != 0 {
-		t.Fatalf("GET before registering = platforms %v devices %v; want [apns] and none", platforms, ids)
+	// The test server has both APNs and Web Push configured.
+	if len(platforms) != 2 || platforms[0] != "apns" || platforms[1] != "webpush" || len(ids) != 0 {
+		t.Fatalf("GET before registering = platforms %v devices %v; want [apns webpush] and none", platforms, ids)
 	}
 
 	token := pushTestToken(1)
@@ -530,8 +538,8 @@ func TestDevicesEveryAccountIsOfferedPush(t *testing.T) {
 	e := newPushEnv(t)
 	admin := seedMailbox(t, e.tx, "push-admin")
 	s := e.signIn(t, admin)
-	if platforms, _ := e.devices(t, s); len(platforms) != 1 || platforms[0] != models.PushPlatformAPNs {
-		t.Fatalf("GET = platforms %v; want apns", platforms)
+	if platforms, _ := e.devices(t, s); len(platforms) != 2 || platforms[0] != models.PushPlatformAPNs || platforms[1] != models.PushPlatformWebPush {
+		t.Fatalf("GET = platforms %v; want apns and webpush", platforms)
 	}
 }
 
@@ -872,5 +880,96 @@ func TestPushDevicesGoWhenTheSessionEnds(t *testing.T) {
 	}
 	if ended != 4 {
 		t.Errorf("%d devices.remove entries for ended sessions, want 4 (logout, expired, revoked, mid-refresh)", ended)
+	}
+}
+
+// pushTestWebPushKey stands in for the VAPID public key the list hands out.
+const pushTestWebPushKey = "BP4z9KsN6nGRTbVYI_c7VJSPQTBtkgcy27mlmlMoZIIgDll6e3vCYLocInmYWAmS6TlzAC8wEqKK6PBru3jl7A8"
+
+// A browser's P-256 key and auth secret, from RFC 8291 Appendix A.
+const (
+	pushTestP256dh = "BCVxsr7N_eNgVRqvHtD0zTZsEc6-VV-JvLexhqUzORcxaOzi6-AYWXvTBHm4bjyPjs7Vd8pZGH6SRpkNtoIAiw4"
+	pushTestAuth   = "BTBZMqHH6r4Tts7J_aSIgg"
+)
+
+// TestDevicesWebPushRegistration: a browser registers its Web Push
+// subscription through the same route as a phone: the list offers webpush
+// with the VAPID key, the subscription is stored with its keys, and neither
+// the endpoint nor the keys ever come back.
+func TestDevicesWebPushRegistration(t *testing.T) {
+	e := newPushEnv(t)
+	s := e.signIn(t, seedMailbox(t, e.tx, "push-web"))
+
+	status, body := e.call(t, http.MethodGet, "/api/v1/devices", s.access, "")
+	if status != http.StatusOK || !strings.Contains(string(body), `"web_push_key":"`+pushTestWebPushKey+`"`) {
+		t.Fatalf("GET = %d %s; want the VAPID key", status, body)
+	}
+
+	endpoint := "https://push.example.com/send/abc123"
+	sub := fmt.Sprintf(`{"platform":"webpush","token":%q,"keys":{"p256dh":%q,"auth":%q}}`, endpoint, pushTestP256dh, pushTestAuth)
+	status, body = e.call(t, http.MethodPost, "/api/v1/devices", s.access, sub)
+	if status != http.StatusCreated || !strings.Contains(string(body), `"platform":"webpush"`) {
+		t.Fatalf("register = %d %s", status, body)
+	}
+	for _, secret := range []string{endpoint, pushTestP256dh, pushTestAuth} {
+		if strings.Contains(string(body), secret) {
+			t.Errorf("the response gives back %q", secret)
+		}
+	}
+	var stored models.PushDevice
+	if err := e.tx.Where("token = ?", endpoint).Take(&stored).Error; err != nil {
+		t.Fatal(err)
+	}
+	if stored.Platform != models.PushPlatformWebPush || stored.WebPushP256dh != pushTestP256dh || stored.WebPushAuth != pushTestAuth || stored.Environment != "" {
+		t.Fatalf("stored %+v", stored)
+	}
+	if status, _ := e.call(t, http.MethodPost, "/api/v1/devices", s.access, sub); status != http.StatusOK {
+		t.Errorf("registering the subscription again = %d, want 200", status)
+	}
+
+	for _, c := range []struct{ body, field string }{
+		{fmt.Sprintf(`{"platform":"webpush","token":"http://push.example.com/x","keys":{"p256dh":%q,"auth":%q}}`, pushTestP256dh, pushTestAuth), "token"},
+		{fmt.Sprintf(`{"platform":"webpush","token":"https://push.example.com/%s","keys":{"p256dh":%q,"auth":%q}}`, strings.Repeat("x", 1100), pushTestP256dh, pushTestAuth), "token"},
+		{`{"platform":"webpush","token":"https://push.example.com/x"}`, "keys.p256dh"},
+		{fmt.Sprintf(`{"platform":"webpush","token":"https://push.example.com/x","keys":{"p256dh":"BAAA","auth":%q}}`, pushTestAuth), "keys.p256dh"},
+		{fmt.Sprintf(`{"platform":"webpush","token":"https://push.example.com/x","keys":{"p256dh":%q,"auth":"c2hvcnQ"}}`, pushTestP256dh), "keys.auth"},
+		{fmt.Sprintf(`{"platform":"webpush","token":"https://push.example.com/x","environment":"production","keys":{"p256dh":%q,"auth":%q}}`, pushTestP256dh, pushTestAuth), "environment"},
+		{fmt.Sprintf(`{"platform":"apns","token":%q,"keys":{"p256dh":%q,"auth":%q}}`, pushTestToken(5), pushTestP256dh, pushTestAuth), "keys"},
+	} {
+		status, body := e.call(t, http.MethodPost, "/api/v1/devices", s.access, c.body)
+		var resp struct {
+			Error struct {
+				Details struct {
+					Fields map[string]string `json:"fields"`
+				} `json:"details"`
+			} `json:"error"`
+		}
+		_ = json.Unmarshal(body, &resp)
+		if status != http.StatusUnprocessableEntity || resp.Error.Details.Fields[c.field] == "" {
+			t.Errorf("POST %.120s = %d %s; want 422 on %s", c.body, status, body, c.field)
+		}
+	}
+}
+
+// TestDevicesWebPushOnlyWhenConfigured: a server with APNs alone refuses a
+// browser's subscription, and one with Web Push alone refuses a phone.
+func TestDevicesWebPushOnlyWhenConfigured(t *testing.T) {
+	apnsOnly := NewDeviceHandler(nil, pushTestTopic)
+	webOnly := NewDeviceHandler(nil, "")
+	webOnly.SetWebPush(pushTestWebPushKey)
+	claims := &auth.Claims{AccountID: 1}
+	claims.SessionID = "s"
+	for _, c := range []struct {
+		h    *DeviceHandler
+		body registerDeviceRequest
+	}{
+		{apnsOnly, registerDeviceRequest{Platform: models.PushPlatformWebPush, Token: "https://push.example.com/x", Keys: &webPushKeys{P256dh: pushTestP256dh, Auth: pushTestAuth}}},
+		{webOnly, registerDeviceRequest{Platform: models.PushPlatformAPNs, Token: pushTestToken(1)}},
+	} {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/devices", nil)
+		req = req.WithContext(context.WithValue(req.Context(), middleware.ClaimsKey, claims))
+		if _, err := c.h.register(req, c.body); err == nil {
+			t.Errorf("%s registered on a server without it", c.body.Platform)
+		}
 	}
 }

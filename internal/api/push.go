@@ -5,6 +5,7 @@ import (
 
 	"github.com/rest-mail/rest-mail-server/internal/api/handlers"
 	"github.com/rest-mail/rest-mail-server/internal/config"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/push"
 	"gorm.io/gorm"
 )
@@ -19,6 +20,13 @@ func apnsConfig(s config.APNsSettings) push.APNsConfig {
 // warns; but a key that is set and will not load would turn push off without
 // a word, so it is an error.
 func CheckPush(cfg *config.Config) error {
+	if w := cfg.WebPush(); w.Partial() {
+		slog.Warn("web push is off: set both RESTMAIL_WEBPUSH_VAPID_KEY_FILE and RESTMAIL_WEBPUSH_VAPID_SUBJECT to turn it on")
+	} else if w.Configured() {
+		if _, err := push.NewWebPush(webPushConfig(w)); err != nil {
+			return err
+		}
+	}
 	s := cfg.APNs()
 	if s.Partial() {
 		slog.Warn("push notifications are off: set all of RESTMAIL_APNS_KEY_FILE, RESTMAIL_APNS_KEY_ID and RESTMAIL_APNS_TEAM_ID to turn them on")
@@ -29,6 +37,11 @@ func CheckPush(cfg *config.Config) error {
 	}
 	_, err := push.NewAPNs(apnsConfig(s))
 	return err
+}
+
+// webPushConfig is the Web Push sender's configuration, from the server's.
+func webPushConfig(s config.WebPushSettings) push.WebPushConfig {
+	return push.WebPushConfig{KeyFile: s.KeyFile, Subject: s.Subject}
 }
 
 // pushService is push notifications (#363), when APNs is configured: the
@@ -44,23 +57,49 @@ type pushService struct {
 // worker's own queries would race it.
 var startPushDispatcher = func(dispatcher *push.Dispatcher) { dispatcher.Start() }
 
-// newPushService starts push when APNs is configured, and is nil otherwise:
-// then the devices routes do not exist, and answer 404.
+// newPushService starts push when APNs or Web Push is configured, and is nil
+// otherwise: then the devices routes do not exist, and answer 404.
 func newPushService(db *gorm.DB, cfg *config.Config) *pushService {
-	s := cfg.APNs()
-	if !s.Configured() {
+	senders := push.Senders{}
+	var topic string
+	var web *push.WebPush
+	if s := cfg.APNs(); s.Configured() {
+		sender, err := push.NewAPNs(apnsConfig(s))
+		if err != nil {
+			slog.Error("APNs push is off: the APNs key could not be loaded", "error", err)
+		} else {
+			senders[models.PushPlatformAPNs] = sender
+			topic = s.Topic
+			slog.Info("push notifications are on", "service", "apns", "topic", s.Topic)
+		}
+	}
+	if s := cfg.WebPush(); s.Configured() {
+		sender, err := push.NewWebPush(webPushConfig(s))
+		if err != nil {
+			slog.Error("web push is off: the VAPID key could not be loaded", "error", err)
+		} else {
+			senders[models.PushPlatformWebPush] = sender
+			web = sender
+			slog.Info("push notifications are on", "service", "webpush")
+		}
+	}
+	if len(senders) == 0 {
 		return nil
 	}
-	sender, err := push.NewAPNs(apnsConfig(s))
-	if err != nil {
-		slog.Error("push notifications are off: the APNs key could not be loaded", "error", err)
-		return nil
+	platforms := make([]string, 0, len(senders))
+	for _, p := range []string{models.PushPlatformAPNs, models.PushPlatformWebPush} {
+		if _, ok := senders[p]; ok {
+			platforms = append(platforms, p)
+		}
 	}
-	store := push.NewStore(db)
-	dispatcher := push.NewDispatcher(store, sender, push.DefaultCoalesceWindow)
+	store := push.NewStore(db, platforms...)
+	dispatcher := push.NewDispatcher(store, senders, push.DefaultCoalesceWindow)
 	startPushDispatcher(dispatcher)
-	slog.Info("push notifications are on", "service", "apns", "topic", s.Topic)
-	return &pushService{dispatcher: dispatcher, store: store, devices: handlers.NewDeviceHandler(db, s.Topic)}
+	devices := handlers.NewDeviceHandler(db, topic)
+	if web != nil {
+		devices.SetWebPush(web.PublicKey())
+	}
+	return &pushService{dispatcher: dispatcher, store: store, devices: devices}
 }
 
 // close stops the dispatcher. Safe on nil.

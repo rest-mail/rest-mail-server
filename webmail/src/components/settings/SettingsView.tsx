@@ -12,6 +12,7 @@ import { Separator } from '@/components/ui/separator';
 import { VacationView } from '@/components/settings/VacationView';
 import { TwoFactorView } from '@/components/settings/TwoFactorView';
 import { AppPasswordsView } from '@/components/settings/AppPasswordsView';
+import { WebPushToggle } from '@/components/settings/WebPushToggle';
 import { Settings, Bell, Users, LayoutPanelTop, MonitorCheck, Trash2, ShieldCheck, Palette, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -320,6 +321,7 @@ function NotificationsTab() {
             checked={newMailSound}
             onChange={v => update({ newMailSound: v })}
           />
+          <WebPushToggle />
         </CardContent>
       </Card>
     </div>

@@ -71,11 +71,19 @@ func (c APNsConfig) Configured() bool {
 
 // Notification is one push to one device.
 type Notification struct {
+	// Platform is the push service: models.PushPlatformAPNs or
+	// models.PushPlatformWebPush.
+	Platform string
 	// Token is the device's APNs token, lowercase hex.
 	Token string
 	// Environment is models.APNsProduction or models.APNsSandbox.
 	Environment string
 	Payload     []byte
+
+	// Web Push only: Token is the subscription's endpoint, and these are its
+	// keys, base64url.
+	P256dh string
+	Auth   string
 }
 
 // Result is how APNs answered a push: the HTTP status, and its reason when

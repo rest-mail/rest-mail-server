@@ -191,6 +191,11 @@ spec:
               mountPath: /etc/restmail/apns
               readOnly: true
             {{- end }}
+            {{- if .Values.api.push.webpush.enabled }}
+            - name: vapid-key
+              mountPath: /etc/restmail/vapid
+              readOnly: true
+            {{- end }}
           readinessProbe:
             httpGet:
               path: /api/health
@@ -241,6 +246,17 @@ spec:
             items:
               - key: {{ .secretKey }}
                 path: AuthKey.p8
+        {{- end }}
+        {{- end }}
+        {{- with .Values.api.push.webpush }}
+        {{- if .enabled }}
+        # The VAPID key, from a Secret the chart never makes.
+        - name: vapid-key
+          secret:
+            secretName: {{ .existingSecret }}
+            items:
+              - key: {{ .secretKey }}
+                path: vapid.pem
         {{- end }}
         {{- end }}
       {{- with .Values.nodeSelector }}

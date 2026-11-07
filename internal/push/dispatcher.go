@@ -2,6 +2,7 @@ package push
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"strconv"
 	"sync"
@@ -17,9 +18,21 @@ const DefaultCoalesceWindow = 5 * time.Second
 // sessions that have ended.
 const DefaultSweepInterval = time.Minute
 
-// Sender sends one push. *APNs is one.
+// Sender sends one push. *APNs, *WebPush and Senders are each one.
 type Sender interface {
 	Send(ctx context.Context, n Notification) (Result, error)
+}
+
+// Senders sends each push through the sender of its platform.
+type Senders map[string]Sender
+
+// Send sends n through the sender of n.Platform.
+func (s Senders) Send(ctx context.Context, n Notification) (Result, error) {
+	sender, ok := s[n.Platform]
+	if !ok {
+		return Result{}, fmt.Errorf("no sender for push platform %q", n.Platform)
+	}
+	return sender.Send(ctx, n)
 }
 
 // pushKey is what pushes are coalesced by: a device, and an account its
@@ -40,7 +53,7 @@ type pending struct {
 type deviceStore interface {
 	targets(mailboxID uint, now time.Time) ([]target, error)
 	unread(mailboxID uint) (int64, error)
-	RemoveGone(id uint, apnsReason string, now time.Time) error
+	RemoveGone(id uint, platform, reason string, now time.Time) error
 	Sweep(now time.Time) (int, error)
 }
 
@@ -290,21 +303,24 @@ func (d *Dispatcher) send(ctx context.Context, t target, unread int64, now time.
 
 func (d *Dispatcher) sendPayload(ctx context.Context, t target, payload []byte, now time.Time) {
 	res, err := d.sender.Send(ctx, Notification{
+		Platform:    t.Platform,
 		Token:       t.Token,
 		Environment: t.Environment,
 		Payload:     payload,
+		P256dh:      t.P256dh,
+		Auth:        t.Auth,
 	})
 	if err != nil {
-		slog.Warn("push: APNs not reached", "device_id", t.DeviceID, "error", err)
+		slog.Warn("push: push service not reached", "device_id", t.DeviceID, "platform", t.Platform, "error", err)
 		return
 	}
 	switch {
 	case res.Status == 200:
 	case res.Gone():
-		if err := d.store.RemoveGone(t.DeviceID, res.Reason, now); err != nil {
-			slog.Warn("push: failed to remove a device APNs refused", "device_id", t.DeviceID, "error", err)
+		if err := d.store.RemoveGone(t.DeviceID, t.Platform, res.Reason, now); err != nil {
+			slog.Warn("push: failed to remove a device its push service refused", "device_id", t.DeviceID, "error", err)
 		}
 	default:
-		slog.Warn("push: APNs refused a push", "device_id", t.DeviceID, "status", res.Status, "reason", res.Reason)
+		slog.Warn("push: push service refused a push", "device_id", t.DeviceID, "platform", t.Platform, "status", res.Status, "reason", res.Reason)
 	}
 }

@@ -286,6 +286,19 @@ api:
       # The app's bundle id. One key serves App Store, TestFlight and Xcode
       # builds alike.
       topic: com.antimatterstudios.restmail
+    # Web Push to the webmail in a browser (RFC 8030), with the same signal
+    # and nothing of the mail, encrypted to the browser (RFC 8291). Off by
+    # default. The VAPID private key (RFC 8292) comes from a Secret you make:
+    #   openssl ecparam -name prime256v1 -genkey -noout \
+    #     | openssl pkcs8 -topk8 -nocrypt -out vapid.pem
+    #   kubectl create secret generic restmail-vapid --from-file=vapid.pem
+    webpush:
+      enabled: false
+      existingSecret: ""
+      # The key in that Secret the PEM is under.
+      secretKey: vapid.pem
+      # Where push services may contact the operator: mailto: or https:.
+      subject: ""
   service:
     type: ClusterIP
     port: 8080

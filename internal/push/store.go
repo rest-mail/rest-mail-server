@@ -25,6 +25,9 @@ const (
 	// RemovedByAPNs: APNs said the token is gone (410 Unregistered,
 	// BadDeviceToken or DeviceTokenNotForTopic); the reason is APNs'.
 	RemovedByAPNs = "apns"
+	// RemovedByWebPush: the browser's push service said the subscription is
+	// gone (404 or 410, RFC 8030 §7.3).
+	RemovedByWebPush = "webpush"
 )
 
 // ActionDeviceRegister and ActionDeviceRemove are the audit actions of a
@@ -46,15 +49,28 @@ const sweepGrace = 2 * time.Minute
 // a mailbox goes to.
 type Store struct {
 	db *gorm.DB
+	// platforms are those the server sends to; new mail goes to their
+	// devices only. Empty means APNs alone.
+	platforms []string
 }
 
-// NewStore is the device store over db.
-func NewStore(db *gorm.DB) *Store { return &Store{db: db} }
+// NewStore is the device store over db, for pushes on platforms (APNs alone
+// when none are named).
+func NewStore(db *gorm.DB, platforms ...string) *Store {
+	return &Store{db: db, platforms: platforms}
+}
 
 // WithContext returns a request-scoped store. It leaves the shared store and
 // background push work unchanged; transactions inherit this context as well.
 func (s *Store) WithContext(ctx context.Context) *Store {
-	return &Store{db: s.db.WithContext(ctx)}
+	return &Store{db: s.db.WithContext(ctx), platforms: s.platforms}
+}
+
+func (s *Store) sendable() []string {
+	if len(s.platforms) == 0 {
+		return []string{models.PushPlatformAPNs}
+	}
+	return s.platforms
 }
 
 // DeviceID is a device's id as the API and the push payload give it: an
@@ -136,33 +152,36 @@ func (s *Store) Remove(sid string, id uint) (bool, error) {
 // is, among those its session lists.
 type target struct {
 	DeviceID    uint
+	Platform    string
 	Token       string
 	Environment string
+	P256dh      string
+	Auth        string
 	// Account is the mailbox's id in GET /api/v1/accounts: the mailbox's own,
 	// since an account is a mailbox.
 	Account uint
 }
 
-// targets is every APNs device of a live session that lists mailboxID, as
+// targets is every device of a live session, on a platform the server sends to, that lists mailboxID, as
 // GET /api/v1/accounts does: its own account, or one it holds an active mail
 // grant on at that account's own scope (it owns or has linked it).
 func (s *Store) targets(mailboxID uint, now time.Time) ([]target, error) {
 	var out []target
 	err := s.db.Raw(`
-SELECT d.id AS device_id, d.token, d.environment, d.mailbox_id AS account
+SELECT d.id AS device_id, d.platform, d.token, d.environment, d.web_push_p256dh AS p256dh, d.web_push_auth AS auth, d.mailbox_id AS account
 FROM push_devices d
-WHERE d.mailbox_id = @mailbox AND d.platform = @platform AND `+liveSession+`
+WHERE d.mailbox_id = @mailbox AND d.platform IN @platforms AND `+liveSession+`
 UNION
-SELECT d.id AS device_id, d.token, d.environment, m.id AS account
+SELECT d.id AS device_id, d.platform, d.token, d.environment, d.web_push_p256dh AS p256dh, d.web_push_auth AS auth, m.id AS account
 FROM push_devices d
 JOIN grants g ON g.holder_kind = @holder AND g.holder_id = d.mailbox_id AND g.mode = @active
 	AND (g.expires_at IS NULL OR g.expires_at > @now)
 JOIN role_capabilities rc ON rc.role_id = g.role_id
 JOIN capabilities c ON c.id = rc.capability_id AND c.name IN @mail
 JOIN mailboxes m ON m.id = @mailbox AND g.scope = 'mailbox:' || lower(m.address)
-WHERE d.mailbox_id <> @mailbox AND d.platform = @platform AND `+liveSession,
+WHERE d.mailbox_id <> @mailbox AND d.platform IN @platforms AND `+liveSession,
 		map[string]any{
-			"mailbox": mailboxID, "platform": models.PushPlatformAPNs, "now": now,
+			"mailbox": mailboxID, "platforms": s.sendable(), "now": now,
 			"holder": models.GrantHolderAccount, "active": models.GrantActive,
 			"mail": []string{models.CapMailRead, models.CapMailWrite, models.CapMailSend, "*"},
 		}).
@@ -211,7 +230,8 @@ func (s *Store) removeAudited(reason, apnsReason string, now time.Time, sql stri
 				},
 			}
 			if apnsReason != "" {
-				e.Target["apns_reason"] = apnsReason
+				// The push service's own reason: apns_reason or webpush_reason.
+				e.Target[reason+"_reason"] = apnsReason
 			}
 			if err := audit.Append(tx, e); err != nil {
 				return err
@@ -225,12 +245,17 @@ func (s *Store) removeAudited(reason, apnsReason string, now time.Time, sql stri
 	return len(gone), nil
 }
 
-// RemoveGone deletes a device APNs said is gone, with APNs' reason.
-func (s *Store) RemoveGone(id uint, apnsReason string, now time.Time) error {
-	if apnsReason == "" {
-		apnsReason = "Unregistered"
+// RemoveGone deletes a device its push service said is gone, with the
+// service's reason.
+func (s *Store) RemoveGone(id uint, platform, reason string, now time.Time) error {
+	if reason == "" {
+		reason = "Unregistered"
 	}
-	_, err := s.removeAudited(RemovedByAPNs, apnsReason, now,
+	by := RemovedByAPNs
+	if platform == models.PushPlatformWebPush {
+		by = RemovedByWebPush
+	}
+	_, err := s.removeAudited(by, reason, now,
 		`DELETE FROM push_devices WHERE id = @id RETURNING id, mailbox_id, platform`,
 		map[string]any{"id": id})
 	return err
