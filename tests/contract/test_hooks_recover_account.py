@@ -2,10 +2,11 @@
 request, never the fixture admin it names (#1162)."""
 
 import json
+import os
 import threading
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 from api_keys_live import totp
 from test_hooks_two_factor_admin import load_hooks
@@ -78,6 +79,15 @@ class RecoverAnAccountOfItsOwn(unittest.TestCase):
     def test_it_runs_after_the_auth_pacing(self):
         self.assertEqual(self.registered["recoverAccount"],
                          ["pace_auth_requests", "recover_an_account_of_its_own"])
+
+    def test_enrollment_and_recovery_share_the_pacing_policy(self):
+        for setting in ("false", "true"):
+            with self.subTest(setting=setting), patch.dict(
+                os.environ, {"RESTMAIL_CONTRACT_LIMITS_RAISED": setting}
+            ), patch.object(self.module.rate_limits.time, "sleep") as sleep:
+                self.send("200")
+                self.assertEqual(sleep.call_args_list,
+                                 [] if setting == "true" else [call(1.1)] * 4)
 
     def test_each_principals_recovery_is_of_an_account_made_and_enrolled_for_it(self):
         bodies = []

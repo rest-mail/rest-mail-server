@@ -3167,7 +3167,7 @@ def recover_an_account_of_its_own(transaction):
     })
     hooks.set_json(transaction, body)
     # Making the account spent the auth bucket pace_auth_requests waited for.
-    time.sleep(1.1)
+    rate_limits.pace(1.1)
 
 
 @hooks.before("checkMailboxAddress")
