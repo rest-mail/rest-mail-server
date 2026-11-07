@@ -15,6 +15,7 @@ import (
 	"github.com/rest-mail/go-mtasts/pkg/mtasts"
 	"github.com/rest-mail/rest-mail-server/internal/config"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/requestid"
 	"gorm.io/gorm"
 )
 
@@ -672,9 +673,14 @@ func TestHeartbeatStopWaitsForInFlightRefresh(t *testing.T) {
 		}
 		ticks := make(chan time.Time, 1)
 		w := &Worker{db: db}
-		stop := w.startHeartbeatWithTicks(context.Background(), item, ticks)
+		attemptContext, cancelAttempt := context.WithCancel(requestid.NewContext(context.Background(), "job.heartbeat-test"))
+		cancelAttempt()
+		stop := w.startHeartbeatWithTicks(attemptContext, item, ticks)
 		ticks <- time.Now()
 		refreshContext := <-updating
+		if got := requestid.FromContext(refreshContext); got != "job.heartbeat-test" {
+			t.Errorf("heartbeat lost its attempt's job ID: %q", got)
+		}
 		stopped := make(chan struct{})
 		go func() {
 			stop()
