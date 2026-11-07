@@ -128,3 +128,67 @@ func TestMessageRecipientsShowEachOutcome(t *testing.T) {
 		t.Fatalf("received message: %d %s", response.Code, response.Body)
 	}
 }
+
+// Every send queues every recipient (#1564). A queued recipient on this server is read
+// from its queue row, with no copy needed yet, and stays local; so does a Bcc recipient,
+// who is in no header. An address not hosted here stays remote.
+func TestMessageRecipientsReadAQueuedLocalRecipientFromItsRow(t *testing.T) {
+	database, err := connectTestDB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := rmdb.AutoMigrate(database); err != nil {
+		t.Fatal(err)
+	}
+	tx := database.Begin()
+	t.Cleanup(func() { tx.Rollback() })
+	fixture := seedAuthzFixture(t, tx)
+	seedReceiveFixture(t, tx, fixture.ownerMailbox, fixture.attackerMailbox)
+	owner, other := fixture.ownerMailbox, fixture.attackerMailbox
+
+	to, _ := json.Marshal([]string{other.Address, "out@remote.test"})
+	sent := models.Message{MailboxID: owner.ID, Folder: "Sent", MsgID: "<1564@idor.test>", Sender: owner.Address,
+		RecipientsTo: models.JSONB(to), Subject: "queued", ReceivedAt: time.Now()}
+	if err := tx.Create(&sent).Error; err != nil {
+		t.Fatal(err)
+	}
+	attempted := time.Now().Add(-time.Minute).UTC().Truncate(time.Second)
+	rows := []models.OutboundQueue{
+		{MessageID: &sent.ID, Sender: owner.Address, Recipient: other.Address, Domain: "idor.test", Status: "deferred", Attempts: 1,
+			LastAttempt: &attempted, LastError: "451 4.3.0 Try again later", LastErrorCode: 451, FailureCategory: models.FailureOtherTransient},
+		{MessageID: &sent.ID, Sender: owner.Address, Recipient: "out@remote.test", Domain: "remote.test", Status: "pending"},
+		{MessageID: &sent.ID, Sender: owner.Address, Recipient: owner.Address, Domain: "idor.test", Status: "delivered", Attempts: 1, LastAttempt: &attempted},
+	}
+	if err := tx.Create(&rows).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	response := httptest.NewRecorder()
+	messageRoutes(NewMessageHandler(tx, nil, nil, "", nil)).ServeHTTP(response,
+		authzRequest(http.MethodGet, fmt.Sprintf("/api/v1/messages/%d/recipients", sent.ID), owner.ID, nil, ""))
+	if response.Code != http.StatusOK {
+		t.Fatalf("%d %s", response.Code, response.Body)
+	}
+	var body struct {
+		Data MessageRecipients `json:"data"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]RecipientStatus{}
+	for _, r := range body.Data.Recipients {
+		got[r.Address] = r
+	}
+	if len(got) != 3 {
+		t.Fatalf("recipients: %+v", body.Data.Recipients)
+	}
+	if r := got[other.Address]; r.Delivery != "local" || r.State != "retrying" || r.Attempts != 1 || r.Reason != models.FailureOtherTransient.Description() {
+		t.Fatalf("queued local recipient: %+v", r)
+	}
+	if r := got["out@remote.test"]; r.Delivery != "remote" || r.State != "queued" || r.Attempts != 0 {
+		t.Fatalf("queued remote recipient: %+v", r)
+	}
+	if r := got[owner.Address]; r.Delivery != "local" || r.State != "delivered" || r.Attempts != 1 {
+		t.Fatalf("local Bcc recipient: %+v", r)
+	}
+}

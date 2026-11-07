@@ -29,6 +29,13 @@ const (
 	heartbeatWriteTimeout = 30 * time.Second
 )
 
+// SetSMTPAddress maps an MX host to the address to dial, in place of its port
+// 25. Tests only: it lets a test outside this package run the worker against a
+// real inbound port.
+func (w *Worker) SetSMTPAddress(addr func(host string) string) {
+	w.smtpAddr = addr
+}
+
 // smtpAddrOf is the address to dial for an MX host.
 func (w *Worker) smtpAddrOf(host string) string {
 	if w.smtpAddr != nil {

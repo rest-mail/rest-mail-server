@@ -47,7 +47,6 @@ type MessageHandler struct {
 	engine    *pipeline.Engine
 	masterKey string
 	recorder  traceRecorder
-	draftSend *draftSendEffects
 
 	// Send-path abuse limits (#184), configured from config in routes.go. A single
 	// compromised webmail credential must not be able to fan out unlimited bulk
@@ -209,7 +208,7 @@ func (h *MessageHandler) RegisterMessages(rs endpoint.Routes) {
 		Errors:      []int{http.StatusForbidden, http.StatusNotFound}, Security: reads}, h.verifyMessageSeal)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/messages/{id}/recipients",
 		OperationID: "listMessageRecipients", Summary: "What happened to a sent message, recipient by recipient", Tags: tags,
-		Description: "For a message this account sent: each recipient's state (queued, retrying, delivered, failed, or unknown when no delivery record was kept), the reason in a sentence derived from the failure category, the attempts made and when the last one was. A remote recipient is read from its outbound queue row; a local one from the copy the send put in that mailbox. The remote server's own reply is never returned, only the category's reason. A message this account did not send has no recipients. Uses the same mail:read authorization as reading the message; another account's message is 404.",
+		Description: "For a message this account sent: each recipient's state (queued, retrying, delivered, failed, or unknown when no delivery record was kept), the reason in a sentence derived from the failure category, the attempts made and when the last one was. A recipient is read from its outbound queue row, which every send makes, whether its mailbox is here or elsewhere; one with no row, from its copy in a mailbox on this server. The remote server's own reply is never returned, only the category's reason. A message this account did not send has no recipients. Uses the same mail:read authorization as reading the message; another account's message is 404.",
 		Errors:      []int{http.StatusForbidden, http.StatusNotFound}, Security: reads}, h.listMessageRecipients)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPatch, Path: "/api/v1/messages/{id}",
 		OperationID: "updateMessage", Summary: "Update message flags or move to a folder", Tags: tags,
@@ -1073,82 +1072,21 @@ func (h *MessageHandler) sendComposedMessage(r *http.Request, req sendMessageReq
 		h.recordTrace(r.Context(), buildTrace(*queuedTrace))
 	}
 
-	// Deliver to each recipient in to + cc + bcc
+	// Every recipient in to + cc + bcc goes on the outbound queue, one on this
+	// server as much as one elsewhere (#1564): the worker delivers it through the
+	// normal route, and the recipient's domain judges the signed message as it
+	// judges any other. The answer says the message was durably queued, not that
+	// it arrived: a later refusal becomes a bounce to the sender.
 	allRecipients := make([]string, 0, len(req.To)+len(req.Cc)+len(req.Bcc))
 	allRecipients = append(allRecipients, req.To...)
 	allRecipients = append(allRecipients, req.Cc...)
 	allRecipients = append(allRecipients, req.Bcc...)
 
-	// Where each recipient is decided before anything is sent: a lookup that
-	// failed says nothing about where the recipient is, and taking it for a
-	// remote one would queue a local recipient's copy for the internet.
-	type localRecipient struct {
-		address string
-		mailbox models.Mailbox
-	}
-	var locals []localRecipient
-	var remote []models.OutboundQueue
+	queued := queueRowsFor(allRecipients, sentMsg.ID, req.From, rawMessage, req.RequireTLS)
 	db := h.db.WithContext(r.Context())
-	for _, rcpt := range allRecipients {
-		var recipientMailbox models.Mailbox
-		err := repositories.FindActiveMailboxByAddress(db, rcpt, &recipientMailbox)
-		switch {
-		case err == nil:
-			locals = append(locals, localRecipient{address: rcpt, mailbox: recipientMailbox})
-		case errors.Is(err, gorm.ErrRecordNotFound), errors.Is(err, repositories.ErrMailboxUnavailable):
-			recipientDomain := rcpt
-			if idx := strings.LastIndex(rcpt, "@"); idx >= 0 {
-				recipientDomain = rcpt[idx+1:]
-			}
-			msgID := sentMsg.ID
-			remote = append(remote, models.OutboundQueue{
-				MessageID:  &msgID,
-				Sender:     req.From,
-				Recipient:  rcpt,
-				Domain:     recipientDomain,
-				RawMessage: rawMessage,
-				Status:     "pending",
-				RequireTLS: req.RequireTLS,
-			})
-		default:
-			slog.ErrorContext(r.Context(), "send: could not look up a recipient", "recipient", rcpt, "error", err)
-			return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to look up a recipient")
-		}
-	}
-
-	// Remote recipients are queued together, before any local delivery: a
-	// queue entry that was not stored must not be answered as sent, and the
-	// client's retry then delivers nothing locally twice.
-	if len(remote) > 0 {
-		if err := db.Transaction(func(tx *gorm.DB) error { return tx.Create(&remote).Error }); err != nil {
-			slog.ErrorContext(r.Context(), "send: could not queue the message for remote recipients", "error", err)
-			return zero, endpoint.Refuse(http.StatusServiceUnavailable, "deferred", "Try again later")
-		}
-	}
-
-	for _, local := range locals {
-		// Local delivery with full inbound pipeline
-		_, deliverErr := h.deliverToLocal(r.Context(), localDeliveryParams{
-			Mailbox:      local.mailbox,
-			Sender:       req.From,
-			SenderName:   senderMailbox.DisplayName,
-			RecipientsTo: toJSON,
-			RecipientsCc: ccJSON,
-			Subject:      req.Subject,
-			BodyText:     req.BodyText,
-			BodyHTML:     req.BodyHTML,
-			MessageID:    messageID,
-			InReplyTo:    req.InReplyTo,
-			References:   references,
-			RawMessage:   rawMessage,
-			RequireTLS:   req.RequireTLS,
-		})
-		if deliverErr != nil {
-			slog.WarnContext(r.Context(), "local delivery failed for recipient", "recipient", local.address, "error", deliverErr)
-			if h.draftSend != nil {
-				return zero, endpoint.Refuse(http.StatusServiceUnavailable, "deferred", "Try again later")
-			}
-		}
+	if err := db.Transaction(func(tx *gorm.DB) error { return tx.Create(&queued).Error }); err != nil {
+		slog.ErrorContext(r.Context(), "send: could not queue the message", "error", err)
+		return zero, endpoint.Refuse(http.StatusServiceUnavailable, "deferred", "Try again later")
 	}
 
 	// Publish SSE event for sent message
@@ -1174,6 +1112,25 @@ func (h *MessageHandler) sendComposedMessage(r *http.Request, req sendMessageReq
 	}
 
 	return endpoint.Status[any]{Code: http.StatusCreated, Value: messageOf(sentMsg)}, nil
+}
+
+// queueRowsFor is one pending outbound queue row per recipient of the sent
+// message messageID.
+func queueRowsFor(recipients []string, messageID uint, sender, raw string, requireTLS bool) []models.OutboundQueue {
+	rows := make([]models.OutboundQueue, 0, len(recipients))
+	for _, rcpt := range recipients {
+		id := messageID
+		rows = append(rows, models.OutboundQueue{
+			MessageID:  &id,
+			Sender:     sender,
+			Recipient:  rcpt,
+			Domain:     rmail.DomainFromAddress(rcpt),
+			RawMessage: raw,
+			Status:     "pending",
+			RequireTLS: requireTLS,
+		})
+	}
+	return rows
 }
 
 // deliverMessageBody is a message a protocol gateway delivers into a mailbox, named by
@@ -2043,7 +2000,7 @@ func (h *MessageHandler) sendDraftInTransaction(r *http.Request, in sendDraftReq
 	if err != nil {
 		return zero, err
 	}
-	// Removal, Sent, local deliveries and queue rows share the enclosing
+	// Removal, Sent and queue rows share the enclosing
 	// transaction. A failed removal must roll them all back before any worker
 	// can send the message, so the retained draft is safe to retry (#1265).
 	if err := removeSentDraft(r.Context(), h.db, &draft); err != nil {
@@ -2378,60 +2335,18 @@ func (h *MessageHandler) respondToCalendar(r *http.Request, in calendarReplyRequ
 		ReceivedAt:   now,
 	}
 
-	// Deliver to organizer if local, else queue for remote delivery. A lookup
-	// that failed says nothing about where the organizer is: it must not send
-	// a local organizer's reply out to the internet.
-	var recipientMailbox models.Mailbox
-	lookupErr := repositories.FindActiveMailboxByAddress(h.db, organizer, &recipientMailbox)
-	if lookupErr != nil && !errors.Is(lookupErr, gorm.ErrRecordNotFound) &&
-		!errors.Is(lookupErr, repositories.ErrMailboxUnavailable) {
-		return CalendarReplied{}, fmt.Errorf("find the organizer's mailbox: %w", lookupErr)
-	}
-
-	if lookupErr == nil {
-		if err := h.db.Create(&sentMsg).Error; err != nil {
-			return CalendarReplied{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to save calendar reply")
+	// The Sent copy and its queue entry commit together, so a reply is never
+	// shown as sent with nothing queued to send it. An organizer on this server
+	// gets it through the normal route too (#1564).
+	err = h.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&sentMsg).Error; err != nil {
+			return err
 		}
-		_, deliverErr := h.deliverToLocal(r.Context(), localDeliveryParams{
-			Mailbox:      recipientMailbox,
-			Sender:       req.From,
-			SenderName:   senderMailbox.DisplayName,
-			RecipientsTo: toJSON,
-			RecipientsCc: json.RawMessage("[]"),
-			Subject:      subject,
-			BodyText:     sentMsg.BodyText,
-			MessageID:    messageID,
-			InReplyTo:    inReplyTo,
-			References:   references,
-			RawMessage:   rawMessage,
-		})
-		if deliverErr != nil {
-			slog.WarnContext(r.Context(), "calendar reply local delivery failed", "recipient", organizer, "error", deliverErr)
-		}
-	} else {
-		// Remote delivery: the Sent copy and its queue entry commit together,
-		// so a reply is never shown as sent with nothing queued to send it.
-		recipientDomain := organizer
-		if idx := strings.LastIndex(organizer, "@"); idx >= 0 {
-			recipientDomain = organizer[idx+1:]
-		}
-		err := h.db.Transaction(func(tx *gorm.DB) error {
-			if err := tx.Create(&sentMsg).Error; err != nil {
-				return err
-			}
-			msgID := sentMsg.ID
-			return tx.Create(&models.OutboundQueue{
-				MessageID:  &msgID,
-				Sender:     req.From,
-				Recipient:  organizer,
-				Domain:     recipientDomain,
-				RawMessage: rawMessage,
-				Status:     "pending",
-			}).Error
-		})
-		if err != nil {
-			return CalendarReplied{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to save calendar reply")
-		}
+		queued := queueRowsFor([]string{organizer}, sentMsg.ID, req.From, rawMessage, false)
+		return tx.Create(&queued).Error
+	})
+	if err != nil {
+		return CalendarReplied{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to save calendar reply")
 	}
 
 	return CalendarReplied{Response: response, Status: "sent"}, nil
@@ -2469,7 +2384,7 @@ type localDeliveryParams struct {
 	IsDraft    *bool
 	ReceivedAt *time.Time
 	// Inbound transport-security (always-on, inbound-MX only). Nil ReceivedTLS =
-	// not an inbound-MX delivery (local send / IMAP APPEND / submission) →
+	// not an inbound-MX delivery (IMAP APPEND / submission) →
 	// persisted as NULL, never counted as a plaintext arrival.
 	ReceivedTLS *bool
 	TLSVersion  string
@@ -2483,15 +2398,13 @@ type localDeliveryParams struct {
 	// InCommit runs in the transaction that stores the message, so taking a queued message
 	// off its queue and storing it happen together or not at all.
 	InCommit func(tx *gorm.DB) error
-	// IndependentAttachments gives a forwarded local copy its own object lifetime.
-	IndependentAttachments bool
 	// ReceiveChecked says the caller has already found that the mailbox can receive.
 	ReceiveChecked bool
 }
 
 // receivedTLSFlag reports whether an inbound delivery arrived over TLS, for the
 // pipeline Envelope.TLS so filters/pipeline see transport. A nil ReceivedTLS
-// (non inbound-MX: IMAP APPEND / local webmail send, where transport is not
+// (non inbound-MX: IMAP APPEND, where transport is not
 // applicable) is treated as false.
 func receivedTLSFlag(receivedTLS *bool) bool {
 	return receivedTLS != nil && *receivedTLS
@@ -2499,8 +2412,8 @@ func receivedTLSFlag(receivedTLS *bool) bool {
 
 // recordInboundReceived counts one inbound-MX arrival on messages_received,
 // labelled by transport (tls when ReceivedTLS is true, plaintext when false).
-// A nil ReceivedTLS marks a non inbound-MX delivery (IMAP APPEND, local webmail
-// send) which is NOT counted — this metric measures mail received from the
+// A nil ReceivedTLS marks a non inbound-MX delivery (IMAP APPEND)
+// which is NOT counted — this metric measures mail received from the
 // internet. The transport label is strictly bounded to tls|plaintext.
 func recordInboundReceived(receivedTLS *bool) {
 	if receivedTLS == nil {
@@ -2514,8 +2427,9 @@ func recordInboundReceived(receivedTLS *bool) {
 }
 
 // deliverToLocal runs the inbound pipeline and delivers a message to a local mailbox.
-// This is the shared logic used by both DeliverMessage (gateway inbound) and
-// SendMessage (local recipient delivery).
+// DeliverMessage, the gateways' inbound route, is what reaches it; a send never
+// does, because its message comes back in through that route from the outbound
+// queue (#1564).
 func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliveryParams) (stored *models.Message, deliverErr error) {
 	// The local delivery's span (#1580): the pipeline run is its child. It
 	// holds the mailbox's and the stored message's ids, never an address.
@@ -2878,13 +2792,6 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 	// would permanently hide them from the recipient.
 	var attachmentRows []models.Attachment
 	var totalAttBytes int64
-	if params.IndependentAttachments && emailJSON != nil {
-		var err error
-		emailJSON, err = h.copyLocalForwardParts(ctx, emailJSON)
-		if err != nil {
-			return nil, err
-		}
-	}
 	if emailJSON != nil {
 		for _, group := range [][]pipeline.Attachment{emailJSON.Attachments, emailJSON.Inline} {
 			for _, att := range group {
