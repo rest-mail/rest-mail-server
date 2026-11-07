@@ -134,6 +134,11 @@ func (s *Session) handleCreate(tag, args string) {
 		return
 	}
 
+	if creator, ok := s.mailbox.(imap.FolderCreator); ok {
+		s.createFolder(tag, creator, folder)
+		return
+	}
+
 	// Folders are implicit — they exist once a message is moved into them.
 	// CREATE just validates and acknowledges.
 	s.tagged(tag, "OK", "CREATE completed")

@@ -284,6 +284,10 @@ type RightsMailbox interface {
 	MailboxRights(folder string) (Rights, error)
 }
 
+type FolderCreator interface {
+	CreateFolder(name string) error
+}
+
 // UTF8Mailbox is the optional interface a [Mailbox] may also implement to
 // support internationalized email in IMAP ([RFC 6855] UTF8=ACCEPT). When the
 // authenticated Mailbox satisfies it, the server advertises UTF8=ACCEPT and

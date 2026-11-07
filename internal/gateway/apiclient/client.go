@@ -356,6 +356,10 @@ func (c *Client) ListFolders(token string, accountID uint) (*FolderListResponse,
 	return &resp, nil
 }
 
+func (c *Client) CreateFolder(token string, accountID uint, name string) error {
+	return c.postAuth(fmt.Sprintf("/api/v1/accounts/%d/folders", accountID), token, map[string]string{"name": name}, nil)
+}
+
 // FolderName is one name on an account's subscription list.
 type FolderName struct {
 	Name string `json:"name"`
