@@ -357,9 +357,10 @@ class Selection(unittest.TestCase):
 
     def test_it_selects_every_account_link_operation_and_its_links(self):
         description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
+        # Main's 550f750b0 (#1780) also links the account read, moved separately.
         self.assertEqual(
             link_followers(description, "linkAccount") | {"linkAccount"},
-            set(ACCOUNT_LINKS),
+            set(ACCOUNT_LINKS) | {"getAccount"},
         )
         for start in description_operations(description):
             if start not in ACCOUNT_LINKS:
