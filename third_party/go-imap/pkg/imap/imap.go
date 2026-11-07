@@ -310,6 +310,34 @@ type DeletedMailbox interface {
 	DeletedUIDs(folder string) ([]uint32, error)
 }
 
+// KeywordMailbox is the optional interface a [Mailbox] may also implement to
+// say that the store keeps keywords (RFC 3501 §2.3.2 flag-keywords such as
+// $Forwarded, $Junk or a client's own tags): [Mailbox.Store] writes
+// [FlagUpdate.Keywords] when [FlagUpdate.KeywordsSet] is true, [Mailbox.Append]
+// keeps [FlagUpdate.Keywords], and [Mailbox.Messages] reports them back in
+// [Message.Keywords]. With it:
+//
+//   - SELECT's PERMANENTFLAGS ends with \* (RFC 3501 §7.1), so a client may
+//     create keywords, and lists every keyword the folder's messages carry;
+//   - STORE ±FLAGS and FLAGS change keywords, APPEND keeps them, and FETCH
+//     FLAGS and SEARCH KEYWORD/UNKEYWORD use the stored set;
+//   - a message carries at most [MaxKeywords] keywords, each an RFC 3501 atom
+//     of 1 to [MaxKeywordLength] bytes, and a STORE or APPEND over the cap is
+//     answered NO [LIMIT] (RFC 5530 §3).
+//
+// Without it the store does not keep keywords: PERMANENTFLAGS has no \*, a
+// keyword in STORE is ignored (RFC 3501 §6.4.6 lets the server ignore a flag it
+// cannot keep) and APPEND drops keywords.
+type KeywordMailbox interface {
+	// KeywordLimit is the most distinct keywords the store keeps in one
+	// folder, or 0 for no limit of its own. Once the selected folder's messages
+	// carry that many, PERMANENTFLAGS lists them without \* (RFC 9051 §7.1)
+	// and a STORE, or an APPEND to the selected folder, that would add a new
+	// one is answered NO [LIMIT]. The store refuses an APPEND to another folder
+	// over its limit itself.
+	KeywordLimit() int
+}
+
 // FolderMailbox is the optional interface a [Mailbox] may also implement to
 // create, delete and rename folders itself, so a folder exists apart from the
 // messages in it. Every name is a store name, as [Folder.Name] holds it, with
