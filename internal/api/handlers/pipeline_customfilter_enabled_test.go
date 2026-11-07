@@ -5,65 +5,25 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 	"time"
 
-	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/pipeline/filters"
 	"gorm.io/gorm"
 )
 
-// Never use the shared test pool: even migrations and fixtures belong only in
-// a fresh scratch database, whose identity is checked before any writes.
-func openCustomFilterCreateScratchDB(t *testing.T) *gorm.DB {
+// customFilterTables are the tables every custom filter scratch database starts with.
+var customFilterTables = scratchStep{"custom-filter-tables", func(db *gorm.DB) error {
+	return db.AutoMigrate(&models.Domain{}, &models.CustomFilter{})
+}}
+
+// openCustomFilterCreateScratchDB is a scratch database with the domain and custom
+// filter tables, then setup.
+func openCustomFilterCreateScratchDB(t *testing.T, setup ...any) *gorm.DB {
 	t.Helper()
-	cfg := testDBConfig()
-	cfg.DBName = "postgres"
-	admin, err := rmdb.Connect(cfg)
-	if err != nil {
-		t.Skipf("custom filter create DB test: admin database unavailable: %v", err)
-	}
-	adminSQL, err := admin.DB()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = adminSQL.Close() })
-	var current string
-	if err := admin.Raw("SELECT current_database()").Scan(&current).Error; err != nil || current != "postgres" {
-		t.Fatalf("admin database identity = %q, err = %v", current, err)
-	}
-	name := fmt.Sprintf("restmail_customfiltercreate_%d_%d", os.Getpid(), time.Now().UnixNano())
-	if err := admin.Exec("CREATE DATABASE " + name).Error; err != nil {
-		t.Fatalf("create isolated scratch database: %v", err)
-	}
-	t.Cleanup(func() {
-		if err := admin.Exec("DROP DATABASE " + name).Error; err != nil {
-			t.Errorf("drop scratch database: %v", err)
-		} else {
-			t.Logf("dropped isolated scratch database %s", name)
-		}
-	})
-	cfg.DBName = name
-	scratch, err := rmdb.Connect(cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	scratchSQL, err := scratch.DB()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = scratchSQL.Close() })
-	if err := scratch.Raw("SELECT current_database()").Scan(&current).Error; err != nil || current != name {
-		t.Fatalf("scratch database identity = %q, want %q, err = %v", current, name, err)
-	}
-	t.Logf("verified isolated scratch database %s before migrations/writes", current)
-	if err := migrateModels(scratch, &models.Domain{}, &models.CustomFilter{}); err != nil {
-		t.Fatal(err)
-	}
-	return scratch
+	return openScratchDB(t, "customfiltercreate", append([]any{customFilterTables}, setup...))
 }
 
 func TestCustomFilterCreate_EnabledPersistence(t *testing.T) {

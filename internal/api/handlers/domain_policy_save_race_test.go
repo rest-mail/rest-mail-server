@@ -95,7 +95,7 @@ func policyRaceDB(t *testing.T, table string) *gorm.DB {
 		&models.Pipeline{}, &models.CustomFilter{}, &models.DomainSenderRule{}, &models.Certificate{}, &models.DKIMRotationKey{}, &models.MTASTSPolicy{}, &models.DomainRelay{}, &models.Suppression{}); err != nil {
 		t.Fatal(err)
 	}
-	if err := rmdb.MigrateAuditLog(db); err != nil {
+	if err := migrateAuditLog(db); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Callback().Query().After("gorm:query").Register("policy_race_read", func(q *gorm.DB) {

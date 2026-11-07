@@ -3,8 +3,6 @@ package handlers
 import (
 	"testing"
 
-	"github.com/rest-mail/rest-mail-server/internal/bootstrap"
-	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"gorm.io/gorm"
 )
@@ -18,10 +16,10 @@ func seedSenderWithOwnData(t *testing.T, db *gorm.DB, domain, local string) mode
 	if err := migrateModels(db, accountModels...); err != nil {
 		t.Skipf("send test skipped: migrate failed (%v)", err)
 	}
-	if err := rmdb.MigrateAuditLog(db); err != nil {
+	if err := migrateAuditLog(db); err != nil {
 		t.Skipf("send test skipped: audit log migrate failed (%v)", err)
 	}
-	if err := bootstrap.EnsureRBAC(db); err != nil {
+	if err := ensureRBAC(db); err != nil {
 		t.Fatalf("seed the roles: %v", err)
 	}
 	mb := seedSendingMailbox(t, db, domain, local)

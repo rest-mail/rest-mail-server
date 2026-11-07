@@ -25,10 +25,7 @@ func ensureDefaultServerCeiling(t *testing.T, db *gorm.DB) {
 }
 
 func TestClearTestDataPreservesServerCeiling(t *testing.T) {
-	db := openAliasUpdateScratchDB(t)
-	if err := migrateModels(db, &models.Role{}, &models.Grant{}); err != nil {
-		t.Fatal(err)
-	}
+	db := openAliasUpdateScratchDB(t, &models.Role{}, &models.Grant{})
 	role := models.Role{Name: models.RoleServer, SystemRole: true}
 	if err := db.Create(&role).Error; err != nil {
 		t.Fatal(err)

@@ -19,10 +19,7 @@ import (
 func TestMailboxRemovalPersistenceAndRollback(t *testing.T) {
 	for _, scenario := range []string{"success", "delete_failure", "audit_failure", "cancelled", "last_superadmin", "without_two_factor"} {
 		t.Run(scenario, func(t *testing.T) {
-			db := openCustomFilterCreateScratchDB(t)
-			if err := migrateModels(db, &models.Mailbox{}, &models.Credential{}, &models.RefreshToken{}, &models.Role{}, &models.Capability{}, &models.RoleCapability{}, &models.Grant{}, &models.GrantActivation{}, &models.AuditEntry{}); err != nil {
-				t.Fatal(err)
-			}
+			db := openCustomFilterCreateScratchDB(t, &models.Mailbox{}, &models.Credential{}, &models.RefreshToken{}, &models.Role{}, &models.Capability{}, &models.RoleCapability{}, &models.Grant{}, &models.GrantActivation{}, &models.AuditEntry{})
 			create := func(v interface{}) {
 				t.Helper()
 				if err := db.Create(v).Error; err != nil {

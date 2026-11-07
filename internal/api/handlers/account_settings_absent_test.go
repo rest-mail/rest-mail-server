@@ -4,8 +4,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-
-	"github.com/rest-mail/rest-mail-server/internal/bootstrap"
 )
 
 func TestAccountSettingsAbsentLifecycle(t *testing.T) {
@@ -18,7 +16,7 @@ func TestAccountSettingsAbsentLifecycle(t *testing.T) {
 		t.Fatal(transaction.Error)
 	}
 	t.Cleanup(func() { transaction.Rollback() })
-	if err := bootstrap.EnsureRBAC(transaction); err != nil {
+	if err := ensureRBAC(transaction); err != nil {
 		t.Fatal(err)
 	}
 	fixture := seedAuthzFixture(t, transaction)

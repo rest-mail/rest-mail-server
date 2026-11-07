@@ -16,10 +16,7 @@ import (
 // This regression uses only a verified fresh scratch database. Without local
 // PostgreSQL it skips rather than writing to the shared test database.
 func TestTLSIngestionPersistence(t *testing.T) {
-	db := openAliasUpdateScratchDB(t)
-	if err := migrateModels(db, &models.TLSReport{}); err != nil {
-		t.Fatal(err)
-	}
+	db := openAliasUpdateScratchDB(t, &models.TLSReport{})
 	for _, name := range []string{"restmail.test", "example.com"} {
 		if err := db.Create(&models.Domain{Name: name, Active: true}).Error; err != nil {
 			t.Fatal(err)

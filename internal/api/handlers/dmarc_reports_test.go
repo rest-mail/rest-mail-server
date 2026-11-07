@@ -47,10 +47,7 @@ func (f dmarcFixtureAuth) Execute(ctx context.Context, _ *pipeline.EmailJSON) (*
 }
 
 func TestDMARCReportsMailDelivery(t *testing.T) {
-	db := openAliasUpdateScratchDB(t)
-	if err := migrateModels(db, append(accountModels, &models.Message{}, &models.Attachment{}, &models.Pipeline{}, &models.SieveScript{}, &models.DMARCReportReceived{})...); err != nil {
-		t.Fatal(err)
-	}
+	db := openAliasUpdateScratchDB(t, append(accountModels, &models.Message{}, &models.Attachment{}, &models.Pipeline{}, &models.SieveScript{}, &models.DMARCReportReceived{})...)
 	domain := models.Domain{Name: "hosted.test", Active: true}
 	if err := db.Create(&domain).Error; err != nil {
 		t.Fatal(err)
@@ -181,10 +178,7 @@ func TestDMARCReportRoutes(t *testing.T) {
 			t.Fatalf("%s: %d %s", path, rr.Code, rr.Body)
 		}
 	}
-	db := openAliasUpdateScratchDB(t)
-	if err := migrateModels(db, &models.DMARCReportReceived{}); err != nil {
-		t.Fatal(err)
-	}
+	db := openAliasUpdateScratchDB(t, &models.DMARCReportReceived{})
 	domains := []models.Domain{{Name: "one.test"}, {Name: "two.test"}}
 	if err := db.Create(&domains).Error; err != nil {
 		t.Fatal(err)

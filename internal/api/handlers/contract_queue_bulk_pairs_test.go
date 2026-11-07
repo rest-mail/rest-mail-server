@@ -11,7 +11,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/rest-mail/rest-mail-server"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	yaml "go.yaml.in/yaml/v2"
 )
@@ -32,17 +31,11 @@ var bulkQueuePairs = []struct {
 // readBulkPostSpec is the POST on path as the spec the API serves documents it.
 func readBulkPostSpec(t *testing.T, path string) bulkDeleteSpec {
 	t.Helper()
-	served, err := restmail.OpenAPI.ReadFile("openapi.yaml")
+	paths, err := specPaths()
 	if err != nil {
 		t.Fatalf("read the spec: %v", err)
 	}
-	var doc struct {
-		Paths map[string]map[string]interface{} `yaml:"paths"`
-	}
-	if err := yaml.Unmarshal(served, &doc); err != nil {
-		t.Fatalf("parse: %v", err)
-	}
-	raw := doc.Paths[path]["post"]
+	raw := paths[path]["post"]
 	if raw == nil {
 		t.Fatalf("the spec has no POST %s", path)
 	}

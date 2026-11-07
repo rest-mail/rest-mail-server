@@ -14,7 +14,6 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/api/middleware"
 	"github.com/rest-mail/rest-mail-server/internal/auth"
 	"github.com/rest-mail/rest-mail-server/internal/bootstrap"
-	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"gorm.io/gorm"
 )
@@ -53,7 +52,7 @@ func newFirstSignIn(t *testing.T) *firstSignIn {
 		t.Skipf("first sign-in DB test skipped: migrate failed (%v)", err)
 	}
 	// The bootstrap admin's grants are recorded in the audit log.
-	if err := rmdb.MigrateAuditLog(base); err != nil {
+	if err := migrateAuditLog(base); err != nil {
 		t.Skipf("first sign-in DB test skipped: audit log migrate failed (%v)", err)
 	}
 	gdb := base.Begin()
@@ -68,7 +67,7 @@ func newFirstSignIn(t *testing.T) *firstSignIn {
 		t.Fatalf("empty RBAC tables: %v", err)
 	}
 
-	if err := bootstrap.EnsureRBAC(gdb); err != nil {
+	if err := ensureRBAC(gdb); err != nil {
 		t.Fatal(err)
 	}
 	name := "admin@boot-" + strconv.FormatInt(time.Now().UnixNano(), 36) + ".test"

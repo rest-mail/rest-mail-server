@@ -25,6 +25,7 @@ func TestMain(m *testing.M) {
 		return minCostHashPassword(auth.NormalizeRecoveryCode(code))
 	}
 	code := m.Run()
+	dropScratchTemplates()
 	closeTestDB()
 	os.Exit(code)
 }
@@ -47,6 +48,8 @@ var (
 	testDBOnce sync.Once
 	testDB     *gorm.DB
 	testDBErr  error
+	// testDBSchema is the database and schema connectTestDB migrated.
+	testDBSchema string
 )
 
 // testDBConfig is the unit-test Postgres (CI sets DB_*; the defaults match a
@@ -78,32 +81,50 @@ func connectTestDB() (*gorm.DB, error) {
 		if testDBErr = rmdb.AutoMigrate(testDB); testDBErr != nil {
 			return
 		}
-		testDBErr = bootstrap.EnsureRBAC(testDB)
+		if testDBErr = bootstrap.EnsureRBAC(testDB); testDBErr != nil {
+			return
+		}
+		testDBSchema, testDBErr = schemaOf(testDB)
 	})
 	return testDB, testDBErr
 }
 
-// onSharedPool says whether db is the shared pool, not a transaction on it or a pool
-// of a test's own, which has its own schema.
-func onSharedPool(db *gorm.DB) bool {
-	return testDB != nil && db.Statement.ConnPool == testDB.ConnPool
+// schemaOf names the database and schema db is working in.
+func schemaOf(db *gorm.DB) (string, error) {
+	var schema string
+	err := db.Raw("SELECT current_database() || '.' || COALESCE(current_schema(), '')").Scan(&schema).Error
+	return schema, err
+}
+
+// onSharedSchema says whether db works in the schema connectTestDB migrated: the
+// shared pool, a transaction on it, or a pool of a test's own on the same database
+// and search path. A scratch database or a per-test schema has its own tables.
+func onSharedSchema(db *gorm.DB) bool {
+	if testDB == nil {
+		return false
+	}
+	if db.Statement.ConnPool == testDB.ConnPool {
+		return true
+	}
+	schema, err := schemaOf(db)
+	return err == nil && schema == testDBSchema
 }
 
 // migrateSchema is rmdb.AutoMigrate, which connectTestDB has already run on the
-// shared pool. No test takes anything out of the schema there, and running it again
+// shared schema. No test takes anything out of that schema, and running it again
 // took thousands of catalogue queries (one per column of every table).
 func migrateSchema(db *gorm.DB) error {
-	if onSharedPool(db) {
+	if onSharedSchema(db) {
 		return nil
 	}
 	return rmdb.AutoMigrate(db)
 }
 
-// migrateModels is db.AutoMigrate for what a test needs. On the shared pool it only
+// migrateModels is db.AutoMigrate for what a test needs. On the shared schema it only
 // migrates a model whose table is missing, since connectTestDB migrated every model
 // the server has and a test-only one need only be made once.
 func migrateModels(db *gorm.DB, models ...any) error {
-	if !onSharedPool(db) {
+	if !onSharedSchema(db) {
 		return db.AutoMigrate(models...)
 	}
 	var missing []any
@@ -116,6 +137,57 @@ func migrateModels(db *gorm.DB, models ...any) error {
 		return nil
 	}
 	return db.AutoMigrate(missing...)
+}
+
+// migrateAuditLog is rmdb.MigrateAuditLog, part of what connectTestDB ran. On the
+// shared schema it would only lock the table to replace its triggers with the same ones.
+func migrateAuditLog(db *gorm.DB) error {
+	if onSharedSchema(db) {
+		return nil
+	}
+	return rmdb.MigrateAuditLog(db)
+}
+
+// seededRBAC holds what the role tables read just after bootstrap.EnsureRBAC ran on the
+// shared schema. Running it again from one of those states changes nothing, since rows
+// that exist are left as they are, so it need not run. A test that removed or changed a
+// role, capability or link leaves a state not listed here, and it runs for real.
+var (
+	seededRBACMu sync.Mutex
+	seededRBAC   = map[string]bool{}
+)
+
+// rbacStateSQL reads every row of the tables EnsureRBAC reads and seeds.
+const rbacStateSQL = `SELECT md5(
+	COALESCE((SELECT string_agg(c::text, ',' ORDER BY c.id) FROM capabilities c), '') || '|' ||
+	COALESCE((SELECT string_agg(r::text, ',' ORDER BY r.id) FROM roles r), '') || '|' ||
+	COALESCE((SELECT string_agg(l::text, ',' ORDER BY l.role_id, l.capability_id) FROM role_capabilities l), '') || '|' ||
+	COALESCE((SELECT string_agg(c.id::text || ':' || c.scope::text, ',' ORDER BY c.id)
+		FROM credentials c WHERE c.scope::text ~ '"mailboxes:(read|write|delete)"'), ''))`
+
+// ensureRBAC is bootstrap.EnsureRBAC, without its few hundred statements where they
+// would change nothing.
+func ensureRBAC(db *gorm.DB) error {
+	if !onSharedSchema(db) {
+		return bootstrap.EnsureRBAC(db)
+	}
+	var state string
+	if err := db.Raw(rbacStateSQL).Scan(&state).Error; err != nil {
+		return bootstrap.EnsureRBAC(db)
+	}
+	seededRBACMu.Lock()
+	defer seededRBACMu.Unlock()
+	if seededRBAC[state] {
+		return nil
+	}
+	if err := bootstrap.EnsureRBAC(db); err != nil {
+		return err
+	}
+	if err := db.Raw(rbacStateSQL).Scan(&state).Error; err != nil {
+		return err
+	}
+	seededRBAC[state] = true
+	return nil
 }
 
 // accountModels are the tables an account lives in: its mailbox, its

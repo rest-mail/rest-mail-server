@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	"github.com/rest-mail/rest-mail-server/internal/api/middleware"
-	"github.com/rest-mail/rest-mail-server/internal/bootstrap"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/pipeline/filters"
 	"gorm.io/gorm"
@@ -19,13 +18,7 @@ import (
 
 func quarantineReleaseFixture(t *testing.T) (*gorm.DB, models.Mailbox, models.Quarantine) {
 	t.Helper()
-	db := openCustomFilterCreateScratchDB(t)
-	if err := migrateModels(db, append(accountModels, &models.Message{}, &models.Quarantine{})...); err != nil {
-		t.Fatal(err)
-	}
-	if err := bootstrap.EnsureRBAC(db); err != nil {
-		t.Fatal(err)
-	}
+	db := openCustomFilterCreateScratchDB(t, append(accountModels, &models.Message{}, &models.Quarantine{}, withRoles)...)
 	ensureDefaultServerCeiling(t, db)
 	domain := models.Domain{Name: "quarantine-release.test"}
 	if err := db.Create(&domain).Error; err != nil {

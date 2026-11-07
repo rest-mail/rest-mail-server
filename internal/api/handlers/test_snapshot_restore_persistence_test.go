@@ -14,10 +14,7 @@ import (
 )
 
 func TestSnapshotRestorePersistence(t *testing.T) {
-	db := openAliasUpdateScratchDB(t)
-	if err := migrateModels(db, &models.Mailbox{}, &models.Credential{}, &models.QuotaUsage{}, &models.Role{}, &models.Grant{}, &models.Message{}, &models.OutboundQueue{}, &models.Pipeline{}, &models.Ban{}); err != nil {
-		t.Fatal(err)
-	}
+	db := openAliasUpdateScratchDB(t, &models.Mailbox{}, &models.Credential{}, &models.QuotaUsage{}, &models.Role{}, &models.Grant{}, &models.Message{}, &models.OutboundQueue{}, &models.Pipeline{}, &models.Ban{})
 	seedReceiveFixture(t, db)
 	domain := models.Domain{Name: "admin.test", Active: true}
 	if err := db.Create(&domain).Error; err != nil {

@@ -16,7 +16,6 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/rest-mail/rest-mail-server/internal/api/middleware"
 	"github.com/rest-mail/rest-mail-server/internal/auth"
-	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/db/repositories"
 	"github.com/rest-mail/rest-mail-server/internal/grants"
@@ -323,7 +322,7 @@ func TestMailboxDeleteRevokesSessions(t *testing.T) {
 // superadmin, signed in with 2FA, to make the changes as.
 func grantingTx(t *testing.T, db *gorm.DB) (*gorm.DB, *auth.Claims) {
 	t.Helper()
-	if err := rmdb.MigrateAuditLog(db); err != nil {
+	if err := migrateAuditLog(db); err != nil {
 		t.Skipf("grant change DB test skipped: audit log migrate failed (%v)", err)
 	}
 	tx := db.Begin()
@@ -396,7 +395,7 @@ func TestAdminDeleteRevokesSessions(t *testing.T) {
 // its epoch, and leaves it the one new password.
 func TestAccountPasswordChangeRevokesSessions(t *testing.T) {
 	db := openRevocationTestDB(t)
-	if err := rmdb.MigrateAuditLog(db); err != nil {
+	if err := migrateAuditLog(db); err != nil {
 		t.Skipf("audit log migrate failed (%v)", err)
 	}
 	tx := db.Begin()

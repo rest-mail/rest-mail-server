@@ -3,8 +3,15 @@ package handlers
 import (
 	"reflect"
 	"regexp"
+	"runtime"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"unicode/utf8"
 )
+
+// discoverSweepBatch is how many code points one worker takes at a time.
+const discoverSweepBatch = 4096
 
 func restmailDiscoverDomainPattern(t *testing.T) *regexp.Regexp {
 	t.Helper()
@@ -37,16 +44,34 @@ func TestRestmailDiscoverPatternNeverRefusesWhatTheHandlerLooksUp(t *testing.T) 
 		func(c string) string { return "a.b" + c },
 		func(c string) string { return c + "a.b" },
 	}
-	for r := rune(0); r <= 0x10FFFF; r++ {
-		if r >= 0xD800 && r <= 0xDFFF {
-			continue
-		}
-		for _, shape := range shapes {
-			name := shape(string(r))
-			if _, err := validateDomainName(name); err == nil && !re.MatchString(name) {
-				t.Errorf("the pattern refuses %q, which the handler looks up", name)
+	// The sweep is 11 million IDNA checks and nothing here shares state, so it takes
+	// every core: under the race detector, one at a time, it ran for minutes.
+	var next atomic.Int64
+	var workers sync.WaitGroup
+	for range runtime.GOMAXPROCS(0) {
+		workers.Go(func() {
+			for {
+				first := next.Add(discoverSweepBatch) - discoverSweepBatch
+				if first > utf8.MaxRune {
+					return
+				}
+				for r := rune(first); r <= rune(first)+discoverSweepBatch-1 && r <= utf8.MaxRune; r++ {
+					if r >= 0xD800 && r <= 0xDFFF {
+						continue
+					}
+					for _, shape := range shapes {
+						name := shape(string(r))
+						if _, err := validateDomainName(name); err == nil && !re.MatchString(name) {
+							t.Errorf("the pattern refuses %q, which the handler looks up", name)
+						}
+					}
+				}
 			}
-		}
+		})
+	}
+	workers.Wait()
+	if swept := next.Load(); swept <= utf8.MaxRune {
+		t.Errorf("the sweep stopped at %#x, before the last code point", swept)
 	}
 }
 

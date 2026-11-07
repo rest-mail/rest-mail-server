@@ -19,10 +19,7 @@ type restmailStorageContextKey struct{}
 
 func restmailStorageFixture(t *testing.T) (*gorm.DB, models.Mailbox) {
 	t.Helper()
-	db := openCustomFilterCreateScratchDB(t)
-	if err := migrateModels(db, &models.Mailbox{}, &models.Message{}, &models.QuotaUsage{}, &models.Pipeline{}); err != nil {
-		t.Fatal(err)
-	}
+	db := openCustomFilterCreateScratchDB(t, &models.Mailbox{}, &models.Message{}, &models.QuotaUsage{}, &models.Pipeline{})
 	domain := models.Domain{Name: "restmail-storage.test", Active: true}
 	if err := db.Create(&domain).Error; err != nil {
 		t.Fatal(err)

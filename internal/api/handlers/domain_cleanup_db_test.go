@@ -58,7 +58,7 @@ func TestDomainCleanupPostgresLifecycleRetentionAndRollback(t *testing.T) {
 	if err := migrateModels(db, all...); err != nil {
 		t.Fatal(err)
 	}
-	if err := rmdb.MigrateAuditLog(db); err != nil {
+	if err := migrateAuditLog(db); err != nil {
 		t.Fatal(err)
 	}
 	cache := grants.NewCache(db, time.Hour)

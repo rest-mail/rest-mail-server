@@ -19,10 +19,7 @@ import (
 // No shared test database writes. The database helper verifies a fresh scratch
 // database before migration; rollback/refusal and durable identity are checked.
 func TestPipelineMutationPersistence(t *testing.T) {
-	db := openCustomFilterCreateScratchDB(t)
-	if err := migrateModels(db, &models.Pipeline{}); err != nil {
-		t.Fatal(err)
-	}
+	db := openCustomFilterCreateScratchDB(t, &models.Pipeline{})
 	at := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	db.NowFunc = func() time.Time { return at }
 	h := NewPipelineHandler(db, nil, filters.JSSidecar{})
