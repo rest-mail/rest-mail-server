@@ -33,7 +33,7 @@ def docker_flags():
 
 def assert_defaults(containers):
     environment = dict(
-        entry.split("=", 1) for entry in containers[0]["Config"]["Env"]
+        entry.split("=", 1) for entry in containers[0]["Config"]["Env"] if "=" in entry
     )
     for name, default in DEFAULTS.items():
         if environment.get(name, default) != default:
