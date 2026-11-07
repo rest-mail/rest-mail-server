@@ -249,10 +249,13 @@ class Selection(unittest.TestCase):
             (ROOT / "tests/contract/api-areas.json").read_text()
         )
         self.assertEqual(set(areas["639"]), set(CONTACTS))
-        self.assertEqual(
-            link_followers(description, "createContact"),
-            {"updateContact", "deleteContact"},
-        )
+        # Main's 550f750b0 (#1780) added blockSender's contact lifecycle links.
+        for operation in ("createContact", "blockSender"):
+            self.assertEqual(
+                link_followers(description, operation),
+                {"updateContact", "deleteContact"},
+                operation,
+            )
         linking = {
             operation["operationId"]
             for item in description["paths"].values()
@@ -260,8 +263,8 @@ class Selection(unittest.TestCase):
             if isinstance(operation, dict) and "operationId" in operation
             and link_followers(description, operation["operationId"]) & set(CONTACTS)
         }
-        self.assertEqual(linking, {"createContact", "listAccounts"})
-        for operation in set(CONTACTS) - {"createContact"}:
+        self.assertEqual(linking, {"createContact", "blockSender", "listAccounts"})
+        for operation in set(CONTACTS) - {"createContact", "blockSender"}:
             self.assertEqual(link_followers(description, operation), set())
         selected = own_data.configure({})["operation-id"]
         self.assertNotIn("listAccounts", selected)
