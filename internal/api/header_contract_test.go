@@ -11,12 +11,19 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/config"
 )
 
-// Exercise CORS at the actual router, including middleware refusals. A browser
-// must be allowed to send the CSRF header together with its session cookies.
+// Exercise CORS at the actual router, including middleware refusals, with the origins
+// configured the way a deployment configures them (CORS_ALLOWED_ORIGINS, read by
+// config.Load). A browser must be allowed to send the CSRF header together with its
+// session cookies; any other origin gets no CORS headers at all.
 func TestBrowserCORSContract(t *testing.T) {
 	const allowed = "https://admin.example.test"
-	routers := NewRouters(newFailingGormDB(t), auth.NewJWTService(routerTestSecret, time.Minute, time.Hour),
-		&config.Config{Environment: "test", CORSAllowedOrigins: []string{allowed}}, nil)
+	t.Setenv("ENVIRONMENT", "development")
+	t.Setenv("CORS_ALLOWED_ORIGINS", allowed)
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	routers := NewRouters(newFailingGormDB(t), auth.NewJWTService(routerTestSecret, time.Minute, time.Hour), cfg, nil)
 	t.Cleanup(routers.Close)
 	for _, origin := range []string{allowed, "https://untrusted.example.test"} {
 		for _, target := range []struct{ method, path string }{
