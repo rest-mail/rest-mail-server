@@ -95,6 +95,14 @@ class CertificateProbes(unittest.TestCase):
         path = request.full_url.removeprefix(ORIGIN)
         self.calls.append((request.get_method(), path))
         if request.get_method() == "GET":
+            domains = {
+                "/api/v1/admin/domains/1": {"id": 1, "name": "example.org"},
+                "/api/v1/admin/domains/7": {"id": 7, "name": "run.test"},
+            }
+            if path in domains:
+                return Answer(json.dumps({"data": domains[path]}).encode())
+            if not path.startswith("/api/v1/admin/certificates?limit=100&offset="):
+                raise AssertionError("unexpected fixture read: " + path)
             offset = int(path.rsplit("offset=", 1)[1])
             return Answer(json.dumps({"data": self.pages.get(offset, [])}).encode())
         return Answer(b"")
