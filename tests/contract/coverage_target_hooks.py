@@ -51,6 +51,22 @@ def register_coverage_target_hooks(shared):
             if rule["pattern"] == pattern and rule["list_type"] == list_type:
                 shared["fixture_call"](transaction, "DELETE", collection + "/" + str(rule["id"]))
 
+    @hooks.before("removeInstallationSenderRule")
+    def a_disposable_installation_sender_rule_for_coverage(transaction):
+        collection = "/api/v1/admin/sender-rules"
+        if not selected(transaction, 204, (collection + "/1",)):
+            return
+        created = shared["fixture_call"](
+            transaction,
+            "POST",
+            collection,
+            {
+                "pattern": f"contract-remove-{time.time_ns()}@restmail.test",
+                "list_type": "allow",
+            },
+        )
+        replace_path(transaction, collection + "/" + str(created["id"]))
+
     @hooks.before("revokeAPIKey")
     @hooks.before("revokeCredential")
     def a_disposable_credential_for_coverage(transaction):

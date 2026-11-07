@@ -19,6 +19,7 @@ from test_hooks_two_factor_admin import session
 
 ROOT = Path(__file__).resolve().parents[2]
 ROUTES = {
+    "removeInstallationSenderRule": "/api/v1/admin/sender-rules/{id}",
     "revokeAPIKey": "/api/v1/accounts/{id}/api-keys/{credential_id}",
     "revokeCredential": "/api/v1/accounts/{id}/credentials/{credential_id}",
     "deleteQuarantine": "/api/v1/accounts/{id}/quarantine/{mid}",
@@ -26,6 +27,11 @@ ROUTES = {
     "getCertificate": "/api/v1/admin/certificates/{id}",
 }
 OPERATIONS = {
+    "removeInstallationSenderRule": (
+        "/api/v1/admin/sender-rules/1",
+        "Remove an installation sender rule",
+        204,
+    ),
     "revokeAPIKey": ("/api/v1/accounts/1/api-keys/1", "Revoke an API key", 204),
     "revokeCredential": (
         "/api/v1/accounts/1/credentials/1",
@@ -84,7 +90,10 @@ class FixtureAPI(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def do_DELETE(self):
-        rule_id = int(self.path.rsplit("/", 1)[1])
+        rule_id = int(self.path.partition("?")[0].rsplit("/", 1)[1])
+        if not any(rule["id"] == rule_id for rule in self.server.rules):
+            self.send_error(404)
+            return
         self.server.rules = [rule for rule in self.server.rules if rule["id"] != rule_id]
         self.send_response(204)
         self.end_headers()
@@ -235,6 +244,33 @@ class CoverageTargetHooks(unittest.TestCase):
                 self.send("addInstallationSenderRule", transaction)
             self.assertEqual(transaction, original)
             self.assertEqual(self.server.rules, [{"id": 7, "pattern": "x", "list_type": "allow"}])
+
+    def test_sender_rule_delete_example_and_repeated_probes_get_disposable_targets(self):
+        self.server.rules = [{"id": 7, "pattern": "@seeded.example", "list_type": "block"}]
+        for address in (self.shared["ADMIN"], self.shared["mfa_admin"].ADDRESS):
+            for _ in range(3):
+                transaction = self.transaction("removeInstallationSenderRule")
+                transaction["request"]["headers"]["Authorization"] = session(address)
+                original = copy.deepcopy(transaction)
+                for callback in self.callbacks["removeInstallationSenderRule"]:
+                    callback(transaction)
+                original["fullPath"] = transaction["fullPath"]
+                self.assertEqual(transaction, original)
+                self.assertNotEqual(transaction["fullPath"], "/api/v1/admin/sender-rules/1?keep=yes")
+                request = self.targets["urllib"].request.Request(
+                    self.shared["origin_of"](transaction) + transaction["fullPath"],
+                    data=transaction["request"]["body"].encode(),
+                    headers=transaction["request"]["headers"],
+                    method="DELETE",
+                )
+                with self.targets["urllib"].request.urlopen(request, timeout=10) as response:
+                    self.assertEqual(response.status, 204)
+        self.assertEqual(self.server.rules, [{"id": 7, "pattern": "@seeded.example", "list_type": "block"}])
+        self.assertEqual(len(self.server.calls), 6)
+        for path, authorization, body in self.server.calls:
+            self.assertEqual(path, "/api/v1/admin/sender-rules")
+            self.assertEqual(authorization, "Bearer setup-session")
+            self.assertEqual(body["list_type"], "allow")
 
     def mailbox_probe(self, path="/api/v1/admin/mailboxes/1", status=200):
         return {
@@ -407,7 +443,7 @@ class CoverageTargetHooks(unittest.TestCase):
 
     def test_setup_errors_are_not_swallowed(self):
         self.server.failure = 500
-        for operation in ("revokeAPIKey", "revokeCredential", "getCertificate"):
+        for operation in ("revokeAPIKey", "revokeCredential", "getCertificate", "removeInstallationSenderRule"):
             with (
                 self.subTest(operation=operation),
                 self.assertRaises(urllib.error.HTTPError),
