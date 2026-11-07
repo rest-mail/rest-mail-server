@@ -68,6 +68,7 @@ class FixtureAPI(BaseHTTPRequestHandler):
             self.server.keys.clear()
             self.server.accounts.clear()
             self.server.queue.clear()
+            self.server.tls_reports.clear()
             self.server.serial = 3
             return self.answer(200, {"status": "reset_complete"})
         if self.path == "/api/v1/admin/test/seed":
@@ -79,6 +80,9 @@ class FixtureAPI(BaseHTTPRequestHandler):
                 self.headers["Authorization"],
             )
             return self.answer(201, {"id": self.server.serial})
+        if self.path == "/.well-known/smtp-tlsrpt":
+            self.server.tls_reports.append(body)
+            return self.answer(201, {"stored": True})
         if IMPORT.fullmatch(self.path):
             self.server.imports.append((self.path, body))
             return self.answer(200, {"id": len(self.server.imports), "imported": True})
@@ -147,6 +151,7 @@ class OwnDataHooks(unittest.TestCase):
         self.server.settings = {}
         self.server.queue = {}
         self.server.made = []
+        self.server.tls_reports = []
         self.server.serial = 40
         self.server.reset_failure = None
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
@@ -319,6 +324,13 @@ class OwnDataHooks(unittest.TestCase):
             "updateServerLimits": "server_settings_after_a_reset",
             "getServerCapabilities": "server_settings_after_a_reset",
             "updateServerCapabilities": "server_settings_after_a_reset",
+            "listDmarcReports": "report_and_audit_reads_after_a_reset",
+            "listTlsReports": "report_and_audit_reads_after_a_reset",
+            "receiveTlsReport": "report_and_audit_reads_after_a_reset",
+            "listAuditEntries": "report_and_audit_reads_after_a_reset",
+            "verifyAuditLog": "report_and_audit_reads_after_a_reset",
+            "getDeliveryLogs": "report_and_audit_reads_after_a_reset",
+            "getDashboardStats": "report_and_audit_reads_after_a_reset",
         }
         # entrypoint.py registers setDomainRelay's and the quiet hours' (below).
         self.assertEqual(
@@ -386,6 +398,83 @@ class OwnDataHooks(unittest.TestCase):
             self.hooks.server_settings_after_a_reset(exchange)
             self.assertEqual(exchange, before, operation)
         self.assertEqual(self.server.calls, [])
+
+    def test_the_report_and_audit_reads_reset_in_their_first_hook(self):
+        # Ahead of the two-factor administrator's, the TLS report pacing and
+        # the hosting of the reported domains, so they see the clean start.
+        for operation in (
+            "listDmarcReports",
+            "listTlsReports",
+            "receiveTlsReport",
+            "listAuditEntries",
+            "verifyAuditLog",
+            "getDeliveryLogs",
+            "getDashboardStats",
+        ):
+            names = [h for o, h in self.registered if o == operation]
+            self.assertEqual(names[0], "report_and_audit_reads_after_a_reset", operation)
+
+    def test_a_tls_report_listing_gets_one_received_after_its_reset(self):
+        self.clean_starts_on()
+        self.stub.stash["tls_reports_seen"] = 1
+        self.server.tls_reports.append({"report-id": "earlier"})
+        transaction = self.transaction(200, "/api/v1/admin/tls-reports?limit=5")
+        before = copy.deepcopy(transaction)
+        self.hooks.report_and_audit_reads_after_a_reset(transaction)
+        self.assertEqual(transaction, before)
+        self.assertEqual(
+            [call[1] for call in self.server.calls],
+            [
+                "/api/v1/admin/test/reset",
+                "/api/v1/admin/test/seed",
+                "/.well-known/smtp-tlsrpt",
+            ],
+        )
+        self.assertEqual(self.server.tls_reports, [self.hooks.OWN_TLS_REPORT])
+        self.assertEqual(
+            self.server.tls_reports[0]["policies"][0]["policy"]["policy-domain"],
+            "restmail.test",
+        )
+        self.assertNotIn("tls_reports_seen", self.stub.stash)
+
+    def test_the_other_report_and_audit_exchanges_only_reset(self):
+        self.clean_starts_on()
+        cases = (
+            (200, "/api/v1/admin/dmarc-reports"),
+            (422, "/api/v1/admin/dmarc-reports?limit=0"),
+            (422, "/api/v1/admin/tls-reports?limit=0"),
+            (201, "/.well-known/smtp-tlsrpt"),
+            (422, "/.well-known/smtp-tlsrpt"),
+            (200, "/api/v1/admin/audit"),
+            (403, "/api/v1/admin/audit/verify"),
+            (200, "/api/v1/admin/logs/delivery"),
+            (200, "/api/v1/admin/stats"),
+        )
+        for status, path in cases:
+            transaction = self.transaction(status, path)
+            before = copy.deepcopy(transaction)
+            self.hooks.report_and_audit_reads_after_a_reset(transaction)
+            self.assertEqual(transaction, before, path)
+        self.assertEqual(self.resets(), len(cases))
+        self.assertEqual(
+            {call[1] for call in self.server.calls},
+            {"/api/v1/admin/test/reset", "/api/v1/admin/test/seed"},
+        )
+        self.assertEqual(self.server.tls_reports, [])
+
+    def test_the_report_and_audit_reads_change_nothing_without_the_switch(self):
+        stash = copy.deepcopy(self.stub.stash)
+        for status, path in (
+            (200, "/api/v1/admin/tls-reports"),
+            (201, "/.well-known/smtp-tlsrpt"),
+            (200, "/api/v1/admin/audit"),
+        ):
+            transaction = self.transaction(status, path)
+            before = copy.deepcopy(transaction)
+            self.hooks.report_and_audit_reads_after_a_reset(transaction)
+            self.assertEqual(transaction, before)
+        self.assertEqual(self.server.calls, [])
+        self.assertEqual(self.stub.stash, stash)
 
     def test_the_domain_settings_reset_in_their_first_hook(self):
         self.assertIn(
