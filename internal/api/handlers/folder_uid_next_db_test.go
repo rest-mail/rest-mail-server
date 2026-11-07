@@ -1,14 +1,9 @@
 package handlers
 
 import (
-	"fmt"
-	"os"
 	"testing"
-	"time"
 
-	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
-	"github.com/rest-mail/rest-mail-server/internal/testdb"
 )
 
 // The folder listing's uid_next is the folder's IMAP UIDNEXT. It must not fall
@@ -17,39 +12,7 @@ import (
 // one (RFC 3501 §2.3.1.1, #804). The marks are kept by triggers in the
 // database, so this runs against Postgres with the server's own migration.
 func TestFolderUIDNextSurvivesPermanentDelete(t *testing.T) {
-	cfg := testDBConfig()
-	cfg.DBName = "postgres"
-	admin, err := rmdb.Connect(cfg)
-	if err != nil {
-		testdb.Unreachable(t, "no database reachable: %v", err)
-	}
-	adminSQL, err := admin.DB()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = adminSQL.Close() })
-	name := fmt.Sprintf("restmail_uidnext_%d_%d", os.Getpid(), time.Now().UnixNano())
-	if err := admin.Exec("CREATE DATABASE " + name).Error; err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		if err := admin.Exec("DROP DATABASE " + name + " WITH (FORCE)").Error; err != nil {
-			t.Error(err)
-		}
-	})
-	cfg.DBName = name
-	db, err := rmdb.Connect(cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	dbSQL, err := db.DB()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = dbSQL.Close() })
-	if err := rmdb.AutoMigrate(db); err != nil {
-		t.Fatal(err)
-	}
+	db := openScratchDB(t, "uidnext", []any{withFullSchema})
 	fixture := seedMsgDeleteFixture(t, db, 0)
 	h := NewMessageHandler(db, nil, nil, "", nil)
 
