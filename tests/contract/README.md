@@ -229,12 +229,10 @@ Vertrag sequences examples with linked resource IDs, but coverage starts from
 the description's original placeholder IDs. Its before hooks receive the
 original transaction name, **not** the reporter's `coverage:` prefix.
 `run.sh` therefore scopes `CONTRACT_COVERAGE=1` to the coverage process (and its
-retry). Sender-rule hooks resolve only placeholder `1` to the
-fixture they own, recreating that fixture if consumed. The alias hooks send
-placeholder `1`, like any positive id other than missing's that no alias has,
-to an alias of their own. Sender-rule removal also
-works with an empty process stash: its coverage placeholder gets a dedicated
-rule through the admin API, independently for each list and removal. Other IDs,
+retry). The sender-rule and alias hooks send placeholder `1`, like any positive
+id other than missing's that no entry or alias has, to one of their own, made
+through the admin API with an empty process stash, independently for each list.
+Other IDs,
 invalid paths, request bodies and transaction credentials are unchanged.
 Other phases do not acquire this placeholder substitution.
 
@@ -639,6 +637,9 @@ document. The authorization phase's `ordinary` principal is one, and with no
 roles where the operation names no capability the phase would expect its 201,
 so `hooks.py` skips that cell (`no_link_from_a_password_only_session`, #1942):
 it is reported unsent, and the refusal is proven in-process. `createAPIKey` is made with that administrator's password, except in
+keep theirs. That phase leaves a request unsent when a hook changes its
+credential, so its `admin` principal is not swapped: it signs in as the
+two-factor administrator from the start (`authorization.py`, #1162). `createAPIKey` is made with that administrator's password, except in
 the coverage process ([A hook cannot change a generated body](#a-hook-cannot-change-a-generated-body)).
 `deleteGrant`'s example names grant 1, a fixture principal's own, so the hook
 makes an eligible grant on an account without credentials and deletes that.
@@ -1279,9 +1280,9 @@ RESTMAIL_INTERNAL_MTLS=true`, then `tests/contract/run.sh gate --operation-id
   and, for `addToAllowlist`, `addToBlocklist` and `createAlias`, the entry a
   previous probe added removed when generated bodies repeat it (the domain
   stays for the whole run, so a repeat is otherwise a 409), with an alias
-  probe's domain hosted first. The entries `removeFromAllowlist` and
-  `removeFromBlocklist` are linked to are followed to their current id, and
-  added again if a probe left none. `getAlias`, `updateAlias` and
+  probe's domain hosted first. `removeFromAllowlist` and
+  `removeFromBlocklist` keep a linked id the list still holds, and otherwise
+  get an entry of their own (`on_a_sender_rule_of_its_own`). `getAlias`, `updateAlias` and
   `deleteAlias` keep a linked id that still has an alias, and otherwise get
   an alias of their own (`on_an_alias_of_its_own`).
   TLS-RPT reports are sent a second apart: the route is rate-limited. Their
@@ -1326,7 +1327,14 @@ a hosted domain and mailbox for each address a test send probe uses, and,
 - `authorization.py`: builds a private configuration from the E2E principals
   for the report-only authorization phase. Its JUnit report and log are
   included in `e2e-container-logs`; the generated credential-bearing YAML is
-  removed after the run and is never uploaded.
+  removed after the run and is never uploaded. It provides one state the
+  examples phase does not, `recoverable_account` (#1162): recoverAccount names
+  its account in the body, so `hooks.py` makes a fresh account, enrolled in
+  TOTP, for each principal's request and recovers that one. States of the
+  caller's own account (`known_password`, `enrolled_authenticator`,
+  `pending_enrollment`) are not provided: their success would end or change the
+  principal's own sessions. Its unproven list is
+  `.cache/contract/unproven-authorization.json`.
 - `ownership.py`: builds the private configuration of the report-only
   ownership phase (#657) from the same principals, as two account tenants.
   Its reports are uploaded like the authorization phase's; its generated YAML
@@ -1534,7 +1542,39 @@ for an account of its own, as before, and the refusals (`invalid_token`,
 or reaches either operation. The accounts are named by the time they are made,
 not by a count, so `hooks.stash` holds no `invitable_accounts`. `deleteGrant`'s
 hook makes its grant's holder the same way, so it reads no stash value through
-that helper any more; grants have not moved.
+that helper any more.
+
+Every grant operation of the area map (`createGrant`, `deleteGrant`,
+`activateGrant`, `deactivateGrant`, `makeGrantEligible`, `listGrants` and
+`listMyGrants`) resets and seeds before each exchange as well, refusals
+included, and is sent as the two-factor administrator as before, whose session
+survives the reset. `deleteGrant`'s `body_boundary` names grant `1`, a seeded
+principal's own, so after its reset it makes an eligible admin grant on
+`restmail.test`, held by an account made without a password, and deletes that.
+The other examples need nothing made: their ids are the refusals' (`0` and
+`2147483647`), and the lists read the seeded grants. No link starts from or
+reaches any grant operation, and none of their hooks reads a stash value.
+
+The domain sender rule operations (`listAllowlist`, `addToAllowlist`,
+`removeFromAllowlist`, `listBlocklist`, `addToBlocklist` and
+`removeFromBlocklist`) reset and seed before each exchange too, refusals
+included. Each follows `createDomain`'s link, which the reset empties, so an
+exchange aimed at a positive domain id other than missing's `2147483647` is sent
+to a domain of its own (`contract-own-domain.test`), and they no longer get
+`a_live_domain_for_the_link`'s stand-in. A list reads that domain's empty list,
+and an add is sent there as documented, the 422 included. A remove documented to
+succeed gets an entry of its own there (`@contract-own-rule.test`), since the
+entry the add's link names is gone; the 404 and a non-positive or undecodable
+entry id keep theirs, on a domain that exists. Each add's link reaches only the
+remove of its list, so nothing that follows it is left unmoved. No entry is
+carried between exchanges, so `hooks.stash` holds no `created_sender_rules`:
+without a reset, a remove whose positive entry id the list no longer holds (the
+documented remove, or a probe repeating the add's pattern, removed it, or
+coverage's placeholder `1` never had one) gets the entry at
+`@contract-own-rule.test` on that domain, made if absent; an id the list holds
+is followed unchanged. `created_sender_rule_probes` stays, because an add
+without a reset (the primary run and coverage) still removes only the repeated
+probe entries it made.
 
 This happens only with `CONTRACT_RESET_SEED=1`, which `tests/contract/run.sh own-data`
 sets, and that phase is a gate of its own, sent by `chore test:contract-teardown`
@@ -1611,7 +1651,10 @@ The examples and coverage run signs in as the admin. The authorization run
 uses vertrag's authorization phase (v0.29.0 and later): each operation's `security`
 requirements name the capability it needs as OpenAPI 3.1 roles, for example
 `security: [{BearerAuth: [domains:read]}]`. `authorization.py` configures `none`,
-`admin`, `ordinary`, and `app-password` from the fresh E2E fixture. The owned
+`admin`, `ordinary`, and `app-password` from the fresh E2E fixture, except that
+`admin` is the two-factor administrator signed in with an unused second factor:
+credential, link and grant operations need a recent one, which the seeded admin
+never has. The owned
 account has no separate sign-in credential; its access through the admin is
 checked by `TestContractPrincipals`. Agents remain unavailable (#341).
 

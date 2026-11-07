@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/tracing"
 	"gorm.io/gorm"
 )
 
@@ -74,7 +75,10 @@ func (p *Purger) loop() {
 		case <-p.stop:
 			return
 		case <-ticker.C:
-			p.PurgeOnce(p.now())
+			_ = tracing.Job(context.Background(), "job.vacation_purge", func(ctx context.Context) error {
+				p.PurgeOnce(ctx, p.now())
+				return nil
+			})
 		}
 	}
 }
@@ -82,8 +86,8 @@ func (p *Purger) loop() {
 // PurgeOnce deletes every vacation_responses row older than the retention horizon
 // and returns the number of rows removed. Errors are logged and swallowed — a
 // failed purge must never crash the process; the next tick retries.
-func (p *Purger) PurgeOnce(now time.Time) int64 {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+func (p *Purger) PurgeOnce(ctx context.Context, now time.Time) int64 {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
 	cutoff := now.Add(-p.retention)
@@ -91,11 +95,11 @@ func (p *Purger) PurgeOnce(now time.Time) int64 {
 		Where("responded_at < ?", cutoff).
 		Delete(&models.VacationResponse{})
 	if res.Error != nil {
-		slog.Warn("vacation purger: delete failed", "error", res.Error)
+		slog.WarnContext(ctx, "vacation purger: delete failed", "error", res.Error)
 		return 0
 	}
 	if res.RowsAffected > 0 {
-		slog.Info("vacation purger: deleted expired responses", "count", res.RowsAffected)
+		slog.InfoContext(ctx, "vacation purger: deleted expired responses", "count", res.RowsAffected)
 	}
 	return res.RowsAffected
 }

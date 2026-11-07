@@ -45,6 +45,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import mfa_admin  # noqa: E402
 import rate_limits
 import reset_seed
+from api_keys_live import totp  # noqa: E402
 from queue_entry_hooks import a_disposable_queue_entry
 
 PRINCIPALS = os.environ.get("CONTRACT_PRINCIPALS", ".cache/contract-principals.json")
@@ -111,7 +112,8 @@ def session_address(transaction):
 
 def with_the_fixture_admins_session(transaction):
     """Whether the request carries the fixture admin's own session. The
-    authorization phase's principals and an unauthenticated 401 do not."""
+    authorization phase's principals and an unauthenticated 401 do not: its
+    admin principal is the two-factor administrator (authorization.py)."""
     return session_address(transaction) == ADMIN
 
 
@@ -124,6 +126,15 @@ def as_the_two_factor_admin(transaction):
     return True
 
 
+def sent_as_the_two_factor_admin(transaction):
+    """Whether the request goes out as the two-factor administrator: the
+    fixture admin's session is swapped for its (as_the_two_factor_admin), or
+    it already carries it, as the authorization phase's admin principal does.
+    That phase ends a request whose credential a hook changes unsent, so its
+    admin signs in as this administrator rather than being swapped."""
+    return as_the_two_factor_admin(transaction) or session_address(transaction) == mfa_admin.ADDRESS
+
+
 # The operations moved to a clean start, and only in the run that asks for it
 # (run.sh's own-data phase): a reset in the primary run would wipe what the
 # operations still to move depend on. See the README, "Moved to a clean start".
@@ -134,7 +145,6 @@ SURVIVES_A_RESET = (
     "mfa_admin_sessions",
     "clean_starts",
     "linked_domain_ids",
-    "created_sender_rules",
 )
 
 
@@ -192,12 +202,6 @@ def the_domain_since_the_reset(transaction):
     return hooks.stash["domain_id"]
 
 
-@hooks.before("listAllowlist")
-@hooks.before("addToAllowlist")
-@hooks.before("removeFromAllowlist")
-@hooks.before("listBlocklist")
-@hooks.before("addToBlocklist")
-@hooks.before("removeFromBlocklist")
 @hooks.before("domainDNSCheck")
 @hooks.before("getDomainRelay")
 @hooks.before("listSuppressions")
@@ -222,11 +226,6 @@ def a_live_domain_for_the_link(transaction):
         return
     domain_id = the_domain_since_the_reset(transaction)
     to_domain(transaction, domain_id)
-    # An entry the link names is added again on this domain (on_the_added_sender_rule).
-    if len(parts) > 7 and parts[6] in ("allowlist", "blocklist"):
-        rules = hooks.stash.get("created_sender_rules", {})
-        for parent in [p for p in rules if p.endswith("/" + parts[6])]:
-            rules["/".join(parts[:5] + [str(domain_id), parts[6]])] = rules.pop(parent)
     # The key the link names went with the domain.
     if parts[4] == "dkim" and " > 204" in transaction.get("name", ""):
         with (Path(__file__).resolve().parent / "fixtures" / "dkim-key.pem").open() as key:
@@ -301,7 +300,7 @@ def send_as_the_two_factor_admin(transaction):
 @hooks.before("createClientSecret")
 def an_app_password_from_the_two_factor_admin(transaction):
     # Making a credential also takes the maker's current password.
-    if not as_the_two_factor_admin(transaction):
+    if not sent_as_the_two_factor_admin(transaction):
         return
     body = hooks.get_json(transaction)
     if isinstance(body, dict) and "password" in body:
@@ -367,7 +366,7 @@ def an_api_key_from_the_two_factor_admin(transaction):
     if a_later_request_of_the_coverage_process(transaction):
         an_api_key_probe_as_the_probe_admin(transaction)
         return
-    if not as_the_two_factor_admin(transaction):
+    if not sent_as_the_two_factor_admin(transaction):
         return
     body = hooks.get_json(transaction)
     # The body_array refusal sends a JSON array, which has no password to set,
@@ -539,15 +538,38 @@ def mailbox_id(origin, address):
     return found["id"]
 
 
+@hooks.before("createGrant")
+@hooks.before("activateGrant")
+@hooks.before("deactivateGrant")
+@hooks.before("makeGrantEligible")
+@hooks.before("listGrants")
+@hooks.before("listMyGrants")
+def a_grant_operation_from_a_clean_start(transaction):
+    # After a reset (the own-data phase) every exchange, refusals included,
+    # starts clean. These examples need nothing made for them: their ids are
+    # the refusals' (0 and 2147483647) and the lists read the seeded grants.
+    # The two-factor administrator's session survives the reset.
+    if asked_for_a_clean_start():
+        start_clean(transaction)
+
+
 @hooks.before("deleteGrant")
 def delete_a_grant_made_for_it(transaction):
     # body_boundary names grant 1, which is a fixture principal's own. Delete a
     # grant made for the purpose instead: an eligible admin role on the fixture
     # domain, held by an account made without credentials. Other ids are the
     # refusal examples' and the coverage probes', and are sent as they are.
+    # After a reset (the own-data phase) every exchange, refusals included,
+    # starts clean, and the grant and its holder are made after it, on the
+    # seeded restmail.test.
+    if asked_for_a_clean_start():
+        start_clean(transaction)
     path, _, query = transaction["fullPath"].partition("?")
     parent, _, grant_id = path.rpartition("/")
-    if grant_id != "1":
+    # createGrant's link (#1780) names the grant its exchange made, which the
+    # next reset removes, so a documented delete after a reset gets one too.
+    linked_after_reset = asked_for_a_clean_start() and " > 204" in transaction.get("name", "")
+    if grant_id != "1" and not linked_after_reset:
         return
     origin = origin_of(transaction)
     holder = an_account_without_credentials(origin)
@@ -2463,6 +2485,10 @@ def remove_a_previous_sender_rule_probe(transaction):
     # earlier one added, a 409. Claim an absent pattern before its first add,
     # then remove only that probe's entry when generated bodies repeat it.
     # Existing entries and all generated request bytes stay untouched.
+    # After a reset (the own-data phase) the add is sent to a domain of its own
+    # (on_a_domain_of_its_own), where no earlier probe's entry is left, so
+    # created_sender_rule_probes, which the reset clears, starts empty.
+    on_a_domain_of_its_own(transaction)
     body = hooks.get_json(transaction)
     pattern = body.get("pattern") if isinstance(body, dict) else None
     path = sender_rules_path(transaction)
@@ -2494,71 +2520,61 @@ def remove_a_previous_sender_rule_probe(transaction):
             raise RuntimeError("could not remove the previous sender rule probe")
 
 
-@hooks.after("addToAllowlist")
-@hooks.after("addToBlocklist")
-def keep_the_added_sender_rule(transaction):
-    # Only the example runs after hooks, and its id is what
-    # removeFromAllowlist and removeFromBlocklist are linked to. Probes
-    # repeating its pattern remove that entry above, so remember what to
-    # restore.
-    data = hooks.get_json(transaction, "real").get("data") or {}
-    if not data.get("id"):
+def on_a_domain_of_its_own(transaction):
+    """With a reset asked for, reset before this sender rule exchange, refusals
+    included, and send one aimed at a positive domain id other than missing's
+    2147483647 to a domain of its own: the reset removed the domain
+    createDomain's link names. A refusal for its body or entry is then refused
+    for that, not for a domain that is gone."""
+    if not asked_for_a_clean_start():
         return
-    path = sender_rules_path(transaction)
-    created = hooks.stash.get("created_sender_rules", {})
-    created[path] = {"id": data["id"], "body": hooks.get_json(transaction)}
-    hooks.stash["created_sender_rules"] = created
+    start_clean(transaction)
+    parts = transaction["fullPath"].partition("?")[0].split("/")
+    if len(parts) > 5 and positive_id(parts[5]) and parts[5] != "2147483647":
+        to_domain(transaction, a_domain_of_its_own(transaction))
+
+
+@hooks.before("listAllowlist")
+@hooks.before("listBlocklist")
+def list_sender_rules_from_a_clean_start(transaction):
+    # The list needs nothing in it: after a reset it reads a domain of its own.
+    on_a_domain_of_its_own(transaction)
+
+
+# The entry removeFromAllowlist and removeFromBlocklist are sent to when the id
+# they carry has none: the add's link names one that a probe repeating its
+# pattern or the documented remove may since have removed, and a reset removes
+# it too.
+OWN_SENDER_RULE = {"pattern": "@contract-own-rule.test"}
 
 
 @hooks.before("removeFromAllowlist")
 @hooks.before("removeFromBlocklist")
-def on_the_added_sender_rule(transaction):
-    # Follow the linked entry to its current id, adding it again when a probe
-    # removed it without a successful add of its own to replace it. Any other
-    # id (the 404 examples, path parameter probes) is left alone.
+def on_a_sender_rule_of_its_own(transaction):
+    # Each exchange the link (or coverage's placeholder 1) reaches is sent to an
+    # entry that exists: after a reset always one of its own, on a domain of its
+    # own, and otherwise one of its own only when the list has no entry with the
+    # id it carries. The refusals keep their ids: missing's 2147483647, a
+    # non-positive or undecodable id, every exchange documented to answer 404,
+    # and a domain that is not there (left to the probe).
+    on_a_domain_of_its_own(transaction)
     path, _, query = transaction["fullPath"].partition("?")
     parent, _, entry_id = path.rpartition("/")
-    created = hooks.stash.get("created_sender_rules", {}).get(parent)
-    coverage_placeholder = os.environ.get("CONTRACT_COVERAGE") == "1" and entry_id == "1"
-    if (
-        not created
-        and coverage_placeholder
-        and " > 204" in transaction.get("name", "")
-        and sender_rules_path({"fullPath": parent}) is not None
-    ):
-        created = {"id": 1, "body": {"pattern": "contract-remove@restmail.test"}}
-    if not created or (entry_id != str(created["id"]) and not coverage_placeholder):
+    if not positive_id(entry_id) or entry_id == "2147483647":
         return
-    origin = "{}//{}:{}".format(
-        transaction["protocol"],
-        transaction["host"],
-        transaction["port"],
-    )
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": "Bearer " + admin_token(origin),
-    }
-    pattern = created["body"]["pattern"]
-    rules = sender_rules(origin, parent, headers)
+    if " > 404" in transaction.get("name", ""):
+        return
+    if sender_rules_path({"fullPath": parent}) is None:
+        return
+    origin = origin_of(transaction)
+    rules = sender_rules(origin, parent, {"Authorization": "Bearer " + admin_token(origin)})
     if rules is None:
         return
-    rule = next(
-        (
-            r
-            for r in rules
-            if r.get("pattern") == pattern
-        ),
-        None,
-    )
+    if any(str(r.get("id")) == entry_id for r in rules):
+        return
+    rule = next((r for r in rules if r.get("pattern") == OWN_SENDER_RULE["pattern"]), None)
     if rule is None:
-        request = urllib.request.Request(
-            origin + parent,
-            data=json.dumps(created["body"]).encode(),
-            headers=headers,
-            method="POST",
-        )
-        with urllib.request.urlopen(request, timeout=10) as response:
-            rule = json.load(response)["data"]
+        rule = fixture_call(transaction, "POST", parent, OWN_SENDER_RULE)
     transaction["fullPath"] = (
         parent + "/" + str(rule["id"]) + ("?" + query if query else "")
     )
@@ -3063,7 +3079,18 @@ def an_account_of_its_own(origin, prefix, password=None):
     Its address is named by the time it is made, not by a count kept in the
     stash, so nothing is carried between exchanges. restmail.test is seeded, so
     it is there after a reset too. Making one takes a two-factor session."""
-    body = {"address": f"{prefix}-{time.time_ns():d}@restmail.test", "display_name": "Invited"}
+    return a_new_account(origin, fresh_address(prefix), "Invited", password)
+
+
+def fresh_address(prefix):
+    """A restmail.test address no account has, named by the time."""
+    return f"{prefix}-{time.time_ns():d}@restmail.test"
+
+
+def a_new_account(origin, address, display_name, password=None):
+    """Make the account, with a password only when one is given, and return its
+    id. Making one takes a two-factor session."""
+    body = {"address": address, "display_name": display_name}
     if password is not None:
         body["password"] = password
     request = urllib.request.Request(
@@ -3077,6 +3104,47 @@ def an_account_of_its_own(origin, prefix, password=None):
     )
     with urllib.request.urlopen(request, timeout=10) as response:
         return json.load(response)["data"]["id"]
+
+
+# The passwords of the accounts made for recoverAccount's recovered example,
+# before and after the recovery. Not secrets: each proves only a disposable
+# account made for one request (a_recoverable_account).
+RECOVERABLE_PASSWORD = "contract-recoverable-account"
+RECOVERED_PASSWORD = "contract-recovered-account"
+
+
+def a_recoverable_account(origin):
+    """A fresh account enrolled in TOTP through the public API, for one
+    recovery: its address and the second factor (secret and recovery codes)."""
+    address = fresh_address("recoverable")
+    a_new_account(origin, address, "Recoverable", RECOVERABLE_PASSWORD)
+    return address, mfa_admin.enroll_account(origin, address, RECOVERABLE_PASSWORD)
+
+
+@hooks.before("recoverAccount")
+def recover_an_account_of_its_own(transaction):
+    # The recovered example (state recoverable_account) names the fixture
+    # admin and placeholder codes; recovering it would set the fixture admin's
+    # password. Each request expecting the recovery, every principal's in the
+    # authorization phase, gets an account made for it alone, enrolled just
+    # before, so the run's own accounts are never touched. The codes are
+    # one-time: the authenticator's current code and an unspent recovery code.
+    # Refusals keep their documented bodies.
+    if str(transaction.get("expected", {}).get("statusCode", "")) != "200":
+        return
+    body = hooks.get_json(transaction)
+    if not isinstance(body, dict):
+        return
+    address, factor = a_recoverable_account(origin_of(transaction))
+    body.update({
+        "email": address,
+        "totp_code": totp(factor["secret"]),
+        "recovery_code": factor["recovery_codes"][0],
+        "new_password": RECOVERED_PASSWORD,
+    })
+    hooks.set_json(transaction, body)
+    # Making the account spent the auth bucket pace_auth_requests waited for.
+    time.sleep(1.1)
 
 
 @hooks.before("checkMailboxAddress")

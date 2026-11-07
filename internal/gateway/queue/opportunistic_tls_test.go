@@ -2,6 +2,7 @@ package queue
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"net"
 	"slices"
@@ -34,7 +35,7 @@ func TestDeliverSMTP_UnverifiedCertificateStillEncrypts(t *testing.T) {
 	w := &Worker{hostname: "sender.test", allowPrivateDest: true, sendDeadline: defaultSendDeadline}
 	encrypted, authenticated := transportCount(transportEncrypted), transportCount(transportAuthenticated)
 
-	if err := w.deliverSMTP(net.JoinHostPort(settings.host, strconv.Itoa(settings.port)), settings.host, tlsTestItem(), nil, nil); err != nil {
+	if err := w.deliverSMTP(context.Background(), net.JoinHostPort(settings.host, strconv.Itoa(settings.port)), settings.host, tlsTestItem(), nil, nil); err != nil {
 		t.Fatalf("deliver: %v", err)
 	}
 	result := finish()
@@ -132,7 +133,7 @@ func TestDeliverSMTP_FailedHandshakeRetriesInCleartext(t *testing.T) {
 	w := &Worker{hostname: "sender.test", allowPrivateDest: true, sendDeadline: defaultSendDeadline}
 	cleartext := transportCount(transportCleartext)
 
-	if err := w.deliverSMTP(net.JoinHostPort(host, strconv.Itoa(port)), host, tlsTestItem(), nil, nil); err != nil {
+	if err := w.deliverSMTP(context.Background(), net.JoinHostPort(host, strconv.Itoa(port)), host, tlsTestItem(), nil, nil); err != nil {
 		t.Fatalf("deliver: %v", err)
 	}
 	second := finish()
@@ -152,7 +153,7 @@ func TestDeliverSMTP_EnforceStillRequiresAVerifiedCertificate(t *testing.T) {
 		settings, finish := relayTestPeer(t, cert, opts)
 		w := &Worker{hostname: "sender.test", allowPrivateDest: true, sendDeadline: defaultSendDeadline, stsEnforce: true}
 		policy := &mtasts.Policy{Mode: mtasts.ModeEnforce, MX: []string{settings.host}, MaxAge: 86400}
-		err := w.deliverSMTP(net.JoinHostPort(settings.host, strconv.Itoa(settings.port)), settings.host, tlsTestItem(), policy, nil)
+		err := w.deliverSMTP(context.Background(), net.JoinHostPort(settings.host, strconv.Itoa(settings.port)), settings.host, tlsTestItem(), policy, nil)
 		var enforced *mtasts.EnforceError
 		if !errors.As(err, &enforced) {
 			t.Fatalf("breakTLS=%v: %v, want an MTA-STS enforce refusal", opts.breakTLS, err)

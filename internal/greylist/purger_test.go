@@ -1,6 +1,7 @@
 package greylist
 
 import (
+	"context"
 	"os"
 	"strconv"
 	"testing"
@@ -97,7 +98,7 @@ func TestPurger_DeletesExpiredKeepsUnexpired(t *testing.T) {
 	seedEntry(t, tx, "fresh", now, future)
 
 	p := NewPurger(tx, time.Hour)
-	deleted := p.PurgeOnce(now)
+	deleted := p.PurgeOnce(context.Background(), now)
 
 	if deleted != 2 {
 		t.Errorf("PurgeOnce deleted = %d, want 2", deleted)

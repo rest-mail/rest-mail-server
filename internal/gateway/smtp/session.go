@@ -17,6 +17,7 @@ import (
 	"github.com/emersion/go-sasl"
 	gosmtp "github.com/rest-mail/go-smtp/pkg/smtp"
 	smtpserver "github.com/rest-mail/go-smtp/pkg/smtp/server"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
@@ -48,7 +49,10 @@ type session struct {
 	conn *smtpserver.Conn
 	// log carries the connection's request_id (#1580); every line the
 	// session writes goes through it.
-	log          *slog.Logger
+	log *slog.Logger
+	// span is the connection's span (#1580), ended by Logout. Nil in tests
+	// that build a session by hand.
+	span         trace.Span
 	api          Backend
 	store        Store
 	limiter      *connlimiter.Limiter
@@ -1118,7 +1122,7 @@ func (s *session) prepareSubmitted(whole func() (string, error)) (*spoolFile, er
 	if err != nil {
 		return nil, err
 	}
-	prepared, err := s.store.PrepareSubmitted(s.mailFrom, raw)
+	prepared, err := s.store.PrepareSubmitted(s.ctx, s.mailFrom, raw)
 	if err != nil {
 		return nil, err
 	}
@@ -1163,6 +1167,9 @@ func (s *session) Reset() {
 func (s *session) Logout() error {
 	s.endTransaction(txAborted)
 	s.closeAPISession()
+	if s.span != nil {
+		s.span.End()
+	}
 	return nil
 }
 

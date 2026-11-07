@@ -1,5 +1,6 @@
 """The moved operations' phase: what it selects, and that only it resets (#1385)."""
 
+import json
 import sys
 import tempfile
 import unittest
@@ -36,6 +37,28 @@ FOLDERS = ("createFolder", "renameFolder", "deleteFolder")
 # What read or wrote the invitable account count, of the invitation operations.
 # No link starts from or reaches either.
 INVITATIONS = ("inviteAccount", "acceptInvitation")
+
+# Every grant operation of the area map. No link starts from or reaches any.
+GRANTS = (
+    "createGrant",
+    "deleteGrant",
+    "activateGrant",
+    "deactivateGrant",
+    "makeGrantEligible",
+    "listGrants",
+    "listMyGrants",
+)
+
+# Every domain sender rule operation of the area map. Each follows
+# createDomain's link, and each add's link reaches only the remove of its list.
+SENDER_RULES = (
+    "listAllowlist",
+    "addToAllowlist",
+    "removeFromAllowlist",
+    "listBlocklist",
+    "addToBlocklist",
+    "removeFromBlocklist",
+)
 
 
 def link_followers(description, start):
@@ -100,7 +123,8 @@ class Selection(unittest.TestCase):
             - set(ALIASES)
             - set(CUSTOM_FILTERS)
             - set(FOLDERS)
-            - set(INVITATIONS),
+            - set(INVITATIONS)
+            - set(GRANTS),
             link_followers(description, "createDomain") | {"createDomain"},
         )
 
@@ -146,6 +170,61 @@ class Selection(unittest.TestCase):
             reached |= link_followers(description, operation)
         self.assertFalse(reached & set(INVITATIONS))
         self.assertLessEqual(set(INVITATIONS), set(own_data.MOVED))
+
+    def test_it_selects_every_grant_operation_which_no_link_reaches(self):
+        description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
+        areas = json.loads(
+            (ROOT / "tests/contract/api-areas.json").read_text()
+        )
+        in_the_map = {
+            operation
+            for operations in areas.values()
+            if isinstance(operations, list)
+            for operation in operations
+            if "Grant" in operation
+        }
+        self.assertEqual(in_the_map, set(GRANTS))
+        # createGrant links deleteGrant, the delete of what it made (#1780): a
+        # link inside the moved grant operations, which all start clean. No
+        # other link reaches a grant operation, and none leaves one.
+        for operation in GRANTS:
+            self.assertLessEqual(link_followers(description, operation), set(GRANTS))
+        reached = set()
+        for operation in description_operations(description):
+            if operation not in GRANTS:
+                reached |= link_followers(description, operation)
+        self.assertFalse(reached & set(GRANTS))
+        self.assertLessEqual(set(GRANTS), set(own_data.MOVED))
+
+    def test_it_selects_every_sender_rule_operation_and_its_links(self):
+        description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
+        areas = json.loads(
+            (ROOT / "tests/contract/api-areas.json").read_text()
+        )
+        self.assertEqual(
+            {
+                operation
+                for operation in areas["646"]
+                if operation.endswith(("Allowlist", "Blocklist"))
+            },
+            set(SENDER_RULES),
+        )
+        self.assertEqual(
+            link_followers(description, "addToAllowlist"), {"removeFromAllowlist"}
+        )
+        self.assertEqual(
+            link_followers(description, "addToBlocklist"), {"removeFromBlocklist"}
+        )
+        for operation in SENDER_RULES:
+            if not operation.startswith("addTo"):
+                self.assertEqual(link_followers(description, operation), set())
+        self.assertLessEqual(
+            set(SENDER_RULES), link_followers(description, "createDomain")
+        )
+        self.assertLessEqual(set(SENDER_RULES), set(own_data.MOVED))
+        self.assertFalse(
+            set(SENDER_RULES) & set(own_data.FOLLOWS_THE_CREATED_DOMAIN)
+        )
 
     def test_a_skipped_exchange_is_not_a_pass(self):
         with tempfile.TemporaryDirectory() as directory:

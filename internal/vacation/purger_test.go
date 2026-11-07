@@ -1,6 +1,7 @@
 package vacation
 
 import (
+	"context"
 	"os"
 	"strconv"
 	"testing"
@@ -92,7 +93,7 @@ func TestPurger_DeletesAgedKeepsRecent(t *testing.T) {
 	seedResponse(t, tx, "recent", now.Add(-1*24*time.Hour))  // within retention
 
 	p := NewPurger(tx, time.Hour, retention)
-	deleted := p.PurgeOnce(now)
+	deleted := p.PurgeOnce(context.Background(), now)
 
 	if deleted != 2 {
 		t.Errorf("PurgeOnce deleted = %d, want 2", deleted)

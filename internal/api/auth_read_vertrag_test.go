@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -157,7 +156,7 @@ func checkRegisteredExamplesWithVertrag(t *testing.T, binary string, handler htt
 			t.Fatal(err)
 		}
 	}
-	server := httptest.NewServer(handler)
+	server := servedAsDescribed(handler)
 	defer server.Close()
 	args := []string{"run", "--endpoint", server.URL, "--only-matching", " > " + status,
 		"--reporter", "json", "--output", reportPath}

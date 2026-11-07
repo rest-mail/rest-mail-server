@@ -10,12 +10,14 @@
 package domainstate
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"time"
 
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/metrics"
+	"github.com/rest-mail/rest-mail-server/internal/tracing"
 	"gorm.io/gorm"
 )
 
@@ -54,9 +56,13 @@ func (w *Watcher) run() {
 	for {
 		select {
 		case <-ticker.C:
-			if _, err := w.Check(); err != nil {
-				slog.Error("domainstate: checking which live domains can still be served failed", "error", err)
-			}
+			_ = tracing.Job(context.Background(), "job.domain_state", func(ctx context.Context) error {
+				_, err := w.Check(ctx)
+				if err != nil {
+					slog.ErrorContext(ctx, "domainstate: checking which live domains can still be served failed", "error", err)
+				}
+				return err
+			})
 		case <-w.stop:
 			return
 		}
@@ -70,9 +76,9 @@ func (w *Watcher) run() {
 // for that domain whose validity window covers now. A domain that is already out
 // of service is left alone, so a domain is counted once, when it leaves service,
 // and not again on every pass.
-func (w *Watcher) Check() (int, error) {
+func (w *Watcher) Check(ctx context.Context) (int, error) {
 	var unservable []models.Domain
-	err := w.db.Model(&models.Domain{}).
+	err := w.db.WithContext(ctx).Model(&models.Domain{}).
 		Where("active = ?", true).
 		Where(`NOT EXISTS (
 			SELECT 1 FROM certificates c
@@ -87,13 +93,13 @@ func (w *Watcher) Check() (int, error) {
 
 	taken := 0
 	for _, d := range unservable {
-		if err := w.db.Model(&models.Domain{}).Where("id = ?", d.ID).Update("active", false).Error; err != nil {
-			slog.Error("domainstate: could not take a domain out of service",
+		if err := w.db.WithContext(ctx).Model(&models.Domain{}).Where("id = ?", d.ID).Update("active", false).Error; err != nil {
+			slog.ErrorContext(ctx, "domainstate: could not take a domain out of service",
 				"domain", d.Name, "error", err)
 			continue
 		}
 		metrics.DomainsOutOfService.Inc()
-		slog.Error("domainstate: domain taken out of service, it has no currently valid certificate and cannot be served",
+		slog.ErrorContext(ctx, "domainstate: domain taken out of service, it has no currently valid certificate and cannot be served",
 			"domain", d.Name)
 		taken++
 	}

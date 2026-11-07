@@ -215,7 +215,7 @@ func TestQuietHoursCoverageWithVertrag(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(directory, "vertrag.yml"), []byte("language: python\nhookfiles: ./quiet.py\nfuzz:\n  pin:\n    time_zone: UTC\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	server := httptest.NewServer(fixture.router)
+	server := servedAsDescribed(fixture.router)
 	defer server.Close()
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	defer cancel()
