@@ -1,11 +1,9 @@
 package db_test
 
 import (
-	"fmt"
 	"os"
 	"strconv"
 	"testing"
-	"time"
 
 	"github.com/rest-mail/rest-mail-server/internal/config"
 	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
@@ -30,38 +28,7 @@ func freshDatabase(t *testing.T, prefix string) *gorm.DB {
 	}
 	cfg := config.Config{DBHost: env("DB_HOST", "localhost"), DBPort: port,
 		DBName: env("DB_NAME", "restmail"), DBUser: env("DB_USER", "restmail"), DBPass: env("DB_PASS", "restmail")}
-	server, err := rmdb.Connect(&cfg)
-	if err != nil {
-		testdb.Unreachable(t, "no database reachable: %v", err)
-	}
-	serverSQL, err := server.DB()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = serverSQL.Close() })
-	name := fmt.Sprintf("%s_%d_%d", prefix, os.Getpid(), time.Now().UnixNano())
-	if err := server.Exec("CREATE DATABASE " + name).Error; err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		if err := server.Exec("DROP DATABASE " + name + " WITH (FORCE)").Error; err != nil {
-			t.Error(err)
-		}
-	})
-	cfg.DBName = name
-	database, err := rmdb.Connect(&cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	sqlDB, err := database.DB()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = sqlDB.Close() })
-	if err := rmdb.AutoMigrate(database); err != nil {
-		t.Fatal(err)
-	}
-	return database
+	return testdb.Clone(t, &cfg, prefix, testdb.Setup{Name: "schema", Run: rmdb.AutoMigrate})
 }
 
 // modSeqFixture is one mailbox in a fresh database, with helpers that read
