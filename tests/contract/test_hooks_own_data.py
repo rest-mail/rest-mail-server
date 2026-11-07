@@ -302,6 +302,10 @@ class OwnDataHooks(unittest.TestCase):
             "createBan": "a_ban_to_manage",
             "deleteBan": "a_ban_to_manage",
             "unbanIP": "a_ban_to_manage",
+            "updatePipeline": "update_a_pipeline_of_its_own",
+            "listPipelines": "pipeline_reads_after_a_reset",
+            "listPipelineLogs": "pipeline_reads_after_a_reset",
+            "getPipelineAnalytics": "pipeline_reads_after_a_reset",
         }
         # entrypoint.py registers setDomainRelay's and the quiet hours' (below).
         self.assertEqual(
@@ -309,6 +313,20 @@ class OwnDataHooks(unittest.TestCase):
         )
         for operation, hook in hooks.items():
             self.assertIn((operation, hook), self.registered)
+
+    def test_the_pipeline_operations_reset_in_their_first_hook(self):
+        # It runs before the coverage placeholder's hook, so that one reads the
+        # path it leaves.
+        for operation, hook in (
+            ("updatePipeline", "update_a_pipeline_of_its_own"),
+            ("listPipelines", "pipeline_reads_after_a_reset"),
+            ("listPipelineLogs", "pipeline_reads_after_a_reset"),
+            ("getPipelineAnalytics", "pipeline_reads_after_a_reset"),
+        ):
+            names = [h for o, h in self.registered if o == operation]
+            self.assertEqual(names[0], hook, operation)
+        self.assertFalse(hasattr(self.hooks, "a_live_pipeline_for_the_link"))
+        self.assertFalse(hasattr(self.hooks, "the_domain_since_the_reset"))
 
     def test_the_domain_settings_reset_in_their_first_hook(self):
         self.assertIn(
@@ -423,7 +441,7 @@ class OwnDataHooks(unittest.TestCase):
             [call for call in self.server.calls if call[1] == "/api/v1/admin/domains"]
         )
 
-    def test_a_reset_forgets_all_but_the_sessions_and_the_links(self):
+    def test_a_reset_forgets_all_but_the_sessions(self):
         self.clean_starts_on()
         self.the_run_created_its_domain()
         self.stub.stash.update(
@@ -437,7 +455,6 @@ class OwnDataHooks(unittest.TestCase):
             self.transaction(422, "/api/v1/admin/domains/0")
         )
         self.assertEqual(set(self.stub.stash), set(self.hooks.SURVIVES_A_RESET))
-        self.assertEqual(self.stub.stash["clean_starts"], 1)
 
     def test_the_stale_key_example_runs_on_a_live_domain(self):
         transaction = self.transaction(200, "/api/v1/admin/domains/7/dns?x=1")
@@ -497,7 +514,7 @@ class OwnDataHooks(unittest.TestCase):
         before = copy.deepcopy(create)
         self.hooks.create_a_domain_that_is_not_there(create)
         self.assertEqual(create, before)
-        self.assertEqual(set(self.stub.stash), {"clean_starts", "setup_admin_tokens"})
+        self.assertEqual(set(self.stub.stash), {"setup_admin_tokens"})
         for status, path in (
             (422, "/api/v1/admin/domains/0"),
             (404, "/api/v1/admin/domains/2147483647"),
@@ -935,7 +952,8 @@ class OwnDataHooks(unittest.TestCase):
     def test_the_credential_and_ban_operations_reset_in_their_first_hook(self):
         # It runs first, so the two-factor swap, the edit's own key and the
         # create's state see the clean start and the path it leaves.
-        for operation in own_data.MOVED[own_data.MOVED.index("listCredentials"):]:
+        start = own_data.MOVED.index("listCredentials")
+        for operation in own_data.MOVED[start : own_data.MOVED.index("unbanIP") + 1]:
             names = [h for o, h in self.registered if o == operation]
             self.assertIn(names[0], ("a_credential_to_manage", "a_ban_to_manage"), operation)
 
