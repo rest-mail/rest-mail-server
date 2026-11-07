@@ -10,9 +10,14 @@
     "getThread",
     "listAttachments",
     "listFolders",
+    "listMessageRecipients",
     "listMessages",
+    "listThreads",
     "renameFolder",
     "searchMessages",
-    "updateMessage"
+    "setThreadDue",
+    "snoozeThread",
+    "updateMessage",
+    "verifyMessageSeal"
   ]
 }

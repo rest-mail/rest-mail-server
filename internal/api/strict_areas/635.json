@@ -3,13 +3,18 @@
     "createAPIKey",
     "createAccount",
     "createAppPassword",
+    "createClientSecret",
     "getAccount",
+    "getAccountSendLimits",
     "linkAccount",
     "listAPIKeys",
     "listAccounts",
+    "listClientSecrets",
     "listCredentials",
     "revokeAPIKey",
+    "revokeClientSecret",
     "revokeCredential",
+    "setAccountSendLimits",
     "unlinkAccount",
     "updateAPIKey"
   ]

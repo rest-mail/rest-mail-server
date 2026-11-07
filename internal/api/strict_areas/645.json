@@ -5,6 +5,8 @@
     "domainDNSCheck",
     "getDomain",
     "listDomains",
+    "restartDomainOutbound",
+    "stopDomainOutbound",
     "updateDomain"
   ]
 }
