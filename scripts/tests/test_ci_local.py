@@ -1333,6 +1333,11 @@ class VertragShards(unittest.TestCase):
                     if step.get("name") == "Preload pg_stat_statements in the test database"
                 )
                 self.assertIn("ALTER SYSTEM SET pg_stat_statements.max = 100000", preload)
+                phases = preload.split("\nrestart_postgres\n")
+                self.assertEqual(len(phases), 3)
+                self.assertIn("ALTER SYSTEM SET shared_preload_libraries", phases[0])
+                self.assertNotIn("ALTER SYSTEM SET pg_stat_statements.max", phases[0])
+                self.assertIn("ALTER SYSTEM SET pg_stat_statements.max = 100000", phases[1])
                 ready = docker.call_args.args[0]
                 self.assertEqual(ready[ready.index("-h") + 1], "127.0.0.1")
                 self.assertTrue(local.container.startswith("restmail-1942-postgres-"))

@@ -83,7 +83,7 @@
       "local": "Go dependencies"
     },
     "Preload pg_stat_statements in the test database": {
-      "sha256": "7f8388d60a8c0b28bd6bf73a79272fc80b6284a44853043514baa0aefce0c88e",
+      "sha256": "34c9ff9de2d996bd3106d78cbe64a1231e2fe0f77f6d8077001492518f90d6c0",
       "local": "PostgreSQL"
     },
     "Run unit tests with race detector": {
