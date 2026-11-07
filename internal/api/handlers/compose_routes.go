@@ -135,8 +135,8 @@ type calendarReplyBody struct {
 
 // saveDraftBody is a new draft; every field is optional. Without a from, the draft is kept
 // in the caller's own mailbox. The items of to and cc get their format in
-// internal/api/described_items.go, which a tag cannot do. From has none: an empty one is accepted
-// and means none, and the rest are matched to a mailbox, so a bad one is a 403, not a bad body.
+// internal/api/described_items.go, which also describes from as empty or idn-email: an empty
+// one means none, and other values are matched to a writable mailbox (otherwise 403).
 type saveDraftBody struct {
 	From       string   `json:"from,omitempty"`
 	To         []string `json:"to,omitempty"`

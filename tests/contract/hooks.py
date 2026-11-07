@@ -45,6 +45,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import mfa_admin  # noqa: E402
 import rate_limits
 import reset_seed
+from identities import address_key, domain_key
 from queue_entry_hooks import a_disposable_queue_entry
 
 PRINCIPALS = os.environ.get("CONTRACT_PRINCIPALS", ".cache/contract-principals.json")
@@ -1720,7 +1721,7 @@ def a_signing_mailbox_at(transaction, address):
         transaction["port"],
     )
     ready = hooks.stash.get("sender_mailboxes", {})
-    if not local or "." not in domain or (origin + "\n" + address.lower()) in ready:
+    if not local or "." not in domain or (origin + "\n" + address_key(address)) in ready:
         return
     headers = {
         "Content-Type": "application/json",
@@ -1735,7 +1736,10 @@ def a_signing_mailbox_at(transaction, address):
         with urllib.request.urlopen(request, timeout=10) as response:
             return json.load(response).get("data")
 
-    hosted = find_in_list(origin, "/api/v1/admin/domains", headers, named(domain))
+    hosted = find_in_list(
+        origin, "/api/v1/admin/domains", headers,
+        lambda hosted: domain_key(hosted.get("name") or "") == domain_key(domain),
+    )
     domain_id = hosted["id"] if hosted else None
     if domain_id is None:
         try:
@@ -1768,12 +1772,12 @@ def a_signing_mailbox_at(transaction, address):
         origin,
         f"/api/v1/admin/mailboxes?domain_id={domain_id:d}",
         headers,
-        addressed(address),
+        lambda mailbox: address_key(mailbox.get("address") or "") == address_key(address),
     ):
         # Making an account takes a second factor.
         headers["Authorization"] = "Bearer " + mfa_admin_token(origin)
         call("POST", "/api/v1/accounts", {"address": address})
-    ready[origin + "\n" + address.lower()] = True
+    ready[origin + "\n" + address_key(address)] = True
     hooks.stash["sender_mailboxes"] = ready
 
 
@@ -1799,7 +1803,7 @@ def a_sending_policy_for_the_send(transaction):
         # admin and mean what they name (valid's queue entry is a link target).
         # Anything else that has a sender here is generated, and stays inside
         # the topology; without one the handler refuses it before any delivery.
-        sender = str(body.get("from")).lower()
+        sender = address_key(str(body.get("from")))
         ready = hooks.stash.get("sender_mailboxes", {})
         if body.get("from") != ADMIN and origin_of(transaction) + "\n" + sender in ready:
             for field in ("to", "cc", "bcc"):
@@ -2568,7 +2572,8 @@ def hosted_domain_id(origin, headers, name):
     """The id of the domain called name, hosting it first if need be, or None
     when the server will not host it (left to the probe)."""
     domain = find_in_list(
-        origin, "/api/v1/admin/domains", headers, lambda d: d.get("name") == name
+        origin, "/api/v1/admin/domains", headers,
+        lambda hosted: domain_key(hosted.get("name") or "") == domain_key(name),
     )
     if domain is not None:
         return domain["id"]
@@ -2701,7 +2706,7 @@ def alias_on(origin, headers, domain_id, source):
         origin,
         f"/api/v1/admin/aliases?domain_id={domain_id:d}",
         headers,
-        lambda a: (a.get("source_address") or "").lower() == source.lower(),
+        lambda alias: address_key(alias.get("source_address") or "") == address_key(source),
     )
 
 
@@ -2751,7 +2756,7 @@ def remove_a_previous_alias_probe(transaction):
                 pass
         return
     owned = hooks.stash.get("created_alias_probes", {})
-    key = origin + "\n" + source.lower()
+    key = origin + "\n" + address_key(source)
     if alias is None:
         owned[key] = True
         hooks.stash["created_alias_probes"] = owned
@@ -3637,7 +3642,7 @@ def create_a_domain_that_is_not_there(transaction):
     ):
         return
     for domain in fixture_call(transaction, "GET", "/api/v1/admin/domains") or []:
-        if domain.get("name") != name:
+        if domain_key(domain.get("name") or "") != domain_key(name):
             continue
         if name == GENERATED_DOMAIN:
             empty_the_generated_domain(transaction, domain["id"])

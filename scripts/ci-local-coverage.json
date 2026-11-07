@@ -57,7 +57,7 @@
       "exception": "Runs on the current working tree, including staged, unstaged and untracked files, or a scratch merge; checkout would discard local work."
     },
     "Test contract tooling": {
-      "sha256": "7da8397dac1ec833a6d3734aa4c9ed9e7f3f3e09b74ba86912fbf3df44e4d28a",
+      "sha256": "6e0c1bf9cff7a0656014030a9a737ff361d807243b0f214fe7de30360e829037",
       "local": "tests/contract"
     }
   },

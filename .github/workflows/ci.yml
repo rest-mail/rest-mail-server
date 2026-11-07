@@ -275,7 +275,7 @@ jobs:
 
       - name: Test contract tooling
         run: |
-          python3 -m pip install --quiet pyyaml
+          python3 -m pip install --quiet pyyaml idna==3.11
           python3 -m unittest discover -s tests/contract -p 'test_*.py'
 
   lint:

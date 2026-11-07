@@ -208,7 +208,7 @@ jobs:
       - name: Every example that needs setup is proven by some runner
         run: |
           set -euo pipefail
-          python3 -m pip install --quiet pyyaml
+          python3 -m pip install --quiet pyyaml idna==3.11
           mapfile -t proofs < <(find "$RUNNER_TEMP/proofs" -name '*.json' | sort)
           if [ "${#proofs[@]}" -lt 4 ]; then
             echo "::error::expected example proofs from all 4 internal/api shards, found ${#proofs[@]} files" >&2

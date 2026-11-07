@@ -6028,7 +6028,7 @@ export interface components {
             body_html?: string;
             body_text?: string;
             cc?: string[];
-            from?: string;
+            from?: string | "";
             in_reply_to?: string;
             references?: string;
             subject?: string;
@@ -6092,18 +6092,21 @@ export interface components {
             tls_mode?: "starttls" | "implicit" | null;
             /** @enum {string} */
             transport: "direct" | "relay";
+            /** @description At most 255 UTF-8 bytes, without ASCII control characters. For relay transport, a username and a password must be set together, or neither. An omitted or null password preserves the stored password. */
             username?: string;
         } | {
             /** @enum {unknown} */
             transport?: "direct";
         } | {
             host: unknown;
+            port: number;
+            tls_mode: string;
             /** @enum {unknown} */
             transport?: "relay";
         };
         setVacationBody: {
             body?: string;
-            enabled: boolean | null;
+            enabled: boolean;
             /** Format: date-time */
             end_date?: string | null;
             /** Format: date-time */
@@ -6183,7 +6186,7 @@ export interface components {
             body_html?: string | null;
             body_text?: string | null;
             cc?: string[];
-            from?: string | null;
+            from?: ((string | ("" | null)) | null) | ("" | null) | string;
             in_reply_to?: string | null;
             references?: string | null;
             subject?: string | null;
@@ -6198,13 +6201,15 @@ export interface components {
             quota_bytes?: number | null;
         };
         updateMessageBody: {
-            folder?: string | null;
+            /** @description Valid UTF-8 folder name of at most 255 bytes; null leaves it unchanged. The byte limit also applies to multibyte names. */
+            folder?: ((string & ((string | null) & (string | null) & (string | null))) | null) & ((string | null) & (string | null) & (string | null));
             imap_deleted?: boolean | null;
             is_answered?: boolean | null;
             is_draft?: boolean | null;
             is_flagged?: boolean | null;
             is_read?: boolean | null;
             is_starred?: boolean | null;
+            /** @description RFC 3501 ASCII keywords, without system flags; at most 100 distinct keywords, compared case-insensitively. Repeated keywords are accepted and deduplicated. */
             keywords?: string[] | null;
         };
         updatePipelineRequestBody: {

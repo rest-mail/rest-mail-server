@@ -90,7 +90,7 @@ export RESTMAIL_VERTRAG_BINARY="$CONTRACT_VERTRAG"
 PATH="$(dirname "$CONTRACT_VERTRAG"):$PATH"
 export PATH
 "$CONTRACT_VERTRAG" version
-python3 -B -c 'import yaml' 2>/dev/null || pip install --quiet pyyaml
+python3 -B -c 'import yaml, idna' 2>/dev/null || pip install --quiet pyyaml idna==3.11
 if [ ! -s "$served" ] || { [ "$phase" != authorization ] && [ "$phase" != ownership ]; }; then
   python3 -B tests/contract/description.py vertrag.yml "$served"
 fi

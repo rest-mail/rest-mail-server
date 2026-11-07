@@ -1053,20 +1053,11 @@
 # Outbound queue (#650)
 
 - operation: bulkBounceQueue
-  difference: "request body application/json.properties.ids.items.minimum: openapi.yaml 0, generated absent"
-  reason: The uint element type enforces non-negative IDs during binding, but go-oapifly does not emit the implicit unsigned minimum.
-- operation: bulkBounceQueue
   difference: "response 200 application/json.properties.data.properties.affected.format: openapi.yaml absent, generated \"int64\""
   reason: The counter is an int64 in Go; generated documentation states its width without changing its JSON integer representation.
 - operation: bulkDeleteQueue
-  difference: "request body application/json.properties.ids.items.minimum: openapi.yaml 0, generated absent"
-  reason: The uint element type enforces non-negative IDs during binding, but go-oapifly does not emit the implicit unsigned minimum.
-- operation: bulkDeleteQueue
   difference: "response 200 application/json.properties.data.properties.affected.format: openapi.yaml absent, generated \"int64\""
   reason: The counter is an int64 in Go; generated documentation states its width without changing its JSON integer representation.
-- operation: bulkRetryQueue
-  difference: "request body application/json.properties.ids.items.minimum: openapi.yaml 0, generated absent"
-  reason: The uint element type enforces non-negative IDs during binding, but go-oapifly does not emit the implicit unsigned minimum.
 - operation: bulkRetryQueue
   difference: "response 200 application/json.properties.data.properties.affected.format: openapi.yaml absent, generated \"int64\""
   reason: The counter is an int64 in Go; generated documentation states its width without changing its JSON integer representation.
@@ -1648,11 +1639,6 @@
   difference: "request body application/json.required: openapi.yaml [\"body\",\"enabled\",\"subject\"], generated [\"enabled\"]"
   reason: >-
     Only enabled is required; subject and body may be left out when the reply is off.
-- operation: setVacation
-  difference: "request body application/json.properties.enabled.type: openapi.yaml \"boolean\", generated [\"boolean\",\"null\"]"
-  reason: >-
-    A null enabled is bound and then refused in the handler as 422 enabled required, as a
-    missing one is.
 - operation: setVacation
   difference: "response 200 application/json.properties.data.anyOf: openapi.yaml [{\"properties\":{\"enabled\":{\"enum\":[false]}}},{\"properties\":{\"body\":{\"minLength\":1},\"subject\":{\"minLength\":1}}}], generated absent"
   reason: >-
@@ -2324,11 +2310,6 @@
   reason: >-
     The handler accepts an internationalized address, so the description says so; the oracle's
     format is ASCII only.
-- operation: saveDraft
-  difference: "request body application/json.properties.from.format: openapi.yaml \"email\", generated absent"
-  reason: >-
-    The handler accepts an empty from, which means none, so a format would call a body it accepts
-    invalid. Any other from is matched to a mailbox the session may act as, and is a 403 if not.
 - operation: updateDraft
   difference: "request body application/json.properties.to.items.format: openapi.yaml \"email\", generated \"idn-email\""
   reason: >-
@@ -2339,15 +2320,6 @@
   reason: >-
     The handler accepts an internationalized address, so the description says so; the oracle's
     format is ASCII only.
-- operation: updateDraft
-  difference: "request body application/json.properties.from.format: openapi.yaml \"email\", generated absent"
-  reason: >-
-    The handler accepts an empty from, which means none, so a format would call a body it accepts
-    invalid. Any other from is matched to a mailbox the session may act as, and is a 403 if not.
-- operation: updateDraft
-  difference: "request body application/json.properties.from.type: openapi.yaml \"string\", generated [\"null\",\"string\"]"
-  reason: >-
-    Null leaves the field as it is, as an absent one does.
 - operation: updateDraft
   difference: "request body application/json.properties.subject.type: openapi.yaml \"string\", generated [\"null\",\"string\"]"
   reason: >-

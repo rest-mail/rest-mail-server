@@ -1,4 +1,5 @@
 openapi: 3.1.0
+jsonSchemaDialect: http://json-schema.org/draft-07/schema#
 info:
   title: RestMail API
   version: 1.0.0
@@ -18005,8 +18006,12 @@ components:
           type: [boolean, "null"]
         keywords:
           type: [array, "null"]
+          description: RFC 3501 ASCII keywords, without system flags; at most 100 distinct keywords, compared case-insensitively. Repeated keywords are accepted and deduplicated.
           items:
             type: string
+            minLength: 1
+            maxLength: 255
+            pattern: '^[\x21\x23\x24\x26\x27\x2b-\x5b\x5e-\x7a\x7c-\x7e]+$'
         is_answered:
           type:
           - boolean
@@ -18021,6 +18026,16 @@ components:
           # The folder rule createFolder applies: a move makes the folder if there is none.
           type: string
           minLength: 1
+          maxLength: 255
+          description: Valid UTF-8 folder name of at most 255 bytes; null leaves it unchanged. The byte limit also applies to multibyte names.
+          pattern: "[^\\x09-\\x0d \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]"
+          allOf:
+            - type: [string, "null"]
+              pattern: "^[^\\x09-\\x0d \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]([\\s\\S]*[^\\x09-\\x0d \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000])?$"
+            - type: [string, "null"]
+              pattern: '^[^\x00-\x1f\x7f-\x9f]*$'
+            - type: [string, "null"]
+              pattern: '^([^.]|\.[^.])*(\.)?$'
 
     SendMessageRequest:
       type: object
@@ -18182,7 +18197,11 @@ components:
       properties:
         from:
           type: string
-          format: email
+          anyOf:
+            - type: string
+              enum: [""]
+            - type: string
+              format: idn-email
         to:
           type: array
           items:
@@ -18208,8 +18227,12 @@ components:
       type: object
       properties:
         from:
-          type: string
-          format: email
+          type: [string, 'null']
+          anyOf:
+            - type: [string, 'null']
+              enum: ["", null]
+            - type: string
+              format: idn-email
         to:
           type: array
           items:
@@ -19412,6 +19435,7 @@ components:
           items:
             type: integer
             minimum: 0
+            maximum: 18446744073709551615
         filter:
           type: object
           description: Filter criteria to select entries (alternative to ids)
@@ -20362,6 +20386,10 @@ components:
               enum: [direct]
         - required: [host, port, tls_mode]
           properties:
+            port:
+              type: integer
+            tls_mode:
+              type: string
             # models.RelayHostPattern: a DNS name, or an IPv6 address as
             # net.ParseIP reads one (an IPv4 address is a DNS name to it).
             host:
@@ -20388,9 +20416,11 @@ components:
         username:
           type: string
           maxLength: 255
-          description: Set together with a password, or neither.
+          pattern: '^[^\x00-\x1f\x7f]*$'
+          description: At most 255 UTF-8 bytes, without ASCII control characters. For relay transport, a username and a password must be set together, or neither. An omitted or null password preserves the stored password.
         password:
           type: string
+          pattern: '^[^\x00-\x1f\x7f]*$'
           writeOnly: true
           description: Left out keeps the stored password; an empty string clears it.
 
