@@ -14,6 +14,7 @@ import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from unittest.mock import patch
+from urllib.parse import parse_qs
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tests/contract"))
@@ -65,6 +66,7 @@ class FixtureAPI(BaseHTTPRequestHandler):
             self.server.policies.clear()
             self.server.keys.clear()
             self.server.accounts.clear()
+            self.server.queue.clear()
             self.server.serial = 3
             return self.answer(200, {"status": "reset_complete"})
         if self.path == "/api/v1/admin/test/seed":
@@ -79,6 +81,15 @@ class FixtureAPI(BaseHTTPRequestHandler):
         if IMPORT.fullmatch(self.path):
             self.server.imports.append((self.path, body))
             return self.answer(200, {"id": len(self.server.imports), "imported": True})
+        if self.path == "/api/v1/messages/send":
+            self.server.serial += 1
+            for recipient in body["to"]:
+                self.server.queue[self.server.serial] = [recipient, "pending", self.headers["Authorization"]]
+            return self.answer(201, {"id": self.server.serial})
+        bounce = re.fullmatch(r"/api/v1/admin/queue/(\d+)/bounce", self.path)
+        if bounce and int(bounce[1]) in self.server.queue:
+            self.server.queue[int(bounce[1])][1] = "bounced"
+            return self.answer(200, {"status": "bounced"})
         if self.path != "/api/v1/admin/domains":
             return self.answer(404)
         if body["name"] in self.server.domains.values():
@@ -86,6 +97,19 @@ class FixtureAPI(BaseHTTPRequestHandler):
         self.server.serial += 1
         self.server.domains[self.server.serial] = body["name"]
         self.answer(201, {"id": self.server.serial, "name": body["name"]})
+
+    def do_GET(self):
+        self.server.calls.append(("GET", self.path, None))
+        path, _, query = self.path.partition("?")
+        if path != "/api/v1/admin/queue":
+            return self.answer(404)
+        wanted = parse_qs(query)["recipient"]
+        items = [
+            {"id": entry, "recipient": recipient, "status": status}
+            for entry, (recipient, status, _) in self.server.queue.items()
+            if [recipient] == wanted
+        ]
+        self.answer(200, {"items": items, "total": len(items)})
 
     def do_PUT(self):
         body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
@@ -112,6 +136,7 @@ class OwnDataHooks(unittest.TestCase):
         self.server.accounts = {}
         self.server.imports = []
         self.server.settings = {}
+        self.server.queue = {}
         self.server.serial = 40
         self.server.reset_failure = None
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
@@ -243,6 +268,19 @@ class OwnDataHooks(unittest.TestCase):
             "snoozeThread": "on_the_admins_mailbox_after_a_reset",
             "importMessage": "on_the_admins_mailbox_after_a_reset",
             **{operation: "account_settings_of_its_own" for operation in ACCOUNT_SETTINGS},
+            "listQueue": "queued_and_held_mail_of_its_own",
+            "getQueueStats": "queued_and_held_mail_of_its_own",
+            "getQueueEntry": "queued_and_held_mail_of_its_own",
+            "retryQueueEntry": "queued_and_held_mail_of_its_own",
+            "bounceQueueEntry": "queued_and_held_mail_of_its_own",
+            "deleteQueueEntry": "queued_and_held_mail_of_its_own",
+            "bulkRetryQueue": "queued_and_held_mail_of_its_own",
+            "bulkBounceQueue": "queued_and_held_mail_of_its_own",
+            "bulkDeleteQueue": "queued_and_held_mail_of_its_own",
+            "listHeldMessages": "queued_and_held_mail_of_its_own",
+            "releaseHeldMessage": "queued_and_held_mail_of_its_own",
+            "listScheduledMessages": "queued_and_held_mail_of_its_own",
+            "cancelScheduledMessage": "queued_and_held_mail_of_its_own",
         }
         # entrypoint.py registers setDomainRelay's and the quiet hours' (below).
         self.assertEqual(
@@ -744,6 +782,133 @@ class OwnDataHooks(unittest.TestCase):
         self.hooks.account_settings_of_its_own(transaction)
         self.assertEqual(transaction, before)
         self.assertEqual(self.stub.stash, stash)
+        self.assertEqual(self.server.calls, [])
+
+    QUEUE_OPERATIONS = (
+        "listQueue",
+        "getQueueStats",
+        "getQueueEntry",
+        "retryQueueEntry",
+        "bounceQueueEntry",
+        "deleteQueueEntry",
+        "bulkRetryQueue",
+        "bulkBounceQueue",
+        "bulkDeleteQueue",
+        "listHeldMessages",
+        "releaseHeldMessage",
+        "listScheduledMessages",
+        "cancelScheduledMessage",
+    )
+
+    def test_the_queue_operations_reset_in_their_first_hook(self):
+        # It runs first, so the fixture queue hooks and the scheduled
+        # message's see the clean start and the path it leaves.
+        for operation in self.QUEUE_OPERATIONS:
+            names = [h for o, h in self.registered if o == operation]
+            self.assertEqual(names[0], "queued_and_held_mail_of_its_own", operation)
+
+    def test_each_queue_entry_success_gets_an_entry_of_its_own(self):
+        self.clean_starts_on()
+        for path, status, state in (
+            ("/api/v1/admin/queue/1", 200, "pending"),
+            ("/api/v1/admin/queue/1", 204, "pending"),
+            ("/api/v1/admin/queue/7/retry", 200, "pending"),
+            ("/api/v1/admin/queue/1/bounce?x=1", 200, "pending"),
+            # retry's already_bounced: refused for that, not for a gone entry.
+            ("/api/v1/admin/queue/5/retry", 400, "bounced"),
+        ):
+            transaction = self.transaction(status, path)
+            request = copy.deepcopy(transaction["request"])
+            self.hooks.queued_and_held_mail_of_its_own(transaction)
+            entry = max(self.server.queue)
+            recipient, made, session = self.server.queue[entry]
+            self.assertEqual(
+                transaction["fullPath"],
+                re.sub(r"/queue/\d+", f"/queue/{entry:d}", path),
+            )
+            self.assertRegex(recipient, r"^contract-own-queue-\d+@queue\.invalid$")
+            self.assertEqual(made, state)
+            # The fixture admin's setup session sends it; the request's own
+            # credential and body stay as they are.
+            self.assertEqual(session, "Bearer setup-session")
+            self.assertEqual(transaction["request"], request)
+            self.assertLessEqual(set(self.stub.stash), set(self.hooks.SURVIVES_A_RESET))
+        self.assertEqual(self.resets(), 5)
+
+    def test_the_queue_list_shows_an_entry_of_its_own(self):
+        self.clean_starts_on()
+        transaction = self.transaction(200, "/api/v1/admin/queue?limit=20&offset=0")
+        self.hooks.queued_and_held_mail_of_its_own(transaction)
+        (recipient, _, _), = self.server.queue.values()
+        self.assertEqual(
+            transaction["fullPath"],
+            "/api/v1/admin/queue?recipient=" + recipient.replace("@", "%40"),
+        )
+
+    def test_a_bulk_empty_filter_gets_an_entry_and_the_documented_filter_none(self):
+        self.clean_starts_on()
+        for body, made in (
+            ({"filter": {}}, 1),
+            ({"filter": {"domain": "example.test", "status": "deferred"}}, 0),
+        ):
+            self.server.queue.clear()
+            transaction = self.transaction(200, "/api/v1/admin/queue/bulk-retry")
+            transaction["request"]["body"] = json.dumps(body)
+            self.hooks.queued_and_held_mail_of_its_own(transaction)
+            self.assertEqual(len(self.server.queue), made)
+            self.assertEqual(transaction["fullPath"], "/api/v1/admin/queue/bulk-retry")
+
+    def test_the_held_list_names_an_account_of_its_own(self):
+        self.clean_starts_on()
+        self.two_factor_session()
+        transaction = self.transaction(200, "/api/v1/accounts/1/held-messages")
+        self.hooks.queued_and_held_mail_of_its_own(transaction)
+        account = max(self.server.accounts)
+        self.assertEqual(transaction["fullPath"], f"/api/v1/accounts/{account:d}/held-messages")
+        self.assertRegex(self.server.accounts[account][0], r"^contract-own-held-\d+@restmail\.test$")
+
+    def test_queue_refusals_and_the_rest_reset_and_keep_their_paths(self):
+        self.clean_starts_on()
+        for path, status in (
+            ("/api/v1/admin/queue/0", 422),
+            ("/api/v1/admin/queue/2147483647", 404),
+            ("/api/v1/admin/queue/2147483647/retry", 200),
+            ("/api/v1/admin/queue/not-an-integer/bounce", 200),
+            ("/api/v1/admin/queue/1", 401),
+            ("/api/v1/admin/queue?status=pending&limit=x", 422),
+            ("/api/v1/admin/queue/stats", 200),
+            ("/api/v1/accounts/2147483647/held-messages", 404),
+            ("/api/v1/accounts/0/held-messages", 422),
+            ("/api/v1/messages/scheduled/1/release", 403),
+            ("/api/v1/messages/scheduled", 200),
+            ("/api/v1/messages/scheduled/52", 204),
+        ):
+            transaction = self.transaction(status, path)
+            self.hooks.queued_and_held_mail_of_its_own(transaction)
+            self.assertEqual(transaction["fullPath"], path)
+        self.assertEqual(self.resets(), 12)
+        self.assertEqual(self.server.queue, {})
+        self.assertEqual(self.server.accounts, {})
+
+    def test_without_the_switch_a_queue_exchange_is_unchanged(self):
+        for path in ("/api/v1/admin/queue/1", "/api/v1/accounts/1/held-messages"):
+            transaction = self.transaction(200, path)
+            before = copy.deepcopy(transaction)
+            self.hooks.queued_and_held_mail_of_its_own(transaction)
+            self.assertEqual(transaction, before)
+        self.assertEqual(self.server.calls, [])
+
+    def test_after_a_reset_the_fixture_queue_hooks_stand_aside(self):
+        # The fixture entries they look for are gone after a reset.
+        self.clean_starts_on()
+        for hook, path in (
+            ("list_the_sent_messages_queue_entry", "/api/v1/admin/queue?status=pending&limit=20"),
+            ("retry_a_held_entry_after_bulk_examples", "/api/v1/admin/queue/9/retry"),
+            ("bounce_the_held_bounce_entry", "/api/v1/admin/queue/9/bounce"),
+        ):
+            transaction = self.transaction(200, path)
+            getattr(self.hooks, hook)(transaction)
+            self.assertEqual(transaction["fullPath"], path)
         self.assertEqual(self.server.calls, [])
 
     def test_the_policy_file_asks_for_a_domain_of_its_own_after_a_reset(self):
