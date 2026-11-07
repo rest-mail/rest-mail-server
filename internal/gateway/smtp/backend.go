@@ -3,6 +3,7 @@ package smtp
 import (
 	"time"
 
+	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 )
 
@@ -12,14 +13,42 @@ import (
 // The concrete *apiclient.Client satisfies this interface structurally, so the
 // production wiring keeps passing the real client unchanged.
 type Backend interface {
-	// SignIn authenticates an account (submission AUTH), with one of its
-	// passwords or an app password (apiclient.Client.SignIn).
-	SignIn(email, password, protocol string) (*apiclient.SignInResponse, error)
+	// OpenSession signs a mail client in at submission AUTH, with one of the
+	// account's passwords or an app password, and opens the connection's
+	// session with the API (#1586), with the submission service's certificate.
+	OpenSession(email, password, protocol string) (*apitypes.GatewaySessionOpened, error)
+	// CloseSession ends the connection's session, at QUIT or disconnect.
+	CloseSession(token string) error
 	// CheckMailbox verifies a recipient address exists locally.
 	CheckMailbox(address string) (*apiclient.MailboxCheckResponse, error)
 	// DeliverMessageFrom delivers a message to a local mailbox, reading its large
 	// fields from content as it sends them.
 	DeliverMessageFrom(req *apiclient.DeliverRequest, content apiclient.DeliverContent) (*apiclient.DeliverResponse, error)
+}
+
+// Clients is the SMTP gateway's Backend: two services, each calling the API
+// with its own client certificate (#1586). Inbound delivery acts for no
+// account, with the rest-mail-smtp-delivery certificate; submission opens and
+// closes a signed-in mail client's session with rest-mail-smtp-submission.
+type Clients struct {
+	Delivery   *apiclient.Client
+	Submission *apiclient.Client
+}
+
+var _ Backend = Clients{}
+
+func (c Clients) OpenSession(email, password, protocol string) (*apitypes.GatewaySessionOpened, error) {
+	return c.Submission.OpenSession(email, password, protocol)
+}
+
+func (c Clients) CloseSession(token string) error { return c.Submission.CloseSession(token) }
+
+func (c Clients) CheckMailbox(address string) (*apiclient.MailboxCheckResponse, error) {
+	return c.Delivery.CheckMailbox(address)
+}
+
+func (c Clients) DeliverMessageFrom(req *apiclient.DeliverRequest, content apiclient.DeliverContent) (*apiclient.DeliverResponse, error) {
+	return c.Delivery.DeliverMessageFrom(req, content)
 }
 
 // Store abstracts the two direct-database reaches the SMTP session makes, so the

@@ -29,8 +29,8 @@ func utf8API(t *testing.T) *apiclient.Client {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = io.WriteString(w, body)
 	}
-	mux.HandleFunc("/api/v1/auth/protocol-sign-in", func(w http.ResponseWriter, r *http.Request) {
-		reply(w, `{"data":{"access_token":"tok","user":{"id":1,"email":"jorg@example.test"}}}`)
+	mux.HandleFunc("/api/v1/gateway-sessions", func(w http.ResponseWriter, r *http.Request) {
+		reply(w, `{"data":{"token":"rmgs_tok","user":{"id":1,"email":"jorg@example.test"}}}`)
 	})
 	mux.HandleFunc("/api/v1/accounts/1/folders", func(w http.ResponseWriter, r *http.Request) {
 		reply(w, `{"data":[{"name":"INBOX"}]}`)

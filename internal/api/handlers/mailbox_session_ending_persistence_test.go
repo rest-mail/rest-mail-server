@@ -15,7 +15,7 @@ import (
 )
 
 func TestMailboxSessionEndingPersistenceAndRollback(t *testing.T) {
-	db := openCustomFilterCreateScratchDB(t, &models.Mailbox{}, &models.Credential{}, &models.RefreshToken{})
+	db := openCustomFilterCreateScratchDB(t, &models.Mailbox{}, &models.Credential{}, &models.RefreshToken{}, &models.GatewaySession{})
 	domain := models.Domain{Name: "session-ending.test"}
 	if err := db.Create(&domain).Error; err != nil {
 		t.Fatal(err)

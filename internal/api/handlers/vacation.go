@@ -77,7 +77,7 @@ func (setVacationBody) AnyOf() oapifly.AnyOfRule {
 
 // mailRulesSchemes are the schemes the mail routes take; the handlers check the account is
 // reachable with mail:read to read its rules and mail:write to change them.
-var mailRulesSchemes = []string{"CookieAuth", "BearerAuth", "APIKeyAuth", "BasicAuth"}
+var mailRulesSchemes = []string{"CookieAuth", "BearerAuth", "APIKeyAuth", "GatewaySessionAuth"}
 
 var errMailRulesAccess = errAccountNotFound
 

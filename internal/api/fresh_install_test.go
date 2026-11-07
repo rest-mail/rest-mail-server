@@ -192,10 +192,13 @@ func TestFreshInstall_EndToEnd(t *testing.T) {
 	}
 
 	jwtSvc := auth.NewJWTService(routerTestSecret, 5*time.Minute, 24*time.Hour)
-	routers := NewRouters(db, jwtSvc, &config.Config{Environment: "test", TOTP2FAEnabled: true, MasterKey: accessMasterKey}, nil)
+	routers := NewRouters(db, jwtSvc, &config.Config{Environment: "test", TOTP2FAEnabled: true, MasterKey: accessMasterKey,
+		InternalMTLSEnabled: true}, nil)
 	t.Cleanup(routers.Close)
 	f := &freshInstall{t: t, db: db, router: routers.Public}
-	gateway, submission, rootCAs := startSubmission(t, db, f.router)
+	_, submission, rootCAs := startSubmission(t, db, f.router, routers.Internal)
+	// The IMAP gateway's client, for the IMAP sign-ins below.
+	gateway := gatewayAPI(t, f.router, routers.Internal, imapCN)
 
 	// 2. Signing in with the deploy password, by address: a session in setup
 	// that reaches nothing but setting up. A username is not an address.
@@ -302,8 +305,8 @@ func TestFreshInstall_EndToEnd(t *testing.T) {
 	var adminApp createdCredential
 	f.expect(f.do(http.MethodPost, fmt.Sprintf("/api/v1/accounts/%d/credentials", admin.ID), adminS.bearer(),
 		fmt.Sprintf(`{"name":"Thunderbird","password":%q}`, freshAdminPW)), http.StatusCreated, "admin@'s app password", &adminApp)
-	if _, err := gateway.SignIn(freshAdmin, freshAdminPW, "smtp"); !apiclient.IsAuthRejection(err) {
-		t.Fatalf("admin@'s password over SMTP = %v, want refused", err)
+	if _, err := gateway.OpenSession(freshAdmin, freshAdminPW, "imap"); !apiclient.IsAuthRejection(err) {
+		t.Fatalf("admin@'s password at a gateway = %v, want refused", err)
 	}
 	received := "to chris@, over SMTP"
 	c := dialSubmission(t, submission, rootCAs, freshAdmin, adminApp.Password)

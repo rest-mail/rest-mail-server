@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/rest-mail/rest-mail-server/internal/mtls"
 )
 
 func parseCertFile(t *testing.T, path string) *x509.Certificate {
@@ -29,7 +31,7 @@ func parseCertFile(t *testing.T, path string) *x509.Certificate {
 
 func TestGenerateInternalMTLS(t *testing.T) {
 	dir := t.TempDir()
-	if err := generateInternalMTLS(dir, "api,localhost", "127.0.0.1,10.99.0.20", "smtp-gateway"); err != nil {
+	if err := generateInternalMTLS(dir, "api,localhost", "127.0.0.1,10.99.0.20"); err != nil {
 		t.Fatalf("generateInternalMTLS: %v", err)
 	}
 
@@ -55,43 +57,52 @@ func TestGenerateInternalMTLS(t *testing.T) {
 		t.Errorf("server cert missing IP SAN 10.99.0.20, got %v", server.IPAddresses)
 	}
 
-	// Client cert: verifies as a client cert against the CA, carries the CN.
-	client := parseCertFile(t, filepath.Join(dir, internalClientCertFile))
-	if _, err := client.Verify(x509.VerifyOptions{Roots: pool, KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}}); err != nil {
-		t.Errorf("client cert failed ClientAuth verification: %v", err)
+	// One client cert per gateway service: each verifies as a client cert
+	// against the CA and carries the name the API knows that service by.
+	for _, g := range mtls.Gateways {
+		client := parseCertFile(t, filepath.Join(dir, internalClientCertFile(g.Service)))
+		if _, err := client.Verify(x509.VerifyOptions{Roots: pool, KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}}); err != nil {
+			t.Errorf("%s client cert failed ClientAuth verification: %v", g.Service, err)
+		}
+		if client.Subject.CommonName != g.CommonName {
+			t.Errorf("%s client CN = %q, want %q", g.Service, client.Subject.CommonName, g.CommonName)
+		}
+		if _, err := os.Stat(filepath.Join(dir, internalClientKeyFile(g.Service))); err != nil {
+			t.Errorf("%s client key: %v", g.Service, err)
+		}
+		// A client cert must NOT pass server-auth verification (EKU is enforced).
+		if _, err := client.Verify(x509.VerifyOptions{Roots: pool, KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}}); err == nil {
+			t.Errorf("%s client cert unexpectedly passed ServerAuth verification", g.Service)
+		}
 	}
-	if client.Subject.CommonName != "smtp-gateway" {
-		t.Errorf("client CN = %q, want smtp-gateway", client.Subject.CommonName)
-	}
-
-	// A client cert must NOT pass server-auth verification (EKU is enforced).
-	if _, err := client.Verify(x509.VerifyOptions{Roots: pool, KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}}); err == nil {
-		t.Error("client cert unexpectedly passed ServerAuth verification")
+	// No shared gateway certificate is issued any more.
+	if _, err := os.Stat(filepath.Join(dir, "internal-client.crt")); !os.IsNotExist(err) {
+		t.Errorf("internal-client.crt: want not issued, got %v", err)
 	}
 }
 
 func TestGenerateInternalMTLS_Idempotent(t *testing.T) {
 	dir := t.TempDir()
-	if err := generateInternalMTLS(dir, "api", "127.0.0.1", "gw"); err != nil {
+	if err := generateInternalMTLS(dir, "api", "127.0.0.1"); err != nil {
 		t.Fatalf("first generate: %v", err)
 	}
 	before, err := os.ReadFile(filepath.Join(dir, internalCACertFile))
 	if err != nil {
 		t.Fatalf("read CA: %v", err)
 	}
-	clientBefore, err := os.ReadFile(filepath.Join(dir, internalClientCertFile))
+	clientBefore, err := os.ReadFile(filepath.Join(dir, internalClientCertFile(mtls.GatewayServiceIMAP)))
 	if err != nil {
 		t.Fatalf("read client: %v", err)
 	}
 
-	if err := generateInternalMTLS(dir, "api", "127.0.0.1", "gw"); err != nil {
+	if err := generateInternalMTLS(dir, "api", "127.0.0.1"); err != nil {
 		t.Fatalf("second generate: %v", err)
 	}
 	after, err := os.ReadFile(filepath.Join(dir, internalCACertFile))
 	if err != nil {
 		t.Fatalf("read CA 2: %v", err)
 	}
-	clientAfter, err := os.ReadFile(filepath.Join(dir, internalClientCertFile))
+	clientAfter, err := os.ReadFile(filepath.Join(dir, internalClientCertFile(mtls.GatewayServiceIMAP)))
 	if err != nil {
 		t.Fatalf("read client 2: %v", err)
 	}
@@ -109,20 +120,20 @@ func TestGenerateInternalMTLS_Idempotent(t *testing.T) {
 // and client cert are preserved.
 func TestGenerateInternalMTLS_RegeneratesServerOnSANDrift(t *testing.T) {
 	dir := t.TempDir()
-	if err := generateInternalMTLS(dir, "api", "127.0.0.1", "gw"); err != nil {
+	if err := generateInternalMTLS(dir, "api", "127.0.0.1"); err != nil {
 		t.Fatalf("first generate: %v", err)
 	}
 	caBefore, _ := os.ReadFile(filepath.Join(dir, internalCACertFile))
 	serverBefore, _ := os.ReadFile(filepath.Join(dir, internalServerCertFile))
-	clientBefore, _ := os.ReadFile(filepath.Join(dir, internalClientCertFile))
+	clientBefore, _ := os.ReadFile(filepath.Join(dir, internalClientCertFile(mtls.GatewayServiceIMAP)))
 
 	// Re-run with an added IP SAN (simulating RESTMAIL_API_IP appearing/changing).
-	if err := generateInternalMTLS(dir, "api", "127.0.0.1,10.99.0.99", "gw"); err != nil {
+	if err := generateInternalMTLS(dir, "api", "127.0.0.1,10.99.0.99"); err != nil {
 		t.Fatalf("drift generate: %v", err)
 	}
 	caAfter, _ := os.ReadFile(filepath.Join(dir, internalCACertFile))
 	serverAfter, _ := os.ReadFile(filepath.Join(dir, internalServerCertFile))
-	clientAfter, _ := os.ReadFile(filepath.Join(dir, internalClientCertFile))
+	clientAfter, _ := os.ReadFile(filepath.Join(dir, internalClientCertFile(mtls.GatewayServiceIMAP)))
 
 	if string(serverBefore) == string(serverAfter) {
 		t.Error("server cert NOT re-minted after SAN drift — stale SAN would cause TLS name mismatch")
@@ -149,7 +160,7 @@ func TestGenerateInternalMTLS_RegeneratesServerOnSANDrift(t *testing.T) {
 
 func TestServerCertSANsMatch(t *testing.T) {
 	dir := t.TempDir()
-	if err := generateInternalMTLS(dir, "api,localhost", "127.0.0.1,10.99.0.20", "gw"); err != nil {
+	if err := generateInternalMTLS(dir, "api,localhost", "127.0.0.1,10.99.0.20"); err != nil {
 		t.Fatalf("generate: %v", err)
 	}
 	certPath := filepath.Join(dir, internalServerCertFile)
@@ -170,7 +181,7 @@ func TestServerCertSANsMatch(t *testing.T) {
 
 func TestGenerateInternalMTLS_RejectsBadIP(t *testing.T) {
 	dir := t.TempDir()
-	if err := generateInternalMTLS(dir, "api", "not-an-ip", "gw"); err == nil {
+	if err := generateInternalMTLS(dir, "api", "not-an-ip"); err == nil {
 		t.Fatal("expected error for invalid -server-ip, got nil")
 	}
 }

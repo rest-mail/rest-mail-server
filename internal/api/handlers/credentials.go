@@ -11,16 +11,13 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	oapifly "github.com/antimatter-studios/go-oapifly"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
 	"github.com/rest-mail/rest-mail-server/internal/api/middleware"
-	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
 	"github.com/rest-mail/rest-mail-server/internal/audit"
 	"github.com/rest-mail/rest-mail-server/internal/auth"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/db/repositories"
-	"github.com/rest-mail/rest-mail-server/internal/grants"
 	"gorm.io/gorm"
 )
 
@@ -321,81 +318,20 @@ func revokeAppPasswordsForNewPassword(tx *gorm.DB, r *http.Request, accountID ui
 	return nil
 }
 
-// signInProtocols are the protocols a gateway signs a mail client in over.
-var signInProtocols = map[string]bool{"imap": true, "pop3": true, "smtp": true}
-
-type protocolSignInRequest = apitypes.ProtocolSignInRequest
-
-// ProtocolSignedIn is the account a mail client signed in to, and the credential it used.
-// Its fields are in the order the map it replaced was written in.
-type ProtocolSignedIn = apitypes.ProtocolSignedIn
-
-// RegisterProtocolSignIn registers the protocol gateways' sign-in, in the mail routes' group:
-// it takes HTTP Basic only (a session is 400 basic_required), is throttled like login, and is
-// audited with its protocol.
-func (h *CredentialHandler) RegisterProtocolSignIn(rs endpoint.Routes, checks SessionRouteChecks) {
-	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/auth/protocol-sign-in",
-		OperationID: "protocolSignIn", Summary: "Sign a mail client in (protocol gateways)", Tags: []string{"Auth"},
-		Security: []oapifly.SecurityRequirement{{"BasicAuth": nil}}, Errors: []int{http.StatusForbidden},
-		Middleware: []endpoint.Middleware{checks.Throttle, checks.Audit("auth.protocol_sign_in", middleware.AuditBodyFields("protocol"))}}, h.protocolSignIn)
-}
-
-// protocolSignIn is how a protocol gateway signs in a mail client: the request
-// carries the address and what the client gave as its password (an app
-// password, or one of the account's passwords) with HTTP Basic, already
-// checked by the middleware against the account's credentials, and the audit
-// log records the sign-in with its credential. It answers with the account,
-// as login does, so the gateway knows which account the requests it then
-// makes, each carrying the same Basic credentials, are for. A session cannot
-// use it.
-// POST /api/v1/auth/protocol-sign-in
-func (h *CredentialHandler) protocolSignIn(r *http.Request, req protocolSignInRequest) (ProtocolSignedIn, error) {
-	h = h.forRequest(r)
-	claims := middleware.GetClaims(r)
-	if claims == nil || claims.CredentialID == 0 || claims.IsScopedCredential() {
-		return ProtocolSignedIn{}, endpoint.Refuse(http.StatusBadRequest, "basic_required",
-			"Sign in here with HTTP Basic: the account's address, and its password or an app password")
-	}
-	if !signInProtocols[req.Protocol] {
-		return ProtocolSignedIn{}, endpoint.Invalid(map[string]string{"protocol": `must be "imap", "pop3" or "smtp"`})
-	}
-	var account models.Mailbox
-	if err := h.db.Select("id", "address", "display_name").Take(&account, claims.AccountID).Error; err != nil {
-		return ProtocolSignedIn{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to load the account")
-	}
-	// A mail client reaches only the account's own mailbox: being an
-	// administrator never stands in for mailbox:session (#324).
-	held, err := grants.Load(h.db, account.ID, time.Now())
-	if err != nil {
-		return ProtocolSignedIn{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to load the account's capabilities")
-	}
-	if !held.MailboxSession(account.Address) {
-		return ProtocolSignedIn{}, errAccessRestricted()
-	}
-	return ProtocolSignedIn{
-		CredentialID:   claims.CredentialID,
-		CredentialKind: claims.CredentialKind,
-		User: userInfo{
-			ID:          account.ID,
-			Email:       account.Address,
-			DisplayName: account.DisplayName,
-		},
-	}, nil
-}
-
-// BasicVerifier checks credentials sent with HTTP Basic against the
-// credentials table (an app password, or one of the account's passwords) for
-// middleware.BasicCredentials, and builds the claims the request runs with:
+// PasswordVerifier checks the address and password a protocol gateway sends to
+// open a connection session against the credentials table (an app password, or
+// one of the account's passwords) for middleware.SessionPasswords, and builds the claims the request runs with:
 // the account's, with the credential set. It records the credential's use, at
 // most once a minute.
 //
-// A gateway sends the same Basic credentials on every call it makes for a
-// mail client, so a password that has just been checked is remembered for a
-// short while (passwordChecks) rather than costing a bcrypt comparison on
-// every IMAP command. Only a match is remembered, keyed by the credential and
+// A mail client that reconnects often (a phone polling POP3, an SMTP client
+// opening a connection per message) sends the same password each time, so a
+// password that has just been checked is remembered for a short while
+// (passwordChecks) rather than costing a bcrypt comparison on every
+// connection. Only a match is remembered, keyed by the credential and
 // its hash as well as the secret: a new password, a revoked one, or another
 // password misses, and the credential's row is read on every request anyway.
-func BasicVerifier(db *gorm.DB) middleware.BasicVerify {
+func PasswordVerifier(db *gorm.DB) middleware.PasswordVerify {
 	repo := repositories.NewCredentialRepository(db)
 	checks := newPasswordChecks(passwordCheckTTL)
 	return func(address, secret string) (*auth.Claims, error) {

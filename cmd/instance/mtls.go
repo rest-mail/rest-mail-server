@@ -16,6 +16,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/rest-mail/rest-mail-server/internal/mtls"
 )
 
 // mtlsIssueCmd is the ca_source: testbed-certgen branch of `chore
@@ -27,7 +29,6 @@ func mtlsIssueCmd(args []string) {
 	out := fs.String("out", "", "directory the internal mTLS material is written to")
 	serverDNS := fs.String("server-dns", "api,localhost", "comma-separated DNS SANs for the API server cert")
 	serverIPs := fs.String("server-ip", "127.0.0.1", "comma-separated IP SANs for the API server cert")
-	clientCN := fs.String("client-cn", "rest-mail-gateway", "Common Name (machine identity) for the gateway client cert")
 	_ = fs.Parse(args)
 
 	if *out == "" || fs.NArg() != 0 {
@@ -37,7 +38,7 @@ func mtlsIssueCmd(args []string) {
 	if err := os.MkdirAll(*out, 0755); err != nil {
 		fatal("mtls-issue: %v", err)
 	}
-	if err := generateInternalMTLS(*out, *serverDNS, *serverIPs, *clientCN); err != nil {
+	if err := generateInternalMTLS(*out, *serverDNS, *serverIPs); err != nil {
 		fatal("mtls-issue: %v", err)
 	}
 }
@@ -62,20 +63,25 @@ const (
 	internalCAKeyFile      = "internal-ca.key"
 	internalServerCertFile = "internal-server.crt"
 	internalServerKeyFile  = "internal-server.key"
-	internalClientCertFile = "internal-client.crt"
-	internalClientKeyFile  = "internal-client.key"
 )
+
+// internalClientCertFile and internalClientKeyFile name a gateway service's
+// client keypair: internal-<service>.crt/.key, e.g. internal-imap.crt. Each
+// gateway mounts only its own (tasks/*-gateway.yml).
+func internalClientCertFile(service string) string { return "internal-" + service + ".crt" }
+func internalClientKeyFile(service string) string  { return "internal-" + service + ".key" }
 
 // generateInternalMTLS mints the material for the gateway→API internal mTLS
 // channel under outputDir: a dedicated internal CA, an API server cert for the
-// internal listener (ServerAuth, with the given DNS/IP SANs), and a gateway
-// client cert (ClientAuth, machine identity clientCN).
+// internal listener (ServerAuth, with the given DNS/IP SANs), and one client
+// cert (ClientAuth) per gateway service, whose Common Name is the name the API
+// knows that service by (mtls.Gateways, #1586).
 //
 // It is idempotent and CA-preserving: an existing internal CA is reused so
 // client certs already deployed to gateways keep verifying, and existing leaf
 // certs are left untouched. This mirrors the reference-certgen behavior the
 // testbed relies on, so the provisioning task is safe to re-run.
-func generateInternalMTLS(outputDir, serverDNS, serverIPs, clientCN string) error {
+func generateInternalMTLS(outputDir, serverDNS, serverIPs string) error {
 	caCert, caKey, err := loadOrCreateInternalCA(outputDir)
 	if err != nil {
 		return err
@@ -83,7 +89,12 @@ func generateInternalMTLS(outputDir, serverDNS, serverIPs, clientCN string) erro
 	if err := ensureInternalServerCert(outputDir, caCert, caKey, serverDNS, serverIPs); err != nil {
 		return err
 	}
-	return ensureInternalClientCert(outputDir, caCert, caKey, clientCN)
+	for _, g := range mtls.Gateways {
+		if err := ensureInternalClientCert(outputDir, caCert, caKey, g); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func loadOrCreateInternalCA(outputDir string) (*x509.Certificate, *ecdsa.PrivateKey, error) {
@@ -196,15 +207,12 @@ func ensureInternalServerCert(outputDir string, caCert *x509.Certificate, caKey 
 	return nil
 }
 
-func ensureInternalClientCert(outputDir string, caCert *x509.Certificate, caKey *ecdsa.PrivateKey, clientCN string) error {
-	certPath := filepath.Join(outputDir, internalClientCertFile)
-	keyPath := filepath.Join(outputDir, internalClientKeyFile)
+func ensureInternalClientCert(outputDir string, caCert *x509.Certificate, caKey *ecdsa.PrivateKey, gateway mtls.Gateway) error {
+	certPath := filepath.Join(outputDir, internalClientCertFile(gateway.Service))
+	keyPath := filepath.Join(outputDir, internalClientKeyFile(gateway.Service))
 	if fileExists(certPath) && fileExists(keyPath) {
 		slog.Info("internal mTLS client cert already present, skipping", "cert", certPath)
 		return nil
-	}
-	if clientCN == "" {
-		return fmt.Errorf("internal mTLS client cert needs a non-empty -client-cn")
 	}
 
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -217,7 +225,7 @@ func ensureInternalClientCert(outputDir string, caCert *x509.Certificate, caKey 
 	}
 	template := &x509.Certificate{
 		SerialNumber: serial,
-		Subject:      pkix.Name{Organization: []string{"RestMail Internal"}, CommonName: clientCN},
+		Subject:      pkix.Name{Organization: []string{"RestMail Internal"}, CommonName: gateway.CommonName},
 		NotBefore:    time.Now(),
 		NotAfter:     time.Now().Add(825 * 24 * time.Hour),
 		KeyUsage:     x509.KeyUsageDigitalSignature,
@@ -226,7 +234,7 @@ func ensureInternalClientCert(outputDir string, caCert *x509.Certificate, caKey 
 	if err := signAndWriteLeaf(certPath, keyPath, template, caCert, caKey, key); err != nil {
 		return err
 	}
-	slog.Info("internal mTLS gateway client certificate generated", "cert", certPath, "cn", clientCN)
+	slog.Info("internal mTLS gateway client certificate generated", "cert", certPath, "service", gateway.Service, "cn", gateway.CommonName)
 	return nil
 }
 

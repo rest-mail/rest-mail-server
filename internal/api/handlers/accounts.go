@@ -77,7 +77,7 @@ func (h *AccountHandler) RegisterReads(rs endpoint.Routes) {
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/accounts/{id}",
 		OperationID: "getAccount", Summary: "Get an account this one may read", Tags: tags,
 		Errors:   []int{http.StatusNotFound},
-		Security: handlerChecked(models.CapMailRead, "CookieAuth", "BearerAuth", "APIKeyAuth", "BasicAuth")}, h.get)
+		Security: handlerChecked(models.CapMailRead, "CookieAuth", "BearerAuth", "APIKeyAuth", "GatewaySessionAuth")}, h.get)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/accounts/{id}/addresses",
 		OperationID: "listAccountAddresses", Summary: "List the addresses an account receives at and may send from", Tags: tags,
 		Description: "receives is the account's own address, then every active alias on an active domain whose destination is this account; no other alias or destination is shown. " +
@@ -85,7 +85,7 @@ func (h *AccountHandler) RegisterReads(rs endpoint.Routes) {
 			"Asked by the account itself, it answers for the credential the request is made with; asked by someone else who may read the account, for the account's own sign-in. " +
 			"Uses the same mail:read authorization as getAccount; an account the caller may not read is 404.",
 		Errors:   []int{http.StatusForbidden, http.StatusNotFound},
-		Security: handlerChecked(models.CapMailRead, "CookieAuth", "BearerAuth", "APIKeyAuth", "BasicAuth")}, h.addresses)
+		Security: handlerChecked(models.CapMailRead, "CookieAuth", "BearerAuth", "APIKeyAuth", "GatewaySessionAuth")}, h.addresses)
 }
 
 // RegisterCreate registers creating an account, behind audit. Its routes take a session or a

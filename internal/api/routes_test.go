@@ -620,18 +620,17 @@ func TestRoutes_SetupSessionReachesOnlySetup(t *testing.T) {
 }
 
 // Every account may ask to create one; the handler checks accounts:write on
-// the domain. HTTP Basic reaches no admin route, and no route that needs a
-// person.
-func TestRoutes_AccountsAndBasic(t *testing.T) {
+// the domain. A mail client's gateway session is refused on the public
+// listener, where no gateway certificate is ever seen; from its gateway it
+// reaches no admin route nor one that needs a person either
+// (TestAppPasswords_EndToEnd).
+func TestRoutes_AccountsAndGatewaySessions(t *testing.T) {
 	router, jwtSvc := newTestRouter(t)
 	assertReachedHandler(t, doRequest(router, http.MethodPost, "/api/v1/accounts", mailboxToken(t, jwtSvc), `{"address":"x@example.com"}`))
-	for _, path := range []string{"/api/v1/admin/domains", "/api/v1/accounts/1/credentials"} {
-		req := httptest.NewRequest(http.MethodGet, path, nil)
-		req.SetBasicAuth("user@example.com", "rm_AAAAAAAAAAAA_secretsecretsecretsecretsecretsecretsecretsec")
-		rr := httptest.NewRecorder()
-		router.ServeHTTP(rr, req)
+	for _, path := range []string{"/api/v1/admin/domains", "/api/v1/accounts/1/credentials", "/api/v1/accounts/1/folders"} {
+		rr := doRequest(router, http.MethodGet, path, "rmgs_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", "")
 		if rr.Code != http.StatusUnauthorized {
-			t.Errorf("%s with Basic: %d, want 401", path, rr.Code)
+			t.Errorf("%s with a gateway session on the public listener: %d, want 401", path, rr.Code)
 		}
 	}
 }

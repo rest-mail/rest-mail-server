@@ -48,7 +48,6 @@ func TestSessionRestrictionExamples(t *testing.T) {
 		op, path, authorization, body string
 	}{
 		{"login", "/api/v1/auth/login", "", fmt.Sprintf(`{"email":%q,"password":%q,"client":"native"}`, f.address, f.password)},
-		{"protocolSignIn", "/api/v1/auth/protocol-sign-in", basic(f.address, f.password), `{"protocol":"imap"}`},
 	} {
 		t.Run(c.op, func(t *testing.T) {
 			pair, ok := pairs[c.op]["sessions_restricted"]

@@ -3,6 +3,7 @@ package imap
 import (
 	"bufio"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"io"
 	"net"
@@ -28,17 +29,20 @@ func countingAPI(t *testing.T) (*apiclient.Client, *atomic.Int32) {
 	t.Helper()
 	var calls atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v1/auth/protocol-sign-in" {
+		if r.Method != http.MethodPost || r.URL.Path != "/api/v1/gateway-sessions" {
 			http.NotFound(w, r)
 			return
 		}
 		calls.Add(1)
-		if _, pass, ok := r.BasicAuth(); !ok || pass != banTestPassword {
+		var body struct {
+			Password string `json:"password"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Password != banTestPassword {
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(w, `{"data":{"access_token":"tok","user":{"id":1,"email":"a@example.com"}}}`)
+		_, _ = io.WriteString(w, `{"data":{"token":"rmgs_tok","user":{"id":1,"email":"a@example.com"}}}`)
 	}))
 	t.Cleanup(srv.Close)
 	return apiclient.New(srv.URL), &calls

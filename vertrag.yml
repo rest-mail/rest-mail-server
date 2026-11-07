@@ -30,18 +30,15 @@ auth:
     public: [email, client]
   header: 'Authorization: Bearer {$response.body#/data/access_token}'
   # Sent with no credential: each authenticated operation's documented 401, and
-  # the two operations that take a credential other than the session's (the
-  # hooks give them theirs).
+  # the operations that take a credential other than the session's (the hooks
+  # give them theirs: a gateway closes a mail client's session with its token).
   except:
     - '/api/v1/auth/logout > Log out — revoke the session and clear the auth cookies > 204'
+    - '/api/v1/gateway-sessions/current > Close a mail client''s connection session (protocol gateways) > 204'
+    - '/api/v1/gateway-sessions/current > Close a mail client''s connection session (protocol gateways) > 400 > application/json'
     - '/api/v1/auth/2fa > Read your authenticator status > 401 > application/json'
     - '/api/v1/auth/2fa/enroll > Start an authenticator enrollment > 401 > application/json'
     - '/api/v1/auth/recovery-email > Read your registered recovery email > 401 > application/json'
-    - '/api/v1/auth/protocol-sign-in > Sign a mail client in (protocol gateways) > 200 > application/json'
-    - '/api/v1/auth/protocol-sign-in > Sign a mail client in (protocol gateways) > 400 > application/json'
-    - '/api/v1/auth/protocol-sign-in > Sign a mail client in (protocol gateways) > 401 > application/json'
-    - '/api/v1/auth/protocol-sign-in > Sign a mail client in (protocol gateways) > 403 > application/json'
-    - '/api/v1/auth/protocol-sign-in > Sign a mail client in (protocol gateways) > 422 > application/json'
     - '/api/v1/accounts > List the accounts this one reaches > 401 > application/json'
     - '/api/v1/accounts/{id}/events > Server-Sent Events stream for real-time updates > 401 > application/json'
     - '/api/v1/accounts > Create an account > 401 > application/json'
@@ -75,15 +72,23 @@ checks:
 # off too, so the gateways' machine routes (checkMailboxAddress,
 # deliverMessage) are served on the public listener and sent like any other.
 # The routes the mail gateways call are on the API's internal listener, which
-# requires the gateway's client certificate (chore test:contract-mtls copies it).
-# They are sent there, as production sends them.
+# requires a gateway's client certificate (chore test:contract-mtls copies them).
+# They are sent there, as production sends them, each with the certificate of
+# the gateway service that calls it (#1586): delivery with the SMTP delivery
+# certificate, the connection sessions with the IMAP gateway's.
 endpoints:
   - endpoint: https://10.99.0.20:8443
     operation-id: [checkMailboxAddress, deliverMessage]
     transport:
       ca-cert: .cache/contract-mtls/internal-ca.crt
-      cert: .cache/contract-mtls/internal-client.crt
-      cert-key: .cache/contract-mtls/internal-client.key
+      cert: .cache/contract-mtls/internal-smtp-delivery.crt
+      cert-key: .cache/contract-mtls/internal-smtp-delivery.key
+  - endpoint: https://10.99.0.20:8443
+    operation-id: [openGatewaySession, closeGatewaySession]
+    transport:
+      ca-cert: .cache/contract-mtls/internal-ca.crt
+      cert: .cache/contract-mtls/internal-imap.crt
+      cert-key: .cache/contract-mtls/internal-imap.key
 
 exclude-operation-id:
   - resetTestData

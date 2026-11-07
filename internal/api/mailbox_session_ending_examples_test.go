@@ -84,6 +84,14 @@ func TestMailboxSessionEndingExamples(t *testing.T) {
 						if !ok || stamp.Before(started) || stamp.After(finished) {
 							t.Fatal("refresh revocation lost request-time timestamp")
 						}
+					} else if strings.HasPrefix(m.query, `UPDATE "gateway_sessions"`) {
+						if len(m.args) != 2 || m.args[1].Value != id {
+							t.Fatal("gateway session close targeted wrong account")
+						}
+						stamp, ok := m.args[0].Value.(time.Time)
+						if !ok || stamp.Before(started) || stamp.After(finished) {
+							t.Fatal("gateway session close lost request-time timestamp")
+						}
 					} else {
 						t.Fatal("session ending changed another resource")
 					}
@@ -91,7 +99,8 @@ func TestMailboxSessionEndingExamples(t *testing.T) {
 			}
 			wantWrites, wantCommit, wantRollback := 0, 0, 0
 			if rr.Code == 204 {
-				wantWrites = 2
+				// The epoch, the refresh tokens and the gateway sessions (#1586).
+				wantWrites = 3
 				wantCommit = 1
 			}
 			if name == "epoch_unavailable" {

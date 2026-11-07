@@ -143,7 +143,7 @@ func mayActAs(db *gorm.DB, claims *auth.Claims, address, capability string) (*mo
 	return mayReach(db, claims, mailbox.ID, capability)
 }
 
-// passwordCheckTTL is how long BasicVerifier remembers a password that
+// passwordCheckTTL is how long PasswordVerifier remembers a password that
 // matched.
 const passwordCheckTTL = 5 * time.Minute
 
@@ -200,7 +200,7 @@ func (p *passwordChecks) Remember(cred *models.Credential, secret string) {
 	p.m[key] = time.Now().Add(p.ttl)
 }
 
-// verify checks Basic credentials, remembering passwords that matched.
+// verify checks a mail client's address and password, remembering passwords that matched.
 func (p *passwordChecks) verify(repo *repositories.CredentialRepository, address, secret string, now time.Time) (*models.Credential, *models.Mailbox, error) {
-	return repo.VerifyBasic(address, secret, now, p)
+	return repo.VerifyPassword(address, secret, now, p)
 }

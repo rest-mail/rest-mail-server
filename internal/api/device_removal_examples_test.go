@@ -112,15 +112,8 @@ func newDeviceRemovalFixture(t *testing.T) deviceRemovalFixture {
 	}
 	out["api_key"] = accountReadScenario{routers.Public, key}
 	out["session_unavailable"] = accountReadScenario{unavailable, normal}
-	password, _, _, err := auth.NewAppPassword()
-	if err != nil {
-		t.Fatal(err)
-	}
-	out["app_password"] = accountReadScenario{http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		r = r.Clone(r.Context())
-		r.SetBasicAuth("user@example.com", password)
-		routers.Public.ServeHTTP(w, r)
-	}), ""}
+	out["app_password"] = gatewaySessionScenario(t, deviceRemovalConnection{store: store, owner: sid(normal), second: sid(second.AccessToken)}, jwt,
+		config.Config{Environment: "test", APIMaxBodyBytes: 8})
 	for _, name := range []string{"cookie_session", "csrf_missing", "csrf_mismatch"} {
 		name := name
 		out[name] = accountReadScenario{http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

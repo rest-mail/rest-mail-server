@@ -54,7 +54,7 @@ func TestIMAPSnoozeKeepsMessagesUIDsAndCounts(t *testing.T) {
 	server := httptest.NewServer(fixture.router)
 	t.Cleanup(server.Close)
 	client, peer := net.Pipe()
-	session := imapserver.NewSession(peer, imapgw.NewBackend(apiclient.New(server.URL), nil), "imap.test", nil, goimap.NopLimiter{})
+	session := imapserver.NewSession(peer, imapgw.NewBackend(fixture.gatewayClient(server.URL, imapCN), nil), "imap.test", nil, goimap.NopLimiter{})
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
