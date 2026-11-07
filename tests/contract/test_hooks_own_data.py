@@ -313,6 +313,12 @@ class OwnDataHooks(unittest.TestCase):
             "listPipelines": "pipeline_reads_after_a_reset",
             "listPipelineLogs": "pipeline_reads_after_a_reset",
             "getPipelineAnalytics": "pipeline_reads_after_a_reset",
+            "listRoles": "server_settings_after_a_reset",
+            "listCapabilities": "server_settings_after_a_reset",
+            "getServerLimits": "server_settings_after_a_reset",
+            "updateServerLimits": "server_settings_after_a_reset",
+            "getServerCapabilities": "server_settings_after_a_reset",
+            "updateServerCapabilities": "server_settings_after_a_reset",
         }
         # entrypoint.py registers setDomainRelay's and the quiet hours' (below).
         self.assertEqual(
@@ -334,6 +340,52 @@ class OwnDataHooks(unittest.TestCase):
             self.assertEqual(names[0], hook, operation)
         self.assertFalse(hasattr(self.hooks, "a_live_pipeline_for_the_link"))
         self.assertFalse(hasattr(self.hooks, "the_domain_since_the_reset"))
+
+    SERVER_SETTINGS = (
+        ("listRoles", "/api/v1/admin/roles"),
+        ("listCapabilities", "/api/v1/admin/capabilities"),
+        ("getServerLimits", "/api/v1/admin/server-limits"),
+        ("updateServerLimits", "/api/v1/admin/server-limits"),
+        ("getServerCapabilities", "/api/v1/admin/server-capabilities"),
+        ("updateServerCapabilities", "/api/v1/admin/server-capabilities"),
+    )
+
+    def test_the_server_settings_reset_in_their_first_hook(self):
+        # It runs before the two-factor administrator's hook, which only
+        # changes who sends the request.
+        for operation, _ in self.SERVER_SETTINGS:
+            names = [h for o, h in self.registered if o == operation]
+            self.assertEqual(names[0], "server_settings_after_a_reset", operation)
+
+    def test_each_server_setting_exchange_only_resets(self):
+        self.clean_starts_on()
+        for status in (200, 401, 403, 422):
+            for operation, path in self.SERVER_SETTINGS:
+                self.stub.stash["left_behind"] = operation
+                exchange = self.transaction(status, path)
+                before = copy.deepcopy(exchange)
+                calls = len(self.server.calls)
+                self.hooks.server_settings_after_a_reset(exchange)
+                # The request is sent as it was, after a reset and seed and
+                # nothing made, and nothing from earlier is kept.
+                self.assertEqual(exchange, before, operation)
+                self.assertEqual(
+                    [call[1] for call in self.server.calls[calls:]],
+                    ["/api/v1/admin/test/reset", "/api/v1/admin/test/seed"],
+                    operation,
+                )
+                self.assertNotIn("left_behind", self.stub.stash)
+                self.assertLessEqual(
+                    set(self.stub.stash), set(self.hooks.SURVIVES_A_RESET)
+                )
+
+    def test_the_server_settings_without_a_reset_change_nothing(self):
+        for operation, path in self.SERVER_SETTINGS:
+            exchange = self.transaction(200, path)
+            before = copy.deepcopy(exchange)
+            self.hooks.server_settings_after_a_reset(exchange)
+            self.assertEqual(exchange, before, operation)
+        self.assertEqual(self.server.calls, [])
 
     def test_the_domain_settings_reset_in_their_first_hook(self):
         self.assertIn(
