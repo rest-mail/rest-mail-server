@@ -347,6 +347,14 @@ type FolderSummary struct {
 	Total  int64   `json:"total"`
 	Unread int64   `json:"unread"`
 	Role   *string `json:"role" gorm:"-" enums:"inbox,sent,drafts,trash,junk,archive" description:"What a standard folder is for: inbox (INBOX), sent (Sent), drafts (Drafts), trash (Trash), junk (Spam) or archive (Archive), the roles IMAP LIST gives as RFC 6154 special-use attributes (INBOX needs none); null for any other folder"`
+	// UIDNext is the folder's IMAP UIDNEXT (RFC 3501 §2.3.1.1): one more than
+	// the highest message ID ever stored in it, so expunging a message never
+	// lowers it and the next message stored there gets an ID at least this
+	// large.
+	UIDNext uint64 `json:"uid_next" minimum:"1"`
+	// HighestID is the highest ID among the folder's rows, read with the
+	// counts; it only feeds UIDNext and is not sent.
+	HighestID uint64 `json:"-" gorm:"column:highest_id"`
 }
 
 type Quota struct {

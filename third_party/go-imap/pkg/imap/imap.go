@@ -227,6 +227,23 @@ type UIDPlusMailbox interface {
 	CopyUID(srcUID uint32, dest string) (uid uint32, err error)
 }
 
+// UIDNextMailbox is the optional interface a [Mailbox] may also implement to
+// report a folder's UIDNEXT itself (RFC 3501 §2.3.1.1, RFC 9051 §2.3.1.1).
+// UIDNEXT "MUST NOT change unless new messages are added to the mailbox", and
+// "MUST change whenever new messages are added to the mailbox, even if those
+// new messages are subsequently expunged". Only the store knows which UIDs it
+// has handed out, so SELECT, EXAMINE and STATUS ask it. Without the interface
+// the server reports the highest UID present plus one, which goes down when
+// the newest message is expunged.
+type UIDNextMailbox interface {
+	// UIDNext returns one more than the highest UID the store has ever
+	// assigned in folder, expunged messages included; the next message added
+	// to folder must get a UID at least this large. The server reports the
+	// larger of it and the highest UID present plus one, so 0 means
+	// "unknown". An error makes SELECT, EXAMINE and STATUS answer NO.
+	UIDNext(folder string) (uint32, error)
+}
+
 // Subscriber is the optional interface a [Mailbox] may also implement to keep
 // the user's subscription list (RFC 3501 §§6.3.6-6.3.9, RFC 5258 §3.1). A
 // subscribed name need not exist: a folder deleted while subscribed stays on

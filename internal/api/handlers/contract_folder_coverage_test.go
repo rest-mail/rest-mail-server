@@ -15,6 +15,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/api/middleware"
 	"github.com/rest-mail/rest-mail-server/internal/api/respond"
 	"github.com/rest-mail/rest-mail-server/internal/auth"
+	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	yaml "go.yaml.in/yaml/v2"
 )
@@ -49,6 +50,10 @@ func TestCreateFolder_ContractProbes(t *testing.T) {
 		t.Skip("contract hooks require python3")
 	}
 	db := openMsgDeleteTestDB(t)
+	// The folder list reads each folder's UIDNEXT mark (#804).
+	if err := rmdb.MigrateFolderUIDMarks(db); err != nil {
+		t.Fatalf("migrate folder UID marks: %v", err)
+	}
 	tx := db.Begin()
 	if tx.Error != nil {
 		t.Fatal(tx.Error)
