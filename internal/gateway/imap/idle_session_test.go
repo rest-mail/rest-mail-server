@@ -49,9 +49,19 @@ func TestServer_IdleSeesImportFromAnotherClient(t *testing.T) {
 			if !strings.HasPrefix(status, "w3 OK ") {
 				t.Fatalf("%s: %q", operation, status)
 			}
-			request := api.lastImport(t)
-			if request.Folder != "Archive" || string(request.RawMessage) != raw {
-				t.Fatalf("%s import: folder %q, raw %q", operation, request.Folder, request.RawMessage)
+			switch operation {
+			case "APPEND":
+				request := api.lastImport(t)
+				if request.Folder != "Archive" || string(request.RawMessage) != raw {
+					t.Fatalf("%s import: folder %q, raw %q", operation, request.Folder, request.RawMessage)
+				}
+			case "COPY":
+				api.mu.Lock()
+				transfers := slices.Clone(api.transfers)
+				api.mu.Unlock()
+				if len(transfers) != 1 || transfers[0].Folder != "Archive" || !slices.Equal(transfers[0].MessageIDs, []uint{1}) || transfers[0].Move {
+					t.Fatalf("COPY transfers: %+v", transfers)
+				}
 			}
 
 			if notification := idle.readLine(); notification != "* 2 EXISTS" {

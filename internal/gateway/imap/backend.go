@@ -181,6 +181,7 @@ var (
 	_ goimap.RightsMailbox  = (*mailbox)(nil)
 	_ goimap.DeletedMailbox = (*mailbox)(nil)
 	_ goimap.FolderMailbox  = (*mailbox)(nil)
+	_ goimap.SetMailbox     = (*mailbox)(nil)
 )
 
 // importMessage stores a message through the import operation, counted in this
@@ -460,6 +461,50 @@ func (m *mailbox) MoveUID(uid uint32, dest string) (uint32, error) {
 // FETCH FLAGS and SEARCH KEYWORD use them. REST Mail sets no limit on the
 // distinct keywords of one folder.
 func (m *mailbox) KeywordLimit() int { return 0 }
+
+// CopyMessages copies a set of messages of folder to dest with one API call
+// that the API runs in one transaction (SetMailbox), so a COPY that fails
+// leaves dest as it was (RFC 3501 §6.4.7). It returns the copies' UIDs, the
+// new message IDs, in the order of uids.
+func (m *mailbox) CopyMessages(folder string, uids []uint32, dest string) ([]uint32, error) {
+	return m.transfer(folder, uids, dest, false)
+}
+
+// MoveMessages moves a set of messages of folder to dest in one API
+// transaction (SetMailbox): each moved message is a new message with a new,
+// higher UID in dest, as MoveUID explains, and the originals go; a failure
+// moves none (RFC 6851 §3.3).
+func (m *mailbox) MoveMessages(folder string, uids []uint32, dest string) ([]uint32, error) {
+	return m.transfer(folder, uids, dest, true)
+}
+
+func (m *mailbox) transfer(folder string, uids []uint32, dest string, move bool) ([]uint32, error) {
+	if err := validateFolder(folder); err != nil {
+		return nil, err
+	}
+	if err := validateFolder(dest); err != nil {
+		return nil, err
+	}
+	ids := make([]uint, len(uids))
+	for i, uid := range uids {
+		ids[i] = uint(uid)
+	}
+	created, err := m.api.TransferMessages(m.token, m.accountID, &apiclient.TransferRequest{
+		SourceFolder: folder, MessageIDs: ids, Folder: dest, Move: move,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(created) != len(uids) {
+		// Done, but the new UIDs cannot be paired up, so COPYUID is left out.
+		return nil, nil
+	}
+	out := make([]uint32, len(created))
+	for i, id := range created {
+		out[i] = toUID(id)
+	}
+	return out, nil
+}
 
 // DeletedUIDs reports the messages in folder that carry \Deleted now
 // (DeletedMailbox). The mark is the message's imap_deleted state in the API:
