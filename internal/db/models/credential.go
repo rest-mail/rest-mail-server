@@ -37,6 +37,16 @@ const (
 	CredentialKindClientSecret = auth.CredentialKindClientSecret
 )
 
+// CredentialKinds is every credential kind.
+var CredentialKinds = []string{
+	CredentialKindPassword,
+	CredentialKindTOTP,
+	CredentialKindRecoveryCode,
+	CredentialKindAppPassword,
+	CredentialKindAPIKey,
+	CredentialKindClientSecret,
+}
+
 // The capabilities an app password's scope holds on its account's mailbox.
 const (
 	CredentialCapRead  = CapMailRead

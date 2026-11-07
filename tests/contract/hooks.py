@@ -447,6 +447,109 @@ def a_queue_entry_of_its_own(transaction):
     return listed["items"][0]
 
 
+def a_credential_of_its_own(transaction, parts):
+    """Make the app password, API key or client secret a revoke in parts names,
+    on the account in its path, with the two-factor session, and name it in
+    parts. Its maker's password is the two-factor administrator's."""
+    origin = origin_of(transaction)
+    body = {"name": f"contract-own-credential-{time.time_ns()}", "password": mfa_admin.PASSWORD}
+    if parts[5] != "credentials":
+        body["permissions"] = [{"capability": "mail:read", "scope": "mailbox:" + mailbox_address(origin, parts[4])}]
+    time.sleep(1.1)  # making it spends the auth bucket, as the exchange does
+    request = urllib.request.Request(
+        origin + "/".join(parts[:6]),
+        data=json.dumps(body).encode(),
+        headers={"Content-Type": "application/json", "Authorization": "Bearer " + mfa_admin_token(origin)},
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        parts[6] = str(json.load(response)["data"]["id"])
+
+
+@hooks.before("listCredentials")
+@hooks.before("createAppPassword")
+@hooks.before("revokeCredential")
+@hooks.before("listAPIKeys")
+@hooks.before("createAPIKey")
+@hooks.before("updateAPIKey")
+@hooks.before("revokeAPIKey")
+@hooks.before("listAdminAPIKeys")
+@hooks.before("listClientSecrets")
+@hooks.before("createClientSecret")
+@hooks.before("revokeClientSecret")
+def a_credential_to_manage(transaction):
+    # The credential operations, moved to a clean start: each exchange,
+    # refusals included, resets and seeds first, so a list or a create meets no
+    # earlier probe's credential. An exchange aimed at a positive account id
+    # other than missing's 2147483647 (the example's 1 or the id a link names,
+    # gone after the reset) gets an account of its own on the seeded
+    # restmail.test, the 422s included, so they are refused for their body and
+    # not for an account that is gone. A revoke aimed at a positive credential
+    # id other than the missing one also gets the app password, API key or
+    # client secret it revokes, made on that account, so the run never revokes
+    # a credential it signs in with. The edit makes the key it changes already
+    # (an_api_key_of_its_own_to_edit). 0, an undecodable id and the missing ids
+    # keep theirs. Registered before the operations' other hooks, so they see
+    # the clean start and the path it leaves. A run with no reset changes
+    # nothing here.
+    if not asked_for_a_clean_start():
+        return
+    start_clean(transaction)
+    path, separator, query = transaction["fullPath"].partition("?")
+    # /api/v1/accounts/{id}/{credentials|api-keys|client-secrets}[/{credential_id}]
+    parts = path.split("/")
+    if len(parts) < 6 or parts[3] != "accounts" or not positive_id(parts[4]) or parts[4] == "2147483647":
+        return
+    parts[4] = str(an_account_of_its_own(origin_of(transaction), "contract-own-credential"))
+    if (
+        transaction["request"].get("method") == "DELETE"
+        and len(parts) == 7
+        and positive_id(parts[6])
+        and parts[6] != "2147483647"
+    ):
+        a_credential_of_its_own(transaction, parts)
+    transaction["fullPath"] = "/".join(parts) + separator + query
+
+
+@hooks.before("listBans")
+@hooks.before("createBan")
+@hooks.before("deleteBan")
+@hooks.before("unbanIP")
+def a_ban_to_manage(transaction):
+    # The ban operations, moved to a clean start: each exchange, refusals
+    # included, resets and seeds first, so a list and a create meet no earlier
+    # probe's ban. The documented delete gets a ban of its own, since the one
+    # createBan's link names is gone after the reset; its 404 keeps its id. The
+    # create's and the unban's own hooks give them the state they document. A
+    # run with no reset changes nothing here.
+    if not asked_for_a_clean_start():
+        return
+    start_clean(transaction)
+    path, separator, query = transaction["fullPath"].partition("?")
+    parts = path.split("/")
+    if (
+        " > 204" not in transaction.get("name", "")
+        or len(parts) != 6
+        or parts[4] != "bans"
+        or not positive_id(parts[5])
+    ):
+        return
+    ban = fixture_call(
+        transaction,
+        "POST",
+        "/api/v1/admin/bans",
+        {
+            "ip": "192.0.2.77",
+            "reason": "Contract fixture",
+            "protocol": "all",
+            "duration": "1h",
+            "created_by": ADMIN,
+        },
+    )
+    parts[5] = str(ban["id"])
+    transaction["fullPath"] = "/".join(parts) + separator + query
+
+
 @hooks.before("getDomain")
 def get_a_domain_of_its_own(transaction):
     if not asked_for_a_clean_start():
