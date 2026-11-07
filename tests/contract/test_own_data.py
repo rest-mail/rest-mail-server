@@ -229,7 +229,8 @@ ACCOUNT_LINKS = ("linkAccount", "unlinkAccount")
 # The token exchange, which no link starts from or reaches. The client secret
 # operations moved with the credentials (CREDENTIALS_AND_BANS).
 TOKEN_EXCHANGE = ("issueClientCredentialsToken",)
-# The sign-in and recovery operations, which no link starts from or reaches.
+# Main's 550f750b0 (#1780) links registerRecoveryEmail to getRecoveryEmail;
+# no other link starts from or reaches the sign-in and recovery operations.
 SIGN_IN_AND_RECOVERY = (
     "login",
     "logout",
@@ -368,14 +369,30 @@ class Selection(unittest.TestCase):
         self.assertLessEqual(set(PIPELINES), set(own_data.MOVED))
         self.assertFalse(hasattr(own_data, "FOLLOWS_THE_CREATED_PIPELINE"))
 
-    def test_the_pipeline_reads_have_moved_and_no_link_touches_them(self):
+    def test_the_moved_reads_and_auth_have_only_expected_links(self):
         description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
+        expected_links = {"registerRecoveryEmail": {"getRecoveryEmail"}}
         for operation in (
             PIPELINE_READS + FILTERS + PUBLIC_READS + DOMAIN_LISTS + TOKEN_EXCHANGE + SIGN_IN_AND_RECOVERY
         ):
-            self.assertEqual(link_followers(description, operation), set())
-            for start in description_operations(description):
-                self.assertNotIn(operation, link_followers(description, start), start)
+            self.assertEqual(
+                link_followers(description, operation),
+                expected_links.get(operation, set()),
+                operation,
+            )
+            self.assertEqual(
+                {
+                    start
+                    for start in description_operations(description)
+                    if operation in link_followers(description, start)
+                },
+                {
+                    start
+                    for start, followers in expected_links.items()
+                    if operation in followers
+                },
+                operation,
+            )
         self.assertLessEqual(
             set(PIPELINE_READS + FILTERS + PUBLIC_READS + DOMAIN_LISTS + TOKEN_EXCHANGE + SIGN_IN_AND_RECOVERY),
             set(own_data.MOVED),
