@@ -101,13 +101,15 @@ class QuietHoursFixtures(unittest.TestCase):
         for method in ("GET", "PUT"):
             transaction = copy.deepcopy(self.transaction)
             transaction["request"]["method"] = method
+            original = copy.deepcopy(transaction)
             with patch("urllib.request.urlopen") as send:
                 self.prepare(transaction)
             send.assert_not_called()
+            self.assertEqual(transaction, original)
             self.assertEqual(
                 transaction["fullPath"], "/api/v1/accounts/1/quiet-hours"
             )
-        # The time zone is the body's, fixed in every run.
+        # The generated time zone stays the body's, even when invalid.
         self.assertEqual(
-            json.loads(transaction["request"]["body"])["time_zone"], "UTC"
+            json.loads(transaction["request"]["body"])["time_zone"], "x"
         )

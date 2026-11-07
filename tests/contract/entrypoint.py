@@ -32,8 +32,8 @@ quiet = runpy.run_path(str(directory / "quiet_hours_hooks.py"))
 quiet["register_quiet_hours_hooks"](
     shared["admin_token"], shared["asked_for_a_clean_start"]
 )
-# After the quiet hours hook, which fixes their time zone and, only without a
-# reset asked for, finds a live account for the examples' 1: then the reset,
+# After the quiet hours hook, which, only without a reset asked for, finds a
+# live account for the examples' 1 without changing the body: then the reset,
 # and an account of its own, only with a reset asked for (own_data.py).
 for operation in ("getQuietHours", "setQuietHours"):
     vertrag_hooks.before(operation)(shared["account_settings_of_its_own"])

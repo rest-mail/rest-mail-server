@@ -30,16 +30,6 @@ def register_quiet_hours_hooks(admin_token, asked_for_a_clean_start):
             return
         if not asked_for_a_clean_start():
             a_live_account(transaction)
-        body = transaction.get("request", {}).get("body")
-        if transaction.get("request", {}).get("method") != "PUT" or not body:
-            return
-        try:
-            setting = json.loads(body)
-        except (TypeError, ValueError):
-            return
-        if isinstance(setting, dict) and setting.get("time_zone") == "x":
-            setting["time_zone"] = "UTC"
-            transaction["request"]["body"] = json.dumps(setting)
 
     def a_live_account(transaction):
         origin = (
