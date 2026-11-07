@@ -93,6 +93,15 @@ FOLLOWS_THE_SENT_MESSAGE = {
     "verifyMessageSeal",
     "getThread",
 }
+# Main added these cross-group links in 65f4d307a (#1764), 550f750b0
+# (#1780), and 4977f8fb1 (#1597). Their clean-data selection moves separately
+# from the message operations above, but the full link graph stays exact.
+OTHER_SENT_MESSAGE_FOLLOWERS = {
+    "cancelScheduledMessage",
+    "respondToCalendar",
+    "getUnsubscribeOptions",
+    "listMessageRecipients",
+}
 
 
 def link_followers(description, start):
@@ -300,7 +309,8 @@ class Selection(unittest.TestCase):
         self.assertEqual(readers, set(SENDS))
         self.assertEqual(hooks.count("a_signing_mailbox_at("), 3)
         self.assertEqual(
-            link_followers(description, "sendMessage"), FOLLOWS_THE_SENT_MESSAGE
+            link_followers(description, "sendMessage"),
+            FOLLOWS_THE_SENT_MESSAGE | OTHER_SENT_MESSAGE_FOLLOWERS,
         )
         self.assertEqual(link_followers(description, "sendTestEmail"), set())
         reached = set()
