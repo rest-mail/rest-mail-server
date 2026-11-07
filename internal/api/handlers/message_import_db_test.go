@@ -308,3 +308,41 @@ func TestMessageImportGrantRevocable(t *testing.T) {
 		t.Fatalf("import after restore: %d, want 200", got)
 	}
 }
+
+func TestMessageImport_InboxInAnyCaseIsInbox(t *testing.T) {
+	db := importProofDB(t)
+	fx := seedAccountsFixture(t, db)
+	if err := db.Create(&models.QuotaUsage{MailboxID: fx.user.ID}).Error; err != nil {
+		t.Fatal(err)
+	}
+	h := NewMessageImportHandler(db, 4096, nil, nil)
+	h.directory = t.TempDir()
+	router := importMessageRoutes(h)
+	for _, folder := range []string{"", "inbox", "Inbox", "INBOX"} {
+		t.Run(folder, func(t *testing.T) {
+			body, err := json.Marshal(apitypes.ImportMessageBody{
+				RawMessage: []byte("Subject: Lower case inbox\r\n\r\nhello\r\n"), Folder: folder,
+				InternalDate: time.Date(2021, 1, 2, 3, 4, 5, 0, time.UTC),
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			rr := httptest.NewRecorder()
+			router.ServeHTTP(rr, authzRequest(http.MethodPost, fmt.Sprintf("/api/v1/accounts/%d/messages/import", fx.user.ID), fx.user.ID, nil, string(body)))
+			if rr.Code != http.StatusOK {
+				t.Fatalf("import: expected 200, got %d (%s)", rr.Code, rr.Body.String())
+			}
+			var result endpoint.Data[apitypes.ImportMessageResult]
+			if err := json.Unmarshal(rr.Body.Bytes(), &result); err != nil {
+				t.Fatal(err)
+			}
+			var msg models.Message
+			if err := db.First(&msg, result.Data.ID).Error; err != nil {
+				t.Fatal(err)
+			}
+			if msg.Folder != "INBOX" || msg.MailboxID != fx.user.ID {
+				t.Errorf("import stored mailbox=%d folder=%q, want mailbox=%d INBOX", msg.MailboxID, msg.Folder, fx.user.ID)
+			}
+		})
+	}
+}

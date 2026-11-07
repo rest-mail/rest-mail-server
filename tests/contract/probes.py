@@ -8,7 +8,7 @@ and omits the 4xx transactions whose probes gate.py already ignores. All probes
 from successful transactions remain enabled. The first run enforces the full
 surface gate.
 
-A fuzz run (a report named fuzz.xml) also holds a delivery's mailbox_id at the
+A fuzz run (a report named fuzz.xml) also holds a delivery's address at the
 recipient the fixtures make, and discovery's domain at the hosted fixture in a
 fuzz-only description. A coverage run does not.
 
@@ -87,11 +87,11 @@ FILTER_NAME = "header_validate"
 # cert_invalid, key_missing, key_empty, key_wrong_type.
 PROBE_CERTIFICATE_NAME = "contract-probe-certificate"
 PROBE_CERTIFICATE_PERIOD = ("20200101000000Z", "20200102000000Z")
-# A schema cannot say a mailbox must exist either. Fuzz draws a mailbox_id or an
-# address that names nothing and reads the 404 as a disagreement, so the rest of
-# delivery is never reached. The fuzz run holds mailbox_id at the recipient the
+# A schema cannot say a mailbox must exist either. Fuzz draws an address that
+# names nothing and reads the 404 as a disagreement, so the rest of
+# delivery is never reached. The fuzz run holds address at the recipient the
 # fixtures make (fixtures --delivery-recipient). The coverage run does not: it has
-# no valid delivery probe to hold, and a pin would stop its two mailbox_id probes.
+# no valid delivery probe to hold, and a pin would stop its address probes.
 FIXTURE_PLAN = Path(__file__).resolve().parent / "fixtureplan/defaults.json"
 
 
@@ -125,7 +125,7 @@ def probe_certificate(common_name=PROBE_CERTIFICATE_NAME):
 
 def fuzz_pins():
     plan = json.loads(FIXTURE_PLAN.read_text())
-    return {"mailbox_id": plan["delivery_recipient"]["id"]}
+    return {"address": plan["delivery_recipient"]["address"]}
 
 
 def hold_discovery_domain(config, out_path):

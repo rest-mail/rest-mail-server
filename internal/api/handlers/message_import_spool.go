@@ -119,7 +119,34 @@ func readSpooledBody(r *http.Request, spec *spooledBodySpec) (importBodyScan, er
 		return scanned, err
 	}
 	scanned.standIn, err = io.ReadAll(request)
+	if err == nil && len(spec.ignored) > 0 {
+		scanned.standIn = withoutFields(scanned.standIn, spec.ignored)
+	}
 	return scanned, err
+}
+
+// withoutFields is body without the top-level fields named, when it is a JSON object; any other
+// body is left for the binder to refuse as it is.
+func withoutFields(body []byte, names map[string]bool) []byte {
+	var fields map[string]json.RawMessage
+	if json.Unmarshal(body, &fields) != nil {
+		return body
+	}
+	changed := false
+	for name := range names {
+		if _, ok := fields[name]; ok {
+			delete(fields, name)
+			changed = true
+		}
+	}
+	if !changed {
+		return body
+	}
+	out, err := json.Marshal(fields)
+	if err != nil {
+		return body
+	}
+	return out
 }
 
 // importSource is a decoded message in a file. Past the limit it counts and keeps nothing, for
@@ -348,6 +375,9 @@ type spooledBodySpec struct {
 	rawIsText bool
 	// declared are the fields the binder reads as they came.
 	declared map[string]bool
+	// ignored are fields older callers still send that the route takes no notice of: they
+	// are left out of what the binder reads, so they are neither bound nor refused.
+	ignored map[string]bool
 	// texts are string fields that can be as large as the message. A string in one goes to a file
 	// of its own, here, under its name, and the binder is given a small value in its place.
 	texts map[string]*importSource
@@ -447,8 +477,14 @@ func (s *jsonScanner) importFields(spec *spooledBodySpec) (importBodyScan, error
 		if char, err = s.skipSpace(); err != nil {
 			return scanned, err
 		}
+		ignored := spec.ignored[name]
 		_, isText := spec.texts[name]
 		switch {
+		case ignored:
+			standIn.Truncate(start)
+			if err := s.value(char); err != nil {
+				return scanned, err
+			}
 		case name == importRawField && seenRaw, isText && seenText[name]:
 			// Sent twice, the last one wins, and every earlier one can still be refused, in
 			// words that name a place in it. Only the binder on the whole request can say.
@@ -511,11 +547,16 @@ func (s *jsonScanner) importFields(spec *spooledBodySpec) (importBodyScan, error
 		}
 		switch char {
 		case '}':
+			if b := standIn.Bytes(); b[len(b)-1] == ',' {
+				standIn.Truncate(len(b) - 1) // an ignored field was last
+			}
 			standIn.WriteByte('}')
 			scanned.standIn = standIn.Bytes()
 			return scanned, nil
 		case ',':
-			standIn.WriteByte(',')
+			if b := standIn.Bytes(); b[len(b)-1] != ',' && b[len(b)-1] != '{' {
+				standIn.WriteByte(',')
+			}
 			if char, err = s.skipSpace(); err != nil {
 				return scanned, err
 			}
