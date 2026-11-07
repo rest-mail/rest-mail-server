@@ -348,7 +348,7 @@ tasks:
             echo "  volume $vol not found, /volumes/$name not measured"
           fi
         done
-        docker run -d --name {{.NODE_EXPORTER_NAME}} \
+        docker run -d --label "$RESTMAIL_LABEL" --name {{.NODE_EXPORTER_NAME}} \
           --restart unless-stopped \
           --network {{.MONITORING_NETWORK}} \
           --ip {{.NODE_EXPORTER_IP}} \
