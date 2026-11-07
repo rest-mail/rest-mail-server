@@ -26,6 +26,10 @@
     "activateGrant": {
       "*": "Starts a timed use of a grant that already exists: there is no activation to read or change by id, and ending it takes a second factor in the body of deactivateGrant."
     },
+    "addInstallationSenderRule": {
+      "read": "No route reads one installation sender rule: listInstallationSenderRules reads the installation's entries.",
+      "update": "An installation sender rule is changed by removing it and adding its replacement; there is no update route."
+    },
     "addToAllowlist": {
       "read": "No route reads one entry: listAllowlist is the read of a domain's entries.",
       "update": "An entry is only a pattern; changing one is removing it and adding another."

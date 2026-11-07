@@ -171,6 +171,7 @@
     "updateDomain"
   ],
   "646": [
+    "addInstallationSenderRule",
     "addToAllowlist",
     "addToBlocklist",
     "clearSuppression",
@@ -180,11 +181,13 @@
     "getMtaStsPolicy",
     "listAllowlist",
     "listBlocklist",
+    "listInstallationSenderRules",
     "listSuppressions",
     "listTlsReports",
     "listDmarcReports",
     "removeFromAllowlist",
     "removeFromBlocklist",
+    "removeInstallationSenderRule",
     "setDomainRelay",
     "setMtaStsPolicy"
   ],

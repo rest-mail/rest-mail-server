@@ -38,6 +38,7 @@ import { Route as SettingsCertificatesRouteImport } from './routes/settings/cert
 import { Route as SettingsDkimRouteImport } from './routes/settings/dkim'
 import { Route as SettingsLimitsRouteImport } from './routes/settings/limits'
 import { Route as SettingsMtaStsRouteImport } from './routes/settings/mta-sts'
+import { Route as SettingsSenderRulesRouteImport } from './routes/settings/sender-rules'
 import { Route as SettingsTlsReportsRouteImport } from './routes/settings/tls-reports'
 import { Route as SettingsTwoFactorRouteImport } from './routes/settings/two-factor'
 import { Route as MessagesIdTraceRouteImport } from './routes/messages/$id/trace'
@@ -187,6 +188,11 @@ const SettingsMtaStsRoute = SettingsMtaStsRouteImport.update({
   path: '/settings/mta-sts',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SettingsSenderRulesRoute = SettingsSenderRulesRouteImport.update({
+  id: '/settings/sender-rules',
+  path: '/settings/sender-rules',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SettingsTlsReportsRoute = SettingsTlsReportsRouteImport.update({
   id: '/settings/tls-reports',
   path: '/settings/tls-reports',
@@ -223,6 +229,7 @@ export interface FileRoutesByFullPath {
   '/settings/dkim': typeof SettingsDkimRoute
   '/settings/limits': typeof SettingsLimitsRoute
   '/settings/mta-sts': typeof SettingsMtaStsRoute
+  '/settings/sender-rules': typeof SettingsSenderRulesRoute
   '/settings/tls-reports': typeof SettingsTlsReportsRoute
   '/settings/two-factor': typeof SettingsTwoFactorRoute
   '/aliases/': typeof AliasesIndexRoute
@@ -257,6 +264,7 @@ export interface FileRoutesByTo {
   '/settings/dkim': typeof SettingsDkimRoute
   '/settings/limits': typeof SettingsLimitsRoute
   '/settings/mta-sts': typeof SettingsMtaStsRoute
+  '/settings/sender-rules': typeof SettingsSenderRulesRoute
   '/settings/tls-reports': typeof SettingsTlsReportsRoute
   '/settings/two-factor': typeof SettingsTwoFactorRoute
   '/aliases': typeof AliasesIndexRoute
@@ -292,6 +300,7 @@ export interface FileRoutesById {
   '/settings/dkim': typeof SettingsDkimRoute
   '/settings/limits': typeof SettingsLimitsRoute
   '/settings/mta-sts': typeof SettingsMtaStsRoute
+  '/settings/sender-rules': typeof SettingsSenderRulesRoute
   '/settings/tls-reports': typeof SettingsTlsReportsRoute
   '/settings/two-factor': typeof SettingsTwoFactorRoute
   '/aliases/': typeof AliasesIndexRoute
@@ -328,6 +337,7 @@ export interface FileRouteTypes {
     | '/settings/dkim'
     | '/settings/limits'
     | '/settings/mta-sts'
+    | '/settings/sender-rules'
     | '/settings/tls-reports'
     | '/settings/two-factor'
     | '/aliases/'
@@ -362,6 +372,7 @@ export interface FileRouteTypes {
     | '/settings/dkim'
     | '/settings/limits'
     | '/settings/mta-sts'
+    | '/settings/sender-rules'
     | '/settings/tls-reports'
     | '/settings/two-factor'
     | '/aliases'
@@ -396,6 +407,7 @@ export interface FileRouteTypes {
     | '/settings/dkim'
     | '/settings/limits'
     | '/settings/mta-sts'
+    | '/settings/sender-rules'
     | '/settings/tls-reports'
     | '/settings/two-factor'
     | '/aliases/'
@@ -431,6 +443,7 @@ export interface RootRouteChildren {
   SettingsDkimRoute: typeof SettingsDkimRoute
   SettingsLimitsRoute: typeof SettingsLimitsRoute
   SettingsMtaStsRoute: typeof SettingsMtaStsRoute
+  SettingsSenderRulesRoute: typeof SettingsSenderRulesRoute
   SettingsTlsReportsRoute: typeof SettingsTlsReportsRoute
   SettingsTwoFactorRoute: typeof SettingsTwoFactorRoute
   AliasesIndexRoute: typeof AliasesIndexRoute
@@ -651,6 +664,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsMtaStsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/settings/sender-rules': {
+      id: '/settings/sender-rules'
+      path: '/settings/sender-rules'
+      fullPath: '/settings/sender-rules'
+      preLoaderRoute: typeof SettingsSenderRulesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/settings/tls-reports': {
       id: '/settings/tls-reports'
       path: '/settings/tls-reports'
@@ -695,6 +715,7 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsDkimRoute: SettingsDkimRoute,
   SettingsLimitsRoute: SettingsLimitsRoute,
   SettingsMtaStsRoute: SettingsMtaStsRoute,
+  SettingsSenderRulesRoute: SettingsSenderRulesRoute,
   SettingsTlsReportsRoute: SettingsTlsReportsRoute,
   SettingsTwoFactorRoute: SettingsTwoFactorRoute,
   AliasesIndexRoute: AliasesIndexRoute,

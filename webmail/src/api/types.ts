@@ -1996,6 +1996,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/sender-rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the installation's sender rules
+         * @description Every domain inherits these rules. A block, whether the installation's or a domain's, wins over an allow at either scope: a domain cannot allow a sender the installation blocks, and a domain can add blocks of its own. Requires domains:read at *.
+         */
+        get: operations["listInstallationSenderRules"];
+        put?: never;
+        /**
+         * Add an installation sender rule
+         * @description Every domain inherits these rules. A block, whether the installation's or a domain's, wins over an allow at either scope: a domain cannot allow a sender the installation blocks, and a domain can add blocks of its own. Requires domains:write at *.
+         */
+        post: operations["addInstallationSenderRule"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/sender-rules/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove an installation sender rule
+         * @description Requires domains:write at *.
+         */
+        delete: operations["removeInstallationSenderRule"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/server-capabilities": {
         parameters: {
             query?: never;
@@ -3494,6 +3538,9 @@ export interface components {
         "Data-ImportMessageResult": {
             data: components["schemas"]["ImportMessageResult"];
         };
+        "Data-InstallationSenderRule": {
+            data: components["schemas"]["InstallationSenderRule"];
+        };
         "Data-MTASTSPolicy": {
             data: components["schemas"]["MTASTSPolicy"];
         };
@@ -3883,6 +3930,16 @@ export interface components {
             tlsPercent: number;
             totalInboundMX: number;
         };
+        InstallationSenderRule: {
+            /** Format: date-time */
+            created_at: string;
+            created_by?: number | null;
+            id: number;
+            /** @enum {string} */
+            list_type: "allow" | "block";
+            pattern: string;
+            reason?: string;
+        };
         "List-Alias": {
             data: components["schemas"]["Alias"][];
             pagination?: components["schemas"]["Pagination"] | null;
@@ -3925,6 +3982,10 @@ export interface components {
         };
         "List-FolderSummary": {
             data: components["schemas"]["FolderSummary"][];
+            pagination?: components["schemas"]["Pagination"] | null;
+        };
+        "List-InstallationSenderRule": {
+            data: components["schemas"]["InstallationSenderRule"][];
             pagination?: components["schemas"]["Pagination"] | null;
         };
         "List-Mailbox": {
@@ -5029,6 +5090,12 @@ export interface components {
             reason: string;
             /** Format: int64 */
             seconds_left: number;
+        };
+        addInstallationSenderRuleRequest: {
+            /** @enum {string} */
+            list_type: "allow" | "block";
+            pattern: string;
+            reason?: string;
         };
         addSenderRuleRequest: {
             pattern: string;
@@ -20040,6 +20107,283 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused API keys, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After": number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listInstallationSenderRules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["List-InstallationSenderRule"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused API keys, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After": number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    addInstallationSenderRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["addInstallationSenderRuleRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-InstallationSenderRule"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused API keys, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After": number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    removeInstallationSenderRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
             /** @description rate_limited: refused API keys, throttled at login's rate */

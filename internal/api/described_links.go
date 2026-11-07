@@ -17,6 +17,11 @@ var responseLinks = map[string]map[string]map[string]oapifly.Link{
 			"removeFromAllowlist": {OperationID: "removeFromAllowlist", Parameters: map[string]string{"eid": "$response.body#/data/id", "id": "$request.path.id"}},
 		},
 	},
+	"addInstallationSenderRule": {
+		"201": {
+			"removeInstallationSenderRule": {OperationID: "removeInstallationSenderRule", Parameters: map[string]string{"id": "$response.body#/data/id"}},
+		},
+	},
 	"addToBlocklist": {
 		"201": {
 			"removeFromBlocklist": {OperationID: "removeFromBlocklist", Parameters: map[string]string{"eid": "$response.body#/data/id", "id": "$request.path.id"}},

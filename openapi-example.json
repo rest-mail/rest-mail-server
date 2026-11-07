@@ -762,6 +762,259 @@
       }
     }
   },
+  "addInstallationSenderRule": {
+    "created": {
+      "summary": "The operator creates an installation-wide block rule",
+      "request": {
+        "body": {
+          "pattern": "@blocked.example",
+          "list_type": "block",
+          "reason": "Sends spam"
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "id": 1,
+            "pattern": "@blocked.example",
+            "list_type": "block",
+            "reason": "Sends spam",
+            "created_by": 1,
+            "created_at": "2026-01-01T00:00:00Z"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "duplicate": {
+      "summary": "An existing pattern and list type cannot be added twice",
+      "request": {
+        "body": {
+          "pattern": "@blocked.example",
+          "list_type": "block",
+          "reason": "Sends spam"
+        }
+      },
+      "response": {
+        "status": 409,
+        "body": {
+          "error": {
+            "code": "already_exists",
+            "message": "The installation already has this sender rule"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "internal_error": {
+      "summary": "The sender rule mutation dependency fails",
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "body": {
+          "pattern": "@blocked.example",
+          "list_type": "block",
+          "reason": "Sends spam"
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "list_type_unknown": {
+      "summary": "A list type other than allow or block is refused",
+      "request": {
+        "body": {
+          "pattern": "@unknown-list.example",
+          "list_type": "maybe"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "list_type": "Must be one of: allow, block"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "malformed_json": {
+      "summary": "Malformed JSON is refused before insertion",
+      "requires": {
+        "body": "malformed"
+      },
+      "request": {
+        "body": {},
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "pattern_missing": {
+      "summary": "No pattern: refused before anything is stored",
+      "request": {
+        "body": {
+          "list_type": "block"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "pattern": "required"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "body": {
+          "pattern": "@blocked.example",
+          "list_type": "block",
+          "reason": "Sends spam"
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {
+        "body": {
+          "pattern": "@blocked.example",
+          "list_type": "block",
+          "reason": "Sends spam"
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {
+        "body": {
+          "pattern": "@blocked.example",
+          "list_type": "block",
+          "reason": "Sends spam"
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "setup_required": {
+      "summary": "The account has not completed setup",
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "body": {
+          "pattern": "@blocked.example",
+          "list_type": "block",
+          "reason": "Sends spam"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "setup_required",
+            "message": "Finish setting up this account first: a new password and two-factor authentication"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "summary": "No session credential was sent",
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {
+        "body": {
+          "pattern": "@blocked.example",
+          "list_type": "block",
+          "reason": "Sends spam"
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
   "addToAllowlist": {
     "already_exists": {
       "description": "The SQL driver returns PostgreSQL23505. GORM and the production repository conflict mapping produce409, without exposing database details.",
@@ -26044,6 +26297,128 @@
       }
     }
   },
+  "listInstallationSenderRules": {
+    "available": {
+      "summary": "The installation has no sender rules",
+      "description": "A current, setup-complete session holding domains:read at * reads an empty list through the production handler.",
+      "request": {},
+      "response": {
+        "status": 200,
+        "body": {
+          "data": []
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "internal_error": {
+      "summary": "The list dependency fails",
+      "description": "Session and permission checks pass, but the list dependency fails. The production handler and error writer produce this refusal without exposing dependency details.",
+      "requires": {
+        "fault": "database"
+      },
+      "request": {},
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {},
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "description": "A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The focused Vertrag test supplies a real oversized body; no typed body is declared.",
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {},
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "description": "The database-backed current-session lookup fails. The production session-cache builder and stale-session middleware produce this refusal.",
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {},
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "setup_required": {
+      "summary": "The account has not completed setup",
+      "description": "The signed session is current but still requires initial account setup. The production SetupDone middleware refuses the request before reading data.",
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {},
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "setup_required",
+            "message": "Finish setting up this account first: a new password and two-factor authentication"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "summary": "No session credential was sent",
+      "description": "No Authorization header or access cookie is sent. The production JWT middleware refuses the request.",
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {},
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
   "listMailboxes": {
     "available": {
       "summary": "The permitted list is empty",
@@ -33516,6 +33891,187 @@
       "request": {
         "path": {
           "eid": 1,
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
+  "removeInstallationSenderRule": {
+    "internal_error": {
+      "summary": "The sender rule mutation dependency fails",
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_id": {
+      "summary": "A zero sender rule ID is refused before deletion",
+      "request": {
+        "path": {
+          "id": 0
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "summary": "No installation sender rule has this ID",
+      "request": {
+        "path": {
+          "id": 2147483647
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Sender rule not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "removed": {
+      "summary": "The operator removes an existing installation sender rule",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 204
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "setup_required": {
+      "summary": "The account has not completed setup",
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "setup_required",
+            "message": "Finish setting up this account first: a new password and two-factor authentication"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "summary": "No session credential was sent",
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {
+        "path": {
           "id": 1
         }
       },

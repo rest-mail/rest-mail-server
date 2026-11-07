@@ -19,6 +19,7 @@ from test_hooks_two_factor_admin import session
 
 ROOT = Path(__file__).resolve().parents[2]
 ROUTES = {
+    "removeInstallationSenderRule": "/api/v1/admin/sender-rules/{id}",
     "revokeAPIKey": "/api/v1/accounts/{id}/api-keys/{credential_id}",
     "revokeCredential": "/api/v1/accounts/{id}/credentials/{credential_id}",
     "deleteQuarantine": "/api/v1/accounts/{id}/quarantine/{mid}",
@@ -26,6 +27,11 @@ ROUTES = {
     "getCertificate": "/api/v1/admin/certificates/{id}",
 }
 OPERATIONS = {
+    "removeInstallationSenderRule": (
+        "/api/v1/admin/sender-rules/1",
+        "Remove an installation sender rule",
+        204,
+    ),
     "revokeAPIKey": ("/api/v1/accounts/1/api-keys/1", "Revoke an API key", 204),
     "revokeCredential": (
         "/api/v1/accounts/1/credentials/1",
@@ -57,6 +63,13 @@ class FixtureAPI(BaseHTTPRequestHandler):
     def do_POST(self):
         body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
         self.server.calls.append((self.path, self.headers["Authorization"], body))
+        if self.path == "/api/v1/admin/sender-rules":
+            if any(rule["pattern"] == body["pattern"] and rule["list_type"] == body["list_type"]
+                   for rule in self.server.rules):
+                self.send_response(409)
+                self.end_headers()
+                return
+            self.server.rules.append(dict(body, id=self.server.serial + 1))
         self.server.serial += 1
         data = json.dumps({"data": dict(body, id=self.server.serial)}).encode()
         self.send_response(self.server.failure or 201)
@@ -64,6 +77,26 @@ class FixtureAPI(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)
+
+    def do_GET(self):
+        if self.path != "/api/v1/admin/sender-rules":
+            self.send_error(404)
+            return
+        data = json.dumps({"data": self.server.rules}).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def do_DELETE(self):
+        rule_id = int(self.path.partition("?")[0].rsplit("/", 1)[1])
+        if not any(rule["id"] == rule_id for rule in self.server.rules):
+            self.send_error(404)
+            return
+        self.server.rules = [rule for rule in self.server.rules if rule["id"] != rule_id]
+        self.send_response(204)
+        self.end_headers()
 
 
 class CoverageTargetHooks(unittest.TestCase):
@@ -94,6 +127,7 @@ class CoverageTargetHooks(unittest.TestCase):
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), FixtureAPI)
         self.server.serial = 100
         self.server.calls = []
+        self.server.rules = []
         self.server.failure = None
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
@@ -165,6 +199,78 @@ class CoverageTargetHooks(unittest.TestCase):
         ]
         self.assertEqual(len(callbacks), 1)
         callbacks[0](transaction)
+
+    def sender_rule_probe(self):
+        transaction = self.transaction("getCertificate")
+        transaction["fullPath"] = "/api/v1/admin/sender-rules"
+        transaction["name"] = "Add an installation sender rule > 201 > application/json"
+        transaction["request"]["method"] = "POST"
+        transaction["request"]["body"] = '{ "pattern": "x", "list_type": "allow" }'
+        return transaction
+
+    def test_repeated_sender_rule_probes_keep_the_generated_body_and_succeed(self):
+        transaction = self.sender_rule_probe()
+        original = copy.deepcopy(transaction)
+        self.server.rules = [
+            {"id": 7, "pattern": "x", "list_type": "block"},
+            {"id": 8, "pattern": "another", "list_type": "allow"},
+        ]
+        for _ in range(3):
+            self.send("addInstallationSenderRule", transaction)
+            self.assertEqual(transaction, original)
+            request = self.targets["urllib"].request.Request(
+                self.shared["origin_of"](transaction) + transaction["fullPath"],
+                data=transaction["request"]["body"].encode(),
+                headers=transaction["request"]["headers"],
+                method="POST",
+            )
+            with self.targets["urllib"].request.urlopen(request, timeout=10) as response:
+                self.assertEqual(response.status, 201)
+        self.assertEqual([rule["id"] for rule in self.server.rules[:2]], [7, 8])
+
+    def test_sender_rule_refusals_and_noncoverage_exchanges_keep_existing_rules(self):
+        self.server.rules = [{"id": 7, "pattern": "x", "list_type": "allow"}]
+        for mode in ("example", "conflict", "foreign", "invalid"):
+            transaction = self.sender_rule_probe()
+            environment = {"CONTRACT_COVERAGE": "0" if mode == "example" else "1"}
+            if mode == "conflict":
+                transaction["name"] = transaction["name"].replace("201", "409")
+            elif mode == "foreign":
+                transaction["request"]["headers"]["Authorization"] = session("other@restmail.test")
+            elif mode == "invalid":
+                transaction["request"]["body"] = '{"pattern":null,"list_type":"allow"}'
+            original = copy.deepcopy(transaction)
+            with patch.dict(os.environ, environment):
+                self.send("addInstallationSenderRule", transaction)
+            self.assertEqual(transaction, original)
+            self.assertEqual(self.server.rules, [{"id": 7, "pattern": "x", "list_type": "allow"}])
+
+    def test_sender_rule_delete_example_and_repeated_probes_get_disposable_targets(self):
+        self.server.rules = [{"id": 7, "pattern": "@seeded.example", "list_type": "block"}]
+        for address in (self.shared["ADMIN"], self.shared["mfa_admin"].ADDRESS):
+            for _ in range(3):
+                transaction = self.transaction("removeInstallationSenderRule")
+                transaction["request"]["headers"]["Authorization"] = session(address)
+                original = copy.deepcopy(transaction)
+                for callback in self.callbacks["removeInstallationSenderRule"]:
+                    callback(transaction)
+                original["fullPath"] = transaction["fullPath"]
+                self.assertEqual(transaction, original)
+                self.assertNotEqual(transaction["fullPath"], "/api/v1/admin/sender-rules/1?keep=yes")
+                request = self.targets["urllib"].request.Request(
+                    self.shared["origin_of"](transaction) + transaction["fullPath"],
+                    data=transaction["request"]["body"].encode(),
+                    headers=transaction["request"]["headers"],
+                    method="DELETE",
+                )
+                with self.targets["urllib"].request.urlopen(request, timeout=10) as response:
+                    self.assertEqual(response.status, 204)
+        self.assertEqual(self.server.rules, [{"id": 7, "pattern": "@seeded.example", "list_type": "block"}])
+        self.assertEqual(len(self.server.calls), 6)
+        for path, authorization, body in self.server.calls:
+            self.assertEqual(path, "/api/v1/admin/sender-rules")
+            self.assertEqual(authorization, "Bearer setup-session")
+            self.assertEqual(body["list_type"], "allow")
 
     def mailbox_probe(self, path="/api/v1/admin/mailboxes/1", status=200):
         return {
@@ -337,7 +443,7 @@ class CoverageTargetHooks(unittest.TestCase):
 
     def test_setup_errors_are_not_swallowed(self):
         self.server.failure = 500
-        for operation in ("revokeAPIKey", "revokeCredential", "getCertificate"):
+        for operation in ("revokeAPIKey", "revokeCredential", "getCertificate", "removeInstallationSenderRule"):
             with (
                 self.subTest(operation=operation),
                 self.assertRaises(urllib.error.HTTPError),

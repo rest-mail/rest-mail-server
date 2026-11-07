@@ -116,6 +116,7 @@ func autoMigrate(db *gorm.DB) error {
 		&models.PipelineRollupCoarse{},
 		&models.Contact{},
 		&models.DomainSenderRule{},
+		&models.InstallationSenderRule{},
 		&models.GreylistEntry{},
 		&models.Quarantine{},
 		&models.VacationResponse{},
@@ -222,6 +223,7 @@ func autoMigrate(db *gorm.DB) error {
 	db.Exec(`CREATE INDEX IF NOT EXISTS idx_contacts_trust_level ON contacts(mailbox_id, trust_level)`)
 	db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_domain_sender_rules_unique ON domain_sender_rules(domain_id, pattern, list_type)`)
 	db.Exec(`CREATE INDEX IF NOT EXISTS idx_domain_sender_rules_lookup ON domain_sender_rules(domain_id, list_type, pattern)`)
+	db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_installation_sender_rules_unique ON installation_sender_rules(list_type, pattern)`)
 	db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_greylist_triple ON greylist_entries(sender, recipient, source_ip)`)
 	db.Exec(`CREATE INDEX IF NOT EXISTS idx_quarantine_mailbox ON quarantine(mailbox_id, released, received_at DESC)`)
 	db.Exec(`CREATE INDEX IF NOT EXISTS idx_quarantine_expiry ON quarantine(expires_at) WHERE released = false`)
