@@ -234,7 +234,7 @@ SIGN_IN_AND_RECOVERY = (
     "login",
     "logout",
     "refreshToken",
-    "protocolSignIn",
+    "openGatewaySession",
     "resetAdmin",
     "recoverAccount",
     "ownerChallenge",
