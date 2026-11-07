@@ -249,7 +249,7 @@ READ_BY_PEOPLE = {
 # carries on when the artifact is missing, because the job has an answer for a run
 # with no report: contract_tier_issues.py files the run as not finished and closes
 # nothing. So a lost upload still cannot fail a job, and it is not tried again.
-READ_BY_A_LATER_JOB_THAT_CAN_DO_WITHOUT = {"e2e-container-logs"}
+READ_BY_A_LATER_JOB_THAT_CAN_DO_WITHOUT = {"e2e-container-logs", "cluster-report"}
 READ_BY_A_LATER_JOB = {
     "example-proofs-rest",
     "coverage-part-rest",
@@ -374,6 +374,7 @@ class ArtifactUploadTests(unittest.TestCase):
             {
                 "contract-fuzz.yml:finding-issues",
                 "contract-faults.yml:finding-issues",
+                "cluster-e2e.yml:failure-issue",
             },
         )
 
