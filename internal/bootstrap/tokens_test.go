@@ -44,7 +44,7 @@ func newAdmin(t *testing.T, gdb *gorm.DB, address, password string) *models.Mail
 		t.Fatalf("superadmin role: %v", err)
 	}
 	local, domainName, _ := strings.Cut(address, "@")
-	domain, err := ensureDomain(gdb, domainName)
+	domain, _, err := ensureDomain(gdb, domainName)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -270,7 +270,7 @@ func openScratchDatabase(t *testing.T) *gorm.DB {
 	})
 	if err := scratch.AutoMigrate(&models.Domain{}, &models.Mailbox{}, &models.Pipeline{}, &models.Role{}, &models.Capability{},
 		&models.RoleCapability{}, &models.Grant{}, &models.GrantActivation{}, &models.OneTimeToken{}, &models.Credential{},
-		&models.RefreshToken{}, &models.GatewaySession{}); err != nil {
+		&models.RefreshToken{}, &models.GatewaySession{}, &models.QuotaUsage{}); err != nil {
 		t.Fatalf("migrate scratch database: %v", err)
 	}
 	if err := rmdb.MigrateAuditLog(scratch); err != nil {

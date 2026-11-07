@@ -73,7 +73,7 @@ const adminAddr = "admin@example.com"
 func countAdmins(t *testing.T, gdb *gorm.DB) int64 {
 	t.Helper()
 	var n int64
-	if err := gdb.Model(&models.Mailbox{}).Count(&n).Error; err != nil {
+	if err := gdb.Model(&models.Grant{}).Where("holder_kind = ? AND scope = ?", models.GrantHolderAccount, "*").Distinct("holder_id").Count(&n).Error; err != nil {
 		t.Fatal(err)
 	}
 	return n

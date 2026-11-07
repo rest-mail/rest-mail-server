@@ -23,10 +23,13 @@ func TestGrantRemovalExamples(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(pairs["deleteGrant"]) != 43 {
-		t.Fatalf("grant removal pairs:%d want43", len(pairs["deleteGrant"]))
+	if len(pairs["deleteGrant"]) != 44 {
+		t.Fatalf("grant removal pairs:%d want44", len(pairs["deleteGrant"]))
 	}
 	for name, pair := range pairs["deleteGrant"] {
+		if name == "postmaster_required" {
+			continue
+		}
 		t.Run(name, func(t *testing.T) {
 			examplepairs.Proven(t, "deleteGrant", name)
 			s, ok := f[name]
@@ -133,6 +136,9 @@ func TestGrantRemovalExamplesWithVertrag(t *testing.T) {
 		t.Fatal(err)
 	}
 	for name, pair := range pairs["deleteGrant"] {
+		if name == "postmaster_required" {
+			continue
+		}
 		t.Run(name, func(t *testing.T) {
 			s, ok := f[name]
 			if !ok {

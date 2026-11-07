@@ -54,13 +54,14 @@ func TestDomainCleanupPostgresLifecycleRetentionAndRollback(t *testing.T) {
 		t.Fatal(err)
 	}
 	liveModels := []any{&models.Pipeline{}, &models.CustomFilter{}, &models.DomainSenderRule{}, &models.Certificate{}, &models.DKIMRotationKey{}, &models.MTASTSPolicy{}, &models.DomainRelay{}, &models.Suppression{}}
-	all := append([]any{&models.Domain{}, &models.Mailbox{}, &models.Alias{}, &models.Role{}, &models.Capability{}, &models.RoleCapability{}, &models.Grant{}, &models.GrantActivation{}, &models.Credential{}, &models.TLSReport{}, &models.MessageTrace{}, &models.DMARCAggregateRecord{}}, liveModels...)
+	all := append([]any{&models.Domain{}, &models.Mailbox{}, &models.QuotaUsage{}, &models.Alias{}, &models.Role{}, &models.Capability{}, &models.RoleCapability{}, &models.Grant{}, &models.GrantActivation{}, &models.Credential{}, &models.TLSReport{}, &models.MessageTrace{}, &models.DMARCAggregateRecord{}}, liveModels...)
 	if err := db.AutoMigrate(all...); err != nil {
 		t.Fatal(err)
 	}
 	if err := rmdb.MigrateAuditLog(db); err != nil {
 		t.Fatal(err)
 	}
+	seedReceiveFixture(t, db)
 	cache := grants.NewCache(db, time.Hour)
 	h := NewDomainHandler(db, nil, cache)
 	router := domainRoutes(h)
@@ -72,7 +73,7 @@ func TestDomainCleanupPostgresLifecycleRetentionAndRollback(t *testing.T) {
 		return w
 	}
 	create := func(name string) models.Domain {
-		w := call(t.Context(), http.MethodPost, "/api/v1/admin/domains", `{"name":"`+name+`"}`)
+		w := postmasterRequest(t, router, nil, http.MethodPost, "/api/v1/admin/domains", `{"name":"`+name+`"}`)
 		if w.Code != 201 {
 			t.Fatalf("API create: %d %s", w.Code, w.Body)
 		}
@@ -84,6 +85,19 @@ func TestDomainCleanupPostgresLifecycleRetentionAndRollback(t *testing.T) {
 		}
 		var row models.Domain
 		if err := db.First(&row, reply.Data.ID).Error; err != nil {
+			t.Fatal(err)
+		}
+		var postmaster models.Mailbox
+		if err := db.Where("address = ?", "postmaster@"+name).First(&postmaster).Error; err != nil {
+			t.Fatal(err)
+		}
+		if err := db.Where("holder_kind = ? AND holder_id = ?", models.GrantHolderAccount, postmaster.ID).Delete(&models.Grant{}).Error; err != nil {
+			t.Fatal(err)
+		}
+		if err := db.Where("mailbox_id = ?", postmaster.ID).Delete(&models.QuotaUsage{}).Error; err != nil {
+			t.Fatal(err)
+		}
+		if err := db.Delete(&postmaster).Error; err != nil {
 			t.Fatal(err)
 		}
 		return row
@@ -103,7 +117,7 @@ func TestDomainCleanupPostgresLifecycleRetentionAndRollback(t *testing.T) {
 		t.Fatal(err)
 	}
 	capability := models.Capability{Name: "domains:read"}
-	if err := db.Create(&capability).Error; err != nil {
+	if err := db.Where("name = ?", capability.Name).FirstOrCreate(&capability).Error; err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Create(&models.RoleCapability{RoleID: role.ID, CapabilityID: capability.ID}).Error; err != nil {
