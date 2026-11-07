@@ -49,8 +49,8 @@ type setRelayBody struct {
 	Host      string  `json:"host,omitempty"`
 	Port      *int    `json:"port,omitempty" minimum:"1" maximum:"65535" message:"Must be between 1 and 65535"`
 	TLSMode   *string `json:"tls_mode,omitempty" enums:"starttls,implicit" message:"Must be one of: starttls, implicit"`
-	Username  string  `json:"username,omitempty" maxLength:"255" message:"Must be at most 255 characters with no control characters"`
-	Password  *string `json:"password,omitempty"`
+	Username  string  `json:"username,omitempty" maxLength:"255" pattern:"^[^\\x00-\\x1f\\x7f]*$" message:"Must be at most 255 characters with no control characters"`
+	Password  *string `json:"password,omitempty" pattern:"^[^\\x00-\\x1f\\x7f]*$" message:"Must not contain control characters"`
 }
 
 // AnyOf states that the transport is direct, or a relay with a host, port and TLS mode; a

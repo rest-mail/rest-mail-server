@@ -53,6 +53,6 @@ def register_absent_settings_hooks(shared):
             return
         if not shared["with_the_fixture_admins_session"](transaction):
             return
-        shared["fixture_call"](transaction, "PUT", path, stored_first[match.group(1)])
+        shared["fixture_call"](transaction, "PUT", path, stored_first[match.group(1)], expect=(200, 201, 404))
 
     return prepare_absent_account_setting

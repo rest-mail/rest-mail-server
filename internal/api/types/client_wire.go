@@ -196,7 +196,7 @@ type updateMessageBody struct {
 	IsFlagged   *bool     `json:"is_flagged,omitempty"`
 	IsStarred   *bool     `json:"is_starred,omitempty"`
 	IsDraft     *bool     `json:"is_draft,omitempty"`
-	Folder      *string   `json:"folder,omitempty" minLength:"1" minLengthMessage:"required"`
+	Folder      *string   `json:"folder,omitempty" minLength:"1" minLengthMessage:"required" maxLength:"255" maxLengthMessage:"must be at most 255 bytes" pattern:"[^\\x09-\\x0d \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]" patternMessage:"required" pattern2:"^[^\\x09-\\x0d \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]([\\s\\S]*[^\\x09-\\x0d \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000])?$" pattern2Message:"must not begin or end with a space" pattern3:"^[^\\x00-\\x1f\\x7f-\\x9f]*$" pattern3Message:"must not contain a control character" pattern4:"^([^.]|\\.[^.])*(\\.)?$" pattern4Message:"must not contain \"..\"" description:"Valid UTF-8 folder name of at most 255 bytes; null leaves it unchanged"`
 }
 
 type updatePipelineRequestBody struct {

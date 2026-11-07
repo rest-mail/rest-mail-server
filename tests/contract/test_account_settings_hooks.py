@@ -6,6 +6,7 @@ import runpy
 import sys
 import types
 import unittest
+import urllib.error
 from pathlib import Path
 from unittest.mock import patch
 
@@ -90,7 +91,12 @@ class AbsentSettingsHooks(unittest.TestCase):
 
     def stored_setting_hook(self):
         stored = []
-        self.shared["fixture_call"] = lambda *args: stored.append(args[1:])
+
+        def fixture_call(*args, expect):
+            self.assertEqual(expect, (200, 201, 404))
+            stored.append(args[1:])
+
+        self.shared["fixture_call"] = fixture_call
         return next(function for name, function in self.registered if name == "getSieveScript" and function.__name__ == "a_stored_setting_to_act_on"), stored
 
     def test_all_three_successes_register_the_stored_setting(self):
@@ -109,6 +115,33 @@ class AbsentSettingsHooks(unittest.TestCase):
         script = ("PUT", "/api/v1/accounts/1/sieve", {"script": "keep;", "active": False})
         reply = ("PUT", "/api/v1/accounts/1/vacation", {"enabled": True, "subject": "Away", "body": "Back soon."})
         self.assertEqual(stored, [script, script, reply])
+
+    def test_missing_fuzz_account_does_not_abort_or_rewrite_the_request(self):
+        hook = next(function for name, function in self.registered if name == "getSieveScript" and function.__name__ == "a_stored_setting_to_act_on")
+        fixture_call = self.shared["fixture_call"]
+        for setting, method, status in (("sieve", "GET", "200"), ("sieve", "DELETE", "200"), ("vacation", "DELETE", "204")):
+            with self.subTest(setting=setting, method=method):
+                transaction = self.transaction(setting, method)
+                transaction["fullPath"] = f"/api/v1/accounts/1000/{setting}?keep=1"
+                transaction["expected"]["statusCode"] = status
+                before = copy.deepcopy(transaction)
+                error = urllib.error.HTTPError("http://localhost", 404, "Not Found", {}, None)
+                with patch.dict(fixture_call.__globals__, {"admin_token": lambda _: "fixture-admin"}), patch("urllib.request.urlopen", side_effect=error) as request:
+                    hook(transaction)
+                self.assertEqual(transaction, before)
+                self.assertEqual(request.call_args.args[0].full_url, f"http://localhost:8080/api/v1/accounts/1000/{setting}")
+
+    def test_stored_setting_other_setup_failures_are_not_hidden(self):
+        hook = next(function for name, function in self.registered if name == "getSieveScript" and function.__name__ == "a_stored_setting_to_act_on")
+        fixture_call = self.shared["fixture_call"]
+        for status in (403, 422, 500):
+            with self.subTest(status=status):
+                transaction = self.transaction()
+                transaction["expected"]["statusCode"] = "200"
+                error = urllib.error.HTTPError("http://localhost", status, "Setup failed", {}, None)
+                with patch.dict(fixture_call.__globals__, {"admin_token": lambda _: "fixture-admin"}), patch("urllib.request.urlopen", side_effect=error):
+                    with self.assertRaises(urllib.error.HTTPError):
+                        hook(transaction)
 
     def test_only_the_fixture_admins_success_stores_a_setting(self):
         hook, stored = self.stored_setting_hook()

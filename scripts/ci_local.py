@@ -832,21 +832,21 @@ class Gate:
                 if not self.python.exists():
                     self.run([sys.executable, "-m", "venv", self.cache / "venv"])
                 available = subprocess.run(
-                    [str(self.python), "-c", "import yaml"],
+                    [str(self.python), "-c", "import yaml, idna"],
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                     check=False,
                 )
                 if available.returncode:
-                    self.run([self.python, "-m", "pip", "install", "PyYAML==6.0.3"])
+                    self.run([self.python, "-m", "pip", "install", "PyYAML==6.0.3", "idna==3.11"])
             self.run(
-                [self.python, "-c", "import yaml; print('PyYAML', yaml.__version__)"]
+                [self.python, "-c", "import yaml, idna; print('PyYAML', yaml.__version__, 'idna', idna.__version__)"]
             )
         except (subprocess.CalledProcessError, OSError) as error:
             raise CouldNotRun(
-                f"PyYAML is not available in {self.cache / 'venv'}: {error}. "
+                f"PyYAML or idna is not available in {self.cache / 'venv'}: {error}. "
                 "scripts/tests and tests/contract cannot run without it; repair with: "
-                f"{self.python} -m pip install PyYAML==6.0.3, or delete that venv and rerun"
+                f"{self.python} -m pip install PyYAML==6.0.3 idna==3.11, or repair that venv and rerun"
             ) from error
 
     def load_workflow(self):

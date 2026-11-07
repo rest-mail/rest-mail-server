@@ -53,11 +53,11 @@ func TestDraftBodiesDescribeWhatTheHandlersAccept(t *testing.T) {
 	}{
 		{"saveDraft/to", "/api/v1/messages/draft", "post", "to", address},
 		{"saveDraft/cc", "/api/v1/messages/draft", "post", "cc", address},
-		// An empty from is accepted, and means none: a format would call that body invalid.
-		{"saveDraft/from", "/api/v1/messages/draft", "post", "from", `{"type":"string"}`},
+		// Preserve empty and null senders while describing nonempty addresses.
+		{"saveDraft/from", "/api/v1/messages/draft", "post", "from", `{"anyOf":[{"enum":[""],"type":"string"},{"format":"idn-email","type":"string"}],"type":"string"}`},
 		{"updateDraft/to", "/api/v1/messages/draft/{id}", "put", "to", address},
 		{"updateDraft/cc", "/api/v1/messages/draft/{id}", "put", "cc", address},
-		{"updateDraft/from", "/api/v1/messages/draft/{id}", "put", "from", `{"type":["string","null"]}`},
+		{"updateDraft/from", "/api/v1/messages/draft/{id}", "put", "from", `{"anyOf":[{"enum":["",null],"type":["string","null"]},{"format":"idn-email","type":"string"}],"type":["string","null"]}`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := string(servedDraftBody(t, tc.path, tc.method)[tc.property]); got != tc.want {

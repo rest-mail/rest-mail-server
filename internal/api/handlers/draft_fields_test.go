@@ -31,6 +31,11 @@ var draftRecipientAnswers = []struct {
 	{"empty", ``, false},
 	{"blank", `  `, false},
 	{"not an address", `not-an-address`, false},
+	{"invalid punycode", `user@xn--a.example`, false},
+	{"overlong domain label", "user@" + strings.Repeat("a", 64) + ".example", false},
+	{"missing domain", `user@`, false},
+	{"missing local part", `@example.test`, false},
+	{"invalid local part", `two words@example.test`, false},
 	{"two addresses", `a@example.test, b@example.test`, false},
 	{"header injection", `a@example.test\r\nBcc: c@example.test`, false},
 }

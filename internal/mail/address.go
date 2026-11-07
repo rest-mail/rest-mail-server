@@ -65,7 +65,11 @@ func ValidateAddress(addr string) error {
 	if ContainsControlChar(addr) {
 		return errors.New("address contains a control character")
 	}
-	if _, err := mail.ParseAddress(addr); err != nil {
+	parsed, err := mail.ParseAddress(addr)
+	if err != nil {
+		return fmt.Errorf("invalid address %q: %w", addr, err)
+	}
+	if _, err := SMTPAddressASCII(parsed.Address); err != nil {
 		return fmt.Errorf("invalid address %q: %w", addr, err)
 	}
 	return nil

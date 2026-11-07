@@ -142,6 +142,26 @@ class SendMessageProbes(unittest.TestCase):
         self.assertNotIn("POST /api/v1/accounts", calls)
         self.assertFalse([c for c in calls if c.startswith("PUT ")])
 
+    def test_a_unicode_sender_finds_the_normalized_hosted_identity(self):
+        self.server.state["domains"].append({"id": 2, "name": "xn--fsqu00a.xn--4rr70v"})
+        self.server.state["signing"].add(2)
+        self.server.state["mailboxes"].append({
+            "id": 8, "domain_id": 2, "address": "用户@xn--fsqu00a.xn--4rr70v",
+        })
+        self.send({"from": "用户@例子.广告"})
+        self.send({"from": "用户@xn--fsqu00a.xn--4rr70v"})
+        calls = self.server.state["calls"]
+        self.assertNotIn("POST /api/v1/admin/domains", calls)
+        self.assertNotIn("POST /api/v1/accounts", calls)
+        self.assertEqual(calls.count("GET /api/v1/admin/domains?limit=200&offset=0"), 1)
+
+    def test_a_decomposed_sender_finds_the_normalized_local_part(self):
+        self.server.state["mailboxes"].append({
+            "id": 8, "domain_id": 1, "address": "é@restmail.test",
+        })
+        self.send({"from": "E\u0301@restmail.test"})
+        self.assertNotIn("POST /api/v1/accounts", self.server.state["calls"])
+
     def test_an_unlinked_sender_404_is_not_changed_into_a_known_sender(self):
         self.send({"from": "someone@other.test", "to": ["recipient@example.net"]})
         self.assertEqual(self.server.state["calls"], [])

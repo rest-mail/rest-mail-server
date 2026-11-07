@@ -1,6 +1,36 @@
 package mail
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
+
+func TestValidateAddressDomainBoundaries(t *testing.T) {
+	for _, test := range []struct {
+		name, address string
+		accepted      bool
+	}{
+		{"ASCII", "user@example.com", true},
+		{"Unicode", "用户@例子.广告", true},
+		{"display name", "Someone <用户@例子.广告>", true},
+		{"quoted local part", `"local@part"@example.com`, true},
+		{"IPv4 literal", "user@[127.0.0.1]", true},
+		{"maximum label", "user@" + strings.Repeat("a", 63) + ".example", true},
+		{"invalid punycode", "user@xn--a.example", false},
+		{"overlong label", "user@" + strings.Repeat("a", 64) + ".example", false},
+		{"overlong domain", "user@" + strings.Repeat(strings.Repeat("a", 63)+".", 4) + "example", false},
+		{"missing domain", "user@", false},
+		{"missing local part", "@example.com", false},
+		{"invalid local part", "two words@example.com", false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			err := ValidateAddress(test.address)
+			if (err == nil) != test.accepted {
+				t.Fatalf("ValidateAddress(%q) = %v, accepted = %t", test.address, err, test.accepted)
+			}
+		})
+	}
+}
 
 func TestValidateAddress_RejectsCRLFInjection(t *testing.T) {
 	// The #166 proof-of-concept: a recipient that smuggles a second SMTP command

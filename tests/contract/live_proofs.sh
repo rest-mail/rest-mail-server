@@ -35,7 +35,7 @@ if ! vertrag="$(python3 -B scripts/vertrag_pin.py ensure "${CONTRACT_VERTRAG_DIR
 fi
 PATH="$(dirname "$vertrag"):$PATH"
 export PATH
-python3 -B -c 'import yaml' 2>/dev/null || pip install --quiet pyyaml
+python3 -B -c 'import yaml, idna' 2>/dev/null || pip install --quiet pyyaml idna==3.11
 
 status=0
 run_live() {
