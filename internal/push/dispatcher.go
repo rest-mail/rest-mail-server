@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"sync"
 	"time"
+
+	"github.com/rest-mail/rest-mail-server/internal/tracing"
 )
 
 // DefaultCoalesceWindow is the least time between two pushes to one device
@@ -161,13 +163,23 @@ func (d *Dispatcher) run() {
 		case <-timer.C:
 		case <-quiet.C:
 		case <-sweep.C:
-			if n, err := d.store.Sweep(time.Now()); err != nil {
-				slog.Warn("push: failed to remove the devices of ended sessions", "error", err)
-			} else if n > 0 {
-				slog.Info("push: removed the devices of ended sessions", "count", n)
-			}
+			// The sweep and each dispatch batch are background jobs (#1580),
+			// each with its own trace and job ID.
+			_ = tracing.Job(d.ctx, "job.push_sweep", func(ctx context.Context) error {
+				n, err := d.store.Sweep(time.Now())
+				if err != nil {
+					slog.WarnContext(ctx, "push: failed to remove the devices of ended sessions", "error", err)
+				} else if n > 0 {
+					slog.InfoContext(ctx, "push: removed the devices of ended sessions", "count", n)
+				}
+				return err
+			})
 		}
-		next := d.Step(d.ctx, time.Now())
+		var next time.Time
+		_ = tracing.Job(d.ctx, "job.push_dispatch", func(ctx context.Context) error {
+			next = d.Step(ctx, time.Now())
+			return nil
+		})
 		timer.Stop()
 		if !next.IsZero() {
 			timer.Reset(time.Until(next))
@@ -190,12 +202,12 @@ func (d *Dispatcher) Step(ctx context.Context, now time.Time) time.Time {
 	// while its push waited gets none.
 	found := map[uint][]target{}
 	for mailbox := range arrived {
-		if d.hold(mailbox, now) {
+		if d.hold(ctx, mailbox, now) {
 			continue
 		}
 		targets, err := d.store.targets(mailbox, now)
 		if err != nil {
-			slog.Warn("push: failed to find the devices for new mail", "mailbox_id", mailbox, "error", err)
+			slog.WarnContext(ctx, "push: failed to find the devices for new mail", "mailbox_id", mailbox, "error", err)
 			continue
 		}
 		found[mailbox] = targets
@@ -208,7 +220,7 @@ func (d *Dispatcher) Step(ctx context.Context, now time.Time) time.Time {
 			if sent, ok := d.last[k]; ok && now.Sub(sent) < d.window {
 				at = sent.Add(d.window)
 			}
-			if at.After(now) && d.hold(mailbox, at) {
+			if at.After(now) && d.hold(ctx, mailbox, at) {
 				continue
 			}
 			d.waiting[k] = pending{mailbox: mailbox, at: at}
@@ -232,20 +244,20 @@ func (d *Dispatcher) Step(ctx context.Context, now time.Time) time.Time {
 	}
 
 	for mailbox, keys := range due {
-		if d.hold(mailbox, now) {
+		if d.hold(ctx, mailbox, now) {
 			continue
 		}
 		targets, ok := found[mailbox]
 		if !ok {
 			var err error
 			if targets, err = d.store.targets(mailbox, now); err != nil {
-				slog.Warn("push: failed to find the devices for new mail", "mailbox_id", mailbox, "error", err)
+				slog.WarnContext(ctx, "push: failed to find the devices for new mail", "mailbox_id", mailbox, "error", err)
 				continue
 			}
 		}
 		unread, err := d.store.unread(mailbox)
 		if err != nil {
-			slog.Warn("push: failed to count unread mail", "mailbox_id", mailbox, "error", err)
+			slog.WarnContext(ctx, "push: failed to count unread mail", "mailbox_id", mailbox, "error", err)
 			continue
 		}
 		for _, t := range targets {
@@ -273,7 +285,7 @@ func (d *Dispatcher) Step(ctx context.Context, now time.Time) time.Time {
 			d.sendPayload(ctx, device, payload, now)
 		})
 		if err != nil {
-			slog.Warn("push: could not dispatch quiet-hours summaries", "error", err)
+			slog.WarnContext(ctx, "push: could not dispatch quiet-hours summaries", "error", err)
 		}
 		if !quietNext.IsZero() && (next.IsZero() || quietNext.Before(next)) {
 			next = quietNext
@@ -282,11 +294,11 @@ func (d *Dispatcher) Step(ctx context.Context, now time.Time) time.Time {
 	return next
 }
 
-func (d *Dispatcher) hold(mailbox uint, now time.Time) bool {
+func (d *Dispatcher) hold(ctx context.Context, mailbox uint, now time.Time) bool {
 	if store, ok := d.store.(*Store); ok {
 		held, err := store.hold(mailbox, now)
 		if err != nil {
-			slog.Warn("push: could not read quiet hours", "mailbox_id", mailbox, "error", err)
+			slog.WarnContext(ctx, "push: could not read quiet hours", "mailbox_id", mailbox, "error", err)
 			return true
 		}
 		return held
@@ -311,16 +323,16 @@ func (d *Dispatcher) sendPayload(ctx context.Context, t target, payload []byte, 
 		Auth:        t.Auth,
 	})
 	if err != nil {
-		slog.Warn("push: push service not reached", "device_id", t.DeviceID, "platform", t.Platform, "error", err)
+		slog.WarnContext(ctx, "push: push service not reached", "device_id", t.DeviceID, "platform", t.Platform, "error", err)
 		return
 	}
 	switch {
 	case res.Status == 200:
 	case res.Gone():
 		if err := d.store.RemoveGone(t.DeviceID, t.Platform, res.Reason, now); err != nil {
-			slog.Warn("push: failed to remove a device its push service refused", "device_id", t.DeviceID, "error", err)
+			slog.WarnContext(ctx, "push: failed to remove a device its push service refused", "device_id", t.DeviceID, "error", err)
 		}
 	default:
-		slog.Warn("push: push service refused a push", "device_id", t.DeviceID, "platform", t.Platform, "status", res.Status, "reason", res.Reason)
+		slog.WarnContext(ctx, "push: push service refused a push", "device_id", t.DeviceID, "platform", t.Platform, "status", res.Status, "reason", res.Reason)
 	}
 }

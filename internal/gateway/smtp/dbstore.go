@@ -1,6 +1,7 @@
 package smtp
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"strings"
@@ -145,8 +146,8 @@ func (s *dbStore) CredentialUsable(credentialID uint) (bool, error) {
 // PrepareSubmitted runs the transforms the queue worker runs on the same
 // submission's remote copies, so a local mailbox receives what a remote one
 // does.
-func (s *dbStore) PrepareSubmitted(sender, raw string) (string, error) {
-	return outbound.Prepare(s.db, s.masterKey, rmail.DomainFromAddress(sender), raw)
+func (s *dbStore) PrepareSubmitted(ctx context.Context, sender, raw string) (string, error) {
+	return outbound.Prepare(ctx, s.db, s.masterKey, rmail.DomainFromAddress(sender), raw)
 }
 
 // SendingPolicy reads the sending policy of the domain the address is on.

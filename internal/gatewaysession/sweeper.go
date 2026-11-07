@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/rest-mail/rest-mail-server/internal/db/repositories"
+	"github.com/rest-mail/rest-mail-server/internal/tracing"
 	"gorm.io/gorm"
 )
 
@@ -57,23 +58,26 @@ func (s *Sweeper) loop() {
 		case <-s.stop:
 			return
 		case <-ticker.C:
-			s.SweepOnce(s.now())
+			_ = tracing.Job(context.Background(), "job.gateway_session_sweep", func(ctx context.Context) error {
+				s.SweepOnce(ctx, s.now())
+				return nil
+			})
 		}
 	}
 }
 
 // SweepOnce closes every idle gateway session and returns how many it closed.
 // Errors are logged, never fatal: the next tick retries.
-func (s *Sweeper) SweepOnce(now time.Time) int64 {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+func (s *Sweeper) SweepOnce(ctx context.Context, now time.Time) int64 {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	closed, err := repositories.NewGatewaySessionRepository(s.db.WithContext(ctx)).CloseIdle(now)
 	if err != nil {
-		slog.Warn("gateway session sweeper: closing idle sessions failed", "error", err)
+		slog.WarnContext(ctx, "gateway session sweeper: closing idle sessions failed", "error", err)
 		return 0
 	}
 	if closed > 0 {
-		slog.Info("gateway session sweeper: closed idle sessions", "count", closed)
+		slog.InfoContext(ctx, "gateway session sweeper: closed idle sessions", "count", closed)
 	}
 	return closed
 }

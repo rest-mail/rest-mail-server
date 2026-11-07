@@ -1,6 +1,7 @@
 package queue
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
@@ -34,7 +35,7 @@ func TestDeliverRESTMAILAlwaysVerifiesCertificate(t *testing.T) {
 				w := &Worker{sendDeadline: defaultSendDeadline, allowPrivateDest: true}
 				w.SetRESTMAILRootCAs(roots)
 				w.SetTLSInsecure(insecure)
-				err := w.deliverRESTMAILHTTPS(srv.URL+"/restmail", testItem())
+				err := w.deliverRESTMAILHTTPS(context.Background(), srv.URL+"/restmail", testItem())
 				if trust == "trusted" {
 					if err != nil || posts.Load() != 1 {
 						t.Fatalf("trusted endpoint: err=%v posts=%d, want successful POST", err, posts.Load())
@@ -69,7 +70,7 @@ func TestRESTMAILVerifiedDiscoveryDoesNotTrustFinalCertificate(t *testing.T) {
 		fmt.Fprintf(rw, `{"endpoint":%q}`, final.URL+"/restmail")
 	})
 	w.SetTLSInsecure(true)
-	err := w.deliverRESTMAILDiscovered(discovery.URL+"/.well-known/restmail?domain=example.net", testItem())
+	err := w.deliverRESTMAILDiscovered(context.Background(), discovery.URL+"/.well-known/restmail?domain=example.net", testItem())
 	var verificationErr *tls.CertificateVerificationError
 	if !errors.As(err, &verificationErr) || discoveries.Load() != 1 || posts.Load() != 0 {
 		t.Fatalf("err=%v discovery requests=%d final posts=%d, want verified discovery then rejected final certificate", err, discoveries.Load(), posts.Load())

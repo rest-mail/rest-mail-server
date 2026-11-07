@@ -23,8 +23,8 @@ import (
 // seals with rsa-sha256 alone), or arrived with a chain whose latest seal says cv=fail,
 // which no one continues (§5.1 step 2). A key that cannot be loaded fails closed, as
 // SignDKIM does.
-func SealARC(db *gorm.DB, masterKey, sendingDomain, raw, results, chain string) (string, error) {
-	domain, key, asciiDomain, err := domainKey(db, masterKey, sendingDomain, "arc seal")
+func SealARC(ctx context.Context, db *gorm.DB, masterKey, sendingDomain, raw, results, chain string) (string, error) {
+	domain, key, asciiDomain, err := domainKey(ctx, db, masterKey, sendingDomain, "arc seal")
 	if err != nil {
 		return "", err
 	}
@@ -33,10 +33,10 @@ func SealARC(db *gorm.DB, masterKey, sendingDomain, raw, results, chain string) 
 	}
 	rsaKey, ok := key.(*rsa.PrivateKey)
 	if !ok {
-		slog.Info("outbound arc seal: the domain's key is not RSA, the forward goes unsealed", "domain", sendingDomain)
+		slog.InfoContext(ctx, "outbound arc seal: the domain's key is not RSA, the forward goes unsealed", "domain", sendingDomain)
 		return raw, nil
 	}
-	return sealARC(raw, arc.SealOptions{
+	return sealARC(ctx, raw, arc.SealOptions{
 		Domain:          asciiDomain,
 		Selector:        domain.DKIMSelector,
 		PrivateKey:      rsaKey,
@@ -49,18 +49,18 @@ func SealARC(db *gorm.DB, masterKey, sendingDomain, raw, results, chain string) 
 // sealARC seals raw with opt. A chain status that does not fit the message (none on one
 // that carries an ARC chain, say, once a hop between the verdict and the seal added one) is
 // not trusted: the seal verifies the message itself instead.
-func sealARC(raw string, opt arc.SealOptions) (string, error) {
-	res, err := arc.Seal(context.Background(), []byte(raw), opt)
+func sealARC(ctx context.Context, raw string, opt arc.SealOptions) (string, error) {
+	res, err := arc.Seal(ctx, []byte(raw), opt)
 	if errors.Is(err, arc.ErrChainValidation) {
 		opt.ChainValidation = ""
-		res, err = arc.Seal(context.Background(), []byte(raw), opt)
+		res, err = arc.Seal(ctx, []byte(raw), opt)
 	}
 	if errors.Is(err, arc.ErrChainFailed) {
-		slog.Info("outbound arc seal: the chain arrived failed, the forward goes without a new set", "domain", opt.Domain)
+		slog.InfoContext(ctx, "outbound arc seal: the chain arrived failed, the forward goes without a new set", "domain", opt.Domain)
 		return raw, nil
 	}
 	if err != nil {
-		slog.Error("outbound arc seal failed (fail-closed)", "domain", opt.Domain, "error", err)
+		slog.ErrorContext(ctx, "outbound arc seal failed (fail-closed)", "domain", opt.Domain, "error", err)
 		return "", fmt.Errorf("arc: seal for %s: %w", opt.Domain, err)
 	}
 	return string(res.Message), nil

@@ -15,6 +15,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/auth"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/db/repositories"
+	"github.com/rest-mail/rest-mail-server/internal/tracing"
 	"gorm.io/gorm"
 )
 
@@ -74,18 +75,42 @@ func (s *ScheduledSender) run() {
 	defer close(s.done)
 	ticker := time.NewTicker(scheduledSendInterval)
 	defer ticker.Stop()
-	s.h.returnSnoozedThreads(context.Background())
-	s.h.dispatchSendLimitNotices(context.Background())
+	s.returnSnoozed()
+	s.sendLimitNotices()
 	for {
 		select {
 		case <-s.stop:
 			return
 		case <-ticker.C:
-			s.h.returnSnoozedThreads(context.Background())
-			s.h.runScheduledSends(context.Background())
-			s.h.dispatchSendLimitNotices(context.Background())
+			s.returnSnoozed()
+			s.scheduledSends()
+			s.sendLimitNotices()
 		}
 	}
+}
+
+// Each pass below is one background job (#1580): its own trace and job ID,
+// which the pass's spans and context-logged lines carry.
+
+func (s *ScheduledSender) returnSnoozed() {
+	_ = tracing.Job(context.Background(), "job.snooze_return", func(ctx context.Context) error {
+		s.h.returnSnoozedThreads(ctx)
+		return nil
+	})
+}
+
+func (s *ScheduledSender) scheduledSends() {
+	_ = tracing.Job(context.Background(), "job.scheduled_send", func(ctx context.Context) error {
+		s.h.runScheduledSends(ctx)
+		return nil
+	})
+}
+
+func (s *ScheduledSender) sendLimitNotices() {
+	_ = tracing.Job(context.Background(), "job.send_limit_notices", func(ctx context.Context) error {
+		s.h.dispatchSendLimitNotices(ctx)
+		return nil
+	})
 }
 
 // runScheduledSends sends one batch of messages whose time has come. It is a
@@ -97,7 +122,7 @@ func (h *MessageHandler) runScheduledSends(ctx context.Context) {
 		Order("send_at").
 		Limit(scheduledSendBatch).
 		Find(&due).Error; err != nil {
-		slog.Warn("scheduled send: could not read due messages", "error", err)
+		slog.WarnContext(ctx, "scheduled send: could not read due messages", "error", err)
 		return
 	}
 	for _, row := range due {
@@ -117,13 +142,13 @@ func (h *MessageHandler) runScheduledSends(ctx context.Context) {
 func (h *MessageHandler) deliverScheduled(ctx context.Context, row models.ScheduledSend) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			slog.Error("scheduled send: panic while sending", "id", row.ID, "panic", recovered)
-			h.finishScheduled(row.ID, "failed", 0, "the send failed unexpectedly")
+			slog.ErrorContext(ctx, "scheduled send: panic while sending", "id", row.ID, "panic", recovered)
+			h.finishScheduled(ctx, row.ID, "failed", 0, "the send failed unexpectedly")
 		}
 	}()
 	var req sendMessageRequest
 	if err := json.Unmarshal(row.Request, &req); err != nil {
-		h.finishScheduled(row.ID, "failed", 0, "could not read the stored message: "+err.Error())
+		h.finishScheduled(ctx, row.ID, "failed", 0, "could not read the stored message: "+err.Error())
 		return
 	}
 	req.ScheduledAt = nil
@@ -137,7 +162,7 @@ func (h *MessageHandler) deliverScheduled(ctx context.Context, row models.Schedu
 	if row.CredentialID != 0 {
 		var cred models.Credential
 		if err := h.db.WithContext(sendCtx).First(&cred, row.CredentialID).Error; err != nil || cred.AccountID != row.AccountID || !cred.Usable(time.Now()) {
-			h.finishScheduled(row.ID, "failed", 0, "The submitting credential is no longer usable")
+			h.finishScheduled(ctx, row.ID, "failed", 0, "The submitting credential is no longer usable")
 			return
 		}
 		claims.CredentialID, claims.CredentialKind = cred.ID, cred.Kind
@@ -158,7 +183,7 @@ func (h *MessageHandler) deliverScheduled(ctx context.Context, row models.Schedu
 		if sent, ok := outcome.Value.(Message); ok {
 			messageID = sent.ID
 		}
-		h.finishScheduled(row.ID, "sent", messageID, "")
+		h.finishScheduled(ctx, row.ID, "sent", messageID, "")
 		return
 	}
 
@@ -181,13 +206,13 @@ func (h *MessageHandler) deliverScheduled(ctx context.Context, row models.Schedu
 			// Only pending rows are picked up, so a row left as sending would
 			// never be sent, failed or cancelled: fail it, so the account sees
 			// the send did not go.
-			slog.Warn("scheduled send: could not record the retry", "id", row.ID, "error", err)
+			slog.WarnContext(ctx, "scheduled send: could not record the retry", "id", row.ID, "error", err)
 		}
 	}
-	h.finishScheduled(row.ID, "failed", 0, reason)
+	h.finishScheduled(ctx, row.ID, "failed", 0, reason)
 }
 
-func (h *MessageHandler) finishScheduled(id uint, status string, messageID uint, lastError string) {
+func (h *MessageHandler) finishScheduled(ctx context.Context, id uint, status string, messageID uint, lastError string) {
 	updates := map[string]any{
 		"status":     status,
 		"last_error": truncateForStore(lastError),
@@ -196,7 +221,7 @@ func (h *MessageHandler) finishScheduled(id uint, status string, messageID uint,
 		updates["sent_message_id"] = messageID
 	}
 	if err := h.db.Model(&models.ScheduledSend{}).Where("id = ?", id).Updates(updates).Error; err != nil {
-		slog.Warn("scheduled send: could not record the result", "id", id, "error", err)
+		slog.WarnContext(ctx, "scheduled send: could not record the result", "id", id, "error", err)
 	}
 }
 

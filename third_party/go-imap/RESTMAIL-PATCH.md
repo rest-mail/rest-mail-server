@@ -23,6 +23,19 @@ workflow changes, and the fuzz targets nightly in
 one here would never run. `.github/scripts/check_coverage.py` and `.github/tests`
 stay: those steps run them, and `TestReadmeCoverageBadge` reads the gate.
 
+## Unsolicited FETCH UIDs
+
+Unsolicited flag updates include both UID and FLAGS, including after EXPUNGE
+renumbers messages. NOOP, CHECK and IDLE share this formatter. This satisfies
+RFC 9051 §§6.3.13 and 7.5.2 without an IMAP4rev2 mode switch: RFC 3501 allows
+the additional UID item. Solicited STORE responses are unchanged, and ordinary
+FETCH responses already include UID.
+
+`TestUnsolicitedFetchIncludesUID` proves the public-session behavior with sparse
+UIDs, external expunges, flag changes and new arrivals, under SELECT and EXAMINE.
+The gateway's `TestServer_UnsolicitedFetchIncludesUID` also proves that a silent
+STORE in another gateway session produces the correct UID-bearing update.
+
 ## RFC 3501 corrections
 
 These change protocol behaviour from go-imap v0.13.2, and each corrects a defect
@@ -106,6 +119,20 @@ then the connection closes. The failure that earns the ban gets the same reply.
 `TestAuthenticationFailureBudgetAppliesToBothForms` asserted the old reply text,
 so it is corrected.
 
+- Mailbox access rights (RFC 9051 §§6.3.2, 6.3.9.2, 6.3.12, 6.4.7, 11.4). The
+  rev2 rules on READ-ONLY selections, TRYCREATE without implicit creation,
+  \Noselect for unopenable LIST-STATUS entries and withholding APPENDUID and
+  COPYUID from a caller who cannot read the destination all need the user's
+  rights, which upstream's Mailbox does not carry. The optional
+  `imap.RightsMailbox` interface reports them; a Mailbox without it keeps every
+  right, so existing hosts see no change. DELETE of a \Noselect level with
+  inferiors answers `NO [HASCHILDREN]` (§6.3.5) for every host.
+- `\Deleted` kept by the store (RFC 3501 §2.3.2, go-imap#159). Upstream keeps
+  the mark in the session until EXPUNGE, so the user's other devices never see
+  it and a dropped connection loses it. The optional `imap.DeletedMailbox`
+  interface says the store keeps it; EXPUNGE, CLOSE and UID EXPUNGE then remove
+  what the store marks at that moment, so a mark another session cleared is
+  never expunged. A Mailbox without it keeps the session's marks.
 - LIST-EXTENDED in full (RFC 5258, folded into RFC 9051 §6.3.9) needs a real
   subscription list: "the list MUST include exactly those mailbox names that
   match the canonical list pattern and are subscribed to" (§3.1), names that

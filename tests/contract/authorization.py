@@ -15,7 +15,8 @@ vertrag.yml: vertrag.yml with `principals` added and the surface gate left out
 
     principal          credential                           roles
     none               nothing                              -
-    admin              signs in (bearer)                    every role the spec names: superadmin at *
+    admin              signs in with a second factor        every role the spec names: superadmin at *
+                       (bearer)
     ordinary           signs in (bearer)                    none: no grants
     app-password       Basic, the ordinary account's        none: read, write and send on its own mailbox
 
@@ -26,6 +27,14 @@ cell whose ids the description's links supply is sent on a resource made for
 it as its owner (vertrag#81); an operation no link leads to still sends its
 example ids.
 Keep this run report-only until these fixture and scope mismatches are resolved.
+The admin principal is the contract's two-factor administrator (mfa_admin.py),
+a superadmin as the fixture admin is, signed in with an unused second factor.
+Creating credentials, linking accounts and changing grants take a session that
+proved one recently, which the fixture admin's never has. The examples phase
+swaps the fixture admin's session for this administrator's in a hook, but this
+phase ends a request whose credential a hook changes unsent ("a hook changed
+the credential"), so its admin is that administrator from the start (#1162).
+
 The account with no password cannot sign in, so it has no separate credential
 from `none`; there is no agent principal until the model has agents (#341).
 
@@ -45,6 +54,7 @@ import json
 import os
 import sys
 
+import mfa_admin
 import yaml
 from reports import spec_location
 
@@ -56,6 +66,19 @@ BEARER = "Authorization: Bearer {$response.body#/data/access_token}"
 # accepts this beside the status a cell requires, on every cell, so
 # authorization_refusals.py holds it to the routes that decision covers.
 HIDING_REFUSAL = [404]
+# What this phase can set up that the examples phase does not (#1162). A
+# recovery names its account in the body, so hooks.py makes a fresh account,
+# enrolled in TOTP, for each principal's request (recover_an_account_of_its_own):
+# the success is sent as every principal without touching the run's own
+# accounts. The states whose target is the caller's own account
+# (known_password, enrolled_authenticator, pending_enrollment) are not provided:
+# their success ends or changes the principal's own sessions, and a hook may not
+# point the request at another account's credential.
+# The owner endpoints need a key in the owner registry: chore contract registers
+# a throwaway one (owner_key.py, chore test:contract-owner-key) for this phase
+# only, and hooks.py signs each success with it. A token is minted and redeemed
+# only for an account made for that request, never one of the run's own.
+PROVIDES = {"state": ["owner_key", "recoverable_account"]}
 # Operations whose request names no mailbox: they act on the caller's own
 # account, where every signed-in principal holds the capability they declare.
 OWN_ACCOUNT = [
@@ -90,18 +113,23 @@ def roles(spec_path):
     return sorted(found)
 
 
-def sign_in(principal):
+def sign_in(principal, factor=None):
+    """Vertrag signs each principal in once, before any cell is sent; a second
+    factor, a one-time code, is spent by that one sign-in."""
+    factor = factor or {}
     return {
         # Vertrag 0.31 refuses a login body field that is in neither list: the
-        # password is redacted, the address and client are shown (vertrag#87).
+        # password and any second factor are redacted, the address and client
+        # are shown (vertrag#87).
         "login": {
             "path": LOGIN,
             "body": {
                 "email": principal["address"],
                 "password": principal["password"],
                 "client": "native",
+                **factor,
             },
-            "secrets": ["password"],
+            "secrets": ["password", *factor],
             "public": ["email", "client"],
         },
         "header": BEARER,
@@ -122,11 +150,25 @@ def main(spec_path, config_path, principals_path, out_path, report_path, run_spe
     config.pop("surface", None)
     config["skip"] = list(config.get("skip") or []) + OWN_ACCOUNT
     config["authorization"] = {"refuse": HIDING_REFUSAL}
+    provides = config.get("provides") or {}
+    config["provides"] = {
+        kind: sorted(set(provides.get(kind) or []) | set(values))
+        for kind, values in {**provides, **PROVIDES}.items()
+    }
+    # The examples phase's unproven list is not this run's: it provides more.
+    config["unproven"] = ".cache/contract/unproven-authorization.json"
     config["reporter"] = ["cli", "junit"]
     config["output"] = ["", os.path.abspath(report_path)]
     config["principals"] = [
         {"name": "none"},
-        {"name": "admin", "auth": sign_in(fixture["admin"]), "roles": roles(spec_path)},
+        {
+            "name": "admin",
+            "auth": sign_in(
+                {"address": mfa_admin.ADDRESS, "password": mfa_admin.PASSWORD},
+                mfa_admin.factor(),
+            ),
+            "roles": roles(spec_path),
+        },
         {"name": "ordinary", "auth": sign_in(fixture["ordinary"]), "roles": []},
         {
             "name": "app-password",

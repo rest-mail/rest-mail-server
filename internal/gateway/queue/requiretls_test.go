@@ -59,10 +59,10 @@ func TestRequireTLS_Delivery(t *testing.T) {
 		if edit != nil {
 			edit(&item)
 		}
-		stsPolicy, stsErr := w.recipientPolicy(item, item.Domain)
+		stsPolicy, stsErr := w.recipientPolicy(context.Background(), item, item.Domain)
 		peer.noAUTH = true
 		settings, finish := relayTestPeer(t, cert, peer)
-		err := w.deliverSMTP(net.JoinHostPort(settings.host, strconv.Itoa(settings.port)), settings.host, item, stsPolicy, stsErr)
+		err := w.deliverSMTP(context.Background(), net.JoinHostPort(settings.host, strconv.Itoa(settings.port)), settings.host, item, stsPolicy, stsErr)
 		return finish().commands, err
 	}
 	refusal := func(t *testing.T, err error, enhanced string) {
@@ -122,8 +122,8 @@ func TestRequireTLS_Delivery(t *testing.T) {
 			w.smtpRoots = roots
 			item := tlsTestItem()
 			item.RequireTLS = true
-			stsPolicy, stsErr := w.recipientPolicy(item, item.Domain)
-			err := w.deliverSMTP("127.0.0.1:1", "127.0.0.1", item, stsPolicy, stsErr)
+			stsPolicy, stsErr := w.recipientPolicy(context.Background(), item, item.Domain)
+			err := w.deliverSMTP(context.Background(), "127.0.0.1:1", "127.0.0.1", item, stsPolicy, stsErr)
 			refusal(t, err, "5.7.10")
 		})
 	}

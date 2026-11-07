@@ -13,6 +13,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/rest-mail/rest-mail-server/internal/metrics"
+	"github.com/rest-mail/rest-mail-server/internal/tracing"
 	"gorm.io/gorm"
 )
 
@@ -76,14 +77,17 @@ func (c *Cleaner) Start() {
 			case <-c.stop:
 				return
 			case <-ticker.C:
-				ctx, cancel := context.WithTimeout(context.Background(), c.interval)
-				result, err := c.Sweep(ctx)
-				cancel()
-				if err != nil {
-					slog.Error("attachment cleanup failed", "error", err, "removed", result.Removed, "bytes", result.Bytes)
-					continue
-				}
-				slog.Info("attachment cleanup finished", "removed", result.Removed, "bytes", result.Bytes, "failed", result.Failed)
+				_ = tracing.Job(context.Background(), "job.attachment_cleanup", func(ctx context.Context) error {
+					ctx, cancel := context.WithTimeout(ctx, c.interval)
+					defer cancel()
+					result, err := c.Sweep(ctx)
+					if err != nil {
+						slog.ErrorContext(ctx, "attachment cleanup failed", "error", err, "removed", result.Removed, "bytes", result.Bytes)
+						return err
+					}
+					slog.InfoContext(ctx, "attachment cleanup finished", "removed", result.Removed, "bytes", result.Bytes, "failed", result.Failed)
+					return nil
+				})
 			}
 		}
 	}()
@@ -230,7 +234,7 @@ func (c *Cleaner) removeUnreferenced(ctx context.Context, batch []candidate, res
 			if errors.Is(err, fs.ErrNotExist) || errors.Is(err, errStillInUse) {
 				continue
 			}
-			slog.Warn("attachment cleanup could not remove an object", "error", err)
+			slog.WarnContext(ctx, "attachment cleanup could not remove an object", "error", err)
 			result.Failed++
 			continue
 		}

@@ -6,8 +6,10 @@ import stat
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import authorization
+import mfa_admin
 import yaml
 
 
@@ -72,6 +74,13 @@ class AuthorizationConfig(unittest.TestCase):
         self.principals.write_text(json.dumps(self.fixture))
         self.output = self.root / "generated.yml"
         self.report = self.root / "authorization.xml"
+        # The two-factor administrator's unused second factor, spent by the
+        # admin principal's one sign-in.
+        factor = mock.patch.object(
+            mfa_admin, "factor", return_value={"recovery_code": "recovery fixture"}
+        )
+        self.factor = factor.start()
+        self.addCleanup(factor.stop)
 
     def generate(self):
         self.assertEqual(
@@ -109,21 +118,22 @@ class AuthorizationConfig(unittest.TestCase):
             [p["name"] for p in config["principals"]],
             ["none", "admin", "ordinary", "app-password"],
         )
-        for principal, fixture_name in ((admin, "admin"), (ordinary, "ordinary")):
-            self.assertEqual(
-                principal["auth"]["login"],
-                {
-                    "path": "/api/v1/auth/login",
-                    "body": {
-                        "email": self.fixture[fixture_name]["address"],
-                        "password": self.fixture[fixture_name]["password"],
-                        "client": "native",
-                    },
-                    "secrets": ["password"],
-                    "public": ["email", "client"],
+        self.assertEqual(
+            ordinary["auth"]["login"],
+            {
+                "path": "/api/v1/auth/login",
+                "body": {
+                    "email": self.fixture["ordinary"]["address"],
+                    "password": self.fixture["ordinary"]["password"],
+                    "client": "native",
                 },
-            )
-            self.assertEqual(principal["auth"]["header"], authorization.BEARER)
+                "secrets": ["password"],
+                "public": ["email", "client"],
+            },
+        )
+        self.assertEqual(ordinary["auth"]["header"], authorization.BEARER)
+        self.assertEqual(admin["auth"]["header"], authorization.BEARER)
+        self.factor.assert_called_once_with()
         self.assertEqual(admin["roles"], authorization.roles(self.spec))
         self.assertEqual(ordinary["roles"], [])
         self.assertEqual(app["roles"], [])
@@ -131,6 +141,34 @@ class AuthorizationConfig(unittest.TestCase):
         self.assertEqual(
             base64.b64decode(encoded).decode(), "user@example.test:app:fixture"
         )
+
+    def test_admin_signs_in_as_the_two_factor_administrator_with_a_second_factor(self):
+        # Creating credentials, linking accounts and changing grants take a
+        # recent second factor. A hook that swapped the admin's session for one
+        # would leave the cell unsent, so the admin is that administrator, and
+        # its factor is a secret the report redacts like the password.
+        admin = self.generate()["principals"][1]
+        self.assertEqual(
+            admin["auth"]["login"],
+            {
+                "path": "/api/v1/auth/login",
+                "body": {
+                    "email": mfa_admin.ADDRESS,
+                    "password": mfa_admin.PASSWORD,
+                    "client": "native",
+                    "recovery_code": "recovery fixture",
+                },
+                "secrets": ["password", "recovery_code"],
+                "public": ["email", "client"],
+            },
+        )
+
+    def test_an_unenrolled_two_factor_administrator_fails_before_replacing_configuration(self):
+        self.output.write_text("previous configuration")
+        self.factor.side_effect = RuntimeError("not enrolled")
+        with self.assertRaises(RuntimeError):
+            self.generate()
+        self.assertEqual(self.output.read_text(), "previous configuration")
 
     def test_live_url_uses_saved_bytes_for_role_inventory(self):
         url = "https://fixture.test/api/docs/openapi.json?revision=one"
@@ -172,6 +210,52 @@ class AuthorizationConfig(unittest.TestCase):
         # statuses a cell already requires stay out, so 401 and 403 do not start
         # standing in for each other.
         self.assertEqual(self.generate()["authorization"], {"refuse": [404]})
+
+    def test_the_phase_provides_its_own_states_beside_the_runs_own(self):
+        self.settings["provides"] = {"state": ["kept"], "fault": ["database"]}
+        self.config.write_text(yaml.safe_dump(self.settings))
+        config = self.generate()
+        self.assertEqual(
+            config["provides"],
+            {"state": ["kept", "owner_key", "recoverable_account"], "fault": ["database"]},
+        )
+        # The examples phase's own configuration and unproven list are kept.
+        self.assertEqual(yaml.safe_load(self.config.read_text()), self.settings)
+        self.assertEqual(
+            config["unproven"], ".cache/contract/unproven-authorization.json"
+        )
+
+    def test_only_the_successes_hooks_prepare_need_the_provided_states(self):
+        # A provided state proves every pair requiring it, so each names one a
+        # hook prepares for every principal (hooks.py:
+        # recover_an_account_of_its_own, sign_the_status_with_the_runs_owner_key,
+        # mint_for_an_account_of_its_own, reset_an_account_of_its_own; a
+        # challenge needs only the registered key) and no state of the
+        # caller's own account, whose success would end the principal's
+        # sessions. The owner refusals that also require owner_key are not
+        # sent here: the phase sends each operation's documented success.
+        examples = json.loads(
+            (Path(__file__).resolve().parents[2] / "openapi-example.json").read_text()
+        )
+        needing = sorted(
+            (operation, name, pair["response"]["status"])
+            for operation, pairs in examples.items()
+            for name, pair in pairs.items()
+            if (pair.get("requires") or {}).get("state")
+            in authorization.PROVIDES["state"]
+        )
+        self.assertEqual(needing, [
+            ("ownerChallenge", "issued", 200),
+            ("ownerStatus", "not_status_key", 403),
+            ("ownerStatus", "status", 200),
+            ("ownerToken", "minted", 200),
+            ("ownerToken", "no_account", 404),
+            ("ownerToken", "not_owner", 403),
+            ("recoverAccount", "recovered", 200),
+            ("resetAdmin", "reset", 200),
+        ])
+        for own in ("known_password", "enrolled_authenticator", "pending_enrollment"):
+            self.assertNotIn(own, authorization.PROVIDES["state"])
 
     def test_own_account_operations_are_left_out_with_a_reason(self):
         self.settings["skip"] = [{"name": "/kept > Kept > 200", "reason": "kept"}]

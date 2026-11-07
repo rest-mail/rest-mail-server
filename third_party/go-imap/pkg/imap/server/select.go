@@ -1,6 +1,7 @@
 package server
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"strings"
@@ -75,6 +76,20 @@ func (s *Session) handleSelect(tag, args string, readOnly bool) {
 		return
 	}
 
+	// A mailbox the user may not read is not selected; one the user may read
+	// but not write is selected read-only, by SELECT too, which then announces
+	// READ-ONLY (RFC 9051 §6.3.2).
+	cmd := "SELECT"
+	if readOnly {
+		cmd = "EXAMINE"
+	}
+	rights, _ := s.mailboxRights(folder)
+	if !rights.Read {
+		s.tagged(tag, "NO", "[NOPERM] Mailbox cannot be read")
+		return
+	}
+	readOnly = readOnly || !rights.Write
+
 	// Fetch messages for this folder
 	messages, err := s.mailbox.Messages(folder)
 	if err != nil {
@@ -128,7 +143,7 @@ func (s *Session) handleSelect(tag, args string, readOnly bool) {
 	if readOnly {
 		// A read-only mailbox permits no permanent flag changes (RFC 3501 §6.3.2).
 		s.send("* OK [PERMANENTFLAGS ()] No permanent flags permitted")
-		s.tagged(tag, "OK", "[READ-ONLY] EXAMINE completed")
+		s.tagged(tag, "OK", "[READ-ONLY] "+cmd+" completed")
 		return
 	}
 	// Keyword creation is required for imapsync to retain source keywords.
@@ -179,6 +194,10 @@ func (s *Session) handleStatus(tag, args string) {
 	}
 
 	data, err := s.statusData(folder, items)
+	if errors.Is(err, errNotReadable) {
+		s.tagged(tag, "NO", "[NOPERM] Mailbox cannot be read")
+		return
+	}
 	if err != nil {
 		s.tagged(tag, "NO", "Failed to get status")
 		return
@@ -207,6 +226,9 @@ var statusItems = map[string]bool{"MESSAGES": true, "RECENT": true, "UNSEEN": tr
 // requested items, in the order asked, read fresh from the store so neither
 // the selected mailbox nor any flag changes.
 func (s *Session) statusData(folder string, items []string) (string, error) {
+	if !s.mayRead(folder) {
+		return "", errNotReadable
+	}
 	messages, err := s.mailbox.Messages(folder)
 	if err != nil {
 		return "", err

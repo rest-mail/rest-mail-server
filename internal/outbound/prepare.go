@@ -13,6 +13,7 @@
 package outbound
 
 import (
+	"context"
 	"crypto"
 	"errors"
 	"fmt"
@@ -42,7 +43,7 @@ import (
 // SignDKIM); the caller must fail closed (defer/retry) rather than relay the
 // message unsigned. A domain with no key configured is not an error — the
 // message relays unsigned.
-func Prepare(db *gorm.DB, masterKey, senderDomain, raw string) (string, error) {
+func Prepare(ctx context.Context, db *gorm.DB, masterKey, senderDomain, raw string) (string, error) {
 	raw = StripBcc(raw)
 	if HasDKIMSignature(raw) {
 		// Already signed upstream (API path). Re-signing would add a redundant
@@ -50,7 +51,7 @@ func Prepare(db *gorm.DB, masterKey, senderDomain, raw string) (string, error) {
 		// so pass it through unchanged.
 		return raw, nil
 	}
-	return SignDKIM(db, masterKey, senderDomain, raw)
+	return SignDKIM(ctx, db, masterKey, senderDomain, raw)
 }
 
 // headerBodySplit returns the index just past the end of the header block (the
@@ -193,8 +194,8 @@ func HasDKIMKey(db *gorm.DB, senderDomain string) (bool, error) {
 //
 // A nil db or empty senderDomain returns the message unchanged — there is
 // nothing to look a key up with.
-func SignDKIM(db *gorm.DB, masterKey, senderDomain, raw string) (string, error) {
-	domain, priv, asciiDomain, err := domainKey(db, masterKey, senderDomain, "dkim sign")
+func SignDKIM(ctx context.Context, db *gorm.DB, masterKey, senderDomain, raw string) (string, error) {
+	domain, priv, asciiDomain, err := domainKey(ctx, db, masterKey, senderDomain, "dkim sign")
 	if err != nil {
 		return "", err
 	}
@@ -216,7 +217,7 @@ func SignDKIM(db *gorm.DB, masterKey, senderDomain, raw string) (string, error) 
 		Oversign:   dkim.DefaultOversignedHeaders,
 	})
 	if err != nil {
-		slog.Error("outbound dkim sign failed (fail-closed)", "domain", senderDomain, "error", err)
+		slog.ErrorContext(ctx, "outbound dkim sign failed (fail-closed)", "domain", senderDomain, "error", err)
 		return "", fmt.Errorf("dkim: sign for %s: %w", senderDomain, err)
 	}
 	return "DKIM-Signature: " + val + "\r\n" + raw, nil
@@ -227,7 +228,7 @@ func SignDKIM(db *gorm.DB, masterKey, senderDomain, raw string) (string, error) 
 // gives a nil key and no error: there is nothing to sign with. A key that cannot be loaded
 // (wrong or missing MASTER_KEY, corrupt ciphertext) or parsed is an error, so the caller
 // fails closed. what names the signing in the log.
-func domainKey(db *gorm.DB, masterKey, senderDomain, what string) (models.Domain, crypto.Signer, string, error) {
+func domainKey(ctx context.Context, db *gorm.DB, masterKey, senderDomain, what string) (models.Domain, crypto.Signer, string, error) {
 	var domain models.Domain
 	if db == nil || senderDomain == "" {
 		return domain, nil, "", nil
@@ -238,12 +239,12 @@ func domainKey(db *gorm.DB, masterKey, senderDomain, what string) (models.Domain
 	}
 	keyPEM, err := models.LoadDKIMPrivateKey(domain.DKIMPrivateKey, masterKey)
 	if err != nil {
-		slog.Error("outbound "+what+": key load failed (fail-closed)", "domain", senderDomain, "error", err)
+		slog.ErrorContext(ctx, "outbound "+what+": key load failed (fail-closed)", "domain", senderDomain, "error", err)
 		return domain, nil, "", err
 	}
 	priv, err := ParseDKIMKey(keyPEM)
 	if err != nil {
-		slog.Error("outbound "+what+": parse key failed (fail-closed)", "domain", senderDomain, "error", err)
+		slog.ErrorContext(ctx, "outbound "+what+": parse key failed (fail-closed)", "domain", senderDomain, "error", err)
 		return domain, nil, "", fmt.Errorf("dkim: the key for %s %w", senderDomain, err)
 	}
 	// Use an A-label signing identity, while hashing the exact original UTF-8 header

@@ -2,6 +2,7 @@ package smtp
 
 import (
 	"bufio"
+	"context"
 	"crypto/tls"
 	"encoding/base64"
 	"fmt"
@@ -216,7 +217,7 @@ const mockSignature = "DKIM-Signature: v=1; a=rsa-sha256; d=mock; b=mock\r\n"
 
 // PrepareSubmitted strips the Bcc header as outbound.Prepare does, and signs
 // with mockSignature.
-func (s *mockStore) PrepareSubmitted(_, raw string) (string, error) {
+func (s *mockStore) PrepareSubmitted(_ context.Context, _, raw string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.prepared++
@@ -404,11 +405,20 @@ func newCleartextSMTPHarness(t *testing.T, back *mockBackend, store *mockStore, 
 
 func newSMTPHarnessTLS(t *testing.T, back *mockBackend, store *mockStore, isSubmission, upgrade bool, configure ...func(*Server)) *smtpHarness {
 	t.Helper()
+	h := newSMTPHarnessWith(t, back, store, isSubmission, upgrade, configure...)
+	h.back = back
+	return h
+}
+
+// newSMTPHarnessWith builds a harness over any Backend, such as the real API
+// clients pointed at a test server. Its back field is nil.
+func newSMTPHarnessWith(t *testing.T, api Backend, store *mockStore, isSubmission, upgrade bool, configure ...func(*Server)) *smtpHarness {
+	t.Helper()
 	client, server := net.Pipe()
 	limiter := connlimiter.New(connlimiter.Config{MaxPerIP: 100, MaxGlobal: 1000})
 	// Build the go-smtp server exactly as production does (same construction
 	// path), then serve the pipe's server end as a single connection.
-	s := NewServer("smtp.test", back, harnessTLSConfig(t), store, limiter)
+	s := NewServer("smtp.test", api, harnessTLSConfig(t), store, limiter)
 	for _, fn := range configure {
 		fn(s)
 	}
@@ -425,7 +435,6 @@ func newSMTPHarnessTLS(t *testing.T, back *mockBackend, store *mockStore, isSubm
 
 	h := &smtpHarness{
 		t:       t,
-		back:    back,
 		store:   store,
 		limiter: limiter,
 		conn:    client,

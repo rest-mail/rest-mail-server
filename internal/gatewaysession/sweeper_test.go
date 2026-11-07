@@ -1,6 +1,7 @@
 package gatewaysession
 
 import (
+	"context"
 	"os"
 	"strconv"
 	"testing"
@@ -78,7 +79,7 @@ func TestSweepOnceClosesOnlyIdleSessions(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if got := NewSweeper(db, time.Hour).SweepOnce(now); got != 1 {
+	if got := NewSweeper(db, time.Hour).SweepOnce(context.Background(), now); got != 1 {
 		t.Fatalf("SweepOnce closed %d sessions, want 1", got)
 	}
 	if c := closedAt(t, db, idle.ID); c == nil || !c.Equal(now) {

@@ -2,6 +2,7 @@ package queue
 
 import (
 	"bufio"
+	"context"
 	"crypto/tls"
 	"fmt"
 	"net"
@@ -124,7 +125,7 @@ func TestTryRESTMAILIgnoresAdvertisedEndpoint(t *testing.T) {
 	item.Domain = domain
 
 	addr := fakeRESTMAILMX(t, "RESTMAIL "+attacker.URL+"/restmail")
-	upgraded, err := w.tryRESTMAILAt(addr, restmailDiscoveryURL(mxHost, domain), mxHost, item, nil, false)
+	upgraded, err := w.tryRESTMAILAt(context.Background(), addr, restmailDiscoveryURL(mxHost, domain), mxHost, item, nil, false)
 
 	if n := hits.Load(); n != 0 {
 		t.Fatalf("worker sent %d request(s) to the endpoint the MX advertised; it must ask the MX host (#291)", n)
@@ -171,7 +172,7 @@ func TestTryRESTMAILDeliversToDiscoveredEndpoint(t *testing.T) {
 	item.Domain = domain
 
 	addr := fakeRESTMAILMX(t, "RESTMAIL https://attacker.test/restmail")
-	upgraded, err := w.tryRESTMAILAt(addr, discovery.URL+"/.well-known/restmail?domain="+domain, "mx.test", item, nil, false)
+	upgraded, err := w.tryRESTMAILAt(context.Background(), addr, discovery.URL+"/.well-known/restmail?domain="+domain, "mx.test", item, nil, false)
 	if !upgraded || err != nil {
 		t.Fatalf("upgraded=%v err=%v, want REST delivery", upgraded, err)
 	}
@@ -199,7 +200,7 @@ func TestTryRESTMAILVerifiedNotHosted(t *testing.T) {
 	item.Domain = domain
 
 	addr := fakeRESTMAILMX(t, "RESTMAIL")
-	upgraded, err := w.tryRESTMAILAt(addr, discovery.URL+"/.well-known/restmail?domain="+domain, "mx.test", item, nil, false)
+	upgraded, err := w.tryRESTMAILAt(context.Background(), addr, discovery.URL+"/.well-known/restmail?domain="+domain, "mx.test", item, nil, false)
 	if !upgraded || err == nil {
 		t.Fatalf("upgraded=%v err=%v, want a failed REST attempt the caller does not retry by SMTP", upgraded, err)
 	}

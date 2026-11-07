@@ -23,7 +23,7 @@ func (s *Session) pollSelected() {
 // the untagged responses that report other sources' changes (RFC 3501 §§5.2,
 // 7; RFC 2177 while idling): "* n EXPUNGE" for messages removed from the
 // mailbox by another session, "* n EXISTS" for new arrivals, and
-// "* n FETCH (FLAGS ...)" when a surviving message's flags changed. The pre-fix
+// "* n FETCH (UID ... FLAGS ...)" when a surviving message's flags changed. The pre-fix
 // poll only ever announced growth, so an external expunge was never reported and
 // the cached message set (which backs sequence-number resolution for every later
 // command) went stale.
@@ -70,7 +70,7 @@ func (s *Session) reconcile(messages []imap.Message) {
 	}
 	for i, old := range survivors {
 		if nm := fresh[old.UID]; buildFlags(nm) != buildFlags(old) || nm.Deleted != old.Deleted {
-			s.send("* %d FETCH (FLAGS (%s))", i+1, s.flagString(nm))
+			s.send("* %d FETCH (UID %d FLAGS (%s))", i+1, nm.UID, s.flagString(nm))
 		}
 	}
 

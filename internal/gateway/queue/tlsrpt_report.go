@@ -19,6 +19,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
 	"github.com/rest-mail/rest-mail-server/internal/outbound"
+	"github.com/rest-mail/rest-mail-server/internal/tracing"
 	"gorm.io/gorm"
 )
 
@@ -47,7 +48,10 @@ func (w *Worker) tlsReportLoop() {
 		case <-w.shutdown:
 			return
 		case <-ticker.C:
-			w.sendTLSReports(time.Now())
+			_ = tracing.Job(context.Background(), "job.tlsrpt_report", func(ctx context.Context) error {
+				w.sendTLSReports(ctx, time.Now())
+				return nil
+			})
 		}
 	}
 }
@@ -55,7 +59,7 @@ func (w *Worker) tlsReportLoop() {
 // sendTLSReports reports, for each finished UTC day, the sessions to each
 // Policy Domain, and deletes them once a report was accepted, the domain asks
 // for none, or the report has been tried for long enough.
-func (w *Worker) sendTLSReports(now time.Time) {
+func (w *Worker) sendTLSReports(ctx context.Context, now time.Time) {
 	err := w.db.Transaction(func(tx *gorm.DB) error {
 		var locked bool
 		if err := tx.Raw("SELECT pg_try_advisory_xact_lock(?)", tlsReportLock).Scan(&locked).Error; err != nil || !locked {
@@ -68,9 +72,9 @@ func (w *Worker) sendTLSReports(now time.Time) {
 			return err
 		}
 		for _, p := range days {
-			done, err := w.reportTLSDay(tx, p.Day, p.PolicyDomain, now)
+			done, err := w.reportTLSDay(ctx, tx, p.Day, p.PolicyDomain, now)
 			if err != nil {
-				slog.Warn("queue: TLS-RPT report not sent", "domain", p.PolicyDomain, "day", p.Day, "error", err)
+				slog.WarnContext(ctx, "queue: TLS-RPT report not sent", "domain", p.PolicyDomain, "day", p.Day, "error", err)
 			}
 			if done || tlsReportExpired(p.Day, now) {
 				if err := tx.Where("day = ? AND policy_domain = ?", p.Day, p.PolicyDomain).Delete(&models.TLSRPTSession{}).Error; err != nil {
@@ -81,7 +85,7 @@ func (w *Worker) sendTLSReports(now time.Time) {
 		return nil
 	})
 	if err != nil {
-		slog.Error("queue: TLS-RPT reporting failed", "error", err)
+		slog.ErrorContext(ctx, "queue: TLS-RPT reporting failed", "error", err)
 	}
 }
 
@@ -94,8 +98,8 @@ func tlsReportExpired(day string, now time.Time) bool {
 // reportTLSDay sends one day's report for domain to each address its
 // _smtp._tls record lists. done is true when no more is to be done with the
 // sessions: an address accepted the report, or the domain asks for none.
-func (w *Worker) reportTLSDay(tx *gorm.DB, day, domain string, now time.Time) (done bool, err error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+func (w *Worker) reportTLSDay(ctx context.Context, tx *gorm.DB, day, domain string, now time.Time) (done bool, err error) {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	ruas, err := w.tlsrptRecord(ctx, domain)
 	if err != nil {
@@ -141,7 +145,7 @@ func (w *Worker) reportTLSDay(tx *gorm.DB, day, domain string, now time.Time) (d
 			continue
 		}
 		done = true
-		slog.Info("queue: TLS-RPT report sent", "domain", domain, "day", day, "rua", rua, "sessions", len(sessions))
+		slog.InfoContext(ctx, "queue: TLS-RPT report sent", "domain", domain, "day", day, "rua", rua, "sessions", len(sessions))
 	}
 	return done, errors.Join(errs...)
 }

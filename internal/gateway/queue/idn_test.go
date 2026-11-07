@@ -63,7 +63,7 @@ func TestDeliverIDNMXLookup(t *testing.T) {
 	t.Cleanup(func() { net.DefaultResolver = previous })
 
 	item := models.OutboundQueue{Recipient: "user@例え.jp", Domain: "例え.jp"}
-	err = NewWorker(nil, "sender.test", 1, time.Second).deliver(item)
+	err = NewWorker(nil, "sender.test", 1, time.Second).deliver(context.Background(), item)
 	var se *SMTPError
 	if !errors.As(err, &se) || se.Enhanced != "5.1.10" {
 		t.Fatalf("delivery = %v, want null MX refusal", err)
@@ -89,8 +89,8 @@ func TestInvalidSMTPEnvelopeBeforeNetwork(t *testing.T) {
 			// nil DB and an unusable destination make any attempt to reach
 			// routing/storage/network a failure instead of a false positive.
 			for _, deliver := range []func() error{
-				func() error { return w.deliver(item) },
-				func() error { return w.deliverSMTP("invalid", "invalid", item, nil, nil) },
+				func() error { return w.deliver(context.Background(), item) },
+				func() error { return w.deliverSMTP(context.Background(), "invalid", "invalid", item, nil, nil) },
 				func() error {
 					return w.deliverToRelay(context.Background(), relaySettings{host: "example.test", port: 25, mode: relaySTARTTLS}, item)
 				},

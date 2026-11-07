@@ -133,6 +133,27 @@ class TwoFactorAdminHookTests(unittest.TestCase):
         self.assertEqual(json.loads(t["request"]["body"])["password"], self.module.mfa_admin.PASSWORD)
         self.assertEqual(t["request"]["headers"]["Authorization"], "Bearer two-factor-token")
 
+    def test_the_authorization_admin_keeps_its_own_two_factor_session(self):
+        # The authorization phase's admin principal signs in as the two-factor
+        # administrator (authorization.py) and ends a request whose credential
+        # a hook changes unsent, so its credential is left alone while the
+        # maker's password is still its own.
+        own = session(self.module.mfa_admin.ADDRESS)
+        key = transaction("/api/v1/accounts/1/api-keys", own,
+                          json.dumps({"name": "Invoice robot", "password": "current-password", "permissions": []}))
+        with patch.object(self.module, "mailbox_address", return_value="a@restmail.test"):
+            self.module.an_api_key_from_the_two_factor_admin(key)
+        secret = transaction("/api/v1/accounts/1/client-secrets", own,
+                             json.dumps({"name": "Robot", "password": "current-password"}))
+        self.module.an_app_password_from_the_two_factor_admin(secret)
+        grant = transaction("/api/v1/admin/grants", own)
+        self.module.send_as_the_two_factor_admin(grant)
+        for t in (key, secret, grant):
+            self.assertEqual(t["request"]["headers"]["Authorization"], own)
+        self.assertEqual(json.loads(key["request"]["body"])["password"], self.module.mfa_admin.PASSWORD)
+        self.assertEqual(json.loads(secret["request"]["body"])["password"], self.module.mfa_admin.PASSWORD)
+        self.mfa.assert_not_called()
+
     def test_the_key_is_scoped_to_its_accounts_own_mailbox(self):
         permissions = [{"capability": "mail:read", "scope": "mailbox:robot@example.com"}]
         body = {"name": "Invoice robot", "password": "current-password", "permissions": permissions}
