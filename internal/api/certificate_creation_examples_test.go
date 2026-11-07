@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"github.com/rest-mail/rest-mail-server/internal/examplepairs"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -232,7 +231,7 @@ func checkCertificateCreationPairWithVertrag(t *testing.T, binary string, s bulk
 			t.Fatal(err)
 		}
 	}
-	server := httptest.NewServer(s.handler)
+	server := servedAsDescribed(s.handler)
 	defer server.Close()
 	args := []string{"run", "--endpoint", server.URL, "--reporter", "json", "--output", "report.json"}
 	if s.token != "" {

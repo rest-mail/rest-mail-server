@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
@@ -27,6 +28,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/requestid"
 	"github.com/rest-mail/rest-mail-server/internal/sendlimits"
 	"github.com/rest-mail/rest-mail-server/internal/srs"
+	"github.com/rest-mail/rest-mail-server/internal/tracing"
 )
 
 // loadCACert adds the PEM CA bundle at path to the gateway's outbound HTTP
@@ -90,6 +92,15 @@ func main() {
 		logHandler = slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError})
 		slog.SetDefault(slog.New(requestid.NewHandler(logHandler)))
 	}
+
+	// Distributed tracing (#1580): off unless OTEL_EXPORTER_OTLP_ENDPOINT (or
+	// OTEL_EXPORTER_OTLP_TRACES_ENDPOINT) is set; spans are flushed at shutdown.
+	shutdownTracing, err := tracing.Setup(context.Background(), "rest-mail-smtp-gateway")
+	if err != nil {
+		slog.Error("failed to start tracing", "error", err)
+		os.Exit(1)
+	}
+	defer tracing.ShutdownWithin(shutdownTracing, 5*time.Second)
 
 	// Secure-by-construction (production-only): refuse to boot when a listener
 	// would serve plaintext where it shouldn't — no TLS keypair to advertise
