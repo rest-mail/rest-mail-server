@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/http/httptest"
 	"net/url"
 	"os"
 	"os/exec"
@@ -144,7 +143,7 @@ func checkMailboxLookupWithVertrag(t *testing.T, binary string, handler http.Han
 	if err := os.WriteFile(filepath.Join(dir, "vertrag.yml"), configData, 0600); err != nil {
 		t.Fatal(err)
 	}
-	server := httptest.NewServer(handler)
+	server := servedAsDescribed(handler)
 	defer server.Close()
 	args := []string{"run", "--endpoint", server.URL, "--reporter", "json", "--output", "report.json"}
 	if token != "" {
