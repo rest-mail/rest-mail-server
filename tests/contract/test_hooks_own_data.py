@@ -192,6 +192,8 @@ class OwnDataHooks(unittest.TestCase):
             "domainDNSCheck": "a_domain_setting_of_its_own",
             "getDomainRelay": "a_domain_setting_of_its_own",
             "listSuppressions": "a_domain_setting_of_its_own",
+            "stopDomainOutbound": "a_domain_setting_of_its_own",
+            "restartDomainOutbound": "a_domain_setting_of_its_own",
             "mtaStsPolicyFile": "ask_for_the_created_domains_policy",
         }
         # entrypoint.py registers setDomainRelay's (below).
@@ -208,7 +210,10 @@ class OwnDataHooks(unittest.TestCase):
             "setDomainRelay", {o for o, _ in self.registered}
         )
         # It runs first, so later hooks of the operation read the path it leaves.
-        for operation in ("domainDNSCheck", "getDomainRelay", "listSuppressions"):
+        for operation in (
+            "domainDNSCheck", "getDomainRelay", "listSuppressions",
+            "stopDomainOutbound", "restartDomainOutbound",
+        ):
             names = [h for o, h in self.registered if o == operation]
             self.assertEqual(names[0], "a_domain_setting_of_its_own", operation)
         self.assertFalse(hasattr(self.hooks, "a_live_domain_for_the_link"))
@@ -348,6 +353,7 @@ class OwnDataHooks(unittest.TestCase):
             "/api/v1/admin/domains/3/relay",
             "/api/v1/admin/domains/3/dns?x=1",
             "/api/v1/admin/domains/1/suppressions",
+            "/api/v1/admin/domains/3/outbound-stop?keep=yes",
         ):
             transaction = self.transaction(200, path)
             headers = copy.deepcopy(transaction["request"])
@@ -359,7 +365,7 @@ class OwnDataHooks(unittest.TestCase):
             self.assertEqual(transaction["request"], headers)
             self.assertEqual(self.server.domains[4], self.hooks.OWN_DOMAIN)
             self.assertNotIn("domain_id", self.stub.stash)
-        self.assertEqual(self.resets(), 3)
+        self.assertEqual(self.resets(), 4)
 
     def test_domain_setting_refusals_reset_and_keep_their_ids(self):
         self.clean_starts_on()
@@ -368,12 +374,14 @@ class OwnDataHooks(unittest.TestCase):
             (422, "/api/v1/admin/domains/0/dns"),
             (422, "/api/v1/admin/domains/not-an-integer/suppressions"),
             (404, "/api/v1/admin/domains/2147483647/relay"),
+            (422, "/api/v1/admin/domains/0/outbound-stop"),
+            (404, "/api/v1/admin/domains/2147483647/outbound-stop"),
         ):
             transaction = self.transaction(status, path)
             before = copy.deepcopy(transaction)
             self.hooks.a_domain_setting_of_its_own(transaction)
             self.assertEqual(transaction, before)
-        self.assertEqual(self.resets(), 4)
+        self.assertEqual(self.resets(), 6)
         self.assertFalse(
             [call for call in self.server.calls if call[1] == "/api/v1/admin/domains"]
         )
