@@ -67,6 +67,9 @@ func TestInstallationSenderRuleMutationExamplesWithVertrag(t *testing.T) {
 	}
 	routes := requirementRoutes(t)
 	fixture := newGrantsFixture(t)
+	fixture.db.NowFunc = func() time.Time {
+		return time.Now().Truncate(time.Microsecond).Add(789 * time.Nanosecond)
+	}
 	owner := fixture.token(t, "owner")
 	scenarios := installationSenderRuleMutationScenarios(t)
 	for _, operation := range []string{"addInstallationSenderRule", "removeInstallationSenderRule"} {
@@ -131,7 +134,7 @@ func TestInstallationSenderRuleMutationExamplesWithVertrag(t *testing.T) {
 					if got.Data.ID == 0 || got.Data.Pattern != stored.Pattern || got.Data.ListType != stored.ListType ||
 						got.Data.Reason != stored.Reason || got.Data.CreatedBy == nil || stored.CreatedBy == nil ||
 						*got.Data.CreatedBy != *stored.CreatedBy || *stored.CreatedBy != fixture.admins["owner"].user.ID ||
-						!got.Data.CreatedAt.Equal(stored.CreatedAt) || time.Since(got.Data.CreatedAt).Abs() > time.Minute {
+						!got.Data.CreatedAt.Truncate(time.Microsecond).Equal(stored.CreatedAt) || time.Since(got.Data.CreatedAt).Abs() > time.Minute {
 						t.Fatalf("created response does not describe its stored rule: %+v, %+v", got.Data, stored)
 					}
 					got.Data.ID, got.Data.CreatedBy, got.Data.CreatedAt = want.Data.ID, want.Data.CreatedBy, want.Data.CreatedAt
