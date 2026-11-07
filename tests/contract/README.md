@@ -1699,6 +1699,28 @@ are not moved: `listAccounts`' link reaches operations not moved yet, and
 `getAccount` among them. Nor are the push device operations: without an APNs
 key their routes do not exist, so the run sends none of them.
 
+The sign-in and recovery operations reset and seed before each exchange too,
+refusals included (`sign_in_and_recovery_after_a_reset`, each operation's first
+hook): `login`, `logout`, `refreshToken`, `protocolSignIn`, `resetAdmin`,
+`recoverAccount`, the three owner operations, the five two-factor and password
+operations, and the six recovery email operations. No link starts from or
+reaches any of them. Refusals keep their bodies and tokens. A success that ends
+a session, rotates one or starts a second factor acts on an account made for
+it after the reset, with a password of its own, never on a session or
+credential the run uses: `logout`'s 204 ends a session of that account, and
+`the_session_it_ended_is_over` fails the exchange unless its refresh token is
+refused afterwards; `refreshToken`'s 200 rotates that account's refresh token;
+`enrollTwoFactor`'s 200 starts that account's enrollment. `protocolSignIn`
+signs in with an app password the two-factor administrator mints for an
+account made for it, since the reset removed the principal
+`sign_in_a_mail_client` names. The other successes read, sign the fixture
+admin in, or ask about an address no account holds, and need nothing made. The
+local run needs the topology's `RESTMAIL_RECOVERY_EMAIL_BASE_URL`
+(`https://restmail.localhost`): without it `requestRecoveryEmail` answers 503.
+The reset also drops a kept administrator's enrollment that was never
+confirmed, with its recovery codes, so the primary run's enrollment of the
+fixture admin does not come back after it (`TestCleanResetPendingEnrollment`).
+
 `createAlias`, `getAlias`, `updateAlias` and `deleteAlias` reset and seed before
 each exchange too, refusals included. A create is sent as documented after its
 reset: no earlier probe's alias is left, and the seeded `restmail.test` hosts
