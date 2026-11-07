@@ -48,14 +48,14 @@ class ContractCertificateHookTests(unittest.TestCase):
             empty = dict(complete)
             empty[field] = 0 if field == "domain_id" else ""
             bodies.append(empty)
-        with patch.object(self.module, "openssl") as openssl:
+        with patch.object(self.module, "probe_certificate") as certificate:
             for body in bodies:
                 with self.subTest(body=body):
                     transaction = self.transaction(body)
                     before = copy.deepcopy(transaction)
                     self.module.a_self_signed_certificate(transaction)
                     self.assertEqual(transaction, before)
-            openssl.assert_not_called()
+            certificate.assert_not_called()
 
     def test_upload_moves_to_its_own_domain_once_the_run_has_deleted_its_own(self):
         calls = []
@@ -66,10 +66,6 @@ class ContractCertificateHookTests(unittest.TestCase):
                 return None
             return {"id": 99, "name": args[0]["name"]}
 
-        def generate(*args):
-            Path(args[args.index("-keyout") + 1]).write_text("fresh key")
-            Path(args[args.index("-out") + 1]).write_text("fresh certificate")
-
         for _ in range(2):
             transaction = self.transaction(
                 {"domain_id": 1, "cert_pem": "certificate", "key_pem": "key"}
@@ -77,7 +73,7 @@ class ContractCertificateHookTests(unittest.TestCase):
             with (
                 patch.object(self.module, "fixture_call", side_effect=fixture_call),
                 patch.object(self.module, "certificate_name_for", return_value="n.test"),
-                patch.object(self.module, "openssl", side_effect=generate),
+                patch.object(self.module, "probe_certificate", return_value=("fresh certificate", "fresh key")),
             ):
                 self.module.a_self_signed_certificate(transaction)
             self.assertEqual(json.loads(transaction["request"]["body"])["domain_id"], 99)
@@ -91,15 +87,11 @@ class ContractCertificateHookTests(unittest.TestCase):
             {"domain_id": 1, "cert_pem": "certificate", "key_pem": "key"}
         )
 
-        def generate(*args):
-            self.assertIn("/CN=contract.example.org", args)
-            self.assertIn("subjectAltName=DNS:contract.example.org", args)
-            Path(args[args.index("-keyout") + 1]).write_text("fresh key")
-            Path(args[args.index("-out") + 1]).write_text("fresh certificate")
-
-        with patch.object(self.module, "openssl", side_effect=generate) as openssl:
+        with patch.object(
+            self.module, "probe_certificate", return_value=("fresh certificate", "fresh key")
+        ) as certificate:
             self.module.a_self_signed_certificate(transaction)
-            openssl.assert_called_once()
+            certificate.assert_called_once_with("contract.example.org")
         self.assertEqual(
             json.loads(transaction["request"]["body"]),
             {
@@ -115,11 +107,6 @@ class ContractCertificateHookTests(unittest.TestCase):
     def test_renewal_policy_and_nonfixture_domain_are_preserved(self):
         # A domain the fixtures did not make is looked up on the server; one
         # that is not there (a 404 is None) keeps the placeholder name.
-        def generate(*args):
-            self.assertIn("/CN=example.org", args)
-            Path(args[args.index("-keyout") + 1]).write_text("fresh key")
-            Path(args[args.index("-out") + 1]).write_text("fresh certificate")
-
         for policy in [False, True, None, "invalid"]:
             with self.subTest(policy=policy):
                 transaction = self.transaction(
@@ -131,11 +118,12 @@ class ContractCertificateHookTests(unittest.TestCase):
                     }
                 )
                 with patch.object(
-                    self.module, "openssl", side_effect=generate
-                ), patch.object(
+                    self.module, "probe_certificate", return_value=("fresh certificate", "fresh key")
+                ) as certificate, patch.object(
                     self.module, "fixture_call", return_value=None
                 ) as lookup:
                     self.module.a_self_signed_certificate(transaction)
+                certificate.assert_called_once_with("example.org")
                 lookup.assert_called_once()
                 self.assertEqual(
                     lookup.call_args.args[1:],
@@ -146,7 +134,7 @@ class ContractCertificateHookTests(unittest.TestCase):
                 self.assertEqual(body["auto_renew"], policy)
 
     def test_invalid_material_is_not_repaired(self):
-        with patch.object(self.module, "openssl") as openssl:
+        with patch.object(self.module, "probe_certificate") as certificate:
             for field in ["cert_pem", "key_pem"]:
                 for value in [None, "", False, 3, [], {}, "invalid material"]:
                     body = {"domain_id": 1, "cert_pem": "certificate", "key_pem": "key"}
@@ -155,22 +143,20 @@ class ContractCertificateHookTests(unittest.TestCase):
                     before = copy.deepcopy(transaction)
                     self.module.a_self_signed_certificate(transaction)
                     self.assertEqual(transaction, before)
-            openssl.assert_not_called()
+            certificate.assert_not_called()
 
     def test_success_probe_material_is_repaired(self):
         # Coverage's valid probes for the 201 carry schema-valid placeholder
         # material ("x") that no server accepts as a certificate; only real
         # material makes them the success they are named for.
-        def generate(*args):
-            Path(args[args.index("-keyout") + 1]).write_text("fresh key")
-            Path(args[args.index("-out") + 1]).write_text("fresh certificate")
-
         name = "/api/v1/admin/certificates > Upload a new TLS certificate > 201 > application/json"
         transaction = self.transaction(
             {"domain_id": 1, "cert_pem": "x", "key_pem": "x", "auto_renew": True}
         )
         transaction["name"] = name
-        with patch.object(self.module, "openssl", side_effect=generate):
+        with patch.object(
+            self.module, "probe_certificate", return_value=("fresh certificate", "fresh key")
+        ):
             self.module.a_self_signed_certificate(transaction)
         self.assertEqual(
             json.loads(transaction["request"]["body"]),
@@ -183,7 +169,7 @@ class ContractCertificateHookTests(unittest.TestCase):
         )
 
     def test_refusal_probes_keep_their_material(self):
-        with patch.object(self.module, "openssl") as openssl:
+        with patch.object(self.module, "probe_certificate") as certificate:
             for name, body in [
                 (
                     "/api/v1/admin/certificates > Upload a new TLS certificate > 422 > application/json",
@@ -204,7 +190,7 @@ class ContractCertificateHookTests(unittest.TestCase):
                     before = copy.deepcopy(transaction)
                     self.module.a_self_signed_certificate(transaction)
                     self.assertEqual(transaction, before)
-            openssl.assert_not_called()
+            certificate.assert_not_called()
 
 
 if __name__ == "__main__":

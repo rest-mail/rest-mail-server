@@ -95,7 +95,7 @@ PROBE_CERTIFICATE_PERIOD = ("20200101000000Z", "20200102000000Z")
 FIXTURE_PLAN = Path(__file__).resolve().parent / "fixtureplan/defaults.json"
 
 
-def probe_certificate():
+def probe_certificate(common_name=PROBE_CERTIFICATE_NAME):
     """A self-signed, expired certificate and its key, as the PEM createCertificate takes.
 
     `openssl ca` is what states the dates on every OpenSSL version: `req -x509` only
@@ -114,7 +114,7 @@ def probe_certificate():
         start, end = PROBE_CERTIFICATE_PERIOD
         for arguments in (
             ["req", "-new", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:P-256", "-nodes",
-             "-subj", "/CN=" + PROBE_CERTIFICATE_NAME, "-keyout", str(key), "-out", str(request)],
+             "-subj", "/CN=" + common_name, "-keyout", str(key), "-out", str(request)],
             ["ca", "-batch", "-config", str(directory / "ca.cnf"), "-selfsign", "-notext",
              "-startdate", start, "-enddate", end,
              "-keyfile", str(key), "-in", str(request), "-out", str(certificate)],
