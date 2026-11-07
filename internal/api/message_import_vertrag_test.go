@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -81,7 +80,7 @@ func TestMessageImportExamplesWithVertrag(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(dir, "vertrag.yml"), []byte("language: python\nhookfiles: ./pair.py\n"), 0600); err != nil {
 				t.Fatal(err)
 			}
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server := servedAsDescribed(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				authorizeImportScenario(tc, f, r)
 				f.router.ServeHTTP(w, r)
 			}))

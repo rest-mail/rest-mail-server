@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -75,7 +74,7 @@ func checkNamedPairWithVertrag(t *testing.T, binary string, handler http.Handler
 	if err := os.WriteFile(filepath.Join(dir, "vertrag.yml"), []byte("language: python\nhookfiles: ./pair.py\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	server := httptest.NewServer(handler)
+	server := servedAsDescribed(handler)
 	defer server.Close()
 	args := []string{"run", "--endpoint", server.URL, "--reporter", "json", "--output", "report.json"}
 	if exchange.token != "" {

@@ -2,10 +2,13 @@ package api
 
 import (
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/rest-mail/rest-mail-server/internal/api/middleware"
 	"github.com/rest-mail/rest-mail-server/internal/auth"
 	"github.com/rest-mail/rest-mail-server/internal/config"
 )
@@ -26,12 +29,25 @@ type describedOperation struct {
 	} `json:"requestBody"`
 }
 
+// describedRoutersHeaders is the security header configuration describedRouters runs
+// with, so every response it describes declares the headers this configuration sends.
+var describedRoutersHeaders = middleware.SecurityHeadersConfig{HSTSMaxAgeSeconds: config.DefaultHSTSMaxAgeSeconds}
+
+// servedAsDescribed serves a handler for a Vertrag exchange the way the server serves it:
+// behind the security headers middleware that describedRouters declares on every response.
+// A bare handler would answer without the headers the description requires.
+func servedAsDescribed(handler http.Handler) *httptest.Server {
+	return httptest.NewServer(middleware.SecurityHeaders(describedRoutersHeaders)(handler))
+}
+
 // describedRouters builds the routers the way the server does, on a database that fails
-// every query, for what they describe.
+// every query, for what they describe. The security headers are on with the default HSTS
+// max-age, as config.Load gives them, so every response declares what the middleware adds.
 func describedRouters(t *testing.T) *Routers {
 	t.Helper()
 	jwtSvc := auth.NewJWTService(routerTestSecret, 5*time.Minute, 24*time.Hour)
-	cfg := &config.Config{CORSAllowedOrigins: []string{"http://localhost:3000"}, Environment: "test"}
+	cfg := &config.Config{CORSAllowedOrigins: []string{"http://localhost:3000"}, Environment: "test",
+		SecurityHeadersEnabled: true, HSTSMaxAgeSeconds: describedRoutersHeaders.HSTSMaxAgeSeconds}
 	routers := NewRouters(newFailingGormDB(t), jwtSvc, cfg, nil)
 	t.Cleanup(routers.Close)
 	return routers

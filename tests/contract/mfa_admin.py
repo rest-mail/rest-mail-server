@@ -75,15 +75,22 @@ def enroll(base_url):
 def _enroll(base_url, address, password, state):
     if state.exists():
         return
-    plain = _sign_in(base_url, address, password)["access_token"]
-    enrolled = _post(base_url, "/api/v1/auth/2fa/enroll", {}, plain)
-    _post(base_url, "/api/v1/auth/2fa/confirm", {"totp_code": totp(enrolled["secret"])}, plain)
+    enrolled = enroll_account(base_url, address, password)
     state.parent.mkdir(parents=True, exist_ok=True)
-    state.write_text(json.dumps({
-        "secret": enrolled["secret"],
-        "recovery_codes": enrolled["recovery_codes"],
-        "step": _step(),
-    }))
+    state.write_text(json.dumps({**enrolled, "step": _step()}))
+
+
+def enroll_account(base_url, address, password):
+    """Sign an account in with its password and enroll it in TOTP through the
+    public API. Returns the secret and the recovery codes, which the caller
+    keeps to itself: they are the account's second factor."""
+    plain = _sign_in(base_url, address, password)["access_token"]
+    # Enrolling and confirming share the sign-in's 1 request/second bucket.
+    rate_limits.pace(1.1)
+    enrolled = _post(base_url, "/api/v1/auth/2fa/enroll", {}, plain)
+    rate_limits.pace(1.1)
+    _post(base_url, "/api/v1/auth/2fa/confirm", {"totp_code": totp(enrolled["secret"])}, plain)
+    return {"secret": enrolled["secret"], "recovery_codes": enrolled["recovery_codes"]}
 
 
 def session(base_url):
