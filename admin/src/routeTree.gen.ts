@@ -32,6 +32,7 @@ import { Route as PipelinesLogsRouteImport } from './routes/pipelines/logs'
 import { Route as PipelinesNewRouteImport } from './routes/pipelines/new'
 import { Route as QueueIndexRouteImport } from './routes/queue/index'
 import { Route as QueueIdRouteImport } from './routes/queue/$id'
+import { Route as ReputationIndexRouteImport } from './routes/reputation/index'
 import { Route as SettingsIndexRouteImport } from './routes/settings/index'
 import { Route as SettingsBansRouteImport } from './routes/settings/bans'
 import { Route as SettingsCertificatesRouteImport } from './routes/settings/certificates'
@@ -158,6 +159,11 @@ const QueueIdRoute = QueueIdRouteImport.update({
   path: '/queue/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ReputationIndexRoute = ReputationIndexRouteImport.update({
+  id: '/reputation/',
+  path: '/reputation/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SettingsIndexRoute = SettingsIndexRouteImport.update({
   id: '/settings/',
   path: '/settings/',
@@ -241,6 +247,7 @@ export interface FileRoutesByFullPath {
   '/mailboxes/': typeof MailboxesIndexRoute
   '/pipelines/': typeof PipelinesIndexRoute
   '/queue/': typeof QueueIndexRoute
+  '/reputation/': typeof ReputationIndexRoute
   '/settings/': typeof SettingsIndexRoute
   '/messages/$id/trace': typeof MessagesIdTraceRoute
 }
@@ -276,6 +283,7 @@ export interface FileRoutesByTo {
   '/mailboxes': typeof MailboxesIndexRoute
   '/pipelines': typeof PipelinesIndexRoute
   '/queue': typeof QueueIndexRoute
+  '/reputation': typeof ReputationIndexRoute
   '/settings': typeof SettingsIndexRoute
   '/messages/$id/trace': typeof MessagesIdTraceRoute
 }
@@ -312,6 +320,7 @@ export interface FileRoutesById {
   '/mailboxes/': typeof MailboxesIndexRoute
   '/pipelines/': typeof PipelinesIndexRoute
   '/queue/': typeof QueueIndexRoute
+  '/reputation/': typeof ReputationIndexRoute
   '/settings/': typeof SettingsIndexRoute
   '/messages/$id/trace': typeof MessagesIdTraceRoute
 }
@@ -349,6 +358,7 @@ export interface FileRouteTypes {
     | '/mailboxes/'
     | '/pipelines/'
     | '/queue/'
+    | '/reputation/'
     | '/settings/'
     | '/messages/$id/trace'
   fileRoutesByTo: FileRoutesByTo
@@ -384,6 +394,7 @@ export interface FileRouteTypes {
     | '/mailboxes'
     | '/pipelines'
     | '/queue'
+    | '/reputation'
     | '/settings'
     | '/messages/$id/trace'
   id:
@@ -419,6 +430,7 @@ export interface FileRouteTypes {
     | '/mailboxes/'
     | '/pipelines/'
     | '/queue/'
+    | '/reputation/'
     | '/settings/'
     | '/messages/$id/trace'
   fileRoutesById: FileRoutesById
@@ -455,6 +467,7 @@ export interface RootRouteChildren {
   MailboxesIndexRoute: typeof MailboxesIndexRoute
   PipelinesIndexRoute: typeof PipelinesIndexRoute
   QueueIndexRoute: typeof QueueIndexRoute
+  ReputationIndexRoute: typeof ReputationIndexRoute
   SettingsIndexRoute: typeof SettingsIndexRoute
   MessagesIdTraceRoute: typeof MessagesIdTraceRoute
 }
@@ -622,6 +635,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof QueueIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/reputation/': {
+      id: '/reputation/'
+      path: '/reputation'
+      fullPath: '/reputation/'
+      preLoaderRoute: typeof ReputationIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/settings/': {
       id: '/settings/'
       path: '/settings'
@@ -727,6 +747,7 @@ const rootRouteChildren: RootRouteChildren = {
   MailboxesIndexRoute: MailboxesIndexRoute,
   PipelinesIndexRoute: PipelinesIndexRoute,
   QueueIndexRoute: QueueIndexRoute,
+  ReputationIndexRoute: ReputationIndexRoute,
   SettingsIndexRoute: SettingsIndexRoute,
   MessagesIdTraceRoute: MessagesIdTraceRoute,
 }

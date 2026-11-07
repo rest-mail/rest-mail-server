@@ -39,6 +39,7 @@ const screenNeeds: [path: string, need: Need][] = [
   ["/mailboxes", anywhere("accounts:read")], // GET /admin/mailboxes
   ["/aliases", anywhere("accounts:read")], // GET /admin/aliases
   ["/queue", server("queue:read")], // GET /admin/queue, /admin/queue/stats
+  ["/reputation", server("queue:read")],
   ["/pipelines/logs", server("pipelines:read")], // GET /admin/pipelines/logs
   ["/pipelines", anywhere("pipelines:read")], // GET /admin/pipelines
   ["/custom-filters", anywhere("pipelines:read")], // GET /admin/custom-filters

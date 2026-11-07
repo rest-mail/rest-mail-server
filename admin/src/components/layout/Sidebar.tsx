@@ -11,6 +11,7 @@ import {
   Filter,
   Code,
   KeyRound,
+  ShieldAlert,
 } from 'lucide-react';
 import { useUIStore } from '../../lib/stores/uiStore';
 import { useAuthStore } from '../../lib/stores/authStore';
@@ -28,6 +29,7 @@ const navItems: NavItem[] = [
   { to: '/mailboxes', icon: Mail, label: 'Mailboxes' },
   { to: '/aliases', icon: Forward, label: 'Aliases' },
   { to: '/queue', icon: Inbox, label: 'Queue' },
+  { to: '/reputation', icon: ShieldAlert, label: 'Reputation' },
   { to: '/pipelines', icon: Filter, label: 'Pipelines' },
   { to: '/custom-filters', icon: Code, label: 'Custom Filters' },
   { to: '/grants', icon: Users, label: 'Grants' },

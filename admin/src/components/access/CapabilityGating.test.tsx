@@ -59,6 +59,7 @@ afterEach(() => {
 describe('what each screen needs', () => {
   it('follows the route registration: whole-server routes need the capability at "*"', () => {
     expect(needOf('/queue/12')).toEqual({ capability: 'queue:read', at: 'server' })
+    expect(needOf('/reputation')).toEqual({ capability: 'queue:read', at: 'server' })
     expect(needOf('/settings/dkim')).toEqual({ capability: 'domains:read', at: 'server' })
     expect(needOf('/domains/7')).toEqual({ capability: 'domains:read', at: 'anywhere' })
     expect(needOf('/domains/new')).toEqual({ capability: 'domains:write', at: 'server' })
@@ -67,6 +68,8 @@ describe('what each screen needs', () => {
     expect(needOf('/settings/two-factor')).toBeNull()
     expect(canReach(domainAdmin, '/domains/7')).toBe(true)
     expect(canReach(domainAdmin, '/queue')).toBe(false)
+    expect(canReach(domainAdmin, '/reputation')).toBe(false)
+    expect(canReach({ capabilities: ['queue:read'] }, '/reputation')).toBe(true)
     expect(canReach(superadmin, '/queue')).toBe(true)
   })
 })
@@ -86,14 +89,15 @@ describe('the menu', () => {
     signIn(superadmin)
     render(<Sidebar />)
     expect(entries()).toContain('Queue')
+    expect(entries()).toContain('Reputation')
     expect(entries()).toContain('Grants')
   })
 })
 
 describe('a screen reached directly', () => {
-  it('tells a domain admin it has no access instead of mounting the screen', () => {
+  it.each(['/settings/dkim', '/reputation'])('denies a domain admin direct access to %s without mounting the screen', (pathname) => {
     signIn(domainAdmin)
-    router.pathname = '/settings/dkim'
+    router.pathname = pathname
     const screenBody = vi.fn(() => <p>DKIM keys</p>)
     const Screen = screenBody as unknown as ComponentType
     render(<ScreenGate><Screen /></ScreenGate>)

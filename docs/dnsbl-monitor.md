@@ -99,6 +99,18 @@ monitor for an instance; this slice does not coordinate multiple monitor owners.
 Alert delivery, an admin history view, a circuit breaker and keyed zones remain
 outside this feature.
 
+## Finding the domain: the reputation view
+
+`GET /api/v1/admin/reputation?days=7`, or **Reputation** in the admin UI, lists
+every hosted domain with its outbound delivered, bounced and deferred counts,
+its bounce rate and bounces by reason, and its DMARC pass rate from received
+aggregate reports, over the last `days` days (7 when left out, at most 90) and
+the window before it. Domains come worst bounce rate first, and the admin UI
+flags a spike against the window before. The current listings of the server's
+sending IPs head it. Complaints are shown as null until complaint reports are
+recorded (#733). It needs `queue:read` at the server's own scope, and reads only
+what the server already stores (#1590).
+
 ## When one domain is the cause: stop its outbound mail
 
 A listing, or a bounce or complaint spike, is often one hosted domain sending

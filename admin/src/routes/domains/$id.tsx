@@ -371,6 +371,7 @@ function DomainDetailsPage() {
 
         {/* Outbound stop (#1590) */}
         <div
+          id="outbound-stop"
           className="border p-6"
           style={{ borderColor: "var(--gray-border)" }}
         >
