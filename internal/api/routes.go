@@ -156,6 +156,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		TrustedProxies: trustedProxies,
 	}))
 	r.Use(middleware.RequestID)
+	r.Use(middleware.Tracing)
 	r.Use(handlers.TwoFactorWindow(cfg.FreshTwoFactorWindow))
 	// TrustedRealIP replaces chi's RealIP: it resolves the client IP from
 	// X-Forwarded-For ONLY for trusted-proxy peers and writes it into RemoteAddr, so

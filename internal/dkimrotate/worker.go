@@ -13,6 +13,7 @@ import (
 	dkim "github.com/rest-mail/go-dkim/pkg/dkim"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/outbound"
+	"github.com/rest-mail/rest-mail-server/internal/tracing"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 	"gorm.io/gorm/logger"
@@ -77,7 +78,10 @@ func (w *Worker) loop() {
 		case <-w.stop:
 			return
 		case <-ticker.C:
-			w.Tick(context.Background())
+			_ = tracing.Job(context.Background(), "job.dkim_rotation", func(ctx context.Context) error {
+				w.Tick(ctx)
+				return nil
+			})
 		}
 	}
 }
@@ -91,13 +95,13 @@ func (w *Worker) Tick(ctx context.Context) {
 			w.db.Model(&models.DKIMRotationKey{}).Select("domain_id")).
 		Order("id").Pluck("id", &domainIDs).Error
 	if err != nil {
-		slog.Error("dkim rotation: listing domains failed", "error", err)
+		slog.ErrorContext(ctx, "dkim rotation: listing domains failed", "error", err)
 		return
 	}
 	for _, id := range domainIDs {
 		stepCtx, cancel := context.WithTimeout(ctx, stepTimeout)
 		if err := w.Step(stepCtx, id); err != nil {
-			slog.Warn("dkim rotation: a step failed; the next tick retries", "domain_id", id, "error", err)
+			slog.WarnContext(ctx, "dkim rotation: a step failed; the next tick retries", "domain_id", id, "error", err)
 		}
 		cancel()
 	}
@@ -116,7 +120,7 @@ func (w *Worker) Step(ctx context.Context, domainID uint) error {
 		return nil
 	}
 	if made {
-		slog.Info("dkim rotation: a new key is staged; publish its record", "domain_id", domainID, "selector", staged.Selector)
+		slog.InfoContext(ctx, "dkim rotation: a new key is staged; publish its record", "domain_id", domainID, "selector", staged.Selector)
 		return nil
 	}
 	if staged.PublishedAt == nil {
@@ -130,7 +134,7 @@ func (w *Worker) Step(ctx context.Context, domainID uint) error {
 		return err
 	}
 	if activated {
-		slog.Info("dkim rotation: now signing with the new key", "domain_id", domainID, "selector", staged.Selector)
+		slog.InfoContext(ctx, "dkim rotation: now signing with the new key", "domain_id", domainID, "selector", staged.Selector)
 	}
 	return nil
 }
@@ -165,7 +169,7 @@ func (w *Worker) notePublication(ctx context.Context, domainID, stagedID uint) e
 		return result.Error
 	}
 	if result.RowsAffected == 1 {
-		slog.Info("dkim rotation: the new key's record resolves; switching after one TTL", "domain_id", domainID, "selector", staged.Selector)
+		slog.InfoContext(ctx, "dkim rotation: the new key's record resolves; switching after one TTL", "domain_id", domainID, "selector", staged.Selector)
 	}
 	return nil
 }

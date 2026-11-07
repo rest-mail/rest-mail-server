@@ -3,7 +3,6 @@ package api
 import (
 	"context"
 	"encoding/json"
-	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -59,7 +58,7 @@ func TestGatewayDeliveryNULExamplesWithVertrag(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(directory, "openapi.json"), encoded, 0600); err != nil {
 		t.Fatal(err)
 	}
-	server := httptest.NewServer(routers.Public)
+	server := servedAsDescribed(routers.Public)
 	t.Cleanup(server.Close)
 	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
 	defer cancel()

@@ -10,11 +10,14 @@ import (
 	"time"
 
 	smtpserver "github.com/rest-mail/go-smtp/pkg/smtp/server"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/rest-mail/rest-mail-server/internal/gateway/connlimiter"
 	"github.com/rest-mail/rest-mail-server/internal/ratelimit"
 	"github.com/rest-mail/rest-mail-server/internal/requestid"
 	"github.com/rest-mail/rest-mail-server/internal/srs"
+	"github.com/rest-mail/rest-mail-server/internal/tracing"
 )
 
 // Server listens for SMTP connections and serves them with go-smtp, one
@@ -214,10 +217,16 @@ func (s *Server) newSMTPServer(isSubmission bool) *smtpserver.Server {
 		id := requestid.New()
 		log := slog.Default().With(requestid.Attr, id)
 		log.Debug("smtp: new session", "remote", c.Conn().RemoteAddr().String(), "submission", isSubmission)
+		// The connection's span (#1580): every call it makes to the API is a
+		// child, and Logout ends it.
+		_, span := tracing.Tracer().Start(context.Background(), "smtp.session",
+			trace.WithSpanKind(trace.SpanKindServer),
+			trace.WithAttributes(tracing.RequestIDKey.String(id), attribute.Bool("smtp.submission", isSubmission)))
 		return &session{
 			conn:         c,
 			log:          log,
-			api:          withRequestID(s.api, id),
+			span:         span,
+			api:          withSpan(withRequestID(s.api, id), span),
 			store:        s.store,
 			limiter:      s.limiter,
 			subLimiter:   s.subLimiter,

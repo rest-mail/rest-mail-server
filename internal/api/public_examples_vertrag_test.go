@@ -46,7 +46,7 @@ func TestPublicJSONExamplesWithVertrag(t *testing.T) {
 				t.Fatal(err)
 			}
 			healthy := healthExampleRouter(t, nil)
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server := servedAsDescribed(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.URL.Path == "/api/health" {
 					healthy.ServeHTTP(w, r)
 					return

@@ -17,6 +17,9 @@ import (
 
 	oapifly "github.com/antimatter-studios/go-oapifly"
 	goimap "github.com/rest-mail/go-imap/pkg/imap"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
 	"github.com/rest-mail/rest-mail-server/internal/api/middleware"
 	"github.com/rest-mail/rest-mail-server/internal/api/respond"
@@ -33,6 +36,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 	"github.com/rest-mail/rest-mail-server/internal/ratelimit"
 	"github.com/rest-mail/rest-mail-server/internal/sendlimits"
+	"github.com/rest-mail/rest-mail-server/internal/tracing"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -2406,7 +2410,18 @@ func recordInboundReceived(receivedTLS *bool) {
 // deliverToLocal runs the inbound pipeline and delivers a message to a local mailbox.
 // This is the shared logic used by both DeliverMessage (gateway inbound) and
 // SendMessage (local recipient delivery).
-func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliveryParams) (*models.Message, error) {
+func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliveryParams) (stored *models.Message, deliverErr error) {
+	// The local delivery's span (#1580): the pipeline run is its child. It
+	// holds the mailbox's and the stored message's ids, never an address.
+	ctx, span := tracing.Start(ctx, "message.deliver_local", trace.WithAttributes(
+		attribute.Int64("mailbox.id", int64(params.Mailbox.ID))))
+	defer func() {
+		if stored != nil {
+			span.SetAttributes(attribute.Int64("message.id", int64(stored.ID)))
+		}
+		span.SetAttributes(attribute.Bool("message.stored", stored != nil))
+		tracing.End(span, deliverErr)
+	}()
 	mailbox := params.Mailbox
 	if !params.ReceiveChecked {
 		if err := repositories.RequireMailboxReceive(h.db.WithContext(ctx), &mailbox); err != nil {
