@@ -8062,7 +8062,7 @@
       "summary": "An eligible admin grant on one domain",
       "description": "Changing grants needs a session that signed in with a second factor.",
       "requires": {
-        "state": "two_factor_session"
+        "state": "grant_holder"
       },
       "request": {
         "body": {
