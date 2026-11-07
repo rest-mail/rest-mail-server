@@ -819,3 +819,17 @@ helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" --set smtp.dane.enabled=tr
   --set smtpGateway.enabled=false > "$tmp/dane-disabled-gateway.yaml"
 assert_absent "no resolver without SMTP gateway" "$tmp/dane-disabled-gateway.yaml" 'name: dane-resolver'
 assert_absent "no DANE ConfigMap without SMTP gateway" "$tmp/dane-disabled-gateway.yaml" 'name: restmail-smtp-dane'
+
+# Tracing (#1580): off by default, so no OTEL_* variable and no egress; with an
+# endpoint, the API and all three gateways get it, and the collector egress opens.
+assert_absent "no OTLP endpoint by default" "$tmp/prod.yaml" 'OTEL_EXPORTER_OTLP_ENDPOINT'
+assert_absent "no OTLP egress by default" "$tmp/prod.yaml" 'restmail-otlp-egress'
+helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" \
+  --set tracing.otlpEndpoint=http://otel-collector.observability:4318 \
+  --set 'tracing.networkPolicy.to[0].namespaceSelector.matchLabels.name=observability' > "$tmp/tracing.yaml"
+for component in api smtp-gateway imap-gateway pop3-gateway; do
+  endpoint=$(yq -N e "select(.kind == \"Deployment\" and .metadata.name == \"restmail-$component\") | .spec.template.spec.containers[0].env[] | select(.name == \"OTEL_EXPORTER_OTLP_ENDPOINT\") | .value" "$tmp/tracing.yaml")
+  [ "$endpoint" = http://otel-collector.observability:4318 ] || fail "$component must get the OTLP endpoint (got '$endpoint')"
+done
+assert_contains "OTLP egress with an endpoint" "$tmp/tracing.yaml" 'name: restmail-otlp-egress'
+pass "tracing is off by default and passed to every Go service when set"

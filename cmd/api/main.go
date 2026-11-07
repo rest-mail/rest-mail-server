@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"github.com/rest-mail/rest-mail-server/internal/attachmentstore"
 	"log/slog"
 	"net"
 	"net/http"
@@ -15,6 +14,7 @@ import (
 
 	acmeclient "github.com/rest-mail/rest-mail-server/internal/acme"
 	"github.com/rest-mail/rest-mail-server/internal/api"
+	"github.com/rest-mail/rest-mail-server/internal/attachmentstore"
 	"github.com/rest-mail/rest-mail-server/internal/auditanchor"
 	"github.com/rest-mail/rest-mail-server/internal/auth"
 	"github.com/rest-mail/rest-mail-server/internal/bootstrap"
@@ -35,6 +35,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/requestid"
 	"github.com/rest-mail/rest-mail-server/internal/rollup"
 	"github.com/rest-mail/rest-mail-server/internal/trace"
+	"github.com/rest-mail/rest-mail-server/internal/tracing"
 	"github.com/rest-mail/rest-mail-server/internal/vacation"
 )
 
@@ -108,6 +109,15 @@ func main() {
 		logHandler = slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError})
 		slog.SetDefault(slog.New(requestid.NewHandler(logHandler)))
 	}
+
+	// Distributed tracing (#1580): off unless OTEL_EXPORTER_OTLP_ENDPOINT (or
+	// OTEL_EXPORTER_OTLP_TRACES_ENDPOINT) is set; spans are flushed at shutdown.
+	shutdownTracing, err := tracing.Setup(context.Background(), "rest-mail-api")
+	if err != nil {
+		slog.Error("failed to start tracing", "error", err)
+		os.Exit(1)
+	}
+	defer tracing.ShutdownWithin(shutdownTracing, 5*time.Second)
 
 	// The DNSBL monitor is off unless the operator's config file enables it
 	// (issue #148); off, it makes no resolver and sends no query. The whole

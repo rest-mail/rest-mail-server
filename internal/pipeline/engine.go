@@ -7,6 +7,12 @@ import (
 	"log/slog"
 	"runtime/debug"
 	"time"
+
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
+
+	"github.com/rest-mail/rest-mail-server/internal/tracing"
 )
 
 // Engine executes a pipeline of filters against an email.
@@ -115,6 +121,13 @@ func (e *Engine) Execute(ctx context.Context, pipeline *PipelineConfig, email *E
 // behave as one run.
 func (e *Engine) ExecuteStage(ctx context.Context, pipeline *PipelineConfig, email *EmailJSON, state *RunState) (*ExecutionResult, error) {
 	start := time.Now()
+	// The run's span (#1580), with one child per filter: ids, counts and
+	// outcomes only, never anything from the message.
+	ctx, runSpan := tracing.Start(ctx, "pipeline.run", trace.WithAttributes(
+		attribute.Int64("pipeline.id", int64(pipeline.ID)),
+		attribute.String("pipeline.direction", pipeline.Direction),
+	))
+	defer runSpan.End()
 	result := &ExecutionResult{
 		FinalAction: ActionContinue,
 		FinalEmail:  email,
@@ -138,9 +151,22 @@ func (e *Engine) ExecuteStage(ctx context.Context, pipeline *PipelineConfig, ema
 	// recordStep finalizes a step: it appends it to the result and hands it to
 	// the observer. Observation happens for every step (including skipped and
 	// errored ones), in execution order, at step finalize.
+	var filterSpan trace.Span
 	recordStep := func(s StepResult) {
 		result.Steps = append(result.Steps, s)
 		e.observer.ObserveStep(s)
+		if filterSpan != nil {
+			filterSpan.SetAttributes(
+				attribute.String("pipeline.filter.action", string(s.Action)),
+				attribute.Bool("pipeline.filter.skipped", s.Skipped),
+			)
+			if s.Error != "" {
+				filterSpan.SetAttributes(attribute.Bool("pipeline.filter.failed", true))
+				filterSpan.SetStatus(codes.Error, "")
+			}
+			filterSpan.End()
+			filterSpan = nil
+		}
 	}
 
 Loop:
@@ -150,6 +176,11 @@ Loop:
 		}
 
 		stepStart := time.Now()
+		var fctx context.Context
+		fctx, filterSpan = tracing.Start(ctx, "pipeline.filter "+fc.Name, trace.WithAttributes(
+			attribute.String("pipeline.filter.name", fc.Name),
+			attribute.String("pipeline.filter.type", string(fc.Type)),
+		))
 		step := StepResult{
 			FilterName: fc.Name,
 			FilterType: fc.Type,
@@ -190,7 +221,7 @@ Loop:
 		// panic or a per-filter-timeout is surfaced here as an ordinary error so a
 		// crashing/hung filter takes the same fail-closed path — it is never a
 		// crashed worker or a silently skipped security filter.
-		filterResult, err := e.runFilter(ctx, filter, result.FinalEmail)
+		filterResult, err := e.runFilter(fctx, filter, result.FinalEmail)
 		if err != nil {
 			step.Error = fmt.Sprintf("execute: %v", err)
 			step.Action = e.filterErrorAction
@@ -261,6 +292,10 @@ Loop:
 		terminal = &result.Steps[len(result.Steps)-1]
 	}
 	e.observer.ObserveTerminal(pipeline.Direction, result.FinalAction, terminal)
+	runSpan.SetAttributes(
+		attribute.String("pipeline.action", string(result.FinalAction)),
+		attribute.Int("pipeline.steps", len(result.Steps)),
+	)
 	return result, nil
 }
 

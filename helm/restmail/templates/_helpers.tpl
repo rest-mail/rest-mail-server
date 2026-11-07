@@ -558,3 +558,26 @@ http://{{ include "restmail.componentName" (list . "garage") }}:3900
 {{- .Values.api.attachments.s3.existingSecret | default (include "restmail.componentName" (list . "api-attachments-s3")) -}}
 {{- end -}}
 {{- end -}}
+
+{{/*
+restmail.tracingEnv — the OpenTelemetry variables (#1580), only when
+tracing.otlpEndpoint is set; with none the binaries keep tracing off. The
+service name is each binary's own (rest-mail-api, rest-mail-smtp-gateway, ...).
+Reused across api + all three gateways.
+*/}}
+{{- define "restmail.tracingEnv" -}}
+{{- with .Values.tracing }}
+{{- if .otlpEndpoint }}
+- name: OTEL_EXPORTER_OTLP_ENDPOINT
+  value: {{ .otlpEndpoint | quote }}
+{{- if .sampler }}
+- name: OTEL_TRACES_SAMPLER
+  value: {{ .sampler | quote }}
+{{- end }}
+{{- if .samplerArg }}
+- name: OTEL_TRACES_SAMPLER_ARG
+  value: {{ .samplerArg | quote }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end -}}

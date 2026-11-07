@@ -83,6 +83,39 @@ class ContractRateLimits(unittest.TestCase):
                 self.assertIn(name, result.stderr)
                 self.assertNotIn("do-not-print", result.stdout + result.stderr)
 
+    def test_defaults_guard_accepts_unset_docker_environment_entries(self):
+        unset_environment = [
+            "OTEL_EXPORTER_OTLP_ENDPOINT",
+            "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT",
+            "OTEL_EXPORTER_OTLP_HEADERS",
+            "OTEL_SERVICE_NAME",
+            "OTEL_TRACES_SAMPLER",
+            "OTEL_TRACES_SAMPLER_ARG",
+        ]
+        for environment in (
+            unset_environment,
+            unset_environment + list(rate_limits.DEFAULTS),
+            unset_environment + [
+                f"{name}={value}" for name, value in rate_limits.DEFAULTS.items()
+            ],
+            unset_environment + ["OTEL_EXPORTER_OTLP_HEADERS=key=value"],
+        ):
+            with self.subTest(environment=environment):
+                rate_limits.assert_defaults([{"Config": {"Env": environment}}])
+
+    def test_unset_otel_entries_do_not_hide_nondefault_or_empty_limits(self):
+        for name in rate_limits.DEFAULTS:
+            changed = "false" if name.endswith("_ENABLED") else "10000"
+            for value in (changed, ""):
+                with self.subTest(name=name, value=value):
+                    environment = [
+                        "OTEL_EXPORTER_OTLP_ENDPOINT",
+                        f"{name}={value}",
+                        "OTEL_SERVICE_NAME",
+                    ]
+                    with self.assertRaisesRegex(ValueError, f"requires the default {name}"):
+                        rate_limits.assert_defaults([{"Config": {"Env": environment}}])
+
     def test_guard_defaults_match_the_production_constants(self):
         source = (ROOT / "internal/config/config.go").read_text()
         for prefix, constant in (("AUTH", "Auth"), ("PIPELINE_TEST", "PipelineTest"), ("TLSRPT", "TLSRPT")):
