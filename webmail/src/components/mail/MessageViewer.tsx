@@ -21,6 +21,7 @@ import type { RecipientStatus } from '@/lib/deliveryStatus';
 import { HtmlMessageBody } from './HtmlMessageBody';
 import { ThreadDueControl } from './ThreadDueControl';
 import { ThreadSnoozeControl } from './ThreadSnoozeControl';
+import { UnsubscribeControl } from './UnsubscribeControl';
 import { TrustBadge, TrustReceipt } from './signals';
 import { cn } from '@/lib/utils';
 import { SenderReplyTime } from '@/components/contacts/SenderReplyTime';
@@ -317,6 +318,7 @@ export function MessageViewer() {
         )}
 
         <ThreadSnoozeControl key={msg.id} message={msg} />
+        <UnsubscribeControl messageId={msg.id} />
 
         {/* Spacer */}
         <div className="flex-1" />

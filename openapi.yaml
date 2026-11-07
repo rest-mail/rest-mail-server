@@ -3481,6 +3481,10 @@ paths:
               parameters:
                 id: '$response.body#/data/mailbox_id'
                 threadID: '$response.body#/data/thread_id'
+            getUnsubscribeOptions:
+              operationId: getUnsubscribeOptions
+              parameters:
+                id: '$response.body#/data/id'
             verifyMessageSeal:
               operationId: verifyMessageSeal
               parameters:
@@ -12610,6 +12614,319 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/v1/messages/{id}/unsubscribe:
+    get:
+      description: 'The targets the message''s List-Unsubscribe field offers (RFC 2369), checked because the sender wrote them; nothing is sent. one_click is present only when List-Unsubscribe-Post is List-Unsubscribe=One-Click and a DKIM signature this server verified as pass covers both List-Unsubscribe and List-Unsubscribe-Post (RFC 8058 §4); without one that HTTPS URI is listed first in links instead. links are other HTTPS pages for the person to open; the server never fetches them. A field given more than once, an item that does not parse, an http: URI and a mailto: URI naming more than one address are left out.'
+      operationId: getUnsubscribeOptions
+      parameters:
+      - example: 1
+        in: path
+        name: id
+        required: true
+        schema:
+          minimum: 1
+          type: integer
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Data-UnsubscribeOptions'
+          description: OK
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '413':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 'request_too_large: the body is over the API''s size cap'
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+          description: Unprocessable Entity
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 'rate_limited: refused API keys or HTTP Basic credentials, throttled at login''s rate'
+          headers:
+            Retry-After:
+              description: Seconds until a request may be made again
+              required: true
+              schema:
+                type: integer
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 'unavailable: the credential or session check could not be made'
+      security:
+      - CookieAuth:
+        - mail:read
+      - BearerAuth:
+        - mail:read
+      - APIKeyAuth:
+        - mail:read
+      - BasicAuth:
+        - mail:read
+      summary: List a message's unsubscribe targets
+      tags:
+      - Messages
+  /api/v1/messages/{id}/unsubscribe/one-click:
+    post:
+      description: The server POSTs List-Unsubscribe=One-Click to the message's one-click target, once, only on this request. The target must be HTTPS and it and every redirect hop must resolve only to public addresses, checked again on the address dialed; otherwise 422 unsubscribe_target_refused. The same refusal answers a one-click claim that no DKIM signature this server verified as pass covers, List-Unsubscribe and List-Unsubscribe-Post both (RFC 8058 §4). No cookie or credential is sent. 404 no_one_click_unsubscribe when the message has no one-click target; 502 unsubscribe_failed when the target cannot be reached or answers other than 2xx.
+      operationId: unsubscribeOneClick
+      parameters:
+      - example: 1
+        in: path
+        name: id
+        required: true
+        schema:
+          minimum: 1
+          type: integer
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Data-UnsubscribedOneClick'
+          description: OK
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '413':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 'request_too_large: the body is over the API''s size cap'
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+          description: Unprocessable Entity
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 'rate_limited: refused API keys or HTTP Basic credentials, throttled at login''s rate'
+          headers:
+            Retry-After:
+              description: Seconds until a request may be made again
+              required: true
+              schema:
+                type: integer
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+        '502':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Gateway
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 'unavailable: the credential or session check could not be made'
+      security:
+      - CookieAuth:
+        - mail:write
+      - BearerAuth:
+        - mail:write
+      - APIKeyAuth:
+        - mail:write
+      - BasicAuth:
+        - mail:write
+      summary: Unsubscribe with RFC 8058 one-click
+      tags:
+      - Messages
+  /api/v1/messages/{id}/unsubscribe/mailto:
+    post:
+      description: 'Sends the message mailto target index asks for (its address, subject and body, RFC 6068) through sendMessage, so every send rule applies; an empty subject or body is sent as unsubscribe. from defaults to the message''s account. 404 no_mailto_unsubscribe when there is no target at index. Sending from your own mailbox requires mail:send. From another mailbox requires mail:send_as on that mailbox. Set on_behalf to true to require mail:send_on_behalf instead: From stays the represented mailbox and RFC 5322 Sender is the authenticated account''s own address. Read access grants neither mode. Both modes audit the real account, credential and represented mailbox.'
+      operationId: unsubscribeMailto
+      parameters:
+      - example: 1
+        in: path
+        name: id
+        required: true
+        schema:
+          minimum: 1
+          type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/unsubscribeMailtoBody'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Data-SendDiscarded'
+          description: Discarded by the outbound pipeline
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Data-Message'
+          description: Sent; the copy kept in Sent
+        '202':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Data-ScheduledMessage'
+          description: 'Retained: scheduled for later, or held by a send limit until human release'
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '413':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Request Entity Too Large
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+          description: Unprocessable Entity
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Too Many Requests
+          headers:
+            Retry-After:
+              description: Seconds until another request is allowed
+              required: true
+              schema:
+                type: integer
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Service Unavailable
+      security:
+      - CookieAuth:
+        - mail:read
+        - mail:send
+      - CookieAuth:
+        - mail:read
+        - mail:send_as
+      - CookieAuth:
+        - mail:read
+        - mail:send_on_behalf
+      - BearerAuth:
+        - mail:read
+        - mail:send
+      - BearerAuth:
+        - mail:read
+        - mail:send_as
+      - BearerAuth:
+        - mail:read
+        - mail:send_on_behalf
+      - APIKeyAuth:
+        - mail:read
+        - mail:send
+      - APIKeyAuth:
+        - mail:read
+        - mail:send_as
+      - APIKeyAuth:
+        - mail:read
+        - mail:send_on_behalf
+      - BasicAuth:
+        - mail:read
+        - mail:send
+      - BasicAuth:
+        - mail:read
+        - mail:send_as
+      - BasicAuth:
+        - mail:read
+        - mail:send_on_behalf
+      summary: 'Unsubscribe by sending the mailto: message'
+      tags:
+      - Messages
   /api/v1/accounts/{id}/calendar-events:
     parameters:
       - $ref: "#/components/parameters/AccountId"
@@ -15257,6 +15574,172 @@ components:
             $ref: "#/components/schemas/ValidationErrorResponse"
 
   schemas:
+    Data-UnsubscribeOptions:
+      additionalProperties: false
+      properties:
+        data:
+          $ref: '#/components/schemas/UnsubscribeOptions'
+      required:
+      - data
+      type: object
+    UnsubscribeOptions:
+      additionalProperties: false
+      properties:
+        links:
+          items:
+            type: string
+          type: array
+        mailto:
+          items:
+            $ref: '#/components/schemas/UnsubscribeMailtoOption'
+          type: array
+        one_click:
+          examples:
+          - https://news.example.com/unsubscribe?t=8f2c
+          type: string
+      required:
+      - links
+      - mailto
+      type: object
+    UnsubscribeMailtoOption:
+      additionalProperties: false
+      properties:
+        body:
+          type: string
+        subject:
+          examples:
+          - unsubscribe
+          type: string
+        to:
+          examples:
+          - leave@news.example.com
+          type: string
+      required:
+      - to
+      - subject
+      - body
+      type: object
+    Data-UnsubscribedOneClick:
+      additionalProperties: false
+      properties:
+        data:
+          $ref: '#/components/schemas/UnsubscribedOneClick'
+      required:
+      - data
+      type: object
+    UnsubscribedOneClick:
+      additionalProperties: false
+      properties:
+        method:
+          examples:
+          - one_click
+          type: string
+        response_status:
+          examples:
+          - 200
+          type: integer
+        target:
+          examples:
+          - https://news.example.com/unsubscribe?t=8f2c
+          type: string
+      required:
+      - method
+      - target
+      - response_status
+      type: object
+    unsubscribeMailtoBody:
+      additionalProperties: false
+      properties:
+        from:
+          type: string
+        index:
+          minimum: 0
+          type: integer
+      type: object
+    Data-SendDiscarded:
+      additionalProperties: false
+      properties:
+        data:
+          $ref: '#/components/schemas/SendDiscarded'
+      required:
+      - data
+      type: object
+    SendDiscarded:
+      additionalProperties: false
+      properties:
+        status:
+          enum:
+          - discarded
+          type: string
+      required:
+      - status
+      type: object
+    Data-Message:
+      additionalProperties: false
+      properties:
+        data:
+          $ref: '#/components/schemas/Message'
+      required:
+      - data
+      type: object
+    Data-ScheduledMessage:
+      additionalProperties: false
+      properties:
+        data:
+          $ref: '#/components/schemas/ScheduledMessage'
+      required:
+      - data
+      type: object
+    ScheduledMessage:
+      additionalProperties: false
+      properties:
+        account_id:
+          type: integer
+        attempts:
+          type: integer
+        created_at:
+          format: date-time
+          type: string
+        from:
+          type: string
+        id:
+          type: integer
+        last_error:
+          type: string
+        scheduled_at:
+          format: date-time
+          type: string
+        sent_message_id:
+          type:
+          - integer
+          - 'null'
+        status:
+          enum:
+          - pending
+          - sending
+          - sent
+          - failed
+          - cancelled
+          - held
+          type: string
+        subject:
+          type: string
+        to: {}
+        updated_at:
+          format: date-time
+          type: string
+      required:
+      - id
+      - account_id
+      - from
+      - to
+      - subject
+      - scheduled_at
+      - status
+      - attempts
+      - created_at
+      - updated_at
+      type: object
     AwaitingThread:
       additionalProperties: false
       properties:

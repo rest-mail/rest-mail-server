@@ -97,6 +97,7 @@
   "638": [
     "cancelScheduledMessage",
     "forwardMessage",
+    "getUnsubscribeOptions",
     "listCalendarEvents",
     "listHeldMessages",
     "listScheduledMessages",
@@ -105,6 +106,8 @@
     "saveDraft",
     "sendDraft",
     "sendMessage",
+    "unsubscribeMailto",
+    "unsubscribeOneClick",
     "updateDraft"
   ],
   "639": [

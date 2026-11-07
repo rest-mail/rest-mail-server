@@ -716,3 +716,24 @@ export async function createAppPassword(
 export async function revokeAppPassword(accountId: number, credentialId: number): Promise<void> {
   await requestNoContent(`${BASE}/accounts/${accountId}/credentials/${credentialId}`, { method: 'DELETE' });
 }
+
+// Unsubscribe (#1575)
+export type UnsubscribeOptions = paths['/api/v1/messages/{id}/unsubscribe']['get']['responses'][200]['content']['application/json']['data'];
+
+export async function getUnsubscribeOptions(messageId: number): Promise<UnsubscribeOptions> {
+  const res: { data: UnsubscribeOptions } = await request(`${BASE}/messages/${messageId}/unsubscribe`);
+  return res.data;
+}
+
+/** Asks the server to send the RFC 8058 one-click POST, once. */
+export async function unsubscribeOneClick(messageId: number): Promise<void> {
+  await request(`${BASE}/messages/${messageId}/unsubscribe/one-click`, { method: 'POST' });
+}
+
+/** Sends the message the mailto: target at index asks for, from the message's account. */
+export async function unsubscribeMailto(messageId: number, index: number): Promise<void> {
+  await request(`${BASE}/messages/${messageId}/unsubscribe/mailto`, {
+    method: 'POST',
+    body: JSON.stringify({ index }),
+  });
+}

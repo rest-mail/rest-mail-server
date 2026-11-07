@@ -62,6 +62,10 @@ type MessageHandler struct {
 	forwardStore    *attachmentstore.S3
 	forwardRoot     string
 	maxForwardBytes int64
+
+	// oneClick sends RFC 8058 one-click unsubscribe POSTs (#1575); nil uses the guarded
+	// default, and tests replace it.
+	oneClick *oneClickPoster
 }
 
 // SetTLSReportEmailReceiver enables ingestion at the configured reporting mailbox.

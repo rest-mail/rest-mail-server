@@ -3355,3 +3355,46 @@
   reason: >-
     The handler tells a missing list apart from an empty one; a null list is
     refused as required (422) by the handler.
+- operation: unsubscribeMailto
+  difference: "response 201 application/json.properties.data*.required: *"
+  reason: >-
+    A message always writes every field its model writes; the oracle marks some of them
+    optional and omits others.
+- operation: unsubscribeMailto
+  difference: "response 201 application/json.properties.data*.properties.tls_version: openapi.yaml absent, generated *"
+  reason: >-
+    The negotiated TLS version of an encrypted inbound-MX delivery; written when known. The
+    oracle omits it.
+- operation: unsubscribeMailto
+  difference: "response 201 application/json.properties.data*.properties.received_tls: openapi.yaml absent, generated *"
+  reason: >-
+    Whether an inbound-MX delivery arrived encrypted; written when known. The oracle omits it.
+- operation: unsubscribeMailto
+  difference: "response 201 application/json.properties.data*.properties.is_dsn: openapi.yaml absent, generated *"
+  reason: >-
+    Marks a delivery status notification this server generated. The oracle omits it.
+- operation: unsubscribeMailto
+  difference: "response 201 application/json.properties.data*.properties.mailbox: openapi.yaml absent, generated *"
+  reason: >-
+    Unloaded mailbox associations are omitted. A loaded association retains its public
+    fields; the generated schema describes that optional association, which the oracle omits.
+- operation: unsubscribeMailto
+  difference: "response 201 application/json.properties.data*.properties.recipients_to.*"
+  reason: >-
+    The recipients are the JSON the message was stored with, written as stored; the API does
+    not narrow it to the oracle's array of strings.
+- operation: unsubscribeMailto
+  difference: "response 201 application/json.properties.data*.properties.recipients_cc.*"
+  reason: >-
+    The recipients are the JSON the message was stored with, written as stored; the API does
+    not narrow it to the oracle's array of strings.
+- operation: unsubscribeMailto
+  difference: "response 201 application/json.properties.data*.properties.headers.oneOf: *"
+  reason: >-
+    The headers are the JSON the message was stored with, written as stored; the oracle's
+    oneOf describes the usual shapes.
+- operation: unsubscribeMailto
+  difference: "response 201 application/json.properties.data*.properties.calendar_events: openapi.yaml absent, generated *"
+  reason: >-
+    The calendar invitations parsed from the message, stored JSON written as stored; omitted
+    when there are none. The oracle omits them.

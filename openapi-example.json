@@ -19665,6 +19665,188 @@
       }
     }
   },
+  "getUnsubscribeOptions": {
+    "invalid_id": {
+      "request": {
+        "path": {
+          "id": 0
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "summary": "No such message",
+      "request": {
+        "path": {
+          "id": 2147483647
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "message_not_found",
+            "message": "Message not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "no_targets": {
+      "summary": "A message with no List-Unsubscribe field offers nothing",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "links": [],
+            "mailto": []
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "target_unavailable": {
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "path": {
+          "id": 3
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "write_only": {
+      "description": "The account holds mail:write but not mail:read, which this operation needs.",
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
   "getVacation": {
     "found": {
       "summary": "A linked account is readable through its mailbox grant",
@@ -43184,6 +43366,515 @@
       },
       "response": {
         "status": 204
+      }
+    }
+  },
+  "unsubscribeMailto": {
+    "discarded": {
+      "description": "Message 1 is a received list message whose List-Unsubscribe offers \u003cmailto:leave@news.example.com?subject=unsubscribe%20weekly%20news\u003e, in the account chris@example.test. The outbound Sieve policy discards the unsubscribe message: nothing is kept in Sent or queued.",
+      "requires": {
+        "state": "discarding_pipeline"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {}
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "status": "discarded"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "held": {
+      "description": "Message 1 is a received list message whose List-Unsubscribe offers \u003cmailto:leave@news.example.com?subject=unsubscribe%20weekly%20news\u003e, in the account chris@example.test. The account's send limit is spent, so the unsubscribe message is held until a person releases it; generated identifiers and timestamps are illustrative.",
+      "requires": {
+        "state": "spent_send_limit"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {}
+      },
+      "response": {
+        "status": 202,
+        "body": {
+          "data": {
+            "account_id": 1,
+            "attempts": 0,
+            "created_at": "2026-10-31T00:10:00Z",
+            "from": "chris@example.test",
+            "id": 3,
+            "last_error": "account:1: messages_per_hour",
+            "scheduled_at": "2026-10-31T01:00:00Z",
+            "status": "held",
+            "subject": "unsubscribe weekly news",
+            "to": [
+              "leave@news.example.com"
+            ],
+            "updated_at": "2026-10-31T00:10:00Z"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_id": {
+      "description": "The JSON body is valid. The real path binder refuses the zero identifier; a body-invalid marker would not describe path binding.",
+      "request": {
+        "path": {
+          "id": 0
+        },
+        "body": {}
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "malformed_json": {
+      "description": "The wire body is the raw truncated JSON byte {, with application/json content type: it is refused before anything else is read.",
+      "requires": {
+        "body": "malformed"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": "{",
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "summary": "No such message, so nothing is sent",
+      "request": {
+        "path": {
+          "id": 2147483647
+        },
+        "body": {}
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "message_not_found",
+            "message": "Message not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {}
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "index": 10
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "sent": {
+      "description": "Message 1 is a received list message whose List-Unsubscribe offers \u003cmailto:leave@news.example.com?subject=unsubscribe%20weekly%20news\u003e, in the account chris@example.test. With no from, the unsubscribe message is sent from that account through sendMessage, leaving one Sent copy and one queued recipient; generated identifiers, sizes and timestamps are illustrative.",
+      "requires": {
+        "state": "unsubscribe_target"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {}
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "body_text": "unsubscribe",
+            "class": "person",
+            "created_at": "2026-10-21T12:00:00Z",
+            "date_header": null,
+            "downgraded_size": 297,
+            "folder": "Sent",
+            "has_attachments": false,
+            "id": 1,
+            "in_reply_to": "",
+            "is_deleted": false,
+            "is_draft": false,
+            "is_dsn": false,
+            "is_flagged": false,
+            "is_read": true,
+            "is_starred": false,
+            "mailbox_id": 1,
+            "message_id": "\u003c00000000-0000-4000-8000-000000000001@restmail.test\u003e",
+            "raw_size": 297,
+            "received_at": "2026-10-21T12:00:00Z",
+            "recipients_cc": [],
+            "recipients_to": [
+              "leave@news.example.com"
+            ],
+            "references": "",
+            "sealed_hash": "c8df0e809a88268049a3d046bf4c17819b16cbf2e5d3845e15368a251710bfb2",
+            "sender": "chris@example.test",
+            "sender_name": "",
+            "size_bytes": 34,
+            "subject": "unsubscribe weekly news",
+            "thread_id": "\u003c00000000-0000-4000-8000-000000000001@restmail.test\u003e",
+            "updated_at": "2026-10-21T12:00:00Z"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {}
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "target_unavailable": {
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "path": {
+          "id": 3
+        },
+        "body": {}
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {}
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "write_only": {
+      "description": "The account holds mail:write but not mail:read, which this operation needs.",
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {}
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
+  "unsubscribeOneClick": {
+    "invalid_id": {
+      "request": {
+        "path": {
+          "id": 0
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "summary": "No such message, so nothing is posted",
+      "request": {
+        "path": {
+          "id": 2147483647
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "message_not_found",
+            "message": "Message not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "read_only": {
+      "description": "The API key holds mail:read on the mailbox but not mail:write, which one-click needs.",
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "target_failed": {
+      "description": "Message 1 is a received list message whose List-Unsubscribe offers https://news.example.com/unsubscribe?t=8f2c with List-Unsubscribe-Post: List-Unsubscribe=One-Click, under a DKIM signature this server verified as pass that covers both fields. The server posts to the target once, and the target answers 503, so the unsubscribe did not happen.",
+      "requires": {
+        "state": "unsubscribe_target"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 502,
+        "body": {
+          "error": {
+            "code": "unsubscribe_failed",
+            "message": "The unsubscribe target answered 503"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "target_unavailable": {
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "path": {
+          "id": 3
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unsubscribed": {
+      "description": "Message 1 is a received list message whose List-Unsubscribe offers https://news.example.com/unsubscribe?t=8f2c with List-Unsubscribe-Post: List-Unsubscribe=One-Click, under a DKIM signature this server verified as pass that covers both fields. The server posts List-Unsubscribe=One-Click to the target once, and the target answers 200.",
+      "requires": {
+        "state": "unsubscribe_target"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "method": "one_click",
+            "target": "https://news.example.com/unsubscribe?t=8f2c",
+            "response_status": 200
+          }
+        },
+        "mediaType": "application/json"
       }
     }
   },

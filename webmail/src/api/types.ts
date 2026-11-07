@@ -2878,6 +2878,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messages/{id}/unsubscribe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a message's unsubscribe targets
+         * @description The targets the message's List-Unsubscribe field offers (RFC 2369), checked because the sender wrote them; nothing is sent. one_click is present only when List-Unsubscribe-Post is List-Unsubscribe=One-Click and a DKIM signature this server verified as pass covers both List-Unsubscribe and List-Unsubscribe-Post (RFC 8058 §4); without one that HTTPS URI is listed first in links instead. links are other HTTPS pages for the person to open; the server never fetches them. A field given more than once, an item that does not parse, an http: URI and a mailto: URI naming more than one address are left out.
+         */
+        get: operations["getUnsubscribeOptions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messages/{id}/unsubscribe/mailto": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Unsubscribe by sending the mailto: message
+         * @description Sends the message mailto target index asks for (its address, subject and body, RFC 6068) through sendMessage, so every send rule applies; an empty subject or body is sent as unsubscribe. from defaults to the message's account. 404 no_mailto_unsubscribe when there is no target at index. Sending from your own mailbox requires mail:send. From another mailbox requires mail:send_as on that mailbox. Set on_behalf to true to require mail:send_on_behalf instead: From stays the represented mailbox and RFC 5322 Sender is the authenticated account's own address. Read access grants neither mode. An unknown sender and a sender the caller has no link to return the same 404 not_found. A visible sender without the selected sending capability returns 403 forbidden. Parsed fields that break sender policy or scheduling rules return 422 validation_failed with details.fields naming them. Both modes audit the real account, credential and represented mailbox.
+         */
+        post: operations["unsubscribeMailto"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messages/{id}/unsubscribe/one-click": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Unsubscribe with RFC 8058 one-click
+         * @description The server POSTs List-Unsubscribe=One-Click to the message's one-click target, once, only on this request. The target must be HTTPS and it and every redirect hop must resolve only to public addresses, checked again on the address dialed; otherwise 422 unsubscribe_target_refused. The same refusal answers a one-click claim that no DKIM signature this server verified as pass covers, List-Unsubscribe and List-Unsubscribe-Post both (RFC 8058 §4). No cookie or credential is sent. 404 no_one_click_unsubscribe when the message has no one-click target; 502 unsubscribe_failed when the target cannot be reached or answers other than 2xx.
+         */
+        post: operations["unsubscribeOneClick"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/oauth/token": {
         parameters: {
             query?: never;
@@ -3553,6 +3613,12 @@ export interface components {
         };
         "Data-ThreadSnooze": {
             data: components["schemas"]["ThreadSnooze"];
+        };
+        "Data-UnsubscribeOptions": {
+            data: components["schemas"]["UnsubscribeOptions"];
+        };
+        "Data-UnsubscribedOneClick": {
+            data: components["schemas"]["UnsubscribedOneClick"];
         };
         "Data-accountAddresses": {
             data: components["schemas"]["accountAddresses"];
@@ -4894,6 +4960,27 @@ export interface components {
             count: number;
             transport: string;
         };
+        UnsubscribeMailtoOption: {
+            body: string;
+            /** @example unsubscribe */
+            subject: string;
+            /** @example leave@news.example.com */
+            to: string;
+        };
+        UnsubscribeOptions: {
+            links: string[];
+            mailto: components["schemas"]["UnsubscribeMailtoOption"][];
+            /** @example https://news.example.com/unsubscribe?t=8f2c */
+            one_click?: string;
+        };
+        UnsubscribedOneClick: {
+            /** @example one_click */
+            method: string;
+            /** @example 200 */
+            response_status: number;
+            /** @example https://news.example.com/unsubscribe?t=8f2c */
+            target: string;
+        };
         ValidationDetails: {
             fields: {
                 [key: string]: string;
@@ -5664,6 +5751,10 @@ export interface components {
         twoFactorStatusResponse: {
             enabled: boolean;
             pending: boolean;
+        };
+        unsubscribeMailtoBody: {
+            from?: string;
+            index?: number;
         };
         updateAPIKeyBody: {
             password: string;
@@ -24798,6 +24889,334 @@ export interface operations {
             };
             /** @description Internal Server Error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getUnsubscribeOptions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-UnsubscribeOptions"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After": number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    unsubscribeMailto: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["unsubscribeMailtoBody"];
+            };
+        };
+        responses: {
+            /** @description Discarded by the outbound pipeline */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-SendDiscarded"];
+                };
+            };
+            /** @description Sent; the copy kept in Sent */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-Message"];
+                };
+            };
+            /** @description Retained: scheduled for later, or held by a send limit until human release */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-ScheduledMessage"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    /** @description Seconds until another request is allowed */
+                    "Retry-After": number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    unsubscribeOneClick: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-UnsubscribedOneClick"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After": number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
