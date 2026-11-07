@@ -15,6 +15,7 @@ read from the file it writes.
 import base64
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -3543,8 +3544,10 @@ def close_an_import_session_the_run_opened(transaction):
     # unknown session (404) is asked of the run's own account, so what it
     # finds missing is the session and not the account.
     name = transaction.get("name", "")
-    path = transaction.get("fullPath", "").partition("?")[0]
+    path, separator, query = transaction.get("fullPath", "").partition("?")
     if " > 200 > " in name:
+        if not re.fullmatch(r"[0-9a-f]{32}", path.rsplit("/", 1)[-1]):
+            return
         parts = on_the_admins_import_account(transaction)
         if parts is None:
             return
@@ -3558,6 +3561,6 @@ def close_an_import_session_the_run_opened(transaction):
         if not isinstance(session, str):
             raise RuntimeError("the import-session fixture returned no id")
         parts[-1] = session
-        transaction["fullPath"] = "/".join(parts)
+        transaction["fullPath"] = "/".join(parts) + separator + query
     elif path.rstrip("/").rsplit("/", 1)[-1] == UNKNOWN_IMPORT_SESSION:
         on_the_admins_import_account(transaction)

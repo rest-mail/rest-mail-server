@@ -103,6 +103,42 @@ class ImportSessionFixture(unittest.TestCase):
         self.assertEqual(t["fullPath"], f"/api/v1/accounts/4/messages/import-sessions/{unknown}")
         self.assertEqual(self.requests, [])
 
+    def test_invalid_session_coverage_probes_keep_the_generated_request(self):
+        with patch.dict(self.module.os.environ, {"CONTRACT_COVERAGE": "1"}):
+            for session in (
+                "vertrag%20does%20not%20match",
+                "12345",
+                "",
+                DOCUMENTED[:-1],
+                DOCUMENTED + "0",
+                DOCUMENTED.upper(),
+                "g" * 32,
+                DOCUMENTED + "%0a",
+            ):
+                with self.subTest(session=session):
+                    transaction = self.transaction(
+                        "coverage: " + CLOSE + "200 > application/json",
+                        f"/api/v1/accounts/12/messages/import-sessions/{session}?keep=yes",
+                        self.module.ADMIN,
+                    )
+                    original = json.loads(json.dumps(transaction))
+                    self.module.close_an_import_session_the_run_opened(transaction)
+                    self.assertEqual(transaction, original)
+                    self.assertEqual(self.requests, [])
+
+    def test_valid_session_coverage_probes_keep_the_query_and_request(self):
+        with patch.dict(self.module.os.environ, {"CONTRACT_COVERAGE": "1"}):
+            transaction = self.transaction(
+                "coverage: " + CLOSE + "200 > application/json",
+                "/api/v1/accounts/12/messages/import-sessions/" + "ff" * 16 + "?keep=yes",
+                self.module.ADMIN,
+            )
+            original = json.loads(json.dumps(transaction))
+            self.module.close_an_import_session_the_run_opened(transaction)
+            original["fullPath"] = "/api/v1/accounts/4/messages/import-sessions/" + "ab" * 16 + "?keep=yes"
+            self.assertEqual(transaction, original)
+            self.assertEqual(len(self.requests), 1)
+
     def test_other_closes_are_sent_as_they_are(self):
         for name, path, address in (
             (CLOSE + "200 > application/json", f"/api/v1/accounts/12/messages/import-sessions/{DOCUMENTED}", None),
