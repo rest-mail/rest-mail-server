@@ -147,8 +147,13 @@ func (h *BanHandler) delete(r *http.Request, in banPath) (endpoint.Empty, error)
 	h = h.forRequest(r)
 	id := in.ID
 
-	if err := h.db.Delete(&models.Ban{}, id).Error; err != nil {
-		return endpoint.Empty{}, fmt.Errorf("delete ban: %w", err)
+	result := h.db.Delete(&models.Ban{}, id)
+	if result.Error != nil {
+		return endpoint.Empty{}, fmt.Errorf("delete ban: %w", result.Error)
+	}
+	// No ban has this id: refuse as unbanIP does, rather than a 204 for nothing.
+	if result.RowsAffected == 0 {
+		return endpoint.Empty{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Ban not found")
 	}
 
 	return endpoint.Empty{}, nil

@@ -23,7 +23,7 @@ func (h *BanHandler) Register(rs endpoint.Routes, at func(string) endpoint.Middl
 		Middleware: []endpoint.Middleware{at(middleware.CapBansWrite)}}, h.create)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodDelete, Path: "/api/v1/admin/bans/{id}",
 		OperationID: "deleteBan", Summary: "Delete a ban by ID", Tags: []string{"Admin: Bans"},
-		Status:     http.StatusNoContent,
+		Status: http.StatusNoContent, Errors: []int{http.StatusNotFound},
 		Middleware: []endpoint.Middleware{at(middleware.CapBansDelete)}}, h.delete)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodDelete, Path: "/api/v1/admin/bans/ip/{ip}",
 		OperationID: "unbanIP", Summary: "Remove all bans for a specific IP", Tags: []string{"Admin: Bans"},

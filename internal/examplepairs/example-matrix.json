@@ -8991,16 +8991,6 @@
         "mediaType": "application/json"
       }
     },
-    "missing": {
-      "request": {
-        "path": {
-          "id": 2147483647
-        }
-      },
-      "response": {
-        "status": 204
-      }
-    },
     "other_capability": {
       "request": {
         "path": {
