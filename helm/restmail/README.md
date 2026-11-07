@@ -232,6 +232,16 @@ The chart runs on any conformant Kubernetes cluster (1.27+) and assumes:
    a PVC by default, or a private S3-compatible bucket with
    `api.attachments.storageType=s3`. See [attachment storage](../../docs/attachment-storage.md)
    before disabling an existing attachment volume.
+
+   **Disk-space alerts** for these PVCs (and Garage's `data-<release>-garage-N`)
+   are in the `restmail-disk` group of
+   [monitoring/alerting-rules.yml](../../monitoring/alerting-rules.yml)
+   (`PVCSpaceLow` at 80% used, `PVCSpaceCritical` at 90%). They read kubelet's
+   `kubelet_volume_stats_available_bytes` and
+   `kubelet_volume_stats_capacity_bytes`, so they need the cluster's Prometheus
+   to scrape kubelet, as kube-prometheus-stack does by default. The chart
+   installs nothing for them. See
+   [Metrics & monitoring](../../docs/MANUAL.md#49-metrics--monitoring).
 6. **NetworkPolicy-enforcing CNI** (Calico, Cilium, Weave, …). The chart ships
    default-deny NetworkPolicies. On a cluster whose CNI does not enforce them,
    set `networkPolicy.enabled=false` (the policies are then simply inert, but
