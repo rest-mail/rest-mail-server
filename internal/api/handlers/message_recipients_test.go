@@ -136,7 +136,7 @@ func TestMessageRecipientsReadAQueuedLocalRecipientFromItsRow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := rmdb.AutoMigrate(database); err != nil {
+	if err := migrateSchema(database); err != nil {
 		t.Fatal(err)
 	}
 	tx := database.Begin()
