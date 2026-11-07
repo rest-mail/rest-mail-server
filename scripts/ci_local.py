@@ -866,7 +866,7 @@ class Gate:
         self.load_workflow()
         check_coverage(
             self.workflow,
-            json.loads((ROOT / "scripts/ci-local-coverage.json").read_text()),
+            json.loads((self.root / "scripts/ci-local-coverage.json").read_text()),
         )
 
     def go_toolchain(self):
@@ -1285,6 +1285,12 @@ class Gate:
                 self.image,
                 "-c",
                 "max_connections=400",
+                # As CI's test job preloads it after starting the service: the
+                # slow statement view's tests (#1629) prove its answers against it.
+                "-c",
+                "shared_preload_libraries=pg_stat_statements",
+                "-c",
+                "pg_stat_statements.max=100000",
             ],
             capture=True,
         )

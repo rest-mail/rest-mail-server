@@ -1223,6 +1223,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/database/statements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the database's slowest statements
+         * @description The current database's statements from pg_stat_statements, slowest first: by total execution time (`sort=total`, the default) or by mean time per call (`sort=mean`), at most `limit` of them (default 20, at most 100). Each is the statement as Postgres normalises it, constants replaced by `$1`, `$2` and so on, so no parameter value is shown, with its calls, total and mean execution time in milliseconds and the rows it returned or changed. The figures count from the last reset (`POST /api/v1/admin/database/statements/reset`) or the database's start. Answers 503 with code `statistics_unavailable` when the database does not have pg_stat_statements loaded: Postgres needs `shared_preload_libraries = 'pg_stat_statements'` and the extension created, which the chart's bundled Postgres has.
+         */
+        get: operations["listSlowStatements"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/database/statements/reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reset the database's statement statistics
+         * @description Resets the current database's pg_stat_statements counters, so the slow statement view counts from now: reset after a change, wait for traffic, then read the view. Answers 503 with code `statistics_unavailable` when the database does not have pg_stat_statements loaded or its user may not reset it.
+         */
+        post: operations["resetSlowStatements"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/dkim": {
         parameters: {
             query?: never;
@@ -3732,6 +3772,9 @@ export interface components {
         "Data-SieveValidation": {
             data: components["schemas"]["SieveValidation"];
         };
+        "Data-SlowStatements": {
+            data: components["schemas"]["SlowStatements"];
+        };
         "Data-TestDataStatus": {
             data: components["schemas"]["TestDataStatus"];
         };
@@ -4910,6 +4953,21 @@ export interface components {
         SieveValidation: {
             message: string;
             valid: boolean;
+        };
+        SlowStatement: {
+            /** Format: int64 */
+            calls: number;
+            /** Format: double */
+            mean_ms: number;
+            query: string;
+            /** Format: int64 */
+            rows: number;
+            /** Format: double */
+            total_ms: number;
+        };
+        SlowStatements: {
+            sort: string;
+            statements: components["schemas"]["SlowStatement"][];
         };
         StageDecisionCount: {
             action: string;
@@ -14519,6 +14577,170 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listSlowStatements: {
+        parameters: {
+            query?: {
+                /** @description total orders by total execution time, mean by mean time per call; total when left out. */
+                sort?: "total" | "mean";
+                /** @description How many statements to list; 20 when left out. */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-SlowStatements"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused API keys, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After": number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    resetSlowStatements: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused API keys, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After": number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Service Unavailable */

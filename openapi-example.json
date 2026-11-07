@@ -29153,6 +29153,214 @@
       }
     }
   },
+  "listSlowStatements": {
+    "available": {
+      "summary": "Right after a reset the view lists only the reset",
+      "description": "The counters were just reset and no other statement has run since, so the reset call is the only statement listed; its times vary from run to run. Every listed statement is the text Postgres records for it, constants in ordinary statements replaced by $1, $2 and so on.",
+      "request": {
+        "query": {
+          "limit": 20
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "sort": "total",
+            "statements": [
+              {
+                "query": "SELECT pg_stat_statements_reset(0, (SELECT oid FROM pg_database WHERE datname = current_database()), 0)",
+                "calls": 1,
+                "total_ms": 0.04,
+                "mean_ms": 0.04,
+                "rows": 1
+              }
+            ]
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "internal_error": {
+      "summary": "The statistics read fails",
+      "description": "Session and permission checks pass, but the statistics read fails. The production handler and error writer produce this refusal without exposing dependency details.",
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "query": {
+          "limit": 20
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_limit": {
+      "summary": "The page size cannot bind to an integer",
+      "description": "The limit query parameter is a string that cannot bind to the registered integer page size. The typed binder refuses it before any database read.",
+      "request": {
+        "query": {
+          "limit": "not-an-integer"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Query parameters failed validation",
+            "details": {
+              "fields": {
+                "limit": "must be an integer"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "query": {
+          "limit": 20
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "description": "A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The focused Vertrag test supplies a real oversized body; no typed body is declared.",
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {
+        "query": {
+          "limit": 20
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "required_capability": {
+      "summary": "A session without database:read at the server's own scope is refused",
+      "description": "Statement statistics cover the whole database, so the operation needs the capability at the server's own scope; a grant on one domain does not give it.",
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "query": {
+          "limit": 20
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "sort_invalid": {
+      "summary": "An order other than total or mean is refused",
+      "request": {
+        "query": {
+          "sort": "slowest"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Query parameters failed validation",
+            "details": {
+              "fields": {
+                "sort": "must be total or mean"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {
+        "query": {
+          "limit": 20
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unavailable": {
+      "summary": "A database without pg_stat_statements answers 503",
+      "description": "The database does not preload pg_stat_statements or does not have the extension, as an operator's own managed Postgres may not. The chart's bundled Postgres has both.",
+      "requires": {
+        "state": "pg_stat_statements_not_loaded"
+      },
+      "request": {
+        "query": {
+          "limit": 20
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "statistics_unavailable",
+            "message": "The database does not have pg_stat_statements loaded"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
   "listSuppressions": {
     "available": {
       "summary": "The caller can read this domain",
@@ -35668,6 +35876,121 @@
           "error": {
             "code": "invalid_token",
             "message": "the token is not valid: unknown, already used, or expired"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
+  "resetSlowStatements": {
+    "internal_error": {
+      "summary": "The statistics reset fails",
+      "description": "Session and permission checks pass, but the statistics reset fails. The production handler and error writer produce this refusal without exposing dependency details.",
+      "requires": {
+        "fault": "database"
+      },
+      "request": {},
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {},
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "description": "A current session sends Content-Length above APIMaxBodyBytes. The focused Vertrag test supplies a real oversized body; no typed body is declared.",
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {},
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "required_capability": {
+      "summary": "A session without database:manage at the server's own scope is refused",
+      "description": "Statement statistics cover the whole database, so the operation needs the capability at the server's own scope; a grant on one domain does not give it.",
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {},
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "reset": {
+      "summary": "The counters are reset",
+      "request": {},
+      "response": {
+        "status": 204
+      }
+    },
+    "unauthenticated": {
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {},
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unavailable": {
+      "summary": "A database without pg_stat_statements answers 503",
+      "description": "The database does not preload pg_stat_statements or does not have the extension.",
+      "requires": {
+        "state": "pg_stat_statements_not_loaded"
+      },
+      "request": {},
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "statistics_unavailable",
+            "message": "The database does not have pg_stat_statements loaded"
           }
         },
         "mediaType": "application/json"

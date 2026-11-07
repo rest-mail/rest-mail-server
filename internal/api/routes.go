@@ -809,6 +809,9 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		queueH.Register(admin, handlers.QueueRouteChecks{At: describedCapability(needs)})
 		handlers.NewReputationHandler(db).Register(admin, describedCapability(needs))
 
+		// The slow statement view (#1629): database:read lists, database:manage resets.
+		handlers.NewSlowStatementsHandler(db).Register(admin, describedCapability(needs))
+
 		policyChecks := handlers.DomainPolicyRouteChecks{
 			OnDomain: describedCapability(needsOnDomain),
 			OnList:   describedCapability(needsOnList),

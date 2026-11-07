@@ -39,15 +39,48 @@ gateways all go through the API, so a slow API is felt everywhere at once.
    1h` for lock waits and long checkpoints, and `chore server:logs api
    --since 1h` for context deadline errors from database calls.
 
-   A view of the slowest database queries: not available yet (#1629).
-   Database pool saturation is not exported yet either (#1579).
+   Database pool saturation is not exported yet (#1579).
+5. **Which statements are slow?** With an API key holding `database:read`
+   (the admin role has it):
+
+   ```bash
+   RESTMAIL_API_KEY=... restmail slow-statements list --server "$API" --sort total
+   RESTMAIL_API_KEY=... restmail slow-statements list --server "$API" --sort mean --limit 10
+   ```
+
+   `--sort total` shows what costs the database most overall; `--sort mean`
+   shows the statements that are slow on each call. Each statement is the
+   text Postgres records, constants replaced by `$1`, `$2`, so no address or
+   message content is shown. The figures count from the last reset, so a
+   statement that was slow last week can still lead the list: reset, let
+   traffic run for a few minutes while the problem shows, and list again.
+   `--json` gives the whole statement text. The same view is
+   `GET /api/v1/admin/database/statements`.
+
+   `statistics_unavailable` means the database does not preload
+   `pg_stat_statements`. The chart's bundled Postgres does
+   (`postgres.statStatements.enabled`, on by default); an external database
+   needs `shared_preload_libraries = 'pg_stat_statements'` set by whoever runs
+   it and a restart, after which the API creates the extension when it
+   starts.
+
+   **Reset the counters** with an API key holding `database:manage` (the
+   admin role has it):
+
+   ```bash
+   RESTMAIL_API_KEY=... restmail slow-statements reset --server "$API"
+   ```
+
+   This empties only the current database's statistics
+   (`POST /api/v1/admin/database/statements/reset`), and is recorded in the
+   audit log.
 
 ## Act
 
 - **One route is slow**: note the `path` label and the time it started, and
   check whether it follows an upgrade (`chore server:status` shows the
-  version and revision). Open an issue with the route, the p95 and the
-  version.
+  version and revision). Open an issue with the route, the p95, the version
+  and the top statements from `restmail slow-statements list --json`.
 - **The API pod is starved**: raise its CPU and memory requests and limits in
   the chart values and upgrade (`chore upgrade:helm`, which reads back every
   other value from the release). Adding replicas helps only when the

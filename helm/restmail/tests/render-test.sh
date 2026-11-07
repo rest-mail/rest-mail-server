@@ -100,6 +100,8 @@ echo "== development assertions =="
 assert_contains "dev uses cleartext DB link"             "$tmp/dev.yaml" 'DB_SSLMODE'
 assert_absent   "dev has no NetworkPolicy"               "$tmp/dev.yaml" 'kind: NetworkPolicy'
 assert_absent   "dev Postgres has no TLS"                "$tmp/dev.yaml" 'ssl=on'
+assert_contains "bundled Postgres preloads pg_stat_statements" "$tmp/prod.yaml" 'shared_preload_libraries=pg_stat_statements'
+assert_contains "dev Postgres preloads pg_stat_statements" "$tmp/dev.yaml" 'shared_preload_libraries=pg_stat_statements'
 
 echo "== no workload mounts a CA private key (#193) =="
 # Whoever reads a CA's private key can sign a certificate its holders trust: a

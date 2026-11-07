@@ -394,6 +394,27 @@ jobs:
       - name: Download dependencies
         run: go mod download
 
+      # A services container takes no command, so the library the chart's
+      # Postgres preloads is set here and the server restarted: the slow
+      # statement view's tests (#1629) prove its answers against it.
+      - name: Preload pg_stat_statements in the test database
+        run: |
+          set -euo pipefail
+          id="${{ job.services.postgres.id }}"
+          restart_postgres() {
+            docker restart "$id"
+            for _ in $(seq 1 30); do
+              docker exec "$id" pg_isready -h 127.0.0.1 -U restmail -d restmail_test -q && return 0
+              sleep 1
+            done
+            echo "Postgres did not come back after the restart" >&2
+            return 1
+          }
+          docker exec "$id" psql -U restmail -d restmail_test -c "ALTER SYSTEM SET shared_preload_libraries = 'pg_stat_statements'"
+          restart_postgres
+          docker exec "$id" psql -U restmail -d restmail_test -c "ALTER SYSTEM SET pg_stat_statements.max = 100000"
+          restart_postgres
+
       # -timeout is per package, and the race detector slows these packages
       # several times over: internal/api/handlers once ran past go test's
       # default 10 minutes. 20 leaves headroom while a hung test still fails.

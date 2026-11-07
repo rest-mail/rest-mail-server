@@ -40,6 +40,7 @@ const topUsage = `restmail — run a rest-mail server
   restmail app-password  list, make and revoke an account's app passwords
   restmail export-contacts export an account's contacts as vCard through the public API
   restmail export-calendar export stored invitations as iCalendar through the public API
+  restmail slow-statements the database's slowest statements, and resetting their counters
   restmail version       print the version
   restmail [flags]       the interactive admin console (-api, -user, -pass)
 
@@ -149,6 +150,8 @@ func runSubcommand(args []string, stdout, stderr io.Writer) (code int, handled b
 		return runImportMail(ctx, "mbox", args[2:], os.Getenv("RESTMAIL_API_KEY"), client, stdout, stderr), true
 	case "mail-queue":
 		return runMailQueue(context.Background(), args[2:], os.Getenv("RESTMAIL_API_KEY"), os.Stdin, client, stdout, stderr), true
+	case "slow-statements":
+		return runSlowStatements(context.Background(), args[2:], os.Getenv("RESTMAIL_API_KEY"), client, stdout, stderr), true
 	case "tlsa-records":
 		return runTLSARecords(args[2:], stdout, stderr), true
 	case "export-settings":
