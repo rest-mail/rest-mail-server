@@ -109,6 +109,8 @@ MAILBOXES = (
     "listMailboxes",
     "endMailboxSessions",
 )
+# The thread and import operations: no link starts from or reaches any of them.
+THREADS_AND_IMPORTS = ("listThreads", "setThreadDue", "snoozeThread", "importMessage")
 FOLLOWS_THE_SENT_MESSAGE = {
     "getMessage",
     "updateMessage",
@@ -186,7 +188,8 @@ class Selection(unittest.TestCase):
             - set(SENDS)
             - FOLLOWS_THE_SENT_MESSAGE
             - set(DRAFTS)
-            - set(MAILBOXES),
+            - set(MAILBOXES)
+            - set(THREADS_AND_IMPORTS),
             link_followers(description, "createDomain") | {"createDomain"},
         )
 
@@ -367,6 +370,14 @@ class Selection(unittest.TestCase):
         for operation in ("listMailboxes", "endMailboxSessions"):
             self.assertEqual(link_followers(description, operation), set())
         self.assertLessEqual(set(MAILBOXES), set(own_data.MOVED))
+
+    def test_it_selects_every_thread_and_import_operation(self):
+        description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
+        for operation in THREADS_AND_IMPORTS:
+            self.assertEqual(link_followers(description, operation), set())
+            for start in description_operations(description):
+                self.assertNotIn(operation, link_followers(description, start), start)
+        self.assertLessEqual(set(THREADS_AND_IMPORTS), set(own_data.MOVED))
 
     def test_everything_that_follows_the_created_domain_has_moved(self):
         description = yaml.safe_load((ROOT / "openapi.yaml").read_text())

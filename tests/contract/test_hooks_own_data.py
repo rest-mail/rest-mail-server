@@ -1,5 +1,6 @@
 """Moved exchanges start clean and make their own target; links survive a reset (#1385)."""
 
+import base64
 import copy
 import importlib.util
 import json
@@ -20,6 +21,7 @@ import own_data
 
 POLICY = re.compile(r"^/api/v1/admin/domains/(\d+)/mta-sts$")
 KEY = re.compile(r"^/api/v1/admin/dkim/(\d+)$")
+IMPORT = re.compile(r"^/api/v1/accounts/(\d+)/messages/import$")
 
 
 class FixtureAPI(BaseHTTPRequestHandler):
@@ -56,6 +58,9 @@ class FixtureAPI(BaseHTTPRequestHandler):
                 self.headers["Authorization"],
             )
             return self.answer(201, {"id": self.server.serial})
+        if IMPORT.fullmatch(self.path):
+            self.server.imports.append((self.path, body))
+            return self.answer(200, {"id": len(self.server.imports), "imported": True})
         if self.path != "/api/v1/admin/domains":
             return self.answer(404)
         if body["name"] in self.server.domains.values():
@@ -83,6 +88,7 @@ class OwnDataHooks(unittest.TestCase):
         self.server.policies = {}
         self.server.keys = {}
         self.server.accounts = {}
+        self.server.imports = []
         self.server.serial = 40
         self.server.reset_failure = None
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
@@ -209,6 +215,10 @@ class OwnDataHooks(unittest.TestCase):
             "updateMailbox": "a_mailbox_to_administer",
             "deleteMailbox": "a_mailbox_to_administer",
             "endMailboxSessions": "a_mailbox_to_administer",
+            "listThreads": "on_the_admins_mailbox_after_a_reset",
+            "setThreadDue": "on_the_admins_mailbox_after_a_reset",
+            "snoozeThread": "on_the_admins_mailbox_after_a_reset",
+            "importMessage": "on_the_admins_mailbox_after_a_reset",
         }
         # entrypoint.py registers setDomainRelay's (below).
         self.assertEqual(set(hooks) | {"setDomainRelay"}, set(own_data.MOVED))
@@ -537,6 +547,83 @@ class OwnDataHooks(unittest.TestCase):
         transaction = self.transaction(204, "/api/v1/admin/mailboxes/9")
         before = copy.deepcopy(transaction)
         self.hooks.a_mailbox_to_administer(transaction)
+        self.assertEqual(transaction, before)
+        self.assertEqual(self.server.calls, [])
+        self.assertEqual(self.stub.stash, stash)
+
+    def test_the_thread_and_import_operations_reset_in_their_first_hook(self):
+        # It runs first, so the due date's and the snooze's thread hooks
+        # (registered by entrypoint.py, after this file) and the import's own
+        # hook see the clean start and the account it leaves in the path.
+        for operation in ("listThreads", "setThreadDue", "snoozeThread", "importMessage"):
+            names = [h for o, h in self.registered if o == operation]
+            self.assertEqual(names[0], "on_the_admins_mailbox_after_a_reset", operation)
+
+    def test_each_thread_and_import_exchange_resets_and_goes_to_the_admins_mailbox(self):
+        self.clean_starts_on()
+        self.hooks.mailbox_id = lambda origin, address: (
+            4 if address == self.hooks.ADMIN else None
+        )
+        for path, status in (
+            ("/api/v1/accounts/1/threads/%3Cdue%2F2026%40example.net%3E/due", 200),
+            ("/api/v1/accounts/1/threads/%3Cthread%2F2026%40example.net%3E/snooze", 422),
+            ("/api/v1/accounts/12/messages/import", 200),
+            ("/api/v1/accounts/1/messages/import", 400),
+        ):
+            transaction = self.transaction(status, path)
+            request = copy.deepcopy(transaction["request"])
+            self.hooks.on_the_admins_mailbox_after_a_reset(transaction)
+            self.assertEqual(
+                transaction["fullPath"], re.sub(r"/accounts/\d+/", "/accounts/4/", path)
+            )
+            self.assertEqual(transaction["request"], request)
+            self.assertLessEqual(set(self.stub.stash), set(self.hooks.SURVIVES_A_RESET))
+        self.assertEqual(self.resets(), 4)
+        # Only the list of threads awaiting a reply gets a message made for it.
+        self.assertEqual(self.server.imports, [])
+
+    def test_the_awaiting_list_gets_a_thread_of_its_own_after_the_reset(self):
+        self.clean_starts_on()
+        self.hooks.mailbox_id = lambda origin, address: (
+            4 if address == self.hooks.ADMIN else None
+        )
+        transaction = self.transaction(200, "/api/v1/accounts/1/threads?state=awaiting&limit=1")
+        self.hooks.on_the_admins_mailbox_after_a_reset(transaction)
+        self.assertEqual(
+            transaction["fullPath"], "/api/v1/accounts/4/threads?state=awaiting&limit=1"
+        )
+        self.assertEqual(self.resets(), 1)
+        [(path, body)] = self.server.imports
+        self.assertEqual(path, "/api/v1/accounts/4/messages/import")
+        self.assertEqual(body["folder"], "Sent")
+        raw = base64.b64decode(body["raw_message"]).decode()
+        self.assertIn(f"From: {self.hooks.ADMIN}\r\n", raw)
+        # The reset came first, and the message after it.
+        reset = [c[1] for c in self.server.calls].index("/api/v1/admin/test/reset")
+        made = [c[1] for c in self.server.calls].index(path)
+        self.assertLess(reset, made)
+
+    def test_thread_and_import_refusals_reset_and_keep_their_ids(self):
+        self.clean_starts_on()
+        self.hooks.mailbox_id = lambda origin, address: self.fail("looked up an account")
+        for path, status in (
+            ("/api/v1/accounts/0/threads?state=awaiting", 422),
+            ("/api/v1/accounts/2147483647/messages/import", 404),
+            ("/api/v1/accounts/not-an-integer/threads/x/snooze", 422),
+            ("/api/v1/accounts/1/threads/missing/due", 404),
+            ("/api/v1/accounts/1/threads?state=awaiting", 404),
+        ):
+            transaction = self.transaction(status, path)
+            self.hooks.on_the_admins_mailbox_after_a_reset(transaction)
+            self.assertEqual(transaction["fullPath"], path)
+        self.assertEqual(self.resets(), 5)
+        self.assertEqual(self.server.imports, [])
+
+    def test_without_the_switch_a_thread_or_import_exchange_is_unchanged(self):
+        stash = copy.deepcopy(self.stub.stash)
+        transaction = self.transaction(200, "/api/v1/accounts/1/threads?state=awaiting")
+        before = copy.deepcopy(transaction)
+        self.hooks.on_the_admins_mailbox_after_a_reset(transaction)
         self.assertEqual(transaction, before)
         self.assertEqual(self.server.calls, [])
         self.assertEqual(self.stub.stash, stash)
