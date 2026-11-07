@@ -143,12 +143,12 @@ func (h *MessageHandler) deliverScheduled(ctx context.Context, row models.Schedu
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			slog.ErrorContext(ctx, "scheduled send: panic while sending", "id", row.ID, "panic", recovered)
-			h.finishScheduled(row.ID, "failed", 0, "the send failed unexpectedly")
+			h.finishScheduled(ctx, row.ID, "failed", 0, "the send failed unexpectedly")
 		}
 	}()
 	var req sendMessageRequest
 	if err := json.Unmarshal(row.Request, &req); err != nil {
-		h.finishScheduled(row.ID, "failed", 0, "could not read the stored message: "+err.Error())
+		h.finishScheduled(ctx, row.ID, "failed", 0, "could not read the stored message: "+err.Error())
 		return
 	}
 	req.ScheduledAt = nil
@@ -162,7 +162,7 @@ func (h *MessageHandler) deliverScheduled(ctx context.Context, row models.Schedu
 	if row.CredentialID != 0 {
 		var cred models.Credential
 		if err := h.db.WithContext(sendCtx).First(&cred, row.CredentialID).Error; err != nil || cred.AccountID != row.AccountID || !cred.Usable(time.Now()) {
-			h.finishScheduled(row.ID, "failed", 0, "The submitting credential is no longer usable")
+			h.finishScheduled(ctx, row.ID, "failed", 0, "The submitting credential is no longer usable")
 			return
 		}
 		claims.CredentialID, claims.CredentialKind = cred.ID, cred.Kind
@@ -183,7 +183,7 @@ func (h *MessageHandler) deliverScheduled(ctx context.Context, row models.Schedu
 		if sent, ok := outcome.Value.(Message); ok {
 			messageID = sent.ID
 		}
-		h.finishScheduled(row.ID, "sent", messageID, "")
+		h.finishScheduled(ctx, row.ID, "sent", messageID, "")
 		return
 	}
 
@@ -209,10 +209,10 @@ func (h *MessageHandler) deliverScheduled(ctx context.Context, row models.Schedu
 			slog.WarnContext(ctx, "scheduled send: could not record the retry", "id", row.ID, "error", err)
 		}
 	}
-	h.finishScheduled(row.ID, "failed", 0, reason)
+	h.finishScheduled(ctx, row.ID, "failed", 0, reason)
 }
 
-func (h *MessageHandler) finishScheduled(id uint, status string, messageID uint, lastError string) {
+func (h *MessageHandler) finishScheduled(ctx context.Context, id uint, status string, messageID uint, lastError string) {
 	updates := map[string]any{
 		"status":     status,
 		"last_error": truncateForStore(lastError),
@@ -221,7 +221,7 @@ func (h *MessageHandler) finishScheduled(id uint, status string, messageID uint,
 		updates["sent_message_id"] = messageID
 	}
 	if err := h.db.Model(&models.ScheduledSend{}).Where("id = ?", id).Updates(updates).Error; err != nil {
-		slog.Warn("scheduled send: could not record the result", "id", id, "error", err)
+		slog.WarnContext(ctx, "scheduled send: could not record the result", "id", id, "error", err)
 	}
 }
 

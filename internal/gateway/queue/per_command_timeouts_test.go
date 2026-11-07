@@ -15,6 +15,7 @@ import (
 	"github.com/rest-mail/go-mtasts/pkg/mtasts"
 	"github.com/rest-mail/rest-mail-server/internal/config"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/requestid"
 	"gorm.io/gorm"
 )
 
@@ -198,7 +199,7 @@ func timedWorker(t config.OutboundSMTPTimeouts) *Worker {
 // deadline allowed for the whole attempt, still gets the message.
 func TestDeliverSMTP_SlowGreetingWithinItsTimeoutSucceeds(t *testing.T) {
 	mx := newTimedMX(t, timedMXOptions{delay: map[string]time.Duration{"greeting": testMinute}})
-	if err := timedWorker(rfcTimeoutsOnTestClock()).deliverSMTP(mx.addr(""), "127.0.0.1", timedItem(), nil, nil); err != nil {
+	if err := timedWorker(rfcTimeoutsOnTestClock()).deliverSMTP(context.Background(), mx.addr(""), "127.0.0.1", timedItem(), nil, nil); err != nil {
 		t.Fatalf("a greeting within its timeout must not fail the attempt: %v", err)
 	}
 	if got := mx.copiesReceived(); got != 1 {
@@ -210,7 +211,7 @@ func TestDeliverSMTP_SlowGreetingWithinItsTimeoutSucceeds(t *testing.T) {
 // time out, or the retry delivers a second copy. #714's second "done when".
 func TestDeliverSMTP_SlowFinalReplyGetsOneCopy(t *testing.T) {
 	mx := newTimedMX(t, timedMXOptions{delay: map[string]time.Duration{"final": 5 * testMinute}})
-	if err := timedWorker(rfcTimeoutsOnTestClock()).deliverSMTP(mx.addr(""), "127.0.0.1", timedItem(), nil, nil); err != nil {
+	if err := timedWorker(rfcTimeoutsOnTestClock()).deliverSMTP(context.Background(), mx.addr(""), "127.0.0.1", timedItem(), nil, nil); err != nil {
 		t.Fatalf("a final reply within its timeout must not fail the attempt: %v", err)
 	}
 	if got := mx.copiesReceived(); got != 1 {
@@ -226,7 +227,7 @@ func TestDeliverSMTP_TimersDoNotAddUp(t *testing.T) {
 		"greeting": delay, "EHLO": delay, "MAIL": delay, "RCPT": delay, "DATA": delay, "final": delay,
 	}})
 	started := time.Now()
-	if err := timedWorker(everyStep(2*testMinute)).deliverSMTP(mx.addr(""), "127.0.0.1", timedItem(), nil, nil); err != nil {
+	if err := timedWorker(everyStep(2*testMinute)).deliverSMTP(context.Background(), mx.addr(""), "127.0.0.1", timedItem(), nil, nil); err != nil {
 		t.Fatalf("steps within their timers must not fail the attempt: %v", err)
 	}
 	if took := time.Since(started); took <= 2*testMinute {
@@ -263,7 +264,7 @@ func TestDeliverSMTP_StalledStepIsDroppedAtItsTimeout(t *testing.T) {
 				item.RawMessage += tc.raw
 			}
 			started := time.Now()
-			err := w.deliverSMTP(mx.addr(""), "127.0.0.1", item, nil, nil)
+			err := w.deliverSMTP(context.Background(), mx.addr(""), "127.0.0.1", item, nil, nil)
 			took := time.Since(started)
 			if err == nil {
 				t.Fatal("a stalled peer must fail the attempt")
@@ -288,7 +289,7 @@ func TestDeliverSMTP_StalledQuitStillDelivers(t *testing.T) {
 	w := timedWorker(timers)
 	w.sendDeadline = func(int64) time.Duration { return 10 * time.Second } // only to end an unfixed run
 	started := time.Now()
-	if err := w.deliverSMTP(mx.addr(""), "127.0.0.1", timedItem(), nil, nil); err != nil {
+	if err := w.deliverSMTP(context.Background(), mx.addr(""), "127.0.0.1", timedItem(), nil, nil); err != nil {
 		t.Fatalf("a stalled QUIT must not fail an accepted message: %v", err)
 	}
 	if took := time.Since(started); took > 5*time.Second {
@@ -320,7 +321,7 @@ func TestDeliverSMTP_EachDataBlockHasItsOwnTimer(t *testing.T) {
 	}
 	item := timedItem()
 	item.RawMessage += strings.Repeat("synthetic payload line\r\n", 700000) // about 16 MiB
-	if err := w.deliverSMTP(mx.addr(""), "127.0.0.1", item, nil, nil); err != nil {
+	if err := w.deliverSMTP(context.Background(), mx.addr(""), "127.0.0.1", item, nil, nil); err != nil {
 		t.Fatalf("a message read steadily must not time out: %v", err)
 	}
 	if took := paced.elapsed(); took <= blockTimeout {
@@ -622,7 +623,7 @@ func TestHeartbeatRefreshesTheRowUntilStopped(t *testing.T) {
 	}
 	ticks := make(chan time.Time, 1)
 	w := &Worker{db: db}
-	stop := w.startHeartbeatWithTicks(item, ticks)
+	stop := w.startHeartbeatWithTicks(context.Background(), item, ticks)
 	t.Cleanup(stop)
 	last := *readRow(t, db, item.ID).LastAttempt
 	for beat := 0; beat < 2; beat++ {
@@ -672,9 +673,14 @@ func TestHeartbeatStopWaitsForInFlightRefresh(t *testing.T) {
 		}
 		ticks := make(chan time.Time, 1)
 		w := &Worker{db: db}
-		stop := w.startHeartbeatWithTicks(item, ticks)
+		attemptContext, cancelAttempt := context.WithCancel(requestid.NewContext(context.Background(), "job.heartbeat-test"))
+		cancelAttempt()
+		stop := w.startHeartbeatWithTicks(attemptContext, item, ticks)
 		ticks <- time.Now()
 		refreshContext := <-updating
+		if got := requestid.FromContext(refreshContext); got != "job.heartbeat-test" {
+			t.Errorf("heartbeat lost its attempt's job ID: %q", got)
+		}
 		stopped := make(chan struct{})
 		go func() {
 			stop()
@@ -725,7 +731,7 @@ func TestHeartbeatLeavesARowItNoLongerHolds(t *testing.T) {
 			stale := item
 			stale.Attempts = tc.claim
 			w := &Worker{db: db, heartbeatEvery: 5 * time.Millisecond}
-			stop := w.startHeartbeat(stale)
+			stop := w.startHeartbeat(context.Background(), stale)
 			time.Sleep(50 * time.Millisecond)
 			stop()
 			row := readRow(t, db, item.ID)

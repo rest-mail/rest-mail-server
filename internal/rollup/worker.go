@@ -142,7 +142,7 @@ func (w *Worker) Shutdown() {
 	w.wg.Wait()
 	// The loop goroutine has exited (wg.Wait returned), so this final snapshot
 	// runs single-threaded — no concurrent access to lastSeen.
-	if err := w.rollupOnce(w.now()); err != nil {
+	if err := w.rollupOnce(context.Background(), w.now()); err != nil {
 		slog.Warn("rollup worker: final snapshot failed", "error", err)
 	}
 	slog.Info("rollup worker stopped")
@@ -158,7 +158,7 @@ func (w *Worker) loop() {
 			return
 		case <-ticker.C:
 			_ = tracing.Job(context.Background(), "job.rollup_snapshot", func(ctx context.Context) error {
-				err := w.rollupOnce(w.now())
+				err := w.rollupOnce(ctx, w.now())
 				if err != nil {
 					slog.WarnContext(ctx, "rollup worker: snapshot failed", "error", err)
 				}
@@ -179,7 +179,7 @@ type sample struct {
 // rollupOnce gathers the tracked counters, computes each series' delta since the
 // watermark, and upserts the delta into the current time bucket. Idempotent:
 // re-running with an unchanged snapshot computes zero deltas and writes nothing.
-func (w *Worker) rollupOnce(now time.Time) error {
+func (w *Worker) rollupOnce(ctx context.Context, now time.Time) error {
 	samples, err := w.snapshot()
 	if err != nil {
 		return err
@@ -194,7 +194,7 @@ func (w *Worker) rollupOnce(now time.Time) error {
 			continue // nothing new for this series this tick
 		}
 		if err := w.upsert(s, bucketStart, bucketSeconds, d); err != nil {
-			slog.Warn("rollup worker: upsert failed", "metric", s.metric, "error", err)
+			slog.WarnContext(ctx, "rollup worker: upsert failed", "metric", s.metric, "error", err)
 		}
 	}
 	return nil

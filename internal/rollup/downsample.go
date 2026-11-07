@@ -80,7 +80,7 @@ func (w *Worker) downsampleLoop() {
 // trace and job ID, which its failure line carries.
 func (w *Worker) downsamplePass() {
 	_ = tracing.Job(context.Background(), "job.rollup_downsample", func(ctx context.Context) error {
-		err := w.downsampleOnce(w.now())
+		err := w.downsampleOnce(ctx, w.now())
 		if err != nil {
 			slog.WarnContext(ctx, "rollup worker: downsample pass failed", "error", err)
 		}
@@ -94,7 +94,7 @@ func (w *Worker) downsamplePass() {
 // repeatedly and concurrently with the snapshot loop (they touch disjoint rows:
 // the snapshotter only writes the CURRENT bucket, which is far newer than any
 // eligible period).
-func (w *Worker) downsampleOnce(now time.Time) error {
+func (w *Worker) downsampleOnce(ctx context.Context, now time.Time) error {
 	if !w.downsampleEnabled() {
 		return nil
 	}
@@ -107,7 +107,7 @@ func (w *Worker) downsampleOnce(now time.Time) error {
 	cutoff := now.UTC().Add(-w.detailedRetention).Truncate(coarse)
 
 	for i := 0; i < maxDownsamplePeriodsPerRun; i++ {
-		done, err := w.downsampleNextPeriod(cutoff, coarse)
+		done, err := w.downsampleNextPeriod(ctx, cutoff, coarse)
 		if err != nil {
 			return err
 		}
@@ -116,7 +116,7 @@ func (w *Worker) downsampleOnce(now time.Time) error {
 		}
 	}
 
-	w.pruneCoarse(now)
+	w.pruneCoarse(ctx, now)
 	return nil
 }
 
@@ -125,8 +125,8 @@ func (w *Worker) downsampleOnce(now time.Time) error {
 // strictly advances (the period it processes has its fine rows deleted on commit,
 // so the next call's MIN(bucket_start) moves forward), so the bounded loop in
 // downsampleOnce always terminates.
-func (w *Worker) downsampleNextPeriod(cutoff time.Time, coarse time.Duration) (done bool, err error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+func (w *Worker) downsampleNextPeriod(ctx context.Context, cutoff time.Time, coarse time.Duration) (done bool, err error) {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
 	// Oldest eligible fine bucket. NULL (no eligible rows) → nothing left to do.
@@ -203,7 +203,7 @@ func (w *Worker) downsampleNextPeriod(cutoff time.Time, coarse time.Duration) (d
 	if txErr != nil {
 		return false, txErr
 	}
-	slog.Debug("rollup worker: condensed coarse period",
+	slog.DebugContext(ctx, "rollup worker: condensed coarse period",
 		"period_start", periodStart, "coarse_seconds", coarseSeconds)
 	return false, nil
 }
@@ -212,23 +212,23 @@ func (w *Worker) downsampleNextPeriod(cutoff time.Time, coarse time.Duration) (d
 // starts before now-coarseRetention are deleted. A non-positive coarseRetention
 // disables the cap (aggregate history kept indefinitely — the design's
 // long-retention posture). Errors are logged and swallowed; the next pass retries.
-func (w *Worker) pruneCoarse(now time.Time) {
+func (w *Worker) pruneCoarse(ctx context.Context, now time.Time) {
 	if w.coarseRetention <= 0 {
 		return
 	}
 	horizon := now.UTC().Add(-w.coarseRetention)
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
 	res := w.db.WithContext(ctx).
 		Where("bucket_start < ?", horizon).
 		Delete(&models.PipelineRollupCoarse{})
 	if res.Error != nil {
-		slog.Warn("rollup worker: coarse prune failed", "error", res.Error)
+		slog.WarnContext(ctx, "rollup worker: coarse prune failed", "error", res.Error)
 		return
 	}
 	if res.RowsAffected > 0 {
-		slog.Info("rollup worker: pruned coarse rollups past retention",
+		slog.InfoContext(ctx, "rollup worker: pruned coarse rollups past retention",
 			"deleted", res.RowsAffected, "retention", w.coarseRetention)
 	}
 }

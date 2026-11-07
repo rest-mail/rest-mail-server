@@ -103,7 +103,7 @@ func TestSetDKIMKey_AcceptedKeySignsTheDomainsMail(t *testing.T) {
 
 			raw := "From: alice@" + domain.Name + "\r\nTo: bob@example.net\r\nSubject: hi\r\n" +
 				"Date: " + time.Now().UTC().Format(time.RFC1123Z) + "\r\n\r\nHello.\r\n"
-			signed, err := outbound.SignDKIM(tx, dkimTestMasterKey, domain.Name, raw)
+			signed, err := outbound.SignDKIM(context.Background(), tx, dkimTestMasterKey, domain.Name, raw)
 			if err != nil {
 				t.Fatalf("sign with the key the PUT stored: %v", err)
 			}

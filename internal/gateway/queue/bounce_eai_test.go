@@ -1,6 +1,7 @@
 package queue
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -48,7 +49,7 @@ func TestGenerateBounce_EAISender(t *testing.T) {
 	})
 
 	w := NewWorker(db, "mx.bounce-eai.test", 1, time.Second)
-	w.generateBounce(models.OutboundQueue{
+	w.generateBounce(context.Background(), models.OutboundQueue{
 		Sender:    sender,
 		Recipient: "carol@remote.test",
 		Domain:    "remote.test",

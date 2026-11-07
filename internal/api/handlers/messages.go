@@ -139,8 +139,8 @@ func (h *MessageHandler) recordTrace(ctx context.Context, t models.MessageTrace)
 // The signing itself lives in internal/outbound.SignDKIM, the only DKIM signer,
 // shared with the queue worker so submitted mail is signed by the same code
 // (#171).
-func (h *MessageHandler) signOutboundDKIM(senderDomain, raw string) (string, error) {
-	return outbound.SignDKIM(h.db, h.masterKey, senderDomain, raw)
+func (h *MessageHandler) signOutboundDKIM(ctx context.Context, senderDomain, raw string) (string, error) {
+	return outbound.SignDKIM(ctx, h.db, h.masterKey, senderDomain, raw)
 }
 
 // listMessagesRequest is a page of a folder, newest first. limit is 1 to 100 (50 otherwise);
@@ -1024,7 +1024,7 @@ func (h *MessageHandler) sendComposedMessage(r *http.Request, req sendMessageReq
 	// Sign the finalized outbound message over its actual transmitted bytes.
 	// OSI-8: a key that should decrypt but cannot fails closed — temp-fail the
 	// send (client retries) rather than deliver the message unsigned.
-	signedRaw, signErr := h.signOutboundDKIM(rmail.DomainFromAddress(req.From), rawMessage)
+	signedRaw, signErr := h.signOutboundDKIM(r.Context(), rmail.DomainFromAddress(req.From), rawMessage)
 	if signErr != nil {
 		return zero, endpoint.Refuse(http.StatusServiceUnavailable, "deferred", "Try again later")
 	}
@@ -2247,7 +2247,7 @@ func (h *MessageHandler) respondToCalendar(r *http.Request, in calendarReplyRequ
 		return CalendarReplied{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to build the calendar reply")
 	}
 	// OSI-8: fail closed if the DKIM key cannot sign (see signOutboundDKIM).
-	signedRaw, signErr := h.signOutboundDKIM(rmail.DomainFromAddress(req.From), rawMessage)
+	signedRaw, signErr := h.signOutboundDKIM(r.Context(), rmail.DomainFromAddress(req.From), rawMessage)
 	if signErr != nil {
 		return CalendarReplied{}, endpoint.Refuse(http.StatusServiceUnavailable, "deferred", "Try again later")
 	}

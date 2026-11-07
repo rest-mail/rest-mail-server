@@ -70,7 +70,7 @@ func TestSealARC(t *testing.T) {
 	})
 	results := "restmail; spf=pass smtp.mailfrom=remote.test; dkim=pass header.d=remote.test; dmarc=pass header.from=remote.test"
 
-	sealed, err := sealARC(forwardedMessage, arc.SealOptions{Domain: "forwarder.test", Selector: "sel", PrivateKey: first, AuthResults: results, ChainValidation: "none", Resolver: resolver})
+	sealed, err := sealARC(context.Background(), forwardedMessage, arc.SealOptions{Domain: "forwarder.test", Selector: "sel", PrivateKey: first, AuthResults: results, ChainValidation: "none", Resolver: resolver})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +87,7 @@ func TestSealARC(t *testing.T) {
 	}
 
 	// The next forwarder found the chain valid when the message arrived.
-	again, err := sealARC(sealed, arc.SealOptions{Domain: "second.test", Selector: "sel", PrivateKey: second, AuthResults: "restmail; arc=pass", ChainValidation: "pass", Resolver: resolver})
+	again, err := sealARC(context.Background(), sealed, arc.SealOptions{Domain: "second.test", Selector: "sel", PrivateKey: second, AuthResults: "restmail; arc=pass", ChainValidation: "pass", Resolver: resolver})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +100,7 @@ func TestSealARC(t *testing.T) {
 
 	// A verdict of none on a message that carries a chain is not trusted: the seal verifies
 	// the chain itself, and finds it valid.
-	checked, err := sealARC(sealed, arc.SealOptions{Domain: "second.test", Selector: "sel", PrivateKey: second, AuthResults: "restmail; arc=none", ChainValidation: "none", Resolver: resolver})
+	checked, err := sealARC(context.Background(), sealed, arc.SealOptions{Domain: "second.test", Selector: "sel", PrivateKey: second, AuthResults: "restmail; arc=none", ChainValidation: "none", Resolver: resolver})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,11 +109,11 @@ func TestSealARC(t *testing.T) {
 	}
 
 	// A chain whose latest seal says cv=fail is not continued.
-	failed, err := sealARC(sealed, arc.SealOptions{Domain: "second.test", Selector: "sel", PrivateKey: second, AuthResults: "restmail; arc=fail", ChainValidation: "fail", Resolver: resolver})
+	failed, err := sealARC(context.Background(), sealed, arc.SealOptions{Domain: "second.test", Selector: "sel", PrivateKey: second, AuthResults: "restmail; arc=fail", ChainValidation: "fail", Resolver: resolver})
 	if err != nil {
 		t.Fatal(err)
 	}
-	relayed, err := sealARC(failed, arc.SealOptions{Domain: "forwarder.test", Selector: "sel", PrivateKey: first, AuthResults: results, Resolver: resolver})
+	relayed, err := sealARC(context.Background(), failed, arc.SealOptions{Domain: "forwarder.test", Selector: "sel", PrivateKey: first, AuthResults: results, Resolver: resolver})
 	if err != nil || relayed != failed {
 		t.Errorf("a failed chain was sealed again (err %v):\n%s", err, relayed)
 	}
@@ -121,7 +121,7 @@ func TestSealARC(t *testing.T) {
 
 // With no domain key to seal with, the forward goes as it is.
 func TestSealARC_NoKey(t *testing.T) {
-	got, err := SealARC(nil, "", "forwarder.test", forwardedMessage, "restmail; none", "none")
+	got, err := SealARC(context.Background(), nil, "", "forwarder.test", forwardedMessage, "restmail; none", "none")
 	if err != nil || got != forwardedMessage {
 		t.Errorf("SealARC without a key: %v\n%s", err, got)
 	}

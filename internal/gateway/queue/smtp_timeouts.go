@@ -93,25 +93,28 @@ func writeDataBlocks(w io.Writer, flush func() error, raw string, arm func()) er
 // long its attempt runs. Every step of an attempt has its own bound, so the
 // attempt ends and the heartbeat with it; a crashed worker's heartbeat dies with
 // it, and the row comes back once the reclaim interval has passed.
-func (w *Worker) startHeartbeat(item models.OutboundQueue) (stop func()) {
+func (w *Worker) startHeartbeat(ctx context.Context, item models.OutboundQueue) (stop func()) {
 	every := w.heartbeatEvery
 	if every <= 0 {
 		every = defaultHeartbeat
 	}
 	ticker := time.NewTicker(every)
-	stopHeartbeat := w.startHeartbeatWithTicks(item, ticker.C)
+	stopHeartbeat := w.startHeartbeatWithTicks(ctx, item, ticker.C)
 	return func() {
 		ticker.Stop()
 		stopHeartbeat()
 	}
 }
 
-func (w *Worker) startHeartbeatWithTicks(item models.OutboundQueue, ticks <-chan time.Time) (stop func()) {
+func (w *Worker) startHeartbeatWithTicks(ctx context.Context, item models.OutboundQueue, ticks <-chan time.Time) (stop func()) {
 	db := w.heartbeatDB
 	if db == nil {
 		db = w.db
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	// The heartbeat keeps the attempt's values, so its lines carry the job ID,
+	// but not its cancellation: only stop ends it.
+	refreshContext := context.WithoutCancel(ctx)
+	ctx, cancel := context.WithCancel(refreshContext)
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
@@ -126,7 +129,7 @@ func (w *Worker) startHeartbeatWithTicks(item models.OutboundQueue, ticks <-chan
 				if ctx.Err() != nil {
 					return
 				}
-				if !refreshClaim(context.Background(), db, item) {
+				if !refreshClaim(refreshContext, db, item) {
 					return
 				}
 			}
@@ -151,12 +154,12 @@ func refreshClaim(ctx context.Context, db *gorm.DB, item models.OutboundQueue) b
 		UpdateColumn("last_attempt", time.Now())
 	if err := result.Error; err != nil {
 		if !errors.Is(err, context.Canceled) {
-			slog.Warn("queue: heartbeat failed", "id", item.ID, "error", err)
+			slog.WarnContext(ctx, "queue: heartbeat failed", "id", item.ID, "error", err)
 		}
 		return true
 	}
 	if result.RowsAffected == 0 {
-		slog.Warn("queue: this attempt no longer holds its row, heartbeat stopped", "id", item.ID, "attempt", item.Attempts)
+		slog.WarnContext(ctx, "queue: this attempt no longer holds its row, heartbeat stopped", "id", item.ID, "attempt", item.Attempts)
 		return false
 	}
 	return true

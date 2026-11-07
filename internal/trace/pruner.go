@@ -67,8 +67,8 @@ func (p *Pruner) loop() {
 		case <-p.stop:
 			return
 		case <-ticker.C:
-			_ = tracing.Job(context.Background(), "job.trace_prune", func(context.Context) error {
-				p.pruneOnce(p.now())
+			_ = tracing.Job(context.Background(), "job.trace_prune", func(ctx context.Context) error {
+				p.pruneOnce(ctx, p.now())
 				return nil
 			})
 		}
@@ -78,8 +78,8 @@ func (p *Pruner) loop() {
 // pruneOnce deletes expired traces and enforces the row-count backstop. Errors
 // are logged and swallowed — a failed prune must never crash the process; the
 // next tick retries.
-func (p *Pruner) pruneOnce(now time.Time) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+func (p *Pruner) pruneOnce(ctx context.Context, now time.Time) {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	db := p.db.WithContext(ctx)
 
@@ -88,9 +88,9 @@ func (p *Pruner) pruneOnce(now time.Time) {
 	// left to the row-count backstop.
 	res := db.Where("expires_at IS NOT NULL AND expires_at < ?", now).Delete(&models.MessageTrace{})
 	if res.Error != nil {
-		slog.Warn("trace pruner: expiry delete failed", "error", res.Error)
+		slog.WarnContext(ctx, "trace pruner: expiry delete failed", "error", res.Error)
 	} else if res.RowsAffected > 0 {
-		slog.Info("trace pruner: deleted expired traces", "count", res.RowsAffected)
+		slog.InfoContext(ctx, "trace pruner: deleted expired traces", "count", res.RowsAffected)
 	}
 
 	// 2. Hard backstop: if the table still exceeds maxRows, delete the oldest rows
@@ -102,7 +102,7 @@ func (p *Pruner) pruneOnce(now time.Time) {
 	}
 	var count int64
 	if err := db.Model(&models.MessageTrace{}).Count(&count).Error; err != nil {
-		slog.Warn("trace pruner: count failed", "error", err)
+		slog.WarnContext(ctx, "trace pruner: count failed", "error", err)
 		return
 	}
 	if count <= p.maxRows {
@@ -115,9 +115,9 @@ func (p *Pruner) pruneOnce(now time.Time) {
 		Select("id")
 	res = db.Where("id IN (?)", oldest).Delete(&models.MessageTrace{})
 	if res.Error != nil {
-		slog.Warn("trace pruner: backstop delete failed", "error", res.Error)
+		slog.WarnContext(ctx, "trace pruner: backstop delete failed", "error", res.Error)
 		return
 	}
-	slog.Info("trace pruner: backstop trimmed oldest traces",
+	slog.InfoContext(ctx, "trace pruner: backstop trimmed oldest traces",
 		"deleted", res.RowsAffected, "max_rows", p.maxRows)
 }

@@ -2,6 +2,7 @@ package queue
 
 import (
 	"bytes"
+	"context"
 	"net"
 	"sort"
 	"strconv"
@@ -26,13 +27,13 @@ func TestDANESessionsAreReported(t *testing.T) {
 		settings, finish := relayTestPeer(t, cert, relayPeerOptions{noAUTH: true})
 		w := daneTestWorker()
 		w.db = db
-		_ = w.deliverSMTPWith(net.JoinHostPort(settings.host, strconv.Itoa(settings.port)), settings.host, tlsTestItem(), nil, nil, records)
+		_ = w.deliverSMTPWith(context.Background(), net.JoinHostPort(settings.host, strconv.Itoa(settings.port)), settings.host, tlsTestItem(), nil, nil, records)
 		finish()
 	}
 	w := daneTestWorker()
 	w.db = db
 	w.dane = fakeDANE{tlsaSec: dane.Bogus}
-	if _, err := w.daneRecords("example.test", "mx.example.test", true); err == nil {
+	if _, err := w.daneRecords(context.Background(), "example.test", "mx.example.test", true); err == nil {
 		t.Fatal("a bogus TLSA lookup did not defer")
 	}
 

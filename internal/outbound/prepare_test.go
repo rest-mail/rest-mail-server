@@ -1,6 +1,7 @@
 package outbound
 
 import (
+	"context"
 	"strings"
 	"testing"
 )
@@ -64,7 +65,7 @@ func TestHasDKIMSignature(t *testing.T) {
 // privacy fix does not depend on DKIM being configured.
 func TestPrepare_NilDBStripsBccLeavesUnsigned(t *testing.T) {
 	raw := "From: a@b.com\r\nBcc: hidden@x.com\r\n\r\nbody\r\n"
-	got, err := Prepare(nil, "", "b.com", raw)
+	got, err := Prepare(context.Background(), nil, "", "b.com", raw)
 	if err != nil {
 		t.Fatalf("Prepare: %v", err)
 	}
@@ -80,7 +81,7 @@ func TestPrepare_NilDBStripsBccLeavesUnsigned(t *testing.T) {
 // the bytes are returned unchanged (nothing to strip, nothing to re-sign).
 func TestPrepare_AlreadySignedPassthrough(t *testing.T) {
 	raw := "DKIM-Signature: v=1; d=x; b=zz\r\nFrom: a@b.com\r\nTo: c@d.com\r\n\r\nbody\r\n"
-	got, err := Prepare(nil, "", "b.com", raw)
+	got, err := Prepare(context.Background(), nil, "", "b.com", raw)
 	if err != nil {
 		t.Fatalf("Prepare: %v", err)
 	}

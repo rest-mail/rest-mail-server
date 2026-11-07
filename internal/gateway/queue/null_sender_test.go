@@ -1,6 +1,7 @@
 package queue
 
 import (
+	"context"
 	"testing"
 
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
@@ -27,6 +28,6 @@ func TestSendsAs(t *testing.T) {
 // worker has no database, so looking for a mailbox to bounce into would panic.
 func TestGenerateBounce_NullSenderIsNeverBounced(t *testing.T) {
 	w := &Worker{}
-	w.generateBounce(models.OutboundQueue{ID: 7, Sender: "", SendingDomain: "hosted.test", Recipient: "bob@example.net"},
+	w.generateBounce(context.Background(), models.OutboundQueue{ID: 7, Sender: "", SendingDomain: "hosted.test", Recipient: "bob@example.net"},
 		&SMTPError{Code: 550, Enhanced: "5.1.1", Message: "no such user"})
 }
