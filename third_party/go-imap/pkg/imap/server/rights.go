@@ -11,6 +11,8 @@ import (
 // STATUS is refused and LIST marks it \Noselect (RFC 9051 §6.3.9.2).
 var errNotReadable = errors.New("imap: mailbox not readable")
 
+var errNoSuchMailbox = errors.New("imap: no such mailbox")
+
 // refusedDestination is the error of an APPEND, COPY or MOVE whose destination
 // the user's rights refuse before the store sees it; code is the response code
 // the tagged NO carries, or "" for none.

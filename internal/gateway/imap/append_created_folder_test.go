@@ -52,6 +52,11 @@ func TestAPPENDToCreatedFolderPreservesImportedFlags(t *testing.T) {
 			backend := NewBackend(apiclient.New(srv.URL), nil)
 			creator := newTranscript(t, backend)
 			creator.login("login")
+			for _, command := range []string{"STATUS Cutover (MESSAGES)", "SELECT Cutover", "EXAMINE Cutover"} {
+				if _, status := creator.command("missing", "%s", command); status != "missing NO [NONEXISTENT] No such mailbox" {
+					t.Fatalf("%s before CREATE: %s", command, status)
+				}
+			}
 			if _, status := creator.command("create", "CREATE Cutover"); status != "create OK CREATE completed" {
 				t.Fatal(status)
 			}

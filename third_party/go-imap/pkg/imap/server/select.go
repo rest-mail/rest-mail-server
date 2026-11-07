@@ -83,10 +83,16 @@ func (s *Session) handleSelect(tag, args string, readOnly bool) {
 	if readOnly {
 		cmd = "EXAMINE"
 	}
-	rights, _ := s.mailboxRights(folder)
+	rights, reported := s.mailboxRights(folder)
 	if !rights.Read {
 		s.tagged(tag, "NO", "[NOPERM] Mailbox cannot be read")
 		return
+	}
+	if reported {
+		if exists, err := s.folderExists(folder); err == nil && !exists {
+			s.tagged(tag, "NO", "[NONEXISTENT] No such mailbox")
+			return
+		}
 	}
 	readOnly = readOnly || !rights.Write
 
@@ -198,6 +204,10 @@ func (s *Session) handleStatus(tag, args string) {
 		s.tagged(tag, "NO", "[NOPERM] Mailbox cannot be read")
 		return
 	}
+	if errors.Is(err, errNoSuchMailbox) {
+		s.tagged(tag, "NO", "[NONEXISTENT] No such mailbox")
+		return
+	}
 	if err != nil {
 		s.tagged(tag, "NO", "Failed to get status")
 		return
@@ -226,8 +236,14 @@ var statusItems = map[string]bool{"MESSAGES": true, "RECENT": true, "UNSEEN": tr
 // requested items, in the order asked, read fresh from the store so neither
 // the selected mailbox nor any flag changes.
 func (s *Session) statusData(folder string, items []string) (string, error) {
-	if !s.mayRead(folder) {
+	rights, reported := s.mailboxRights(folder)
+	if !rights.Read {
 		return "", errNotReadable
+	}
+	if reported {
+		if exists, err := s.folderExists(folder); err == nil && !exists {
+			return "", errNoSuchMailbox
+		}
 	}
 	messages, err := s.mailbox.Messages(folder)
 	if err != nil {
