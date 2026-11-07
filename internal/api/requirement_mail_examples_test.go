@@ -350,7 +350,7 @@ func TestEventStreamRequirementExample(t *testing.T) {
 	w := requirementStreamWriter{rr, func() {
 		if !flushed {
 			flushed = true
-			broker.Publish(1, handlers.SSEEvent{Type: "ping", Data: map[string]any{}})
+			broker.Publish(context.Background(), 1, handlers.SSEEvent{Type: "ping", Data: map[string]any{}})
 		} else {
 			cancel()
 		}

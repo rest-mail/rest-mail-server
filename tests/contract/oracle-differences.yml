@@ -163,7 +163,7 @@
   reason: >-
     The API field is a Go float32, described as float; the oracle leaves its numeric precision unspecified.
 - operation: getMessageTrace
-  difference: "response 200 application/json.properties.data.required: openapi.yaml [\"created_at\",\"direction\",\"duration_ms\",\"final_action\",\"id\",\"outcome\",\"pipeline_id\",\"sampled\",\"transport\"], generated [\"client_ip\",\"created_at\",\"direction\",\"duration_ms\",\"final_action\",\"id\",\"mail_from\",\"message_id\",\"outcome\",\"pipeline_id\",\"rcpt_to\",\"reason_code\",\"rfc_message_id\",\"sampled\",\"stages\",\"transport\"]"
+  difference: "response 200 application/json.properties.data.required: openapi.yaml [\"created_at\",\"direction\",\"duration_ms\",\"final_action\",\"id\",\"outcome\",\"pipeline_id\",\"sampled\",\"transport\"], generated [\"client_ip\",\"created_at\",\"direction\",\"duration_ms\",\"final_action\",\"id\",\"mail_from\",\"message_id\",\"outcome\",\"pipeline_id\",\"rcpt_to\",\"reason_code\",\"request_id\",\"rfc_message_id\",\"sampled\",\"stages\",\"transport\"]"
   reason: >-
     A trace always serializes correlation ids, envelope details, reason_code and stages, even when empty or message_id is null. The oracle incorrectly makes those fields optional.
 - operation: getPipelineAnalytics
@@ -263,7 +263,7 @@
   reason: >-
     The API field is a Go float32, described as float; the oracle leaves its numeric precision unspecified.
 - operation: listPipelineLogs
-  difference: "response 200 application/json.properties.data.items.required: openapi.yaml [\"created_at\",\"direction\",\"duration_ms\",\"final_action\",\"id\",\"outcome\",\"pipeline_id\",\"sampled\",\"transport\"], generated [\"client_ip\",\"created_at\",\"direction\",\"duration_ms\",\"final_action\",\"id\",\"mail_from\",\"message_id\",\"outcome\",\"pipeline_id\",\"rcpt_to\",\"reason_code\",\"rfc_message_id\",\"sampled\",\"stages\",\"transport\"]"
+  difference: "response 200 application/json.properties.data.items.required: openapi.yaml [\"created_at\",\"direction\",\"duration_ms\",\"final_action\",\"id\",\"outcome\",\"pipeline_id\",\"sampled\",\"transport\"], generated [\"client_ip\",\"created_at\",\"direction\",\"duration_ms\",\"final_action\",\"id\",\"mail_from\",\"message_id\",\"outcome\",\"pipeline_id\",\"rcpt_to\",\"reason_code\",\"request_id\",\"rfc_message_id\",\"sampled\",\"stages\",\"transport\"]"
   reason: >-
     A trace always serializes correlation ids, envelope details, reason_code and stages, even when empty or message_id is null. The oracle incorrectly makes those fields optional.
 - operation: listPipelineLogs

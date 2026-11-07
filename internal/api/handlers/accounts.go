@@ -415,7 +415,7 @@ func (h *AccountHandler) create(r *http.Request, req createAccountRequest) (acco
 	case errors.Is(err, errExists):
 		return accountResponse{}, endpoint.Refuse(http.StatusConflict, "already_exists", "An account with this address already exists")
 	case err != nil:
-		slog.Error("creating an account failed", "address", address, "error", err)
+		slog.ErrorContext(r.Context(), "creating an account failed", "address", address, "error", err)
 		return accountResponse{}, fmt.Errorf("create the account: %w", err)
 	}
 	h.cache.Invalidate()
@@ -523,7 +523,7 @@ func (h *AccountHandler) link(r *http.Request, req linkAccountRequest) (accountR
 	case errors.Is(err, grants.ErrExists):
 		return accountResponse{}, endpoint.Refuse(http.StatusConflict, "already_exists", "This account is already linked")
 	case err != nil:
-		slog.Error("linking an account failed", "account_id", account.ID, "error", err)
+		slog.ErrorContext(r.Context(), "linking an account failed", "account_id", account.ID, "error", err)
 		return accountResponse{}, fmt.Errorf("link the account: %w", err)
 	}
 	h.cache.Invalidate()
@@ -578,7 +578,7 @@ func (h *AccountHandler) unlink(r *http.Request, in accountPath) (endpoint.Empty
 	case errors.Is(err, errNoGrant):
 		return endpoint.Empty{}, errLinkNotFound
 	case err != nil:
-		slog.Error("unlinking an account failed", "account_id", account.ID, "error", err)
+		slog.ErrorContext(r.Context(), "unlinking an account failed", "account_id", account.ID, "error", err)
 		return endpoint.Empty{}, fmt.Errorf("unlink the account: %w", err)
 	}
 	h.cache.Invalidate()

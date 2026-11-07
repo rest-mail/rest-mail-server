@@ -18010,6 +18010,7 @@
             "mail_from": "sender@example.com",
             "rcpt_to": "recipient@example.com",
             "client_ip": "192.0.2.10",
+            "request_id": "4f9c2d7e1a0b3c5d6e7f8091a2b3c4d5",
             "pipeline_id": 7,
             "final_action": "continue",
             "outcome": "delivered",

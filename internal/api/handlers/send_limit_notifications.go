@@ -30,7 +30,7 @@ func (h *MessageHandler) dispatchSendLimitNotices(ctx context.Context) {
 			// Sending before the outbox mark commits gives at-least-once dispatch;
 			// APNs already coalesces retries, and SSE clients key messages by their id.
 			if h.broker != nil {
-				h.broker.Publish(n.OwnerID, SSEEvent{Type: "new_message", Data: map[string]any{"message_id": n.MessageID, "folder": "INBOX", "subject": "REST Mail sending limit reached"}})
+				h.broker.Publish(ctx, n.OwnerID, SSEEvent{Type: "new_message", Data: map[string]any{"message_id": n.MessageID, "folder": "INBOX", "subject": "REST Mail sending limit reached"}})
 			}
 			if h.newMail != nil {
 				h.newMail.NewMail(n.OwnerID)

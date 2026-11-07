@@ -20726,6 +20726,9 @@ components:
           description: First envelope recipient
         client_ip:
           type: string
+        request_id:
+          type: [string, "null"]
+          description: ID of the request that ran the pipeline, the request_id on its gateway and API log lines; null when none was recorded
         pipeline_id:
           type: integer
         final_action:

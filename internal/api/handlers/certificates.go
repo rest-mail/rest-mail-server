@@ -116,7 +116,7 @@ func (h *CertificateHandler) createCertificate(r *http.Request, req createCertif
 		}
 		keyToStore = encrypted
 	} else {
-		slog.Warn("Certificate private key stored in plaintext: MASTER_KEY not configured")
+		slog.WarnContext(r.Context(), "Certificate private key stored in plaintext: MASTER_KEY not configured")
 	}
 
 	autoRenew := true

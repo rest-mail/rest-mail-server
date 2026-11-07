@@ -513,7 +513,7 @@ func (h *ContactHandler) importContacts(r *http.Request, in contactsPath) (Conta
 	if r.ContentLength < 0 || r.ContentLength > allowed {
 		// When a higher limit can't be confirmed, the upload is held to the default.
 		if stored, err := contactImportMaxBytes(h.db.WithContext(r.Context())); err != nil {
-			slog.Error("could not read the contact import limit", "error", err)
+			slog.ErrorContext(r.Context(), "could not read the contact import limit", "error", err)
 		} else {
 			allowed = stored
 		}

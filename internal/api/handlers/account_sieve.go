@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -155,7 +156,7 @@ func withSieveScript(cfg *pipeline.PipelineConfig, mailboxID uint, script, hash 
 // when none did. A folder that is not there is made by delivering into it, which is what
 // fileinto :create asks for (RFC 5490 §3.2) and what §4.1 allows without it. A name the
 // folder rules refuse, or that names INBOX in another case, is delivered to INBOX, logged.
-func sieveFolder(email *pipeline.EmailJSON, mailbox string) string {
+func sieveFolder(ctx context.Context, email *pipeline.EmailJSON, mailbox string) string {
 	if email == nil || email.Metadata == nil {
 		return "INBOX"
 	}
@@ -164,7 +165,7 @@ func sieveFolder(email *pipeline.EmailJSON, mailbox string) string {
 		return "INBOX"
 	}
 	if problem := rmail.FolderNameProblem(folder); problem != "" {
-		slog.Warn("deliverToLocal: sieve fileinto names a folder that cannot be made; delivering to INBOX",
+		slog.WarnContext(ctx, "deliverToLocal: sieve fileinto names a folder that cannot be made; delivering to INBOX",
 			"mailbox", mailbox, "folder", folder, "problem", problem)
 		return "INBOX"
 	}

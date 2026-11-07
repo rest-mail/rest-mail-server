@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -47,7 +48,7 @@ func TestBuildRedirectForwards_ForwardsOriginalMessage(t *testing.T) {
 		{Method: pipeline.AuthARC, Result: "none"},
 		{Method: pipeline.AuthDMARC, Result: "pass", Property: pipeline.PropHeaderFrom, Domain: "remote.test"},
 	}
-	forwards := buildRedirectForwards(
+	forwards := buildRedirectForwards(context.Background(),
 		redirectEmail([]string{"fwd@example.com"}, true),
 		originalRaw,
 		"alice@remote.test",
@@ -99,7 +100,7 @@ func TestBuildRedirectForwards_LoopSuppressed_DeliveredToChain(t *testing.T) {
 		"\r\n" +
 		"body\r\n"
 
-	forwards := buildRedirectForwards(
+	forwards := buildRedirectForwards(context.Background(),
 		redirectEmail([]string{"fwd@example.com"}, true),
 		originalRaw,
 		"alice@remote.test",
@@ -115,7 +116,7 @@ func TestBuildRedirectForwards_LoopSuppressed_DeliveredToChain(t *testing.T) {
 // TestBuildRedirectForwards_LoopSuppressed_SelfRecipient: forwarding to one of
 // the current recipients (a self-redirect) is suppressed.
 func TestBuildRedirectForwards_LoopSuppressed_SelfRecipient(t *testing.T) {
-	forwards := buildRedirectForwards(
+	forwards := buildRedirectForwards(context.Background(),
 		redirectEmail([]string{"user@local.test"}, true),
 		"From: a@b.test\r\n\r\nbody\r\n",
 		"a@b.test",
@@ -130,15 +131,15 @@ func TestBuildRedirectForwards_LoopSuppressed_SelfRecipient(t *testing.T) {
 
 // TestBuildRedirectForwards_NoMetadata: no redirect metadata yields no forwards.
 func TestBuildRedirectForwards_NoMetadata(t *testing.T) {
-	if f := buildRedirectForwards(&pipeline.EmailJSON{}, "raw", "a@b.test", nil, "local.test", nil); len(f) != 0 {
+	if f := buildRedirectForwards(context.Background(), &pipeline.EmailJSON{}, "raw", "a@b.test", nil, "local.test", nil); len(f) != 0 {
 		t.Errorf("expected no forwards without redirect metadata, got %d", len(f))
 	}
-	if f := buildRedirectForwards(nil, "raw", "a@b.test", nil, "local.test", nil); len(f) != 0 {
+	if f := buildRedirectForwards(context.Background(), nil, "raw", "a@b.test", nil, "local.test", nil); len(f) != 0 {
 		t.Errorf("expected no forwards for nil email, got %d", len(f))
 	}
 	// No original bytes to forward: fall back to keeping locally (no forward), so
 	// a redirect that cannot be honoured never loses the message.
-	if f := buildRedirectForwards(redirectEmail([]string{"x@y.test"}, true), "", "a@b.test", nil, "local.test", nil); len(f) != 0 {
+	if f := buildRedirectForwards(context.Background(), redirectEmail([]string{"x@y.test"}, true), "", "a@b.test", nil, "local.test", nil); len(f) != 0 {
 		t.Errorf("expected no forwards when there is no original message, got %d", len(f))
 	}
 }

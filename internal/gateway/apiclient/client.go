@@ -17,6 +17,7 @@ import (
 
 	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
 	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
+	"github.com/rest-mail/rest-mail-server/internal/requestid"
 )
 
 const (
@@ -65,6 +66,27 @@ type Client struct {
 	// is always a finite, bounded value (never zero/infinite); it defaults to
 	// defaultRequestTimeout when the option is not supplied.
 	msgDeadline time.Duration
+
+	// requestID is the connection's ID (#1580), sent as X-Request-Id on every
+	// call so the API's log lines for it carry the gateway's. Empty: none sent.
+	requestID string
+}
+
+// WithRequestID returns a copy of c that sends id as the X-Request-Id header on
+// every call (#1580). The copy shares c's connections; a gateway makes one per
+// mail-client connection, with the ID it logs that connection's lines under.
+func (c *Client) WithRequestID(id string) *Client {
+	cp := *c
+	cp.requestID = id
+	return &cp
+}
+
+// send performs req with client, carrying the connection's ID when there is one.
+func (c *Client) send(client *http.Client, req *http.Request) (*http.Response, error) {
+	if c.requestID != "" {
+		req.Header.Set(requestid.Header, c.requestID)
+	}
+	return client.Do(req)
 }
 
 // Option configures a Client at construction time.
@@ -165,7 +187,7 @@ func (c *Client) OpenSession(email, password, protocol string) (*apitypes.Gatewa
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	httpResp, err := c.internalHTTPClient.Do(req)
+	httpResp, err := c.send(c.internalHTTPClient, req)
 	if err != nil {
 		return nil, fmt.Errorf("POST /api/v1/gateway-sessions: %w", err)
 	}
@@ -216,7 +238,12 @@ func (c *Client) Login(email, password, totpCode string) (*LoginResponse, error)
 	if err != nil {
 		return nil, err
 	}
-	httpResp, err := c.httpClient.Post(c.baseURL+"/api/v1/auth/login", "application/json", bytes.NewReader(jsonBody))
+	loginReq, err := http.NewRequest(http.MethodPost, c.baseURL+"/api/v1/auth/login", bytes.NewReader(jsonBody))
+	if err != nil {
+		return nil, err
+	}
+	loginReq.Header.Set("Content-Type", "application/json")
+	httpResp, err := c.send(c.httpClient, loginReq)
 	if err != nil {
 		return nil, fmt.Errorf("POST /api/v1/auth/login: %w", err)
 	}
@@ -421,7 +448,7 @@ func (c *Client) GetRawMessage(token string, msgID uint) (string, error) {
 		return "", err
 	}
 	authorize(req, token)
-	resp, err := client.Do(req)
+	resp, err := c.send(client, req)
 	if err != nil {
 		return "", fmt.Errorf("GET raw message %d: %w", msgID, err)
 	}
@@ -644,7 +671,11 @@ func (c *Client) ListBans(token string) (*BanListResponse, error) {
 
 // get performs a tokenless GET against the public destination.
 func (c *Client) get(path string, out interface{}) error {
-	resp, err := c.httpClient.Get(c.baseURL + path)
+	req, err := http.NewRequest(http.MethodGet, c.baseURL+path, nil)
+	if err != nil {
+		return err
+	}
+	resp, err := c.send(c.httpClient, req)
 	if err != nil {
 		return fmt.Errorf("GET %s: %w", path, err)
 	}
@@ -660,7 +691,7 @@ func (c *Client) getInternal(ctx context.Context, path string, out interface{}) 
 	if err != nil {
 		return err
 	}
-	resp, err := c.internalHTTPClient.Do(req)
+	resp, err := c.send(c.internalHTTPClient, req)
 	if err != nil {
 		return fmt.Errorf("GET %s: %w", path, err)
 	}
@@ -682,7 +713,7 @@ func (c *Client) postInternal(ctx context.Context, path string, body interface{}
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := c.internalHTTPClient.Do(req)
+	resp, err := c.send(c.internalHTTPClient, req)
 	if err != nil {
 		return fmt.Errorf("POST %s: %w", path, err)
 	}
@@ -697,7 +728,7 @@ func (c *Client) getAuth(path, token string, out interface{}) error {
 		return err
 	}
 	authorize(req, token)
-	resp, err := client.Do(req)
+	resp, err := c.send(client, req)
 	if err != nil {
 		return fmt.Errorf("GET %s: %w", path, err)
 	}
@@ -717,7 +748,7 @@ func (c *Client) postAuth(path, token string, body interface{}, out interface{})
 	}
 	authorize(req, token)
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := client.Do(req)
+	resp, err := c.send(client, req)
 	if err != nil {
 		return fmt.Errorf("POST %s: %w", path, err)
 	}
@@ -740,7 +771,7 @@ func (c *Client) patchAuth(path, token string, body interface{}, out interface{}
 	}
 	authorize(req, token)
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := client.Do(req)
+	resp, err := c.send(client, req)
 	if err != nil {
 		return fmt.Errorf("PATCH %s: %w", path, err)
 	}
@@ -758,7 +789,7 @@ func (c *Client) deleteAuth(path, token string) error {
 		return err
 	}
 	authorize(req, token)
-	resp, err := client.Do(req)
+	resp, err := c.send(client, req)
 	if err != nil {
 		return fmt.Errorf("DELETE %s: %w", path, err)
 	}

@@ -45,7 +45,10 @@ const maxRecipients = 100
 // protocol mechanics (command parsing, STARTTLS, SASL exchange, DATA
 // dot-reader with SMTP-smuggling hardening) live in go-smtp.
 type session struct {
-	conn         *smtpserver.Conn
+	conn *smtpserver.Conn
+	// log carries the connection's request_id (#1580); every line the
+	// session writes goes through it.
+	log          *slog.Logger
 	api          Backend
 	store        Store
 	limiter      *connlimiter.Limiter
@@ -134,7 +137,7 @@ func (s *session) tarpitReject() {
 	if d <= 0 {
 		return
 	}
-	slog.Warn("smtp: tarpitting abusive session",
+	s.log.Warn("smtp: tarpitting abusive session",
 		"remote", s.remoteAddr(),
 		"errors", s.tarpitN,
 		"delay", d.String(),
@@ -165,7 +168,7 @@ func (s *session) transferConn() *transferRateConn {
 	}
 	rc, ok := conn.(*transferRateConn)
 	if !ok {
-		slog.Debug("smtp: transfer-rate enforcement unavailable: unexpected connection wrapping",
+		s.log.Debug("smtp: transfer-rate enforcement unavailable: unexpected connection wrapping",
 			"remote", s.remoteAddr(), "conn_type", fmt.Sprintf("%T", conn))
 		return nil
 	}
@@ -305,7 +308,7 @@ func (s *session) login(username, password string) error {
 	// Hard stop before any API call: reject a banned client or a banned target
 	// account without verifying the password.
 	if s.limiter.IsBanned(ip) || s.limiter.IsUserBanned(username) {
-		slog.Warn("smtp: auth rejected: banned",
+		s.log.Warn("smtp: auth rejected: banned",
 			"remote", s.remoteAddr(),
 			"user", maskEmail(username),
 			"event", "smtp_auth_banned",
@@ -323,7 +326,7 @@ func (s *session) login(username, password string) error {
 		// this path (credential-stuffing / user-enumeration probes), so it is
 		// masked rather than logged in the clear. The authenticated (success) path
 		// below still logs the real user for audit.
-		slog.Warn("smtp: auth failed",
+		s.log.Warn("smtp: auth failed",
 			"remote", s.remoteAddr(),
 			"user", maskEmail(username),
 			"event", "smtp_auth_failed",
@@ -368,7 +371,7 @@ func (s *session) login(username, password string) error {
 	s.credentialKind = resp.CredentialKind
 	s.apiSession = resp.Token
 
-	slog.Info("smtp: authenticated", "remote", s.remoteAddr(), "user", username)
+	s.log.Info("smtp: authenticated", "remote", s.remoteAddr(), "user", username)
 	return nil
 }
 
@@ -424,7 +427,7 @@ func (s *session) Mail(from string, opts *gosmtp.MailOptions) error {
 	if s.isSubmission && s.authenticated && s.credentialID != 0 {
 		usable, err := s.store.CredentialUsable(s.credentialID)
 		if err != nil {
-			slog.Error("smtp: could not check the credential", "user", maskEmail(s.authEmail), "error", err)
+			s.log.Error("smtp: could not check the credential", "user", maskEmail(s.authEmail), "error", err)
 			return &gosmtp.SMTPError{
 				Code:         451,
 				EnhancedCode: gosmtp.EnhancedCode{4, 3, 0},
@@ -432,7 +435,7 @@ func (s *session) Mail(from string, opts *gosmtp.MailOptions) error {
 			}
 		}
 		if !usable {
-			slog.Warn("smtp: credential no longer usable", "user", maskEmail(s.authEmail), "event", "smtp_credential_unusable")
+			s.log.Warn("smtp: credential no longer usable", "user", maskEmail(s.authEmail), "event", "smtp_credential_unusable")
 			s.authenticated, s.authEmail, s.accountID, s.credentialID, s.credentialKind = false, "", 0, 0, ""
 			s.closeAPISession()
 			return &gosmtp.SMTPError{
@@ -450,7 +453,7 @@ func (s *session) Mail(from string, opts *gosmtp.MailOptions) error {
 		if err != nil || !authorized {
 			// OSI-5: mask the addresses — a mismatching MAIL FROM is a spoofing
 			// attempt and both values are logged in the clear otherwise.
-			slog.Warn("smtp: sender not authorized", "auth_user", maskEmail(s.authEmail), "mail_from", maskEmail(from), "error", err)
+			s.log.Warn("smtp: sender not authorized", "auth_user", maskEmail(s.authEmail), "mail_from", maskEmail(from), "error", err)
 			return &gosmtp.SMTPError{
 				Code:         553,
 				EnhancedCode: gosmtp.EnhancedCode{5, 7, 1},
@@ -488,7 +491,7 @@ func (s *session) Mail(from string, opts *gosmtp.MailOptions) error {
 // logs since a mismatch is a spoofing signal.
 func (s *session) authorizeFromHeader(fromAddr string) error {
 	if fromAddr == "" {
-		slog.Warn("smtp: submission rejected: no usable From header", "auth_user", maskEmail(s.authEmail))
+		s.log.Warn("smtp: submission rejected: no usable From header", "auth_user", maskEmail(s.authEmail))
 		return &gosmtp.SMTPError{
 			Code:         550,
 			EnhancedCode: gosmtp.EnhancedCode{5, 6, 0},
@@ -497,7 +500,7 @@ func (s *session) authorizeFromHeader(fromAddr string) error {
 	}
 	authorized, err := s.maySendAs(fromAddr)
 	if err != nil || !authorized {
-		slog.Warn("smtp: From header not authorized",
+		s.log.Warn("smtp: From header not authorized",
 			"auth_user", maskEmail(s.authEmail), "header_from", maskEmail(fromAddr), "error", err)
 		return &gosmtp.SMTPError{
 			Code:         550,
@@ -516,7 +519,7 @@ func (s *session) authorizeFromHeader(fromAddr string) error {
 func (s *session) followSendingPolicy(fromAddr string, message io.Reader) error {
 	policy, err := s.store.SendingPolicy(fromAddr)
 	if err != nil {
-		slog.Error("smtp: could not read the sending policy", "header_from", maskEmail(fromAddr), "error", err)
+		s.log.Error("smtp: could not read the sending policy", "header_from", maskEmail(fromAddr), "error", err)
 		return &gosmtp.SMTPError{
 			Code:         451,
 			EnhancedCode: gosmtp.EnhancedCode{4, 3, 0},
@@ -586,7 +589,7 @@ func (s *session) Rcpt(to string, _ *gosmtp.RcptOptions) error {
 			return &gosmtp.SMTPError{Code: 550, EnhancedCode: gosmtp.EnhancedCode{5, 1, 1}, Message: reason}
 		}
 		// If the API is unreachable, temp fail.
-		slog.Error("smtp: API error checking mailbox", "address", to, "error", err)
+		s.log.Error("smtp: API error checking mailbox", "address", to, "error", err)
 		return &gosmtp.SMTPError{
 			Code:         451,
 			EnhancedCode: gosmtp.EnhancedCode{4, 3, 0},
@@ -624,7 +627,7 @@ func (s *session) rcptSRS(to string) (handled bool, err error) {
 	forwardingDomain := rmail.DomainFromAddress(to)
 	hosted, err := s.store.HostedDomain(forwardingDomain)
 	if err != nil {
-		slog.Error("smtp: could not check the domain of an SRS address", "domain", forwardingDomain, "error", err)
+		s.log.Error("smtp: could not check the domain of an SRS address", "domain", forwardingDomain, "error", err)
 		return true, &gosmtp.SMTPError{
 			Code:         451,
 			EnhancedCode: gosmtp.EnhancedCode{4, 3, 0},
@@ -636,7 +639,7 @@ func (s *session) rcptSRS(to string) (handled bool, err error) {
 	}
 	original, err := s.srs.Reverse(to, time.Now())
 	if err != nil {
-		slog.Info("smtp: refusing an SRS address", "remote", s.remoteAddr(), "reason", err)
+		s.log.Info("smtp: refusing an SRS address", "remote", s.remoteAddr(), "reason", err)
 		s.tarpitReject()
 		return true, &gosmtp.SMTPError{
 			Code:         550,
@@ -686,10 +689,10 @@ func (s *session) Data(r io.Reader) (err error) {
 		var smtpErr *gosmtp.SMTPError
 		if errors.As(err, &smtpErr) {
 			// e.g. message exceeds MaxMessageBytes (552).
-			slog.Warn("smtp: rejecting DATA", "remote", s.remoteAddr(), "error", err)
+			s.log.Warn("smtp: rejecting DATA", "remote", s.remoteAddr(), "error", err)
 			return smtpErr
 		}
-		slog.Error("smtp: error reading DATA", "remote", s.remoteAddr(), "error", err)
+		s.log.Error("smtp: error reading DATA", "remote", s.remoteAddr(), "error", err)
 		return &gosmtp.SMTPError{
 			Code:         451,
 			EnhancedCode: gosmtp.EnhancedCode{4, 3, 0},
@@ -709,11 +712,11 @@ func (s *session) Data(r io.Reader) (err error) {
 	// as Postfix's hopcount_limit refuses it (RFC 3463 5.4.6, routing loop detected).
 	receivedCount, err := rmime.CountReceived(message.reader())
 	if err != nil {
-		slog.Error("smtp: error reading the message from disk", "remote", s.remoteAddr(), "error", err)
+		s.log.Error("smtp: error reading the message from disk", "remote", s.remoteAddr(), "error", err)
 		return messageDiskFailure()
 	}
 	if receivedCount+1 > rmime.CurrentLimits().MaxReceived {
-		slog.Warn("smtp: rejecting DATA: too many Received headers", "remote", s.remoteAddr(), "event", "smtp_hop_limit")
+		s.log.Warn("smtp: rejecting DATA: too many Received headers", "remote", s.remoteAddr(), "event", "smtp_hop_limit")
 		return &gosmtp.SMTPError{
 			Code:         554,
 			EnhancedCode: gosmtp.EnhancedCode{5, 4, 6},
@@ -729,7 +732,7 @@ func (s *session) Data(r io.Reader) (err error) {
 	budget, persistentBudget := s.store.(SubmissionBudget)
 	persistentBudget = persistentBudget && budget.PersistentSendLimits()
 	if s.isSubmission && s.authenticated && !persistentBudget && !s.subLimiter.Allow(s.rateLimitKey()) {
-		slog.Warn("smtp: submission rate limit exceeded",
+		s.log.Warn("smtp: submission rate limit exceeded",
 			"user", s.authEmail, "account_id", s.accountID, "event", "smtp_submission_rate_limited")
 		return &gosmtp.SMTPError{
 			Code:         451,
@@ -743,7 +746,7 @@ func (s *session) Data(r io.Reader) (err error) {
 	if errors.Is(parseErr, rmime.ErrStructureLimit) {
 		// Nested deeper or holding more parts than the MIME limits allow (#1641): a media
 		// problem the sender must fix, so refused for good (RFC 3463 5.6.0).
-		slog.Warn("smtp: rejecting DATA: MIME structure over limit", "remote", s.remoteAddr(), "error", parseErr, "event", "smtp_mime_limit")
+		s.log.Warn("smtp: rejecting DATA: MIME structure over limit", "remote", s.remoteAddr(), "error", parseErr, "event", "smtp_mime_limit")
 		return &gosmtp.SMTPError{
 			Code:         554,
 			EnhancedCode: gosmtp.EnhancedCode{5, 6, 0},
@@ -751,7 +754,7 @@ func (s *session) Data(r io.Reader) (err error) {
 		}
 	}
 	if parseErr != nil {
-		slog.Error("smtp: error reading the message from disk", "remote", s.remoteAddr(), "error", parseErr)
+		s.log.Error("smtp: error reading the message from disk", "remote", s.remoteAddr(), "error", parseErr)
 		return messageDiskFailure()
 	}
 	defer parsed.remove()
@@ -778,7 +781,7 @@ func (s *session) Data(r io.Reader) (err error) {
 			}
 			limited, err := budget.ReserveSubmission(SubmissionAttempt{AccountID: s.accountID, CredentialID: s.credentialID, Sender: sender, HeaderSender: fromAddr, Recipients: int64(len(s.rcptTo)), Remote: s.remoteAddr()})
 			if errors.Is(err, sendlimits.ErrAccountInactive) {
-				slog.Warn("smtp: submission refused: inactive account", "auth_user", maskEmail(s.authEmail), "mail_from", maskEmail(sender), "header_from", maskEmail(fromAddr), "event", "smtp_inactive_identity")
+				s.log.Warn("smtp: submission refused: inactive account", "auth_user", maskEmail(s.authEmail), "mail_from", maskEmail(sender), "header_from", maskEmail(fromAddr), "event", "smtp_inactive_identity")
 				return &gosmtp.SMTPError{Code: 550, EnhancedCode: gosmtp.EnhancedCode{5, 7, 1}, Message: "The sending account is inactive"}
 			}
 			if err != nil || limited {
@@ -881,7 +884,7 @@ func (s *session) Data(r io.Reader) (err error) {
 				})
 			}
 			if err != nil {
-				slog.Error("smtp: failed to queue a bounce for an SRS address", "error", err)
+				s.log.Error("smtp: failed to queue a bounce for an SRS address", "error", err)
 				failed++
 				continue
 			}
@@ -900,7 +903,7 @@ func (s *session) Data(r io.Reader) (err error) {
 			// matching the RCPT-time path. The default fail reply is already a
 			// 451, so counting this recipient as failed yields the right reply
 			// when nothing else commits.
-			slog.Error("smtp: API error re-checking mailbox at DATA time; tempfailing to avoid misroute",
+			s.log.Error("smtp: API error re-checking mailbox at DATA time; tempfailing to avoid misroute",
 				"from", s.mailFrom, "to", rcpt, "error", err)
 			failed++
 			continue
@@ -952,7 +955,7 @@ func (s *session) Data(r io.Reader) (err error) {
 					})
 				}
 				if perr != nil {
-					slog.Warn("smtp: failed to persist submission reference for DSN provenance",
+					s.log.Warn("smtp: failed to persist submission reference for DSN provenance",
 						"from", s.mailFrom, "error", perr)
 				} else {
 					submittedMsgID = ref
@@ -972,11 +975,11 @@ func (s *session) Data(r io.Reader) (err error) {
 				})
 			}
 			if err != nil {
-				slog.Error("smtp: failed to queue message", "from", s.mailFrom, "to", rcpt, "error", err)
+				s.log.Error("smtp: failed to queue message", "from", s.mailFrom, "to", rcpt, "error", err)
 				failed++
 				continue
 			}
-			slog.Info("smtp: queued for outbound delivery", "from", s.mailFrom, "to", rcpt)
+			s.log.Info("smtp: queued for outbound delivery", "from", s.mailFrom, "to", rcpt)
 			accepted++
 			continue
 		}
@@ -990,7 +993,7 @@ func (s *session) Data(r io.Reader) (err error) {
 			if err != nil {
 				// A configured DKIM key could not be loaded: defer, as the queue
 				// worker does, rather than deliver the message unsigned.
-				slog.Error("smtp: could not prepare a submission for local delivery; deferring",
+				s.log.Error("smtp: could not prepare a submission for local delivery; deferring",
 					"from", s.mailFrom, "error", err)
 				localErr = err
 			} else {
@@ -1039,9 +1042,9 @@ func (s *session) Data(r io.Reader) (err error) {
 				aliasFailure = reason
 			}
 			if isDeliveryRefusal(err) {
-				slog.Info("smtp: delivery refused", "from", s.mailFrom, "to", rcpt, "reason", err)
+				s.log.Info("smtp: delivery refused", "from", s.mailFrom, "to", rcpt, "reason", err)
 			} else {
-				slog.Error("smtp: delivery failed", "from", s.mailFrom, "to", rcpt, "error", err)
+				s.log.Error("smtp: delivery failed", "from", s.mailFrom, "to", rcpt, "error", err)
 			}
 			// Remember a representative reply for the all-failed case.
 			var apiErr *apiclient.APIError
@@ -1071,7 +1074,7 @@ func (s *session) Data(r io.Reader) (err error) {
 			continue
 		}
 
-		slog.Info("smtp: message delivered", "from", s.mailFrom, "to", rcpt, "subject", subject)
+		s.log.Info("smtp: message delivered", "from", s.mailFrom, "to", rcpt, "subject", subject)
 		accepted++
 	}
 
@@ -1083,7 +1086,7 @@ func (s *session) Data(r io.Reader) (err error) {
 		return &gosmtp.SMTPError{Code: failCode, EnhancedCode: failEnhanced, Message: failMsg}
 	}
 	if failed > 0 {
-		slog.Warn("smtp: partial delivery accepted to avoid duplicate retry",
+		s.log.Warn("smtp: partial delivery accepted to avoid duplicate retry",
 			"from", s.mailFrom, "accepted", accepted, "failed", failed)
 	}
 	return nil
@@ -1169,7 +1172,7 @@ func (s *session) closeAPISession() {
 		return
 	}
 	if err := s.api.CloseSession(s.apiSession); err != nil {
-		slog.Warn("smtp: could not close the connection's API session", "error", err)
+		s.log.Warn("smtp: could not close the connection's API session", "error", err)
 	}
 	s.apiSession = ""
 }

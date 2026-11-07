@@ -86,7 +86,7 @@ func TestHealthExamplesMatchRegisteredResponses(t *testing.T) {
 				// other real health-handler refusal path, before any ping.
 				handler = registeredHealthExampleRouter(&gorm.DB{Config: &gorm.Config{}})
 			case "internal_error":
-				endpoint.WriteError(rr, errors.New("private unexpected failure"))
+				endpoint.WriteError(context.Background(), rr, errors.New("private unexpected failure"))
 			}
 			if handler != nil {
 				handler.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/api/health", nil))

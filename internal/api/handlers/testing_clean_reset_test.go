@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -229,7 +230,7 @@ func TestCleanResetMemoryAndStreams(t *testing.T) {
 	}
 	old := broker.Subscribe(admin.ID)
 	for cycle := 0; cycle < 70; cycle++ {
-		broker.Publish(admin.ID, SSEEvent{Type: "old"})
+		broker.Publish(context.Background(), admin.ID, SSEEvent{Type: "old"})
 	}
 	if _, ok := broker.acquireStream(admin.ID); ok {
 		t.Fatal("stream limit was not exhausted")
@@ -268,7 +269,7 @@ func TestCleanResetMemoryAndStreams(t *testing.T) {
 	if len(replay) != 0 {
 		t.Fatal("replay ring survived reset")
 	}
-	broker.Publish(admin.ID, SSEEvent{Type: "new"})
+	broker.Publish(context.Background(), admin.ID, SSEEvent{Type: "new"})
 	if event := <-replay; event.ID != 1 || event.Event.Type != "new" {
 		t.Fatalf("counter survived reset: %+v", event)
 	}

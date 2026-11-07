@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http/httptest"
@@ -61,7 +62,7 @@ func TestRestmailDeliveryRefusalExamples(t *testing.T) {
 			t.Fatal("the named fault pair is missing")
 		}
 		rr := httptest.NewRecorder()
-		endpoint.WriteError(rr, errors.New("dependency details must stay private"))
+		endpoint.WriteError(context.Background(), rr, errors.New("dependency details must stay private"))
 		assertRequirementResponse(t, pair, rr)
 	})
 }

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -216,7 +217,7 @@ func (h *GrantHandler) create(r *http.Request, req createGrantRequest) (grantRes
 		return grantChange{r: r, claims: claims}.add(tx, g, http.StatusCreated)
 	})
 	if err != nil {
-		return grantResponse{}, grantChangeError(err)
+		return grantResponse{}, grantChangeError(r.Context(), err)
 	}
 	h.cache.Invalidate()
 	return toGrantResponse(g), nil
@@ -243,7 +244,7 @@ func (h *GrantHandler) delete(r *http.Request, req grantPath) (endpoint.Empty, e
 		return grantChange{r: r, claims: claims}.remove(tx, &g, http.StatusNoContent)
 	})
 	if err != nil {
-		return endpoint.Empty{}, grantChangeError(err)
+		return endpoint.Empty{}, grantChangeError(r.Context(), err)
 	}
 	h.cache.Invalidate()
 	return endpoint.Empty{}, nil
@@ -261,7 +262,7 @@ var (
 // person's session can carry one.
 func requireTwoFactor(w http.ResponseWriter, r *http.Request) bool {
 	if err := RequireTwoFactor(r); err != nil {
-		grantChangeFailed(w, err)
+		grantChangeFailed(r.Context(), w, err)
 		return false
 	}
 	return true
@@ -311,8 +312,8 @@ func (c grantChange) remove(tx *gorm.DB, g *models.Grant, status int) error {
 
 // grantChangeFailed answers for a grant change that did not happen, and says
 // whether it did not.
-func grantChangeFailed(w http.ResponseWriter, err error) bool {
-	refusal := grantChangeError(err)
+func grantChangeFailed(ctx context.Context, w http.ResponseWriter, err error) bool {
+	refusal := grantChangeError(ctx, err)
 	if refusal == nil {
 		return false
 	}
@@ -325,7 +326,7 @@ func grantChangeFailed(w http.ResponseWriter, err error) bool {
 	return true
 }
 
-func grantChangeError(err error) error {
+func grantChangeError(ctx context.Context, err error) error {
 	switch {
 	case err == nil:
 		return nil
@@ -347,7 +348,7 @@ func grantChangeError(err error) error {
 	case errors.Is(err, grants.ErrLastSuperadmin):
 		return endpoint.Refuse(http.StatusConflict, "last_superadmin", "Refused: "+err.Error()+"; nobody could grant anything after it")
 	default:
-		slog.Error("grant change failed", "error", err)
+		slog.ErrorContext(ctx, "grant change failed", "error", err)
 		return endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to change grants")
 	}
 }

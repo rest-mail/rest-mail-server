@@ -215,7 +215,7 @@ func TestRecoveryEmailFallbackFailureMatchesErrorAdapter(t *testing.T) {
 		t.Fatal("the named fault pair is missing")
 	}
 	recorder := httptest.NewRecorder()
-	endpoint.WriteError(recorder, errors.New("dependency details must stay private"))
+	endpoint.WriteError(context.Background(), recorder, errors.New("dependency details must stay private"))
 	assertRequirementResponse(t, pair, recorder)
 	if strings.Contains(recorder.Body.String(), "dependency details") {
 		t.Fatal("private failure detail escaped in the fallback response")

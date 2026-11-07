@@ -241,11 +241,11 @@ func TestEvents_OpenStreamEndsWithItsSession(t *testing.T) {
 
 	t.Run("at the next event", func(t *testing.T) {
 		broker, mb, ended, lines := open(t, time.Hour)
-		broker.Publish(mb.ID, SSEEvent{Type: "new_message", Data: map[string]string{"subject": "before"}})
+		broker.Publish(context.Background(), mb.ID, SSEEvent{Type: "new_message", Data: map[string]string{"subject": "before"}})
 		waitFor(t, lines, "event: new_message")
 
 		ended.Store(true)
-		broker.Publish(mb.ID, SSEEvent{Type: "new_message", Data: map[string]string{"subject": "after"}})
+		broker.Publish(context.Background(), mb.ID, SSEEvent{Type: "new_message", Data: map[string]string{"subject": "after"}})
 		for _, line := range untilEnd(t, lines) {
 			if strings.Contains(line, "after") {
 				t.Errorf("an ended session was sent %q", line)

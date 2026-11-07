@@ -330,7 +330,7 @@ func enforceVerified(h *AuthHandler, accountID uint, req loginRequest) (bool, bo
 	rr := httptest.NewRecorder()
 	verified, err := h.enforce2FA(accountID, req)
 	if err != nil {
-		endpoint.WriteError(rr, err)
+		endpoint.WriteError(context.Background(), rr, err)
 		return false, false, rr
 	}
 	return true, verified, rr

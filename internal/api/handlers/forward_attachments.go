@@ -225,24 +225,24 @@ func (h *MessageHandler) commitForward(r *http.Request, req sendMessageRequest, 
 		return zero, fmt.Errorf("commit forwarded message: %w", err)
 	}
 	for _, trace := range traces.rows {
-		h.recordTrace(trace)
+		h.recordTrace(r.Context(), trace)
 	}
 	if queued != nil {
 		queued.Outcome = outcomeQueued
 		queued.RFCMessageID = sent.MsgID
 		id := sent.ID
 		queued.MessageID = &id
-		h.recordTrace(buildTrace(*queued))
+		h.recordTrace(r.Context(), buildTrace(*queued))
 	}
 	if h.broker != nil {
-		h.broker.Publish(sender.ID, SSEEvent{Type: "message_sent", Data: map[string]any{"message_id": sent.ID, "folder": "Sent", "subject": sent.Subject}})
+		h.broker.Publish(r.Context(), sender.ID, SSEEvent{Type: "message_sent", Data: map[string]any{"message_id": sent.ID, "folder": "Sent", "subject": sent.Subject}})
 	}
 	for _, msg := range delivered {
 		if h.broker != nil {
-			h.broker.Publish(msg.MailboxID, SSEEvent{Type: "new_message", Data: map[string]any{"message_id": msg.ID, "folder": msg.Folder, "subject": msg.Subject, "sender": msg.Sender}})
+			h.broker.Publish(r.Context(), msg.MailboxID, SSEEvent{Type: "new_message", Data: map[string]any{"message_id": msg.ID, "folder": msg.Folder, "subject": msg.Subject, "sender": msg.Sender}})
 			var unread int64
 			if err := h.db.WithContext(r.Context()).Model(&models.Message{}).Where("mailbox_id = ? AND folder = ? AND is_read = ? AND is_deleted = ?", msg.MailboxID, "INBOX", false, false).Count(&unread).Error; err == nil {
-				h.broker.Publish(msg.MailboxID, SSEEvent{Type: "folder_update", Data: map[string]any{"folder": "INBOX", "unread_count": unread}})
+				h.broker.Publish(r.Context(), msg.MailboxID, SSEEvent{Type: "folder_update", Data: map[string]any{"folder": "INBOX", "unread_count": unread}})
 			}
 		}
 		if h.newMail != nil && msg.Folder == "INBOX" && !msg.IsRead {

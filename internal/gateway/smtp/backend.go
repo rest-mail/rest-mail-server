@@ -37,6 +37,27 @@ type Clients struct {
 
 var _ Backend = Clients{}
 
+// WithRequestID returns the clients for one connection, sending its ID on every
+// call to the API (#1580).
+func (c Clients) WithRequestID(id string) Backend {
+	out := c
+	if c.Delivery != nil {
+		out.Delivery = c.Delivery.WithRequestID(id)
+	}
+	if c.Submission != nil {
+		out.Submission = c.Submission.WithRequestID(id)
+	}
+	return out
+}
+
+// withRequestID is b for one connection with ID id, when b can carry one.
+func withRequestID(b Backend, id string) Backend {
+	if t, ok := b.(interface{ WithRequestID(string) Backend }); ok {
+		return t.WithRequestID(id)
+	}
+	return b
+}
+
 func (c Clients) OpenSession(email, password, protocol string) (*apitypes.GatewaySessionOpened, error) {
 	return c.Submission.OpenSession(email, password, protocol)
 }

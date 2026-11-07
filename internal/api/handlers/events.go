@@ -1,10 +1,12 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"sync"
@@ -210,7 +212,11 @@ func (b *SSEBroker) Unsubscribe(mailboxID uint, ch chan numberedEvent) {
 // Publish sends an event to all subscribers for the given mailbox ID.
 // The send is non-blocking: if a subscriber's channel buffer is full,
 // the event is dropped for that subscriber.
-func (b *SSEBroker) Publish(mailboxID uint, event SSEEvent) {
+//
+// ctx is the context of the request or job the event comes from: the line
+// Publish logs carries its request_id (#1580). The ID stays in the log; it is
+// not added to the event sent to clients.
+func (b *SSEBroker) Publish(ctx context.Context, mailboxID uint, event SSEEvent) {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 	// Get or create state for this mailbox
@@ -227,13 +233,22 @@ func (b *SSEBroker) Publish(mailboxID uint, event SSEEvent) {
 	state.mu.Unlock()
 
 	// Fan out to subscribers
+	subscribers, dropped := 0, 0
 	for ch := range b.subscribers[mailboxID] {
+		subscribers++
 		select {
 		case ch <- numbered:
 		default:
 			// Drop event if subscriber is not keeping up
+			dropped++
 		}
 	}
+	level := slog.LevelDebug
+	if dropped > 0 {
+		level = slog.LevelWarn
+	}
+	slog.Log(ctx, level, "sse: event published", "mailbox_id", mailboxID, "event", event.Type,
+		"event_id", id, "subscribers", subscribers, "dropped", dropped)
 }
 
 func (b *SSEBroker) reset() {
