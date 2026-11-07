@@ -14,6 +14,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Added
 
 - `Server.Serve` starts the server on listeners the caller has already opened.
+- `\Deleted` kept by the store (RFC 3501 §§2.3.2, 6.4.2-6.4.3; RFC 4315 §2.1):
+  a Mailbox that implements the new optional `imap.DeletedMailbox` interface
+  says it keeps the flag, and EXPUNGE, CLOSE and UID EXPUNGE then remove the
+  messages its `DeletedUIDs` reports at that moment, so a mark another session
+  set is expunged and one it cleared is not. UID EXPUNGE stays within its set.
+  If the marks cannot be read the command answers NO and removes nothing. A
+  Mailbox without it keeps the session's marks, as before.
 - Mailbox rights (RFC 9051 §§6.3.2, 6.3.9.2, 6.3.12, 6.4.7, 11.4): a Mailbox
   that implements the new optional `imap.RightsMailbox` interface reports what
   the user may do with each mailbox (`imap.Rights`: read, write, create). A
