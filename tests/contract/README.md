@@ -1686,6 +1686,19 @@ alone pass on an empty list. The before hook notes the row in
 `hooks.stash["listing_made"]`; a documented 200 with nothing noted fails too.
 Refusals and a run without a reset are left alone.
 
+The account link operations (`linkAccount` and `unlinkAccount`) and the token
+exchange (`issueClientCredentialsToken`) reset and seed before each exchange too,
+refusals included (`account_links_and_the_token_exchange_after_a_reset`, each
+operation's first hook); the client secret operations reset with the credentials
+(`a_credential_to_manage`). None needs anything made. The link's 201 links the seeded `eve@restmail.test`,
+which the reset puts back unlinked with the seed's password, so after a reset
+`link_a_seeded_account` no longer undoes an earlier link. The rest are refusals,
+which keep their ids and bodies. linkAccount's link reaches only the unlink; no
+other link starts from or reaches any of them. `listAccounts` and `getAccount`
+are not moved: `listAccounts`' link reaches operations not moved yet, and
+`getAccount` among them. Nor are the push device operations: without an APNs
+key their routes do not exist, so the run sends none of them.
+
 `createAlias`, `getAlias`, `updateAlias` and `deleteAlias` reset and seed before
 each exchange too, refusals included. A create is sent as documented after its
 reset: no earlier probe's alias is left, and the seeded `restmail.test` hosts
