@@ -1,18 +1,17 @@
 package sendlimits
 
 import (
-	"fmt"
 	"os"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/rest-mail/rest-mail-server/internal/audit"
+	"github.com/rest-mail/rest-mail-server/internal/config"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
-	"gorm.io/driver/postgres"
+	"github.com/rest-mail/rest-mail-server/internal/testdb"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
@@ -22,48 +21,20 @@ func testDB(t *testing.T) *gorm.DB {
 	if os.Getenv("DB_HOST") == "" {
 		t.Skip("set DB_HOST for PostgreSQL send-limit proofs")
 	}
-	database := os.Getenv("DB_NAME")
-	if database == "" {
-		database = "restmail"
-	}
-	dsn := fmt.Sprintf("host=%s port=%s user=restmail password=restmail dbname=%s sslmode=disable", os.Getenv("DB_HOST"), os.Getenv("DB_PORT"), database)
-	base, err := gorm.Open(postgres.Open(dsn), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent), DisableForeignKeyConstraintWhenMigrating: true})
+	port, err := strconv.Atoi(os.Getenv("DB_PORT"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	pool, err := base.DB()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		if err := pool.Close(); err != nil {
-			t.Errorf("close base pool: %v", err)
+	configured := func(key, fallback string) string {
+		if value := os.Getenv(key); value != "" {
+			return value
 		}
-	})
-	schema := fmt.Sprintf("send_limits_%d", time.Now().UnixNano())
-	if err = base.Exec("CREATE SCHEMA " + schema).Error; err != nil {
-		t.Fatal(err)
+		return fallback
 	}
-	t.Cleanup(func() { base.Exec("DROP SCHEMA " + schema + " CASCADE") })
-	cfg, err := pgx.ParseConfig(dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	cfg.RuntimeParams["search_path"] = schema
-	scoped := stdlib.OpenDB(*cfg)
-	t.Cleanup(func() {
-		if err := scoped.Close(); err != nil {
-			t.Errorf("close scoped pool: %v", err)
-		}
-	})
-	db, err := gorm.Open(postgres.New(postgres.Config{Conn: scoped}), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent), DisableForeignKeyConstraintWhenMigrating: true})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = db.AutoMigrate(&models.Mailbox{}, &models.SendLimitPolicy{}, &models.SendLimitCounter{}, &models.SendLimitNotice{}, &models.AuditEntry{}, &models.Message{}); err != nil {
-		t.Fatal(err)
-	}
-	return db
+	cfg := config.Config{DBHost: os.Getenv("DB_HOST"), DBPort: port, DBName: configured("DB_NAME", "restmail"), DBUser: configured("DB_USER", "restmail"), DBPass: configured("DB_PASS", "restmail"), DBMaxIdleConns: 2}
+	database := testdb.Clone(t, &cfg, "sendlimits", testdb.Models(&models.Mailbox{}, &models.SendLimitPolicy{}, &models.SendLimitCounter{}, &models.SendLimitNotice{}, &models.AuditEntry{}, &models.Message{}))
+	database.Logger = logger.Default.LogMode(logger.Silent)
+	return database
 }
 
 func seed(t *testing.T, db *gorm.DB, local string, owner *uint, domain uint) models.Mailbox {

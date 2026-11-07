@@ -5,56 +5,29 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/rest-mail/rest-mail-server/internal/auth"
-	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/pipeline"
-	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
 
-func draftSendPostgres(t *testing.T) *gorm.DB {
+func draftSendPostgres(t *testing.T, extraModels ...any) *gorm.DB {
 	t.Helper()
-	if os.Getenv("DB_HOST") == "" {
-		t.Skip("PostgreSQL draft send proof needs DB_HOST")
-	}
-	base, err := rmdb.Connect(testDBConfig())
-	if err != nil {
-		t.Fatal("could not connect to configured PostgreSQL test database")
-	}
-	basePool, err := base.DB()
+	setup := append([]any{withForeignKeys}, accountModels...)
+	setup = append(setup, &models.Message{}, &models.OutboundQueue{}, &models.Contact{}, &models.Attachment{}, &models.Pipeline{}, &models.SieveScript{})
+	setup = append(setup, extraModels...)
+	db := openScratchDB(t, "draftsend", setup)
+	db.Logger = logger.Default.LogMode(logger.Silent)
+	pool, err := db.DB()
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = basePool.Close() })
-	schema := fmt.Sprintf("draft_send_proof_%d", time.Now().UnixNano())
-	if err := base.Exec(`CREATE SCHEMA "` + schema + `"`).Error; err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = base.Exec(`DROP SCHEMA "` + schema + `" CASCADE`).Error })
-	connection, err := pgx.ParseConfig(base.Dialector.(*postgres.Dialector).Config.DSN)
-	if err != nil {
-		t.Fatal("could not derive isolated test connection")
-	}
-	connection.RuntimeParams["search_path"] = schema
-	pool := stdlib.OpenDB(*connection)
 	pool.SetMaxOpenConns(6)
-	t.Cleanup(func() { _ = pool.Close() })
-	db, err := gorm.Open(postgres.New(postgres.Config{Conn: pool}), &gorm.Config{DisableAutomaticPing: true, Logger: logger.Default.LogMode(logger.Silent)})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := migrateModels(db, append(accountModels, &models.Message{}, &models.OutboundQueue{}, &models.Contact{}, &models.Attachment{}, &models.Pipeline{}, &models.SieveScript{})...); err != nil {
-		t.Fatal(err)
-	}
 	ensureDefaultServerCeiling(t, db)
 	return db
 }

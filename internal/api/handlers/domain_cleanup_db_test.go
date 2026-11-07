@@ -11,14 +11,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/rest-mail/rest-mail-server/internal/api/middleware"
 	"github.com/rest-mail/rest-mail-server/internal/audit"
-	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/grants"
-	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
@@ -27,40 +23,15 @@ func TestDomainCleanupPostgresLifecycleRetentionAndRollback(t *testing.T) {
 	if os.Getenv("DB_HOST") == "" {
 		t.Skip("PostgreSQL domain lifecycle proof runs in CI with DB_HOST; no local database is started")
 	}
-	base, err := rmdb.Connect(testDBConfig())
-	if err != nil {
-		t.Fatal("could not connect to the configured PostgreSQL test database")
-	}
-	basePool, err := base.DB()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = basePool.Close() })
-	schema := fmt.Sprintf("domain_cleanup_%d", time.Now().UnixNano())
-	if err := base.Exec(`CREATE SCHEMA "` + schema + `"`).Error; err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = base.Exec(`DROP SCHEMA "` + schema + `" CASCADE`).Error })
-	connection, err := pgx.ParseConfig(base.Dialector.(*postgres.Dialector).Config.DSN)
-	if err != nil {
-		t.Fatal("could not derive isolated test connection")
-	}
-	connection.RuntimeParams["search_path"] = schema
-	pool := stdlib.OpenDB(*connection)
-	pool.SetMaxOpenConns(4)
-	t.Cleanup(func() { _ = pool.Close() })
-	db, err := gorm.Open(postgres.New(postgres.Config{Conn: pool}), &gorm.Config{DisableAutomaticPing: true, DisableForeignKeyConstraintWhenMigrating: true, Logger: logger.Default.LogMode(logger.Silent)})
-	if err != nil {
-		t.Fatal(err)
-	}
 	liveModels := []any{&models.Pipeline{}, &models.CustomFilter{}, &models.DomainSenderRule{}, &models.Certificate{}, &models.DKIMRotationKey{}, &models.MTASTSPolicy{}, &models.DomainRelay{}, &models.Suppression{}}
 	all := append([]any{&models.Domain{}, &models.Mailbox{}, &models.Alias{}, &models.Role{}, &models.Capability{}, &models.RoleCapability{}, &models.Grant{}, &models.GrantActivation{}, &models.Credential{}, &models.TLSReport{}, &models.MessageTrace{}, &models.DMARCAggregateRecord{}}, liveModels...)
-	if err := migrateModels(db, all...); err != nil {
+	db := openScratchDB(t, "domaincleanup", append(all, withAudit))
+	db.Logger = logger.Default.LogMode(logger.Silent)
+	pool, err := db.DB()
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := migrateAuditLog(db); err != nil {
-		t.Fatal(err)
-	}
+	pool.SetMaxOpenConns(4)
 	cache := grants.NewCache(db, time.Hour)
 	h := NewDomainHandler(db, nil, cache)
 	router := domainRoutes(h)

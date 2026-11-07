@@ -5,15 +5,12 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/rest-mail/rest-mail-server/internal/audit"
-	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
-	"github.com/rest-mail/rest-mail-server/internal/testdb"
 	"gorm.io/gorm"
 )
 
@@ -23,30 +20,7 @@ import (
 // fails) when no database is reachable.
 func openAuditTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
-	admin, err := connectTestDB()
-	if err != nil {
-		testdb.Unreachable(t, "audit API DB test skipped: no database reachable (%v)", err)
-	}
-	name := fmt.Sprintf("restmail_auditapi_%d_%d", os.Getpid(), time.Now().UnixNano())
-	if err := admin.Exec("CREATE DATABASE " + name).Error; err != nil {
-		t.Skipf("audit API DB test skipped: cannot create a database (%v)", err)
-	}
-	cfg := testDBConfig()
-	cfg.DBName = name
-	scratch, err := rmdb.Connect(cfg)
-	if err != nil {
-		t.Fatalf("connect to scratch database: %v", err)
-	}
-	t.Cleanup(func() {
-		if sqlDB, err := scratch.DB(); err == nil {
-			_ = sqlDB.Close()
-		}
-		admin.Exec("DROP DATABASE IF EXISTS " + name)
-	})
-	if err := migrateAuditLog(scratch); err != nil {
-		t.Fatalf("migrate the audit log: %v", err)
-	}
-	return scratch
+	return openScratchDB(t, "auditapi", []any{withAudit})
 }
 
 type auditPage struct {

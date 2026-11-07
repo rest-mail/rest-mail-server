@@ -20,9 +20,9 @@ const strongPassword = "correct-horse-battery-staple"
 // openBootstrapTestDB gives each fresh-install test its own scratch database.
 // Other packages migrate the configured database concurrently; even a rolled-back
 // TRUNCATE there can deadlock with their schema queries.
-func openBootstrapTestDB(t *testing.T) *gorm.DB {
+func openBootstrapTestDB(t *testing.T, extraModels ...any) *gorm.DB {
 	t.Helper()
-	gdb := openScratchDatabase(t).Begin()
+	gdb := openScratchDatabase(t, extraModels...).Begin()
 	if gdb.Error != nil {
 		t.Fatalf("begin bootstrap test transaction: %v", gdb.Error)
 	}

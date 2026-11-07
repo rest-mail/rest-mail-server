@@ -6,14 +6,11 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"reflect"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/go-chi/chi/v5"
-	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/pipeline/filters"
 	"gorm.io/gorm"
@@ -29,55 +26,7 @@ import (
 // and it is dropped, and checked gone, when the test ends.
 func openPipelineUpdateScratchDB(t *testing.T) *gorm.DB {
 	t.Helper()
-	cfg := testDBConfig()
-	cfg.DBName = "postgres"
-	admin, err := rmdb.Connect(cfg)
-	if err != nil {
-		t.Skipf("pipeline update DB test: admin database unavailable: %v", err)
-	}
-	adminSQL, err := admin.DB()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = adminSQL.Close() })
-	var current string
-	if err := admin.Raw("SELECT current_database()").Scan(&current).Error; err != nil || current != "postgres" {
-		t.Fatalf("admin database identity = %q, err = %v", current, err)
-	}
-	name := fmt.Sprintf("restmail_pipelinepatch_%d_%d", os.Getpid(), time.Now().UnixNano())
-	if err := admin.Exec("CREATE DATABASE " + name).Error; err != nil {
-		t.Fatalf("create isolated scratch database: %v", err)
-	}
-	t.Cleanup(func() {
-		if err := admin.Exec("DROP DATABASE " + name).Error; err != nil {
-			t.Errorf("drop scratch database: %v", err)
-			return
-		}
-		var left int64
-		if err := admin.Raw("SELECT count(*) FROM pg_database WHERE datname = ?", name).Scan(&left).Error; err != nil || left != 0 {
-			t.Errorf("scratch database %s still there after drop: count %d, err %v", name, left, err)
-			return
-		}
-		t.Logf("dropped isolated scratch database %s; none left by that name", name)
-	})
-	cfg.DBName = name
-	scratch, err := rmdb.Connect(cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	scratchSQL, err := scratch.DB()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = scratchSQL.Close() })
-	if err := scratch.Raw("SELECT current_database()").Scan(&current).Error; err != nil || current != name {
-		t.Fatalf("scratch database identity = %q, want %q, err = %v", current, name, err)
-	}
-	t.Logf("verified isolated scratch database %s before migrations/writes", current)
-	if err := migrateModels(scratch, &models.Domain{}, &models.Pipeline{}); err != nil {
-		t.Fatal(err)
-	}
-	return scratch
+	return openScratchDB(t, "pipelinepatch", []any{&models.Domain{}, &models.Pipeline{}})
 }
 
 func TestUpdatePipelineFilterShape_ScratchDB(t *testing.T) {

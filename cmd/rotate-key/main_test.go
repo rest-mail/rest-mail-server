@@ -1,11 +1,9 @@
 package main
 
 import (
-	"fmt"
 	"os"
 	"strconv"
 	"testing"
-	"time"
 
 	"github.com/rest-mail/rest-mail-server/internal/config"
 	"github.com/rest-mail/rest-mail-server/internal/crypto"
@@ -45,32 +43,7 @@ func openRotateTestDB(t *testing.T) *gorm.DB {
 		DBUser: envOr("DB_USER", "restmail"),
 		DBPass: envOr("DB_PASS", "restmail"),
 	}
-	server, err := rmdb.Connect(cfg)
-	if err != nil {
-		testdb.Unreachable(t, "rotate-key test skipped: no database reachable (%v)", err)
-	}
-	name := fmt.Sprintf("restmail_rotate_%d_%d", os.Getpid(), time.Now().UnixNano())
-	if err := server.Exec("CREATE DATABASE " + name).Error; err != nil {
-		t.Skipf("rotate-key test skipped: cannot create a database (%v)", err)
-	}
-	cfg.DBName = name
-	gdb, err := rmdb.Connect(cfg)
-	if err != nil {
-		t.Fatalf("connect to the test's database: %v", err)
-	}
-	t.Cleanup(func() {
-		if sqlDB, err := gdb.DB(); err == nil {
-			_ = sqlDB.Close()
-		}
-		server.Exec("DROP DATABASE IF EXISTS " + name)
-		if sqlDB, err := server.DB(); err == nil {
-			_ = sqlDB.Close()
-		}
-	})
-	if err := rmdb.AutoMigrate(gdb); err != nil {
-		t.Fatalf("migrate: %v", err)
-	}
-	return gdb
+	return testdb.Clone(t, cfg, "rotate", testdb.Setup{Name: "server-schema", Run: rmdb.AutoMigrate})
 }
 
 // TestRotate_ReEncryptsDKIMAndTwoFactor is the regression guard for #165: a

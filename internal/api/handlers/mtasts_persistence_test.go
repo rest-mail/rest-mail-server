@@ -6,16 +6,12 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"reflect"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/go-chi/chi/v5"
-	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
-	"github.com/rest-mail/rest-mail-server/internal/testdb"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -92,39 +88,7 @@ func TestMTASTSInsert_ExplicitDefaultsSQL(t *testing.T) {
 // Every write is confined to a newly created, verified scratch database.
 func openMTASTSPersistenceDB(t *testing.T) *gorm.DB {
 	t.Helper()
-	admin, err := connectTestDB()
-	if err != nil {
-		testdb.Unreachable(t, "MTA-STS persistence test: no database reachable (%v)", err)
-	}
-	name := fmt.Sprintf("restmail_mtasts_%d_%d", os.Getpid(), time.Now().UnixNano())
-	if err := admin.Exec("CREATE DATABASE " + name).Error; err != nil {
-		t.Skipf("MTA-STS persistence test: cannot create scratch database (%v)", err)
-	}
-	t.Cleanup(func() {
-		if err := admin.Exec("DROP DATABASE " + name).Error; err != nil {
-			t.Errorf("drop isolated MTA-STS database: %v", err)
-		}
-	})
-	cfg := testDBConfig()
-	cfg.DBName = name
-	db, err := rmdb.Connect(cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	pool, err := db.DB()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = pool.Close() })
-	var current string
-	if err := db.Raw("SELECT current_database()").Scan(&current).Error; err != nil || current != name {
-		t.Fatalf("scratch identity = %q, want %q (error %v)", current, name, err)
-	}
-	t.Logf("verified isolated scratch database %s", current)
-	if err := migrateModels(db, &models.Domain{}, &models.MTASTSPolicy{}); err != nil {
-		t.Fatal(err)
-	}
-	return db
+	return openScratchDB(t, "mtasts", []any{&models.Domain{}, &models.MTASTSPolicy{}})
 }
 
 func mtastsRequest(method string, domainID uint, body string) *http.Request {

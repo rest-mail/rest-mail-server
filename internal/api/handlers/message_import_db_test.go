@@ -12,64 +12,29 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
 	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
 	"github.com/rest-mail/rest-mail-server/internal/auth"
-	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/grants"
-	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
 
-// importProofDB is a PostgreSQL schema of its own with the import tables and roles.
-func importProofDB(t *testing.T) *gorm.DB {
+// importProofDB copies a migrated database with its own import tables and roles.
+func importProofDB(t *testing.T, extraModels ...any) *gorm.DB {
 	t.Helper()
-	if os.Getenv("DB_HOST") == "" {
-		t.Skip("PostgreSQL import persistence/concurrency proof runs in CI with DB_HOST; no local database is started")
-	}
-	base, err := rmdb.Connect(testDBConfig())
-	if err != nil {
-		t.Fatal("could not connect to the configured PostgreSQL test database")
-	}
-	basePool, err := base.DB()
+	setup := append([]any{withForeignKeys}, accountModels...)
+	setup = append(setup, &models.Message{}, &models.Attachment{})
+	setup = append(setup, extraModels...)
+	setup = append(setup, withAudit, withRoles)
+	db := openScratchDB(t, "importproof", setup)
+	db.Logger = logger.Default.LogMode(logger.Silent)
+	pool, err := db.DB()
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = basePool.Close() })
-	schema := fmt.Sprintf("import_proof_%d", time.Now().UnixNano())
-	if err := base.Exec(`CREATE SCHEMA "` + schema + `"`).Error; err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = base.Exec(`DROP SCHEMA "` + schema + `" CASCADE`).Error })
-	dialector, ok := base.Dialector.(*postgres.Dialector)
-	if !ok {
-		t.Fatal("PostgreSQL dialector required")
-	}
-	connection, err := pgx.ParseConfig(dialector.Config.DSN)
-	if err != nil {
-		t.Fatal("could not derive the isolated test connection")
-	}
-	connection.RuntimeParams["search_path"] = schema
-	pool := stdlib.OpenDB(*connection)
 	pool.SetMaxOpenConns(4)
-	t.Cleanup(func() { _ = pool.Close() })
-	db, err := gorm.Open(postgres.New(postgres.Config{Conn: pool}), &gorm.Config{DisableAutomaticPing: true, Logger: logger.Default.LogMode(logger.Silent)})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := migrateModels(db, append(accountModels, &models.Message{}, &models.Attachment{})...); err != nil {
-		t.Fatal(err)
-	}
-	if err := migrateAuditLog(db); err != nil {
-		t.Fatal(err)
-	}
-	if err := ensureRBAC(db); err != nil {
-		t.Fatal(err)
-	}
 	return db
 }
 

@@ -6,15 +6,11 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"reflect"
-	"regexp"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/go-chi/chi/v5"
-	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/pipeline/filters"
 	"gorm.io/gorm"
@@ -30,61 +26,7 @@ import (
 // written, and it is dropped, and checked gone, when the test ends.
 func openCustomFilterPatchScratchDB(t *testing.T) *gorm.DB {
 	t.Helper()
-	cfg := testDBConfig()
-	cfg.DBName = "postgres"
-	admin, err := rmdb.Connect(cfg)
-	if err != nil {
-		t.Skipf("custom filter PATCH DB test: admin database unavailable: %v", err)
-	}
-	adminSQL, err := admin.DB()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = adminSQL.Close() })
-	var current string
-	if err := admin.Raw("SELECT current_database()").Scan(&current).Error; err != nil || current != "postgres" {
-		t.Fatalf("admin database identity = %q, err = %v", current, err)
-	}
-	name := fmt.Sprintf("restmail_cfpatch_%d_%d", os.Getpid(), time.Now().UnixNano())
-	if !regexp.MustCompile(`^restmail_cfpatch_[0-9]+_[0-9]+$`).MatchString(name) {
-		t.Fatalf("scratch database name %q is not letters, digits and underscores", name)
-	}
-	if err := admin.Exec("CREATE DATABASE " + name).Error; err != nil {
-		t.Fatalf("create isolated scratch database: %v", err)
-	}
-	// Cleanups run last-added first: the scratch pool below is closed before
-	// this drop, so nothing of the test's own still holds the database.
-	t.Cleanup(func() {
-		t.Logf("dropping isolated scratch database %s", name)
-		if err := admin.Exec("DROP DATABASE " + name).Error; err != nil {
-			t.Errorf("drop scratch database: %v", err)
-			return
-		}
-		var left int64
-		if err := admin.Raw("SELECT count(*) FROM pg_database WHERE datname = ?", name).Scan(&left).Error; err != nil || left != 0 {
-			t.Errorf("scratch database %s still there after drop: count %d, err %v", name, left, err)
-			return
-		}
-		t.Logf("dropped isolated scratch database %s; none left by that name", name)
-	})
-	cfg.DBName = name
-	scratch, err := rmdb.Connect(cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	scratchSQL, err := scratch.DB()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = scratchSQL.Close() })
-	if err := scratch.Raw("SELECT current_database()").Scan(&current).Error; err != nil || current != name {
-		t.Fatalf("scratch database identity = %q, want %q, err = %v", current, name, err)
-	}
-	t.Logf("verified isolated scratch database %s before migrations/writes", current)
-	if err := migrateModels(scratch, &models.Domain{}, &models.CustomFilter{}); err != nil {
-		t.Fatal(err)
-	}
-	return scratch
+	return openScratchDB(t, "cfpatch", []any{&models.Domain{}, &models.CustomFilter{}})
 }
 
 func TestCustomFilterPatchConfig_ScratchDB(t *testing.T) {

@@ -2,18 +2,13 @@ package handlers
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
-	"time"
 
-	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/pipeline/filters"
-	"github.com/rest-mail/rest-mail-server/internal/testdb"
 	"gorm.io/gorm"
 )
 
@@ -21,44 +16,7 @@ import (
 // a newly created database, whose identity is checked before migrating.
 func openPipelineCreateTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
-	admin, err := connectTestDB()
-	if err != nil {
-		testdb.Unreachable(t, "pipeline create DB test: no database reachable")
-	}
-	name := fmt.Sprintf("restmail_pipelinecreate_%d_%d", os.Getpid(), time.Now().UnixNano())
-	if err := admin.Exec("CREATE DATABASE " + name).Error; err != nil {
-		t.Skip("pipeline create DB test: cannot create scratch database")
-	}
-	t.Cleanup(func() {
-		if err := admin.Exec("DROP DATABASE " + name).Error; err != nil {
-			t.Errorf("drop scratch database: %v", err)
-		} else {
-			t.Logf("dropped isolated scratch database %s", name)
-		}
-	})
-	cfg := testDBConfig()
-	cfg.DBName = name
-	scratch, err := rmdb.Connect(cfg)
-	if err != nil {
-		t.Fatal("connect to scratch database failed")
-	}
-	sqlDB, err := scratch.DB()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = sqlDB.Close() })
-	var current string
-	if err := scratch.Raw("SELECT current_database()").Scan(&current).Error; err != nil {
-		t.Fatal(err)
-	}
-	if current != name {
-		t.Fatalf("database = %q, want scratch %q", current, name)
-	}
-	t.Logf("verified isolated scratch database %s", current)
-	if err := migrateModels(scratch, &models.Pipeline{}); err != nil {
-		t.Fatal(err)
-	}
-	return scratch
+	return openScratchDB(t, "pipelinecreate", []any{&models.Pipeline{}})
 }
 
 func TestPipelineCreate_ActivePersistence(t *testing.T) {

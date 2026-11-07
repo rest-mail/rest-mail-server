@@ -5,18 +5,13 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/rest-mail/rest-mail-server/internal/api/middleware"
-	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
-	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
@@ -58,46 +53,17 @@ func (p *policyRacer) reached() {
 	})
 }
 
-// policyRaceDB is a PostgreSQL database in a schema of its own, with the
+// policyRaceDB is a separate copy of a migrated PostgreSQL database, with the
 // tables a domain's deletion touches, and a hook on reads of table.
 func policyRaceDB(t *testing.T, table string) *gorm.DB {
 	t.Helper()
-	if os.Getenv("DB_HOST") == "" {
-		t.Skip("PostgreSQL policy save race proof runs in CI with DB_HOST; no local database is started")
-	}
-	base, err := rmdb.Connect(testDBConfig())
-	if err != nil {
-		t.Fatal("could not connect to the configured PostgreSQL test database")
-	}
-	basePool, err := base.DB()
+	db := openScratchDB(t, "policyrace", []any{&models.Domain{}, &models.Mailbox{}, &models.Alias{}, &models.Role{}, &models.Capability{}, &models.RoleCapability{}, &models.Grant{}, &models.GrantActivation{}, &models.Credential{}, &models.Pipeline{}, &models.CustomFilter{}, &models.DomainSenderRule{}, &models.Certificate{}, &models.DKIMRotationKey{}, &models.MTASTSPolicy{}, &models.DomainRelay{}, &models.Suppression{}, withAudit})
+	db.Logger = logger.Default.LogMode(logger.Silent)
+	pool, err := db.DB()
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = basePool.Close() })
-	schema := fmt.Sprintf("policy_race_%d", time.Now().UnixNano())
-	if err := base.Exec(`CREATE SCHEMA "` + schema + `"`).Error; err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = base.Exec(`DROP SCHEMA "` + schema + `" CASCADE`).Error })
-	connection, err := pgx.ParseConfig(base.Dialector.(*postgres.Dialector).Config.DSN)
-	if err != nil {
-		t.Fatal("could not derive isolated test connection")
-	}
-	connection.RuntimeParams["search_path"] = schema
-	pool := stdlib.OpenDB(*connection)
 	pool.SetMaxOpenConns(6)
-	t.Cleanup(func() { _ = pool.Close() })
-	db, err := gorm.Open(postgres.New(postgres.Config{Conn: pool}), &gorm.Config{DisableAutomaticPing: true, DisableForeignKeyConstraintWhenMigrating: true, Logger: logger.Default.LogMode(logger.Silent)})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := migrateModels(db, &models.Domain{}, &models.Mailbox{}, &models.Alias{}, &models.Role{}, &models.Capability{}, &models.RoleCapability{}, &models.Grant{}, &models.GrantActivation{}, &models.Credential{},
-		&models.Pipeline{}, &models.CustomFilter{}, &models.DomainSenderRule{}, &models.Certificate{}, &models.DKIMRotationKey{}, &models.MTASTSPolicy{}, &models.DomainRelay{}, &models.Suppression{}); err != nil {
-		t.Fatal(err)
-	}
-	if err := migrateAuditLog(db); err != nil {
-		t.Fatal(err)
-	}
 	if err := db.Callback().Query().After("gorm:query").Register("policy_race_read", func(q *gorm.DB) {
 		if q.Statement.Table != table || q.Statement.Context == nil {
 			return

@@ -12,10 +12,7 @@ import (
 
 func emptyOwnerRegistry(t *testing.T) *gorm.DB {
 	t.Helper()
-	db := openBootstrapTestDB(t)
-	if err := db.AutoMigrate(&models.OwnerKey{}); err != nil {
-		t.Fatal(err)
-	}
+	db := openBootstrapTestDB(t, &models.OwnerKey{})
 	if err := db.Where("1 = 1").Delete(&models.OwnerKey{}).Error; err != nil {
 		t.Fatal(err)
 	}

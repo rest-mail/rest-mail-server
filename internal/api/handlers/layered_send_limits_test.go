@@ -21,10 +21,7 @@ import (
 )
 
 func layeredSendFixture(t *testing.T) (*gorm.DB, *MessageHandler, models.Mailbox, models.Mailbox) {
-	db := draftSendPostgres(t)
-	if err := migrateModels(db, &models.SendLimitPolicy{}, &models.SendLimitCounter{}, &models.SendLimitNotice{}, &models.ScheduledSend{}, &models.AuditEntry{}, &models.Role{}, &models.Capability{}, &models.RoleCapability{}, &models.Grant{}, &models.GrantActivation{}, &models.Credential{}); err != nil {
-		t.Fatal(err)
-	}
+	db := draftSendPostgres(t, &models.SendLimitPolicy{}, &models.SendLimitCounter{}, &models.SendLimitNotice{}, &models.ScheduledSend{}, &models.AuditEntry{}, &models.Role{}, &models.Capability{}, &models.RoleCapability{}, &models.Grant{}, &models.GrantActivation{}, &models.Credential{})
 	if err := ensureRBAC(db); err != nil {
 		t.Fatal(err)
 	}

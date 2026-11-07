@@ -1,7 +1,6 @@
 package db_test
 
 import (
-	"fmt"
 	"os"
 	"reflect"
 	"strconv"
@@ -31,38 +30,7 @@ func openDKIMRotationTestDB(t *testing.T) *gorm.DB {
 	}
 	cfg := config.Config{DBHost: env("DB_HOST", "localhost"), DBPort: port,
 		DBName: env("DB_NAME", "restmail"), DBUser: env("DB_USER", "restmail"), DBPass: env("DB_PASS", "restmail")}
-	server, err := rmdb.Connect(&cfg)
-	if err != nil {
-		testdb.Unreachable(t, "no database reachable: %v", err)
-	}
-	t.Cleanup(func() {
-		if sqlDB, err := server.DB(); err == nil {
-			_ = sqlDB.Close()
-		}
-	})
-	name := fmt.Sprintf("restmail_dkim_storage_%d_%d", os.Getpid(), time.Now().UnixNano())
-	if err := server.Exec("CREATE DATABASE " + name).Error; err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		if err := server.Exec("DROP DATABASE IF EXISTS " + name).Error; err != nil {
-			t.Error(err)
-		}
-	})
-	cfg.DBName = name
-	database, err := rmdb.Connect(&cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		if sqlDB, err := database.DB(); err == nil {
-			_ = sqlDB.Close()
-		}
-	})
-	if err := rmdb.AutoMigrate(database); err != nil {
-		t.Fatal(err)
-	}
-	return database
+	return testdb.Clone(t, &cfg, "dkimstorage", testdb.Setup{Name: "server-schema", Run: rmdb.AutoMigrate})
 }
 
 func rotationFixture(t *testing.T, database *gorm.DB, slot, selector string, domainID uint) models.DKIMRotationKey {
