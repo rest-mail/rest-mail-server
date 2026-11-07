@@ -7,6 +7,9 @@ a time limit was reached. Only 0 counts as passed for enqueue.
 On non-Linux hosts, selected Linux-only Go packages run in the CI-pinned golang
 Docker image with the host's Go module and build caches mounted. No host loopback
 aliases or administrative privileges are needed for those packages.
+
+RESTMAIL_RACE_SHARDS sets the positive number of local API and handler race
+shards (default 8). Lower it when gates share a host; CI is unchanged.
 """
 
 import argparse
@@ -607,6 +610,19 @@ def default_scratch():
     )
 
 
+def configured_race_shards(environment):
+    value = environment.get("RESTMAIL_RACE_SHARDS", str(RACE_SHARDS))
+    try:
+        if not re.fullmatch(r"[0-9]+", value):
+            raise ValueError
+        count = int(value)
+        if count < 1:
+            raise ValueError
+    except ValueError:
+        raise CouldNotRun("RESTMAIL_RACE_SHARDS must be a positive integer") from None
+    return count
+
+
 def loop_label(scratch=None):
     """The id this gate's containers carry, in their rest-mail-loop label and in
     their restmail-<id>-postgres name, so that gates sharing the machine can be
@@ -767,6 +783,7 @@ class Gate:
         self.all_packages = all_packages
         self.python = cache / "venv/bin/python"
         self.env = dict(os.environ)
+        self.race_shards = configured_race_shards(self.env)
         self.env.update(
             {"TMPDIR": str(work), "PYTHONDONTWRITEBYTECODE": "1", "ENVIRONMENT": "test"}
         )
@@ -1355,7 +1372,7 @@ class Gate:
             label = directory.replace("/", "-") + "-race"
             binary = self.work / (label + ".test")
             self.run(["go", "test", "-c", "-race", "-o", binary, "./" + directory])
-            events = self.shards(names, binary, label, RACE_SHARDS, "20m", directory)
+            events = self.shards(names, binary, label, self.race_shards, "20m", directory)
             finished = {
                 event.get("Test")
                 for event in events
@@ -1366,7 +1383,7 @@ class Gate:
                     f"race shards did not execute every selected test: {sorted(set(names) - finished)}"
                 )
             print(
-                f"All {len(names)} selected tests in {directory} completed across {RACE_SHARDS} race shards."
+                f"All {len(names)} selected tests in {directory} completed across {self.race_shards} race shards."
             )
         if not remaining:
             return self.warning()

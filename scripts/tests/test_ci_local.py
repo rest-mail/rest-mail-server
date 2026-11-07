@@ -663,7 +663,7 @@ class VertragShards(unittest.TestCase):
             ):
                 local.go_tests()
             self.assertEqual(shards.call_args.args[0], ["TestA", "TestB"])
-            self.assertEqual(shards.call_args.args[3:5], (gate.RACE_SHARDS, "20m"))
+            self.assertEqual(shards.call_args.args[3:5], (local.race_shards, "20m"))
             self.assertIn("-race", commands.call_args_list[1].args[0])
 
     def test_a_failing_guard_stops_the_step_before_the_race_shards(self):
