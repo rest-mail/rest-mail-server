@@ -99,6 +99,16 @@ SENDS = ("sendMessage", "sendTestEmail")
 # What sendMessage's link reaches, and the draft operations, whose links reach
 # one another: all moved together, each follower on a message of its own.
 DRAFTS = ("saveDraft", "updateDraft", "sendDraft")
+# The mailbox administration operations: createAccount, what its link reaches,
+# and the list and the sessions' end, which no link reaches.
+MAILBOXES = (
+    "createAccount",
+    "getMailbox",
+    "updateMailbox",
+    "deleteMailbox",
+    "listMailboxes",
+    "endMailboxSessions",
+)
 FOLLOWS_THE_SENT_MESSAGE = {
     "getMessage",
     "updateMessage",
@@ -175,7 +185,8 @@ class Selection(unittest.TestCase):
             - set(CONTACTS)
             - set(SENDS)
             - FOLLOWS_THE_SENT_MESSAGE
-            - set(DRAFTS),
+            - set(DRAFTS)
+            - set(MAILBOXES),
             link_followers(description, "createDomain") | {"createDomain"},
         )
 
@@ -346,6 +357,16 @@ class Selection(unittest.TestCase):
                 self.assertEqual(link_followers(description, operation), set())
         self.assertLessEqual(set(DKIM), link_followers(description, "createDomain"))
         self.assertLessEqual(set(DKIM), set(own_data.MOVED))
+
+    def test_it_selects_every_mailbox_operation_and_its_links(self):
+        description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
+        self.assertEqual(
+            link_followers(description, "createAccount"),
+            {"getMailbox", "updateMailbox", "deleteMailbox"},
+        )
+        for operation in ("listMailboxes", "endMailboxSessions"):
+            self.assertEqual(link_followers(description, operation), set())
+        self.assertLessEqual(set(MAILBOXES), set(own_data.MOVED))
 
     def test_everything_that_follows_the_created_domain_has_moved(self):
         description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
