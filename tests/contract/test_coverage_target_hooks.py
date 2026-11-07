@@ -57,6 +57,13 @@ class FixtureAPI(BaseHTTPRequestHandler):
     def do_POST(self):
         body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
         self.server.calls.append((self.path, self.headers["Authorization"], body))
+        if self.path == "/api/v1/admin/sender-rules":
+            if any(rule["pattern"] == body["pattern"] and rule["list_type"] == body["list_type"]
+                   for rule in self.server.rules):
+                self.send_response(409)
+                self.end_headers()
+                return
+            self.server.rules.append(dict(body, id=self.server.serial + 1))
         self.server.serial += 1
         data = json.dumps({"data": dict(body, id=self.server.serial)}).encode()
         self.send_response(self.server.failure or 201)
@@ -64,6 +71,23 @@ class FixtureAPI(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)
+
+    def do_GET(self):
+        if self.path != "/api/v1/admin/sender-rules":
+            self.send_error(404)
+            return
+        data = json.dumps({"data": self.server.rules}).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def do_DELETE(self):
+        rule_id = int(self.path.rsplit("/", 1)[1])
+        self.server.rules = [rule for rule in self.server.rules if rule["id"] != rule_id]
+        self.send_response(204)
+        self.end_headers()
 
 
 class CoverageTargetHooks(unittest.TestCase):
@@ -94,6 +118,7 @@ class CoverageTargetHooks(unittest.TestCase):
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), FixtureAPI)
         self.server.serial = 100
         self.server.calls = []
+        self.server.rules = []
         self.server.failure = None
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
@@ -165,6 +190,51 @@ class CoverageTargetHooks(unittest.TestCase):
         ]
         self.assertEqual(len(callbacks), 1)
         callbacks[0](transaction)
+
+    def sender_rule_probe(self):
+        transaction = self.transaction("getCertificate")
+        transaction["fullPath"] = "/api/v1/admin/sender-rules"
+        transaction["name"] = "Add an installation sender rule > 201 > application/json"
+        transaction["request"]["method"] = "POST"
+        transaction["request"]["body"] = '{ "pattern": "x", "list_type": "allow" }'
+        return transaction
+
+    def test_repeated_sender_rule_probes_keep_the_generated_body_and_succeed(self):
+        transaction = self.sender_rule_probe()
+        original = copy.deepcopy(transaction)
+        self.server.rules = [
+            {"id": 7, "pattern": "x", "list_type": "block"},
+            {"id": 8, "pattern": "another", "list_type": "allow"},
+        ]
+        for _ in range(3):
+            self.send("addInstallationSenderRule", transaction)
+            self.assertEqual(transaction, original)
+            request = self.targets["urllib"].request.Request(
+                self.shared["origin_of"](transaction) + transaction["fullPath"],
+                data=transaction["request"]["body"].encode(),
+                headers=transaction["request"]["headers"],
+                method="POST",
+            )
+            with self.targets["urllib"].request.urlopen(request, timeout=10) as response:
+                self.assertEqual(response.status, 201)
+        self.assertEqual([rule["id"] for rule in self.server.rules[:2]], [7, 8])
+
+    def test_sender_rule_refusals_and_noncoverage_exchanges_keep_existing_rules(self):
+        self.server.rules = [{"id": 7, "pattern": "x", "list_type": "allow"}]
+        for mode in ("example", "conflict", "foreign", "invalid"):
+            transaction = self.sender_rule_probe()
+            environment = {"CONTRACT_COVERAGE": "0" if mode == "example" else "1"}
+            if mode == "conflict":
+                transaction["name"] = transaction["name"].replace("201", "409")
+            elif mode == "foreign":
+                transaction["request"]["headers"]["Authorization"] = session("other@restmail.test")
+            elif mode == "invalid":
+                transaction["request"]["body"] = '{"pattern":null,"list_type":"allow"}'
+            original = copy.deepcopy(transaction)
+            with patch.dict(os.environ, environment):
+                self.send("addInstallationSenderRule", transaction)
+            self.assertEqual(transaction, original)
+            self.assertEqual(self.server.rules, [{"id": 7, "pattern": "x", "list_type": "allow"}])
 
     def mailbox_probe(self, path="/api/v1/admin/mailboxes/1", status=200):
         return {

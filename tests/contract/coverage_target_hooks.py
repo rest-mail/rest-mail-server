@@ -34,6 +34,23 @@ def register_coverage_target_hooks(shared):
             "session_address"
         ](transaction) in (shared["ADMIN"], shared["mfa_admin"].ADDRESS)
 
+    @hooks.before("addInstallationSenderRule")
+    def an_unused_installation_sender_rule_for_coverage(transaction):
+        collection = "/api/v1/admin/sender-rules"
+        if not selected(transaction, 201, (collection,)):
+            return
+        body = hooks.get_json(transaction)
+        if not isinstance(body, dict):
+            return
+        pattern = body.get("pattern")
+        list_type = body.get("list_type")
+        if not isinstance(pattern, str) or not pattern or list_type not in ("allow", "block"):
+            return
+        rules = shared["fixture_call"](transaction, "GET", collection)
+        for rule in rules:
+            if rule["pattern"] == pattern and rule["list_type"] == list_type:
+                shared["fixture_call"](transaction, "DELETE", collection + "/" + str(rule["id"]))
+
     @hooks.before("revokeAPIKey")
     @hooks.before("revokeCredential")
     def a_disposable_credential_for_coverage(transaction):
