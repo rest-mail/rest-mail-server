@@ -759,7 +759,7 @@ the same way, each checked against the real handler with no database
 `contract_validatejs_examples_test.go`, `contract_validatejs_body400_test.go`,
 `contract_testsend_examples_test.go`).
 
-`createAccount` (`address_missing`), `restmailDeliver` (`recipients_missing`),
+`createAccount` (`address_missing`), `restmailDeliver` (`recipients_missing`, `message_id_invalid`),
 `addToAllowlist` and `addToBlocklist` (`pattern_missing`) now send their paired
 422s too. `bulkDeleteQueue` sends its `selection_missing` request (`{}`) with
 its paired 422 and its `invalid_body` request (`[]`) with its paired 422. Their existing handler tests check these refusals before any

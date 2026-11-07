@@ -123,9 +123,9 @@ type restmailDeliverBody struct {
 	Date       string                     `json:"date,omitempty"`
 	BodyText   string                     `json:"body_text,omitempty"`
 	BodyHTML   string                     `json:"body_html,omitempty"`
-	MessageID  string                     `json:"message_id,omitempty"`
-	InReplyTo  string                     `json:"in_reply_to,omitempty"`
-	References string                     `json:"references,omitempty"`
+	MessageID  string                     `json:"message_id,omitempty" maxLength:"998" maxLengthMessage:"a msg-id must not be longer than 998 octets (RFC 5322 §2.1.1)" pattern:"^[^\\x00-\\x08\\x0A-\\x1F\\x7F-\\x9F]*$" patternMessage:"must not contain line breaks or other control characters" pattern2:"^$|^[ \\t]*<(?:[^\\x00-\\x20\\x7F()<>\\[\\]:;@\\\\,.\"]+(?:\\.[^\\x00-\\x20\\x7F()<>\\[\\]:;@\\\\,.\"]+)*|\"(?:[^\"\\\\\\x00-\\x08\\x0A-\\x1F\\x7F]|\\\\[^\\x00-\\x08\\x0A-\\x1F\\x7F])*\")@(?:[^\\x00-\\x20\\x7F()<>\\[\\]:;@\\\\,.\"]+(?:\\.[^\\x00-\\x20\\x7F()<>\\[\\]:;@\\\\,.\"]+)*|\\[[^\\x00-\\x20\\x7F\\[\\]\\\\]*\\])>[ \\t]*$" pattern2Message:"must be an RFC 5322 msg-id: <id-left@id-right>" description:"One RFC 5322 msg-id, <id-left@id-right>, with no line break or other control character; refused 422 otherwise. Generated when omitted or empty"`
+	InReplyTo  string                     `json:"in_reply_to,omitempty" pattern:"^[^\\x00-\\x08\\x0A-\\x1F\\x7F-\\x9F]*$" patternMessage:"must not contain line breaks or other control characters" pattern2:"^$|^[ \\t]*<(?:[^\\x00-\\x20\\x7F()<>\\[\\]:;@\\\\,.\"]+(?:\\.[^\\x00-\\x20\\x7F()<>\\[\\]:;@\\\\,.\"]+)*|\"(?:[^\"\\\\\\x00-\\x08\\x0A-\\x1F\\x7F]|\\\\[^\\x00-\\x08\\x0A-\\x1F\\x7F])*\")@(?:[^\\x00-\\x20\\x7F()<>\\[\\]:;@\\\\,.\"]+(?:\\.[^\\x00-\\x20\\x7F()<>\\[\\]:;@\\\\,.\"]+)*|\\[[^\\x00-\\x20\\x7F\\[\\]\\\\]*\\])>(?:[ \\t]*<(?:[^\\x00-\\x20\\x7F()<>\\[\\]:;@\\\\,.\"]+(?:\\.[^\\x00-\\x20\\x7F()<>\\[\\]:;@\\\\,.\"]+)*|\"(?:[^\"\\\\\\x00-\\x08\\x0A-\\x1F\\x7F]|\\\\[^\\x00-\\x08\\x0A-\\x1F\\x7F])*\")@(?:[^\\x00-\\x20\\x7F()<>\\[\\]:;@\\\\,.\"]+(?:\\.[^\\x00-\\x20\\x7F()<>\\[\\]:;@\\\\,.\"]+)*|\\[[^\\x00-\\x20\\x7F\\[\\]\\\\]*\\])>)*[ \\t]*$" pattern2Message:"must be one or more RFC 5322 msg-ids (<id-left@id-right>), separated by spaces" description:"One or more RFC 5322 msg-ids separated by spaces, with no line break or other control character; refused 422 otherwise. Empty is the same as omitted"`
+	References string                     `json:"references,omitempty" pattern:"^[^\\x00-\\x08\\x0A-\\x1F\\x7F-\\x9F]*$" patternMessage:"must not contain line breaks or other control characters" pattern2:"^$|^[ \\t]*<(?:[^\\x00-\\x20\\x7F()<>\\[\\]:;@\\\\,.\"]+(?:\\.[^\\x00-\\x20\\x7F()<>\\[\\]:;@\\\\,.\"]+)*|\"(?:[^\"\\\\\\x00-\\x08\\x0A-\\x1F\\x7F]|\\\\[^\\x00-\\x08\\x0A-\\x1F\\x7F])*\")@(?:[^\\x00-\\x20\\x7F()<>\\[\\]:;@\\\\,.\"]+(?:\\.[^\\x00-\\x20\\x7F()<>\\[\\]:;@\\\\,.\"]+)*|\\[[^\\x00-\\x20\\x7F\\[\\]\\\\]*\\])>(?:[ \\t]*<(?:[^\\x00-\\x20\\x7F()<>\\[\\]:;@\\\\,.\"]+(?:\\.[^\\x00-\\x20\\x7F()<>\\[\\]:;@\\\\,.\"]+)*|\"(?:[^\"\\\\\\x00-\\x08\\x0A-\\x1F\\x7F]|\\\\[^\\x00-\\x08\\x0A-\\x1F\\x7F])*\")@(?:[^\\x00-\\x20\\x7F()<>\\[\\]:;@\\\\,.\"]+(?:\\.[^\\x00-\\x20\\x7F()<>\\[\\]:;@\\\\,.\"]+)*|\\[[^\\x00-\\x20\\x7F\\[\\]\\\\]*\\])>)*[ \\t]*$" pattern2Message:"must be one or more RFC 5322 msg-ids (<id-left@id-right>), separated by spaces" description:"One or more RFC 5322 msg-ids separated by spaces, with no line break or other control character; refused 422 otherwise. Empty is the same as omitted"`
 	Headers    map[string]json.RawMessage `json:"headers,omitempty"`
 	RawMessage string                     `json:"raw_message,omitempty"`
 	Sender     string                     `json:"sender,omitempty"`
@@ -189,6 +189,14 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput, spoo
 	// envelope, or a bounce would look like personal mail and get a vacation
 	// reply (RFC 3834 §2, #716).
 	envelopeFrom := req.From
+	// Identifiers the peer sent as JSON are held to RFC 5322 §3.6.4 before anything is
+	// looked up or stored: one written into a header line must stay that one line (#1608).
+	// The binder has checked the syntax the fields' patterns state; this adds the 998-octet
+	// cap on each msg-id (RFC 5322 §2.1.1), which no pattern can count. Those read from
+	// raw_message below come through the MIME parser instead.
+	if fields := restmailMsgIDRefusals(req); len(fields) > 0 {
+		return RestmailDelivery{}, endpoint.Invalid(fields)
+	}
 	if len(to) == 0 && req.Recipients != nil && len(*req.Recipients) > 0 {
 		to = *req.Recipients
 	}
@@ -747,6 +755,30 @@ func (s *deliverySpool) readRestmailMessage(req *restmailDeliverBody) (*pipeline
 		}
 	}
 	return parsed, nil
+}
+
+// restmailMsgIDRefusals answers, by field, why the message_id, in_reply_to or references a
+// delivery carries is not RFC 5322 §3.6.4 syntax: message_id one msg-id, the other two one or
+// more. A field left empty is not refused; message_id is then generated or read from
+// raw_message.
+func restmailMsgIDRefusals(req restmailDeliverBody) map[string]string {
+	fields := map[string]string{}
+	if req.MessageID != "" {
+		if err := rmail.ValidateMsgID(req.MessageID); err != nil {
+			fields["message_id"] = err.Error()
+		}
+	}
+	if req.InReplyTo != "" {
+		if err := rmail.ValidateMsgIDList(req.InReplyTo); err != nil {
+			fields["in_reply_to"] = err.Error()
+		}
+	}
+	if req.References != "" {
+		if err := rmail.ValidateMsgIDList(req.References); err != nil {
+			fields["references"] = err.Error()
+		}
+	}
+	return fields
 }
 
 // runRecipientScripts runs each recipient's own Sieve script, the ones that have one, on its

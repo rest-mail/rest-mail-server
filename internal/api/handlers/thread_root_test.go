@@ -107,6 +107,14 @@ func TestThreadRootDeliveryAndDraftRoutes(t *testing.T) {
 				}
 				response := httptest.NewRecorder()
 				serve(response, authzRequest(http.MethodPost, path, owner.ID, nil, string(encoded)))
+				// A RESTMAIL peer's in_reply_to is held to RFC 5322 msg-id
+				// syntax (#1608): a bare id is refused, not threaded.
+				if route == "restmail" && test.parent != "" && !strings.HasPrefix(test.parent, "<") {
+					if response.Code != http.StatusUnprocessableEntity || !strings.Contains(response.Body.String(), `"in_reply_to"`) {
+						t.Fatalf("bare in_reply_to: %d %s, want 422 naming in_reply_to", response.Code, response.Body)
+					}
+					return
+				}
 				if response.Code >= 300 {
 					t.Fatalf("delivery: %d %s", response.Code, response.Body)
 				}
