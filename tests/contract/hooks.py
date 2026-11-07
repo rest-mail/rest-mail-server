@@ -1785,11 +1785,32 @@ def a_signing_mailbox_at(transaction, address):
             key = os.path.join(d, "dkim.key")
             openssl("genrsa", "-out", key, "2048")
             with open(key) as key_file:
-                call(
-                    "PUT",
-                    f"/api/v1/admin/dkim/{domain_id:d}",
-                    {"selector": "contract", "private_key": key_file.read()},
-                )
+                try:
+                    call(
+                        "PUT",
+                        f"/api/v1/admin/dkim/{domain_id:d}",
+                        {"selector": "contract", "private_key": key_file.read()},
+                    )
+                except urllib.error.HTTPError as error:
+                    if error.code != 422:
+                        raise
+                    try:
+                        refusal = json.load(error)
+                    except ValueError:
+                        raise error
+                    detail = refusal.get("error") if isinstance(refusal, dict) else None
+                    details = detail.get("details") if isinstance(detail, dict) else None
+                    fields = details.get("fields") if isinstance(details, dict) else None
+                    reason = fields.get("private_key") if isinstance(fields, dict) else None
+                    if (
+                        isinstance(detail, dict)
+                        and detail.get("code") == "validation_failed"
+                        and isinstance(reason, str)
+                        and reason.startswith(f"does not sign for {domain}: invalid domain:")
+                    ):
+                        error.close()
+                        return
+                    raise
     if not find_in_list(
         origin,
         f"/api/v1/admin/mailboxes?domain_id={domain_id:d}",
