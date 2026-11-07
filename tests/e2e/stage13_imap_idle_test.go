@@ -252,8 +252,6 @@ func testStage13ImapIdle(t *testing.T) {
 		t.Logf("Sending message with subject %q to trigger IDLE notification...", subject)
 
 		go func() {
-			// Small delay to ensure IDLE is fully active
-			time.Sleep(2 * time.Second)
 			sendMailViaSMTP(t, mail1SMTPAddr,
 				"idle-sender@restmail.test", "idle-user@restmail.test",
 				subject, "This should trigger an IDLE EXISTS notification.")

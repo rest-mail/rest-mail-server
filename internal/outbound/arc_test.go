@@ -7,6 +7,7 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"strings"
+	"sync"
 	"testing"
 
 	arc "github.com/rest-mail/go-arc/pkg/arc"
@@ -32,9 +33,13 @@ func arcKeys(t *testing.T, keys map[string]*rsa.PrivateKey) dkim.TXTResolver {
 	}
 }
 
+var sharedRSAKey = sync.OnceValues(func() (*rsa.PrivateKey, error) {
+	return rsa.GenerateKey(rand.Reader, 2048)
+})
+
 func rsaKey(t *testing.T) *rsa.PrivateKey {
 	t.Helper()
-	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	key, err := sharedRSAKey()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +59,11 @@ const forwardedMessage = "Delivered-To: fwd@elsewhere.test\r\n" +
 // this server found, and the chain validates; the next forwarder adds i=2 with cv=pass, and a
 // chain that arrived failed is relayed without a set (RFC 8617 §5.1, #731).
 func TestSealARC(t *testing.T) {
-	first, second := rsaKey(t), rsaKey(t)
+	first := rsaKey(t)
+	second, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
 	resolver := arcKeys(t, map[string]*rsa.PrivateKey{
 		"sel._domainkey.forwarder.test": first,
 		"sel._domainkey.second.test":    second,

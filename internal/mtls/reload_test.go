@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/rest-mail/rest-mail-server/internal/mtls"
@@ -23,16 +24,23 @@ func startMTLSServer(t *testing.T, cfg *tls.Config, handler http.Handler) string
 	if err != nil {
 		t.Fatal(err)
 	}
+	url, stop := serveMTLSServer(t, cfg, handler, ln)
+	t.Cleanup(stop)
+	return url
+}
+
+func serveMTLSServer(t *testing.T, cfg *tls.Config, handler http.Handler, ln net.Listener) (string, func()) {
+	t.Helper()
 	srv := &http.Server{TLSConfig: cfg, Handler: handler, ReadHeaderTimeout: time.Second}
 	done := make(chan error, 1)
 	go func() { done <- srv.ServeTLS(ln, "", "") }()
-	t.Cleanup(func() {
+	stop := func() {
 		_ = srv.Close()
 		if err := <-done; err != http.ErrServerClosed {
 			t.Errorf("ServeTLS: %v", err)
 		}
-	})
-	return "https://" + ln.Addr().String()
+	}
+	return "https://" + ln.Addr().String(), stop
 }
 
 func replacePEM(t *testing.T, path string, data []byte) {
@@ -49,87 +57,91 @@ func TestMTLSHandshakesReloadFilePairs(t *testing.T) {
 	for _, side := range []string{"server", "client"} {
 		t.Run(side, func(t *testing.T) {
 			t.Parallel()
-			dir := t.TempDir()
-			ca, err := mtlstest.NewCA("reload CA")
-			if err != nil {
-				t.Fatal(err)
-			}
-			now := time.Now()
-			issue := func(side string) ([]byte, []byte) {
-				t.Helper()
-				var cert, key []byte
-				var err error
-				if side == "server" {
-					cert, key, err = ca.IssueServer("api", nil, []net.IP{net.ParseIP("127.0.0.1")}, now.Add(-time.Hour), now.Add(time.Hour))
-				} else {
-					cert, key, err = ca.IssueClient("gateway", now.Add(-time.Hour), now.Add(time.Hour))
-				}
+			synctest.Test(t, func(t *testing.T) {
+				dir := t.TempDir()
+				ca, err := mtlstest.NewCA("reload CA")
 				if err != nil {
 					t.Fatal(err)
 				}
-				return cert, key
-			}
-			caPath := writeFile(t, dir, "ca.crt", ca.CertPEM)
-			for _, name := range []string{"server", "client"} {
-				cert, key := issue(name)
-				writeFile(t, dir, name+".crt", cert)
-				writeFile(t, dir, name+".key", key)
-			}
-			serverCfg, err := mtls.ServerTLSConfig(caPath, filepath.Join(dir, "server.crt"), filepath.Join(dir, "server.key"))
-			if err != nil {
-				t.Fatal(err)
-			}
-			clientCfg, err := mtls.ClientTLSConfig(caPath, filepath.Join(dir, "client.crt"), filepath.Join(dir, "client.key"))
-			if err != nil {
-				t.Fatal(err)
-			}
-			url := startMTLSServer(t, serverCfg, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				fmt.Fprint(w, r.TLS.PeerCertificates[0].SerialNumber.String())
-			}))
-			transport := &http.Transport{TLSClientConfig: clientCfg, DisableKeepAlives: true}
-			defer transport.CloseIdleConnections()
-			client := &http.Client{Transport: transport, Timeout: 2 * time.Second}
-			serials := func() string {
-				t.Helper()
-				resp, err := client.Get(url)
+				now := time.Now()
+				issue := func(side string) ([]byte, []byte) {
+					t.Helper()
+					var cert, key []byte
+					var err error
+					if side == "server" {
+						cert, key, err = ca.IssueServer("api", nil, []net.IP{net.ParseIP("127.0.0.1")}, now.Add(-time.Hour), now.Add(time.Hour))
+					} else {
+						cert, key, err = ca.IssueClient("gateway", now.Add(-time.Hour), now.Add(time.Hour))
+					}
+					if err != nil {
+						t.Fatal(err)
+					}
+					return cert, key
+				}
+				caPath := writeFile(t, dir, "ca.crt", ca.CertPEM)
+				for _, name := range []string{"server", "client"} {
+					cert, key := issue(name)
+					writeFile(t, dir, name+".crt", cert)
+					writeFile(t, dir, name+".key", key)
+				}
+				serverCfg, err := mtls.ServerTLSConfig(caPath, filepath.Join(dir, "server.crt"), filepath.Join(dir, "server.key"))
 				if err != nil {
 					t.Fatal(err)
 				}
-				defer resp.Body.Close()
-				body, err := io.ReadAll(resp.Body)
+				clientCfg, err := mtls.ClientTLSConfig(caPath, filepath.Join(dir, "client.crt"), filepath.Join(dir, "client.key"))
 				if err != nil {
 					t.Fatal(err)
 				}
-				if side == "client" {
-					return string(body)
+				listener := &mtlsPipeListener{connections: make(chan net.Conn), closed: make(chan struct{})}
+				url, stop := serveMTLSServer(t, serverCfg, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					fmt.Fprint(w, r.TLS.PeerCertificates[0].SerialNumber.String())
+				}), listener)
+				defer stop()
+				transport := &http.Transport{TLSClientConfig: clientCfg, DisableKeepAlives: true, DialContext: listener.DialContext}
+				defer transport.CloseIdleConnections()
+				client := &http.Client{Transport: transport, Timeout: 2 * time.Second}
+				serials := func() string {
+					t.Helper()
+					resp, err := client.Get(url)
+					if err != nil {
+						t.Fatal(err)
+					}
+					defer resp.Body.Close()
+					body, err := io.ReadAll(resp.Body)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if side == "client" {
+						return string(body)
+					}
+					return resp.TLS.PeerCertificates[0].SerialNumber.String()
 				}
-				return resp.TLS.PeerCertificates[0].SerialNumber.String()
-			}
-			before := serials()
-			cert, key := issue(side)
-			pair, err := tls.X509KeyPair(cert, key)
-			if err != nil {
-				t.Fatal(err)
-			}
-			want := pair.Leaf.SerialNumber.String()
-			replacePEM(t, filepath.Join(dir, side+".key"), key)
-			time.Sleep(5100 * time.Millisecond)
-			if got := serials(); got != before {
-				t.Fatal("half-written renewal displaced old pair")
-			}
-			replacePEM(t, filepath.Join(dir, side+".crt"), cert)
-			deadline := time.Now().Add(7 * time.Second)
-			for serials() != want {
-				if time.Now().After(deadline) {
-					t.Fatal("renewal was not picked up on a new handshake")
+				before := serials()
+				cert, key := issue(side)
+				pair, err := tls.X509KeyPair(cert, key)
+				if err != nil {
+					t.Fatal(err)
 				}
-				time.Sleep(50 * time.Millisecond)
-			}
-			replacePEM(t, filepath.Join(dir, side+".crt"), []byte("broken renewal"))
-			time.Sleep(5100 * time.Millisecond)
-			if got := serials(); got != want {
-				t.Fatal("broken renewal displaced good pair")
-			}
+				want := pair.Leaf.SerialNumber.String()
+				replacePEM(t, filepath.Join(dir, side+".key"), key)
+				time.Sleep(5100 * time.Millisecond)
+				if got := serials(); got != before {
+					t.Fatal("half-written renewal displaced old pair")
+				}
+				replacePEM(t, filepath.Join(dir, side+".crt"), cert)
+				deadline := time.Now().Add(7 * time.Second)
+				for serials() != want {
+					if time.Now().After(deadline) {
+						t.Fatal("renewal was not picked up on a new handshake")
+					}
+					time.Sleep(50 * time.Millisecond)
+				}
+				replacePEM(t, filepath.Join(dir, side+".crt"), []byte("broken renewal"))
+				time.Sleep(5100 * time.Millisecond)
+				if got := serials(); got != want {
+					t.Fatal("broken renewal displaced good pair")
+				}
+			})
 		})
 	}
 }

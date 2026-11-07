@@ -17,6 +17,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -75,9 +76,13 @@ func newECKey(t *testing.T) *ecdsa.PrivateKey {
 	return key
 }
 
+var sharedRSAKey = sync.OnceValues(func() (*rsa.PrivateKey, error) {
+	return rsa.GenerateKey(rand.Reader, 2048)
+})
+
 func newRSAKey(t *testing.T) *rsa.PrivateKey {
 	t.Helper()
-	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	key, err := sharedRSAKey()
 	if err != nil {
 		t.Fatalf("generate RSA key: %v", err)
 	}
