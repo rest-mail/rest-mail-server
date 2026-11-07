@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/rest-mail/go-mtasts/pkg/mtasts"
@@ -613,15 +614,91 @@ func TestHeartbeatRefreshesTheRowUntilStopped(t *testing.T) {
 	item := queueTimedRow(t, db, sender.Address, func(row *models.OutboundQueue) {
 		row.Status, row.Attempts, row.LastAttempt = "delivering", 3, &claimed
 	})
-	w := &Worker{db: db, heartbeatEvery: 10 * time.Millisecond}
-	stop := w.startHeartbeat(item)
-	waitForRefresh(t, db, item.ID, claimed)
+	refreshed := make(chan error, 1)
+	if err := db.Callback().Update().After("gorm:commit_or_rollback_transaction").Register("test:heartbeat_refreshed", func(tx *gorm.DB) {
+		refreshed <- tx.Error
+	}); err != nil {
+		t.Fatal(err)
+	}
+	ticks := make(chan time.Time, 1)
+	w := &Worker{db: db}
+	stop := w.startHeartbeatWithTicks(item, ticks)
+	t.Cleanup(stop)
+	last := *readRow(t, db, item.ID).LastAttempt
+	for beat := 0; beat < 2; beat++ {
+		ticks <- time.Now()
+		select {
+		case err := <-refreshed:
+			if err != nil {
+				t.Fatal(err)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("the heartbeat did not finish refreshing the row")
+		}
+		current := *readRow(t, db, item.ID).LastAttempt
+		if !current.After(last) {
+			t.Fatalf("heartbeat %d did not advance last_attempt: %v, then %v", beat+1, last, current)
+		}
+		last = current
+	}
 	stop()
 	stopped := *readRow(t, db, item.ID).LastAttempt
-	time.Sleep(50 * time.Millisecond)
+	ticks <- time.Now()
 	if last := *readRow(t, db, item.ID).LastAttempt; !last.Equal(stopped) {
 		t.Fatalf("the row was refreshed after its attempt ended: %v, then %v", stopped, last)
 	}
+	if len(ticks) != 1 {
+		t.Fatal("the stopped heartbeat consumed another tick")
+	}
+}
+
+func TestHeartbeatStopWaitsForInFlightRefresh(t *testing.T) {
+	db := openResetWorkerDB(t)
+	_, sender := sendingDomain(t, db)
+	claimed := time.Date(1999, time.January, 1, 0, 0, 0, 0, time.UTC)
+	item := queueTimedRow(t, db, sender.Address, func(row *models.OutboundQueue) {
+		row.Status, row.Attempts, row.LastAttempt = "delivering", 3, &claimed
+	})
+	synctest.Test(t, func(t *testing.T) {
+		updating := make(chan context.Context, 1)
+		release := make(chan struct{})
+		var finish sync.Once
+		defer finish.Do(func() { close(release) })
+		if err := db.Callback().Update().Before("gorm:begin_transaction").Register("test:heartbeat_updating", func(tx *gorm.DB) {
+			updating <- tx.Statement.Context
+			<-release
+		}); err != nil {
+			t.Fatal(err)
+		}
+		ticks := make(chan time.Time, 1)
+		w := &Worker{db: db}
+		stop := w.startHeartbeatWithTicks(item, ticks)
+		ticks <- time.Now()
+		refreshContext := <-updating
+		stopped := make(chan struct{})
+		go func() {
+			stop()
+			close(stopped)
+		}()
+		synctest.Wait()
+		select {
+		case <-stopped:
+			t.Error("stop returned before the in-flight refresh finished")
+		default:
+		}
+		if err := refreshContext.Err(); err != nil {
+			t.Errorf("stop canceled the in-flight database transaction: %v", err)
+		}
+		ticks <- time.Now()
+		finish.Do(func() { close(release) })
+		<-stopped
+		if last := readRow(t, db, item.ID).LastAttempt; last == nil || !last.After(claimed) {
+			t.Fatalf("stop did not drain the in-flight refresh: last_attempt = %v", last)
+		}
+		if len(ticks) != 1 {
+			t.Fatal("the stopped heartbeat consumed a pending tick")
+		}
+	})
 }
 
 // A worker that has lost its row must not keep the new holder's row alive, or
