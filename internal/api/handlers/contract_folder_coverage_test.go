@@ -50,9 +50,13 @@ func TestCreateFolder_ContractProbes(t *testing.T) {
 		t.Skip("contract hooks require python3")
 	}
 	db := openMsgDeleteTestDB(t)
-	// The folder list reads each folder's UIDNEXT mark (#804).
+	// The folder list reads each folder's UIDNEXT mark (#804)
 	if err := rmdb.MigrateFolderUIDMarks(db); err != nil {
 		t.Fatalf("migrate folder UID marks: %v", err)
+	}
+	// and its mod-sequence (go-imap#162).
+	if err := rmdb.MigrateFolderModSeqs(db); err != nil {
+		t.Fatalf("migrate folder mod-sequences: %v", err)
 	}
 	tx := db.Begin()
 	if tx.Error != nil {

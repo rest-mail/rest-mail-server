@@ -547,6 +547,48 @@ func (c *Client) UpdateMessage(token string, msgID uint, updates MessageUpdate) 
 	return c.patchAuth(fmt.Sprintf("/api/v1/messages/%d", msgID), token, updates, nil)
 }
 
+// UpdateMessageModSeq changes a message like UpdateMessage and returns its mod_seq
+// afterwards. With updates.UnchangedSince set the API makes the change only while the
+// message's mod_seq is at most that value; otherwise it answers 409, which
+// IsModified reports, and changes nothing (RFC 7162 §3.1.3).
+func (c *Client) UpdateMessageModSeq(token string, msgID uint, updates MessageUpdate) (uint64, error) {
+	var resp MessageDetailResponse
+	if err := c.patchAuth(fmt.Sprintf("/api/v1/messages/%d", msgID), token, updates, &resp); err != nil {
+		return 0, err
+	}
+	return resp.Data.ModSeq, nil
+}
+
+// IsModified reports whether err is the API's refusal of a change made with
+// unchanged_since: the message's mod_seq had passed it, so nothing changed.
+func IsModified(err error) bool {
+	var apiErr *APIError
+	return errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusConflict
+}
+
+// VanishedUID is a message that left a folder, with the folder's mod-sequence when it
+// left.
+type VanishedUID = apitypes.VanishedUID
+
+// ListVanishedUIDs returns, lowest UID first, every message that left an account's
+// folder at a mod-sequence above since (listVanishedUIDs), following the API's pages.
+func (c *Client) ListVanishedUIDs(token string, accountID uint, folder string, since uint64) ([]VanishedUID, error) {
+	var all []VanishedUID
+	after := ""
+	for {
+		path := fmt.Sprintf("%s/vanished?since=%d&limit=1000%s", folderPath(accountID, folder), since, after)
+		var resp endpoint.List[VanishedUID]
+		if err := c.getAuth(path, token, &resp); err != nil {
+			return nil, err
+		}
+		all = append(all, resp.Data...)
+		if resp.Pagination == nil || !resp.Pagination.HasMore || resp.Pagination.Cursor == "" {
+			return all, nil
+		}
+		after = "&after_uid=" + url.QueryEscape(resp.Pagination.Cursor)
+	}
+}
+
 // DeleteMessage permanently deletes a message. The gateway serves IMAP EXPUNGE /
 // CLOSE and POP3 QUIT-DELE (and the delete half of a MOVE) — protocols with no
 // trash stage — so the delete must be permanent: it reclaims quota and removes
