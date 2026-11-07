@@ -38,6 +38,9 @@ func ResetPassword(database *gorm.DB, address, password string) (*models.Mailbox
 	if len(password) < MinAdminPasswordLength {
 		return nil, ErrResetPasswordTooShort
 	}
+	if err := CheckChosenPassword(password, address); err != nil {
+		return nil, err
+	}
 	hash, err := auth.HashPassword(password)
 	if err != nil {
 		return nil, err

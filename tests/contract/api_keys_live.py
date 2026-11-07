@@ -115,7 +115,7 @@ def check_account_deletion(client, plain_token, token):
     """Deleting an account always takes a session signed in with 2FA."""
     address = f"contract-delete-{time.time_ns()}@{FIXTURE_DOMAIN}"
     created = client.expect(201, "POST", "/api/v1/accounts",
-                            {"address": address, "password": "contract-delete123!@"}, token)["data"]
+                            {"address": address, "password": "violet-ember-quorum-lantern-92"}, token)["data"]
     path = f"/api/v1/admin/mailboxes/{int(created['id'])}"
     client.expect(403, "DELETE", path, token=plain_token, code="two_factor_required")
     client.expect(204, "DELETE", path, token=token)

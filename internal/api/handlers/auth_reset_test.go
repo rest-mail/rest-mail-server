@@ -143,6 +143,7 @@ func TestReset_RefusesBadTokensAndKeepsTheGoodOneForARetry(t *testing.T) {
 	}{
 		{"unknown token", map[string]string{"token": "made-up", "password": ownerPassword}, 401, "invalid_token"},
 		{"short password", map[string]string{"token": token, "password": "short"}, 422, "validation_failed"},
+		{"guessable password", map[string]string{"token": token, "password": "Summer2026!!"}, 422, "validation_failed"},
 	}
 	for _, c := range cases {
 		if rr := post(resetHandler(f.auth), c.body); rr.Code != c.want || errorCodeOf(rr) != c.code {

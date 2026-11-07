@@ -262,6 +262,9 @@ func resetPassword(args []string, stdin io.Reader, stdout, stderr io.Writer) int
 	if len(password) < bootstrap.MinAdminPasswordLength {
 		return fail(stderr, exitUsage, "password_too_short", bootstrap.ErrResetPasswordTooShort.Error()+" (read from stdin)")
 	}
+	if errors.Is(bootstrap.CheckChosenPassword(password, *address), bootstrap.ErrPasswordGuessable) {
+		return fail(stderr, exitUsage, "password_guessable", bootstrap.ErrPasswordGuessable.Error()+" (read from stdin)")
+	}
 
 	database, _, status := openDatabase(stderr)
 	if status != exitOK {

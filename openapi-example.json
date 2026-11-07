@@ -5343,7 +5343,7 @@
         "body": {
           "address": "new-account@restmail.test",
           "display_name": "New Account",
-          "password": "correct-horse-battery"
+          "password": "Qv7#mZ2!pL9k"
         }
       },
       "response": {
@@ -48941,7 +48941,7 @@
           "id": 1
         },
         "body": {
-          "password": "a-new-password-for-this-account"
+          "password": "copper-lantern-orbit-for-this-mailbox"
         }
       },
       "response": {
@@ -49018,7 +49018,7 @@
           "id": 1
         },
         "body": {
-          "password": "a-new-password-for-this-account"
+          "password": "copper-lantern-orbit-for-this-mailbox"
         }
       },
       "response": {
@@ -49064,6 +49064,36 @@
           "display_name": "Contract Test",
           "quota_bytes": 1073741824,
           "active": true
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "id": 2,
+            "domain_id": 1,
+            "local_part": "new-account",
+            "address": "new-account@restmail.test",
+            "display_name": "Contract Test",
+            "quota_bytes": 1073741824,
+            "quota_used_bytes": 0,
+            "active": true,
+            "last_login_at": null,
+            "password_change_required": false,
+            "two_factor_required": false,
+            "created_at": "2026-10-21T12:00:00Z",
+            "updated_at": "2026-10-21T12:00:00Z"
+          }
+        }
+      }
+    },
+    "updated_password_at_minimum": {
+      "request": {
+        "body": {
+          "display_name": "Contract Test",
+          "quota_bytes": 1073741824,
+          "active": true,
+          "password": "Qv7#mZ2!pL9k"
         }
       },
       "response": {

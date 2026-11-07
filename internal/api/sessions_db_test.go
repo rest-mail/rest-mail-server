@@ -170,7 +170,7 @@ func (f *epochFixture) enrollTwoFactor(s epochSession) (secret, recovery string)
 }
 
 func TestSessionsEnd_EveryTokenIssuedBeforeIsRefused(t *testing.T) {
-	const newPassword = "a-new-password-456"
+	const newPassword = "tangerine-ledger-orbit-456"
 	mailbox := func(f *epochFixture) string { return fmt.Sprintf("/api/v1/admin/mailboxes/%d", f.mailboxID) }
 	expect := func(t *testing.T, rr *httptest.ResponseRecorder, want int, what string) {
 		t.Helper()

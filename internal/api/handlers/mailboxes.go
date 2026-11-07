@@ -130,8 +130,8 @@ func (h *MailboxHandler) update(r *http.Request, in updateMailboxInput) (Mailbox
 		if err := RequireFreshTwoFactor(r); err != nil {
 			return Mailbox{}, err
 		}
-		if bootstrap.PasswordTooShort(*req.Password) {
-			return Mailbox{}, endpoint.Invalid(map[string]string{"password": fmt.Sprintf("must be at least %d characters", minChosenPasswordLength)})
+		if problem := bootstrap.ChosenPasswordProblem(*req.Password, mailbox.Address); problem != "" {
+			return Mailbox{}, endpoint.Invalid(map[string]string{"password": problem})
 		}
 		if hashed, err = hashPassword(*req.Password); err != nil {
 			return Mailbox{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to hash password")
