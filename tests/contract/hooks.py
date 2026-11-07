@@ -46,6 +46,7 @@ import mfa_admin  # noqa: E402
 import rate_limits
 import reset_seed
 from identities import address_key, domain_key
+from api_keys_live import totp  # noqa: E402
 from queue_entry_hooks import a_disposable_queue_entry
 
 PRINCIPALS = os.environ.get("CONTRACT_PRINCIPALS", ".cache/contract-principals.json")
@@ -3101,7 +3102,18 @@ def an_account_of_its_own(origin, prefix, password=None):
     Its address is named by the time it is made, not by a count kept in the
     stash, so nothing is carried between exchanges. restmail.test is seeded, so
     it is there after a reset too. Making one takes a two-factor session."""
-    body = {"address": f"{prefix}-{time.time_ns():d}@restmail.test", "display_name": "Invited"}
+    return a_new_account(origin, fresh_address(prefix), "Invited", password)
+
+
+def fresh_address(prefix):
+    """A restmail.test address no account has, named by the time."""
+    return f"{prefix}-{time.time_ns():d}@restmail.test"
+
+
+def a_new_account(origin, address, display_name, password=None):
+    """Make the account, with a password only when one is given, and return its
+    id. Making one takes a two-factor session."""
+    body = {"address": address, "display_name": display_name}
     if password is not None:
         body["password"] = password
     request = urllib.request.Request(
@@ -3115,6 +3127,47 @@ def an_account_of_its_own(origin, prefix, password=None):
     )
     with urllib.request.urlopen(request, timeout=10) as response:
         return json.load(response)["data"]["id"]
+
+
+# The passwords of the accounts made for recoverAccount's recovered example,
+# before and after the recovery. Not secrets: each proves only a disposable
+# account made for one request (a_recoverable_account).
+RECOVERABLE_PASSWORD = "contract-recoverable-account"
+RECOVERED_PASSWORD = "contract-recovered-account"
+
+
+def a_recoverable_account(origin):
+    """A fresh account enrolled in TOTP through the public API, for one
+    recovery: its address and the second factor (secret and recovery codes)."""
+    address = fresh_address("recoverable")
+    a_new_account(origin, address, "Recoverable", RECOVERABLE_PASSWORD)
+    return address, mfa_admin.enroll_account(origin, address, RECOVERABLE_PASSWORD)
+
+
+@hooks.before("recoverAccount")
+def recover_an_account_of_its_own(transaction):
+    # The recovered example (state recoverable_account) names the fixture
+    # admin and placeholder codes; recovering it would set the fixture admin's
+    # password. Each request expecting the recovery, every principal's in the
+    # authorization phase, gets an account made for it alone, enrolled just
+    # before, so the run's own accounts are never touched. The codes are
+    # one-time: the authenticator's current code and an unspent recovery code.
+    # Refusals keep their documented bodies.
+    if str(transaction.get("expected", {}).get("statusCode", "")) != "200":
+        return
+    body = hooks.get_json(transaction)
+    if not isinstance(body, dict):
+        return
+    address, factor = a_recoverable_account(origin_of(transaction))
+    body.update({
+        "email": address,
+        "totp_code": totp(factor["secret"]),
+        "recovery_code": factor["recovery_codes"][0],
+        "new_password": RECOVERED_PASSWORD,
+    })
+    hooks.set_json(transaction, body)
+    # Making the account spent the auth bucket pace_auth_requests waited for.
+    rate_limits.pace(1.1)
 
 
 @hooks.before("checkMailboxAddress")
