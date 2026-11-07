@@ -68,7 +68,7 @@ func (h *MessageHandler) returnSnoozedThreads(ctx context.Context) {
 	var returned []models.ThreadSnooze
 	if err := h.db.WithContext(ctx).Model(&returned).Clauses(clause.Returning{}).
 		Where("snoozed_until <= ?", time.Now()).Update("snoozed_until", nil).Error; err != nil {
-		slog.Warn("snooze: could not return due threads", "error", err)
+		slog.WarnContext(ctx, "snooze: could not return due threads", "error", err)
 		return
 	}
 	for _, row := range returned {

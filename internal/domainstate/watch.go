@@ -10,12 +10,14 @@
 package domainstate
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"time"
 
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/metrics"
+	"github.com/rest-mail/rest-mail-server/internal/tracing"
 	"gorm.io/gorm"
 )
 
@@ -54,9 +56,13 @@ func (w *Watcher) run() {
 	for {
 		select {
 		case <-ticker.C:
-			if _, err := w.Check(); err != nil {
-				slog.Error("domainstate: checking which live domains can still be served failed", "error", err)
-			}
+			_ = tracing.Job(context.Background(), "job.domain_state", func(ctx context.Context) error {
+				_, err := w.Check()
+				if err != nil {
+					slog.ErrorContext(ctx, "domainstate: checking which live domains can still be served failed", "error", err)
+				}
+				return err
+			})
 		case <-w.stop:
 			return
 		}

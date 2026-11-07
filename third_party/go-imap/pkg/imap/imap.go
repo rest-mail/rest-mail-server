@@ -34,7 +34,10 @@
 // APPEND, and one that implements [UTF8Mailbox] turns on UTF8=ACCEPT
 // ([RFC 6855]) through ENABLE. One that implements [Subscriber] keeps a real
 // subscription list for SUBSCRIBE, UNSUBSCRIBE, LSUB and LIST's SUBSCRIBED
-// options ([RFC 5258]). The advertised CAPABILITY list reflects only the
+// options ([RFC 5258]). One that implements [RightsMailbox] tells the server
+// what the user may do with each mailbox, for read-only selections, TRYCREATE
+// and keeping APPENDUID and COPYUID from callers who cannot read the
+// destination ([RFC 9051] §§6.3.2, 6.3.12, 11.4). The advertised CAPABILITY list reflects only the
 // optional interfaces the concrete Mailbox satisfies, so a backend implementing
 // just [Mailbox] is unaffected and the list never over-promises.
 //
@@ -43,6 +46,7 @@
 // [RFC 6851]: https://www.rfc-editor.org/rfc/rfc6851
 // [RFC 6855]: https://www.rfc-editor.org/rfc/rfc6855
 // [RFC 5258]: https://www.rfc-editor.org/rfc/rfc5258
+// [RFC 9051]: https://www.rfc-editor.org/rfc/rfc9051
 package imap
 
 import (
@@ -238,6 +242,74 @@ type Subscriber interface {
 	// Unsubscribe removes name from the list; removing an unlisted name is not
 	// an error.
 	Unsubscribe(name string) error
+}
+
+// Rights is what the signed-in user may do with one mailbox.
+type Rights struct {
+	// Read lets the user SELECT or EXAMINE the mailbox, ask its STATUS and
+	// learn the UIDs its messages have, APPENDUID and COPYUID among them
+	// (RFC 9051 §§6.3.12, 6.4.7, 11.4).
+	Read bool
+	// Write lets the user put messages into the mailbox (APPEND, COPY, MOVE)
+	// and change or expunge the ones there. A mailbox the user may read but
+	// not write is selected read-only, even by SELECT (RFC 9051 §6.3.2).
+	Write bool
+	// Create says the user could create the mailbox when it does not exist,
+	// so a command that needs it answers NO [TRYCREATE]; false means creating
+	// it is known to be impossible and the answer is a plain NO (RFC 9051
+	// §6.3.12).
+	Create bool
+}
+
+// RightsMailbox is the optional interface a [Mailbox] may also implement to
+// tell the server the user's [Rights] on each mailbox. folder is a store name,
+// as [Folder.Name] holds it; it need not exist, and Create then says whether
+// it could be made. With it the server:
+//
+//   - selects a mailbox the user may read but not write read-only, with
+//     [READ-ONLY], and refuses SELECT, EXAMINE and STATUS of one the user may
+//     not read with NO [NOPERM];
+//   - marks a mailbox the user may not read \Noselect in LIST, without STATUS
+//     (RFC 9051 §6.3.9.2);
+//   - refuses APPEND, COPY and MOVE into a mailbox that does not exist with NO
+//     [TRYCREATE], or a plain NO when Create is false, before the store sees
+//     it, so no mailbox is ever made implicitly, and into one the user may not
+//     write with NO [NOPERM];
+//   - sends APPENDUID and COPYUID only for a destination the user may read.
+//
+// A lookup error counts as no rights for that command. A Mailbox that does not
+// implement it gives the user every right on every mailbox, and the store
+// alone decides whether a destination exists ([ErrNoSuchMailbox]).
+type RightsMailbox interface {
+	MailboxRights(folder string) (Rights, error)
+}
+
+type FolderCreator interface {
+	CreateFolder(name string) error
+}
+
+// DeletedMailbox is the optional interface a [Mailbox] may also implement to
+// say that the store keeps the \Deleted flag itself, so every session sees one
+// mark: [Message.Deleted] reports it and [Mailbox.Store] writes it through
+// [FlagUpdate.Deleted]. RFC 3501 §2.3.2 and RFC 9051 §2.3.2 make \Deleted a
+// permanent flag, kept from session to session.
+//
+// With it, EXPUNGE, CLOSE and UID EXPUNGE remove the messages DeletedUIDs
+// reports at that moment, not the marks this session last saw, so a mark
+// another session set is expunged and one it cleared is not (RFC 3501
+// §§6.4.2-6.4.3, RFC 4315 §2.1). UID EXPUNGE still removes only those in its
+// UID set, and a message the session has not yet been told about stays until
+// the session has seen it. If DeletedUIDs fails the command answers NO and
+// removes nothing.
+//
+// A Mailbox that does not implement it keeps the marks in the session as
+// before: SELECT seeds them from [Message.Deleted] and EXPUNGE removes the
+// messages this session marked.
+type DeletedMailbox interface {
+	// DeletedUIDs returns the UIDs of the messages in folder that carry
+	// \Deleted now, in any order. folder is a store name, as [Folder.Name]
+	// holds it.
+	DeletedUIDs(folder string) ([]uint32, error)
 }
 
 // UTF8Mailbox is the optional interface a [Mailbox] may also implement to

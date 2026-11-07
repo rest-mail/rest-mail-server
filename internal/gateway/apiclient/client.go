@@ -15,9 +15,12 @@ import (
 	"strings"
 	"time"
 
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
 	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
 	"github.com/rest-mail/rest-mail-server/internal/requestid"
+	"github.com/rest-mail/rest-mail-server/internal/tracing"
 )
 
 const (
@@ -70,6 +73,19 @@ type Client struct {
 	// requestID is the connection's ID (#1580), sent as X-Request-Id on every
 	// call so the API's log lines for it carry the gateway's. Empty: none sent.
 	requestID string
+
+	// span is the connection's span (#1580): each call is traced as its child
+	// when the call's own context has none. Nil: calls start their own trace.
+	span trace.Span
+}
+
+// WithSpan returns a copy of c whose calls are traced as children of span, the
+// gateway's span for one mail-client connection. The copy shares c's
+// connections.
+func (c *Client) WithSpan(span trace.Span) *Client {
+	cp := *c
+	cp.span = span
+	return &cp
 }
 
 // WithRequestID returns a copy of c that sends id as the X-Request-Id header on
@@ -86,7 +102,10 @@ func (c *Client) send(client *http.Client, req *http.Request) (*http.Response, e
 	if c.requestID != "" {
 		req.Header.Set(requestid.Header, c.requestID)
 	}
-	return client.Do(req)
+	if c.span != nil && !trace.SpanContextFromContext(req.Context()).IsValid() {
+		req = req.WithContext(trace.ContextWithSpan(req.Context(), c.span))
+	}
+	return tracing.Do(client, req, c.requestID)
 }
 
 // Option configures a Client at construction time.
@@ -354,6 +373,10 @@ func (c *Client) ListFolders(token string, accountID uint) (*FolderListResponse,
 		return nil, err
 	}
 	return &resp, nil
+}
+
+func (c *Client) CreateFolder(token string, accountID uint, name string) error {
+	return c.postAuth(fmt.Sprintf("/api/v1/accounts/%d/folders", accountID), token, map[string]string{"name": name}, nil)
 }
 
 // FolderName is one name on an account's subscription list.
@@ -818,7 +841,7 @@ func (c *Client) putAuth(path, token string) error {
 		return err
 	}
 	authorize(req, token)
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.send(c.httpClient, req)
 	if err != nil {
 		return fmt.Errorf("PUT %s: %w", path, err)
 	}

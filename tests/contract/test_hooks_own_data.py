@@ -149,6 +149,19 @@ class OwnDataHooks(unittest.TestCase):
             "updateDomain": "a_certificate_before_going_live",
             "inviteAccount": "invite_an_account_without_credentials",
             "acceptInvitation": "redeem_a_fresh_invitation",
+            "createGrant": "a_grant_operation_from_a_clean_start",
+            "deleteGrant": "delete_a_grant_made_for_it",
+            "activateGrant": "a_grant_operation_from_a_clean_start",
+            "deactivateGrant": "a_grant_operation_from_a_clean_start",
+            "makeGrantEligible": "a_grant_operation_from_a_clean_start",
+            "listGrants": "a_grant_operation_from_a_clean_start",
+            "listMyGrants": "a_grant_operation_from_a_clean_start",
+            "listAllowlist": "list_sender_rules_from_a_clean_start",
+            "listBlocklist": "list_sender_rules_from_a_clean_start",
+            "addToAllowlist": "remove_a_previous_sender_rule_probe",
+            "addToBlocklist": "remove_a_previous_sender_rule_probe",
+            "removeFromAllowlist": "on_a_sender_rule_of_its_own",
+            "removeFromBlocklist": "on_a_sender_rule_of_its_own",
         }
         self.assertEqual(set(hooks), set(own_data.MOVED))
         for operation, hook in hooks.items():
@@ -335,27 +348,6 @@ class OwnDataHooks(unittest.TestCase):
         self.hooks.a_live_domain_for_the_link(transaction)
         self.assertEqual(transaction["fullPath"], "/api/v1/admin/domains/9/relay")
         self.assertNotIn(4, self.server.domains)
-
-    def test_a_linked_entry_moves_with_its_domain(self):
-        self.clean_starts_on()
-        self.the_run_created_its_domain()
-        self.stub.stash["created_sender_rules"] = {
-            "/api/v1/admin/domains/3/allowlist": {"id": 1, "body": {"pattern": "a"}},
-            "/api/v1/admin/domains/3/blocklist": {"id": 2, "body": {"pattern": "b"}},
-        }
-        self.hooks.get_a_domain_of_its_own(
-            self.transaction(422, "/api/v1/admin/domains/0")
-        )
-        transaction = self.transaction(204, "/api/v1/admin/domains/3/allowlist/1")
-        self.hooks.a_live_domain_for_the_link(transaction)
-        self.assertEqual(transaction["fullPath"], "/api/v1/admin/domains/4/allowlist/1")
-        self.assertEqual(
-            set(self.stub.stash["created_sender_rules"]),
-            {
-                "/api/v1/admin/domains/4/allowlist",
-                "/api/v1/admin/domains/3/blocklist",
-            },
-        )
 
     def test_a_linked_key_is_set_again_before_its_delete(self):
         self.clean_starts_on()

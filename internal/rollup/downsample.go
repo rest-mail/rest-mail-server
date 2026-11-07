@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/tracing"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -61,9 +62,7 @@ func (w *Worker) downsampleLoop() {
 		interval = time.Hour // defensive: enabled but no cadence supplied
 	}
 
-	if err := w.downsampleOnce(w.now()); err != nil {
-		slog.Warn("rollup worker: downsample pass failed", "error", err)
-	}
+	w.downsamplePass()
 
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
@@ -72,11 +71,21 @@ func (w *Worker) downsampleLoop() {
 		case <-w.stop:
 			return
 		case <-ticker.C:
-			if err := w.downsampleOnce(w.now()); err != nil {
-				slog.Warn("rollup worker: downsample pass failed", "error", err)
-			}
+			w.downsamplePass()
 		}
 	}
+}
+
+// downsamplePass runs downsampleOnce as one background job (#1580): its own
+// trace and job ID, which its failure line carries.
+func (w *Worker) downsamplePass() {
+	_ = tracing.Job(context.Background(), "job.rollup_downsample", func(ctx context.Context) error {
+		err := w.downsampleOnce(w.now())
+		if err != nil {
+			slog.WarnContext(ctx, "rollup worker: downsample pass failed", "error", err)
+		}
+		return err
+	})
 }
 
 // downsampleOnce condenses every complete coarse period that has aged fully past

@@ -57,23 +57,34 @@ MOVED = (
     # link starts from or reaches either.
     "inviteAccount",
     "acceptInvitation",
+    # The grant operations. deleteGrant makes the grant it deletes; the others'
+    # examples need nothing made. No link starts from or reaches any of them.
+    "createGrant",
+    "deleteGrant",
+    "activateGrant",
+    "deactivateGrant",
+    "makeGrantEligible",
+    "listGrants",
+    "listMyGrants",
+    # The sender rule operations. Each follows createDomain's link, and the
+    # add's link reaches only the remove of its list: all moved.
+    "listAllowlist",
+    "addToAllowlist",
+    "removeFromAllowlist",
+    "listBlocklist",
+    "addToBlocklist",
+    "removeFromBlocklist",
 )
 
 FOLLOWS_THE_CREATED_DOMAIN = (
     "createDomain",
-    "addToAllowlist",
-    "addToBlocklist",
     "deleteDKIMKey",
     "deleteDomain",
     "domainDNSCheck",
     "getDKIMRotation",
     "getDomainRelay",
-    "listAllowlist",
-    "listBlocklist",
     "listSuppressions",
     "mtaStsPolicyFile",
-    "removeFromAllowlist",
-    "removeFromBlocklist",
     "restartDomainOutbound",
     "setDKIMKey",
     "setDKIMRotation",

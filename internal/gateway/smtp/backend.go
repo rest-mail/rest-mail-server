@@ -3,6 +3,8 @@ package smtp
 import (
 	"time"
 
+	"go.opentelemetry.io/otel/trace"
+
 	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 )
@@ -51,6 +53,27 @@ func (c Clients) WithRequestID(id string) Backend {
 }
 
 // withRequestID is b for one connection with ID id, when b can carry one.
+// WithSpan returns the clients for one connection, tracing each call to the
+// API as a child of span, the connection's span (#1580).
+func (c Clients) WithSpan(span trace.Span) Backend {
+	out := c
+	if c.Delivery != nil {
+		out.Delivery = c.Delivery.WithSpan(span)
+	}
+	if c.Submission != nil {
+		out.Submission = c.Submission.WithSpan(span)
+	}
+	return out
+}
+
+// withSpan is withRequestID for the connection's span.
+func withSpan(b Backend, span trace.Span) Backend {
+	if t, ok := b.(interface{ WithSpan(trace.Span) Backend }); ok {
+		return t.WithSpan(span)
+	}
+	return b
+}
+
 func withRequestID(b Backend, id string) Backend {
 	if t, ok := b.(interface{ WithRequestID(string) Backend }); ok {
 		return t.WithRequestID(id)

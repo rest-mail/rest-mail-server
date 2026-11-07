@@ -333,7 +333,7 @@ func checkQueueMutationPairWithVertrag(t *testing.T, binary string, s bulkQueueE
 			t.Fatal(err)
 		}
 	}
-	server := httptest.NewServer(s.handler)
+	server := servedAsDescribed(s.handler)
 	defer server.Close()
 	args := []string{"run", "--endpoint", server.URL, "--reporter", "json", "--output", "report.json"}
 	if s.token != "" {

@@ -6,12 +6,15 @@
 package imap
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
 	"time"
 
 	goimap "github.com/rest-mail/go-imap/pkg/imap"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
@@ -20,6 +23,7 @@ import (
 	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
 	"github.com/rest-mail/rest-mail-server/internal/metrics"
 	"github.com/rest-mail/rest-mail-server/internal/requestid"
+	"github.com/rest-mail/rest-mail-server/internal/tracing"
 )
 
 // errAccountLocked is returned when an account is temporarily banned for too
@@ -63,7 +67,12 @@ func (b *Backend) Authenticate(user, pass string) (goimap.Mailbox, error) {
 	// the API on each call the session makes.
 	id := requestid.New()
 	log := slog.Default().With(requestid.Attr, id)
-	api := b.api.WithRequestID(id)
+	// The session's span (#1580): each call to the API is its child, and
+	// it ends when the mailbox closes. A failed login ends it here.
+	_, span := tracing.Tracer().Start(context.Background(), "imap.session",
+		trace.WithSpanKind(trace.SpanKindServer),
+		trace.WithAttributes(tracing.RequestIDKey.String(id)))
+	api := b.api.WithRequestID(id).WithSpan(span)
 
 	// Per-account hard stop: reject a banned account WITHOUT calling the auth API,
 	// so a rotating-IP brute-force is throttled and a ban is never lifted by a
@@ -73,6 +82,8 @@ func (b *Backend) Authenticate(user, pass string) (goimap.Mailbox, error) {
 			"user", maskEmail(user),
 			"event", "imap_auth_banned",
 		)
+		span.SetAttributes(attribute.String("auth.outcome", "locked"))
+		span.End()
 		return nil, errAccountLocked
 	}
 
@@ -94,12 +105,16 @@ func (b *Backend) Authenticate(user, pass string) (goimap.Mailbox, error) {
 		if b.limiter != nil && apiclient.IsAuthRejection(err) {
 			b.limiter.RecordAuthFailUser(user)
 		}
+		span.SetAttributes(attribute.String("auth.outcome", "auth_failed"))
+		tracing.End(span, err)
 		return nil, err
 	}
+	span.SetAttributes(attribute.String("auth.outcome", "authenticated"))
 	if b.limiter != nil {
 		b.limiter.ResetAuthUser(user)
 	}
 	return &mailbox{
+		span:      span,
 		api:       api,
 		log:       log,
 		email:     user,
@@ -118,12 +133,18 @@ func (m *mailbox) logger() *slog.Logger {
 
 // Close ends the connection's session with the API, at LOGOUT or disconnect.
 func (m *mailbox) Close() error {
-	return m.api.CloseSession(m.token)
+	err := m.api.CloseSession(m.token)
+	if m.span != nil {
+		m.span.End()
+	}
+	return err
 }
 
 // mailbox is one authenticated account's view of its mail, for one session.
 type mailbox struct {
-	api *apiclient.Client
+	// span is the session's span (#1580), ended by Close.
+	span trace.Span
+	api  *apiclient.Client
 	// log carries the session's request ID (#1580); nil logs without it.
 	log       *slog.Logger
 	email     string
@@ -157,6 +178,9 @@ var (
 	_ goimap.IDMailbox      = (*mailbox)(nil)
 	_ goimap.SessionEnder   = (*mailbox)(nil)
 	_ goimap.Subscriber     = (*mailbox)(nil)
+	_ goimap.RightsMailbox  = (*mailbox)(nil)
+	_ goimap.FolderCreator  = (*mailbox)(nil)
+	_ goimap.DeletedMailbox = (*mailbox)(nil)
 )
 
 // importMessage stores a message through the import operation, counted in this
@@ -225,6 +249,26 @@ func (m *mailbox) Subscribe(name string) error {
 // Unsubscribe removes name from the account's subscription list (UNSUBSCRIBE).
 func (m *mailbox) Unsubscribe(name string) error {
 	return m.api.Unsubscribe(m.token, m.accountID, name)
+}
+
+func (m *mailbox) CreateFolder(name string) error {
+	if err := validateFolder(name); err != nil {
+		return err
+	}
+	return m.api.CreateFolder(m.token, m.accountID, name)
+}
+
+// MailboxRights reports the signed-in user's rights on folder (RightsMailbox).
+// REST Mail keeps no rights per folder: a protocol sign-in reaches only the
+// account's own folders, and the mail.read and mail.write capabilities it is
+// checked against hold for the whole account, so every folder is readable and
+// writable, and the API stays the gate that refuses a call the session may not
+// make. What the gateway does know is which names can never become a folder:
+// one the API's folder name rule refuses (validateFolder). So APPEND, COPY and
+// MOVE to a missing folder answer NO [TRYCREATE] rather than creating it, and a
+// plain NO for a name that could not be created (RFC 9051 §6.3.12).
+func (m *mailbox) MailboxRights(folder string) (goimap.Rights, error) {
+	return goimap.Rights{Read: true, Write: true, Create: validateFolder(folder) == nil}, nil
 }
 
 // EnableUTF8 switches this session to UTF-8 (RFC 6855 UTF8=ACCEPT). The
@@ -369,6 +413,29 @@ func (m *mailbox) MoveUID(uid uint32, dest string) (uint32, error) {
 		return 0, err
 	}
 	return newUID, nil
+}
+
+// DeletedUIDs reports the messages in folder that carry \Deleted now
+// (DeletedMailbox). The mark is the message's imap_deleted state in the API:
+// STORE writes it (Store), every session and device reads it back, and it
+// outlives the connection, as RFC 3501 §2.3.2 asks of a permanent flag. So
+// EXPUNGE, CLOSE and UID EXPUNGE remove what is marked when they run, never a
+// mark another session cleared.
+func (m *mailbox) DeletedUIDs(folder string) ([]uint32, error) {
+	if err := validateFolder(folder); err != nil {
+		return nil, err
+	}
+	resp, err := m.api.ListIMAPMessages(m.token, m.accountID, folder)
+	if err != nil {
+		return nil, err
+	}
+	var uids []uint32
+	for _, msg := range resp.Data {
+		if msg.IMAPDeleted {
+			uids = append(uids, toUID(msg.ID))
+		}
+	}
+	return uids, nil
 }
 
 // Delete permanently removes a message (EXPUNGE/CLOSE).
