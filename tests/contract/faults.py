@@ -241,8 +241,10 @@ def probe_limit(phase, endpoint):
     if phase != "auth_throttle":
         raise ValueError(f"no limit probe for {phase}")
     for attempt in range(1, THROTTLE_ATTEMPTS + 1):
+        # Another address each time: failures against one address wait, up to
+        # seconds each (#1643), and the throttle's bucket would refill meanwhile.
         status, code, retry = login_response(endpoint, {
-            "email": "contract-fault-unknown@restmail.test", "password": "not the password",
+            "email": f"contract-fault-unknown-{attempt}@restmail.test", "password": "not the password",
         })
         if (status, code) == (429, "rate_limited") and attempt > 1 and retry.isascii() and retry.isdecimal() and int(retry) > 0:
             return False, f"POST {LOGIN}: {attempt - 1} refused logins, then 429 rate_limited, Retry-After {retry}"

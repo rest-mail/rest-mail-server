@@ -394,15 +394,20 @@ func TestPasswdFileUsersSignInToIMAPWithTheirOldPasswords(t *testing.T) {
 	if upgraded.ID != originalAlice.ID || !strings.HasPrefix(upgraded.SecretHash, "{BLF-CRYPT}") {
 		t.Fatalf("the first sign-in did not rehash in place: credential %d, %.16s", upgraded.ID, upgraded.SecretHash)
 	}
-	if cost, err := bcrypt.Cost([]byte(strings.TrimPrefix(upgraded.SecretHash, "{BLF-CRYPT}"))); err != nil || cost != 10 {
+	if cost, err := bcrypt.Cost([]byte(strings.TrimPrefix(upgraded.SecretHash, "{BLF-CRYPT}"))); err != nil || cost != auth.PasswordHashCost {
 		t.Fatalf("rehashed at cost %d: %v", cost, err)
 	}
 	if err := auth.CheckPassword(dovecotSHA512Password, upgraded.SecretHash); err != nil {
 		t.Fatalf("the rehash does not hold the old password: %v", err)
 	}
-	// A BLF-CRYPT hash is REST Mail's own scheme already, so it stays as it came.
-	if got := s.storedHash(t, bob); got.SecretHash != dovecotBLFHash {
-		t.Fatalf("a BLF-CRYPT hash was rehashed: %s", got.SecretHash)
+	// A BLF-CRYPT hash is REST Mail's own scheme already, so only its cost is
+	// held to the server's: this one came at cost 5.
+	got := s.storedHash(t, bob)
+	if cost, err := bcrypt.Cost([]byte(strings.TrimPrefix(got.SecretHash, "{BLF-CRYPT}"))); err != nil || cost != auth.PasswordHashCost {
+		t.Fatalf("a cheap BLF-CRYPT hash ended at cost %d: %v", cost, err)
+	}
+	if err := auth.CheckPassword(dovecotBLFPassword, got.SecretHash); err != nil {
+		t.Fatalf("the rehash does not hold the old password: %v", err)
 	}
 
 	// The old passwords keep working on the next sign-in, the wrong one does not.

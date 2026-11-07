@@ -36,6 +36,14 @@ type AccountHandler struct {
 	// masterKey decrypts TOTP secrets, for linking an account with 2FA.
 	masterKey        string
 	maxOwnedAccounts int
+	// signInTarpit slows a wrong password for the account being linked, as a
+	// failed sign-in is slowed (#1643). Nil does nothing.
+	signInTarpit *middleware.SignInTarpit
+}
+
+// SetSignInTarpit makes a failed link wait. Call before the router serves traffic.
+func (h *AccountHandler) SetSignInTarpit(tarpit *middleware.SignInTarpit) {
+	h.signInTarpit = tarpit
 }
 
 func NewAccountHandler(db *gorm.DB, cache *grants.Cache, masterKey string, maxOwnedAccounts ...int) *AccountHandler {
@@ -484,6 +492,7 @@ func (h *AccountHandler) link(r *http.Request, req linkAccountRequest) (accountR
 		return accountResponse{}, fmt.Errorf("verify the password: %w", err)
 	}
 	if lookupErr != nil || cred == nil || !account.Active {
+		h.signInTarpit.Failed(r, req.Address)
 		return accountResponse{}, endpoint.Refuse(http.StatusForbidden, "invalid_credentials", "Invalid email or password")
 	}
 	// The password is proven; what follows may say why it is not enough.
@@ -500,6 +509,7 @@ func (h *AccountHandler) link(r *http.Request, req linkAccountRequest) (accountR
 			if req.TOTPCode == "" && req.RecoveryCode == "" {
 				return accountResponse{}, endpoint.Refuse(http.StatusForbidden, "totp_required", "That account has two-factor authentication: send its code too")
 			}
+			h.signInTarpit.Failed(r, req.Address)
 			return accountResponse{}, endpoint.Refuse(http.StatusForbidden, "invalid_totp", "Invalid two-factor authentication code")
 		}
 	} else if !errors.Is(err, repositories.ErrTwoFactorNotFound) {

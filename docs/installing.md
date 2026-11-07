@@ -185,7 +185,7 @@ restmail:hostname           mail.example.com
 restmail:domain             example.com
 restmail:namespace          rest-mail
 restmail:chartVersion       0.14.0
-restmail:adminPasswordHash  $2a$10$…
+restmail:adminPasswordHash  $2a$12$…
 ```
 
 So the code is the same for every install and every stack, contains no secret,
