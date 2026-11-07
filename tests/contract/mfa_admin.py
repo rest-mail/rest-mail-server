@@ -86,9 +86,9 @@ def enroll_account(base_url, address, password):
     keeps to itself: they are the account's second factor."""
     plain = _sign_in(base_url, address, password)["access_token"]
     # Enrolling and confirming share the sign-in's 1 request/second bucket.
-    time.sleep(1.1)
+    rate_limits.pace(1.1)
     enrolled = _post(base_url, "/api/v1/auth/2fa/enroll", {}, plain)
-    time.sleep(1.1)
+    rate_limits.pace(1.1)
     _post(base_url, "/api/v1/auth/2fa/confirm", {"totp_code": totp(enrolled["secret"])}, plain)
     return {"secret": enrolled["secret"], "recovery_codes": enrolled["recovery_codes"]}
 
