@@ -9,6 +9,7 @@ import sys
 import types
 import unittest
 from unittest.mock import patch
+from urllib.parse import parse_qs, urlsplit
 
 ROOT = Path(__file__).resolve().parents[2]
 CREATE = "/api/v1/admin/domains > Create a new domain > 201 > application/json"
@@ -43,6 +44,7 @@ class GeneratedDomain(unittest.TestCase):
     def setUp(self):
         self.hooks, self.stub = load_hooks()
         self.calls = []
+        self.domains = [{"id": 18, "name": "example.com"}, {"id": 1, "name": "restmail.test"}]
         for name, value in (("admin_token", "setup"), ("mfa_admin_token", "two-factor")):
             patcher = patch.object(self.hooks, name, lambda origin, value=value: value)
             patcher.start()
@@ -55,11 +57,19 @@ class GeneratedDomain(unittest.TestCase):
         path = request.full_url.removeprefix(ORIGIN)
         self.calls.append((request.get_method(), path, request.headers["Authorization"]))
         data = []
-        if request.get_method() == "GET" and path == "/api/v1/admin/domains":
-            data = [{"id": 18, "name": "example.com"}, {"id": 1, "name": "restmail.test"}]
-        elif request.get_method() == "GET" and path == "/api/v1/admin/aliases?domain_id=18":
+        parsed = urlsplit(path)
+        if request.get_method() == "GET" and parsed.path == "/api/v1/admin/domains":
+            query = parse_qs(parsed.query)
+            offset = int(query.get("offset", [0])[0])
+            limit = int(query.get("limit", [50])[0])
+            data = self.domains[offset:offset + limit]
+            return Answer(json.dumps({
+                "data": data,
+                "pagination": {"has_more": offset + len(data) < len(self.domains)},
+            }).encode())
+        elif request.get_method() == "GET" and parsed.path == "/api/v1/admin/aliases" and parse_qs(parsed.query).get("domain_id") == ["18"]:
             data = [{"id": 5}]
-        elif request.get_method() == "GET" and path == "/api/v1/admin/mailboxes?domain_id=18":
+        elif request.get_method() == "GET" and parsed.path == "/api/v1/admin/mailboxes" and parse_qs(parsed.query).get("domain_id") == ["18"]:
             data = [{"id": 7}, {"id": 9}]
         return Answer(json.dumps({"data": data}).encode())
 
@@ -130,6 +140,49 @@ class GeneratedDomain(unittest.TestCase):
     def test_a_refused_transaction_changes_nothing(self):
         self.hooks.create_a_domain_that_is_not_there(self.probe("example.com", CREATE.replace("201", "409")))
         self.assertEqual(self.calls, [])
+
+    def test_idn_probes_free_the_same_canonical_domain_on_a_later_page(self):
+        canonical = "xn--fsqu00a.xn--4rr70v"
+        self.domains = [{"id": index + 100, "name": f"filler-{index}.example"} for index in range(220)]
+        self.domains.append({"id": 999, "name": canonical})
+        for name in ("例子.广告", canonical):
+            with self.subTest(name=name):
+                self.calls.clear()
+                transaction = self.probe(name)
+                before = json.loads(json.dumps(transaction))
+                self.hooks.create_a_domain_that_is_not_there(transaction)
+                self.assertEqual(transaction, before)
+                self.assertIn(
+                    ("GET", "/api/v1/admin/domains?limit=200&offset=200", "Bearer setup"),
+                    self.calls,
+                )
+                self.assertEqual(
+                    [call[:2] for call in self.calls if call[0] == "DELETE"],
+                    [("DELETE", "/api/v1/admin/domains/999")],
+                )
+
+    def test_idn_domain_addresses_are_removed_before_recreating_it(self):
+        canonical = "xn--fsqu00a.xn--4rr70v"
+        self.domains = [{"id": 18, "name": canonical}]
+        self.stub.stash["sender_mailboxes"] = {
+            ORIGIN + "\n用户@" + canonical: True,
+            ORIGIN + "\nother@restmail.test": True,
+        }
+        transaction = self.probe("例子.广告")
+        before = json.loads(json.dumps(transaction))
+        self.hooks.create_a_domain_that_is_not_there(transaction)
+        self.assertEqual(transaction, before)
+        self.assertEqual(
+            [call for call in self.calls if call[0] == "DELETE"],
+            [
+                ("DELETE", "/api/v1/admin/aliases/5", "Bearer two-factor"),
+                ("DELETE", "/api/v1/admin/mailboxes/7", "Bearer two-factor"),
+                ("DELETE", "/api/v1/admin/mailboxes/9", "Bearer two-factor"),
+                ("DELETE", "/api/v1/admin/domains/18", "Bearer setup"),
+            ],
+        )
+        self.assertEqual(self.stub.stash["sender_mailboxes"], {ORIGIN + "\nother@restmail.test": True})
+        self.assertFalse(self.stub.stash.get("generated_domain_freed"))
 
 
 if __name__ == "__main__":

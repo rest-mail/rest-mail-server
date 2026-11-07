@@ -66,6 +66,8 @@ class FixtureAPI(BaseHTTPRequestHandler):
             return self.answer(200, {"data": state["contacts"]})
         if url.path == "/api/v1/admin/domains":
             return self.answer(200, {"data": state["domains"]})
+        if url.path in ("/api/v1/admin/aliases", "/api/v1/admin/mailboxes"):
+            return self.answer(200, {"data": []})
         if url.path == "/api/v1/accounts/0/contacts":
             return self.answer(422, {"error": {"code": "validation_failed"}})
         if url.path == "/api/v1/admin/queue":

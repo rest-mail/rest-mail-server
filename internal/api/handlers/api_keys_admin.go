@@ -10,6 +10,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/api/middleware"
 	"github.com/rest-mail/rest-mail-server/internal/api/respond"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
 )
 
 // adminAPIKey is one API key as an administrator sees it: its metadata and whose
@@ -43,6 +44,14 @@ func (h *CredentialHandler) RegisterAdmin(rs endpoint.Routes, onList func(string
 }
 
 func (h *CredentialHandler) listAdmin(r *http.Request, in listAdminAPIKeysRequest) (endpoint.List[adminAPIKey], error) {
+	if in.Owner != nil {
+		owner, err := rmail.CanonicalMailboxAddress(*in.Owner)
+		local, _, _ := strings.Cut(owner, "@")
+		if err != nil || len(local) > 64 {
+			return endpoint.List[adminAPIKey]{}, endpoint.InvalidQuery(map[string]string{"owner": "must be a valid email address"})
+		}
+		in.Owner = &owner
+	}
 	h = h.forRequest(r)
 	limit, offset := pagination(in.Limit, in.Offset, defaultListLimit, maxListLimit)
 
