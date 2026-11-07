@@ -3,22 +3,17 @@ package handlers
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"gorm.io/gorm"
 
 	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
-	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 	"github.com/rest-mail/rest-mail-server/internal/examplepairs"
-	"github.com/rest-mail/rest-mail-server/internal/testdb"
 )
 
 // openSlowStatementsScratchDB gives a test a database of its own, dropped
@@ -26,27 +21,7 @@ import (
 // answers as an operator's database without the extension does.
 func openSlowStatementsScratchDB(t *testing.T) *gorm.DB {
 	t.Helper()
-	admin, err := connectTestDB()
-	if err != nil {
-		testdb.Unreachable(t, "slow statements DB test skipped: no database reachable (%v)", err)
-	}
-	name := fmt.Sprintf("restmail_slowstmt_%d_%d", os.Getpid(), time.Now().UnixNano())
-	if err := admin.Exec("CREATE DATABASE " + name).Error; err != nil {
-		t.Skipf("slow statements DB test skipped: cannot create a database (%v)", err)
-	}
-	cfg := testDBConfig()
-	cfg.DBName = name
-	scratch, err := rmdb.Connect(cfg)
-	if err != nil {
-		t.Fatalf("connect to scratch database: %v", err)
-	}
-	t.Cleanup(func() {
-		if sqlDB, err := scratch.DB(); err == nil {
-			_ = sqlDB.Close()
-		}
-		admin.Exec("DROP DATABASE IF EXISTS " + name)
-	})
-	return scratch
+	return openScratchDB(t, "slowstmt", nil)
 }
 
 func slowStatementsRoutes(db *gorm.DB) http.Handler {
