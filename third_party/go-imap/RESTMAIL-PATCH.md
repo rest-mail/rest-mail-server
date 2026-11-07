@@ -23,6 +23,19 @@ workflow changes, and the fuzz targets nightly in
 one here would never run. `.github/scripts/check_coverage.py` and `.github/tests`
 stay: those steps run them, and `TestReadmeCoverageBadge` reads the gate.
 
+## Unsolicited FETCH UIDs
+
+Unsolicited flag updates include both UID and FLAGS, including after EXPUNGE
+renumbers messages. NOOP, CHECK and IDLE share this formatter. This satisfies
+RFC 9051 §§6.3.13 and 7.5.2 without an IMAP4rev2 mode switch: RFC 3501 allows
+the additional UID item. Solicited STORE responses are unchanged, and ordinary
+FETCH responses already include UID.
+
+`TestUnsolicitedFetchIncludesUID` proves the public-session behavior with sparse
+UIDs, external expunges, flag changes and new arrivals, under SELECT and EXAMINE.
+The gateway's `TestServer_UnsolicitedFetchIncludesUID` also proves that a silent
+STORE in another gateway session produces the correct UID-bearing update.
+
 ## RFC 3501 corrections
 
 These change protocol behaviour from go-imap v0.13.2, and each corrects a defect

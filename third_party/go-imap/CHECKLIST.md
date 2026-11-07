@@ -1616,7 +1616,7 @@ Continuation through section 6.3.13. Client-only hierarchy-browser assumptions, 
 | IMAP2-CMD-130 | RFC 9051 §6.3.12 | MUST NOT | Disclose APPENDUID to a caller that can append but cannot read the destination. | TestRightsUIDDisclosure |
 | IMAP2-CMD-131 | RFC 9051 §6.3.12 | SHOULD | Notify a selected mailbox of newly appended mail using EXISTS. | TestAppendSelectedMailbox |
 | IMAP2-CMD-132 | RFC 9051 §6.3.12 | SHOULD | Report OLDNAME when APPEND normalizes the destination mailbox name. | n/a: mailbox normalization and OLDNAME are not implemented; rest-mail/rest-mail-server#718. Gap: rest-mail/rest-mail-server#1669. |
-| IMAP2-CMD-133 | RFC 9051 §6.3.13 | MUST | Include UID in unsolicited FETCH updates sent during IDLE. | n/a: current IDLE flag updates contain FLAGS without UID. Rev2 unsolicited FETCH rules are not implemented; rest-mail/rest-mail-server#718. Gap: rest-mail/rest-mail-server#1668. |
+| IMAP2-CMD-133 | RFC 9051 §6.3.13 | MUST | Include UID in unsolicited FETCH updates sent during IDLE. | TestUnsolicitedFetchIncludesUID |
 
 ## RFC 9051: selected-state command inventory (first pass)
 
@@ -1703,7 +1703,7 @@ Server responses are checked independently of clients' caching, unknown-code han
 | IMAP2-RESP-211 | RFC 9051 §7.5.2 | SHOULD | Decode RFC2231 Content-Disposition parameter continuations. | TestBodyStructureContinuedParameters |
 | IMAP2-RESP-212 | RFC 9051 §7.5.2 | MUST NOT | Send undefined future BODYSTRUCTURE extension fields. | n/a: the formatter has no private/future extension fields; it emits only defined MD5, disposition, language and location fields. Client tolerance of later fields is not a server obligation. |
 | IMAP2-RESP-213 | RFC 9051 §7.5.2 | MUST | Keep single-part BODYSTRUCTURE extension fields in order and omit them from BODY. | TestBodyStructureRFCExample, TestBodyStructureMD5Location |
-| IMAP2-RESP-215 | RFC 9051 §7.5.2 | MUST | Include UID in unsolicited FETCH updates. | n/a: current NOOP/IDLE flag updates can contain FLAGS without UID, as recorded in IMAP2-CMD-133. Rev2 update formatting awaits rest-mail/rest-mail-server#718. Gap: rest-mail/rest-mail-server#1668. |
+| IMAP2-RESP-215 | RFC 9051 §7.5.2 | MUST | Include UID in unsolicited FETCH updates. | TestUnsolicitedFetchIncludesUID |
 
 ## RFC 9051: grammar, security and compatibility inventory
 
@@ -1801,7 +1801,9 @@ rev1 extension test to proof of a complete rev2 implementation.
     LIST-EXTENDED proofs, not rev2 negotiation (IMAP2-SEC-217/225).
 20. IDLE updates for other mailbox state are allowed, not required; the
     selected-mailbox IDLE proofs do not claim that optional behavior.
-21. UID in every unsolicited FETCH remains IMAP2-CMD-133/IMAP2-RESP-215.
+21. UID in every unsolicited FETCH is proven by TestUnsolicitedFetchIncludesUID
+    (IMAP2-CMD-133/IMAP2-RESP-215): NOOP, CHECK and IDLE, including renumbering
+    after EXPUNGE, under SELECT and EXAMINE without IMAP4rev2 negotiation.
 22. Ignoring unknown response codes is a client duty, outside this engine.
 23. Empty resp-text is allowed in rev2; the current rev1 engine emits text.
     Exact mode-dependent grammar still needs IMAP2-SEC-217 reconciliation.

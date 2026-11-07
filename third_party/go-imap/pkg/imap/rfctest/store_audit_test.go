@@ -160,8 +160,8 @@ func TestStoreSilentStillReportsOtherSourcesChanges(t *testing.T) {
 	if got := c.line(); !strings.HasPrefix(got, "+") {
 		t.Fatalf("IDLE continuation: %q", got)
 	}
-	if got := c.line(); got != `* 3 FETCH (FLAGS (\Seen))` {
-		t.Fatalf("the other source's change: %q, want * 3 FETCH (FLAGS (\\Seen))", got)
+	if got := c.line(); got != `* 3 FETCH (UID 5003 FLAGS (\Seen))` {
+		t.Fatalf("the other source's change: %q, want * 3 FETCH (UID 5003 FLAGS (\\Seen))", got)
 	}
 	if _, err := fmt.Fprintf(c.conn, "DONE\r\n"); err != nil {
 		t.Fatal(err)
