@@ -55,6 +55,7 @@ vars:
   # A testbed load run (#1583): every SMTP and IMAP sign-in reaches the API from
   # the gateway's one address, and the throttle allows an address 1 a second.
   API_LOAD_LIMITS_OFF: '{{.API_LOAD_LIMITS_OFF | default "false"}}'
+  API_CONTRACT_LIMITS_RAISED: '{{.API_CONTRACT_LIMITS_RAISED | default "false"}}'
   API_MAILNET_ONLY: '{{.API_MAILNET_ONLY | default "false"}}'
   API_PROXY_HOST: '{{.API_PROXY_HOST | default "restmail.localhost"}}'
   # Recovery links point at the HTTPS origin users reach the API through; the
@@ -142,6 +143,10 @@ tasks:
         LOAD_LIMITS=""
         if [ "{{.API_LOAD_LIMITS_OFF}}" = "true" ]; then
           LOAD_LIMITS="-e AUTH_RATE_LIMIT_ENABLED=false"
+        fi
+        CONTRACT_LIMITS=""
+        if [ "{{.API_CONTRACT_LIMITS_RAISED}}" = "true" ]; then
+          CONTRACT_LIMITS="$(python3 -B tests/contract/rate_limits.py --docker-flags)" || exit 1
         fi
         set --
         if [ "{{.API_COVER}}" = "true" ]; then
@@ -244,6 +249,7 @@ tasks:
           --env-file "$SECRETS_ENV" \
           -e ENVIRONMENT={{.API_ENVIRONMENT}} \
           $LOAD_LIMITS \
+          $CONTRACT_LIMITS \
           -e LOG_LEVEL={{.API_LOG_LEVEL}} \
           -e INTERNAL_MTLS_ENABLED={{.API_INTERNAL_MTLS}} \
           -e INTERNAL_MTLS_PORT={{.API_INTERNAL_MTLS_PORT}} \

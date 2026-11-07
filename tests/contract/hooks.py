@@ -40,6 +40,7 @@ LINKABLE_PASSWORD = "password123"
 # The two-factor administrator for setup a password cannot do.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import mfa_admin  # noqa: E402
+import rate_limits
 import reset_seed
 from queue_entry_hooks import a_disposable_queue_entry
 
@@ -406,7 +407,7 @@ def an_api_key_of_its_own_for_a_probe(transaction):
     if not positive_id(parent.split("/")[-2]) or not positive_id(credential) or credential == "2147483647":
         return
     origin = origin_of(transaction)
-    time.sleep(1.1)  # making the key spends the same budget as the edit
+    rate_limits.pace(1.1)
     request = urllib.request.Request(
         origin + parent,
         data=json.dumps({
@@ -457,7 +458,7 @@ def an_api_key_of_its_own_to_edit(transaction):
     # The missing pair names a key that is not there, and keeps it.
     if credential == "2147483647" or not address:
         return
-    time.sleep(1.1)  # making the key spends the same budget as the edit
+    rate_limits.pace(1.1)
     request = urllib.request.Request(
         origin + parent,
         data=json.dumps({
@@ -543,7 +544,7 @@ def pace_auth_requests(transaction):
     # repeats valid requests as well as refusals, so even correct credentials
     # drain its burst. Wait for a token without changing or retrying the probe.
     # Leave a small margin for clock/scheduling differences at the boundary.
-    time.sleep(1.1)
+    rate_limits.pace(1.1)
 
 
 @hooks.before("ownerChallenge")
@@ -553,7 +554,7 @@ def pace_owner_requests(transaction):
     # The owner operations share a bucket of their own at login's rate (and
     # describeServer's). The topology lists no owner or status keys, so the
     # run sends their refusals; coverage repeats them, so pace each.
-    time.sleep(1.1)
+    rate_limits.pace(1.1)
 
 
 @hooks.before("testPipeline")
@@ -562,7 +563,7 @@ def pace_owner_requests(transaction):
 def pace_pipeline_previews(transaction):
     # Pipeline previews share a 2 requests/second bucket in the E2E topology.
     # Pace every probe without changing its body, credential or expected reply.
-    time.sleep(0.55)
+    rate_limits.pace(0.55)
 
 
 def admin_token(origin):
@@ -1978,7 +1979,7 @@ def pace_the_tls_reports(transaction):
     # The route is rate-limited per client IP, 1 a second after a burst of 10
     # (DefaultTLSRPTRateLimitRPS, internal/config/config.go), and coverage
     # sends more probes than that: a 429 is the limiter, not the report.
-    time.sleep(1)
+    rate_limits.pace(1)
 
 
 @hooks.before("testFilter")

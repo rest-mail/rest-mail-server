@@ -180,7 +180,8 @@ class Summary(unittest.TestCase):
     def test_ci_runs_the_complete_local_command(self):
         chores = (ROOT / "chores.yml").read_text()
         workflow = (ROOT / ".github/workflows/e2e-suite.yml").read_text()
-        self.assertIn("run: chore contract\n", workflow)
+        self.assertIn("run: chore contract:topology\n", workflow)
+        self.assertIn("run: chore contract:pairs\n", workflow)
         self.assertIn("CONTRACT_ENDPOINT: http://10.99.0.20:8080", workflow)
         for phase in ("gate", "authorization", "ownership", "fuzz"):
             self.assertIn("tests/contract/run.sh " + phase, chores)
@@ -259,6 +260,15 @@ class Summary(unittest.TestCase):
 
 
 class ContractCommand(unittest.TestCase):
+    def test_topology_phase_recreates_fixtures_without_running_pairs(self):
+        result, calls = self.run_command(CONTRACT_SKIP_PAIRS="true", CONTRACT_REPORTS="false")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("chore:contract:pairs", calls)
+        self.assertIn("chore:test:contract-fixtures", calls)
+        self.assertIn("chore:test:contract-api-keys", calls)
+        self.assertIn("chore:test:contract-mfa-admin", calls)
+        self.assertIn("run:gate --tag Domains", calls)
+
     def run_command(
         self, principals=True, stale_reports=False, artifacts=None, **settings
     ):
