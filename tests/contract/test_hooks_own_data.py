@@ -1108,7 +1108,7 @@ class OwnDataHooks(unittest.TestCase):
         self.hooks.queued_and_held_mail_of_its_own(transaction)
         return transaction
 
-    def answered(self, transaction, affected, status=200):
+    def bulk_answered(self, transaction, affected, status=200):
         transaction["real"] = {
             "statusCode": status,
             "body": json.dumps({"data": {"affected": affected}}),
@@ -1133,7 +1133,7 @@ class OwnDataHooks(unittest.TestCase):
                 del self.server.queue[entry]
             else:
                 self.server.queue[entry][1] = outcome
-            self.assertIsNone(self.answered(transaction, 1), path)
+            self.assertIsNone(self.bulk_answered(transaction, 1), path)
             self.assertNotIn("bulk_queue_made", self.stub.stash)
 
     def test_a_bulk_empty_filter_that_acted_on_nothing_fails(self):
@@ -1143,7 +1143,7 @@ class OwnDataHooks(unittest.TestCase):
         for _, path, outcome in self.BULK_ACTIONS:
             transaction = self.bulk_exchange(path, {"filter": {}})
             (entry,) = self.server.queue
-            failure = self.answered(transaction, 0)
+            failure = self.bulk_answered(transaction, 0)
             self.assertIn("affected 0, but the hook made 1 eligible entry", failure)
             if outcome is None:
                 self.assertIn(f"entry {entry:d} is still queued (pending)", failure)
@@ -1156,7 +1156,7 @@ class OwnDataHooks(unittest.TestCase):
         transaction = self.bulk_exchange("/api/v1/admin/queue/bulk-bounce", {"filter": {}})
         (entry,) = self.server.queue
         self.assertEqual(
-            self.answered(transaction, 1),
+            self.bulk_answered(transaction, 1),
             "the bulk action did not change the entries made for it: "
             f"entry {entry:d} is pending, not bounced",
         )
@@ -1164,7 +1164,7 @@ class OwnDataHooks(unittest.TestCase):
         transaction = self.bulk_exchange("/api/v1/admin/queue/bulk-delete", {"filter": {}})
         self.server.queue.clear()
         self.assertEqual(
-            self.answered(transaction, 2),
+            self.bulk_answered(transaction, 2),
             "the bulk action did not change the entries made for it: "
             "affected 2, but the hook made 1 eligible entry",
         )
@@ -1172,7 +1172,7 @@ class OwnDataHooks(unittest.TestCase):
         transaction = self.bulk_exchange("/api/v1/admin/queue/bulk-retry", {"filter": {}})
         (entry,) = self.server.queue
         del self.server.queue[entry]
-        self.assertIn(f"entry {entry:d} is gone, not pending", self.answered(transaction, 1))
+        self.assertIn(f"entry {entry:d} is gone, not pending", self.bulk_answered(transaction, 1))
 
     def test_a_bulk_empty_filter_with_nothing_made_for_it_fails(self):
         # The control: a hook that makes nothing after the reset leaves an
@@ -1182,13 +1182,13 @@ class OwnDataHooks(unittest.TestCase):
             transaction = self.transaction(200, path, name=path + " > Bulk")
             transaction["request"]["body"] = json.dumps({"filter": {}})
             self.assertEqual(
-                self.answered(transaction, 0),
+                self.bulk_answered(transaction, 0),
                 "the bulk action's empty filter had no queue entry made for it to act on",
             )
         # Nor does an entry made for another exchange count.
         transaction = self.bulk_exchange("/api/v1/admin/queue/bulk-retry", {"filter": {}})
         other = dict(transaction, name="/other > 200")
-        self.assertIn("had no queue entry made", self.answered(other, 1))
+        self.assertIn("had no queue entry made", self.bulk_answered(other, 1))
 
     def test_other_bulk_exchanges_are_left_to_the_contract(self):
         self.clean_starts_on()
@@ -1198,11 +1198,11 @@ class OwnDataHooks(unittest.TestCase):
             "/api/v1/admin/queue/bulk-retry",
             {"filter": {"domain": "example.test", "status": "deferred"}},
         )
-        self.assertIsNone(self.answered(transaction, 0))
+        self.assertIsNone(self.bulk_answered(transaction, 0))
         # A refusal the status check already fails, and an after hook of
         # another exchange than the one the entry was made for.
         transaction = self.bulk_exchange("/api/v1/admin/queue/bulk-retry", {"filter": {}})
-        self.assertIsNone(self.answered(transaction, 0, status=500))
+        self.assertIsNone(self.bulk_answered(transaction, 0, status=500))
         calls = len(self.server.calls)
         # Without a reset nothing was made, and nothing is checked.
         os.environ.pop("CONTRACT_RESET_SEED")
@@ -1210,7 +1210,7 @@ class OwnDataHooks(unittest.TestCase):
         transaction = self.transaction(200, "/api/v1/admin/queue/bulk-retry")
         transaction["request"]["body"] = json.dumps({"filter": {}})
         self.hooks.queued_and_held_mail_of_its_own(transaction)
-        self.assertIsNone(self.answered(transaction, 0))
+        self.assertIsNone(self.bulk_answered(transaction, 0))
         self.assertEqual(len(self.server.calls), calls)
 
     def test_the_held_list_names_an_account_of_its_own(self):
