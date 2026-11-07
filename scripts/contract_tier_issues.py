@@ -1,19 +1,22 @@
 #!/usr/bin/env python3
-"""Keep one issue per finding of the daily contract tier (#626, Tiers).
+"""Keep one rolling issue per daily contract tier (#626, Tiers).
 
 contract-fuzz.yml and contract-faults.yml run this after their suite. Each fuzz
-finding and each fault the run did not catch has one issue, found again by the
-marker in its body:
+finding and each fault the run did not catch has one table row in the tier's
+issue, found again by hidden tier and row markers:
 
-- a failure opens the issue, reopens it if a pass closed it, or rewrites the
-  "Latest failing run" part of the open one, which keeps its replay seed current
+- a failure adds or refreshes its row's latest failing run and replay seed
   without a nightly notification;
 - a later finished run in which that transaction passes, or that fault is caught,
-  closes it. Fuzz draws different values each night, so a transaction it did not
-  send this run says nothing and its issue stays open;
+  removes the row. Fuzz draws different values each night, so a transaction it
+  did not send this run says nothing and its row stays open;
 - a run that did not finish, or that failed for a reason its report does not
-  explain, has an issue of its own, and closes nothing else;
-- an issue a person closed as not planned stays closed.
+  explain, has a row of its own, and removes nothing else;
+- a row marked ignored by a person stays silenced, independently of other rows.
+
+Legacy single-finding issues are imported before they are closed with a link to
+the rolling issue. Legacy not-planned issues become ignored rows. An empty tier
+closes and a new finding reopens it; closing the whole tier is not an ignore list.
 
 Only scheduled runs, v* tags and runs dispatched on main count. A cancelled or
 skipped suite changes nothing. An issue is public, so what is copied into one is
@@ -29,6 +32,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import html
 import json
 import os
 import re
@@ -38,13 +42,15 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-MAX_OPENED = 25  # new issues in one run; the next run opens the rest
 PAUSE_SECONDS = 1.0  # between writes, as GitHub asks of automated clients
 MAX_DETAIL = 3000
 MAX_TITLE = 180
 RUN_KEY = "run"
 
 MARKER = re.compile(r"<!-- contract-tier-issue:(?P<tier>[a-z]+):(?P<key>[a-z0-9]+) -->")
+TIER_MARKER = re.compile(r"<!-- contract-tier-issue:(?P<tier>[a-z]+) -->")
+ROW_MARKER = re.compile(r"<!-- contract-tier-finding:(?P<tier>[a-z]+):(?P<key>[a-z0-9]+) -->")
+MIGRATED = re.compile(r"<!-- contract-tier-migrated:(\d+) -->")
 FIRST_SEEN = re.compile(r"^First seen: (?P<seen>.+)$", re.MULTILINE)
 SEED = re.compile(r"^(?:\x1b\[[0-9;]*m)*seed: (\d+)", re.MULTILINE)
 SCRUBS = (
@@ -175,9 +181,8 @@ def read_fuzz(reports: Path) -> Report:
     if not total:
         report.problems.append("fuzz.json holds no transactions")
     try:
-        seeds = SEED.findall(
-            (reports / "contract-fuzz.log").read_text(errors="replace")
-        )
+        with (reports / "contract-fuzz.log").open(errors="replace") as log:
+            seeds = [match[1] for line in log if (match := SEED.match(line))]
     except OSError:
         seeds = []
     if not seeds:
@@ -208,6 +213,9 @@ def read_fuzz(reports: Path) -> Report:
 
 def read_faults(reports: Path) -> Report:
     report = Report(exhaustive=True)
+    pin = (Path(__file__).parent / "vertrag-pin.yml").read_text()
+    version = re.search(r"^VERTRAG_VERSION: (\S+)$", pin, re.MULTILINE)
+    report.tool = f"vertrag {version[1]}" if version else "vertrag unknown"
     try:
         text = (reports / "faults.md").read_text()
     except OSError as error:
@@ -272,23 +280,16 @@ def plan(
     result: str,
     report: Report,
     issues: dict[str, Issue],
-    max_opened: int = MAX_OPENED,
-) -> tuple[list[Action], list[Finding]]:
-    """What to do to the issues, and the findings the cap left for the next run."""
+) -> list[Action]:
+    """Apply the existing finding lifecycle independently to each table row."""
     done = finished(tier, result, report)
     wanted = dict(report.findings)
     if not done:
         wanted[RUN_KEY] = run_finding(result, report)
     actions: list[Action] = []
-    deferred: list[Finding] = []
-    opened = 0
     for key, finding in sorted(wanted.items()):
         issue = issues.get(key)
         if issue is None:
-            if opened >= max_opened:
-                deferred.append(finding)
-                continue
-            opened += 1
             actions.append(Action("open", finding=finding))
         elif issue.state == "OPEN":
             actions.append(Action("update", issue.number, finding, issue))
@@ -300,7 +301,7 @@ def plan(
                 continue
             if key == RUN_KEY or key in report.passed or report.exhaustive:
                 actions.append(Action("close", issue.number, issue=issue))
-    return actions, deferred
+    return actions
 
 
 @dataclass
@@ -381,12 +382,16 @@ def known_issues(repo: str, tier: str) -> dict[str, Issue]:
     )
     issues: dict[str, Issue] = {}
     for row in sorted(rows, key=lambda row: row["number"]):
-        match = MARKER.search(row.get("body") or "")
-        if not match or match["tier"] != tier or match["key"] in issues:
+        body = row.get("body") or ""
+        match = TIER_MARKER.search(body) or MARKER.search(body)
+        if not match or match["tier"] != tier:
             continue
-        issues[match["key"]] = Issue(
+        key = match.groupdict().get("key") or "tier"
+        if key in issues:
+            key = f"legacy{row['number']}"
+        issues[key] = Issue(
             row["number"],
-            match["key"],
+            match.groupdict().get("key") or "tier",
             row.get("state", ""),
             row.get("stateReason") or "",
             row.get("body") or "",
@@ -410,7 +415,7 @@ def ensure_label(repo: str, tier: str) -> None:
         or "[]"
     )
     if not any(label["name"] == settings["label"] for label in names):
-        gh(
+        write(
             "label",
             "create",
             settings["label"],
@@ -428,57 +433,162 @@ def carry_first_seen(issue: Issue | None) -> str | None:
     return match["seen"] if match else None
 
 
-def apply(action: Action, run: Run) -> None:
-    repo = run.repo
-    if action.kind == "close":
-        gh(
-            "issue",
-            "close",
-            str(action.number),
-            "--repo",
-            repo,
-            "--reason",
-            "completed",
-            "--comment",
-            f"{run.seen} passed this, so it closes. A later failure reopens it.",
-        )
-        return
-    body = body_of(action.finding, run, carry_first_seen(action.issue))
-    if action.kind == "open":
-        gh(
-            "issue",
-            "create",
-            "--repo",
-            repo,
-            "--title",
-            title_of(run.tier, action.finding),
-            "--label",
-            TIERS[run.tier]["label"],
-            "--body-file",
-            "-",
-            input_text=body,
-        )
-        return
-    if action.kind == "reopen":
-        gh(
-            "issue",
-            "reopen",
-            str(action.number),
-            "--repo",
-            repo,
-            "--comment",
-            f"{run.seen} failed this again.",
-        )
-    gh(
-        "issue",
-        "edit",
-        str(action.number),
-        "--repo",
-        repo,
-        "--body-file",
-        "-",
-        input_text=body,
+def cell(text: str) -> str:
+    return (
+        html.escape(scrub(text)[:MAX_DETAIL], quote=False)
+        .replace("|", "&#124;")
+        .replace("`", "&#96;")
+        .replace("@", "&#64;")
+        .replace("\n", "<br>")
     )
+
+
+def row_of(finding: Finding, run: Run, first_seen: str | None = None) -> str:
+    title = " ".join(finding.title.split())[:MAX_TITLE]
+    return (
+        f"| <!-- contract-tier-finding:{run.tier}:{finding.key} --> open "
+        f"| <code>{cell(title)}</code><br><code>{cell(finding.detail)}</code> "
+        f"| {first_seen or run.seen} | {run.seen} ({run.event}, `{run.ref}`) "
+        f"| {cell(run.tool or 'unknown')} | <code>{cell(finding.replay)}</code> |"
+    )
+
+
+def read_rows(issue: Issue | None, tier: str) -> dict[str, Issue]:
+    rows = {}
+    for line in issue.body.splitlines() if issue else []:
+        match = ROW_MARKER.search(line)
+        if not match or match["tier"] != tier:
+            continue
+        cells = line.split("|")
+        if len(cells) != 8:
+            raise ValueError(f"malformed finding row: {match['key']}")
+        status = cells[1].split("-->")[-1].strip().lower()
+        if status not in ("open", "ignored"):
+            raise ValueError(f"unknown finding status: {status}")
+        ignored = status == "ignored"
+        rows[match["key"]] = Issue(
+            issue.number, match["key"], "CLOSED" if ignored else "OPEN",
+            "NOT_PLANNED" if ignored else "", line,
+        )
+    return rows
+
+
+def rolling_body(run: Run, rows: dict[str, Issue], migrated: set[str]) -> str:
+    lines = [
+        f"<!-- contract-tier-issue:{run.tier} -->",
+        "One row per finding. A finished run removes only transactions it sent and passed "
+        "(or faults it caught or removed from the catalogue). An unfinished or unexplained "
+        "failure adds a run row and removes nothing. The issue closes when no open rows remain "
+        "and reopens for new findings.",
+        "",
+        "To silence one finding as **not planned**, edit its Status cell from `open` to "
+        "`ignored`, leaving its hidden key marker intact. Ignored rows stay here even after "
+        "passes and do not keep the issue open. Change `ignored` back to `open` to track it "
+        "again. Closing the whole issue does not silence individual findings.",
+        "",
+        "| Status | Transaction or fault | First seen | Latest failing run | Tool version | Replay at latest commit |",
+        "|---|---|---|---|---|---|",
+        *(row.body for _, row in sorted(rows.items())),
+        "",
+        *(f"<!-- contract-tier-migrated:{number} -->" for number in sorted(migrated)),
+        "",
+    ]
+    return "\n".join(lines)
+
+
+def write(*args: str, input_text: str | None = None) -> str:
+    result = gh(*args, input_text=input_text)
+    time.sleep(PAUSE_SECONDS)
+    return result
+
+
+def legacy_row(issue: Issue, run: Run) -> Issue:
+    detail = re.search(
+        r"^(`{3,})text\n(.*?)\n\1", issue.body, re.MULTILINE | re.DOTALL
+    )
+    text = detail[2] if detail else f"Imported from #{issue.number}"
+    tool = re.search(r"^- tool: (.+)$", issue.body, re.MULTILINE)
+    replay = re.search(
+        r"^- replay against a topology at that commit: `([^`]+)`",
+        issue.body, re.MULTILINE,
+    )
+    latest = re.search(r"^## Latest failing run\n\n- (.+)$", issue.body, re.MULTILINE)
+    finding = Finding(issue.key, text.splitlines()[0], text, replay[1] if replay else "")
+    cells = row_of(finding, run, carry_first_seen(issue)).split("|")
+    cells[4] = f" {scrub(latest[1])} " if latest else " unknown (legacy issue) "
+    cells[5] = f" {cell(tool[1])} " if tool else " unknown "
+    row = "|".join(cells)
+    if issue.state_reason == "NOT_PLANNED":
+        row = row.replace("--> open", "--> ignored", 1)
+    return Issue(issue.number, issue.key, issue.state, issue.state_reason, row)
+
+
+def reconcile(
+    run: Run, result: str, report: Report, issues: dict[str, Issue], dry_run: bool
+) -> None:
+    rolling = issues.get("tier")
+    rows = read_rows(rolling, run.tier)
+    migrated = set(MIGRATED.findall(rolling.body)) if rolling else set()
+    legacy = [issue for issue in issues.values() if issue.key != "tier"]
+    for issue in legacy:
+        if str(issue.number) in migrated:
+            continue
+        if issue.state != "OPEN" and issue.state_reason != "NOT_PLANNED":
+            continue
+        if issue.key not in rows:
+            rows[issue.key] = legacy_row(issue, run)
+        migrated.add(str(issue.number))
+    actions = plan(run.tier, result, report, rows)
+    for action in actions:
+        key = action.finding.key if action.finding else action.issue.key
+        if action.kind == "close":
+            del rows[key]
+        else:
+            first_seen = rows[key].body.split("|")[3].strip() if key in rows else None
+            rows[key] = Issue(
+                rolling.number if rolling else 0, key, "OPEN", "",
+                row_of(action.finding, run, first_seen),
+            )
+    if not rows and not rolling and not migrated:
+        return
+    body = rolling_body(run, rows, migrated)
+    active = any(row.state == "OPEN" for row in rows.values())
+    pending = [issue for issue in legacy if issue.state == "OPEN"]
+    if dry_run:
+        print(f"would {'update' if rolling else 'open'} {TIERS[run.tier]['subject']} findings")
+        if rolling and rolling.state == "OPEN" and not active:
+            print(f"would close #{rolling.number}")
+        for issue in pending:
+            print(f"would migrate #{issue.number}")
+        return
+    if not rolling:
+        ensure_label(run.repo, run.tier)
+        url = write(
+            "issue", "create", "--repo", run.repo, "--title",
+            f"{TIERS[run.tier]['subject']} findings"[:MAX_TITLE], "--label",
+            TIERS[run.tier]["label"], "--body-file", "-", input_text=body,
+        ).strip()
+        rolling = Issue(int(url.rsplit("/", 1)[-1]), "tier", "OPEN", "", body)
+    elif body != rolling.body:
+        write(
+            "issue", "edit", str(rolling.number), "--repo", run.repo,
+            "--body-file", "-", input_text=body,
+        )
+    if active and rolling.state == "CLOSED":
+        write("issue", "reopen", str(rolling.number), "--repo", run.repo)
+    elif not active and rolling.state == "OPEN":
+        write(
+            "issue", "close", str(rolling.number), "--repo", run.repo,
+            "--reason", "completed", "--comment",
+            f"{run.seen}: no open findings remain. A later finding reopens this issue.",
+        )
+    url = f"{run.server_url}/{run.repo}/issues/{rolling.number}"
+    for issue in pending:
+        write(
+            "issue", "close", str(issue.number), "--repo", run.repo,
+            "--reason", "completed", "--comment",
+            f"Migrated to the rolling tier issue: {url}. Its table now tracks this finding.",
+        )
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -508,12 +618,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def describe(action: Action, tier: str) -> str:
-    title = title_of(tier, action.finding) if action.finding else ""
-    number = f" #{action.number}" if action.number else ""
-    return f"{action.kind}{number} {title}".strip()
-
-
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     if not watched(args.event, args.ref):
@@ -533,25 +637,7 @@ def main(argv: list[str] | None = None) -> int:
         args.server_url,
         report.tool,
     )
-    actions, deferred = plan(
-        args.tier, args.result, report, known_issues(args.repo, args.tier)
-    )
-    print(
-        f"{args.tier}, suite {args.result}: {len(report.findings)} finding(s), {len(report.passed)} passed, "
-        f"{len(actions)} change(s)"
-    )
-    for finding in deferred:
-        print(f"::warning::the next run opens: {title_of(args.tier, finding)}")
-    if args.dry_run:
-        for action in actions:
-            print(f"would {describe(action, args.tier)}")
-        return 0
-    if any(action.kind == "open" for action in actions):
-        ensure_label(args.repo, args.tier)
-    for action in actions:
-        print(describe(action, args.tier))
-        apply(action, run)
-        time.sleep(PAUSE_SECONDS)
+    reconcile(run, args.result, report, known_issues(args.repo, args.tier), args.dry_run)
     return 0
 
 

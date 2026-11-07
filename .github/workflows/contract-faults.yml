@@ -7,9 +7,9 @@ name: Contract faults
 # operation. A fault that stops being caught fails this run; faults.md in the run's
 # e2e-container-logs artifact says which. Adding a fault: tests/contract/README.md.
 #
-# Each fault that fails has one issue (label contract-faults): a failure opens or
-# updates it, and a later run that catches the fault closes it
-# (scripts/contract_tier_issues.py).
+# One rolling issue (label contract-faults) holds a row per uncaught fault. A
+# failure adds or refreshes its row; a finished run that catches it removes it.
+# An empty tier closes (scripts/contract_tier_issues.py).
 on:
   schedule:
     - cron: "30 4 * * *"
