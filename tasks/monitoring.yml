@@ -169,7 +169,7 @@ tasks:
           --ip {{.PROMETHEUS_IP}} \
           --dns {{.PROMETHEUS_DNS}} \
           -v "$(pwd)/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro" \
-          -v "$(pwd)/monitoring/alerting-rules.yml:/etc/prometheus/alerting-rules.yml:ro" \
+          -v "$(pwd)/helm/restmail/files/alerting-rules.yml:/etc/prometheus/alerting-rules.yml:ro" \
           -v {{.PROMETHEUS_DATA_VOLUME}}:/prometheus \
           {{.PROMETHEUS_IMAGE}} \
           --config.file=/etc/prometheus/prometheus.yml \

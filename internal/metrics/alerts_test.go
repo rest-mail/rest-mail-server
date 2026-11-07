@@ -35,10 +35,10 @@ func definedMetricNames(t *testing.T) map[string]bool {
 	return names
 }
 
-// alertRules reads monitoring/alerting-rules.yml as alert name to expression.
+// alertRules reads helm/restmail/files/alerting-rules.yml as alert name to expression.
 func alertRules(t *testing.T) map[string]string {
 	t.Helper()
-	raw, err := os.ReadFile("../../monitoring/alerting-rules.yml")
+	raw, err := os.ReadFile("../../helm/restmail/files/alerting-rules.yml")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +103,7 @@ func exprMetrics(expr string) []string {
 }
 
 // TestAlertRules_ReadExistingMetrics: every metric an alert in
-// monitoring/alerting-rules.yml reads is one internal/metrics defines (a
+// helm/restmail/files/alerting-rules.yml reads is one internal/metrics defines (a
 // histogram's _bucket, _sum and _count series included) or one listed in
 // externalMetrics, so no alert waits on a series that never exists. The
 // alerts #1579 added are checked by name, and each reads the metric it was
@@ -149,7 +149,7 @@ func TestAlertRules_ReadExistingMetrics(t *testing.T) {
 	} {
 		expr, ok := rules[alert]
 		if !ok {
-			t.Errorf("no %s rule in monitoring/alerting-rules.yml", alert)
+			t.Errorf("no %s rule in helm/restmail/files/alerting-rules.yml", alert)
 			continue
 		}
 		if !strings.Contains(expr, metric) {

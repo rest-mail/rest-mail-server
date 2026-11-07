@@ -64,8 +64,10 @@ assert_contains "PrometheusRule enabled" "$tmp/metrics-on.yaml" 'kind: Prometheu
 assert_contains "PrometheusRule selector label" "$tmp/metrics-on.yaml" 'release: monitoring'
 assert_contains "DKIM overdue alert" "$tmp/metrics-on.yaml" 'alert: DKIMKeyOverdue'
 assert_contains "DKIM publication alert" "$tmp/metrics-on.yaml" 'alert: DKIMPublicationStuck'
-[ "$(yq -N e 'select(.kind == "PrometheusRule") | .spec.groups[0].rules | length' "$tmp/metrics-on.yaml")" = 2 ] || fail "expected exactly two DKIM alerts"
-python3 -B "$CHART_DIR/tests/dkim-alerts-test.py" "$tmp/metrics-on.yaml"
+assert_contains "PVC disk alert" "$tmp/metrics-on.yaml" 'alert: PVCSpaceCritical'
+assert_contains "queue alert" "$tmp/metrics-on.yaml" 'alert: QueueOldestMessageOld'
+assert_absent "compose-only disk alert" "$tmp/metrics-on.yaml" 'alert: DiskSpaceCritical'
+python3 -B "$CHART_DIR/tests/alerting-rules-test.py" "$tmp/metrics-on.yaml"
 if command -v promtool >/dev/null 2>&1; then
   yq -N e 'select(.kind == "PrometheusRule") | {"groups": .spec.groups}' "$tmp/metrics-on.yaml" > "$tmp/dkim-alerts-rules.yml"
   cp "$CHART_DIR/tests/dkim-alerts-test.yml" "$tmp/dkim-alerts-test.yml"
