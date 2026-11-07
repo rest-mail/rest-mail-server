@@ -404,6 +404,13 @@ func (s *Session) sendAutologoutBye() {
 // RFC 3501 §§6.4.6, 7). Zero keeps the default, 15 seconds. Call it before Handle.
 func (s *Session) SetIdlePollInterval(d time.Duration) { s.idlePoll = d }
 
+// endSession tells an authenticated Mailbox the session is over, once, however it ended.
+func (s *Session) endSession() {
+	if m, ok := s.mailbox.(imap.SessionEnder); ok {
+		m.EndSession()
+	}
+}
+
 func (s *Session) Handle() {
 	defer func() { _ = s.conn.Close() }()
 	// "A server MUST NOT unilaterally close the connection without sending an untagged
@@ -415,6 +422,8 @@ func (s *Session) Handle() {
 		}
 	}()
 	defer s.recoverPanic() // contain any panic from a backend method or handler
+	// Runs before recoverPanic, so a panic in the backend's EndSession is contained too.
+	defer s.endSession()
 
 	slog.Info("imap: new connection", "remote", s.conn.RemoteAddr())
 

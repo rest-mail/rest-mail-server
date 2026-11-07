@@ -5,6 +5,7 @@
   "#/components/schemas/ErrorBody/properties/details": "Refusals carry error-specific structured details, including field validation and protocol details; the outer error envelope stays closed.",
   "#/components/schemas/Headers/properties/extra": "Mail header names form an explicit string dictionary, rather than REST Mail resource fields.",
   "#/components/schemas/Headers/properties/raw": "Raw mail headers preserve arbitrary header names and repeated string values for mail-protocol interoperability.",
+  "#/components/schemas/ImportSessionSummary/properties/folders": "Import counts are a dictionary keyed by destination folder name, which the importing client chooses; each value is a closed ImportFolderCounts object.",
   "#/components/schemas/Message/properties/calendar_events": "Stored calendar-event JSON is transported unchanged as message payload. Its raw wire declaration remains typing work under #637/#652/#658; this exception does not authorize any additional resource field.",
   "#/components/schemas/Message/properties/headers": "Stored mail header JSON is transported unchanged for mail-protocol interoperability. Header names remain payload data; replacing this opaque value with a typed header dictionary remains #637/#652/#658 work.",
   "#/components/schemas/Message/properties/recipients_cc": "This wire field forwards the stored Cc recipient JSON as opaque message content (message_types.go), without assigning nested keys to model columns. Replacing the unconstrained value with its wire type remains #637/#658 work.",

@@ -30,3 +30,46 @@ type ImportMessageResult struct {
 	MessageID string `json:"message_id"`
 	Folder    string `json:"folder"`
 }
+
+// OpenImportSessionBody names the importer for the summary. Both fields are optional.
+type OpenImportSessionBody struct {
+	ClientName    string `json:"client_name,omitempty" maxLength:"255" description:"The importing tool, as the summary will name it (for IMAP, the ID command's name field)"`
+	ClientVersion string `json:"client_version,omitempty" maxLength:"255" description:"The importing tool's version (for IMAP, the ID command's version field)"`
+}
+
+// ImportSession is an open import: send its id as import_session with each message.
+type ImportSession struct {
+	ID                 string    `json:"id" description:"Send as the import_session query parameter of importMessage"`
+	AccountID          uint      `json:"account_id"`
+	ClientName         string    `json:"client_name,omitempty"`
+	ClientVersion      string    `json:"client_version,omitempty"`
+	StartedAt          time.Time `json:"started_at" format:"date-time"`
+	IdleTimeoutSeconds int       `json:"idle_timeout_seconds" description:"A session with no import or close for this long is closed and its summary written"`
+}
+
+// ImportFolderCounts is one folder's part of an import summary.
+type ImportFolderCounts struct {
+	Imported     int64 `json:"imported" description:"Messages stored"`
+	Deduplicated int64 `json:"deduplicated" description:"Messages already there with the same Message-ID and octets, skipped"`
+	Refused      int64 `json:"refused" description:"Attempts refused or failed, storing nothing"`
+	Bytes        int64 `json:"bytes" description:"Octets of the messages stored"`
+	// MboxSeparatorStripped counts messages that began with an mbox "From " separator line,
+	// which was dropped so the message starts at its first header (#1498).
+	MboxSeparatorStripped int64 `json:"mbox_separator_stripped" description:"Messages imported or deduplicated whose leading mbox From_ separator line was dropped"`
+}
+
+// ImportSessionSummary is what a closed import did: counts per folder, never one row per message.
+type ImportSessionSummary struct {
+	ID                    string                        `json:"id"`
+	AccountID             uint                          `json:"account_id"`
+	ClientName            string                        `json:"client_name,omitempty"`
+	ClientVersion         string                        `json:"client_version,omitempty"`
+	StartedAt             time.Time                     `json:"started_at" format:"date-time"`
+	EndedAt               time.Time                     `json:"ended_at" format:"date-time"`
+	Imported              int64                         `json:"imported"`
+	Deduplicated          int64                         `json:"deduplicated"`
+	Refused               int64                         `json:"refused"`
+	Bytes                 int64                         `json:"bytes"`
+	MboxSeparatorStripped int64                         `json:"mbox_separator_stripped"`
+	Folders               map[string]ImportFolderCounts `json:"folders" description:"Counts by destination folder; refusals naming an invalid folder are counted under (invalid)"`
+}

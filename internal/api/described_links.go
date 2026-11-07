@@ -128,6 +128,11 @@ var responseLinks = map[string]map[string]map[string]oapifly.Link{
 			"deleteGrant": {OperationID: "deleteGrant", Parameters: map[string]string{"id": "$response.body#/data/id"}},
 		},
 	},
+	"createImportSession": {
+		"201": {
+			"closeImportSession": {OperationID: "closeImportSession", Parameters: map[string]string{"id": "$request.path.id", "session": "$response.body#/data/id"}},
+		},
+	},
 	"createPipeline": {
 		"201": {
 			"deletePipeline": {OperationID: "deletePipeline", Parameters: map[string]string{"id": "$response.body#/data/id"}},

@@ -627,10 +627,50 @@ export interface paths {
         put?: never;
         /**
          * Store a message the account already has
-         * @description Stores original message octets, folder, supported system flags and required internal_date without delivery rules or push notifications. Requires mail:import on the destination, which every account is granted on its own mailbox by the importer role; an owner can revoke that grant, and the account is then refused with 403. A message whose Message-ID and exact octets are already in that account and folder is skipped without changing its flags or date; the same Message-ID with different octets is stored as another message. With always_store true no such check is made: a new message is stored with its own id, flags and date, and the one already there is left as it was. With match_submission true and folder Sent, a message whose Message-ID is on one authenticated SMTP submission saved in that account's Sent in the last 5 minutes is not stored, whatever always_store says, and the answer names the saved message with imported false. Messages without Message-ID use a deterministic SHA-256 import identity; the raw source remains unchanged. Every attempt is audited; successful imports and skips also receive a transactional messages.import audit entry. The decoded message is bounded by SMTP_MAX_MESSAGE_SIZE (10 MiB by default); the general API body limit may be stricter. Deleted state and up to 100 case-insensitive keywords of 1–255 ASCII bytes are preserved. Keywords must be RFC 3501 atoms without backslash. Deleted messages use IMAP deletion state, not API tombstones; EXPUNGE removes them.
+         * @description Stores original message octets, folder, supported system flags and required internal_date without delivery rules or push notifications. Requires mail:import on the destination, which every account is granted on its own mailbox by the importer role; an owner can revoke that grant, and the account is then refused with 403. A message whose Message-ID and exact octets are already in that account and folder is skipped without changing its flags or date; the same Message-ID with different octets is stored as another message. With always_store true no such check is made: a new message is stored with its own id, flags and date, and the one already there is left as it was. With match_submission true and folder Sent, a message whose Message-ID is on one authenticated SMTP submission saved in that account's Sent in the last 5 minutes is not stored, whatever always_store says, and the answer names the saved message with imported false. Messages without Message-ID use a deterministic SHA-256 import identity; the raw source remains unchanged. The one exception is a leading mbox From_ separator line (RFC 4155), which is dropped so the message starts at its first header, and counted as mbox_separator_stripped; any other header block that does not parse is refused. Every attempt the route can read is audited in a messages.import summary, never one entry per message of a session. With import_session (from createImportSession) it is counted in that session's summary, written once when the session closes; without it, it is written at once as a summary of its one message. A summary counts, per folder, messages imported (in the same transaction as the message), deduplicated (a copy matched to its submission included) and refused (stored nothing, including server failures), and the bytes imported. A request over the body limit, or one that cannot be read as this request, is refused before it is counted. An unknown, closed or other opener's import_session is refused as import_session_not_found. The decoded message is bounded by SMTP_MAX_MESSAGE_SIZE (10 MiB by default); the general API body limit may be stricter. Deleted state and up to 100 case-insensitive keywords of 1–255 ASCII bytes are preserved. Keywords must be RFC 3501 atoms without backslash. Deleted messages use IMAP deletion state, not API tombstones; EXPUNGE removes them.
          */
         post: operations["importMessage"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounts/{id}/messages/import-sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Open an import session
+         * @description Opens an import of many messages into the account, so it is audited as one summary instead of one entry per message. Send the returned id as import_session with each importMessage call, then close it with closeImportSession. Requires mail:import on the account. A session with no import or close for idle_timeout_seconds (one hour) is closed by the server and its summary written. The IMAP gateway opens one at a connection's first APPEND or COPY and closes it at LOGOUT or disconnect, naming the client from its ID command.
+         */
+        post: operations["createImportSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounts/{id}/messages/import-sessions/{session}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Close an import session and write its summary
+         * @description Closes the import session and writes its summary as one messages.import audit entry: account, client, start and end, and per folder the messages imported, deduplicated and refused with the bytes imported. The summary is returned. Only the account that opened the session may close it; a session that does not exist, has closed or belongs to another opener is not found.
+         */
+        delete: operations["closeImportSession"];
         options?: never;
         head?: never;
         patch?: never;
@@ -3538,6 +3578,12 @@ export interface components {
         "Data-ImportMessageResult": {
             data: components["schemas"]["ImportMessageResult"];
         };
+        "Data-ImportSession": {
+            data: components["schemas"]["ImportSession"];
+        };
+        "Data-ImportSessionSummary": {
+            data: components["schemas"]["ImportSessionSummary"];
+        };
         "Data-InstallationSenderRule": {
             data: components["schemas"]["InstallationSenderRule"];
         };
@@ -3903,6 +3949,18 @@ export interface components {
             db: string;
             status: string;
         };
+        ImportFolderCounts: {
+            /** Format: int64 */
+            bytes: number;
+            /** Format: int64 */
+            deduplicated: number;
+            /** Format: int64 */
+            imported: number;
+            /** Format: int64 */
+            mbox_separator_stripped: number;
+            /** Format: int64 */
+            refused: number;
+        };
         ImportMessageBody: {
             always_store?: boolean;
             flags?: string[];
@@ -3918,6 +3976,38 @@ export interface components {
             id: number;
             imported: boolean;
             message_id: string;
+        };
+        ImportSession: {
+            account_id: number;
+            client_name?: string;
+            client_version?: string;
+            id: string;
+            idle_timeout_seconds: number;
+            /** Format: date-time */
+            started_at: string;
+        };
+        ImportSessionSummary: {
+            account_id: number;
+            /** Format: int64 */
+            bytes: number;
+            client_name?: string;
+            client_version?: string;
+            /** Format: int64 */
+            deduplicated: number;
+            /** Format: date-time */
+            ended_at: string;
+            folders: {
+                [key: string]: components["schemas"]["ImportFolderCounts"];
+            };
+            id: string;
+            /** Format: int64 */
+            imported: number;
+            /** Format: int64 */
+            mbox_separator_stripped: number;
+            /** Format: int64 */
+            refused: number;
+            /** Format: date-time */
+            started_at: string;
         };
         InboundTransportSecurity: {
             overTLS: number;
@@ -4197,6 +4287,10 @@ export interface components {
         MessageVolumeData: {
             count: number;
             date: string;
+        };
+        OpenImportSessionBody: {
+            client_name?: string;
+            client_version?: string;
         };
         OwnerChallenge: {
             challenge: string;
@@ -9639,7 +9733,10 @@ export interface operations {
     };
     importMessage: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description The import session this message belongs to, from createImportSession. Without it, the message is audited as an import of its own. */
+                import_session?: string;
+            };
             header?: never;
             path: {
                 id: number;
@@ -9707,6 +9804,212 @@ export interface operations {
                 };
             };
             /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After": number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    createImportSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OpenImportSessionBody"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-ImportSession"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After": number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    closeImportSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                session: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-ImportSessionSummary"];
+                };
+            };
+            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
             413: {
                 headers: {
                     [name: string]: unknown;

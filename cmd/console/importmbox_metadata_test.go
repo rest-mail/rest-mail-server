@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -17,7 +16,7 @@ import (
 
 func TestImportMboxChecksMetadataBeforeCallingAPI(t *testing.T) {
 	var calls atomic.Int32
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	server := importSessionServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		calls.Add(1)
 		_, _ = w.Write([]byte(`{"data":{"id":7,"imported":true,"message_id":"<fixture@example.test>","folder":"INBOX"}}`))
 	}))
@@ -47,7 +46,7 @@ func TestImportMboxChecksMetadataBeforeCallingAPI(t *testing.T) {
 func TestImportMboxSendsExactSizeMessageWithoutEnvelope(t *testing.T) {
 	raw := "Subject: x\n\nbody\n"
 	var calls atomic.Int32
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := importSessionServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
 		var message apitypes.ImportMessageBody
 		if err := json.NewDecoder(r.Body).Decode(&message); err != nil || string(message.RawMessage) != raw {

@@ -9,10 +9,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"math"
 	"net/http"
 	"net/mail"
-	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -24,10 +24,10 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/api/respond"
 	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
 	"github.com/rest-mail/rest-mail-server/internal/attachmentstore"
-	"github.com/rest-mail/rest-mail-server/internal/audit"
 	"github.com/rest-mail/rest-mail-server/internal/config"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/db/repositories"
+	"github.com/rest-mail/rest-mail-server/internal/importsession"
 	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
 	rmime "github.com/rest-mail/rest-mail-server/internal/mime"
 	"github.com/rest-mail/rest-mail-server/internal/pipeline"
@@ -55,8 +55,9 @@ func NewMessageImportHandler(db *gorm.DB, maxBytes int64, store *attachmentstore
 // route reads the body itself (importSpooledMessage), so the message is never in Body.RawMessage
 // except for the rare forms named there.
 type importMessageRequest struct {
-	ID   uint32                     `path:"id" minimum:"1" example:"1"`
-	Body apitypes.ImportMessageBody `body:""`
+	ID            uint32                     `path:"id" minimum:"1" example:"1"`
+	ImportSession string                     `query:"import_session" pattern:"^$|^[0-9a-f]{32}$" description:"The import session this message belongs to, from createImportSession. Without it, the message is audited as an import of its own."`
+	Body          apitypes.ImportMessageBody `body:""`
 }
 
 // Register adds the operation to the mail routes. The handler checks mail:import
@@ -74,10 +75,11 @@ func (h *MessageImportHandler) Register(rs endpoint.Routes) {
 	}}
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/accounts/{id}/messages/import",
 		OperationID: "importMessage", Summary: "Store a message the account already has", Tags: []string{"Messages"},
-		Description: "Stores original message octets, folder, supported system flags and required internal_date without delivery rules or push notifications. Requires mail:import on the destination, which every account is granted on its own mailbox by the importer role; an owner can revoke that grant, and the account is then refused with 403. A message whose Message-ID and exact octets are already in that account and folder is skipped without changing its flags or date; the same Message-ID with different octets is stored as another message. With always_store true no such check is made: a new message is stored with its own id, flags and date, and the one already there is left as it was. With match_submission true and folder Sent, a message whose Message-ID is on one authenticated SMTP submission saved in that account's Sent in the last 5 minutes is not stored, whatever always_store says, and the answer names the saved message with imported false. Messages without Message-ID use a deterministic SHA-256 import identity; the raw source remains unchanged. Every attempt is audited; successful imports and skips also receive a transactional messages.import audit entry. The decoded message is bounded by SMTP_MAX_MESSAGE_SIZE (10 MiB by default); the general API body limit may be stricter. Deleted state and up to 100 case-insensitive keywords of 1–255 ASCII bytes are preserved. Keywords must be RFC 3501 atoms without backslash. Deleted messages use IMAP deletion state, not API tombstones; EXPUNGE removes them.",
+		Description: "Stores original message octets, folder, supported system flags and required internal_date without delivery rules or push notifications. Requires mail:import on the destination, which every account is granted on its own mailbox by the importer role; an owner can revoke that grant, and the account is then refused with 403. A message whose Message-ID and exact octets are already in that account and folder is skipped without changing its flags or date; the same Message-ID with different octets is stored as another message. With always_store true no such check is made: a new message is stored with its own id, flags and date, and the one already there is left as it was. With match_submission true and folder Sent, a message whose Message-ID is on one authenticated SMTP submission saved in that account's Sent in the last 5 minutes is not stored, whatever always_store says, and the answer names the saved message with imported false. Messages without Message-ID use a deterministic SHA-256 import identity; the raw source remains unchanged. The one exception is a leading mbox From_ separator line (RFC 4155), which is dropped so the message starts at its first header, and counted as mbox_separator_stripped; any other header block that does not parse is refused. Every attempt the route can read is audited in a messages.import summary, never one entry per message of a session. With import_session (from createImportSession) it is counted in that session's summary, written once when the session closes; without it, it is written at once as a summary of its one message. A summary counts, per folder, messages imported (in the same transaction as the message), deduplicated (a copy matched to its submission included) and refused (stored nothing, including server failures), and the bytes imported. A request over the body limit, or one that cannot be read as this request, is refused before it is counted. An unknown, closed or other opener's import_session is refused as import_session_not_found. The decoded message is bounded by SMTP_MAX_MESSAGE_SIZE (10 MiB by default); the general API body limit may be stricter. Deleted state and up to 100 case-insensitive keywords of 1–255 ASCII bytes are preserved. Keywords must be RFC 3501 atoms without backslash. Deleted messages use IMAP deletion state, not API tombstones; EXPUNGE removes them.",
 		Errors:      []int{http.StatusForbidden, http.StatusNotFound, http.StatusConflict, http.StatusRequestEntityTooLarge},
 		Security:    handlerChecked(models.CapMailImport, folderSchemes...),
 		Middleware:  []endpoint.Middleware{cap}, DescribedRequest: importMessageRequest{}}, h.importSpooledMessage)
+	h.registerSessions(rs)
 }
 
 // importRefusal is how an import names a refused account: one the caller may not
@@ -104,10 +106,47 @@ const (
 
 var errImportQuota = endpoint.Refuse(http.StatusConflict, "mailbox_full", "The destination account has insufficient quota")
 
+var errImportSessionNotFound = endpoint.Refuse(http.StatusNotFound, "import_session_not_found",
+	"The import session does not exist, has closed, or was opened by another account for another mailbox")
+
+// auditRefusal counts an attempt that stored nothing, so every attempt the route reads is in
+// an audit summary: its session's, or one of its own when it has no open session.
+func (h *MessageImportHandler) auditRefusal(r *http.Request, accountID uint32, folder, session string, refusal error) {
+	claims := middleware.GetClaims(r)
+	if claims == nil {
+		return
+	}
+	if folder == "" || strings.EqualFold(folder, "INBOX") {
+		folder = "INBOX"
+	} else if rmail.FolderNameProblem(folder) != "" {
+		folder = "(invalid)" // a refused name is not kept, only counted
+	}
+	now := time.Now()
+	err := h.db.WithContext(r.Context()).Transaction(func(tx *gorm.DB) error {
+		if session != "" && !errors.Is(refusal, errImportSessionNotFound) {
+			err := importsession.Count(tx, session, uint(accountID), claims.AccountID, folder, importsession.Attempt{Outcome: importsession.Refused}, now)
+			if !errors.Is(err, importsession.ErrNotFound) {
+				return err
+			}
+		}
+		status, code := http.StatusInternalServerError, "internal_error"
+		var e *endpoint.Error
+		if errors.As(refusal, &e) {
+			status, code = e.Status, e.Code
+		}
+		entry := middleware.RequestEntry(r, importsession.Action, status)
+		entry.ErrorCode = code
+		return importsession.Single(tx, &entry, uint(accountID), folder, importsession.Attempt{Outcome: importsession.Refused})
+	})
+	if err != nil {
+		slog.Error("messages.import: auditing a refused import failed", "account_id", accountID, "error", err)
+	}
+}
+
 // storeImportedMessage stores a message from its file. Only headers are read before it is known
 // the message must be stored: a refused message and a rerun of one already here read no more of
 // it than that. Reading past them happens only then, attachments going straight to their store.
-func (h *MessageImportHandler) storeImportedMessage(r *http.Request, accountID uint32, body apitypes.ImportMessageBody, source *importSource) (apitypes.ImportMessageResult, error) {
+func (h *MessageImportHandler) storeImportedMessage(r *http.Request, accountID uint32, body apitypes.ImportMessageBody, source *importSource, session string) (apitypes.ImportMessageResult, error) {
 	var result apitypes.ImportMessageResult
 	if source.tooLarge() {
 		return result, endpoint.Refuse(http.StatusRequestEntityTooLarge, "message_too_large", "The decoded message exceeds the import size limit")
@@ -305,14 +344,26 @@ func (h *MessageImportHandler) storeImportedMessage(r *http.Request, accountID u
 			}
 			result = apitypes.ImportMessageResult{ID: msg.ID, Imported: true, MessageID: msg.MsgID, Folder: msg.Folder}
 		}
-		entry := middleware.NewAuditEntry("messages.import", r, time.Now())
-		entry.Status = http.StatusOK
-		entry.Target["account_id"] = strconv.FormatUint(uint64(accountID), 10)
-		entry.Target["message_id"] = strconv.FormatUint(uint64(result.ID), 10)
-		entry.Target["imported"] = strconv.FormatBool(result.Imported)
-		return audit.Append(tx, entry)
+		attempt := importsession.Attempt{Outcome: importsession.Deduplicated, MboxSeparatorStripped: source.mboxSeparator}
+		if result.Imported {
+			attempt.Outcome, attempt.Bytes = importsession.Imported, source.size
+		}
+		// The import is counted in its own transaction: into its session's summary, or as a
+		// summary of its own when it has none. Never one entry per message of a session.
+		if session != "" {
+			err := importsession.Count(tx, session, uint(accountID), claims.AccountID, body.Folder, attempt, time.Now())
+			if errors.Is(err, importsession.ErrNotFound) {
+				return errImportSessionNotFound
+			}
+			return err
+		}
+		return importsession.Single(tx, middleware.NewAuditEntry(importsession.Action, r, time.Now()), uint(accountID), body.Folder, attempt)
 	})
 	if err != nil {
+		var refusal *endpoint.Error
+		if errors.As(err, &refusal) {
+			return apitypes.ImportMessageResult{}, refusal
+		}
 		return apitypes.ImportMessageResult{}, fmt.Errorf("import historical message: %w", err)
 	}
 	// An open client learns of the message; a phone is not told, since this is

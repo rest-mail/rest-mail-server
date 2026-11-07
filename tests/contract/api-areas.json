@@ -215,7 +215,9 @@
     "listAliases",
     "listMailboxes",
     "updateAlias",
-    "updateMailbox"
+    "updateMailbox",
+    "createImportSession",
+    "closeImportSession"
   ],
   "649": [
     "createCustomFilter",

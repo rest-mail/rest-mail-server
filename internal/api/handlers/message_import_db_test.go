@@ -25,7 +25,7 @@ import (
 func importProofDB(t *testing.T, extraModels ...any) *gorm.DB {
 	t.Helper()
 	setup := append([]any{withForeignKeys}, accountModels...)
-	setup = append(setup, &models.Message{}, &models.Attachment{})
+	setup = append(setup, &models.Message{}, &models.Attachment{}, &models.ImportSession{})
 	setup = append(setup, extraModels...)
 	setup = append(setup, withAudit, withRoles)
 	db := openScratchDB(t, "importproof", setup)

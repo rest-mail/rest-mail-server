@@ -110,6 +110,9 @@ func runImportIMAPSource(ctx context.Context, args []string, token, password, ac
 			return o.fail(exitUsage, "no_api_key", "set RESTMAIL_API_KEY with mail:import on the destination")
 		}
 	}
+	// The run's import session is opened at its first import, so a source refused
+	// before then makes no API call, and closed when the run ends.
+	var session *importSessionRun
 	total, imported, skipped := 0, 0, 0
 	renames := []mailimport.FolderRename{}
 	report := func(rename mailimport.FolderRename) {
@@ -129,7 +132,14 @@ func runImportIMAPSource(ctx context.Context, args []string, token, password, ac
 		if *dry {
 			return nil
 		}
-		result, status, err := postImportedMessage(ctx, client, base, token, uint32(*account), message)
+		if session == nil {
+			opened, err := openImportSession(ctx, client, base, token, uint32(*account), "imap")
+			if err != nil {
+				return fmt.Errorf("%s: %w", source, err)
+			}
+			session = opened
+		}
+		result, status, err := postImportedMessage(ctx, client, base, token, uint32(*account), session.id, message)
 		if err != nil {
 			return fmt.Errorf("%s: %w", source, err)
 		}
@@ -147,6 +157,10 @@ func runImportIMAPSource(ctx context.Context, args []string, token, password, ac
 		return nil
 	}
 	err = readSource(ctx, mailimport.IMAPOptions{Address: net.JoinHostPort(u.Hostname(), port), Username: *user, Password: password, AccessToken: accessToken, StartTLS: *startTLS, Renamed: report}, *limit, visit)
+	result := map[string]any{"messages": total, "imported": imported, "skipped": skipped, "dry_run": *dry, "renamed_folders": renames}
+	if closeErr := finishImportSession(session, o, result, err != nil); err == nil {
+		err = closeErr
+	}
 	if err != nil {
 		detail := err.Error()
 		if accessToken != "" {
@@ -156,7 +170,7 @@ func runImportIMAPSource(ctx context.Context, args []string, token, password, ac
 		return o.fail(exitFailed, "import_failed", fmt.Sprintf("%s (completed %d imports, skipped %d existing copies; rerun to resume)", detail, imported, skipped))
 	}
 	if o.json {
-		_ = json.NewEncoder(stdout).Encode(map[string]any{"messages": total, "imported": imported, "skipped": skipped, "dry_run": *dry, "renamed_folders": renames})
+		_ = json.NewEncoder(stdout).Encode(result)
 	} else if *dry {
 		fmt.Fprintf(stdout, "Validated %d source messages; no destination API calls made.\n", total)
 	} else {

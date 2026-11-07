@@ -13,6 +13,9 @@
   messages, with string values or lists of strings.
 '#/components/schemas/Headers/properties/raw': Mail header names are supplied by messages,
   with string values or lists of strings.
+'#/components/schemas/ImportSessionSummary/properties/folders': Import counts are a dictionary keyed by destination
+  folder name, which the importing client chooses; each value is a closed
+  ImportFolderCounts object.
 '#/components/schemas/Message/properties/calendar_events': 'Message JSON fields preserve
   stored mail data; more precise shapes are tracked in #637 and #652.'
 '#/components/schemas/Message/properties/headers': 'Message JSON fields preserve stored

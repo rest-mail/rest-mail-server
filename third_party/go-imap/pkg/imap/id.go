@@ -46,3 +46,10 @@ func (id ClientID) Get(name string) (string, bool) {
 type IDMailbox interface {
 	SetClientID(id ClientID)
 }
+
+// SessionEnder is an optional interface for a [Mailbox]: EndSession is called
+// once when the session that authenticated it ends, by LOGOUT, autologout,
+// server shutdown or the client disconnecting.
+type SessionEnder interface {
+	EndSession()
+}
