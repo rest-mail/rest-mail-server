@@ -85,6 +85,43 @@ def imapsync(host, folder):
 
 @unittest.skipUnless(os.environ.get("RESTMAIL_LIVE_IMAPSYNC"), "set RESTMAIL_LIVE_IMAPSYNC with the topology up")
 class ImapsyncCutover(unittest.TestCase):
+    def test_create_then_append_literals_preserves_flags_and_internal_dates(self):
+        receiver = target(gateway_address())
+        self.addCleanup(receiver.logout)
+        folder = "AppendCutover%d" % time.time_ns()
+        status, response = receiver.status(folder, "(MESSAGES)")
+        self.assertEqual(status, "NO", response)
+        self.assertIn(b"[NONEXISTENT]", response[0])
+        for readonly in (False, True):
+            status, response = receiver.select(folder, readonly=readonly)
+            self.assertEqual(status, "NO", response)
+            self.assertIn(b"[NONEXISTENT]", response[0])
+        status, response = receiver.create(folder)
+        self.assertEqual(status, "OK", response)
+        status, response = receiver.select(folder)
+        self.assertEqual((status, response), ("OK", [b"0"]))
+        status, response = receiver.status(folder, "(MESSAGES)")
+        self.assertEqual(status, "OK", response)
+        self.assertIn(b"(MESSAGES 0)", response[0])
+        want = {}
+        for date in (None, '"07-Nov-2020 15:01:32 +0000"'):
+            for flags in (None, [], ["\\Seen"], ["\\Flagged", "\\Seen"],
+                          ["$Forwarded", "$Junk"], ["\\Deleted", "\\Seen", "$Forwarded"]):
+                with self.subTest(date=date, flags=flags):
+                    subject = "append-%d" % (len(want) + 1)
+                    message = ("From: alice@mail1.test\r\nTo: %s\r\nSubject: %s\r\n"
+                               "Message-ID: <%s.%s@mail1.test>\r\n\r\nLiteral body\r\n"
+                               % (TARGET_USER, subject, subject, folder)).encode()
+                    flag_list = None if flags is None else "(%s)" % " ".join(flags)
+                    status, response = receiver.append(folder, flag_list, date, message)
+                    self.assertEqual(status, "OK", response)
+                    want[subject] = sorted(flags or [])
+                    self.assertEqual(contents(receiver, folder), want)
+                    if date is not None:
+                        status, response = receiver.fetch(str(len(want)), "(INTERNALDATE)")
+                        self.assertEqual(status, "OK", response)
+                        self.assertIn(b'INTERNALDATE "07-Nov-2020 15:01:32 +0000"', response[0])
+
     def test_a_copy_keeps_what_the_mailbox_held_and_a_second_adds_nothing(self):
         folder = "Cutover%d" % time.time()
         want = {

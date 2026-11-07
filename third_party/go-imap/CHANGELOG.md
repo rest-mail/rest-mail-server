@@ -14,6 +14,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Added
 
 - `Server.Serve` starts the server on listeners the caller has already opened.
+- Mailbox rights (RFC 9051 §§6.3.2, 6.3.9.2, 6.3.12, 6.4.7, 11.4): a Mailbox
+  that implements the new optional `imap.RightsMailbox` interface reports what
+  the user may do with each mailbox (`imap.Rights`: read, write, create). A
+  mailbox the user may read but not write is selected `[READ-ONLY]`, by SELECT
+  too; one the user may not read is refused `NO [NOPERM]` by SELECT, EXAMINE and
+  STATUS and listed `\Noselect` without STATUS. APPEND, COPY and MOVE to a
+  missing mailbox answer `NO [TRYCREATE]` (or `NO [NONEXISTENT]` when it cannot
+  be created) before the store sees them, so none is created implicitly, and to
+  one the user may not write `NO [NOPERM]`. APPENDUID and COPYUID are sent only
+  for a destination the user may read. A Mailbox without it keeps every right.
 - STATUS DELETED (RFC 9051 §6.3.11): STATUS, and LIST's STATUS return option,
   report how many messages carry `\Deleted`.
 - The CLOSED response code (RFC 9051 §§6.3.2, 7.1): SELECT or EXAMINE that
@@ -40,6 +50,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   nothing, so the new message stayed out of sight until the next SELECT. EXISTS
   now goes out only when the size changed. `TestMoveNames` required the old
   behaviour for a move into INBOX and now requires this one.
+- DELETE of a name that is not a mailbox but has inferior mailboxes is refused
+  `NO [HASCHILDREN]` (RFC 9051 §6.3.5, RFC 5530 §3) instead of answering OK.
 - A SELECT or EXAMINE refused with BAD keeps the mailbox already selected, with
   its read-only mode and deletion marks: a rejected command never changes state
   (RFC 3501 §6). Only a well-formed selection attempt that fails with NO

@@ -134,6 +134,11 @@ func (s *Session) handleCreate(tag, args string) {
 		return
 	}
 
+	if creator, ok := s.mailbox.(imap.FolderCreator); ok {
+		s.createFolder(tag, creator, folder)
+		return
+	}
+
 	// Folders are implicit — they exist once a message is moved into them.
 	// CREATE just validates and acknowledges.
 	s.tagged(tag, "OK", "CREATE completed")
@@ -163,6 +168,13 @@ func (s *Session) handleDelete(tag, args string) {
 	standard := map[string]bool{"INBOX": true, "Sent": true, "Drafts": true, "Trash": true}
 	if standard[folder] {
 		s.tagged(tag, "NO", "Cannot delete standard folder")
+		return
+	}
+
+	// A name that is not a mailbox but has inferiors is \Noselect, and deleting
+	// it is an error (RFC 9051 §6.3.5); HASCHILDREN says why (RFC 5530 §3).
+	if folders, err := s.mailbox.Folders(); err == nil && !folderIn(folders, folder) && hasInferiors(folders, folder) {
+		s.tagged(tag, "NO", "[HASCHILDREN] Mailbox has inferior mailboxes")
 		return
 	}
 

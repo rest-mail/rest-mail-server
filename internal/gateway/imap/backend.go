@@ -157,6 +157,8 @@ var (
 	_ goimap.IDMailbox      = (*mailbox)(nil)
 	_ goimap.SessionEnder   = (*mailbox)(nil)
 	_ goimap.Subscriber     = (*mailbox)(nil)
+	_ goimap.RightsMailbox  = (*mailbox)(nil)
+	_ goimap.FolderCreator  = (*mailbox)(nil)
 )
 
 // importMessage stores a message through the import operation, counted in this
@@ -225,6 +227,26 @@ func (m *mailbox) Subscribe(name string) error {
 // Unsubscribe removes name from the account's subscription list (UNSUBSCRIBE).
 func (m *mailbox) Unsubscribe(name string) error {
 	return m.api.Unsubscribe(m.token, m.accountID, name)
+}
+
+func (m *mailbox) CreateFolder(name string) error {
+	if err := validateFolder(name); err != nil {
+		return err
+	}
+	return m.api.CreateFolder(m.token, m.accountID, name)
+}
+
+// MailboxRights reports the signed-in user's rights on folder (RightsMailbox).
+// REST Mail keeps no rights per folder: a protocol sign-in reaches only the
+// account's own folders, and the mail.read and mail.write capabilities it is
+// checked against hold for the whole account, so every folder is readable and
+// writable, and the API stays the gate that refuses a call the session may not
+// make. What the gateway does know is which names can never become a folder:
+// one the API's folder name rule refuses (validateFolder). So APPEND, COPY and
+// MOVE to a missing folder answer NO [TRYCREATE] rather than creating it, and a
+// plain NO for a name that could not be created (RFC 9051 §6.3.12).
+func (m *mailbox) MailboxRights(folder string) (goimap.Rights, error) {
+	return goimap.Rights{Read: true, Write: true, Create: validateFolder(folder) == nil}, nil
 }
 
 // EnableUTF8 switches this session to UTF-8 (RFC 6855 UTF8=ACCEPT). The
