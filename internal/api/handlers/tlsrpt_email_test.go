@@ -200,7 +200,7 @@ func TestTLSReportEmailStorage(t *testing.T) {
 // table; neither retains an unsigned report as ordinary mailbox mail.
 func TestTLSReportEmailDeliveryRoutes(t *testing.T) {
 	database := openMsgDeleteTestDB(t)
-	if err := database.AutoMigrate(&models.TLSReport{}); err != nil {
+	if err := migrateModels(database, &models.TLSReport{}); err != nil {
 		t.Fatal(err)
 	}
 	tx := database.Begin()

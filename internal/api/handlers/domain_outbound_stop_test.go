@@ -26,7 +26,7 @@ import (
 // mail back the queue lifetime it spent held.
 func TestDomainOutboundStop_ThroughTheAdminAPI(t *testing.T) {
 	db := openMsgDeleteTestDB(t)
-	if err := db.AutoMigrate(&models.QuotaUsage{}, &models.AuditEntry{}, &models.OutboundQueue{}); err != nil {
+	if err := migrateModels(db, &models.QuotaUsage{}, &models.AuditEntry{}, &models.OutboundQueue{}); err != nil {
 		t.Skipf("outbound stop DB test skipped: migrate failed (%v)", err)
 	}
 	tx := db.Begin()

@@ -264,7 +264,7 @@ func TestSendMessage_OneClickNeedsDKIM(t *testing.T) {
 // an app password to send as.
 func seedSendingMailbox(t *testing.T, db *gorm.DB, domain, local string) models.Mailbox {
 	t.Helper()
-	if err := db.AutoMigrate(&models.Mailbox{}, &models.Message{}, &models.OutboundQueue{}, &models.Contact{}); err != nil {
+	if err := migrateModels(db, &models.Mailbox{}, &models.Message{}, &models.OutboundQueue{}, &models.Contact{}); err != nil {
 		t.Skipf("list-unsubscribe send test skipped: migrate failed (%v)", err)
 	}
 	var d models.Domain
@@ -284,7 +284,7 @@ func seedSendingMailbox(t *testing.T, db *gorm.DB, domain, local string) models.
 // from it.
 func seedOwnedSendingMailbox(t *testing.T, db *gorm.DB, domain, local string) models.Mailbox {
 	t.Helper()
-	if err := db.AutoMigrate(accountModels...); err != nil {
+	if err := migrateModels(db, accountModels...); err != nil {
 		t.Skipf("list-unsubscribe send test skipped: migrate failed (%v)", err)
 	}
 	if err := rmdb.MigrateAuditLog(db); err != nil {

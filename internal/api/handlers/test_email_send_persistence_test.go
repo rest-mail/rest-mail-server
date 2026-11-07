@@ -15,7 +15,7 @@ import (
 
 func TestTestEmailSendPersistence(t *testing.T) {
 	db := openAliasUpdateScratchDB(t)
-	if err := db.AutoMigrate(&models.Mailbox{}, &models.Message{}); err != nil {
+	if err := migrateModels(db, &models.Mailbox{}, &models.Message{}); err != nil {
 		t.Fatal(err)
 	}
 	domain := models.Domain{Name: "restmail.test", Active: true}

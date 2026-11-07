@@ -20,7 +20,7 @@ import (
 // mx patterns are written as A-labels.
 func TestServePolicy_IDN(t *testing.T) {
 	gdb := openAuthzTestDB(t)
-	if err := gdb.AutoMigrate(&models.MTASTSPolicy{}); err != nil {
+	if err := migrateModels(gdb, &models.MTASTSPolicy{}); err != nil {
 		t.Skipf("MTA-STS DB test skipped: migrate failed (%v)", err)
 	}
 

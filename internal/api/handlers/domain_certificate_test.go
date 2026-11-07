@@ -22,7 +22,7 @@ import (
 // certificate to serve it with.
 func TestDomainLifecycle_NotLiveWithoutACertificate(t *testing.T) {
 	gdb := openAuthzTestDB(t)
-	if err := gdb.AutoMigrate(&models.Pipeline{}, &models.Certificate{}); err != nil {
+	if err := migrateModels(gdb, &models.Pipeline{}, &models.Certificate{}); err != nil {
 		t.Skipf("domain certificate test skipped: migrate failed (%v)", err)
 	}
 

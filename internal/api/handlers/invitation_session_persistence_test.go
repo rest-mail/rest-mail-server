@@ -20,7 +20,7 @@ const invitationSessionPassword = "chosen fixture first password"
 func invitationSessionFixture(t *testing.T) (*gorm.DB, models.Mailbox, string, *auth.JWTService) {
 	t.Helper()
 	db := openCustomFilterCreateScratchDB(t)
-	if err := db.AutoMigrate(append(accountModels, &models.OneTimeToken{})...); err != nil {
+	if err := migrateModels(db, append(accountModels, &models.OneTimeToken{})...); err != nil {
 		t.Fatal(err)
 	}
 	domain := models.Domain{Name: "invitation-session.test"}

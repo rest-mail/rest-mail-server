@@ -59,6 +59,7 @@ func openStoreTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		testdb.Unreachable(t, "acme store test skipped: no database reachable (%v)", err)
 	}
+	testdb.ReuseConnections(t, gdb)
 	if err := gdb.AutoMigrate(&models.Domain{}, &models.Certificate{}, &models.ACMEAccount{}); err != nil {
 		t.Skipf("acme store test skipped: migrate failed (%v)", err)
 	}

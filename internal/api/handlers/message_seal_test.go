@@ -21,7 +21,7 @@ func TestMessageSealDeliveryVerificationAndAuthorization(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := database.AutoMigrate(append(accountModels, &models.Message{}, &models.Attachment{})...); err != nil {
+	if err := migrateModels(database, append(accountModels, &models.Message{}, &models.Attachment{})...); err != nil {
 		t.Fatal(err)
 	}
 	tx := database.Begin()

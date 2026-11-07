@@ -40,7 +40,7 @@ var stagedSawCheck bool
 func stagedHandler(t *testing.T, content pipeline.Action) (*MessageHandler, localDeliveryParams, *gorm.DB, *[]string) {
 	t.Helper()
 	db := openAccountsTestDB(t)
-	if err := db.AutoMigrate(&models.Attachment{}, &models.Pipeline{}, &models.Quarantine{}); err != nil {
+	if err := migrateModels(db, &models.Attachment{}, &models.Pipeline{}, &models.Quarantine{}); err != nil {
 		t.Fatal(err)
 	}
 	fx := seedAccountsFixture(t, db)

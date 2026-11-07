@@ -28,7 +28,7 @@ type serverCeilingFixture struct {
 func newServerCeilingFixture(t *testing.T) serverCeilingFixture {
 	t.Helper()
 	db := openCustomFilterCreateScratchDB(t)
-	if err := db.AutoMigrate(&models.Mailbox{}, &models.Credential{}, &models.Role{}, &models.Capability{}, &models.RoleCapability{}, &models.Grant{}, &models.GrantActivation{}, &models.AuditEntry{}); err != nil {
+	if err := migrateModels(db, &models.Mailbox{}, &models.Credential{}, &models.Role{}, &models.Capability{}, &models.RoleCapability{}, &models.Grant{}, &models.GrantActivation{}, &models.AuditEntry{}); err != nil {
 		t.Fatal(err)
 	}
 	create := func(v interface{}) {

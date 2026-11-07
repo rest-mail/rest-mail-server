@@ -106,7 +106,7 @@ func TestCustomFilterUpdate_DocumentedExamples(t *testing.T) {
 	if err != nil {
 		t.Skipf("custom filter update contract test requires PostgreSQL: %v", err)
 	}
-	if err := db.AutoMigrate(&models.Domain{}, &models.CustomFilter{}); err != nil {
+	if err := migrateModels(db, &models.Domain{}, &models.CustomFilter{}); err != nil {
 		t.Fatal(err)
 	}
 	tx := db.Begin()

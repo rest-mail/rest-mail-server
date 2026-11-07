@@ -21,7 +21,7 @@ import (
 // when none is reachable.
 func TestDomainSendingPolicy_SetThroughTheAdminAPI(t *testing.T) {
 	gdb := openAuthzTestDB(t)
-	if err := gdb.AutoMigrate(&models.Pipeline{}); err != nil {
+	if err := migrateModels(gdb, &models.Pipeline{}); err != nil {
 		t.Skipf("domain sending policy test skipped: migrate failed (%v)", err)
 	}
 	tx := gdb.Begin()

@@ -109,6 +109,7 @@ func openTraceTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		testdb.Unreachable(t, "trace recorder DB test skipped: no database reachable (%v)", err)
 	}
+	testdb.ReuseConnections(t, gdb)
 	if err := gdb.AutoMigrate(&models.MessageTrace{}); err != nil {
 		t.Skipf("trace recorder DB test skipped: migrate failed (%v)", err)
 	}

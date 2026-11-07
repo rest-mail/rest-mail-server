@@ -63,6 +63,7 @@ func openDownsampleTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		testdb.Unreachable(t, "downsample DB test skipped: no database reachable (%v)", err)
 	}
+	testdb.ReuseConnections(t, gdb)
 	if err := gdb.AutoMigrate(&models.PipelineRollup{}, &models.PipelineRollupCoarse{}); err != nil {
 		t.Skipf("downsample DB test skipped: migrate failed (%v)", err)
 	}

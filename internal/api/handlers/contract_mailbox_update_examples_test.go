@@ -97,7 +97,7 @@ func TestMailboxUpdate_DocumentedExamples(t *testing.T) {
 	if !strings.HasPrefix(database, "restmail_auditapi_") {
 		t.Fatalf("refusing to write to non-scratch database %q", database)
 	}
-	if err := db.AutoMigrate(accountModels...); err != nil {
+	if err := migrateModels(db, accountModels...); err != nil {
 		t.Fatal(err)
 	}
 	h := NewMailboxHandler(db, nil, nil)

@@ -53,7 +53,7 @@ func (notifier *aliasDeliveryNotifications) NewMail(mailboxID uint) {
 func newAliasDeliveryFixture(t *testing.T) *aliasDeliveryFixture {
 	t.Helper()
 	database := openRedirectTestDB(t)
-	if err := database.AutoMigrate(&models.Attachment{}, &models.SieveScript{}); err != nil {
+	if err := migrateModels(database, &models.Attachment{}, &models.SieveScript{}); err != nil {
 		t.Fatal(err)
 	}
 	fixture := &aliasDeliveryFixture{db: database}

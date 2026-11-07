@@ -6,12 +6,11 @@ import (
 	"testing"
 
 	"github.com/rest-mail/rest-mail-server/internal/bootstrap"
-	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 )
 
 func TestAccountSettingsAbsentLifecycle(t *testing.T) {
 	database := openAuthzTestDB(t)
-	if err := rmdb.AutoMigrate(database); err != nil {
+	if err := migrateSchema(database); err != nil {
 		t.Fatal(err)
 	}
 	transaction := database.Begin()

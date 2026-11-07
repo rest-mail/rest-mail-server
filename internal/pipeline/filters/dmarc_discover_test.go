@@ -115,6 +115,7 @@ func openDMARCCaptureDB(t *testing.T) (*gorm.DB, string) {
 	if err != nil {
 		testdb.Unreachable(t, "DMARC capture DB test skipped: no database reachable (%v)", err)
 	}
+	testdb.ReuseConnections(t, db)
 	if err := db.AutoMigrate(&models.DMARCAggregateRecord{}); err != nil {
 		t.Skipf("DMARC capture DB test skipped: migrate failed (%v)", err)
 	}

@@ -21,7 +21,7 @@ type pipelineResourceProbe struct{ name, method, path, table string }
 func pipelineResourceFixture(t *testing.T) (*gorm.DB, []pipelineResourceProbe) {
 	t.Helper()
 	db := openCustomFilterCreateScratchDB(t)
-	if err := db.AutoMigrate(&models.Pipeline{}, &models.MessageTrace{}); err != nil {
+	if err := migrateModels(db, &models.Pipeline{}, &models.MessageTrace{}); err != nil {
 		t.Fatal(err)
 	}
 	domain := models.Domain{Name: "pipeline-resource.test"}

@@ -52,7 +52,7 @@ func throwawayCertificate(t *testing.T, key *ecdsa.PrivateKey, cn string, sans [
 // does not name the domain, and one that has already expired.
 func TestCertificateUpload_RefusesWhatCannotBeServed(t *testing.T) {
 	gdb := openAuthzTestDB(t)
-	if err := gdb.AutoMigrate(&models.Certificate{}); err != nil {
+	if err := migrateModels(gdb, &models.Certificate{}); err != nil {
 		t.Skipf("certificate upload test skipped: migrate failed (%v)", err)
 	}
 	parent := fmt.Sprintf("upload-%d.test", time.Now().UnixNano())

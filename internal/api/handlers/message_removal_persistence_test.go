@@ -18,7 +18,7 @@ func TestMessageRemovalPersistenceQuotaAndEvents(t *testing.T) {
 	for _, scenario := range []string{"trash", "permanent", "already_trash", "already_deleted", "move_failure", "sum_failure", "attachment_delete_failure", "message_delete_failure", "quota_failure", "cancelled", "concurrent"} {
 		t.Run(scenario, func(t *testing.T) {
 			db := openCustomFilterCreateScratchDB(t)
-			if err := db.AutoMigrate(&models.Mailbox{}, &models.Message{}, &models.Attachment{}, &models.Role{}, &models.Capability{}, &models.RoleCapability{}, &models.Grant{}, &models.GrantActivation{}, &models.Credential{}); err != nil {
+			if err := migrateModels(db, &models.Mailbox{}, &models.Message{}, &models.Attachment{}, &models.Role{}, &models.Capability{}, &models.RoleCapability{}, &models.Grant{}, &models.GrantActivation{}, &models.Credential{}); err != nil {
 				t.Fatal(err)
 			}
 			create := func(v interface{}) {

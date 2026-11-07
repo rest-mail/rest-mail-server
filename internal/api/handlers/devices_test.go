@@ -121,7 +121,7 @@ func newPushEnv(t *testing.T) *pushEnv {
 	if err != nil {
 		testdb.Unreachable(t, "push DB test skipped: no database reachable (%v)", err)
 	}
-	if err := db.AutoMigrate(append(accountModels, &models.Message{}, &models.Attachment{}, &models.PushDevice{})...); err != nil {
+	if err := migrateModels(db, append(accountModels, &models.Message{}, &models.Attachment{}, &models.PushDevice{})...); err != nil {
 		t.Skipf("push DB test skipped: migrate failed (%v)", err)
 	}
 	// Device changes are audited, and the log cannot be emptied: everything
@@ -605,7 +605,7 @@ func TestPushDeliveryCarriesNoMessageContent(t *testing.T) {
 // already read, does not.
 func TestDeliveryTellsThePushOfNewInboxMail(t *testing.T) {
 	db := openMsgDeleteTestDB(t)
-	if err := db.AutoMigrate(&models.QuotaUsage{}); err != nil {
+	if err := migrateModels(db, &models.QuotaUsage{}); err != nil {
 		t.Skipf("deliver DB test skipped: migrate quota_usage failed (%v)", err)
 	}
 	tx := db.Begin()

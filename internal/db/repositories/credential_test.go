@@ -31,7 +31,7 @@ func openCredentialTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		testdb.Unreachable(t, "credential repo test skipped: no database reachable (%v)", err)
 	}
-	reuseConnections(t, gdb)
+	testdb.ReuseConnections(t, gdb)
 	if err := gdb.AutoMigrate(&models.Mailbox{}, &models.Credential{}); err != nil {
 		t.Skipf("credential repo test skipped: migrate failed (%v)", err)
 	}

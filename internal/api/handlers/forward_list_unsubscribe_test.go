@@ -42,11 +42,11 @@ func TestForward_FollowsTheDomainSendingPolicy(t *testing.T) {
 	}
 	sender := seedSendingMailbox(t, h.db, domain, "news")
 	// The test seeds every table, role and grant it reads, so it runs alone (#1385).
-	if err := h.db.AutoMigrate(accountModels...); err != nil {
+	if err := migrateModels(h.db, accountModels...); err != nil {
 		t.Skipf("forward test skipped: migrate failed (%v)", err)
 	}
 	// A forward reads the original's attachments.
-	if err := h.db.AutoMigrate(&models.Attachment{}); err != nil {
+	if err := migrateModels(h.db, &models.Attachment{}); err != nil {
 		t.Skipf("forward test skipped: migrate failed (%v)", err)
 	}
 	if err := rmdb.MigrateAuditLog(h.db); err != nil {

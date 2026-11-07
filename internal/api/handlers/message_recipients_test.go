@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 )
 
@@ -21,7 +20,7 @@ func TestMessageRecipientsShowEachOutcome(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := rmdb.AutoMigrate(database); err != nil {
+	if err := migrateSchema(database); err != nil {
 		t.Fatal(err)
 	}
 	tx := database.Begin()

@@ -235,7 +235,7 @@ func openTLSRPTTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		testdb.Unreachable(t, "TLS-RPT DB test skipped: no database reachable (%v)", err)
 	}
-	if err := gdb.AutoMigrate(&models.Domain{}, &models.TLSReport{}); err != nil {
+	if err := migrateModels(gdb, &models.Domain{}, &models.TLSReport{}); err != nil {
 		t.Skipf("TLS-RPT DB test skipped: migrate failed (%v)", err)
 	}
 	return gdb

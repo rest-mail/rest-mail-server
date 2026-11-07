@@ -21,7 +21,7 @@ import (
 // change that threaded one of these into the update path would fail here.
 func TestMailboxUpdate_RefusesNonAllowlistedColumns(t *testing.T) {
 	db := openAuthzTestDB(t)
-	if err := db.AutoMigrate(&models.QuotaUsage{}); err != nil {
+	if err := migrateModels(db, &models.QuotaUsage{}); err != nil {
 		t.Skipf("mass-assignment test skipped: migrate QuotaUsage failed (%v)", err)
 	}
 	// Inside a transaction that is rolled back, like the other tests here: the

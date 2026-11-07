@@ -49,7 +49,7 @@ type firstSignIn struct {
 func newFirstSignIn(t *testing.T) *firstSignIn {
 	t.Helper()
 	base := openLoginTestDB(t)
-	if err := base.AutoMigrate(append(accountModels, &models.Pipeline{})...); err != nil {
+	if err := migrateModels(base, append(accountModels, &models.Pipeline{})...); err != nil {
 		t.Skipf("first sign-in DB test skipped: migrate failed (%v)", err)
 	}
 	// The bootstrap admin's grants are recorded in the audit log.

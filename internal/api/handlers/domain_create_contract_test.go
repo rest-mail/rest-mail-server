@@ -57,7 +57,7 @@ func TestDomainCreate_DefaultContract(t *testing.T) {
 
 func TestDomainCreate_ServerTypeDefault(t *testing.T) {
 	gdb := openAuthzTestDB(t)
-	if err := gdb.AutoMigrate(&models.Pipeline{}); err != nil {
+	if err := migrateModels(gdb, &models.Pipeline{}); err != nil {
 		t.Fatal(err)
 	}
 	for _, tc := range []struct {

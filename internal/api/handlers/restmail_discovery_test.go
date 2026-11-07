@@ -63,7 +63,7 @@ func TestRESTMAILDiscoveryHostedDomain(t *testing.T) {
 	if err != nil {
 		t.Skipf("discovery DB test: %v", err)
 	}
-	if err := db.AutoMigrate(&models.Domain{}); err != nil {
+	if err := migrateModels(db, &models.Domain{}); err != nil {
 		t.Fatalf("migrate domains: %v", err)
 	}
 	tx := db.Begin()

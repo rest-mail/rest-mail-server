@@ -61,7 +61,7 @@ func TestDeliveryRefusesMailLoopBeforeDatabase(t *testing.T) {
 // is refused 550 with nothing stored (#1647, #1641).
 func TestDeliveryInboundLimits(t *testing.T) {
 	db := openMsgDeleteTestDB(t)
-	if err := db.AutoMigrate(&models.QuotaUsage{}); err != nil {
+	if err := migrateModels(db, &models.QuotaUsage{}); err != nil {
 		t.Skipf("deliver DB test skipped: migrate quota_usage failed (%v)", err)
 	}
 	tx := db.Begin()

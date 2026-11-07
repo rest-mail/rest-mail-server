@@ -19,7 +19,7 @@ func TestDomainPolicyListsRefuseDeletedDomain(t *testing.T) {
 	if err != nil {
 		t.Skipf("deleted-domain list test needs PostgreSQL: %v", err)
 	}
-	if err := gdb.AutoMigrate(&models.Domain{}, &models.DomainSenderRule{}, &models.Suppression{}); err != nil {
+	if err := migrateModels(gdb, &models.Domain{}, &models.DomainSenderRule{}, &models.Suppression{}); err != nil {
 		t.Fatal(err)
 	}
 	want := map[string]interface{}{"error": map[string]interface{}{"code": "not_found", "message": "Domain not found"}}

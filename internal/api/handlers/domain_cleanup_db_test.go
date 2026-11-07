@@ -55,7 +55,7 @@ func TestDomainCleanupPostgresLifecycleRetentionAndRollback(t *testing.T) {
 	}
 	liveModels := []any{&models.Pipeline{}, &models.CustomFilter{}, &models.DomainSenderRule{}, &models.Certificate{}, &models.DKIMRotationKey{}, &models.MTASTSPolicy{}, &models.DomainRelay{}, &models.Suppression{}}
 	all := append([]any{&models.Domain{}, &models.Mailbox{}, &models.Alias{}, &models.Role{}, &models.Capability{}, &models.RoleCapability{}, &models.Grant{}, &models.GrantActivation{}, &models.Credential{}, &models.TLSReport{}, &models.MessageTrace{}, &models.DMARCAggregateRecord{}}, liveModels...)
-	if err := db.AutoMigrate(all...); err != nil {
+	if err := migrateModels(db, all...); err != nil {
 		t.Fatal(err)
 	}
 	if err := rmdb.MigrateAuditLog(db); err != nil {

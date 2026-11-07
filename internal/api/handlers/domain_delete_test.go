@@ -23,7 +23,7 @@ func TestDomainDelete_RefusesADomainWithAddresses(t *testing.T) {
 		t.Skip("PostgreSQL address-refusal proof runs in CI with DB_HOST; no local database is started")
 	}
 	gdb := openAuthzTestDB(t)
-	if err := gdb.AutoMigrate(&models.Alias{}, &models.Pipeline{}, &models.CustomFilter{}, &models.DomainSenderRule{}, &models.Certificate{}, &models.DKIMRotationKey{}, &models.MTASTSPolicy{}, &models.DomainRelay{}, &models.Suppression{}); err != nil {
+	if err := migrateModels(gdb, &models.Alias{}, &models.Pipeline{}, &models.CustomFilter{}, &models.DomainSenderRule{}, &models.Certificate{}, &models.DKIMRotationKey{}, &models.MTASTSPolicy{}, &models.DomainRelay{}, &models.Suppression{}); err != nil {
 		t.Skipf("domain delete test skipped: migrate failed (%v)", err)
 	}
 	tx := gdb.Begin()

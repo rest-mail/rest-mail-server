@@ -69,7 +69,7 @@ func TestMailboxGet_DocumentedExamples(t *testing.T) {
 		if err != nil {
 			t.Skipf("mailbox lookup contract test needs PostgreSQL: %v", err)
 		}
-		if err := gdb.AutoMigrate(&models.Domain{}, &models.Mailbox{}, &models.QuotaUsage{}); err != nil {
+		if err := migrateModels(gdb, &models.Domain{}, &models.Mailbox{}, &models.QuotaUsage{}); err != nil {
 			t.Fatal(err)
 		}
 		tx := gdb.Begin()

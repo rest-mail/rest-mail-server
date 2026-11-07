@@ -26,7 +26,7 @@ func ensureDefaultServerCeiling(t *testing.T, db *gorm.DB) {
 
 func TestClearTestDataPreservesServerCeiling(t *testing.T) {
 	db := openAliasUpdateScratchDB(t)
-	if err := db.AutoMigrate(&models.Role{}, &models.Grant{}); err != nil {
+	if err := migrateModels(db, &models.Role{}, &models.Grant{}); err != nil {
 		t.Fatal(err)
 	}
 	role := models.Role{Name: models.RoleServer, SystemRole: true}

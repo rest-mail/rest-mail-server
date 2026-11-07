@@ -47,6 +47,7 @@ func openStoreTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		testdb.Unreachable(t, "smtp dbStore test skipped: no database reachable (%v)", err)
 	}
+	testdb.ReuseConnections(t, gdb)
 	if err := gdb.AutoMigrate(&models.Domain{}, &models.Mailbox{}, &models.Message{}, &models.OutboundQueue{}); err != nil {
 		t.Skipf("smtp dbStore test skipped: migrate failed (%v)", err)
 	}

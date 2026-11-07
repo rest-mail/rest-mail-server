@@ -19,7 +19,7 @@ func openTraceTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		testdb.Unreachable(t, "MessageTrace DB test skipped: no database reachable (%v)", err)
 	}
-	if err := gdb.AutoMigrate(&models.MessageTrace{}); err != nil {
+	if err := migrateModels(gdb, &models.MessageTrace{}); err != nil {
 		t.Skipf("MessageTrace DB test skipped: migrate failed (%v)", err)
 	}
 	return gdb

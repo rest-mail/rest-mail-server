@@ -18,7 +18,7 @@ import (
 // unit-test Postgres; skips when none is reachable.
 func TestPipelineAndCustomFilterDelete_MissingIsNotFound(t *testing.T) {
 	gdb := openAuthzTestDB(t)
-	if err := gdb.AutoMigrate(&models.Pipeline{}, &models.CustomFilter{}); err != nil {
+	if err := migrateModels(gdb, &models.Pipeline{}, &models.CustomFilter{}); err != nil {
 		t.Skipf("pipeline delete test skipped: migrate failed (%v)", err)
 	}
 	tx := gdb.Begin()

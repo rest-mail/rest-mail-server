@@ -180,7 +180,7 @@ func TestBulkQueue_RefusalPairsRefused(t *testing.T) {
 // seeded inside a transaction that is rolled back.
 func TestBulkQueue_ByIDsExampleAnswered(t *testing.T) {
 	gdb := openAuthzTestDB(t)
-	if err := gdb.AutoMigrate(&models.OutboundQueue{}); err != nil {
+	if err := migrateModels(gdb, &models.OutboundQueue{}); err != nil {
 		t.Skipf("bulk queue test skipped: migrate failed (%v)", err)
 	}
 	for _, op := range bulkQueuePairs {

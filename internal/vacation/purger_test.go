@@ -44,6 +44,7 @@ func openVacationTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		testdb.Unreachable(t, "vacation purger DB test skipped: no database reachable (%v)", err)
 	}
+	testdb.ReuseConnections(t, gdb)
 	if err := gdb.AutoMigrate(&models.VacationResponse{}); err != nil {
 		t.Skipf("vacation purger DB test skipped: migrate failed (%v)", err)
 	}

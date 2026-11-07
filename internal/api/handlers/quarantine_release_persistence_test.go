@@ -20,7 +20,7 @@ import (
 func quarantineReleaseFixture(t *testing.T) (*gorm.DB, models.Mailbox, models.Quarantine) {
 	t.Helper()
 	db := openCustomFilterCreateScratchDB(t)
-	if err := db.AutoMigrate(append(accountModels, &models.Message{}, &models.Quarantine{})...); err != nil {
+	if err := migrateModels(db, append(accountModels, &models.Message{}, &models.Quarantine{})...); err != nil {
 		t.Fatal(err)
 	}
 	if err := bootstrap.EnsureRBAC(db); err != nil {

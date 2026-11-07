@@ -95,7 +95,7 @@ func TestDomainLookups_DocumentedMissingExamples(t *testing.T) {
 				if err != nil {
 					t.Skipf("domain lookup contract test needs PostgreSQL: %v", err)
 				}
-				if err := gdb.AutoMigrate(&models.Domain{}, &models.MTASTSPolicy{}, &models.DomainRelay{}, &models.DKIMRotationKey{}); err != nil {
+				if err := migrateModels(gdb, &models.Domain{}, &models.MTASTSPolicy{}, &models.DomainRelay{}, &models.DKIMRotationKey{}); err != nil {
 					t.Fatal(err)
 				}
 				tx := gdb.Begin()

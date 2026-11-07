@@ -55,7 +55,7 @@ func TestListPipelineLogs_ContractEnumFilters(t *testing.T) {
 	if err != nil {
 		t.Skipf("pipeline logs DB test requires PostgreSQL: %v", err)
 	}
-	if err := db.AutoMigrate(&models.MessageTrace{}); err != nil {
+	if err := migrateModels(db, &models.MessageTrace{}); err != nil {
 		t.Fatal(err)
 	}
 	tx := db.Begin()

@@ -53,7 +53,7 @@ func TestForwardAttachmentsPostgresPersistenceQuotaAndRollback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&models.Domain{}, &models.Mailbox{}, &models.QuotaUsage{}, &models.Message{}, &models.Attachment{}, &models.OutboundQueue{}, &models.Contact{}); err != nil {
+	if err := migrateModels(db, &models.Domain{}, &models.Mailbox{}, &models.QuotaUsage{}, &models.Message{}, &models.Attachment{}, &models.OutboundQueue{}, &models.Contact{}); err != nil {
 		t.Fatal(err)
 	}
 	domain := models.Domain{Name: "forward.example.test"}

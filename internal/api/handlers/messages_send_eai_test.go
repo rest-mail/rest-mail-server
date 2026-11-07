@@ -22,7 +22,7 @@ import (
 // queued to the outside world. The message keeps the addresses as submitted.
 func TestSendMessageLocalRecipientsEAI(t *testing.T) {
 	db := openPlusAddrTestDB(t)
-	if err := db.AutoMigrate(&models.OutboundQueue{}, &models.Contact{}, &models.CalendarEventVersion{}); err != nil {
+	if err := migrateModels(db, &models.OutboundQueue{}, &models.Contact{}, &models.CalendarEventVersion{}); err != nil {
 		t.Skipf("API send EAI test skipped: migrate failed (%v)", err)
 	}
 	tx := db.Begin()

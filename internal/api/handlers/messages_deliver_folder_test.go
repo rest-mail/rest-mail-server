@@ -26,7 +26,7 @@ func TestDeliverMessage_HonorsFolderFlagsAndInternalDate(t *testing.T) {
 	db := openMsgDeleteTestDB(t)
 	// The delivery path also bumps quota_usage; migrate it so the transaction's
 	// quota update matches a real table (0 rows for a fresh mailbox is not an error).
-	if err := db.AutoMigrate(&models.QuotaUsage{}); err != nil {
+	if err := migrateModels(db, &models.QuotaUsage{}); err != nil {
 		t.Skipf("deliver DB test skipped: migrate quota_usage failed (%v)", err)
 	}
 	tx := db.Begin()
@@ -86,7 +86,7 @@ func TestDeliverMessage_HonorsFolderFlagsAndInternalDate(t *testing.T) {
 // this server's authserv-id is not stored, while another server's is kept.
 func TestDeliverMessage_StripsOurAuthResults(t *testing.T) {
 	db := openMsgDeleteTestDB(t)
-	if err := db.AutoMigrate(&models.QuotaUsage{}); err != nil {
+	if err := migrateModels(db, &models.QuotaUsage{}); err != nil {
 		t.Skipf("deliver DB test skipped: migrate quota_usage failed (%v)", err)
 	}
 	tx := db.Begin()
@@ -124,7 +124,7 @@ func TestDeliverMessage_StripsOurAuthResults(t *testing.T) {
 // so the message is not filed in a second inbox spelled another way (#759).
 func TestDeliverMessage_InboxInAnyCaseIsInbox(t *testing.T) {
 	db := openMsgDeleteTestDB(t)
-	if err := db.AutoMigrate(&models.QuotaUsage{}); err != nil {
+	if err := migrateModels(db, &models.QuotaUsage{}); err != nil {
 		t.Skipf("deliver DB test skipped: migrate quota_usage failed (%v)", err)
 	}
 	tx := db.Begin()
@@ -161,7 +161,7 @@ func (refuseEverything) Execute(context.Context, *pipeline.EmailJSON) (*pipeline
 // client storing its own mail uses the import operation, which runs none of them.
 func TestDeliverMessage_ArrivingMailIsJudged(t *testing.T) {
 	db := openMsgDeleteTestDB(t)
-	if err := db.AutoMigrate(&models.QuotaUsage{}, &models.Pipeline{}, &models.SieveScript{}); err != nil {
+	if err := migrateModels(db, &models.QuotaUsage{}, &models.Pipeline{}, &models.SieveScript{}); err != nil {
 		t.Skipf("deliver DB test skipped: migrate quota_usage failed (%v)", err)
 	}
 	tx := db.Begin()

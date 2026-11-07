@@ -97,7 +97,7 @@ func TestPipelineUpdate_DocumentedExamples(t *testing.T) {
 	if err != nil {
 		t.Skipf("pipeline update contract test requires PostgreSQL: %v", err)
 	}
-	if err := db.AutoMigrate(&models.Domain{}, &models.Pipeline{}); err != nil {
+	if err := migrateModels(db, &models.Domain{}, &models.Pipeline{}); err != nil {
 		t.Fatal(err)
 	}
 	tx := db.Begin()

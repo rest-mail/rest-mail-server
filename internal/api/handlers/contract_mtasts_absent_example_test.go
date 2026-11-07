@@ -55,7 +55,7 @@ func TestMtaStsPolicy_DocumentedAbsentExample(t *testing.T) {
 		if err != nil {
 			t.Skipf("policy-absent contract test needs PostgreSQL: %v", err)
 		}
-		if err := gdb.AutoMigrate(&models.Domain{}, &models.MTASTSPolicy{}); err != nil {
+		if err := migrateModels(gdb, &models.Domain{}, &models.MTASTSPolicy{}); err != nil {
 			t.Fatal(err)
 		}
 		tx := gdb.Begin()

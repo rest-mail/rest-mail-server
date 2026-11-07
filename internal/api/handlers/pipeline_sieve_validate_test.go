@@ -115,7 +115,7 @@ func TestValidateSievePipelineFilters_DisabledBlockStillValidated(t *testing.T) 
 func migratePipelineTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	db := openAuthzTestDB(t)
-	if err := db.AutoMigrate(&models.Pipeline{}); err != nil {
+	if err := migrateModels(db, &models.Pipeline{}); err != nil {
 		t.Skipf("pipeline sieve test skipped: migrate failed (%v)", err)
 	}
 	return db

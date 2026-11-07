@@ -41,7 +41,7 @@ func TestImportContacts_ExamplePairs(t *testing.T) {
 // import the valid first entry, nor change any contact already in the account.
 func TestImportContacts_DocumentedExamples(t *testing.T) {
 	db := openAuditTestDB(t)
-	if err := db.AutoMigrate(append(accountModels, &models.ServerLimits{}, &models.Contact{})...); err != nil {
+	if err := migrateModels(db, append(accountModels, &models.ServerLimits{}, &models.Contact{})...); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Exec(`CREATE UNIQUE INDEX idx_contacts_mailbox_email ON contacts(mailbox_id, email)`).Error; err != nil {

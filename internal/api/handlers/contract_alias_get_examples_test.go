@@ -68,7 +68,7 @@ func TestAliasGet_DocumentedExamples(t *testing.T) {
 	if err != nil {
 		t.Skipf("alias lookup contract test needs PostgreSQL: %v", err)
 	}
-	if err := gdb.AutoMigrate(&models.Domain{}, &models.Alias{}); err != nil {
+	if err := migrateModels(gdb, &models.Domain{}, &models.Alias{}); err != nil {
 		t.Fatal(err)
 	}
 	tx := gdb.Begin()

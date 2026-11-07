@@ -78,7 +78,7 @@ func TestInboundTransportSecurity_QueryDoesNotReadMessageContent(t *testing.T) {
 
 func TestTypedAuthMigrationPreservesLegacyRows(t *testing.T) {
 	database := openAliasUpdateScratchDB(t)
-	if err := database.AutoMigrate(&models.Message{}); err != nil {
+	if err := migrateModels(database, &models.Message{}); err != nil {
 		t.Fatal(err)
 	}
 	if err := database.Migrator().DropColumn(&models.Message{}, "AuthResults"); err != nil {
@@ -93,7 +93,7 @@ func TestTypedAuthMigrationPreservesLegacyRows(t *testing.T) {
 		t.Fatal(err)
 	}
 	for attempt := 0; attempt < 2; attempt++ {
-		if err := database.AutoMigrate(&models.Message{}); err != nil {
+		if err := migrateModels(database, &models.Message{}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -133,7 +133,7 @@ func TestDeliveryPersistsTypedAuthForDashboard(t *testing.T) {
 		for _, verdict := range []string{"fail", "pass"} {
 			t.Run(route+"/"+verdict, func(t *testing.T) {
 				handler, params, transaction, _ := stagedHandler(t, pipeline.ActionContinue)
-				if err := transaction.AutoMigrate(&models.Alias{}, &models.OutboundQueue{}); err != nil {
+				if err := migrateModels(transaction, &models.Alias{}, &models.OutboundQueue{}); err != nil {
 					t.Fatal(err)
 				}
 				want := []pipeline.AuthResult{

@@ -50,7 +50,7 @@ func TestVerifyDelivery_Recipients(t *testing.T) {
 	if err != nil {
 		t.Skipf("verifyDelivery requires PostgreSQL: %v", err)
 	}
-	if err := db.AutoMigrate(&models.Domain{}, &models.Mailbox{}, &models.Message{}); err != nil {
+	if err := migrateModels(db, &models.Domain{}, &models.Mailbox{}, &models.Message{}); err != nil {
 		t.Fatal(err)
 	}
 	tx := db.Begin()

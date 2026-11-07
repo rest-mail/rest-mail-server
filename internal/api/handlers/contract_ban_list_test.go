@@ -50,7 +50,7 @@ func TestListBans_RejectInvalidFilters(t *testing.T) {
 // an expired ban and a protocol=all ban that applies to every protocol.
 func TestListBans_ContractFilters(t *testing.T) {
 	db := openMsgDeleteTestDB(t)
-	if err := db.AutoMigrate(&models.Ban{}); err != nil {
+	if err := migrateModels(db, &models.Ban{}); err != nil {
 		t.Fatal(err)
 	}
 	tx := db.Begin()

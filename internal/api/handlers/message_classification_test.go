@@ -45,7 +45,7 @@ func TestMessageClassificationAPIAndConstantQueries(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(append(accountModels, &models.Message{})...); err != nil {
+	if err := migrateModels(db, append(accountModels, &models.Message{})...); err != nil {
 		t.Fatal(err)
 	}
 	tx := db.Begin()

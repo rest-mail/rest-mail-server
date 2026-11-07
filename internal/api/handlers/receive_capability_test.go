@@ -28,7 +28,7 @@ import (
 // receive and import grants that account creation persists.
 func seedReceiveFixture(t *testing.T, db *gorm.DB, mailboxes ...models.Mailbox) {
 	t.Helper()
-	if err := db.AutoMigrate(&models.Mailbox{}, &models.Role{}, &models.Capability{}, &models.RoleCapability{}, &models.Grant{}, &models.GrantActivation{}); err != nil {
+	if err := migrateModels(db, &models.Mailbox{}, &models.Role{}, &models.Capability{}, &models.RoleCapability{}, &models.Grant{}, &models.GrantActivation{}); err != nil {
 		t.Fatal(err)
 	}
 	if err := rmdb.MigrateAuditLog(db); err != nil {
@@ -65,7 +65,7 @@ func receiveFixtureRows(query string) (driver.Rows, bool) {
 // hides an account without it exactly as it hides an unknown recipient.
 func TestReceiveCapabilityInbound(t *testing.T) {
 	db := openAccountsTestDB(t)
-	if err := db.AutoMigrate(&models.Message{}, &models.Pipeline{}, &models.Alias{}, &models.SieveScript{}, &models.VacationConfig{}, &models.Contact{}); err != nil {
+	if err := migrateModels(db, &models.Message{}, &models.Pipeline{}, &models.Alias{}, &models.SieveScript{}, &models.VacationConfig{}, &models.Contact{}); err != nil {
 		t.Fatal(err)
 	}
 	fx := seedAccountsFixture(t, db)

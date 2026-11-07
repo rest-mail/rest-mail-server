@@ -25,7 +25,7 @@ func openAuthzTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		testdb.Unreachable(t, "authz IDOR DB test skipped: no database reachable (%v)", err)
 	}
-	if err := gdb.AutoMigrate(
+	if err := migrateModels(gdb,
 		&models.Domain{},
 		&models.Mailbox{},
 		&models.Role{},

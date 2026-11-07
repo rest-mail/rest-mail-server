@@ -20,7 +20,7 @@ func TestDomainPolicyPostgresZeroRowUpdatesNeverUpsert(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&models.Domain{}, &models.MTASTSPolicy{}, &models.DomainRelay{}); err != nil {
+	if err := migrateModels(db, &models.Domain{}, &models.MTASTSPolicy{}, &models.DomainRelay{}); err != nil {
 		t.Fatal(err)
 	}
 	tx := db.Begin()

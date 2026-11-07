@@ -417,14 +417,13 @@ func newSMTPHarnessTLS(t *testing.T, back *mockBackend, store *mockStore, isSubm
 		cw:      bufio.NewWriter(client),
 		done:    done,
 	}
+	// Closing the client first: on this unbuffered pipe the server's TLS close_notify
+	// would otherwise wait out crypto/tls's 5 s write deadline with nobody reading.
+	// Closing the server then unblocks Serve's Accept, so h.done can complete.
 	t.Cleanup(func() {
 		_ = client.Close()
-		<-h.done
-	})
-	// Registered second so it runs first (LIFO): closing the server unblocks
-	// Serve's Accept, letting h.done complete in the cleanup above.
-	t.Cleanup(func() {
 		_ = srv.Close()
+		<-h.done
 	})
 
 	// Greeting.

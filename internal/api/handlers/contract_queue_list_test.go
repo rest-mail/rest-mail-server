@@ -45,7 +45,7 @@ func TestListQueue_ContractStatusFilters(t *testing.T) {
 	if err != nil {
 		t.Skipf("queue list DB test requires PostgreSQL: %v", err)
 	}
-	if err := db.AutoMigrate(&models.OutboundQueue{}); err != nil {
+	if err := migrateModels(db, &models.OutboundQueue{}); err != nil {
 		t.Fatal(err)
 	}
 	tx := db.Begin()

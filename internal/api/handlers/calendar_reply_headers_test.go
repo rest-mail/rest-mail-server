@@ -36,7 +36,7 @@ type calendarReplyFixture struct {
 func newCalendarReplyFixture(t *testing.T) *calendarReplyFixture {
 	t.Helper()
 	db := openPlusAddrTestDB(t)
-	if err := db.AutoMigrate(&models.OutboundQueue{}, &models.Contact{}, &models.CalendarEventVersion{}); err != nil {
+	if err := migrateModels(db, &models.OutboundQueue{}, &models.Contact{}, &models.CalendarEventVersion{}); err != nil {
 		t.Skipf("calendar reply test skipped: migrate failed (%v)", err)
 	}
 	tx := db.Begin()

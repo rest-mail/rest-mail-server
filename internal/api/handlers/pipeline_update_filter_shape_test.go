@@ -74,7 +74,7 @@ func openPipelineUpdateScratchDB(t *testing.T) *gorm.DB {
 		t.Fatalf("scratch database identity = %q, want %q, err = %v", current, name, err)
 	}
 	t.Logf("verified isolated scratch database %s before migrations/writes", current)
-	if err := scratch.AutoMigrate(&models.Domain{}, &models.Pipeline{}); err != nil {
+	if err := migrateModels(scratch, &models.Domain{}, &models.Pipeline{}); err != nil {
 		t.Fatal(err)
 	}
 	return scratch

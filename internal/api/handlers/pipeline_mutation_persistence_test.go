@@ -20,7 +20,7 @@ import (
 // database before migration; rollback/refusal and durable identity are checked.
 func TestPipelineMutationPersistence(t *testing.T) {
 	db := openCustomFilterCreateScratchDB(t)
-	if err := db.AutoMigrate(&models.Pipeline{}); err != nil {
+	if err := migrateModels(db, &models.Pipeline{}); err != nil {
 		t.Fatal(err)
 	}
 	at := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)

@@ -83,6 +83,41 @@ func connectTestDB() (*gorm.DB, error) {
 	return testDB, testDBErr
 }
 
+// onSharedPool says whether db is the shared pool, not a transaction on it or a pool
+// of a test's own, which has its own schema.
+func onSharedPool(db *gorm.DB) bool {
+	return testDB != nil && db.Statement.ConnPool == testDB.ConnPool
+}
+
+// migrateSchema is rmdb.AutoMigrate, which connectTestDB has already run on the
+// shared pool. No test takes anything out of the schema there, and running it again
+// took thousands of catalogue queries (one per column of every table).
+func migrateSchema(db *gorm.DB) error {
+	if onSharedPool(db) {
+		return nil
+	}
+	return rmdb.AutoMigrate(db)
+}
+
+// migrateModels is db.AutoMigrate for what a test needs. On the shared pool it only
+// migrates a model whose table is missing, since connectTestDB migrated every model
+// the server has and a test-only one need only be made once.
+func migrateModels(db *gorm.DB, models ...any) error {
+	if !onSharedPool(db) {
+		return db.AutoMigrate(models...)
+	}
+	var missing []any
+	for _, model := range models {
+		if !db.Migrator().HasTable(model) {
+			missing = append(missing, model)
+		}
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+	return db.AutoMigrate(missing...)
+}
+
 // accountModels are the tables an account lives in: its mailbox, its
 // credentials, and the roles and grants that say what it may do.
 var accountModels = []interface{}{

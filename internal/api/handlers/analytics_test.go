@@ -118,7 +118,7 @@ func openRollupTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		testdb.Unreachable(t, "pipeline analytics DB test skipped: no database reachable (%v)", err)
 	}
-	if err := gdb.AutoMigrate(&models.PipelineRollup{}); err != nil {
+	if err := migrateModels(gdb, &models.PipelineRollup{}); err != nil {
 		t.Skipf("pipeline analytics DB test skipped: migrate failed (%v)", err)
 	}
 	return gdb

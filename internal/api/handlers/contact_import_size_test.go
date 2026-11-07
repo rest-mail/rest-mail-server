@@ -18,7 +18,7 @@ import (
 // INSERT's batch all goes in, and the answer says what was already there (#1390).
 func TestImportContactsTakesMoreThanOneBatch(t *testing.T) {
 	db := openAuthzTestDB(t)
-	if err := db.AutoMigrate(&models.ServerLimits{}, &models.Contact{}); err != nil {
+	if err := migrateModels(db, &models.ServerLimits{}, &models.Contact{}); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_contacts_mailbox_email ON contacts(mailbox_id, email)`).Error; err != nil {

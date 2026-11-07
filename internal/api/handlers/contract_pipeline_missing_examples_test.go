@@ -116,7 +116,7 @@ func TestPipelineOperations_DocumentedMissingExamples(t *testing.T) {
 				if err != nil {
 					t.Skipf("pipeline missing-target contract test requires PostgreSQL: %v", err)
 				}
-				if err := gdb.AutoMigrate(&models.Domain{}, &models.Pipeline{}); err != nil {
+				if err := migrateModels(gdb, &models.Domain{}, &models.Pipeline{}); err != nil {
 					t.Fatal(err)
 				}
 				tx := gdb.Begin()

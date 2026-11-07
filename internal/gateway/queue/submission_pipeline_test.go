@@ -245,7 +245,7 @@ func openQueueTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		testdb.Unreachable(t, "submission-pipeline DB test skipped: no database reachable (%v)", err)
 	}
-	reuseConnections(t, gdb)
+	testdb.ReuseConnections(t, gdb)
 	if err := gdb.AutoMigrate(&models.Domain{}); err != nil {
 		t.Skipf("submission-pipeline DB test skipped: migrate failed (%v)", err)
 	}

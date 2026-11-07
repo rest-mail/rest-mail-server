@@ -76,7 +76,7 @@ func TestQueueEntryPreservesModelJSON(t *testing.T) {
 
 func TestQueueDeleteMissingAndRetryState(t *testing.T) {
 	db := openAuthzTestDB(t)
-	if err := db.AutoMigrate(&models.OutboundQueue{}); err != nil {
+	if err := migrateModels(db, &models.OutboundQueue{}); err != nil {
 		t.Fatal(err)
 	}
 	tx := db.Begin()
@@ -136,7 +136,7 @@ func TestBulkQueueValidationExamples(t *testing.T) {
 
 func TestQueueStatsPreservesStatusCounters(t *testing.T) {
 	db := openAuthzTestDB(t)
-	if err := db.AutoMigrate(&models.OutboundQueue{}); err != nil {
+	if err := migrateModels(db, &models.OutboundQueue{}); err != nil {
 		t.Fatal(err)
 	}
 	tx := db.Begin()

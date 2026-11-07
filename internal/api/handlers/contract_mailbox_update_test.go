@@ -70,7 +70,7 @@ func TestMailboxUpdate_ContractPasswordBoundary(t *testing.T) {
 		t.Fatalf("refusing to write to non-scratch database %q", database)
 	}
 	t.Logf("verified isolated database %s", database)
-	if err := db.AutoMigrate(accountModels...); err != nil {
+	if err := migrateModels(db, accountModels...); err != nil {
 		t.Fatal(err)
 	}
 	h := NewMailboxHandler(db, nil, nil)

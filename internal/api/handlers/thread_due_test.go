@@ -22,7 +22,7 @@ func TestThreadDueLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := rmdb.AutoMigrate(database); err != nil {
+	if err := migrateSchema(database); err != nil {
 		t.Fatal(err)
 	}
 	tx := database.Begin()
@@ -159,7 +159,7 @@ func TestThreadDueMigrationAndPersistence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := rmdb.AutoMigrate(database); err != nil {
+	if err := migrateSchema(database); err != nil {
 		t.Fatal(err)
 	}
 	thread := fmt.Sprintf("due-persistence-%d", time.Now().UnixNano())
@@ -203,7 +203,7 @@ func TestThreadDueSuggestion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := rmdb.AutoMigrate(database); err != nil {
+	if err := migrateSchema(database); err != nil {
 		t.Fatal(err)
 	}
 	tx := database.Begin()

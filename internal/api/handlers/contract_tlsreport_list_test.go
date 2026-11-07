@@ -54,7 +54,7 @@ func TestListTLSReports_ContractPolicyFilters(t *testing.T) {
 	if err != nil {
 		t.Skipf("TLS report list DB test requires PostgreSQL: %v", err)
 	}
-	if err := db.AutoMigrate(&models.Domain{}, &models.TLSReport{}); err != nil {
+	if err := migrateModels(db, &models.Domain{}, &models.TLSReport{}); err != nil {
 		t.Fatal(err)
 	}
 	tx := db.Begin()

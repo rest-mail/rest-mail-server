@@ -30,6 +30,7 @@ func openGreylistTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		testdb.Unreachable(t, "greylist DB test skipped: no database reachable (%v)", err)
 	}
+	testdb.ReuseConnections(t, gdb)
 	if err := gdb.AutoMigrate(&models.GreylistEntry{}); err != nil {
 		t.Skipf("greylist DB test skipped: migrate failed (%v)", err)
 	}

@@ -75,7 +75,7 @@ func TestScopedListDatabaseIsolation(t *testing.T) {
 	db := openAuthzTestDB(t)
 	tx := db.Begin()
 	t.Cleanup(func() { tx.Rollback() })
-	if err := tx.AutoMigrate(&models.Alias{}, &models.QuotaUsage{}); err != nil {
+	if err := migrateModels(tx, &models.Alias{}, &models.QuotaUsage{}); err != nil {
 		t.Fatal(err)
 	}
 	suffix := time.Now().UnixNano()

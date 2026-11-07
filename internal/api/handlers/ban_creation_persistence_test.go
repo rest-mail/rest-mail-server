@@ -16,7 +16,7 @@ func TestBanCreationPersistenceAndFailures(t *testing.T) {
 	// Reuse the verified scratch allocator; all added ban rows/migrations stay
 	// inside that fresh database, never the shared application database.
 	db := openCustomFilterCreateScratchDB(t)
-	if err := db.AutoMigrate(&models.Ban{}); err != nil {
+	if err := migrateModels(db, &models.Ban{}); err != nil {
 		t.Fatal(err)
 	}
 	stamp := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)

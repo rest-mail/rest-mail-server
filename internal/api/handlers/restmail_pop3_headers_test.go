@@ -36,7 +36,7 @@ func TestRESTMAILStoredHeadersThroughPOP3RETR(t *testing.T) {
 			if err := db.Model(&models.Domain{}).Where("id = ?", mailbox.DomainID).Update("active", true).Error; err != nil {
 				t.Fatal(err)
 			}
-			if err := db.AutoMigrate(&models.Credential{}, &models.ThreadDue{}, &models.ThreadSnooze{}, &models.VacationConfig{}, &models.Alias{}); err != nil {
+			if err := migrateModels(db, &models.Credential{}, &models.ThreadDue{}, &models.ThreadSnooze{}, &models.VacationConfig{}, &models.Alias{}); err != nil {
 				t.Fatal(err)
 			}
 			registry := pipeline.NewRegistry()

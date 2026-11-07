@@ -147,7 +147,7 @@ func recoveryEmailFixture(t *testing.T) (*gorm.DB, *RecoveryEmailHandler, models
 	db := openCustomFilterCreateScratchDB(t)
 	tables := append([]interface{}{}, accountModels...)
 	tables = append(tables, &models.OneTimeToken{}, &models.RecoveryEmail{}, &models.OutboundQueue{}, &models.AuditEntry{})
-	if err := db.AutoMigrate(tables...); err != nil {
+	if err := migrateModels(db, tables...); err != nil {
 		t.Fatal(err)
 	}
 	address := seedLoginMailbox(t, db, "original password chosen")

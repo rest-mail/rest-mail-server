@@ -29,7 +29,7 @@ import (
 func migrateCustomFilterTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	db := openAuthzTestDB(t) // migrates Domain (among others)
-	if err := db.AutoMigrate(&models.CustomFilter{}); err != nil {
+	if err := migrateModels(db, &models.CustomFilter{}); err != nil {
 		t.Skipf("custom filter test skipped: migrate failed (%v)", err)
 	}
 	return db

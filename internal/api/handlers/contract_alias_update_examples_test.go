@@ -50,7 +50,7 @@ func TestAliasUpdate_DocumentedExamples(t *testing.T) {
 	if err != nil {
 		t.Skipf("alias update examples require PostgreSQL: %v", err)
 	}
-	if err := db.AutoMigrate(&models.Domain{}, &models.Alias{}); err != nil {
+	if err := migrateModels(db, &models.Domain{}, &models.Alias{}); err != nil {
 		t.Fatal(err)
 	}
 	tx := db.Begin()

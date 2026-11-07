@@ -24,7 +24,7 @@ func openPlusAddrTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		testdb.Unreachable(t, "restmail plus-addressing DB test skipped: no database reachable (%v)", err)
 	}
-	if err := gdb.AutoMigrate(&models.Domain{}, &models.Mailbox{}, &models.Alias{}, &models.Message{}, &models.QuotaUsage{}, &models.Pipeline{}, &models.Attachment{}); err != nil {
+	if err := migrateModels(gdb, &models.Domain{}, &models.Mailbox{}, &models.Alias{}, &models.Message{}, &models.QuotaUsage{}, &models.Pipeline{}, &models.Attachment{}); err != nil {
 		t.Skipf("restmail plus-addressing DB test skipped: migrate failed (%v)", err)
 	}
 	return gdb

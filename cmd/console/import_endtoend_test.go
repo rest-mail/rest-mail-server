@@ -21,6 +21,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -95,29 +96,100 @@ func newMigrationServer(t *testing.T) *migrationServer {
 	return s
 }
 
-// migrationDatabase is a database of the test's own, migrated as the server
-// migrates it: audit entries cannot be deleted once written, so they must not
-// stay in one that other tests read.
-func migrationDatabase(t *testing.T) *gorm.DB {
+// migrationConfig is the database server the migration tests' databases go on.
+// Without idle connections every statement outside a transaction connects again;
+// every pool made from this is closed.
+func migrationConfig(t *testing.T) config.Config {
 	t.Helper()
 	port, err := strconv.Atoi(migrationEnv("DB_PORT", "5432"))
 	if err != nil {
 		t.Fatalf("DB_PORT: %v", err)
 	}
-	cfg := config.Config{
-		DBHost: migrationEnv("DB_HOST", "localhost"),
-		DBPort: port,
-		DBName: migrationEnv("DB_NAME", "restmail"),
-		DBUser: migrationEnv("DB_USER", "restmail"),
-		DBPass: migrationEnv("DB_PASS", "restmail"),
+	return config.Config{
+		DBHost:         migrationEnv("DB_HOST", "localhost"),
+		DBPort:         port,
+		DBName:         migrationEnv("DB_NAME", "restmail"),
+		DBUser:         migrationEnv("DB_USER", "restmail"),
+		DBPass:         migrationEnv("DB_PASS", "restmail"),
+		DBMaxIdleConns: 2,
+	}
+}
+
+// migrationTemplate is a database migrated as the server migrates it, with the
+// roles in place, made once per test binary by whichever test comes first and
+// dropped by TestMain. Each test's database is a copy of it.
+var migrationTemplate struct {
+	once sync.Once
+	cfg  config.Config // set once the database exists, so TestMain can drop it
+	name string
+	// unreachable is why the database server did not answer; err is anything that
+	// went wrong after it did.
+	unreachable error
+	err         error
+}
+
+// makeMigrationTemplate creates, migrates and adds the roles to the template.
+func makeMigrationTemplate(cfg config.Config) error {
+	admin, err := rmdb.Connect(&cfg)
+	if err != nil {
+		migrationTemplate.unreachable = err
+		return nil
+	}
+	defer closeMigrationDB(admin)
+	name := fmt.Sprintf("restmail_migration_template_%d_%d", os.Getpid(), time.Now().UnixNano())
+	if err := admin.Exec("CREATE DATABASE " + name).Error; err != nil {
+		return fmt.Errorf("create database: %w", err)
+	}
+	migrationTemplate.cfg, migrationTemplate.name = cfg, name
+	cfg.DBName = name
+	template, err := rmdb.Connect(&cfg)
+	if err != nil {
+		return fmt.Errorf("connect to the template database: %w", err)
+	}
+	// A database cannot be copied while anyone is connected to it.
+	defer closeMigrationDB(template)
+	if err := rmdb.AutoMigrate(template); err != nil {
+		return fmt.Errorf("migrate: %w", err)
+	}
+	if err := bootstrap.EnsureRBAC(template); err != nil {
+		return fmt.Errorf("roles: %w", err)
+	}
+	return nil
+}
+
+// TestMain drops the template database, if a test made one.
+func TestMain(m *testing.M) {
+	code := m.Run()
+	if migrationTemplate.name != "" {
+		cfg := migrationTemplate.cfg
+		if admin, err := rmdb.Connect(&cfg); err == nil {
+			admin.Exec("DROP DATABASE IF EXISTS " + migrationTemplate.name)
+			closeMigrationDB(admin)
+		}
+	}
+	os.Exit(code)
+}
+
+// migrationDatabase is a database of the test's own, migrated as the server
+// migrates it: audit entries cannot be deleted once written, so they must not
+// stay in one that other tests read.
+func migrationDatabase(t *testing.T) *gorm.DB {
+	t.Helper()
+	cfg := migrationConfig(t)
+	migrationTemplate.once.Do(func() { migrationTemplate.err = makeMigrationTemplate(cfg) })
+	if migrationTemplate.unreachable != nil {
+		testdb.Unreachable(t, "skipped: no database reachable (%v)", migrationTemplate.unreachable)
+	}
+	if migrationTemplate.err != nil {
+		t.Fatalf("template database: %v", migrationTemplate.err)
 	}
 	admin, err := rmdb.Connect(&cfg)
 	if err != nil {
 		testdb.Unreachable(t, "skipped: no database reachable (%v)", err)
 	}
 	name := fmt.Sprintf("restmail_migration_%d_%d", os.Getpid(), time.Now().UnixNano())
-	if err := admin.Exec("CREATE DATABASE " + name).Error; err != nil {
-		t.Fatalf("create database: %v", err)
+	if err := admin.Exec("CREATE DATABASE " + name + " TEMPLATE " + migrationTemplate.name).Error; err != nil {
+		t.Fatalf("copy the template database: %v", err)
 	}
 	cfg.DBName = name
 	db, err := rmdb.Connect(&cfg)
@@ -129,12 +201,6 @@ func migrationDatabase(t *testing.T) *gorm.DB {
 		admin.Exec("DROP DATABASE IF EXISTS " + name)
 		closeMigrationDB(admin)
 	})
-	if err := rmdb.AutoMigrate(db); err != nil {
-		t.Fatalf("migrate: %v", err)
-	}
-	if err := bootstrap.EnsureRBAC(db); err != nil {
-		t.Fatalf("roles: %v", err)
-	}
 	return db
 }
 
