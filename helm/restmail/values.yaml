@@ -15,6 +15,23 @@ metrics:
     enabled: false
     labels: {}
 
+# Distributed tracing (#1580). Off while otlpEndpoint is empty: the API and the
+# SMTP, IMAP and POP3 gateways then make no exporter and send nothing. Set it to
+# an OTLP/HTTP collector (e.g. http://otel-collector.observability:4318) and
+# each passes it on as OTEL_EXPORTER_OTLP_ENDPOINT; the chart adds no
+# collector. Spans hold ids, counts and outcomes, never an address.
+tracing:
+  otlpEndpoint: ""
+  # OTEL_TRACES_SAMPLER and its argument; empty keeps the SDK default
+  # (parentbased_always_on). For a sample: parentbased_traceidratio and "0.1".
+  sampler: ""
+  samplerArg: ""
+  # Egress to the collector, which the default-deny NetworkPolicy blocks.
+  # Select its namespace and pods here; the port is the OTLP/HTTP one.
+  networkPolicy:
+    port: 4318
+    to: []
+
 # ── Global ────────────────────────────────────────────────────────────────
 global:
   # Image registry (override per-image with .image.repository if needed).
