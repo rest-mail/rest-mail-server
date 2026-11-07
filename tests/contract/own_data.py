@@ -50,6 +50,9 @@ MOVED = (
     "createFolder",
     "renameFolder",
     "deleteFolder",
+    # updateDomain certifies a domain before it goes live. It follows
+    # createDomain's link and no link starts from it.
+    "updateDomain",
 )
 
 FOLLOWS_THE_CREATED_DOMAIN = (
@@ -72,7 +75,6 @@ FOLLOWS_THE_CREATED_DOMAIN = (
     "setDKIMRotation",
     "setDomainRelay",
     "stopDomainOutbound",
-    "updateDomain",
 )
 
 # deletePipeline, the other, has moved.

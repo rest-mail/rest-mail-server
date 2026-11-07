@@ -13,6 +13,7 @@ read from the file it writes.
 """
 
 import base64
+import datetime
 import json
 import os
 import re
@@ -191,7 +192,6 @@ def the_domain_since_the_reset(transaction):
     return hooks.stash["domain_id"]
 
 
-@hooks.before("updateDomain")
 @hooks.before("listAllowlist")
 @hooks.before("addToAllowlist")
 @hooks.before("removeFromAllowlist")
@@ -1408,21 +1408,28 @@ def a_certificate_before_going_live(transaction):
     # Setting active to true is refused with 409 certificate_required for a
     # domain with no valid certificate, which every created domain is when
     # the probes reach it. The domain gets a self-signed one through the
-    # admin API, once per run; the request is never rewritten.
+    # admin API unless the API already lists a valid one for it; the request
+    # is never rewritten beyond the id below. Whether a domain has one is read
+    # from the API, not carried between exchanges in the stash.
+    # After a reset (the own-data phase) every exchange, refusals included,
+    # starts clean, and one aimed at a positive id other than missing's
+    # 2147483647 is sent to a domain of its own: the reset removed the domain
+    # createDomain's link names. A refusal for its body is then refused for its
+    # body, not for a domain that is gone.
+    if asked_for_a_clean_start():
+        start_clean(transaction)
+        parts = transaction["fullPath"].partition("?")[0].split("/")
+        if len(parts) > 5 and positive_id(parts[5]) and parts[5] != "2147483647":
+            to_domain(transaction, a_domain_of_its_own(transaction))
     off_the_admin_domain(transaction)
     body = hooks.get_json(transaction)
     if not isinstance(body, dict) or body.get("active") is not True:
         return
     path = transaction["fullPath"].split("?")[0]
     domain_id = path.rstrip("/").rsplit("/", 1)[-1]
-    origin = "{}//{}:{}".format(
-        transaction["protocol"],
-        transaction["host"],
-        transaction["port"],
-    )
-    ready = hooks.stash.get("certified_domains", {})
-    if not domain_id.isdigit() or (origin + "\n" + domain_id) in ready:
+    if not domain_id.isdigit():
         return
+    origin = origin_of(transaction)
     headers = {
         "Content-Type": "application/json",
         "Authorization": "Bearer " + admin_token(origin),
@@ -1443,6 +1450,8 @@ def a_certificate_before_going_live(transaction):
         if error.code in PROBE_REFUSALS:
             return
         raise
+    if a_valid_certificate(call("GET", "/api/v1/admin/certificates"), int(domain_id)):
+        return
     with tempfile.TemporaryDirectory() as d:
         key, cert = os.path.join(d, "tls.key"), os.path.join(d, "tls.crt")
         openssl(
@@ -1473,8 +1482,22 @@ def a_certificate_before_going_live(transaction):
                     "auto_renew": False,
                 },
             )
-    ready[origin + "\n" + domain_id] = True
-    hooks.stash["certified_domains"] = ready
+
+
+def a_valid_certificate(certificates, domain_id):
+    """Whether the listed certificates hold one for the domain that is valid now."""
+    now = datetime.datetime.now(datetime.timezone.utc)
+    for certificate in certificates or ():
+        if certificate.get("domain_id") != domain_id:
+            continue
+        try:
+            not_before = datetime.datetime.fromisoformat(certificate["not_before"].replace("Z", "+00:00"))
+            not_after = datetime.datetime.fromisoformat(certificate["not_after"].replace("Z", "+00:00"))
+        except (KeyError, TypeError, ValueError):
+            continue
+        if not_before <= now < not_after:
+            return True
+    return False
 
 
 @hooks.before("setMtaStsPolicy")
