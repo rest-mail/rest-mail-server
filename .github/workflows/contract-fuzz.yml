@@ -7,9 +7,9 @@ name: Contract fuzz
 # topology on its own schedule, and its report (fuzz.xml, with the log) is the
 # run's e2e-container-logs artifact.
 #
-# Each finding has one issue with its replay seed (label contract-fuzz): a failure
-# opens or updates it, and a later run in which that transaction passes closes it
-# (scripts/contract_tier_issues.py).
+# One rolling issue (label contract-fuzz) holds a row and replay seed per finding.
+# A failure adds or refreshes its row; a finished run that passes that transaction
+# removes it. An empty tier closes (scripts/contract_tier_issues.py).
 on:
   schedule:
     - cron: "30 3 * * *"
