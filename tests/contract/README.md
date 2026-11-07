@@ -432,6 +432,29 @@ For `createAPIKey` and `updateAPIKey`: `permissions_missing`, `permissions_empty
 `recipients_missing`, `recipients_wrong_type` and `recipient_wrong_type`. For `date`:
 `date_wrong_type`. A pin engages only
 on a body with no nested reference, so `filter_name` cannot hold `testFilter`.
+`deliverMessage`, and `raw_message_wrong_type` on `restmailDeliver`. For `filter_name`:
+`filter_name_missing`, `filter_name_empty` and `filter_name_wrong_type`. For `cert_pem`
+and `key_pem`: `cert_missing`, `cert_empty`, `cert_wrong_type`, `cert_invalid`,
+`key_missing`, `key_empty` and `key_wrong_type`.
+
+A pin engages only on a body whose schema holds its fields at the top, and a body that
+is a reference to a schema with references of its own does not (Vertrag 0.42.0,
+`fuzz/pin.go`). `testFilter`'s email has to stay a reference, because its parts refer to
+themselves. So its description states the body in the operation
+(`describedTestFilterBody`), which also says what the handler has always required of
+`config`: an object. A generator that may draw any `config` draws `"x"`, which the
+handler refuses, so `filter_name` alone would not have sent these probes.
+
+`createCertificate`'s `cert_pem` and `key_pem` hold a throwaway self-signed certificate
+that `probes.py` makes for each run, and its probes' `domain_id` is 1, the fixture
+admin's domain. A hook cannot change that, and the mail gateways serve a domain's current
+certificates by name. So this one is already expired: the handler accepts it, and neither
+the gateways nor `updateDomain`'s certificate check count it. `a_self_signed_certificate` leaves them
+as drawn, and the first hook after them, `remove_the_probe_certificates`, deletes each
+certificate with that issuer. The documented sends before them keep a certificate of
+their own, which `getCertificate`'s link needs, on the run's domain when the run has
+one. A run narrowed to `createCertificate` alone has no hook after its probes, so
+their certificates stay on its disposable database.
 
 `createDomain` needs no pin, because its setup makes the generated name free. Its
 hook removes what earlier probes put at `example.com`, and the first hook after its
