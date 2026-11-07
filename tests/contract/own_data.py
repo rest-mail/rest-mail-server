@@ -301,7 +301,7 @@ MOVED = (
     "login",
     "logout",
     "refreshToken",
-    "protocolSignIn",
+    "openGatewaySession",
     "resetAdmin",
     "recoverAccount",
     "ownerChallenge",

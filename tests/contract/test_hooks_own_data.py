@@ -374,7 +374,7 @@ class OwnDataHooks(unittest.TestCase):
             "login": "sign_in_and_recovery_after_a_reset",
             "logout": "sign_in_and_recovery_after_a_reset",
             "refreshToken": "sign_in_and_recovery_after_a_reset",
-            "protocolSignIn": "sign_in_and_recovery_after_a_reset",
+            "openGatewaySession": "sign_in_and_recovery_after_a_reset",
             "resetAdmin": "sign_in_and_recovery_after_a_reset",
             "recoverAccount": "sign_in_and_recovery_after_a_reset",
             "ownerChallenge": "sign_in_and_recovery_after_a_reset",
