@@ -69,6 +69,17 @@ designed in [docs/design/email-explained-website.md](../design/email-explained-w
 - [Migrating step by step, without breaking anything](landscape/migrating.md)
 - [Solved, solving, still open](landscape/solved-solving-open.md)
 
+### Part 5: Using a REST Mail domain
+
+Step-by-step guides for people using a REST Mail domain, who do not need to be mail
+administrators. Unlike the chapters above, these are only about REST Mail.
+
+- [Setting up your first domain](guides/setting-up-your-first-domain.md): add your domain, publish its records, create your mailboxes
+- [Connecting your mail app](guides/connecting-your-mail-app.md): the settings, two-factor authentication, and what each error means
+- [Troubleshooting bouncing mail](guides/troubleshooting-bouncing-mail.md): what a bounce says, and what to do about it
+- [Setting up DKIM, SPF and DMARC](guides/setting-up-dkim-spf-dmarc.md): publish the records, check them, and tighten them later
+- [Why mail goes to spam](guides/why-mail-goes-to-spam.md): the mail you send, and the mail held back from you
+
 ### Reference
 
 - [Glossary](reference/glossary.md)
