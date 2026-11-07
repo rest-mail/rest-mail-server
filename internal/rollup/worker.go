@@ -19,6 +19,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/tracing"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -156,9 +157,13 @@ func (w *Worker) loop() {
 		case <-w.stop:
 			return
 		case <-ticker.C:
-			if err := w.rollupOnce(w.now()); err != nil {
-				slog.Warn("rollup worker: snapshot failed", "error", err)
-			}
+			_ = tracing.Job(context.Background(), "job.rollup_snapshot", func(ctx context.Context) error {
+				err := w.rollupOnce(w.now())
+				if err != nil {
+					slog.WarnContext(ctx, "rollup worker: snapshot failed", "error", err)
+				}
+				return err
+			})
 		}
 	}
 }

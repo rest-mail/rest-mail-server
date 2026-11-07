@@ -1329,7 +1329,14 @@ a hosted domain and mailbox for each address a test send probe uses, and,
 - `authorization.py`: builds a private configuration from the E2E principals
   for the report-only authorization phase. Its JUnit report and log are
   included in `e2e-container-logs`; the generated credential-bearing YAML is
-  removed after the run and is never uploaded.
+  removed after the run and is never uploaded. It provides one state the
+  examples phase does not, `recoverable_account` (#1162): recoverAccount names
+  its account in the body, so `hooks.py` makes a fresh account, enrolled in
+  TOTP, for each principal's request and recovers that one. States of the
+  caller's own account (`known_password`, `enrolled_authenticator`,
+  `pending_enrollment`) are not provided: their success would end or change the
+  principal's own sessions. Its unproven list is
+  `.cache/contract/unproven-authorization.json`.
 - `ownership.py`: builds the private configuration of the report-only
   ownership phase (#657) from the same principals, as two account tenants.
   Its reports are uploaded like the authorization phase's; its generated YAML
@@ -1537,7 +1544,18 @@ for an account of its own, as before, and the refusals (`invalid_token`,
 or reaches either operation. The accounts are named by the time they are made,
 not by a count, so `hooks.stash` holds no `invitable_accounts`. `deleteGrant`'s
 hook makes its grant's holder the same way, so it reads no stash value through
-that helper any more; grants have not moved.
+that helper any more.
+
+Every grant operation of the area map (`createGrant`, `deleteGrant`,
+`activateGrant`, `deactivateGrant`, `makeGrantEligible`, `listGrants` and
+`listMyGrants`) resets and seeds before each exchange as well, refusals
+included, and is sent as the two-factor administrator as before, whose session
+survives the reset. `deleteGrant`'s `body_boundary` names grant `1`, a seeded
+principal's own, so after its reset it makes an eligible admin grant on
+`restmail.test`, held by an account made without a password, and deletes that.
+The other examples need nothing made: their ids are the refusals' (`0` and
+`2147483647`), and the lists read the seeded grants. No link starts from or
+reaches any grant operation, and none of their hooks reads a stash value.
 
 This happens only with `CONTRACT_RESET_SEED=1`, which `tests/contract/run.sh own-data`
 sets, and that phase is a gate of its own, sent by `chore test:contract-teardown`

@@ -1,6 +1,7 @@
 package queue
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"strings"
@@ -111,7 +112,7 @@ func TestRecordFailure_SuppressesOnlyRecipientsThatDoNotExist(t *testing.T) {
 			recipient := fmt.Sprintf("Bob.%d@Remote.Test", i)
 			item := claimedFrom(t, gdb, mb.Address, recipient)
 			now := time.Now()
-			w.recordFailure(item, tc.err, now)
+			w.recordFailure(context.Background(), item, tc.err, now)
 
 			s, ok := suppressionOf(t, gdb, d.ID, strings.ToLower(recipient))
 			if ok != tc.suppress {
@@ -147,7 +148,7 @@ func TestProcess_SuppressedRecipientBouncesWithoutAnAttempt(t *testing.T) {
 
 	// The recipient is matched without regard to case.
 	item := claimedFrom(t, gdb, mb.Address, "Gone@Remote.Invalid")
-	w.process(item, time.Now())
+	w.process(context.Background(), item, time.Now())
 
 	var got models.OutboundQueue
 	gdb.First(&got, item.ID)
@@ -193,7 +194,7 @@ func TestSuppression_ExpiryAndClearing(t *testing.T) {
 		t.Fatal("an expired suppression still suppresses")
 	}
 
-	w.recordFailure(item, rcptRefusal(550, "5.1.1 User unknown"), now)
+	w.recordFailure(context.Background(), item, rcptRefusal(550, "5.1.1 User unknown"), now)
 	got, ok := w.suppression(item, now)
 	if !ok || got.ID != s.ID || got.ExpiresAt.Before(now.Add(DefaultSuppressionTTL-time.Minute)) {
 		t.Fatalf("after a new bounce: suppressed %v, row %d (want %d), until %v", ok, got.ID, s.ID, got.ExpiresAt)

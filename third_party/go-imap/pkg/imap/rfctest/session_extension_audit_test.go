@@ -227,7 +227,7 @@ func TestIdleMailboxNotificationTranscript(t *testing.T) {
 		t.Fatalf("expunge notification: %q", got)
 	}
 	box.set(3, func(msg *imap.Message) { msg.Seen = true })
-	if got := c.line(); got != `* 2 FETCH (FLAGS (\Seen))` {
+	if got := c.line(); got != `* 2 FETCH (UID 3 FLAGS (\Seen))` {
 		t.Fatalf("renumbered flag notification: %q", got)
 	}
 	wrote := make(chan error, 1)

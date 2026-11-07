@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/tracing"
 	"gorm.io/gorm"
 )
 
@@ -66,7 +67,10 @@ func (p *Pruner) loop() {
 		case <-p.stop:
 			return
 		case <-ticker.C:
-			p.pruneOnce(p.now())
+			_ = tracing.Job(context.Background(), "job.trace_prune", func(context.Context) error {
+				p.pruneOnce(p.now())
+				return nil
+			})
 		}
 	}
 }
