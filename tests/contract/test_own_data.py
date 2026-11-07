@@ -151,12 +151,14 @@ CREDENTIALS_AND_BANS = {
     "createAppPassword": {"revokeCredential"},
     "revokeCredential": set(),
     "listAPIKeys": set(),
-    "createAPIKey": {"revokeAPIKey"},
+    # Main's 550f750b0 (#1780) also links a created API key to its update.
+    "createAPIKey": {"revokeAPIKey", "updateAPIKey"},
     "updateAPIKey": set(),
     "revokeAPIKey": set(),
     "listAdminAPIKeys": set(),
     "listClientSecrets": set(),
-    "createClientSecret": set(),
+    # Main's 550f750b0 (#1780) added the client-secret revoke link.
+    "createClientSecret": {"revokeClientSecret"},
     "revokeClientSecret": set(),
     "listBans": set(),
     "createBan": {"deleteBan"},
