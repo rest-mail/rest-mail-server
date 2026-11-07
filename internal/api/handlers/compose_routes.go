@@ -73,7 +73,8 @@ type SendDiscarded struct {
 // is an anonymous struct so the description holds it inline: fuzz.pin in Vertrag 0.42.0 reads
 // a body's properties without following a $ref, and the coverage run pins scheduled_at.
 type sendMessageDescription struct {
-	Body struct {
+	IdempotencyKey string `header:"Idempotency-Key" maxLength:"255" json:"-" description:"Optional account-scoped retry key, retained for 24 hours after success. Reuse only for the same route, resource and body."`
+	Body           struct {
 		apitypes.SendMessageRequest
 		From string   `json:"from" minLength:"1" format:"idn-email"`
 		To   []string `json:"to" minItems:"1"`
@@ -107,7 +108,7 @@ type ForwardRefusalBody struct {
 // quarantine (403), the sender domain's policy or a bad scheduled_at (422), the account's send
 // rate (429, with Retry-After) and a deferral (503).
 var sendRefusals = []int{http.StatusBadRequest, http.StatusUnauthorized, http.StatusForbidden,
-	http.StatusTooManyRequests, http.StatusServiceUnavailable, http.StatusNotFound}
+	http.StatusConflict, http.StatusTooManyRequests, http.StatusServiceUnavailable, http.StatusNotFound}
 
 // CalendarReplied is the answer to replying to an invitation.
 type CalendarReplied struct {
@@ -221,18 +222,18 @@ func (h *MessageHandler) RegisterCompose(rs endpoint.Routes, audit ...func(strin
 		Description: "Queued at once (201), or with scheduled_at stored and queued then (202); the outbound pipeline may " +
 			"discard it (200). to needs at least one address. from, to, cc and bcc are described as bare addresses, " +
 			"internationalized or not; the handler also accepts an RFC 5322 display name around one. scheduled_at must be at least a minute " +
-			"ahead and within a year; null or omitted sends at once. " + queuedDeliveryDescription + delegatedSendingDescription,
+			"ahead and within a year; null or omitted sends at once. " + queuedDeliveryDescription + sendIdempotencyDescription + delegatedSendingDescription,
 		Status: http.StatusCreated, SuccessStatuses: []int{http.StatusOK, http.StatusAccepted},
 		Responses: append(append([]oapifly.EndpointResponse{}, sendOutcomes...), oapifly.EndpointResponse{Status: http.StatusUnprocessableEntity, Description: "validation_failed with details.fields for binding, sender policy or scheduling rules", Type: oapifly.TypeOf[respond.ValidationErrorResponse]()}),
 		Errors:    sendRefusals, Security: delegatedSendSecurity(), Middleware: sendAudit("mail.send")}, h.sendMessage)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/messages/draft/{id}/send",
 		OperationID: "sendDraft", Summary: "Send a draft", Tags: []string{"Drafts"},
-		Description: "The draft (mail:write) is sent as sendMessage sends, and deleted once it is; a refused send keeps it. Draft lookup/access dependency failures return 500 and follow request cancellation. " + queuedDeliveryDescription + delegatedSendingDescription,
+		Description: "The draft (mail:write) is sent as sendMessage sends, and deleted once it is; a refused send keeps it. Draft lookup/access dependency failures return 500 and follow request cancellation. " + queuedDeliveryDescription + sendIdempotencyDescription + delegatedSendingDescription,
 		Status:      http.StatusCreated, SuccessStatuses: []int{http.StatusOK, http.StatusAccepted}, Responses: sentOrDiscarded,
 		Errors: append([]int{http.StatusNotFound}, sendRefusals...), Security: delegatedSendSecurity(models.CapMailWrite), Middleware: sendAudit("mail.send_draft")}, h.sendDraft)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/messages/{id}/forward",
 		OperationID: "forwardMessage", Summary: "Forward a message", Tags: []string{"Messages"},
-		Description: "The message (mail:read) is forwarded through the normal sender authorization, rate limit and outbound policy, with Fwd: and the note above its original header. Stored attachments, including empty and inline parts, are re-attached; the Sent copy owns independent attachment objects. The final signed MIME message is bounded by SMTP_MAX_MESSAGE_SIZE, and sender quota includes the copied parts. Sent, attachment references, quota and queue entries commit together. Unavailable or changed source objects fail the forward instead of dropping parts. " + queuedDeliveryDescription + delegatedSendingDescription,
+		Description: "The message (mail:read) is forwarded through the normal sender authorization, rate limit and outbound policy, with Fwd: and the note above its original header. Stored attachments, including empty and inline parts, are re-attached; the Sent copy owns independent attachment objects. The final signed MIME message is bounded by SMTP_MAX_MESSAGE_SIZE, and sender quota includes the copied parts. Sent, attachment references, quota and queue entries commit together. Unavailable or changed source objects fail the forward instead of dropping parts. " + queuedDeliveryDescription + sendIdempotencyDescription + delegatedSendingDescription,
 		Status:      http.StatusCreated, SuccessStatuses: []int{http.StatusOK, http.StatusAccepted}, Responses: append(append([]oapifly.EndpointResponse{}, sentOrDiscarded...), oapifly.EndpointResponse{Status: http.StatusUnprocessableEntity, Description: "Binding validation, sender policy or sender quota refusal", Type: oapifly.TypeOf[ForwardRefusalResponse]()}),
 		Errors: append([]int{http.StatusNotFound}, sendRefusals...), Security: delegatedSendSecurity(models.CapMailRead), Middleware: sendAudit("mail.forward")}, h.forwardMessage)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/messages/{id}/unsubscribe",
