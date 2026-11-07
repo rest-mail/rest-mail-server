@@ -191,7 +191,7 @@ class StackedPRWorkflows(unittest.TestCase):
                  ("cancelled", "", "skipped", 1), ("skipped", "", "skipped", 1)]
         for changes, decision, heavy, expected in cases:
             with self.subTest(changes=changes, decision=decision, heavy=heavy):
-                result = subprocess.run(["bash", "-c", script], env=dict(os.environ, CHANGES_RESULT=changes, RUN_E2E=decision, E2E_RESULT=heavy, PROOFS_RESULT="success", EVENT_NAME="pull_request"), capture_output=True, text=True, timeout=600)
+                result = subprocess.run(["bash", "-c", script], env=dict(os.environ, CHANGES_RESULT=changes, RUN_E2E=decision, E2E_RESULT=heavy, PAIRS_RESULT="success" if decision == "true" else "skipped", PROOFS_RESULT="success", EVENT_NAME="pull_request"), capture_output=True, text=True, timeout=600)
                 self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
 
     def test_e2e_verdict_requires_the_proof_union_when_the_heavy_suite_ran(self):
@@ -199,7 +199,7 @@ class StackedPRWorkflows(unittest.TestCase):
         for proofs, event, expected in (("failure", "merge_group", 1), ("skipped", "merge_group", 1),
                                         ("success", "merge_group", 0), ("skipped", "workflow_dispatch", 0)):
             with self.subTest(proofs=proofs, event=event):
-                result = subprocess.run(["bash", "-c", script], env=dict(os.environ, CHANGES_RESULT="success", RUN_E2E="true", E2E_RESULT="success", PROOFS_RESULT=proofs, EVENT_NAME=event), capture_output=True, text=True, timeout=600)
+                result = subprocess.run(["bash", "-c", script], env=dict(os.environ, CHANGES_RESULT="success", RUN_E2E="true", E2E_RESULT="success", PAIRS_RESULT="success", PROOFS_RESULT=proofs, EVENT_NAME=event), capture_output=True, text=True, timeout=600)
                 self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
 
     def test_e2e_main_pr_opt_in_and_merge_queue_policy_are_unchanged(self):

@@ -53,7 +53,7 @@ class RequiredCI(unittest.TestCase):
         with open(os.path.join(root, ".github/workflows/e2e-suite.yml")) as source:
             workflow = yaml.safe_load(source)
         steps = [step for step in workflow["jobs"]["suite"]["steps"]
-                 if step.get("run") == "chore contract"]
+                 if step.get("run") == "chore contract:topology"]
         self.assertEqual(len(steps), 1)
         self.assertEqual(steps[0]["if"], "inputs.contract-phases == 'gate'")
         self.assertFalse(steps[0].get("continue-on-error", False))

@@ -6,6 +6,26 @@ status, headers and body schema (#376). Every phase uses the generated
 `/api/docs/openapi.json`, saved with that run’s reports. The handwritten
 `openapi.yaml` remains the independent comparison oracle, not the runtime input.
 
+E2E runs `chore contract:pairs` beside `chore contract:topology`, on separate
+topologies. Pair shards use their own test fixtures and disposable databases;
+the topology contract recreates its principals, queue, API-key and MFA fixtures.
+No pair-test state or reports are inputs to the topology contract. Examples,
+coverage, the HAR secret scan and teardown stay together because they consume
+the same live resources, saved description, run configuration and reports.
+`chore contract` still runs both phases in sequence locally. The required
+`E2E (full topology)` check needs both jobs; the proof union still receives
+CI's four in-process proof files and the independent live-proof artifact.
+
+The topology contract jobs set `RESTMAIL_CONTRACT_LIMITS_RAISED=true`: auth
+(including owner and credential-refusal buckets), pipeline previews and TLS-RPT
+remain enabled with 10,000 requests/second and a burst of 10,000. Only the
+corresponding hook pacing sleeps are skipped. Trace flushing and send-budget
+waits are unchanged. The Limits suite recreates the API with the contract and
+load overrides off, checks the actual container environment against the real
+defaults, and then spends those default limits. Teardown recreates the API
+with the job's contract setting again. The coverage report is collected before
+either recreation; no coverage report or fixture is transferred between jobs.
+
 The additional [live requirement proofs](#live-requirement-proofs-1237) exercise
 anonymous callers, real over-cap bodies and a bounded real-principal matrix
 with the pinned Vertrag. The E2E suite runs them as a report, and what they prove

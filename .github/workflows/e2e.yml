@@ -147,6 +147,15 @@ jobs:
       contract-phases: gate
       description-mode: ${{ inputs.description-mode || 'saved' }}
 
+  e2e-contract-pairs:
+    name: E2E (contract example pairs)
+    needs: changes
+    if: needs.changes.outputs.run_e2e == 'true' && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
+    uses: ./.github/workflows/e2e-suite.yml
+    with:
+      contract-phases: pairs
+      description-mode: ${{ inputs.description-mode || 'saved' }}
+
   e2e-reports:
     name: E2E (authorization and ownership reports)
     needs: changes
@@ -171,7 +180,7 @@ jobs:
     # Test report does. The live runners can only add to it: what they failed at, or
     # never wrote, counts for nothing. A dispatched run has no CI run to join.
     name: E2E (every example is proven)
-    needs: [changes, e2e-run, e2e-live]
+    needs: [changes, e2e-run, e2e-contract-pairs, e2e-live]
     if: always() && needs.changes.outputs.run_e2e == 'true' && github.event_name != 'workflow_dispatch' && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     runs-on: ubuntu-latest
     timeout-minutes: 70
@@ -215,7 +224,7 @@ jobs:
     # (code PR) or was intentionally skipped (docs-only PR). This is what keeps
     # a docs-only PR from being stranded on a never-reported required check.
     name: ${{ github.event_name == 'pull_request' && github.event.action == 'edited' && github.event.changes.base.ref.from == '' && 'E2E (ignored edit)' || 'E2E (full topology)' }}
-    needs: [changes, e2e-run, e2e-proofs]
+    needs: [changes, e2e-run, e2e-contract-pairs, e2e-proofs]
     if: always() && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -225,6 +234,7 @@ jobs:
           CHANGES_RESULT: ${{ needs.changes.result }}
           RUN_E2E: ${{ needs.changes.outputs.run_e2e }}
           E2E_RESULT: ${{ needs.e2e-run.result }}
+          PAIRS_RESULT: ${{ needs.e2e-contract-pairs.result }}
           PROOFS_RESULT: ${{ needs.e2e-proofs.result }}
           EVENT_NAME: ${{ github.event_name }}
         run: |
@@ -232,6 +242,7 @@ jobs:
           echo "classify job result : $CHANGES_RESULT"
           echo "run_e2e decision    : $RUN_E2E"
           echo "heavy e2e result    : $E2E_RESULT"
+          echo "example pairs result: $PAIRS_RESULT"
           echo "proof union result  : $PROOFS_RESULT"
 
           # Classifier succeeded and chose to skip the heavy job: a pull request or
@@ -248,10 +259,10 @@ jobs:
           fi
 
           # Otherwise the heavy suite must have actually run and passed.
-          if [ "$E2E_RESULT" = "success" ]; then
+          if [ "$E2E_RESULT" = "success" ] && [ "$PAIRS_RESULT" = "success" ]; then
             echo "full e2e ran and passed."
             exit 0
           fi
 
-          echo "::error::E2E gate failing — classify=$CHANGES_RESULT run_e2e=$RUN_E2E heavy=$E2E_RESULT"
+          echo "::error::E2E gate failing — classify=$CHANGES_RESULT run_e2e=$RUN_E2E heavy=$E2E_RESULT pairs=$PAIRS_RESULT"
           exit 1

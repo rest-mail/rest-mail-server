@@ -11,7 +11,8 @@ on:
     inputs:
       contract-phases:
         description: >-
-          "gate" runs the examples and coverage gates; "reports" runs authorization
+          "gate" runs the examples and coverage gates; "pairs" runs the independent
+          example-pair shards; "reports" runs authorization
           and ownership reports; "live" runs independent live proofs; "fuzz" runs the fuzz phase, reports what it
           finds as an artifact, and fails nothing; "faults" builds the API
           with each fault in tests/contract/faults.yml and fails unless the
@@ -44,6 +45,7 @@ jobs:
       # 70 s of compiling each, and each isolation instance recompiles everything (#1896).
       # tasks/dev-gocache.sh. The binaries are the same: the cache is keyed by their inputs.
       RESTMAIL_DEV_GOCACHE_VOLUME: rest-mail-dev-gocache
+      RESTMAIL_CONTRACT_LIMITS_RAISED: ${{ (inputs.contract-phases == 'gate' || inputs.contract-phases == 'pairs' || inputs.contract-phases == 'reports' || inputs.contract-phases == 'live') && 'true' || 'false' }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -131,13 +133,13 @@ jobs:
         run: chore e2e:up
 
       - name: Run e2e stages
-        if: inputs.contract-phases != 'live'
+        if: inputs.contract-phases != 'live' && inputs.contract-phases != 'pairs'
         run: |
           set -o pipefail
           chore test:e2e 2>&1 | tee "$RUNNER_TEMP/e2e.log"
 
       - name: Assert stages executed (guard against silent skips)
-        if: inputs.contract-phases != 'live'
+        if: inputs.contract-phases != 'live' && inputs.contract-phases != 'pairs'
         # Belt-and-suspenders on top of E2E_REQUIRE_STACK: a green e2e must mean
         # the stages actually RAN. Fail if any top-level stage skipped, or if
         # fewer than all 14 stages reached PASS.
@@ -186,11 +188,16 @@ jobs:
         if: inputs.contract-phases == 'fuzz'
         run: chore test:contract-fixtures
 
-      - name: Contract tests (example pairs, examples, coverage and secret scan)
+      - name: Contract example pairs (four shards)
+        if: inputs.contract-phases == 'pairs'
+        env:
+          DB_HOST: 10.99.0.43
+        run: chore contract:pairs
+
+      - name: Contract tests (examples, coverage and secret scan)
         # The same command a person runs (#627), against the topology whose
-        # stages just passed. It starts with the registered example-pair
-        # boundary checks (chore contract:pairs, about 25 minutes of Vertrag
-        # exchanges in parallel shards). Every phase uses the generated
+        # stages just passed. The independent example-pair boundary checks run
+        # in their own topology beside this job. Every phase uses the generated
         # description; openapi.yaml remains the independent oracle for the
         # contract diff.
         id: contract
@@ -203,7 +210,7 @@ jobs:
           # TestDraftLifecycleExamplesWithVertrag makes its scratch databases on
           # this server, the topology's own, and skips without it.
           DB_HOST: 10.99.0.43
-        run: chore contract
+        run: chore contract:topology
 
       - name: Contract authorization and ownership (report only)
         if: inputs.contract-phases == 'reports'
@@ -331,13 +338,23 @@ jobs:
           done
 
       - name: Upload container logs
-        if: always() && inputs.contract-phases != 'reports' && inputs.contract-phases != 'live'
+        if: always() && inputs.contract-phases != 'reports' && inputs.contract-phases != 'live' && inputs.contract-phases != 'pairs'
         # People read this, and the contract tiers' issue job reads it if it
         # arrives, so losing it must not fail the job.
         continue-on-error: true
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: e2e-container-logs
+          path: ${{ runner.temp }}/e2e-logs
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Upload example-pair logs
+        if: always() && inputs.contract-phases == 'pairs'
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-contract-pairs-logs
           path: ${{ runner.temp }}/e2e-logs
           retention-days: 7
           if-no-files-found: warn

@@ -113,7 +113,7 @@ class IndependentReports(unittest.TestCase):
         self.assertIn("inputs.contract-phases == 'reports'", coverage["if"])
         for name in ("Run e2e stages", "Assert stages executed (guard against silent skips)"):
             setup = next(step for step in self.suite["suite"]["steps"] if step.get("name") == name)
-            self.assertEqual(setup["if"], "inputs.contract-phases != 'live'")
+            self.assertEqual(setup["if"], "inputs.contract-phases != 'live' && inputs.contract-phases != 'pairs'")
 
     def test_live_runs_independently_and_the_proof_union_still_gates(self):
         live = self.jobs["e2e-live"]
@@ -127,6 +127,54 @@ class IndependentReports(unittest.TestCase):
         self.assertEqual(isolation["if"], "inputs.contract-phases == 'gate'")
         self.assertEqual(isolation["env"]["RESTMAIL_SKIP_FRONTENDS"], "true")
         self.assertIn("RESTMAIL_DEV_GOCACHE_VOLUME", isolation["env"])
+
+
+class IndependentContractPairs(unittest.TestCase):
+    def setUp(self):
+        self.jobs = yaml.safe_load((ROOT / ".github/workflows/e2e.yml").read_text())["jobs"]
+        self.suite = yaml.safe_load((ROOT / ".github/workflows/e2e-suite.yml").read_text())["jobs"]["suite"]
+        self.tasks = yaml.safe_load((ROOT / "chores.yml").read_text())["tasks"]
+
+    def test_pairs_run_beside_the_topology_and_both_gate_the_union(self):
+        pairs = self.jobs["e2e-contract-pairs"]
+        self.assertEqual(pairs["needs"], "changes")
+        self.assertEqual(pairs["with"]["contract-phases"], "pairs")
+        self.assertEqual(pairs["uses"], self.jobs["e2e-run"]["uses"])
+        for name in ("e2e", "e2e-proofs"):
+            self.assertIn("e2e-contract-pairs", self.jobs[name]["needs"])
+            self.assertIn("e2e-run", self.jobs[name]["needs"])
+        contract = next(step for step in self.suite["steps"] if step.get("id") == "contract")
+        self.assertEqual(contract["run"], "chore contract:topology")
+        pair_step = next(step for step in self.suite["steps"] if step.get("run") == "chore contract:pairs")
+        self.assertEqual(pair_step["if"], "inputs.contract-phases == 'pairs'")
+        self.assertEqual(pair_step["env"]["DB_HOST"], "10.99.0.43")
+        self.assertFalse(pair_step.get("continue-on-error", False))
+        self.assertTrue(any(step.get("run") == "chore e2e:up" for step in self.suite["steps"]))
+        self.assertIn("CONTRACT_SKIP_PAIRS=true", self.tasks["contract:topology"]["cmds"][0])
+        self.assertIn("chore test:contract-fixtures", self.tasks["contract"]["cmds"][0])
+
+    def test_required_gate_rejects_every_unsuccessful_pair_result(self):
+        script = self.jobs["e2e"]["steps"][0]["run"]
+        for event in ("merge_group", "workflow_dispatch"):
+            for result in ("success", "failure", "cancelled", "skipped"):
+                with self.subTest(event=event, result=result):
+                    execution = subprocess.run(
+                        ["bash", "-c", script], capture_output=True, text=True,
+                        env={**os.environ, "CHANGES_RESULT": "success", "RUN_E2E": "true",
+                             "E2E_RESULT": "success", "PAIRS_RESULT": result,
+                             "PROOFS_RESULT": "success", "EVENT_NAME": event},
+                    )
+                    self.assertEqual(execution.returncode, int(result != "success"), execution.stdout)
+
+    def test_artifact_names_do_not_collide_and_live_inputs_are_unchanged(self):
+        upload = next(step for step in self.suite["steps"] if step.get("name") == "Upload container logs")
+        pairs = next(step for step in self.suite["steps"] if step.get("name") == "Upload example-pair logs")
+        self.assertEqual(pairs["with"]["name"], "e2e-contract-pairs-logs")
+        self.assertEqual(pairs["if"], "always() && inputs.contract-phases == 'pairs'")
+        self.assertEqual(upload["with"]["name"], "e2e-container-logs")
+        self.assertIn("inputs.contract-phases != 'pairs'", upload["if"])
+        download = next(step for step in self.jobs["e2e-proofs"]["steps"] if step.get("name") == "Download the live proofs")
+        self.assertEqual(download["with"]["name"], "live-example-proofs")
 
 
 if __name__ == "__main__":

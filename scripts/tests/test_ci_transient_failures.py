@@ -238,6 +238,7 @@ READ_BY_PEOPLE = {
     "mail-conformance",
     "coverage-report",
     "e2e-container-logs",
+    "e2e-contract-pairs-logs",
     "e2e-report-logs",
     "e2e-live-logs",
     "js-filter-isolation-logs",
