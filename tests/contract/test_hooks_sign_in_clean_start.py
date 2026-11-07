@@ -14,7 +14,7 @@ OPERATIONS = {
     "login": ("/api/v1/auth/login", "POST"),
     "logout": ("/api/v1/auth/logout", "POST"),
     "refreshToken": ("/api/v1/auth/refresh", "POST"),
-    "protocolSignIn": ("/api/v1/auth/protocol-sign-in", "POST"),
+    "openGatewaySession": ("/api/v1/gateway-sessions", "POST"),
     "resetAdmin": ("/api/v1/auth/reset", "POST"),
     "recoverAccount": ("/api/v1/auth/recover", "POST"),
     "ownerChallenge": ("/api/v1/auth/owner/challenge", "POST"),
@@ -39,9 +39,8 @@ MADE_FOR = {
     ("/api/v1/auth/logout", "204"),
     ("/api/v1/auth/refresh", "200"),
     ("/api/v1/auth/2fa/enroll", "200"),
-    ("/api/v1/auth/protocol-sign-in", "200"),
-    ("/api/v1/auth/protocol-sign-in", "400"),
-    ("/api/v1/auth/protocol-sign-in", "422"),
+    ("/api/v1/gateway-sessions", "201"),
+    ("/api/v1/gateway-sessions", "422"),
 }
 
 SESSION = {"access_token": "made-access", "refresh_token": "made-refresh"}
@@ -89,7 +88,7 @@ class CleanStart(unittest.TestCase):
     def test_each_exchange_resets_first(self):
         self.clean(True)
         for operation, (path, method) in OPERATIONS.items():
-            for status in ("200", "204", "401", "409", "422"):
+            for status in ("200", "201", "204", "400", "401", "409", "422"):
                 with self.subTest(operation=operation, status=status):
                     self.start_clean.reset_mock()
                     sent = exchange(path, method, status, {"refresh_token": "contract-invalid-token"})
@@ -99,7 +98,7 @@ class CleanStart(unittest.TestCase):
     def test_refusals_and_reads_keep_their_requests(self):
         self.clean(True)
         for operation, (path, method) in OPERATIONS.items():
-            for status in ("200", "204", "401", "403", "409", "422"):
+            for status in ("200", "201", "204", "400", "401", "403", "409", "422"):
                 if (path, status) in MADE_FOR:
                     continue
                 with self.subTest(operation=operation, status=status):
@@ -118,7 +117,7 @@ class CleanStart(unittest.TestCase):
     def test_nothing_happens_without_a_reset(self):
         self.clean(False)
         for operation, (path, method) in OPERATIONS.items():
-            for status in ("200", "204", "422"):
+            for status in ("200", "201", "204", "400", "422"):
                 sent = exchange(path, method, status, {"refresh_token": "fixture-refresh-token"})
                 before = json.dumps(sent, sort_keys=True)
                 self.hook(sent)
@@ -155,15 +154,18 @@ class CleanStart(unittest.TestCase):
 
     def test_the_mail_client_signs_in_with_an_app_password_made_for_it(self):
         self.clean(True)
-        expected = self.globals["basic"]("made@restmail.test", "made-app-password")
-        for status in ("200", "400", "422"):
+        for status, protocol in (("201", "imap"), ("422", "pop3")):
             with self.subTest(status=status):
-                sent = exchange("/api/v1/auth/protocol-sign-in", "POST", status, {"protocol": "imap"})
+                sent = exchange("/api/v1/gateway-sessions", "POST", status, {"protocol": protocol})
+                expected = {"protocol": protocol, "address": "made@restmail.test",
+                            "password": "made-app-password"}
                 self.hook(sent)
-                self.assertEqual(sent["request"]["headers"]["Authorization"], expected)
+                self.assertEqual(json.loads(sent["request"]["body"]), expected)
+                self.assertEqual(sent["request"]["headers"]["Authorization"], "Bearer run-session")
                 # The principals' hook, which runs next, leaves it after a reset.
                 self.hooks.sign_in_a_mail_client(sent)
-                self.assertEqual(sent["request"]["headers"]["Authorization"], expected)
+                self.assertEqual(json.loads(sent["request"]["body"]), expected)
+                self.assertEqual(sent["request"]["headers"]["Authorization"], "Bearer run-session")
 
 
 class TheSessionItEndedIsOver(unittest.TestCase):
