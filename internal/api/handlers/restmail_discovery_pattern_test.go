@@ -80,8 +80,8 @@ func TestRestmailDiscoverPatternStatesTheShape(t *testing.T) {
 	for _, name := range []string{
 		"restmail.test", "RESTMAIL.TEST", "restmail.test.", " restmail.test ", "\trestmail.test\n",
 		"münchen.test", "MÜNCHEN.TEST", "xn--mnchen-3ya.test", "ß.test", "😀.test", "例え.テスト",
-		"restmail。test", "restmail．test", "restmail｡test", "a。", "。",
-		"a.a", ".a", "a..", "..", "a..b", "1.2", "127.0.0.1",
+		"restmail。test", "restmail．test", "restmail｡test", "a。",
+		"a.a", "a..", "1.2", "127.0.0.1",
 	} {
 		if _, err := validateDomainName(name); err != nil {
 			t.Errorf("%q: the handler no longer looks this up: %v", name, err)
@@ -96,6 +96,14 @@ func TestRestmailDiscoverPatternStatesTheShape(t *testing.T) {
 		}
 		if re.MatchString(name) {
 			t.Errorf("the pattern permits %q, which the handler refuses", name)
+		}
+	}
+	for _, name := range []string{"。", ".a", "..", "a..b"} {
+		if _, err := validateDomainName(name); err == nil {
+			t.Errorf("the handler accepts %q with an empty DNS label", name)
+		}
+		if !re.MatchString(name) {
+			t.Errorf("the pattern no longer permits the invalid hostname %q", name)
 		}
 	}
 }
