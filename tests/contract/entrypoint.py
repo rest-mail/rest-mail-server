@@ -7,6 +7,8 @@ import vertrag_hooks
 
 directory = Path(__file__).resolve().parent
 shared = runpy.run_path(str(directory / "hooks.py"))
+settings = runpy.run_path(str(directory / "account_settings_hooks.py"))
+settings["register_absent_settings_hooks"](shared)
 # Only a reset and the path, and only with a reset asked for (own_data.py):
 # generated bodies stay whole.
 vertrag_hooks.before("setDomainRelay")(shared["a_domain_setting_of_its_own"])
