@@ -18,7 +18,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/grants"
 )
 
-func TestMessageTransferRefusalExamples(t *testing.T) {
+func TestMessageTransferRefusalExamplesWithVertrag(t *testing.T) {
 	configureAuthReadPush(t)
 	useRealGrants(t)
 	jwt := auth.NewJWTService(routerTestSecret, 15*time.Minute, time.Hour)
