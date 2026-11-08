@@ -114,7 +114,7 @@ func TestCondstoreStoredExamples(t *testing.T) {
 
 		// The folder listing's HIGHESTMODSEQ counts the departures, though INBOX is empty.
 		rr = f.do(http.MethodGet, "/api/v1/accounts/"+strconv.FormatUint(uint64(f.accountID), 10)+"/folders", f.session, "")
-		if rr.Code != http.StatusOK || !strings.Contains(rr.Body.String(), `"name":"INBOX","total":0,"unread":0,"uid_next":8,"highest_mod_seq":7`) {
+		if rr.Code != http.StatusOK || !strings.Contains(rr.Body.String(), `"name":"INBOX","total":0,"unread":0,"role":"inbox","uid_next":8,"highest_mod_seq":7`) {
 			t.Fatalf("folder listing after the departures: %d %s", rr.Code, rr.Body.String())
 		}
 
