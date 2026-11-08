@@ -136,17 +136,21 @@ type Message struct {
 	// rows for the per-recipient DSN rate limit, so inbound mail that merely claims
 	// a mailer-daemon@ envelope-from cannot inflate the counter and suppress a
 	// target user's legitimate bounces.
-	IsDSN       bool       `gorm:"default:false" json:"is_dsn"`
-	IsFlagged   bool       `gorm:"default:false" json:"is_flagged"`
-	IsStarred   bool       `gorm:"default:false" json:"is_starred"`
-	Keywords    []string   `gorm:"serializer:json;type:jsonb" json:"keywords,omitempty"`
-	IMAPDeleted bool       `gorm:"not null;default:false" json:"imap_deleted,omitempty"`
-	IsDraft     bool       `gorm:"default:false" json:"is_draft"`
-	IsDeleted   bool       `gorm:"default:false;index:idx_messages_mailbox_deleted" json:"is_deleted"`
-	ReceivedAt  time.Time  `gorm:"default:now();index" json:"received_at"`
-	DateHeader  *time.Time `json:"date_header"`
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
+	IsDSN       bool     `gorm:"default:false" json:"is_dsn"`
+	IsFlagged   bool     `gorm:"default:false" json:"is_flagged"`
+	IsStarred   bool     `gorm:"default:false" json:"is_starred"`
+	Keywords    []string `gorm:"serializer:json;type:jsonb" json:"keywords,omitempty"`
+	IMAPDeleted bool     `gorm:"not null;default:false" json:"imap_deleted,omitempty"`
+	// ModSeq is the message's IMAP mod-sequence (RFC 7162 §3.1). A trigger sets it
+	// from the folder's FolderModSeq on every insert, move and visible flag
+	// change; nothing else writes it.
+	ModSeq     uint64     `gorm:"column:mod_seq;not null;default:1" json:"-"`
+	IsDraft    bool       `gorm:"default:false" json:"is_draft"`
+	IsDeleted  bool       `gorm:"default:false;index:idx_messages_mailbox_deleted" json:"is_deleted"`
+	ReceivedAt time.Time  `gorm:"default:now();index" json:"received_at"`
+	DateHeader *time.Time `json:"date_header"`
+	CreatedAt  time.Time  `json:"created_at"`
+	UpdatedAt  time.Time  `json:"updated_at"`
 
 	// AwaitingSince is derived on read from the thread's messages and never stored.
 	AwaitingSince *time.Time `gorm:"-" json:"-"`

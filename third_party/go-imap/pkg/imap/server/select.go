@@ -37,6 +37,7 @@ func (s *Session) deselect() {
 	s.readOnly = false
 	s.messages = nil
 	s.saved = nil
+	s.noModSeq = false
 	s.deleted = make(map[uint32]bool)
 	s.keywordNames = make(map[string]string)
 }
@@ -47,13 +48,28 @@ func (s *Session) handleSelect(tag, args string, readOnly bool) {
 		return
 	}
 
-	// SELECT and EXAMINE take exactly one mailbox astring (RFC 3501 §9).
+	// SELECT and EXAMINE take one mailbox astring (RFC 3501 §9), then
+	// optional parameters (RFC 4466 §2.1): CONDSTORE and QRESYNC (RFC 7162
+	// §§3.1.8, 3.2.5), when the store keeps what they need.
 	// Literal arguments were materialized by readLiteralArgs; retain their
 	// decoded value, including significant spaces, instead of trimming it.
 	folder, rest, ok := wire.ParseAstring(args)
-	if !ok || rest != "" || !wire.ValidAstring(args) {
+	if !ok || !wire.ValidAstring(args[:len(args)-len(rest)]) {
 		s.tagged(tag, "BAD", "SELECT/EXAMINE requires one mailbox name")
 		return
+	}
+	params, ok := parseSelectParams(rest)
+	if _, store := s.modSeqStore(); !ok || (params.condstore && !store) {
+		s.tagged(tag, "BAD", "Invalid SELECT/EXAMINE parameters")
+		return
+	}
+	// QRESYNC needs ENABLE QRESYNC first (RFC 7162 §3.2.5).
+	if params.qresync != nil && !s.qresync {
+		s.tagged(tag, "BAD", "QRESYNC requires ENABLE QRESYNC")
+		return
+	}
+	if params.condstore {
+		s.condstore = true
 	}
 
 	// A well-formed SELECT/EXAMINE begins a new selection (RFC 3501 §6.3.1/§6.3.2):
@@ -108,9 +124,24 @@ func (s *Session) handleSelect(tag, args string, readOnly bool) {
 		s.tagged(tag, "NO", "Failed to select folder")
 		return
 	}
+	// HIGHESTMODSEQ, or NOMODSEQ when it is 0 (RFC 7162 §3.1.2).
+	var highestModSeq uint64
+	if _, store := s.modSeqStore(); store {
+		if highestModSeq, err = s.highestModSeq(folder); err != nil {
+			s.tagged(tag, "NO", "Failed to select folder")
+			return
+		}
+		for _, m := range messages {
+			if highestModSeq > 0 {
+				highestModSeq = max(highestModSeq, m.ModSeq)
+			}
+		}
+	}
 
 	s.readOnly = readOnly
 	s.messages = messages
+	_, store := s.modSeqStore()
+	s.noModSeq = store && highestModSeq == 0
 	for _, message := range messages {
 		if message.Deleted {
 			s.deleted[message.UID] = true
@@ -148,17 +179,32 @@ func (s *Session) handleSelect(tag, args string, readOnly bool) {
 	// UIDNEXT (RFC 3501 §2.3.1.1) is the UID that will be assigned to the next
 	// message; see uidNext.
 	s.send("* OK [UIDNEXT %d] Predicted next UID", uidNext)
+	// Once CONDSTORE is on, every SELECT and EXAMINE reports HIGHESTMODSEQ,
+	// or NOMODSEQ for a folder without mod-sequences (RFC 7162 §3.1.2).
+	if s.condstore {
+		if s.noModSeq {
+			s.send("* OK [NOMODSEQ] Sorry, this mailbox format doesn't support modsequences")
+		} else {
+			s.send("* OK [HIGHESTMODSEQ %d] Highest", highestModSeq)
+		}
+	}
 	available := s.availableFlags(messages)
 	s.send("* FLAGS (%s)", available)
 	if readOnly {
 		// A read-only mailbox permits no permanent flag changes (RFC 3501 §6.3.2).
 		s.send("* OK [PERMANENTFLAGS ()] No permanent flags permitted")
+	} else {
+		// \* (keyword creation) is offered only when the store keeps keywords:
+		// imapsync needs it to retain source keywords.
+		s.send("* OK [PERMANENTFLAGS (%s)] Limited", s.permanentFlags(available, messages))
+	}
+	if params.qresync != nil {
+		s.resync(params.qresync, uidNext)
+	}
+	if readOnly {
 		s.tagged(tag, "OK", "[READ-ONLY] "+cmd+" completed")
 		return
 	}
-	// \* (keyword creation) is offered only when the store keeps keywords:
-	// imapsync needs it to retain source keywords.
-	s.send("* OK [PERMANENTFLAGS (%s)] Limited", s.permanentFlags(available, messages))
 	s.tagged(tag, "OK", "[READ-WRITE] SELECT completed")
 }
 
@@ -189,12 +235,16 @@ func (s *Session) handleStatus(tag, args string) {
 	// Validate every requested item up front so an unknown one is a BAD syntax
 	// error before any untagged response is emitted.
 	for _, item := range items {
-		if !statusItems[item] {
+		if !statusItems[item] && (item != "HIGHESTMODSEQ" || !s.hasModSeqStore()) {
 			// A literal can put any octets in item, and response text is 7-bit
 			// with no CR or LF (RFC 3501 §9), so it is not echoed.
 			s.tagged(tag, "BAD", "Unknown STATUS item")
 			return
 		}
+	}
+	// STATUS (HIGHESTMODSEQ) turns CONDSTORE on (RFC 7162 §3.1).
+	if slices.Contains(items, "HIGHESTMODSEQ") {
+		s.enableCondstore()
 	}
 
 	// INBOX is case-insensitive; other names retain their spelling.
@@ -224,13 +274,13 @@ func (s *Session) handleStatus(tag, args string) {
 // closedCode reports whether this session is sent the CLOSED response code.
 // RFC 3501 has no CLOSED, and asks that a response code outside the protocol
 // "SHOULD be prefixed with an "X" until they are added to a revision of this
-// protocol" (§7.1). For an IMAP4rev1 client it comes from RFC 7162 §3.2.11,
-// which ties it to the server that "advertises "QRESYNC" or "CONDSTORE""; this
-// engine advertises neither. So only an IMAP4rev2 session gets it, and no
-// command turns rev2 on yet: ENABLE IMAP4rev2 (RFC 9051 Appendix A) is
-// rest-mail/rest-mail-server#718.
+// protocol" (§7.1). For an IMAP4rev1 client it comes from RFC 7162 §3.2.11:
+// a server that advertises CONDSTORE or QRESYNC "MUST return the CLOSED
+// response code". So a session whose store keeps mod-sequences gets it, as
+// does an IMAP4rev2 one; no command turns rev2 on yet: ENABLE IMAP4rev2 (RFC
+// 9051 Appendix A) is rest-mail/rest-mail-server#718.
 func (s *Session) closedCode() bool {
-	return s.imap4rev2
+	return s.imap4rev2 || s.hasModSeqStore()
 }
 
 // statusItems are the STATUS data items (RFC 3501 §6.3.10), with RFC 8438's
@@ -310,6 +360,13 @@ func (s *Session) statusData(folder string, items []string) (string, error) {
 			// 9051 §6.3.11). STORE writes \Deleted through to the backend, so
 			// the stored flags are the count, selected mailbox or not.
 			fmt.Fprintf(&b, "DELETED %d", deleted)
+		case "HIGHESTMODSEQ":
+			// 0 for a folder without mod-sequences (RFC 7162 §3.1.7).
+			v, err := s.highestModSeq(folder)
+			if err != nil {
+				return "", err
+			}
+			fmt.Fprintf(&b, "HIGHESTMODSEQ %d", v)
 		case "SIZE":
 			if !sizeValid {
 				return "", fmt.Errorf("invalid mailbox message sizes")
