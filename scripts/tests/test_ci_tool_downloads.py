@@ -287,6 +287,38 @@ class ArchiveCacheTests(unittest.TestCase):
         self.assertIn("runner.os", action)
         self.assertIn("runner.arch", action)
 
+    def test_local_cache_actions_survive_every_workspaces_checkout_ref(self):
+        for workflow in WORKFLOWS.glob("*.yml"):
+            for name, job in yaml.safe_load(workflow.read_text())["jobs"].items():
+                workspace_ref = None
+                materialized = False
+                for step in job.get("steps", []):
+                    if step.get("uses", "").startswith("actions/checkout@"):
+                        checkout = step.get("with", {})
+                        if checkout.get("path", ".") == ".":
+                            workspace_ref = checkout.get("ref", "workflow-ref")
+                            materialized = False
+                    if 'git show "$BASE_SHA:$path" > "$path"' in step.get("run", ""):
+                        self.assertEqual(
+                            step["env"]["BASE_SHA"],
+                            "${{ github.event.pull_request.base.sha }}",
+                        )
+                        for path in (
+                            ".github/actions/cache-pinned-tool/action.yml",
+                            "scripts/ci/tool_cache.py",
+                            "scripts/ci/github_release.py",
+                        ):
+                            self.assertIn(path, step["run"])
+                        materialized = True
+                    if step.get("uses") == "./.github/actions/cache-pinned-tool":
+                        with self.subTest(workflow=workflow.name, job=name, step=step["name"]):
+                            self.assertIsNotNone(workspace_ref)
+                            if workspace_ref not in (
+                                "workflow-ref",
+                                "${{ github.event.merge_group.head_sha }}",
+                            ):
+                                self.assertTrue(materialized, "an older head may lack cache support")
+
 
 class PinnedDownloadTests(unittest.TestCase):
     """The installers' own fetch, against a real server, as `HTTP Error 504` hit it."""

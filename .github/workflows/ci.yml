@@ -202,6 +202,13 @@ jobs:
               exit 1
             }
           done
+          for path in .github/actions/cache-pinned-tool/action.yml scripts/ci/tool_cache.py scripts/ci/github_release.py; do
+            mkdir -p "$(dirname "$path")"
+            git show "$BASE_SHA:$path" > "$path" || {
+              echo "::error::$BASE_SHA has no $path, and cache support never uses the PR's own copy" >&2
+              exit 1
+            }
+          done
           changed=$(git diff --name-only "$MERGE_BASE" "$HEAD_SHA" -- scripts/contract_diff.py scripts/oasdiff_pin.py)
           {
             echo "The verdict uses the scripts at base tip \`$BASE_SHA\`."
@@ -246,7 +253,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
-          python3 scripts/oasdiff_pin.py install "$RUNNER_TEMP/bin"
+          python3 scripts/ci/tool_cache.py install-base-oasdiff scripts/oasdiff_pin.py "$RUNNER_TEMP/bin"
 
       - name: Prove classification and label gates with the real comparator
         env:
