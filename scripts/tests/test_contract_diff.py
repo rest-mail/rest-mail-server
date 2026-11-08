@@ -651,6 +651,9 @@ class VerdictFixture(GitFixture):
         return self.commit(description())
 
     def env_for(self, base_tip, merge_base, head):
+        helper = self.clone / "scripts/ci/tool_cache.py"
+        helper.parent.mkdir(parents=True, exist_ok=True)
+        helper.write_text((ROOT / "scripts/ci/tool_cache.py").read_text())
         binaries = self.temp / "bin"
         binaries.mkdir(exist_ok=True)
         github = binaries / "gh"
@@ -658,6 +661,7 @@ class VerdictFixture(GitFixture):
         github.chmod(0o755)
         return dict(
             self.env,
+            OASDIFF_DOWNLOAD_CACHE="",
             PATH=str(binaries) + os.pathsep + self.env["PATH"],
             PR="1",
             GITHUB_REPOSITORY="fixture/repository",
@@ -727,6 +731,15 @@ class VerdictScripts(unittest.TestCase):
 
     def base_with_gate(self):
         return self.git.commit_scripts(REAL_SCRIPT, self.installer)
+
+    def test_the_runner_archive_cache_does_not_reach_the_synthetic_installer(self):
+        cache = self.git.temp / "runner-downloads"
+        self.git.env["OASDIFF_DOWNLOAD_CACHE"] = str(cache)
+        base_tip = self.base_with_gate()
+        self.git.branch("pr", base_tip)
+        head = self.git.commit_scripts(ALWAYS_PASSES)
+        self.assert_contract_label_required(self.git.verdict(base_tip, head))
+        self.assertFalse(cache.exists())
 
     def assert_contract_label_required(self, result):
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)

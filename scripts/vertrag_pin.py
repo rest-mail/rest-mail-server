@@ -96,12 +96,20 @@ def fetch(url):
     )
     token = os.environ.get("GITHUB_TOKEN")
     if token and url.startswith("https://api.github.com/"):
-        request.add_header("Authorization", "Bearer " + token)
+        request.add_unredirected_header("Authorization", "Bearer " + token)
     for delay in (*RETRY_DELAYS, None):
         try:
             with urllib.request.urlopen(request, timeout=60) as response:
                 return response.read()
         except (OSError, http.client.HTTPException) as error:
+            from ci.github_release import fetch_asset, release_asset
+
+            if release_asset(url):
+                try:
+                    print("vertrag_pin: release download failed; trying GitHub asset API", file=sys.stderr)
+                    return fetch_asset(url)
+                except (OSError, http.client.HTTPException, ValueError, KeyError) as fallback_error:
+                    print(f"vertrag_pin: asset API failed ({fallback_error})", file=sys.stderr)
             if delay is None or not transient(error):
                 raise
             print(f"vertrag_pin: {url} failed ({error}); retrying in {delay}s", file=sys.stderr)
@@ -160,13 +168,30 @@ def install(directory):
         version, linux_sha = pinned(f.read())
     system, machine = this_machine()
     name = asset(version, system, machine)
-    want = checksum_for(release_checksums(version), name)
-    if (system, machine) == ("linux", "x86_64") and want != linux_sha:
-        raise ValueError("the release checksum disagrees with the immutable CI pin")
-    archive = fetch(f"https://github.com/{REPO}/releases/download/v{version}/{name}")
+    cache = os.environ.get("VERTRAG_DOWNLOAD_CACHE")
+    archive_path = os.path.join(cache, name) if cache else None
+    archive = None
+    if archive_path and (system, machine) == ("linux", "x86_64"):
+        try:
+            with open(archive_path, "rb") as stream:
+                candidate = stream.read()
+            if hashlib.sha256(candidate).hexdigest() == linux_sha:
+                archive = candidate
+                print("Vertrag: verified archive cache hit", file=sys.stderr)
+        except OSError:
+            pass
+    want = linux_sha
+    if archive is None:
+        want = checksum_for(release_checksums(version), name)
+        if (system, machine) == ("linux", "x86_64") and want != linux_sha:
+            raise ValueError("the release checksum disagrees with the immutable CI pin")
+        archive = fetch(f"https://github.com/{REPO}/releases/download/v{version}/{name}")
     got = hashlib.sha256(archive).hexdigest()
     if got != want:
         raise ValueError(f"{name} has sha256 {got}, its release says {want}")
+    if archive_path:
+        os.makedirs(cache, exist_ok=True)
+        atomic_write(archive_path, archive, 0o644)
     with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
         member = tar.getmember("vertrag")
         if not member.isfile():
@@ -227,7 +252,9 @@ def ensure(directory):
     with open(PIN_FILE) as stream:
         version, linux_sha = pinned(stream.read())
     system, machine = this_machine()
-    if not cached(directory, version, linux_sha, system, machine):
+    if os.environ.get("VERTRAG_DOWNLOAD_CACHE") or not cached(
+        directory, version, linux_sha, system, machine
+    ):
         # stdout is a shell-safe path value; installation messages are diagnostics.
         with contextlib.redirect_stdout(sys.stderr):
             install(directory)

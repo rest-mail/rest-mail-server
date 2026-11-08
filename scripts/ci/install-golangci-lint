@@ -22,19 +22,38 @@ expected=${INSTALL_LINT_SHA256:-$SHA256}
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
-curl --fail --silent --show-error --location \
-  --connect-timeout 30 --max-time 120 \
-  --retry "${INSTALL_LINT_RETRIES:-6}" --retry-all-errors --retry-delay "${INSTALL_LINT_RETRY_DELAY:-20}" \
-  --output "$work/$name.tar.gz" "$url"
+archive="$work/$name.tar.gz"
+if [ -n "${GOLANGCI_LINT_DOWNLOAD_CACHE:-}" ]; then
+  cached="$GOLANGCI_LINT_DOWNLOAD_CACHE/$name.tar.gz"
+  if [ -f "$cached" ] && [ "$(shasum -a 256 "$cached" | cut -d' ' -f1)" = "$expected" ]; then
+    cp "$cached" "$archive"
+    echo "golangci-lint: verified archive cache hit" >&2
+  fi
+fi
 
-actual=$(shasum -a 256 "$work/$name.tar.gz" | cut -d' ' -f1)
+if [ ! -f "$archive" ]; then
+  if ! curl --fail --silent --show-error --location \
+    --connect-timeout 30 --max-time 120 \
+    --retry "${INSTALL_LINT_RETRIES:-6}" --retry-all-errors --retry-delay "${INSTALL_LINT_RETRY_DELAY:-20}" \
+    --output "$archive" "$url"; then
+    echo "golangci-lint: release download failed; trying GitHub asset API" >&2
+    python3 "$(dirname "$0")/github_release.py" "$url" "$archive"
+  fi
+fi
+
+actual=$(shasum -a 256 "$archive" | cut -d' ' -f1)
 if [ "$actual" != "$expected" ]; then
   echo "golangci-lint $VERSION: checksum $actual, expected $expected" >&2
   exit 1
 fi
 
+if [ -n "${GOLANGCI_LINT_DOWNLOAD_CACHE:-}" ]; then
+  mkdir -p "$GOLANGCI_LINT_DOWNLOAD_CACHE"
+  cp "$archive" "$cached"
+fi
+
 mkdir -p "$directory"
-tar -xzf "$work/$name.tar.gz" -C "$directory" --strip-components=1 "$name/golangci-lint"
+tar -xzf "$archive" -C "$directory" --strip-components=1 "$name/golangci-lint"
 if [ -n "${GITHUB_PATH:-}" ]; then
   (cd "$directory" && pwd) >>"$GITHUB_PATH"
 fi
