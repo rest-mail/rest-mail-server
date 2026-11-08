@@ -271,7 +271,7 @@ func TestDeliveryRefusalsDoNotHoldTheMessage(t *testing.T) {
 		d.restmail(w, body, "application/json", RestmailDeliverAuthConfig{})
 	}
 	looping := padded(receivedMessage(rmime.DefaultMaxReceived+1, "owner@spool.test"))
-	limitCase("gateway a mail loop", gatewayBody(looping, map[string]any{"received_tls": false}), gateway, 550)
+	limitCase("gateway a mail loop", gatewayBody(looping, map[string]any{"received_tls": false}), gateway, http.StatusForbidden)
 	limitCase("restmail a mail loop", restmailBody(looping, nil), trusted, 403)
 	// A part as large as the message comes first, so reaching the limit means passing over it.
 	tooNested := "From: someone@remote.test\r\nTo: owner@spool.test\r\nContent-Type: multipart/mixed; boundary=outer\r\n\r\n" +
@@ -343,21 +343,29 @@ func TestDeliveryLeavesNoFile(t *testing.T) {
 	}
 	limited := func(serve http.Handler) http.Handler { return middleware.MaxBodyBytes(64)(serve) }
 	for _, action := range []pipeline.Action{pipeline.ActionContinue, pipeline.ActionReject, pipeline.ActionDefer, pipeline.ActionDiscard, pipeline.ActionQuarantine} {
+		wantStatus := map[pipeline.Action]int{
+			pipeline.ActionContinue: http.StatusCreated, pipeline.ActionReject: http.StatusForbidden,
+			pipeline.ActionDefer: http.StatusServiceUnavailable, pipeline.ActionDiscard: http.StatusOK,
+			pipeline.ActionQuarantine: http.StatusOK,
+		}[action]
 		probed := d
 		probed.engine = spoolEngine(t, spoolProbe{action: action})
 		t.Run("gateway "+string(action), func(t *testing.T) {
 			w := httptest.NewRecorder()
 			probed.gateway(w, bytes.NewReader(gatewayBody(message, map[string]any{"body_text": "text", "body_html": "<p>html</p>"})), "application/json")
-			if w.Code >= 500 && w.Code != 550 {
-				t.Fatalf("answered %d %s", w.Code, w.Body)
+			if w.Code != wantStatus {
+				t.Fatalf("answered %d %s, want %d", w.Code, w.Body, wantStatus)
 			}
 			assertNoSpool(t, spool)
 		})
 		t.Run("restmail "+string(action), func(t *testing.T) {
+			if action == pipeline.ActionDiscard || action == pipeline.ActionQuarantine {
+				wantStatus = http.StatusCreated
+			}
 			w := httptest.NewRecorder()
 			probed.restmail(w, bytes.NewReader(restmailBody(message, map[string]any{"body_text": "text", "body_html": "<p>html</p>"})), "application/json", restmailTrusted)
-			if w.Code >= 500 && w.Code != 503 {
-				t.Fatalf("answered %d %s", w.Code, w.Body)
+			if w.Code != wantStatus {
+				t.Fatalf("answered %d %s, want %d", w.Code, w.Body, wantStatus)
 			}
 			assertNoSpool(t, spool)
 		})

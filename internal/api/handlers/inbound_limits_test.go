@@ -47,18 +47,18 @@ func deliverRaw(h *MessageHandler, mailboxID uint, raw string, arrival bool) *ht
 	return rr
 }
 
-// An arrival with more Received: fields than the hop limit is a mail loop, refused 550 before
+// An arrival with more Received: fields than the hop limit is a mail loop, refused 403 before
 // the database is touched (#1647).
 func TestDeliveryRefusesMailLoopBeforeDatabase(t *testing.T) {
 	rr := deliverRaw(&MessageHandler{}, 1, receivedMessage(rmime.CurrentLimits().MaxReceived+1, "eve@limits.test"), true)
-	if rr.Code != 550 || !strings.Contains(rr.Body.String(), `"rejected"`) {
-		t.Fatalf("got %d %s, want 550 rejected", rr.Code, rr.Body)
+	if rr.Code != http.StatusForbidden || !strings.Contains(rr.Body.String(), `"rejected"`) {
+		t.Fatalf("got %d %s, want 403 rejected", rr.Code, rr.Body)
 	}
 }
 
 // At the hop limit an arrival is delivered; an IMAP APPEND (no received_tls) is filed whatever
 // its Received fields, since filing is not a hop; and a message nested past the MIME depth limit
-// is refused 550 with nothing stored (#1647, #1641).
+// is refused 403 with nothing stored (#1647, #1641).
 func TestDeliveryInboundLimits(t *testing.T) {
 	db := openMsgDeleteTestDB(t)
 	if err := migrateModels(db, &models.QuotaUsage{}); err != nil {
@@ -78,8 +78,8 @@ func TestDeliveryInboundLimits(t *testing.T) {
 	}
 	before := countMessages(t, tx, fx.mailbox.ID)
 	rr := deliverRaw(h, fx.mailbox.ID, nestedRaw(limits.MaxNestingDepth+1, fx.mailbox.Address), true)
-	if rr.Code != 550 || !strings.Contains(rr.Body.String(), `"rejected"`) {
-		t.Fatalf("nested past the limit: got %d %s, want 550 rejected", rr.Code, rr.Body)
+	if rr.Code != http.StatusForbidden || !strings.Contains(rr.Body.String(), `"rejected"`) {
+		t.Fatalf("nested past the limit: got %d %s, want 403 rejected", rr.Code, rr.Body)
 	}
 	if after := countMessages(t, tx, fx.mailbox.ID); after != before {
 		t.Fatalf("refused delivery stored %d messages", after-before)

@@ -1056,7 +1056,7 @@ func (s *session) Data(r io.Reader) (err error) {
 				switch {
 				case apiErr.StatusCode == 404:
 					failCode, failEnhanced, failMsg = 550, gosmtp.EnhancedCode{5, 1, 1}, "No such user"
-				case apiErr.StatusCode == 403 || apiErr.StatusCode == 550:
+				case apiErr.StatusCode == 403:
 					failCode, failEnhanced, failMsg = 550, gosmtp.EnhancedCode{5, 7, 1}, "Rejected by policy"
 				case apiErr.StatusCode == 422:
 					// Recipient mailbox is over quota (the API answers HTTP 422
@@ -1066,7 +1066,7 @@ func (s *session) Data(r io.Reader) (err error) {
 					// hides the cause. 452 4.2.2 is the transient form (retry); a
 					// policy-permanent full mailbox would be 552 5.2.2.
 					failCode, failEnhanced, failMsg = 452, gosmtp.EnhancedCode{4, 2, 2}, "Mailbox full"
-				case apiErr.StatusCode == 503 || apiErr.StatusCode == 451:
+				case apiErr.StatusCode == 503:
 					failCode, failEnhanced, failMsg = 451, gosmtp.EnhancedCode{4, 3, 0}, "Try again later"
 				default:
 					failCode, failEnhanced, failMsg = 451, gosmtp.EnhancedCode{4, 3, 0}, "Temporary delivery failure"
@@ -1108,8 +1108,19 @@ func isDeliveryRefusal(err error) bool {
 		return false
 	}
 	switch apiErr.StatusCode {
-	case http.StatusNotFound, http.StatusUnprocessableEntity, 451, 550:
+	case http.StatusNotFound, http.StatusUnprocessableEntity:
 		return true
+	case http.StatusForbidden, http.StatusServiceUnavailable:
+		var refusal struct {
+			Error struct {
+				Code string `json:"code"`
+			} `json:"error"`
+		}
+		if json.Unmarshal([]byte(apiErr.Body), &refusal) != nil {
+			return false
+		}
+		return apiErr.StatusCode == http.StatusForbidden && refusal.Error.Code == "rejected" ||
+			apiErr.StatusCode == http.StatusServiceUnavailable && refusal.Error.Code == "deferred"
 	}
 	return false
 }
@@ -1136,7 +1147,7 @@ func (s *session) prepareSubmitted(whole func() (string, error)) (*spoolFile, er
 // temporary failure it was, so a fault here never bounces a sender's mail.
 func aliasRoutingRefusal(err error) (string, bool) {
 	var apiError *apiclient.APIError
-	if !errors.As(err, &apiError) || (apiError.StatusCode != 403 && apiError.StatusCode != 550) {
+	if !errors.As(err, &apiError) || apiError.StatusCode != http.StatusForbidden {
 		return "", false
 	}
 	var refusal struct {

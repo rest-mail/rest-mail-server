@@ -1169,8 +1169,8 @@ func (h *MessageHandler) RegisterDelivery(rs endpoint.Routes, bodyLimit endpoint
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/messages/deliver",
 		OperationID: "deliverMessage", Summary: "Deliver a message into a mailbox (protocol gateways)", Tags: []string{"Messages"},
 		Description: "Machine to machine: no user token. The inbound pipeline decides: 201 with the message made, " +
-			"200 processed when it quarantined or discarded it, 550 rejected, 451 deferred, 422 mailbox_full " +
-			"over quota. A missing mailbox is 404; a failed mailbox lookup is 500, never a missing recipient. " +
+			"200 processed when it quarantined or discarded it, 403 rejected, 503 deferred, 422 mailbox_full " +
+			"over quota. These are REST statuses for every caller; the SMTP gateway rewrites them into its SMTP reply (#1664). A missing mailbox is 404; a failed mailbox lookup is 500, never a missing recipient. " +
 			"Stored text must not contain NUL (U+0000), including strings and object keys anywhere in recipients_to or recipients_cc " +
 			"and the decoded raw_message octets; a refusal is 422 validation_failed naming the field, before any write. " +
 			"raw_message is a standard padded base64 string (format: byte), not unencoded message text. " +
@@ -1180,7 +1180,7 @@ func (h *MessageHandler) RegisterDelivery(rs endpoint.Routes, bodyLimit endpoint
 			{Status: http.StatusCreated, Description: "Delivered; the message made", Type: oapifly.TypeOf[endpoint.Data[Message]]()},
 			{Status: http.StatusOK, Description: "Quarantined or discarded by the inbound pipeline", Type: oapifly.TypeOf[endpoint.Data[DeliveryProcessed]]()},
 		},
-		Errors:   []int{http.StatusUnprocessableEntity, http.StatusNotFound, 451, 550},
+		Errors:   []int{http.StatusUnprocessableEntity, http.StatusNotFound, http.StatusForbidden, http.StatusServiceUnavailable},
 		Security: oapifly.Public, Middleware: []endpoint.Middleware{bodyLimit}, DescribedRequest: deliverMessageBody{}}, h.deliverSpooledMessage)
 }
 
@@ -1247,7 +1247,7 @@ func (h *MessageHandler) deliverMessage(r *http.Request, req deliverMessageBody,
 			return zero, err
 		}
 		if rmime.TooManyReceived([]byte(headerSection)) {
-			return zero, endpoint.Refuse(550, "rejected", "Routing loop detected: too many Received headers")
+			return zero, endpoint.Refuse(http.StatusForbidden, "rejected", "Routing loop detected: too many Received headers")
 		}
 	}
 
@@ -1264,7 +1264,7 @@ func (h *MessageHandler) deliverMessage(r *http.Request, req deliverMessageBody,
 	}
 	if errors.Is(lookupErr, repositories.ErrAliasRouting) {
 		slog.WarnContext(r.Context(), "delivery alias refused", "address", req.Address, "error", lookupErr)
-		return zero, endpoint.Refuse(550, "rejected", rmail.AliasRoutingRefusal)
+		return zero, endpoint.Refuse(http.StatusForbidden, "rejected", rmail.AliasRoutingRefusal)
 	}
 	if errors.Is(lookupErr, gorm.ErrRecordNotFound) {
 		return zero, endpoint.Refuse(http.StatusNotFound, "mailbox_not_found", "Mailbox not found")
@@ -1335,9 +1335,9 @@ func (h *MessageHandler) deliverMessage(r *http.Request, req deliverMessageBody,
 		errStr := err.Error()
 		switch {
 		case strings.HasPrefix(errStr, "rejected:"):
-			return zero, endpoint.Refuse(550, "rejected", strings.TrimPrefix(errStr, "rejected: "))
+			return zero, endpoint.Refuse(http.StatusForbidden, "rejected", strings.TrimPrefix(errStr, "rejected: "))
 		case strings.HasPrefix(errStr, "deferred:"):
-			return zero, endpoint.Refuse(451, "deferred", "Try again later")
+			return zero, endpoint.Refuse(http.StatusServiceUnavailable, "deferred", "Try again later")
 		case strings.HasPrefix(errStr, "mailbox_full:"):
 			return zero, endpoint.Refuse(http.StatusUnprocessableEntity, "mailbox_full", "Recipient mailbox is over quota")
 		}
