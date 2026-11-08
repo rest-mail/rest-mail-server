@@ -78,15 +78,13 @@ DELIVERY_DATE = "Sat, 17 Oct 2026 12:00:00 +0000"
 # it inline (describedTestFilterBody, internal/api/handlers/pipeline.go), or this would
 # not engage. Refusals: filter_name_missing, filter_name_empty, filter_name_wrong_type.
 FILTER_NAME = "header_validate"
-# Nor can it make a certificate. The probes' domain_id is the fixture admin's domain, and
-# the mail gateways serve a domain's current certificates by name (tlsutil.DBCertLoader),
-# caching what they load. So this one is made for each configuration and is already
-# expired, which they skip and the handler accepts. Vertrag prints what it pins, so its key
-# is used for nothing else. A hook removes what the probes install, by this issuer
+# Nor can it make a certificate. A current certificate names the probes' own .invalid
+# domain, never the fixture admin's domain whose certificates the gateways cache.
+# Vertrag prints what it pins, so its key is used for nothing else.
+# A hook removes what the probes install, by this issuer
 # (remove_the_probe_certificates). Refusals: cert_missing, cert_empty, cert_wrong_type,
 # cert_invalid, key_missing, key_empty, key_wrong_type.
 PROBE_CERTIFICATE_NAME = "contract-probe-certificate"
-PROBE_CERTIFICATE_PERIOD = ("20200101000000Z", "20200102000000Z")
 # A schema cannot say a mailbox must exist either. Fuzz draws a mailbox_id or an
 # address that names nothing and reads the 404 as a disagreement, so the rest of
 # delivery is never reached. The fuzz run holds mailbox_id at the recipient the
@@ -96,30 +94,18 @@ FIXTURE_PLAN = Path(__file__).resolve().parent / "fixtureplan/defaults.json"
 
 
 def probe_certificate():
-    """A self-signed, expired certificate and its key, as the PEM createCertificate takes.
-
-    `openssl ca` is what states the dates on every OpenSSL version: `req -x509` only
-    takes -not_after from 3.4."""
+    """Current, matching throwaway material for the isolated certificate domain."""
+    domain = json.loads(FIXTURE_PLAN.read_text())["certificate_domain"]
     with tempfile.TemporaryDirectory() as name:
         directory = Path(name)
-        key, request, certificate = directory / "tls.key", directory / "tls.csr", directory / "tls.crt"
-        (directory / "index.txt").write_text("")
-        (directory / "serial").write_text("01\n")
-        (directory / "ca.cnf").write_text(
-            "[ca]\ndefault_ca = probe\n"
-            f"[probe]\ndatabase = {directory}/index.txt\nnew_certs_dir = {directory}\n"
-            f"serial = {directory}/serial\ndefault_md = sha256\npolicy = names\n"
-            "[names]\ncommonName = supplied\n"
+        key, certificate = directory / "tls.key", directory / "tls.crt"
+        subprocess.run(
+            ["openssl", "req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:P-256",
+             "-nodes", "-days", "2", "-subj", "/CN=" + PROBE_CERTIFICATE_NAME,
+             "-addext", "subjectAltName=DNS:" + domain["name"],
+             "-keyout", str(key), "-out", str(certificate)],
+            check=True, capture_output=True,
         )
-        start, end = PROBE_CERTIFICATE_PERIOD
-        for arguments in (
-            ["req", "-new", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:P-256", "-nodes",
-             "-subj", "/CN=" + PROBE_CERTIFICATE_NAME, "-keyout", str(key), "-out", str(request)],
-            ["ca", "-batch", "-config", str(directory / "ca.cnf"), "-selfsign", "-notext",
-             "-startdate", start, "-enddate", end,
-             "-keyfile", str(key), "-in", str(request), "-out", str(certificate)],
-        ):
-            subprocess.run(["openssl", *arguments], check=True, capture_output=True)
         return certificate.read_text(), key.read_text()
 
 
@@ -165,6 +151,10 @@ def main(config_path, out_path, report_path, pin=True, unpinned=()):
     # Public test fixture: a schema generator cannot construct a signing key.
     if pin:
         certificate, certificate_key = probe_certificate()
+        certificate_domain = json.loads(FIXTURE_PLAN.read_text())["certificate_domain"]
+        config.setdefault("fuzz", {}).setdefault("pin-valid", {})["createCertificate"] = {
+            "domain_id": certificate_domain["id"],
+        }
         pins = {
             "private_key": DKIM_KEY.read_text(),
             "snoozed_until": SNOOZE_UNTIL,

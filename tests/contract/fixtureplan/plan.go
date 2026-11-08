@@ -45,8 +45,14 @@ type DeliveryRecipient struct {
 	Address string `json:"address"`
 }
 
+type CertificateDomain struct {
+	ID   uint   `json:"id"`
+	Name string `json:"name"`
+}
+
 type Plan struct {
 	Domain            string                `json:"domain"`
+	CertificateDomain CertificateDomain     `json:"certificate_domain"`
 	DeliveryRecipient DeliveryRecipient     `json:"delivery_recipient"`
 	Principals        map[string]Principal  `json:"principals"`
 	Queue             map[string]QueueEntry `json:"queue"`
@@ -75,6 +81,9 @@ func Parse(data []byte) (Plan, error) {
 func (p Plan) validate() error {
 	if p.Domain != "restmail.test" {
 		return fmt.Errorf("contract fixture plan requires the disposable restmail.test domain")
+	}
+	if p.CertificateDomain.ID == 0 || p.CertificateDomain.ID == p.DeliveryRecipient.ID || !strings.HasSuffix(p.CertificateDomain.Name, ".invalid") || strings.ContainsAny(p.CertificateDomain.Name, "\r\n\t @/") {
+		return fmt.Errorf("certificate probes need a separate disposable .invalid domain and id")
 	}
 	if local, domain, ok := strings.Cut(p.DeliveryRecipient.Address, "@"); p.DeliveryRecipient.ID == 0 || !ok || local == "" || domain == "" || domain == p.Domain || strings.ContainsAny(p.DeliveryRecipient.Address, "\r\n\t ") {
 		return fmt.Errorf("the delivery recipient needs an id and an address on a domain of its own")

@@ -1416,8 +1416,8 @@ def a_self_signed_certificate(transaction):
     if not documented:
         # A probing process sends each transaction's documented request first, and
         # what follows those is a probe: its body goes out as drawn, or it is not sent
-        # at all (lost_probes.py). Its pinned material lands on its domain_id, the
-        # fixture admin's domain, until remove_the_probe_certificates. The documented
+        # at all (lost_probes.py). Its pinned material lands on its isolated
+        # .invalid domain until remove_the_probe_certificates. The documented
         # sends keep their own certificate on the run's domain, for getCertificate's
         # link to find.
         sends = hooks.stash.setdefault("documented_certificates", {})

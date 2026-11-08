@@ -1,4 +1,4 @@
-"""createCertificate's probes hold throwaway material (probes.py) and name the fixture admin's
+"""createCertificate's probes hold throwaway material (probes.py) for their isolated
 domain, and a hook cannot change a generated body. So they go out as drawn, and what follows
 them removes what they installed. testFilter's probes are not touched at all."""
 
@@ -116,12 +116,21 @@ class CertificateProbes(unittest.TestCase):
         issuer = self.read_pem(["x509", "-noout", "-issuer", "-nameopt", "RFC2253"], self.pinned["cert_pem"])
         self.assertEqual(issuer.strip().removeprefix("issuer="), self.hooks.PROBE_CERTIFICATE_ISSUER)
 
-    def test_the_pinned_certificate_is_expired_so_no_gateway_serves_it(self):
+    def test_the_pinned_certificate_is_current_and_only_names_its_isolated_domain(self):
         checked = subprocess.run(
             ["openssl", "x509", "-noout", "-checkend", "0"],
             input=self.pinned["cert_pem"], capture_output=True, text=True,
         )
-        self.assertEqual(checked.returncode, 1, checked.stdout)
+        self.assertEqual(checked.returncode, 0, checked.stdout)
+        plan = json.loads(probes.FIXTURE_PLAN.read_text())
+        names = self.read_pem(["x509", "-noout", "-ext", "subjectAltName"], self.pinned["cert_pem"])
+        self.assertEqual(names.splitlines()[1].strip(), "DNS:" + plan["certificate_domain"]["name"])
+        for domain in (plan["domain"], plan["delivery_recipient"]["address"].split("@", 1)[1]):
+            matched = subprocess.run(
+                ["openssl", "x509", "-noout", "-checkhost", domain],
+                input=self.pinned["cert_pem"], capture_output=True, text=True,
+            )
+            self.assertEqual(matched.stdout.splitlines()[-1], f"Hostname {domain} does NOT match certificate")
 
     def test_the_pinned_key_belongs_to_the_certificate(self):
         self.assertEqual(
@@ -150,7 +159,8 @@ class CertificateProbes(unittest.TestCase):
     def test_a_probe_goes_out_as_drawn_and_is_remembered(self):
         for _ in range(self.hooks.DOCUMENTED_SENDS):
             self.hooks.a_self_signed_certificate(transaction(self.pinned))
-        for body in (self.pinned, {**self.pinned, "auto_renew": True}, {**self.pinned, "vertragUnexpected": "extra"}):
+        domain_id = json.loads(probes.FIXTURE_PLAN.read_text())["certificate_domain"]["id"]
+        for body in ({**self.pinned, "domain_id": domain_id}, {**self.pinned, "auto_renew": True}, {**self.pinned, "vertragUnexpected": "extra"}):
             sent = transaction(body)
             drawn = sent["request"]["body"]
             self.hooks.a_self_signed_certificate(sent)

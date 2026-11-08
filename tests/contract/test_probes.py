@@ -209,7 +209,7 @@ class ProbeConfig(unittest.TestCase):
 
     def test_the_password_is_held_only_on_valid_requests_of_two_operations(self):
         valid = self.config["fuzz"]["pin-valid"]
-        self.assertEqual(valid.keys(), {"createAccount", "updateMailbox"})
+        self.assertEqual(valid.keys(), {"createAccount", "updateMailbox", "createCertificate"})
         self.assertEqual(valid["createAccount"]["password_hash"], "")
         self.assertEqual(
             valid["createAccount"]["password"], valid["updateMailbox"]["password"]
@@ -218,6 +218,14 @@ class ProbeConfig(unittest.TestCase):
         pinned = self.config["fuzz"]["pin"]
         self.assertNotIn("password", pinned)
         self.assertNotIn("password_hash", pinned)
+
+    def test_only_valid_certificate_requests_name_the_isolated_domain(self):
+        domain = json.loads(probes.FIXTURE_PLAN.read_text())["certificate_domain"]
+        self.assertEqual(
+            self.config["fuzz"]["pin-valid"]["createCertificate"],
+            {"domain_id": domain["id"]},
+        )
+        self.assertNotIn("domain_id", self.config["fuzz"]["pin"])
 
     def test_a_send_is_held_immediate_so_its_success_example_stays_a_201(self):
         self.assertIsNone(self.config["fuzz"]["pin"]["scheduled_at"])
@@ -245,7 +253,12 @@ class ProbeConfig(unittest.TestCase):
                     "date": probes.DELIVERY_DATE,
                     "filter_name": probes.FILTER_NAME,
                 },
-                "pin-valid": self.base["fuzz"]["pin-valid"],
+                "pin-valid": {
+                    **self.base["fuzz"]["pin-valid"],
+                    "createCertificate": {
+                        "domain_id": json.loads(probes.FIXTURE_PLAN.read_text())["certificate_domain"]["id"],
+                    },
+                },
             },
         )
         self.assertEqual(
