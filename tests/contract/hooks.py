@@ -4171,7 +4171,7 @@ def a_throwaway_grant(origin, holder, state):
             {"reason": "contract run: a grant to switch off", "minutes": 5, **mfa_admin.factor()},
         )
         # Switching on is throttled like sign-in.
-        time.sleep(1.1)
+        rate_limits.pace(1.1)
     return grant["id"]
 
 
@@ -4234,11 +4234,11 @@ def a_throwaway_link(origin):
     address = fresh_address("linked")
     a_new_account(origin, address, "Linked", LINKED_PASSWORD)
     # Linking is throttled like sign-in.
-    time.sleep(1.1)
+    rate_limits.pace(1.1)
     linked = as_the_two_factor_admin_call(
         origin, "POST", "/api/v1/accounts/link", {"address": address, "password": LINKED_PASSWORD}
     )
-    time.sleep(1.1)
+    rate_limits.pace(1.1)
     return address, linked["id"]
 
 
