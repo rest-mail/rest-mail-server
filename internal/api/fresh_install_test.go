@@ -319,7 +319,7 @@ func TestFreshInstall_EndToEnd(t *testing.T) {
 	if err := db.Exec("UPDATE outbound_queue SET next_attempt = now() + interval '1 day' WHERE recipient = 'someone@elsewhere.test'").Error; err != nil {
 		t.Fatal(err)
 	}
-	startMailRoute(t, db, f.router)
+	startMailRoute(t, db, f.router, routers.Internal)
 	deliveredPastGreylist(t, db, "chris@fresh.test")
 	var inbox []struct {
 		Subject string `json:"subject"`

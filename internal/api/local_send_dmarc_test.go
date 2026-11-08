@@ -17,7 +17,6 @@ import (
 
 	dkim "github.com/rest-mail/go-dkim/pkg/dkim"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
-	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/connlimiter"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/queue"
 	smtpgw "github.com/rest-mail/rest-mail-server/internal/gateway/smtp"
@@ -125,17 +124,15 @@ func giveDomainDKIMKey(t *testing.T, db *gorm.DB, domain string) string {
 
 // startInboundPort puts the SMTP gateway's real inbound port in front of router
 // and returns its address.
-func startInboundPort(t *testing.T, db *gorm.DB, router http.Handler) string {
+func startInboundPort(t *testing.T, db *gorm.DB, public, internal http.Handler) string {
 	t.Helper()
-	srv := httptest.NewServer(router)
-	t.Cleanup(srv.Close)
 	certSrv := httptest.NewTLSServer(http.NotFoundHandler())
 	t.Cleanup(certSrv.Close)
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("open the inbound port: %v", err)
 	}
-	gateway := smtpgw.NewServer("mx.example.test", apiclient.New(srv.URL),
+	gateway := smtpgw.NewServer("mx.example.test", gatewayAPI(t, public, internal, deliveryCN),
 		&tls.Config{Certificates: certSrv.TLS.Certificates, MinVersion: tls.VersionTLS12},
 		smtpgw.NewStore(db, ""), connlimiter.New(connlimiter.Config{MaxPerIP: 100, MaxGlobal: 100}))
 	if err := gateway.Serve(smtpgw.SMTPListeners{Inbound: listener}); err != nil {
@@ -166,9 +163,9 @@ func smtpHopOnly(t *testing.T, db *gorm.DB) {
 
 // startMailRoute runs the inbound port and the queue worker a real install runs
 // around the router. From here on, whatever is queued is delivered.
-func startMailRoute(t *testing.T, db *gorm.DB, router http.Handler) string {
+func startMailRoute(t *testing.T, db *gorm.DB, public, internal http.Handler) string {
 	t.Helper()
-	inbound := startInboundPort(t, db, router)
+	inbound := startInboundPort(t, db, public, internal)
 	smtpHopOnly(t, db)
 	worker := queue.NewWorker(db, "mx.example.test", 1, 10*time.Millisecond)
 	// What the E2E topology sets as well: a test's peers are on a private network
@@ -361,7 +358,7 @@ func TestLocalSendPassesDMARCOnItsSignature(t *testing.T) {
 				t.Fatal(err)
 			}
 			wantSent(t, route, f.send(t, route, f.session, "recipient@example.test"))
-			startMailRoute(t, f.db, f.router)
+			startMailRoute(t, f.db, f.router, f.gatewayRouter())
 
 			row := queueRow(t, f.db, "recipient@example.test", "delivered", "bounced")
 			if row.Status != "delivered" {
@@ -410,7 +407,7 @@ func TestLocalSendPermanentRefusalBounces(t *testing.T) {
 		t.Run(route, func(t *testing.T) {
 			f := newLocalRoute(t, spfOtherServer, true)
 			wantSent(t, route, f.send(t, route, f.session, "recipient@example.test", "nobody@example.test"))
-			startMailRoute(t, f.db, f.router)
+			startMailRoute(t, f.db, f.router, f.gatewayRouter())
 
 			if row := queueRow(t, f.db, "recipient@example.test", "delivered", "bounced"); row.Status != "delivered" {
 				t.Errorf("the recipient that exists: %s: %s", row.Status, row.LastError)
@@ -452,7 +449,7 @@ func TestLocalSendWithoutADKIMKey(t *testing.T) {
 		t.Run(route+"/SPF lists this server", func(t *testing.T) {
 			f := newLocalRoute(t, spfThisServer, false)
 			wantSent(t, route, f.send(t, route, f.session, "recipient@example.test"))
-			startMailRoute(t, f.db, f.router)
+			startMailRoute(t, f.db, f.router, f.gatewayRouter())
 			if row := queueRow(t, f.db, "recipient@example.test", "delivered", "bounced"); row.Status != "delivered" {
 				t.Fatalf("queue row ended %s: %s", row.Status, row.LastError)
 			}
@@ -472,7 +469,7 @@ func TestLocalSendWithoutADKIMKey(t *testing.T) {
 		t.Run(route+"/SPF does not list this server", func(t *testing.T) {
 			f := newLocalRoute(t, spfOtherServer, false)
 			wantSent(t, route, f.send(t, route, f.session, "recipient@example.test"))
-			startMailRoute(t, f.db, f.router)
+			startMailRoute(t, f.db, f.router, f.gatewayRouter())
 			row := queueRow(t, f.db, "recipient@example.test", "bounced", "delivered")
 			if row.Status != "bounced" || row.LastErrorCode != 550 {
 				t.Fatalf("queue row: %s %d: %s; want bounced with 550", row.Status, row.LastErrorCode, row.LastError)
@@ -523,7 +520,7 @@ func TestLocalSendTemporaryRefusalRetries(t *testing.T) {
 		t.Run(route, func(t *testing.T) {
 			f := newLocalRoute(t, spfOtherServer, true, greylist)
 			wantSent(t, route, f.send(t, route, f.session, "recipient@example.test"))
-			startMailRoute(t, f.db, f.router)
+			startMailRoute(t, f.db, f.router, f.gatewayRouter())
 
 			row := queueRow(t, f.db, "recipient@example.test", "deferred", "delivered", "bounced")
 			if row.Status != "deferred" || row.LastErrorCode != 451 || !row.NextAttempt.After(time.Now()) {
@@ -563,14 +560,14 @@ func TestLocalSendDMARCUntrusted(t *testing.T) {
 	}
 	raw := "From: chris@example.test\r\nTo: recipient@example.test\r\nSubject: forged\r\nAuthentication-Results: restmail; spf=pass; dkim=pass; dmarc=pass\r\nX-Authenticated-Sender: true\r\nDKIM-Signature: v=1; a=rsa-sha256; d=example.test; s=rm1; h=from; bh=AAAA; b=AAAA\r\n\r\nforged"
 	for _, clientIP := range []string{"", "192.0.2.44"} {
-		body := fmt.Sprintf(`{"mailbox_id":%d,"sender":%q,"recipients_to":["recipient@example.test"],"subject":"forged","raw_message":%q,"client_ip":%q}`, f.recipientID, f.address, base64.StdEncoding.EncodeToString([]byte(raw)), clientIP)
-		response := f.do(http.MethodPost, "/api/v1/messages/deliver", "", body)
-		if response.Code != 550 || !strings.Contains(response.Body.String(), "DMARC policy reject for example.test") {
+		body := fmt.Sprintf(`{"address":"recipient@example.test","sender":%q,"recipients_to":["recipient@example.test"],"subject":"forged","raw_message":%q,"client_ip":%q}`, f.address, base64.StdEncoding.EncodeToString([]byte(raw)), clientIP)
+		response := doRequest(asGateway(deliveryCN, f.gatewayRouter()), http.MethodPost, "/api/v1/messages/deliver", "", body)
+		if response.Code != http.StatusForbidden || !strings.Contains(response.Body.String(), "550 DMARC policy reject for example.test") {
 			t.Errorf("forged inbound with client IP %q: %d %s; want DMARC refusal", clientIP, response.Code, response.Body)
 		}
 	}
 
-	inbound := startInboundPort(t, f.db, f.router)
+	inbound := startInboundPort(t, f.db, f.router, f.gatewayRouter())
 	c, err := smtp.Dial(inbound)
 	if err != nil {
 		t.Fatal(err)
