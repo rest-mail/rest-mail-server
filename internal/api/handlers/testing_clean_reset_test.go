@@ -234,6 +234,49 @@ func TestCleanResetEveryTable(t *testing.T) {
 	}
 }
 
+func TestCleanResetRestoresProvisionedDKIM(t *testing.T) {
+	db, handler, admin := cleanResetFixture(t)
+	stored, err := models.EncryptDKIMPrivateKey(signingPersistenceFixture(t), signingPersistenceMaster)
+	if err != nil {
+		t.Fatal(err)
+	}
+	installed := time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)
+	if err := db.Model(&models.Domain{}).Where("id = ?", admin.DomainID).Updates(map[string]any{
+		"dkim_selector": "published", "dkim_private_key": stored, "dkim_created_at": installed,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	for _, mutation := range []struct {
+		name, selector, key string
+	}{
+		{"unchanged", "published", stored},
+		{"replaced", "unpublished", "dkim:v1:replacement"},
+		{"deleted", "", ""},
+	} {
+		t.Run(mutation.name, func(t *testing.T) {
+			if mutation.name != "unchanged" {
+				if err := db.Model(&models.Domain{}).Where("id = ?", admin.DomainID).Updates(map[string]any{
+					"dkim_selector": mutation.selector, "dkim_private_key": mutation.key, "dkim_created_at": nil,
+					"dkim_rotation_interval_days": 30, "sending_policy": models.SendingPolicyBulk,
+				}).Error; err != nil {
+					t.Fatal(err)
+				}
+			}
+			resetFixture(t, handler)
+			var domain models.Domain
+			if err := db.First(&domain, admin.DomainID).Error; err != nil {
+				t.Fatal(err)
+			}
+			if domain.DKIMSelector != "published" || domain.DKIMPrivateKey != stored || domain.DKIMCreatedAt == nil || !domain.DKIMCreatedAt.Equal(installed) {
+				t.Error("reset did not restore the initially provisioned DKIM key and installation time")
+			}
+			if domain.DKIMRotationIntervalDays != 0 || domain.SendingPolicy != "" {
+				t.Error("reset retained a later rotation interval or sending policy")
+			}
+		})
+	}
+}
+
 // Every column of a domain the reset keeps is either set back to a new
 // domain's value or kept for a stated reason, so a setting added later cannot
 // outlive a reset unnoticed.
