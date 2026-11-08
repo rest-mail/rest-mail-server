@@ -343,7 +343,7 @@ func TestSMTPSubmission_ThatCannotBeSignedWaitsOnTheQueue(t *testing.T) {
 	if err := send(c, f.address, f.address, submittedMessage(f.address, f.address, subject)); err != nil {
 		t.Fatalf("submit: %v", err)
 	}
-	startMailRoute(t, f.db, f.router)
+	startMailRoute(t, f.db, f.router, f.gatewayRouter())
 	row := queueRow(t, f.db, f.address, "deferred", "delivered", "bounced")
 	if row.Status != "deferred" {
 		t.Errorf("queue row: %s: %s; want deferred", row.Status, row.LastError)
@@ -359,7 +359,7 @@ func (f *submissionFixture) wantInInboxSigned(subject string) {
 	f.t.Helper()
 	if f.routeUp == nil {
 		f.routeUp = new(bool)
-		startMailRoute(f.t, f.db, f.router)
+		startMailRoute(f.t, f.db, f.router, f.gatewayRouter())
 	}
 	deadline := time.Now().Add(30 * time.Second)
 	for !f.inInbox(subject) {
