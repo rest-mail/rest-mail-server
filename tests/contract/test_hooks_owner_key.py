@@ -68,7 +68,7 @@ class SignedWithTheRunsOwnerKey(unittest.TestCase):
         patch.object(self.module.owner_key, "KEY", self.key).start()
         patch.object(self.module, "mfa_admin_token", return_value="two-factor-token").start()
         patch.object(self.module.time, "sleep").start()
-        patch.object(self.module.owner_key.time, "sleep").start()
+        patch.object(self.module.owner_key.rate_limits.time, "sleep").start()
         self.addCleanup(patch.stopall)
 
     def seed(self):

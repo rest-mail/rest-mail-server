@@ -20,9 +20,10 @@ import json
 import os
 import struct
 import sys
-import time
 import urllib.request
 from pathlib import Path
+
+import rate_limits
 
 KEY = Path(os.environ.get("CONTRACT_OWNER_KEY", ".cache/contract/owner-key.json"))
 COMMENT = "contract-owner"
@@ -168,7 +169,7 @@ def reset_token(base_url, address, path=None):
     """A reset-admin token for address, minted with the run's owner key. The
     owner bucket is paced between the challenge and the trade."""
     answer = signed_answer(base_url, "reset-admin", address, path)
-    time.sleep(1.1)
+    rate_limits.pace(1.1)
     return _post(base_url, "/api/v1/auth/owner/token",
                  {"purpose": "reset-admin", "address": address, **answer})["token"]
 

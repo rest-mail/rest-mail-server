@@ -2,6 +2,7 @@
 
 import base64
 import json
+import os
 import stat
 import struct
 import tempfile
@@ -12,6 +13,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import owner_key
+import rate_limits
 
 # RFC 8032, section 7.1, TEST 1 and TEST 2.
 VECTORS = [
@@ -93,7 +95,7 @@ class TheKeyAndItsRequests(unittest.TestCase):
         self.addCleanup(self.server.server_close)
         self.addCleanup(self.server.shutdown)
         self.origin = "http://127.0.0.1:%d" % self.server.server_address[1]
-        patch.object(owner_key.time, "sleep").start()
+        patch.object(owner_key.rate_limits.time, "sleep").start()
         self.addCleanup(patch.stopall)
 
     def seed(self):
@@ -137,6 +139,27 @@ class TheKeyAndItsRequests(unittest.TestCase):
             "signature": owner_key.ssh_signature(
                 self.seed(), b"restmail-owner-v1\nreset-admin\ntarget@restmail.test\nchallenge-1"),
         })
+
+
+class ResetTokenPacing(unittest.TestCase):
+    def test_only_explicit_raised_limits_skip_the_challenge_to_token_wait(self):
+        answer = {"challenge": "fresh", "public_key": "public", "signature": "signed"}
+        for setting in ("", "false", "TRUE", "true"):
+            with self.subTest(setting=setting), patch.dict(
+                os.environ, {"RESTMAIL_CONTRACT_LIMITS_RAISED": setting}
+            ), patch.object(owner_key, "signed_answer", return_value=answer) as signed, patch.object(
+                owner_key, "_post", return_value={"token": "reset-token"}
+            ) as post, patch.object(rate_limits.time, "sleep") as sleep:
+                token = owner_key.reset_token("http://api", "target@restmail.test")
+                self.assertEqual(token, "reset-token")
+                signed.assert_called_once_with("http://api", "reset-admin", "target@restmail.test", None)
+                post.assert_called_once_with("http://api", "/api/v1/auth/owner/token", {
+                    "purpose": "reset-admin", "address": "target@restmail.test", **answer,
+                })
+                if setting == "true":
+                    sleep.assert_not_called()
+                else:
+                    sleep.assert_called_once_with(1.1)
 
 
 class TheRunRegistersItForTheAuthorizationPhaseOnly(unittest.TestCase):
