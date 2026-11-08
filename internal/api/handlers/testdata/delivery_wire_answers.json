@@ -10,7 +10,7 @@
   "stored": "{\"attachments\":[],\"calendar\":[],\"holds\":[],\"messages\":[],\"usage\":[{\"attachment\":0,\"body\":0,\"count\":0,\"subject\":0}],\"used\":[0,0]}"
  },
  "gateway/arrival_mail_loop": {
-  "status": 550,
+  "status": 403,
   "answer": "{\"error\":{\"code\":\"rejected\",\"message\":\"Routing loop detected: too many Received headers\"}}\n",
   "stored": "{\"attachments\":[],\"calendar\":[],\"holds\":[],\"messages\":[],\"usage\":[{\"attachment\":0,\"body\":0,\"count\":0,\"subject\":0}],\"used\":[0,0]}"
  },
@@ -20,12 +20,12 @@
   "stored": "{\"attachments\":[],\"calendar\":[],\"holds\":[],\"messages\":[],\"usage\":[{\"attachment\":0,\"body\":0,\"count\":0,\"subject\":0}],\"used\":[0,0]}"
  },
  "gateway/arrival_mail_loop_raw_twice": {
-  "status": 550,
+  "status": 403,
   "answer": "{\"error\":{\"code\":\"rejected\",\"message\":\"Routing loop detected: too many Received headers\"}}\n",
   "stored": "{\"attachments\":[],\"calendar\":[],\"holds\":[],\"messages\":[],\"usage\":[{\"attachment\":0,\"body\":0,\"count\":0,\"subject\":0}],\"used\":[0,0]}"
  },
  "gateway/arrival_too_nested": {
-  "status": 550,
+  "status": 403,
   "answer": "{\"error\":{\"code\":\"rejected\",\"message\":\"message structure too complex: parse message: message structure over limit: multipart nested deeper than 100\"}}\n",
   "stored": "{\"attachments\":[],\"calendar\":[],\"holds\":[],\"messages\":[],\"usage\":[{\"attachment\":0,\"body\":0,\"count\":0,\"subject\":0}],\"used\":[0,0]}"
  },
@@ -80,7 +80,7 @@
   "stored": "{\"attachments\":[],\"calendar\":[],\"holds\":[],\"messages\":[{\"answered\":false,\"body_html\":\"\",\"body_text\":\"\",\"calendar\":\"[]\",\"cc\":\"[]\",\"downgraded_size\":3835,\"draft\":false,\"flagged\":false,\"folder\":\"INBOX\",\"has_attachments\":false,\"headers\":\"[]\",\"in_reply_to\":\"\",\"internal_date_fixed\":false,\"message_id\":\"\\u003chops@remote.test\\u003e\",\"raw_is_text\":true,\"raw_sha256\":\"0275763c98da720daa52cb5014787e0bf1aa21fbcf24185dbb17000aae0e54ed\",\"raw_size\":3835,\"read\":false,\"references\":\"\",\"require_tls\":false,\"rule_class\":\"\",\"sealed\":\"f77153dcf75ce124fa77e569a64b86f3eec542f1839b9ecb75640ccf7c676c75\",\"sender\":\"someone@remote.test\",\"sender_name\":\"\",\"size_bytes\":1,\"starred\":false,\"subject\":\"s\",\"thread_id\":\"\\u003chops@remote.test\\u003e\",\"tls\":null,\"tls_version\":\"\",\"to\":\"[]\"}],\"usage\":[{\"attachment\":0,\"body\":0,\"count\":1,\"subject\":1}],\"used\":[1,0]}"
  },
  "gateway/filed_too_nested": {
-  "status": 550,
+  "status": 403,
   "answer": "{\"error\":{\"code\":\"rejected\",\"message\":\"message structure too complex: parse message: message structure over limit: multipart nested deeper than 100\"}}\n",
   "stored": "{\"attachments\":[],\"calendar\":[],\"holds\":[],\"messages\":[],\"usage\":[{\"attachment\":0,\"body\":0,\"count\":0,\"subject\":0}],\"used\":[0,0]}"
  },
@@ -185,7 +185,7 @@
   "stored": "{\"attachments\":[{\"checksum\":\"a0cf8c29d94cf536f542fdb89f7aa736782bfe3146479573819c078166ea72f0\",\"name\":\"a.pdf\",\"ref\":\"a0cf8c29d94c-a.pdf\",\"size\":10,\"storage\":\"filesystem\",\"type\":\"application/pdf\"},{\"checksum\":\"2cea274d0bedc39ec4ab6ba9e59ec889e3ed6fb56a1cf088a64d9b383378dc97\",\"name\":\"pic.png\",\"ref\":\"2cea274d0bed-pic.png\",\"size\":7,\"storage\":\"filesystem\",\"type\":\"image/png\"}],\"calendar\":[],\"holds\":[],\"messages\":[{\"answered\":false,\"body_html\":\"\",\"body_text\":\"\",\"calendar\":\"[]\",\"cc\":\"[]\",\"downgraded_size\":568,\"draft\":false,\"flagged\":false,\"folder\":\"INBOX\",\"has_attachments\":true,\"headers\":\"[]\",\"in_reply_to\":\"\",\"internal_date_fixed\":false,\"message_id\":\"\u003cgenerated@remote.test\\u003e\",\"raw_is_text\":true,\"raw_sha256\":\"bf82159e090d720164e126965ea33e56e6b6a10da710457858085527b01f5282\",\"raw_size\":568,\"read\":false,\"references\":\"\",\"require_tls\":false,\"rule_class\":\"\",\"sealed\":\"…\",\"sender\":\"someone@remote.test\",\"sender_name\":\"\",\"size_bytes\":1,\"starred\":false,\"subject\":\"s\",\"thread_id\":\"\u003cgenerated@remote.test\\u003e\",\"tls\":null,\"tls_version\":\"\",\"to\":\"[]\"}],\"usage\":[{\"attachment\":17,\"body\":0,\"count\":1,\"subject\":1}],\"used\":[18,0]}"
  },
  "gateway/pipeline_defer": {
-  "status": 451,
+  "status": 503,
   "answer": "{\"error\":{\"code\":\"deferred\",\"message\":\"Try again later\"}}\n",
   "stored": "{\"attachments\":[],\"calendar\":[],\"holds\":[],\"messages\":[],\"usage\":[{\"attachment\":0,\"body\":0,\"count\":0,\"subject\":0}],\"used\":[0,0]}"
  },
@@ -200,7 +200,7 @@
   "stored": "{\"attachments\":[],\"calendar\":[],\"holds\":[{\"preview\":\"text\",\"raw_sha256\":\"d0c5b49c32bb6df7cd9a218618366b2b3a0beb2c4136ab235b8ad0dc4803a059\",\"reason\":\"other\",\"sender\":\"someone@remote.test\",\"subject\":\"s\"}],\"messages\":[],\"usage\":[{\"attachment\":0,\"body\":0,\"count\":0,\"subject\":0}],\"used\":[0,0]}"
  },
  "gateway/pipeline_reject": {
-  "status": 550,
+  "status": 403,
   "answer": "{\"error\":{\"code\":\"rejected\",\"message\":\"refused by the probe\"}}\n",
   "stored": "{\"attachments\":[],\"calendar\":[],\"holds\":[],\"messages\":[],\"usage\":[{\"attachment\":0,\"body\":0,\"count\":0,\"subject\":0}],\"used\":[0,0]}"
  },

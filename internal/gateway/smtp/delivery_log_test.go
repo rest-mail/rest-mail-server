@@ -67,8 +67,10 @@ func TestARefusedDeliveryIsNotLoggedAsAFailure(t *testing.T) {
 		wantMsg   string
 		wantLevel string
 	}{
-		{"greylisted", &apiclient.APIError{StatusCode: 451, Body: `{"error":{"code":"deferred"}}`}, "451", "smtp: delivery refused", "INFO"},
-		{"rejected by a filter", &apiclient.APIError{StatusCode: 550, Body: `{"error":{"code":"rejected"}}`}, "550", "smtp: delivery refused", "INFO"},
+		{"greylisted", &apiclient.APIError{StatusCode: 503, Body: `{"error":{"code":"deferred"}}`}, "451", "smtp: delivery refused", "INFO"},
+		{"rejected by a filter", &apiclient.APIError{StatusCode: 403, Body: `{"error":{"code":"rejected"}}`}, "550", "smtp: delivery refused", "INFO"},
+		{"legacy SMTP deferral", &apiclient.APIError{StatusCode: 451, Body: `{"error":{"code":"deferred"}}`}, "451", "smtp: delivery failed", "ERROR"},
+		{"legacy SMTP rejection", &apiclient.APIError{StatusCode: 550, Body: `{"error":{"code":"rejected"}}`}, "451", "smtp: delivery failed", "ERROR"},
 		{"no such mailbox", &apiclient.APIError{StatusCode: 404, Body: `{"error":{"code":"mailbox_not_found"}}`}, "550", "smtp: delivery refused", "INFO"},
 		{"mailbox full", &apiclient.APIError{StatusCode: 422, Body: `{"error":{"code":"mailbox_full"}}`}, "452", "smtp: delivery refused", "INFO"},
 		{"the API broke", &apiclient.APIError{StatusCode: 500, Body: `{"error":{"code":"internal_error"}}`}, "451", "smtp: delivery failed", "ERROR"},

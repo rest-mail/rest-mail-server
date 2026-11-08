@@ -1247,7 +1247,7 @@ func (h *MessageHandler) deliverMessage(r *http.Request, req deliverMessageBody,
 			return zero, err
 		}
 		if rmime.TooManyReceived([]byte(headerSection)) {
-			return zero, endpoint.Refuse(550, "rejected", "Routing loop detected: too many Received headers")
+			return zero, endpoint.Refuse(http.StatusForbidden, "rejected", "Routing loop detected: too many Received headers")
 		}
 	}
 
@@ -1264,7 +1264,7 @@ func (h *MessageHandler) deliverMessage(r *http.Request, req deliverMessageBody,
 	}
 	if errors.Is(lookupErr, repositories.ErrAliasRouting) {
 		slog.WarnContext(r.Context(), "delivery alias refused", "address", req.Address, "error", lookupErr)
-		return zero, endpoint.Refuse(550, "rejected", rmail.AliasRoutingRefusal)
+		return zero, endpoint.Refuse(http.StatusForbidden, "rejected", rmail.AliasRoutingRefusal)
 	}
 	if errors.Is(lookupErr, gorm.ErrRecordNotFound) {
 		return zero, endpoint.Refuse(http.StatusNotFound, "mailbox_not_found", "Mailbox not found")

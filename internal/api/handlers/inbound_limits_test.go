@@ -47,12 +47,12 @@ func deliverRaw(h *MessageHandler, mailboxID uint, raw string, arrival bool) *ht
 	return rr
 }
 
-// An arrival with more Received: fields than the hop limit is a mail loop, refused 550 before
+// An arrival with more Received: fields than the hop limit is a mail loop, refused 403 before
 // the database is touched (#1647).
 func TestDeliveryRefusesMailLoopBeforeDatabase(t *testing.T) {
 	rr := deliverRaw(&MessageHandler{}, 1, receivedMessage(rmime.CurrentLimits().MaxReceived+1, "eve@limits.test"), true)
-	if rr.Code != 550 || !strings.Contains(rr.Body.String(), `"rejected"`) {
-		t.Fatalf("got %d %s, want 550 rejected", rr.Code, rr.Body)
+	if rr.Code != http.StatusForbidden || !strings.Contains(rr.Body.String(), `"rejected"`) {
+		t.Fatalf("got %d %s, want 403 rejected", rr.Code, rr.Body)
 	}
 }
 

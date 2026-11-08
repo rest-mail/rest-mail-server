@@ -1108,8 +1108,19 @@ func isDeliveryRefusal(err error) bool {
 		return false
 	}
 	switch apiErr.StatusCode {
-	case http.StatusNotFound, http.StatusUnprocessableEntity, 451, 550:
+	case http.StatusNotFound, http.StatusUnprocessableEntity:
 		return true
+	case http.StatusForbidden, http.StatusServiceUnavailable:
+		var refusal struct {
+			Error struct {
+				Code string `json:"code"`
+			} `json:"error"`
+		}
+		if json.Unmarshal([]byte(apiErr.Body), &refusal) != nil {
+			return false
+		}
+		return apiErr.StatusCode == http.StatusForbidden && refusal.Error.Code == "rejected" ||
+			apiErr.StatusCode == http.StatusServiceUnavailable && refusal.Error.Code == "deferred"
 	}
 	return false
 }
@@ -1136,7 +1147,7 @@ func (s *session) prepareSubmitted(whole func() (string, error)) (*spoolFile, er
 // temporary failure it was, so a fault here never bounces a sender's mail.
 func aliasRoutingRefusal(err error) (string, bool) {
 	var apiError *apiclient.APIError
-	if !errors.As(err, &apiError) || (apiError.StatusCode != 403 && apiError.StatusCode != 550) {
+	if !errors.As(err, &apiError) || apiError.StatusCode != http.StatusForbidden {
 		return "", false
 	}
 	var refusal struct {
