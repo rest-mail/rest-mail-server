@@ -35,7 +35,43 @@ permissions:
   contents: read
 
 jobs:
+  preflight:
+    name: 'Preflight: branch is up to date'
+    if: github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != '')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout the pull request head, not GitHub's merge commit
+        if: github.event_name == 'pull_request'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Require the current base tip in the pull request head
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            echo "Preflight: $EVENT_NAME needs no pull request ancestry check."
+            exit 0
+          fi
+          git fetch --no-tags origin "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
+          base_sha=$(git rev-parse "refs/remotes/origin/${BASE_REF}")
+          if git merge-base --is-ancestor "$base_sha" "$HEAD_SHA"; then
+            echo "Preflight: head $HEAD_SHA contains $BASE_REF ($base_sha)."
+            exit 0
+          fi
+          message="Preflight: this branch (head $HEAD_SHA) is not up to date with $BASE_REF ($base_sha). You cannot push a branch that is not up to date with origin/$BASE_REF ($base_sha). Rebase it onto origin/$BASE_REF first, then push again. Nothing else in this pipeline runs until you do. Run: git fetch origin $BASE_REF && git rebase origin/$BASE_REF"
+          echo "::error::$message" >&2
+          echo "$message" >&2
+          exit 1
+
   seed-caches:
+    needs: preflight
     name: Keep main's build caches warm
     # A cache made on main is the one every branch can read, and the runs above no longer
     # write them on a merge. Mostly this finds nothing to do, and takes about a minute.
@@ -96,8 +132,35 @@ jobs:
 
       # The action saves its own cache for a key that turns over weekly. The queue tested
       # this commit, so this is for the cache and not for the verdict.
+      - name: Cache golangci-lint's pinned archive
+        uses: ./.github/actions/cache-pinned-tool
+        with:
+          tool: golangci-lint
+
       - name: Install golangci-lint
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: scripts/ci/install-golangci-lint "$RUNNER_TEMP/bin"
+
+      - name: Cache oasdiff's pinned archive
+        uses: ./.github/actions/cache-pinned-tool
+        with:
+          tool: oasdiff
+
+      - name: Warm oasdiff's pinned archive on main
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 scripts/oasdiff_pin.py install "$RUNNER_TEMP/bin"
+
+      - name: Cache Vertrag's pinned archive
+        uses: ./.github/actions/cache-pinned-tool
+        with:
+          tool: vertrag
+
+      - name: Warm Vertrag's pinned archive on main
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 scripts/vertrag_pin.py install "$RUNNER_TEMP/bin"
 
       - name: Refresh golangci-lint's cache
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
@@ -108,6 +171,7 @@ jobs:
           verify: false
 
   contract-diff:
+    needs: preflight
     name: API contract changes
     if: github.event_name == 'pull_request' && (github.event.action != 'edited' || github.event.changes.base.ref.from != '')
     runs-on: ubuntu-latest
@@ -175,6 +239,13 @@ jobs:
               exit 1
             }
           done
+          for path in .github/actions/cache-pinned-tool/action.yml scripts/ci/tool_cache.py scripts/ci/github_release.py; do
+            mkdir -p "$(dirname "$path")"
+            git show "$BASE_SHA:$path" > "$path" || {
+              echo "::error::$BASE_SHA has no $path, and cache support never uses the PR's own copy" >&2
+              exit 1
+            }
+          done
           changed=$(git diff --name-only "$MERGE_BASE" "$HEAD_SHA" -- scripts/contract_diff.py scripts/oasdiff_pin.py)
           {
             echo "The verdict uses the scripts at base tip \`$BASE_SHA\`."
@@ -197,14 +268,29 @@ jobs:
           go-version: "1.26.10"
           cache: true
 
+      - name: Cache the verdict comparator's pinned archive
+        uses: ./.github/actions/cache-pinned-tool
+        with:
+          tool: oasdiff
+          scripts: ${{ runner.temp }}/contract-gate
+
       - name: Install the comparator the verdict uses
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
-          python3 "$RUNNER_TEMP/contract-gate/oasdiff_pin.py" install "$RUNNER_TEMP/contract-gate/bin"
+          python3 scripts/ci/tool_cache.py install-base-oasdiff "$RUNNER_TEMP/contract-gate/oasdiff_pin.py" "$RUNNER_TEMP/contract-gate/bin"
 
       # A PR that moves the pin is tested with the version it asks for.
+      - name: Cache the PR comparator's pinned archive
+        uses: ./.github/actions/cache-pinned-tool
+        with:
+          tool: oasdiff
+
       - name: Install the comparator the PR's tests use
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
-          python3 scripts/oasdiff_pin.py install "$RUNNER_TEMP/bin"
+          python3 scripts/ci/tool_cache.py install-base-oasdiff scripts/oasdiff_pin.py "$RUNNER_TEMP/bin"
 
       - name: Prove classification and label gates with the real comparator
         env:
@@ -255,6 +341,7 @@ jobs:
           if-no-files-found: warn
 
   constellation:
+    needs: preflight
     name: Check constellation inventory
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     runs-on: ubuntu-latest
@@ -266,6 +353,7 @@ jobs:
         run: python3 -m unittest discover -s scripts/tests -p 'test_*.py'
 
   contract-tooling:
+    needs: preflight
     name: Test contract tooling
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     runs-on: ubuntu-latest
@@ -279,6 +367,7 @@ jobs:
           python3 -m unittest discover -s tests/contract -p 'test_*.py'
 
   lint:
+    needs: preflight
     name: Lint
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     runs-on: ubuntu-latest
@@ -301,7 +390,14 @@ jobs:
         run: go vet ./...
 
       # The action's own download fails the job on a short GitHub 504 (#1942).
+      - name: Cache golangci-lint's pinned archive
+        uses: ./.github/actions/cache-pinned-tool
+        with:
+          tool: golangci-lint
+
       - name: Install golangci-lint
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: scripts/ci/install-golangci-lint "$RUNNER_TEMP/bin"
 
       - name: Run golangci-lint
@@ -350,6 +446,7 @@ jobs:
           verify: false
 
   test:
+    needs: preflight
     name: Test
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     runs-on: ubuntu-latest
@@ -489,6 +586,7 @@ jobs:
           overwrite: true
 
   test-contract:
+    needs: preflight
     name: Test contract fixtures and faults
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     runs-on: ubuntu-latest
@@ -561,7 +659,7 @@ jobs:
     name: Test IMAP module
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     runs-on: ubuntu-latest
-    needs: lint
+    needs: [preflight, lint]
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -636,6 +734,7 @@ jobs:
           overwrite: true
 
   test-handlers:
+    needs: preflight
     name: Test internal/api/handlers (${{ matrix.shard }} of 4)
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     runs-on: ubuntu-latest
@@ -759,6 +858,7 @@ jobs:
           overwrite: true
 
   test-api:
+    needs: preflight
     name: Test internal/api (${{ matrix.shard }} of 4)
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     # internal/api is the slowest package by far: nearly 1000 s under the race
@@ -892,7 +992,7 @@ jobs:
     # Joins what Test and both API matrices wrote: the example
     # proofs, judged as one set, and the coverage, as one profile.
     runs-on: ubuntu-latest
-    needs: [test, test-api, test-handlers, test-contract, test-imap]
+    needs: [preflight, test, test-api, test-handlers, test-contract, test-imap]
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -958,6 +1058,7 @@ jobs:
           retention-days: 7
 
   attachments-s3:
+    needs: preflight
     name: Garage attachment storage
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     runs-on: ubuntu-latest
@@ -975,7 +1076,7 @@ jobs:
     name: Build
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     runs-on: ubuntu-latest
-    needs: [test, test-api, test-handlers, test-contract, test-imap]
+    needs: [preflight, test, test-api, test-handlers, test-contract, test-imap]
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1005,6 +1106,7 @@ jobs:
         run: CGO_ENABLED=0 go build -o "$RUNNER_TEMP/commands/" ./cmd/api ./cmd/smtp-gateway ./cmd/imap-gateway ./cmd/pop3-gateway ./cmd/console ./cmd/migrate ./cmd/seed
 
   helm:
+    needs: preflight
     name: Helm Chart
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     runs-on: ubuntu-latest
@@ -1031,6 +1133,7 @@ jobs:
         run: bash helm/restmail/tests/dane-resolver-test.sh
 
   webmail:
+    needs: preflight
     name: Webmail Build
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     runs-on: ubuntu-latest
@@ -1090,6 +1193,7 @@ jobs:
         run: pnpm run build
 
   admin:
+    needs: preflight
     name: Admin Build
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     runs-on: ubuntu-latest
@@ -1162,6 +1266,7 @@ jobs:
   # succeed, so a skipped job is not a block. Requiring it — and nothing else
   # from this workflow — makes the job names above free to change.
   js-filter:
+    needs: preflight
     name: JS Filter
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     # The sidecar that runs javascript filters: its own tests (the sandbox
@@ -1189,6 +1294,16 @@ jobs:
       - name: Test
         run: npm test
 
+      - name: Cache Vertrag's pinned archive
+        uses: ./.github/actions/cache-pinned-tool
+        with:
+          tool: vertrag
+
+      - name: Install vertrag (pinned + checksum-verified)
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 ../../scripts/vertrag_pin.py install "$RUNNER_TEMP/bin"
+
       - name: The sidecar against its description (Vertrag)
         # js-filter-sidecar.json is generated from the API client's own types
         # (TestSidecarDescriptionIsCommitted); here the running sidecar is held to
@@ -1200,7 +1315,6 @@ jobs:
           PORT: "3100"
         run: |
           set -euo pipefail
-          python3 ../../scripts/vertrag_pin.py install "$RUNNER_TEMP/bin"
           node server.js > "$RUNNER_TEMP/sidecar.log" 2>&1 &
           for _ in $(seq 1 30); do
             curl -fsS http://127.0.0.1:3100/health >/dev/null 2>&1 && break
@@ -1241,6 +1355,7 @@ jobs:
           fi
 
   first-start:
+    needs: preflight
     name: First start
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     # Proves, against the real image, the path a fresh install takes: the
@@ -1282,6 +1397,7 @@ jobs:
         run: tests/first-start/agent-e2e.sh
 
   webapp-images:
+    needs: preflight
     name: Web app image (${{ matrix.app }})
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     runs-on: ubuntu-latest
@@ -1368,6 +1484,7 @@ jobs:
           fi
 
   guide:
+    needs: preflight
     name: Email, explained
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     # The guide is checked where it is written, so a broken link, an unsourced
@@ -1404,13 +1521,14 @@ jobs:
 
   ci:
     name: ${{ github.event_name == 'pull_request' && github.event.action == 'edited' && github.event.changes.base.ref.from == '' && 'CI (ignored edit)' || 'CI' }}
-    needs: [seed-caches, contract-diff, lint, constellation, contract-tooling, test, test-api, test-handlers, test-contract, test-imap, test-report, attachments-s3, build, helm, webmail, admin, js-filter, first-start, webapp-images, guide]
+    needs: [preflight, seed-caches, contract-diff, lint, constellation, contract-tooling, test, test-api, test-handlers, test-contract, test-imap, test-report, attachments-s3, build, helm, webmail, admin, js-filter, first-start, webapp-images, guide]
     if: always() && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     runs-on: ubuntu-latest
     steps:
       - name: Verdict
         env:
           RESULTS: |
+            preflight=${{ needs.preflight.result }}
             seed-caches=${{ needs.seed-caches.result }}
             contract-diff=${{ needs.contract-diff.result }}
             lint=${{ needs.lint.result }}

@@ -1,0 +1,37 @@
+name: Cache a pinned tool archive
+description: Restore only the exact version, platform and checksum; installers verify every hit.
+inputs:
+  tool:
+    description: vertrag, oasdiff or golangci-lint
+    required: true
+  scripts:
+    description: Directory containing the installer whose pins must be used
+    default: scripts
+runs:
+  using: composite
+  steps:
+    - name: Name the pinned archive
+      id: pin
+      shell: bash
+      working-directory: ${{ github.workspace }}
+      env:
+        TOOL: ${{ inputs.tool }}
+        SCRIPTS: ${{ inputs.scripts }}
+      run: |
+        set -euo pipefail
+        key=$(python3 "$GITHUB_WORKSPACE/scripts/ci/tool_cache.py" key "$TOOL" "$SCRIPTS")
+        directory="$RUNNER_TEMP/pinned-tool-downloads/$key"
+        echo "key=$key" >> "$GITHUB_OUTPUT"
+        echo "directory=$directory" >> "$GITHUB_OUTPUT"
+        case "$TOOL" in
+          vertrag) variable=VERTRAG_DOWNLOAD_CACHE ;;
+          oasdiff) variable=OASDIFF_DOWNLOAD_CACHE ;;
+          golangci-lint) variable=GOLANGCI_LINT_DOWNLOAD_CACHE ;;
+        esac
+        echo "$variable=$directory" >> "$GITHUB_ENV"
+    - name: Restore the pinned archive
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      continue-on-error: true
+      with:
+        path: ${{ steps.pin.outputs.directory }}
+        key: ${{ steps.pin.outputs.key }}-${{ runner.os }}-${{ runner.arch }}

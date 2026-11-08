@@ -93,7 +93,7 @@ PROBE_CERTIFICATE_NAME = "contract-probe-certificate"
 FIXTURE_PLAN = Path(__file__).resolve().parent / "fixtureplan/defaults.json"
 
 
-def probe_certificate():
+def probe_certificate(common_name=None):
     """Current, matching throwaway material for the isolated certificate domain."""
     domain = json.loads(FIXTURE_PLAN.read_text())["certificate_domain"]
     with tempfile.TemporaryDirectory() as name:
@@ -101,8 +101,8 @@ def probe_certificate():
         key, certificate = directory / "tls.key", directory / "tls.crt"
         subprocess.run(
             ["openssl", "req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:P-256",
-             "-nodes", "-days", "2", "-subj", "/CN=" + PROBE_CERTIFICATE_NAME,
-             "-addext", "subjectAltName=DNS:" + domain["name"],
+             "-nodes", "-days", "2", "-subj", "/CN=" + (common_name or PROBE_CERTIFICATE_NAME),
+             "-addext", "subjectAltName=DNS:" + (common_name or domain["name"]),
              "-keyout", str(key), "-out", str(certificate)],
             check=True, capture_output=True,
         )

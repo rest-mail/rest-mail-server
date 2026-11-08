@@ -641,12 +641,22 @@ def reporting(changes):
 class VerdictFixture(GitFixture):
     """Runs the job's own shell, in order, in a clone standing at the PR head."""
 
-    def commit_scripts(self, script=None, installer=None):
+    def commit_scripts(self, script=None, installer=None, cache_support=True):
         for name, text in (("contract_diff.py", script), ("oasdiff_pin.py", installer)):
             path = self.origin / "scripts" / name
             if text is not None:
                 path.parent.mkdir(exist_ok=True)
                 path.write_text(text)
+                self.git("add", str(path))
+        if cache_support:
+            for name in (
+                ".github/actions/cache-pinned-tool/action.yml",
+                "scripts/ci/tool_cache.py",
+                "scripts/ci/github_release.py",
+            ):
+                path = self.origin / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text((ROOT / name).read_text())
                 self.git("add", str(path))
         return self.commit(description())
 
@@ -658,6 +668,7 @@ class VerdictFixture(GitFixture):
         github.chmod(0o755)
         return dict(
             self.env,
+            OASDIFF_DOWNLOAD_CACHE="",
             PATH=str(binaries) + os.pathsep + self.env["PATH"],
             PR="1",
             GITHUB_REPOSITORY="fixture/repository",
@@ -728,6 +739,15 @@ class VerdictScripts(unittest.TestCase):
     def base_with_gate(self):
         return self.git.commit_scripts(REAL_SCRIPT, self.installer)
 
+    def test_the_runner_archive_cache_does_not_reach_the_synthetic_installer(self):
+        cache = self.git.temp / "runner-downloads"
+        self.git.env["OASDIFF_DOWNLOAD_CACHE"] = str(cache)
+        base_tip = self.base_with_gate()
+        self.git.branch("pr", base_tip)
+        head = self.git.commit_scripts(ALWAYS_PASSES)
+        self.assert_contract_label_required(self.git.verdict(base_tip, head))
+        self.assertFalse(cache.exists())
+
     def assert_contract_label_required(self, result):
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
         self.assertEqual(self.git.report()["missing_labels"], ["contract-change"])
@@ -764,6 +784,46 @@ class VerdictScripts(unittest.TestCase):
         self.git.branch("pr", start)
         head = self.git.commit(description())
         self.assert_contract_label_required(self.git.verdict(base_tip, head))
+
+    def test_a_head_from_before_the_cache_action_gets_all_support_from_the_base(self):
+        start = self.git.commit_scripts(
+            ALWAYS_PASSES, installer_of(reporting("[]")), cache_support=False
+        )
+        base_tip = self.base_with_gate()
+        self.git.branch("pr", start)
+        head = self.git.commit(description())
+        self.git.clone_origin()
+        for name in (
+            ".github/actions/cache-pinned-tool/action.yml",
+            "scripts/ci/tool_cache.py",
+            "scripts/ci/github_release.py",
+        ):
+            self.assertFalse((self.git.clone / name).exists())
+        taken, env = self.git.take_scripts(base_tip, head)
+        self.assertEqual(taken.returncode, 0, taken.stderr)
+        for name in (
+            ".github/actions/cache-pinned-tool/action.yml",
+            "scripts/ci/tool_cache.py",
+            "scripts/ci/github_release.py",
+        ):
+            self.assertEqual(
+                (self.git.clone / name).read_text(),
+                self.git.git("show", f"{base_tip}:{name}") + "\n",
+            )
+        for name in (VERDICT_COMPARATOR_STEP, HEAD_COMPARATOR_STEP):
+            result = self.git.run_step(run_block(workflow_step(name)), env)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assert_contract_label_required(self.git.verdict(base_tip, head))
+
+    def test_missing_base_cache_support_fails_instead_of_using_the_heads_copy(self):
+        base_tip = self.git.commit_scripts(
+            REAL_SCRIPT, self.installer, cache_support=False
+        )
+        self.git.branch("pr", base_tip)
+        head = self.git.commit_scripts(ALWAYS_PASSES)
+        taken, _ = self.git.take_scripts(base_tip, head)
+        self.assertNotEqual(taken.returncode, 0)
+        self.assertIn(f"::error::{base_tip} has no .github/actions/", taken.stderr)
 
     def test_a_head_from_before_the_scripts_existed_still_gets_a_verdict(self):
         start = self.git.commit(description())
@@ -831,7 +891,7 @@ class VerdictScripts(unittest.TestCase):
         self.assertIn("discover -s scripts/tests -p test_contract_diff.py", tests)
         self.assertIn("OASDIFF: ${{ runner.temp }}/bin/oasdiff", tests)
         self.assertIn(
-            'python3 scripts/oasdiff_pin.py install "$RUNNER_TEMP/bin"',
+            'install-base-oasdiff scripts/oasdiff_pin.py "$RUNNER_TEMP/bin"',
             workflow_step(HEAD_COMPARATOR_STEP),
         )
         text = CI_WORKFLOW.read_text()
