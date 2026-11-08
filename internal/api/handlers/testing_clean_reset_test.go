@@ -238,7 +238,20 @@ func TestCleanResetEveryTable(t *testing.T) {
 // domain's value or kept for a stated reason, so a setting added later cannot
 // outlive a reset unnoticed.
 func TestCleanResetEveryDomainColumn(t *testing.T) {
-	db, _, _ := cleanResetFixture(t)
+	db, handler, admin := cleanResetFixture(t)
+	if err := db.Model(&models.Domain{}).Where("id = ?", admin.DomainID).Updates(map[string]any{
+		"outbound_stopped_at": time.Now(), "outbound_stop_reason": "before reset", "outbound_stopped_by": "operator",
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	resetFixture(t, handler)
+	var domain models.Domain
+	if err := db.First(&domain, admin.DomainID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if domain.OutboundStoppedAt != nil || domain.OutboundStopReason != "" || domain.OutboundStoppedBy != "" {
+		t.Errorf("the retained domain kept its outbound stop across the reset: %+v", domain)
+	}
 	var columns []string
 	if err := db.Raw(`SELECT column_name FROM information_schema.columns
 		WHERE table_schema = current_schema() AND table_name = 'domains'`).Scan(&columns).Error; err != nil {

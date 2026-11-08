@@ -36,6 +36,9 @@ var resetDomainSettings = map[string]string{
 	"sending_policy":              "DEFAULT",
 	"dmarc_policy":                "DEFAULT",
 	"default_quota_bytes":         "DEFAULT",
+	"outbound_stopped_at":         "NULL",
+	"outbound_stop_reason":        "DEFAULT",
+	"outbound_stopped_by":         "DEFAULT",
 }
 
 // resetDomainKept are the domain columns the reset leaves as they are, and why.
