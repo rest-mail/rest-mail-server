@@ -12,7 +12,7 @@ func CreateDomainPostmaster(tx *gorm.DB, domain models.Domain) (*models.Mailbox,
 	}
 	account := models.Mailbox{
 		DomainID: domain.ID, LocalPart: "postmaster", Address: "postmaster@" + domain.Name,
-		Active: true, QuotaBytes: domain.DefaultQuotaBytes,
+		Active: true, QuotaBytes: domain.DefaultQuotaBytes, ProvisionedPostmaster: true,
 	}
 	if err := tx.Create(&account).Error; err != nil {
 		return nil, err

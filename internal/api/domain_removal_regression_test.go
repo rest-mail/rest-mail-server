@@ -38,6 +38,20 @@ func (c *domainRemovalConnection) Driver() driver.Driver { return c }
 func (c *domainRemovalConnection) Open(string) (driver.Conn, error) { return c, nil }
 
 func (c *domainRemovalConnection) QueryContext(ctx context.Context, q string, args []driver.NamedValue) (driver.Rows, error) {
+	if strings.Contains(q, `FROM "domains"`) && strings.Contains(q, "EXISTS (SELECT 1 FROM mailboxes") {
+		return invitationRows([]string{"id"}), nil
+	}
+	if strings.HasPrefix(q, "SELECT COALESCE(jsonb_agg") {
+		c.record(q, args)
+		if len(args) != 1 || !strings.Contains(q, " = ") {
+			return nil, errors.New("archive lost domain selector")
+		}
+		encoded, err := json.Marshal([]map[string]any{{"domain_id": args[0].Value}})
+		if err != nil {
+			return nil, err
+		}
+		return invitationRows([]string{"state"}, []driver.Value{encoded}), nil
+	}
 	for _, table := range []string{"mailboxes", "aliases"} {
 		if strings.HasPrefix(q, `SELECT count(*) FROM "`+table+`"`) {
 			c.record(q, args)
@@ -69,6 +83,17 @@ func (c *domainRemovalConnection) QueryContext(ctx context.Context, q string, ar
 }
 
 func (c *domainRemovalConnection) ExecContext(_ context.Context, q string, args []driver.NamedValue) (driver.Result, error) {
+	if strings.HasPrefix(q, `INSERT INTO "domain_retirements"`) {
+		row, err := invitationFields(q, args)
+		if err != nil {
+			return nil, err
+		}
+		if row["domain_id"] == nil || row["name"] == nil || row["state"] == nil {
+			return nil, errors.New("incomplete domain archive")
+		}
+		c.mutation(q, args)
+		return driver.RowsAffected(1), nil
+	}
 	if strings.HasPrefix(q, "SELECT pg_advisory_xact_lock(") {
 		c.record(q, args)
 		return driver.RowsAffected(0), nil

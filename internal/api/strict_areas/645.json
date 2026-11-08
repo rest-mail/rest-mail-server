@@ -5,6 +5,7 @@
     "domainDNSCheck",
     "getDomain",
     "listDomains",
+    "restoreDomain",
     "updateDomain"
   ]
 }
