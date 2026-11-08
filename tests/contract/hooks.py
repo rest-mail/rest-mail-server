@@ -3190,7 +3190,7 @@ def an_account_without_credentials(origin):
 # The password of the account made for inviteAccount's existing_credentials
 # example: the 409 needs one that holds a password, and the reset removed the
 # fixture admin's id 1. Never sent anywhere else.
-CREDENTIALED_PASSWORD = "contract-credentialed-account"
+CREDENTIALED_PASSWORD = "velvet-tundra-compass-otter-47"
 
 
 def an_account_of_its_own(origin, prefix, password=None):
