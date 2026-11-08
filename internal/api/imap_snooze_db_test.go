@@ -126,6 +126,7 @@ func TestIMAPSnoozeKeepsMessagesUIDsAndCounts(t *testing.T) {
 		}
 		return responses
 	}
+	command("EXAMINE Later")
 	baseline := snapshot()
 	for _, folder := range []struct {
 		name          string
