@@ -30374,6 +30374,28 @@
     }
   },
   "listVanishedUIDs": {
+    "capability_removed": {
+      "description": "The signed-in principal can write to this account but cannot read its mail. Both a session whose holder lacks mail:read and an API key scoped only to mail:write are refused by the production router.",
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "folder": "INBOX",
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "found": {
       "summary": "The UIDs that left INBOX after mod-sequence 3, lowest first",
       "description": "UID 3 arrived in INBOX at mod-sequence 2 and left it at 3, UID 5 arrived at 4 and left at 5, and UID 7 arrived at 6 and left at 7. Asked since 3, the answer leaves out UID 3, which left at 3 itself. Proven through the production router against PostgreSQL, whose triggers record each departure; only the allocated account id is replaced with the published one.",

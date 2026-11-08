@@ -1,7 +1,9 @@
 package api
 
 import (
+	"database/sql/driver"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"strconv"
 	"strings"
@@ -13,6 +15,28 @@ import (
 )
 
 const vanishedUIDsPath = "/api/v1/accounts/{id}/folders/{folder}/vanished"
+
+func TestVanishedUIDCapabilityExamples(t *testing.T) {
+	pairs, err := examplepairs.Read()
+	if err != nil {
+		t.Fatal(err)
+	}
+	pair := pairs["listVanishedUIDs"]["capability_removed"]
+	scenarios := accountListScenarios(t, func(_ string, keys map[string]accountListKey) driver.Connector {
+		return accountCredentialListConnection{mode: "write_only", keys: keys}
+	})
+	for _, name := range []string{"write_only", "key_write_only"} {
+		t.Run(name, func(t *testing.T) {
+			examplepairs.Proven(t, "listVanishedUIDs", "capability_removed")
+			scenario := scenarios[name]
+			request := requirementRequest(requirementRoute{http.MethodGet, vanishedUIDsPath}, pair)
+			request.Header.Set("Authorization", "Bearer "+scenario.token)
+			response := httptest.NewRecorder()
+			scenario.handler.ServeHTTP(response, request)
+			assertRequirementResponse(t, pair, response)
+		})
+	}
+}
 
 // The mod-sequence pairs (RFC 7162, go-imap#162), sent through the production router to
 // a scratch PostgreSQL database whose triggers keep the mod-sequences: a change made with

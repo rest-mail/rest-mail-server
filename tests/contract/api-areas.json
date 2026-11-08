@@ -87,6 +87,7 @@
     "getThread",
     "listAttachments",
     "listFolders",
+    "listVanishedUIDs",
     "listMessages",
     "listSubscriptions",
     "listThreads",
