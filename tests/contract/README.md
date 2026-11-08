@@ -465,16 +465,19 @@ themselves. So its description states the body in the operation
 `config`: an object. A generator that may draw any `config` draws `"x"`, which the
 handler refuses, so `filter_name` alone would not have sent these probes.
 
-`createCertificate`'s `cert_pem` and `key_pem` hold a throwaway self-signed certificate
-that `probes.py` makes for each run, and its probes' `domain_id` is 1, the fixture
-admin's domain. A hook cannot change that, and the mail gateways serve a domain's current
-certificates by name. So this one is already expired: the handler accepts it, and neither
-the gateways nor `updateDomain`'s certificate check count it. `a_self_signed_certificate` leaves them
-as drawn, and the first hook after them, `remove_the_probe_certificates`, deletes each
-certificate with that issuer. The documented sends before them keep a certificate of
-their own, which `getCertificate`'s link needs, on the run's domain when the run has
-one. A run narrowed to `createCertificate` alone has no hook after its probes, so
-their certificates stay on its disposable database.
+`createCertificate`'s `cert_pem` and `key_pem` hold a current, matching self-signed
+certificate that `probes.py` makes for each run. Its valid-only `domain_id` pin names
+the inactive `contract-certificate-probes.invalid` fixture domain, not the gateway's
+`restmail.test` domain. Missing, malformed and below-minimum IDs are not pinned.
+Expired material is not a substitute: the upload handler rejects it (#1704).
+`a_self_signed_certificate` leaves generated bodies as drawn, and the first hook
+after them, `remove_the_probe_certificates`, deletes certificates with the probe
+issuer. The documented sends use the run's disposable domain, or the isolated
+certificate fixture domain if no run domain has been stashed, with their own issuer
+so `getCertificate`'s link still finds them after probe cleanup. Their exact SAN is
+the upload domain, never either gateway's hostname, so they cannot poison gateway
+TLS even between creation and cleanup. A run narrowed to `createCertificate` alone
+can leave probe certificates on its disposable database without affecting gateways.
 
 `createDomain` needs no pin, because its setup makes the generated name free. Its
 hook removes what earlier probes put at `example.com`, and the first hook after its
