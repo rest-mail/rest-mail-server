@@ -201,7 +201,7 @@ type updateMessageBody struct {
 	// (RFC 7162 §3.1.3): it is made only while the message's mod_seq is at most this
 	// value, checked and written in one statement, and otherwise answers 409 and
 	// changes nothing.
-	UnchangedSince *uint64 `json:"unchanged_since,omitempty" description:"Change the message only if its mod_seq is still at most this value (IMAP STORE UNCHANGEDSINCE, RFC 7162 §3.1.3); a higher mod_seq answers 409 message_modified and changes nothing. 0 always answers 409"`
+	UnchangedSince *uint64 `json:"unchanged_since,omitempty" minimum:"1" description:"A positive mod-sequence. Change the message only if its mod_seq is still at most this value (IMAP STORE UNCHANGEDSINCE, RFC 7162 §3.1.3); a higher mod_seq answers 409 message_modified and changes nothing. Zero and negative values are 422 validation_failed"`
 }
 
 type updatePipelineRequestBody struct {

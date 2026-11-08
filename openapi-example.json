@@ -49967,6 +49967,62 @@
         },
         "mediaType": "application/json"
       }
+    },
+    "unchanged_since_negative": {
+      "summary": "A negative mod-sequence is invalid and leaves the message unchanged",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "is_read": true,
+          "unchanged_since": -1
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "unchanged_since": "must be a non-negative integer"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unchanged_since_zero": {
+      "summary": "A zero mod-sequence is invalid and leaves the message unchanged",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "is_read": true,
+          "unchanged_since": 0
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "unchanged_since": "must be at least 1"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
     }
   },
   "updatePipeline": {

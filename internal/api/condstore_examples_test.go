@@ -1,10 +1,15 @@
 package api
 
 import (
+	"context"
 	"database/sql/driver"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
+	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -62,6 +67,59 @@ func TestCondstoreStoredExamples(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+
+	for _, name := range []string{"unchanged_since_negative", "unchanged_since_zero"} {
+		t.Run("updateMessage/"+name, func(t *testing.T) {
+			examplepairs.Proven(t, "updateMessage", name)
+			pair := pairs["updateMessage"][name]
+			fixture := newCredentialFixture(t)
+			seed(fixture, 1)
+			var before models.Message
+			if err := fixture.db.First(&before, 1).Error; err != nil {
+				t.Fatal(err)
+			}
+			response := fixture.do(http.MethodPatch, messageCollectionReadURI(messageUpdatePath, pair), fixture.session, string(pair.Request.Body))
+			assertRequirementResponse(t, pair, response)
+			var after models.Message
+			if err := fixture.db.First(&after, 1).Error; err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(before, after) {
+				t.Fatalf("invalid mod-sequence changed the stored message: before=%+v after=%+v", before, after)
+			}
+		})
+	}
+
+	t.Run("updateMessage/stale_condition_without_a_change", func(t *testing.T) {
+		fixture := newCredentialFixture(t)
+		seed(fixture, 1)
+		var before models.Message
+		if err := fixture.db.First(&before, 1).Error; err != nil {
+			t.Fatal(err)
+		}
+		response := fixture.do(http.MethodPatch, "/api/v1/messages/1", fixture.session, `{"unchanged_since":1}`)
+		if response.Code != http.StatusOK {
+			t.Fatalf("a request with no change: %d %s", response.Code, response.Body.String())
+		}
+		var after models.Message
+		if err := fixture.db.First(&after, 1).Error; err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(before, after) {
+			t.Fatalf("a request with no change wrote: before=%+v after=%+v", before, after)
+		}
+		response = fixture.do(http.MethodPatch, "/api/v1/messages/1", fixture.session, `{"is_read":true,"unchanged_since":1}`)
+		if response.Code != http.StatusConflict {
+			t.Fatalf("a stale conditional write: %d %s", response.Code, response.Body.String())
+		}
+		assertPublicExampleBody(t, pairs["updateMessage"]["modified"].Response.Body, response.Body.Bytes())
+		if err := fixture.db.First(&after, 1).Error; err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(before, after) {
+			t.Fatalf("a stale conditional write changed the message: before=%+v after=%+v", before, after)
+		}
+	})
 
 	t.Run("updateMessage/modified", func(t *testing.T) {
 		examplepairs.Proven(t, "updateMessage", "modified")
@@ -129,4 +187,72 @@ func TestCondstoreStoredExamples(t *testing.T) {
 			t.Fatalf("after UID 3, with UID 5 back: %d %s", rr.Code, rr.Body.String())
 		}
 	})
+}
+
+func TestUpdateMessageUnchangedSinceCoverageWithVertrag(t *testing.T) {
+	binary := os.Getenv("RESTMAIL_VERTRAG_BINARY")
+	if binary == "" || os.Getenv("DB_HOST") == "" {
+		t.Skip("set RESTMAIL_VERTRAG_BINARY and DB_HOST for the production-router coverage proof")
+	}
+	useRealGrants(t)
+	fixture := newCredentialFixture(t)
+	message := models.Message{ID: 1, MailboxID: fixture.mailboxID, Folder: "INBOX", Subject: "Subject", RecipientsTo: models.JSONB(`[]`), RecipientsCc: models.JSONB(`[]`)}
+	if err := fixture.db.Create(&message).Error; err != nil {
+		t.Fatal(err)
+	}
+	document := contractDocument(t, describedRouters(t).pairGenerator(t, "unchanged-since coverage"))
+	operation := document["paths"].(map[string]any)[messageUpdatePath].(map[string]any)["patch"].(map[string]any)
+	responses := operation["responses"].(map[string]any)
+	operation["responses"] = map[string]any{"200": responses["200"]}
+	document["paths"] = map[string]any{messageUpdatePath: map[string]any{"patch": operation}}
+	directory := t.TempDir()
+	data, err := marshalPairDescription(document)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(directory, "openapi.json"), data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	server := servedAsDescribed(fixture.router)
+	defer server.Close()
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Minute)
+	defer cancel()
+	command := exec.CommandContext(ctx, binary, "run", "--endpoint", server.URL, "--phases", "examples,coverage", "--fail-on-skipped-probes", "--header", "Authorization: "+fixture.session, "--reporter", "json", "--output", "report.json", "openapi.json")
+	command.Dir = directory
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("updateMessage coverage failed: %v\n%s", err, output)
+	}
+	data, err = os.ReadFile(filepath.Join(directory, "report.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var report struct {
+		Summary struct{ Total, Passing, Failing, Errors, Skipped int }
+		Results []struct{ Name, Status string }
+	}
+	if err := json.Unmarshal(data, &report); err != nil {
+		t.Fatal(err)
+	}
+	if report.Summary.Total < 10 || report.Summary.Failing != 0 || report.Summary.Errors != 0 || report.Summary.Skipped != 0 {
+		t.Fatalf("coverage did not execute without skips: %s", data)
+	}
+	for _, boundary := range []string{
+		`"unchanged_since" at minimum (1)`,
+		`"unchanged_since" at one below minimum (0)`,
+	} {
+		found := 0
+		for _, result := range report.Results {
+			if strings.HasPrefix(result.Name, "coverage:") && strings.HasSuffix(result.Name, boundary) {
+				found++
+				if result.Status != "pass" {
+					t.Fatalf("boundary %s: %+v, want pass", boundary, result)
+				}
+			}
+		}
+		if found != 1 {
+			t.Fatalf("boundary %s was sent %d times, want exactly once", boundary, found)
+		}
+	}
+	t.Logf("updateMessage examples and coverage: %d/%d passed, no skips", report.Summary.Passing, report.Summary.Total)
 }

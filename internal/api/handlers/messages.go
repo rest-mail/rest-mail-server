@@ -213,7 +213,7 @@ func (h *MessageHandler) RegisterMessages(rs endpoint.Routes) {
 		Errors:      []int{http.StatusForbidden, http.StatusNotFound}, Security: reads}, h.listMessageRecipients)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPatch, Path: "/api/v1/messages/{id}",
 		OperationID: "updateMessage", Summary: "Update message flags or move to a folder", Tags: tags,
-		Description: "With unchanged_since the change is made only while the message's mod_seq is at most that value, checked and written in one statement, as IMAP's STORE (UNCHANGEDSINCE) (RFC 7162 §3.1.3); otherwise it answers 409 message_modified and changes nothing. Read the message again for its current mod_seq.",
+		Description: "With unchanged_since the change is made only while the message's mod_seq is at most that positive value, checked and written in one statement, as IMAP's STORE (UNCHANGEDSINCE) (RFC 7162 §3.1.3); otherwise it answers 409 message_modified and changes nothing. Without any flag or folder change the request only reads the message and cannot conflict. Zero and negative mod-sequences are 422 validation_failed. Read the message again for its current mod_seq.",
 		Errors:      []int{http.StatusForbidden, http.StatusNotFound, http.StatusConflict}, Security: writes}, h.updateMessage)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodDelete, Path: "/api/v1/messages/{id}",
 		OperationID: "deleteMessage", Summary: "Delete a message", Tags: tags, Status: http.StatusNoContent,
@@ -439,7 +439,7 @@ func (h *MessageHandler) updateMessage(r *http.Request, in updateMessageRequest)
 	// unchanged_since (RFC 7162 §3.1.3) is checked by the UPDATE itself, so no other
 	// change can land between the check and the write: a row whose mod_seq has
 	// passed the value is not matched, and the change is refused with nothing
-	// written. With nothing to change the stored mod_seq is compared alone.
+	// written. With nothing to change there is no conditional write to refuse.
 	modified := false
 	err = h.db.Transaction(func(tx *gorm.DB) error {
 		if len(updates) > 0 {
@@ -455,9 +455,6 @@ func (h *MessageHandler) updateMessage(r *http.Request, in updateMessageRequest)
 		}
 		if err := tx.First(&msg, in.ID).Error; err != nil {
 			return err
-		}
-		if len(updates) == 0 && req.UnchangedSince != nil && msg.ModSeq > *req.UnchangedSince {
-			modified = true
 		}
 		return nil
 	})

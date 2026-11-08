@@ -3010,7 +3010,7 @@ export interface paths {
         head?: never;
         /**
          * Update message flags or move to a folder
-         * @description With unchanged_since the change is made only while the message's mod_seq is at most that value, checked and written in one statement, as IMAP's STORE (UNCHANGEDSINCE) (RFC 7162 §3.1.3); otherwise it answers 409 message_modified and changes nothing. Read the message again for its current mod_seq.
+         * @description With unchanged_since the change is made only while the message's mod_seq is at most that positive value, checked and written in one statement, as IMAP's STORE (UNCHANGEDSINCE) (RFC 7162 §3.1.3); otherwise it answers 409 message_modified and changes nothing. Without any flag or folder change the request only reads the message and cannot conflict. Zero and negative mod-sequences are 422 validation_failed. Read the message again for its current mod_seq.
          */
         patch: operations["updateMessage"];
         trace?: never;
