@@ -70,6 +70,7 @@ func imapProofAPI(t *testing.T, db *gorm.DB, account models.Mailbox) string {
 	routes := endpoint.Routes{Router: router, Registry: endpoint.NewRegistry()}
 	importer.Register(routes)
 	NewMessageHandler(db, nil, nil, "", nil).RegisterMessages(routes)
+	NewMessageTransferHandler(db, nil).Register(routes)
 	server := httptest.NewServer(router)
 	t.Cleanup(server.Close)
 	return server.URL

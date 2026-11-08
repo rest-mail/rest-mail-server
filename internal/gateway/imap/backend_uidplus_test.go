@@ -67,6 +67,13 @@ type fakeAPI struct {
 	// (200 with no data.id) or a hard delivery failure.
 	importStatus int
 	importBody   interface{}
+	// transfers records each set copy or move; transferFailAt, when non-zero,
+	// fails a set on that message (1-based) after the ones before it, and the
+	// API's transaction leaves every message as it was.
+	transfers      []apiclient.TransferRequest
+	transferFailAt int
+	transferStatus int
+	transferBody   interface{}
 }
 
 func newFakeAPI() *fakeAPI {
@@ -132,6 +139,7 @@ func (f *fakeAPI) handler() http.Handler {
 	mux.HandleFunc("DELETE /api/v1/gateway-sessions/current", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
 	mux.HandleFunc("GET /api/v1/accounts/{acct}/folders/{folder}/messages", f.listMessages)
 	mux.HandleFunc("POST /api/v1/accounts/{acct}/messages/import", f.importMessage)
+	mux.HandleFunc("POST /api/v1/accounts/{acct}/messages/transfer", f.transfer)
 	mux.HandleFunc("GET /api/v1/messages/{id}/raw", f.raw)
 	mux.HandleFunc("GET /api/v1/messages/{id}", f.getMessage)
 	mux.HandleFunc("PATCH /api/v1/messages/{id}", f.patch)
@@ -256,6 +264,49 @@ func (f *fakeAPI) importMessage(w http.ResponseWriter, r *http.Request) {
 	resp.Data.Imported = true
 	resp.Data.Folder = folder
 	writeJSON(w, resp)
+}
+
+// transfer copies or moves a set as the API does, in one transaction: every
+// message gets a new ID in the destination with its flags and source, or, on
+// a failure, nothing changes.
+func (f *fakeAPI) transfer(w http.ResponseWriter, r *http.Request) {
+	var req apiclient.TransferRequest
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.transfers = append(f.transfers, req)
+	if f.transferStatus != 0 {
+		w.WriteHeader(f.transferStatus)
+		if f.transferBody != nil {
+			writeJSON(w, f.transferBody)
+		}
+		return
+	}
+	for i, id := range req.MessageIDs {
+		if f.transferFailAt == i+1 {
+			w.WriteHeader(http.StatusInternalServerError)
+			writeJSON(w, map[string]any{"error": map[string]string{"code": "internal_error", "message": "Internal server error"}})
+			return
+		}
+		if m := f.msgs[id]; m == nil || m.folder != req.SourceFolder {
+			w.WriteHeader(http.StatusNotFound)
+			writeJSON(w, map[string]any{"error": map[string]string{"code": "message_not_found", "message": "Message not found"}})
+			return
+		}
+	}
+	var ids []uint
+	for _, id := range req.MessageIDs {
+		copied := *f.msgs[id]
+		copied.id, copied.folder = f.nextID, req.Folder
+		copied.keywords = slices.Clone(copied.keywords)
+		f.msgs[copied.id] = &copied
+		ids = append(ids, copied.id)
+		f.nextID++
+		if req.Move {
+			delete(f.msgs, id)
+		}
+	}
+	writeJSON(w, map[string]any{"data": map[string]any{"ids": ids}})
 }
 
 // lastImport returns the most recent ImportRequest the gateway sent.
@@ -668,7 +719,7 @@ func TestServer_UIDPlus_CapabilityAndResponseCodes(t *testing.T) {
 		t.Errorf("copy created in %q, want Archive", got)
 	}
 
-	// MOVE re-delivers the message into the destination, so it reports an untagged
+	// MOVE makes a new message in the destination, so it reports an untagged
 	// COPYUID mapping source UID 1 to a fresh, higher destination UID (102) before
 	// the EXPUNGE, and removes the source message.
 	unt, st = h.command("a6", "MOVE 1 Trash")
@@ -685,7 +736,7 @@ func TestServer_UIDPlus_CapabilityAndResponseCodes(t *testing.T) {
 	if got := folderOf(api, 102); got != "Trash" {
 		t.Errorf("moved copy created in %q, want Trash", got)
 	}
-	if !api.deleted(1) {
+	if api.exists(1) {
 		t.Errorf("MOVE did not remove the source message 1")
 	}
 }

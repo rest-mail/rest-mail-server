@@ -96,6 +96,7 @@
     "snoozeThread",
     "subscribeFolder",
     "unsubscribeFolder",
+    "transferMessages",
     "updateMessage"
   ],
   "638": [
