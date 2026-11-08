@@ -1,0 +1,108 @@
+package handlers
+
+import (
+	"fmt"
+	"testing"
+
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
+)
+
+// The folder listing's uid_next is the folder's IMAP UIDNEXT. It must not fall
+// when the newest message is deleted for good, must rise when a message is
+// stored or moved into the folder, and starts at 1 for a folder that never held
+// one (RFC 3501 §2.3.1.1, #804). The marks are kept by triggers in the
+// database, so this runs against Postgres with the server's own migration.
+func TestFolderUIDNextSurvivesPermanentDelete(t *testing.T) {
+	db := openScratchDB(t, "uidnext", []any{withFullSchema})
+	fixture := seedMsgDeleteFixture(t, db, 0)
+	h := NewMessageHandler(db, nil, nil, "", nil)
+
+	store := func(folder string) models.Message {
+		t.Helper()
+		m := models.Message{MailboxID: fixture.mailbox.ID, Folder: folder, Sender: "sender@example.test"}
+		if err := db.Create(&m).Error; err != nil {
+			t.Fatal(err)
+		}
+		return m
+	}
+	uidNext := func() map[string]uint64 {
+		t.Helper()
+		list, err := h.listFolders(authzRequest("GET", "/", fixture.mailbox.ID, nil, ""), accountPath{ID: uint32(fixture.mailbox.ID)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := map[string]uint64{}
+		for _, f := range list.Data {
+			out[f.Folder] = f.UIDNext
+		}
+		return out
+	}
+
+	first, newest := store("INBOX"), store("INBOX")
+	if got := uidNext()["INBOX"]; got != uint64(newest.ID)+1 {
+		t.Fatalf("INBOX uid_next %d, want %d", got, newest.ID+1)
+	}
+	if got := uidNext()["Sent"]; got != 1 {
+		t.Fatalf("an unused Sent has uid_next %d, want 1", got)
+	}
+
+	// EXPUNGE deletes for good; the mark keeps the newest ID.
+	if err := db.Delete(&models.Message{}, newest.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if got := uidNext()["INBOX"]; got != uint64(newest.ID)+1 {
+		t.Fatalf("after deleting the newest, INBOX uid_next %d, want %d", got, newest.ID+1)
+	}
+
+	// A flag change does not move the mark; a move into Archive raises Archive's.
+	if err := db.Model(&models.Message{}).Where("id = ?", first.ID).Update("is_read", true).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Model(&models.Message{}).Where("id = ?", first.ID).Update("folder", "Archive").Error; err != nil {
+		t.Fatal(err)
+	}
+	got := uidNext()
+	if got["Archive"] != uint64(first.ID)+1 || got["INBOX"] != uint64(newest.ID)+1 {
+		t.Fatalf("after moving %d to Archive: %v", first.ID, got)
+	}
+
+	// New mail gets a higher ID than the expunged one, and moves UIDNEXT on.
+	later := store("INBOX")
+	if later.ID <= newest.ID {
+		t.Fatalf("new message got ID %d, not above the expunged %d", later.ID, newest.ID)
+	}
+	if got := uidNext()["INBOX"]; got != uint64(later.ID)+1 {
+		t.Fatalf("after new mail, INBOX uid_next %d, want %d", got, later.ID+1)
+	}
+}
+
+func TestIMAPUIDNextSurvivesNewestExpungeFromImportFixture(t *testing.T) {
+	database := importProofDB(t)
+	account := seedAccountsFixture(t, database).user
+	handler := NewMessageHandler(database, nil, nil, "", nil)
+	if _, err := handler.listFolders(authzRequest("GET", "/", account.ID, nil, ""), accountPath{ID: uint32(account.ID)}); err != nil {
+		t.Fatal(err)
+	}
+	apiURL := imapProofAPI(t, database, account)
+	client := newIMAPProofClient(t, apiURL)
+	_, first := client.append("INBOX", "", imapProofMessage)
+	_, newest := client.append("INBOX", "", imapProofMessage)
+	if newest <= first {
+		t.Fatalf("second APPEND got UID %d, not above %d", newest, first)
+	}
+	selected, _ := client.ok("SELECT INBOX")
+	requireLineWith(t, selected, fmt.Sprintf("* OK [UIDNEXT %d] Predicted next UID", newest+1))
+	client.ok(fmt.Sprintf(`UID STORE %d +FLAGS (\Deleted)`, newest))
+	expunged, _ := client.ok("EXPUNGE")
+	requireLineWith(t, expunged, "* 2 EXPUNGE")
+	reader := newIMAPProofClient(t, apiURL)
+	selected, _ = reader.ok("SELECT INBOX")
+	requireLineWith(t, selected, "* 1 EXISTS")
+	requireLineWith(t, selected, fmt.Sprintf("* OK [UIDNEXT %d] Predicted next UID", newest+1))
+	_, later := reader.append("INBOX", "", imapProofMessage)
+	if later <= newest {
+		t.Fatalf("APPEND reused expunged UID %d: got %d", newest, later)
+	}
+	selected, _ = reader.ok("SELECT INBOX")
+	requireLineWith(t, selected, fmt.Sprintf("* OK [UIDNEXT %d] Predicted next UID", later+1))
+}

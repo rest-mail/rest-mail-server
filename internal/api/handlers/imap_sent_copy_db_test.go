@@ -192,12 +192,14 @@ func TestIMAPAppendThatDoesNotMatchASubmissionStoresAMessage(t *testing.T) {
 		sentRows(t, "old@example.test", 2)
 	})
 	t.Run("to another folder", func(t *testing.T) {
+		client.ok("CREATE Archive")
 		submitted := submitToSent(t, db, account, "elsewhere@example.test")
 		requireStored(t, client, db, account, "Archive", sentCopyMessage("elsewhere@example.test"), submitted)
 		sentRows(t, "elsewhere@example.test", 1)
 	})
 	t.Run("to a folder named like Sent", func(t *testing.T) {
 		// Folder names other than INBOX are case-sensitive (RFC 9051 §5.1).
+		client.ok("CREATE sent")
 		submitted := submitToSent(t, db, account, "lowercase@example.test")
 		requireStored(t, client, db, account, "sent", sentCopyMessage("lowercase@example.test"), submitted)
 		sentRows(t, "lowercase@example.test", 1)

@@ -65,7 +65,9 @@ func openTransportSecTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		testdb.Unreachable(t, "inbound transport-security DB test skipped: no database reachable (%v)", err)
 	}
-	if err := migrateModels(gdb, &models.Message{}); err != nil {
+	// The messages belong to a mailbox of the test's own: inserting one keeps
+	// its folder's UID mark, which refers to the mailbox (#804).
+	if err := migrateModels(gdb, append(append([]interface{}{}, accountModels...), &models.Message{})...); err != nil {
 		t.Skipf("inbound transport-security DB test skipped: migrate failed (%v)", err)
 	}
 	return gdb
@@ -100,19 +102,20 @@ func TestInboundTransportSecurity_Aggregation(t *testing.T) {
 	if err := tx.Exec("DELETE FROM messages").Error; err != nil {
 		t.Fatalf("clear messages: %v", err)
 	}
+	mailbox := seedMailbox(t, tx, "transportsec").ID
 
 	tru, fls := true, false
 	seed := []models.Message{
 		// Inbound-MX over TLS.
-		{MailboxID: 1, Sender: "a@remote.test", ReceivedTLS: &tru, TLSVersion: "TLS1.3", RawMessage: "Subject: ok\r\n\r\nhi"},
+		{MailboxID: mailbox, Sender: "a@remote.test", ReceivedTLS: &tru, TLSVersion: "TLS1.3", RawMessage: "Subject: ok\r\n\r\nhi"},
 		// Inbound-MX plaintext, SPF passed → auth pass.
-		{MailboxID: 1, Sender: "b@remote.test", ReceivedTLS: &fls, AuthResults: models.JSONB(`[{"method":"spf","result":"pass"}]`), RawMessage: "Authentication-Results: mx; spf=pass smtp.mailfrom=remote.test\r\n\r\nhi"},
+		{MailboxID: mailbox, Sender: "b@remote.test", ReceivedTLS: &fls, AuthResults: models.JSONB(`[{"method":"spf","result":"pass"}]`), RawMessage: "Authentication-Results: mx; spf=pass smtp.mailfrom=remote.test\r\n\r\nhi"},
 		// Inbound-MX plaintext, DKIM passed → auth pass.
-		{MailboxID: 1, Sender: "c@remote.test", ReceivedTLS: &fls, AuthResults: models.JSONB(`[{"method":"dkim","result":"pass"}]`), RawMessage: "Authentication-Results: restmail; dkim=pass header.d=remote.test\r\n\r\nhi"},
+		{MailboxID: mailbox, Sender: "c@remote.test", ReceivedTLS: &fls, AuthResults: models.JSONB(`[{"method":"dkim","result":"pass"}]`), RawMessage: "Authentication-Results: restmail; dkim=pass header.d=remote.test\r\n\r\nhi"},
 		// Inbound-MX plaintext, nothing passed → auth fail.
-		{MailboxID: 1, Sender: "d@remote.test", ReceivedTLS: &fls, RawMessage: "Authentication-Results: mx; spf=fail; dkim=none\r\n\r\nhi"},
+		{MailboxID: mailbox, Sender: "d@remote.test", ReceivedTLS: &fls, RawMessage: "Authentication-Results: mx; spf=fail; dkim=none\r\n\r\nhi"},
 		// NOT inbound-MX (nil) → must be excluded from the denominator entirely.
-		{MailboxID: 1, Sender: "e@local.test", ReceivedTLS: nil, RawMessage: "Authentication-Results: mx; spf=pass\r\n\r\nhi"},
+		{MailboxID: mailbox, Sender: "e@local.test", ReceivedTLS: nil, RawMessage: "Authentication-Results: mx; spf=pass\r\n\r\nhi"},
 	}
 	for i := range seed {
 		if err := tx.Create(&seed[i]).Error; err != nil {
@@ -156,9 +159,10 @@ func TestInboundTransportSecurity_Persistence(t *testing.T) {
 	gdb := openTransportSecTestDB(t)
 	tx := gdb.Begin()
 	t.Cleanup(func() { tx.Rollback() })
+	mailbox := seedMailbox(t, tx, "transportsec").ID
 
 	tru := true
-	m := models.Message{MailboxID: 1, Sender: "a@remote.test", ReceivedTLS: &tru, TLSVersion: "TLS1.2", RawMessage: "x"}
+	m := models.Message{MailboxID: mailbox, Sender: "a@remote.test", ReceivedTLS: &tru, TLSVersion: "TLS1.2", RawMessage: "x"}
 	if err := tx.Create(&m).Error; err != nil {
 		t.Fatalf("create tls message: %v", err)
 	}
@@ -174,7 +178,7 @@ func TestInboundTransportSecurity_Persistence(t *testing.T) {
 	}
 
 	// Unset (non inbound-MX) delivery → NULL, not false.
-	n := models.Message{MailboxID: 1, Sender: "b@local.test", RawMessage: "y"}
+	n := models.Message{MailboxID: mailbox, Sender: "b@local.test", RawMessage: "y"}
 	if err := tx.Create(&n).Error; err != nil {
 		t.Fatalf("create nil message: %v", err)
 	}

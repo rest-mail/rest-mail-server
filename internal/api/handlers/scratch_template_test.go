@@ -19,10 +19,11 @@ type scratchStep struct {
 }
 
 var (
-	withFullSchema  = scratchStep{"schema", rmdb.AutoMigrate}
-	withRoles       = scratchStep{"roles", bootstrap.EnsureRBAC}
-	withAudit       = scratchStep{"audit-log", rmdb.MigrateAuditLog}
-	withForeignKeys = scratchStep{"foreign-keys", func(database *gorm.DB) error {
+	withFullSchema     = scratchStep{"schema", rmdb.AutoMigrate}
+	withRoles          = scratchStep{"roles", bootstrap.EnsureRBAC}
+	withAudit          = scratchStep{"audit-log", rmdb.MigrateAuditLog}
+	withFolderUIDMarks = scratchStep{"folder-uid-marks", rmdb.MigrateFolderUIDMarks}
+	withForeignKeys    = scratchStep{"foreign-keys", func(database *gorm.DB) error {
 		database.DisableForeignKeyConstraintWhenMigrating = false
 		return nil
 	}}
