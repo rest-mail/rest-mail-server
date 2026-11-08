@@ -34,6 +34,7 @@ var domainNameProfile = idna.New(
 	idna.BidiRule(),
 	idna.ValidateLabels(true),
 	idna.StrictDomainName(true),
+	idna.VerifyDNSLength(true),
 )
 
 // maxDomainNameLength is the RFC 1035 limit on a domain name's total length.

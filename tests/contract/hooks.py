@@ -1242,14 +1242,13 @@ def openssl(*args):
 def the_admin_domain_id(transaction):
     """restmail.test's id, through the admin API once per run, or None."""
     if hooks.stash.get("admin_domain_id") is None:
-        hooks.stash["admin_domain_id"] = next(
-            (
-                d["id"]
-                for d in fixture_call(transaction, "GET", "/api/v1/admin/domains") or []
-                if d.get("name") == ADMIN.split("@")[1]
-            ),
-            None,
+        origin = origin_of(transaction)
+        domain = find_in_list(
+            origin, "/api/v1/admin/domains",
+            {"Authorization": "Bearer " + admin_token(origin)},
+            lambda hosted: hosted.get("name") == ADMIN.split("@")[1],
         )
+        hooks.stash["admin_domain_id"] = domain["id"] if domain else None
     return hooks.stash["admin_domain_id"]
 
 
@@ -1785,11 +1784,32 @@ def a_signing_mailbox_at(transaction, address):
             key = os.path.join(d, "dkim.key")
             openssl("genrsa", "-out", key, "2048")
             with open(key) as key_file:
-                call(
-                    "PUT",
-                    f"/api/v1/admin/dkim/{domain_id:d}",
-                    {"selector": "contract", "private_key": key_file.read()},
-                )
+                try:
+                    call(
+                        "PUT",
+                        f"/api/v1/admin/dkim/{domain_id:d}",
+                        {"selector": "contract", "private_key": key_file.read()},
+                    )
+                except urllib.error.HTTPError as error:
+                    if error.code != 422:
+                        raise
+                    try:
+                        refusal = json.load(error)
+                    except ValueError:
+                        raise error
+                    detail = refusal.get("error") if isinstance(refusal, dict) else None
+                    details = detail.get("details") if isinstance(detail, dict) else None
+                    fields = details.get("fields") if isinstance(details, dict) else None
+                    reason = fields.get("private_key") if isinstance(fields, dict) else None
+                    if (
+                        isinstance(detail, dict)
+                        and detail.get("code") == "validation_failed"
+                        and isinstance(reason, str)
+                        and reason.startswith(f"does not sign for {domain}: invalid domain:")
+                    ):
+                        error.close()
+                        return
+                    raise
     if not find_in_list(
         origin,
         f"/api/v1/admin/mailboxes?domain_id={domain_id:d}",
@@ -3644,11 +3664,11 @@ ADDRESSES_REMEMBERED = (
 )
 
 
-def empty_the_generated_domain(transaction, domain_id):
+def empty_the_generated_domain(transaction, domain_id, domain_name=GENERATED_DOMAIN):
     """Remove the accounts and aliases earlier probes made at the generated domain.
 
     A hook cannot change a generated body (lost_probes.py), so createDomain's probes
-    name example.com as drawn, and the setup makes that name free. The domain's
+    keep their drawn ASCII or IDN name, and the setup makes that name free. The domain's
     accounts take a two-factor session to remove, as the domain's grants do."""
     origin = origin_of(transaction)
     headers = {
@@ -3662,16 +3682,18 @@ def empty_the_generated_domain(transaction, domain_id):
             payload = response.read()
         return (json.loads(payload).get("data") if payload else None) or []
 
-    for alias in call("GET", f"/api/v1/admin/aliases?domain_id={domain_id:d}"):
+    for alias in list(list_rows(origin, f"/api/v1/admin/aliases?domain_id={domain_id:d}", headers)):
         call("DELETE", f"/api/v1/admin/aliases/{alias['id']:d}")
-    for account in call("GET", f"/api/v1/admin/mailboxes?domain_id={domain_id:d}"):
+    for account in list(list_rows(origin, f"/api/v1/admin/mailboxes?domain_id={domain_id:d}", headers)):
         call("DELETE", f"/api/v1/admin/mailboxes/{account['id']:d}")
+    canonical = domain_key(domain_name)
     for name in ADDRESSES_REMEMBERED:
         remembered = hooks.stash.get(name, {})
-        for key in [k for k in remembered if k.endswith("@" + GENERATED_DOMAIN)]:
+        for key in [k for k in remembered if domain_key(k.rpartition("@")[2]) == canonical]:
             del remembered[key]
     hooks.stash.get("link_fixture_prepared", {}).pop(origin, None)
-    hooks.stash["generated_domain_freed"] = True
+    if canonical == GENERATED_DOMAIN:
+        hooks.stash["generated_domain_freed"] = True
 
 
 @hooks.before("*")
@@ -3709,17 +3731,21 @@ def create_a_domain_that_is_not_there(transaction):
         or not name
     ):
         return
-    for domain in fixture_call(transaction, "GET", "/api/v1/admin/domains") or []:
-        if domain_key(domain.get("name") or "") != domain_key(name):
-            continue
-        if name == GENERATED_DOMAIN:
-            empty_the_generated_domain(transaction, domain["id"])
-        fixture_call(
-            transaction,
-            "DELETE",
-            f"/api/v1/admin/domains/{domain['id']:d}",
-            expect=PROBE_REFUSALS,
-        )
+    origin = origin_of(transaction)
+    domain = find_in_list(
+        origin, "/api/v1/admin/domains",
+        {"Authorization": "Bearer " + admin_token(origin)},
+        lambda hosted: domain_key(hosted.get("name") or "") == domain_key(name),
+    )
+    if domain is None:
+        return
+    empty_the_generated_domain(transaction, domain["id"], name)
+    fixture_call(
+        transaction,
+        "DELETE",
+        f"/api/v1/admin/domains/{domain['id']:d}",
+        expect=PROBE_REFUSALS,
+    )
 
 
 @hooks.before("importMessage")

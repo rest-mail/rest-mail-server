@@ -11,6 +11,7 @@ import threading
 import types
 import unittest
 from unittest.mock import patch
+from urllib.parse import parse_qs, urlsplit
 
 ROOT = Path(__file__).resolve().parents[2]
 # The name a before hook receives in every phase. Vertrag 0.42.0 adds "coverage: "
@@ -51,8 +52,16 @@ class FixtureAPI(BaseHTTPRequestHandler):
 
     def do_GET(self):
         self.server.calls.append("GET " + self.path)
-        if self.path == "/api/v1/admin/domains":
-            return self.answer(200, {"data": [{"id": 1, "name": "restmail.test"}, {"id": 18, "name": "example.org"}]})
+        parsed = urlsplit(self.path)
+        if parsed.path == "/api/v1/admin/domains":
+            query = parse_qs(parsed.query)
+            offset = int(query.get("offset", [0])[0])
+            limit = int(query.get("limit", [50])[0])
+            rows = self.server.domains[offset:offset + limit]
+            return self.answer(200, {
+                "data": rows,
+                "pagination": {"has_more": offset + len(rows) < len(self.server.domains)},
+            })
         self.answer(404)
 
     def do_POST(self):
@@ -68,6 +77,7 @@ class AdminDomainProbeHookTests(unittest.TestCase):
     def setUp(self):
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), FixtureAPI)
         self.server.calls, self.server.created = [], []
+        self.server.domains = [{"id": 1, "name": "restmail.test"}, {"id": 18, "name": "example.org"}]
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
         self.addCleanup(self.server.server_close)
         self.addCleanup(self.server.shutdown)
@@ -114,6 +124,16 @@ class AdminDomainProbeHookTests(unittest.TestCase):
         self.assertEqual(transaction["fullPath"], "/api/v1/admin/domains/30")
         self.assertEqual(transaction["request"]["body"], before)
         self.assertEqual(len(self.server.created), 1)
+
+    def test_admin_domain_beyond_the_first_page_stays_protected(self):
+        self.server.domains = [{"id": index + 100, "name": f"filler-{index}.example"} for index in range(220)]
+        self.server.domains.append({"id": 1, "name": "restmail.test"})
+        transaction = self.transaction("/api/v1/admin/domains/1", UPDATE_DOMAIN, {"sending_policy": "bulk"})
+        body = transaction["request"]["body"]
+        self.hooks.a_certificate_before_going_live(transaction)
+        self.assertEqual(transaction["fullPath"], "/api/v1/admin/domains/30")
+        self.assertEqual(transaction["request"]["body"], body)
+        self.assertIn("GET /api/v1/admin/domains?limit=200&offset=200", self.server.calls)
 
     def test_only_the_coverage_process_moves_a_request(self):
         # The hook sees the transaction's own name; only the result gets a

@@ -15,6 +15,9 @@ class IDNIdentityHooks(unittest.TestCase):
         self.patcher = patch.object(self.hooks, "admin_token", return_value="setup")
         self.patcher.start()
         self.addCleanup(self.patcher.stop)
+        two_factor = patch.object(self.hooks, "mfa_admin_token", return_value="two-factor")
+        two_factor.start()
+        self.addCleanup(two_factor.stop)
 
     def answer(self, data, has_more=False):
         body = {"data": data}
@@ -33,13 +36,19 @@ class IDNIdentityHooks(unittest.TestCase):
         transaction = self.transaction("createDomain", {"name": "例子.广告"})
         original = copy.deepcopy(transaction)
         replies = [self.answer([{"id": 18, "name": "xn--fsqu00a.xn--4rr70v"},
-                                {"id": 1, "name": "restmail.test"}]), self.answer(None)]
+                                {"id": 1, "name": "restmail.test"}]),
+                   self.answer([]), self.answer([]), self.answer(None)]
         with patch("urllib.request.urlopen", side_effect=replies) as call:
             self.hooks.create_a_domain_that_is_not_there(transaction)
         self.assertEqual(transaction, original)
         self.assertEqual(call.call_args_list[-1].args[0].full_url, ORIGIN + "/api/v1/admin/domains/18")
         self.assertEqual(call.call_args_list[-1].args[0].get_method(), "DELETE")
-        self.assertEqual(call.call_count, 2)
+        self.assertEqual(call.call_count, 4)
+        self.assertEqual(
+            [request.args[0].full_url for request in call.call_args_list[1:3]],
+            [ORIGIN + "/api/v1/admin/aliases?domain_id=18&limit=200&offset=0",
+             ORIGIN + "/api/v1/admin/mailboxes?domain_id=18&limit=200&offset=0"],
+        )
 
     def test_repeated_unicode_alias_removes_the_normalized_owned_row(self):
         source = "用户@例子.广告"
