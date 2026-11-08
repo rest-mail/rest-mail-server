@@ -27075,7 +27075,7 @@ components:
         unchanged_since:
           type: [integer, "null"]
           minimum: 1
-          description: A positive mod-sequence. Change the message only if its mod_seq is still at most this value (IMAP STORE UNCHANGEDSINCE, RFC 7162 §3.1.3); a higher mod_seq answers 409 message_modified and changes nothing. Zero and negative values are 422 validation_failed.
+          description: A positive mod-sequence. Change the message only if its mod_seq is still at most this value (IMAP STORE UNCHANGEDSINCE, RFC 7162 §3.1.3); a higher mod_seq answers 409 message_modified and changes nothing. Zero and negative values are 400 invalid_mod_sequence.
 
     SendMessageRequest:
       type: object

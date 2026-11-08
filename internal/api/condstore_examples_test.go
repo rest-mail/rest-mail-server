@@ -90,6 +90,52 @@ func TestCondstoreStoredExamples(t *testing.T) {
 		})
 	}
 
+	t.Run("updateMessage/other_binding_refusals_are_unchanged", func(t *testing.T) {
+		fixture := newCredentialFixture(t)
+		seed(fixture, 1)
+		var before models.Message
+		if err := fixture.db.First(&before, 1).Error; err != nil {
+			t.Fatal(err)
+		}
+		for _, scenario := range []struct {
+			name, path, body, field string
+			status                  int
+		}{
+			{"path", "/api/v1/messages/0", `{"unchanged_since":1}`, "id", http.StatusUnprocessableEntity},
+			{"folder", "/api/v1/messages/1", `{"folder":"","unchanged_since":1}`, "folder", http.StatusUnprocessableEntity},
+			{"condition_type", "/api/v1/messages/1", `{"unchanged_since":"invalid"}`, "unchanged_since", http.StatusUnprocessableEntity},
+			{"malformed_json", "/api/v1/messages/1", `{"unchanged_since":`, "", http.StatusBadRequest},
+		} {
+			t.Run(scenario.name, func(t *testing.T) {
+				response := fixture.do(http.MethodPatch, scenario.path, fixture.session, scenario.body)
+				if response.Code != scenario.status {
+					t.Fatalf("status %d, want %d: %s", response.Code, scenario.status, response.Body.String())
+				}
+				if scenario.field != "" {
+					var refusal struct {
+						Error struct {
+							Code    string
+							Details struct{ Fields map[string]string }
+						}
+					}
+					if err := json.Unmarshal(response.Body.Bytes(), &refusal); err != nil {
+						t.Fatal(err)
+					}
+					if refusal.Error.Code != "validation_failed" || refusal.Error.Details.Fields[scenario.field] == "" {
+						t.Fatalf("missing field refusal: %s", response.Body.String())
+					}
+				}
+				var after models.Message
+				if err := fixture.db.First(&after, 1).Error; err != nil {
+					t.Fatal(err)
+				}
+				if !reflect.DeepEqual(before, after) {
+					t.Fatalf("invalid request changed the stored message: before=%+v after=%+v", before, after)
+				}
+			})
+		}
+	})
+
 	t.Run("updateMessage/stale_condition_without_a_change", func(t *testing.T) {
 		fixture := newCredentialFixture(t)
 		seed(fixture, 1)

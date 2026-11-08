@@ -49981,16 +49981,11 @@
         "invalid": true
       },
       "response": {
-        "status": 422,
+        "status": 400,
         "body": {
           "error": {
-            "code": "validation_failed",
-            "message": "Request body failed validation",
-            "details": {
-              "fields": {
-                "unchanged_since": "must be a non-negative integer"
-              }
-            }
+            "code": "invalid_mod_sequence",
+            "message": "unchanged_since must be at least 1"
           }
         },
         "mediaType": "application/json"
@@ -50009,16 +50004,11 @@
         "invalid": true
       },
       "response": {
-        "status": 422,
+        "status": 400,
         "body": {
           "error": {
-            "code": "validation_failed",
-            "message": "Request body failed validation",
-            "details": {
-              "fields": {
-                "unchanged_since": "must be at least 1"
-              }
-            }
+            "code": "invalid_mod_sequence",
+            "message": "unchanged_since must be at least 1"
           }
         },
         "mediaType": "application/json"

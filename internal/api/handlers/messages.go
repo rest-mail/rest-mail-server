@@ -213,8 +213,9 @@ func (h *MessageHandler) RegisterMessages(rs endpoint.Routes) {
 		Errors:      []int{http.StatusForbidden, http.StatusNotFound}, Security: reads}, h.listMessageRecipients)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPatch, Path: "/api/v1/messages/{id}",
 		OperationID: "updateMessage", Summary: "Update message flags or move to a folder", Tags: tags,
-		Description: "With unchanged_since the change is made only while the message's mod_seq is at most that positive value, checked and written in one statement, as IMAP's STORE (UNCHANGEDSINCE) (RFC 7162 §3.1.3); otherwise it answers 409 message_modified and changes nothing. Without any flag or folder change the request only reads the message and cannot conflict. Zero and negative mod-sequences are 422 validation_failed. Read the message again for its current mod_seq.",
-		Errors:      []int{http.StatusForbidden, http.StatusNotFound, http.StatusConflict}, Security: writes}, h.updateMessage)
+		Description: "With unchanged_since the change is made only while the message's mod_seq is at most that positive value, checked and written in one statement, as IMAP's STORE (UNCHANGEDSINCE) (RFC 7162 §3.1.3); otherwise it answers 409 message_modified and changes nothing. Without any flag or folder change the request only reads the message and cannot conflict. Zero and negative mod-sequences are 400 invalid_mod_sequence. Read the message again for its current mod_seq.",
+		Errors:      []int{http.StatusForbidden, http.StatusNotFound, http.StatusConflict}, Security: writes,
+		RefuseBinding: refuseMessageModSequence}, h.updateMessage)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodDelete, Path: "/api/v1/messages/{id}",
 		OperationID: "deleteMessage", Summary: "Delete a message", Tags: tags, Status: http.StatusNoContent,
 		Errors: []int{http.StatusForbidden, http.StatusNotFound}, Security: writes}, h.deleteMessage)
@@ -374,6 +375,25 @@ func (h *MessageHandler) getMessage(r *http.Request, in messagePath) (Message, e
 		return Message{}, err
 	}
 	return messageOf(rows[0]), nil
+}
+
+func refuseMessageModSequence(r *http.Request, err error) error {
+	var refusal *endpoint.Error
+	if !errors.As(err, &refusal) || refusal.Status != http.StatusUnprocessableEntity || refusal.Fields["unchanged_since"] == "" {
+		return err
+	}
+	var body map[string]any
+	decoder := json.NewDecoder(r.Body)
+	decoder.UseNumber()
+	if decoder.Decode(&body) == nil {
+		if number, ok := body["unchanged_since"].(json.Number); ok {
+			value, _ := number.Float64()
+			if strings.HasPrefix(number.String(), "-") || value < 1 {
+				return endpoint.Refuse(http.StatusBadRequest, "invalid_mod_sequence", "unchanged_since must be at least 1")
+			}
+		}
+	}
+	return err
 }
 
 // updateMessage updates message flags or moves to a folder.
