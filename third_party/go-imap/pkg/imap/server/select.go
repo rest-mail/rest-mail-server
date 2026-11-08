@@ -152,8 +152,9 @@ func (s *Session) handleSelect(tag, args string, readOnly bool) {
 		s.tagged(tag, "OK", "[READ-ONLY] "+cmd+" completed")
 		return
 	}
-	// Keyword creation is required for imapsync to retain source keywords.
-	s.send("* OK [PERMANENTFLAGS (%s \\*)] Limited", available)
+	// \* (keyword creation) is offered only when the store keeps keywords:
+	// imapsync needs it to retain source keywords.
+	s.send("* OK [PERMANENTFLAGS (%s)] Limited", s.permanentFlags(available, messages))
 	s.tagged(tag, "OK", "[READ-WRITE] SELECT completed")
 }
 

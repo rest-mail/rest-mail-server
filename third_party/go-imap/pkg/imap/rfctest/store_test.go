@@ -16,7 +16,13 @@ type storeMailbox struct {
 	messages []imap.Message
 	updates  map[uint32][]imap.FlagUpdate
 	fail     bool
+	// keywordLimit is the most distinct keywords the folder keeps
+	// (imap.KeywordMailbox), 0 for none.
+	keywordLimit int
 }
+
+// KeywordLimit makes storeMailbox an imap.KeywordMailbox: Store keeps keywords.
+func (m *storeMailbox) KeywordLimit() int { return m.keywordLimit }
 
 func newStoreMailbox() *storeMailbox {
 	// RFC 3501 §6.4.6's example: message 2 is \Seen, 3 unflagged and 4
