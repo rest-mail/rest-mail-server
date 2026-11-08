@@ -458,7 +458,7 @@ def a_credential_of_its_own(transaction, parts):
     body = {"name": f"contract-own-credential-{time.time_ns()}", "password": mfa_admin.PASSWORD}
     if parts[5] != "credentials":
         body["permissions"] = [{"capability": "mail:read", "scope": "mailbox:" + mailbox_address(origin, parts[4])}]
-    time.sleep(1.1)  # making it spends the auth bucket, as the exchange does
+    rate_limits.pace(1.1)  # making it spends the auth bucket, as the exchange does
     request = urllib.request.Request(
         origin + "/".join(parts[:6]),
         data=json.dumps(body).encode(),
