@@ -198,6 +198,11 @@ func (h *DomainHandler) Register(rs endpoint.Routes, checks DomainRouteChecks) {
 		Description: domainDeletionDescription,
 		Status:      http.StatusNoContent, Errors: []int{http.StatusNotFound, http.StatusConflict},
 		Middleware: []endpoint.Middleware{checks.OnDomain(middleware.CapDomainsDelete)}}, h.delete)
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/admin/domains/{id}/restore",
+		OperationID: "restoreDomain", Summary: "Restore an archived domain", Tags: tags,
+		Description: "Restores the domain, its automatically provisioned empty postmaster and archived live configuration with their original identities. Requires installation-wide domains:write and a human two-factor session. Existing name conflicts return 409. Grants are restored through the audited grant-change mechanism, within the caller's current authority; eligible grants require a new activation.",
+		Errors:      []int{http.StatusNotFound, http.StatusConflict},
+		Middleware:  []endpoint.Middleware{checks.At(middleware.CapDomainsWrite)}}, h.restore)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/admin/domains/{id}/dns",
 		OperationID: "domainDNSCheck", Summary: "The DNS records a domain must publish, compared with a live lookup of each",
 		Tags: tags, Errors: missing,

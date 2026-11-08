@@ -576,9 +576,19 @@ grant-change locking serializes competing replacements. Creating a non-receiving
 account cannot shadow an alias in the last working postmaster route. A domain can only be
 activated once this address is configured, in addition to its valid certificate.
 
-The existing domain-deletion safeguard still refuses domains
-with accounts or aliases; atomic removal of a domain's last postmaster and its
-mail remains an owner policy question rather than an implicit destructive action.
+Domain deletion still refuses accounts or aliases, except for the automatically
+provisioned postmaster when it holds no mail (including trashed mail) and has no
+credentials of any kind. That empty postmaster, the domain and their live
+configuration are archived in the same transaction rather than permanently
+discarded. Historical reports and audit entries retain their original identities.
+Deleting postmaster on its own still returns `409 postmaster_required`.
+
+`POST /api/v1/admin/domains/{id}/restore` restores the archived domain and its
+postmaster with their original IDs, configuration, quota and receive grant. It
+requires installation-wide `domains:write` and a human two-factor session, and
+restores grants only within that administrator's current authority. Eligible
+grants need a new activation. A new live domain using the retired name blocks
+restoration with `409 domain_exists`; failed restores leave the archive intact.
 
 This supersedes the statement "REST Mail does not make it for you" in the
 customer-guide work in PR #1712; that branch is not changed by this implementation.

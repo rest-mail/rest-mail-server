@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"encoding/json"
 	"github.com/rest-mail/rest-mail-server/internal/examplepairs"
 	"os"
 	"testing"
@@ -36,6 +37,9 @@ func domainCleanupToken(f *domainCleanupFixture, mode string) string {
 func assertDomainCleanupResponse(t *testing.T, f *domainCleanupFixture, status int) {
 	t.Helper()
 	if status == 204 {
+		if !json.Valid(f.c.ledger.archived[7]) {
+			t.Fatal("204 without recoverable archived domain state")
+		}
 		if _, ok := f.c.ledger.domains[7]; ok {
 			t.Fatal("204 without domain deletion")
 		}
@@ -48,6 +52,9 @@ func assertDomainCleanupResponse(t *testing.T, f *domainCleanupFixture, status i
 			t.Fatal("204 without scoped grant removal")
 		}
 	} else {
+		if len(f.c.ledger.archived) != 0 {
+			t.Fatal("refusal archived domain state")
+		}
 		for table, rows := range f.c.ledger.live {
 			if rows[7] != 1 || rows[8] != 1 || rows[0] != 1 {
 				t.Fatalf("refusal left partial cleanup: %s %v", table, rows)

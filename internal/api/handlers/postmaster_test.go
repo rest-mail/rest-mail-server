@@ -31,6 +31,9 @@ import (
 func openPostmasterDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	database := openAliasUpdateScratchDB(t)
+	if err := database.AutoMigrate(&models.DomainRetirement{}); err != nil {
+		t.Fatal(err)
+	}
 	if err := database.AutoMigrate(append(accountModels, &models.Pipeline{}, &models.Certificate{}, &models.Message{}, &models.Attachment{}, &models.SieveScript{}, &models.DMARCReportReceived{}, &models.OutboundQueue{})...); err != nil {
 		t.Fatal(err)
 	}

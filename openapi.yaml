@@ -13007,7 +13007,7 @@ paths:
         - BearerAuth: [domains:delete]
         - APIKeyAuth: [domains:delete]
       summary: Delete a domain
-      description: "A domain containing accounts or aliases is refused with 409 domain_not_empty. An empty domain and its live pipelines, custom filters, sender rules, certificates, rotation keys, MTA-STS policy, relay credentials and suppressions are removed atomically. Grants on the domain and its mailbox scopes, including eligible activations, are removed through the audited grant-change mechanism; cached permissions are invalidated only after commit. Historical TLS reports, message traces, aggregate reports and audit entries are retained under their original identities and existing retention rules. A cleanup, audit or cancellation failure rolls the deletion back."
+      description: "A domain containing accounts or aliases is refused with 409 domain_not_empty, except for its automatically provisioned postmaster when it holds no mail and has no credentials. The domain, that postmaster and their live configuration are archived atomically for restoration with their original identities. Grants are removed through the audited grant-change mechanism; cached permissions are invalidated only after commit. Historical reports, message traces and audit entries are retained. A cleanup, archive, audit or cancellation failure rolls the deletion back. Deleting the last postmaster on its own still returns 409 postmaster_required."
       description: >
         Only a domain with no accounts and no aliases can be deleted: delete
         those first.
@@ -21709,6 +21709,215 @@ paths:
               "$ref": "#/components/headers/X-Content-Type-Options"
             "X-Frame-Options":
               "$ref": "#/components/headers/X-Frame-Options"
+  /api/v1/admin/domains/{id}/restore:
+    post:
+      summary: Restore an archived domain
+      description: Restores the domain, its automatically provisioned empty postmaster and archived live
+        configuration with their original identities. Requires installation-wide domains:write and a human
+        two-factor session. Existing name conflicts return 409. Grants are restored through the audited
+        grant-change mechanism, within the caller's current authority; eligible grants require a new activation.
+      operationId: restoreDomain
+      tags:
+      - 'Admin: Domains'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          minimum: 1
+          type: integer
+        example: 1
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Domain'
+          headers:
+            Content-Security-Policy:
+              $ref: '#/components/headers/Content-Security-Policy'
+            Referrer-Policy:
+              $ref: '#/components/headers/Referrer-Policy'
+            Strict-Transport-Security:
+              $ref: '#/components/headers/Strict-Transport-Security'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/X-Content-Type-Options'
+            X-Frame-Options:
+              $ref: '#/components/headers/X-Frame-Options'
+        '401':
+          description: 'unauthorized: no token, a bad one, or a session that has ended'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Content-Security-Policy:
+              $ref: '#/components/headers/Content-Security-Policy'
+            Referrer-Policy:
+              $ref: '#/components/headers/Referrer-Policy'
+            Strict-Transport-Security:
+              $ref: '#/components/headers/Strict-Transport-Security'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/X-Content-Type-Options'
+            X-Frame-Options:
+              $ref: '#/components/headers/X-Frame-Options'
+        '403':
+          description: 'Refused before the handler runs: setup_required (the account has not finished setup),
+            csrf_failed (a cookie session''s unsafe request without the CSRF header) or forbidden (the session
+            lacks the capability)'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Content-Security-Policy:
+              $ref: '#/components/headers/Content-Security-Policy'
+            Referrer-Policy:
+              $ref: '#/components/headers/Referrer-Policy'
+            Strict-Transport-Security:
+              $ref: '#/components/headers/Strict-Transport-Security'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/X-Content-Type-Options'
+            X-Frame-Options:
+              $ref: '#/components/headers/X-Frame-Options'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Content-Security-Policy:
+              $ref: '#/components/headers/Content-Security-Policy'
+            Referrer-Policy:
+              $ref: '#/components/headers/Referrer-Policy'
+            Strict-Transport-Security:
+              $ref: '#/components/headers/Strict-Transport-Security'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/X-Content-Type-Options'
+            X-Frame-Options:
+              $ref: '#/components/headers/X-Frame-Options'
+        '409':
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Content-Security-Policy:
+              $ref: '#/components/headers/Content-Security-Policy'
+            Referrer-Policy:
+              $ref: '#/components/headers/Referrer-Policy'
+            Strict-Transport-Security:
+              $ref: '#/components/headers/Strict-Transport-Security'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/X-Content-Type-Options'
+            X-Frame-Options:
+              $ref: '#/components/headers/X-Frame-Options'
+        '413':
+          description: 'request_too_large: the body is over the API''s size cap'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Content-Security-Policy:
+              $ref: '#/components/headers/Content-Security-Policy'
+            Referrer-Policy:
+              $ref: '#/components/headers/Referrer-Policy'
+            Strict-Transport-Security:
+              $ref: '#/components/headers/Strict-Transport-Security'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/X-Content-Type-Options'
+            X-Frame-Options:
+              $ref: '#/components/headers/X-Frame-Options'
+        '422':
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+          headers:
+            Content-Security-Policy:
+              $ref: '#/components/headers/Content-Security-Policy'
+            Referrer-Policy:
+              $ref: '#/components/headers/Referrer-Policy'
+            Strict-Transport-Security:
+              $ref: '#/components/headers/Strict-Transport-Security'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/X-Content-Type-Options'
+            X-Frame-Options:
+              $ref: '#/components/headers/X-Frame-Options'
+        '429':
+          description: 'rate_limited: refused API keys, throttled at login''s rate'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Content-Security-Policy:
+              $ref: '#/components/headers/Content-Security-Policy'
+            Referrer-Policy:
+              $ref: '#/components/headers/Referrer-Policy'
+            Retry-After:
+              description: Seconds until another request is allowed
+              required: true
+              schema:
+                type: integer
+            Strict-Transport-Security:
+              $ref: '#/components/headers/Strict-Transport-Security'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/X-Content-Type-Options'
+            X-Frame-Options:
+              $ref: '#/components/headers/X-Frame-Options'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Content-Security-Policy:
+              $ref: '#/components/headers/Content-Security-Policy'
+            Referrer-Policy:
+              $ref: '#/components/headers/Referrer-Policy'
+            Strict-Transport-Security:
+              $ref: '#/components/headers/Strict-Transport-Security'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/X-Content-Type-Options'
+            X-Frame-Options:
+              $ref: '#/components/headers/X-Frame-Options'
+        '503':
+          description: 'unavailable: the session or grants check could not be made'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Content-Security-Policy:
+              $ref: '#/components/headers/Content-Security-Policy'
+            Referrer-Policy:
+              $ref: '#/components/headers/Referrer-Policy'
+            Strict-Transport-Security:
+              $ref: '#/components/headers/Strict-Transport-Security'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/X-Content-Type-Options'
+            X-Frame-Options:
+              $ref: '#/components/headers/X-Frame-Options'
+      security:
+      - CookieAuth:
+        - domains:write
+      - BearerAuth:
+        - domains:write
+      - APIKeyAuth:
+        - domains:write
+
   /api/v1/admin/domains/{id}/dns:
     parameters:
       - $ref: "#/components/parameters/ResourceId"

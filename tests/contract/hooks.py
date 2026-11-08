@@ -773,6 +773,7 @@ def the_listing_holds_what_was_made(transaction):
 @hooks.before("updateDomain")
 @hooks.before("deleteDomain")
 @hooks.before("inviteAccount")
+@hooks.before("restoreDomain")
 @hooks.before("listAuditEntries")
 @hooks.before("verifyAuditLog")
 @hooks.before("releaseQuarantine")
@@ -1476,6 +1477,22 @@ def keep_the_created_domain(transaction):
         return
     hooks.stash["domain_id"] = data.get("id")
     hooks.stash["domain"] = data.get("name")
+
+
+@hooks.before("restoreDomain")
+def an_archived_domain_to_restore(transaction):
+    path, separator, query = transaction["fullPath"].partition("?")
+    matched = re.fullmatch(r"/api/v1/admin/domains/([1-9][0-9]*)/restore", path)
+    if not matched or not any(f" > {status}" in transaction.get("name", "") for status in (200, 403, 409)):
+        return
+    if asked_for_a_clean_start():
+        start_clean(transaction)
+    name = f"contract-restore-{time.time_ns()}.test"
+    domain = fixture_call(transaction, "POST", "/api/v1/admin/domains", {"name": name})
+    as_the_two_factor_admin_call(origin_of(transaction), "DELETE", f"/api/v1/admin/domains/{domain['id']:d}")
+    if " > 409" in transaction.get("name", ""):
+        fixture_call(transaction, "POST", "/api/v1/admin/domains", {"name": name})
+    transaction["fullPath"] = f"/api/v1/admin/domains/{domain['id']:d}/restore" + (separator + query if separator else "")
 
 
 @hooks.before("deleteDomain")
