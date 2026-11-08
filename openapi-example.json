@@ -45214,6 +45214,36 @@
         "mediaType": "application/json"
       }
     },
+    "internal_error": {
+      "summary": "The message transfer dependency fails",
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "source_folder": "INBOX",
+          "message_ids": [
+            2,
+            1
+          ],
+          "folder": "Archive"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "invalid_id": {
       "summary": "A zero account id is refused before the handler",
       "request": {
@@ -45272,6 +45302,30 @@
           "error": {
             "code": "mailbox_full",
             "message": "The account has insufficient quota for the copies"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "malformed_json": {
+      "summary": "Malformed JSON is refused before transferring messages",
+      "requires": {
+        "body": "malformed"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {},
+        "mediaType": "application/json",
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
           }
         },
         "mediaType": "application/json"
@@ -45367,6 +45421,156 @@
                 "message_ids": "must have at least 1 item"
               }
             }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "source_folder": "INBOX",
+          "message_ids": [
+            2,
+            1
+          ],
+          "folder": "Archive"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "source_folder": "INBOX",
+          "message_ids": [
+            2,
+            1
+          ],
+          "folder": "Archive"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "source_folder": "INBOX",
+          "message_ids": [
+            2,
+            1
+          ],
+          "folder": "Archive"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "setup_required": {
+      "summary": "The account has not completed setup",
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "source_folder": "INBOX",
+          "message_ids": [
+            2,
+            1
+          ],
+          "folder": "Archive"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "setup_required",
+            "message": "Finish setting up this account first: a new password and two-factor authentication"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "summary": "No session credential was sent",
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "source_folder": "INBOX",
+          "message_ids": [
+            2,
+            1
+          ],
+          "folder": "Archive"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
           }
         },
         "mediaType": "application/json"

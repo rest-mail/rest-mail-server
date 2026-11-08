@@ -76,8 +76,11 @@ func TestRev2KeywordsAreStoredAsPlainKeywords(t *testing.T) {
 			if _, status := session.command("c1", "COPY 1 Archive"); !strings.Contains(status, "OK") {
 				t.Fatal(status)
 			}
-			if flags := api.lastImport(t).Flags; !slices.Contains(flags, keyword) {
-				t.Fatalf("COPY lost %s: %v", keyword, flags)
+			api.mu.Lock()
+			copied := api.msgs[100]
+			api.mu.Unlock()
+			if copied == nil || copied.folder != "Archive" || !slices.Equal(copied.keywords, []string{keyword}) || copied.raw != "Subject: one\r\n\r\nbody\r\n" {
+				t.Fatalf("COPY did not preserve the plain keyword %s and source: %+v", keyword, copied)
 			}
 
 			if _, status := session.command("st2", "STORE 1 -FLAGS (%s)", keyword); !strings.Contains(status, "OK") {

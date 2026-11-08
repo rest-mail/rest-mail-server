@@ -72,6 +72,8 @@ type fakeAPI struct {
 	// API's transaction leaves every message as it was.
 	transfers      []apiclient.TransferRequest
 	transferFailAt int
+	transferStatus int
+	transferBody   interface{}
 }
 
 func newFakeAPI() *fakeAPI {
@@ -273,6 +275,13 @@ func (f *fakeAPI) transfer(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.transfers = append(f.transfers, req)
+	if f.transferStatus != 0 {
+		w.WriteHeader(f.transferStatus)
+		if f.transferBody != nil {
+			writeJSON(w, f.transferBody)
+		}
+		return
+	}
 	for i, id := range req.MessageIDs {
 		if f.transferFailAt == i+1 {
 			w.WriteHeader(http.StatusInternalServerError)
