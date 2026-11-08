@@ -103,6 +103,20 @@ func (c *testDataMutationConnection) ExecContext(ctx context.Context, q string, 
 		c.relevant(ctx, "RESET_BASELINE", nil)
 		return driver.RowsAffected(1), nil
 	}
+	switch strings.Join(strings.Fields(q), " ") {
+	case "ALTER TABLE test_reset_baseline ADD COLUMN IF NOT EXISTS domain_dkim jsonb":
+		c.relevant(ctx, "DKIM_BASELINE_SCHEMA", nil)
+		return driver.RowsAffected(0), nil
+	case "UPDATE test_reset_baseline SET domain_dkim = ( SELECT COALESCE(jsonb_agg(jsonb_build_object( 'id', id, 'dkim_selector', dkim_selector, 'dkim_private_key', dkim_private_key, 'dkim_created_at', dkim_created_at)), '[]'::jsonb) FROM domains WHERE id IN (SELECT domain_id FROM mailboxes WHERE id IN (SELECT unnest(account_ids) FROM test_reset_baseline)) ) WHERE domain_dkim IS NULL":
+		c.relevant(ctx, "DKIM_BASELINE_PINNED", nil)
+		return driver.RowsAffected(1), nil
+	case "UPDATE domains SET dkim_selector = baseline.dkim_selector, dkim_private_key = baseline.dkim_private_key, dkim_created_at = baseline.dkim_created_at FROM jsonb_to_recordset((SELECT domain_dkim FROM test_reset_baseline)) AS baseline(id bigint, dkim_selector text, dkim_private_key text, dkim_created_at timestamptz) WHERE domains.id = baseline.id":
+		c.relevant(ctx, "DKIM_BASELINE_RESTORED", nil)
+		if c.aborted {
+			return nil, &pgconn.PgError{Code: "25P02", Message: "fixture transaction aborted"}
+		}
+		return driver.RowsAffected(0), nil
+	}
 	if strings.HasPrefix(q, `INSERT INTO "audit_log"`) {
 		return driver.RowsAffected(1), nil
 	}
