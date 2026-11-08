@@ -98,6 +98,9 @@ class CertificateProbes(unittest.TestCase):
             domains = {
                 "/api/v1/admin/domains/1": {"id": 1, "name": "example.org"},
                 "/api/v1/admin/domains/7": {"id": 7, "name": "run.test"},
+                "/api/v1/admin/domains/900101": {
+                    "id": 900101, "name": "contract-certificate-probes.invalid",
+                },
             }
             if path in domains:
                 return Answer(json.dumps({"data": domains[path]}).encode())
@@ -156,7 +159,7 @@ class CertificateProbes(unittest.TestCase):
             self.assertNotEqual(body["cert_pem"], self.pinned["cert_pem"])
         self.assertFalse(self.stub.stash.get("probe_certificates_installed"))
 
-    def test_documented_certificates_are_expired_with_or_without_a_stashed_domain(self):
+    def test_documented_certificates_are_valid_and_isolated_with_or_without_a_stashed_domain(self):
         for stash in (
             {}, {"domain": "run.test"}, {"domain_id": 7}, {"domain": "run.test", "domain_id": 7}
         ):
@@ -171,13 +174,15 @@ class CertificateProbes(unittest.TestCase):
                             ["openssl", "x509", "-noout", "-checkend", "0"],
                             input=body["cert_pem"], capture_output=True, text=True,
                         )
-                        self.assertEqual(checked.returncode, 1, checked.stdout)
-                        self.assertEqual(body["domain_id"], stash.get("domain_id", 1))
+                        self.assertEqual(checked.returncode, 0, checked.stdout)
+                        self.assertEqual(body["domain_id"], stash.get("domain_id", 900101))
                         self.assertFalse(body["auto_renew"])
                         issuer = self.read_pem(
                             ["x509", "-noout", "-issuer", "-nameopt", "RFC2253"], body["cert_pem"]
                         ).strip().removeprefix("issuer=")
-                        domain_name = {1: "example.org", 7: "run.test"}[stash.get("domain_id", 1)]
+                        domain_name = {
+                            900101: "contract-certificate-probes.invalid", 7: "run.test",
+                        }[stash.get("domain_id", 900101)]
                         self.assertEqual(issuer, "CN=" + domain_name)
                         alternatives = self.read_pem(
                             ["x509", "-noout", "-ext", "subjectAltName"], body["cert_pem"]
@@ -186,6 +191,15 @@ class CertificateProbes(unittest.TestCase):
                             [item.strip() for item in alternatives.split(",")], ["DNS:" + domain_name],
                         )
                         self.assertNotEqual(issuer, self.hooks.PROBE_CERTIFICATE_ISSUER)
+                        for gateway_domain in ("restmail.test", "contract-recipient.test"):
+                            matched = subprocess.run(
+                                ["openssl", "x509", "-noout", "-checkhost", gateway_domain],
+                                input=body["cert_pem"], capture_output=True, text=True,
+                            )
+                            self.assertEqual(
+                                matched.stdout.splitlines()[-1],
+                                f"Hostname {gateway_domain} does NOT match certificate",
+                            )
                         self.assertEqual(
                             self.read_pem(["x509", "-noout", "-pubkey"], body["cert_pem"]),
                             self.read_pem(["pkey", "-pubout"], body["key_pem"]),

@@ -1426,8 +1426,12 @@ def a_self_signed_certificate(transaction):
         if sends[transaction["name"]] > DOCUMENTED_SENDS:
             hooks.stash["probe_certificates_installed"] = True
             return
-    if body.get("domain_id") == 1 and hooks.stash.get("domain_id") is not None:
-        body["domain_id"] = a_standing_domain_for_the_certificate(transaction)
+    if body.get("domain_id") == 1:
+        body["domain_id"] = (
+            a_standing_domain_for_the_certificate(transaction)
+            if hooks.stash.get("domain_id") is not None
+            else FIXTURE_PLAN["certificate_domain"]["id"]
+        )
     # The server refuses a certificate that does not name the domain it is
     # uploaded for (#1704), so it is made for that domain's own name.
     name = certificate_name_for(transaction, body["domain_id"])
