@@ -1,5 +1,5 @@
-"""The sender rule and alias hooks let each repeated probe create its entry
-afresh, without touching the request, and keep the linked entry alive.
+"""The sender rule, alias and contact hooks let each repeated probe create its
+entry afresh, without touching the request, and keep the linked entry alive.
 
 The domain stays for the whole run now that deleteDomain refuses one with
 accounts (#388), so nothing clears what an earlier probe made.
@@ -35,6 +35,7 @@ import hooks  # noqa: E402
 
 RULES = re.compile(r"^/api/v1/admin/domains/(\d+)/(allowlist|blocklist)(?:/(\d+))?$")
 ALIAS = re.compile(r"^/api/v1/admin/aliases/(\d+)$")
+CONTACTS = re.compile(r"^/api/v1/accounts/(\d+)/contacts(?:/(\d+))?$")
 
 
 class FixtureAPI(BaseHTTPRequestHandler):
@@ -77,6 +78,13 @@ class FixtureAPI(BaseHTTPRequestHandler):
             alias = dict(body, id=self.next_id(), domain_id=domain["id"])
             state["aliases"].append(alias)
             return self.answer(201, {"data": alias})
+        match = CONTACTS.match(url.path)
+        if match and not match[2]:
+            if int(match[1]) not in state["mailboxes"].values():
+                return self.answer(404)
+            contact = dict(self.read_body(), id=self.next_id(), mailbox_id=int(match[1]))
+            state["contacts"].append(contact)
+            return self.answer(201, {"data": contact})
         match = RULES.match(url.path)
         if match:
             rule = dict(self.read_body(), id=self.next_id(), domain_id=int(match[1]), list=match[2])
@@ -89,6 +97,16 @@ class FixtureAPI(BaseHTTPRequestHandler):
         url = urllib.parse.urlparse(self.path)
         if url.path == "/api/v1/admin/domains":
             return self.answer(200, {"data": state["domains"]})
+        if url.path == "/api/v1/admin/mailboxes":
+            return self.answer(200, {"data": [{"id": i, "address": a} for a, i in state["mailboxes"].items()]})
+        match = CONTACTS.match(url.path)
+        if match and not match[2]:
+            if int(match[1]) not in state["mailboxes"].values():
+                return self.answer(404)
+            search = urllib.parse.parse_qs(url.query).get("search", [""])[0]
+            return self.answer(200, {"data": [c for c in state["contacts"]
+                                              if c["mailbox_id"] == int(match[1]) and search in c["email"]],
+                                     "pagination": {"has_more": False}})
         if url.path == "/api/v1/admin/aliases":
             domain_id = int(urllib.parse.parse_qs(url.query)["domain_id"][0])
             return self.answer(200, {"data": [a for a in state["aliases"] if a["domain_id"] == domain_id]})
@@ -107,11 +125,12 @@ class FixtureAPI(BaseHTTPRequestHandler):
     def do_DELETE(self):
         state = self.server.state
         url = urllib.parse.urlparse(self.path)
-        match = RULES.match(url.path) or ALIAS.match(url.path)
+        match = RULES.match(url.path) or ALIAS.match(url.path) or CONTACTS.match(url.path)
         entry_id = int(match.groups()[-1])
         state["deleted"].append(entry_id)
         state["rules"] = [r for r in state["rules"] if r["id"] != entry_id]
         state["aliases"] = [a for a in state["aliases"] if a["id"] != entry_id]
+        state["contacts"] = [c for c in state["contacts"] if c["id"] != entry_id]
         self.answer(204)
 
 
@@ -123,6 +142,8 @@ class AdminAPITestCase(unittest.TestCase):
             "domains": [{"id": 1, "name": "restmail.test"}],
             "rules": [{"id": 2, "domain_id": 1, "list": "allowlist", "pattern": "@seeded.example"}],
             "aliases": [{"id": 3, "domain_id": 1, "source_address": "postmaster@restmail.test"}],
+            "mailboxes": {hooks.ADMIN: 1},
+            "contacts": [{"id": 4, "mailbox_id": 1, "email": "seeded@example.com"}],
             "deleted": [],
             "serial": 100,
         }
@@ -503,6 +524,136 @@ class AliasCleanStart(AdminAPITestCase):
         hooks.on_an_alias_of_its_own(transaction)
         hooks.remove_a_previous_alias_probe(self.transaction(self.PATH, []))
         self.start_clean.assert_not_called()
+
+class ContactProbes(AdminAPITestCase):
+    """Without a reset (the primary run and coverage), a create removes only the
+    repeated probe contacts it made, and the update and delete are left alone."""
+
+    PATH = "/api/v1/accounts/1/contacts"
+
+    def test_removes_only_its_own_repeated_probe(self):
+        body = {"email": "someone@example.com"}
+        self.probe(hooks.remove_a_previous_contact_probe, self.PATH, body)
+        self.created("contacts", mailbox_id=1, **body)
+        self.probe(hooks.remove_a_previous_contact_probe, self.PATH, body)
+        self.assertEqual(self.server.state["deleted"], [101])
+
+    def test_leaves_a_contact_it_did_not_make(self):
+        self.probe(hooks.remove_a_previous_contact_probe, self.PATH, {"email": "seeded@example.com"})
+        self.assertEqual(self.server.state["deleted"], [])
+
+    def test_leaves_malformed_requests_to_the_probe(self):
+        for path, body in ((self.PATH, {}), (self.PATH, []), ("/api/v1/accounts/0/contacts", {"email": "a@b.c"}),
+                           ("/api/v1/accounts/x/contacts", {"email": "a@b.c"}),
+                           ("/api/v1/accounts/2147483647/contacts", {"email": "a@b.c"})):
+            with self.subTest(path=path, body=body):
+                self.probe(hooks.remove_a_previous_contact_probe, path, body)
+        self.assertEqual(self.server.state["deleted"], [])
+
+    def test_the_update_and_the_delete_are_left_alone(self):
+        transaction = self.transaction(self.PATH + "/4")
+        transaction["name"] = "x > 200"
+        before = json.loads(json.dumps(transaction))
+        hooks.on_a_contact_of_its_own(transaction)
+        self.assertEqual(transaction, before)
+        self.assertEqual(self.server.state["serial"], 100)
+
+
+class ContactCleanStart(AdminAPITestCase):
+    """With CONTRACT_RESET_SEED=1 (the own-data phase), each contact exchange
+    resets first and is sent to the seeded account, which the reset seeds again
+    under another id; an update or delete gets a contact of its own there
+    (#1385)."""
+
+    LINKED = "/api/v1/accounts/1/"
+
+    def setUp(self):
+        super().setUp()
+        self.enterContext(mock.patch.dict(os.environ, {"CONTRACT_RESET_SEED": "1"}))
+        self.start_clean = self.enterContext(mock.patch.object(hooks, "start_clean", side_effect=self.reset))
+
+    def reset(self, transaction):
+        # What the reset (mocked here) leaves: the seeded account, under a new
+        # id, with no contacts.
+        self.server.state["mailboxes"] = {hooks.ADMIN: 9}
+        self.server.state["contacts"] = []
+
+    def sent(self, hook, path, name, body=None):
+        transaction = self.transaction(path, body)
+        transaction["name"] = name
+        hook(transaction)
+        self.start_clean.assert_called_once_with(transaction)
+        self.start_clean.reset_mock()
+        return transaction
+
+    def test_what_needs_nothing_made_is_sent_to_the_seeded_account(self):
+        for hook, path, name, body in (
+            (hooks.a_contact_operation_from_a_clean_start, "contacts?trust_level=auto", "x > 200", None),
+            (hooks.a_contact_operation_from_a_clean_start, "contacts/import", "x > 200", {"contacts": []}),
+            (hooks.a_contact_operation_from_a_clean_start, "contacts/suggest?q=example", "x > 200", None),
+            (hooks.a_contact_operation_from_a_clean_start, "contact-reply-time", "x > 422", {"hours": -1}),
+            (hooks.remove_a_previous_contact_probe, "contacts", "x > 201", {"email": "someone@example.com"}),
+            (hooks.block_a_new_and_an_existing_sender, "contacts/block", "x > 201 > y", {"email": "new@example.com"}),
+        ):
+            with self.subTest(path=path):
+                transaction = self.sent(hook, self.LINKED + path, name, body)
+                self.assertEqual(transaction["fullPath"], "/api/v1/accounts/9/" + path)
+                self.assertEqual(json.loads(transaction["request"]["body"]), body)
+        self.assertEqual(self.server.state["deleted"], [])
+
+    def test_an_existing_sender_is_made_on_the_seeded_account(self):
+        self.sent(hooks.block_a_new_and_an_existing_sender, self.LINKED + "contacts/block",
+                  "x > 200 > y", {"email": "existing@example.com"})
+        self.assertEqual([(c["mailbox_id"], c["email"]) for c in self.server.state["contacts"]],
+                         [(9, "existing@example.com")])
+
+    def test_an_update_or_delete_reaches_a_contact_of_its_own(self):
+        for name in ("x > 200", "x > 204", "x > 422"):
+            with self.subTest(name=name):
+                transaction = self.sent(hooks.on_a_contact_of_its_own, self.LINKED + "contacts/1?keep=yes", name)
+                own = self.server.state["contacts"][-1]
+                self.assertEqual((own["mailbox_id"], own["email"]), (9, hooks.OWN_CONTACT["email"]))
+                self.assertEqual(transaction["fullPath"], "/api/v1/accounts/9/contacts/%d?keep=yes" % own["id"])
+
+    def test_refusals_reset_and_keep_their_ids(self):
+        for path, name, sent in (
+            (self.LINKED + "contacts/2147483647", "x > 404", "/api/v1/accounts/9/contacts/2147483647"),
+            (self.LINKED + "contacts/1", "x > 404", "/api/v1/accounts/9/contacts/1"),
+            (self.LINKED + "contacts/0", "x > 422", "/api/v1/accounts/9/contacts/0"),
+            ("/api/v1/accounts/0/contacts/41", "x > 422", "/api/v1/accounts/0/contacts/41"),
+            ("/api/v1/accounts/x/contacts/1", "x > 422", "/api/v1/accounts/x/contacts/1"),
+            ("/api/v1/accounts/2147483647/contacts/1", "x > 404", "/api/v1/accounts/2147483647/contacts/1"),
+        ):
+            with self.subTest(path=path):
+                transaction = self.sent(hooks.on_a_contact_of_its_own, path, name)
+                self.assertEqual(transaction["fullPath"], sent)
+        for path in ("/api/v1/accounts/0/contacts", "/api/v1/accounts/2147483647/contact-reply-time"):
+            with self.subTest(path=path):
+                transaction = self.sent(hooks.a_contact_operation_from_a_clean_start, path, "x > 404")
+                self.assertEqual(transaction["fullPath"], path)
+        self.assertEqual(self.server.state["contacts"], [])
+
+    def test_a_create_starts_with_nothing_claimed(self):
+        vertrag_hooks.stash["created_contact_probes"] = {"earlier": True}
+        self.start_clean.side_effect = lambda _: (self.reset(_), vertrag_hooks.stash.clear())
+        self.sent(hooks.remove_a_previous_contact_probe, self.LINKED + "contacts", "x > 201",
+                  {"email": "someone@example.com"})
+        self.assertEqual(list(vertrag_hooks.stash["created_contact_probes"]),
+                         ["http://127.0.0.1:%d/api/v1/accounts/9/contacts\nsomeone@example.com"
+                          % self.server.server_port])
+
+    def test_without_a_reset_none_is_asked_for(self):
+        os.environ.pop("CONTRACT_RESET_SEED")
+        for hook, path, body in ((hooks.a_contact_operation_from_a_clean_start, "contacts", None),
+                                 (hooks.remove_a_previous_contact_probe, "contacts", []),
+                                 (hooks.block_a_new_and_an_existing_sender, "contacts/block", []),
+                                 (hooks.on_a_contact_of_its_own, "contacts/4", None)):
+            transaction = self.transaction(self.LINKED + path, body)
+            transaction["name"] = "x > 200"
+            hook(transaction)
+            self.assertEqual(transaction["fullPath"], self.LINKED + path)
+        self.start_clean.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()
