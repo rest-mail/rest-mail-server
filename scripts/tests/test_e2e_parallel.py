@@ -99,7 +99,7 @@ class IndependentReports(unittest.TestCase):
         self.suite = yaml.safe_load((workflows / "e2e-suite.yml").read_text())["jobs"]
 
     def test_reports_run_beside_the_gate_but_do_not_decide_it(self):
-        self.assertEqual(self.jobs["e2e-reports"]["needs"], "changes")
+        self.assertEqual(self.jobs["e2e-reports"]["needs"], ["preflight", "changes"])
         self.assertEqual(self.jobs["e2e-reports"]["with"]["contract-phases"], "reports")
         for job in ("e2e", "e2e-run", "e2e-proofs", "e2e-live"):
             self.assertNotIn("e2e-reports", self.jobs[job].get("needs", []))
@@ -117,7 +117,7 @@ class IndependentReports(unittest.TestCase):
 
     def test_live_runs_independently_and_the_proof_union_still_gates(self):
         live = self.jobs["e2e-live"]
-        self.assertEqual(live["needs"], "changes")
+        self.assertEqual(live["needs"], ["preflight", "changes"])
         self.assertEqual(live["with"]["contract-phases"], "live")
         self.assertIn("e2e-live", self.jobs["e2e-proofs"]["needs"])
         self.assertTrue(self.jobs["e2e-proofs"]["if"].startswith("always()"))
@@ -137,7 +137,7 @@ class IndependentContractPairs(unittest.TestCase):
 
     def test_pairs_run_beside_the_topology_and_both_gate_the_union(self):
         pairs = self.jobs["e2e-contract-pairs"]
-        self.assertEqual(pairs["needs"], "changes")
+        self.assertEqual(pairs["needs"], ["preflight", "changes"])
         self.assertEqual(pairs["with"]["contract-phases"], "pairs")
         self.assertEqual(pairs["uses"], self.jobs["e2e-run"]["uses"])
         for name in ("e2e", "e2e-proofs"):
@@ -160,7 +160,7 @@ class IndependentContractPairs(unittest.TestCase):
                 with self.subTest(event=event, result=result):
                     execution = subprocess.run(
                         ["bash", "-c", script], capture_output=True, text=True,
-                        env={**os.environ, "CHANGES_RESULT": "success", "RUN_E2E": "true",
+                        env={**os.environ, "PREFLIGHT_RESULT": "success", "CHANGES_RESULT": "success", "RUN_E2E": "true",
                              "E2E_RESULT": "success", "PAIRS_RESULT": result,
                              "PROOFS_RESULT": "success", "EVENT_NAME": event},
                     )
