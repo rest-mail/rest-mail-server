@@ -44,6 +44,7 @@ LINKABLE_PASSWORD = "password123"
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import mfa_admin  # noqa: E402
 import rate_limits
+import owner_key  # noqa: E402
 import reset_seed
 from identities import address_key, domain_key
 from api_keys_live import totp  # noqa: E402
@@ -619,7 +620,9 @@ def pace_auth_requests(transaction):
 def pace_owner_requests(transaction):
     # The owner operations share a bucket of their own at login's rate (and
     # describeServer's). The topology lists no owner or status keys, so the
-    # run sends their refusals; coverage repeats them, so pace each.
+    # gate sends their refusals; coverage repeats them, so pace each. The
+    # authorization phase registers a throwaway owner key and signs each
+    # success with it (sign_the_status_with_the_runs_owner_key and below).
     rate_limits.pace(1.1)
 
 
@@ -3169,6 +3172,76 @@ def recover_an_account_of_its_own(transaction):
     })
     hooks.set_json(transaction, body)
     # Making the account spent the auth bucket pace_auth_requests waited for.
+    rate_limits.pace(1.1)
+
+
+# The password resetAdmin's reset example sets on the account made for it. Not
+# a secret: it proves only a disposable account (an_owner_reset_target).
+OWNER_RESET_PASSWORD = "contract-owner-reset-account"
+
+
+def an_owner_reset_target(origin):
+    """A fresh account with no credentials, for one owner reset: the examples
+    name the run's own admin, whose reset would end its sessions."""
+    address = fresh_address("owner-reset")
+    a_new_account(origin, address, "Owner reset")
+    return address
+
+
+@hooks.before("ownerStatus")
+def sign_the_status_with_the_runs_owner_key(transaction):
+    # The status example (state owner_key) signs a placeholder challenge with a
+    # placeholder key. Each request expecting the 200, every principal's in the
+    # authorization phase, gets a fresh challenge signed by the owner key the
+    # run registered (owner_key.py). The principal's credential is untouched;
+    # refusals keep their documented bodies.
+    if str(transaction.get("expected", {}).get("statusCode", "")) != "200":
+        return
+    body = hooks.get_json(transaction)
+    if not isinstance(body, dict):
+        return
+    body.update(owner_key.signed_answer(origin_of(transaction), "status"))
+    hooks.set_json(transaction, body)
+    # The challenge spent the owner bucket pace_owner_requests waited for.
+    rate_limits.pace(1.1)
+
+
+@hooks.before("ownerToken")
+def mint_for_an_account_of_its_own(transaction):
+    # The minted example names the run's admin. Each request expecting the 200
+    # names an account made for it instead, signed by the run's owner key, so
+    # no token for one of the run's own accounts is ever minted.
+    if str(transaction.get("expected", {}).get("statusCode", "")) != "200":
+        return
+    body = hooks.get_json(transaction)
+    if not isinstance(body, dict):
+        return
+    origin = origin_of(transaction)
+    address = an_owner_reset_target(origin)
+    body.update({"purpose": "reset-admin", "address": address,
+                 **owner_key.signed_answer(origin, "reset-admin", address)})
+    hooks.set_json(transaction, body)
+    rate_limits.pace(1.1)
+
+
+@hooks.before("resetAdmin")
+def reset_an_account_of_its_own(transaction):
+    # The reset example's token is a placeholder, and a real reset of the run's
+    # admin would end its sessions and strip its second factor. Each request
+    # expecting the 200 redeems a token the run's owner key minted for an
+    # account made for it alone. The token is one-time: the reset spends it.
+    if str(transaction.get("expected", {}).get("statusCode", "")) != "200":
+        return
+    body = hooks.get_json(transaction)
+    if not isinstance(body, dict):
+        return
+    origin = origin_of(transaction)
+    address = an_owner_reset_target(origin)
+    body.update({"token": owner_key.reset_token(origin, address),
+                 "password": OWNER_RESET_PASSWORD, "client": "native"})
+    hooks.set_json(transaction, body)
+    # Making the account may have signed the two-factor admin in, which spends
+    # the auth bucket pace_auth_requests waited for.
     rate_limits.pace(1.1)
 
 

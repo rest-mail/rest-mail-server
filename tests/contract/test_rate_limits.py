@@ -31,12 +31,12 @@ class ContractRateLimits(unittest.TestCase):
 
     def test_all_hook_throttle_waits_use_the_same_pacing_policy(self):
         source = (ROOT / "tests/contract/hooks.py").read_text()
-        self.assertEqual(source.count("rate_limits.pace("), 7)
+        self.assertEqual(source.count("rate_limits.pace("), 10)
         self.assertNotIn("time.sleep(1.1)", source)
         self.assertNotIn("time.sleep(0.55)", source)
         self.assertIn("time.sleep(int(retry_after))", source)
         self.assertIn("time.sleep(1)", source)
-        for name in ("mfa_admin.py", "api_keys_live.py"):
+        for name in ("mfa_admin.py", "api_keys_live.py", "owner_key.py"):
             helper = (ROOT / "tests/contract" / name).read_text()
             self.assertIn("rate_limits.pace(1.1)", helper)
             self.assertNotIn("time.sleep(1.1)", helper)

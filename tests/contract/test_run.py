@@ -404,7 +404,11 @@ class ContractCommand(unittest.TestCase):
                 # The gate's examples and coverage processes have consumed
                 # the held queue entries the authorization run's links need.
                 "chore:test:contract-fixtures",
+                # A throwaway owner key signs the owner-recovery successes
+                # for the authorization phase only, and is revoked after it.
+                "chore:test:contract-owner-key -- add",
                 "run:authorization --tag Domains",
+                "chore:test:contract-owner-key -- revoke",
                 "chore:test:contract-domain-tenants",
                 "run:ownership --tag Domains",
                 "chore:api:coverage:report",
