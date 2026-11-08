@@ -148,7 +148,6 @@ SURVIVES_A_RESET = (
     "setup_admin_tokens",
     "mfa_admin_sessions",
     "clean_starts",
-    "linked_domain_ids",
 )
 
 
@@ -192,7 +191,7 @@ def to_domain(transaction, domain_id):
 def the_domain_since_the_reset(transaction):
     """The domain that stands in for the one createDomain made, once a reset has
     removed it, made once per reset. It is kept where that domain was, so what
-    reads it (a pipeline's domain_id, the policy file's Host) keeps working."""
+    reads it (a pipeline's domain_id) keeps working."""
     if hooks.stash.get("domain_id") is None:
         domain = fixture_call(
             transaction,
@@ -202,7 +201,6 @@ def the_domain_since_the_reset(transaction):
         )
         hooks.stash["domain_id"] = domain["id"]
         hooks.stash["domain"] = domain["name"]
-        hooks.stash.setdefault("linked_domain_ids", []).append(str(domain["id"]))
     return hooks.stash["domain_id"]
 
 
@@ -211,20 +209,27 @@ def the_domain_since_the_reset(transaction):
 @hooks.before("listSuppressions")
 @hooks.before("stopDomainOutbound")
 @hooks.before("restartDomainOutbound")
-def a_live_domain_for_the_link(transaction):
-    # These follow createDomain's link and have not moved. A reset before a moved
-    # exchange removes the domain the link names, so after one each gets a domain
-    # that exists. Other ids (the refusals' 0, 1 and 2147483647) stay as they are,
-    # and a run with no reset, which is the primary run, changes nothing here.
+def a_domain_setting_of_its_own(transaction):
+    # The domain operations that follow createDomain's link, moved to a clean
+    # start: each exchange, refusals included, resets and seeds first. The
+    # documented success is sent to a domain of its own, since the domain the
+    # link names is gone after the reset. Refusals keep their ids: 0,
+    # not-an-integer and missing's 2147483647 need nothing to exist, and the
+    # relay's 422s name the seeded restmail.test, which the reset keeps as id 1.
+    # A run with no reset changes nothing here.
     # entrypoint.py registers this for setDomainRelay as well: this file holds that
     # operation to having no hook of its own that could change a probe's body.
-    linked = hooks.stash.get("linked_domain_ids")
-    if not hooks.stash.get("clean_starts") or not linked:
+    if not asked_for_a_clean_start():
         return
+    start_clean(transaction)
     parts = transaction["fullPath"].partition("?")[0].split("/")
-    if len(parts) < 6 or parts[5] not in linked:
-        return
-    to_domain(transaction, the_domain_since_the_reset(transaction))
+    if (
+        " > 200" in transaction.get("name", "")
+        and len(parts) > 5
+        and positive_id(parts[5])
+        and parts[5] != "2147483647"
+    ):
+        to_domain(transaction, a_domain_of_its_own(transaction))
 
 
 def a_signing_key(transaction, domain_id):
@@ -989,7 +994,6 @@ def keep_the_created_domain(transaction):
         return
     hooks.stash["domain_id"] = data.get("id")
     hooks.stash["domain"] = data.get("name")
-    hooks.stash.setdefault("linked_domain_ids", []).append(str(data.get("id")))
 
 
 @hooks.before("deleteDomain")
@@ -998,6 +1002,11 @@ def delete_only_the_created_domain(transaction):
     # server refuses it while it has accounts (409, #388), which a valid probe
     # counts as a finding, and before that refusal the probe deleted it and
     # every later send failed. Malformed ids are sent: they test the 400.
+    # Moved to a clean start: every exchange, refusals included, resets first.
+    # The documented delete makes the domain it deletes below, and has_accounts
+    # names the seeded fixture domain, which the reset keeps.
+    if asked_for_a_clean_start():
+        start_clean(transaction)
     path, _, query = transaction["fullPath"].partition("?")
     domains, domain_id = path.rstrip("/").rsplit("/", 1)
     if not domain_id.isdecimal() or int(domain_id) < 1:
@@ -1748,15 +1757,28 @@ def a_domain_with_the_found_policy(transaction):
 def ask_for_the_created_domains_policy(transaction):
     # Served at mta-sts.<domain>: the domain is the Host's, not a parameter.
     # found (200) needs an active policy (x-requires state active_policy, which
-    # vertrag.yml provides): the request asks for a domain that has one. Every
-    # other request asks for the domain the run created, as before.
+    # vertrag.yml provides), and its response is FOUND_POLICY's file byte for byte.
+    if asked_for_a_clean_start():
+        # Moved to a clean start: reset, and ask for a domain of its own with the
+        # found policy, active for the 200 and inactive for the 404 (the
+        # documented inactive_policy).
+        start_clean(transaction)
+        domain_id = a_domain_of_its_own(transaction)
+        fixture_call(
+            transaction,
+            "PUT",
+            f"/api/v1/admin/domains/{domain_id:d}/mta-sts",
+            dict(FOUND_POLICY, active=" > 200" in transaction.get("name", "")),
+        )
+        transaction["request"]["headers"]["Host"] = "mta-sts." + OWN_DOMAIN
+        return
+    # With no reset asked for, the found request asks for a domain that has the
+    # policy. Every other request asks for the domain the run created, as before.
     if " > 200" in transaction.get("name", ""):
         transaction["request"]["headers"]["Host"] = (
             "mta-sts." + a_domain_with_the_found_policy(transaction)
         )
         return
-    if hooks.stash.get("clean_starts"):
-        the_domain_since_the_reset(transaction)
     transaction["request"]["headers"]["Host"] = "mta-sts." + (
         hooks.stash.get("domain") or ""
     )
@@ -4153,6 +4175,10 @@ def create_a_domain_that_is_not_there(transaction):
     # repeats it after the examples process made it: a leftover domain of the
     # same name is removed first. Probes whose name is not a string, and
     # refusals, reach the handler unchanged.
+    # Moved to a clean start: every exchange, refusals included, resets first,
+    # so the documented create meets no leftover after one.
+    if asked_for_a_clean_start():
+        start_clean(transaction)
     body = hooks.get_json(transaction)
     name = body.get("name") if isinstance(body, dict) else None
     if (

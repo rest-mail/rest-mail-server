@@ -117,9 +117,7 @@ class OwnDataHooks(unittest.TestCase):
         }
 
     def the_run_created_its_domain(self):
-        self.stub.stash.update(
-            domain_id=3, domain="created.test", linked_domain_ids=["3"]
-        )
+        self.stub.stash.update(domain_id=3, domain="created.test")
 
     def resets(self):
         return sum(call[1] == "/api/v1/admin/test/reset" for call in self.server.calls)
@@ -189,30 +187,37 @@ class OwnDataHooks(unittest.TestCase):
             "deleteDKIMKey": "a_dkim_domain_of_its_own",
             "getDKIMRotation": "a_dkim_domain_of_its_own",
             "setDKIMRotation": "a_dkim_domain_of_its_own",
+            "createDomain": "create_a_domain_that_is_not_there",
+            "deleteDomain": "delete_only_the_created_domain",
+            "domainDNSCheck": "a_domain_setting_of_its_own",
+            "getDomainRelay": "a_domain_setting_of_its_own",
+            "listSuppressions": "a_domain_setting_of_its_own",
+            "stopDomainOutbound": "a_domain_setting_of_its_own",
+            "restartDomainOutbound": "a_domain_setting_of_its_own",
+            "mtaStsPolicyFile": "ask_for_the_created_domains_policy",
         }
-        self.assertEqual(set(hooks), set(own_data.MOVED))
+        # entrypoint.py registers setDomainRelay's (below).
+        self.assertEqual(set(hooks) | {"setDomainRelay"}, set(own_data.MOVED))
         for operation, hook in hooks.items():
             self.assertIn((operation, hook), self.registered)
 
-    def test_each_unmoved_follower_gets_a_live_domain(self):
-        moved_itself = set(own_data.MOVED) | {
-            "createDomain",
-            "deleteDomain",
-            "mtaStsPolicyFile",
-        }
-        followers = set(own_data.FOLLOWS_THE_CREATED_DOMAIN) - moved_itself
-        self.assertEqual(
-            followers - {"setDomainRelay"},
-            {o for o, h in self.registered if h == "a_live_domain_for_the_link"},
-        )
+    def test_the_domain_settings_reset_in_their_first_hook(self):
         self.assertIn(
-            'before("setDomainRelay")(shared["a_live_domain_for_the_link"])',
+            'before("setDomainRelay")(shared["a_domain_setting_of_its_own"])',
             (ROOT / "tests/contract/entrypoint.py").read_text(),
         )
+        self.assertNotIn(
+            "setDomainRelay", {o for o, _ in self.registered}
+        )
         # It runs first, so later hooks of the operation read the path it leaves.
-        for operation in followers - {"setDomainRelay"}:
+        for operation in (
+            "domainDNSCheck", "getDomainRelay", "listSuppressions",
+            "stopDomainOutbound", "restartDomainOutbound",
+        ):
             names = [h for o, h in self.registered if o == operation]
-            self.assertEqual(names[0], "a_live_domain_for_the_link", operation)
+            self.assertEqual(names[0], "a_domain_setting_of_its_own", operation)
+        self.assertFalse(hasattr(self.hooks, "a_live_domain_for_the_link"))
+        self.assertNotIn("linked_domain_ids", self.hooks.SURVIVES_A_RESET)
 
     def test_without_the_switch_nothing_resets_or_moves(self):
         self.the_run_created_its_domain()
@@ -223,8 +228,12 @@ class OwnDataHooks(unittest.TestCase):
                 self.transaction(200, "/api/v1/admin/domains/3"),
             ),
             (
-                self.hooks.a_live_domain_for_the_link,
+                self.hooks.a_domain_setting_of_its_own,
                 self.transaction(200, "/api/v1/admin/domains/3/relay"),
+            ),
+            (
+                self.hooks.delete_only_the_created_domain,
+                self.transaction(422, "/api/v1/admin/domains/0"),
             ),
         )
         for hook, transaction in cases:
@@ -337,44 +346,69 @@ class OwnDataHooks(unittest.TestCase):
             self.hooks.the_stale_key_example_on_a_live_domain(transaction)
             self.assertEqual(transaction["fullPath"], path)
 
-    def test_a_link_gets_one_stand_in_per_reset_and_other_ids_stay(self):
+    def test_each_domain_setting_success_gets_a_domain_of_its_own(self):
         self.clean_starts_on()
         self.the_run_created_its_domain()
-        self.hooks.get_a_domain_of_its_own(
-            self.transaction(422, "/api/v1/admin/domains/0")
-        )
         for path in (
             "/api/v1/admin/domains/3/relay",
             "/api/v1/admin/domains/3/dns?x=1",
-            "/api/v1/admin/domains/3/suppressions",
+            "/api/v1/admin/domains/1/suppressions",
+            "/api/v1/admin/domains/3/outbound-stop?keep=yes",
         ):
             transaction = self.transaction(200, path)
-            self.hooks.a_live_domain_for_the_link(transaction)
-            self.assertEqual(transaction["fullPath"], path.replace("/3", "/4"))
-        self.assertEqual(
-            sum(call[1] == "/api/v1/admin/domains" for call in self.server.calls), 1
-        )
-        self.assertEqual(self.stub.stash["domain_id"], 4)
-        self.assertEqual(self.stub.stash["domain"], "contract-linked-domain.test")
-        for path in (
-            "/api/v1/admin/domains/1/relay",
-            "/api/v1/admin/domains/0/dns",
-            "/api/v1/admin/domains/not-an-integer/relay",
-            "/api/v1/admin/domains/2147483647/relay",
+            headers = copy.deepcopy(transaction["request"])
+            self.hooks.a_domain_setting_of_its_own(transaction)
+            # The reset left the seed's three domains, so the new one is 4.
+            self.assertEqual(
+                transaction["fullPath"], re.sub(r"/[13]/", "/4/", path, count=1)
+            )
+            self.assertEqual(transaction["request"], headers)
+            self.assertEqual(self.server.domains[4], self.hooks.OWN_DOMAIN)
+            self.assertNotIn("domain_id", self.stub.stash)
+        self.assertEqual(self.resets(), 4)
+
+    def test_domain_setting_refusals_reset_and_keep_their_ids(self):
+        self.clean_starts_on()
+        for status, path in (
+            (422, "/api/v1/admin/domains/1/relay"),
+            (422, "/api/v1/admin/domains/0/dns"),
+            (422, "/api/v1/admin/domains/not-an-integer/suppressions"),
+            (404, "/api/v1/admin/domains/2147483647/relay"),
+            (422, "/api/v1/admin/domains/0/outbound-stop"),
+            (404, "/api/v1/admin/domains/2147483647/outbound-stop"),
         ):
-            transaction = self.transaction(422, path)
-            self.hooks.a_live_domain_for_the_link(transaction)
-            self.assertEqual(transaction["fullPath"], path)
-        # The next reset removes the stand-in too. A link that carried its id, as
-        # $request.path does, gets the next one, whatever id that has.
-        self.hooks.get_a_domain_of_its_own(
-            self.transaction(422, "/api/v1/admin/domains/0")
+            transaction = self.transaction(status, path)
+            before = copy.deepcopy(transaction)
+            self.hooks.a_domain_setting_of_its_own(transaction)
+            self.assertEqual(transaction, before)
+        self.assertEqual(self.resets(), 6)
+        self.assertFalse(
+            [call for call in self.server.calls if call[1] == "/api/v1/admin/domains"]
         )
-        self.server.serial = 8
-        transaction = self.transaction(200, "/api/v1/admin/domains/4/relay")
-        self.hooks.a_live_domain_for_the_link(transaction)
-        self.assertEqual(transaction["fullPath"], "/api/v1/admin/domains/9/relay")
-        self.assertNotIn(4, self.server.domains)
+
+    def test_the_create_and_the_delete_start_clean(self):
+        self.clean_starts_on()
+        self.the_run_created_its_domain()
+        create = self.transaction(422, "/api/v1/admin/domains")
+        create["request"]["body"] = json.dumps({"name": ""})
+        before = copy.deepcopy(create)
+        self.hooks.create_a_domain_that_is_not_there(create)
+        self.assertEqual(create, before)
+        self.assertEqual(set(self.stub.stash), {"clean_starts", "setup_admin_tokens"})
+        for status, path in (
+            (422, "/api/v1/admin/domains/0"),
+            (404, "/api/v1/admin/domains/2147483647"),
+        ):
+            transaction = self.transaction(status, path)
+            self.hooks.delete_only_the_created_domain(transaction)
+            self.assertEqual(transaction["fullPath"], path)
+            self.assertNotIn("skip", transaction)
+        delete = self.transaction(204, "/api/v1/admin/domains/1", name="/x > Delete")
+        delete["name"] = delete["name"].replace(" > application/json", "")
+        self.hooks.delete_only_the_created_domain(delete)
+        self.assertEqual(delete["fullPath"], "/api/v1/admin/domains/4")
+        self.assertTrue(self.server.domains[4].startswith("contract-delete-"))
+        self.assertEqual(self.resets(), 4)
 
     def test_each_dkim_exchange_resets_and_gets_a_domain_of_its_own(self):
         self.clean_starts_on()
@@ -426,25 +460,40 @@ class OwnDataHooks(unittest.TestCase):
         self.assertEqual(transaction, before)
         self.assertEqual(self.server.calls, [])
 
-    def test_the_policy_file_asks_for_a_domain_that_exists_after_a_reset(self):
+    def test_the_policy_file_asks_for_a_domain_of_its_own_after_a_reset(self):
         self.clean_starts_on()
         self.the_run_created_its_domain()
-        self.hooks.get_a_domain_of_its_own(
-            self.transaction(422, "/api/v1/admin/domains/0")
-        )
+        for status, active in ((404, False), (200, True)):
+            transaction = self.transaction(status, "/.well-known/mta-sts.txt")
+            self.hooks.ask_for_the_created_domains_policy(transaction)
+            self.assertEqual(
+                transaction["request"]["headers"]["Host"],
+                "mta-sts." + self.hooks.OWN_DOMAIN,
+            )
+            self.assertEqual(self.server.domains[4], self.hooks.OWN_DOMAIN)
+            self.assertIs(self.server.policies[4]["active"], active)
+            self.assertNotIn("domain", self.stub.stash)
+        self.assertEqual(self.resets(), 2)
+
+    def test_without_the_switch_the_policy_file_asks_for_the_created_domain(self):
+        self.the_run_created_its_domain()
         transaction = self.transaction(404, "/.well-known/mta-sts.txt")
         self.hooks.ask_for_the_created_domains_policy(transaction)
         self.assertEqual(
-            transaction["request"]["headers"]["Host"],
-            "mta-sts.contract-linked-domain.test",
+            transaction["request"]["headers"]["Host"], "mta-sts.created.test"
         )
+        self.assertEqual(self.server.calls, [])
 
     def test_the_created_domain_is_kept_for_the_links(self):
         data = {"id": 3, "name": "created.test"}
         self.stub.get_json = lambda *_: {"data": data}
         self.hooks.hooks = self.stub
         self.hooks.keep_the_created_domain({})
-        self.assertEqual(self.stub.stash["linked_domain_ids"], ["3"])
+        self.assertEqual(self.stub.stash, {
+            "setup_admin_tokens": self.stub.stash["setup_admin_tokens"],
+            "domain_id": 3,
+            "domain": "created.test",
+        })
 
 
 if __name__ == "__main__":

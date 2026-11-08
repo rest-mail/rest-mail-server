@@ -143,6 +143,19 @@ class AbsentSettingsHooks(unittest.TestCase):
                     with self.assertRaises(urllib.error.HTTPError):
                         hook(transaction)
 
+    def test_clean_start_leaves_settings_to_the_reset_fixtures(self):
+        stored_hook, stored = self.stored_setting_hook()
+        with patch.dict(self.shared, {"asked_for_a_clean_start": lambda: True}):
+            for setting in ("sieve", "vacation"):
+                for prepare, status in ((self.prepare, "404"), (stored_hook, "200")):
+                    transaction = self.transaction(setting, "DELETE")
+                    transaction["expected"]["statusCode"] = status
+                    before = copy.deepcopy(transaction)
+                    prepare(transaction)
+                    self.assertEqual(transaction, before)
+        self.assertEqual(self.calls, [])
+        self.assertEqual(stored, [])
+
     def test_only_the_fixture_admins_success_stores_a_setting(self):
         hook, stored = self.stored_setting_hook()
         absent = self.transaction()

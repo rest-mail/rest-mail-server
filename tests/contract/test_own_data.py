@@ -54,6 +54,18 @@ GRANTS = (
 # createDomain's link, and each add's link reaches only the remove of its list.
 DKIM = ("setDKIMKey", "deleteDKIMKey", "getDKIMRotation", "setDKIMRotation")
 
+# createDomain, the delete, the policy file, and what createDomain's link reaches
+# that no group above holds.
+DOMAINS = (
+    "createDomain",
+    "deleteDomain",
+    "domainDNSCheck",
+    "getDomainRelay",
+    "setDomainRelay",
+    "listSuppressions",
+    "mtaStsPolicyFile",
+)
+
 SENDER_RULES = (
     "listAllowlist",
     "addToAllowlist",
@@ -150,11 +162,7 @@ class Selection(unittest.TestCase):
         out = own_data.configure(config)
         self.assertEqual(
             out["operation-id"],
-            list(
-                own_data.MOVED
-                + own_data.FOLLOWS_THE_CREATED_DOMAIN
-                + own_data.FOLLOWS_THE_CREATED_PIPELINE
-            ),
+            list(own_data.MOVED + own_data.FOLLOWS_THE_CREATED_PIPELINE),
         )
         self.assertEqual(
             out["exclude-operation-id"], ["resetTestData", "restoreTestSnapshot"]
@@ -164,7 +172,7 @@ class Selection(unittest.TestCase):
 
     def test_it_selects_everything_a_reset_takes_the_created_domain_from(self):
         description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
-        selected = set(own_data.MOVED + own_data.FOLLOWS_THE_CREATED_DOMAIN)
+        selected = set(own_data.MOVED)
         self.assertEqual(
             selected
             - set(PIPELINES)
@@ -274,9 +282,6 @@ class Selection(unittest.TestCase):
             set(SENDER_RULES), link_followers(description, "createDomain")
         )
         self.assertLessEqual(set(SENDER_RULES), set(own_data.MOVED))
-        self.assertFalse(
-            set(SENDER_RULES) & set(own_data.FOLLOWS_THE_CREATED_DOMAIN)
-        )
 
     def test_it_selects_every_contact_operation_and_its_links(self):
         description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
@@ -354,7 +359,19 @@ class Selection(unittest.TestCase):
                 self.assertEqual(link_followers(description, operation), set())
         self.assertLessEqual(set(DKIM), link_followers(description, "createDomain"))
         self.assertLessEqual(set(DKIM), set(own_data.MOVED))
-        self.assertFalse(set(DKIM) & set(own_data.FOLLOWS_THE_CREATED_DOMAIN))
+
+    def test_everything_that_follows_the_created_domain_has_moved(self):
+        description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
+        self.assertLessEqual(
+            {"domainDNSCheck", "getDomainRelay", "setDomainRelay", "listSuppressions"},
+            link_followers(description, "createDomain"),
+        )
+        self.assertLessEqual(set(DOMAINS), set(own_data.MOVED))
+        self.assertLessEqual(
+            link_followers(description, "createDomain") | {"createDomain"},
+            set(own_data.MOVED),
+        )
+        self.assertFalse(hasattr(own_data, "FOLLOWS_THE_CREATED_DOMAIN"))
 
     def test_a_skipped_exchange_is_not_a_pass(self):
         with tempfile.TemporaryDirectory() as directory:

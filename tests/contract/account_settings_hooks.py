@@ -11,6 +11,8 @@ def register_absent_settings_hooks(shared):
     @hooks.before("deleteSieveScript")
     @hooks.before("disableVacation")
     def prepare_absent_account_setting(transaction):
+        if shared["asked_for_a_clean_start"]():
+            return
         path, separator, query = transaction.get("fullPath", "").partition("?")
         match = re.fullmatch(r"/api/v1/accounts/[1-9][0-9]*/(sieve|vacation)", path)
         expected = transaction.get("expected", {})
@@ -47,6 +49,8 @@ def register_absent_settings_hooks(shared):
     @hooks.before("deleteSieveScript")
     @hooks.before("disableVacation")
     def a_stored_setting_to_act_on(transaction):
+        if shared["asked_for_a_clean_start"]():
+            return
         path = transaction.get("fullPath", "").partition("?")[0]
         match = re.fullmatch(r"/api/v1/accounts/[1-9][0-9]*/(sieve|vacation)", path)
         if not match or str(transaction.get("expected", {}).get("statusCode")) not in ("200", "204"):
