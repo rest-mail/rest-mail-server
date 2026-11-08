@@ -375,10 +375,6 @@ func (c *Client) ListFolders(token string, accountID uint) (*FolderListResponse,
 	return &resp, nil
 }
 
-func (c *Client) CreateFolder(token string, accountID uint, name string) error {
-	return c.postAuth(fmt.Sprintf("/api/v1/accounts/%d/folders", accountID), token, map[string]string{"name": name}, nil)
-}
-
 // FolderName is one name on an account's subscription list.
 type FolderName struct {
 	Name string `json:"name"`
@@ -406,6 +402,31 @@ func (c *Client) Subscribe(token string, accountID uint, folder string) error {
 // Unsubscribe removes folder from the account's subscription list; a name not on it is not an error.
 func (c *Client) Unsubscribe(token string, accountID uint, folder string) error {
 	return c.deleteAuth(fmt.Sprintf("/api/v1/accounts/%d/subscriptions/%s", accountID, url.PathEscape(folder)), token)
+}
+
+// folderPath is the API path of one of an account's folders. The name is
+// escaped whole, "/" included, as one path segment.
+func folderPath(accountID uint, folder string) string {
+	return fmt.Sprintf("/api/v1/accounts/%d/folders/%s", accountID, url.PathEscape(folder))
+}
+
+// CreateFolder makes an empty folder in an account (createFolder). A name the
+// account already has answers 409.
+func (c *Client) CreateFolder(token string, accountID uint, name string) error {
+	return c.postAuth(fmt.Sprintf("/api/v1/accounts/%d/folders", accountID), token, map[string]string{"name": name}, nil)
+}
+
+// RenameFolder gives one of an account's folders a new name, keeping its
+// messages (renameFolder). Standard folders are not renamed, and a name another
+// folder has answers 409.
+func (c *Client) RenameFolder(token string, accountID uint, folder, name string) error {
+	return c.patchAuth(folderPath(accountID, folder), token, map[string]string{"name": name}, nil)
+}
+
+// DeleteFolder removes one of an account's folders and every message in it
+// (deleteFolder). Standard folders are not deleted.
+func (c *Client) DeleteFolder(token string, accountID uint, folder string) error {
+	return c.deleteAuth(folderPath(accountID, folder), token)
 }
 
 // ── Messages ──────────────────────────────────────────────────────────

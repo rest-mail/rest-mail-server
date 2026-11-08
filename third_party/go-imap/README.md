@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/rest-mail/go-imap/actions/workflows/ci.yml/badge.svg)](https://github.com/rest-mail/go-imap/actions/workflows/ci.yml)
 [![Coverage gate: >=95%](https://img.shields.io/badge/coverage%20gate-%3E%3D95%25-brightgreen)](COVERAGE.md)
-[![Partial checklist: 550/800 mapped](https://img.shields.io/badge/partial%20checklist-550%2F800%20mapped-blue)](CHECKLIST.md)
+[![Partial checklist: 563/800 mapped](https://img.shields.io/badge/partial%20checklist-563%2F800%20mapped-blue)](CHECKLIST.md)
 [![Go Reference](https://pkg.go.dev/badge/github.com/rest-mail/go-imap.svg)](https://pkg.go.dev/github.com/rest-mail/go-imap/pkg/imap/server)
 [![Go Report Card](https://goreportcard.com/badge/github.com/rest-mail/go-imap)](https://goreportcard.com/report/github.com/rest-mail/go-imap)
 
@@ -275,10 +275,17 @@ The library:
 - Treats INBOX case-insensitively, and only INBOX.
 - Answers LIST, LSUB and LIST-EXTENDED from `Mailbox.Folders`, with hierarchy
   levels under `%` and each folder's special-use role.
-- Composes DELETE and RENAME from `Messages` and `Move`, since folders are
-  implicit: DELETE moves the folder's messages to `Trash`, and RENAME moves
-  them, with any inferior folders, to the new name. It refuses to delete or
-  rename INBOX, Sent, Drafts and Trash.
+- Answers CREATE, DELETE and RENAME through `imap.FolderMailbox` when the
+  Mailbox implements it: CREATE answers OK only once the folder exists, so an
+  empty folder stays in LIST, an extant name is `NO [ALREADYEXISTS]`, and
+  superior names are created first; DELETE removes the folder and its messages
+  for good; RENAME renames the folder with its inferiors, and RENAME of INBOX
+  moves its messages to the new name and leaves INBOX empty (RFC 9051
+  §§6.3.4-6.3.6). Without it folders are implicit, and DELETE and RENAME are
+  composed from `Messages` and `Move`: DELETE moves the folder's messages to
+  `Trash`, and RENAME moves them, with any inferior folders, to the new name.
+  It refuses to delete or rename Sent, Drafts and Trash, to delete INBOX, and,
+  without `imap.FolderMailbox`, to rename INBOX.
 
 The host:
 
