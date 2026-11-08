@@ -1359,7 +1359,7 @@ a hosted domain and mailbox for each address a test send probe uses, and,
 - `authorization.py`: builds a private configuration from the E2E principals
   for the report-only authorization phase. Its JUnit report and log are
   included in `e2e-container-logs`; the generated credential-bearing YAML is
-  removed after the run and is never uploaded. It provides two states the
+  removed after the run and is never uploaded. It provides states the
   examples phase does not (#1162). `recoverable_account`: recoverAccount names
   its account in the body, so `hooks.py` makes a fresh account, enrolled in
   TOTP, for each principal's request and recovers that one. `owner_key`: just
@@ -1375,7 +1375,21 @@ a hosted domain and mailbox for each address a test send probe uses, and,
   that require the key are sent on a real fresh challenge as well, so the
   placeholder one does not refuse them first: `not_status_key` and `not_owner`
   signed by a key made for that request and registered nowhere, `no_account` by
-  the run's key for a fresh address no account has. States of the
+  the run's key for a fresh address no account has. `eligible_grant` and
+  `active_grant`: a grant change acts on the caller's own grant, so before the
+  two-factor administrator's request (the admin principal, and the examples'
+  sender) `hooks.py` makes it a grant in the state the example names (an admin
+  role at a domain no one hosts, which gives a superadmin at `*` nothing new),
+  switched on first where the example needs a running activation, and removes
+  it after the request. `existing_link`: unlinkAccount gives up, and
+  linkAccount's `already_linked` meets, a fresh account linked to that
+  administrator just before. `grant_holder`: createGrant's `granted` names an
+  account made for that request, so it no longer requires
+  `two_factor_session`, which the phase does not provide: other examples name
+  it for changes to the run's own data. The other principals hold no second
+  factor, so their grant and link requests are refused as documented.
+  `event_stream` (accountEvents) is not provided: the stream stays open while
+  the session lives. States of the
   caller's own account (`known_password`, `enrolled_authenticator`,
   `pending_enrollment`) are not provided: their success would end or change the
   principal's own sessions. Its unproven list is
