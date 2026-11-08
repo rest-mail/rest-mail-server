@@ -10,6 +10,7 @@ import (
 
 	"github.com/pquerna/otp/totp"
 	"github.com/rest-mail/rest-mail-server/internal/auth"
+	"github.com/rest-mail/rest-mail-server/internal/bootstrap"
 )
 
 const fixtureTOTPSecret = "JBSWY3DPEHPK3PXP"
@@ -346,5 +347,13 @@ func TestBrowserSessionRecoveryRefusesFixtureAdmin(t *testing.T) {
 func TestBrowserSessionRequiresDisposableFixture(t *testing.T) {
 	if _, err := prove("http://unused", fixtureDescription(), principal{Address: "admin@example.com", Password: "secret"}); err == nil {
 		t.Fatal("non-fixture account accepted")
+	}
+}
+
+// A refused recovery is refused for its codes only if its password passes the
+// rule first; otherwise the check meets a 422 and proves nothing about the 401.
+func TestRefusedStartPasswordPassesTheRule(t *testing.T) {
+	if problem := bootstrap.ChosenPasswordProblem(refusedStartPassword, "contract-recover-1793818771535174966@restmail.test"); problem != "" {
+		t.Errorf("the refused recovery's password: %s", problem)
 	}
 }

@@ -20,7 +20,7 @@ func TestAccountImportRefusesInvalidHashBeforeDatabase(t *testing.T) {
 	h := NewAccountHandler(nil, nil, "")
 	for _, body := range []string{
 		`{"address":"import@example.test","password_hash":"{PLAIN}weak"}`,
-		fmt.Sprintf(`{"address":"import@example.test","password":"long-enough-password","password_hash":%q}`, accountImportSHA512),
+		fmt.Sprintf(`{"address":"import@example.test","password":"long-enough-velvet-compass","password_hash":%q}`, accountImportSHA512),
 	} {
 		rr := httptest.NewRecorder()
 		accountRoutes(h).ServeHTTP(rr, authzRequest(http.MethodPost, "/api/v1/accounts", 1, nil, body))

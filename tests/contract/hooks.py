@@ -3118,6 +3118,30 @@ def keep_the_created_account(transaction):
     }
 
 
+@hooks.before("updateMailbox")
+def a_new_password_only_on_the_created_account(transaction):
+    """A request that sets a password goes to the account the run made for this,
+    and to no other. updated_password_at_minimum names no account, so a phase sends
+    it to its in-range id, 1, a fixture account the run did not make, and
+    fuzz.pin-valid in vertrag.yml puts a password in every valid body a generating
+    phase draws. On id 1 it would replace that account's password and end its
+    sessions. A probe of the path keeps its id: its body is the operation's first
+    200 example, updated, which sets no password (TestMailboxUpdate_ExamplePairs)."""
+    body = hooks.get_json(transaction)
+    if not isinstance(body, dict) or not isinstance(body.get("password"), str):
+        return
+    if not body["password"] or len(body["password"]) < 12:
+        return  # Refused for its length, before it can change anything.
+    created = hooks.stash.get("created_account")
+    if not created:
+        transaction["skip"] = True
+        return
+    path, _, query = transaction["fullPath"].partition("?")
+    parent, _, account_id = path.rpartition("/")
+    if account_id.isdigit() and int(account_id) > 0:  # An invalid id is the probe.
+        transaction["fullPath"] = parent + "/" + str(created["id"]) + ("?" + query if query else "")
+
+
 @hooks.before("getMailbox")
 @hooks.before("updateMailbox")
 @hooks.before("deleteMailbox")
@@ -3166,7 +3190,7 @@ def an_account_without_credentials(origin):
 # The password of the account made for inviteAccount's existing_credentials
 # example: the 409 needs one that holds a password, and the reset removed the
 # fixture admin's id 1. Never sent anywhere else.
-CREDENTIALED_PASSWORD = "contract-credentialed-account"
+CREDENTIALED_PASSWORD = "velvet-tundra-compass-otter-47"
 
 
 def an_account_of_its_own(origin, prefix, password=None):
