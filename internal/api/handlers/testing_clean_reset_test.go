@@ -384,6 +384,10 @@ func TestCleanResetEveryCredentialKind(t *testing.T) {
 	}
 	for _, kind := range models.CredentialKinds {
 		credential := models.Credential{AccountID: admin.ID, Kind: kind, PublicID: "before-reset-" + kind, Scope: models.CredentialScope{}}
+		if kind == models.CredentialKindTOTP {
+			confirmed := time.Now()
+			credential.ConfirmedAt = &confirmed
+		}
 		if err := db.Create(&credential).Error; err != nil {
 			t.Fatal(err)
 		}
