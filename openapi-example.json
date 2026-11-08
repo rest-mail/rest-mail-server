@@ -26560,42 +26560,48 @@
               "total": 2,
               "unread": 1,
               "role": "archive",
-              "uid_next": 41
+              "uid_next": 41,
+              "highest_mod_seq": 20
             },
             {
               "name": "INBOX",
               "total": 5,
               "unread": 2,
               "role": "inbox",
-              "uid_next": 61
+              "uid_next": 61,
+              "highest_mod_seq": 90
             },
             {
               "name": "Projects/2026",
               "total": 0,
               "unread": 0,
               "role": null,
-              "uid_next": 13
+              "uid_next": 13,
+              "highest_mod_seq": 3
             },
             {
               "name": "Sent",
               "total": 0,
               "unread": 0,
               "role": "sent",
-              "uid_next": 1
+              "uid_next": 1,
+              "highest_mod_seq": 1
             },
             {
               "name": "Drafts",
               "total": 0,
               "unread": 0,
               "role": "drafts",
-              "uid_next": 1
+              "uid_next": 1,
+              "highest_mod_seq": 1
             },
             {
               "name": "Trash",
               "total": 0,
               "unread": 0,
               "role": "trash",
-              "uid_next": 32
+              "uid_next": 32,
+              "highest_mod_seq": 14
             }
           ]
         },
@@ -30353,6 +30359,212 @@
       "request": {
         "query": {
           "limit": 20
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
+  "listVanishedUIDs": {
+    "capability_removed": {
+      "description": "The signed-in principal can write to this account but cannot read its mail. Both a session whose holder lacks mail:read and an API key scoped only to mail:write are refused by the production router.",
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "folder": "INBOX",
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "found": {
+      "summary": "The UIDs that left INBOX after mod-sequence 3, lowest first",
+      "description": "UID 3 arrived in INBOX at mod-sequence 2 and left it at 3, UID 5 arrived at 4 and left at 5, and UID 7 arrived at 6 and left at 7. Asked since 3, the answer leaves out UID 3, which left at 3 itself. Proven through the production router against PostgreSQL, whose triggers record each departure; only the allocated account id is replaced with the published one.",
+      "requires": {
+        "state": "expunged_messages"
+      },
+      "request": {
+        "path": {
+          "folder": "INBOX",
+          "id": 1
+        },
+        "query": {
+          "since": 3
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": [
+            {
+              "uid": 5,
+              "mod_seq": 5
+            },
+            {
+              "uid": 7,
+              "mod_seq": 7
+            }
+          ],
+          "pagination": {
+            "has_more": false
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_id": {
+      "request": {
+        "path": {
+          "folder": "INBOX",
+          "id": 0
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "request": {
+        "path": {
+          "folder": "INBOX",
+          "id": 2147483647
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Account not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "folder": "INBOX",
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {
+        "path": {
+          "folder": "INBOX",
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {
+        "path": {
+          "folder": "INBOX",
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "target_unavailable": {
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "path": {
+          "folder": "INBOX",
+          "id": 3
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {
+        "path": {
+          "folder": "INBOX",
+          "id": 1
         }
       },
       "response": {
@@ -38268,6 +38480,7 @@
             "mailbox_id": 1,
             "folder": "Drafts",
             "message_id": "\u003cdraft/2026@restmail.test\u003e",
+            "mod_seq": 2,
             "in_reply_to": "",
             "references": "",
             "thread_id": "\u003cdraft/2026@restmail.test\u003e",
@@ -38541,6 +38754,7 @@
               "is_starred": false,
               "mailbox_id": 1,
               "message_id": "\u003cmessage@example.net\u003e",
+              "mod_seq": 2,
               "raw_size": 137,
               "received_at": "2026-10-20T00:00:00Z",
               "recipients_cc": [],
@@ -39093,6 +39307,7 @@
             "is_starred": false,
             "mailbox_id": 1,
             "message_id": "\u003cdraft-sent@restmail.test\u003e",
+            "mod_seq": 2,
             "raw_size": 200,
             "received_at": "2026-10-27T07:00:00Z",
             "recipients_cc": [],
@@ -39577,6 +39792,7 @@
             "is_starred": false,
             "mailbox_id": 2,
             "message_id": "\u003c00000000-0000-4000-8000-000000000001@restmail.test\u003e",
+            "mod_seq": 2,
             "raw_size": 297,
             "received_at": "2026-10-21T12:00:00Z",
             "recipients_cc": [],
@@ -39632,6 +39848,7 @@
             "is_starred": false,
             "mailbox_id": 2,
             "message_id": "\u003c00000000-0000-4000-8000-000000000001@restmail.test\u003e",
+            "mod_seq": 2,
             "raw_size": 297,
             "received_at": "2026-10-21T12:00:00Z",
             "recipients_cc": [],
@@ -39769,6 +39986,7 @@
             "is_starred": false,
             "mailbox_id": 1,
             "message_id": "\u003c00000000-0000-4000-8000-000000000001@restmail.test\u003e",
+            "mod_seq": 2,
             "raw_size": 297,
             "received_at": "2026-10-21T12:00:00Z",
             "recipients_cc": [],
@@ -46330,6 +46548,7 @@
             "is_starred": false,
             "mailbox_id": 1,
             "message_id": "\u003c00000000-0000-4000-8000-000000000001@restmail.test\u003e",
+            "mod_seq": 2,
             "raw_size": 297,
             "received_at": "2026-10-21T12:00:00Z",
             "recipients_cc": [],
@@ -48693,6 +48912,7 @@
             "mailbox_id": 1,
             "folder": "Drafts",
             "message_id": "\u003cdraft/2026@restmail.test\u003e",
+            "mod_seq": 2,
             "in_reply_to": "",
             "references": "",
             "thread_id": "\u003cdraft/2026@restmail.test\u003e",
@@ -49456,6 +49676,7 @@
             "is_starred": false,
             "mailbox_id": 1,
             "message_id": "\u003cmessage@example.net\u003e",
+            "mod_seq": 3,
             "raw_size": 137,
             "received_at": "2026-10-20T00:00:00Z",
             "recipients_cc": [],
@@ -49597,6 +49818,32 @@
         "mediaType": "application/json"
       }
     },
+    "modified": {
+      "summary": "The message changed after unchanged_since, so nothing is changed",
+      "description": "Another client flagged the message after its mod_seq was 2, so a change made with unchanged_since 2 is refused and is_read stays false, as IMAP's STORE (UNCHANGEDSINCE 2) answers [MODIFIED] (RFC 7162 §3.1.3). Proven through the production router against PostgreSQL.",
+      "requires": {
+        "state": "concurrent_change"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "is_read": true,
+          "unchanged_since": 2
+        }
+      },
+      "response": {
+        "status": 409,
+        "body": {
+          "error": {
+            "code": "message_modified",
+            "message": "The message changed after unchanged_since; nothing was changed"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "rate_limited": {
       "summary": "The limit is already spent",
       "requires": {
@@ -49716,6 +49963,52 @@
           "error": {
             "code": "unauthorized",
             "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unchanged_since_negative": {
+      "summary": "A negative mod-sequence is invalid and leaves the message unchanged",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "is_read": true,
+          "unchanged_since": -1
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "invalid_mod_sequence",
+            "message": "unchanged_since must be at least 1"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unchanged_since_zero": {
+      "summary": "A zero mod-sequence is invalid and leaves the message unchanged",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "is_read": true,
+          "unchanged_since": 0
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "invalid_mod_sequence",
+            "message": "unchanged_since must be at least 1"
           }
         },
         "mediaType": "application/json"

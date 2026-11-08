@@ -23,6 +23,7 @@ var (
 	withRoles          = scratchStep{"roles", bootstrap.EnsureRBAC}
 	withAudit          = scratchStep{"audit-log", rmdb.MigrateAuditLog}
 	withFolderUIDMarks = scratchStep{"folder-uid-marks", rmdb.MigrateFolderUIDMarks}
+	withFolderModSeqs  = scratchStep{"folder-mod-seqs", rmdb.MigrateFolderModSeqs}
 	withForeignKeys    = scratchStep{"foreign-keys", func(database *gorm.DB) error {
 		database.DisableForeignKeyConstraintWhenMigrating = false
 		return nil

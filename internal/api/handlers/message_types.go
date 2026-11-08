@@ -71,6 +71,7 @@ func messageOf(m models.Message) Message {
 		IsAnswered:        m.IsAnswered,
 		Keywords:          m.Keywords,
 		IMAPDeleted:       m.IMAPDeleted,
+		ModSeq:            m.ModSeq,
 		IsRead:            m.IsRead,
 		IsDSN:             m.IsDSN,
 		IsFlagged:         m.IsFlagged,

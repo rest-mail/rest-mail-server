@@ -185,6 +185,10 @@ var (
 	_ goimap.FolderMailbox  = (*mailbox)(nil)
 	_ goimap.SetMailbox     = (*mailbox)(nil)
 	_ goimap.UIDNextMailbox = (*mailbox)(nil)
+	// CONDSTORE and QRESYNC (RFC 7162): the API keeps a mod-sequence per message
+	// and per folder, and the UIDs that left each folder.
+	_ goimap.ModSeqMailbox   = (*mailbox)(nil)
+	_ goimap.VanishedMailbox = (*mailbox)(nil)
 )
 
 // importMessage stores a message through the import operation, counted in this
@@ -373,6 +377,7 @@ func toMessage(msg apiclient.MessageSummary) goimap.Message {
 		Draft:    msg.IsDraft,
 		Deleted:  msg.IMAPDeleted,
 		Keywords: msg.Keywords,
+		ModSeq:   msg.ModSeq,
 		Subject:  msg.Subject,
 		From:     goimap.Address{Name: msg.SenderName, Email: msg.Sender},
 		To:       string(msg.RecipientsTo),
@@ -417,14 +422,93 @@ func (m *mailbox) rawMessage(detail apiclient.MessageDetail) string {
 // SELECT; mirroring the flag onto both columns means what you STORE is what
 // you FETCH back.
 func (m *mailbox) Store(uid uint32, f goimap.FlagUpdate) error {
+	if !f.KeywordsSet && f.Seen == nil && f.Answered == nil && f.Flagged == nil && f.Draft == nil && f.Deleted == nil {
+		return nil
+	}
+	return m.api.UpdateMessage(m.token, uint(uid), flagUpdates(f))
+}
+
+// flagUpdates is the API change a flag update makes.
+func flagUpdates(f goimap.FlagUpdate) apiclient.MessageUpdate {
 	updates := apiclient.MessageUpdate{IsAnswered: f.Answered, IsRead: f.Seen, IsFlagged: f.Flagged, IsStarred: f.Flagged, IsDraft: f.Draft, IMAPDeleted: f.Deleted}
 	if f.KeywordsSet {
 		updates.Keywords = &f.Keywords
 	}
-	if !f.KeywordsSet && f.Seen == nil && f.Answered == nil && f.Flagged == nil && f.Draft == nil && f.Deleted == nil {
-		return nil
+	return updates
+}
+
+// StoreModSeq applies a flag update like Store and returns the message's mod_seq
+// afterwards (ModSeqMailbox, RFC 7162 §3.1.3). With unchangedSince the API checks
+// and writes in one statement: a message changed since answers 409, and the
+// current mod_seq is read back to go with ErrModified.
+func (m *mailbox) StoreModSeq(uid uint32, f goimap.FlagUpdate, unchangedSince uint64) (uint64, error) {
+	updates := flagUpdates(f)
+	if unchangedSince != 0 {
+		updates.UnchangedSince = &unchangedSince
 	}
-	return m.api.UpdateMessage(m.token, uint(uid), updates)
+	modSeq, err := m.api.UpdateMessageModSeq(m.token, uint(uid), updates)
+	if err == nil {
+		return modSeq, nil
+	}
+	if !apiclient.IsModified(err) {
+		return 0, err
+	}
+	detail, getErr := m.api.GetMessage(m.token, uint(uid))
+	if getErr != nil {
+		return 0, getErr
+	}
+	return detail.Data.ModSeq, goimap.ErrModified
+}
+
+// HighestModSeq reports folder's HIGHESTMODSEQ (ModSeqMailbox, RFC 7162
+// §3.1.2.1) from the folder listing's highest_mod_seq, which counts messages that
+// left the folder too, so it never falls. A folder the listing lacks has had
+// nothing in it and answers 1, the value the API gives an empty folder.
+func (m *mailbox) HighestModSeq(folder string) (uint64, error) {
+	f, err := m.folder(folder)
+	if err != nil || f == nil {
+		return 1, err
+	}
+	return max(f.HighestModSeq, 1), nil
+}
+
+// Vanished lists the UIDs that left folder above a mod-sequence (VanishedMailbox,
+// RFC 7162 §3.2.5.1), ascending, as the API keeps them. A UID past the UID space
+// was never handed out as one, so it is left out.
+func (m *mailbox) Vanished(folder string, since uint64) ([]uint32, error) {
+	if err := validateFolder(folder); err != nil {
+		return nil, err
+	}
+	vanished, err := m.api.ListVanishedUIDs(m.token, m.accountID, rmail.CanonicalFolder(folder), since)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]uint32, 0, len(vanished))
+	for _, v := range vanished {
+		if v.UID > 0 && v.UID <= math.MaxUint32 {
+			out = append(out, uint32(v.UID))
+		}
+	}
+	return out, nil
+}
+
+// folder is folder's entry in the account's folder listing, or nil when the
+// listing lacks it.
+func (m *mailbox) folder(folder string) (*apiclient.Folder, error) {
+	if err := validateFolder(folder); err != nil {
+		return nil, err
+	}
+	resp, err := m.api.ListFolders(m.token, m.accountID)
+	if err != nil {
+		return nil, err
+	}
+	want := rmail.CanonicalFolder(folder)
+	for i := range resp.Data {
+		if resp.Data[i].Folder == want {
+			return &resp.Data[i], nil
+		}
+	}
+	return nil, nil
 }
 
 // Move relocates a message to another folder (base Mailbox.Move). It delegates to
@@ -677,23 +761,11 @@ func (m *mailbox) UIDValidity(folder string) (uint32, error) {
 // value past the UID space, answers 0 and the engine falls back to the highest
 // UID present plus one.
 func (m *mailbox) UIDNext(folder string) (uint32, error) {
-	if err := validateFolder(folder); err != nil {
+	f, err := m.folder(folder)
+	if err != nil || f == nil || f.UIDNext > math.MaxUint32 {
 		return 0, err
 	}
-	resp, err := m.api.ListFolders(m.token, m.accountID)
-	if err != nil {
-		return 0, err
-	}
-	want := rmail.CanonicalFolder(folder)
-	for _, f := range resp.Data {
-		if f.Folder == want {
-			if f.UIDNext > math.MaxUint32 {
-				return 0, nil
-			}
-			return uint32(f.UIDNext), nil
-		}
-	}
-	return 0, nil
+	return uint32(f.UIDNext), nil
 }
 
 // Quota returns storage use and limit in bytes.

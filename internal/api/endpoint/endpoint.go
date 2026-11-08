@@ -85,6 +85,7 @@ type Operation struct {
 	// handler enforces any additional rules, preserving its authorization order or
 	// reading a body itself (SpoolBody) so a large one never sits in memory.
 	DescribedRequest any
+	RefuseBinding    func(*http.Request, error) error
 }
 
 // Middleware is a middleware and a description of what it adds to every operation it wraps:
@@ -290,6 +291,9 @@ func Register[Req, Resp any](rs Routes, op Operation, handler func(*http.Request
 	rs.Router.With(wraps...).Method(op.Method, op.Path, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		var in Req
 		if err := bind(req, &in, shape); err != nil {
+			if op.RefuseBinding != nil {
+				err = op.RefuseBinding(req, err)
+			}
 			writeError(req.Context(), w, err)
 			return
 		}

@@ -120,7 +120,7 @@ func TestUnsubscribeTargetExamplesWithVertrag(t *testing.T) {
 				if name == "sent" {
 					stored, data := sent[0], got["data"]
 					if data["id"] != float64(stored.ID) || data["mailbox_id"] != float64(f.mailboxID) || data["message_id"] != stored.MsgID ||
-						data["thread_id"] != stored.ThreadID || data["raw_size"] != float64(stored.RawSize) || stored.RawSize != len(stored.RawMessage) ||
+						data["thread_id"] != stored.ThreadID || data["mod_seq"] != float64(stored.ModSeq) || data["raw_size"] != float64(stored.RawSize) || stored.RawSize != len(stored.RawMessage) ||
 						data["downgraded_size"] != float64(stored.DowngradedSize) || stored.DowngradedSize == 0 {
 						t.Fatalf("response and stored message differ: %s", response.Body.String())
 					}
