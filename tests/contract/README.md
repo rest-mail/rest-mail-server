@@ -41,6 +41,9 @@ pending a separate decision. The 403/404 decision remains open.
 
 ## Before every push: local CI
 
+Branch freshness is enforced both by CI preflight and github-guard's default-on
+`git-push-up-to-date` guard; see [CI branch freshness](../../docs/ci.md).
+
 Run `chore ci:local` on the working tree before pushing, including after a
 rebase. It fetches `origin/main` and refuses a stale base; `--allow-stale` is
 an explicit diagnostic override, not proof that a change will merge safely.

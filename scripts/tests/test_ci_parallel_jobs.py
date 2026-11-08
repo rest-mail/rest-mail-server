@@ -19,12 +19,12 @@ class ParallelGates(unittest.TestCase):
     def test_independent_gates_do_not_wait_for_lint(self):
         for name in ("constellation", "contract-tooling", "test", "test-api", "test-handlers", "test-contract"):
             with self.subTest(job=name):
-                self.assertFalse(field(JOBS[name], "needs", 4))
-        self.assertIn("needs: lint", JOBS["test-imap"])
+                self.assertEqual(field(JOBS[name], "needs", 4), "preflight")
+        self.assertIn("needs: [preflight, lint]", JOBS["test-imap"])
 
     def test_report_waits_for_every_test_producer(self):
         needs = set(field(JOBS["test-report"], "needs", 4).strip("[]").split(", "))
-        self.assertEqual(needs, {"test", "test-api", "test-handlers", "test-contract", "test-imap"})
+        self.assertEqual(needs, {"preflight", "test", "test-api", "test-handlers", "test-contract", "test-imap"})
 
     def test_rest_package_selection_excludes_only_the_two_sharded_packages(self):
         script = shell_of(JOBS["test"], "Run unit tests with race detector")

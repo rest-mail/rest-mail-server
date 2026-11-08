@@ -32,7 +32,43 @@ permissions:
   contents: read
 
 jobs:
+  preflight:
+    name: 'Preflight: branch is up to date'
+    if: github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != '')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout the pull request head, not GitHub's merge commit
+        if: github.event_name == 'pull_request'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Require the current base tip in the pull request head
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            echo "Preflight: $EVENT_NAME needs no pull request ancestry check."
+            exit 0
+          fi
+          git fetch --no-tags origin "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
+          base_sha=$(git rev-parse "refs/remotes/origin/${BASE_REF}")
+          if git merge-base --is-ancestor "$base_sha" "$HEAD_SHA"; then
+            echo "Preflight: head $HEAD_SHA contains $BASE_REF ($base_sha)."
+            exit 0
+          fi
+          message="Preflight: this branch (head $HEAD_SHA) is not up to date with $BASE_REF ($base_sha). You cannot push a branch that is not up to date with origin/$BASE_REF ($base_sha). Rebase it onto origin/$BASE_REF first, then push again. Nothing else in this pipeline runs until you do. Run: git fetch origin $BASE_REF && git rebase origin/$BASE_REF"
+          echo "::error::$message" >&2
+          echo "$message" >&2
+          exit 1
+
   release:
+    needs: preflight
     name: Release the restmail CLI
     if: github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != '')
     runs-on: ubuntu-latest
