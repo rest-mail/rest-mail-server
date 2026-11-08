@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
@@ -73,4 +74,35 @@ func TestFolderUIDNextSurvivesPermanentDelete(t *testing.T) {
 	if got := uidNext()["INBOX"]; got != uint64(later.ID)+1 {
 		t.Fatalf("after new mail, INBOX uid_next %d, want %d", got, later.ID+1)
 	}
+}
+
+func TestIMAPUIDNextSurvivesNewestExpungeFromImportFixture(t *testing.T) {
+	database := importProofDB(t)
+	account := seedAccountsFixture(t, database).user
+	handler := NewMessageHandler(database, nil, nil, "", nil)
+	if _, err := handler.listFolders(authzRequest("GET", "/", account.ID, nil, ""), accountPath{ID: uint32(account.ID)}); err != nil {
+		t.Fatal(err)
+	}
+	apiURL := imapProofAPI(t, database, account)
+	client := newIMAPProofClient(t, apiURL)
+	_, first := client.append("INBOX", "", imapProofMessage)
+	_, newest := client.append("INBOX", "", imapProofMessage)
+	if newest <= first {
+		t.Fatalf("second APPEND got UID %d, not above %d", newest, first)
+	}
+	selected, _ := client.ok("SELECT INBOX")
+	requireLineWith(t, selected, fmt.Sprintf("* OK [UIDNEXT %d] Predicted next UID", newest+1))
+	client.ok(fmt.Sprintf(`UID STORE %d +FLAGS (\Deleted)`, newest))
+	expunged, _ := client.ok("EXPUNGE")
+	requireLineWith(t, expunged, "* 2 EXPUNGE")
+	reader := newIMAPProofClient(t, apiURL)
+	selected, _ = reader.ok("SELECT INBOX")
+	requireLineWith(t, selected, "* 1 EXISTS")
+	requireLineWith(t, selected, fmt.Sprintf("* OK [UIDNEXT %d] Predicted next UID", newest+1))
+	_, later := reader.append("INBOX", "", imapProofMessage)
+	if later <= newest {
+		t.Fatalf("APPEND reused expunged UID %d: got %d", newest, later)
+	}
+	selected, _ = reader.ok("SELECT INBOX")
+	requireLineWith(t, selected, fmt.Sprintf("* OK [UIDNEXT %d] Predicted next UID", later+1))
 }

@@ -21,6 +21,7 @@ func TestInboundTransportSecurity_OnlySavedTypedVerdicts(t *testing.T) {
 	if err := transaction.Exec("DELETE FROM messages").Error; err != nil {
 		t.Fatal(err)
 	}
+	mailbox := seedMailbox(t, transaction, "typed-verdicts").ID
 	plaintext := false
 	for _, fixture := range []struct {
 		name, results, raw string
@@ -41,7 +42,7 @@ func TestInboundTransportSecurity_OnlySavedTypedVerdicts(t *testing.T) {
 		{name: "one passing signature", results: `[{"method":"dkim","result":"fail"},{"method":"dkim","result":"pass"}]`, pass: true},
 	} {
 		t.Run(fixture.name, func(t *testing.T) {
-			message := models.Message{MailboxID: 1, Sender: "sender@remote.test", ReceivedTLS: &plaintext, AuthResults: models.JSONB(fixture.results), RawMessage: fixture.raw}
+			message := models.Message{MailboxID: mailbox, Sender: "sender@remote.test", ReceivedTLS: &plaintext, AuthResults: models.JSONB(fixture.results), RawMessage: fixture.raw}
 			if err := transaction.Create(&message).Error; err != nil {
 				t.Fatal(err)
 			}

@@ -69,7 +69,9 @@ func imapProofAPI(t *testing.T, db *gorm.DB, account models.Mailbox) string {
 	})
 	routes := endpoint.Routes{Router: router, Registry: endpoint.NewRegistry()}
 	importer.Register(routes)
-	NewMessageHandler(db, nil, nil, "", nil).RegisterMessages(routes)
+	messages := NewMessageHandler(db, nil, nil, "", nil)
+	messages.RegisterMessages(routes)
+	messages.RegisterFolders(routes)
 	NewMessageTransferHandler(db, nil).Register(routes)
 	server := httptest.NewServer(router)
 	t.Cleanup(server.Close)
@@ -389,6 +391,7 @@ func TestIMAPFlagsApplyToTheNewMessage(t *testing.T) {
 	db := importProofDB(t)
 	account := seedAccountsFixture(t, db).user
 	client := newIMAPProofClient(t, imapProofAPI(t, db, account))
+	client.ok("CREATE Archive")
 
 	_, unread := client.append("Archive", "", imapProofMessage)
 
