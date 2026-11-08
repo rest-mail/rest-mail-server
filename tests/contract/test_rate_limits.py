@@ -31,7 +31,7 @@ class ContractRateLimits(unittest.TestCase):
 
     def test_all_hook_throttle_waits_use_the_same_pacing_policy(self):
         source = (ROOT / "tests/contract/hooks.py").read_text()
-        self.assertEqual(source.count("rate_limits.pace("), 10)
+        self.assertEqual(source.count("rate_limits.pace("), 13)
         self.assertNotIn("time.sleep(1.1)", source)
         self.assertNotIn("time.sleep(0.55)", source)
         self.assertIn("time.sleep(int(retry_after))", source)

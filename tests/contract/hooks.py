@@ -622,7 +622,8 @@ def pace_owner_requests(transaction):
     # describeServer's). The topology lists no owner or status keys, so the
     # gate sends their refusals; coverage repeats them, so pace each. The
     # authorization phase registers a throwaway owner key and signs each
-    # success with it (sign_the_status_with_the_runs_owner_key and below).
+    # success with it (sign_the_status_with_the_runs_owner_key and below), and
+    # sends the refusals needing it on a fresh challenge (_owner_refusal).
     rate_limits.pace(1.1)
 
 
@@ -3242,6 +3243,61 @@ def reset_an_account_of_its_own(transaction):
     hooks.set_json(transaction, body)
     # Making the account may have signed the two-factor admin in, which spends
     # the auth bucket pace_auth_requests waited for.
+    rate_limits.pace(1.1)
+
+
+# The owner refusals that also require owner_key carry the placeholder
+# challenge, which the server checks before the key and the account: sent as
+# documented with a key registered, each would answer 401 invalid_challenge.
+# Each gets a real fresh challenge, so it reaches the check it documents.
+def _owner_refusal(transaction, status):
+    """The request's body, when it expects the refusal status and is an object."""
+    if str(transaction.get("expected", {}).get("statusCode", "")) != status:
+        return None
+    body = hooks.get_json(transaction)
+    return body if isinstance(body, dict) else None
+
+
+@hooks.before("ownerStatus")
+def refuse_a_status_key_that_is_not_listed(transaction):
+    # not_status_key (403): a valid challenge signed by a key made for this
+    # request and listed nowhere, neither a status key nor the run's owner key.
+    body = _owner_refusal(transaction, "403")
+    if body is None:
+        return
+    body.update(owner_key.unlisted_answer(origin_of(transaction), "status"))
+    hooks.set_json(transaction, body)
+    # The challenge spent the owner bucket pace_owner_requests waited for.
+    rate_limits.pace(1.1)
+
+
+@hooks.before("ownerToken")
+def refuse_a_token_to_a_key_that_is_not_an_owner(transaction):
+    # not_owner (403): the purpose and address the example names, signed over
+    # a valid challenge by a key made for this request and registered nowhere.
+    # The key is refused before the account is looked at, so nothing is minted.
+    body = _owner_refusal(transaction, "403")
+    if body is None:
+        return
+    body.update(owner_key.unlisted_answer(
+        origin_of(transaction), body.get("purpose", ""), body.get("address", "")))
+    hooks.set_json(transaction, body)
+    rate_limits.pace(1.1)
+
+
+@hooks.before("ownerToken")
+def refuse_a_token_for_an_account_that_does_not_exist(transaction):
+    # no_account (404): the run's owner key signs a valid challenge for an
+    # address made for this request and given to no account, so the refusal
+    # is the account's. A fresh address, not the example's, so no account that
+    # happens to exist under it could ever be minted a token.
+    body = _owner_refusal(transaction, "404")
+    if body is None:
+        return
+    address = fresh_address("no-account")
+    body.update({"purpose": "reset-admin", "address": address,
+                 **owner_key.signed_answer(origin_of(transaction), "reset-admin", address)})
+    hooks.set_json(transaction, body)
     rate_limits.pace(1.1)
 
 

@@ -1339,7 +1339,11 @@ a hosted domain and mailbox for each address a test send probe uses, and,
   no owner key. `hooks.py` signs each owner success with it as every
   principal: ownerStatus on a fresh challenge; ownerToken for an account made
   for that request; resetAdmin redeems a token minted for such an account, so
-  no token for one of the run's own accounts is minted or spent. States of the
+  no token for one of the run's own accounts is minted or spent. The refusals
+  that require the key are sent on a real fresh challenge as well, so the
+  placeholder one does not refuse them first: `not_status_key` and `not_owner`
+  signed by a key made for that request and registered nowhere, `no_account` by
+  the run's key for a fresh address no account has. States of the
   caller's own account (`known_password`, `enrolled_authenticator`,
   `pending_enrollment`) are not provided: their success would end or change the
   principal's own sessions. Its unproven list is
