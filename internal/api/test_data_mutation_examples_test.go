@@ -47,7 +47,8 @@ func TestTestDataMutationExamples(t *testing.T) {
 				if s.store != nil {
 					calls = s.store.snapshot()[before:]
 				}
-				begins, commits, rollbacks, passwords, clears, restarts := 0, 0, 0, 0, 0, 0
+				begins, commits, rollbacks, passwords, clears, restarts, domainRestarts := 0, 0, 0, 0, 0, 0, 0
+				dkimSchema, dkimPins, dkimRestores := 0, 0, 0
 				lookups := map[string]int{}
 				deleted := map[string]bool{}
 				for _, c := range calls {
@@ -62,6 +63,20 @@ func TestTestDataMutationExamples(t *testing.T) {
 						passwords++
 					case "USAGE_RESTARTED":
 						restarts++
+					case "DOMAINS_RESTARTED":
+						domainRestarts++
+					case "DKIM_BASELINE_SCHEMA":
+						dkimSchema++
+					case "DKIM_BASELINE_PINNED":
+						if dkimSchema != 1 || clears != 0 {
+							t.Fatal("DKIM baseline was not pinned before clearing fixture data")
+						}
+						dkimPins++
+					case "DKIM_BASELINE_RESTORED":
+						if dkimPins != 1 || domainRestarts != 1 || restarts != 0 {
+							t.Fatal("DKIM baseline was not restored after clearing domain settings and before restarting usage")
+						}
+						dkimRestores++
 					case "DATA_CONTEXT":
 						if c.args[0].Value != true {
 							t.Fatal("test-data work lost HTTP context")
@@ -109,7 +124,13 @@ func TestTestDataMutationExamples(t *testing.T) {
 						if restarts != 1 {
 							t.Fatalf("retained accounts' usage restarted%d times want1", restarts)
 						}
-					} else if clears != 0 || restarts != 0 {
+						if domainRestarts != 1 {
+							t.Fatalf("retained domains' settings restarted%d times want1", domainRestarts)
+						}
+						if dkimSchema != 1 || dkimPins != 1 || dkimRestores != 1 {
+							t.Fatalf("DKIM baseline schema%d pins%d restores%d want1 each", dkimSchema, dkimPins, dkimRestores)
+						}
+					} else if clears != 0 || restarts != 0 || domainRestarts != 0 || dkimSchema != 0 || dkimPins != 0 || dkimRestores != 0 {
 						t.Fatal("seed cleared existing data")
 					}
 				} else if name == "commit_failure" {

@@ -1724,6 +1724,23 @@ again at nothing (`cleanResetData`): it clears `quota_usage` with the messages,
 and an import into an account with no usage row is refused (500, "destination
 quota usage is missing").
 
+The DKIM operations, `setDKIMKey`, `deleteDKIMKey`, `getDKIMRotation` and
+`setDKIMRotation`, reset and seed before each exchange too, refusals included
+(`a_dkim_domain_of_its_own`). Each follows `createDomain`'s link, and the
+domain it names is gone after the reset, so an exchange aimed at a positive id
+other than missing's `2147483647` gets a domain of its own; the delete's 204
+also gets the key it deletes. `setDKIMKey`'s link reaches only the delete, so
+nothing that follows them is left unmoved.
+
+The reset also puts each domain it keeps back to a new domain's settings
+(`cleanResetData`, `resetDomainSettings`): its DKIM key and selector, key
+installation time, rotation interval, sending and DMARC policy and default
+quota. The seed finds a kept domain by name and leaves its row alone, so a key
+made before a reset came back with the re-seeded `restmail.test`. The seed sets
+its own domains' kind and active state again. Every column of `domains` is
+either reset or kept for a stated reason (`resetDomainKept`), and
+`TestCleanResetEveryDomainColumn` fails on a column that is neither.
+
 This happens only with `CONTRACT_RESET_SEED=1`, which `tests/contract/run.sh own-data`
 sets, and that phase is a gate of its own, sent by `chore test:contract-teardown`
 just before the teardown. It sends the moved operations with everything that follows
@@ -1744,8 +1761,8 @@ moved is sent after a reset.
 A reset removes the domain `createDomain` made, and its id is what the links carry.
 So after a reset, an unmoved operation that follows one of those links gets a stand-in
 domain (`a_live_domain_for_the_link`), made once per reset and kept where the created
-domain was. An allowlist or blocklist entry the link names is added again, and a DKIM
-key is set again before its delete. A run with no reset changes nothing there.
+domain was. An allowlist or blocklist entry the link names is added again. A run with
+no reset changes nothing there.
 
 What a reset does and does not touch here:
 
