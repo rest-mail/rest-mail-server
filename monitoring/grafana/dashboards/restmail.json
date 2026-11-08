@@ -1000,6 +1000,83 @@
       ],
       "title": "Database Connection Errors",
       "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 84
+      },
+      "id": 108,
+      "title": "Disk",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "description": "Share of each volume's space in use: the database, attachment and certificate volumes. node-exporter gives it for the compose stack, kubelet for the chart's PVCs. DiskSpaceLow warns at 80% and DiskSpaceCritical pages at 90%.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "fillOpacity": 10,
+            "lineWidth": 2,
+            "showPoints": "never",
+            "thresholdsStyle": {
+              "mode": "line"
+            }
+          },
+          "max": 1,
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 0.8 },
+              { "color": "red", "value": 0.9 }
+            ]
+          },
+          "unit": "percentunit"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 85
+      },
+      "id": 25,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": ["lastNotNull"]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "expr": "1 - node_filesystem_avail_bytes{job=\"node\", mountpoint=~\"/volumes/.+\"} / node_filesystem_size_bytes{job=\"node\", mountpoint=~\"/volumes/.+\"}",
+          "legendFormat": "{{mountpoint}}",
+          "refId": "A"
+        },
+        {
+          "expr": "1 - kubelet_volume_stats_available_bytes{persistentvolumeclaim=~\".+-(postgres-data|api-attachments)|data-.+-garage-[0-9]+\"} / kubelet_volume_stats_capacity_bytes{persistentvolumeclaim=~\".+-(postgres-data|api-attachments)|data-.+-garage-[0-9]+\"}",
+          "legendFormat": "{{namespace}}/{{persistentvolumeclaim}}",
+          "refId": "B"
+        }
+      ],
+      "title": "Volume Space Used",
+      "type": "timeseries"
     }
   ],
   "schemaVersion": 39,
