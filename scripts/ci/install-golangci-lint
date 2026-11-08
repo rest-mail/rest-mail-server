@@ -32,10 +32,13 @@ if [ -n "${GOLANGCI_LINT_DOWNLOAD_CACHE:-}" ]; then
 fi
 
 if [ ! -f "$archive" ]; then
-  curl --fail --silent --show-error --location \
+  if ! curl --fail --silent --show-error --location \
     --connect-timeout 30 --max-time 120 \
     --retry "${INSTALL_LINT_RETRIES:-6}" --retry-all-errors --retry-delay "${INSTALL_LINT_RETRY_DELAY:-20}" \
-    --output "$archive" "$url"
+    --output "$archive" "$url"; then
+    echo "golangci-lint: release download failed; trying GitHub asset API" >&2
+    python3 "$(dirname "$0")/github_release.py" "$url" "$archive"
+  fi
 fi
 
 actual=$(shasum -a 256 "$archive" | cut -d' ' -f1)

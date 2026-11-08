@@ -21,7 +21,7 @@
       "exception": "GitHub's archive-cache transport only; scripts/tests verifies cache hits, misses, corruption fallback and checksum rejection. The local linter gate uses its own installed tool."
     },
     "Install golangci-lint": {
-      "sha256": "08e35e41046f13da3633c0cc8f9101e97ecdef72af1bbf850021f6b39c3f494e",
+      "sha256": "245affe97e61f2686691ce212eef74f67f24852ef70467e8d6a7a52f19bd7266",
       "local": "golangci-lint"
     },
     "Run golangci-lint": {

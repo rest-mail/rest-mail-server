@@ -96,12 +96,20 @@ def fetch(url):
     )
     token = os.environ.get("GITHUB_TOKEN")
     if token and url.startswith("https://api.github.com/"):
-        request.add_header("Authorization", "Bearer " + token)
+        request.add_unredirected_header("Authorization", "Bearer " + token)
     for delay in (*RETRY_DELAYS, None):
         try:
             with urllib.request.urlopen(request, timeout=60) as response:
                 return response.read()
         except (OSError, http.client.HTTPException) as error:
+            from ci.github_release import fetch_asset, release_asset
+
+            if release_asset(url):
+                try:
+                    print("vertrag_pin: release download failed; trying GitHub asset API", file=sys.stderr)
+                    return fetch_asset(url)
+                except (OSError, http.client.HTTPException, ValueError, KeyError) as fallback_error:
+                    print(f"vertrag_pin: asset API failed ({fallback_error})", file=sys.stderr)
             if delay is None or not transient(error):
                 raise
             print(f"vertrag_pin: {url} failed ({error}); retrying in {delay}s", file=sys.stderr)

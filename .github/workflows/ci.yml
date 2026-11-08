@@ -102,6 +102,8 @@ jobs:
           tool: golangci-lint
 
       - name: Install golangci-lint
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: scripts/ci/install-golangci-lint "$RUNNER_TEMP/bin"
 
       - name: Cache oasdiff's pinned archive
@@ -110,6 +112,8 @@ jobs:
           tool: oasdiff
 
       - name: Warm oasdiff's pinned archive on main
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: python3 scripts/oasdiff_pin.py install "$RUNNER_TEMP/bin"
 
       - name: Cache Vertrag's pinned archive
@@ -118,6 +122,8 @@ jobs:
           tool: vertrag
 
       - name: Warm Vertrag's pinned archive on main
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: python3 scripts/vertrag_pin.py install "$RUNNER_TEMP/bin"
 
       - name: Refresh golangci-lint's cache
@@ -225,6 +231,8 @@ jobs:
           scripts: ${{ runner.temp }}/contract-gate
 
       - name: Install the comparator the verdict uses
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           python3 scripts/ci/tool_cache.py install-base-oasdiff "$RUNNER_TEMP/contract-gate/oasdiff_pin.py" "$RUNNER_TEMP/contract-gate/bin"
 
@@ -235,6 +243,8 @@ jobs:
           tool: oasdiff
 
       - name: Install the comparator the PR's tests use
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           python3 scripts/oasdiff_pin.py install "$RUNNER_TEMP/bin"
 
@@ -339,6 +349,8 @@ jobs:
           tool: golangci-lint
 
       - name: Install golangci-lint
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: scripts/ci/install-golangci-lint "$RUNNER_TEMP/bin"
 
       - name: Run golangci-lint
@@ -1232,6 +1244,8 @@ jobs:
           tool: vertrag
 
       - name: Install vertrag (pinned + checksum-verified)
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: python3 ../../scripts/vertrag_pin.py install "$RUNNER_TEMP/bin"
 
       - name: The sidecar against its description (Vertrag)

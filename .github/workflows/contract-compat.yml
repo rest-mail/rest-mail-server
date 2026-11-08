@@ -51,6 +51,8 @@ jobs:
           tool: oasdiff
 
       - name: Install the pinned OpenAPI 3.1 comparator
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: python3 scripts/oasdiff_pin.py install "$RUNNER_TEMP/bin"
 
       - name: Prove the check with the real comparator

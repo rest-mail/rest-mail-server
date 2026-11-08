@@ -274,6 +274,7 @@ class ArchiveCacheTests(unittest.TestCase):
                             continue
                         with self.subTest(workflow=workflow.name, job=name, tool=tool):
                             self.assertIn(tool, available)
+                            self.assertEqual(step["env"]["GITHUB_TOKEN"], "${{ github.token }}")
                         found.append((workflow.name, name, tool))
         self.assertEqual(len(found), 9)
         seed = jobs(WORKFLOWS / "ci.yml")["seed-caches"]

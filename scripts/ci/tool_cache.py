@@ -3,12 +3,15 @@
 
 import hashlib
 import importlib.util
+import http.client
 import os
 from pathlib import Path
 import platform
 import re
 import subprocess
 import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 
 def load_installer(filename):
@@ -66,7 +69,15 @@ def install_base_oasdiff(installer, directory):
         except OSError:
             archive = b""
         if hashlib.sha256(archive).hexdigest() != want:
-            archive = original_fetch(url)
+            try:
+                archive = original_fetch(url)
+            except (OSError, http.client.HTTPException):
+                from github_release import fetch_asset, release_asset
+
+                if not release_asset(url):
+                    raise
+                print("oasdiff: base-tip download failed; trying GitHub asset API", file=sys.stderr)
+                archive = fetch_asset(url)
         if hashlib.sha256(archive).hexdigest() != want:
             raise ValueError(f"{name} does not match the base-tip pinned checksum")
         archive_path.parent.mkdir(parents=True, exist_ok=True)

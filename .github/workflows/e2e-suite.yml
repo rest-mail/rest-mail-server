@@ -180,6 +180,8 @@ jobs:
           tool: vertrag
 
       - name: Install vertrag (pinned + checksum-verified)
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         # The contract tester (#376), as its released binary rather than a Go
         # dependency: vertrag needs Go 1.26 and this module is on 1.25. Verified
         # the same way as chore above, never piped from the network.
