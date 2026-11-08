@@ -96,8 +96,29 @@ jobs:
 
       # The action saves its own cache for a key that turns over weekly. The queue tested
       # this commit, so this is for the cache and not for the verdict.
+      - name: Cache golangci-lint's pinned archive
+        uses: ./.github/actions/cache-pinned-tool
+        with:
+          tool: golangci-lint
+
       - name: Install golangci-lint
         run: scripts/ci/install-golangci-lint "$RUNNER_TEMP/bin"
+
+      - name: Cache oasdiff's pinned archive
+        uses: ./.github/actions/cache-pinned-tool
+        with:
+          tool: oasdiff
+
+      - name: Warm oasdiff's pinned archive on main
+        run: python3 scripts/oasdiff_pin.py install "$RUNNER_TEMP/bin"
+
+      - name: Cache Vertrag's pinned archive
+        uses: ./.github/actions/cache-pinned-tool
+        with:
+          tool: vertrag
+
+      - name: Warm Vertrag's pinned archive on main
+        run: python3 scripts/vertrag_pin.py install "$RUNNER_TEMP/bin"
 
       - name: Refresh golangci-lint's cache
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
@@ -197,11 +218,22 @@ jobs:
           go-version: "1.26.10"
           cache: true
 
+      - name: Cache the verdict comparator's pinned archive
+        uses: ./.github/actions/cache-pinned-tool
+        with:
+          tool: oasdiff
+          scripts: ${{ runner.temp }}/contract-gate
+
       - name: Install the comparator the verdict uses
         run: |
-          python3 "$RUNNER_TEMP/contract-gate/oasdiff_pin.py" install "$RUNNER_TEMP/contract-gate/bin"
+          python3 scripts/ci/tool_cache.py install-base-oasdiff "$RUNNER_TEMP/contract-gate/oasdiff_pin.py" "$RUNNER_TEMP/contract-gate/bin"
 
       # A PR that moves the pin is tested with the version it asks for.
+      - name: Cache the PR comparator's pinned archive
+        uses: ./.github/actions/cache-pinned-tool
+        with:
+          tool: oasdiff
+
       - name: Install the comparator the PR's tests use
         run: |
           python3 scripts/oasdiff_pin.py install "$RUNNER_TEMP/bin"
@@ -301,6 +333,11 @@ jobs:
         run: go vet ./...
 
       # The action's own download fails the job on a short GitHub 504 (#1942).
+      - name: Cache golangci-lint's pinned archive
+        uses: ./.github/actions/cache-pinned-tool
+        with:
+          tool: golangci-lint
+
       - name: Install golangci-lint
         run: scripts/ci/install-golangci-lint "$RUNNER_TEMP/bin"
 
@@ -1189,6 +1226,14 @@ jobs:
       - name: Test
         run: npm test
 
+      - name: Cache Vertrag's pinned archive
+        uses: ./.github/actions/cache-pinned-tool
+        with:
+          tool: vertrag
+
+      - name: Install vertrag (pinned + checksum-verified)
+        run: python3 ../../scripts/vertrag_pin.py install "$RUNNER_TEMP/bin"
+
       - name: The sidecar against its description (Vertrag)
         # js-filter-sidecar.json is generated from the API client's own types
         # (TestSidecarDescriptionIsCommitted); here the running sidecar is held to
@@ -1200,7 +1245,6 @@ jobs:
           PORT: "3100"
         run: |
           set -euo pipefail
-          python3 ../../scripts/vertrag_pin.py install "$RUNNER_TEMP/bin"
           node server.js > "$RUNNER_TEMP/sidecar.log" 2>&1 &
           for _ in $(seq 1 30); do
             curl -fsS http://127.0.0.1:3100/health >/dev/null 2>&1 && break

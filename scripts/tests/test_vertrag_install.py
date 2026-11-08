@@ -87,6 +87,41 @@ class VertragInstall(unittest.TestCase):
         self.assertEqual(self.requests, [])
         self.assertEqual(target.read_bytes(), self.binary)
 
+    def test_archive_cache_miss_hit_and_mismatch_are_verified(self):
+        downloads = self.root / "downloads"
+        with mock.patch.dict(os.environ, {"VERTRAG_DOWNLOAD_CACHE": str(downloads)}):
+            target = self.install()
+            self.assertEqual(len(self.requests), 2)
+            archive = downloads / vertrag_pin.asset("0.29.1")
+            self.assertEqual(archive.read_bytes(), self.archive)
+            self.requests.clear()
+            target.write_bytes(b"untrusted restored binary")
+            with contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(vertrag_pin.ensure(str(self.cache)), str(target.resolve()))
+            self.assertEqual(self.requests, [])
+            self.assertEqual(target.read_bytes(), self.binary)
+            archive.write_bytes(b"untrusted archive")
+            self.install()
+            self.assertEqual(len(self.requests), 2)
+            self.assertEqual(archive.read_bytes(), self.archive)
+
+    def test_archive_cache_does_not_accept_a_changed_pin_or_bad_download(self):
+        downloads = self.root / "downloads"
+        with mock.patch.dict(os.environ, {"VERTRAG_DOWNLOAD_CACHE": str(downloads)}):
+            self.install()
+            self.write_pin("f" * 64)
+            self.requests.clear()
+            with self.assertRaisesRegex(ValueError, "CI pin"):
+                self.install()
+            self.assertEqual(len(self.requests), 1)
+            self.write_pin(self.sha)
+            archive = downloads / vertrag_pin.asset("0.29.1")
+            archive.write_bytes(b"corrupt cache")
+            self.archive = b"bad download"
+            with self.assertRaisesRegex(ValueError, "sha256"):
+                self.install()
+            self.assertEqual(archive.read_bytes(), b"corrupt cache")
+
     def test_bad_release_metadata_preserves_the_cache_without_downloading(self):
         target = self.install()
         receipt = self.cache / "vertrag-pin.json"

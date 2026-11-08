@@ -651,6 +651,9 @@ class VerdictFixture(GitFixture):
         return self.commit(description())
 
     def env_for(self, base_tip, merge_base, head):
+        helper = self.clone / "scripts/ci/tool_cache.py"
+        helper.parent.mkdir(parents=True, exist_ok=True)
+        helper.write_text((ROOT / "scripts/ci/tool_cache.py").read_text())
         binaries = self.temp / "bin"
         binaries.mkdir(exist_ok=True)
         github = binaries / "gh"

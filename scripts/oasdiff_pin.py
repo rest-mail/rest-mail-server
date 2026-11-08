@@ -4,6 +4,7 @@
 import hashlib
 import http.client
 import io
+import os
 import platform
 import sys
 import tarfile
@@ -53,9 +54,24 @@ def install(directory):
     want = CHECKSUMS[target]
     name = f"oasdiff_{VERSION}_{target}.tar.gz"
     url = f"https://github.com/oasdiff/oasdiff/releases/download/v{VERSION}/{name}"
-    archive = fetch(url)
+    cache = os.environ.get("OASDIFF_DOWNLOAD_CACHE")
+    archive_path = Path(cache) / name if cache else None
+    archive = None
+    if archive_path:
+        try:
+            candidate = archive_path.read_bytes()
+            if hashlib.sha256(candidate).hexdigest() == want:
+                archive = candidate
+                print("oasdiff: verified archive cache hit", file=sys.stderr)
+        except OSError:
+            pass
+    if archive is None:
+        archive = fetch(url)
     if hashlib.sha256(archive).hexdigest() != want:
         raise ValueError(f"{name} does not match the pinned release checksum")
+    if archive_path:
+        archive_path.parent.mkdir(parents=True, exist_ok=True)
+        archive_path.write_bytes(archive)
     with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
         member = tar.getmember("oasdiff")
         if not member.isfile():

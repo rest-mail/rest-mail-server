@@ -160,13 +160,30 @@ def install(directory):
         version, linux_sha = pinned(f.read())
     system, machine = this_machine()
     name = asset(version, system, machine)
-    want = checksum_for(release_checksums(version), name)
-    if (system, machine) == ("linux", "x86_64") and want != linux_sha:
-        raise ValueError("the release checksum disagrees with the immutable CI pin")
-    archive = fetch(f"https://github.com/{REPO}/releases/download/v{version}/{name}")
+    cache = os.environ.get("VERTRAG_DOWNLOAD_CACHE")
+    archive_path = os.path.join(cache, name) if cache else None
+    archive = None
+    if archive_path and (system, machine) == ("linux", "x86_64"):
+        try:
+            with open(archive_path, "rb") as stream:
+                candidate = stream.read()
+            if hashlib.sha256(candidate).hexdigest() == linux_sha:
+                archive = candidate
+                print("Vertrag: verified archive cache hit", file=sys.stderr)
+        except OSError:
+            pass
+    want = linux_sha
+    if archive is None:
+        want = checksum_for(release_checksums(version), name)
+        if (system, machine) == ("linux", "x86_64") and want != linux_sha:
+            raise ValueError("the release checksum disagrees with the immutable CI pin")
+        archive = fetch(f"https://github.com/{REPO}/releases/download/v{version}/{name}")
     got = hashlib.sha256(archive).hexdigest()
     if got != want:
         raise ValueError(f"{name} has sha256 {got}, its release says {want}")
+    if archive_path:
+        os.makedirs(cache, exist_ok=True)
+        atomic_write(archive_path, archive, 0o644)
     with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
         member = tar.getmember("vertrag")
         if not member.isfile():
@@ -227,7 +244,9 @@ def ensure(directory):
     with open(PIN_FILE) as stream:
         version, linux_sha = pinned(stream.read())
     system, machine = this_machine()
-    if not cached(directory, version, linux_sha, system, machine):
+    if os.environ.get("VERTRAG_DOWNLOAD_CACHE") or not cached(
+        directory, version, linux_sha, system, machine
+    ):
         # stdout is a shell-safe path value; installation messages are diagnostics.
         with contextlib.redirect_stdout(sys.stderr):
             install(directory)
