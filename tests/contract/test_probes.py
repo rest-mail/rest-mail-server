@@ -17,7 +17,8 @@ import yaml
 ROOT = Path(__file__).resolve().parents[2]
 COVERAGE_PINS = [
     "private_key", "snoozed_until", "scheduled_at", "expires_at", "permissions",
-    "time_zone", "script", "raw_message", "recipients", "date",
+    "time_zone", "script", "raw_message", "recipients", "date", "filter_name", "cert_pem",
+    "key_pem",
 ]
 
 
@@ -208,7 +209,7 @@ class ProbeConfig(unittest.TestCase):
 
     def test_the_password_is_held_only_on_valid_requests_of_two_operations(self):
         valid = self.config["fuzz"]["pin-valid"]
-        self.assertEqual(valid.keys(), {"createAccount", "updateMailbox"})
+        self.assertEqual(valid.keys(), {"createAccount", "updateMailbox", "createCertificate"})
         self.assertEqual(valid["createAccount"]["password_hash"], "")
         self.assertEqual(
             valid["createAccount"]["password"], valid["updateMailbox"]["password"]
@@ -218,14 +219,26 @@ class ProbeConfig(unittest.TestCase):
         self.assertNotIn("password", pinned)
         self.assertNotIn("password_hash", pinned)
 
+    def test_only_valid_certificate_requests_name_the_isolated_domain(self):
+        domain = json.loads(probes.FIXTURE_PLAN.read_text())["certificate_domain"]
+        self.assertEqual(
+            self.config["fuzz"]["pin-valid"]["createCertificate"],
+            {"domain_id": domain["id"]},
+        )
+        self.assertNotIn("domain_id", self.config["fuzz"]["pin"])
+
     def test_a_send_is_held_immediate_so_its_success_example_stays_a_201(self):
         self.assertIsNone(self.config["fuzz"]["pin"]["scheduled_at"])
 
     def test_only_the_key_and_the_two_dates_are_held_and_paths_survive_generated_config_location(
         self,
     ):
+        fuzz = dict(self.config["fuzz"])
+        fuzz["pin"] = dict(fuzz["pin"])
+        self.assertTrue(fuzz["pin"].pop("cert_pem").startswith("-----BEGIN CERTIFICATE-----"))
+        self.assertIn("PRIVATE KEY-----", fuzz["pin"].pop("key_pem"))
         self.assertEqual(
-            self.config["fuzz"],
+            fuzz,
             {
                 "pin": {
                     "private_key": probes.DKIM_KEY.read_text(),
@@ -238,8 +251,14 @@ class ProbeConfig(unittest.TestCase):
                     "raw_message": probes.RAW_MESSAGE,
                     "recipients": probes.RECIPIENTS,
                     "date": probes.DELIVERY_DATE,
+                    "filter_name": probes.FILTER_NAME,
                 },
-                "pin-valid": self.base["fuzz"]["pin-valid"],
+                "pin-valid": {
+                    **self.base["fuzz"]["pin-valid"],
+                    "createCertificate": {
+                        "domain_id": json.loads(probes.FIXTURE_PLAN.read_text())["certificate_domain"]["id"],
+                    },
+                },
             },
         )
         self.assertEqual(

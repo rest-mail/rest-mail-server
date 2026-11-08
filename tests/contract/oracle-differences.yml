@@ -299,10 +299,6 @@
   reason: >-
     The list answers respond.Pagination as it always did: has_more is present and pagination is a pointer. The oracle omits pagination or leaves its required/nullability details unspecified.
 - operation: testFilter
-  difference: "request body application/json.properties.config.type: openapi.yaml \"object\", generated absent"
-  reason: >-
-    Plugin configuration stays raw JSON so arbitrary nested plugin fields survive unchanged. The handler retains its object-shape validator and pinned config error; RawMessage itself has no reflected shape restriction.
-- operation: testFilter
   difference: "request body application/json.properties.email.properties: openapi.yaml absent, generated *"
   reason: >-
     Preview takes the canonical email fields, including envelope, headers, body, attachments, inline, calendar_events and metadata. Each may be omitted or null, preserving partial samples accepted by both clients; the oracle describes only an open object.

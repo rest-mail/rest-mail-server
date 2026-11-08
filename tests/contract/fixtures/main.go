@@ -99,6 +99,9 @@ func main() {
 			if err == nil {
 				err = prepareDMARCReport(database, *domain)
 			}
+			if err == nil {
+				err = prepareCertificateProbeDomain(database, *domain)
+			}
 		}
 	}
 	if err != nil {
@@ -197,6 +200,28 @@ func prepareDeliveryRecipient(database *gorm.DB, domain string) error {
 		}
 		return grants.EnsureDefaults(tx, &account)
 	})
+}
+
+func prepareCertificateProbeDomain(database *gorm.DB, domain string) error {
+	if domain != "restmail.test" {
+		return errors.New("contract fixtures require restmail.test")
+	}
+	plan, err := fixtureplan.Default()
+	if err != nil {
+		return err
+	}
+	fixture := plan.CertificateDomain
+	row := models.Domain{ID: fixture.ID, Name: fixture.Name, ServerType: "traditional"}
+	if err := database.Clauses(clause.OnConflict{DoNothing: true}).Create(&row).Error; err != nil {
+		return err
+	}
+	if err := database.First(&row, fixture.ID).Error; err != nil {
+		return err
+	}
+	if row.Name != fixture.Name {
+		return errors.New("certificate probe domain id belongs to another domain")
+	}
+	return nil
 }
 
 // The administrator a coverage probe of the API key operations is sent as. Those

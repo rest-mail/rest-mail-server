@@ -49,6 +49,7 @@ import reset_seed
 from identities import address_key, domain_key
 from api_keys_live import totp  # noqa: E402
 from queue_entry_hooks import a_disposable_queue_entry
+from lost_probes import DOCUMENTED_SENDS  # noqa: E402
 
 PRINCIPALS = os.environ.get("CONTRACT_PRINCIPALS", ".cache/contract-principals.json")
 
@@ -1386,13 +1387,18 @@ def a_draft_for_the_authorization_admin(transaction):
     transaction["fullPath"] = f"{parent}/{draft['id']}" + separator + query
 
 
+# The issuer of the certificate probes.py pins, as the API lists it, which is how the
+# hooks tell a probe's certificate from every other.
+PROBE_CERTIFICATE_ISSUER = "CN=contract-probe-certificate"
+CERTIFICATE_PAGE = 100
+
+
 @hooks.before("createCertificate")
 def a_self_signed_certificate(transaction):
     body = hooks.get_json(transaction)
-    # Replace only the documented material placeholders, and the schema-valid
-    # placeholder material of a coverage probe named for the 201, which no
-    # server accepts as a certificate. Preserve incomplete, invalid and refusal
-    # bodies and the caller's renewal policy.
+    # Replace only the documented material placeholders, and, in a probing process,
+    # the pinned material of the documented sends named for the 201. Preserve
+    # incomplete, invalid and refusal bodies and the caller's renewal policy.
     if not isinstance(body, dict):
         return
     documented = body.get("cert_pem") == "certificate" and body.get("key_pem") == "key"
@@ -1407,6 +1413,18 @@ def a_self_signed_certificate(transaction):
         or not (documented or succeeds)
     ):
         return
+    if not documented:
+        # A probing process sends each transaction's documented request first, and
+        # what follows those is a probe: its body goes out as drawn, or it is not sent
+        # at all (lost_probes.py). Its pinned material lands on its isolated
+        # .invalid domain until remove_the_probe_certificates. The documented
+        # sends keep their own certificate on the run's domain, for getCertificate's
+        # link to find.
+        sends = hooks.stash.setdefault("documented_certificates", {})
+        sends[transaction["name"]] = sends.get(transaction["name"], 0) + 1
+        if sends[transaction["name"]] > DOCUMENTED_SENDS:
+            hooks.stash["probe_certificates_installed"] = True
+            return
     if body.get("domain_id") == 1 and hooks.stash.get("domain_id") is not None:
         body["domain_id"] = a_standing_domain_for_the_certificate(transaction)
     # The server refuses a certificate that does not name the domain it is
@@ -1484,6 +1502,32 @@ def certificate_name_for(transaction, domain_id):
     except (urllib.error.URLError, OSError, ValueError):
         domain = None
     return (domain or {}).get("name") or "example.org"
+
+
+@hooks.before("*")
+def remove_the_probe_certificates(transaction):
+    # Coverage runs no after hook, so what follows createCertificate's probes removes
+    # what they installed. Nothing else carries this issuer.
+    if (
+        not hooks.stash.get("probe_certificates_installed")
+        or transaction.get("operationId") == "createCertificate"
+    ):
+        return
+    hooks.stash["probe_certificates_installed"] = False
+    held = []
+    offset = 0
+    while True:
+        page = fixture_call(
+            transaction,
+            "GET",
+            f"/api/v1/admin/certificates?limit={CERTIFICATE_PAGE:d}&offset={offset:d}",
+        )
+        if not page:
+            break
+        held += [c["id"] for c in page if c.get("issuer") == PROBE_CERTIFICATE_ISSUER]
+        offset += len(page)
+    for certificate_id in held:
+        fixture_call(transaction, "DELETE", f"/api/v1/admin/certificates/{certificate_id:d}")
 
 
 @hooks.before("updateDomain")
@@ -2145,20 +2189,6 @@ def pace_the_tls_reports(transaction):
     # (DefaultTLSRPTRateLimitRPS, internal/config/config.go), and coverage
     # sends more probes than that: a 429 is the limiter, not the report.
     rate_limits.pace(1)
-
-
-@hooks.before("testFilter")
-def test_a_filter_that_exists(transaction):
-    # The generator's stand-ins name no filter and no configuration. A probe of
-    # a refused value keeps it.
-    body = hooks.get_json(transaction)
-    if not isinstance(body, dict) or " > 200 > " not in transaction["name"]:
-        return
-    if body.get("filter_name") == "x":
-        body["filter_name"] = "header_validate"
-    if body.get("config") == "x":
-        body["config"] = {}
-    hooks.set_json(transaction, body)
 
 
 @hooks.before("receiveTlsReport")
@@ -4268,7 +4298,6 @@ def unlink_a_link_of_its_own(transaction):
     base, _, _ = path.rpartition("/")
     _, account = a_throwaway_link(origin_of(transaction))
     transaction["fullPath"] = f"{base}/{account:d}" + ("?" + query if query else "")
-
 
 
 GRANTED_SUMMARY = "An eligible admin grant on one domain"
