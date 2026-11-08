@@ -1847,6 +1847,13 @@ def a_signing_mailbox_at(transaction, address):
 
 @hooks.before("sendMessage")
 def a_sending_policy_for_the_send(transaction):
+    # After a reset (the own-data phase) every send, refusals included, starts
+    # clean. What follows makes the sender's signing domain and mailbox and
+    # sets restmail.test's policy again after it: the reset cleared
+    # sender_mailboxes, admin_domain_id and admin_domain_policy, and seeded
+    # restmail.test again, with no policy and maybe under another id.
+    if asked_for_a_clean_start():
+        start_clean(transaction)
     # unsubscribe_not_allowed (422) is refused by a transactional sender
     # domain, and restmail.test has no policy: it is made transactional for
     # that request, and the probes built from it, alone. Every other send,
@@ -1907,7 +1914,13 @@ def a_mailbox_at_each_test_send_address(transaction):
     # for (someone@example.com), which the handler rightly answers 404. Host
     # its domain and give it an account, once, and leave it there: a test
     # send only adds a message. Every generated request byte stays untouched.
+    # After a reset (the own-data phase) every test send, refusals included,
+    # starts clean, and the accounts are made again after it: the reset
+    # cleared test_send_mailboxes along with the accounts it named.
     from urllib.error import HTTPError
+
+    if asked_for_a_clean_start():
+        start_clean(transaction)
 
     body = hooks.get_json(transaction)
     if not isinstance(body, dict):

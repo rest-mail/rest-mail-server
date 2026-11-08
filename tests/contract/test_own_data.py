@@ -1,6 +1,7 @@
 """The moved operations' phase: what it selects, and that only it resets (#1385)."""
 
 import json
+import re
 import sys
 import tempfile
 import unittest
@@ -76,6 +77,32 @@ CONTACTS = (
     "setContactReplyTimeSetting",
 )
 
+# The send operations: the ones whose hooks read or write sender_mailboxes or
+# test_send_mailboxes. No link reaches either. sendMessage's 201 link reaches the
+# message operations, and their links three more, none moved or selected: the
+# reset is before the send, never between it and a follower.
+SENDS = ("sendMessage", "sendTestEmail")
+FOLLOWS_THE_SENT_MESSAGE = {
+    "getMessage",
+    "updateMessage",
+    "getRawMessage",
+    "forwardMessage",
+    "listAttachments",
+    "getMessageTrace",
+    "deleteMessage",
+    "verifyMessageSeal",
+    "getThread",
+}
+# Main added these cross-group links in 65f4d307a (#1764), 550f750b0
+# (#1780), and 4977f8fb1 (#1597). Their clean-data selection moves separately
+# from the message operations above, but the full link graph stays exact.
+OTHER_SENT_MESSAGE_FOLLOWERS = {
+    "cancelScheduledMessage",
+    "respondToCalendar",
+    "getUnsubscribeOptions",
+    "listMessageRecipients",
+}
+
 
 def link_followers(description, start):
     """The operations reachable from start through the description's links."""
@@ -141,7 +168,8 @@ class Selection(unittest.TestCase):
             - set(FOLDERS)
             - set(INVITATIONS)
             - set(GRANTS)
-            - set(CONTACTS),
+            - set(CONTACTS)
+            - set(SENDS),
             link_followers(description, "createDomain") | {"createDomain"},
         )
 
@@ -269,6 +297,29 @@ class Selection(unittest.TestCase):
         selected = own_data.configure({})["operation-id"]
         self.assertNotIn("listAccounts", selected)
         self.assertLessEqual(set(CONTACTS), set(own_data.MOVED))
+
+    def test_it_selects_the_send_operations_and_not_what_follows_the_send(self):
+        description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
+        hooks = (ROOT / "tests/contract/hooks.py").read_text()
+        readers = set()
+        for chunk in hooks.split("\n\n\n"):
+            if "sender_mailboxes" in chunk or "test_send_mailboxes" in chunk:
+                readers |= set(re.findall(r'@hooks\.before\("(\w+)"\)', chunk))
+        # a_signing_mailbox_at is called from sendMessage's hook alone.
+        self.assertEqual(readers, set(SENDS))
+        self.assertEqual(hooks.count("a_signing_mailbox_at("), 3)
+        self.assertEqual(
+            link_followers(description, "sendMessage"),
+            FOLLOWS_THE_SENT_MESSAGE | OTHER_SENT_MESSAGE_FOLLOWERS,
+        )
+        self.assertEqual(link_followers(description, "sendTestEmail"), set())
+        reached = set()
+        for operation in description_operations(description):
+            reached |= link_followers(description, operation)
+        self.assertFalse(reached & set(SENDS))
+        selected = set(own_data.configure({})["operation-id"])
+        self.assertLessEqual(set(SENDS), set(own_data.MOVED))
+        self.assertFalse(selected & FOLLOWS_THE_SENT_MESSAGE)
 
     def test_a_skipped_exchange_is_not_a_pass(self):
         with tempfile.TemporaryDirectory() as directory:

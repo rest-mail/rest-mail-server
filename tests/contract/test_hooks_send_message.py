@@ -237,6 +237,60 @@ class SendMessageProbes(unittest.TestCase):
         self.assertEqual(len(self.server.state["domains"]), 1)
 
 
+class SendMessageCleanStart(unittest.TestCase):
+    """With CONTRACT_RESET_SEED=1 (the own-data phase) every send starts clean
+    and makes its sender again after the reset (#1385)."""
+
+    send = SendMessageProbes.send
+
+    def setUp(self):
+        SendMessageProbes.setUp(self)
+        switch = patch.dict(self.hooks.os.environ, {"CONTRACT_RESET_SEED": "1"})
+        switch.start()
+        self.addCleanup(switch.stop)
+        token = patch.object(self.hooks, "admin_token", lambda origin: "setup")
+        token.start()
+        self.addCleanup(token.stop)
+        reset = patch.object(self.hooks.reset_seed, "reset_and_seed", self.reset)
+        reset.start()
+        self.addCleanup(reset.stop)
+
+    def reset(self, origin, token, fixtures=("queue",)):
+        # What the seed leaves: restmail.test and its admin, no policy. The
+        # key is dropped too, so the hook is seen to check it again.
+        self.assertEqual(fixtures, ())
+        state = self.server.state
+        state["calls"].append("RESET")
+        state["domains"][:] = [{"id": 1, "name": "restmail.test"}]
+        state["mailboxes"][:] = [{"id": 7, "domain_id": 1, "address": "admin@restmail.test"}]
+        state["signing"].clear()
+
+    def test_a_refusal_starts_clean_too(self):
+        self.stub.stash.update(admin_domain_id=9, admin_domain_policy="transactional")
+        self.send({"to": ["someone@example.com"]})
+        self.assertEqual(self.server.state["calls"], ["RESET"])
+        self.assertNotIn("admin_domain_id", self.stub.stash)
+        self.assertNotIn("admin_domain_policy", self.stub.stash)
+
+    def test_each_send_makes_its_sender_again_after_its_reset(self):
+        body = {"from": "someone@example.com", "to": ["someone@example.com"]}
+        self.send(body)
+        self.send(body)
+        calls = self.server.state["calls"]
+        self.assertEqual(calls.count("RESET"), 2)
+        self.assertEqual(calls.count("POST /api/v1/accounts"), 2)
+        second = calls[calls.index("RESET", 1):]
+        self.assertIn("PUT /api/v1/admin/dkim/2", second)
+        self.assertEqual([m["address"] for m in self.server.state["mailboxes"]],
+                         ["admin@restmail.test", "someone@example.com"])
+
+    def test_the_seeded_sender_gets_its_key_again(self):
+        self.send({"from": "admin@restmail.test", "to": ["admin@restmail.test"]})
+        self.assertEqual(self.server.state["calls"][0], "RESET")
+        self.assertIn("PUT /api/v1/admin/dkim/1", self.server.state["calls"])
+        self.assertNotIn("POST /api/v1/accounts", self.server.state["calls"])
+
+
 class SendingPolicySetup(unittest.TestCase):
     """The policy half of the hook: an ordinary send asks nothing of the server."""
 
