@@ -451,20 +451,20 @@ class PrivateConfigTests(unittest.TestCase):
 
     def test_the_run_has_a_config_directory_and_caches_of_its_own(self):
         names = plan_module.plan("p2062", ["10.99.0.0/16"])["names"]
-        self.assertEqual(names["config"], "rml-p2062")
+        self.assertEqual(names["config"], "restmail-p2062")
         self.assertEqual(names["config_dir"], ".cache/topology/p2062/config")
-        self.assertEqual(names["gocache_volume"], "rml-p2062-gocache")
-        self.assertEqual(names["modules_volume"], "rml-p2062-gomod")
+        self.assertEqual(names["gocache_volume"], "restmail-p2062-gocache")
+        self.assertEqual(names["modules_volume"], "restmail-p2062-gomod")
         for name in ("gocache_volume", "modules_volume", "apiport", "config"):
-            self.assertTrue(names[name].startswith("rml-p2062"))
+            self.assertTrue(names[name].startswith("restmail-p2062"))
 
     def test_the_run_s_variables_name_its_config_and_caches(self):
         environment = plan_module.plan("p2062", ["10.99.0.0/16"])["environment"]
-        self.assertEqual(environment["CONFIG"], "rml-p2062")
-        self.assertEqual(environment["TOPOLOGY_CONFIG"], "rml-p2062")
+        self.assertEqual(environment["CONFIG"], "restmail-p2062")
+        self.assertEqual(environment["TOPOLOGY_CONFIG"], "restmail-p2062")
         self.assertEqual(environment["CONFIG_DIR"], ".cache/topology/p2062/config")
-        self.assertEqual(environment["RESTMAIL_GOCACHE_VOLUME"], "rml-p2062-gocache")
-        self.assertEqual(environment["RESTMAIL_MODULES_VOLUME"], "rml-p2062-gomod")
+        self.assertEqual(environment["RESTMAIL_GOCACHE_VOLUME"], "restmail-p2062-gocache")
+        self.assertEqual(environment["RESTMAIL_MODULES_VOLUME"], "restmail-p2062-gomod")
         self.assertEqual(environment["RESTMAIL_DNSMASQ_FRAGMENTS_VOLUME"], environment["DNSMASQ_FRAGMENTS_VOLUME"])
         self.assertEqual(environment["RESTMAIL_DNSMASQ_CONTAINER"], environment["DNSMASQ_CONTAINER"])
         self.assertNotIn("NAME", environment)
@@ -504,37 +504,88 @@ class PrivateConfigTests(unittest.TestCase):
         self.assertEqual(plan_module.plan(name, taken)["subnet"], first["subnet"])
 
 
-class LabelShimTests(unittest.TestCase):
-    """The docker that labels what the pinned reference-mailserver creates."""
+def load_docker_shim():
+    spec = importlib.util.spec_from_file_location("topology_docker", ROOT / "scripts/topology_docker.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
-    def run_shim(self, *arguments, label="rest-mail-loop=p2062"):
-        import tempfile
 
-        with tempfile.TemporaryDirectory() as scratch:
-            real = Path(scratch, "real-docker")
-            real.write_text('#!/bin/sh\nfor a in "$@"; do printf "%s\\n" "$a"; done\n')
-            real.chmod(0o755)
-            shim = Path(scratch, "docker")
-            shim.write_text(plan_module.docker_label_shim(str(real)))
-            shim.chmod(0o755)
-            result = subprocess.run([str(shim), *arguments], capture_output=True, text=True, check=False, env={"RESTMAIL_LABEL": label, "PATH": "/usr/bin:/bin"})
-        return result.returncode, result.stdout.split("\n")[:-1]
+shim = load_docker_shim()
 
-    def test_it_labels_a_container_a_volume_and_a_network(self):
-        label = "rest-mail-loop=p2062"
-        self.assertEqual(self.run_shim("run", "-d", "--name", "x", "img")[1], ["run", "--label", label, "-d", "--name", "x", "img"])
-        self.assertEqual(self.run_shim("create", "--name", "x", "img")[1], ["create", "--label", label, "--name", "x", "img"])
-        self.assertEqual(self.run_shim("volume", "create", "v")[1], ["volume", "create", "--label", label, "v"])
-        self.assertEqual(self.run_shim("network", "create", "n")[1], ["network", "create", "--label", label, "n"])
 
-    def test_it_passes_everything_else_through(self):
-        self.assertEqual(self.run_shim("ps", "-aq")[1], ["ps", "-aq"])
-        self.assertEqual(self.run_shim("volume", "inspect", "v")[1], ["volume", "inspect", "v"])
-        self.assertEqual(self.run_shim("rm", "-f", "x")[1], ["rm", "-f", "x"])
+class RunNamingTests(unittest.TestCase):
+    """Everything a run creates is named restmail-<run>-<purpose> and labelled (#2062)."""
 
-    def test_it_refuses_to_run_without_a_label(self):
-        code, _ = self.run_shim("run", "img", label="")
-        self.assertNotEqual(code, 0)
+    LABEL, RUN = "rest-mail-loop=2062", "2062"
+
+    def rewrite(self, *arguments):
+        return shim.rewrite(list(arguments), self.LABEL, self.RUN, 4242)
+
+    def test_the_names_the_plan_makes_all_start_with_restmail_run(self):
+        plan = plan_module.plan("2062", ["10.99.0.0/16"])
+        for key in ("testbed_project", "instance_project", "network", "certs_volume", "fragments_volume", "dnsmasq",
+                    "mail1_config", "mail2_config", "config", "gocache_volume", "modules_volume", "apiport"):
+            self.assertTrue(plan["names"][key].startswith("restmail-2062-") or plan["names"][key] == "restmail-2062", (key, plan["names"][key]))
+        for _, name in plan["resources"]:
+            self.assertTrue(name.startswith("restmail-2062-"), name)
+
+    def test_it_labels_and_names_a_container_that_has_no_name(self):
+        self.assertEqual(self.rewrite("run", "--rm", "alpine:3.20", "true"),
+                         ["run", "--label", self.LABEL, "--rm", "--name", "restmail-2062-helper-4242", "alpine:3.20", "true"])
+
+    def test_a_name_after_the_image_is_not_the_container_s(self):
+        out = self.rewrite("run", "--rm", "ghcr.io/rest-mail/reference-dnsmasq:0.1.0", "render-fragment", "--name", "x")
+        self.assertIn("restmail-2062-helper-4242", out)
+
+    def test_it_keeps_a_name_that_is_the_run_s_and_refuses_another(self):
+        out = self.rewrite("run", "-d", "--name", "restmail-2062-api", "img")
+        self.assertEqual(out.count("--name"), 1)
+        for bad in ("testbed-dnsmasq", "rest-mail-api", "mailref-mail1-postfix"):
+            with self.assertRaises(shim.Refused):
+                self.rewrite("run", "-d", "--name", bad, "img")
+
+    def test_it_reads_a_reference_server_name_as_the_run_s(self):
+        out = self.rewrite("run", "-d", "--name", "mailref-restmail-2062-mail1-postfix", "-v", "mailref-restmail-2062-mail1-postgres-data:/d", "img")
+        self.assertIn("restmail-2062-mail1-postfix", out)
+        self.assertIn("restmail-2062-mail1-postgres-data:/d", out)
+        self.assertNotIn("mailref-", " ".join(out))
+        self.assertEqual(self.rewrite("restart", "mailref-restmail-2062-mail1-rspamd"), ["restart", "restmail-2062-mail1-rspamd"])
+
+    def test_the_shared_reference_servers_are_not_read_as_the_run_s(self):
+        self.assertEqual(self.rewrite("restart", "mailref-mail1-rspamd"), ["restart", "mailref-mail1-rspamd"])
+
+    def test_a_named_volume_must_be_the_run_s_but_a_path_may_be_mounted(self):
+        self.rewrite("run", "--rm", "-v", "restmail-2062-tb_certs:/certs", "-v", "/tmp/x:/x:ro", "-v", "./y:/y", "img")
+        for bad in ("testbed_certs", "rest-mail-go-modules", "rest-mail-src-abc"):
+            with self.assertRaises(shim.Refused):
+                self.rewrite("run", "--rm", "-v", f"{bad}:/d", "img")
+
+    def test_a_network_must_be_the_run_s_unless_it_is_a_built_in(self):
+        self.rewrite("run", "--rm", "--network", "restmail-2062-tb_mailnet", "img")
+        self.rewrite("run", "--rm", "--network", "none", "img")
+        with self.assertRaises(shim.Refused):
+            self.rewrite("run", "--rm", "--network", "testbed_mailnet", "img")
+
+    def test_a_volume_or_network_is_labelled_and_must_be_the_run_s(self):
+        self.assertEqual(self.rewrite("volume", "create", "restmail-2062-gomod"), ["volume", "create", "--label", self.LABEL, "restmail-2062-gomod"])
+        self.assertEqual(self.rewrite("network", "create", "--internal", "--label", "a=b", "restmail-2062-js-filter-net"),
+                         ["network", "create", "--label", self.LABEL, "--internal", "--label", "a=b", "restmail-2062-js-filter-net"])
+        with self.assertRaises(shim.Refused):
+            self.rewrite("volume", "create", "--label", "x=y", "rest-mail-e2e-gocache")
+
+    def test_other_commands_pass_through(self):
+        self.assertEqual(self.rewrite("ps", "-aq"), ["ps", "-aq"])
+        self.assertEqual(self.rewrite("rm", "-fv", "restmail-2062-api"), ["rm", "-fv", "restmail-2062-api"])
+
+    def test_the_shim_script_runs_the_helper_with_the_real_docker(self):
+        text = plan_module.docker_shim("/repo", "/usr/local/bin/docker")
+        self.assertIn('TOPOLOGY_REAL_DOCKER="/usr/local/bin/docker"', text)
+        self.assertIn('/repo/scripts/topology_docker.py', text)
+
+    def test_the_shim_refuses_to_run_without_its_environment(self):
+        result = subprocess.run(["python3", "-B", str(ROOT / "scripts/topology_docker.py"), "ps"], capture_output=True, text=True, env={"PATH": "/usr/bin:/bin"}, check=False)
+        self.assertEqual(result.returncode, 2)
 
 
 class CommandLineTests(unittest.TestCase):

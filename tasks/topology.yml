@@ -83,7 +83,18 @@ tasks:
         done
         # The run's manifest first: every chore below reads CONFIG_DIR/config.env.
         "${CHORE_BIN:-chore}" topology:prepare TOPOLOGY={{.TOPOLOGY}}
+        real=$(command -v docker)
+        eval "$($plan "{{.TOPOLOGY}}" --existing-subnets "$taken" --shell)"
         printf '%s\n' "$create" | while IFS= read -r line; do sh -c "$line" >/dev/null; done
+        # The run's Go modules volume starts as a copy of the shared one, which is only read:
+        # a cold download needs the network, which fails now and then under load.
+        "$real" volume create --label "$RESTMAIL_LABEL" "$RESTMAIL_MODULES_VOLUME" >/dev/null
+        if "$real" volume inspect rest-mail-go-modules >/dev/null 2>&1; then
+          "$real" run --rm --label "$RESTMAIL_LABEL" --name "restmail-$TOPOLOGY_RUN-gomod-seed" \
+            -v rest-mail-go-modules:/from:ro -v "$RESTMAIL_MODULES_VOLUME:/to" alpine:3.20 cp -a /from/. /to/ >/dev/null
+        fi
+        # From here every docker call is the run's: named restmail-<run>-<purpose> and labelled.
+        export PATH={{.ROOT_DIR}}/.cache/topology/{{.TOPOLOGY}}/bin:$PATH
         # The testbed seeds its static DNS fragment into the volume. The network and
         # volumes exist, so it creates nothing and starts no resolver of its own.
         "${CHORE_BIN:-chore}" testbed:bootstrap $(printf '%s\n' "$variables" | grep -v '^RESTMAIL_LABEL=' | tr '\n' ' ')
@@ -103,12 +114,17 @@ tasks:
           *) echo "refusing to remove by label '$label'" >&2; exit 2 ;;
         esac
         RESTMAIL_LABEL="$label" VOLUMES=true sh {{.ROOT_DIR}}/tasks/clean.sh
+        # Anything named for this run that somehow lacks the label: the names are the run's own.
+        prefix="restmail-{{.TOPOLOGY}}-"
+        ids=$(docker ps -aq --filter "name=^${prefix}") && [ -z "$ids" ] || docker rm -fv $ids >/dev/null
+        for network in $(docker network ls --format '{{`{{.Name}}`}}' --filter "name=^${prefix}"); do docker network rm "$network" >/dev/null; done
+        for volume in $(docker volume ls -q --filter "name=^${prefix}"); do docker volume rm "$volume" >/dev/null; done
         # What this run made on disk, by the names the plan gives it: the instance's config and
         # the two reference servers' copies of theirs. Nothing else under .cache or .workspace.
         eval "$(python3 -B {{.ROOT_DIR}}/scripts/topology_plan.py "{{.TOPOLOGY}}" --existing-subnets "" --shell)"
         rm -rf "{{.ROOT_DIR}}/.cache/topology/{{.TOPOLOGY}}" "{{.ROOT_DIR}}/.cache/testbed-resolv-{{.TOPOLOGY}}.conf"
         for ref in "$TOPOLOGY_REF1" "$TOPOLOGY_REF2"; do
-          case "$ref" in rml-?*-mail[12]) rm -rf "{{.ROOT_DIR}}/.workspace/reference-mailserver/configs/$ref" ;; esac
+          case "$ref" in restmail-?*-mail[12]) rm -rf "{{.ROOT_DIR}}/.workspace/reference-mailserver/configs/$ref" ;; esac
         done
 
   # The tasks below run chore again with the plan's variables exported: a variable on the
@@ -126,6 +142,7 @@ tasks:
         "${CHORE_BIN:-chore}" topology:substrate:up TOPOLOGY={{.TOPOLOGY}}
         eval "$(python3 -B {{.ROOT_DIR}}/scripts/topology_plan.py "{{.TOPOLOGY}}" --shell)"
         export TOPOLOGY_SHIM_DIR={{.ROOT_DIR}}/.cache/topology/{{.TOPOLOGY}}/bin
+        export PATH="$TOPOLOGY_SHIM_DIR:$PATH"
         "${CHORE_BIN:-chore}" e2e:up
         # The host reaches the API through a loopback port Docker chooses: Docker Desktop has
         # no route to the run's subnet. nginx's stream module forwards the bytes.
@@ -154,6 +171,7 @@ tasks:
         set -eu
         eval "$(python3 -B {{.ROOT_DIR}}/scripts/topology_plan.py "{{.TOPOLOGY}}" --shell)"
         export TOPOLOGY_SHIM_DIR={{.ROOT_DIR}}/.cache/topology/{{.TOPOLOGY}}/bin
+        export PATH="$TOPOLOGY_SHIM_DIR:$PATH"
         export CONTRACT_ENDPOINT=$("${CHORE_BIN:-chore}" topology:endpoint TOPOLOGY={{.TOPOLOGY}})
         "${CHORE_BIN:-chore}" test:e2e {{if .CLI_ARGS}}-- {{.CLI_ARGS}}{{end}}
 
@@ -165,6 +183,7 @@ tasks:
         set -eu
         eval "$(python3 -B {{.ROOT_DIR}}/scripts/topology_plan.py "{{.TOPOLOGY}}" --shell)"
         export TOPOLOGY_SHIM_DIR={{.ROOT_DIR}}/.cache/topology/{{.TOPOLOGY}}/bin
+        export PATH="$TOPOLOGY_SHIM_DIR:$PATH"
         export CONTRACT_ENDPOINT=$("${CHORE_BIN:-chore}" topology:endpoint TOPOLOGY={{.TOPOLOGY}})
         "${CHORE_BIN:-chore}" contract:topology {{if .CLI_ARGS}}-- {{.CLI_ARGS}}{{end}}
 

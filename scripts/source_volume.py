@@ -75,7 +75,8 @@ def copy_tree(root, volume):
 
 
 def create(root):
-    volume = f"rest-mail-src-{secrets.token_hex(6)}"
+    # A private topology names its volumes after the run (#2062): restmail-<run>-src-<hex>.
+    volume = f"{os.environ.get('RESTMAIL_SOURCE_VOLUME_PREFIX') or 'rest-mail-src'}-{secrets.token_hex(6)}"
     docker("volume", "create", "--label", label(), volume)
     try:
         copy_tree(root, volume)
