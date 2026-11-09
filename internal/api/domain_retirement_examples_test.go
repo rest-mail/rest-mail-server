@@ -16,7 +16,8 @@ import (
 func TestDomainRetirementExamples(test *testing.T) {
 	useRealGrants(test)
 	fixture := newGrantsFixture(test)
-	fixture.db.NowFunc = func() time.Time { return time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC) }
+	stamp := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	fixture.db.NowFunc = func() time.Time { return stamp }
 	owner, viewer, noMFA := fixture.token(test, "owner"), fixture.token(test, "viewer"), fixture.token(test, "root")
 	pairs, err := examplepairs.Read()
 	if err != nil {
@@ -88,7 +89,30 @@ func TestDomainRetirementExamples(test *testing.T) {
 			if want.Response.Status != response.Code || want.Response.MediaType != response.Header().Get("Content-Type") {
 				test.Fatal("named restoration status or media type differs")
 			}
-			assertPublicExampleBody(test, want.Response.Body, response.Body.Bytes())
+			actual := response.Body.Bytes()
+			if scenario.status == http.StatusOK {
+				var answer map[string]any
+				if err := json.Unmarshal(actual, &answer); err != nil {
+					test.Fatal(err)
+				}
+				data, ok := answer["data"].(map[string]any)
+				if !ok {
+					test.Fatalf("restored domain is not an object: %s", actual)
+				}
+				for _, field := range []string{"created_at", "updated_at"} {
+					text, _ := data[field].(string)
+					at, err := time.Parse(time.RFC3339Nano, text)
+					if err != nil || !at.Equal(stamp) {
+						test.Fatalf("restored %s %q, want exactly %s: %v", field, text, stamp.Format(time.RFC3339Nano), err)
+					}
+					data[field] = at.UTC().Format(time.RFC3339Nano)
+				}
+				actual, err = json.Marshal(answer)
+				if err != nil {
+					test.Fatal(err)
+				}
+			}
+			assertPublicExampleBody(test, want.Response.Body, actual)
 			var count int64
 			if err := fixture.db.Model(&models.DomainRetirement{}).Where("domain_id = ?", domain.ID).Count(&count).Error; err != nil {
 				test.Fatal(err)
