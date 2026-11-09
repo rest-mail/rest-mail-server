@@ -3890,6 +3890,20 @@ def wait_for_the_trace(transaction):
     # of its own, read only once its trace is there (a_traced_message).
     if asked_for_a_clean_start():
         return
+    if in_the_coverage_process():
+        path, separator, query = transaction["fullPath"].partition("?")
+        parts = path.split("/")
+        if (
+            len(parts) == 7
+            and parts[1:5] == ["api", "v1", "admin", "messages"]
+            and parts[6] == "trace"
+            and positive_id(parts[5])
+            and parts[5] != "2147483647"
+            and " > 404" not in transaction.get("name", "")
+        ):
+            parts[5] = str(a_traced_message(transaction))
+            transaction["fullPath"] = "/".join(parts) + (separator + query if separator else "")
+        return
     time.sleep(1)
 
 

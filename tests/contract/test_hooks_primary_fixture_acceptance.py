@@ -17,6 +17,42 @@ class PrimaryFixtureAcceptance(unittest.TestCase):
             with patch.dict(callback.__globals__, replacements):
                 callback(transaction)
 
+    def test_coverage_trace_reads_make_a_written_trace_without_resetting(self):
+        transaction = {
+            "name": "/api/v1/admin/messages/{id}/trace > Get message trace > 200",
+            "fullPath": "/api/v1/admin/messages/1/trace?detail=1",
+            "request": {"body": "{}"},
+        }
+        make_trace = Mock(return_value=73)
+        reset = Mock()
+        with patch.dict("os.environ", {"CONTRACT_COVERAGE": "1"}):
+            self.invoke("before", "getMessageTrace", transaction, {
+                "a_traced_message": make_trace,
+                "start_clean": reset,
+                "time": Mock(),
+            })
+        make_trace.assert_called_once_with(transaction)
+        reset.assert_not_called()
+        self.assertEqual(transaction["fullPath"], "/api/v1/admin/messages/73/trace?detail=1")
+
+    def test_coverage_trace_refusals_keep_their_original_ids(self):
+        for identifier, expected in (("0", "422"), ("bad", "422"), ("2147483647", "404"), ("4", "404")):
+            with self.subTest(identifier=identifier, expected=expected):
+                transaction = {
+                    "name": f"/api/v1/admin/messages/{{id}}/trace > Get message trace > {expected}",
+                    "fullPath": f"/api/v1/admin/messages/{identifier}/trace",
+                    "request": {"body": "{}"},
+                }
+                original_path = transaction["fullPath"]
+                make_trace = Mock()
+                with patch.dict("os.environ", {"CONTRACT_COVERAGE": "1"}):
+                    self.invoke("before", "getMessageTrace", transaction, {
+                        "a_traced_message": make_trace,
+                        "time": Mock(),
+                    })
+                make_trace.assert_not_called()
+                self.assertEqual(transaction["fullPath"], original_path)
+
     def test_primary_attachment_reads_make_the_attachment_without_resetting(self):
         for expected in ("200", "206", "304", "412", "416"):
             with self.subTest(expected=expected):
