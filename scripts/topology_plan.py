@@ -282,6 +282,9 @@ def plan(name, existing_subnets=(), pool=None):
             "RESTMAIL_DNSMASQ_FRAGMENTS_VOLUME": names["fragments_volume"],
             "RESTMAIL_GOCACHE_VOLUME": names["gocache_volume"],
             "RESTMAIL_MODULES_VOLUME": names["modules_volume"],
+            # Docker Desktop has no route from the host to the run's subnet, so the object store's
+            # first bootstrap runs in a container on it.
+            "RESTMAIL_GARAGE_BOOTSTRAP_IMAGE": "golang:1.26.10",
             "RESTMAIL_SOURCE_VOLUME_PREFIX": f"restmail-{name}-src",
             "SUBNET": subnet,
             # The rest-mail instance is a config of the run's own, made in .cache. The nested

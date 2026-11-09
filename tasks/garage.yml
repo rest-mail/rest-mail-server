@@ -18,6 +18,7 @@ vars:
   GARAGE_IMAGE: '{{.GARAGE_IMAGE | default "dxflrs/garage:v2.4.1@sha256:9c96caa2612d3411acc5b0e6701fb238dbfba33e533a6d7d3d811a4b12d0d020"}}'
   GARAGE_CONTAINER_NAME: '{{.GARAGE_PROJECT}}-garage'
   GARAGE_DATA_VOLUME: '{{.GARAGE_PROJECT}}-garage-data'
+  GARAGE_BOOTSTRAP_IMAGE: '{{.GARAGE_BOOTSTRAP_IMAGE | default ""}}'
   GARAGE_BUCKET: '{{.GARAGE_BUCKET | default "restmail"}}'
   GARAGE_ACCESS_KEY: '{{.GARAGE_ACCESS_KEY | default "GK0123456789abcdef01234567"}}'
   GARAGE_SECRET_KEY: '{{.GARAGE_SECRET_KEY | default "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"}}'
@@ -60,12 +61,25 @@ tasks:
           -v "$config":/etc/garage.toml:ro \
           --entrypoint /garage {{.GARAGE_IMAGE}} server >/dev/null
       - |
+        {{if .GARAGE_BOOTSTRAP_IMAGE}}
+        # From a container on the network, for a host with no route to it (Docker Desktop):
+        # a private topology (#2062) sets GARAGE_BOOTSTRAP_IMAGE. Unset, the host runs it.
+        docker run --rm --label "$RESTMAIL_LABEL" --network {{.GARAGE_NETWORK}} \
+          -v "$(pwd)/helm/restmail/files:/files:ro" {{.GARAGE_BOOTSTRAP_IMAGE}} \
+          python3 -B /files/garage-bootstrap.py \
+          --admin http://{{.GARAGE_IP}}:3903 --admin-token {{.GARAGE_ADMIN_TOKEN}} \
+          --bucket {{.GARAGE_BUCKET}} --access-key {{.GARAGE_ACCESS_KEY}} --secret-key {{.GARAGE_SECRET_KEY}} || {
+          docker logs --tail 40 {{.GARAGE_CONTAINER_NAME}} 2>&1
+          exit 1
+        }
+        {{else}}
         python3 -B helm/restmail/files/garage-bootstrap.py \
           --admin http://{{.GARAGE_IP}}:3903 --admin-token {{.GARAGE_ADMIN_TOKEN}} \
           --bucket {{.GARAGE_BUCKET}} --access-key {{.GARAGE_ACCESS_KEY}} --secret-key {{.GARAGE_SECRET_KEY}} || {
           docker logs --tail 40 {{.GARAGE_CONTAINER_NAME}} 2>&1
           exit 1
         }
+        {{end}}
 
   down:
     desc: Stop Garage, keeping its data

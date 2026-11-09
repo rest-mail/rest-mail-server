@@ -287,7 +287,7 @@ FORBIDDEN_SHARED = (
     r"config/restmail\.test",
 )
 # Task names a private run starts or calls, expanded with --dry.
-RUN_TASKS = ("e2e:up", "e2e:down", "e2e:mail1", "e2e:mail2", "e2e:restmail", "test:e2e", "contract", "mailserver:wait",
+RUN_TASKS = ("garage:up", "e2e:up", "e2e:down", "e2e:mail1", "e2e:mail2", "e2e:restmail", "test:e2e", "contract", "mailserver:wait",
              "instance:dns:register", "instance:dns:unregister", "instance:dkim", "instance:certs:issue", "instance:mtls:issue")
 
 
@@ -374,6 +374,11 @@ class PrivateRunDryTests(unittest.TestCase):
             self.assertIn(f"down CONFIG={name} ", down)
         for task in ("e2e:mail1", "e2e:mail2", "e2e:down"):
             self.assertIn(f'PATH="{self.shim}:$PATH"', self.expansions[task])
+
+    def test_the_object_store_is_bootstrapped_from_the_run_s_network(self):
+        text = self.expansions["garage:up"]
+        self.assertIn(f"--network {self.plan['names']['network']}", text)
+        self.assertNotRegex(text, r"(?m)^python3 -B helm/")
 
     def test_the_dns_registration_restarts_the_runs_own_resolver(self):
         text = self.expansions["instance:dns:register"]

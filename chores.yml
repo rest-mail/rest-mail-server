@@ -120,6 +120,7 @@ includes:
       GARAGE_PROJECT: '{{.RESTMAIL_PROJECT}}'
       GARAGE_NETWORK: '{{.RESTMAIL_NETWORK}}'
       GARAGE_IP: '{{.RESTMAIL_GARAGE_IP | default "10.99.0.44"}}'
+      GARAGE_BOOTSTRAP_IMAGE: '{{.RESTMAIL_GARAGE_BOOTSTRAP_IMAGE | default ""}}'
 
   js-filter:
     taskfile: ./tasks/js-filter.yml
