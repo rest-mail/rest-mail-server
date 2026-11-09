@@ -8,6 +8,7 @@ its name alone. These tests hold that plan to its promises with no Docker and no
 import importlib.util
 import ipaddress
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -274,37 +275,266 @@ class TaskFileTests(unittest.TestCase):
         self.assertIn("substrate:down", tasks)
 
 
-@unittest.skipUnless(shutil.which("chore") and (ROOT / ".workspace/testbed").is_dir() and (ROOT / "config/restmail.test").is_dir(), "needs chore and the pinned testbed clone (chore testbed:init)")
-class ExpansionTests(unittest.TestCase):
-    """What chore would run, read with --dry: no Docker is started."""
+FORBIDDEN_SHARED = (
+    r"testbed_(?:mailnet|certs|dnsmasq_fragments)",
+    r"testbed-dnsmasq",
+    r"10\.99\.",
+    r"mailref-mail[12]\b",
+    r"CONFIG=mail[12]\b",
+    r"rest-mail-(?:api|postgres|garage|js-filter|internal-mtls)\b",
+    r"rest-mail-go-modules",
+    r"rest-mail-e2e-gocache",
+    r"config/restmail\.test",
+)
+# Task names a private run starts or calls, expanded with --dry.
+RUN_TASKS = ("e2e:up", "e2e:down", "e2e:mail1", "e2e:mail2", "e2e:restmail", "test:e2e", "contract", "mailserver:wait",
+             "instance:dns:register", "instance:dns:unregister", "instance:dkim", "instance:certs:issue", "instance:mtls:issue")
 
-    def expand(self, task, plan):
-        arguments = [f"{key}={value}" for key, value in plan["environment"].items() if key != "RESTMAIL_LABEL"]
+
+def private_run_ready():
+    return (
+        shutil.which("chore")
+        and shutil.which("go")
+        and (ROOT / ".workspace/testbed/configs/restmail/manifest.yml").is_file()
+        and (ROOT / ".workspace/reference-mailserver/configs/mail1").is_dir()
+    )
+
+
+@unittest.skipUnless(private_run_ready(), "needs chore, go and the pinned testbed and reference-mailserver clones (chore testbed:init, chore mailserver:init)")
+class PrivateRunDryTests(unittest.TestCase):
+    """What chore would run for a private topology, read with --dry: no Docker is started.
+
+    The run is made as `chore topology:up` makes it (the manifest and the reference configs), and
+    its variables are exported as that task exports them. Every expansion must then name only
+    the run's own resources and addresses.
+    """
+
+    RUN = "t2062"
+
+    @classmethod
+    def setUpClass(cls):
+        cls.plan = plan_module.plan(cls.RUN, existing_subnets=["10.99.0.0/16"])
+        plan_module.prepare(cls.plan, str(ROOT))
+        subprocess.run(["go", "run", "./cmd/instance", "render", f"{cls.plan['names']['config_dir']}/manifest.yml"], cwd=ROOT, check=True, capture_output=True)
+        cls.shim = ROOT / ".cache/topology" / cls.RUN / "bin"
+        cls.environment = {**os.environ, **cls.plan["environment"], "TOPOLOGY_SHIM_DIR": str(cls.shim)}
+        cls.expansions = {task: cls.expand(task, cls.environment) for task in RUN_TASKS}
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(ROOT / ".cache/topology" / cls.RUN, ignore_errors=True)
+        for name in ("mail1_config", "mail2_config"):
+            shutil.rmtree(ROOT / ".workspace/reference-mailserver/configs" / cls.plan["names"][name], ignore_errors=True)
+
+    @staticmethod
+    def expand(task, environment, *arguments):
+        result = subprocess.run(["chore", "--dry", task, *arguments], cwd=ROOT, capture_output=True, text=True, check=False, env=environment)
+        if result.returncode != 0:
+            raise AssertionError(f"chore --dry {task}: {result.stderr}")
+        return result.stdout
+
+    def test_no_task_of_the_run_names_a_shared_resource_or_address(self):
+        for task, text in self.expansions.items():
+            for pattern in FORBIDDEN_SHARED:
+                for number, line in enumerate(text.splitlines(), 1):
+                    self.assertIsNone(re.search(pattern, line), f"chore --dry {task}, line {number} names the shared {pattern}: {line.strip()}")
+
+    def test_the_scan_finds_them_in_the_shared_topology(self):
+        # Without it the scan could pass on any text. The shared run is the same tasks with no variables.
+        shared = {**os.environ}
+        for key in self.plan["environment"]:
+            shared.pop(key, None)
+        shared.pop("TOPOLOGY_SHIM_DIR", None)
+        text = self.expand("e2e:up", shared, "CONFIG=restmail.test") if (ROOT / "config/restmail.test/config.env").is_file() else None
+        if text is None:
+            self.skipTest("config/restmail.test is not seeded (chore testbed:init)")
+        found = {pattern for pattern in FORBIDDEN_SHARED if re.search(pattern, text)}
+        self.assertTrue({r"testbed_(?:mailnet|certs|dnsmasq_fragments)", r"10\.99\."} <= found | {r"10\.99\."}, found)
+        self.assertIn("testbed_certs", text)
+
+    def test_the_run_publishes_no_fixed_host_port(self):
+        pattern = re.compile(r"(?:^|\s)(?:-p|--publish)[ =]\"?(?:\d{1,3}(?:\.\d{1,3}){3}:)?(\d+):\d+")
+        for task, text in self.expansions.items():
+            for match in pattern.finditer(text):
+                # The ACME HTTP-01 branch needs port 80 and never runs in the E2E topology.
+                self.assertEqual(match.group(0).strip(), "-p 80:80", f"chore --dry {task} publishes a fixed port: {match.group(0)}")
+
+    def test_the_run_s_own_names_are_the_ones_used(self):
+        names = self.plan["names"]
+        up = self.expansions["e2e:up"]
+        for name in (names["certs_volume"], names["fragments_volume"], names["dnsmasq"], names["instance_project"], names["mail1_config"], names["mail2_config"]):
+            self.assertIn(name, up)
+        self.assertIn(f"{names['instance_project']}-internal-mtls", up)
+        self.assertIn(names["gocache_volume"], up)
+        self.assertIn(names["modules_volume"], up)
+
+    def test_the_reference_servers_are_the_run_s_own_and_labelled(self):
+        down = self.expansions["e2e:down"]
+        for name in (self.plan["names"]["mail1_config"], self.plan["names"]["mail2_config"]):
+            self.assertIn(f"down CONFIG={name} ", down)
+        for task in ("e2e:mail1", "e2e:mail2", "e2e:down"):
+            self.assertIn(f'PATH="{self.shim}:$PATH"', self.expansions[task])
+
+    def test_the_dns_registration_restarts_the_runs_own_resolver(self):
+        text = self.expansions["instance:dns:register"]
+        self.assertIn(f"docker restart {self.plan['names']['dnsmasq']}", text)
+        self.assertIn(f"{self.plan['names']['fragments_volume']}:/dst", text)
+
+    def test_the_suite_container_is_on_the_run_s_network_and_resolver(self):
+        text = self.expansions["test:e2e"]
+        self.assertIn(f"--network {self.plan['names']['network']}", text)
+        self.assertIn(f"\"{self.plan['dns_ip']}\" > \"$resolv\"", text)
+        # The container reaches the API by its own address; the host-side CONTRACT_ENDPOINT is a loopback port.
+        self.assertIn("${RESTMAIL_E2E_API_URL:-", text)
+
+    def test_the_test_task_passes_the_addresses_the_suite_dials(self):
+        text = self.expansions["test:e2e"]
+        for variable in ("RESTMAIL_API_IP", "MAIL1_DOVECOT_IP", "MAIL2_DOVECOT_IP", "MAIL1_POSTFIX_IP", "MAIL2_POSTFIX_IP", "RESTMAIL_SMTP_IP"):
+            self.assertRegex(text, rf"-e {variable}\b")
+
+    def test_a_topology_with_no_run_variables_is_refused_rather_than_shared(self):
         result = subprocess.run(
-            ["chore", "--dry", task, *arguments, "CONFIG=restmail.test"],
+            ["chore", "e2e:up", "TOPOLOGY=t2062"],
             cwd=ROOT,
             capture_output=True,
             text=True,
             check=False,
-            env={**__import__("os").environ, "RESTMAIL_LABEL": plan["label"]},
+            env={key: value for key, value in os.environ.items() if key not in self.plan["environment"]},
         )
-        self.assertEqual(result.returncode, 0, result.stderr)
-        return result.stdout
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("chore topology:up TOPOLOGY=t2062", result.stdout + result.stderr)
 
-    def test_the_testbed_substrate_is_the_runs_own(self):
-        plan = plan_module.plan("p1904")
-        text = self.expand("testbed:bootstrap", plan)
-        self.assertIn(plan["names"]["network"], text)
-        self.assertIn(plan["subnet"], text)
-        self.assertNotIn("testbed_mailnet", text)
+
+class PrivateConfigTests(unittest.TestCase):
+    """The files a run is made from, with no Docker and no chore."""
+
+    def test_the_manifest_publishes_nothing(self):
+        text = (ROOT / "internal/instance/testdata/manifest.yml").read_text()
+        manifest = plan_module.render_manifest(text, plan_module.plan("p2062", ["10.99.0.0/16"]))
+        self.assertRegex(manifest, r"(?m)^mailnet_only:\s+true")
+        self.assertNotIn("10.99.", manifest)
+
+    def test_a_reference_config_is_moved_onto_the_subnet(self):
+        plan = plan_module.plan("p2062", ["10.99.0.0/16"])
+        env = "POSTFIX_MYNETWORKS=127.0.0.0/8 10.99.0.0/16\nPOSTFIX_SASL_PATH=inet:10.99.0.111:12345\n"
+        text = plan_module.render_reference_config(env, plan)
+        prefix = plan["subnet"].rsplit(".", 2)[0]
+        self.assertIn(f"{prefix}.0.0/16", text)
+        self.assertIn(f"inet:{prefix}.0.111:12345", text)
         self.assertNotIn("10.99.", text)
 
-    def test_the_dns_registration_restarts_the_runs_own_resolver(self):
-        plan = plan_module.plan("p1904")
-        text = self.expand("instance:dns:register", plan)
-        self.assertIn(f"docker restart {plan['names']['dnsmasq']}", text)
-        self.assertNotIn("testbed-dnsmasq", text)
-        self.assertNotIn("testbed_dnsmasq_fragments", text)
+    def test_a_pointer_record_name_is_moved_with_its_address(self):
+        plan = plan_module.plan("p2062", ["10.99.0.0/16"])
+        second = plan["subnet"].split(".")[1]
+        self.assertEqual(
+            plan_module.render_reference_config("MAIL_PTR=11.0.99.10.in-addr.arpa\n", plan),
+            f"MAIL_PTR=11.0.{second}.10.in-addr.arpa\n",
+        )
+
+    def test_a_reference_config_directory_is_copied_without_another_run_s_keys(self):
+        import tempfile
+
+        plan = plan_module.plan("p2062", ["10.99.0.0/16"])
+        with tempfile.TemporaryDirectory() as scratch:
+            source, target = Path(scratch, "mail1"), Path(scratch, "out")
+            (source / "rspamd-overlay/dkim").mkdir(parents=True)
+            (source / "rspamd-overlay/dkim/mail1.test.mail.key").write_text("PRIVATE KEY")
+            (source / "rspamd-overlay/local.conf").write_text("milter 10.99.0.17\n")
+            (source / "resolv.conf").write_text("nameserver 10.99.0.10\n")
+            (source / "blob.bin").write_bytes(b"\xff\xfe10.99.0.1")
+            plan_module.copy_reference_config(str(source), str(target), plan)
+            self.assertFalse((target / "rspamd-overlay/dkim").exists())
+            self.assertNotIn("10.99.", (target / "resolv.conf").read_text())
+            self.assertIn(plan["dns_ip"], (target / "resolv.conf").read_text())
+            self.assertNotIn("10.99.", (target / "rspamd-overlay/local.conf").read_text())
+            self.assertEqual((target / "blob.bin").read_bytes(), b"\xff\xfe10.99.0.1")
+
+    def test_the_run_has_a_config_directory_and_caches_of_its_own(self):
+        names = plan_module.plan("p2062", ["10.99.0.0/16"])["names"]
+        self.assertEqual(names["config"], "rml-p2062")
+        self.assertEqual(names["config_dir"], ".cache/topology/p2062/config")
+        self.assertEqual(names["gocache_volume"], "rml-p2062-gocache")
+        self.assertEqual(names["modules_volume"], "rml-p2062-gomod")
+        for name in ("gocache_volume", "modules_volume", "apiport", "config"):
+            self.assertTrue(names[name].startswith("rml-p2062"))
+
+    def test_the_run_s_variables_name_its_config_and_caches(self):
+        environment = plan_module.plan("p2062", ["10.99.0.0/16"])["environment"]
+        self.assertEqual(environment["CONFIG"], "rml-p2062")
+        self.assertEqual(environment["TOPOLOGY_CONFIG"], "rml-p2062")
+        self.assertEqual(environment["CONFIG_DIR"], ".cache/topology/p2062/config")
+        self.assertEqual(environment["RESTMAIL_GOCACHE_VOLUME"], "rml-p2062-gocache")
+        self.assertEqual(environment["RESTMAIL_MODULES_VOLUME"], "rml-p2062-gomod")
+        self.assertEqual(environment["RESTMAIL_DNSMASQ_FRAGMENTS_VOLUME"], environment["DNSMASQ_FRAGMENTS_VOLUME"])
+        self.assertEqual(environment["RESTMAIL_DNSMASQ_CONTAINER"], environment["DNSMASQ_CONTAINER"])
+        self.assertNotIn("NAME", environment)
+
+    def test_the_forwarder_has_an_address_in_the_subnet_that_no_role_shares(self):
+        plan = plan_module.plan("p2062", ["10.99.0.0/16"])
+        self.assertIn(ipaddress.ip_address(plan["addresses"]["apiport"]), ipaddress.ip_network(plan["subnet"]))
+        self.assertEqual(len(set(plan["addresses"].values())), len(plan["addresses"]))
+
+    def test_the_run_s_own_network_does_not_move_the_plan(self):
+        # Once the run's network exists, planning again must give the same subnet.
+        listing = "{name} 10.99.0.0/16 \nother 10.100.0.0/16 \n{own} {subnet} \n"
+        name = "p2062"
+        own = plan_module.names_for(name)["network"]
+        first = plan_module.plan(name, ["10.99.0.0/16", "10.100.0.0/16"])
+
+        class Done:
+            def __init__(self, out):
+                self.returncode, self.stdout, self.stderr = 0, out, ""
+
+        calls = []
+
+        def fake(arguments, **_):
+            calls.append(arguments)
+            if arguments[:3] == ["docker", "network", "ls"]:
+                return Done("a b c\n")
+            return Done(listing.format(name="testbed_mailnet", own=own, subnet=first["subnet"]))
+
+        original = plan_module.subprocess.run
+        plan_module.subprocess.run = fake
+        try:
+            taken = plan_module.docker_subnets(exclude={own})
+        finally:
+            plan_module.subprocess.run = original
+        self.assertNotIn(first["subnet"], taken)
+        self.assertIn("10.99.0.0/16", taken)
+        self.assertEqual(plan_module.plan(name, taken)["subnet"], first["subnet"])
+
+
+class LabelShimTests(unittest.TestCase):
+    """The docker that labels what the pinned reference-mailserver creates."""
+
+    def run_shim(self, *arguments, label="rest-mail-loop=p2062"):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as scratch:
+            real = Path(scratch, "real-docker")
+            real.write_text('#!/bin/sh\nfor a in "$@"; do printf "%s\\n" "$a"; done\n')
+            real.chmod(0o755)
+            shim = Path(scratch, "docker")
+            shim.write_text(plan_module.docker_label_shim(str(real)))
+            shim.chmod(0o755)
+            result = subprocess.run([str(shim), *arguments], capture_output=True, text=True, check=False, env={"RESTMAIL_LABEL": label, "PATH": "/usr/bin:/bin"})
+        return result.returncode, result.stdout.split("\n")[:-1]
+
+    def test_it_labels_a_container_a_volume_and_a_network(self):
+        label = "rest-mail-loop=p2062"
+        self.assertEqual(self.run_shim("run", "-d", "--name", "x", "img")[1], ["run", "--label", label, "-d", "--name", "x", "img"])
+        self.assertEqual(self.run_shim("create", "--name", "x", "img")[1], ["create", "--label", label, "--name", "x", "img"])
+        self.assertEqual(self.run_shim("volume", "create", "v")[1], ["volume", "create", "--label", label, "v"])
+        self.assertEqual(self.run_shim("network", "create", "n")[1], ["network", "create", "--label", label, "n"])
+
+    def test_it_passes_everything_else_through(self):
+        self.assertEqual(self.run_shim("ps", "-aq")[1], ["ps", "-aq"])
+        self.assertEqual(self.run_shim("volume", "inspect", "v")[1], ["volume", "inspect", "v"])
+        self.assertEqual(self.run_shim("rm", "-f", "x")[1], ["rm", "-f", "x"])
+
+    def test_it_refuses_to_run_without_a_label(self):
+        code, _ = self.run_shim("run", "img", label="")
+        self.assertNotEqual(code, 0)
 
 
 class CommandLineTests(unittest.TestCase):

@@ -67,6 +67,11 @@ vars:
   # subproject include vars — chore flattens all included vars into one shared
   # namespace at invocation time.
   RESTMAIL_WEBSITE_IP: 10.99.0.26
+  # Where a reference server joins and registers: the network, certs volume and resolver of the
+  # instance's testbed. The shared topology's are the reference-mailserver defaults; a private
+  # run's (chore topology:up) are its own, and its `docker` labels what the reference tasks create.
+  REFERENCE_PATH: '{{if .TOPOLOGY_SHIM_DIR}}PATH="{{.TOPOLOGY_SHIM_DIR}}:$PATH" {{end}}'
+  REFERENCE_PLACEMENT: 'MAILNET_NAME={{.RESTMAIL_NETWORK | default "testbed_mailnet"}} CERTS_VOLUME={{.RESTMAIL_CERTS_VOLUME | default "testbed_certs"}} DNSMASQ_FRAGMENTS_VOLUME={{.RESTMAIL_DNSMASQ_FRAGMENTS_VOLUME | default "testbed_dnsmasq_fragments"}} DNSMASQ_CONTAINER={{.RESTMAIL_DNSMASQ_CONTAINER | default "testbed-dnsmasq"}}'
   MONITORING_PROMETHEUS_IP: 10.99.0.30
   MONITORING_GRAFANA_IP: 10.99.0.31
   MONITORING_POSTGRES_EXPORTER_IP: 10.99.0.32
@@ -662,7 +667,7 @@ tasks:
         fi
         if [ -z "${CONTRACT_ENDPOINT:-}" ]; then chore e2e:up; fi
         if [ ! -s .cache/contract-principals.json ]; then
-          API_BASE_URL="${CONTRACT_ENDPOINT:-http://10.99.0.20:8080}" E2E_REQUIRE_STACK=1 chore test:e2e -- -run '^TestContractPrincipals$'
+          API_BASE_URL="${CONTRACT_ENDPOINT:-http://{{.RESTMAIL_API_IP | default "10.99.0.20"}}:8080}" E2E_REQUIRE_STACK=1 chore test:e2e -- -run '^TestContractPrincipals$'
         fi
         chore test:contract-fixtures
         chore test:contract-api-keys
@@ -699,7 +704,7 @@ tasks:
         export CONTRACT_DEFER_SUMMARY=1
         trap 'python3 -B tests/contract/summary.py .cache/contract authorization ownership ownership-domains ownership-mailboxes ownership-messages' EXIT
         if [ ! -s .cache/contract-principals.json ]; then
-          API_BASE_URL="${CONTRACT_ENDPOINT:-http://10.99.0.20:8080}" E2E_REQUIRE_STACK=1 chore test:e2e -- -run '^TestContractPrincipals$'
+          API_BASE_URL="${CONTRACT_ENDPOINT:-http://{{.RESTMAIL_API_IP | default "10.99.0.20"}}:8080}" E2E_REQUIRE_STACK=1 chore test:e2e -- -run '^TestContractPrincipals$'
         fi
         chore test:contract-fixtures
         chore test:contract-mfa-admin
@@ -757,7 +762,7 @@ tasks:
         export PATH="$(dirname "$CONTRACT_VERTRAG"):$PATH"
         python3 -B -c 'import yaml' 2>/dev/null || pip install --quiet pyyaml
         if [ ! -s .cache/contract-principals.json ]; then
-          API_BASE_URL="${CONTRACT_ENDPOINT:-http://10.99.0.20:8080}" E2E_REQUIRE_STACK=1 chore test:e2e -- -run '^TestContractPrincipals$'
+          API_BASE_URL="${CONTRACT_ENDPOINT:-http://{{.RESTMAIL_API_IP | default "10.99.0.20"}}:8080}" E2E_REQUIRE_STACK=1 chore test:e2e -- -run '^TestContractPrincipals$'
         fi
         chore test:contract-fixtures
         python3 -B tests/contract/faults.py run --api-container "{{.RESTMAIL_PROJECT}}-api"
@@ -770,7 +775,9 @@ tasks:
   test:contract-fixtures:
     desc: Prepare stable queue state only on the disposable restmail.test topology
     env:
-      CONTRACT_FIXTURE_CONFIG: '{{.CONFIG}}'
+      # A private topology's config is the restmail.test fixture placed on the run's own names
+      # (scripts/topology_plan.py), so it is as disposable as restmail.test is.
+      CONTRACT_FIXTURE_CONFIG: '{{if and .TOPOLOGY_CONFIG (eq .CONFIG .TOPOLOGY_CONFIG)}}restmail.test{{else}}{{.CONFIG}}{{end}}'
       CONTRACT_FIXTURE_PROJECT: '{{.RESTMAIL_PROJECT}}'
     cmds:
       - |
@@ -784,7 +791,9 @@ tasks:
   test:contract-owner-key:
     desc: 'Register (add) or revoke (revoke) the throwaway owner key of the authorization phase on the disposable restmail.test topology (#1162); the private half stays in .cache/contract/owner-key.json'
     env:
-      CONTRACT_FIXTURE_CONFIG: '{{.CONFIG}}'
+      # A private topology's config is the restmail.test fixture placed on the run's own names
+      # (scripts/topology_plan.py), so it is as disposable as restmail.test is.
+      CONTRACT_FIXTURE_CONFIG: '{{if and .TOPOLOGY_CONFIG (eq .CONFIG .TOPOLOGY_CONFIG)}}restmail.test{{else}}{{.CONFIG}}{{end}}'
       CONTRACT_FIXTURE_PROJECT: '{{.RESTMAIL_PROJECT}}'
     cmds:
       - |
@@ -815,7 +824,9 @@ tasks:
   test:contract-held-mail-fixture:
     desc: Replenish disposable quarantine and suppression targets without changing the queue
     env:
-      CONTRACT_FIXTURE_CONFIG: '{{.CONFIG}}'
+      # A private topology's config is the restmail.test fixture placed on the run's own names
+      # (scripts/topology_plan.py), so it is as disposable as restmail.test is.
+      CONTRACT_FIXTURE_CONFIG: '{{if and .TOPOLOGY_CONFIG (eq .CONFIG .TOPOLOGY_CONFIG)}}restmail.test{{else}}{{.CONFIG}}{{end}}'
       CONTRACT_FIXTURE_PROJECT: '{{.RESTMAIL_PROJECT}}'
     cmds:
       - |
@@ -828,7 +839,9 @@ tasks:
   test:contract-queue-entry-fixture:
     desc: Create one disposable held queue target without changing other contract fixtures
     env:
-      CONTRACT_FIXTURE_CONFIG: '{{.CONFIG}}'
+      # A private topology's config is the restmail.test fixture placed on the run's own names
+      # (scripts/topology_plan.py), so it is as disposable as restmail.test is.
+      CONTRACT_FIXTURE_CONFIG: '{{if and .TOPOLOGY_CONFIG (eq .CONFIG .TOPOLOGY_CONFIG)}}restmail.test{{else}}{{.CONFIG}}{{end}}'
       CONTRACT_FIXTURE_PROJECT: '{{.RESTMAIL_PROJECT}}'
     cmds:
       - |
@@ -858,7 +871,9 @@ tasks:
   test:contract-retry-fixture:
     desc: Replenish only the retry example's queue entry, leaving held mail and every other fixture as it is
     env:
-      CONTRACT_FIXTURE_CONFIG: '{{.CONFIG}}'
+      # A private topology's config is the restmail.test fixture placed on the run's own names
+      # (scripts/topology_plan.py), so it is as disposable as restmail.test is.
+      CONTRACT_FIXTURE_CONFIG: '{{if and .TOPOLOGY_CONFIG (eq .CONFIG .TOPOLOGY_CONFIG)}}restmail.test{{else}}{{.CONFIG}}{{end}}'
       CONTRACT_FIXTURE_PROJECT: '{{.RESTMAIL_PROJECT}}'
     cmds:
       - |
@@ -871,7 +886,9 @@ tasks:
   test:contract-report-targets:
     desc: 'Top up the held mail a report-only phase consumes (chore test:contract-report-targets -- authorization|ownership); no gate calls this'
     env:
-      CONTRACT_FIXTURE_CONFIG: '{{.CONFIG}}'
+      # A private topology's config is the restmail.test fixture placed on the run's own names
+      # (scripts/topology_plan.py), so it is as disposable as restmail.test is.
+      CONTRACT_FIXTURE_CONFIG: '{{if and .TOPOLOGY_CONFIG (eq .CONFIG .TOPOLOGY_CONFIG)}}restmail.test{{else}}{{.CONFIG}}{{end}}'
       CONTRACT_FIXTURE_PROJECT: '{{.RESTMAIL_PROJECT}}'
     cmds:
       - |
@@ -884,7 +901,9 @@ tasks:
   test:contract-domain-tenants:
     desc: Prepare the domain administrators of the ownership phase on the disposable topology
     env:
-      CONTRACT_FIXTURE_CONFIG: '{{.CONFIG}}'
+      # A private topology's config is the restmail.test fixture placed on the run's own names
+      # (scripts/topology_plan.py), so it is as disposable as restmail.test is.
+      CONTRACT_FIXTURE_CONFIG: '{{if and .TOPOLOGY_CONFIG (eq .CONFIG .TOPOLOGY_CONFIG)}}restmail.test{{else}}{{.CONFIG}}{{end}}'
       CONTRACT_FIXTURE_PROJECT: '{{.RESTMAIL_PROJECT}}'
     cmds:
       - |
@@ -901,7 +920,9 @@ tasks:
   test:contract-api-keys:
     desc: Prove API key lifecycle with real MFA on the disposable topology
     env:
-      CONTRACT_FIXTURE_CONFIG: '{{.CONFIG}}'
+      # A private topology's config is the restmail.test fixture placed on the run's own names
+      # (scripts/topology_plan.py), so it is as disposable as restmail.test is.
+      CONTRACT_FIXTURE_CONFIG: '{{if and .TOPOLOGY_CONFIG (eq .CONFIG .TOPOLOGY_CONFIG)}}restmail.test{{else}}{{.CONFIG}}{{end}}'
       CONTRACT_FIXTURE_PROJECT: '{{.RESTMAIL_PROJECT}}'
     cmds:
       - |
@@ -913,12 +934,14 @@ tasks:
         mkdir -p .cache/contract
         docker exec -- "${CONTRACT_FIXTURE_PROJECT}-api" go run ./tests/contract/fixtures --test-domain=restmail.test --api-keys > .cache/contract/api-key-fixture.log
         sed -n 's/^API_KEY_FIXTURE=//p' .cache/contract/api-key-fixture.log > .cache/contract/api-key-fixture.json
-        python3 tests/contract/api_keys_live.py "${CONTRACT_ENDPOINT:-http://10.99.0.20:8080}" --fixture .cache/contract/api-key-fixture.json
+        python3 tests/contract/api_keys_live.py "${CONTRACT_ENDPOINT:-http://{{.RESTMAIL_API_IP | default "10.99.0.20"}}:8080}" --fixture .cache/contract/api-key-fixture.json
 
   test:contract-live-proofs:
     desc: 'The live anonymous, over-cap and real-principal proofs against a running topology, after the gate; fails when a runner proved less than it selected (#1237)'
     env:
-      CONTRACT_FIXTURE_CONFIG: '{{.CONFIG}}'
+      # A private topology's config is the restmail.test fixture placed on the run's own names
+      # (scripts/topology_plan.py), so it is as disposable as restmail.test is.
+      CONTRACT_FIXTURE_CONFIG: '{{if and .TOPOLOGY_CONFIG (eq .CONFIG .TOPOLOGY_CONFIG)}}restmail.test{{else}}{{.CONFIG}}{{end}}'
       CONTRACT_FIXTURE_PROJECT: '{{.RESTMAIL_PROJECT}}'
     cmds:
       - |
@@ -937,7 +960,9 @@ tasks:
   test:contract-mfa-admin:
     desc: Prepare the administrator the contract hooks enroll in real MFA for setup that takes 2FA
     env:
-      CONTRACT_FIXTURE_CONFIG: '{{.CONFIG}}'
+      # A private topology's config is the restmail.test fixture placed on the run's own names
+      # (scripts/topology_plan.py), so it is as disposable as restmail.test is.
+      CONTRACT_FIXTURE_CONFIG: '{{if and .TOPOLOGY_CONFIG (eq .CONFIG .TOPOLOGY_CONFIG)}}restmail.test{{else}}{{.CONFIG}}{{end}}'
       CONTRACT_FIXTURE_PROJECT: '{{.RESTMAIL_PROJECT}}'
     cmds:
       - |
@@ -947,12 +972,14 @@ tasks:
           exit 1
         fi
         docker exec -- "${CONTRACT_FIXTURE_PROJECT}-api" go run ./tests/contract/fixtures --test-domain=restmail.test --mfa-admin
-        python3 tests/contract/mfa_admin.py enroll "${CONTRACT_ENDPOINT:-http://10.99.0.20:8080}"
+        python3 tests/contract/mfa_admin.py enroll "${CONTRACT_ENDPOINT:-http://{{.RESTMAIL_API_IP | default "10.99.0.20"}}:8080}"
 
   test:contract-delivery-recipient:
     desc: Prepare the mailbox the fuzz phase pins deliverMessage's generated bodies to
     env:
-      CONTRACT_FIXTURE_CONFIG: '{{.CONFIG}}'
+      # A private topology's config is the restmail.test fixture placed on the run's own names
+      # (scripts/topology_plan.py), so it is as disposable as restmail.test is.
+      CONTRACT_FIXTURE_CONFIG: '{{if and .TOPOLOGY_CONFIG (eq .CONFIG .TOPOLOGY_CONFIG)}}restmail.test{{else}}{{.CONFIG}}{{end}}'
       CONTRACT_FIXTURE_PROJECT: '{{.RESTMAIL_PROJECT}}'
     cmds:
       - |
@@ -965,7 +992,9 @@ tasks:
   test:contract-link-fixture:
     desc: Prepare the generated link proof only after account-creation probes
     env:
-      CONTRACT_FIXTURE_CONFIG: '{{.CONFIG}}'
+      # A private topology's config is the restmail.test fixture placed on the run's own names
+      # (scripts/topology_plan.py), so it is as disposable as restmail.test is.
+      CONTRACT_FIXTURE_CONFIG: '{{if and .TOPOLOGY_CONFIG (eq .CONFIG .TOPOLOGY_CONFIG)}}restmail.test{{else}}{{.CONFIG}}{{end}}'
       CONTRACT_FIXTURE_PROJECT: '{{.RESTMAIL_PROJECT}}'
     cmds:
       - |
@@ -992,20 +1021,29 @@ tasks:
       - |
         volume=$(python3 -B {{.ROOT_DIR}}/scripts/source_volume.py create) || exit 1
         trap 'docker volume rm -f "$volume" >/dev/null 2>&1' EXIT
-        docker volume create --label "$RESTMAIL_LABEL" rest-mail-e2e-gocache >/dev/null
+        docker volume create --label "$RESTMAIL_LABEL" {{.RESTMAIL_GOCACHE_VOLUME | default "rest-mail-e2e-gocache"}} >/dev/null
         mkdir -p {{.ROOT_DIR}}/.cache
-        printf 'nameserver %s\n' "{{.RESTMAIL_TESTBED_DNS_IP | default "10.99.0.10"}}" > {{.ROOT_DIR}}/.cache/testbed-resolv.conf
+        # A private topology has a resolver of its own, so a file of its own: two runs from
+        # one checkout would otherwise write the same one.
+        resolv={{.ROOT_DIR}}/.cache/testbed-resolv{{if .TOPOLOGY_RUN}}-{{.TOPOLOGY_RUN}}{{end}}.conf
+        printf 'nameserver %s\n' "{{.RESTMAIL_TESTBED_DNS_IP | default "10.99.0.10"}}" > "$resolv"
+        # The suite reaches the API by the address the run's network gives it. The host-side
+        # CONTRACT_ENDPOINT of a private run is a loopback port, which is not that container's.
+        # The other addresses are the ones the suite dials by IP, not by name; unset, it
+        # keeps the shared topology's.
         docker run --rm --label "$RESTMAIL_LABEL" \
           --network {{.RESTMAIL_NETWORK | default "testbed_mailnet"}} \
-          -v {{.ROOT_DIR}}/.cache/testbed-resolv.conf:/etc/resolv.conf:ro \
+          -v "$resolv:/etc/resolv.conf:ro" \
           -v "$volume:/src" -w /src \
           -v {{.ROOT_DIR}}/.cache:/src/.cache \
-          -v rest-mail-go-modules:/go/pkg/mod:ro \
-          -v rest-mail-e2e-gocache:/root/.cache/go-build \
+          -v {{.RESTMAIL_MODULES_VOLUME | default "rest-mail-go-modules"}}:/go/pkg/mod:ro \
+          -v {{.RESTMAIL_GOCACHE_VOLUME | default "rest-mail-e2e-gocache"}}:/root/.cache/go-build \
           -e GOFLAGS=-buildvcs=false \
           -e E2E_REQUIRE_STACK \
           -e E2E_LIMITS \
-          -e API_BASE_URL="${CONTRACT_ENDPOINT:-http://10.99.0.20:8080}" \
+          -e RESTMAIL_API_IP -e RESTMAIL_SMTP_IP \
+          -e MAIL1_POSTFIX_IP -e MAIL2_POSTFIX_IP -e MAIL1_DOVECOT_IP -e MAIL2_DOVECOT_IP \
+          -e API_BASE_URL="${RESTMAIL_E2E_API_URL:-${CONTRACT_ENDPOINT:-http://{{.RESTMAIL_API_IP | default "10.99.0.20"}}:8080}}" \
           golang:1.26.10 \
           go test -race -count=1 -v -timeout 8m ./tests/e2e/... {{.CLI_ARGS}}
 
@@ -1065,14 +1103,22 @@ tasks:
       - task: test:e2e
 
   e2e:up:
-    desc: 'Bring up the e2e topology: testbed + reference mail1/mail2 + restmail.test'
+    desc: 'Bring up the e2e topology: testbed + reference mail1/mail2 + restmail.test. For a private run: chore topology:up TOPOLOGY=<name>'
+    # A TOPOLOGY without the variables chore topology:up sets would bring up the shared
+    # names while looking private. Refuse that.
+    preconditions:
+      - sh: '[ -z "{{.TOPOLOGY}}" ] || [ -n "{{.TOPOLOGY_CONFIG}}" ]'
+        msg: 'TOPOLOGY={{.TOPOLOGY}} names a private run, which chore topology:up TOPOLOGY={{.TOPOLOGY}} brings up with its own variables; this task alone would use the shared names'
     cmds:
-      - task: testbed:up
+      # The private run made its network, volumes and resolver (topology:substrate:up);
+      # testbed:up would start the shared resolver's twin at the shared address.
+      - '[ -n "{{.TOPOLOGY_CONFIG}}" ] || "${CHORE_BIN:-chore}" testbed:up'
       - task: mailserver:init
       - task: mailserver:certs:issue
-      # restmail.test (the rest-mail instance) — config is testbed-owned.
+      # restmail.test (the rest-mail instance) — config is testbed-owned. A private run's
+      # is its own, made by topology:prepare.
       - task: instance:certs:issue
-        vars: {CONFIG: restmail.test}
+        vars: {CONFIG: '{{.TOPOLOGY_CONFIG | default "restmail.test"}}'}
       # Provision the internal-mTLS material (dedicated CA + API server + gateway
       # client cert), then bring the stack up WITH internal mTLS ON so the e2e
       # gate exercises the real gateway→API handshake. The restmail.test manifest
@@ -1080,19 +1126,25 @@ tasks:
       # a new invocation because the service tasks read it through their include
       # mappings, which a call var on `task: instance:up` never reached (#1339).
       - task: instance:mtls:issue
-        vars: {CONFIG: restmail.test}
+        vars: {CONFIG: '{{.TOPOLOGY_CONFIG | default "restmail.test"}}'}
       - task: instance:dns:register
-        vars: {CONFIG: restmail.test}
+        vars: {CONFIG: '{{.TOPOLOGY_CONFIG | default "restmail.test"}}'}
       - task: e2e:instances
-      - '"${CHORE_BIN:-chore}" -C .workspace/reference-mailserver dkim:provision CONFIG=mail1 HOSTNAME=mail1.test'
-      - '"${CHORE_BIN:-chore}" -C .workspace/reference-mailserver dkim:provision CONFIG=mail2 HOSTNAME=mail2.test'
+      - >-
+        {{.REFERENCE_PATH}}"${CHORE_BIN:-chore}" -C .workspace/reference-mailserver dkim:provision
+        CONFIG={{.TOPOLOGY_REF1 | default "mail1"}} HOSTNAME=mail1.test
+        {{.REFERENCE_PLACEMENT}}
+      - >-
+        {{.REFERENCE_PATH}}"${CHORE_BIN:-chore}" -C .workspace/reference-mailserver dkim:provision
+        CONFIG={{.TOPOLOGY_REF2 | default "mail2"}} HOSTNAME=mail2.test
+        {{.REFERENCE_PLACEMENT}}
       - task: instance:dkim
-        vars: {CONFIG: restmail.test}
+        vars: {CONFIG: '{{.TOPOLOGY_CONFIG | default "restmail.test"}}'}
       # Fail the bring-up loudly if a domain's provisioned DKIM selector has
       # drifted from what the manifest declares (#150), rather than silently
       # signing/publishing under the wrong selector.
       - task: instance:dkim:check
-        vars: {CONFIG: restmail.test}
+        vars: {CONFIG: '{{.TOPOLOGY_CONFIG | default "restmail.test"}}'}
 
   e2e:instances:
     desc: Start all three instances together; finish only when every instance answers healthy
@@ -1111,7 +1163,8 @@ tasks:
     desc: Start and wait for the first reference instance
     cmds:
       - >-
-        "${CHORE_BIN:-chore}" -C .workspace/reference-mailserver up CONFIG=mail1
+        {{.REFERENCE_PATH}}"${CHORE_BIN:-chore}" -C .workspace/reference-mailserver up CONFIG={{.TOPOLOGY_REF1 | default "mail1"}}
+        {{.REFERENCE_PLACEMENT}}
         HOSTNAME=mail1.test
         POSTGRES_IP={{.MAIL1_POSTGRES_IP | default "10.99.0.41"}}
         POSTFIX_IP={{.MAIL1_POSTFIX_IP | default "10.99.0.11"}}
@@ -1119,13 +1172,14 @@ tasks:
         RSPAMD_IP={{.MAIL1_RSPAMD_IP | default "10.99.0.17"}}
         FAIL2BAN_IP={{.MAIL1_FAIL2BAN_IP | default "10.99.0.14"}}
       - task: mailserver:wait
-        vars: {CONFIG: mail1}
+        vars: {CONFIG: '{{.TOPOLOGY_REF1 | default "mail1"}}', WAIT_NETWORK: '{{.RESTMAIL_NETWORK | default "testbed_mailnet"}}'}
 
   e2e:mail2:
     desc: Start and wait for the second reference instance
     cmds:
       - >-
-        "${CHORE_BIN:-chore}" -C .workspace/reference-mailserver up CONFIG=mail2
+        {{.REFERENCE_PATH}}"${CHORE_BIN:-chore}" -C .workspace/reference-mailserver up CONFIG={{.TOPOLOGY_REF2 | default "mail2"}}
+        {{.REFERENCE_PLACEMENT}}
         HOSTNAME=mail2.test
         POSTGRES_IP={{.MAIL2_POSTGRES_IP | default "10.99.0.42"}}
         POSTFIX_IP={{.MAIL2_POSTFIX_IP | default "10.99.0.12"}}
@@ -1133,20 +1187,24 @@ tasks:
         RSPAMD_IP={{.MAIL2_RSPAMD_IP | default "10.99.0.23"}}
         FAIL2BAN_IP={{.MAIL2_FAIL2BAN_IP | default "10.99.0.24"}}
       - task: mailserver:wait
-        vars: {CONFIG: mail2}
+        vars: {CONFIG: '{{.TOPOLOGY_REF2 | default "mail2"}}', WAIT_NETWORK: '{{.RESTMAIL_NETWORK | default "testbed_mailnet"}}'}
 
   e2e:restmail:
     desc: Start and wait for the headless internal-mTLS instance
     cmds:
-      - RESTMAIL_SKIP_FRONTENDS=true RESTMAIL_INTERNAL_MTLS=true "${CHORE_BIN:-chore}" instance:up CONFIG=restmail.test
+      - RESTMAIL_SKIP_FRONTENDS=true RESTMAIL_INTERNAL_MTLS=true "${CHORE_BIN:-chore}" instance:up CONFIG={{.TOPOLOGY_CONFIG | default "restmail.test"}}
 
   e2e:down:
     desc: 'Tear down the e2e topology (preserves data volumes)'
     cmds:
       - task: instance:down
-        vars: {CONFIG: restmail.test}
-      - '"${CHORE_BIN:-chore}" -C .workspace/reference-mailserver down CONFIG=mail1'
-      - '"${CHORE_BIN:-chore}" -C .workspace/reference-mailserver down CONFIG=mail2'
+        vars: {CONFIG: '{{.TOPOLOGY_CONFIG | default "restmail.test"}}'}
+      - >-
+        {{.REFERENCE_PATH}}"${CHORE_BIN:-chore}" -C .workspace/reference-mailserver down
+        CONFIG={{.TOPOLOGY_REF1 | default "mail1"}} {{.REFERENCE_PLACEMENT}}
+      - >-
+        {{.REFERENCE_PATH}}"${CHORE_BIN:-chore}" -C .workspace/reference-mailserver down
+        CONFIG={{.TOPOLOGY_REF2 | default "mail2"}} {{.REFERENCE_PLACEMENT}}
       - sh tasks/docker-hygiene.sh drop-guest-cache
 
   test:all:
@@ -1296,7 +1354,11 @@ tasks:
       - {name: config, desc: 'which reference server, e.g. mail1'}
     cmds:
       - |
-        ref="${CONFIG%%.*}"
+        # The reference server named by the argument or the call. The template, not the shell's
+        # $CONFIG: a private run exports CONFIG for its own instance.
+        ref="{{.CONFIG}}"; ref="${ref%%.*}"
+        # Where the reference server is joined: its run's network, or the shared one.
+        network="{{.WAIT_NETWORK | default .RESTMAIL_NETWORK | default "testbed_mailnet"}}"
         probe='
           # No globbing: the IMAP greeting to match starts with `*`, and splitting an
           # unquoted $spec expands it against the working directory — so `expect`
@@ -1329,7 +1391,7 @@ tasks:
           fail=0
           for pid in $pids; do wait "$pid" || fail=1; done
           exit $fail'
-        docker run --rm --label "$RESTMAIL_LABEL" --network testbed_mailnet alpine:3.20 sh -c "$probe"
+        docker run --rm --label "$RESTMAIL_LABEL" --network "$network" alpine:3.20 sh -c "$probe"
 
   health:wait:
     desc: Wait for the API to answer its health endpoint (up to 180s)
@@ -1860,13 +1922,13 @@ tasks:
             # it with the volume backups; staging uses a separate account.
             volume=$(python3 -B scripts/source_volume.py create) || exit 1
             trap 'docker volume rm -f "$volume" >/dev/null 2>&1' EXIT
-            docker volume create --label "$RESTMAIL_LABEL" rest-mail-e2e-gocache >/dev/null
+            docker volume create --label "$RESTMAIL_LABEL" {{.RESTMAIL_GOCACHE_VOLUME | default "rest-mail-e2e-gocache"}} >/dev/null
             docker run --rm --label "$RESTMAIL_LABEL" \
               -p 80:80 \
               -v "{{.CERTS_VOLUME}}:/certs" \
               -v "$volume:/src" -w /src \
-              -v rest-mail-go-modules:/go/pkg/mod:ro \
-              -v rest-mail-e2e-gocache:/root/.cache/go-build \
+              -v {{.RESTMAIL_MODULES_VOLUME | default "rest-mail-go-modules"}}:/go/pkg/mod:ro \
+              -v {{.RESTMAIL_GOCACHE_VOLUME | default "rest-mail-e2e-gocache"}}:/root/.cache/go-build \
               -e GOFLAGS=-buildvcs=false \
               golang:1.26.10 \
               sh -ec 'go build -o /go/bin/instance ./cmd/instance && exec /go/bin/instance "$@"' _ \
@@ -1916,12 +1978,12 @@ tasks:
             docker volume create --label "$RESTMAIL_LABEL" --label rest-mail.data=true "{{.INTERNAL_MTLS_VOLUME}}" >/dev/null
             volume=$(python3 -B scripts/source_volume.py create) || exit 1
             trap 'docker volume rm -f "$volume" >/dev/null 2>&1' EXIT
-            docker volume create --label "$RESTMAIL_LABEL" rest-mail-e2e-gocache >/dev/null
+            docker volume create --label "$RESTMAIL_LABEL" {{.RESTMAIL_GOCACHE_VOLUME | default "rest-mail-e2e-gocache"}} >/dev/null
             docker run --rm --label "$RESTMAIL_LABEL" \
               -v "{{.INTERNAL_MTLS_VOLUME}}:/internal-mtls" \
               -v "$volume:/src" -w /src \
-              -v rest-mail-go-modules:/go/pkg/mod:ro \
-              -v rest-mail-e2e-gocache:/root/.cache/go-build \
+              -v {{.RESTMAIL_MODULES_VOLUME | default "rest-mail-go-modules"}}:/go/pkg/mod:ro \
+              -v {{.RESTMAIL_GOCACHE_VOLUME | default "rest-mail-e2e-gocache"}}:/root/.cache/go-build \
               -e GOFLAGS=-buildvcs=false \
               golang:1.26.10 \
               go run ./cmd/instance mtls-issue -out /internal-mtls \
@@ -1964,8 +2026,8 @@ tasks:
   instance:dns:register:
     desc: "Publish <CONFIG>'s DNS to the testbed dnsmasq (requires the testbed running)"
     vars:
-      FRAG_VOL: '{{.DNSMASQ_FRAGMENTS_VOLUME | default "testbed_dnsmasq_fragments"}}'
-      DNSMASQ_CONTAINER: '{{.DNSMASQ_CONTAINER | default "testbed-dnsmasq"}}'
+      FRAG_VOL: '{{.RESTMAIL_DNSMASQ_FRAGMENTS_VOLUME | default .DNSMASQ_FRAGMENTS_VOLUME | default "testbed_dnsmasq_fragments"}}'
+      DNSMASQ_CONTAINER: '{{.RESTMAIL_DNSMASQ_CONTAINER | default .DNSMASQ_CONTAINER | default "testbed-dnsmasq"}}'
       DNSMASQ_IMAGE: '{{.DNSMASQ_IMAGE | default "ghcr.io/rest-mail/reference-dnsmasq"}}'
       DNSMASQ_TAG: '{{.DNSMASQ_TAG | default "0.1.0"}}'
     cmds:
@@ -2018,8 +2080,8 @@ tasks:
   instance:dns:unregister:
     desc: "Remove <CONFIG>'s DNS fragment from the testbed dnsmasq"
     vars:
-      FRAG_VOL: '{{.DNSMASQ_FRAGMENTS_VOLUME | default "testbed_dnsmasq_fragments"}}'
-      DNSMASQ_CONTAINER: '{{.DNSMASQ_CONTAINER | default "testbed-dnsmasq"}}'
+      FRAG_VOL: '{{.RESTMAIL_DNSMASQ_FRAGMENTS_VOLUME | default .DNSMASQ_FRAGMENTS_VOLUME | default "testbed_dnsmasq_fragments"}}'
+      DNSMASQ_CONTAINER: '{{.RESTMAIL_DNSMASQ_CONTAINER | default .DNSMASQ_CONTAINER | default "testbed-dnsmasq"}}'
       DNSMASQ_IMAGE: '{{.DNSMASQ_IMAGE | default "ghcr.io/rest-mail/reference-dnsmasq"}}'
       DNSMASQ_TAG: '{{.DNSMASQ_TAG | default "0.1.0"}}'
     cmds:
@@ -2034,8 +2096,8 @@ tasks:
   instance:dkim:
     desc: "Provision DKIM for CONFIG (keygen + install via admin API + publish DNS); needs the stack up"
     vars:
-      FRAG_VOL: '{{.DNSMASQ_FRAGMENTS_VOLUME | default "testbed_dnsmasq_fragments"}}'
-      DNSMASQ_CONTAINER: '{{.DNSMASQ_CONTAINER | default "testbed-dnsmasq"}}'
+      FRAG_VOL: '{{.RESTMAIL_DNSMASQ_FRAGMENTS_VOLUME | default .DNSMASQ_FRAGMENTS_VOLUME | default "testbed_dnsmasq_fragments"}}'
+      DNSMASQ_CONTAINER: '{{.RESTMAIL_DNSMASQ_CONTAINER | default .DNSMASQ_CONTAINER | default "testbed-dnsmasq"}}'
       ADMIN_ADDRESS: '{{.ADMIN_ADDRESS | default (printf "admin@%s" .RESTMAIL_HOSTNAME)}}'
       ADMIN_PASS: '{{.ADMIN_PASS | default "admin123!@"}}'
     cmds:
@@ -2238,8 +2300,8 @@ tasks:
     dotenv: []
     cmds:
       - |
-        if [ ! -d "config/{{.CONFIG}}" ]; then
-          echo "ERROR: no config/{{.CONFIG}} — refusing to fall back to a default." >&2
+        if [ ! -d "{{.CONFIG_DIR}}" ]; then
+          echo "ERROR: no {{.CONFIG_DIR}} — refusing to fall back to a default." >&2
           echo "  rest-mail instances:  chore config:scaffold {{.CONFIG}}" >&2
           echo "  reference servers:    chore instance:up --type reference --name {{.CONFIG}}" >&2
           exit 1

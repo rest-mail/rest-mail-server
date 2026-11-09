@@ -27,7 +27,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 ALPINE_IMAGE = "alpine:3.20"
 GO_IMAGE = "golang:1.26.10"
-MODULES_VOLUME = "rest-mail-go-modules"
+# A private topology has a modules volume of its own (#2062), so the label on it is the run's.
+MODULES_VOLUME = os.environ.get("RESTMAIL_MODULES_VOLUME") or "rest-mail-go-modules"
 DEFAULT_LABEL = "rest-mail.run=local"
 
 
