@@ -18,6 +18,7 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import shutil
 import signal
 import socket
@@ -41,6 +42,7 @@ STEP_NAMES = (
     "Go dependencies",
     "go vet",
     "go build",
+    "GoReleaser snapshot",
     "golangci-lint",
     "Package selection",
     "Loopback aliases",
@@ -713,32 +715,71 @@ def unbindable_loopbacks(addresses=LOOPBACK_ALIASES, open_socket=socket.socket):
     return missing
 
 
-def check_coverage(workflow, coverage):
-    for job in ("lint", "constellation", "contract-tooling", "test", "test-api", "test-handlers", "test-contract", "test-imap"):
+CI_JOBS = {
+    job: job
+    for job in (
+        "lint",
+        "constellation",
+        "contract-tooling",
+        "test",
+        "test-api",
+        "test-handlers",
+        "test-contract",
+        "test-imap",
+    )
+}
+# release-cli.yml's job, kept in the manifest under the workflow's name (#1942).
+RELEASE_JOBS = {"release-cli": "release"}
+RELEASE_WORKFLOW = ".github/workflows/release-cli.yml"
+RELEASE_SNAPSHOT_STEP = "Snapshot build (nothing published)"
+GORELEASER_INSTALLER = "scripts/ci/install-goreleaser"
+RELEASE_ARCHIVES = tuple(
+    f"_{os_}_{arch}.tar.gz" for os_ in ("linux", "darwin") for arch in ("amd64", "arm64")
+)
+RELEASE_PACKAGES = tuple(
+    f"_linux_{arch}.{kind}" for arch in ("amd64", "arm64") for kind in ("deb", "rpm")
+)
+
+
+def release_snapshot_problems(dist):
+    """What a snapshot build left out of dist/ that a release must hold."""
+    names = [path.name for path in Path(dist).iterdir()] if Path(dist).is_dir() else []
+    problems = [
+        f"no archive ending {suffix}"
+        for suffix in RELEASE_ARCHIVES + RELEASE_PACKAGES
+        if sum(name.endswith(suffix) for name in names) != 1
+    ]
+    if "checksums.txt" not in names:
+        problems.append("no checksums.txt")
+    return problems
+
+
+def check_coverage(workflow, coverage, jobs=CI_JOBS):
+    for key, job in jobs.items():
         observed = set()
         for step in workflow["jobs"][job]["steps"]:
             name = step.get("name", step.get("uses", "unnamed step"))
-            entry = coverage[job].get(name)
+            entry = coverage[key].get(name)
             if (
                 name in observed
                 or not entry
                 or entry.get("sha256") != step_digest(step)
             ):
                 raise RuntimeError(
-                    f"CI drift: {job}/{name}; cover the step locally or record a named exception with a reason in scripts/ci-local-coverage.json"
+                    f"CI drift: {key}/{name}; cover the step locally or record a named exception with a reason in scripts/ci-local-coverage.json"
                 )
             observed.add(name)
             if "exception" in entry:
                 if not entry["exception"] or "local" in entry:
                     raise RuntimeError(
-                        f"CI exception needs a reason and no local mapping: {job}/{name}"
+                        f"CI exception needs a reason and no local mapping: {key}/{name}"
                     )
-                print(f"EXCEPTION: {job}/{name}: {entry['exception']}")
+                print(f"EXCEPTION: {key}/{name}: {entry['exception']}")
             elif entry.get("local") not in STEP_NAMES:
-                raise RuntimeError(f"Unknown local coverage: {job}/{name}")
-        if observed != set(coverage[job]):
+                raise RuntimeError(f"Unknown local coverage: {key}/{name}")
+        if observed != set(coverage[key]):
             raise RuntimeError(
-                f"CI drift: removed/renamed steps in {job}: {set(coverage[job]) - observed}"
+                f"CI drift: removed/renamed steps in {key}: {set(coverage[key]) - observed}"
             )
 
 
@@ -807,6 +848,7 @@ class Gate:
         self.linux_image = None
         self.created_linux_image = False
         self.workflow = None
+        self.release_workflow = None
         self.limited = []
         self.vet_output = []
 
@@ -849,25 +891,32 @@ class Gate:
                 f"{self.python} -m pip install PyYAML==6.0.3 idna==3.11, or repair that venv and rerun"
             ) from error
 
-    def load_workflow(self):
-        self.workflow = json.loads(
+    def read_workflow(self, name):
+        return json.loads(
             self.run(
                 [
                     self.python,
                     "-c",
                     "import json,sys,yaml; print(json.dumps(yaml.safe_load(open(sys.argv[1]))))",
-                    self.root / ".github/workflows/ci.yml",
+                    self.root / name,
                 ],
                 capture=True,
             )
         )
 
+    def load_workflow(self):
+        self.workflow = self.read_workflow(".github/workflows/ci.yml")
+
+    def load_release_workflow(self):
+        if self.release_workflow is None:
+            self.release_workflow = self.read_workflow(RELEASE_WORKFLOW)
+        return self.release_workflow
+
     def coverage(self):
         self.load_workflow()
-        check_coverage(
-            self.workflow,
-            json.loads((self.root / "scripts/ci-local-coverage.json").read_text()),
-        )
+        manifest = json.loads((self.root / "scripts/ci-local-coverage.json").read_text())
+        check_coverage(self.workflow, manifest)
+        check_coverage(self.load_release_workflow(), manifest, RELEASE_JOBS)
 
     def go_toolchain(self):
         expected = next(
@@ -1079,6 +1128,49 @@ class Gate:
         ):
             raise CouldNotRun(f"{binary} is not pinned {version}: {actual.strip()}")
         return binary, step
+
+    def goreleaser(self):
+        """The GoReleaser the release workflow pins, installed if need be."""
+        version = re.search(
+            r"(?m)^VERSION=(\S+)$", (self.root / GORELEASER_INSTALLER).read_text()
+        ).group(1)
+        directory = self.cache / ("goreleaser-" + version)
+        binary = directory / "goreleaser"
+        with cache_lock(self.cache):
+            if not binary.exists():
+                try:
+                    self.run([self.root / GORELEASER_INSTALLER, directory])
+                except subprocess.CalledProcessError as error:
+                    raise CouldNotRun(
+                        f"the pinned GoReleaser {version} was not downloaded, so the release "
+                        f"snapshot was not built (not a pass); rerun, or run {GORELEASER_INSTALLER} {directory}"
+                    ) from error
+        if not re.search(
+            r"\bGitVersion:\s+" + re.escape(version) + r"\b",
+            self.run([binary, "--version"], capture=True),
+        ):
+            raise CouldNotRun(f"{binary} is not GoReleaser {version}; remove {directory} and rerun")
+        return binary
+
+    def goreleaser_snapshot(self):
+        """The release workflow's snapshot build, with what it runs and sets there."""
+        step = next(
+            step
+            for step in self.load_release_workflow()["jobs"]["release"]["steps"]
+            if step.get("name") == RELEASE_SNAPSHOT_STEP
+        )
+        args = shlex.split(step["run"])
+        if args[:1] != ["goreleaser"]:
+            raise RuntimeError(f"{RELEASE_SNAPSHOT_STEP} no longer runs goreleaser: {step['run']}")
+        binary = self.goreleaser()
+        dist = self.root / "dist"
+        try:
+            self.run([binary, *args[1:]], env=dict(self.env, **step.get("env", {})))
+            problems = release_snapshot_problems(dist)
+        finally:
+            shutil.rmtree(dist, ignore_errors=True)
+        if problems:
+            raise RuntimeError("the release snapshot is incomplete: " + "; ".join(problems))
 
     def lint(self):
         binary, step = self.linter("Run golangci-lint")
@@ -1769,6 +1861,7 @@ class Gate:
             lambda: self.run(["go", "mod", "download"]),
             lambda: self.run(["go", "vet", "./..."]),
             lambda: self.run(["go", "build", "./..."]),
+            self.goreleaser_snapshot,
             self.lint,
             self.selection,
             self.loopback_aliases,

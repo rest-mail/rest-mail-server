@@ -627,6 +627,9 @@ class WorkflowCoverage(unittest.TestCase):
                 )
             local = gate.Gate(target, root, root, False)
             local.workflow = self.workflow
+            local.release_workflow = __import__("yaml").safe_load(
+                (ROOT / ".github/workflows/release-cli.yml").read_text()
+            )
             with patch.object(local, "load_workflow"), patch.object(gate, "ROOT", runner):
                 local.coverage()
 
