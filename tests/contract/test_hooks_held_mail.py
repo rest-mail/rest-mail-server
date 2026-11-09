@@ -8,7 +8,6 @@ from unittest.mock import patch
 
 from test_hooks_two_factor_admin import load_hooks, session, transaction
 
-
 def answer(data):
     return io.BytesIO(json.dumps({"data": data}).encode())
 
@@ -80,6 +79,15 @@ class HeldMailHookTests(unittest.TestCase):
                 t = transaction(path, session(self.module.ADMIN))
                 self.module.clear_the_fixture_suppression(t)
                 self.assertEqual(t["fullPath"], path)
+        self.urlopen.assert_not_called()
+
+
+    def test_after_a_reset_the_fixture_suppression_is_not_looked_for(self):
+        # The own-data run's reset removed it; hooks.py makes one of its own.
+        with patch.dict("os.environ", {"CONTRACT_RESET_SEED": "1"}):
+            t = transaction("/api/v1/admin/domains/1/suppressions/1", session(self.module.ADMIN))
+            self.module.clear_the_fixture_suppression(t)
+        self.assertEqual(t["fullPath"], "/api/v1/admin/domains/1/suppressions/1")
         self.urlopen.assert_not_called()
 
 

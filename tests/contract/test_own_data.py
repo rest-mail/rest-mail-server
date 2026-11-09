@@ -178,15 +178,13 @@ SERVER_SETTINGS = (
     "getServerCapabilities",
     "updateServerCapabilities",
 )
-# The DMARC and TLS report, audit and delivery reads, and the TLS report
-# intake, which no link starts from or reaches.
+# The TLS report, audit and delivery reads, and the TLS report intake, which
+# no link starts from or reaches.
 REPORTS_AND_AUDIT = (
-    "listDmarcReports",
     "listTlsReports",
     "receiveTlsReport",
     "listAuditEntries",
     "verifyAuditLog",
-    "getDeliveryLogs",
     "getDashboardStats",
 )
 # The mailbox reads: listAccounts' link reaches them, and no link starts from
@@ -205,6 +203,75 @@ DELIVERY = (
 )
 # The rest of the filter operations, which no link starts from or reaches.
 FILTERS = ("testFilter", "listCustomFilters", "validateCustomFilter")
+# The public reads and the mail client discovery reads, which no link starts
+# from or reaches.
+PUBLIC_READS = (
+    "getHealth",
+    "describeServer",
+    "apiRoot",
+    "swaggerUI",
+    "openapiSpec",
+    "openapiDocument",
+    "prometheusMetrics",
+    "mozillaAutoconfig",
+    "mozillaAutoconfigWellKnown",
+    "microsoftAutodiscover",
+)
+# The domain administration lists, which no link starts from or reaches.
+DOMAIN_LISTS = ("listDomains", "listAliases", "listDKIMKeys", "listCertificates")
+# The certificate operations: createCertificate's link reaches the read, and
+# the read's the delete.
+CERTIFICATES = ("createCertificate", "getCertificate", "deleteCertificate")
+# The account link operations: linkAccount's link reaches the unlink.
+ACCOUNT_LINKS = ("linkAccount", "unlinkAccount")
+# The token exchange, which no link starts from or reaches. The client secret
+# operations moved with the credentials (CREDENTIALS_AND_BANS).
+TOKEN_EXCHANGE = ("issueClientCredentialsToken",)
+# Main's 550f750b0 (#1780) links registerRecoveryEmail to getRecoveryEmail;
+# no other link starts from or reaches the sign-in and recovery operations.
+SIGN_IN_AND_RECOVERY = (
+    "login",
+    "logout",
+    "refreshToken",
+    "openGatewaySession",
+    "resetAdmin",
+    "recoverAccount",
+    "ownerChallenge",
+    "ownerToken",
+    "ownerStatus",
+    "getTwoFactorStatus",
+    "enrollTwoFactor",
+    "confirmTwoFactor",
+    "disableTwoFactor",
+    "changeOwnPassword",
+    "requestRecoveryEmail",
+    "redeemRecoveryEmail",
+    "getRecoveryEmail",
+    "registerRecoveryEmail",
+    "recoveryEmailLink",
+    "verifyRecoveryEmail",
+)
+# The last operations step 2 found free. No link starts from any of them; only
+# listAccounts' reaches the account read and the calendar list.
+LAST_FREE = (
+    "getAccount",
+    "listCalendarEvents",
+    "respondToCalendar",
+    "accountEvents",
+    "probeServices",
+    "verifyDelivery",
+)
+# Clearing a suppression, and reading and listing DMARC reports: no link
+# starts from or reaches any of them.
+MADE_THROUGH_MAIL = ("clearSuppression", "getDmarcReport", "listDmarcReports")
+# The delivery log, which no link starts from or reaches.
+LOGS = ("getDeliveryLogs",)
+TEST_DATA = (
+    "resetTestData",
+    "seedTestData",
+    "snapshotTestData",
+    "restoreTestSnapshot",
+)
 FOLLOWS_THE_SENT_MESSAGE = {
     "getMessage",
     "updateMessage",
@@ -261,7 +328,7 @@ def description_operations(description):
 class Selection(unittest.TestCase):
     def test_the_run_is_narrowed_to_these_operations(self):
         config = {
-            "exclude-operation-id": ["resetTestData", "restoreTestSnapshot"],
+            "exclude-operation-id": [],
             "surface": {"exclude": []},
             "unproven": ".cache/contract/unproven.json",
         }
@@ -270,11 +337,74 @@ class Selection(unittest.TestCase):
             out["operation-id"],
             list(own_data.MOVED),
         )
-        self.assertEqual(
-            out["exclude-operation-id"], ["resetTestData", "restoreTestSnapshot"]
-        )
+        for operation in ("resetTestData", "seedTestData", "snapshotTestData", "restoreTestSnapshot"):
+            self.assertIn(operation, out["operation-id"])
+        self.assertEqual(out["exclude-operation-id"], [])
         self.assertNotIn("surface", out)
         self.assertEqual(out["unproven"], ".cache/contract/unproven-own-data.json")
+
+    def test_it_provides_the_states_its_hooks_make(self):
+        out = own_data.configure({"provides": {"principal": ["anonymous"], "state": ["x"]}})
+        self.assertEqual(
+            out["provides"],
+            {"principal": ["anonymous"], "state": ["calendar_invitation", "disposable_data", "x"]},
+        )
+        self.assertEqual(
+            own_data.configure({"provides": {}})["provides"],
+            {"state": ["calendar_invitation", "disposable_data"]},
+        )
+
+    def test_each_provided_state_is_only_the_moved_examples_its_hooks_make(self):
+        # A provided state sends every selected example that requires it, so
+        # each must be exactly the examples the hooks set up after the reset.
+        pairs = json.loads((ROOT / "openapi-example.json").read_text())
+        requiring = {
+            (operation, name)
+            for operation, examples in pairs.items()
+            for name, pair in examples.items()
+            if pair.get("requires", {}).get("state") in own_data.PROVIDES["state"]
+            and operation in own_data.MOVED
+        }
+        self.assertEqual(
+            requiring,
+            {
+                ("respondToCalendar", "accepted"),
+                ("respondToCalendar", "foreign_sender"),
+                ("resetTestData", "admin"),
+                ("restoreTestSnapshot", "admin"),
+                ("restoreTestSnapshot", "unknown_field"),
+            },
+        )
+
+    def test_only_this_run_sends_what_wipes_the_data(self):
+        # The primary run provides no disposable_data, so it sends none of the
+        # wiping exchanges; every example of the two operations it could send
+        # requires something, so none of their transactions is sent there,
+        # nor are their coverage probes or fuzz requests (#1334).
+        pairs = json.loads((ROOT / "openapi-example.json").read_text())
+        config = yaml.safe_load((ROOT / "vertrag.yml").read_text())
+        provided = config.get("provides") or {}
+        for operation in ("resetTestData", "restoreTestSnapshot"):
+            for name, pair in pairs[operation].items():
+                with self.subTest(operation=operation, name=name):
+                    requires = pair.get("requires") or {}
+                    self.assertTrue(requires, "sent by the primary run")
+                    for kind, value in requires.items():
+                        self.assertNotIn(value, provided.get(kind) or [])
+        wiping = {
+            (operation, name)
+            for operation in ("resetTestData", "restoreTestSnapshot")
+            for name, pair in pairs[operation].items()
+            if (pair.get("requires") or {}).get("state") == "disposable_data"
+        }
+        self.assertEqual(
+            wiping,
+            {
+                ("resetTestData", "admin"),
+                ("restoreTestSnapshot", "admin"),
+                ("restoreTestSnapshot", "unknown_field"),
+            },
+        )
 
     def test_it_selects_everything_a_reset_takes_the_created_domain_from(self):
         description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
@@ -302,7 +432,17 @@ class Selection(unittest.TestCase):
             - set(MAILBOX_READS)
             - set(ATTACHMENTS)
             - set(DELIVERY)
-            - set(FILTERS),
+            - set(FILTERS)
+            - set(PUBLIC_READS)
+            - set(DOMAIN_LISTS)
+            - set(CERTIFICATES)
+            - set(ACCOUNT_LINKS)
+            - set(TOKEN_EXCHANGE)
+            - set(SIGN_IN_AND_RECOVERY)
+            - set(LAST_FREE)
+            - set(TEST_DATA)
+            - set(MADE_THROUGH_MAIL)
+            - set(LOGS),
             link_followers(description, "createDomain") | {"createDomain"},
         )
 
@@ -315,13 +455,91 @@ class Selection(unittest.TestCase):
         self.assertLessEqual(set(PIPELINES), set(own_data.MOVED))
         self.assertFalse(hasattr(own_data, "FOLLOWS_THE_CREATED_PIPELINE"))
 
-    def test_the_pipeline_reads_have_moved_and_no_link_touches_them(self):
+    def test_the_moved_reads_and_auth_have_only_expected_links(self):
         description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
-        for operation in PIPELINE_READS + FILTERS:
+        expected_links = {"registerRecoveryEmail": {"getRecoveryEmail"}}
+        for operation in (
+            PIPELINE_READS + FILTERS + PUBLIC_READS + DOMAIN_LISTS + TOKEN_EXCHANGE + SIGN_IN_AND_RECOVERY + LOGS
+        ):
+            self.assertEqual(
+                link_followers(description, operation),
+                expected_links.get(operation, set()),
+                operation,
+            )
+            self.assertEqual(
+                {
+                    start
+                    for start in description_operations(description)
+                    if operation in link_followers(description, start)
+                },
+                {
+                    start
+                    for start, followers in expected_links.items()
+                    if operation in followers
+                },
+                operation,
+            )
+        self.assertLessEqual(
+            set(PIPELINE_READS + FILTERS + PUBLIC_READS + DOMAIN_LISTS + TOKEN_EXCHANGE + SIGN_IN_AND_RECOVERY + LOGS),
+            set(own_data.MOVED),
+        )
+
+    def test_the_last_free_operations_have_moved_and_only_list_accounts_links_to_them(self):
+        description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
+        for operation in LAST_FREE:
             self.assertEqual(link_followers(description, operation), set())
-            for start in description_operations(description):
-                self.assertNotIn(operation, link_followers(description, start), start)
-        self.assertLessEqual(set(PIPELINE_READS + FILTERS), set(own_data.MOVED))
+        for start in description_operations(description):
+            reached = set(LAST_FREE) & link_followers(description, start)
+            if start == "listAccounts":
+                self.assertEqual(reached, {"getAccount", "listCalendarEvents"})
+            elif start == "linkAccount":
+                self.assertEqual(reached, {"getAccount"})
+            elif start == "sendMessage":
+                self.assertEqual(reached, {"respondToCalendar"})
+            else:
+                self.assertFalse(reached, start)
+        self.assertNotIn("listAccounts", own_data.MOVED)
+        self.assertLessEqual(set(LAST_FREE), set(own_data.MOVED))
+
+    def test_the_test_data_operations_have_moved_and_no_link_touches_them(self):
+        description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
+        for operation in TEST_DATA:
+            self.assertEqual(link_followers(description, operation), set())
+        for start in description_operations(description):
+            self.assertFalse(set(TEST_DATA) & link_followers(description, start), start)
+        self.assertLessEqual(set(TEST_DATA), set(own_data.MOVED))
+        self.assertEqual(set(TEST_DATA) & set(own_data.MOVED[:-len(TEST_DATA)]), set())
+
+    def test_the_suppression_clear_and_dmarc_read_have_moved_and_no_link_reaches_them(self):
+        description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
+        for operation in MADE_THROUGH_MAIL:
+            self.assertEqual(link_followers(description, operation), set())
+        for start in description_operations(description):
+            self.assertFalse(set(MADE_THROUGH_MAIL) & link_followers(description, start), start)
+        self.assertLessEqual(set(MADE_THROUGH_MAIL), set(own_data.MOVED))
+
+    def test_it_selects_every_account_link_operation_and_its_links(self):
+        description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
+        # Main's 550f750b0 (#1780) also links the account read, moved separately.
+        self.assertEqual(
+            link_followers(description, "linkAccount") | {"linkAccount"},
+            set(ACCOUNT_LINKS) | {"getAccount"},
+        )
+        for start in description_operations(description):
+            if start not in ACCOUNT_LINKS:
+                self.assertFalse(set(ACCOUNT_LINKS) & link_followers(description, start), start)
+        self.assertLessEqual(set(ACCOUNT_LINKS), set(own_data.MOVED))
+
+    def test_it_selects_every_certificate_operation_and_its_links(self):
+        description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
+        self.assertEqual(
+            link_followers(description, "createCertificate") | {"createCertificate"},
+            set(CERTIFICATES),
+        )
+        for start in description_operations(description):
+            if start not in CERTIFICATES:
+                self.assertFalse(set(CERTIFICATES) & link_followers(description, start), start)
+        self.assertLessEqual(set(CERTIFICATES), set(own_data.MOVED))
 
     def test_the_server_settings_have_moved_and_no_link_touches_them(self):
         description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
@@ -338,8 +556,6 @@ class Selection(unittest.TestCase):
             for start in description_operations(description):
                 self.assertNotIn(operation, link_followers(description, start), start)
         self.assertLessEqual(set(REPORTS_AND_AUDIT), set(own_data.MOVED))
-        # Its success needs the DMARC fixture, which no API call makes.
-        self.assertNotIn("getDmarcReport", own_data.MOVED)
 
     def test_the_mailbox_reads_have_moved_and_only_listaccounts_reaches_them(self):
         description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
@@ -604,7 +820,7 @@ class Wiring(unittest.TestCase):
     def test_only_the_own_data_phase_resets(self):
         script = (ROOT / "tests/contract/run.sh").read_text()
         self.assertEqual(script.count("CONTRACT_RESET_SEED=1"), 1)
-        phase = script[script.index("\nown-data)\n") : script.index("\nteardown)\n")]
+        phase = script[script.index("\nown-data)\n") : script.index("\nfuzz)\n")]
         self.assertIn("CONTRACT_RESET_SEED=1", phase)
         self.assertIn("own_data.py --check", phase)
         self.assertNotIn("CONTRACT_RESET_SEED", (ROOT / "chores.yml").read_text())
@@ -618,7 +834,7 @@ class Wiring(unittest.TestCase):
         # The gateway routes are sent to the internal listener, which serves
         # nothing else: run.sh names the run's endpoint for the setup calls.
         script = (ROOT / "tests/contract/run.sh").read_text()
-        phase = script[script.index("\nown-data)\n") : script.index("\nteardown)\n")]
+        phase = script[script.index("\nown-data)\n") : script.index("\nfuzz)\n")]
         export = phase.index("export CONTRACT_SETUP_ORIGIN")
         self.assertIn('own_data.py --endpoint "$out/vertrag-own-data.yml"', phase[:export])
         self.assertLess(export, phase.index("CONTRACT_RESET_SEED=1"))
@@ -631,25 +847,30 @@ class Wiring(unittest.TestCase):
                 self.assertEqual(own_data.main(["--endpoint", str(config)]), 0)
         self.assertEqual(printed.getvalue(), "http://10.99.0.20:8080\n")
 
-    def test_it_is_a_gate_sent_just_before_the_teardown(self):
+    def test_it_is_the_last_gate_and_there_is_no_teardown(self):
         chores = (ROOT / "chores.yml").read_text()
         own = chores.index("tests/contract/run.sh own-data {{.CLI_ARGS}} || code=$?")
-        teardown = chores.index(
-            "tests/contract/run.sh teardown {{.CLI_ARGS}} || code=$?"
+        self.assertLess(chores.index("  test:contract-own-data:"), own)
+        self.assertNotIn("run.sh teardown", chores)
+        self.assertNotIn("teardown)", (ROOT / "tests/contract/run.sh").read_text())
+        self.assertNotIn("tests/contract/teardown.py", (ROOT / "tests/contract/run.sh").read_text())
+        workflow = yaml.safe_load((ROOT / ".github/workflows/e2e-suite.yml").read_text())
+        steps = workflow["jobs"]["suite"]["steps"]
+        names = [step.get("name", "") for step in steps]
+        step = next(s for s in steps if s.get("run") == "chore test:contract-own-data")
+        self.assertNotIn("continue-on-error", step)
+        self.assertEqual(step["if"], "inputs.contract-phases == 'gate'")
+        self.assertLess(names.index("Limits suite"), names.index(step["name"]))
+        self.assertLess(
+            names.index("Contract tests (examples, coverage and secret scan)"),
+            names.index(step["name"]),
         )
-        self.assertLess(own, teardown)
-        self.assertLess(chores.index("  test:contract-teardown:"), own)
 
     def test_nothing_is_taken_out_of_the_primary_run(self):
         config = yaml.safe_load((ROOT / "vertrag.yml").read_text())
-        self.assertEqual(
-            config["exclude-operation-id"], ["resetTestData", "restoreTestSnapshot"]
-        )
+        self.assertEqual(config["exclude-operation-id"], [])
         self.assertEqual(config["exclude-matching"], [])
-        self.assertEqual(
-            [item["operation"] for item in config["surface"]["exclude"]],
-            ["resetTestData", "restoreTestSnapshot"],
-        )
+        self.assertEqual(config["surface"]["exclude"], [])
 
 
 if __name__ == "__main__":

@@ -48,7 +48,7 @@ class AuthorizationCellHooks(unittest.TestCase):
         # second finds the placeholder gone and leaves the address alone.
         self.assertEqual(
             self.registered["requestRecoveryEmail"],
-            ["a_fresh_recovery_address", "a_recovery_request_for_an_address_of_its_own"],
+            ["sign_in_and_recovery_after_a_reset", "a_fresh_recovery_address", "a_recovery_request_for_an_address_of_its_own"],
         )
         certificate_hooks = self.registered["createCertificate"]
         self.assertLess(

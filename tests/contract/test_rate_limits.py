@@ -148,7 +148,7 @@ class ContractRateLimits(unittest.TestCase):
         self.assertIn("docker inspect", commands[2])
         self.assertIn("--assert-defaults", commands[2])
         self.assertIn("^TestLimits$", commands[3])
-        teardown = tasks["test:contract-teardown"]["cmds"][0]
+        teardown = tasks["test:contract-own-data"]["cmds"][0]
         self.assertIn("api:up", teardown)
         self.assertNotIn("RESTMAIL_CONTRACT_LIMITS_RAISED=false", teardown)
 

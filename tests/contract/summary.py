@@ -23,7 +23,6 @@ PHASES = (
     ("ownership-messages", "ownership of messages (report only)"),
     ("fuzz", "fuzz (report only)"),
     ("own-data", "own data"),
-    ("teardown", "teardown"),
 )
 
 

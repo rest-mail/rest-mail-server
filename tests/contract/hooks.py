@@ -196,6 +196,564 @@ def to_domain(transaction, domain_id):
     transaction["fullPath"] = "/".join(parts) + separator + query
 
 
+@hooks.before("linkAccount")
+@hooks.before("unlinkAccount")
+@hooks.before("issueClientCredentialsToken")
+def account_links_and_the_token_exchange_after_a_reset(transaction):
+    # The account link operations and the token exchange, moved to a clean
+    # start (the client secret operations reset in a_credential_to_manage):
+    # each exchange, refusals included, resets and seeds first. None needs
+    # anything made. The link's 201 links the seeded eve@restmail.test, which
+    # the reset puts back unlinked, with the seed's password; the refusals keep
+    # their ids and bodies: 0 and missing's 2147483647 need nothing to exist,
+    # and a body the schema refuses is refused before any lookup. The requests
+    # are still sent as the two-factor administrator, which the reset keeps
+    # with its credentials, and nothing here revokes or ends that session.
+    # Registered ahead of every other hook of these operations. A run with no
+    # reset changes nothing here.
+    if asked_for_a_clean_start():
+        start_clean(transaction)
+
+
+# The password of the accounts made for a sign-in exchange after its reset.
+# Never the fixture admin's or the two-factor administrator's.
+SIGN_IN_PASSWORD = "contract-sign-in-account"
+
+
+@hooks.before("login")
+@hooks.before("logout")
+@hooks.before("refreshToken")
+@hooks.before("openGatewaySession")
+@hooks.before("resetAdmin")
+@hooks.before("recoverAccount")
+@hooks.before("ownerChallenge")
+@hooks.before("ownerToken")
+@hooks.before("ownerStatus")
+@hooks.before("getTwoFactorStatus")
+@hooks.before("enrollTwoFactor")
+@hooks.before("confirmTwoFactor")
+@hooks.before("disableTwoFactor")
+@hooks.before("changeOwnPassword")
+@hooks.before("requestRecoveryEmail")
+@hooks.before("redeemRecoveryEmail")
+@hooks.before("getRecoveryEmail")
+@hooks.before("registerRecoveryEmail")
+@hooks.before("recoveryEmailLink")
+@hooks.before("verifyRecoveryEmail")
+def sign_in_and_recovery_after_a_reset(transaction):
+    # The sign-in and recovery operations, moved to a clean start: each
+    # exchange, refusals included, resets and seeds first. Refusals keep their
+    # bodies and tokens. A success that ends a session, rotates one or starts a
+    # second factor acts on an account made for it after the reset, never on a
+    # session or credential the run uses:
+    # - logout's 204 ends a session of that account (the_session_it_ended_is_over
+    #   checks it is over);
+    # - refreshToken's 200 rotates that account's refresh token;
+    # - enrollTwoFactor's 200 starts that account's enrollment.
+    # openGatewaySession's credential is an app password of an account made
+    # for it: the reset removed the principal sign_in_a_mail_client names. The
+    # other successes read (getTwoFactorStatus, getRecoveryEmail,
+    # recoveryEmailLink), sign the fixture admin in (login), or ask about an
+    # address no account holds (requestRecoveryEmail), and need nothing made.
+    # Registered ahead of every other hook of these operations. A run with no
+    # reset changes nothing here.
+    if not asked_for_a_clean_start():
+        return
+    start_clean(transaction)
+    name = transaction.get("name", "")
+    path = transaction["fullPath"].partition("?")[0]
+    if path == "/api/v1/gateway-sessions":
+        if any(f" > {status} > " in name for status in ("201", "422")):
+            address, secret = an_app_password_of_its_own(transaction)
+            body = hooks.get_json(transaction)
+            if isinstance(body, dict):
+                body["address"], body["password"] = address, secret
+                hooks.set_json(transaction, body)
+        return
+    if path == "/api/v1/auth/logout" and " > 204" in name:
+        refresh_token = a_session_of_its_own(transaction)["refresh_token"]
+        body = hooks.get_json(transaction)
+        if isinstance(body, dict) and "refresh_token" in body:
+            body["refresh_token"] = refresh_token
+            hooks.set_json(transaction, body)
+            hooks.stash["ended_refresh_token"] = {"name": name, "token": refresh_token}
+        return
+    if path == "/api/v1/auth/refresh" and " > 200 > " in name:
+        body = hooks.get_json(transaction)
+        if isinstance(body, dict) and body.get("refresh_token") == "fixture-refresh-token":
+            body["refresh_token"] = a_session_of_its_own(transaction)["refresh_token"]
+            hooks.set_json(transaction, body)
+        return
+    if path == "/api/v1/auth/2fa/enroll" and " > 200 > " in name:
+        session = a_session_of_its_own(transaction)
+        transaction["request"]["headers"]["Authorization"] = "Bearer " + session["access_token"]
+
+
+def a_session_of_its_own(transaction):
+    """A native session of an account made for this exchange, after its reset:
+    its access and refresh tokens."""
+    origin = origin_of(transaction)
+    address = a_made_account(origin, "contract-sign-in", SIGN_IN_PASSWORD)["address"]
+    pace_auth_requests(None)
+    request = urllib.request.Request(
+        origin + "/api/v1/auth/login",
+        data=json.dumps({"email": address, "password": SIGN_IN_PASSWORD, "client": "native"}).encode(),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        data = json.load(response).get("data") or {}
+    if not data.get("access_token") or not data.get("refresh_token"):
+        raise RuntimeError("the account made for this exchange signed in without its tokens")
+    # The setup sign-in and the exchange share the auth rate bucket.
+    pace_auth_requests(None)
+    return data
+
+
+
+
+def an_app_password_of_its_own(transaction):
+    """An app password of an account made for this exchange, after its reset,
+    minted by the two-factor administrator as the principals' one was."""
+    origin = setup_origin(transaction)
+    account = a_made_account(origin, "contract-mail-client", SIGN_IN_PASSWORD)
+    request = urllib.request.Request(
+        origin + f"/api/v1/accounts/{account['id']:d}/credentials",
+        data=json.dumps({"name": "Contract mail client", "password": mfa_admin.PASSWORD}).encode(),
+        headers={"Content-Type": "application/json", "Authorization": "Bearer " + mfa_admin_token(origin)},
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        secret = json.load(response)["data"]["password"]
+    return account["address"], secret
+
+
+@hooks.after("logout")
+def the_session_it_ended_is_over(transaction):
+    # After a reset, logout's 204 ends a session made for it. Its refresh
+    # token must be refused afterwards, or the exchange fails: an answer of 204
+    # alone is given for a token that ends nothing too. Refusals and a run with
+    # no reset are left alone.
+    ended = hooks.stash.pop("ended_refresh_token", None)
+    name = transaction.get("name", "")
+    real = transaction.get("real") or {}
+    if not asked_for_a_clean_start() or " > 204" not in name or str(real.get("statusCode")) != "204":
+        return
+    if ended is None or ended["name"] != name:
+        transaction["fail"] = "the sign-out had no session made for it to end"
+        return
+    pace_auth_requests(None)
+    request = urllib.request.Request(
+        origin_of(transaction) + "/api/v1/auth/refresh",
+        data=json.dumps({"refresh_token": ended["token"]}).encode(),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:
+            status = response.status
+    except urllib.error.HTTPError as error:
+        status = error.code
+    if status != 401:
+        transaction["fail"] = f"the session made for it was not ended: its refresh token answered {status:d}, not 401"
+
+
+# The invitation listCalendarEvents' 200 lists after its reset: a calendar
+# request the seeded admin@restmail.test sends itself, so it is delivered to
+# that account with its version recorded.
+OWN_INVITATION_UID = "contract-own-invitation@restmail.test"
+OWN_INVITATION = {
+    "from": ADMIN,
+    "to": [ADMIN],
+    "subject": "Contract invitation",
+    "body_text": "An invitation made for this exchange after its reset.",
+    "calendar_event": {
+        "uid": OWN_INVITATION_UID,
+        "sequence": 0,
+        "method": "REQUEST",
+        "summary": "Contract invitation",
+        "dtstart": "2030-01-01T10:00:00Z",
+        "dtend": "2030-01-01T11:00:00Z",
+        "all_day": False,
+        "organizer": {"address": ADMIN},
+        "attendees": [{"address": ADMIN}],
+    },
+}
+
+
+@hooks.before("getAccount")
+@hooks.before("listCalendarEvents")
+@hooks.before("accountEvents")
+@hooks.before("respondToCalendar")
+@hooks.before("probeServices")
+@hooks.before("verifyDelivery")
+def the_last_free_operations_after_a_reset(transaction):
+    # The last operations step 2 found free, moved to a clean start: each
+    # exchange, refusals included, resets and seeds first. Refusals keep their
+    # ids and bodies. The successes:
+    # - getAccount's and listCalendarEvents' 200 go to the seeded
+    #   admin@restmail.test: the reset removed the account their example names
+    #   and seeded that address again under another id. Only the id in the
+    #   path changes (to_the_seeded_account).
+    # - listCalendarEvents' 200 gets an invitation of its own, which the after
+    #   hook the_listing_holds_what_was_made requires it to list.
+    # - respondToCalendar's 200 and 403 reply to an invitation of their own
+    #   (to_the_invitation_made_for_it).
+    # - verifyDelivery's 200 asks about an address no mailbox has, with no
+    #   wait, and is answered found: false (#388); probeServices' 200 probes
+    #   the database. Neither needs anything made.
+    # No link starts from any of them, and only listAccounts' link reaches
+    # getAccount and listCalendarEvents; listAccounts is not selected.
+    # Registered ahead of every other hook of these operations. A run with no
+    # reset changes nothing here.
+    if not asked_for_a_clean_start():
+        return
+    start_clean(transaction)
+    name = transaction.get("name", "")
+    path = transaction["fullPath"].partition("?")[0]
+    if path.endswith("/calendar-reply") and (" > 200 > " in name or " > 403 > " in name):
+        to_the_invitation_made_for_it(transaction)
+    if " > 200 > " not in name:
+        return
+    if path.startswith("/api/v1/accounts/"):
+        to_the_seeded_account(transaction)
+    if path.endswith("/calendar-events"):
+        fixture_call(transaction, "POST", "/api/v1/messages/send", OWN_INVITATION)
+        made_for_the_listing(transaction, "invitation", {"uid": OWN_INVITATION_UID})
+
+
+# A recipient is suppressed only when mail to it hard-bounces (the queue
+# worker's suppress, internal/gateway/queue/suppression.go): a domain that does
+# not exist is one (mxHosts answers 550 5.1.2, a bad domain). .invalid never
+# exists (RFC 6761), so mail to it bounces on the first try. The testbed's
+# DNS answers .invalid NXDOMAIN itself (tests/contract/dnsmasq.conf), never
+# asking a resolver outside it.
+OWN_SUPPRESSED_DOMAIN = "nowhere.invalid"
+# The queue worker polls every 5 seconds by default (QUEUE_POLL_INTERVAL) and
+# bounces on its first try, so this is many polls.
+SUPPRESSION_WAIT = 90
+
+
+@hooks.before("clearSuppression")
+def clear_a_suppression_made_after_the_reset(transaction):
+    # clearSuppression, moved to a clean start: each exchange, refusals
+    # included, resets and seeds first, and refusals keep their ids. The 204
+    # clears a suppression made after the reset: the fixture admin sends a
+    # message to an address at a domain that does not exist, the gateway's
+    # queue worker bounces it and suppresses the address for the fixture
+    # domain, and the exchange clears that suppression. No link reaches it.
+    # Registered ahead of every other clearSuppression hook, whose fixture
+    # suppression the reset removed. A run with no reset changes nothing here.
+    if not asked_for_a_clean_start():
+        return
+    start_clean(transaction)
+    # A 204 names no media type: its name ends at the status.
+    if not transaction.get("name", "").endswith(" > 204"):
+        return
+    domain = next(
+        (d for d in fixture_call(transaction, "GET", "/api/v1/admin/domains") or []
+         if d.get("name") == FIXTURE_PLAN["domain"]),
+        None,
+    )
+    if domain is None:
+        raise RuntimeError("the seed hosts no {}".format(FIXTURE_PLAN["domain"]))
+    address = "contract-suppressed-{}@{}".format(time.time_ns(), OWN_SUPPRESSED_DOMAIN)
+    fixture_call(transaction, "POST", "/api/v1/messages/send", {
+        "from": ADMIN,
+        "to": [address],
+        "subject": "Contract suppression",
+        "body_text": "Sent after the reset to a domain that does not exist, so it bounces.",
+    })
+    collection = "/api/v1/admin/domains/{}/suppressions".format(domain["id"])
+    deadline = time.monotonic() + SUPPRESSION_WAIT
+    while True:
+        suppressed = [s for s in fixture_call(transaction, "GET", collection) or []
+                      if s.get("address") == address]
+        if suppressed:
+            break
+        if time.monotonic() >= deadline:
+            raise RuntimeError(
+                "{} was not suppressed within {}s: the gateway's queue worker did not "
+                "bounce the message sent to it".format(address, SUPPRESSION_WAIT))
+        time.sleep(1)
+    query = transaction["fullPath"].partition("?")[2]
+    transaction["fullPath"] = collection + "/" + str(suppressed[0]["id"]) + ("?" + query if query else "")
+
+
+# A DMARC aggregate report is stored only from inbound mail whose From domain
+# passes DMARC aligned, addressed to postmaster@ the report's domain
+# (internal/pipeline/filters/dmarc_reports_received.go). The gateway hands
+# inbound mail to deliverMessage with the client's address, so a report is
+# delivered as one from the reporter's mail host would be: SPF passes for the
+# reporter from its one permitted address, aligned with the From domain, which
+# publishes a DMARC record. The testbed's DNS serves both records
+# (tests/contract/dnsmasq.conf), so no third party's DNS decides the result.
+OWN_DMARC_REPORTER = "dmarc-sender.test"
+OWN_DMARC_CLIENT = ("192.0.2.25", "mail.dmarc-sender.test")
+OWN_DMARC_REPORT_ID = "contract-own-report"
+
+
+def a_dmarc_report_message(domain, stamp):
+    """A whole aggregate report mail for domain, as deliverMessage takes it."""
+    sender = "noreply-dmarc-support@" + OWN_DMARC_REPORTER
+    report = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n<feedback>'
+        "<report_metadata><org_name>Contract</org_name><email>{sender}</email>"
+        "<report_id>{report_id}</report_id>"
+        "<date_range><begin>1793577600</begin><end>1793663999</end></date_range>"
+        "</report_metadata><policy_published><domain>{domain}</domain>"
+        "<adkim>r</adkim><aspf>r</aspf><p>none</p></policy_published>"
+        "<record><row><source_ip>192.0.2.1</source_ip><count>12</count>"
+        "<policy_evaluated><disposition>none</disposition><dkim>pass</dkim>"
+        "<spf>fail</spf></policy_evaluated></row>"
+        "<identifiers><header_from>{domain}</header_from></identifiers>"
+        "<auth_results><dkim><domain>{domain}</domain><selector>mail</selector>"
+        "<result>pass</result></dkim><spf><domain>{domain}</domain>"
+        "<result>fail</result></spf></auth_results></record></feedback>\n"
+    ).format(sender=sender, report_id=OWN_DMARC_REPORT_ID, domain=domain)
+    attachment = base64.encodebytes(report.encode()).decode().replace("\n", "\r\n")
+    postmaster = "postmaster@" + domain
+    message = (
+        f"From: {sender}\r\nTo: {postmaster}\r\n"
+        f"Subject: Report domain: {domain}\r\n"
+        f"Date: {formatdate(localtime=False)}\r\n"
+        f"Message-ID: <contract-dmarc-{stamp}@{OWN_DMARC_REPORTER}>\r\n"
+        "MIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary=report\r\n\r\n"
+        "--report\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nA report.\r\n"
+        "--report\r\nContent-Type: text/xml\r\n"
+        "Content-Disposition: attachment; filename=report.xml\r\n"
+        "Content-Transfer-Encoding: base64\r\n\r\n"
+        f"{attachment}--report--\r\n"
+    )
+    return {
+        "address": postmaster,
+        "sender": sender,
+        "recipients_to": [postmaster],
+        "subject": f"Report domain: {domain}",
+        "client_ip": OWN_DMARC_CLIENT[0],
+        "helo_name": OWN_DMARC_CLIENT[1],
+        "raw_message": base64.b64encode(message.encode()).decode(),
+    }
+
+
+@hooks.before("getDmarcReport")
+def read_a_dmarc_report_delivered_after_the_reset(transaction):
+    # getDmarcReport, moved to a clean start: each exchange, refusals
+    # included, resets and seeds first, and refusals keep their ids. The 200
+    # reads a report delivered after the reset (a_dmarc_report_of_its_own).
+    # No link reaches it. Registered ahead of the fixture report's hook, whose
+    # report the reset removed. A run with no reset changes nothing here.
+    if not asked_for_a_clean_start():
+        return
+    start_clean(transaction)
+    if " > 200 > " not in transaction.get("name", ""):
+        return
+    report = a_dmarc_report_of_its_own(transaction)
+    query = transaction["fullPath"].partition("?")[2]
+    transaction["fullPath"] = "/api/v1/admin/dmarc-reports/{}".format(report["id"]) + (
+        "?" + query if query else "")
+
+
+@hooks.before("listDmarcReports")
+def list_a_dmarc_report_delivered_after_the_reset(transaction):
+    # listDmarcReports, moved to a clean start: each exchange, refusals
+    # included, resets and seeds first, and refusals keep their queries. A
+    # 200 gets a report delivered after the reset (a_dmarc_report_of_its_own)
+    # and notes it for the_listing_holds_what_was_made, by its reporter and
+    # report id. A reporter filter names that report's reporter: only the
+    # value changes, as a path's id would. A domain filter for any other
+    # domain (the example's 4294967295 is none) lists none of it by design,
+    # so its hook says so. No link reaches it. A run with no reset changes
+    # nothing here.
+    if not asked_for_a_clean_start():
+        return
+    start_clean(transaction)
+    if " > 200 > " not in transaction.get("name", ""):
+        return
+    report = a_dmarc_report_of_its_own(transaction)
+    path, _, query = transaction["fullPath"].partition("?")
+    params = [
+        (key, report["reporter"] if key == "reporter" else value)
+        for key, value in urllib.parse.parse_qsl(query, keep_blank_values=True)
+    ]
+    if params:
+        transaction["fullPath"] = path + "?" + urllib.parse.urlencode(params)
+    if any(key == "domain_id" and value != str(report["domain_id"]) for key, value in params):
+        made_for_the_listing(transaction, "nothing for another domain", None)
+        return
+    made_for_the_listing(transaction, "DMARC report", {
+        "reporter": report["reporter"],
+        "report_id": report["report_id"],
+    })
+
+
+def a_dmarc_report_of_its_own(transaction):
+    """A DMARC aggregate report delivered after this exchange's reset, as
+    stored: the fixture domain gets an inbound pipeline of its own that checks
+    SPF, DKIM and DMARC and does not greylist (the default one defers a first
+    delivery), and the report mail is delivered to its postmaster through
+    deliverMessage."""
+    domain = next(
+        (d for d in fixture_call(transaction, "GET", "/api/v1/admin/domains") or []
+         if d.get("name") == FIXTURE_PLAN["domain"]),
+        None,
+    )
+    if domain is None:
+        raise RuntimeError("the seed hosts no {}".format(FIXTURE_PLAN["domain"]))
+    fixture_call(transaction, "POST", "/api/v1/admin/pipelines", {
+        "domain_id": domain["id"],
+        "direction": "inbound",
+        "active": True,
+        "filters": [
+            {"name": "spf_check", "type": "action", "enabled": True},
+            {"name": "dkim_verify", "type": "transform", "enabled": True},
+            {"name": "dmarc_check", "type": "action", "enabled": True},
+        ],
+    })
+    # The gateway's route takes no credential: never a user's session.
+    delivery = urllib.request.Request(
+        origin_of(transaction) + "/api/v1/messages/deliver",
+        data=json.dumps(a_dmarc_report_message(domain["name"], time.time_ns())).encode(),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(delivery, timeout=30) as response:
+        if response.status != 201:
+            raise RuntimeError("the report mail was not delivered: {}".format(response.status))
+    reports = [
+        r for r in fixture_call(
+            transaction, "GET",
+            "/api/v1/admin/dmarc-reports?reporter=" + OWN_DMARC_REPORTER) or []
+        if r.get("report_id") == OWN_DMARC_REPORT_ID
+    ]
+    if len(reports) != 1:
+        raise RuntimeError(
+            "the report delivered from {} was not stored: its DMARC did not pass "
+            "aligned".format(OWN_DMARC_REPORTER))
+    return reports[0]
+
+
+# The test data operations (#1334). resetTestData's and restoreTestSnapshot's
+# successes wipe the data, so their examples require disposable_data, which
+# only this run provides: each exchange resets and seeds first, so the wipe
+# takes nothing another exchange needs.
+RESET_RESTORE_SNAPSHOT = "the_snapshot_restored"
+RESET_LEFTOVER = "the_domain_the_reset_removes"
+TEST_DATA_OPERATIONS = (
+    "resetTestData",
+    "seedTestData",
+    "snapshotTestData",
+    "restoreTestSnapshot",
+)
+
+
+def snapshot_identities(snapshot):
+    """What a snapshot holds, by what names each row rather than by id: the
+    domains, mailboxes and aliases, and how many of the other rows."""
+    snapshot = snapshot if isinstance(snapshot, dict) else {}
+
+    def rows(key):
+        found = snapshot.get(key)
+        return found if isinstance(found, list) else []
+
+    return {
+        "domains": sorted(row.get("name") for row in rows("domains")),
+        "mailboxes": sorted(row.get("address") for row in rows("mailboxes")),
+        "aliases": sorted(row.get("source_address") for row in rows("aliases")),
+        **{key: len(rows(key)) for key in ("messages", "queue", "pipelines", "bans")},
+    }
+
+
+@hooks.before("resetTestData")
+@hooks.before("seedTestData")
+@hooks.before("snapshotTestData")
+@hooks.before("restoreTestSnapshot")
+def the_test_data_operations_after_a_reset(transaction):
+    # Each exchange, refusals included, resets and seeds first; a reset's own
+    # exchange just runs after it. The successes:
+    # - resetTestData's 200 gets a domain made after the reset, which its
+    #   after hook requires the reset to have removed.
+    # - restoreTestSnapshot's 200 restores a snapshot taken through the API
+    #   after the reset (snapshotTestData), and its after hook requires the
+    #   data to be what that snapshot held. The example's empty body would
+    #   only clear the data.
+    # - seedTestData's and snapshotTestData's 200 need nothing made.
+    # A run with no reset changes nothing here, and sends none of the wiping
+    # exchanges: their examples require disposable_data.
+    hooks.stash.pop(RESET_RESTORE_SNAPSHOT, None)
+    hooks.stash.pop(RESET_LEFTOVER, None)
+    if not asked_for_a_clean_start():
+        return
+    start_clean(transaction)
+    name = transaction.get("name", "")
+    if " > 200 > " not in name:
+        return
+    path = transaction["fullPath"].partition("?")[0]
+    if path.endswith("/admin/test/reset"):
+        a_domain_of_its_own(transaction)
+        hooks.stash[RESET_LEFTOVER] = {"name": name, "domain": OWN_DOMAIN}
+    elif path.endswith("/admin/test/snapshot/restore"):
+        snapshot = fixture_call(transaction, "POST", "/api/v1/admin/test/snapshot")
+        if not isinstance(snapshot, dict) or not snapshot.get("domains"):
+            raise RuntimeError("the snapshot taken after the reset holds no domains")
+        hooks.set_json(transaction, snapshot)
+        hooks.stash[RESET_RESTORE_SNAPSHOT] = {"name": name, "held": snapshot_identities(snapshot)}
+
+
+@hooks.after("resetTestData")
+@hooks.after("restoreTestSnapshot")
+def the_wipe_did_what_it_says(transaction):
+    # A reset or a restore answers the same status whatever it did, so the
+    # status and the schema alone pass one that changed nothing (or, for the
+    # restore, cleared everything). After a 200 the data must show it:
+    # the reset removed the domain made before it and seeded restmail.test
+    # again; the restore put back what its snapshot held.
+    reset = hooks.stash.pop(RESET_LEFTOVER, None)
+    restore = hooks.stash.pop(RESET_RESTORE_SNAPSHOT, None)
+    real = transaction.get("real") or {}
+    name = transaction.get("name", "")
+    if (
+        not asked_for_a_clean_start()
+        or " > 200 > " not in name
+        or str(real.get("statusCode")) != "200"  # The status check fails it.
+    ):
+        return
+    made = reset if transaction["fullPath"].partition("?")[0].endswith("/reset") else restore
+    if made is None or made["name"] != name:
+        transaction["fail"] = "nothing was made for the wipe to be checked against (#1334)"
+        return
+    now = snapshot_identities(fixture_call(transaction, "POST", "/api/v1/admin/test/snapshot"))
+    if made is reset:
+        if made["domain"] in now["domains"]:
+            transaction["fail"] = f"the reset left {made['domain']}, made before it, in place"
+        elif "restmail.test" not in now["domains"]:
+            transaction["fail"] = "the reset did not seed restmail.test again"
+        return
+    if now != made["held"]:
+        differ = ", ".join(key for key in sorted(now) if now[key] != made["held"][key])
+        transaction["fail"] = f"the restore did not put back what its snapshot held ({differ})"
+
+
+def to_the_invitation_made_for_it(transaction):
+    """respondToCalendar's accepted (200) and foreign_sender (403) need a
+    received invitation (x-requires state calendar_invitation, which the
+    own-data run provides): the seeded admin@restmail.test sends itself one
+    after the reset, and the reply goes to the message it was delivered in.
+    Only the message id in the path changes; foreign_sender's from stays an
+    address the session cannot send as, so it is refused after the invitation
+    is found."""
+    fixture_call(transaction, "POST", "/api/v1/messages/send", OWN_INVITATION)
+    account = mailbox_id(origin_of(transaction), ADMIN)
+    rows = fixture_call(transaction, "GET", f"/api/v1/accounts/{account:d}/calendar-events") or []
+    found = [row.get("message_id") for row in rows if row.get("uid") == OWN_INVITATION_UID]
+    if not found or not found[0]:
+        raise RuntimeError("the invitation made for the reply was not delivered: no message holds it")
+    path, separator, query = transaction["fullPath"].partition("?")
+    parts = path.split("/")
+    parts[4] = str(found[0])
+    transaction["fullPath"] = "/".join(parts) + separator + query
+
+
 @hooks.before("domainDNSCheck")
 @hooks.before("getDomainRelay")
 @hooks.before("listSuppressions")
@@ -661,22 +1219,20 @@ OWN_TLS_REPORT = {
 }
 
 
-@hooks.before("listDmarcReports")
 @hooks.before("listTlsReports")
 @hooks.before("receiveTlsReport")
 @hooks.before("listAuditEntries")
 @hooks.before("verifyAuditLog")
-@hooks.before("getDeliveryLogs")
 @hooks.before("getDashboardStats")
 def report_and_audit_reads_after_a_reset(transaction):
-    # The DMARC and TLS report, audit and delivery reads, and the TLS report
+    # The TLS report and audit reads, the dashboard, and the TLS report
     # intake, moved to a clean start: each exchange, refusals included, resets
     # and seeds first. Registered before the other hooks of these operations,
     # so they see the clean start. A listing of TLS reports that succeeds gets
     # one of its own, received after the reset, so it lists more than the
-    # seed. The rest need nothing made: a received DMARC report comes only
-    # from mail with an aligned DMARC pass, and the delivery log and the
-    # dashboard report what is there. The audit log is append-only and outlives
+    # seed. The rest need nothing made: the dashboard reports what is there.
+    # The DMARC report list and the delivery log move on their own, with a
+    # report delivered and a message sent after their reset. The audit log is append-only and outlives
     # the reset by design (resetRetainedTables), so its reads meet what is in
     # it. The intake hosts the domains its report names in its own hook, after
     # the reset. A run with no reset changes nothing here.
@@ -713,6 +1269,15 @@ def row_field(row, field):
     return row
 
 
+@hooks.after("listCustomFilters")
+@hooks.after("listDomains")
+@hooks.after("listAliases")
+@hooks.after("listDKIMKeys")
+@hooks.after("listCertificates")
+@hooks.after("listCalendarEvents")
+@hooks.after("listDmarcReports")
+@hooks.after("getDeliveryLogs")
+@hooks.after("listPipelineLogs")
 @hooks.after("listTlsReports")
 @hooks.after("listPipelines")
 @hooks.after("listThreads")
@@ -737,7 +1302,7 @@ def the_listing_holds_what_was_made(transaction):
     ):
         return
     if made is None:
-        transaction["fail"] = "the listing had nothing made for it to list (#1785)"
+        transaction["fail"] = "the listing had nothing made for it to list (#1785, #1789)"
         return
     if made["match"] is None:  # Its before hook says this page lists none of it.
         return
@@ -1134,7 +1699,103 @@ def filter_requests_after_a_reset(transaction):
     start_clean(transaction)
     path = transaction["fullPath"].partition("?")[0]
     if path == "/api/v1/admin/custom-filters" and " > 200" in transaction.get("name", ""):
-        a_custom_filter_of_its_own(transaction)
+        made_for_the_listing(transaction, "custom filter", {"id": a_custom_filter_of_its_own(transaction)})
+
+
+@hooks.before("listDomains")
+@hooks.before("listAliases")
+@hooks.before("listDKIMKeys")
+@hooks.before("listCertificates")
+@hooks.before("createCertificate")
+@hooks.before("getCertificate")
+@hooks.before("deleteCertificate")
+def domain_administration_after_a_reset(transaction):
+    # The domain administration lists and the certificate operations, moved to
+    # a clean start: each exchange, refusals included, resets and seeds first.
+    # A listing that succeeds gets a row of its own, made after the reset, and
+    # notes it for the_listing_holds_what_was_made. A read or delete of a
+    # certificate aimed at a positive id other than missing's 2147483647 (the
+    # found example's 1, or the id createCertificate's link names, gone after
+    # the reset) gets a certificate of its own. A create needs nothing made:
+    # its documented domain_id 1 is the seeded restmail.test, which the reset
+    # keeps as id 1, and its later hook supplies the certificate. Registered
+    # ahead of every other hook of these operations. A run with no reset
+    # changes nothing here.
+    if not asked_for_a_clean_start():
+        return
+    start_clean(transaction)
+    path, separator, query = transaction["fullPath"].partition("?")
+    succeeds = " > 200" in transaction.get("name", "")
+    if path == "/api/v1/admin/domains" and succeeds:
+        made_for_the_listing(transaction, "domain", {"id": a_domain_of_its_own(transaction)})
+    elif path == "/api/v1/admin/aliases" and succeeds:
+        made_for_the_listing(transaction, "alias", {"id": an_alias_of_its_own(transaction)})
+    elif path == "/api/v1/admin/dkim" and succeeds:
+        domain_id = a_domain_of_its_own(transaction)
+        a_signing_key(transaction, domain_id)
+        made_for_the_listing(
+            transaction, "DKIM key", {"domain_id": domain_id, "selector": "contract", "has_key": True}
+        )
+    elif path == "/api/v1/admin/certificates" and succeeds:
+        made_for_the_listing(transaction, "certificate", {"id": a_certificate_of_its_own(transaction)})
+    elif path.startswith("/api/v1/admin/certificates/"):
+        certificate = path.rsplit("/", 1)[-1]
+        if positive_id(certificate) and certificate != "2147483647":
+            transaction["fullPath"] = (
+                "/api/v1/admin/certificates/" + str(a_certificate_of_its_own(transaction)) + separator + query
+            )
+
+
+def a_certificate_of_its_own(transaction):
+    """A self-signed certificate made for this exchange, after its reset, on a
+    domain of its own."""
+    domain_id = a_domain_of_its_own(transaction)
+    with tempfile.TemporaryDirectory() as d:
+        key, cert = os.path.join(d, "tls.key"), os.path.join(d, "tls.crt")
+        openssl(
+            "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "30",
+            "-subj", "/CN=" + OWN_DOMAIN, "-addext", "subjectAltName=DNS:" + OWN_DOMAIN,
+            "-keyout", key, "-out", cert,
+        )
+        with open(cert) as cert_file, open(key) as key_file:
+            return fixture_call(
+                transaction,
+                "POST",
+                "/api/v1/admin/certificates",
+                {
+                    "domain_id": domain_id,
+                    "cert_pem": cert_file.read(),
+                    "key_pem": key_file.read(),
+                    "auto_renew": False,
+                },
+            )["id"]
+
+
+@hooks.before("getHealth")
+@hooks.before("describeServer")
+@hooks.before("apiRoot")
+@hooks.before("swaggerUI")
+@hooks.before("openapiSpec")
+@hooks.before("openapiDocument")
+@hooks.before("prometheusMetrics")
+@hooks.before("mozillaAutoconfig")
+@hooks.before("mozillaAutoconfigWellKnown")
+@hooks.before("microsoftAutodiscover")
+def public_reads_after_a_reset(transaction):
+    # The public reads and the mail client discovery reads, moved to a clean
+    # start: each exchange, refusals included, resets and seeds first. The
+    # public reads need nothing made. The discovery reads need the address's
+    # domain hosted and active: the autoconfig reads' later hook prepares it
+    # after this reset, and an autodiscover that succeeds gets it here, since
+    # it has no hook of its own (its request is sent as generated). Registered
+    # ahead of every other hook of these operations. A run with no reset
+    # changes nothing here.
+    if not asked_for_a_clean_start():
+        return
+    start_clean(transaction)
+    path = transaction["fullPath"].partition("?")[0]
+    if path == "/autodiscover/autodiscover.xml" and " > 200 " in transaction.get("name", ""):
+        an_active_domain_for_autoconfig(transaction)
 
 
 @hooks.before("testPipeline")
@@ -1386,6 +2047,10 @@ def link_a_seeded_account(transaction):
     ):
         body["address"], body["password"] = "someone@example.com", "x"
         hooks.set_json(transaction, body)
+    # After a reset nothing is linked: the reset put the seeded account back
+    # unlinked, so there is no earlier link to undo.
+    if asked_for_a_clean_start():
+        return
     # Each successful link consumes the unlinked state. Restore only that
     # state before a fixture's valid proof; do not alter generated body bytes,
     # malformed values, wrong passwords, or the transaction's principal.
@@ -1645,9 +2310,10 @@ def pipeline_reads_after_a_reset(transaction):
     # The pipeline reads, moved to a clean start: each exchange, refusals
     # included, resets and seeds first. A listing of pipelines that succeeds
     # gets one of its own, inactive, on a domain of its own, made after the
-    # reset, so it lists more than the seed. The logs and the analytics need
-    # nothing made: nothing earlier is left for them to report. A run with no
-    # reset changes nothing here.
+    # reset, so it lists more than the seed. The logs get a send of their own
+    # in the_pipeline_log_holds_a_send; the analytics need nothing made:
+    # nothing earlier is left for them to report. A run with no reset changes
+    # nothing here.
     if not asked_for_a_clean_start():
         return
     start_clean(transaction)
@@ -1655,6 +2321,85 @@ def pipeline_reads_after_a_reset(transaction):
     if path == "/api/v1/admin/pipelines" and " > 200" in transaction.get("name", ""):
         pipeline = a_pipeline_of_its_own(transaction, a_domain_of_its_own(transaction))
         made_for_the_listing(transaction, "pipeline", {"id": pipeline})
+
+
+# The delivery log and the pipeline log (#1785). Each lists what a send wrote.
+# A message to a remote recipient is queued (outbound_queue, which the delivery
+# log reads); the recipient's domain is a .test name nothing hosts, so the
+# queue only defers it. A message to a local mailbox is delivered through the
+# inbound pipeline, whose trace (message_traces, which the pipeline log reads)
+# is what the documented 200 asks for: Vertrag sends the declared defaults,
+# direction=inbound, action=continue and outcome=delivered. The testbed keeps
+# every trace (TRACE_SAMPLE_RATE=1).
+OWN_LOG_DOMAIN = "contract-remote.test"
+
+
+def a_message_for_the_logs(transaction, recipient):
+    """Send one message from the fixture admin to recipient, after the reset,
+    and return the sent message."""
+    sent = fixture_call(
+        transaction,
+        "POST",
+        "/api/v1/messages/send",
+        {
+            "from": ADMIN,
+            "to": [recipient],
+            "subject": "Contract log",
+            "body_text": "Sent by the contract for the delivery and pipeline logs.",
+        },
+    )
+    if not isinstance(sent, dict) or not sent.get("message_id"):
+        raise RuntimeError("the fixture send returned no message")
+    return sent
+
+
+@hooks.before("getDeliveryLogs")
+def the_delivery_log_after_a_reset(transaction):
+    # getDeliveryLogs, moved to a clean start: each exchange, refusals
+    # included, resets and seeds first. A listing that succeeds gets a message
+    # queued for a remote recipient of its own after the reset, and
+    # the_listing_holds_what_was_made fails it unless the answer lists that
+    # recipient. A run with no reset changes nothing here.
+    if not asked_for_a_clean_start():
+        return
+    start_clean(transaction)
+    if " > 200" not in transaction.get("name", ""):
+        return
+    # The example documents limit=20 only; Vertrag adds the status enum's first
+    # value, pending. The topology's queue worker can claim the entry (and
+    # defer or bounce it) before the listing is sent, so the status is dropped:
+    # the queued row stays in the log whatever its status, as listQueue's hook
+    # does for the same race.
+    path, _, query = transaction["fullPath"].partition("?")
+    kept = [
+        (name, value)
+        for name, value in urllib.parse.parse_qsl(query, keep_blank_values=True)
+        if name != "status"
+    ]
+    transaction["fullPath"] = path + ("?" + urllib.parse.urlencode(kept) if kept else "")
+    recipient = f"contract-log-{time.time_ns():d}@{OWN_LOG_DOMAIN}"
+    a_message_for_the_logs(transaction, recipient)
+    made_for_the_listing(transaction, "queued message", {"recipient": recipient})
+
+
+@hooks.before("listPipelineLogs")
+def the_pipeline_log_holds_a_send(transaction):
+    # Registered after pipeline_reads_after_a_reset, which resets first. A
+    # listing that succeeds gets the inbound trace of a message the fixture
+    # admin sends itself after the reset, and the_listing_holds_what_was_made
+    # fails it unless the answer lists that trace, by its Message-ID. A run
+    # with no reset changes nothing here.
+    if not asked_for_a_clean_start() or " > 200" not in transaction.get("name", ""):
+        return
+    sent = a_message_for_the_logs(transaction, ADMIN)
+    # Traces are written in the background, a batch every 500 ms
+    # (internal/trace/recorder.go).
+    time.sleep(1)
+    made_for_the_listing(
+        transaction,
+        "delivery trace",
+        {"direction": "inbound", "rfc_message_id": sent["message_id"]},
+    )
 
 
 @hooks.before("createCustomFilter")
@@ -3388,6 +4133,10 @@ def sign_in_a_mail_client(transaction):
     """The IMAP gateway opens a session for the app password principal: its
     address and secret go in the body, the only place a mail client's password
     is sent (#1586). The pair's protocol stays, so 422 still names another."""
+    # After a reset the principal is gone: sign_in_and_recovery_after_a_reset
+    # gives the exchange an app password of an account made for it.
+    if asked_for_a_clean_start():
+        return
     app = principals()["app_password"]
     body = hooks.get_json(transaction)
     body["address"], body["password"] = app["address"], app["secret"]
@@ -4252,6 +5001,12 @@ def a_new_account(origin, address, display_name, password=None):
         return json.load(response)["data"]["id"]
 
 
+def a_made_account(origin, prefix, password=None):
+    """an_account_of_its_own, answering the account as made: its id and address."""
+    address = fresh_address(prefix)
+    return {"id": a_new_account(origin, address, "Invited", password), "address": address}
+
+
 # The passwords of the accounts made for recoverAccount's recovered example,
 # before and after the recovery. Not secrets: each proves only a disposable
 # account made for one request (a_recoverable_account).
@@ -4613,16 +5368,53 @@ def the_answer_names_the_recipient_made(transaction):
         transaction["fail"] = f"the answer is not for the mailbox made for it ({address}): " + "; ".join(problems)
 
 
+# The address each check's found example names: the in-process fixtures' own
+# mailboxes, which the topology does not have.
+FOUND_ADDRESS = {
+    "checkMailboxAddress": "user@example.com",
+    "restmailCheckMailbox": "user@example.test",
+}
+
+
 @hooks.before("checkMailboxAddress")
+@hooks.before("restmailCheckMailbox")
 def look_up_a_hosted_mailbox(transaction):
-    # found names the in-process fixture's user@example.com; on the topology
-    # the hosted mailbox is the fixture admin's. Other values are the
-    # refusals' and the probes', sent as they are.
+    # found names an in-process fixture's mailbox; on the topology the hosted
+    # mailbox is the fixture admin's, so found asks about that one, and
+    # the_lookup_finds_the_hosted_mailbox checks the answer. Other values are
+    # the refusals' and the probes', sent as they are. After a reset
+    # delivery_after_a_reset has already sent found to a mailbox of its own.
+    hooks.stash.pop("hosted_lookup", None)
+    operation = operation_of(transaction)
     path, _, query = transaction["fullPath"].partition("?")
     pairs = urllib.parse.parse_qsl(query, keep_blank_values=True)
-    if pairs != [("address", "user@example.com")]:
+    if operation not in FOUND_ADDRESS or pairs != [("address", FOUND_ADDRESS[operation])]:
         return
     transaction["fullPath"] = path + "?" + urllib.parse.urlencode({"address": ADMIN})
+    hooks.stash["hosted_lookup"] = transaction.get("name", "")
+
+
+@hooks.after("checkMailboxAddress")
+@hooks.after("restmailCheckMailbox")
+def the_lookup_finds_the_hosted_mailbox(transaction):
+    # A check's 200 has the same shape for a mailbox that is not there
+    # (exists: false), so its status and schema alone pass on a miss (#1801).
+    # The lookup look_up_a_hosted_mailbox sent to the fixture admin must
+    # answer that it exists, with the admin's address. Other lookups are left
+    # alone; a status other than 200 fails on its own.
+    name = hooks.stash.pop("hosted_lookup", None)
+    real = transaction.get("real") or {}
+    if name is None or name != transaction.get("name", "") or str(real.get("statusCode")) != "200":
+        return
+    data = (hooks.get_json(transaction, "real") or {}).get("data")
+    data = data if isinstance(data, dict) else {}
+    problems = []
+    if data.get("exists") is not True:
+        problems.append(f"exists is {data.get('exists')!r}")
+    if str(data.get("address", "")).lower() != ADMIN.lower():
+        problems.append(f"the address is {data.get('address')!r}")
+    if problems:
+        transaction["fail"] = f"the check did not find the hosted mailbox {ADMIN}: " + "; ".join(problems)
 
 
 @hooks.before("deliverMessage")
@@ -4685,7 +5477,7 @@ def delete_the_fixture_quarantined_message(transaction):
 
 @hooks.before("clearSuppression")
 def clear_the_fixture_suppression(transaction):
-    if os.environ.get("CONTRACT_COVERAGE") == "1":
+    if os.environ.get("CONTRACT_COVERAGE") == "1" or asked_for_a_clean_start():
         return
     # found names suppression 1 of domain 1. A recipient is suppressed only
     # when mail to it hard-bounces, which the run does not send, so the

@@ -1047,19 +1047,18 @@ tasks:
           golang:1.26.10 \
           go test -race -count=1 -v -timeout 8m ./tests/e2e/... {{.CLI_ARGS}}
 
-  test:contract-teardown:
-    desc: Send the operations that reset before each exchange, then those that wipe the contract run's data, last (#1334, #1385)
+  test:contract-own-data:
+    desc: Send every own-data exchange after a reset and seed, including destructive operations (#1334, #1385)
     cmds:
       # The limits suite, before this, spends the API's buckets in its memory;
-      # a restart gives the teardown's sign-in its own.
+      # a restart gives the own-data run's sign-in its own.
       - RESTMAIL_INTERNAL_MTLS=true "${CHORE_BIN:-chore}" api:up
       - task: health:wait
       - |
         set -eu
         code=0
         CONTRACT_DEFER_SUMMARY=1 tests/contract/run.sh own-data {{.CLI_ARGS}} || code=$?
-        CONTRACT_DEFER_SUMMARY=1 tests/contract/run.sh teardown {{.CLI_ARGS}} || code=$?
-        python3 -B tests/contract/summary.py .cache/contract examples coverage authorization ownership ownership-domains ownership-mailboxes ownership-messages own-data teardown
+        python3 -B tests/contract/summary.py .cache/contract examples coverage authorization ownership ownership-domains ownership-mailboxes ownership-messages own-data
         exit "$code"
 
   test:limits:
@@ -1129,6 +1128,7 @@ tasks:
         vars: {CONFIG: '{{.TOPOLOGY_CONFIG | default "restmail.test"}}'}
       - task: instance:dns:register
         vars: {CONFIG: '{{.TOPOLOGY_CONFIG | default "restmail.test"}}'}
+      - task: contract:dns:register
       - task: e2e:instances
       - >-
         {{.REFERENCE_PATH}}"${CHORE_BIN:-chore}" -C .workspace/reference-mailserver dkim:provision
@@ -2076,6 +2076,27 @@ tasks:
           docker restart {{.DNSMASQ_CONTAINER}} >/dev/null && echo "  reloaded {{.DNSMASQ_CONTAINER}} (served domains)"
         fi
         {{end}}
+
+  contract:dns:register:
+    desc: "Publish the contract run's own DNS (tests/contract/dnsmasq.conf) to the testbed dnsmasq"
+    vars:
+      FRAG_VOL: '{{.RESTMAIL_DNSMASQ_FRAGMENTS_VOLUME | default .DNSMASQ_FRAGMENTS_VOLUME | default "testbed_dnsmasq_fragments"}}'
+      DNSMASQ_CONTAINER: '{{.RESTMAIL_DNSMASQ_CONTAINER | default .DNSMASQ_CONTAINER | default "testbed-dnsmasq"}}'
+    cmds:
+      # The own-data hooks' mail names (a DMARC report sender, an .invalid
+      # recipient) are answered here, not by a resolver outside the testbed
+      # (#1385). The same copy-and-reload as instance:dkim.
+      - |
+        docker run --rm --name "restmail-{{.RESTMAIL_PROJECT}}-contract-dns" \
+          --label "rest-mail-loop={{.RESTMAIL_LOOP_ID | default "c1"}}" --label "$RESTMAIL_LABEL" \
+          -v "{{.ROOT_DIR}}/tests/contract:/src:ro" \
+          -v "{{.FRAG_VOL}}:/dst" \
+          alpine:3.20 cp /src/dnsmasq.conf /dst/12-rest-mail-contract.conf
+        if docker ps -aq --filter "name=^/{{.DNSMASQ_CONTAINER}}$" | grep -q .; then
+          docker restart {{.DNSMASQ_CONTAINER}} >/dev/null && echo "  reloaded {{.DNSMASQ_CONTAINER}}"
+        else
+          echo "  note: {{.DNSMASQ_CONTAINER}} not running — fragment written, applies when the testbed dnsmasq starts"
+        fi
 
   instance:dns:unregister:
     desc: "Remove <CONFIG>'s DNS fragment from the testbed dnsmasq"

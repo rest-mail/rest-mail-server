@@ -10,7 +10,7 @@ E2E runs `chore contract:pairs` beside `chore contract:topology`, on separate
 topologies. Pair shards use their own test fixtures and disposable databases;
 the topology contract recreates its principals, queue, API-key and MFA fixtures.
 No pair-test state or reports are inputs to the topology contract. Examples,
-coverage, the HAR secret scan and teardown stay together because they consume
+coverage, the HAR secret scan and the own-data exchanges stay together because they consume
 the same live resources, saved description, run configuration and reports.
 `chore contract` still runs both phases in sequence locally. The required
 `E2E (full topology)` check needs both jobs; the proof union still receives
@@ -183,7 +183,7 @@ In the `E2E (full topology)` job (`.github/workflows/e2e-suite.yml`), after the
 | `ownership` | Each account tenant's principals sent the other tenant's account id, on the operations they are entitled to; every answer must be 403 or 404. | Report only, after authorization |
 | live proofs | Named `principal: anonymous` and `body: over_cap` examples, and a bounded matrix of real principals (`chore test:contract-live-proofs`). What they prove joins the in-process proofs; the union is a gate, a failing runner is not ([details](#live-requirement-proofs-1237)). | Independent report job; the proof union still gates |
 | `fuzz` | Values drawn from each schema, shrunk to the smallest failing input, with a replayable seed. | Nightly and on `v*` tags (`contract-fuzz.yml`), never blocks; [one issue per finding](#the-daily-tiers-issues-626) |
-| `own-data` | The operations moved to a clean start, each exchange after a reset and seed, with what follows `createDomain`'s links ([Moved to a clean start](#moved-to-a-clean-start-part-of-1385)). | Gate, before the teardown |
+| `own-data` | The operations moved to a clean start, each exchange after a reset and seed, with what follows `createDomain`'s links, including `resetTestData` and `restoreTestSnapshot` ([Moved to a clean start](#moved-to-a-clean-start-part-of-1385)). | Gate, last |
 | faults | The API built with each fault in `faults.yml`, and the phase the fault names run on its operation: it must turn red ([Fault catalogue](#fault-catalogue-654)). | Nightly and on `v*` tags (`contract-faults.yml`), [one issue per failing fault](#the-daily-tiers-issues-626), fails on a fault not caught |
 
 ### The daily tier's issues (#626)
@@ -683,6 +683,20 @@ listener, which requires the gateway's client certificate. `vertrag.yml`'s
 `chore test:contract-mtls` copies out of the SMTP gateway. A `CONTRACT_ENDPOINT`
 naming another server sends them to that server instead.
 
+### A mailbox check finds a hosted mailbox
+
+A check's 200 looks the same for a mailbox that is not there
+(`{"data":{"exists":false}}`), so its status and schema alone pass on a miss
+(#1801). The `found` examples of `checkMailboxAddress` and
+`restmailCheckMailbox` name the in-process fixtures' `user@example.com` and
+`user@example.test`, which the topology does not have. So in the examples and
+coverage phases, `look_up_a_hosted_mailbox` sends each one to the fixture admin
+instead. Its after hook, `the_lookup_finds_the_hosted_mailbox`, then fails the
+200 through the transaction's `fail` field unless the answer says the mailbox
+exists, with the admin's address. Other addresses, the refusals' and the
+probes', are sent as they are and not held to it. After a reset the own-data
+phase sends `found` to a mailbox of its own first (below).
+
 ### Operations that take a two-factor session
 
 The grant operations (`createGrant`, `deleteGrant`, `activateGrant`,
@@ -743,9 +757,9 @@ Two gates judge the primary run:
   transaction of it was sent and passed, none failed, none skipped (because a
   hook skipped it or the link it follows did not resolve), none answered 5xx,
   and requires every operation it does not exclude. A shortfall exits 3, a
-  failed transaction 1, and the contract step fails on either. Each exclusion
-  is printed with its reason: the two operations that wipe the run's data, which
-  `exclude-operation-id` leaves to the teardown phase. No status is excluded:
+  failed transaction 1, and the contract step fails on either. Nothing is excluded:
+  `exclude-operation-id` and `surface.exclude` are empty. Destructive exchanges
+  require state `disposable_data`, which only the own-data run provides. No status is excluded:
   `status-baseline.txt`, which `run.sh` adds to the run's `surface.exclude`
   and `status_baseline.py` holds to only shrink, is empty (#1334).
 - **coverage, Vertrag's verdict, then `gate.py`:** any failed probe or skipped
@@ -1576,9 +1590,26 @@ an inactive pipeline of its own on a domain of its own, made after its reset
 `2147483647` keep theirs. `listPipelines`, `listPipelineLogs` and
 `getPipelineAnalytics` reset and seed before each exchange as well
 (`pipeline_reads_after_a_reset`). A listing that succeeds gets a pipeline of its
-own on a domain of its own; the logs and the analytics need nothing made. No
-link starts from or reaches the three reads. A run with no reset changes
-nothing in these hooks.
+own on a domain of its own; the analytics need nothing made. No link starts
+from or reaches the three reads. A run with no reset changes nothing in these
+hooks.
+
+`getDeliveryLogs` resets and seeds before each exchange too, refusals included
+(`the_delivery_log_after_a_reset`, its first hook). The 200s of the delivery log
+and the pipeline log each get a message the fixture admin sends after the reset
+(#1785). For the delivery log it goes to a remote recipient of its own
+(`contract-log-<time>@contract-remote.test`), so the send queues it, which is
+what the delivery log reads; the log must list that recipient. Its hook drops
+the `status=pending` Vertrag adds to the documented `limit=20`, since the
+topology's queue worker can claim the entry first, as `listQueue`'s hook does. For the pipeline
+log it goes to the fixture admin's own mailbox (`the_pipeline_log_holds_a_send`,
+after `pipeline_reads_after_a_reset`), because Vertrag sends the documented
+listing with the declared defaults `direction=inbound`, `action=continue` and
+`outcome=delivered`: the local delivery's inbound trace is what it asks for. It
+waits a second for the background trace writer, and the log must list an
+inbound trace with the sent message's Message-ID. Both checks are
+`the_listing_holds_what_was_made`. No link starts from or reaches the delivery
+log.
 
 The server settings, `listRoles`, `listCapabilities`, `getServerLimits`,
 `updateServerLimits`, `getServerCapabilities` and `updateServerCapabilities`,
@@ -1588,18 +1619,17 @@ from or reaches any of them. The reset empties `server_limits`, so the limits ar
 back at their defaults, and puts the server capability ceiling back to every
 capability, so a ceiling one exchange narrows does not bound the next.
 
-`listDmarcReports`, `listTlsReports`, `listAuditEntries`, `verifyAuditLog`,
-`getDeliveryLogs`, `getDashboardStats` and the TLS report intake
-`receiveTlsReport` reset and seed before each exchange too, refusals included
+`listTlsReports`, `listAuditEntries`, `verifyAuditLog`, `getDashboardStats`
+and the TLS report intake `receiveTlsReport` reset and seed before each exchange too, refusals included
 (`report_and_audit_reads_after_a_reset`, registered ahead of their other
 hooks). A listing of TLS reports that succeeds gets a report of its own,
 received after its reset on the seeded `restmail.test`; the intake hosts the
 domains its report names in its own hook, after the reset. The others need
 nothing made. The audit log is append-only and kept by the reset
 (`resetRetainedTables`), so its reads meet what is already in it. No link
-starts from or reaches any of them. `getDmarcReport` has not moved: its success
-needs the received DMARC report the Go fixtures make, and no API call makes one,
-since a report arrives only in mail with an aligned DMARC pass. A run with no
+starts from or reaches any of them. `getDmarcReport` and `listDmarcReports`
+move on their own, with a report delivered after their reset (below), and
+`getDeliveryLogs` with a message sent after its reset (above). A run with no
 reset changes nothing in this hook.
 
 `listFolders`, `listMessages` and `searchMessages`, the mailbox reads
@@ -1640,7 +1670,7 @@ Each documented success of a check or a delivery goes to a mailbox of its own
 on `restmail.test`, made after the reset:
 - the gateway's found check;
 - the gateway's deliveries to `admin@restmail.test`;
-- the RESTMAIL check's 200, whatever address Vertrag gives it (#1801);
+- the RESTMAIL check's 200, whatever address Vertrag gives it;
 - the RESTMAIL delivery to `eve@restmail.test`. This one also gets
   `restmail.test` an active inbound pipeline that only validates headers. After
   a reset the domain has none, and the default pipeline greylists a new sender,
@@ -1673,8 +1703,7 @@ found message by its subject. A documented 200 with nothing made for it fails to
 threads page after the example's cursor holds older threads only and is empty
 by design, so its hook notes that it lists none of it. Refusals and a run with
 no reset are left alone. The other moved listings have nothing an API call can
-make for them after a reset (`listDmarcReports`, `getDeliveryLogs`,
-`listPipelineLogs`, `listAuditEntries`), or list what the seed holds
+make for them after a reset (`listAuditEntries`), or list what the seed holds
 (`listMailboxes`, `listGrants`, `listMyGrants`, `listContacts`), or list a
 domain or message of their own that holds no rows (`listSuppressions`,
 `listAllowlist`, `listBlocklist`, `listAttachments`).
@@ -1684,6 +1713,125 @@ each exchange too, refusals included (`filter_requests_after_a_reset`, each
 operation's first hook). A listing that succeeds gets a custom filter of its own;
 the preview and the validation take only a body and need nothing made. No link
 starts from or reaches any of them.
+
+The public reads (`getHealth`, `describeServer`, `apiRoot`, `swaggerUI`,
+`openapiSpec`, `openapiDocument` and `prometheusMetrics`) and the mail client
+discovery reads (`mozillaAutoconfig`, `mozillaAutoconfigWellKnown` and
+`microsoftAutodiscover`) reset and seed before each exchange too, refusals
+included (`public_reads_after_a_reset`, each operation's first hook). The public
+reads need nothing made. The discovery reads need the address's domain hosted
+and active: `an_active_domain_for_autoconfig` activates it after the reset, as
+the autoconfig reads' own later hook, and for an autodiscover that succeeds from
+the reset hook (its request is still sent as generated). No link starts from or
+reaches any of them.
+
+The domain administration lists (`listDomains`, `listAliases`, `listDKIMKeys`
+and `listCertificates`) and the certificate operations (`createCertificate`,
+`getCertificate` and `deleteCertificate`) reset and seed before each exchange
+too, refusals included (`domain_administration_after_a_reset`, each operation's
+first hook). A listing that succeeds gets a row of its own after the reset: a
+domain, an alias on a domain of its own, a DKIM key on a domain of its own, or a
+certificate on a domain of its own. A read or a delete of a certificate aimed at
+a positive id other than missing's gets a certificate of its own, since the one
+createCertificate's link names is gone. The create needs nothing made: its
+`domain_id` 1 is the seeded `restmail.test`. createCertificate's link reaches the
+read, and the read's the delete; no other link starts from or reaches any of
+them. `clearSuppression` moved separately (below).
+
+After a reset, the 200 of `listCustomFilters`, `listDomains`, `listAliases`,
+`listDKIMKeys`, `listCertificates`, `getDeliveryLogs` and `listPipelineLogs`
+must list the row its before hook made (`the_listing_holds_what_was_made`,
+#1785, #1789), since the status and the schema alone pass on an empty list.
+The before hook notes the row in
+`hooks.stash["listing_made"]`; a documented 200 with nothing noted fails too.
+Refusals and a run without a reset are left alone.
+
+The account link operations (`linkAccount` and `unlinkAccount`) and the token
+exchange (`issueClientCredentialsToken`) reset and seed before each exchange too,
+refusals included (`account_links_and_the_token_exchange_after_a_reset`, each
+operation's first hook); the client secret operations reset with the credentials
+(`a_credential_to_manage`). None needs anything made. The link's 201 links the seeded `eve@restmail.test`,
+which the reset puts back unlinked with the seed's password, so after a reset
+`link_a_seeded_account` no longer undoes an earlier link. The rest are refusals,
+which keep their ids and bodies. linkAccount's link reaches only the unlink; no
+other link starts from or reaches any of them. `listAccounts` and `getAccount`
+are not moved: `listAccounts`' link reaches operations not moved yet, and
+`getAccount` among them. Nor are the push device operations: without an APNs
+key their routes do not exist, so the run sends none of them.
+
+The sign-in and recovery operations reset and seed before each exchange too,
+refusals included (`sign_in_and_recovery_after_a_reset`, each operation's first
+hook): `login`, `logout`, `refreshToken`, `protocolSignIn`, `resetAdmin`,
+`recoverAccount`, the three owner operations, the five two-factor and password
+operations, and the six recovery email operations. No link starts from or
+reaches any of them. Refusals keep their bodies and tokens. A success that ends
+a session, rotates one or starts a second factor acts on an account made for
+it after the reset, with a password of its own, never on a session or
+credential the run uses: `logout`'s 204 ends a session of that account, and
+`the_session_it_ended_is_over` fails the exchange unless its refresh token is
+refused afterwards; `refreshToken`'s 200 rotates that account's refresh token;
+`enrollTwoFactor`'s 200 starts that account's enrollment. `protocolSignIn`
+signs in with an app password the two-factor administrator mints for an
+account made for it, since the reset removed the principal
+`sign_in_a_mail_client` names. The other successes read, sign the fixture
+admin in, or ask about an address no account holds, and need nothing made. The
+local run needs the topology's `RESTMAIL_RECOVERY_EMAIL_BASE_URL`
+(`https://restmail.localhost`): without it `requestRecoveryEmail` answers 503.
+The reset also drops a kept administrator's enrollment that was never
+confirmed, with its recovery codes, so the primary run's enrollment of the
+fixture admin does not come back after it (`TestCleanResetPendingEnrollment`).
+
+The last operations step 2 found free reset and seed before each exchange too,
+refusals included (`the_last_free_operations_after_a_reset`, each operation's
+first hook): `getAccount`, `listCalendarEvents`, `respondToCalendar`,
+`accountEvents`, `probeServices` and `verifyDelivery`. No link starts from any
+of them, and only `listAccounts`' link reaches `getAccount` and
+`listCalendarEvents`; `listAccounts` is not selected, so each is sent with its
+own id. Refusals keep their ids and bodies. `getAccount`'s and
+`listCalendarEvents`' 200 go to the seeded `admin@restmail.test`, whose id the
+reset changed. `listCalendarEvents`' 200 gets an invitation of its own (a
+calendar request that account sends itself), and
+`the_listing_holds_what_was_made` fails it unless the answer lists that
+invitation. `respondToCalendar`'s `accepted` (200) and `foreign_sender` (403)
+require a received invitation (`x-requires` state `calendar_invitation`), which
+the own-data run provides (`own_data.PROVIDES`): after the reset the seeded
+account sends itself an invitation, and the reply goes to the message it was
+delivered in (`to_the_invitation_made_for_it`). `accountEvents`' `stream` (200)
+is not sent: its example is a literal `event: ping` stream the live server never
+sends, and Vertrag compares a stream with no `x-events` byte for byte (#1385).
+`verifyDelivery`'s 200 asks about an address no mailbox has, with
+no wait, and is answered `found: false` (#388); `probeServices`' 200 probes the
+database. Neither needs anything made. What is still not moved, and why,
+is on #1385: the quarantine operations and `listAccounts` (whose link reaches
+`listQuarantine`) wait on #1163; the reset, seed and snapshot operations can
+never start clean; the push device and ACME routes are not in the topology.
+
+`clearSuppression` and `getDmarcReport` reset and seed before each exchange too,
+refusals included, and their successes make their state through mail after the
+reset. The clear's 204 has the fixture admin send a message to an address at
+`nowhere.invalid`: the gateway's queue worker finds no mail host, bounces it
+(550 5.1.2, a bad domain) and suppresses the address for `restmail.test`, and
+the hook waits for the suppression to be listed (at most 90 seconds) and clears
+it. The read's 200 gives `restmail.test` an inbound pipeline of its own
+(`spf_check`, `dkim_verify`, `dmarc_check`; the default one greylists a first
+delivery) and delivers an aggregate report to `postmaster@restmail.test` through
+`deliverMessage` as one from the reporter's mail host (`dmarc-sender.test`,
+client 192.0.2.25): SPF passes aligned with the From domain, so DMARC passes and
+the report is stored, and the hook reads it. Neither depends on a third party's
+DNS: `chore contract:dns:register` (part of `chore e2e:up`) publishes
+`tests/contract/dnsmasq.conf` to the testbed dnsmasq, which serves the
+reporter's SPF (`v=spf1 ip4:192.0.2.25 -all`) and DMARC (`v=DMARC1; p=reject`)
+records and answers `.invalid` NXDOMAIN itself (`local=/invalid/`), never
+forwarding it. The fixture hooks for both skip after a reset.
+
+`listDmarcReports` resets and seeds before each exchange too, refusals included,
+and each 200 gets a report delivered after the reset the same way. A listing's
+200 has the same shape with no rows, so `the_listing_holds_what_was_made` fails
+the exchange unless the answer lists that report, by its reporter and report id
+(#1785). The received example's `reporter=reporter.test` filter names the
+report's reporter instead; only its value changes. The other 200 filters by
+domain 4294967295, which no domain is, so its page is empty by design and its
+hook says it lists none of the report.
 
 `createAlias`, `getAlias`, `updateAlias` and `deleteAlias` reset and seed before
 each exchange too, refusals included. A create is sent as documented after its
@@ -2003,8 +2151,8 @@ keeps its id. The create's and the unban's own hooks still give them the state
 they document. No stash value carried these across a reset, so none was removed.
 
 This happens only with `CONTRACT_RESET_SEED=1`, which `tests/contract/run.sh own-data`
-sets, and that phase is a gate of its own, sent by `chore test:contract-teardown`
-just before the teardown. It sends the moved operations with everything that follows
+sets, and that phase is a gate of its own, sent last by `chore test:contract-own-data`.
+There is no separate teardown pass. It sends the moved operations with everything that follows
 `createDomain`'s, `createPipeline`'s, `createAlias`'s, `createCustomFilter`'s,
 `createFolder`'s, `createContact`'s, `sendMessage`'s, `saveDraft`'s,
 `createAccount`'s, `putSieveScript`'s, `listQueue`'s, `createAppPassword`'s,
@@ -2041,7 +2189,24 @@ What a reset does and does not touch here:
   seconds, and a timeout fails the exchange as an error rather than sending it. Event
   streams are closed by the reset. `.cache/contract-principals.json` names accounts
   that the first reset removes, so nothing that reads it can run after this phase,
-  which is why this phase is the last before the teardown.
+  which is why this phase is the last.
+
+**The test data operations (#1334).** `resetTestData`, `seedTestData`,
+`snapshotTestData` and `restoreTestSnapshot` are moved like the rest: each exchange
+resets and seeds first (`the_test_data_operations_after_a_reset`); the reset's own
+exchange just runs after it. Their successes answer the same status whatever they
+did, so an after hook (`the_wipe_did_what_it_says`) checks the data:
+
+- `resetTestData`'s 200 gets a domain made after its reset, and the reset must
+  have removed it and seeded `restmail.test` again.
+- `restoreTestSnapshot`'s 200 restores a snapshot taken through the API
+  (`snapshotTestData`) after its reset, in place of the example's empty body, which
+  would only clear the data. The domains, mailboxes and aliases afterwards must be
+  the snapshot's, and the other tables must hold as many rows.
+
+Their wiping examples require `disposable_data`, which `own_data.PROVIDES` gives
+this run only, so the primary run and its coverage, authorization, ownership and
+fuzz phases send none of them.
 
 ## Principals
 
@@ -2810,8 +2975,8 @@ entrypoint.
 The fixture command seeds one typed received report for `restmail.test` with
 authenticated reporter `reporter.test` and report ID `daily-1`. Repeating setup
 keeps the same row through the production `(reporter, report_id)` unique index.
-There is no HTTP report intake to call for setup: SMTP ingestion is proven by
-the server's mail-delivery tests instead.
+The primary run reads it. The own-data run, whose reset removes it, delivers a
+report of its own through `deliverMessage` instead (above).
 
 Domain-grant variants live in `internal/examplepairs/example-matrix.json`.
 Published credential refusals declare their principal prerequisites, so an
