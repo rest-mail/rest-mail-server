@@ -217,7 +217,7 @@ def account_links_and_the_token_exchange_after_a_reset(transaction):
 
 # The password of the accounts made for a sign-in exchange after its reset.
 # Never the fixture admin's or the two-factor administrator's.
-SIGN_IN_PASSWORD = "contract-sign-in-account"
+SIGN_IN_PASSWORD = "velvet-tundra-compass-otter-47"
 
 
 @hooks.before("login")
@@ -611,13 +611,17 @@ def a_dmarc_report_of_its_own(transaction):
         ],
     })
     # The gateway's route takes no credential: never a user's session.
+    context = ssl.create_default_context(cafile=f"{CONTRACT_MTLS}/internal-ca.crt")
+    context.load_cert_chain(
+        f"{CONTRACT_MTLS}/internal-smtp-delivery.crt", f"{CONTRACT_MTLS}/internal-smtp-delivery.key"
+    )
     delivery = urllib.request.Request(
-        origin_of(transaction) + "/api/v1/messages/deliver",
+        INTERNAL_ORIGIN + "/api/v1/messages/deliver",
         data=json.dumps(a_dmarc_report_message(domain["name"], time.time_ns())).encode(),
         headers={"Content-Type": "application/json"},
         method="POST",
     )
-    with urllib.request.urlopen(delivery, timeout=30) as response:
+    with urllib.request.urlopen(delivery, timeout=30, context=context) as response:
         if response.status != 201:
             raise RuntimeError("the report mail was not delivered: {}".format(response.status))
     reports = [
@@ -1738,6 +1742,11 @@ def domain_administration_after_a_reset(transaction):
         )
     elif path == "/api/v1/admin/certificates" and succeeds:
         made_for_the_listing(transaction, "certificate", {"id": a_certificate_of_its_own(transaction)})
+    elif path == "/api/v1/admin/certificates" and " > 201" in transaction.get("name", ""):
+        body = hooks.get_json(transaction)
+        if isinstance(body, dict) and body.get("domain_id") == 1:
+            body["domain_id"] = a_domain_of_its_own(transaction)
+            hooks.set_json(transaction, body)
     elif path.startswith("/api/v1/admin/certificates/"):
         certificate = path.rsplit("/", 1)[-1]
         if positive_id(certificate) and certificate != "2147483647":
@@ -5034,8 +5043,8 @@ def a_made_account(origin, prefix, password=None):
 # The passwords of the accounts made for recoverAccount's recovered example,
 # before and after the recovery. Not secrets: each proves only a disposable
 # account made for one request (a_recoverable_account).
-RECOVERABLE_PASSWORD = "contract-recoverable-account"
-RECOVERED_PASSWORD = "contract-recovered-account"
+RECOVERABLE_PASSWORD = "quartz-meadow-lantern-badger-68"
+RECOVERED_PASSWORD = "cobalt-fjord-marmot-orbit-92"
 
 
 def a_recoverable_account(origin):
