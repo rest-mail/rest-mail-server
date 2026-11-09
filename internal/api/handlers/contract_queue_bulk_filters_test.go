@@ -78,6 +78,9 @@ func TestBulkQueue_AddressFiltersSelectOnlyMatchingEntries(t *testing.T) {
 					return q.Sender == `Sender%_\@example.test` && q.Recipient == `Recipient%_\@example.test` && q.Status == "deferred" && q.Domain == "example.test"
 				}},
 			{"no_match", map[string]string{"sender": "absent"}, false, func(models.OutboundQueue) bool { return false }},
+			// The contract's empty_filter exchange (#1772): it selects every
+			// entry, and the action changes only those its status allows.
+			{"empty_filter", map[string]string{}, false, func(models.OutboundQueue) bool { return true }},
 			{"empty_address_fields", map[string]string{"sender": "", "recipient": "", "domain": "example.test"}, false,
 				func(q models.OutboundQueue) bool { return q.Domain == "example.test" }},
 			{"ids_take_precedence", map[string]string{"sender": "absent", "recipient": "absent"}, true, nil},
