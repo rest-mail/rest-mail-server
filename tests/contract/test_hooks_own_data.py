@@ -523,6 +523,31 @@ class OwnDataHooks(unittest.TestCase):
             self.assertLessEqual(set(self.stub.stash), set(self.hooks.SURVIVES_A_RESET))
         self.assertEqual(self.resets(), 4)
 
+    def test_a_new_password_after_a_reset_goes_to_the_account_of_its_own(self):
+        # The reset removed the account createAccount made, so the password
+        # hook has no created account to send updated_password_at_minimum to.
+        # The exchange already has an account of its own, made for it, and the
+        # password goes there: it is sent, not skipped (#1761's own-data run
+        # reported "Update an account > 200" as not sent).
+        self.clean_starts_on()
+        self.two_factor_session()
+        self.stub.stash["created_account"] = {"id": 9, "body": {"address": "x@y"}}
+        transaction = self.transaction(200, "/api/v1/admin/mailboxes/9")
+        transaction["request"]["body"] = json.dumps(
+            {"display_name": "Contract Test", "password": "Qv7#mZ2!pL9k"}
+        )
+        self.hooks.a_mailbox_to_administer(transaction)
+        self.hooks.a_new_password_only_on_the_created_account(transaction)
+        account = max(self.server.accounts)
+        self.assertFalse(transaction.get("skip"))
+        self.assertEqual(
+            transaction["fullPath"], f"/api/v1/admin/mailboxes/{account:d}"
+        )
+        self.assertRegex(
+            self.server.accounts[account][0],
+            r"^contract-own-mailbox-\d+@restmail\.test$",
+        )
+
     def test_mailbox_refusals_creates_and_lists_reset_and_keep_their_paths(self):
         self.clean_starts_on()
         for path in (

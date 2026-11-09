@@ -3380,6 +3380,12 @@ def a_new_password_only_on_the_created_account(transaction):
         return
     if not body["password"] or len(body["password"]) < 12:
         return  # Refused for its length, before it can change anything.
+    if asked_for_a_clean_start():
+        # The own-data run: the reset removed the created account, and
+        # a_mailbox_to_administer, registered first, has already sent every
+        # positive id but missing's to an account made for this exchange. The
+        # password goes to that account, so the exchange is sent as it is.
+        return
     created = hooks.stash.get("created_account")
     if not created:
         transaction["skip"] = True

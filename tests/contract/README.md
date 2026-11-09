@@ -1771,8 +1771,10 @@ mailboxes. An exchange aimed at a positive mailbox id other than missing's
 (`contract-own-mailbox-<time>@restmail.test`, made with the two-factor session),
 because both the `found` example's `1` and the id `createAccount`'s link names are
 gone after the reset. That includes `updateMailbox`'s 422, so it is refused for its
-body and not for a mailbox that is gone. `0`, an undecodable id and missing's id
-keep theirs. `createAccount`'s link reaches only the read, update and delete, and
+body and not for a mailbox that is gone. `updated_password_at_minimum`'s 200 sets
+its password on that account too: `a_new_password_only_on_the_created_account`
+has no created account after a reset, and would otherwise leave it unsent.
+`0`, an undecodable id and missing's id keep theirs. `createAccount`'s link reaches only the read, update and delete, and
 no link reaches the list or the sessions' end, so nothing that follows these is
 left unmoved. `created_account` stays, because without a reset (the primary run
 and coverage) the read, update and delete still follow the created account to its
