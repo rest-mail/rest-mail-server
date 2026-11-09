@@ -219,6 +219,17 @@ MOVED = (
     "updateServerLimits",
     "getServerCapabilities",
     "updateServerCapabilities",
+    # The DMARC and TLS report, audit and delivery reads, and the TLS report
+    # intake. No link starts from or reaches any of them. A list of TLS reports
+    # gets one of its own after its reset; the others need nothing made.
+    # getDmarcReport stays: no API call makes a received DMARC report.
+    "listDmarcReports",
+    "listTlsReports",
+    "receiveTlsReport",
+    "listAuditEntries",
+    "verifyAuditLog",
+    "getDeliveryLogs",
+    "getDashboardStats",
 )
 
 
