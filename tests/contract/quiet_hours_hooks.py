@@ -1,4 +1,11 @@
-"""Provide a live account for quiet-hours requests."""
+"""Provide a live account for quiet-hours requests.
+
+The live account is shared data: the first account the fixture admin lists. So
+a run that starts each exchange clean (own_data.py) does not look it up, and
+the exchange gets an account of its own after the reset instead
+(hooks.py, account_settings_of_its_own). Without that hook's setup the
+examples' 1 stays, the seeded eve@restmail.test the fixture admin does not
+reach, and the successes fail."""
 
 import json
 import urllib.request
@@ -6,7 +13,7 @@ import urllib.request
 import vertrag_hooks as hooks
 
 
-def register_quiet_hours_hooks(admin_token):
+def register_quiet_hours_hooks(admin_token, asked_for_a_clean_start):
     def prepare_quiet_hours(transaction):
         if " as " in transaction.get("name", "") or not str(
             transaction.get("expected", {}).get("statusCode", "")
@@ -21,6 +28,10 @@ def register_quiet_hours_hooks(admin_token):
             for key, value in headers.items()
         ):
             return
+        if not asked_for_a_clean_start():
+            a_live_account(transaction)
+
+    def a_live_account(transaction):
         origin = (
             f"{transaction['protocol']}//{transaction['host']}:{transaction['port']}"
         )

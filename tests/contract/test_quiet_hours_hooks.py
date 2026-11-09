@@ -28,7 +28,10 @@ class QuietHoursFixtures(unittest.TestCase):
             loaded = runpy.run_path(
                 str(Path(__file__).with_name("quiet_hours_hooks.py"))
             )
-        self.prepare = loaded["register_quiet_hours_hooks"](lambda _: "setup-session")
+        self.clean_start = False
+        self.prepare = loaded["register_quiet_hours_hooks"](
+            lambda _: "setup-session", lambda: self.clean_start
+        )
         self.transaction = {
             "protocol": "http:",
             "host": "fixture.test",
@@ -85,4 +88,28 @@ class QuietHoursFixtures(unittest.TestCase):
         self.assertEqual(
             json.loads(self.transaction["request"]["body"]),
             {"enabled": False, "start": "", "end": "", "time_zone": "x"},
+        )
+
+    def test_a_clean_start_leaves_the_account_to_the_own_data_hook(self):
+        # With a reset asked for, the first listed account is the retained
+        # fixture admin, shared data: the path stays the examples' 1, which the
+        # own-data hook replaces with an account made after the reset (#1767).
+        self.clean_start = True
+        self.transaction["request"]["body"] = (
+            '{"enabled":false,"start":"","end":"","time_zone":"x"}'
+        )
+        for method in ("GET", "PUT"):
+            transaction = copy.deepcopy(self.transaction)
+            transaction["request"]["method"] = method
+            original = copy.deepcopy(transaction)
+            with patch("urllib.request.urlopen") as send:
+                self.prepare(transaction)
+            send.assert_not_called()
+            self.assertEqual(transaction, original)
+            self.assertEqual(
+                transaction["fullPath"], "/api/v1/accounts/1/quiet-hours"
+            )
+        # The generated time zone stays the body's, even when invalid.
+        self.assertEqual(
+            json.loads(transaction["request"]["body"])["time_zone"], "x"
         )
