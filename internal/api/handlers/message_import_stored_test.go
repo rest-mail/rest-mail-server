@@ -288,6 +288,11 @@ func TestMessageImportNotStoredIsNotHeld(t *testing.T) {
 
 // Storing still reads the source, because the row keeps it (see importSource.columns), but the
 // attachment isn't read for itself as well, and the request isn't held to get at either.
+//
+// This reads the least of a few imports. The first in a process also fills caches, about 0.9 MiB,
+// and each reading also holds what anything else in the process allocated meanwhile, up to 0.5 MiB.
+// Neither is the handler's. On one reading, a head that held two more copies of the message passed
+// most runs and failed some; on the least, it fails every run.
 func TestMessageImportStoredHoldsOnlyWhatTheRowKeeps(t *testing.T) {
 	for _, alwaysStore := range []bool{false, true} {
 		t.Run(fmt.Sprintf("always_store=%t", alwaysStore), func(t *testing.T) {
@@ -312,34 +317,37 @@ func testMessageImportStoredHoldsOnlyWhatTheRowKeeps(t *testing.T, alwaysStore b
 	}
 	h := NewMessageImportHandler(db, 2*size, nil, nil)
 	h.directory = t.TempDir()
-	message := bigImport("stored", size)
-	body := fmt.Sprintf(`{"raw_message":"%s","internal_date":"2020-01-02T03:04:05Z","always_store":%t}`, base64.StdEncoding.EncodeToString([]byte(message)), alwaysStore)
 	routes := importMessageRoutes(h)
+	send := func(message string) (*httptest.ResponseRecorder, uint64) {
+		t.Helper()
+		body := fmt.Sprintf(`{"raw_message":"%s","internal_date":"2020-01-02T03:04:05Z","always_store":%t}`, base64.StdEncoding.EncodeToString([]byte(message)), alwaysStore)
+		r := authzRequest(http.MethodPost, fmt.Sprintf("/api/v1/accounts/%d/messages/import", fx.user.ID), fx.user.ID, nil, body)
+		r.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		return w, allocatedBy(func() { routes.ServeHTTP(w, r) })
+	}
+	message := bigImport("stored", size)
 	if alwaysStore {
-		first := authzRequest(http.MethodPost, fmt.Sprintf("/api/v1/accounts/%d/messages/import", fx.user.ID), fx.user.ID, nil, body)
-		first.Header.Set("Content-Type", "application/json")
-		stored := httptest.NewRecorder()
-		routes.ServeHTTP(stored, first)
-		if stored.Code != http.StatusOK || !strings.Contains(stored.Body.String(), `"imported":true`) {
-			t.Fatalf("first import: %d %s", stored.Code, stored.Body)
+		if w, _ := send(message); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"imported":true`) {
+			t.Fatalf("first import: %d %s", w.Code, w.Body)
 		}
 	}
-	r := authzRequest(http.MethodPost, fmt.Sprintf("/api/v1/accounts/%d/messages/import", fx.user.ID), fx.user.ID, nil, body)
-	r.Header.Set("Content-Type", "application/json")
-	w := httptest.NewRecorder()
-	var before, after runtime.MemStats
-	runtime.ReadMemStats(&before)
-	routes.ServeHTTP(w, r)
-	runtime.ReadMemStats(&after)
-	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"imported":true`) {
-		t.Fatalf("%d %s", w.Code, w.Body)
+	least := ^uint64(0)
+	for run := range 5 {
+		if !alwaysStore {
+			message = bigImport(fmt.Sprintf("stored-%d", run), size) // Otherwise it's a rerun, and isn't stored.
+		}
+		w, allocated := send(message)
+		if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"imported":true`) {
+			t.Fatalf("%d %s", w.Code, w.Body)
+		}
+		least = min(least, allocated)
 	}
-	allocated := after.TotalAlloc - before.TotalAlloc
-	t.Logf("storing %d bytes allocated %d, %.1f times over", len(message), allocated, float64(allocated)/float64(len(message)))
-	// Four copies remain: the row's, two made measuring and sealing it (Message.BeforeCreate),
-	// and the database driver's, plus about 2 MiB whatever the size. Reading the whole request in
-	// memory came to 22.
-	if allocated > 8*uint64(len(message)) {
-		t.Fatalf("storing %d bytes allocated %d", len(message), allocated)
+	t.Logf("storing %d bytes allocated at least %d, %.1f times over", len(message), least, float64(least)/float64(len(message)))
+	// Three copies remain: the row's and two in the database driver, encoding the value and then the
+	// message it goes in, plus about 1 MiB whatever the size. That is 3.9 times this size, so the
+	// limit is under one more copy. Reading the whole request in memory came to 22.
+	if least > 9*uint64(len(message))/2 {
+		t.Fatalf("storing %d bytes allocated at least %d", len(message), least)
 	}
 }
