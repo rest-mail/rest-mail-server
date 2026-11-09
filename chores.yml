@@ -348,6 +348,10 @@ includes:
     taskfile: ./tasks/password.yml
   sessions:
     taskfile: ./tasks/sessions.yml
+  # A private, labelled topology for a run that shares the machine (#1942). No vars
+  # mapped in: it takes a NAME and computes every value itself.
+  topology:
+    taskfile: ./tasks/topology.yml
 
   # ── Subprojects (must come last) ────────────────────────
   # Each of these sets PROJECT/IMAGE_TAG to its own value and Task bleeds
@@ -361,7 +365,11 @@ includes:
     dir: .workspace/testbed
     optional: true
     vars:
-      PROJECT: testbed
+      # A private topology names the testbed's network, volumes and DNS container
+      # after its own run (tasks/topology.yml). Without TESTBED_PROJECT it is the
+      # shared `testbed`. A bare PROJECT=… on the command line never reached here,
+      # because this pin wins over it.
+      PROJECT: '{{.TESTBED_PROJECT | default "testbed"}}'
       IMAGE_TAG: 0.1.0
 
   # NOTE: the reference mail servers are deliberately NOT included here.
@@ -1102,7 +1110,14 @@ tasks:
   e2e:mail1:
     desc: Start and wait for the first reference instance
     cmds:
-      - '"${CHORE_BIN:-chore}" -C .workspace/reference-mailserver up CONFIG=mail1 HOSTNAME=mail1.test'
+      - >-
+        "${CHORE_BIN:-chore}" -C .workspace/reference-mailserver up CONFIG=mail1
+        HOSTNAME=mail1.test
+        POSTGRES_IP={{.MAIL1_POSTGRES_IP | default "10.99.0.41"}}
+        POSTFIX_IP={{.MAIL1_POSTFIX_IP | default "10.99.0.11"}}
+        DOVECOT_IP={{.MAIL1_DOVECOT_IP | default "10.99.0.111"}}
+        RSPAMD_IP={{.MAIL1_RSPAMD_IP | default "10.99.0.17"}}
+        FAIL2BAN_IP={{.MAIL1_FAIL2BAN_IP | default "10.99.0.14"}}
       - task: mailserver:wait
         vars: {CONFIG: mail1}
 
@@ -1112,8 +1127,11 @@ tasks:
       - >-
         "${CHORE_BIN:-chore}" -C .workspace/reference-mailserver up CONFIG=mail2
         HOSTNAME=mail2.test
-        POSTGRES_IP=10.99.0.42 POSTFIX_IP=10.99.0.12 DOVECOT_IP=10.99.0.112
-        RSPAMD_IP=10.99.0.23 FAIL2BAN_IP=10.99.0.24
+        POSTGRES_IP={{.MAIL2_POSTGRES_IP | default "10.99.0.42"}}
+        POSTFIX_IP={{.MAIL2_POSTFIX_IP | default "10.99.0.12"}}
+        DOVECOT_IP={{.MAIL2_DOVECOT_IP | default "10.99.0.112"}}
+        RSPAMD_IP={{.MAIL2_RSPAMD_IP | default "10.99.0.23"}}
+        FAIL2BAN_IP={{.MAIL2_FAIL2BAN_IP | default "10.99.0.24"}}
       - task: mailserver:wait
         vars: {CONFIG: mail2}
 

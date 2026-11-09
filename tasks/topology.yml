@@ -1,0 +1,75 @@
+version: "3"
+
+# rest-mail/tasks/topology — an isolated, labelled local topology (#1942)
+#
+# The shared topology has fixed names, one subnet and one DNS container, so two runs
+# on a machine collide, or one restarts the DNS container the other depends on. This
+# gives a run a private network, volumes and resolver, all labelled
+# rest-mail-loop=<run>, from the run's name alone. scripts/topology_plan.py computes
+# every name, address and command; nothing here chooses a value of its own.
+#
+#   chore topology:plan TOPOLOGY=p1904                      print the plan; Docker is read, not changed
+#   chore topology:plan TOPOLOGY=p1904 -- --environment     the variables to pass to chore
+#   chore topology:substrate:up TOPOLOGY=p1904              network, volumes and resolver
+#   chore topology:substrate:down TOPOLOGY=p1904            remove everything the run labelled
+#
+# The variable is TOPOLOGY, not NAME: NAME is an alias of CONFIG in chores.yml, so
+# NAME=p1904 would also select a config directory called p1904.
+#
+# The substrate is the testbed's: chore testbed:init clones it. Nothing here starts
+# the shared `testbed-dnsmasq` or joins `testbed_mailnet`.
+
+silent: true
+
+tasks:
+  plan:
+    desc: 'Print the isolated topology for TOPOLOGY: names, subnet, addresses, variables and docker commands. Changes nothing'
+    dotenv: []
+    cmds:
+      - |
+        set -eu
+        [ -n "{{.TOPOLOGY}}" ] || { echo "topology:plan needs TOPOLOGY=<run name>, such as TOPOLOGY=p1904" >&2; exit 2; }
+        python3 -B {{.ROOT_DIR}}/scripts/topology_plan.py "{{.TOPOLOGY}}" {{.CLI_ARGS}}
+
+  substrate:up:
+    desc: "Create TOPOLOGY's labelled network, certs and fragments volumes and DNS container, on a subnet no Docker network has"
+    dotenv: []
+    cmds:
+      - |
+        set -eu
+        [ -n "{{.TOPOLOGY}}" ] || { echo "topology:substrate:up needs TOPOLOGY=<run name>, such as TOPOLOGY=p1904" >&2; exit 2; }
+        plan="python3 -B {{.ROOT_DIR}}/scripts/topology_plan.py"
+        # Read Docker's subnets once, before anything exists: the run's own network
+        # would otherwise count as taken and move the plan under it.
+        taken=$($plan --taken)
+        variables=$($plan "{{.TOPOLOGY}}" --existing-subnets "$taken" --environment)
+        create=$($plan "{{.TOPOLOGY}}" --existing-subnets "$taken" --create)
+        resolver=$($plan "{{.TOPOLOGY}}" --existing-subnets "$taken" --resolver)
+        # A name that already exists is another run's, or an earlier run of this one.
+        # Refuse rather than join it.
+        $plan "{{.TOPOLOGY}}" --existing-subnets "$taken" --resources | while read -r kind name; do
+          if docker "$kind" inspect "$name" >/dev/null 2>&1; then
+            echo "  $kind $name exists already: run chore topology:substrate:down TOPOLOGY={{.TOPOLOGY}}, or choose another TOPOLOGY" >&2
+            exit 1
+          fi
+        done
+        printf '%s\n' "$create" | while IFS= read -r line; do sh -c "$line" >/dev/null; done
+        # The testbed seeds its static DNS fragment into the volume. The network and
+        # volumes exist, so it creates nothing and starts no resolver of its own.
+        "${CHORE_BIN:-chore}" testbed:bootstrap $(printf '%s\n' "$variables" | grep -v '^RESTMAIL_LABEL=' | tr '\n' ' ')
+        sh -c "$resolver" >/dev/null
+        echo "  topology {{.TOPOLOGY}} substrate is up, labelled $(printf '%s\n' "$variables" | sed -n 's/^RESTMAIL_LABEL=//p')"
+
+  substrate:down:
+    desc: "Remove every container, network and volume labelled for TOPOLOGY, data volumes too. Nothing unlabelled is touched"
+    dotenv: []
+    cmds:
+      - |
+        set -eu
+        [ -n "{{.TOPOLOGY}}" ] || { echo "topology:substrate:down needs TOPOLOGY=<run name>, such as TOPOLOGY=p1904" >&2; exit 2; }
+        label=$(python3 -B {{.ROOT_DIR}}/scripts/topology_plan.py "{{.TOPOLOGY}}" --existing-subnets "" --environment | sed -n 's/^RESTMAIL_LABEL=//p')
+        case "$label" in
+          rest-mail-loop=?*) ;;
+          *) echo "refusing to remove by label '$label'" >&2; exit 2 ;;
+        esac
+        RESTMAIL_LABEL="$label" VOLUMES=true sh {{.ROOT_DIR}}/tasks/clean.sh
