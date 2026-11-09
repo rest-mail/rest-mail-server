@@ -1297,6 +1297,10 @@ an entry with `name`, `operation`, `path`, `phase: pairs`, `breaks`, `test` (a
 and `patch`, a `git diff` with a short context (`-U1`). `go test
 ./internal/faultinject` holds the patch to the code, so a change to the guarded
 lines names the fault it broke, and `faults.py pairs` says whether it is caught.
+`git apply` takes a hunk wherever its lines are found, so a guard call that every
+handler repeats breaks the first handler it meets, not yours (#2066). The test
+therefore requires each hunk's lines to occur once in their file, inside the
+function the hunk header names: start the hunk at the handler's `func` line.
 
 A fault that changes an answer takes a switch file and an entry:
 
