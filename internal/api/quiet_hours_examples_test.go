@@ -205,7 +205,9 @@ func TestQuietHoursCoverageWithVertrag(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	hook := fmt.Sprintf("import runpy\nloaded = runpy.run_path(%q)\nloaded['register_quiet_hours_hooks'](lambda _: %q)\n", hooks, strings.TrimPrefix(fixture.session, "Bearer "))
+	// The clean-start predicate is hooks.py's, as entrypoint.py passes it: a reset
+	// only when CONTRACT_RESET_SEED=1 asks for one, which this run never sets.
+	hook := fmt.Sprintf("import os, runpy\nloaded = runpy.run_path(%q)\nloaded['register_quiet_hours_hooks'](admin_token=lambda _: %q, asked_for_a_clean_start=lambda: os.environ.get('CONTRACT_RESET_SEED') == '1')\n", hooks, strings.TrimPrefix(fixture.session, "Bearer "))
 	if err := os.WriteFile(filepath.Join(directory, "quiet.py"), []byte(hook), 0600); err != nil {
 		t.Fatal(err)
 	}
