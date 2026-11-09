@@ -3558,6 +3558,24 @@ def expected_status(transaction):
     return ""
 
 
+def prepare_attachment_read(transaction):
+    path, separator, query = transaction["fullPath"].partition("?")
+    parts = path.split("/")
+    if len(parts) != 5 or not positive_id(parts[4]) or parts[4] == "2147483647":
+        return
+    if expected_status(transaction) not in ATTACHMENT_READS:
+        return
+    parts[4] = str(an_attachment_of_its_own(transaction))
+    transaction["fullPath"] = "/".join(parts) + separator + query
+    hooks.stash["attachment_made"] = transaction.get("name", "")
+
+
+@hooks.before("getAttachment")
+def primary_attachment_fixture(transaction):
+    if not asked_for_a_clean_start():
+        prepare_attachment_read(transaction)
+
+
 @hooks.before("getAttachment")
 def on_an_attachment_of_its_own(transaction):
     # getAttachment, moved to a clean start: each exchange, refusals included,
@@ -3571,15 +3589,7 @@ def on_an_attachment_of_its_own(transaction):
     if not asked_for_a_clean_start():
         return
     start_clean(transaction)
-    path, separator, query = transaction["fullPath"].partition("?")
-    parts = path.split("/")
-    if len(parts) != 5 or not positive_id(parts[4]) or parts[4] == "2147483647":
-        return
-    if expected_status(transaction) not in ATTACHMENT_READS:
-        return
-    parts[4] = str(an_attachment_of_its_own(transaction))
-    transaction["fullPath"] = "/".join(parts) + separator + query
-    hooks.stash["attachment_made"] = transaction.get("name", "")
+    prepare_attachment_read(transaction)
 
 
 def header_of(message, name):
@@ -3602,7 +3612,7 @@ def the_attachment_answers_its_bytes(transaction):
     status = expected_status(transaction)
     real = transaction.get("real") or {}
     if (
-        not asked_for_a_clean_start()
+        (not asked_for_a_clean_start() and made is None)
         or status not in ATTACHMENT_READS
         or str(real.get("statusCode")) != status
     ):
@@ -5319,6 +5329,15 @@ def delivery_after_a_reset(transaction):
         hooks.stash["recipient_made"] = dict(made, name=transaction.get("name", ""))
 
 
+@hooks.before("restmailDeliver")
+def primary_restmail_delivery_fixture(transaction):
+    if asked_for_a_clean_start() or expected_status(transaction) != DELIVERY_SUCCESS["restmailDeliver"]:
+        return
+    made = to_a_recipient_of_its_own(transaction, "restmailDeliver")
+    if made is not None:
+        hooks.stash["recipient_made"] = dict(made, name=transaction.get("name", ""))
+
+
 @hooks.after("checkMailboxAddress")
 @hooks.after("deliverMessage")
 @hooks.after("restmailCheckMailbox")
@@ -5335,7 +5354,7 @@ def the_answer_names_the_recipient_made(transaction):
     operation = operation_of(transaction)
     real = transaction.get("real") or {}
     if (
-        not asked_for_a_clean_start()
+        (not asked_for_a_clean_start() and made is None)
         or operation is None
         or expected_status(transaction) != DELIVERY_SUCCESS[operation]
         or str(real.get("statusCode")) != DELIVERY_SUCCESS[operation]

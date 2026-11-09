@@ -1654,8 +1654,10 @@ its attachment's id read back from `listAttachments`. Its after hook
 (`the_attachment_answers_its_bytes`) holds the answer to those bytes: the whole
 body, each requested range with its `Content-Range`, and the 416's
 `bytes */<length>`. Refusals keep their ids (`0`, missing's `2147483647` and the
-others' own). No link reaches it. A run with no reset changes nothing in either
-hook.
+others' own). No link reaches it. The primary phase also imports an attachment
+for each documented read through `primary_attachment_fixture`, without resetting
+the database. Its after hook checks those bytes too: a missing attachment must
+not turn every primary download example into a 404.
 
 The delivery and federation operations reset and seed before each exchange
 too, refusals included (`delivery_after_a_reset`, registered ahead of their
@@ -2168,6 +2170,12 @@ queue. Coverage, authorization
 and ownership stay in their own processes without a reset too, so nothing here
 changes their probes. The primary run can start resetting once nothing that has not
 moved is sent after a reset.
+
+The primary RESTMAIL delivery example also makes its own recipient and a
+header-validating inbound pipeline, without a reset. Otherwise the default
+greylisting pipeline defers the documented successful delivery with 503. The
+recipient assertion checks this primary exchange as well as the clean-start
+exchange. Refusal examples keep their inputs and do not create success fixtures.
 
 A reset removes the pipeline `createPipeline` made, and its id is what the link
 carries. `updatePipeline`, the last unmoved operation that followed such a link,
