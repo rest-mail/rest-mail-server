@@ -23,6 +23,7 @@ import json
 import os
 import sys
 import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -61,6 +62,14 @@ def _sign_in(base_url, address=ADDRESS, password=PASSWORD, **factor):
     return _post(base_url, "/api/v1/auth/login", body)
 
 
+def _code(refused):
+    """The error code of a refused request, or None."""
+    try:
+        return json.loads(refused.read()).get("error", {}).get("code")
+    except (ValueError, AttributeError):
+        return None
+
+
 def _step():
     return int(time.time()) // 30
 
@@ -73,9 +82,17 @@ def enroll(base_url):
 
 
 def _enroll(base_url, address, password, state):
-    if state.exists():
-        return
-    enrolled = enroll_account(base_url, address, password)
+    # A kept enrollment holds only while the server still asks this account for
+    # a second factor. A database restored to before the enrollment (a local
+    # rerun) does not, and signing in with the kept codes would then give a
+    # session without one: enroll again instead.
+    try:
+        plain = _sign_in(base_url, address, password)["access_token"]
+    except urllib.error.HTTPError as refused:
+        if state.exists() and refused.code == 401 and _code(refused) == "totp_required":
+            return
+        raise
+    enrolled = _enroll_signed_in(base_url, plain)
     state.parent.mkdir(parents=True, exist_ok=True)
     state.write_text(json.dumps({**enrolled, "step": _step()}))
 
@@ -85,6 +102,12 @@ def enroll_account(base_url, address, password):
     public API. Returns the secret and the recovery codes, which the caller
     keeps to itself: they are the account's second factor."""
     plain = _sign_in(base_url, address, password)["access_token"]
+    return _enroll_signed_in(base_url, plain)
+
+
+def _enroll_signed_in(base_url, plain):
+    """Enroll the account plain is a password session of in TOTP: its secret
+    and recovery codes."""
     # Enrolling and confirming share the sign-in's 1 request/second bucket.
     rate_limits.pace(1.1)
     enrolled = _post(base_url, "/api/v1/auth/2fa/enroll", {}, plain)

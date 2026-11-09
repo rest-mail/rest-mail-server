@@ -1,5 +1,7 @@
 """The moved operations' phase: what it selects, and that only it resets (#1385)."""
 
+import contextlib
+import io
 import json
 import re
 import sys
@@ -187,6 +189,22 @@ REPORTS_AND_AUDIT = (
     "getDeliveryLogs",
     "getDashboardStats",
 )
+# The mailbox reads: listAccounts' link reaches them, and no link starts from
+# any of them.
+MAILBOX_READS = ("listFolders", "listMessages", "searchMessages")
+# The attachment download: no link starts from or reaches it.
+ATTACHMENTS = ("getAttachment",)
+# The delivery and federation operations: no link starts from or reaches any.
+DELIVERY = (
+    "checkMailboxAddress",
+    "deliverMessage",
+    "restmailDiscover",
+    "restmailCapabilities",
+    "restmailCheckMailbox",
+    "restmailDeliver",
+)
+# The rest of the filter operations, which no link starts from or reaches.
+FILTERS = ("testFilter", "listCustomFilters", "validateCustomFilter")
 FOLLOWS_THE_SENT_MESSAGE = {
     "getMessage",
     "updateMessage",
@@ -280,7 +298,11 @@ class Selection(unittest.TestCase):
             - set(CREDENTIALS_AND_BANS)
             - set(PIPELINE_READS)
             - set(SERVER_SETTINGS)
-            - set(REPORTS_AND_AUDIT),
+            - set(REPORTS_AND_AUDIT)
+            - set(MAILBOX_READS)
+            - set(ATTACHMENTS)
+            - set(DELIVERY)
+            - set(FILTERS),
             link_followers(description, "createDomain") | {"createDomain"},
         )
 
@@ -295,11 +317,11 @@ class Selection(unittest.TestCase):
 
     def test_the_pipeline_reads_have_moved_and_no_link_touches_them(self):
         description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
-        for operation in PIPELINE_READS:
+        for operation in PIPELINE_READS + FILTERS:
             self.assertEqual(link_followers(description, operation), set())
             for start in description_operations(description):
                 self.assertNotIn(operation, link_followers(description, start), start)
-        self.assertLessEqual(set(PIPELINE_READS), set(own_data.MOVED))
+        self.assertLessEqual(set(PIPELINE_READS + FILTERS), set(own_data.MOVED))
 
     def test_the_server_settings_have_moved_and_no_link_touches_them(self):
         description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
@@ -318,6 +340,35 @@ class Selection(unittest.TestCase):
         self.assertLessEqual(set(REPORTS_AND_AUDIT), set(own_data.MOVED))
         # Its success needs the DMARC fixture, which no API call makes.
         self.assertNotIn("getDmarcReport", own_data.MOVED)
+
+    def test_the_mailbox_reads_have_moved_and_only_listaccounts_reaches_them(self):
+        description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
+        for operation in MAILBOX_READS:
+            self.assertEqual(link_followers(description, operation), set())
+            linking = {
+                start
+                for start in description_operations(description)
+                if operation in link_followers(description, start)
+            }
+            self.assertEqual(linking, {"listAccounts"}, operation)
+        self.assertNotIn("listAccounts", own_data.configure({})["operation-id"])
+        self.assertLessEqual(set(MAILBOX_READS), set(own_data.MOVED))
+
+    def test_the_attachment_download_has_moved_and_no_link_touches_it(self):
+        description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
+        for operation in ATTACHMENTS:
+            self.assertEqual(link_followers(description, operation), set())
+            for start in description_operations(description):
+                self.assertNotIn(operation, link_followers(description, start), start)
+        self.assertLessEqual(set(ATTACHMENTS), set(own_data.MOVED))
+
+    def test_the_delivery_operations_have_moved_and_no_link_touches_them(self):
+        description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
+        for operation in DELIVERY:
+            self.assertEqual(link_followers(description, operation), set())
+            for start in description_operations(description):
+                self.assertNotIn(operation, link_followers(description, start), start)
+        self.assertLessEqual(set(DELIVERY), set(own_data.MOVED))
 
     def test_it_selects_every_alias_operation_and_its_links(self):
         description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
@@ -562,6 +613,23 @@ class Wiring(unittest.TestCase):
             "CONTRACT_RESET_SEED",
             (ROOT / ".github/workflows/e2e-suite.yml").read_text(),
         )
+
+    def test_the_hooks_make_their_data_on_the_runs_endpoint(self):
+        # The gateway routes are sent to the internal listener, which serves
+        # nothing else: run.sh names the run's endpoint for the setup calls.
+        script = (ROOT / "tests/contract/run.sh").read_text()
+        phase = script[script.index("\nown-data)\n") : script.index("\nteardown)\n")]
+        export = phase.index("export CONTRACT_SETUP_ORIGIN")
+        self.assertIn('own_data.py --endpoint "$out/vertrag-own-data.yml"', phase[:export])
+        self.assertLess(export, phase.index("CONTRACT_RESET_SEED=1"))
+        with tempfile.TemporaryDirectory() as scratch:
+            config = Path(scratch) / "own-data.yml"
+            config.write_text(yaml.safe_dump({"endpoint": "http://10.99.0.20:8080", "endpoints": [
+                {"endpoint": "https://10.99.0.20:8443", "operation-id": ["deliverMessage"]}]}))
+            printed = io.StringIO()
+            with contextlib.redirect_stdout(printed):
+                self.assertEqual(own_data.main(["--endpoint", str(config)]), 0)
+        self.assertEqual(printed.getvalue(), "http://10.99.0.20:8080\n")
 
     def test_it_is_a_gate_sent_just_before_the_teardown(self):
         chores = (ROOT / "chores.yml").read_text()

@@ -2,6 +2,7 @@
 domain, and a hook cannot change a generated body. So they go out as drawn, and what follows
 them removes what they installed. testFilter's probes are not touched at all."""
 
+import copy
 import importlib.util
 import io
 import json
@@ -260,8 +261,24 @@ class CertificateProbes(unittest.TestCase):
         self.assertIn(self.hooks.remove_the_probe_certificates, self.registered["*"])
 
     def test_no_hook_rewrites_a_test_filter_probe(self):
-        for hook in self.registered["testFilter"]:
-            self.assertEqual(hook.__name__, "pace_pipeline_previews")
+        self.assertEqual(
+            [prepare.__name__ for prepare in self.registered["testFilter"]],
+            ["filter_requests_after_a_reset", "pace_pipeline_previews"],
+        )
+        for reset in (False, True):
+            for body in ("{", "[]", '{"type":"header_validate","raw_message":123}'):
+                with self.subTest(reset=reset, body=body):
+                    sent = transaction({}, name="testFilter > 400 > malformed", operation="testFilter")
+                    sent["fullPath"] = "/api/v1/admin/pipelines/test-filter"
+                    sent["request"]["body"] = body
+                    drawn = copy.deepcopy(sent)
+                    with patch.object(self.hooks, "asked_for_a_clean_start", return_value=reset), \
+                            patch.object(self.hooks, "start_clean") as start, \
+                            patch.object(self.hooks.rate_limits, "pace"):
+                        for prepare in self.registered["testFilter"]:
+                            prepare(sent)
+                    self.assertEqual(sent, drawn)
+                    self.assertEqual(start.call_count, int(reset))
 
 
 if __name__ == "__main__":
