@@ -53,6 +53,7 @@ STEP_NAMES = (
     "IMAP module",
     "Empty database fixtures",
     "Contract fault switch",
+    "Contract pairs",
     "Vertrag examples",
 )
 # These need the running topology, which only the E2E job brings up.
@@ -326,6 +327,20 @@ def changed_files(root):
         ["git", "ls-files", "--others", "--exclude-standard", "-z"], root, capture=True
     )
     return sorted(set((tracked + untracked).split("\0")) - {""})
+
+
+# The fault catalogue and the code that judges it. A change to either runs the pairs
+# oracle here, because the nightly fault run is the only other place it runs, and a
+# fault it misses (#2066) must fail before push, not the next night.
+PAIRS_ORACLE_FILES = ("tests/contract/faults.yml", "tests/contract/faults.py")
+PAIRS_ORACLE_DIRECTORIES = ("internal/faultinject/",)
+
+
+def pairs_oracle_changed(files):
+    return any(
+        name in PAIRS_ORACLE_FILES or name.startswith(PAIRS_ORACLE_DIRECTORIES)
+        for name in files
+    )
 
 
 def json_stream(text):
@@ -1601,9 +1616,7 @@ class Gate:
             ["go", "test", "-race", "-count=1", "-tags", tags, "./internal/faultinject"]
         )
 
-    def vertrag(self):
-        if not self.api_changed:
-            return "NOT REQUIRED: no API changes or selected API importers (use --all to force)"
+    def vertrag_binary(self):
         with cache_lock(self.cache):
             binary = self.run(
                 [
@@ -1616,6 +1629,21 @@ class Gate:
                 capture=True,
             ).strip()
         self.env["RESTMAIL_VERTRAG_BINARY"] = binary
+        return binary
+
+    def fault_pairs(self):
+        # The pairs phase needs no topology: each fault's witness pair runs on a
+        # throwaway tree of HEAD with its patch, through the real router (#2066).
+        if not (self.all_packages or pairs_oracle_changed(self.files)):
+            return "NOT REQUIRED: no fault catalogue or fault judge change (use --all to force)"
+        self.vertrag_binary()
+        self.run([self.python, "-B", "tests/contract/faults.py", "pairs"])
+        return None
+
+    def vertrag(self):
+        if not self.api_changed:
+            return "NOT REQUIRED: no API changes or selected API importers (use --all to force)"
+        self.vertrag_binary()
         listing = self.run(
             ["go", "test", "-list", "WithVertrag$", "./internal/api"], capture=True
         )
@@ -1872,6 +1900,7 @@ class Gate:
             self.imap,
             self.fixtures,
             self.faults,
+            self.fault_pairs,
             self.vertrag,
         )
         return list(zip(STEP_NAMES, actions))
