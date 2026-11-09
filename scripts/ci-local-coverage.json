@@ -274,5 +274,35 @@
       "sha256": "2f49f38cd78fdfe19d868cac3e40b09a235c381513514985bde4e193daea6db3",
       "exception": "GitHub artifact transport only; the local gate checks the coverage floor from its own profile and uploads nothing."
     }
+  },
+  "release-cli": {
+    "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1": {
+      "sha256": "c132f7ccad42e5d1a5cb8c07d5ae5224d8d8cbad18e779568c481d19e1cd6a82",
+      "exception": "Runs on the current working tree, including staged, unstaged and untracked files, or a scratch merge; checkout would discard local work."
+    },
+    "actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e": {
+      "sha256": "755323d55cf98fa26dece639c45f06ac9b214374424b17c87381811e1a4b49c6",
+      "local": "Go toolchain"
+    },
+    "Install GoReleaser (pinned, checksummed, download retried)": {
+      "sha256": "e2fc97bd0d40bf299137263ced8c6771e1bceaf83f22fc5518b5cb95a482ebc9",
+      "local": "GoReleaser snapshot"
+    },
+    "Name the tags this release spans": {
+      "sha256": "042711d64edb01f9d738ff6e93adbb068ecdb13c15e3837dc2fd6ba777d1f199",
+      "exception": "Runs only on a tag push, to name the tags a release spans; a pull request builds a snapshot instead."
+    },
+    "Release": {
+      "sha256": "5fe48aecb5184947b606989f3bb86af9ccc7521b8fffaec29ec6dc767db7649d",
+      "exception": "Runs only on a tag push and publishes a GitHub Release; a local run publishes nothing. The same GoReleaser and config run in the local snapshot."
+    },
+    "Attest what was built": {
+      "sha256": "7fd86cfeb48d75f9a78460b653b52882ae33ffbefff59d9bf98e0a453b882954",
+      "exception": "Runs only on a tag push and signs a provenance statement with the workflow's OIDC identity, which only GitHub can issue."
+    },
+    "Snapshot build (nothing published)": {
+      "sha256": "eb1ea3cd901400a9fbe950642b5830094ec5177de3654847ca28771bf91d7769",
+      "local": "GoReleaser snapshot"
+    }
   }
 }
