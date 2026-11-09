@@ -139,6 +139,14 @@ MOVED = (
     "deleteMailbox",
     "listMailboxes",
     "endMailboxSessions",
+    # The thread and import operations. No link starts from or reaches any of
+    # them. Each goes to the fixture admin's mailbox after its reset; the list
+    # of threads awaiting a reply gets one, and the due date and the snooze the
+    # thread they change.
+    "listThreads",
+    "setThreadDue",
+    "snoozeThread",
+    "importMessage",
 )
 
 # deletePipeline, the other, has moved.

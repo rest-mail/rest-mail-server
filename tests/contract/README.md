@@ -1781,6 +1781,22 @@ and coverage) the read, update and delete still follow the created account to it
 current id, made again when a probe removed it; the reset clears it, so it carries
 nothing across one.
 
+The thread and import operations, `listThreads` (the threads awaiting a reply),
+`setThreadDue`, `snoozeThread` (a snooze and its cancel) and `importMessage`,
+reset and seed before each exchange too, refusals included
+(`on_the_admins_mailbox_after_a_reset`, registered before the operations' other
+hooks). Their examples name account `1` as the fixture admin's own mailbox, so an
+exchange aimed at a positive account other than missing's `2147483647` goes to
+the fixture admin's mailbox, looked up by address, whichever id the reset kept it
+at. A `listThreads` success gets a thread awaiting a reply of its own: a message
+from the fixture admin, imported into its `Sent` folder after the reset. The due
+date's and the snooze's thread is imported after the reset by their own hooks
+(`thread_due_hooks.py`, `thread_snooze_hooks.py`, registered after this one), into
+the account this leaves in the path. `0`, an undecodable id and every documented
+404 keep their ids. No link starts from or reaches any of these, and none of them
+reads or writes a stash value. The due dates and snoozes live in tables the reset
+empties.
+
 This happens only with `CONTRACT_RESET_SEED=1`, which `tests/contract/run.sh own-data`
 sets, and that phase is a gate of its own, sent by `chore test:contract-teardown`
 just before the teardown. It sends the moved operations with everything that follows
