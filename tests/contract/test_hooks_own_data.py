@@ -7,6 +7,7 @@ import os
 import re
 import sys
 import threading
+import time
 import types
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -43,10 +44,18 @@ class FixtureAPI(BaseHTTPRequestHandler):
             self.server.domains = {1: "restmail.test"}
             self.server.policies.clear()
             self.server.keys.clear()
+            self.server.accounts.clear()
             self.server.serial = 3
             return self.answer(200, {"status": "reset_complete"})
         if self.path == "/api/v1/admin/test/seed":
             return self.answer(200, {"status": "seed_complete"})
+        if self.path == "/api/v1/accounts":
+            self.server.serial += 1
+            self.server.accounts[self.server.serial] = (
+                body["address"],
+                self.headers["Authorization"],
+            )
+            return self.answer(201, {"id": self.server.serial})
         if self.path != "/api/v1/admin/domains":
             return self.answer(404)
         if body["name"] in self.server.domains.values():
@@ -73,6 +82,7 @@ class OwnDataHooks(unittest.TestCase):
         self.server.domains = {1: "restmail.test", 3: "created.test"}
         self.server.policies = {}
         self.server.keys = {}
+        self.server.accounts = {}
         self.server.serial = 40
         self.server.reset_failure = None
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
@@ -195,6 +205,12 @@ class OwnDataHooks(unittest.TestCase):
             "stopDomainOutbound": "a_domain_setting_of_its_own",
             "restartDomainOutbound": "a_domain_setting_of_its_own",
             "mtaStsPolicyFile": "ask_for_the_created_domains_policy",
+            "createAccount": "a_mailbox_to_administer",
+            "listMailboxes": "a_mailbox_to_administer",
+            "getMailbox": "a_mailbox_to_administer",
+            "updateMailbox": "a_mailbox_to_administer",
+            "deleteMailbox": "a_mailbox_to_administer",
+            "endMailboxSessions": "a_mailbox_to_administer",
         }
         # entrypoint.py registers setDomainRelay's (below).
         self.assertEqual(set(hooks) | {"setDomainRelay"}, set(own_data.MOVED))
@@ -459,6 +475,104 @@ class OwnDataHooks(unittest.TestCase):
         self.hooks.a_dkim_domain_of_its_own(transaction)
         self.assertEqual(transaction, before)
         self.assertEqual(self.server.calls, [])
+
+    def two_factor_session(self):
+        origin = f"http://127.0.0.1:{self.server.server_port}"
+        self.stub.stash["mfa_admin_sessions"] = {
+            origin: {"token": "two-factor-session", "at": time.time()}
+        }
+
+    def test_the_mailbox_operations_reset_in_their_first_hook(self):
+        # It runs first, so the created account's hook and the two-factor swap
+        # see the clean start and the path it leaves.
+        for operation in (
+            "createAccount",
+            "listMailboxes",
+            "getMailbox",
+            "updateMailbox",
+            "deleteMailbox",
+            "endMailboxSessions",
+        ):
+            names = [h for o, h in self.registered if o == operation]
+            self.assertEqual(names[0], "a_mailbox_to_administer", operation)
+
+    def test_each_mailbox_exchange_resets_and_gets_an_account_of_its_own(self):
+        self.clean_starts_on()
+        self.two_factor_session()
+        self.stub.stash["created_account"] = {"id": 9, "body": {"address": "x@y"}}
+        for path, status in (
+            ("/api/v1/admin/mailboxes/9", 200),
+            ("/api/v1/admin/mailboxes/1", 422),
+            ("/api/v1/admin/mailboxes/9", 204),
+            ("/api/v1/admin/mailboxes/1/sessions?x=1", 204),
+        ):
+            transaction = self.transaction(status, path)
+            request = copy.deepcopy(transaction["request"])
+            self.hooks.a_mailbox_to_administer(transaction)
+            account = max(self.server.accounts)
+            self.assertEqual(
+                transaction["fullPath"],
+                re.sub(r"/mailboxes/\d+", f"/mailboxes/{account:d}", path),
+            )
+            address, session = self.server.accounts[account]
+            self.assertRegex(address, r"^contract-own-mailbox-\d+@restmail\.test$")
+            # Making an account takes the two-factor session; the request's
+            # own credential and body stay as they are.
+            self.assertEqual(session, "Bearer two-factor-session")
+            self.assertEqual(transaction["request"], request)
+            self.assertLessEqual(set(self.stub.stash), set(self.hooks.SURVIVES_A_RESET))
+        self.assertEqual(self.resets(), 4)
+
+    def test_a_new_password_after_a_reset_goes_to_the_account_of_its_own(self):
+        # The reset removed the account createAccount made, so the password
+        # hook has no created account to send updated_password_at_minimum to.
+        # The exchange already has an account of its own, made for it, and the
+        # password goes there: it is sent, not skipped (#1761's own-data run
+        # reported "Update an account > 200" as not sent).
+        self.clean_starts_on()
+        self.two_factor_session()
+        self.stub.stash["created_account"] = {"id": 9, "body": {"address": "x@y"}}
+        transaction = self.transaction(200, "/api/v1/admin/mailboxes/9")
+        transaction["request"]["body"] = json.dumps(
+            {"display_name": "Contract Test", "password": "Qv7#mZ2!pL9k"}
+        )
+        self.hooks.a_mailbox_to_administer(transaction)
+        self.hooks.a_new_password_only_on_the_created_account(transaction)
+        account = max(self.server.accounts)
+        self.assertFalse(transaction.get("skip"))
+        self.assertEqual(
+            transaction["fullPath"], f"/api/v1/admin/mailboxes/{account:d}"
+        )
+        self.assertRegex(
+            self.server.accounts[account][0],
+            r"^contract-own-mailbox-\d+@restmail\.test$",
+        )
+
+    def test_mailbox_refusals_creates_and_lists_reset_and_keep_their_paths(self):
+        self.clean_starts_on()
+        for path in (
+            "/api/v1/admin/mailboxes/0",
+            "/api/v1/admin/mailboxes/2147483647",
+            "/api/v1/admin/mailboxes/2147483647/sessions",
+            "/api/v1/admin/mailboxes/not-an-integer",
+            "/api/v1/admin/mailboxes?domain_id=1",
+            "/api/v1/accounts",
+        ):
+            transaction = self.transaction(404, path)
+            self.hooks.a_mailbox_to_administer(transaction)
+            self.assertEqual(transaction["fullPath"], path)
+        self.assertEqual(self.resets(), 6)
+        self.assertEqual(self.server.accounts, {})
+
+    def test_without_the_switch_a_mailbox_exchange_is_unchanged(self):
+        self.stub.stash["created_account"] = {"id": 9, "body": {"address": "x@y"}}
+        stash = copy.deepcopy(self.stub.stash)
+        transaction = self.transaction(204, "/api/v1/admin/mailboxes/9")
+        before = copy.deepcopy(transaction)
+        self.hooks.a_mailbox_to_administer(transaction)
+        self.assertEqual(transaction, before)
+        self.assertEqual(self.server.calls, [])
+        self.assertEqual(self.stub.stash, stash)
 
     def test_the_policy_file_asks_for_a_domain_of_its_own_after_a_reset(self):
         self.clean_starts_on()
