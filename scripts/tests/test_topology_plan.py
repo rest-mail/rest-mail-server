@@ -388,7 +388,8 @@ class PrivateRunDryTests(unittest.TestCase):
     def test_the_suite_container_is_on_the_run_s_network_and_resolver(self):
         text = self.expansions["test:e2e"]
         self.assertIn(f"--network {self.plan['names']['network']}", text)
-        self.assertIn(f"\"{self.plan['dns_ip']}\" > \"$resolv\"", text)
+        self.assertIn(f"\"{self.plan['dns_ip']}\" > ", text)
+        self.assertIn(f"{ROOT}/.cache/testbed-resolv-{self.RUN}.conf:/etc/resolv.conf:ro", text)
         # The container reaches the API by its own address; the host-side CONTRACT_ENDPOINT is a loopback port.
         self.assertIn("${RESTMAIL_E2E_API_URL:-", text)
 

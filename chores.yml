@@ -1026,15 +1026,14 @@ tasks:
         mkdir -p {{.ROOT_DIR}}/.cache
         # A private topology has a resolver of its own, so a file of its own: two runs from
         # one checkout would otherwise write the same one.
-        resolv={{.ROOT_DIR}}/.cache/testbed-resolv{{if .TOPOLOGY_RUN}}-{{.TOPOLOGY_RUN}}{{end}}.conf
-        printf 'nameserver %s\n' "{{.RESTMAIL_TESTBED_DNS_IP | default "10.99.0.10"}}" > "$resolv"
+        printf 'nameserver %s\n' "{{.RESTMAIL_TESTBED_DNS_IP | default "10.99.0.10"}}" > {{.ROOT_DIR}}/.cache/testbed-resolv{{if .TOPOLOGY_RUN}}-{{.TOPOLOGY_RUN}}{{end}}.conf
         # The suite reaches the API by the address the run's network gives it. The host-side
         # CONTRACT_ENDPOINT of a private run is a loopback port, which is not that container's.
         # The other addresses are the ones the suite dials by IP, not by name; unset, it
         # keeps the shared topology's.
         docker run --rm --label "$RESTMAIL_LABEL" \
           --network {{.RESTMAIL_NETWORK | default "testbed_mailnet"}} \
-          -v "$resolv:/etc/resolv.conf:ro" \
+          -v {{.ROOT_DIR}}/.cache/testbed-resolv{{if .TOPOLOGY_RUN}}-{{.TOPOLOGY_RUN}}{{end}}.conf:/etc/resolv.conf:ro \
           -v "$volume:/src" -w /src \
           -v {{.ROOT_DIR}}/.cache:/src/.cache \
           -v {{.RESTMAIL_MODULES_VOLUME | default "rest-mail-go-modules"}}:/go/pkg/mod:ro \
