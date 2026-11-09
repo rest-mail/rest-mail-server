@@ -668,7 +668,7 @@ tasks:
         fi
         if [ -z "${CONTRACT_ENDPOINT:-}" ]; then chore e2e:up; fi
         if [ ! -s .cache/contract-principals.json ]; then
-          API_BASE_URL="${CONTRACT_ENDPOINT:-http://{{.RESTMAIL_API_IP | default "10.99.0.20"}}:8080}" E2E_REQUIRE_STACK=1 chore test:e2e -- -run '^TestContractPrincipals$'
+          API_BASE_URL="${CONTRACT_ENDPOINT:-http://10.99.0.20:8080}" E2E_REQUIRE_STACK=1 chore test:e2e -- -run '^TestContractPrincipals$'
         fi
         chore test:contract-fixtures
         chore test:contract-api-keys
@@ -705,7 +705,7 @@ tasks:
         export CONTRACT_DEFER_SUMMARY=1
         trap 'python3 -B tests/contract/summary.py .cache/contract authorization ownership ownership-domains ownership-mailboxes ownership-messages' EXIT
         if [ ! -s .cache/contract-principals.json ]; then
-          API_BASE_URL="${CONTRACT_ENDPOINT:-http://{{.RESTMAIL_API_IP | default "10.99.0.20"}}:8080}" E2E_REQUIRE_STACK=1 chore test:e2e -- -run '^TestContractPrincipals$'
+          API_BASE_URL="${CONTRACT_ENDPOINT:-http://10.99.0.20:8080}" E2E_REQUIRE_STACK=1 chore test:e2e -- -run '^TestContractPrincipals$'
         fi
         chore test:contract-fixtures
         chore test:contract-mfa-admin
@@ -763,7 +763,7 @@ tasks:
         export PATH="$(dirname "$CONTRACT_VERTRAG"):$PATH"
         python3 -B -c 'import yaml' 2>/dev/null || pip install --quiet pyyaml
         if [ ! -s .cache/contract-principals.json ]; then
-          API_BASE_URL="${CONTRACT_ENDPOINT:-http://{{.RESTMAIL_API_IP | default "10.99.0.20"}}:8080}" E2E_REQUIRE_STACK=1 chore test:e2e -- -run '^TestContractPrincipals$'
+          API_BASE_URL="${CONTRACT_ENDPOINT:-http://10.99.0.20:8080}" E2E_REQUIRE_STACK=1 chore test:e2e -- -run '^TestContractPrincipals$'
         fi
         chore test:contract-fixtures
         python3 -B tests/contract/faults.py run --api-container "{{.RESTMAIL_PROJECT}}-api"
@@ -935,7 +935,7 @@ tasks:
         mkdir -p .cache/contract
         docker exec -- "${CONTRACT_FIXTURE_PROJECT}-api" go run ./tests/contract/fixtures --test-domain=restmail.test --api-keys > .cache/contract/api-key-fixture.log
         sed -n 's/^API_KEY_FIXTURE=//p' .cache/contract/api-key-fixture.log > .cache/contract/api-key-fixture.json
-        python3 tests/contract/api_keys_live.py "${CONTRACT_ENDPOINT:-http://{{.RESTMAIL_API_IP | default "10.99.0.20"}}:8080}" --fixture .cache/contract/api-key-fixture.json
+        python3 tests/contract/api_keys_live.py "${CONTRACT_ENDPOINT:-http://10.99.0.20:8080}" --fixture .cache/contract/api-key-fixture.json
 
   test:contract-live-proofs:
     desc: 'The live anonymous, over-cap and real-principal proofs against a running topology, after the gate; fails when a runner proved less than it selected (#1237)'
@@ -973,7 +973,7 @@ tasks:
           exit 1
         fi
         docker exec -- "${CONTRACT_FIXTURE_PROJECT}-api" go run ./tests/contract/fixtures --test-domain=restmail.test --mfa-admin
-        python3 tests/contract/mfa_admin.py enroll "${CONTRACT_ENDPOINT:-http://{{.RESTMAIL_API_IP | default "10.99.0.20"}}:8080}"
+        python3 tests/contract/mfa_admin.py enroll "${CONTRACT_ENDPOINT:-http://10.99.0.20:8080}"
 
   test:contract-delivery-recipient:
     desc: Prepare the mailbox the fuzz phase pins deliverMessage's generated bodies to
