@@ -137,6 +137,7 @@ func checkPatchFault(t *testing.T, f catalogueEntry) {
 	if out, err := apply.CombinedOutput(); err != nil {
 		t.Errorf("%s: its patch no longer applies, so update it to break this code the same way: %v\n%s", f.Name, err, out)
 	}
+	checkPatchTargets(t, f)
 	chores, err := os.ReadFile("../../chores.yml")
 	if err != nil {
 		t.Fatal(err)
@@ -159,6 +160,82 @@ func checkPatchFault(t *testing.T, f catalogueEntry) {
 	pair := f.Subtest[strings.LastIndex(f.Subtest, "/")+1:]
 	if _, ok := pairs[f.Operation][pair]; !ok {
 		t.Errorf("%s: subtest %q names no example pair of %s", f.Name, f.Subtest, f.Operation)
+	}
+}
+
+// patchHunk is one hunk of a patch fault: the file it edits, the function its
+// header names, and the lines it expects to find there (context and removed).
+type patchHunk struct {
+	file    string
+	heading string
+	before  []string
+}
+
+func patchHunks(patch string) []patchHunk {
+	var hunks []patchHunk
+	file := ""
+	for _, line := range strings.Split(strings.TrimRight(patch, "\n"), "\n") {
+		switch {
+		case strings.HasPrefix(line, "+++ b/"):
+			file = strings.TrimPrefix(line, "+++ b/")
+		case strings.HasPrefix(line, "--- a/"):
+		case strings.HasPrefix(line, "@@"):
+			heading := ""
+			if _, after, ok := strings.Cut(strings.TrimPrefix(line, "@@"), "@@"); ok {
+				heading = strings.TrimSpace(after)
+			}
+			hunks = append(hunks, patchHunk{file: file, heading: heading})
+		case len(hunks) == 0:
+		case strings.HasPrefix(line, "+"):
+		case strings.HasPrefix(line, " ") || strings.HasPrefix(line, "-"):
+			hunks[len(hunks)-1].before = append(hunks[len(hunks)-1].before, line[1:])
+		default:
+			hunks[len(hunks)-1].before = append(hunks[len(hunks)-1].before, "")
+		}
+	}
+	return hunks
+}
+
+// git apply accepts a hunk wherever its lines are found, near the position it
+// names or not. A patch whose lines occur in several functions, as the guard
+// call in every account handler does, then breaks the first one it meets: the
+// fault is applied, the witness pair passes, and the catalogue reports the fault
+// as not caught (#2066). So each hunk's lines must occur once in its file, and
+// there inside the function its header names.
+func checkPatchTargets(t *testing.T, f catalogueEntry) {
+	t.Helper()
+	hunks := patchHunks(f.Patch)
+	if len(hunks) == 0 {
+		t.Errorf("%s: its patch has no hunk", f.Name)
+	}
+	for _, hunk := range hunks {
+		source, err := os.ReadFile(filepath.Join("../..", hunk.file))
+		if err != nil {
+			t.Errorf("%s: %v", f.Name, err)
+			continue
+		}
+		lines := strings.Split(string(source), "\n")
+		var at []int
+		for i := 0; i+len(hunk.before) <= len(lines); i++ {
+			if slices.Equal(lines[i:i+len(hunk.before)], hunk.before) {
+				at = append(at, i)
+			}
+		}
+		if len(at) != 1 {
+			t.Errorf("%s: a hunk of its patch matches %d places in %s, and must match one, or it breaks whichever function git finds first. Start the hunk at the func line of the handler it breaks:\n%s",
+				f.Name, len(at), hunk.file, strings.Join(hunk.before, "\n"))
+			continue
+		}
+		function := ""
+		for j := at[0]; j >= 0; j-- {
+			if strings.HasPrefix(lines[j], "func ") {
+				function = lines[j]
+				break
+			}
+		}
+		if hunk.heading == "" || !strings.HasPrefix(function, hunk.heading) {
+			t.Errorf("%s: a hunk of its patch edits %q in %s, but its header names %q", f.Name, function, hunk.file, hunk.heading)
+		}
 	}
 }
 

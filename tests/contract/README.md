@@ -1287,7 +1287,10 @@ caught fault.
 | `get_quota_may_reach_skipped` | The handler skips its `mayReach` check: a key scoped to another mailbox reads this account's quota | `GET /api/v1/accounts/{id}/quota 404 answered 200` |
 
 `faults.py pairs` runs only these. It needs `RESTMAIL_VERTRAG_BINARY` and no
-topology, so it can run on a laptop.
+topology, so it can run on a laptop. `chore ci:local` runs it as its own step,
+"Contract pairs", whenever `tests/contract/faults.yml`, `tests/contract/faults.py`
+or anything under `internal/faultinject` changes, and `--all` forces it. A fault
+it does not catch fails that gate before push (#2066).
 
 ### Adding a fault
 
@@ -1297,6 +1300,10 @@ an entry with `name`, `operation`, `path`, `phase: pairs`, `breaks`, `test` (a
 and `patch`, a `git diff` with a short context (`-U1`). `go test
 ./internal/faultinject` holds the patch to the code, so a change to the guarded
 lines names the fault it broke, and `faults.py pairs` says whether it is caught.
+`git apply` takes a hunk wherever its lines are found, so a guard call that every
+handler repeats breaks the first handler it meets, not yours (#2066). The test
+therefore requires each hunk's lines to occur once in their file, inside the
+function the hunk header names: start the hunk at the handler's `func` line.
 
 A fault that changes an answer takes a switch file and an entry:
 

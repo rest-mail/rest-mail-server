@@ -178,7 +178,8 @@ faults:
     patch: |
       --- a/internal/api/handlers/messages.go
       +++ b/internal/api/handlers/messages.go
-      @@ -1643,3 +1643,3 @@ func (h *MessageHandler) getQuota(r *http.Request, in accountPath) (Quota, error
+      @@ -1773,4 +1773,4 @@ func (h *MessageHandler) getQuota(r *http.Request, in accountPath) (Quota, error
+       func (h *MessageHandler) getQuota(r *http.Request, in accountPath) (Quota, error) {
        	h = h.forRequest(r)
       -	mailboxID, err := h.accountMailbox(r, in.ID, models.CapMailRead)
       +	mailboxID, err := uint(in.ID), error(nil)
