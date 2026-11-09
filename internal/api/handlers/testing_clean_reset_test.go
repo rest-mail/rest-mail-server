@@ -405,6 +405,38 @@ func TestCleanResetEveryCredentialKind(t *testing.T) {
 	}
 }
 
+func TestCleanResetServerCeiling(t *testing.T) {
+	db, handler, admin := cleanResetFixture(t)
+	ceiling := func() []string {
+		t.Helper()
+		names, overridden, err := grants.ServerCeiling(db, time.Now())
+		if err != nil || overridden {
+			t.Fatalf("read the ceiling: overridden %v, %v", overridden, err)
+		}
+		return names
+	}
+	initial := ceiling()
+	if len(initial) == 0 || slices.Contains(initial, grants.Wildcard) {
+		t.Fatalf("a new installation's ceiling is %v", initial)
+	}
+	for _, narrowed := range [][]string{{"mail:read", "mail:send"}, {}} {
+		entry := models.AuditEntry{ActorKind: models.AuditActorAccount, ActorID: &admin.ID}
+		if err := db.Transaction(func(tx *gorm.DB) error {
+			_, err := grants.SetServerCeiling(tx, narrowed, entry)
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if got := ceiling(); !slices.Equal(got, narrowed) {
+			t.Fatalf("narrowed ceiling %v, want %v", got, narrowed)
+		}
+		resetFixture(t, handler)
+		if got := ceiling(); !slices.Equal(got, initial) {
+			t.Fatalf("after a reset the ceiling narrowed to %v is %v, want every capability %v", narrowed, got, initial)
+		}
+	}
+}
+
 func TestCleanResetMemoryAndStreams(t *testing.T) {
 	db, handler, admin := cleanResetFixture(t)
 	sessions := NewSessionCache(db, time.Hour)
