@@ -146,22 +146,24 @@ tasks:
         "${CHORE_BIN:-chore}" e2e:up
         # The host reaches the API through a loopback port Docker chooses: Docker Desktop has
         # no route to the run's subnet. nginx's stream module forwards the bytes.
-        conf="events {}\nstream { server { listen 8080; proxy_pass $RESTMAIL_API_IP:8080; } }\n"
+        conf="events {}\nstream { server { listen 8080; proxy_pass $RESTMAIL_API_IP:8080; } server { listen 8443; proxy_pass $RESTMAIL_API_IP:8443; } }\n"
         docker run -d --label "$RESTMAIL_LABEL" --name "$RESTMAIL_PROJECT-apiport" --network "$RESTMAIL_NETWORK" \
-          --ip "$TOPOLOGY_APIPORT_IP" -p 127.0.0.1::8080 --entrypoint sh nginxinc/nginx-unprivileged:1.30-alpine-slim \
+          --ip "$TOPOLOGY_APIPORT_IP" -p 127.0.0.1::8080 -p 127.0.0.1::8443 --entrypoint sh nginxinc/nginx-unprivileged:1.30-alpine-slim \
           -c "printf '$conf' > /tmp/forward.conf && exec nginx -e /dev/stderr -c /tmp/forward.conf -g 'daemon off; pid /tmp/forward.pid;'" >/dev/null
         echo "  topology {{.TOPOLOGY}} is up; the API answers on $(docker port "$RESTMAIL_PROJECT-apiport" 8080/tcp | head -1)"
 
   endpoint:
-    desc: "Print the URL the host reaches TOPOLOGY's API at: the forwarder's loopback port"
+    desc: "Print the URL the host reaches TOPOLOGY's API at: the forwarder's loopback port. After --, internal prints the mTLS listener's"
     dotenv: []
     cmds:
       - |
         set -eu
         eval "$(python3 -B {{.ROOT_DIR}}/scripts/topology_plan.py "{{.TOPOLOGY}}" --shell)"
-        port=$(docker port "$RESTMAIL_PROJECT-apiport" 8080/tcp | sed -n 's/^127\.0\.0\.1:\([0-9]*\)$/\1/p' | head -1)
+        scheme=http; inside=8080
+        if [ "{{.CLI_ARGS}}" = internal ]; then scheme=https; inside=8443; fi
+        port=$(docker port "$RESTMAIL_PROJECT-apiport" $inside/tcp | sed -n 's/^127\.0\.0\.1:\([0-9]*\)$/\1/p' | head -1)
         [ -n "$port" ] || { echo "topology {{.TOPOLOGY}} has no API forwarder: run chore topology:up TOPOLOGY={{.TOPOLOGY}}" >&2; exit 1; }
-        echo "http://127.0.0.1:$port"
+        echo "$scheme://127.0.0.1:$port"
 
   test:e2e:
     desc: "Run the E2E suite on TOPOLOGY; flags for go test after --"
@@ -185,6 +187,8 @@ tasks:
         export TOPOLOGY_SHIM_DIR={{.ROOT_DIR}}/.cache/topology/{{.TOPOLOGY}}/bin
         export PATH="$TOPOLOGY_SHIM_DIR:$PATH"
         export CONTRACT_ENDPOINT=$("${CHORE_BIN:-chore}" topology:endpoint TOPOLOGY={{.TOPOLOGY}})
+        # The internal mTLS listener the gateway routes go to; its certificate names 127.0.0.1.
+        export CONTRACT_INTERNAL_ENDPOINT=$("${CHORE_BIN:-chore}" topology:endpoint TOPOLOGY={{.TOPOLOGY}} -- internal)
         "${CHORE_BIN:-chore}" contract:topology {{if .CLI_ARGS}}-- {{.CLI_ARGS}}{{end}}
 
   down:
