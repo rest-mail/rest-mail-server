@@ -484,19 +484,9 @@
 - operation: addToAllowlist
   difference: "response 400: generated only"
   reason: "Malformed JSON or a body in the wrong media type is 400 bad_request. Parsed input that breaks a shape or field rule is 422 validation_failed with details.fields (#672)."
-- operation: addToAllowlist
-  difference: "response 404: generated only"
-  reason: >-
-    Adding a sender rule first checks that its domain exists and refuses a missing domain with 404
-    domain_not_found; the oracle omits that answer.
 - operation: addToBlocklist
   difference: "response 400: generated only"
   reason: "Malformed JSON or a body in the wrong media type is 400 bad_request. Parsed input that breaks a shape or field rule is 422 validation_failed with details.fields (#672)."
-- operation: addToBlocklist
-  difference: "response 404: generated only"
-  reason: >-
-    Adding a sender rule first checks that its domain exists and refuses a missing domain with 404
-    domain_not_found; the oracle omits that answer.
 - operation: getMtaStsPolicy
   difference: "response 200 application/json.properties.data.properties.domain: openapi.yaml absent, generated *"
   reason: >-
@@ -640,14 +630,6 @@
   difference: "response 201 application/json.properties.data.properties.domain: openapi.yaml absent, generated *"
   reason: >-
     The public Alias type permits a readable, loaded domain association. Creation does not preload it and omits the association; it never emits an invalid zero domain. The oracle omits this optional property.
-- operation: createAlias
-  difference: "response 404: generated only"
-  reason: >-
-    Creating an alias refuses a source domain that is not hosted with 404 domain_not_found, as before. The oracle omits it.
-- operation: createAlias
-  difference: "response 409: generated only"
-  reason: >-
-    Creating an alias that already exists returns 409 already_exists, as before. The oracle omits it.
 - operation: deleteMailbox
   difference: "response 409 application/json: generated only"
   reason: >-
@@ -1074,9 +1056,6 @@
 - operation: listQueue
   difference: "response 200 application/json.properties.data.properties.total.format: openapi.yaml absent, generated \"int64\""
   reason: The counter is an int64 in Go; generated documentation states its width without changing its JSON integer representation.
-- operation: retryQueueEntry
-  difference: "response 400: generated only"
-  reason: Retry still refuses entries outside pending or deferred with 400 bad_request and the original message; this state-based refusal is not a binding error.
 - operation: getQueueStats
   difference: 'response 200 application/json.properties.data.properties.*.format: openapi.yaml absent, generated "int64"'
   reason: Counts are int64 in Go; their JSON representation remains an integer.
@@ -1101,9 +1080,6 @@
 - operation: createCertificate
   difference: "response 201 application/json.properties.data.properties.domain: openapi.yaml absent, generated {\"additionalProperties\":false,\"properties\":{\"active\":{\"type\":\"boolean\"},\"created_at\":{\"format\":\"date-time\",\"type\":\"string\"},\"default_quota_bytes\":{\"format\":\"int64\",\"type\":\"integer\"},\"dkim_selector\":{\"type\":\"string\"},\"dmarc_policy\":{\"enum\":[\"none\",\"quarantine\",\"reject\"],\"type\":\"string\"},\"id\":{\"type\":\"integer\"},\"name\":{\"type\":\"string\"},\"outbound_stop\":{\"additionalProperties\":false,\"properties\":{\"reason\":{\"type\":\"string\"},\"stopped_at\":{\"format\":\"date-time\",\"type\":\"string\"},\"stopped_by\":{\"type\":\"string\"}},\"required\":[\"reason\",\"stopped_at\",\"stopped_by\"],\"type\":[\"null\",\"object\"]},\"sending_policy\":{\"enum\":[\"\",\"bulk\",\"transactional\"],\"type\":\"string\"},\"server_type\":{\"enum\":[\"restmail\",\"traditional\"],\"type\":\"string\"},\"updated_at\":{\"format\":\"date-time\",\"type\":\"string\"}},\"required\":[\"active\",\"created_at\",\"default_quota_bytes\",\"dkim_selector\",\"dmarc_policy\",\"id\",\"name\",\"sending_policy\",\"server_type\",\"updated_at\"],\"type\":\"object\"}"
   reason: Certificate list and upload already return their preloaded public domain association. The API now owns this type, with no certificate or domain private keys; the oracle omits the association.
-- operation: createCertificate
-  difference: "response 404: generated only"
-  reason: Uploading for a domain that does not exist returns 404 not_found, as the handler already did.
 - operation: getCertificate
   difference: "response 200 application/json.properties.data.allOf: openapi.yaml [{\"properties\":{\"auto_renew\":{\"type\":\"boolean\"},\"created_at\":{\"format\":\"date-time\",\"type\":\"string\"},\"domain_id\":{\"type\":\"integer\"},\"id\":{\"type\":\"integer\"},\"issuer\":{\"type\":\"string\"},\"not_after\":{\"format\":\"date-time\",\"type\":\"string\"},\"not_before\":{\"format\":\"date-time\",\"type\":\"string\"},\"updated_at\":{\"format\":\"date-time\",\"type\":\"string\"}},\"required\":[\"auto_renew\",\"created_at\",\"domain_id\",\"id\",\"issuer\",\"not_after\",\"not_before\",\"updated_at\"],\"type\":\"object\"},{\"properties\":{\"cert_pem\":{\"type\":\"string\"}},\"required\":[\"cert_pem\"],\"type\":\"object\"}], generated absent"
   reason: The API details type describes the existing flat certificate response, including its public PEM and preloaded public domain association. The oracle uses allOf and omits the domain; timestamps retain their existing RFC3339 second precision.
@@ -1234,9 +1210,6 @@
 - operation: listAccounts
   difference: "response 429: generated only"
   reason: The mail routes throttle refused HTTP Basic credentials at login's rate (429 rate_limited).
-- operation: listAccounts
-  difference: "response 404: generated only"
-  reason: The session's own account was deleted under a live session (404 not_found).
 - operation: "*"
   difference: "request body application/json.properties.expires_at.type: openapi.yaml \"string\", generated [\"null\",\"string\"]"
   reason: An expires_at of null means no expiry (an app password) or the default (an API key), as it always did.
@@ -1336,10 +1309,6 @@
 - operation: blockSender
   difference: "response 400: generated only"
   reason: "Malformed JSON or a body in the wrong media type is 400 bad_request. Parsed input that breaks a shape or field rule is 422 validation_failed with details.fields (#672)."
-- operation: createContact
-  difference: "response 409: generated only"
-  reason: >-
-    An address that is already one of the account's contacts is 409 already_exists.
 - operation: listContacts
   difference: "response 200 application/json.properties.data.items.properties.email.format: openapi.yaml \"email\", generated absent"
   reason: >-
@@ -1433,11 +1402,6 @@
   reason: >-
     A delete always answers status deleted; the mobile app refuses any other. The oracle
     leaves the value open.
-- operation: deleteQuarantine
-  difference: "response 404: generated only"
-  reason: >-
-    A held message that is not in the account's quarantine, or belongs to another account, is
-    404 not_found, as release answers. The oracle documents it for release only.
 
 # API root, health and server identity (#630)
 
@@ -1675,24 +1639,11 @@
 - operation: renameFolder
   difference: "response 400: generated only"
   reason: "Malformed JSON or a body in the wrong media type is 400 bad_request. Parsed input that breaks a shape or field rule is 422 validation_failed with details.fields (#672)."
-- operation: renameFolder
-  difference: "response 409: generated only"
-  reason: >-
-    A name another folder has is 409 already_exists: a rename no longer merges two folders
-    into one (#757).
-- operation: createFolder
-  difference: "response 409: generated only"
-  reason: >-
-    A folder that already holds messages, or its marker, is 409 already_exists.
 - operation: createFolder
   difference: "response 422 application/json.properties.error.properties.details.properties: openapi.yaml absent, generated {\"fields\":{\"additionalProperties\":{\"type\":\"string\"},\"type\":\"object\"}}"
   reason: >-
     The 422 is the API's validation envelope, with the fields at fault under details.fields;
     the oracle describes this 422 without them.
-- operation: getQuota
-  difference: "response 404: generated only"
-  reason: >-
-    The account's mailbox was deleted under a live session (404 not_found).
 - operation: getQuota
   difference: "response 200 application/json.properties.data.properties.message_count.format: openapi.yaml absent, generated \"int64\""
   reason: >-
@@ -2077,10 +2028,6 @@
   reason: >-
     The IMAP gateway sets \Draft through is_draft (APPEND and STORE); the oracle omits it.
 - operation: searchMessages
-  difference: "response 404: generated only"
-  reason: >-
-    An account the session cannot reach with mail:read is 404 not_found, rather than 403.
-- operation: searchMessages
   difference: "parameter query cursor: openapi.yaml only"
   reason: >-
     Search has never read a cursor: it answers the first page (limit) and has_more, with no
@@ -2094,11 +2041,6 @@
   difference: "parameter query has_attachment schema.enum: openapi.yaml absent, generated [\"\",\"false\",\"true\"]"
   reason: >-
     true, false, or blank for no filter; anything else is 422 "must be true or false".
-- operation: listAttachments
-  difference: "response 404: generated only"
-  reason: >-
-    A message that is not there, or is in an account the session cannot read, is 404
-    not_found.
 
 # The account's own password and two-factor authentication (#634)
 
@@ -2631,10 +2573,6 @@
   difference: "response 400: generated only"
   reason: >-
     A body that is not JSON is 400 bad_request; one that names no mailbox is 422.
-- operation: deliverMessage
-  difference: "response 404: generated only"
-  reason: >-
-    The mailbox named is not here: 404 mailbox_not_found.
 - operation: checkMailboxAddress
   difference: "parameter query address schema.format: openapi.yaml \"email\", generated absent"
   reason: >-

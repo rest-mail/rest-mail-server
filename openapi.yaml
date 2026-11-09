@@ -2745,6 +2745,8 @@ paths:
               "$ref": "#/components/headers/X-Frame-Options"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
     post:
       operationId: createAccount
       tags: [Accounts]
@@ -5634,6 +5636,8 @@ paths:
               "$ref": "#/components/headers/X-Content-Type-Options"
             "X-Frame-Options":
               "$ref": "#/components/headers/X-Frame-Options"
+        "409":
+          $ref: "#/components/responses/Conflict"
 
   /api/v1/accounts/{id}/folders/{folder}:
     parameters:
@@ -5686,6 +5690,8 @@ paths:
               "$ref": "#/components/headers/X-Frame-Options"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
     delete:
       operationId: deleteFolder
       tags: [Folders]
@@ -9721,6 +9727,8 @@ paths:
               "$ref": "#/components/headers/X-Content-Type-Options"
             "X-Frame-Options":
               "$ref": "#/components/headers/X-Frame-Options"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   # ═══════════════════════════════════════════════════════════════
   # Search
@@ -9807,6 +9815,8 @@ paths:
               "$ref": "#/components/headers/X-Content-Type-Options"
             "X-Frame-Options":
               "$ref": "#/components/headers/X-Frame-Options"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   # ═══════════════════════════════════════════════════════════════
   # Attachments
@@ -10143,6 +10153,8 @@ paths:
               "$ref": "#/components/headers/X-Content-Type-Options"
             "X-Frame-Options":
               "$ref": "#/components/headers/X-Frame-Options"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   # ═══════════════════════════════════════════════════════════════
   # Contacts
@@ -10658,6 +10670,8 @@ paths:
               "$ref": "#/components/headers/X-Content-Type-Options"
             "X-Frame-Options":
               "$ref": "#/components/headers/X-Frame-Options"
+        "409":
+          $ref: "#/components/responses/Conflict"
 
   /api/v1/accounts/{id}/contacts/{cid}:
     parameters:
@@ -11816,6 +11830,8 @@ paths:
               "$ref": "#/components/headers/X-Content-Type-Options"
             "X-Frame-Options":
               "$ref": "#/components/headers/X-Frame-Options"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   # ═══════════════════════════════════════════════════════════════
   # SSE
@@ -12096,6 +12112,8 @@ paths:
               "$ref": "#/components/headers/X-Content-Type-Options"
             "X-Frame-Options":
               "$ref": "#/components/headers/X-Frame-Options"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   # ═══════════════════════════════════════════════════════════════
   # RESTMAIL Protocol
@@ -13857,6 +13875,10 @@ paths:
               "$ref": "#/components/headers/X-Content-Type-Options"
             "X-Frame-Options":
               "$ref": "#/components/headers/X-Frame-Options"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
 
   /api/v1/admin/aliases/{id}:
     parameters:
@@ -16567,6 +16589,23 @@ paths:
               "$ref": "#/components/headers/X-Frame-Options"
         "404":
           $ref: "#/components/responses/NotFound"
+        "400":
+          description: "Only pending or deferred entries can be retried"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          "headers":
+            "Content-Security-Policy":
+              "$ref": "#/components/headers/Content-Security-Policy"
+            "Referrer-Policy":
+              "$ref": "#/components/headers/Referrer-Policy"
+            "Strict-Transport-Security":
+              "$ref": "#/components/headers/Strict-Transport-Security"
+            "X-Content-Type-Options":
+              "$ref": "#/components/headers/X-Content-Type-Options"
+            "X-Frame-Options":
+              "$ref": "#/components/headers/X-Frame-Options"
 
   /api/v1/admin/queue/{id}/bounce:
     parameters:
@@ -16797,6 +16836,8 @@ paths:
               "$ref": "#/components/headers/X-Content-Type-Options"
             "X-Frame-Options":
               "$ref": "#/components/headers/X-Frame-Options"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   /api/v1/admin/domains/{id}/allowlist/{eid}:
     parameters:
@@ -16996,6 +17037,8 @@ paths:
               "$ref": "#/components/headers/X-Content-Type-Options"
             "X-Frame-Options":
               "$ref": "#/components/headers/X-Frame-Options"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   /api/v1/admin/domains/{id}/blocklist/{eid}:
     parameters:
@@ -18001,6 +18044,8 @@ paths:
               "$ref": "#/components/headers/X-Content-Type-Options"
             "X-Frame-Options":
               "$ref": "#/components/headers/X-Frame-Options"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   /api/v1/admin/certificates/{id}:
     parameters:
