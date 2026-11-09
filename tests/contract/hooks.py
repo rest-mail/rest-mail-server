@@ -3378,7 +3378,7 @@ def a_folder_to_delete_of_its_own(transaction):
 # The internal listener the gateways call, and the IMAP gateway's client
 # certificate for it (chore test:contract-mtls copies them; vertrag.yml sends the
 # session routes there with the same one).
-INTERNAL_ORIGIN = "https://10.99.0.20:8443"
+INTERNAL_ORIGIN = os.environ.get("CONTRACT_INTERNAL_ENDPOINT") or "https://10.99.0.20:8443"
 CONTRACT_MTLS = os.environ.get("CONTRACT_MTLS_DIR", ".cache/contract-mtls")
 
 

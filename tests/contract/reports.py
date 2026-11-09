@@ -25,7 +25,7 @@ def spec_location(value, directory):
     return str((Path(directory) / value).resolve())
 
 
-def configure(config, source_dir, base, narrowed=False, endpoint="", spec=""):
+def configure(config, source_dir, base, narrowed=False, endpoint="", spec="", internal_endpoint=""):
     if config.get("spec"):
         config["spec"] = spec_location(config["spec"], source_dir)
     hookfiles = config.get("hookfiles")
@@ -38,8 +38,13 @@ def configure(config, source_dir, base, narrowed=False, endpoint="", spec=""):
         config["spec"] = spec_location(spec, Path.cwd())
     if endpoint and endpoint != config.get("endpoint"):
         # Another server: its machine routes are wherever it serves them, not on
-        # this topology's internal listener.
-        config.pop("endpoints", None)
+        # this topology's internal listener, unless the run names where that is
+        # (CONTRACT_INTERNAL_ENDPOINT: a private topology's forwarded port, #2062).
+        if internal_endpoint:
+            for entry in config.get("endpoints") or []:
+                entry["endpoint"] = internal_endpoint
+        else:
+            config.pop("endpoints", None)
     if endpoint:
         config["endpoint"] = endpoint
     if narrowed:
@@ -72,6 +77,7 @@ def main(argv):
         "--narrowed" in argv,
         os.environ.get("CONTRACT_ENDPOINT", ""),
         os.environ.get("CONTRACT_RUN_SPEC", os.environ.get("CONTRACT_SPEC", "")),
+        os.environ.get("CONTRACT_INTERNAL_ENDPOINT", ""),
     )
     with open(out, "w") as stream:
         yaml.safe_dump(config, stream, sort_keys=False, allow_unicode=True)

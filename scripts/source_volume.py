@@ -27,7 +27,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 ALPINE_IMAGE = "alpine:3.20"
 GO_IMAGE = "golang:1.26.10"
-MODULES_VOLUME = "rest-mail-go-modules"
+# A private topology has a modules volume of its own (#2062), so the label on it is the run's.
+MODULES_VOLUME = os.environ.get("RESTMAIL_MODULES_VOLUME") or "rest-mail-go-modules"
 DEFAULT_LABEL = "rest-mail.run=local"
 
 
@@ -74,7 +75,8 @@ def copy_tree(root, volume):
 
 
 def create(root):
-    volume = f"rest-mail-src-{secrets.token_hex(6)}"
+    # A private topology names its volumes after the run (#2062): restmail-<run>-src-<hex>.
+    volume = f"{os.environ.get('RESTMAIL_SOURCE_VOLUME_PREFIX') or 'rest-mail-src'}-{secrets.token_hex(6)}"
     docker("volume", "create", "--label", label(), volume)
     try:
         copy_tree(root, volume)

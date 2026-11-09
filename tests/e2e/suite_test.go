@@ -24,17 +24,22 @@ import (
 //     (SRV → mail1.test:143 = postfix's IP) but dovecot is a separate
 //     container — until the reference fragments grow imap./pop3. subdomain
 //     records, the suite dials dovecot's static IP directly.
+//
+// A private topology (chore topology:up, #2062) has other addresses. The task passes the
+// ones the suite dials by IP in the environment (endpointsFrom); without them the suite
+// keeps the shared topology's.
 var (
-	apiBaseURL       = envOr("API_BASE_URL", "http://10.99.0.20:8080")
+	endpoints        = endpointsFrom(os.Getenv)
+	apiBaseURL       = envOr("API_BASE_URL", endpoints.api)
 	mail1SMTPAddr    = envOr("MAIL1_SMTP_ADDR", "mail1.test:25")
 	mail2SMTPAddr    = envOr("MAIL2_SMTP_ADDR", "mail2.test:25")
 	restmailSMTPAddr = envOr("RESTMAIL_SMTP_ADDR", "restmail.test:25")
 	// The reference servers keep the legacy cleartext ports on purpose: they are the
 	// simulated internet rest-mail has to interoperate with, and postfix/dovecot there
 	// still offer 143/110/587 with STARTTLS.
-	mail1IMAPAddr = envOr("MAIL1_IMAP_ADDR", "10.99.0.111:143")
-	mail2IMAPAddr = envOr("MAIL2_IMAP_ADDR", "10.99.0.112:143")
-	mail1POP3Addr = envOr("MAIL1_POP3_ADDR", "10.99.0.111:110")
+	mail1IMAPAddr = envOr("MAIL1_IMAP_ADDR", endpoints.mail1IMAP)
+	mail2IMAPAddr = envOr("MAIL2_IMAP_ADDR", endpoints.mail2IMAP)
+	mail1POP3Addr = envOr("MAIL1_POP3_ADDR", endpoints.mail1POP3)
 	// rest-mail's own client access is implicit TLS only — there is nothing listening on
 	// 143, 110 or 587 to connect to.
 	restmailIMAPAddr   = envOr("RESTMAIL_IMAP_ADDR", "imap.restmail.test:993")
@@ -48,6 +53,34 @@ var (
 // Mail; the server takes no password shorter than 12 characters, easy to
 // guess, or built from the account's address.
 const accountPassword = "Tangerine-Ledger-Orbit-9417"
+
+// topologyEndpoints are the addresses the suite dials by IP, and the ones DNS is expected
+// to answer with, on the topology it runs against.
+type topologyEndpoints struct {
+	api, mail1IMAP, mail2IMAP, mail1POP3 string
+	mail1IP, mail2IP, restmailIP         string
+}
+
+// endpointsFrom reads the topology's addresses from the environment `chore test:e2e` passes:
+// RESTMAIL_API_IP, MAIL1_DOVECOT_IP, MAIL2_DOVECOT_IP, MAIL1_POSTFIX_IP, MAIL2_POSTFIX_IP and
+// RESTMAIL_SMTP_IP. Each one unset or empty is the shared topology's address.
+func endpointsFrom(get func(string) string) topologyEndpoints {
+	address := func(key, shared string) string {
+		if v := get(key); v != "" {
+			return v
+		}
+		return shared
+	}
+	return topologyEndpoints{
+		api:        "http://" + address("RESTMAIL_API_IP", "10.99.0.20") + ":8080",
+		mail1IMAP:  address("MAIL1_DOVECOT_IP", "10.99.0.111") + ":143",
+		mail2IMAP:  address("MAIL2_DOVECOT_IP", "10.99.0.112") + ":143",
+		mail1POP3:  address("MAIL1_DOVECOT_IP", "10.99.0.111") + ":110",
+		mail1IP:    address("MAIL1_POSTFIX_IP", "10.99.0.11"),
+		mail2IP:    address("MAIL2_POSTFIX_IP", "10.99.0.12"),
+		restmailIP: address("RESTMAIL_SMTP_IP", "10.99.0.13"),
+	}
+}
 
 func envOr(key, fallback string) string {
 	if v := os.Getenv(key); v != "" {

@@ -22,6 +22,14 @@ class Endpoints(unittest.TestCase):
         self.assertEqual(config["endpoint"], "http://other:8080")
         self.assertNotIn("endpoints", config)
 
+    def test_a_private_topology_names_where_its_internal_listener_is(self):
+        # #2062: the host reaches a private run's API through forwarded loopback ports.
+        config = {"endpoint": "http://10.99.0.20:8080", "endpoints": [dict(entry) for entry in ENDPOINTS]}
+        configured = reports.configure(config, ".", "out", endpoint="http://127.0.0.1:50000", internal_endpoint="https://127.0.0.1:50001")
+        self.assertEqual(configured["endpoint"], "http://127.0.0.1:50000")
+        self.assertEqual([entry["endpoint"] for entry in configured["endpoints"]], ["https://127.0.0.1:50001"])
+        self.assertEqual(configured["endpoints"][0]["operation-id"], ["deliverMessage"])
+
 
 if __name__ == "__main__":
     unittest.main()

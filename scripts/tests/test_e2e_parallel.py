@@ -44,13 +44,19 @@ class ParallelTopology(unittest.TestCase):
     def test_every_existing_bringup_proof_remains(self):
         startup = self.tasks["e2e:up"]["cmds"]
         tasks = [command["task"] for command in startup if isinstance(command, dict)]
-        for name in ("testbed:up", "mailserver:init", "mailserver:certs:issue", "instance:certs:issue", "instance:mtls:issue", "instance:dns:register", "e2e:instances", "instance:dkim", "instance:dkim:check"):
+        # The shared testbed is started by a command, not a task call, so that a private
+        # topology (#2062), whose substrate is already up, can skip it.
+        self.assertTrue(any("testbed:up" in command for command in startup if isinstance(command, str)))
+        for name in ("mailserver:init", "mailserver:certs:issue", "instance:certs:issue", "instance:mtls:issue", "instance:dns:register", "e2e:instances", "instance:dkim", "instance:dkim:check"):
             self.assertIn(name, tasks)
         self.assertLess(tasks.index("instance:mtls:issue"), tasks.index("e2e:instances"))
         self.assertLess(tasks.index("e2e:instances"), tasks.index("instance:dkim:check"))
         for reference in ("mail1", "mail2"):
-            self.assertTrue(any(f"dkim:provision CONFIG={reference}" in command for command in startup if isinstance(command, str)))
-            self.assertIn({"task": "mailserver:wait", "vars": {"CONFIG": reference}}, self.tasks[f"e2e:{reference}"]["cmds"])
+            # CONFIG is the reference server's name, which a private topology replaces (#2062).
+            variable = "TOPOLOGY_REF1" if reference == "mail1" else "TOPOLOGY_REF2"
+            self.assertTrue(any(f'dkim:provision\n        CONFIG={{{{.{variable} | default "{reference}"}}}}' in command or f'dkim:provision CONFIG={{{{.{variable} | default "{reference}"}}}}' in command for command in startup if isinstance(command, str)))
+            waits = [command for command in self.tasks[f"e2e:{reference}"]["cmds"] if isinstance(command, dict) and command["task"] == "mailserver:wait"]
+            self.assertEqual([wait["vars"]["CONFIG"] for wait in waits], [f'{{{{.{variable} | default "{reference}"}}}}'])
         self.assertIn("RESTMAIL_INTERNAL_MTLS=true", self.tasks["e2e:restmail"]["cmds"][0])
 
     def test_frontend_failures_still_fail_normal_instance_startup(self):

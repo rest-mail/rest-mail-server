@@ -1,0 +1,211 @@
+version: "3"
+
+# rest-mail/tasks/topology — an isolated, labelled local topology (#1942, #2062)
+#
+# The shared topology has fixed names, one subnet and one DNS container, so two runs
+# on a machine collide, or one restarts the DNS container the other depends on. This
+# gives a run a private network, volumes, resolver, reference servers and rest-mail
+# instance, all labelled rest-mail-loop=<run>, from the run's name alone.
+# scripts/topology_plan.py computes every name, address and command; nothing here
+# chooses a value of its own.
+#
+#   chore topology:plan TOPOLOGY=p2062                      print the plan; Docker is read, not changed
+#   chore topology:plan TOPOLOGY=p2062 -- --environment     the variables a run's tasks read
+#   chore topology:up TOPOLOGY=p2062                        substrate, reference servers and instance
+#   chore topology:test:e2e TOPOLOGY=p2062 -- -run Stage1   the E2E suite on that topology
+#   chore topology:contract TOPOLOGY=p2062                  the contract (topology gates and reports)
+#   chore topology:ci TOPOLOGY=p2062                        up, E2E, contract, then down even on failure
+#   chore topology:down TOPOLOGY=p2062                      remove everything the run labelled
+#
+# The variable is TOPOLOGY, not NAME: NAME is an alias of CONFIG in chores.yml, so
+# NAME=p2062 would also select a config directory called p2062.
+#
+# Why these tasks run chore again instead of calling e2e:up: a variable on the command line
+# does not reach a new chore process, and e2e:up starts several. The plan's variables are
+# exported, so every process and every nested task reads the same run. e2e:up and test:e2e
+# with a TOPOLOGY and none of those variables stop rather than touch the shared names.
+#
+# Nothing here starts, restarts or joins the shared `testbed-dnsmasq` or `testbed_mailnet`.
+# The pinned reference-mailserver tasks create their containers and volumes without a
+# label, so they run behind a `docker` that adds it (scripts/topology_plan.py --docker-shim).
+# The host cannot route into a private subnet on Docker Desktop, so the contract talks to the
+# API through a forwarder that publishes 127.0.0.1:<port Docker chooses>.
+
+silent: true
+
+tasks:
+  plan:
+    desc: 'Print the isolated topology for TOPOLOGY: names, subnet, addresses, variables and docker commands. Changes nothing'
+    dotenv: []
+    cmds:
+      - |
+        set -eu
+        [ -n "{{.TOPOLOGY}}" ] || { echo "topology:plan needs TOPOLOGY=<run name>, such as TOPOLOGY=p1904" >&2; exit 2; }
+        python3 -B {{.ROOT_DIR}}/scripts/topology_plan.py "{{.TOPOLOGY}}" {{.CLI_ARGS}}
+
+  prepare:
+    desc: "Make TOPOLOGY's instance manifest and reference-server configs on its subnet, and the docker that labels the peers' containers. Starts nothing"
+    dotenv: []
+    cmds:
+      - |
+        set -eu
+        [ -n "{{.TOPOLOGY}}" ] || { echo "topology:prepare needs TOPOLOGY=<run name>, such as TOPOLOGY=p2062" >&2; exit 2; }
+        plan="python3 -B {{.ROOT_DIR}}/scripts/topology_plan.py"
+        $plan "{{.TOPOLOGY}}" --prepare
+        dir={{.ROOT_DIR}}/.cache/topology/{{.TOPOLOGY}}
+        (cd {{.ROOT_DIR}} && go run ./cmd/instance render ".cache/topology/{{.TOPOLOGY}}/config/manifest.yml" >/dev/null)
+        mkdir -p "$dir/bin"
+        $plan "{{.TOPOLOGY}}" --docker-shim "$(command -v docker)" > "$dir/bin/docker"
+        chmod 755 "$dir/bin/docker"
+        echo "  topology {{.TOPOLOGY}} manifest and reference configs are made"
+
+  substrate:up:
+    desc: "Create TOPOLOGY's labelled network, certs and fragments volumes and DNS container, on a subnet no Docker network has"
+    dotenv: []
+    cmds:
+      - |
+        set -eu
+        [ -n "{{.TOPOLOGY}}" ] || { echo "topology:substrate:up needs TOPOLOGY=<run name>, such as TOPOLOGY=p1904" >&2; exit 2; }
+        plan="python3 -B {{.ROOT_DIR}}/scripts/topology_plan.py"
+        # Read Docker's subnets once, before anything exists: the run's own network
+        # would otherwise count as taken and move the plan under it.
+        taken=$($plan --taken)
+        variables=$($plan "{{.TOPOLOGY}}" --existing-subnets "$taken" --environment)
+        create=$($plan "{{.TOPOLOGY}}" --existing-subnets "$taken" --create)
+        resolver=$($plan "{{.TOPOLOGY}}" --existing-subnets "$taken" --resolver)
+        # A name that already exists is another run's, or an earlier run of this one.
+        # Refuse rather than join it.
+        $plan "{{.TOPOLOGY}}" --existing-subnets "$taken" --resources | while read -r kind name; do
+          if docker "$kind" inspect "$name" >/dev/null 2>&1; then
+            echo "  $kind $name exists already: run chore topology:down TOPOLOGY={{.TOPOLOGY}}, or choose another TOPOLOGY" >&2
+            exit 1
+          fi
+        done
+        # The run's manifest first: every chore below reads CONFIG_DIR/config.env.
+        "${CHORE_BIN:-chore}" topology:prepare TOPOLOGY={{.TOPOLOGY}}
+        real=$(command -v docker)
+        eval "$($plan "{{.TOPOLOGY}}" --existing-subnets "$taken" --shell)"
+        printf '%s\n' "$create" | while IFS= read -r line; do sh -c "$line" >/dev/null; done
+        # The run's Go modules volume starts as a copy of the shared one, which is only read:
+        # a cold download needs the network, which fails now and then under load.
+        "$real" volume create --label "$RESTMAIL_LABEL" "$RESTMAIL_MODULES_VOLUME" >/dev/null
+        if "$real" volume inspect rest-mail-go-modules >/dev/null 2>&1; then
+          "$real" run --rm --label "$RESTMAIL_LABEL" --name "restmail-$TOPOLOGY_RUN-gomod-seed" \
+            -v rest-mail-go-modules:/from:ro -v "$RESTMAIL_MODULES_VOLUME:/to" alpine:3.20 cp -a /from/. /to/ >/dev/null
+        fi
+        # From here every docker call is the run's: named restmail-<run>-<purpose> and labelled.
+        export PATH={{.ROOT_DIR}}/.cache/topology/{{.TOPOLOGY}}/bin:$PATH
+        # The testbed seeds its static DNS fragment into the volume. The network and
+        # volumes exist, so it creates nothing and starts no resolver of its own.
+        "${CHORE_BIN:-chore}" testbed:bootstrap $(printf '%s\n' "$variables" | grep -v '^RESTMAIL_LABEL=' | tr '\n' ' ')
+        sh -c "$resolver" >/dev/null
+        echo "  topology {{.TOPOLOGY}} substrate is up, labelled $(printf '%s\n' "$variables" | sed -n 's/^RESTMAIL_LABEL=//p')"
+
+  substrate:down:
+    desc: "Remove every container, network and volume labelled for TOPOLOGY, data volumes too. Nothing unlabelled is touched"
+    dotenv: []
+    cmds:
+      - |
+        set -eu
+        [ -n "{{.TOPOLOGY}}" ] || { echo "topology:substrate:down needs TOPOLOGY=<run name>, such as TOPOLOGY=p1904" >&2; exit 2; }
+        label=$(python3 -B {{.ROOT_DIR}}/scripts/topology_plan.py "{{.TOPOLOGY}}" --existing-subnets "" --environment | sed -n 's/^RESTMAIL_LABEL=//p')
+        case "$label" in
+          rest-mail-loop=?*) ;;
+          *) echo "refusing to remove by label '$label'" >&2; exit 2 ;;
+        esac
+        RESTMAIL_LABEL="$label" VOLUMES=true sh {{.ROOT_DIR}}/tasks/clean.sh
+        # Anything named for this run that somehow lacks the label: the names are the run's own.
+        prefix="restmail-{{.TOPOLOGY}}-"
+        ids=$(docker ps -aq --filter "name=^${prefix}") && [ -z "$ids" ] || docker rm -fv $ids >/dev/null
+        for network in $(docker network ls --format '{{`{{.Name}}`}}' --filter "name=^${prefix}"); do docker network rm "$network" >/dev/null; done
+        for volume in $(docker volume ls -q --filter "name=^${prefix}"); do docker volume rm "$volume" >/dev/null; done
+        # What this run made on disk, by the names the plan gives it: the instance's config and
+        # the two reference servers' copies of theirs. Nothing else under .cache or .workspace.
+        eval "$(python3 -B {{.ROOT_DIR}}/scripts/topology_plan.py "{{.TOPOLOGY}}" --existing-subnets "" --shell)"
+        rm -rf "{{.ROOT_DIR}}/.cache/topology/{{.TOPOLOGY}}" "{{.ROOT_DIR}}/.cache/testbed-resolv-{{.TOPOLOGY}}.conf"
+        for ref in "$TOPOLOGY_REF1" "$TOPOLOGY_REF2"; do
+          case "$ref" in restmail-?*-mail[12]) rm -rf "{{.ROOT_DIR}}/.workspace/reference-mailserver/configs/$ref" ;; esac
+        done
+
+  # The tasks below run chore again with the plan's variables exported: a variable on the
+  # command line does not reach the processes e2e:up starts. Each begins with the same four
+  # lines; a task cannot share a block of shell with another.
+
+  up:
+    desc: "Bring up TOPOLOGY: its substrate, the reference servers mail1 and mail2, restmail.test, and the API forwarder. Nothing shared is touched"
+    dotenv: []
+    cmds:
+      - |
+        set -eu
+        [ -n "{{.TOPOLOGY}}" ] || { echo "topology:up needs TOPOLOGY=<run name>, such as TOPOLOGY=p2062" >&2; exit 2; }
+        rm -rf {{.ROOT_DIR}}/.cache/contract {{.ROOT_DIR}}/.cache/contract-principals.json
+        "${CHORE_BIN:-chore}" topology:substrate:up TOPOLOGY={{.TOPOLOGY}}
+        eval "$(python3 -B {{.ROOT_DIR}}/scripts/topology_plan.py "{{.TOPOLOGY}}" --shell)"
+        export TOPOLOGY_SHIM_DIR={{.ROOT_DIR}}/.cache/topology/{{.TOPOLOGY}}/bin
+        export PATH="$TOPOLOGY_SHIM_DIR:$PATH"
+        "${CHORE_BIN:-chore}" e2e:up
+        # The host reaches the API through a loopback port Docker chooses: Docker Desktop has
+        # no route to the run's subnet. nginx's stream module forwards the bytes.
+        conf="events {}\nstream { server { listen 8080; proxy_pass $RESTMAIL_API_IP:8080; } server { listen 8443; proxy_pass $RESTMAIL_API_IP:8443; } }\n"
+        docker run -d --label "$RESTMAIL_LABEL" --name "$RESTMAIL_PROJECT-apiport" --network "$RESTMAIL_NETWORK" \
+          --ip "$TOPOLOGY_APIPORT_IP" -p 127.0.0.1::8080 -p 127.0.0.1::8443 --entrypoint sh nginxinc/nginx-unprivileged:1.30-alpine-slim \
+          -c "printf '$conf' > /tmp/forward.conf && exec nginx -e /dev/stderr -c /tmp/forward.conf -g 'daemon off; pid /tmp/forward.pid;'" >/dev/null
+        echo "  topology {{.TOPOLOGY}} is up; the API answers on $(docker port "$RESTMAIL_PROJECT-apiport" 8080/tcp | head -1)"
+
+  endpoint:
+    desc: "Print the URL the host reaches TOPOLOGY's API at: the forwarder's loopback port. After --, internal prints the mTLS listener's"
+    dotenv: []
+    cmds:
+      - |
+        set -eu
+        eval "$(python3 -B {{.ROOT_DIR}}/scripts/topology_plan.py "{{.TOPOLOGY}}" --shell)"
+        scheme=http; inside=8080
+        if [ "{{.CLI_ARGS}}" = internal ]; then scheme=https; inside=8443; fi
+        port=$(docker port "$RESTMAIL_PROJECT-apiport" $inside/tcp | sed -n 's/^127\.0\.0\.1:\([0-9]*\)$/\1/p' | head -1)
+        [ -n "$port" ] || { echo "topology {{.TOPOLOGY}} has no API forwarder: run chore topology:up TOPOLOGY={{.TOPOLOGY}}" >&2; exit 1; }
+        echo "$scheme://127.0.0.1:$port"
+
+  test:e2e:
+    desc: "Run the E2E suite on TOPOLOGY; flags for go test after --"
+    dotenv: []
+    cmds:
+      - |
+        set -eu
+        eval "$(python3 -B {{.ROOT_DIR}}/scripts/topology_plan.py "{{.TOPOLOGY}}" --shell)"
+        export TOPOLOGY_SHIM_DIR={{.ROOT_DIR}}/.cache/topology/{{.TOPOLOGY}}/bin
+        export PATH="$TOPOLOGY_SHIM_DIR:$PATH"
+        export CONTRACT_ENDPOINT=$("${CHORE_BIN:-chore}" topology:endpoint TOPOLOGY={{.TOPOLOGY}})
+        "${CHORE_BIN:-chore}" test:e2e {{if .CLI_ARGS}}-- {{.CLI_ARGS}}{{end}}
+
+  contract:
+    desc: "Run the contract's topology gates and reports (no example-pair shards) against TOPOLOGY; flags after --"
+    dotenv: []
+    cmds:
+      - |
+        set -eu
+        eval "$(python3 -B {{.ROOT_DIR}}/scripts/topology_plan.py "{{.TOPOLOGY}}" --shell)"
+        export TOPOLOGY_SHIM_DIR={{.ROOT_DIR}}/.cache/topology/{{.TOPOLOGY}}/bin
+        export PATH="$TOPOLOGY_SHIM_DIR:$PATH"
+        export CONTRACT_ENDPOINT=$("${CHORE_BIN:-chore}" topology:endpoint TOPOLOGY={{.TOPOLOGY}})
+        # The internal mTLS listener the gateway routes go to; its certificate names 127.0.0.1.
+        export CONTRACT_INTERNAL_ENDPOINT=$("${CHORE_BIN:-chore}" topology:endpoint TOPOLOGY={{.TOPOLOGY}} -- internal)
+        "${CHORE_BIN:-chore}" contract:topology {{if .CLI_ARGS}}-- {{.CLI_ARGS}}{{end}}
+
+  down:
+    desc: "Remove everything TOPOLOGY made, by its label: containers, networks, volumes and the files it wrote. Nothing unlabelled is touched"
+    dotenv: []
+    cmds:
+      - '"${CHORE_BIN:-chore}" topology:substrate:down TOPOLOGY={{.TOPOLOGY}}'
+
+  ci:
+    desc: "TOPOLOGY end to end: up, the E2E suite, the contract, then down, down also on a failure"
+    dotenv: []
+    cmds:
+      - |
+        set -u
+        [ -n "{{.TOPOLOGY}}" ] || { echo "topology:ci needs TOPOLOGY=<run name>, such as TOPOLOGY=p2062" >&2; exit 2; }
+        chore_bin="${CHORE_BIN:-chore}"
+        trap '"$chore_bin" topology:down TOPOLOGY={{.TOPOLOGY}}' EXIT
+        "$chore_bin" topology:up TOPOLOGY={{.TOPOLOGY}} || exit 1
+        "$chore_bin" topology:test:e2e TOPOLOGY={{.TOPOLOGY}} -- -timeout 45m || exit 1
+        "$chore_bin" topology:contract TOPOLOGY={{.TOPOLOGY}}
