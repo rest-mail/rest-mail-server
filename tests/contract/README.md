@@ -1820,12 +1820,41 @@ account settings (quiet hours, the contact setting, the quota) back to a new
 account's, as it does for their domains' (`resetMailboxSettings`, held to every
 column of `mailboxes` by `TestCleanResetEveryMailboxColumn`).
 
+The delivery queue, held and scheduled mail operations, `listQueue`,
+`getQueueStats`, `getQueueEntry`, `retryQueueEntry`, `bounceQueueEntry`,
+`deleteQueueEntry`, `bulkRetryQueue`, `bulkBounceQueue`, `bulkDeleteQueue`,
+`listHeldMessages`, `releaseHeldMessage`, `listScheduledMessages` and
+`cancelScheduledMessage`, reset and seed before each exchange too, refusals
+included (`queued_and_held_mail_of_its_own`, registered before the operations'
+other hooks). What each needs is made after the reset through the API, never in
+the database:
+
+- A queue entry is a send from the fixture admin to a reserved `.invalid` address
+  (`contract-own-queue-<time>@queue.invalid`), which the server queues for the
+  internet. The documented list asks for that recipient, so `listQueue`'s links
+  lead to the entry. A success of the read, retry, bounce or delete gets an entry
+  of its own, and retry's 400 (`already_bounced`) gets one bounced first, so it is
+  refused for that and not for an entry that is gone.
+- A bulk action's empty filter selects every entry, so it gets one to act on. The
+  documented filter selects nothing by design and needs nothing.
+- `listHeldMessages`' 200 (`none_held`) names an account that holds nothing, and
+  the reset removed `1`, so it gets an account of its own
+  (`contract-own-held-<time>@restmail.test`).
+- The scheduled messages' own hooks schedule theirs through the API after the
+  reset.
+
+`0`, an undecodable id, missing's `2147483647` and the other refusals keep their
+ids. The fixture queue hooks (`list_the_sent_messages_queue_entry`,
+`retry_a_held_entry_after_bulk_examples`, `bounce_the_held_bounce_entry`) stand
+aside after a reset, because the fixture entries they look for are gone. No stash
+value is involved.
+
 This happens only with `CONTRACT_RESET_SEED=1`, which `tests/contract/run.sh own-data`
 sets, and that phase is a gate of its own, sent by `chore test:contract-teardown`
 just before the teardown. It sends the moved operations with everything that follows
 `createDomain`'s, `createPipeline`'s, `createAlias`'s, `createCustomFilter`'s,
 `createFolder`'s, `createContact`'s, `sendMessage`'s, `saveDraft`'s,
-`createAccount`'s and `putSieveScript`'s links
+`createAccount`'s, `putSieveScript`'s and `listQueue`'s links
 (`own_data.py`), and fails on a skipped
 exchange as well as a failed one.
 

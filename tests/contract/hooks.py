@@ -367,6 +367,89 @@ def account_settings_of_its_own(transaction):
         )
 
 
+@hooks.before("listQueue")
+@hooks.before("getQueueStats")
+@hooks.before("getQueueEntry")
+@hooks.before("retryQueueEntry")
+@hooks.before("bounceQueueEntry")
+@hooks.before("deleteQueueEntry")
+@hooks.before("bulkRetryQueue")
+@hooks.before("bulkBounceQueue")
+@hooks.before("bulkDeleteQueue")
+@hooks.before("listHeldMessages")
+@hooks.before("releaseHeldMessage")
+@hooks.before("listScheduledMessages")
+@hooks.before("cancelScheduledMessage")
+def queued_and_held_mail_of_its_own(transaction):
+    # The delivery queue, held and scheduled mail operations, moved to a clean
+    # start: each exchange, refusals included, resets and seeds first, and
+    # what it needs is made after that through the API.
+    # - A queue entry's success (and the list, whose links lead to one) gets an
+    #   entry of its own, a send to a reserved .invalid address. retry's 400
+    #   (already_bounced) gets one bounced first, so it is refused for that and
+    #   not for an entry that is gone.
+    # - A bulk action's empty filter selects every entry, so it gets one to act
+    #   on. The documented filter selects nothing by design and needs nothing.
+    # - listHeldMessages' 200 (none_held) names an account that holds nothing,
+    #   and the reset removed 1: it gets an account of its own.
+    # - The scheduled messages' own hooks schedule theirs through the API.
+    # 0, an undecodable id and missing's 2147483647 keep theirs, and so do the
+    # other refusals. Registered before the other hooks of these operations,
+    # so they see the clean start. A run with no reset changes nothing here.
+    if not asked_for_a_clean_start():
+        return
+    start_clean(transaction)
+    path, separator, query = transaction["fullPath"].partition("?")
+    parts = path.split("/")
+    status = transaction.get("expected", {}).get("statusCode")
+    if path == "/api/v1/admin/queue" and status == "200":
+        # Listed by its recipient, as the run without a reset lists the
+        # fixture's: the list's links then lead to this entry, and a
+        # delivery attempt cannot change which entries it shows.
+        recipient = a_queue_entry_of_its_own(transaction)["recipient"]
+        transaction["fullPath"] = path + "?" + urllib.parse.urlencode({"recipient": recipient})
+    elif path.startswith("/api/v1/admin/queue/bulk-") and status == "200":
+        if hooks.get_json(transaction) == {"filter": {}}:
+            a_queue_entry_of_its_own(transaction)
+    elif path.startswith("/api/v1/admin/queue/") and len(parts) > 5 and positive_id(parts[5]):
+        if parts[5] == "2147483647" or status not in ("200", "204", "400"):
+            return
+        entry = a_queue_entry_of_its_own(transaction)["id"]
+        if status == "400":
+            fixture_call(transaction, "POST", f"/api/v1/admin/queue/{entry:d}/bounce")
+        parts[5] = str(entry)
+        transaction["fullPath"] = "/".join(parts) + separator + query
+    elif path.endswith("/held-messages") and status == "200":
+        if not positive_id(parts[4]) or parts[4] == "2147483647":
+            return
+        parts[4] = str(an_account_of_its_own(origin_of(transaction), "contract-own-held"))
+        transaction["fullPath"] = "/".join(parts) + separator + query
+
+
+def a_queue_entry_of_its_own(transaction):
+    """A queue entry made after the reset: the fixture admin sends to a
+    reserved .invalid address, which the server queues for the internet. Its
+    entry is looked up by that address, which is named by the time it is made."""
+    recipient = f"contract-own-queue-{time.time_ns():d}@queue.invalid"
+    fixture_call(
+        transaction,
+        "POST",
+        "/api/v1/messages/send",
+        {
+            "from": ADMIN,
+            "to": [recipient],
+            "subject": "contract queue entry",
+            "body_text": "Contract fixture.",
+        },
+    )
+    listed = fixture_call(
+        transaction,
+        "GET",
+        "/api/v1/admin/queue?" + urllib.parse.urlencode({"recipient": recipient}),
+    )
+    return listed["items"][0]
+
+
 @hooks.before("getDomain")
 def get_a_domain_of_its_own(transaction):
     if not asked_for_a_clean_start():
@@ -2443,7 +2526,9 @@ def list_the_sent_messages_queue_entry(transaction):
     # Vertrag 0.31.1 also sends the declared defaults (limit=50, offset=0), so
     # the pending example is recognised by its query, not by its exact text.
     path, _, query = transaction.get("fullPath", "").partition("?")
-    if not path.endswith("/api/v1/admin/queue"):
+    # After a reset the fixture entry is gone: queued_and_held_mail_of_its_own
+    # lists an entry of its own.
+    if not path.endswith("/api/v1/admin/queue") or asked_for_a_clean_start():
         return
     # The example's own page size (limit=20) counts as well: any positive limit
     # and non-negative offset, so the boundary probes (limit=0, offset=-1) stay.
@@ -4141,7 +4226,9 @@ def send_a_draft_of_its_own(transaction):
 
 @hooks.before("retryQueueEntry")
 def retry_a_held_entry_after_bulk_examples(transaction):
-    if os.environ.get("CONTRACT_COVERAGE") == "1":
+    # After a reset the fixture entry is gone: queued_and_held_mail_of_its_own
+    # gives the exchange an entry of its own.
+    if os.environ.get("CONTRACT_COVERAGE") == "1" or asked_for_a_clean_start():
         return
     name = transaction.get("name", "")
     path, _, query = transaction["fullPath"].partition("?")
@@ -4189,7 +4276,9 @@ def retry_a_held_entry_after_bulk_examples(transaction):
 
 @hooks.before("bounceQueueEntry")
 def bounce_the_held_bounce_entry(transaction):
-    if os.environ.get("CONTRACT_COVERAGE") == "1":
+    # After a reset the fixture entry is gone: queued_and_held_mail_of_its_own
+    # gives the exchange an entry of its own.
+    if os.environ.get("CONTRACT_COVERAGE") == "1" or asked_for_a_clean_start():
         return
     # The documented bounce and the retry would both take the one entry the
     # queue links lead to, and a bounced entry can be neither retried nor
