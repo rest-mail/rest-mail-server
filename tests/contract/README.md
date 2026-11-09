@@ -1849,12 +1849,34 @@ ids. The fixture queue hooks (`list_the_sent_messages_queue_entry`,
 aside after a reset, because the fixture entries they look for are gone. No stash
 value is involved.
 
+The credential operations, `listCredentials`, `createAppPassword`,
+`revokeCredential`, `listAPIKeys`, `createAPIKey`, `updateAPIKey`, `revokeAPIKey`,
+`listAdminAPIKeys`, `listClientSecrets`, `createClientSecret` and
+`revokeClientSecret`, reset and seed before each exchange, refusals included
+(`a_credential_to_manage`, registered before their other hooks). An exchange aimed
+at a positive account id other than missing's `2147483647` gets an account of its
+own on the seeded `restmail.test` (`contract-own-credential-<time>@restmail.test`),
+the 422s included, because the example's `1` and the id a link names are gone after
+the reset. A revoke aimed at a positive credential id other than the missing one
+also gets the app password, API key or client secret it revokes, made on that
+account with the two-factor session, refusals included, so the run never revokes a
+credential it signs in with. The edit already makes the key it changes. `0`, an
+undecodable id and the missing ids keep theirs.
+The reset keeps only the retained administrators' password, authenticator and
+recovery codes (`resetCredentialKindsKept`), so an app password, API key or client
+secret made before a reset is not listed, and does not work, after it. The ban
+operations, `listBans`, `createBan`, `deleteBan` and `unbanIP`, reset first too
+(`a_ban_to_manage`); the documented delete gets a ban of its own, and its 404
+keeps its id. The create's and the unban's own hooks still give them the state
+they document. No stash value carried these across a reset, so none was removed.
+
 This happens only with `CONTRACT_RESET_SEED=1`, which `tests/contract/run.sh own-data`
 sets, and that phase is a gate of its own, sent by `chore test:contract-teardown`
 just before the teardown. It sends the moved operations with everything that follows
 `createDomain`'s, `createPipeline`'s, `createAlias`'s, `createCustomFilter`'s,
 `createFolder`'s, `createContact`'s, `sendMessage`'s, `saveDraft`'s,
-`createAccount`'s, `putSieveScript`'s and `listQueue`'s links
+`createAccount`'s, `putSieveScript`'s, `listQueue`'s, `createAppPassword`'s,
+`createAPIKey`'s and `createBan`'s links
 (`own_data.py`), and fails on a skipped
 exchange as well as a failed one.
 
