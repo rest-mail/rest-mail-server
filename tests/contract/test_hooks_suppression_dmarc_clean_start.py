@@ -198,9 +198,22 @@ class DmarcReportCleanStart(unittest.TestCase):
 
         names["fixture_call"] = fixture_call
         self.delivered = []
+        self.context = Mock()
+        self.ssl = Mock()
+        self.ssl.create_default_context.return_value = self.context
+        names["ssl"] = self.ssl
+        names["INTERNAL_ORIGIN"] = "https://gateway.invalid:8443"
+        names["CONTRACT_MTLS"] = "/contract-mtls"
+
+        def deliver(request, timeout, context):
+            self.assertEqual(timeout, 30)
+            self.assertIs(context, self.context)
+            self.delivered.append(request)
+            return Delivered()
+
         self.urlopen = patch.object(
             self.globals["urllib"].request, "urlopen",
-            side_effect=lambda request, timeout: self.delivered.append(request) or Delivered())
+            side_effect=deliver)
         self.urlopen.start()
         self.addCleanup(self.urlopen.stop)
         env = patch.dict("os.environ")
@@ -244,7 +257,11 @@ class DmarcReportCleanStart(unittest.TestCase):
         self.assertEqual(names, ["spf_check", "dkim_verify", "dmarc_check"])
         # The report is delivered as the gateway delivers, with no credential.
         [delivery] = self.delivered
-        self.assertEqual(delivery.full_url, "http://api:8080/api/v1/messages/deliver")
+        self.assertEqual(delivery.full_url, "https://gateway.invalid:8443/api/v1/messages/deliver")
+        self.ssl.create_default_context.assert_called_once_with(cafile="/contract-mtls/internal-ca.crt")
+        self.context.load_cert_chain.assert_called_once_with(
+            "/contract-mtls/internal-smtp-delivery.crt", "/contract-mtls/internal-smtp-delivery.key"
+        )
         self.assertIsNone(delivery.get_header("Authorization"))
         body = json.loads(delivery.data)
         postmaster = "postmaster@" + self.domain
@@ -348,7 +365,7 @@ class DmarcReportListCleanStart(DmarcReportCleanStart):
         self.hook(sent)
         self.start_clean.assert_called_once_with(sent)
         [delivery] = self.delivered
-        self.assertEqual(delivery.full_url, "http://api:8080/api/v1/messages/deliver")
+        self.assertEqual(delivery.full_url, "https://gateway.invalid:8443/api/v1/messages/deliver")
         self.assertEqual(
             sent["fullPath"], LIST_PATH + "?reporter=" + self.globals["OWN_DMARC_REPORTER"] + "&limit=20")
         self.assertIsNone(self.listed(sent, [{"id": 2, "reporter": "x.test"}, self.own_row()]))
