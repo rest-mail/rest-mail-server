@@ -37724,8 +37724,8 @@
             "dkim_selector": "",
             "sending_policy": "",
             "dmarc_policy": "none",
-            "created_at": "2026-01-02T04:04:05+01:00",
-            "updated_at": "2026-01-02T04:04:05+01:00"
+            "created_at": "2026-01-02T03:04:05Z",
+            "updated_at": "2026-01-02T03:04:05Z"
           }
         },
         "mediaType": "application/json"
