@@ -42,19 +42,9 @@ func archiveDomain(tx *gorm.DB, domain models.Domain, accounts []models.Mailbox,
 		} else {
 			query = query.Where(column+" = ?", value)
 		}
-		rows, err := query.Rows()
+		encoded, err := archivedSnapshot(query)
 		if err != nil {
 			return fmt.Errorf("archive %s: %w", table, err)
-		}
-		var encoded []byte
-		if !rows.Next() {
-			rows.Close()
-			return fmt.Errorf("archive %s: missing snapshot", table)
-		}
-		err = rows.Scan(&encoded)
-		rows.Close()
-		if err != nil {
-			return err
 		}
 		state[table] = encoded
 	}
@@ -75,6 +65,29 @@ func archiveDomain(tx *gorm.DB, domain models.Domain, accounts []models.Mailbox,
 		return err
 	}
 	return tx.Create(&models.DomainRetirement{DomainID: domain.ID, Name: domain.Name, State: models.JSONB(encoded)}).Error
+}
+
+// archivedSnapshot reads the one row a table's snapshot query answers. Closing
+// the rows can fail too, and that error is joined into the one returned, so a
+// snapshot whose read did not finish cleanly is never archived.
+func archivedSnapshot(query *gorm.DB) (encoded []byte, err error) {
+	rows, err := query.Rows()
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		err = errors.Join(err, rows.Close())
+	}()
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
+		return nil, errors.New("missing snapshot")
+	}
+	if err := rows.Scan(&encoded); err != nil {
+		return nil, err
+	}
+	return encoded, nil
 }
 
 func (h *DomainHandler) restore(request *http.Request, in domainPath) (Domain, error) {
