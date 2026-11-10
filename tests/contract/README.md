@@ -3026,6 +3026,22 @@ hook rewrote. Documented refusals, other ids and other principals are sent
 unchanged. `test_own_account_hooks.py` covers it through the configured
 entrypoint.
 
+## Coverage message reads
+
+The coverage process cannot reuse the examples process's message links. A
+successful `getMessage` example or positive-ID coverage probe therefore imports
+its own message into the fixture administrator's mailbox before reading it.
+It changes only the resource ID and preserves the query, request body and
+credential. Invalid IDs, the deliberately missing ID and documented 404s are
+not redirected. It does not reset shared state or reuse a message that an
+earlier exchange may have deleted. The ordinary examples retain their links;
+the own-data process retains its existing reset and import.
+
+`test_message_coverage_fixture.py` exercises the registered hooks with the
+previously absent illustrative ID 101, the valid minimum ID, invalid IDs,
+documented refusals and import failures. The coverage gate still requires zero
+skipped valid probes; fixture creation failure is an error, not a skipped probe.
+
 ## Received DMARC reports
 
 The fixture command seeds one typed received report for `restmail.test` with

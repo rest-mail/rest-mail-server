@@ -3563,6 +3563,25 @@ def on_a_message_of_its_own(transaction):
     transaction["fullPath"] = "/".join(parts) + ("?" + query if query else "")
 
 
+@hooks.before("getMessage")
+def a_message_for_the_coverage_read(transaction):
+    if not in_the_coverage_process() or asked_for_a_clean_start():
+        return
+    if " > 200" not in transaction.get("name", ""):
+        return
+    path, separator, query = transaction["fullPath"].partition("?")
+    parts = path.split("/")
+    if (
+        len(parts) != 5
+        or parts[1:4] != ["api", "v1", "messages"]
+        or not positive_id(parts[4])
+        or parts[4] == "2147483647"
+    ):
+        return
+    parts[4] = str(an_imported_message(transaction, "Contract coverage", "Contract coverage message"))
+    transaction["fullPath"] = "/".join(parts) + separator + query
+
+
 # The bytes of the attachment getAttachment's examples read after a reset:
 # more than the 10 the single range asks for, fewer than the 1000 the
 # unsatisfiable range starts at, and text, so the answer reads back as sent.
