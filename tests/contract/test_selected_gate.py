@@ -9,6 +9,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import yaml
 
@@ -135,6 +136,7 @@ class SelectedGate(unittest.TestCase):
                     (str(tools), str(Path(sys.executable).parent), os.environ["PATH"])
                 ),
                 CONTRACT_ENDPOINT="http://fixture.invalid:8080",
+                CONTRACT_REPORTS="true",
                 CONTRACT_DEFER_SUMMARY="0",
                 EXAMPLES_CODE=str(examples),
                 COVERAGE_CODE=str(coverage),
@@ -172,9 +174,10 @@ class SelectedGate(unittest.TestCase):
         for selection in SELECTIONS:
             for complete in (False, True):
                 with self.subTest(selection=selection, complete=complete):
-                    result, calls, report = self.run_gate(
-                        selection, coverage=2, complete=complete
-                    )
+                    with patch.dict(os.environ, {"CONTRACT_REPORTS": "false"}):
+                        result, calls, report = self.run_gate(
+                            selection, coverage=2, complete=complete
+                        )
                     self.assertEqual(
                         result.returncode, 2, result.stdout + result.stderr
                     )

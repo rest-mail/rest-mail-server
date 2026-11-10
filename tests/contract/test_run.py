@@ -10,6 +10,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import reports
 import summary
@@ -366,6 +367,7 @@ class ContractCommand(unittest.TestCase):
                 + os.environ["PATH"],
                 CALLS=str(calls),
                 CONTRACT_ENDPOINT="http://fixture.test:8080",
+                CONTRACT_REPORTS="true",
                 REAL_PYTHON=sys.executable,
             )
             env.update(settings)
@@ -412,7 +414,8 @@ class ContractCommand(unittest.TestCase):
                 self.assertNotIn("previous", artifacts["summary.md"])
 
     def test_failed_gate_still_scans_and_reports_without_losing_the_failure(self):
-        result, calls = self.run_command(GATE_EXIT="3", AUTH_EXIT="1")
+        with patch.dict(os.environ, {"CONTRACT_REPORTS": "false"}):
+            result, calls = self.run_command(GATE_EXIT="3", AUTH_EXIT="1")
         self.assertEqual(result.returncode, 3, result.stderr)
         self.assertEqual(
             calls,
