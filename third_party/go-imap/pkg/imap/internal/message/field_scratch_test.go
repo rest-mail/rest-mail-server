@@ -208,3 +208,27 @@ func TestNameSetComparesViewsAsItComparesCopies(t *testing.T) {
 		}
 	}
 }
+
+// What a reading allocates doesn't depend on what the pool answered with. An empty scratch that's too
+// small gets what's asked for, as a new one would, and a reading of the same field a few bytes longer
+// needs no other. Only what it's holding is worth doubling for.
+func TestFieldScratchRoomDoublesOnlyWhatItHolds(t *testing.T) {
+	const asked = 786431
+	fresh := new(FieldScratch)
+	fresh.room(asked)
+	reused := &FieldScratch{b: make([]byte, 0, 685345)}
+	reused.room(asked)
+	if cap(reused.b) != cap(fresh.b) || cap(fresh.b) != asked+readingSlack {
+		t.Fatalf("asked for %d: a reused scratch has %d and a new one %d", asked, cap(reused.b), cap(fresh.b))
+	}
+	before := cap(reused.b)
+	reused.room(asked + readingSlack)
+	if cap(reused.b) != before {
+		t.Fatalf("a reading %d bytes longer took another buffer, %d for %d", readingSlack, cap(reused.b), before)
+	}
+	holding := &FieldScratch{b: append(make([]byte, 0, 100), make([]byte, 100)...)}
+	holding.room(1)
+	if len(holding.b) != 100 || cap(holding.b) != 200 {
+		t.Fatalf("holding 100 of 100 and asked for 1 more: %d of %d", len(holding.b), cap(holding.b))
+	}
+}

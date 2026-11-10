@@ -77,10 +77,10 @@ type parser struct {
 	dec           mime.WordDecoder
 	charsetFailed bool
 	unread        Unread
-	// encoded, content, source and read are what a word is read with, used again for the next one.
-	encoded, content []byte
-	source           bytes.Reader
-	read             bytes.Buffer
+	// text, source and read are what a word is read with, used again for the next one.
+	text   WordText
+	source bytes.Reader
+	read   bytes.Buffer
 }
 
 func (p *parser) setDecoder(dec *mime.WordDecoder) {
@@ -675,7 +675,7 @@ func (p *parser) readWord(s string) error {
 	if charset == "" || len(encoding) != 1 {
 		return ErrNotAddressList
 	}
-	content, err := p.wordContent(encoding[0], text)
+	content, err := p.text.Read(encoding[0], text)
 	if err != nil {
 		return err
 	}
@@ -708,20 +708,27 @@ func (p *parser) readWord(s string) error {
 	return nil
 }
 
-// wordContent is what an encoded-word's text spells, in p.content until the next word.
-func (p *parser) wordContent(encoding byte, text string) ([]byte, error) {
+// WordText reads what encoded-words' text spells, as mime.WordDecoder does, with buffers it uses again
+// for the next word. A field can be nothing but words.
+type WordText struct {
+	encoded, content []byte
+}
+
+// Read is what an encoded-word's text spells, good until the next Read. The error says only that it
+// isn't a word.
+func (w *WordText) Read(encoding byte, text string) ([]byte, error) {
 	switch encoding {
 	case 'B', 'b':
-		p.encoded = append(p.encoded[:0], text...)
-		p.content = slices.Grow(p.content[:0], base64.StdEncoding.DecodedLen(len(text)))
-		n, err := base64.StdEncoding.Decode(p.content[:cap(p.content)], p.encoded)
-		return p.content[:n], err
+		w.encoded = append(w.encoded[:0], text...)
+		w.content = slices.Grow(w.content[:0], base64.StdEncoding.DecodedLen(len(text)))
+		n, err := base64.StdEncoding.Decode(w.content[:cap(w.content)], w.encoded)
+		return w.content[:n], err
 	case 'Q', 'q':
-		p.content = p.content[:0]
+		w.content = w.content[:0]
 		for i := 0; i < len(text); i++ {
 			switch c := text[i]; {
 			case c == '_':
-				p.content = append(p.content, ' ')
+				w.content = append(w.content, ' ')
 			case c == '=':
 				if i+2 >= len(text) {
 					return nil, ErrNotAddressList
@@ -731,18 +738,21 @@ func (p *parser) wordContent(encoding byte, text string) ([]byte, error) {
 				if !highOK || !lowOK {
 					return nil, ErrNotAddressList
 				}
-				p.content = append(p.content, high<<4|low)
+				w.content = append(w.content, high<<4|low)
 				i += 2
 			case (c <= '~' && c >= ' ') || c == '\n' || c == '\r' || c == '\t':
-				p.content = append(p.content, c)
+				w.content = append(w.content, c)
 			default:
 				return nil, ErrNotAddressList
 			}
 		}
-		return p.content, nil
+		return w.content, nil
 	}
 	return nil, ErrNotAddressList
 }
+
+// Held is how much a WordText holds on to.
+func (w *WordText) Held() int { return cap(w.encoded) + cap(w.content) }
 
 func fromHex(c byte) (byte, bool) {
 	switch {

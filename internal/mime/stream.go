@@ -78,7 +78,7 @@ func ParseStream(ctx context.Context, source io.Reader, options StreamOptions) (
 		if err != nil {
 			return nil, fmt.Errorf("parse message: %w", err)
 		}
-		opened, _ = kept.open(br)
+		opened, _ = kept.open(br, &reader.charsets)
 		fields, headerSize = reader, size
 	} else {
 		top, br, reader, size, err := readTopFields(source, int(options.SourceSize))
@@ -86,7 +86,7 @@ func ParseStream(ctx context.Context, source io.Reader, options StreamOptions) (
 			return nil, fmt.Errorf("parse message: %w", err)
 		}
 		email.Headers = parseHeaders(top)
-		opened, _ = fieldsOpening(top).open(br)
+		opened, _ = fieldsOpening(top).open(br, &reader.charsets)
 		fields, headerSize = reader, size
 	}
 	s := &streamParse{ctx: ctx, options: options, budget: newPartBudget(), email: email, fields: fields}

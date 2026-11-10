@@ -412,6 +412,7 @@ func parseKept(kept string, families []string) (string, map[string]string, error
 	var plainSeen uint8 // a bit for each of families
 	var held *keptPieces
 	var pieces []keptPiece
+	var longs []longValue
 	_, rest, more, closed := cutFieldSegment(kept)
 	for closed && more {
 		at := len(kept) - len(rest)
@@ -437,7 +438,12 @@ func parseKept(kept string, families []string) (string, map[string]string, error
 			if bit := uint8(1) << slices.Index(families, family); plainSeen&bit == 0 {
 				plainSeen |= bit
 				plain.WriteByte(';')
-				plain.WriteString(segment)
+				if value, long := longQuotedValue(segment[:len(segment)-len(after)]); long {
+					plain.WriteString(key + "=x")
+					longs = append(longs, longValue{strings.ToLower(key), value})
+				} else {
+					plain.WriteString(segment)
+				}
 			}
 		default:
 			if pieces == nil {
@@ -455,6 +461,9 @@ func parseKept(kept string, families []string) (string, map[string]string, error
 	mt, params, err := parseUncommented(plain.String())
 	if err != nil {
 		return mt, params, err
+	}
+	for _, long := range longs {
+		params[long.name] = long.value
 	}
 	family := func(piece keptPiece) string { return pieceFamily(families, piece.key(kept)) }
 	suffix := func(piece keptPiece) string {
@@ -482,6 +491,25 @@ func parseKept(kept string, families []string) (string, map[string]string, error
 		from = to
 	}
 	return mt, params, nil
+}
+
+// longQuoted is how long a quoted value is before parseKept reads it itself. mime.ParseMediaType builds
+// one an octet at a time, which comes to about five times its length, and the field to hand it is one
+// more (#1915).
+const longQuoted = 1 << 10
+
+// longValue is a parameter parseKept read itself.
+type longValue struct{ name, value string }
+
+// longQuotedValue is what mime.ParseMediaType reads a parameter's quoted value as, when it's long and
+// nothing in it is escaped, which is all of it between the quotes. parameter is one scanMediaParameter
+// read, up to the end of its value, so nothing but its name can come before a quote.
+func longQuotedValue(parameter string) (string, bool) {
+	if len(parameter) <= longQuoted || parameter[len(parameter)-1] != '"' {
+		return "", false
+	}
+	value := parameter[strings.IndexByte(parameter, '"')+1 : len(parameter)-1]
+	return value, strings.IndexByte(value, '\\') < 0
 }
 
 // onlyRepeatsFollow says what follows a blank segment is all parameters that read, each named before
