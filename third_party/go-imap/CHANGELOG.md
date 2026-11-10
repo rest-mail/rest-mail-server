@@ -20,6 +20,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- `wireform.SpaceWordNUL` no longer builds a new word, or decodes base64 into a new
+  buffer, for each word that spells no NUL. What it answers doesn't change.
+- `wireform.ReadContentType` and `wireform.ReadDisposition` read a kept parameter's long
+  quoted value themselves when nothing in it is escaped, where `mime.ParseMediaType`
+  builds one an octet at a time, at about five times its length. What it reads as doesn't
+  change, and it may now be a view of the field, as their other answers may.
+- A list of encoded words in a charset nothing here reads no longer costs a 32 KiB
+  copy buffer for each word when ENVELOPE is built, which came to more than 500 MiB
+  for 1 MiB of them. What's sent doesn't change: the word stays as it was written.
 - A client address the Limiter has banned can no longer sign in: it is refused
   in the greeting with `* BYE`, and LOGIN or AUTHENTICATE in a session opened
   before the ban get `* BYE` and `NO [UNAVAILABLE]` without calling the
@@ -103,6 +112,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   stored message doesn't change. `wireform.SpaceNUL` does the same for a host whose
   protocol has no BINARY, leaving data as it is. A boundary holding a NUL takes the
   same 7-bit spelling as an 8-bit one, in the field and on its delimiter lines.
+- An encoded word in an ENVELOPE or BODYSTRUCTURE string no longer hands a client that
+  decodes it a NUL: a Subject, description, display name or parameter goes out with a
+  space for each NUL a word spells, in Q or base64, in the word's own charset, and in
+  a charset with NUL octets only for U+0000. `wireform.SpaceWordNUL` gives a host the
+  same reading. A boundary, an addr-spec and the identifiers stay octet for octet, as
+  do sections, BINARY and what is stored.
 - A SELECT or EXAMINE refused with BAD keeps the mailbox already selected, with
   its read-only mode and deletion marks: a rejected command never changes state
   (RFC 3501 §6). Only a well-formed selection attempt that fails with NO

@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"testing/iotest"
 )
 
 // nestedMessage is a message whose multiparts nest depth deep, with one text part at the bottom.
@@ -144,12 +145,15 @@ func TestCheckStructureAgreesWithParse(t *testing.T) {
 		"nested with parts past the limit": outer + strings.Repeat("--x\r\nContent-Type: multipart/mixed; boundary=y\r\n\r\n--y\r\n\r\nbody\r\n--y--\r\n", 16) + "--x--\r\n",
 		"nested with parts at the limit":   outer + strings.Repeat("--x\r\nContent-Type: multipart/mixed; boundary=y\r\n\r\n--y\r\n\r\nbody\r\n--y--\r\n", 15) + "--x--\r\n",
 		// However a part's type is spelled, what makes it a multipart is what Parse goes by.
-		"capitals, parts past the limit":      outer + "--x\r\nContent-Type: MULTIPART/Mixed; boundary=y\r\n\r\n" + strings.Repeat("--y\r\n\r\nb\r\n", 31) + "--y--\r\n--x--\r\n",
-		"folded, parts past the limit":        outer + "--x\r\nContent-Type:\r\n  multipart/mixed;\r\n boundary=y\r\n\r\n" + strings.Repeat("--y\r\n\r\nb\r\n", 31) + "--y--\r\n--x--\r\n",
-		"lowers to multipart, past the limit": outer + "--x\r\nContent-Type: mult\u0130part/mixed; boundary=y\r\n\r\n" + strings.Repeat("--y\r\n\r\nb\r\n", 31) + "--y--\r\n--x--\r\n",
-		"a type that fails to parse":          outer + "--x\r\nContent-Type: multipart/mixed; boundary=y; boundary=z\r\n\r\n" + strings.Repeat("--y\r\n\r\nb\r\n", 31) + "--y--\r\n--x--\r\n",
-		"not a multipart, looks like one":     outer + "--x\r\nContent-Type: multipart; boundary=y\r\n\r\n" + strings.Repeat("--y\r\n\r\nb\r\n", 31) + "--y--\r\n--x--\r\n",
-		"a second type on a part":             outer + "--x\r\nContent-Type: text/plain\r\nContent-Type: multipart/mixed; boundary=y\r\n\r\n" + strings.Repeat("--y\r\n\r\nb\r\n", 31) + "--y--\r\n--x--\r\n",
+		"capitals, parts past the limit":                 outer + "--x\r\nContent-Type: MULTIPART/Mixed; boundary=y\r\n\r\n" + strings.Repeat("--y\r\n\r\nb\r\n", 31) + "--y--\r\n--x--\r\n",
+		"folded, parts past the limit":                   outer + "--x\r\nContent-Type:\r\n  multipart/mixed;\r\n boundary=y\r\n\r\n" + strings.Repeat("--y\r\n\r\nb\r\n", 31) + "--y--\r\n--x--\r\n",
+		"lowers to multipart, past the limit":            outer + "--x\r\nContent-Type: mult\u0130part/mixed; boundary=y\r\n\r\n" + strings.Repeat("--y\r\n\r\nb\r\n", 31) + "--y--\r\n--x--\r\n",
+		"a comment before the type, past the limit":      outer + "--x\r\nContent-Type: (c) multipart/mixed; boundary=y\r\n\r\n" + strings.Repeat("--y\r\n\r\nb\r\n", 31) + "--y--\r\n--x--\r\n",
+		"a comment in the type, past the limit":          outer + "--x\r\nContent-Type: multipart (;) / mixed; boundary=y\r\n\r\n" + strings.Repeat("--y\r\n\r\nb\r\n", 31) + "--y--\r\n--x--\r\n",
+		"spaces around the type's slash, past the limit": outer + "--x\r\nContent-Type: multipart / mixed; boundary=y\r\n\r\n" + strings.Repeat("--y\r\n\r\nb\r\n", 31) + "--y--\r\n--x--\r\n",
+		"a type that fails to parse":                     outer + "--x\r\nContent-Type: multipart/mixed; boundary=y; boundary=z\r\n\r\n" + strings.Repeat("--y\r\n\r\nb\r\n", 31) + "--y--\r\n--x--\r\n",
+		"not a multipart, looks like one":                outer + "--x\r\nContent-Type: multipart; boundary=y\r\n\r\n" + strings.Repeat("--y\r\n\r\nb\r\n", 31) + "--y--\r\n--x--\r\n",
+		"a second type on a part":                        outer + "--x\r\nContent-Type: text/plain\r\nContent-Type: multipart/mixed; boundary=y\r\n\r\n" + strings.Repeat("--y\r\n\r\nb\r\n", 31) + "--y--\r\n--x--\r\n",
 		// A header section has no limit of its own, so a long field hides nothing from this.
 		"a field past 1 MiB, parts past the limit": "X-Long: " + strings.Repeat("y", 1<<20+1) + "\r\n" + manyParts(31),
 		"parts with no fields, past the limit":     outer + strings.Repeat("--x\r\n\r\nb\r\n", 31) + "--x--\r\n",
@@ -281,3 +285,65 @@ func TestReceivedCount(t *testing.T) {
 		t.Fatal("three Received fields at a limit of two were taken")
 	}
 }
+
+// CheckSource refuses what Parse refuses for its parts, from the whole message, and a message with too
+// few lines to be over the limit costs it no parse.
+func TestCheckSourceAgreesWithParse(t *testing.T) {
+	saved := CurrentLimits()
+	t.Cleanup(func() { SetLimits(saved) })
+	SetLimits(Limits{MaxParts: 30})
+	const head = "From: a@example.test\r\nContent-Type: multipart/mixed; boundary=B\r\n\r\n"
+	part := "--B\r\nContent-Type: text/plain; charset=windows-1252\r\n\r\nx\r\n"
+	nested := "--B\r\nContent-Type: multipart/mixed; boundary=C\r\n\r\n" + strings.Repeat("--C\r\n\r\nx\r\n", 20) + "--C--\r\n"
+	for name, message := range map[string]string{
+		"one under":     head + strings.Repeat(part, 29) + "--B--\r\n",
+		"at the limit":  head + strings.Repeat(part, 30) + "--B--\r\n",
+		"one past":      head + strings.Repeat(part, 31) + "--B--\r\n",
+		"far past":      head + strings.Repeat(part, 5000) + "--B--\r\n",
+		"bare LF":       strings.ReplaceAll(head+strings.Repeat(part, 31)+"--B--\r\n", "\r\n", "\n"),
+		"nested past":   head + nested + nested + "--B--\r\n",
+		"not delimiter": head + part + strings.Repeat("--C\r\n", 5000) + "--B--\r\n",
+		"not multipart": "From: a@example.test\r\n\r\n" + strings.Repeat("--B\r\n", 5000),
+		"no end":        head + strings.Repeat(part, 31),
+		"bad header":    " bad\r\n" + strings.Repeat("--B\r\n", 5000),
+		"over a buffer": head + strings.Repeat("--B\r\n\r\n"+strings.Repeat("y", 500)+"\r\n", 31) + "--B--\r\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, parseErr := Parse([]byte(message))
+			checkErr := CheckSource(strings.NewReader(message), int64(len(message)))
+			if errors.Is(parseErr, ErrStructureLimit) != errors.Is(checkErr, ErrStructureLimit) {
+				t.Fatalf("Parse %v, CheckSource %v", parseErr, checkErr)
+			}
+			if checkErr != nil && !errors.Is(checkErr, ErrStructureLimit) {
+				t.Fatalf("CheckSource answered something other than the limit: %v", checkErr)
+			}
+		})
+	}
+	// Only the count: a line break between two reads is still a line.
+	for _, size := range []int{1, 2, 3, 4, delimiterScan - 2, delimiterScan - 1, delimiterScan, delimiterScan + 1, 3*delimiterScan + 1} {
+		message := strings.Repeat("y", size) + "\n--a" + strings.Repeat("y", delimiterScan-3) + "\n--b\n--"
+		lines, err := countDelimiterLines(strings.NewReader(message), 10)
+		if err != nil || lines != 3 {
+			t.Fatalf("%d octets before: %d lines, %v", size, lines, err)
+		}
+		lines, err = countDelimiterLines(iotest.OneByteReader(strings.NewReader(message[:min(len(message), 64)]+"\n--\n--")), 10)
+		if err != nil || lines < 2 {
+			t.Fatalf("%d octets before, a byte at a time: %d lines, %v", size, lines, err)
+		}
+	}
+	if lines, err := countDelimiterLines(strings.NewReader(strings.Repeat("\n--", 3*delimiterScan)), 10); err != nil || lines > 3*delimiterScan/3+1 || lines < 11 {
+		t.Fatalf("stopped at %d lines, %v", lines, err)
+	}
+	failure := errors.New("failed")
+	if _, err := countDelimiterLines(iotest.ErrReader(failure), 10); !errors.Is(err, failure) {
+		t.Fatalf("a failed read: %v", err)
+	}
+	if err := CheckSource(failingSeeker{}, 10); err != nil {
+		t.Fatalf("a failed read is for the read that follows to say: %v", err)
+	}
+}
+
+type failingSeeker struct{}
+
+func (failingSeeker) Read([]byte) (int, error)       { return 0, errors.New("failed") }
+func (failingSeeker) Seek(int64, int) (int64, error) { return 0, errors.New("failed") }

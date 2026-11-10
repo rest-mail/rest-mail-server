@@ -29,9 +29,13 @@ var addressParser = mail.AddressParser{WordDecoder: &mime.WordDecoder{
 // stays, and the word still names its charset, with no byte guessed.
 type keptWordReader struct{}
 
-func (keptWordReader) Read([]byte) (int, error) {
-	return 0, errors.New("charset has no reader")
-}
+var errKeptWord = errors.New("charset has no reader")
+
+func (keptWordReader) Read([]byte) (int, error) { return 0, errKeptWord }
+
+// WriteTo fails as Read does. io.Copy uses it in place of the 32 KiB buffer it would otherwise take to
+// read each word of a list that can be nothing but words.
+func (keptWordReader) WriteTo(io.Writer) (int64, error) { return 0, errKeptWord }
 
 // isKeptWord reports whether word is one addressParser kept: an encoded word in a
 // charset neither it nor net/mail decodes.
@@ -53,6 +57,7 @@ func isKeptWord(word string) bool {
 // its charset, so only the text around it is encoded: encoding it again would have
 // a client show its raw spelling.
 func addressNameText(name string, sessionUTF8 bool) string {
+	name = SpaceWordNUL(name)
 	text := metadataText(name, sessionUTF8)
 	if text == name {
 		return name
@@ -95,12 +100,12 @@ func BuildEnvelope(msg imap.Message, raw string, rawOK, sessionUTF8 bool) string
 	}
 
 	dateField := wire.QuoteString(msg.Date.Format("Mon, 02 Jan 2006 15:04:05 -0700"))
-	subject := wire.QuoteString(metadataText(msg.Subject, sessionUTF8))
+	subject := wire.QuoteString(metadataText(SpaceWordNUL(msg.Subject), sessionUTF8))
 	fromFallback := buildAddress(msg.From.Name, msg.From.Email, sessionUTF8)
 	toFallback := buildAddressList(msg.To, sessionUTF8)
 	if hdr != nil {
 		dateField = envelopeHeaderString(hdr, "Date")
-		subject = envelopeHeaderString(hdr, "Subject")
+		subject = envelopeSubject(hdr)
 		fromFallback, toFallback = "NIL", "NIL"
 	}
 	from := headerAddressList(hdr, "From", fromFallback, sessionUTF8)
@@ -124,6 +129,16 @@ func envelopeHeaderString(hdr mail.Header, name string) string {
 		return "NIL"
 	}
 	return wire.EncodeMailboxName(headerValue(hdr, name))
+}
+
+// envelopeSubject is the Subject as envelopeHeaderString has it, which a client decodes,
+// so its encoded words follow SpaceWordNUL. Date, In-Reply-To and Message-Id are not
+// text to decode, and stay as they are.
+func envelopeSubject(hdr mail.Header) string {
+	if _, present := hdr["Subject"]; !present {
+		return "NIL"
+	}
+	return wire.EncodeMailboxName(SpaceWordNUL(headerValue(hdr, "Subject")))
 }
 
 // headerAddressList renders the named address-list header as an IMAP envelope
@@ -539,7 +554,7 @@ func buildEncapsulatedEnvelope(raw string, sessionUTF8 bool) string {
 	// preserve the Date text, distinguish empty from absent scalar headers, and
 	// frame literal-only octets rather than writing them in quoted strings.
 	dateField := envelopeHeaderString(hdr, "Date")
-	subject := envelopeHeaderString(hdr, "Subject")
+	subject := envelopeSubject(hdr)
 	from := headerAddressList(hdr, "From", "NIL", sessionUTF8)
 	sender := headerAddressList(hdr, "Sender", from, sessionUTF8)
 	replyTo := headerAddressList(hdr, "Reply-To", from, sessionUTF8)

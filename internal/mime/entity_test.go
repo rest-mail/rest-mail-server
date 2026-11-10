@@ -10,6 +10,8 @@ import (
 	"io"
 	"math"
 	"math/rand"
+	stdmime "mime"
+	stdmail "net/mail"
 	"reflect"
 	"runtime"
 	"strings"
@@ -123,8 +125,41 @@ func settledHeaders(headers pipeline.Headers) pipeline.Headers {
 	return headers
 }
 
+// noCharsetReader fails when read, which net/mail takes as a word it can't decode rather than a list it
+// can't read: go-imap's reader for ENVELOPE, and how a list reads here.
+type noCharsetReader struct{}
+
+func (noCharsetReader) Read([]byte) (int, error) { return 0, errors.New("no reader") }
+
+var netMailKeepingWords = &stdmime.WordDecoder{CharsetReader: func(charset string, input io.Reader) (io.Reader, error) {
+	reader, err := gomessage.CharsetReader(charset, input)
+	if err != nil {
+		return noCharsetReader{}, nil
+	}
+	return reader, nil
+}}
+
+// parseAddressListKeepingWords is net/mail on a list, leaving each word in a charset nothing reads.
+func parseAddressListKeepingWords(list string) ([]*stdmail.Address, error) {
+	parser := stdmail.AddressParser{WordDecoder: netMailKeepingWords}
+	return parser.ParseList(list)
+}
+
+// nameAsClientReads is a name net/mail gave as a client decodes it: any word it left is read too.
+func nameAsClientReads(name string) string {
+	spaced := wireform.SpaceWordNUL(name)
+	if decoded, err := netMailKeepingWords.DecodeHeader(spaced); err == nil {
+		spaced = decoded
+	}
+	return sanitizeHeaderValue(strings.ReplaceAll(spaced, "\x00", " "))
+}
+
 func legacyAddressList(h *gomail.Header, key string) pipeline.AddressList {
-	list, err := h.AddressList(key)
+	value := h.Get(key)
+	if value == "" {
+		return pipeline.Addresses()
+	}
+	list, err := parseAddressListKeepingWords(value)
 	if err != nil {
 		return pipeline.AddressList{}
 	}
@@ -133,7 +168,7 @@ func legacyAddressList(h *gomail.Header, key string) pipeline.AddressList {
 		// addr.Name is RFC 2047-decoded; strip any embedded CR/LF so a crafted
 		// display name cannot inject a header when the address is re-serialized.
 		addrs = append(addrs, pipeline.Address{
-			Name:    sanitizeHeaderValue(addr.Name),
+			Name:    nameAsClientReads(addr.Name),
 			Address: sanitizeHeaderValue(addr.Address),
 		})
 	}
@@ -493,10 +528,16 @@ func entityStore(_ context.Context, part io.Reader) (StoredPart, error) {
 // Parse and ParseStream answer what they answered through go-message, on every seed and on what
 // mutating them makes. A malformed header fails the same way and a part left out is left out.
 func TestEntityReadsAsGoMessageDoes(t *testing.T) {
+	compared := 0
 	check := func(raw []byte) {
 		t.Helper()
 		// go-message refuses a repeated name, which a mail client reads: this compares what's left.
+		// TestFieldsReadAsBodyStructureTellsAClient is what decides a field the two read differently.
 		raw = firstOfRepeats(raw)
+		if !fieldsReadAsGoMessageDoes(raw) {
+			return
+		}
+		compared++
 		want, wantErr := legacyParse(raw)
 		got, gotErr := Parse(raw)
 		if (wantErr == nil) != (gotErr == nil) {
@@ -560,6 +601,56 @@ func TestEntityReadsAsGoMessageDoes(t *testing.T) {
 	for range entityMutations() {
 		check(mutateEntity(random, seeds[random.Intn(len(seeds))]))
 	}
+	if compared < entityMutations()/2 {
+		t.Fatalf("only %d of %d messages compared, so this proves little", compared, entityMutations())
+	}
+}
+
+// fieldsReadAsGoMessageDoes says go-message has the reading of every Content-Type and
+// Content-Disposition a message may hold that go-imap has: it refuses a comment, a field that's 8-bit
+// and much of RFC 2231, and reads a type that has no use, and those answer differently here on purpose.
+func fieldsReadAsGoMessageDoes(raw []byte) bool {
+	lines := bytes.SplitAfter(raw, []byte("\n"))
+	for i := 0; i < len(lines); i++ {
+		name, _, found := bytes.Cut(lines[i], []byte(":"))
+		if !found {
+			continue
+		}
+		isType := bytes.EqualFold(bytes.TrimSpace(name), []byte("Content-Type"))
+		if !isType && !bytes.EqualFold(bytes.TrimSpace(name), []byte("Content-Disposition")) {
+			continue
+		}
+		end := i + 1
+		for end < len(lines) && len(lines[end]) > 0 && (lines[end][0] == ' ' || lines[end][0] == '\t') {
+			end++
+		}
+		whole := bytes.Join(lines[i:end], nil)
+		value := strings.TrimSpace(strings.NewReplacer("\r", "", "\n", "").Replace(string(whole[len(name)+1:])))
+		if strings.Contains(value, "=?") || strings.Contains(strings.ReplaceAll(string(whole), "\r\n", ""), "\r") {
+			return false
+		}
+		library, parameters, err := stdmime.ParseMediaType(value)
+		if err != nil {
+			return false
+		}
+		var read string
+		var kept map[string]string
+		var usable bool
+		if isType {
+			read, kept, usable = wireform.ReadContentType(value)
+		} else {
+			read, kept, usable = wireform.ReadDisposition(value)
+		}
+		if !usable || read != library {
+			return false
+		}
+		for _, family := range []string{"boundary", "charset", "filename", "name"} {
+			if kept[family] != parameters[family] {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // A long field doesn't stop a message being read, by anything that reads it: a message not read is
@@ -608,7 +699,8 @@ func legacyParseHeaders(raw []byte) (pipeline.Headers, error) {
 	return legacyHeaders(entity.Header), nil
 }
 
-// Every list reads as net/mail reads it, because that's what every reader of one was given before.
+// Every list reads as net/mail reads it, because that's what every reader of one was given before, but
+// for a word in a charset nothing reads, which is left in the name (#1968).
 func TestAddressesMatchNetMail(t *testing.T) {
 	seeds := []string{
 		"=?utf-8?q??= <a@b.test>", "=?utf-8?q?x?= (c) <a@b.test>", "=?utf-8?q?=zz?= <a@b.test>", "=?utf-8?q?=aB?= <a@b.test>", "=?bogus?q?x?= <a@b.test>",
@@ -625,7 +717,7 @@ func TestAddressesMatchNetMail(t *testing.T) {
 		t.Helper()
 		got := addressList(value).All()
 		count := addressList(value).Len()
-		want, err := gomail.ParseAddressList(value)
+		want, err := parseAddressListKeepingWords(value)
 		if err != nil {
 			if got != nil || count != 0 {
 				t.Fatalf("%q: read as %+v, net/mail fails: %v", value, got, err)
@@ -646,7 +738,10 @@ func TestAddressesMatchNetMail(t *testing.T) {
 			t.Fatalf("%q: %v, %d addresses, net/mail %+v", value, ok, at, want)
 		}
 		for i := range got {
-			if got[i].Name != sanitizeHeaderValue(want[i].Name) || got[i].Address != sanitizeHeaderValue(want[i].Address) {
+			// A name beside a word nothing reads is read a run at a time, which DecodeHeader can't say:
+			// TestAddressNamesReadTheSameEverywhere has those in what a client is sent.
+			_, whole := netMailKeepingWords.DecodeHeader(want[i].Name)
+			if (whole == nil && got[i].Name != nameAsClientReads(want[i].Name)) || got[i].Address != sanitizeHeaderValue(want[i].Address) {
 				t.Fatalf("%q: read %+v, net/mail %+v", value, got[i], *want[i])
 			}
 		}

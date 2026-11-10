@@ -17,6 +17,7 @@ import (
 	// Registers a charset reader so non-UTF-8 text parts decode.
 	_ "github.com/emersion/go-message/charset"
 
+	"github.com/rest-mail/go-imap/pkg/imap/wireform"
 	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 )
 
@@ -75,7 +76,7 @@ func (h *HeaderSection) Parse(body string) (*pipeline.EmailJSON, error) {
 
 func (h *HeaderSection) parseBody(source io.Reader, size int) (*pipeline.EmailJSON, error) {
 	// An unknown charset or transfer encoding still gives a readable entity.
-	entity, _ := h.opening.open(source)
+	entity, _ := h.opening.open(source, new(partCharsets))
 	budget := newPartBudget()
 	budget.fields = h.fields
 	body, attachments, inline, calendarEvents, err := parseEntity(entity, size, budget)
@@ -114,7 +115,8 @@ func parseHeaders(fields []field) pipeline.Headers {
 	// Subject is RFC 2047-decoded (or the raw value when it can't be).
 	// Sanitize it (and every other decoded scalar header) so an encoded-word that
 	// decodes to bytes containing CR/LF cannot inject a header on re-serialization.
-	headers.Subject = sanitizeHeaderValue(decodeWords(firstField(fields, "Subject")))
+	// A NUL an encoded word spells reads as the space a client is sent for it.
+	headers.Subject = sanitizeHeaderValue(decodeWords(wireform.SpaceWordNUL(firstField(fields, "Subject"))))
 	headers.Date = sanitizeHeaderValue(headers.Date)
 	headers.MessageID = sanitizeHeaderValue(headers.MessageID)
 	headers.InReplyTo = sanitizeHeaderValue(headers.InReplyTo)
