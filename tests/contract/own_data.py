@@ -9,8 +9,10 @@ folder, contact or account gone: the same operations without a reset are the com
 
 A reset also removes every principal and fixture the other phases use, and the
 primary run still has operations that depend on them, so this is sent after
-those phases, just before the teardown. The primary run keeps sending every one
-of these operations, without a reset, until the last of them has moved.
+those phases, last. The primary run keeps sending every one of these
+operations, without a reset, until the last of them has moved, but for the
+exchanges that wipe the data (resetTestData's and restoreTestSnapshot's): their
+examples require disposable_data, which only this run provides (#1334).
 
 The configuration is the run's own, narrowed to these operations and without the
 surface gate, which is about the whole API. That gate is also what fails a skipped
@@ -220,16 +222,15 @@ MOVED = (
     "updateServerLimits",
     "getServerCapabilities",
     "updateServerCapabilities",
-    # The DMARC and TLS report, audit and delivery reads, and the TLS report
+    # The TLS report and audit reads, the dashboard, and the TLS report
     # intake. No link starts from or reaches any of them. A list of TLS reports
     # gets one of its own after its reset; the others need nothing made.
-    # getDmarcReport stays: no API call makes a received DMARC report.
-    "listDmarcReports",
+    # getDmarcReport and listDmarcReports move below, with a report delivered
+    # after their reset, and getDeliveryLogs with a message sent after its.
     "listTlsReports",
     "receiveTlsReport",
     "listAuditEntries",
     "verifyAuditLog",
-    "getDeliveryLogs",
     "getDashboardStats",
     # The mailbox reads listAccounts' link reaches. listAccounts is not
     # selected, and no link starts from any of them. Each goes to the fixture
@@ -253,18 +254,125 @@ MOVED = (
     "restmailCapabilities",
     "restmailCheckMailbox",
     "restmailDeliver",
+    # The delivery log. No link starts from or reaches it. Its listing gets a
+    # message queued for a remote recipient of its own after the reset.
+    "getDeliveryLogs",
     # The rest of the filter operations. No link starts from or reaches any of
     # them. The list gets a custom filter of its own after its reset; the
     # preview and the validation need nothing made.
     "testFilter",
     "listCustomFilters",
     "validateCustomFilter",
+    # The public reads and the mail client discovery reads. No link starts from
+    # or reaches any of them. The public reads need nothing made; a discovery
+    # read gets its address's domain activated after the reset.
+    "getHealth",
+    "describeServer",
+    "apiRoot",
+    "swaggerUI",
+    "openapiSpec",
+    "openapiDocument",
+    "prometheusMetrics",
+    "mozillaAutoconfig",
+    "mozillaAutoconfigWellKnown",
+    "microsoftAutodiscover",
+    # The domain administration lists and the certificate operations.
+    # createCertificate's link reaches the read, and the read's the delete:
+    # all moved. No other link starts from or reaches any of them. Each list
+    # gets a row of its own after its reset, and the read and the delete a
+    # certificate of their own.
+    "listDomains",
+    "listAliases",
+    "listDKIMKeys",
+    "listCertificates",
+    "createCertificate",
+    "getCertificate",
+    "deleteCertificate",
+    # The account link operations and the token exchange. linkAccount's link
+    # reaches only unlinkAccount, and no other link starts from or reaches any
+    # of them. None needs anything made: the link's 201 links the seeded
+    # eve@restmail.test, which the reset puts back unlinked, and the rest are
+    # refusals. The client secret operations moved with the credentials.
+    "linkAccount",
+    "unlinkAccount",
+    "issueClientCredentialsToken",
+    # The sign-in and recovery operations. No link starts from or reaches any
+    # of them. A success that ends a session, rotates one or starts a second
+    # factor acts on an account made for it after its reset (logout, refresh
+    # and enroll), and the mail client sign-in uses an app password of an
+    # account made for it. The rest read, sign the fixture admin in, or are
+    # refusals, and need nothing made.
+    "login",
+    "logout",
+    "refreshToken",
+    "openGatewaySession",
+    "resetAdmin",
+    "recoverAccount",
+    "ownerChallenge",
+    "ownerToken",
+    "ownerStatus",
+    "getTwoFactorStatus",
+    "enrollTwoFactor",
+    "confirmTwoFactor",
+    "disableTwoFactor",
+    "changeOwnPassword",
+    "requestRecoveryEmail",
+    "redeemRecoveryEmail",
+    "getRecoveryEmail",
+    "registerRecoveryEmail",
+    "recoveryEmailLink",
+    "verifyRecoveryEmail",
+    # The last operations step 2 found free. No link starts from any of them,
+    # and only listAccounts' link reaches getAccount and listCalendarEvents;
+    # listAccounts is not selected, so each is sent with its own id. The
+    # account read and the calendar list go to the seeded account after their
+    # reset, and the list gets an invitation of its own. The delivery check's
+    # success asks about an address no mailbox has, and the probe's probes the
+    # database: neither needs anything made. The rest are refusals.
+    "getAccount",
+    "listCalendarEvents",
+    "respondToCalendar",
+    "accountEvents",
+    "probeServices",
+    "verifyDelivery",
+    # Clearing a suppression and reading a DMARC report. No link starts from
+    # or reaches either. The clear's success clears a suppression made after
+    # its reset (a message sent to a domain that does not exist, which the
+    # gateway's queue worker bounces), and the read's reads a report delivered
+    # after its reset through deliverMessage. The DMARC report list's success
+    # lists such a report, made for it after its reset.
+    "clearSuppression",
+    "getDmarcReport",
+    "listDmarcReports",
+    # The test data operations (#1334). No link starts from or reaches any of
+    # them. Each exchange resets and seeds first; the reset's own just runs
+    # after it. The restore restores a snapshot taken through the API after
+    # its reset, and the reset removes a domain made after it.
+    "resetTestData",
+    "seedTestData",
+    "snapshotTestData",
+    "restoreTestSnapshot",
 )
+
+
+# What the own-data run sets up that the primary run's seeded data cannot be in
+# (x-requires state, #1334): its hooks make each after the exchange's reset.
+# calendar_invitation is respondToCalendar's accepted and foreign_sender: the
+# seeded account sends itself an invitation and the reply names its message.
+# accountEvents' stream (event_stream) is not provided: its example is a
+# literal stream the live server never sends, compared byte for byte (#1385).
+# disposable_data is resetTestData's and restoreTestSnapshot's: what each wipes
+# was made for it by its own reset, and no exchange after it needs that.
+PROVIDES = {"state": ["calendar_invitation", "disposable_data"]}
 
 
 def configure(config):
     config["operation-id"] = list(MOVED)
     config.pop("surface", None)
+    provides = config.get("provides") or {}
+    for key, values in PROVIDES.items():
+        provides[key] = sorted(set(provides.get(key, [])) | set(values))
+    config["provides"] = provides
     # The gate's list of what it could not send is its own.
     config["unproven"] = ".cache/contract/unproven-own-data.json"
     return config

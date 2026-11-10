@@ -3,7 +3,7 @@
 # `chore contract`: Vertrag against a running E2E topology, every phase writing
 # JUnit, HTML and Markdown reports to .cache/contract/, and a summary at the end.
 #
-#   tests/contract/run.sh [gate|authorization|ownership|fuzz|own-data|teardown] [selection flags]
+#   tests/contract/run.sh [gate|authorization|ownership|fuzz|own-data] [selection flags]
 #
 #   gate           the examples phase, then the coverage phase held to
 #                  tests/contract/coverage-baseline.txt (the default)
@@ -15,10 +15,9 @@
 #                  finding replays with --seed from its log line
 #   own-data       the operations moved to a clean start, each exchange after
 #                  a reset and seed, and what follows their links
-#                  (tests/contract/own_data.py); a gate, sent once nothing else
-#                  needs the data
-#   teardown       the operations that wipe the run's data, sent last, once
-#                  nothing else needs it (tests/contract/teardown.py); a gate
+#                  (tests/contract/own_data.py), resetTestData and
+#                  restoreTestSnapshot among them; a gate, sent last, once
+#                  nothing else needs the data
 #
 # Selection flags are Vertrag's (--tag Domains, --operation-id getDomain,
 # --only-matching 'regex'), and narrow every phase to them. A narrowed run
@@ -31,7 +30,7 @@ cd "$(dirname "$0")/../.."
 
 phase=gate
 case "${1:-}" in
-gate | authorization | ownership | fuzz | own-data | teardown)
+gate | authorization | ownership | fuzz | own-data)
   phase=$1
   shift
   ;;
@@ -52,8 +51,8 @@ export CONTRACT_SPEC="$served"
 names=("$phase")
 if [ "$phase" = ownership ]; then names=(ownership ownership-domains ownership-mailboxes ownership-messages); fi
 reset_run=()
-# The teardown, like authorization, keeps the gate's saved inputs and reports.
-if [ "$phase" != authorization ] && [ "$phase" != ownership ] && [ "$phase" != own-data ] && [ "$phase" != teardown ]; then
+# The own-data run, like authorization, keeps the gate's saved inputs and reports.
+if [ "$phase" != authorization ] && [ "$phase" != ownership ] && [ "$phase" != own-data ]; then
   reset_run=(--reset-run)
   names=(fuzz)
   if [ "$phase" = gate ]; then names=(examples coverage authorization ownership ownership-domains ownership-mailboxes ownership-messages browser-sessions); fi
@@ -246,15 +245,6 @@ own-data)
   if [ "$code" -eq 0 ]; then
     python3 -B tests/contract/own_data.py --check "$out/own-data.xml" || code=$?
   fi
-  exit "$code"
-  ;;
-teardown)
-  python3 -B tests/contract/teardown.py "$out/vertrag-run.yml" "$out/vertrag-teardown.yml"
-  python3 -B tests/contract/reports.py "$out/vertrag-teardown.yml" "$out/vertrag-teardown.yml" "$out/teardown" --narrowed
-  code=0
-  "$CONTRACT_VERTRAG" run --config "$out/vertrag-teardown.yml" --sequence --phases examples "${select[@]}" \
-    2>&1 | tee "$logs/contract-teardown.log" || code=$?
-  echo "vertrag teardown exited $code"
   exit "$code"
   ;;
 fuzz)

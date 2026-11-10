@@ -26,6 +26,25 @@ REQUIREMENTS = {
     "anonymous": {"principal": "anonymous"},
     "over-cap": {"body": "over_cap"},
 }
+INTERNAL_SERVICES = {
+    "checkMailboxAddress": "smtp-delivery",
+    "deliverMessage": "smtp-delivery",
+    "openGatewaySession": "imap",
+    "closeGatewaySession": "imap",
+}
+OPERATION_BODY_LIMITS = {"receiveTlsReport": 512 * 1024}
+
+
+def gateway_transport(service="imap"):
+    endpoint = os.environ.get("CONTRACT_INTERNAL_ENDPOINT") or "https://10.99.0.20:8443"
+    if not endpoint.startswith("https://"):
+        raise ValueError("the gateway session requires the HTTPS internal listener")
+    directory = Path(os.environ.get("CONTRACT_MTLS_DIR", ".cache/contract-mtls")).resolve()
+    return endpoint, {
+        "ca-cert": str(directory / "internal-ca.crt"),
+        "cert": str(directory / f"internal-{service}.crt"),
+        "cert-key": str(directory / f"internal-{service}.key"),
+    }
 
 
 def select_pair(document, operation_id, name, pair, path_values=None):
@@ -115,6 +134,7 @@ def prove(
     path_values=None,
     renew_token=None,
     workers=1,
+    transport=None,
 ):
     requirement = REQUIREMENTS[kind] if requirement is None else requirement
     output = Path(output).resolve()
@@ -140,6 +160,9 @@ def prove(
         case_report.unlink(missing_ok=True)
         try:
             selected = select_pair(document, operation_id, name, pair, path_values)
+            destination, selected_transport = endpoint, transport
+            if transport is None and operation_id in INTERNAL_SERVICES:
+                destination, selected_transport = gateway_transport(INTERNAL_SERVICES[operation_id])
             # A directory for each case: cases can run side by side.
             case_work = work / f"{operation_id}-{name}"
             case_work.mkdir()
@@ -148,12 +171,18 @@ def prove(
             report = case_work / "report.json"
             config = {
                 "spec": str(spec),
-                "endpoint": endpoint,
+                "endpoint": destination,
                 "provides": {key: [value] for key, value in requirement.items()},
                 "checks": {"header-schema": True},
                 "reporter": ["json"],
                 "output": [str(report)],
             }
+            if selected_transport is not None:
+                config["endpoints"] = [{
+                    "endpoint": destination,
+                    "operation-id": [operation_id],
+                    "transport": selected_transport,
+                }]
             if "principal" in requirement:
                 principal = {"name": requirement["principal"]}
                 if header:
@@ -178,9 +207,13 @@ def prove(
             )
             with os.fdopen(descriptor, "w") as stream:
                 yaml.safe_dump(config, stream)
+            selected_body_bytes = (
+                OPERATION_BODY_LIMITS[operation_id] + 1
+                if operation_id in OPERATION_BODY_LIMITS else body_bytes
+            )
             environment = {
                 **os.environ,
-                "CONTRACT_OVER_CAP_BYTES": str(body_bytes),
+                "CONTRACT_OVER_CAP_BYTES": str(selected_body_bytes),
             }
             run = subprocess.run(
                 [
@@ -200,6 +233,16 @@ def prove(
             written = report.read_text() if report.exists() else ""
             verdict = json.loads(written) if written else {}
             if run.returncode or not passed(verdict, pair["response"]["status"]):
+                diagnostics = []
+                for stream in ("stdout", "stderr"):
+                    diagnostic_path = case_report.with_suffix(f".{stream}.log")
+                    descriptor = os.open(
+                        diagnostic_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600
+                    )
+                    with os.fdopen(descriptor, "wb") as diagnostic_file:
+                        os.fchmod(diagnostic_file.fileno(), 0o600)
+                        diagnostic_file.write(getattr(run, stream, b""))
+                    diagnostics.append(diagnostic_path.name)
                 results = verdict.get("results", [])
                 reason = (
                     f"vertrag exit {run.returncode}; expected {pair['response']['status']}; "
@@ -208,6 +251,7 @@ def prove(
                         + ", ".join(result.get("errors", []))
                         for result in results
                     )
+                    + "; private diagnostics: " + ", ".join(diagnostics)
                 )
             case_report.write_text(json.dumps(verdict, indent=2) + "\n")
         except (
@@ -256,6 +300,13 @@ def prove(
                 "requires": requirement,
                 "path_values": path_values or {},
                 "body_bytes": body_bytes if kind == "over-cap" else 0,
+                "body_bytes_by_operation": {
+                    operation_id: (
+                        OPERATION_BODY_LIMITS[operation_id] + 1
+                        if operation_id in OPERATION_BODY_LIMITS else body_bytes
+                    )
+                    for operation_id, _, _ in cases
+                } if kind == "over-cap" else {},
                 "description_sha256": hashlib.sha256(
                     json.dumps(document, sort_keys=True).encode()
                 ).hexdigest(),

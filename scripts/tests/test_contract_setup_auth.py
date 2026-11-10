@@ -4,6 +4,7 @@ import copy
 import importlib.util
 import io
 import json
+import os
 from pathlib import Path
 import sys
 import types
@@ -162,13 +163,22 @@ class ContractSetupAuthTests(unittest.TestCase):
         self.assertFalse(self.calls)
 
     def test_setup_sessions_are_not_shared_across_origins(self):
-        for origin in ("http://fixture.test:8080", "http://other.test:8080", "http://fixture.test:8080"):
-            self.assertEqual(self.module.admin_token(origin), "setup-session")
+        with patch.dict(os.environ, {"RESTMAIL_CONTRACT_LIMITS_RAISED": "false"}):
+            for origin in ("http://fixture.test:8080", "http://other.test:8080", "http://fixture.test:8080"):
+                self.assertEqual(self.module.admin_token(origin), "setup-session")
         self.assertEqual(self.logins, ["http://fixture.test:8080/api/v1/auth/login",
                                       "http://other.test:8080/api/v1/auth/login"])
         # Only actual sign-ins spend a token; reusing a cached session does not.
         self.assertEqual(self.wait.call_count, 2)
         self.wait.assert_called_with(1.1)
+
+    def test_raised_limits_preserve_origin_isolation_without_pacing(self):
+        with patch.dict(os.environ, {"RESTMAIL_CONTRACT_LIMITS_RAISED": "true"}):
+            for origin in ("http://fixture.test:8080", "http://other.test:8080", "http://fixture.test:8080"):
+                self.assertEqual(self.module.admin_token(origin), "setup-session")
+        self.assertEqual(self.logins, ["http://fixture.test:8080/api/v1/auth/login",
+                                      "http://other.test:8080/api/v1/auth/login"])
+        self.wait.assert_not_called()
 
     def test_failed_login_is_not_cached(self):
         origin = "http://fixture.test:8080"

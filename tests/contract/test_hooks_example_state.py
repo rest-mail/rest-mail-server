@@ -21,7 +21,16 @@ def load_hooks():
     """hooks.py imports vertrag_hooks, which only vertrag provides."""
     stub = types.ModuleType("vertrag_hooks")
     stub.stash = {}
-    stub.before = stub.after = lambda name: lambda fn: fn
+    stub.before_hooks = {}
+
+    def before(name):
+        def register(function):
+            stub.before_hooks.setdefault(name, []).append(function)
+            return function
+        return register
+
+    stub.before = before
+    stub.after = lambda name: lambda fn: fn
     stub.get_json = lambda transaction, which="request": json.loads(
         transaction[which]["body"]
     )
@@ -170,6 +179,82 @@ class ExampleStateHookTest(unittest.TestCase):
                 kept = self.transaction(success, documented, body)
                 self.hooks.import_into_an_account_with_room(kept)
                 self.assertEqual(kept["fullPath"], documented)
+
+    def test_report_import_examples_target_an_account_that_survived_the_reset(self):
+        name = "/api/v1/accounts/{id}/messages/import > Store a message the account already has > 200 > application/json"
+        pairs = json.loads((ROOT / "openapi-example.json").read_text())["importMessage"]
+        for phase in ("CONTRACT_AUTHORIZATION", "CONTRACT_OWNERSHIP"):
+            for example in ("created", "deleted", "keywords"):
+                with self.subTest(phase=phase, example=example), patch.dict(os.environ):
+                    os.environ.pop("CONTRACT_COVERAGE", None)
+                    os.environ[phase] = "1"
+                    body = pairs[example]["request"]["body"]
+                    sent = self.transaction(name, "/api/v1/accounts/12/messages/import", body)
+                    before = json.loads(json.dumps(sent))
+                    with patch.object(self.hooks, "mailbox_id", return_value=7) as lookup:
+                        self.hooks.import_into_an_account_with_room(sent)
+                    self.assertEqual(sent["fullPath"], "/api/v1/accounts/7/messages/import")
+                    before["fullPath"] = sent["fullPath"]
+                    self.assertEqual(sent, before)
+                    lookup.assert_called_once_with(
+                        f"http://127.0.0.1:{self.server.server_address[1]}", self.hooks.ADMIN)
+
+    def test_report_address_success_uses_the_callers_live_mailbox(self):
+        name = "/api/v1/accounts/{id}/addresses > List the addresses an account receives at and may send from > 200 > application/json"
+        example = json.loads((ROOT / "openapi-example.json").read_text())["listAccountAddresses"]["primary"]
+        for phase in ("CONTRACT_AUTHORIZATION", "CONTRACT_OWNERSHIP"):
+            for address in (self.hooks.ADMIN, self.hooks.mfa_admin.ADDRESS):
+                with self.subTest(phase=phase, address=address), patch.dict(os.environ, {phase: "1"}):
+                    sent = self.transaction(name, f"/api/v1/accounts/{example['request']['path']['id']}/addresses")
+                    payload = base64.urlsafe_b64encode(json.dumps({"address": address}).encode()).decode().rstrip("=")
+                    sent["request"]["headers"] = {"Authorization": f"Bearer fixture.{payload}.signature"}
+                    before = json.loads(json.dumps(sent))
+                    with patch.object(self.hooks, "mailbox_id", return_value=7) as lookup:
+                        for function in self.stub.before_hooks.get("listAccountAddresses", []):
+                            function(sent)
+                    self.assertEqual(sent["fullPath"], "/api/v1/accounts/7/addresses")
+                    before["fullPath"] = sent["fullPath"]
+                    self.assertEqual(sent, before)
+                    lookup.assert_called_once_with(
+                        f"http://127.0.0.1:{self.server.server_address[1]}", address)
+
+    def test_address_refusals_foreign_targets_and_non_report_examples_are_preserved(self):
+        name = "/api/v1/accounts/{id}/addresses > List the addresses an account receives at and may send from > 200 > application/json"
+        cases = [(phase, status, account, address)
+                 for phase in ("CONTRACT_AUTHORIZATION", "CONTRACT_OWNERSHIP")
+                 for status, account, address in (
+                     (422, 0, self.hooks.ADMIN), (404, 2147483647, self.hooks.ADMIN),
+                     (200, 7, self.hooks.ADMIN), (200, 9, self.hooks.ADMIN),
+                     (200, 10, "ordinary@restmail.test"), (200, 10, None))]
+        cases.append((None, 200, 10, self.hooks.ADMIN))
+        for phase, status, account, address in cases:
+            with self.subTest(phase=phase, status=status, account=account, address=address), patch.dict(os.environ):
+                for marker in ("CONTRACT_AUTHORIZATION", "CONTRACT_OWNERSHIP"):
+                    os.environ.pop(marker, None)
+                if phase:
+                    os.environ[phase] = "1"
+                sent = self.transaction(name.replace(" > 200 > ", f" > {status} > "), f"/api/v1/accounts/{account}/addresses")
+                payload = base64.urlsafe_b64encode(json.dumps({"address": address}).encode()).decode().rstrip("=")
+                sent["request"]["headers"] = {"Authorization": f"Bearer fixture.{payload}.signature"} if address else {}
+                before = json.loads(json.dumps(sent))
+                with patch.object(self.hooks, "mailbox_id") as lookup:
+                    for function in self.stub.before_hooks.get("listAccountAddresses", []):
+                        function(sent)
+                self.assertEqual(sent, before)
+                lookup.assert_not_called()
+
+    def test_report_import_refusals_and_foreign_resource_targets_are_preserved(self):
+        name = "/api/v1/accounts/{id}/messages/import > Store a message the account already has > 200 > application/json"
+        for phase in ("CONTRACT_AUTHORIZATION", "CONTRACT_OWNERSHIP"):
+            for status, account in ((422, 12), (404, 12), (200, 0), (200, 2147483647), (200, 77)):
+                with self.subTest(phase=phase, status=status, account=account), patch.dict(os.environ, {phase: "1"}):
+                    sent = self.transaction(name.replace(" > 200 > ", f" > {status} > "),
+                                            f"/api/v1/accounts/{account}/messages/import", {"raw_message": "held"})
+                    before = json.loads(json.dumps(sent))
+                    with patch.object(self.hooks, "mailbox_id") as lookup:
+                        self.hooks.import_into_an_account_with_room(sent)
+                    self.assertEqual(sent, before)
+                    lookup.assert_not_called()
 
     def test_an_example_that_always_stores_never_spends_the_quota_of_the_documented_account(self):
         # Account 12 is stage 4's quota account, left with 22 bytes on the topology.

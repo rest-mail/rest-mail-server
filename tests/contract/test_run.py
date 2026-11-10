@@ -97,6 +97,31 @@ class Reports(unittest.TestCase):
 
 
 class Summary(unittest.TestCase):
+    def test_surface_assertions_remain_checks_not_http_transactions(self):
+        for surface_failure in (False, True):
+            with self.subTest(surface_failure=surface_failure):
+                with tempfile.TemporaryDirectory() as directory:
+                    verdict = (
+                        '<failure message="surface not met"/>' if surface_failure else ""
+                    )
+                    Path(directory, "examples.xml").write_text(
+                        '<testsuite><testcase name="GET /widget"/>'
+                        '<testcase name="API surface" classname="vertrag.surface">'
+                        + verdict
+                        + "</testcase></testsuite>"
+                    )
+                    table = summary.summary(directory)
+                    failed = int(surface_failure)
+                    self.assertIn(
+                        f"| examples | 2 | {2 - failed} | {failed} | 0 |", table
+                    )
+                    self.assertIn("| Phase | Checks | Passed | Failed | Skipped |", table)
+                    self.assertNotIn("Transactions", table)
+                    self.assertIn(
+                        "Checks include transaction results and API surface gate assertions.",
+                        table,
+                    )
+
     def test_operation_counts_and_reasons_come_from_vertrags_surface(self):
         with tempfile.TemporaryDirectory() as directory:
             Path(directory, "examples.json").write_text(
@@ -382,7 +407,7 @@ class ContractCommand(unittest.TestCase):
                 )
                 self.assertEqual(result.returncode, 1, result.stderr)
                 self.assertEqual(set(artifacts), {"summary.md", "api-key-fixture.json"})
-                self.assertIn("| Phase | Transactions |", result.stdout)
+                self.assertIn("| Phase | Checks |", result.stdout)
                 self.assertNotIn("| examples |", artifacts["summary.md"])
                 self.assertNotIn("previous", artifacts["summary.md"])
 

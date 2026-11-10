@@ -7,6 +7,7 @@ import base64
 import json
 import threading
 import unittest
+import urllib.error
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest.mock import patch
 
@@ -55,7 +56,7 @@ class FakeAPI(BaseHTTPRequestHandler):
             account = next(
                 (number for number, made in enumerate(self.server.accounts, start=101)
                  if made["address"] == body["address"]), None)
-            return self.answer(201, {"id": account, "address": body["address"]})
+            return self.answer(409 if account is not None else 404)
         self.answer(404)
 
     def do_DELETE(self):
@@ -98,6 +99,37 @@ class AGrantOfTheCallersOwn(HookTest):
         t = self.at_the_fake(grant_request(action, summary, status, body, authorization))
         self.module.a_grant_of_the_callers_own(t)
         return t
+
+    def test_runtime_operation_names_prepare_the_same_grant_states(self):
+        cases = [
+            ("activate", "Switch an eligible grant on", 201, "eligible", False),
+            ("activate", "Switch an eligible grant on", 409, "eligible", True),
+            ("activate", "Switch an eligible grant on", 403, "eligible", False),
+            ("deactivate", "Switch a grant off", 200, "eligible", True),
+            ("deactivate", "Switch a grant off", 409, "eligible", False),
+            ("make-eligible", "Make an active grant eligible", 200, "active", False),
+            ("make-eligible", "Make an active grant eligible", 403, "active", False),
+            ("make-eligible", "Make an active grant eligible", 409, "eligible", False),
+        ]
+        for action, summary, status, mode, switched_on in cases:
+            with self.subTest(action=action, status=status):
+                self.server.calls.clear()
+                before = len(self.server.grants)
+                sent = self.send(action, summary, status, {"reason": "Rotate the DKIM key", "totp_code": "000000"})
+                self.assertEqual(len(self.server.grants), before + 1)
+                made = 200 + len(self.server.grants)
+                self.assertEqual(self.server.grants[-1]["mode"], mode)
+                self.assertEqual(self.server.grants[-1]["holder"], {"kind": "account", "id": MFA_ADMIN_ID})
+                self.assertEqual(sent["fullPath"], f"/api/v1/admin/grants/{made}/{action}")
+                activated = [call for call in self.server.calls if call[1].endswith("/activate")]
+                self.assertEqual(len(activated), int(switched_on))
+                self.assertEqual(sent["request"]["headers"]["Authorization"], ADMIN_PRINCIPAL)
+                body = json.loads(sent["request"]["body"])
+                if status == 403:
+                    self.assertEqual(body["totp_code"], "000000")
+                elif action != "deactivate":
+                    self.assertNotIn("totp_code", body)
+                    self.assertTrue(body["recovery_code"].startswith("unused-"))
 
     def test_it_runs_after_the_admin_swap_and_the_missing_grants_factor(self):
         for operation in ("activateGrant", "makeGrantEligible"):
@@ -179,6 +211,42 @@ class AGrantOfTheCallersOwn(HookTest):
 
 
 class ExistingLink(HookTest):
+    def test_creation_already_supplies_the_callers_link(self):
+        origin = f"http://127.0.0.1:{self.server.server_address[1]}"
+        try:
+            address, account_id = self.module.a_throwaway_link(origin)
+        except urllib.error.HTTPError as error:
+            self.fail(f"creation must supply the link without a second POST: {error}")
+        self.assertEqual(account_id, 101)
+        self.assertEqual(address, self.server.accounts[0]["address"])
+        self.assertEqual([call[1] for call in self.server.calls], ["/api/v1/accounts"])
+        self.assertEqual(self.server.calls[0][2], "Bearer two-factor-token")
+
+    def test_runtime_operation_names_prepare_existing_links(self):
+        cases = [
+            ("link_an_account_linked_already", "/api/v1/accounts/link", "Link an existing account by proving its password", 409),
+            ("unlink_a_link_of_its_own", "/api/v1/accounts/2", "Give up access to an account", 204),
+        ]
+        for hook, path, summary, status in cases:
+            with self.subTest(hook=hook):
+                before = len(self.server.accounts)
+                sent = self.at_the_fake({
+                    "name": f"{path} > {summary} > {status} > application/json",
+                    "protocol": "http:", "host": "127.0.0.1", "port": "0", "fullPath": path,
+                    "expected": {"statusCode": str(status)},
+                    "request": {"method": "POST" if status == 409 else "DELETE",
+                                "headers": {"Authorization": ADMIN_PRINCIPAL},
+                                "body": json.dumps({"address": "eve@restmail.test", "password": "password123"})},
+                })
+                getattr(self.module, hook)(sent)
+                self.assertEqual(len(self.server.accounts), before + 1)
+                self.assertEqual(self.server.calls[-1][1], "/api/v1/accounts")
+                if status == 409:
+                    self.assertEqual(json.loads(sent["request"]["body"])["address"], self.server.accounts[-1]["address"])
+                else:
+                    self.assertEqual(sent["fullPath"], f"/api/v1/accounts/{100 + len(self.server.accounts)}")
+                self.assertEqual(sent["request"]["headers"]["Authorization"], ADMIN_PRINCIPAL)
+
     def test_unlinked_gives_up_a_link_made_for_it(self):
         t = self.at_the_fake({
             "name": "/api/v1/accounts/{id} > The link is given up > 204",
@@ -191,8 +259,9 @@ class ExistingLink(HookTest):
         self.assertRegex(account["address"], r"^linked-\d+@restmail\.test$")
         self.assertEqual(account["password"], self.module.LINKED_PASSWORD)
         link = [c for c in self.server.calls if c[1] == "/api/v1/accounts/link"]
-        self.assertEqual(link, [("POST", "/api/v1/accounts/link", "Bearer two-factor-token",
-                                 {"address": account["address"], "password": self.module.LINKED_PASSWORD})])
+        self.assertEqual(link, [])
+        self.assertEqual(len(self.server.calls), 1)
+        self.assertEqual(self.server.calls[0][2], "Bearer two-factor-token")
         self.assertEqual(t["fullPath"], f"/api/v1/accounts/{100 + len(self.server.accounts)}")
         self.assertEqual(t["request"]["headers"]["Authorization"], ADMIN_PRINCIPAL)
 
@@ -209,7 +278,8 @@ class ExistingLink(HookTest):
         sent = json.loads(t["request"]["body"])
         self.assertEqual(sent["address"], self.server.accounts[-1]["address"])
         self.assertEqual(sent["password"], self.module.LINKED_PASSWORD)
-        self.assertEqual(self.server.calls[-1][1], "/api/v1/accounts/link")
+        self.assertEqual(self.server.calls[-1][1], "/api/v1/accounts")
+        self.assertEqual(len(self.server.calls), 1)
         hooks = self.registered["linkAccount"]
         self.assertLess(hooks.index("send_as_the_two_factor_admin"), hooks.index("link_an_account_linked_already"))
         self.assertLess(hooks.index("link_an_account_linked_already"), hooks.index("link_a_seeded_account"))
@@ -238,6 +308,16 @@ class GrantHolder(HookTest):
             "request": {"method": "POST", "headers": {"Authorization": authorization},
                         "body": json.dumps(body)},
         })
+
+    def test_runtime_operation_name_prepares_the_grant_holder(self):
+        for authorization in (ADMIN_PRINCIPAL, ORDINARY, "Basic app-password"):
+            with self.subTest(authorization=authorization):
+                before = len(self.server.accounts)
+                sent = self.grant("Grant a role at a scope", 201, authorization)
+                self.module.grant_to_an_account_of_its_own(sent)
+                self.assertEqual(len(self.server.accounts), before + 1)
+                self.assertEqual(json.loads(sent["request"]["body"])["holder"]["id"], 100 + len(self.server.accounts))
+                self.assertEqual(sent["request"]["headers"]["Authorization"], authorization)
 
     def test_every_principals_grant_names_an_account_made_for_it(self):
         holders = []

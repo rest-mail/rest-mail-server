@@ -20,6 +20,47 @@ import yaml
 ROOT = Path(__file__).resolve().parents[2]
 
 
+class VictimQuarantineTargets(unittest.TestCase):
+    def test_ids_are_read_as_each_victim_not_as_the_administrator(self):
+        fixture = {
+            "ordinary": {"id": 4, "address": "a@restmail.test", "password": "a secret"},
+            "other": {"id": 9, "address": "b@restmail.test", "password": "b secret"},
+        }
+        replies = [
+            {"data": {"access_token": "token-a"}},
+            {"data": [{"id": 41}]},
+            {"data": {"access_token": "token-b"}},
+            {"data": [{"id": 93}]},
+        ]
+        with patch.object(ownership, "call", side_effect=replies) as exchange:
+            self.assertEqual(
+                ownership.quarantine_targets("http://api.test", fixture),
+                {"a": {"path.mid": "41"}, "b": {"path.mid": "93"}},
+            )
+        self.assertEqual(exchange.call_args_list[1].kwargs, {"token": "token-a"})
+        self.assertEqual(exchange.call_args_list[1].args[2], "/api/v1/accounts/4/quarantine")
+        self.assertEqual(exchange.call_args_list[3].kwargs, {"token": "token-b"})
+        self.assertEqual(exchange.call_args_list[3].args[2], "/api/v1/accounts/9/quarantine")
+
+    def test_missing_or_malformed_victim_stays_undeclared_without_losing_the_other(self):
+        fixture = {
+            "ordinary": {"id": 4, "address": "a@restmail.test", "password": "a secret"},
+            "other": {"id": 9, "address": "b@restmail.test", "password": "b secret"},
+        }
+        for bad in ([], [{"id": True}], [{"id": -1}], [{"id": "41"}]):
+            with self.subTest(bad=bad), patch.object(
+                ownership, "call", side_effect=[
+                    {"data": {"access_token": "token-a"}}, {"data": bad},
+                    {"data": {"access_token": "token-b"}}, {"data": [{"id": 93}]},
+                ]
+            ), patch("sys.stderr") as error:
+                self.assertEqual(
+                    ownership.quarantine_targets("http://api.test", fixture),
+                    {"b": {"path.mid": "93"}},
+                )
+                self.assertNotIn("secret", str(error.write.call_args_list))
+
+
 class OwnershipConfig(unittest.TestCase):
     def setUp(self):
         directory = tempfile.TemporaryDirectory()
@@ -108,6 +149,29 @@ class OwnershipConfig(unittest.TestCase):
             },
         )
         self.assertEqual(self.generated["ownership"], {"refuse": [403, 404]})
+
+    def test_quarantine_cells_declare_real_victims_without_changing_credentials(self):
+        ownership.main(str(self.spec), str(self.config), str(self.principals),
+                       str(self.output), str(self.report))
+        baseline = yaml.safe_load(self.output.read_text())
+        self.spec.write_text(yaml.safe_dump({"paths": {
+            "/api/v1/accounts/{id}/quarantine/{mid}": {
+                "delete": {"operationId": "deleteQuarantine"}
+            }
+        }}))
+        with patch.object(ownership, "call", side_effect=[
+            {"data": {"access_token": "token-a"}}, {"data": [{"id": 41}]},
+            {"data": {"access_token": "token-b"}}, {"data": [{"id": 93}]},
+        ]):
+            ownership.main(str(self.spec), str(self.config), str(self.principals),
+                           str(self.output), str(self.report))
+        generated = yaml.safe_load(self.output.read_text())
+        self.assertEqual(generated["tenants"]["a"]["ids"],
+                         {"path.id": "4", "path.mid": "41"})
+        self.assertEqual(generated["tenants"]["b"]["ids"],
+                         {"path.id": "9", "path.mid": "93"})
+        self.assertEqual(generated["principals"], baseline["principals"])
+        self.assertEqual(generated["ownership"], baseline["ownership"])
 
     def test_only_account_operations_are_sent(self):
         # The declared id is an account's: sent to a message or domain route it

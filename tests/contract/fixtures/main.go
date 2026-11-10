@@ -557,12 +557,11 @@ func suppressedRecipient(admin models.Mailbox, address string, now time.Time) *m
 	}
 }
 
-// reportPhaseTargets is how many quarantined messages and how many suppressed
-// recipients each report-only phase consumes. deleteQuarantine and
-// clearSuppression's found examples take one each time they are sent as the
-// fixture admin. Authorization sends them twice: its examples first, then the
-// matrix's admin cell. Ownership sends them once, in the examples of its account
-// run and of its domain run; its cells name no such row.
+// reportPhaseTargets is how many suppressed recipients each report-only phase
+// consumes. Authorization sends its example and administrator cell; ownership
+// sends the example in its domain run. Held messages belong to each caller:
+// one for the fixture administrator's example and, in authorization only, one
+// for the MFA administrator's matrix cell.
 var reportPhaseTargets = map[string]int{"authorization": 2, "ownership": 1}
 
 // prepareReportTargets tops up the held mail a report-only phase consumes, and
@@ -585,23 +584,43 @@ func prepareReportTargets(database *gorm.DB, domain, phase string) error {
 	if err := database.Where("address = ?", plan.Principals["admin"].Address).First(&admin).Error; err != nil {
 		return err
 	}
+	callers := []models.Mailbox{admin}
+	if phase == "authorization" {
+		var mfa models.Mailbox
+		if err := database.Where("address = ?", mfaAdminAddress).First(&mfa).Error; err != nil {
+			return err
+		}
+		callers = append(callers, mfa)
+	}
+	if phase == "ownership" {
+		var tenants []models.Mailbox
+		if err := database.Where("domain_id = ? AND address IN ?", admin.DomainID,
+			[]string{plan.Principals["ordinary"].Address, plan.Principals["other"].Address}).
+			Find(&tenants).Error; err != nil {
+			return err
+		}
+		callers = append(callers, tenants...)
+	}
 	now := time.Now()
 	return database.Transaction(func(tx *gorm.DB) error {
 		// The rows the hooks would take: unreleased, and unexpired because the
 		// suppression list leaves out expired ones.
-		var held, suppressed int64
-		if err := tx.Model(&models.Quarantine{}).Where("mailbox_id = ? AND released = ?", admin.ID, false).Count(&held).Error; err != nil {
-			return err
+		for _, caller := range callers {
+			var held int64
+			if err := tx.Model(&models.Quarantine{}).Where("mailbox_id = ? AND released = ?", caller.ID, false).Count(&held).Error; err != nil {
+				return err
+			}
+			if held == 0 {
+				if err := tx.Create(heldMessage(caller, "Held for the "+phase+" report", now)).Error; err != nil {
+					return err
+				}
+			}
 		}
+		var suppressed int64
 		if err := tx.Model(&models.Suppression{}).
 			Where("domain_id = ? AND address LIKE ? AND expires_at > ?", admin.DomainID, "contract-suppressed-%", now).
 			Count(&suppressed).Error; err != nil {
 			return err
-		}
-		for i := int(held); i < want; i++ {
-			if err := tx.Create(heldMessage(admin, "Held for the "+phase+" report", now)).Error; err != nil {
-				return err
-			}
 		}
 		for i := int(suppressed); i < want; i++ {
 			address := fmt.Sprintf("contract-suppressed-%s-%d-%d@nowhere.invalid", phase, now.UnixNano(), i)

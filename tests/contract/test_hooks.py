@@ -36,6 +36,7 @@ import hooks
 
 
 class SharedFixturePlan(unittest.TestCase):
+    @patch.dict(os.environ, {"RESTMAIL_CONTRACT_LIMITS_RAISED": "false"})
     def test_preview_pacing_preserves_the_request_and_expected_response(self):
         transaction = {
             "fullPath": "/api/v1/admin/pipelines/test-filter",

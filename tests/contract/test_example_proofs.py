@@ -83,18 +83,20 @@ class ExampleProofs(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout, "2 of 2 examples that need setup are proven in process\n")
 
-    def test_every_pass_sends_what_the_primary_run_leaves_out(self):
-        # Each operation the primary run leaves out is sent by the teardown
-        # pass, so none goes unsent.
+    def test_the_live_run_leaves_nothing_out(self):
+        # exclude-operation-id is empty (#1334): resetTestData and
+        # restoreTestSnapshot are sent by the own-data run like any other.
         self.assertEqual(example_proofs.never_sent(ROOT), frozenset())
 
     def test_an_unsent_operations_examples_need_proofs(self):
         root = Path(tempfile.mkdtemp())
-        (root / "tests/contract").mkdir(parents=True)
-        (root / "vertrag.yml").write_text("a: 1\nexclude-operation-id:\n  - sentByAPass\n  - neverSent\n\nb: 2\n")
-        (root / "tests/contract/teardown.py").write_text('OPERATIONS = ("sentByAPass",)\n')
+        (root / "vertrag.yml").write_text("a: 1\nexclude-operation-id:\n  - neverSent\n\nb: 2\n")
         unsent = example_proofs.never_sent(root)
         self.assertEqual(unsent, frozenset({"neverSent"}))
+        (root / "vertrag.yml").write_text("exclude-operation-id: [neverSent]  # inline\nb: 2\n")
+        self.assertEqual(example_proofs.never_sent(root), frozenset({"neverSent"}))
+        (root / "vertrag.yml").write_text("exclude-operation-id: []\nb:\n  - notAnExclusion\n")
+        self.assertEqual(example_proofs.never_sent(root), frozenset())
         examples = {"neverSent": {"found": {}, "gone": {}}, "live": {"found": {}}}
         self.assertEqual(example_proofs.unproven(examples, {"neverSent": ["found"]}, unsent),
                          [("neverSent", "gone", {"sent": "never"})])
@@ -499,6 +501,57 @@ class Workflows(unittest.TestCase):
     def test_the_live_stage_clears_old_results_first(self):
         script = (ROOT / "tests/contract/live_proofs.sh").read_text()
         self.assertLess(script.index('rm -rf "$out"'), script.index("run_live anonymous"))
+
+
+class LiveOwnerFixtureLifecycle(unittest.TestCase):
+    def invoke(self, proof_status=0, add_status=0, revoke_status=0):
+        command = yaml.safe_load((ROOT / "chores.yml").read_text())["tasks"]["test:contract-live-proofs"]["cmds"][0]
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            binaries = root / "bin"
+            binaries.mkdir()
+            live = root / "tests/contract/live_proofs.sh"
+            live.parent.mkdir(parents=True)
+            stubs = {
+                binaries / "docker": "printf 'API_KEY_FIXTURE={}\\n'\n",
+                binaries / "chore": (
+                    'printf "%s\\n" "$*" >> "$TASK_LOG"\n'
+                    'case "$3" in add) exit "$ADD_STATUS";; revoke) exit "$REVOKE_STATUS";; esac\n'
+                ),
+                live: 'echo live >> "$TASK_LOG"\nexit "$PROOF_STATUS"\n',
+            }
+            for script, body in stubs.items():
+                script.write_text("#!/bin/sh\n" + body)
+                script.chmod(0o700)
+            log = root / "commands.log"
+            result = subprocess.run(
+                ["bash", "-c", command], cwd=root, capture_output=True, text=True,
+                env={**os.environ, "PATH": str(binaries) + os.pathsep + os.environ["PATH"],
+                     "CONTRACT_FIXTURE_CONFIG": "restmail.test", "CONTRACT_FIXTURE_PROJECT": "restmail-test-api",
+                     "TASK_LOG": str(log), "PROOF_STATUS": str(proof_status),
+                     "ADD_STATUS": str(add_status), "REVOKE_STATUS": str(revoke_status)},
+            )
+            return result.returncode, log.read_text().splitlines(), result.stderr
+
+    def test_key_is_registered_before_proofs_and_revoked_after_success(self):
+        code, commands, stderr = self.invoke()
+        self.assertEqual(code, 0, stderr)
+        self.assertEqual(commands, ["test:contract-owner-key -- add", "live", "test:contract-owner-key -- revoke"])
+
+    def test_a_failed_proof_still_revokes_the_key_and_stays_failed(self):
+        code, commands, _ = self.invoke(proof_status=1)
+        self.assertEqual(code, 1)
+        self.assertEqual(commands, ["test:contract-owner-key -- add", "live", "test:contract-owner-key -- revoke"])
+
+    def test_failed_registration_is_not_green_and_does_not_suppress_other_proofs(self):
+        code, commands, _ = self.invoke(add_status=1)
+        self.assertEqual(code, 1)
+        self.assertEqual(commands, ["test:contract-owner-key -- add", "live"])
+
+    def test_failed_revocation_cannot_report_success(self):
+        code, commands, _ = self.invoke(revoke_status=1)
+        self.assertEqual(code, 1)
+        self.assertEqual(commands[-1], "test:contract-owner-key -- revoke")
 
 
 if __name__ == "__main__":

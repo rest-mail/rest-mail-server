@@ -10,6 +10,7 @@ import threading
 import types
 import unittest
 import urllib.error
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from unittest.mock import patch
@@ -69,6 +70,8 @@ class FixtureAPI(BaseHTTPRequestHandler):
                 self.send_response(409)
                 self.end_headers()
                 return
+            self.server.rules.append(dict(body, id=self.server.serial + 1))
+        elif self.path == "/api/v1/admin/bans":
             self.server.rules.append(dict(body, id=self.server.serial + 1))
         self.server.serial += 1
         data = json.dumps({"data": dict(body, id=self.server.serial)}).encode()
@@ -207,6 +210,95 @@ class CoverageTargetHooks(unittest.TestCase):
         transaction["request"]["method"] = "POST"
         transaction["request"]["body"] = '{ "pattern": "x", "list_type": "allow" }'
         return transaction
+
+    def execute_authorization(self, operation, transaction):
+        with patch.dict(os.environ, {"CONTRACT_AUTHORIZATION": "1", "CONTRACT_COVERAGE": "0"}):
+            for callback in self.callbacks.get(operation, []):
+                callback(transaction)
+        request = urllib.request.Request(
+            self.shared["origin_of"](transaction) + transaction["fullPath"],
+            data=transaction["request"]["body"].encode(),
+            headers=transaction["request"]["headers"],
+            method=transaction["request"]["method"],
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=10) as response:
+                return response.status
+        except urllib.error.HTTPError as error:
+            return error.code
+
+    def test_authorization_sender_rule_preserves_prior_phase_rule(self):
+        for pattern in ("x", "@blocked.example"):
+            with self.subTest(pattern=pattern):
+                request = self.sender_rule_probe()
+                request["expected"] = {"statusCode": "201"}
+                body = {"pattern": pattern, "list_type": "allow", "reason": "Unchanged reason"}
+                request["request"]["body"] = json.dumps(body)
+                original = copy.deepcopy(request)
+                earlier = {"id": 7, "pattern": pattern, "list_type": "allow"}
+                self.server.rules = [copy.deepcopy(earlier)]
+                self.assertEqual(self.execute_authorization("addInstallationSenderRule", request), 201)
+                self.assertIn(earlier, self.server.rules)
+                actual_body = json.loads(request["request"]["body"])
+                self.assertNotEqual(actual_body.pop("pattern"), body.pop("pattern"))
+                self.assertEqual(actual_body, body)
+                original["request"]["body"] = request["request"]["body"]
+                self.assertEqual(request, original)
+
+    def test_authorization_ban_delete_survives_prior_phase_deletion(self):
+        request = self.transaction("removeInstallationSenderRule")
+        request["fullPath"] = "/api/v1/admin/bans/1?keep=yes"
+        request["name"] = "authorization: DELETE /api/v1/admin/bans/{id} as admin"
+        request["expected"] = {"statusCode": "204"}
+        original = copy.deepcopy(request)
+        self.assertEqual(self.execute_authorization("deleteBan", request), 204)
+        self.assertNotEqual(request["fullPath"], original["fullPath"])
+        self.assertTrue(request["fullPath"].endswith("?keep=yes"))
+        original["fullPath"] = request["fullPath"]
+        self.assertEqual(request, original)
+        self.assertEqual(self.server.rules, [])
+
+    def test_authorization_phase_targets_leave_refusals_and_other_principals_unchanged(self):
+        for operation, hook_name, status in (
+            ("addInstallationSenderRule", "an_unused_sender_rule_for_authorization", "201"),
+            ("deleteBan", "a_ban_for_the_authorization_admin", "204"),
+        ):
+            for mode in ("ordinary", "anonymous", "app-password", "refusal", "coverage", "nonplaceholder"):
+                with self.subTest(operation=operation, mode=mode):
+                    request = self.sender_rule_probe()
+                    request["expected"] = {"statusCode": status}
+                    if operation == "deleteBan":
+                        request["fullPath"] = "/api/v1/admin/bans/1?keep=yes"
+                    if mode == "ordinary":
+                        request["request"]["headers"]["Authorization"] = session("ordinary@restmail.test")
+                    elif mode == "anonymous":
+                        request["request"]["headers"] = {}
+                    elif mode == "app-password":
+                        request["request"]["headers"]["Authorization"] = "Basic app-password"
+                    elif mode == "refusal":
+                        request["expected"]["statusCode"] = "404" if operation == "deleteBan" else "409"
+                    elif mode == "nonplaceholder":
+                        if operation == "deleteBan":
+                            request["fullPath"] = "/api/v1/admin/bans/2147483647?keep=yes"
+                        else:
+                            request["request"]["body"] = '{"pattern":"unrelated@example.test","list_type":"allow"}'
+                    original = copy.deepcopy(request)
+                    with patch.dict(os.environ, {"CONTRACT_AUTHORIZATION": "0" if mode == "coverage" else "1"}):
+                        self.shared[hook_name](request)
+                    self.assertEqual(request, original)
+                    self.assertEqual(self.server.calls, [])
+
+    def test_authorization_ban_setup_failure_is_visible_and_preserves_the_request(self):
+        request = self.transaction("removeInstallationSenderRule")
+        request["fullPath"] = "/api/v1/admin/bans/1?keep=yes"
+        request["expected"] = {"statusCode": "204"}
+        original = copy.deepcopy(request)
+        self.server.failure = 503
+        with patch.dict(os.environ, {"CONTRACT_AUTHORIZATION": "1"}):
+            with self.assertRaises(urllib.error.HTTPError) as failure:
+                self.shared["a_ban_for_the_authorization_admin"](request)
+        self.assertEqual(failure.exception.code, 503)
+        self.assertEqual(request, original)
 
     def test_repeated_sender_rule_probes_keep_the_generated_body_and_succeed(self):
         transaction = self.sender_rule_probe()

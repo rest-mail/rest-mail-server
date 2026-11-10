@@ -1,5 +1,6 @@
 """Contract pacing can disappear only alongside raised API limits."""
 
+import ast
 import copy
 import json
 import os
@@ -31,7 +32,38 @@ class ContractRateLimits(unittest.TestCase):
 
     def test_all_hook_throttle_waits_use_the_same_pacing_policy(self):
         source = (ROOT / "tests/contract/hooks.py").read_text()
-        self.assertEqual(source.count("rate_limits.pace("), 17)
+        paced = {}
+        for function in ast.walk(ast.parse(source)):
+            if not isinstance(function, ast.FunctionDef):
+                continue
+            waits = [
+                ast.literal_eval(call.args[0])
+                for call in ast.walk(function)
+                if isinstance(call, ast.Call)
+                and isinstance(call.func, ast.Attribute)
+                and isinstance(call.func.value, ast.Name)
+                and call.func.value.id == "rate_limits"
+                and call.func.attr == "pace"
+            ]
+            if waits:
+                paced[function.name] = waits
+        self.assertEqual(paced, {
+            "a_credential_of_its_own": [1.1],
+            "an_api_key_of_its_own_for_a_probe": [1.1],
+            "an_api_key_of_its_own_to_edit": [1.1],
+            "pace_auth_requests": [1.1],
+            "pace_owner_requests": [1.1],
+            "pace_pipeline_previews": [0.55],
+            "pace_the_tls_reports": [1],
+            "recover_an_account_of_its_own": [1.1],
+            "sign_the_status_with_the_runs_owner_key": [1.1],
+            "mint_for_an_account_of_its_own": [1.1],
+            "reset_an_account_of_its_own": [1.1],
+            "refuse_a_status_key_that_is_not_listed": [1.1],
+            "refuse_a_token_to_a_key_that_is_not_an_owner": [1.1],
+            "refuse_a_token_for_an_account_that_does_not_exist": [1.1],
+            "a_throwaway_grant": [1.1],
+        })
         self.assertNotIn("time.sleep(1.1)", source)
         self.assertNotIn("time.sleep(0.55)", source)
         self.assertIn("time.sleep(int(retry_after))", source)
@@ -40,6 +72,27 @@ class ContractRateLimits(unittest.TestCase):
             helper = (ROOT / "tests/contract" / name).read_text()
             self.assertIn("rate_limits.pace(1.1)", helper)
             self.assertNotIn("time.sleep(1.1)", helper)
+
+    def test_each_missing_pacing_call_is_detected(self):
+        path = ROOT / "tests/contract/hooks.py"
+        source = path.read_text()
+        calls = [
+            node for node in ast.walk(ast.parse(source))
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "rate_limits"
+            and node.func.attr == "pace"
+        ]
+        self.assertEqual(len(calls), 15)
+        for call in calls:
+            with self.subTest(line=call.lineno):
+                lines = source.splitlines(keepends=True)
+                line = lines[call.lineno - 1]
+                lines[call.lineno - 1] = line[:call.col_offset] + "None" + line[call.end_col_offset:]
+                with patch.object(Path, "read_text", return_value="".join(lines)):
+                    with self.assertRaises(AssertionError):
+                        self.test_all_hook_throttle_waits_use_the_same_pacing_policy()
 
     def test_topology_setting_and_api_flags_are_connected_and_opt_in(self):
         chores = yaml.safe_load((ROOT / "chores.yml").read_text())
@@ -148,7 +201,7 @@ class ContractRateLimits(unittest.TestCase):
         self.assertIn("docker inspect", commands[2])
         self.assertIn("--assert-defaults", commands[2])
         self.assertIn("^TestLimits$", commands[3])
-        teardown = tasks["test:contract-teardown"]["cmds"][0]
+        teardown = tasks["test:contract-own-data"]["cmds"][0]
         self.assertIn("api:up", teardown)
         self.assertNotIn("RESTMAIL_CONTRACT_LIMITS_RAISED=false", teardown)
 

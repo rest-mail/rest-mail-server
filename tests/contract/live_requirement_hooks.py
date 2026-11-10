@@ -12,6 +12,7 @@ def oversized_body(transaction):
         raise ValueError("the live body size must be positive")
     transaction["request"]["body"] = " " * size
     transaction["request"]["headers"]["Content-Length"] = str(size)
+    transaction["request"]["headers"]["Expect"] = "100-continue"
 
 
 @hooks.before_each_validation
@@ -24,3 +25,10 @@ def forget_the_sent_body(transaction):
     and validation judges the response.
     """
     transaction["request"]["body"] = ""
+
+
+@hooks.after_all
+def forget_the_finished_bodies(transactions):
+    """Release sent bodies even when a failed exchange bypassed validation."""
+    for transaction in transactions:
+        forget_the_sent_body(transaction)

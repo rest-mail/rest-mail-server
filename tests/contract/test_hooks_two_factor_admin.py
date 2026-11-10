@@ -158,6 +158,68 @@ class TwoFactorAdminHookTests(unittest.TestCase):
         self.assertEqual(json.loads(secret["request"]["body"])["password"], self.module.mfa_admin.PASSWORD)
         self.mfa.assert_not_called()
 
+    def test_authorization_key_edit_uses_its_actual_callers_password(self):
+        own = session(self.module.mfa_admin.ADDRESS)
+        body = {"name": "Edited key", "password": "current-password", "permissions": []}
+        key = transaction("/api/v1/accounts/1/api-keys/84", own, json.dumps(body))
+        with patch.object(self.module, "mailbox_address", return_value=self.module.ADMIN), \
+                patch.object(self.module.rate_limits, "pace"), \
+                patch.object(self.module.urllib.request, "urlopen") as urlopen:
+            urlopen.return_value.__enter__.return_value = io.BytesIO(json.dumps({"data": {"id": 91}}).encode())
+            self.module.an_api_key_of_its_own_to_edit(key)
+        self.assertEqual(json.loads(key["request"]["body"])["password"], self.module.mfa_admin.PASSWORD)
+        self.assertEqual(key["request"]["headers"]["Authorization"], own)
+        self.assertEqual(key["fullPath"], "/api/v1/accounts/1/api-keys/91")
+
+    def test_key_edit_refused_passwords_and_other_principals_are_preserved(self):
+        for address, password in ((self.module.mfa_admin.ADDRESS, "not-the-password"),
+                                  (self.module.mfa_admin.ADDRESS, ""),
+                                  ("contract-ordinary@restmail.test", "current-password")):
+            with self.subTest(address=address, password=password):
+                key = transaction("/api/v1/accounts/1/api-keys/84", session(address),
+                                  json.dumps({"name": "Held", "password": password}))
+                before = json.loads(json.dumps(key))
+                with patch.object(self.module.urllib.request, "urlopen") as urlopen:
+                    self.module.an_api_key_of_its_own_to_edit(key)
+                self.assertEqual(key, before)
+                urlopen.assert_not_called()
+
+    def test_report_cancel_makes_a_fresh_message_as_the_actual_caller(self):
+        name = "/api/v1/messages/scheduled/{id} > Cancel a message that has not been sent yet > 204"
+        for address in (self.module.ADMIN, self.module.mfa_admin.ADDRESS):
+            for scheduled_id in (3, 52):
+                with self.subTest(address=address, scheduled_id=scheduled_id), \
+                        patch.dict(os.environ, {"CONTRACT_AUTHORIZATION": "1"}), \
+                        patch.object(self.module, "admin_token", return_value="different-admin-token"), \
+                        patch.object(self.module.urllib.request, "urlopen") as urlopen:
+                    response = urlopen.return_value.__enter__.return_value
+                    response.status = 202
+                    response.read.return_value = json.dumps({"data": {"id": 91}}).encode()
+                    own = session(address)
+                    cancel = transaction(f"/api/v1/messages/scheduled/{scheduled_id}", own)
+                    cancel["name"] = name
+                    cancel["request"]["method"] = "DELETE"
+                    self.module.cancel_a_message_we_made(cancel)
+                    self.assertEqual(cancel["fullPath"], "/api/v1/messages/scheduled/91")
+                    self.assertEqual(cancel["request"]["headers"]["Authorization"], own)
+                    request = urlopen.call_args.args[0]
+                    self.assertEqual(request.headers["Authorization"], own)
+                    self.assertEqual(json.loads(request.data)["from"], address)
+
+    def test_report_cancel_keeps_foreign_missing_and_invalid_targets(self):
+        for address, target in (("contract-ordinary@restmail.test", "3"),
+                                (self.module.mfa_admin.ADDRESS, "2147483647"),
+                                (self.module.mfa_admin.ADDRESS, "0"),
+                                (self.module.mfa_admin.ADDRESS, "not-an-id")):
+            with self.subTest(address=address, target=target), patch.dict(os.environ, {"CONTRACT_AUTHORIZATION": "1"}):
+                cancel = transaction(f"/api/v1/messages/scheduled/{target}", session(address))
+                cancel["name"] = "/api/v1/messages/scheduled/{id} > Cancel a message that has not been sent yet > 204"
+                before = json.loads(json.dumps(cancel))
+                with patch.object(self.module, "schedule_a_message") as schedule:
+                    self.module.cancel_a_message_we_made(cancel)
+                self.assertEqual(cancel, before)
+                schedule.assert_not_called()
+
     def test_the_key_is_scoped_to_its_accounts_own_mailbox(self):
         permissions = [{"capability": "mail:read", "scope": "mailbox:robot@example.com"}]
         body = {"name": "Invoice robot", "password": "current-password", "permissions": permissions}

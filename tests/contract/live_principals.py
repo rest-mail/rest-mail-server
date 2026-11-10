@@ -8,12 +8,65 @@ This does not promote the provisional whole-API authorization matrix to a gate.
 import argparse
 import base64
 import json
+import ssl
+import urllib.error
 import urllib.request
+from contextlib import contextmanager
 from pathlib import Path
 
 import mfa_admin
 from api_keys_live import Client, login, mfa_session, require_fixture_account
-from live_requirements import prove
+from live_requirements import gateway_transport, prove
+
+
+@contextmanager
+def app_gateway(app):
+    require_fixture_account(app["address"])
+    endpoint, transport = gateway_transport()
+    context = ssl.create_default_context(cafile=transport["ca-cert"])
+    context.load_cert_chain(transport["cert"], transport["cert-key"])
+    request = urllib.request.Request(
+        endpoint.rstrip("/") + "/api/v1/gateway-sessions",
+        data=json.dumps({"protocol": "imap", "address": app["address"], "password": app["secret"]}).encode(),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=10, context=context) as response:
+        if response.status != 201:
+            raise AssertionError("the IMAP gateway session did not answer 201")
+        session = json.load(response)["data"]
+    token = session.get("token")
+    if not isinstance(token, str) or not token.startswith("rmgs_"):
+        raise AssertionError("the IMAP gateway did not return a session token")
+    try:
+        if session.get("credential_kind") != "app_password" or session.get("protocol") != "imap" or session.get("user", {}).get("id") != app["id"]:
+            raise AssertionError("the gateway session does not identify the fixture app password")
+        yield token, endpoint, transport
+    finally:
+        request = urllib.request.Request(
+            endpoint.rstrip("/") + "/api/v1/gateway-sessions/current",
+            headers={"Authorization": "Bearer " + token},
+            method="DELETE",
+        )
+        with urllib.request.urlopen(request, timeout=10, context=context) as response:
+            if response.status != 204:
+                raise AssertionError("closing the IMAP gateway session did not answer 204")
+
+
+def require_basic_refused(endpoint, basic, accounts):
+    for account in accounts:
+        request = urllib.request.Request(
+            endpoint.rstrip("/") + f"/api/v1/accounts/{account}/folders",
+            headers={"Authorization": basic},
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=10) as response:
+                status = response.status
+        except urllib.error.HTTPError as error:
+            status = error.code
+            error.close()
+        if status != 401:
+            raise AssertionError(f"HTTP Basic must answer 401, got {status}")
 
 
 def run(binary, endpoint, output, principals, fixture, examples):
@@ -70,12 +123,12 @@ def run(binary, endpoint, output, principals, fixture, examples):
             domain_id,
         ),
         ("anonymous", "getDomain", "unauthenticated", "", domain_id),
-        ("app-password-own", "listFolders", "found", basic, app["id"]),
+        ("app-password-own", "listFolders", "found", "", app["id"]),
         (
             "app-password-outside",
             "listFolders",
             "key_wrong_scope",
-            basic,
+            "",
             other_account,
         ),
         (
@@ -103,19 +156,27 @@ def run(binary, endpoint, output, principals, fixture, examples):
     ]
     failed = 0
     try:
-        for label, operation, name, header, resource in cells:
-            pair = examples[operation][name]
-            failed |= prove(
-                binary,
-                endpoint,
-                document,
-                {operation: {name: pair}},
-                label,
-                output,
-                requirement=pair.get("requires", {}),
-                header="Authorization: " + header if header else "",
-                path_values={"id": resource},
-            )
+        with app_gateway(app) as (gateway_token, internal_endpoint, transport):
+            require_basic_refused(endpoint, basic, (app["id"], other_account))
+            for label, operation, name, header, resource in cells:
+                pair = examples[operation][name]
+                destination, options = endpoint, {}
+                if label.startswith("app-password-"):
+                    destination = internal_endpoint
+                    header = "Bearer " + gateway_token
+                    options["transport"] = transport
+                failed |= prove(
+                    binary,
+                    destination,
+                    document,
+                    {operation: {name: pair}},
+                    label,
+                    output,
+                    requirement=pair.get("requires", {}),
+                    header="Authorization: " + header if header else "",
+                    path_values={"id": resource},
+                    **options,
+                )
     finally:
         client.expect(
             204, "DELETE", f"{keys}/{key['id']}", token=scoped["access_token"]

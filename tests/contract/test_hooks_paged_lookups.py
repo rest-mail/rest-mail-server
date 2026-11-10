@@ -170,7 +170,7 @@ class PagedLookups(unittest.TestCase):
 
     def test_the_newest_held_message_is_taken_from_every_page(self):
         patch.object(self.hooks, "mailbox_id", return_value=6).start()
-        patch.object(self.hooks, "with_the_fixture_admins_session", return_value=True).start()
+        patch.object(self.hooks, "session_address", return_value=self.hooks.ADMIN).start()
         held = [{"id": n + 1, "released": False} for n in range(210)]
         self.server.lists["/api/v1/accounts/6/quarantine"] = held[::-1][5:] + held[-5:][::-1]
         transaction = {

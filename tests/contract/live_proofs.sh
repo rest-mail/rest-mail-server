@@ -4,11 +4,12 @@
 #
 #   tests/contract/live_proofs.sh API_KEY_FIXTURE_JSON
 #
-# Three runners against a running topology, each with a directory of its own
+# Four runners against a running topology, each with a directory of its own
 # under .cache/contract/live-proofs (CONTRACT_LIVE_PROOFS to put it elsewhere):
 # named anonymous examples, named over-cap examples, and the bounded matrix of
-# real principals. scripts/example_proofs.py --live reads what they write and
-# decides what counts; nothing here decides that.
+# real principals, plus exact human-assurance checks for grants and links.
+# scripts/example_proofs.py --live reads the named-example proof files and
+# decides what counts; the assurance runner is an additional strict check.
 #
 # This exits nonzero when a runner proved less than it selected, or could not
 # run. Every runner still runs, so one failure takes no other runner's proofs
@@ -57,4 +58,5 @@ run_live over-cap python3 -B tests/contract/live_requirements.py over-cap "$endp
   --vertrag "$vertrag" --workers "${CONTRACT_LIVE_WORKERS:-4}"
 run_live principals python3 -B tests/contract/live_principals.py "$endpoint" "$out/principals" \
   --vertrag "$vertrag" --principals "$principals" --fixture "$fixture"
+run_live assurance python3 -B tests/contract/assurance_live.py "$endpoint" "$out/assurance/report.json"
 exit "$status"
