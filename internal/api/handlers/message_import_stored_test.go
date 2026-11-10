@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -18,6 +19,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/grants"
 	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
+	rmime "github.com/rest-mail/rest-mail-server/internal/mime"
 )
 
 // These speak only to the route, so they hold on any way of reading a request. The rows wanted
@@ -370,16 +372,25 @@ var fieldShapesStillOver = map[string]stillOverCost{
 	"8-bit, a line break in each charset*N": {importing: 13, delivering: 12, restmail: 13},
 	"8-bit names, on many parts":            {importing: 9},
 	"comments on name*N":                    {restmail: 9},
-	"name*N on a part":                      {restmail: 9},
 	// A part costs what it costs however little it holds: its file and row on import, and its fields and
 	// a place in what filters read on every route. That's about 3 KiB a part on import and under 2 KiB on
 	// the others, bounded by the limit of a thousand parts (#1641), so what's over 8x here comes from how
 	// little a part has to hold and not from its size. At 339 bytes a part, 8x is 2.7 KiB for all of it,
 	// the message's own copies included. Import was 135x and about 50x on these, on a buffer for each part.
-	"999 small attachments":                        {importing: 20, delivering: 12, restmail: 13},
-	"attachments, base64, on many parts":           {importing: 11, delivering: 10, restmail: 10},
-	"attachments, quoted-printable, on many parts": {importing: 11, delivering: 10, restmail: 10},
-	"attachments, no encoding, on many parts":      {importing: 11, delivering: 10, restmail: 11},
+	"999 small attachments":                        {importing: 20, delivering: 11, restmail: 12},
+	"attachments, base64, on many parts":           {importing: 11, delivering: 9, restmail: 9},
+	"attachments, quoted-printable, on many parts": {importing: 11, delivering: 9, restmail: 9},
+	"attachments, no encoding, on many parts":      {importing: 11, delivering: 9, restmail: 11},
+	// RESTMAIL's structure check holds the long field a second time. The filename beside it isn't a field
+	// that check reads, so it's under 8x.
+	"a long quoted name": {restmail: 9},
+	// These are 58 octets for each part, so the multiple says little. What matters is what a part costs,
+	// about 1.7 KiB with a charset and 2.1 KiB with a word on /deliver and RESTMAIL, counting what the message
+	// costs whatever its parts, and what bounds that is the limit on parts (rmime.DefaultMaxParts): 1.7 to
+	// 2.1 MB, whatever the message's size. Import stores a named part as a file and a row, about 5.2 KiB with
+	// a word, so 5.2 MB. It was 730x on a 32 KiB copy buffer for each attachment, before #1975.
+	"999 parts, a charset on each":   {importing: 29, delivering: 28, restmail: 31},
+	"999 parts, a word in each name": {importing: 93, delivering: 35, restmail: 38},
 }
 
 // shapesUnderTheLimit are the shapes a route holds to 8x, which is every one cost doesn't name for it.
@@ -422,7 +433,7 @@ func holdsItsCost(t *testing.T, id string, cost func(stillOverCost) uint64, send
 				allocated := send(t, message)
 				best, worst = min(best, allocated), max(worst, allocated)
 			}
-			t.Logf("%d bytes allocated %.1f to %.1f times over, held to %dx", length, float64(best)/float64(length), float64(worst)/float64(length), ceiling)
+			t.Logf("%d bytes allocated %.2f to %.2f times over, held to %dx", length, float64(best)/float64(length), float64(worst)/float64(length), ceiling)
 			if best > ceiling*length {
 				t.Fatalf("%d bytes allocated %d, over the %dx this row was measured at", length, best, ceiling)
 			}
@@ -554,6 +565,22 @@ func allFieldShapes(id string) map[string]string {
 		"parameters, top level, 8-bit text":            id + long("Content-Type: text/plain; charset=utf-8", ";\r\n p%d=v%d", "") + "\r\n" + eightBit,
 		"parameters, on a part, 8-bit text":            id + "Content-Type: multipart/mixed; boundary=B\r\n\r\n--B\r\n" + long("Content-Type: text/plain; charset=utf-8", ";\r\n p%d=v%d", "") + "\r\n" + eightBit + "--B--\r\n",
 		"address list, encoded names":                  id + long("To: to@example.test", ",\r\n =?utf-8?q?N%d?= <a%d@example.test>", "") + "Content-Type: text/plain; charset=utf-8\r\n\r\n" + eightBit,
+		"address list, names no one reads":             id + long("To: to@example.test", ",\r\n =?x-none?q?N%d?= <a%d@example.test>", "") + "Content-Type: text/plain; charset=utf-8\r\n\r\n" + eightBit,
+		"address list, short unread names":             id + "To: a@b" + strings.Repeat(",=?x?q?a?=<a@b>", size*3/4/15) + "\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n" + eightBit,
+		"address list, quoted words":                   id + long("To: to@example.test", ",\r\n \"=?utf-8?q?N%d?=\" <a%d@example.test>", "") + "Content-Type: text/plain; charset=utf-8\r\n\r\n" + eightBit,
+		"address list, words read":                     id + long("To: to@example.test", ",\r\n =?windows-1252?q?N%d?= <a%d@example.test>", "") + "Content-Type: text/plain; charset=utf-8\r\n\r\n" + eightBit,
+		"address list, base64 words read":              id + long("To: to@example.test", ",\r\n =?windows-1252?b?TjA=?= <a%d%.0d@example.test>", "") + "Content-Type: text/plain; charset=utf-8\r\n\r\n" + eightBit,
+		"address list, short words read":               id + "To: a@b" + strings.Repeat(",=?cp866?q?a?=<a@b>", size*3/4/19) + "\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n" + eightBit,
+		"address list, words in comments":              id + long("To: to@example.test", ",\r\n a%d@example.test (=?windows-1252?q?N%d?=)", "") + "Content-Type: text/plain; charset=utf-8\r\n\r\n" + eightBit,
+		"address list, many charsets":                  id + manyCharsets(size*3/4) + "Content-Type: text/plain; charset=utf-8\r\n\r\n" + eightBit,
+		"a name of many words read":                    id + long("To: =?windows-1252?q?a?=", " =?windows-1252?q?N%d%.0d?=", " <a@example.test>") + "Content-Type: text/plain; charset=utf-8\r\n\r\n" + eightBit,
+		"Subject of many words read":                   strings.Replace(id, "Subject: s\r\n", "", 1) + long("Subject: =?windows-1252?q?a?=", "\r\n =?windows-1252?q?N%d%.0d?=", "") + "Content-Type: text/plain; charset=utf-8\r\n\r\n" + eightBit,
+		"Subject of many base64 words read":            strings.Replace(id, "Subject: s\r\n", "", 1) + long("Subject: =?windows-1252?b?YQ==?=", "\r\n =?windows-1252?b?YQ==?=%.0d%.0d", "") + "Content-Type: text/plain; charset=utf-8\r\n\r\n" + eightBit,
+		"filename of many words read":                  onPart(long("Content-Disposition: attachment; filename=\"=?windows-1252?q?a?=", " =?windows-1252?q?N%d%.0d?=", "\"")),
+		"a long quoted filename":                       onPart(long("Content-Disposition: attachment; filename=\"a", " word%d%.0d", "\"")),
+		"a long quoted name":                           onPart(long("Content-Type: application/x; name=\"a", " word%d%.0d", "\"")),
+		"999 parts, a charset on each":                 id + "Content-Type: multipart/mixed; boundary=B\r\n\r\n" + strings.Repeat("--B\r\nContent-Type: text/plain; charset=windows-1252\r\n\r\nx\r\n", 999) + "--B--\r\n",
+		"999 parts, a word in each name":               id + "Content-Type: multipart/mixed; boundary=B\r\n\r\n" + strings.Repeat("--B\r\nContent-Type: a/b; name=\"=?windows-1252?q?n?=\"\r\n\r\nx\r\n", 999) + "--B--\r\n",
 		"address list, comments":                       id + long("To: to@example.test", ",\r\n a%d@example.test (c%d)", "") + "Content-Type: text/plain; charset=utf-8\r\n\r\n" + eightBit,
 		"address list, 8-bit names":                    id + long("To: to@example.test", ",\r\n \"N\u00e4me %d\" <a%d@example.test>", "") + "Content-Type: text/plain; charset=utf-8\r\n\r\n" + eightBit,
 		"address list, very short":                     id + "To: a@b" + strings.Repeat(",a@b", size*3/16) + "\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n" + eightBit,
@@ -564,6 +591,22 @@ func allFieldShapes(id string) map[string]string {
 	}
 }
 
+// manyCharsets is an address list whose words go round more charsets than a reader keeps a decoder for.
+func manyCharsets(size int) string {
+	charsets := []string{
+		"windows-1250", "windows-1251", "windows-1252", "windows-1253", "windows-1254", "windows-1255", "windows-1256", "windows-1257", "windows-1258",
+		"koi8-r", "koi8-u", "shift_jis", "euc-jp", "big5", "gbk", "euc-kr", "macintosh",
+		"iso-8859-2", "iso-8859-3", "iso-8859-4", "iso-8859-5", "iso-8859-6", "iso-8859-7", "iso-8859-8",
+	}
+	var b strings.Builder
+	b.WriteString("To: to@example.test")
+	for i := 0; b.Len() < size; i++ {
+		fmt.Fprintf(&b, ",\r\n =?%s?q?N?= <a%d@example.test>", charsets[i%len(charsets)], i)
+	}
+	b.WriteString("\r\n")
+	return b.String()
+}
+
 // longBoundary is a Content-Type naming one boundary in pieces, numbered without a gap, to size.
 func longBoundary(size int) string {
 	var b strings.Builder
@@ -572,6 +615,83 @@ func longBoundary(size int) string {
 		fmt.Fprintf(&b, ";\r\n boundary*%d=v%d", i, i)
 	}
 	return b.String()
+}
+
+// An import over the part limit is refused for what the first part past it shows, whatever it holds
+// after that, so what it costs doesn't grow with what's refused.
+func TestRefusedImportDoesNotParseWhatItRefuses(t *testing.T) {
+	const size = 1 << 20
+	db := importProofDB(t)
+	fx := seedAccountsFixture(t, db)
+	if err := db.Create(&models.QuotaUsage{MailboxID: fx.user.ID}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := grants.EnsureImport(db, &fx.user); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Model(&models.Mailbox{}).Where("id = ?", fx.user.ID).Update("quota_bytes", int64(1)<<40).Error; err != nil {
+		t.Fatal(err)
+	}
+	h := NewMessageImportHandler(db, 2*size, nil, nil)
+	h.directory = t.TempDir()
+	routes := importMessageRoutes(h)
+	send := func(message string) (*httptest.ResponseRecorder, uint64) {
+		body := fmt.Sprintf(`{"raw_message":"%s","internal_date":"2020-01-02T03:04:05Z"}`, base64.StdEncoding.EncodeToString([]byte(message)))
+		r := authzRequest(http.MethodPost, fmt.Sprintf("/api/v1/accounts/%d/messages/import", fx.user.ID), fx.user.ID, nil, body)
+		r.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		var before, after runtime.MemStats
+		emptyPools()
+		runtime.ReadMemStats(&before)
+		routes.ServeHTTP(w, r)
+		runtime.ReadMemStats(&after)
+		return w, after.TotalAlloc - before.TotalAlloc
+	}
+	if w, _ := send("Message-ID: <warm@example.test>\r\nFrom: old@example.test\r\n\r\nb\r\n"); w.Code != http.StatusOK {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	const head = "From: old@example.test\r\nContent-Type: multipart/mixed; boundary=B\r\n\r\n"
+	for name, part := range map[string]string{
+		"typed":       "--B\r\nContent-Type: a/b\r\n\r\n" + strings.Repeat("y", 45) + "\r\n",
+		"attachment":  "--B\r\nContent-Disposition: attachment; filename=a\r\n\r\n" + strings.Repeat("y", 20) + "\r\n",
+		"with a word": "--B\r\nContent-Type: text/plain; charset=windows-1252; name=\"=?windows-1252?q?n?=\"\r\n\r\nx\r\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			best, length := uint64(1)<<63, 0
+			for attempt := range 3 {
+				message := fmt.Sprintf("Message-ID: <refused-%s-%d@example.test>\r\n", strings.ReplaceAll(name, " ", "-"), attempt) + head + strings.Repeat(part, size/len(part)) + "--B--\r\n"
+				length = len(message)
+				w, allocated := send(message)
+				if w.Code != http.StatusUnprocessableEntity || !strings.Contains(w.Body.String(), "MIME structure over limit") {
+					t.Fatalf("%d %s", w.Code, w.Body)
+				}
+				best = min(best, allocated)
+			}
+			t.Logf("refusing %d bytes allocated %d, %.1f times over", length, best, float64(best)/float64(length))
+			if best > uint64(length) {
+				t.Fatalf("refusing %d bytes allocated %d", length, best)
+			}
+			// Parts stored before it was refused would stay on disk, with no row to find them by.
+			left, err := os.ReadDir(h.directory)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(left) != 0 {
+				t.Fatalf("%d files left behind", len(left))
+			}
+		})
+	}
+	// Too deep with too few lines to be counted first, and the parse refuses it as it always did.
+	var deep strings.Builder
+	deep.WriteString("Message-ID: <refused-deep@example.test>\r\nFrom: old@example.test\r\n")
+	for depth := range rmime.DefaultMaxNestingDepth + 1 {
+		fmt.Fprintf(&deep, "Content-Type: multipart/mixed; boundary=B%d\r\n\r\n--B%d\r\n", depth, depth)
+	}
+	deep.WriteString("\r\nx\r\n")
+	w, _ := send(deep.String())
+	if w.Code != http.StatusUnprocessableEntity || !strings.Contains(w.Body.String(), "MIME structure over limit") {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
 }
 
 // The same limit holds for an attachment FETCH has to convert, because measuring what it would
