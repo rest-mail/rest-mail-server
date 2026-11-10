@@ -8,6 +8,7 @@ import re
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -197,11 +198,38 @@ class Workflow(unittest.TestCase):
         self.assertRegex(step, r"IMC_SHA256: [0-9a-f]{64}\b")
         self.assertIn("sha256sum --check --strict", step)
 
-    def test_every_action_is_pinned_by_commit(self):
-        uses = re.findall(r"uses: (\S+)", self.source)
+    def assert_actions_pinned(self, source, visited=None):
+        visited = set() if visited is None else visited
+        uses = re.findall(r"uses: (\S+)", source)
         self.assertTrue(uses)
         for action in uses:
-            self.assertRegex(action, r"@[0-9a-f]{40}$")
+            if action.startswith("./"):
+                directory = (ROOT / action).resolve()
+                self.assertTrue(directory.is_relative_to(ROOT.resolve()))
+                definition = directory / "action.yml"
+                self.assertTrue(definition.is_file())
+                if definition not in visited:
+                    visited.add(definition)
+                    self.assert_actions_pinned(definition.read_text(), visited)
+            else:
+                self.assertRegex(action, r"@[0-9a-f]{40}$")
+
+    def test_every_action_is_pinned_by_commit(self):
+        self.assert_actions_pinned(self.source)
+
+    def test_local_actions_must_pin_their_dependencies_too(self):
+        with patch.object(Path, "read_text", return_value="uses: actions/setup-python@v6"):
+            with self.assertRaises(AssertionError):
+                self.assert_actions_pinned("uses: ./.github/actions/setup-python")
+
+    def test_local_actions_cannot_escape_the_checkout(self):
+        with self.assertRaises(AssertionError):
+            self.assert_actions_pinned("uses: ./../outside")
+
+    def test_missing_local_actions_are_refused(self):
+        with patch.object(Path, "is_file", return_value=False):
+            with self.assertRaises(AssertionError):
+                self.assert_actions_pinned("uses: ./.github/actions/setup-python")
 
     def test_chore_and_the_testbed_come_in_exactly_as_the_e2e_suite_brings_them(self):
         suite = E2E_SUITE.read_text()
