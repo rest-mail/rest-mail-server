@@ -945,6 +945,11 @@ class Gate:
                 f"CI needs go{expected}, found {actual}; install that Go toolchain before rerunning"
             )
         self.env["GOTOOLCHAIN"] = "go" + expected
+        compiler = self.run(
+            [self.python, "scripts/ci/install_cgo.py", str(self.work / "cgo"), "--print-env"],
+            capture=True,
+        )
+        self.env.update(json.loads(compiler))
 
     def python_suite(self, directory):
         self.run(
