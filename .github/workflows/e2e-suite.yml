@@ -31,7 +31,7 @@ permissions:
 jobs:
   suite:
     name: topology
-    runs-on: ubuntu-latest
+    runs-on: antimatter-vps-linux-x64
     # The suite took 52 minutes before the live proofs, which may take up to 25.
     timeout-minutes: 85
     env:
@@ -399,7 +399,7 @@ jobs:
     # topology job does, so the required `E2E (full topology)` check waits for it.
     name: JS filter isolation
     if: inputs.contract-phases == 'gate'
-    runs-on: ubuntu-latest
+    runs-on: antimatter-vps-linux-x64
     timeout-minutes: 30
     env:
       RESTMAIL_SKIP_FRONTENDS: "true"

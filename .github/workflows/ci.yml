@@ -38,7 +38,7 @@ jobs:
   preflight:
     name: 'Preflight: branch is up to date'
     if: github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != '')
-    runs-on: ubuntu-latest
+    runs-on: antimatter-vps-linux-x64
     timeout-minutes: 5
     steps:
       - name: Checkout the pull request head, not GitHub's merge commit
@@ -76,7 +76,7 @@ jobs:
     # A cache made on main is the one every branch can read, and the runs above no longer
     # write them on a merge. Mostly this finds nothing to do, and takes about a minute.
     if: github.event_name == 'push'
-    runs-on: ubuntu-latest
+    runs-on: antimatter-vps-linux-x64
     timeout-minutes: 30
     steps:
       - name: Checkout code
@@ -174,7 +174,7 @@ jobs:
     needs: preflight
     name: API contract changes
     if: github.event_name == 'pull_request' && (github.event.action != 'edited' || github.event.changes.base.ref.from != '')
-    runs-on: ubuntu-latest
+    runs-on: antimatter-vps-linux-x64
     timeout-minutes: 15
     permissions:
       contents: read
@@ -344,7 +344,7 @@ jobs:
     needs: preflight
     name: Check constellation inventory
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
-    runs-on: ubuntu-latest
+    runs-on: antimatter-vps-linux-x64
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -356,7 +356,7 @@ jobs:
     needs: preflight
     name: Test contract tooling
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
-    runs-on: ubuntu-latest
+    runs-on: antimatter-vps-linux-x64
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -370,7 +370,7 @@ jobs:
     needs: preflight
     name: Lint
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
-    runs-on: ubuntu-latest
+    runs-on: antimatter-vps-linux-x64
     outputs:
       go_imap_changed: ${{ steps.go-imap.outputs.go_imap_changed }}
     steps:
@@ -449,7 +449,7 @@ jobs:
     needs: preflight
     name: Test
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
-    runs-on: ubuntu-latest
+    runs-on: antimatter-vps-linux-x64
     services:
       postgres:
         image: postgres:16-alpine
@@ -589,7 +589,7 @@ jobs:
     needs: preflight
     name: Test contract fixtures and faults
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
-    runs-on: ubuntu-latest
+    runs-on: antimatter-vps-linux-x64
     services:
       postgres:
         image: postgres:16-alpine
@@ -658,7 +658,7 @@ jobs:
   test-imap:
     name: Test IMAP module
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
-    runs-on: ubuntu-latest
+    runs-on: antimatter-vps-linux-x64
     needs: [preflight, lint]
     steps:
       - name: Checkout code
@@ -737,7 +737,7 @@ jobs:
     needs: preflight
     name: Test internal/api/handlers (${{ matrix.shard }} of 4)
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
-    runs-on: ubuntu-latest
+    runs-on: antimatter-vps-linux-x64
     strategy:
       fail-fast: false
       matrix:
@@ -865,7 +865,7 @@ jobs:
     # detector, most of it in PostgreSQL fixtures, against a 20 minute limit per
     # package (#1307). Each shard runs every fourth of its top-level tests, by
     # name, against a database of its own, beside the Test job.
-    runs-on: ubuntu-latest
+    runs-on: antimatter-vps-linux-x64
     strategy:
       fail-fast: false
       matrix:
@@ -991,7 +991,7 @@ jobs:
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     # Joins what Test and both API matrices wrote: the example
     # proofs, judged as one set, and the coverage, as one profile.
-    runs-on: ubuntu-latest
+    runs-on: antimatter-vps-linux-x64
     needs: [preflight, test, test-api, test-handlers, test-contract, test-imap]
     steps:
       - name: Checkout code
@@ -1061,7 +1061,7 @@ jobs:
     needs: preflight
     name: Garage attachment storage
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
-    runs-on: ubuntu-latest
+    runs-on: antimatter-vps-linux-x64
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1075,7 +1075,7 @@ jobs:
   build:
     name: Build
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
-    runs-on: ubuntu-latest
+    runs-on: antimatter-vps-linux-x64
     needs: [preflight, test, test-api, test-handlers, test-contract, test-imap]
     steps:
       - name: Checkout code
@@ -1109,7 +1109,7 @@ jobs:
     needs: preflight
     name: Helm Chart
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
-    runs-on: ubuntu-latest
+    runs-on: antimatter-vps-linux-x64
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1136,7 +1136,7 @@ jobs:
     needs: preflight
     name: Webmail Build
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
-    runs-on: ubuntu-latest
+    runs-on: antimatter-vps-linux-x64
     defaults:
       run:
         working-directory: webmail
@@ -1196,7 +1196,7 @@ jobs:
     needs: preflight
     name: Admin Build
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
-    runs-on: ubuntu-latest
+    runs-on: antimatter-vps-linux-x64
     defaults:
       run:
         working-directory: admin
@@ -1271,7 +1271,7 @@ jobs:
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     # The sidecar that runs javascript filters: its own tests (the sandbox
     # escapes of #160 among them), then the API's filter against it, end to end.
-    runs-on: ubuntu-latest
+    runs-on: antimatter-vps-linux-x64
     defaults:
       run:
         working-directory: projects/js-filter-sidecar
@@ -1365,7 +1365,7 @@ jobs:
     # the public API with an owner key (no platform assumed) -- after which
     # nothing the first holder had works, an unexpired access token included.
     # tests/first-start/agent-e2e.sh.
-    runs-on: ubuntu-latest
+    runs-on: antimatter-vps-linux-x64
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1400,7 +1400,7 @@ jobs:
     needs: preflight
     name: Web app image (${{ matrix.app }})
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
-    runs-on: ubuntu-latest
+    runs-on: antimatter-vps-linux-x64
     strategy:
       fail-fast: false
       matrix:
@@ -1491,7 +1491,7 @@ jobs:
     # chapter or a diagram Archify refuses fails the pull request that broke it
     # (docs/design/email-explained-website.md). Outside links change on other
     # sites' schedules, so scheduled.yml checks those daily.
-    runs-on: ubuntu-latest
+    runs-on: antimatter-vps-linux-x64
     defaults:
       run:
         working-directory: scripts/email-explained
@@ -1523,7 +1523,7 @@ jobs:
     name: ${{ github.event_name == 'pull_request' && github.event.action == 'edited' && github.event.changes.base.ref.from == '' && 'CI (ignored edit)' || 'CI' }}
     needs: [preflight, seed-caches, contract-diff, lint, constellation, contract-tooling, test, test-api, test-handlers, test-contract, test-imap, test-report, attachments-s3, build, helm, webmail, admin, js-filter, first-start, webapp-images, guide]
     if: always() && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
-    runs-on: ubuntu-latest
+    runs-on: antimatter-vps-linux-x64
     steps:
       - name: Verdict
         env:
