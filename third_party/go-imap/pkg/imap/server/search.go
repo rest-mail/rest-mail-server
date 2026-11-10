@@ -366,9 +366,7 @@ func parseSearchCriterion(tokens []string, idx int, maxUID uint32, probe *search
 	case "UNDELETED":
 		return searchCriterion{kind: "undeleted"}, idx + 1, nil
 	case "RECENT":
-		// \Recent has no distinct model in this engine, which reports the unseen
-		// set as RECENT in SELECT/EXAMINE and STATUS; SEARCH RECENT matches that
-		// same set (RFC 3501 §6.4.4).
+		// The messages \Recent to this session (RFC 3501 §6.4.4).
 		return searchCriterion{kind: "recent"}, idx + 1, nil
 	case "NEW":
 		// NEW "is functionally equivalent to (RECENT UNSEEN)" and OLD to "NOT
@@ -586,9 +584,8 @@ func (s *Session) matchOne(msg imap.Message, c searchCriterion, loadRaw func() (
 	case "unseen":
 		return !msg.Seen
 	case "recent":
-		// The engine models \Recent as the unseen set (see parseSingleCriterion),
-		// matching the RECENT count reported by SELECT/EXAMINE and STATUS.
-		return !msg.Seen
+		// The session's own \Recent set (RFC 3501 §§2.3.2, 6.4.4); see recentOf.
+		return s.recent[msg.UID]
 	case "keyword", "unkeyword":
 		found := false
 		for _, keyword := range msg.Keywords {

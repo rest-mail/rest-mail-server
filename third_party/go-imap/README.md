@@ -148,6 +148,7 @@ func (a *account) MoveUID(srcUID uint32, dest string) (uint32, error) {
 | `UTF8Mailbox` | `EnableUTF8` | UTF8=ACCEPT ([RFC 6855]), switched on per session with `ENABLE UTF8=ACCEPT`: UTF-8 quoted strings and mailbox names, raw UTF-8 headers (RFC 6532), and APPEND's `UTF8 (~{n})` data item. |
 | `DateAppender` | `AppendWithDate` | APPEND's date-time argument reaches the store as the message's INTERNALDATE. Without it the date is checked and then dropped. |
 | `ModSeqMailbox` | `HighestModSeq`, `StoreModSeq` | CONDSTORE ([RFC 7162] §3.1): HIGHESTMODSEQ in SELECT and STATUS, FETCH `MODSEQ` and `CHANGEDSINCE`, STORE `UNCHANGEDSINCE` with `MODIFIED`, and SEARCH `MODSEQ`, from `Message.ModSeq`. A folder whose `HighestModSeq` is 0 answers NOMODSEQ. |
+| `RecentMailbox` | `RecentMark`, `ClaimRecent` | Real `\Recent` state ([RFC 3501] §2.3.2) from a per-folder mark: the first read-write SELECT after a message arrives claims it, EXAMINE and STATUS only report it. Without it every message is `\Recent` to every session, as §2.3.2 asks when the server cannot tell which session saw a message first. |
 | `VanishedMailbox` | `Vanished` | With `ModSeqMailbox`, QRESYNC ([RFC 7162] §3.2): `ENABLE QRESYNC`, SELECT `(QRESYNC ...)`, UID FETCH `(CHANGEDSINCE n VANISHED)`, and `VANISHED` instead of `EXPUNGE` once enabled. |
 
 ### One connection
@@ -420,7 +421,6 @@ reason.
 | Area | What go-imap does | Why |
 |------|-------------------|-----|
 | Authentication | PLAIN and LOGIN only: no challenge-response mechanism (CRAM-MD5, DIGEST-MD5, SCRAM), EXTERNAL or ANONYMOUS. | When a TLS config is supplied, PLAIN is only offered inside TLS. A nil TLS config explicitly permits development/legacy cleartext authentication. CRAM-MD5 and DIGEST-MD5 are obsolete and need passwords stored in plaintext-equivalent form. SCRAM needs a second, SCRAM-specific credential store and helps only when TLS is already broken. ANONYMOUS has no use on a server of personal accounts. |
-| `\Recent` | Not tracked: RECENT, NEW and OLD approximate it with unseen. | IMAP4rev2 (RFC 9051) removes `\Recent`. |
 | Subscriptions | No subscription store: every folder counts as subscribed. | Clients show every folder anyway; a second list of folders would only go stale. |
 | UIDs | Without `UIDPlusMailbox`, UIDVALIDITY is 1 and UIDNEXT is the highest UID plus one. UIDNOTSTICKY is never reported. | A backend that has real values implements `UIDPlusMailbox`; UIDs are expected to persist. |
 | ENVELOPE | Source routes are always NIL, and obsolete address syntax that `net/mail` rejects gives NIL. | Source routes are obsolete. |

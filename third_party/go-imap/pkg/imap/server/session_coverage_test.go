@@ -54,7 +54,7 @@ func TestCoverageMalformedSelectedCommands(t *testing.T) {
 		t.Fatal("malformed STORE reached backend")
 	}
 	lines, st := h.command("recover", "FETCH 1 (UID FLAGS)")
-	if st != "recover OK FETCH completed" || len(lines) != 1 || !strings.Contains(lines[0], "UID 7 FLAGS ()") {
+	if st != "recover OK FETCH completed" || len(lines) != 1 || !strings.Contains(lines[0], `UID 7 FLAGS (\Recent)`) {
 		t.Fatalf("recovery: %v / %s", lines, st)
 	}
 }

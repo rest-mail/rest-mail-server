@@ -254,6 +254,38 @@ type UIDNextMailbox interface {
 	UIDNext(folder string) (uint32, error)
 }
 
+// RecentMailbox is the optional interface a [Mailbox] may also implement to
+// keep \Recent state ([RFC 3501] §2.3.2): a message is recent in exactly one
+// session, the first read-write session told of it after it arrived. The store
+// keeps it as a per-folder mark, the highest UID a read-write session has been
+// told of; every message above the mark is recent and claimed by no session
+// yet. UIDs ascend with arrival order (see [Message.UID]), so the mark divides
+// the folder into old and new.
+//
+// SELECT claims: it raises the mark to the highest UID it reports, and the
+// messages between the old mark and that UID are \Recent to it alone. A
+// read-write session claims again for each arrival it is told of. EXAMINE, a
+// SELECT the user may only read, and STATUS read the mark and never move it.
+//
+// A Mailbox that does not implement it cannot tell which session was first to
+// see a message, so every message is recent to every session, as §2.3.2 asks:
+// "If it is not possible to determine whether or not this session is the
+// first session to be notified about a message, then that message SHOULD be
+// considered recent."
+//
+// [RFC 3501]: https://www.rfc-editor.org/rfc/rfc3501
+type RecentMailbox interface {
+	// RecentMark returns folder's mark: the highest UID a read-write session
+	// has claimed, or 0 when none has. The messages above it are \Recent.
+	RecentMark(folder string) (uint32, error)
+	// ClaimRecent raises folder's mark to upTo unless it is already at least
+	// that, and returns the mark it had before, in one atomic step: of two
+	// sessions that claim the same message, only one is given the lower mark.
+	// The messages above the returned mark up to upTo are \Recent to the
+	// session that claimed them.
+	ClaimRecent(folder string, upTo uint32) (uint32, error)
+}
+
 // ErrModified is the error [ModSeqMailbox.StoreModSeq] returns, possibly
 // wrapped, when the message's mod-sequence is above the UNCHANGEDSINCE value
 // it was given, so nothing was changed (RFC 7162 §3.1.3).
