@@ -32,6 +32,9 @@ type queueRequestDB struct {
 	writes         int
 	lockReads      int
 	contextMissing bool
+	beginDelay     time.Duration
+	beforeWrite    func()
+	writeWait      error
 	active         atomic.Bool
 	commits        atomic.Int32
 	rollbacks      atomic.Int32
@@ -53,6 +56,7 @@ func (c *queueRequestDB) observe(ctx context.Context) {
 func (c *queueRequestDB) BeginTx(ctx context.Context, _ driver.TxOptions) (driver.Tx, error) {
 	c.observe(ctx)
 	c.beginCalls++
+	time.Sleep(c.beginDelay)
 	if c.stage == "begin" {
 		return nil, errors.New("private queue begin failure")
 	}
@@ -113,11 +117,15 @@ func (c *queueRequestDB) ExecContext(ctx context.Context, query string, args []d
 	c.writes++
 	c.statements = append(c.statements, query)
 	c.arguments = append(c.arguments, args)
+	if c.beforeWrite != nil {
+		c.beforeWrite()
+	}
 	if c.stage == "write" {
 		return nil, errors.New("private queue write failure")
 	}
 	if c.stage == "wait-write" {
-		return nil, waitQueueContext(ctx)
+		c.writeWait = waitQueueContext(ctx)
+		return nil, c.writeWait
 	}
 	if c.zeroAffected {
 		return driver.RowsAffected(0), nil
@@ -178,6 +186,11 @@ func serveQueueRequest(t *testing.T, c *queueRequestDB, method, path, body strin
 	ctx := context.WithValue(t.Context(), queueRequestKey{}, "queue request")
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
+	return serveQueueRequestWithContext(t, c, ctx, method, path, body)
+}
+
+func serveQueueRequestWithContext(t *testing.T, c *queueRequestDB, ctx context.Context, method, path, body string) *httptest.ResponseRecorder {
+	t.Helper()
 	r := httptest.NewRequest(method, path, strings.NewReader(body)).WithContext(ctx)
 	r.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
@@ -277,13 +290,28 @@ func TestQueueSingleMutationLocksAndPreservesRefusals(t *testing.T) {
 }
 
 func TestQueueMutationCancellationAfterLockedRead(t *testing.T) {
+	// The watchdog only bounds a hung request. Cancellation fires from the
+	// driver at the write stage, after the locked read, so setup time cannot
+	// consume it.
+	const watchdog = 5 * time.Second
 	for _, action := range []string{"retry", "bounce"} {
-		t.Run(action, func(t *testing.T) {
-			c := &queueRequestDB{stage: "wait-write"}
-			rr := serveQueueRequest(t, c, "POST", "/api/v1/admin/queue/1/"+action, "", 20*time.Millisecond)
-			if rr.Code != 500 || c.contextMissing || c.lockReads != 1 || c.writes != 1 || c.commits.Load() != 0 {
-				t.Fatalf("status=%d contextMissing=%t locks=%d writes=%d commits=%d", rr.Code, c.contextMissing, c.lockReads, c.writes, c.commits.Load())
-			}
-		})
+		for _, scenario := range []string{"cancel", "setup-delay"} {
+			t.Run(action+"/"+scenario, func(t *testing.T) {
+				c := &queueRequestDB{stage: "wait-write"}
+				if scenario == "setup-delay" {
+					// Longer than the 20 ms deadline this test used before, so
+					// setup alone would have expired the request.
+					c.beginDelay = 50 * time.Millisecond
+				}
+				ctx := context.WithValue(t.Context(), queueRequestKey{}, "queue request")
+				ctx, cancel := context.WithTimeout(ctx, watchdog)
+				defer cancel()
+				c.beforeWrite = cancel
+				rr := serveQueueRequestWithContext(t, c, ctx, "POST", "/api/v1/admin/queue/1/"+action, "")
+				if rr.Code != 500 || c.contextMissing || c.beginCalls != 1 || c.lockReads != 1 || c.writes != 1 || c.commits.Load() != 0 || !errors.Is(c.writeWait, context.Canceled) {
+					t.Fatalf("status=%d contextMissing=%t begins=%d locks=%d writes=%d commits=%d writeWait=%v body=%s", rr.Code, c.contextMissing, c.beginCalls, c.lockReads, c.writes, c.commits.Load(), c.writeWait, rr.Body)
+				}
+			})
+		}
 	}
 }
