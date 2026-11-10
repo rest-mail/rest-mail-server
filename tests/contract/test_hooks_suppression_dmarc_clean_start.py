@@ -1,14 +1,16 @@
-"""clearSuppression and getDmarcReport start clean in the own-data run
-(#1385): each exchange resets first. The clear's 204 clears a suppression made
-after the reset by a message to a domain that does not exist, which the
-gateway's queue worker bounces; the read's 200 reads a report delivered after
-the reset through deliverMessage."""
+"""clearSuppression, getDmarcReport and listDmarcReports start clean in the
+own-data run (#1385): each exchange resets first. The clear's 204 clears a
+suppression made after the reset by a message to a domain that does not exist,
+which the gateway's queue worker bounces; the read's 200 reads a report
+delivered after the reset through deliverMessage, and the list's 200 must list
+such a report (#1785)."""
 
 import base64
 import email
 import json
 import os
 import unittest
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 from test_hooks_pipeline import load_hooks
@@ -264,6 +266,176 @@ class DmarcReportCleanStart(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "was not stored"):
             self.hook(sent)
         self.assertEqual(sent["fullPath"], REPORT_PATH)
+
+
+LIST_PATH = "/api/v1/admin/dmarc-reports"
+LIST_NAME = "/api/v1/admin/dmarc-reports > List received DMARC aggregate reports > "
+
+
+def list_transaction(status, query):
+    return {
+        "protocol": "http:", "host": "api", "port": "8080",
+        "fullPath": LIST_PATH + query, "name": LIST_NAME + status + " > application/json",
+        "request": {"headers": {"Authorization": "Bearer session"}},
+    }
+
+
+class DmarcReportListCleanStart(DmarcReportCleanStart):
+    """listDmarcReports' 200s get a report delivered after the reset, and the
+    listing after hook holds the page to it."""
+
+    def setUp(self):
+        super().setUp()
+        self.hook = self.hooks.list_a_dmarc_report_delivered_after_the_reset
+        self.stash = self.globals["hooks"].stash
+        self.stash.pop("listing_made", None)
+        self.addCleanup(self.stash.pop, "listing_made", None)
+
+        def fixture_call(transaction, method, path, body=None, expect=(200, 201, 204)):
+            self.made.append((method, path, body))
+            if path == "/api/v1/admin/domains":
+                return [{"id": 9, "name": self.domain}]
+            if path.startswith("/api/v1/admin/dmarc-reports"):
+                if not self.stored:
+                    return []
+                return [{"id": 5, "domain_id": 9, "reporter": self.globals["OWN_DMARC_REPORTER"],
+                         "report_id": self.globals["OWN_DMARC_REPORT_ID"]}]
+            return {"id": 7}
+
+        self.globals["fixture_call"] = fixture_call
+
+    def listed(self, sent, rows):
+        """The listing after hook over an answer of rows."""
+        sent["real"] = {"statusCode": 200, "body": json.dumps({"data": rows})}
+        self.globals["the_listing_holds_what_was_made"](sent)
+        return sent.get("fail")
+
+    def own_row(self):
+        return {"id": 5, "reporter": self.globals["OWN_DMARC_REPORTER"],
+                "report_id": self.globals["OWN_DMARC_REPORT_ID"]}
+
+    def test_it_is_the_first_get_dmarc_report_hook(self):
+        # Overridden: here it is the first listDmarcReports hook.
+        names = [h.__name__ for h in self.hooks.registered_before["listDmarcReports"]]
+        self.assertEqual(names[0], self.hook.__name__)
+
+    def test_a_refusal_resets_first_and_keeps_its_path(self):
+        for query in ("?limit=not-an-integer", "?domain_id=-1"):
+            with self.subTest(query=query):
+                self.start_clean.reset_mock()
+                sent = list_transaction("422", query)
+                before = json.dumps(sent, sort_keys=True)
+                self.hook(sent)
+                self.start_clean.assert_called_once_with(sent)
+                self.assertEqual(json.dumps(sent, sort_keys=True), before)
+        self.assertEqual((self.made, self.delivered), ([], []))
+        self.assertNotIn("listing_made", self.stash)
+
+    def test_nothing_happens_without_a_reset(self):
+        os.environ.pop("CONTRACT_RESET_SEED")
+        sent = list_transaction("200", "?reporter=reporter.test&limit=20")
+        self.hook(sent)
+        self.assertEqual(sent["fullPath"], LIST_PATH + "?reporter=reporter.test&limit=20")
+        self.start_clean.assert_not_called()
+        self.assertEqual((self.made, self.delivered), ([], []))
+        # Nor does the after hook judge it.
+        self.assertIsNone(self.listed(sent, []))
+
+    def test_the_success_reads_the_report_delivered_after_the_reset(self):
+        # The received example's reporter filter names the report's reporter;
+        # only its value changes.
+        sent = list_transaction("200", "?reporter=reporter.test&limit=20")
+        self.hook(sent)
+        self.start_clean.assert_called_once_with(sent)
+        [delivery] = self.delivered
+        self.assertEqual(delivery.full_url, "http://api:8080/api/v1/messages/deliver")
+        self.assertEqual(
+            sent["fullPath"], LIST_PATH + "?reporter=" + self.globals["OWN_DMARC_REPORTER"] + "&limit=20")
+        self.assertIsNone(self.listed(sent, [{"id": 2, "reporter": "x.test"}, self.own_row()]))
+
+    def test_an_empty_page_fails_the_success(self):
+        # The control: the same page without the report made for it.
+        sent = list_transaction("200", "?reporter=reporter.test&limit=20")
+        self.hook(sent)
+        failure = self.listed(sent, [])
+        self.assertIn("does not hold the DMARC report made for it", failure)
+        self.assertIn(repr(self.globals["OWN_DMARC_REPORT_ID"]), failure)
+        # Another reporter's report with the same report id is not it.
+        sent = list_transaction("200", "?limit=20")
+        self.hook(sent)
+        self.assertIn("does not hold", self.listed(
+            sent, [dict(self.own_row(), reporter="elsewhere.test")]))
+
+    def test_a_success_with_nothing_made_fails(self):
+        sent = list_transaction("200", "?limit=20")
+        self.assertIn("nothing made for it", self.listed(sent, [self.own_row()]))
+
+    def test_a_filter_for_another_domain_lists_none_of_it(self):
+        # The available example filters by 4294967295, no domain: its page is
+        # empty by design, and its hook says so.
+        sent = list_transaction("200", "?domain_id=4294967295&limit=20")
+        self.hook(sent)
+        self.assertEqual(len(self.delivered), 1)
+        self.assertEqual(sent["fullPath"], LIST_PATH + "?domain_id=4294967295&limit=20")
+        self.assertIsNone(self.listed(sent, []))
+
+    def test_a_filter_for_the_reports_domain_must_list_it(self):
+        sent = list_transaction("200", "?domain_id=9")
+        self.hook(sent)
+        self.assertIn("does not hold", self.listed(sent, []))
+
+    def test_a_report_that_was_not_stored_is_an_error_not_a_pass(self):
+        self.stored = False
+        sent = list_transaction("200", "?reporter=reporter.test&limit=20")
+        with self.assertRaisesRegex(RuntimeError, "was not stored"):
+            self.hook(sent)
+        self.assertEqual(sent["fullPath"], LIST_PATH + "?reporter=reporter.test&limit=20")
+
+    def test_the_listing_after_hook_is_registered_for_the_list(self):
+        # The stub's after() registers nothing, so read the source.
+        source = (Path(__file__).resolve().parent / "hooks.py").read_text()
+        stack = source.partition("\ndef the_listing_holds_what_was_made(")[0].rsplit("\n\n", 1)[-1]
+        self.assertIn('@hooks.after("listDmarcReports")', stack.splitlines())
+
+
+FRAGMENT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dnsmasq.conf")
+
+
+class OwnDNS(unittest.TestCase):
+    """The hooks' mail names are answered by the testbed's DNS, from the
+    fragment chore contract:dns:register publishes, never by a third party's."""
+
+    def setUp(self):
+        self.globals = load_hooks().read_a_dmarc_report_delivered_after_the_reset.__globals__
+        with open(FRAGMENT) as f:
+            self.lines = [line.strip() for line in f
+                          if line.strip() and not line.lstrip().startswith("#")]
+
+    def txt(self, name):
+        prefix = "txt-record={},".format(name)
+        return [line[len(prefix):].strip('"') for line in self.lines if line.startswith(prefix)]
+
+    def test_the_reporter_is_a_testbed_name(self):
+        self.assertTrue(self.globals["OWN_DMARC_REPORTER"].endswith(".test"))
+        self.assertTrue(self.globals["OWN_DMARC_CLIENT"][1].endswith("." + self.globals["OWN_DMARC_REPORTER"]))
+
+    def test_the_reporter_passes_spf_only_from_the_client_it_delivers_as(self):
+        reporter = self.globals["OWN_DMARC_REPORTER"]
+        self.assertEqual(self.txt(reporter),
+                         ["v=spf1 ip4:{} -all".format(self.globals["OWN_DMARC_CLIENT"][0])])
+
+    def test_the_reporter_publishes_a_dmarc_policy(self):
+        self.assertEqual(self.txt("_dmarc." + self.globals["OWN_DMARC_REPORTER"]),
+                         ["v=DMARC1; p=reject"])
+
+    def test_the_suppressed_domain_is_answered_nxdomain_by_the_testbed(self):
+        domain = self.globals["OWN_SUPPRESSED_DOMAIN"]
+        local = [line[len("local=/"):].rstrip("/") for line in self.lines if line.startswith("local=/")]
+        self.assertTrue(any(domain == zone or domain.endswith("." + zone) for zone in local),
+                        "{} is not answered by the testbed itself".format(domain))
+
+    def test_no_name_is_forwarded_to_a_resolver_outside_the_testbed(self):
+        self.assertFalse([line for line in self.lines if line.startswith("server=")])
 
 
 if __name__ == "__main__":

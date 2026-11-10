@@ -401,7 +401,9 @@ def the_last_free_operations_after_a_reset(transaction):
 # A recipient is suppressed only when mail to it hard-bounces (the queue
 # worker's suppress, internal/gateway/queue/suppression.go): a domain that does
 # not exist is one (mxHosts answers 550 5.1.2, a bad domain). .invalid never
-# exists (RFC 6761), so mail to it bounces on the first try.
+# exists (RFC 6761), so mail to it bounces on the first try. The testbed's
+# DNS answers .invalid NXDOMAIN itself (tests/contract/dnsmasq.conf), never
+# asking a resolver outside it.
 OWN_SUPPRESSED_DOMAIN = "nowhere.invalid"
 # The queue worker polls every 5 seconds by default (QUEUE_POLL_INTERVAL) and
 # bounces on its first try, so this is many polls.
@@ -458,12 +460,12 @@ def clear_a_suppression_made_after_the_reset(transaction):
 # passes DMARC aligned, addressed to postmaster@ the report's domain
 # (internal/pipeline/filters/dmarc_reports_received.go). The gateway hands
 # inbound mail to deliverMessage with the client's address, so a report is
-# delivered as one from a Google mail host would be: SPF passes for gmail.com
-# from 209.85.220.41 (its record includes 209.85.128.0/17), aligned with the
-# From domain, which publishes a DMARC record. The API's DNS answers both, on
-# the testbed through its forwarders.
-OWN_DMARC_REPORTER = "gmail.com"
-OWN_DMARC_CLIENT = ("209.85.220.41", "mail-sor-f41.google.com")
+# delivered as one from the reporter's mail host would be: SPF passes for the
+# reporter from its one permitted address, aligned with the From domain, which
+# publishes a DMARC record. The testbed's DNS serves both records
+# (tests/contract/dnsmasq.conf), so no third party's DNS decides the result.
+OWN_DMARC_REPORTER = "dmarc-sender.test"
+OWN_DMARC_CLIENT = ("192.0.2.25", "mail.dmarc-sender.test")
 OWN_DMARC_REPORT_ID = "contract-own-report"
 
 
@@ -514,17 +516,59 @@ def a_dmarc_report_message(domain, stamp):
 def read_a_dmarc_report_delivered_after_the_reset(transaction):
     # getDmarcReport, moved to a clean start: each exchange, refusals
     # included, resets and seeds first, and refusals keep their ids. The 200
-    # reads a report delivered after the reset: the fixture domain gets an
-    # inbound pipeline of its own that checks SPF, DKIM and DMARC and does
-    # not greylist (the default one defers a first delivery), and the report
-    # mail is delivered to its postmaster through deliverMessage. No link
-    # reaches it. Registered ahead of the fixture report's hook, whose report
-    # the reset removed. A run with no reset changes nothing here.
+    # reads a report delivered after the reset (a_dmarc_report_of_its_own).
+    # No link reaches it. Registered ahead of the fixture report's hook, whose
+    # report the reset removed. A run with no reset changes nothing here.
     if not asked_for_a_clean_start():
         return
     start_clean(transaction)
     if " > 200 > " not in transaction.get("name", ""):
         return
+    report = a_dmarc_report_of_its_own(transaction)
+    query = transaction["fullPath"].partition("?")[2]
+    transaction["fullPath"] = "/api/v1/admin/dmarc-reports/{}".format(report["id"]) + (
+        "?" + query if query else "")
+
+
+@hooks.before("listDmarcReports")
+def list_a_dmarc_report_delivered_after_the_reset(transaction):
+    # listDmarcReports, moved to a clean start: each exchange, refusals
+    # included, resets and seeds first, and refusals keep their queries. A
+    # 200 gets a report delivered after the reset (a_dmarc_report_of_its_own)
+    # and notes it for the_listing_holds_what_was_made, by its reporter and
+    # report id. A reporter filter names that report's reporter: only the
+    # value changes, as a path's id would. A domain filter for any other
+    # domain (the example's 4294967295 is none) lists none of it by design,
+    # so its hook says so. No link reaches it. A run with no reset changes
+    # nothing here.
+    if not asked_for_a_clean_start():
+        return
+    start_clean(transaction)
+    if " > 200 > " not in transaction.get("name", ""):
+        return
+    report = a_dmarc_report_of_its_own(transaction)
+    path, _, query = transaction["fullPath"].partition("?")
+    params = [
+        (key, report["reporter"] if key == "reporter" else value)
+        for key, value in urllib.parse.parse_qsl(query, keep_blank_values=True)
+    ]
+    if params:
+        transaction["fullPath"] = path + "?" + urllib.parse.urlencode(params)
+    if any(key == "domain_id" and value != str(report["domain_id"]) for key, value in params):
+        made_for_the_listing(transaction, "nothing for another domain", None)
+        return
+    made_for_the_listing(transaction, "DMARC report", {
+        "reporter": report["reporter"],
+        "report_id": report["report_id"],
+    })
+
+
+def a_dmarc_report_of_its_own(transaction):
+    """A DMARC aggregate report delivered after this exchange's reset, as
+    stored: the fixture domain gets an inbound pipeline of its own that checks
+    SPF, DKIM and DMARC and does not greylist (the default one defers a first
+    delivery), and the report mail is delivered to its postmaster through
+    deliverMessage."""
     domain = next(
         (d for d in fixture_call(transaction, "GET", "/api/v1/admin/domains") or []
          if d.get("name") == FIXTURE_PLAN["domain"]),
@@ -562,9 +606,7 @@ def read_a_dmarc_report_delivered_after_the_reset(transaction):
         raise RuntimeError(
             "the report delivered from {} was not stored: its DMARC did not pass "
             "aligned".format(OWN_DMARC_REPORTER))
-    query = transaction["fullPath"].partition("?")[2]
-    transaction["fullPath"] = "/api/v1/admin/dmarc-reports/{}".format(reports[0]["id"]) + (
-        "?" + query if query else "")
+    return reports[0]
 
 
 # The test data operations (#1334). resetTestData's and restoreTestSnapshot's
@@ -1075,22 +1117,20 @@ OWN_TLS_REPORT = {
 }
 
 
-@hooks.before("listDmarcReports")
 @hooks.before("listTlsReports")
 @hooks.before("receiveTlsReport")
 @hooks.before("listAuditEntries")
 @hooks.before("verifyAuditLog")
-@hooks.before("getDeliveryLogs")
 @hooks.before("getDashboardStats")
 def report_and_audit_reads_after_a_reset(transaction):
-    # The DMARC and TLS report, audit and delivery reads, and the TLS report
+    # The TLS report and audit reads, the dashboard, and the TLS report
     # intake, moved to a clean start: each exchange, refusals included, resets
     # and seeds first. Registered before the other hooks of these operations,
     # so they see the clean start. A listing of TLS reports that succeeds gets
     # one of its own, received after the reset, so it lists more than the
-    # seed. The rest need nothing made: a received DMARC report comes only
-    # from mail with an aligned DMARC pass, and the delivery log and the
-    # dashboard report what is there. The audit log is append-only and outlives
+    # seed. The rest need nothing made: the dashboard reports what is there.
+    # The DMARC report list and the delivery log move on their own, with a
+    # report delivered and a message sent after their reset. The audit log is append-only and outlives
     # the reset by design (resetRetainedTables), so its reads meet what is in
     # it. The intake hosts the domains its report names in its own hook, after
     # the reset. A run with no reset changes nothing here.
@@ -1127,6 +1167,15 @@ def row_field(row, field):
     return row
 
 
+@hooks.after("listCustomFilters")
+@hooks.after("listDomains")
+@hooks.after("listAliases")
+@hooks.after("listDKIMKeys")
+@hooks.after("listCertificates")
+@hooks.after("listDmarcReports")
+@hooks.after("listCalendarEvents")
+@hooks.after("getDeliveryLogs")
+@hooks.after("listPipelineLogs")
 @hooks.after("listTlsReports")
 @hooks.after("listPipelines")
 @hooks.after("listThreads")
@@ -1151,7 +1200,7 @@ def the_listing_holds_what_was_made(transaction):
     ):
         return
     if made is None:
-        transaction["fail"] = "the listing had nothing made for it to list (#1785)"
+        transaction["fail"] = "the listing had nothing made for it to list (#1785, #1789)"
         return
     if made["match"] is None:  # Its before hook says this page lists none of it.
         return
@@ -1612,66 +1661,6 @@ def a_certificate_of_its_own(transaction):
                     "auto_renew": False,
                 },
             )["id"]
-
-
-def made_for_the_listing(transaction, what, match):
-    """Note what a listing's before hook made after its reset, for
-    the_listing_holds_what_was_made: a row whose fields hold every value in
-    match (a dotted field reads a nested object) is the one made. match None
-    says the page is not meant to list it."""
-    hooks.stash["listing_made"] = {
-        "name": transaction.get("name", ""),
-        "what": what,
-        "match": match,
-    }
-
-
-def row_field(row, field):
-    for key in field.split("."):
-        row = row.get(key) if isinstance(row, dict) else None
-    return row
-
-
-@hooks.after("listCustomFilters")
-@hooks.after("listDomains")
-@hooks.after("listAliases")
-@hooks.after("listDKIMKeys")
-@hooks.after("listCertificates")
-@hooks.after("listCalendarEvents")
-def the_listing_holds_what_was_made(transaction):
-    # A listing's 200 has the same shape with no rows as with the one its
-    # before hook made after the reset, so the status and the schema alone
-    # pass on an empty list (#1789). After a reset the answer must list what
-    # was made for it, or the exchange fails. A documented 200 with nothing
-    # made for it fails too: it would prove only the shape again. Refusals and
-    # a run with no reset are left alone.
-    made = hooks.stash.pop("listing_made", None)
-    if made is not None and made["name"] != transaction.get("name", ""):
-        made = None
-    real = transaction.get("real") or {}
-    if (
-        not asked_for_a_clean_start()
-        or " > 200" not in transaction.get("name", "")
-        or str(real.get("statusCode")) != "200"  # The status check fails it.
-    ):
-        return
-    if made is None:
-        transaction["fail"] = "the listing had nothing made for it to list (#1789)"
-        return
-    if made["match"] is None:  # Its before hook says this page lists none of it.
-        return
-    rows = (hooks.get_json(transaction, "real") or {}).get("data")
-    rows = rows if isinstance(rows, list) else []
-    if any(
-        all(row_field(row, field) == value for field, value in made["match"].items())
-        for row in rows
-    ):
-        return
-    wanted = ", ".join(f"{field} {value!r}" for field, value in made["match"].items())
-    transaction["fail"] = (
-        f"the listing does not hold the {made['what']} made for it ({wanted}): "
-        f"it answered {len(rows):d} other row{'' if len(rows) == 1 else 's'}"
-    )
 
 
 @hooks.before("getHealth")
@@ -2174,9 +2163,10 @@ def pipeline_reads_after_a_reset(transaction):
     # The pipeline reads, moved to a clean start: each exchange, refusals
     # included, resets and seeds first. A listing of pipelines that succeeds
     # gets one of its own, inactive, on a domain of its own, made after the
-    # reset, so it lists more than the seed. The logs and the analytics need
-    # nothing made: nothing earlier is left for them to report. A run with no
-    # reset changes nothing here.
+    # reset, so it lists more than the seed. The logs get a send of their own
+    # in the_pipeline_log_holds_a_send; the analytics need nothing made:
+    # nothing earlier is left for them to report. A run with no reset changes
+    # nothing here.
     if not asked_for_a_clean_start():
         return
     start_clean(transaction)
@@ -2184,6 +2174,85 @@ def pipeline_reads_after_a_reset(transaction):
     if path == "/api/v1/admin/pipelines" and " > 200" in transaction.get("name", ""):
         pipeline = a_pipeline_of_its_own(transaction, a_domain_of_its_own(transaction))
         made_for_the_listing(transaction, "pipeline", {"id": pipeline})
+
+
+# The delivery log and the pipeline log (#1785). Each lists what a send wrote.
+# A message to a remote recipient is queued (outbound_queue, which the delivery
+# log reads); the recipient's domain is a .test name nothing hosts, so the
+# queue only defers it. A message to a local mailbox is delivered through the
+# inbound pipeline, whose trace (message_traces, which the pipeline log reads)
+# is what the documented 200 asks for: Vertrag sends the declared defaults,
+# direction=inbound, action=continue and outcome=delivered. The testbed keeps
+# every trace (TRACE_SAMPLE_RATE=1).
+OWN_LOG_DOMAIN = "contract-remote.test"
+
+
+def a_message_for_the_logs(transaction, recipient):
+    """Send one message from the fixture admin to recipient, after the reset,
+    and return the sent message."""
+    sent = fixture_call(
+        transaction,
+        "POST",
+        "/api/v1/messages/send",
+        {
+            "from": ADMIN,
+            "to": [recipient],
+            "subject": "Contract log",
+            "body_text": "Sent by the contract for the delivery and pipeline logs.",
+        },
+    )
+    if not isinstance(sent, dict) or not sent.get("message_id"):
+        raise RuntimeError("the fixture send returned no message")
+    return sent
+
+
+@hooks.before("getDeliveryLogs")
+def the_delivery_log_after_a_reset(transaction):
+    # getDeliveryLogs, moved to a clean start: each exchange, refusals
+    # included, resets and seeds first. A listing that succeeds gets a message
+    # queued for a remote recipient of its own after the reset, and
+    # the_listing_holds_what_was_made fails it unless the answer lists that
+    # recipient. A run with no reset changes nothing here.
+    if not asked_for_a_clean_start():
+        return
+    start_clean(transaction)
+    if " > 200" not in transaction.get("name", ""):
+        return
+    # The example documents limit=20 only; Vertrag adds the status enum's first
+    # value, pending. The topology's queue worker can claim the entry (and
+    # defer or bounce it) before the listing is sent, so the status is dropped:
+    # the queued row stays in the log whatever its status, as listQueue's hook
+    # does for the same race.
+    path, _, query = transaction["fullPath"].partition("?")
+    kept = [
+        (name, value)
+        for name, value in urllib.parse.parse_qsl(query, keep_blank_values=True)
+        if name != "status"
+    ]
+    transaction["fullPath"] = path + ("?" + urllib.parse.urlencode(kept) if kept else "")
+    recipient = f"contract-log-{time.time_ns():d}@{OWN_LOG_DOMAIN}"
+    a_message_for_the_logs(transaction, recipient)
+    made_for_the_listing(transaction, "queued message", {"recipient": recipient})
+
+
+@hooks.before("listPipelineLogs")
+def the_pipeline_log_holds_a_send(transaction):
+    # Registered after pipeline_reads_after_a_reset, which resets first. A
+    # listing that succeeds gets the inbound trace of a message the fixture
+    # admin sends itself after the reset, and the_listing_holds_what_was_made
+    # fails it unless the answer lists that trace, by its Message-ID. A run
+    # with no reset changes nothing here.
+    if not asked_for_a_clean_start() or " > 200" not in transaction.get("name", ""):
+        return
+    sent = a_message_for_the_logs(transaction, ADMIN)
+    # Traces are written in the background, a batch every 500 ms
+    # (internal/trace/recorder.go).
+    time.sleep(1)
+    made_for_the_listing(
+        transaction,
+        "delivery trace",
+        {"direction": "inbound", "rfc_message_id": sent["message_id"]},
+    )
 
 
 @hooks.before("createCustomFilter")

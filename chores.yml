@@ -912,6 +912,7 @@ tasks:
         vars: {CONFIG: restmail.test}
       - task: instance:dns:register
         vars: {CONFIG: restmail.test}
+      - task: contract:dns:register
       - RESTMAIL_INTERNAL_MTLS=true "${CHORE_BIN:-chore}" instance:up CONFIG=restmail.test
       - task: instance:dkim
         vars: {CONFIG: restmail.test}
@@ -1760,6 +1761,26 @@ tasks:
           docker restart {{.DNSMASQ_CONTAINER}} >/dev/null && echo "  reloaded {{.DNSMASQ_CONTAINER}} (served domains)"
         fi
         {{end}}
+
+  contract:dns:register:
+    desc: "Publish the contract run's own DNS (tests/contract/dnsmasq.conf) to the testbed dnsmasq"
+    vars:
+      FRAG_VOL: '{{.DNSMASQ_FRAGMENTS_VOLUME | default "testbed_dnsmasq_fragments"}}'
+      DNSMASQ_CONTAINER: '{{.DNSMASQ_CONTAINER | default "testbed-dnsmasq"}}'
+    cmds:
+      # The own-data hooks' mail names (a DMARC report sender, an .invalid
+      # recipient) are answered here, not by a resolver outside the testbed
+      # (#1385). The same copy-and-reload as instance:dkim.
+      - |
+        docker run --rm \
+          -v "{{.ROOT_DIR}}/tests/contract:/src:ro" \
+          -v "{{.FRAG_VOL}}:/dst" \
+          alpine:3.20 cp /src/dnsmasq.conf /dst/12-rest-mail-contract.conf
+        if docker ps -aq --filter "name=^/{{.DNSMASQ_CONTAINER}}$" | grep -q .; then
+          docker restart {{.DNSMASQ_CONTAINER}} >/dev/null && echo "  reloaded {{.DNSMASQ_CONTAINER}}"
+        else
+          echo "  note: {{.DNSMASQ_CONTAINER}} not running — fragment written, applies when the testbed dnsmasq starts"
+        fi
 
   instance:dns:unregister:
     desc: "Remove <CONFIG>'s DNS fragment from the testbed dnsmasq"
