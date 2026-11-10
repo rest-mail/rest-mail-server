@@ -6,6 +6,7 @@ import subprocess
 import tempfile
 import textwrap
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 DEV_GOCACHE = ROOT / "tasks/dev-gocache.sh"
@@ -39,6 +40,7 @@ class DevGoCache(unittest.TestCase):
         environment = dict(os.environ, PATH=f"{self.directory}{os.pathsep}{os.environ['PATH']}")
         # A worker that shares the machine sets its own label; these calls check the default.
         environment.pop("RESTMAIL_LABEL", None)
+        environment.pop("RESTMAIL_DEV_GOCACHE_VOLUME", None)
         if volume:
             environment["RESTMAIL_DEV_GOCACHE_VOLUME"] = volume
         return subprocess.run(
@@ -59,8 +61,9 @@ class DevGoCache(unittest.TestCase):
         self.assertEqual(self.calls.read_text().splitlines(), ["volume inspect fixture-0"])
 
     def test_it_needs_a_user_and_a_volume(self):
-        self.assertEqual(self.run_script().returncode, 2)
-        self.assertNotEqual(self.run_script("0", volume="").returncode, 0)
+        with patch.dict(os.environ, {"RESTMAIL_DEV_GOCACHE_VOLUME": "inherited-cache"}):
+            self.assertEqual(self.run_script().returncode, 2)
+            self.assertNotEqual(self.run_script("0", volume="").returncode, 0)
 
 
 if __name__ == "__main__":
