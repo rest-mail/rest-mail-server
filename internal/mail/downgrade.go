@@ -130,15 +130,30 @@ func writeDowngradedField(w wordSink, span string, bare bool) {
 // same to the conversion that follows, so the conversion's count plus dropped is that of
 // the real block. A field rewritten to carry no 8-bit octet keeps only its name, since
 // its text only ever counts. ok is false when a blank line in the block ends the header
-// early, so that text is the body, and counts for what it says.
-func measuredBlock(header, sep string, also wordSink) (block string, dropped int, ok bool) {
-	var b doublingBuilder
-	writeMeasuredBlock(&b, header, sep, &dropped, also)
-	block = b.String()
+// early, so that text is the body, and counts for what it says. The block is in scratch, as it's only
+// ever counted.
+func measuredBlock(scratch *wireform.FieldScratch, header, sep string, also wordSink) (block string, dropped int, ok bool) {
+	writeMeasuredBlock(scratch, header, sep, &dropped, also)
+	block = scratch.String()
 	if strings.HasPrefix(block, "\r\n") || strings.Index(block, "\r\n\r\n") != len(block)-4 {
 		return "", 0, false
 	}
 	return block, dropped, true
+}
+
+// measuredBlockSize is about what measuredBlock holds, so a long field isn't grown to: it keeps what
+// isn't 8-bit and what the conversion reads, which a rewrite makes little longer, and the name of any other.
+func measuredBlockSize(header, sep string) int {
+	size := len(sep)
+	eachHeaderField(header, func(span string, _ bool) {
+		if !containsNonASCII(span) || keptWhenMeasured(span) {
+			size += len(span) + len(span)/8
+			return
+		}
+		name, _, _ := strings.Cut(span, ":")
+		size += len(name) + len(":\r\n")
+	})
+	return size
 }
 
 func writeMeasuredBlock(w wordSink, header, sep string, dropped *int, also wordSink) {
@@ -161,24 +176,6 @@ func writeMeasuredBlock(w wordSink, header, sep string, dropped *int, also wordS
 		*dropped += names.dropped - len("\r\n")
 	})
 	_, _ = kept.WriteString(sep)
-}
-
-// doublingBuilder is a strings.Builder that at least doubles when it grows. Left to itself one
-// grows a long field by a quarter at a time, which allocates five times what it ends up holding.
-type doublingBuilder struct{ strings.Builder }
-
-func (b *doublingBuilder) Write(p []byte) (int, error) {
-	if b.Cap()-b.Len() < len(p) {
-		b.Grow(len(p))
-	}
-	return b.Builder.Write(p)
-}
-
-func (b *doublingBuilder) WriteString(s string) (int, error) {
-	if b.Cap()-b.Len() < len(s) {
-		b.Grow(len(s))
-	}
-	return b.Builder.WriteString(s)
 }
 
 // teeSink tells two sinks the same.
@@ -262,15 +259,24 @@ func downgradeField(w wordSink, name, folded string) {
 			return
 		}
 	}
+	isParameters := key == "content-type" || key == "content-disposition"
+	if isParameters {
+		if ok, read := wireform.WriteFoldedParameterField(w, name, folded); read && ok {
+			return
+		}
+	}
+	// Everything below writes value to w, which keeps its own copy, so it needn't outlast this.
+	scratch := wireform.TakeFieldScratch(0)
+	defer scratch.Release()
 	// White space only: a no-break space at either end is text.
-	value := strings.Trim(unfold(folded), " \t")
+	value := strings.Trim(scratch.Unfolded(folded), " \t")
 	switch {
 	case unstructuredFields[key]:
 		_, _ = w.WriteString(name)
 		_, _ = w.WriteString(": ")
 		writeEncodedText(w, value)
 		return
-	case key == "content-type" || key == "content-disposition":
+	case isParameters:
 		if wireform.WriteParameterField(w, name, value) {
 			return
 		}

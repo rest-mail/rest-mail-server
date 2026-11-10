@@ -121,3 +121,21 @@ func WriteParameterField(w interface {
 }, name, value string) (ok bool) {
 	return message.WriteParameterField(w, name, value)
 }
+
+// WriteFoldedParameterField is [WriteParameterField] of value with its line breaks taken out, when that
+// doesn't change how any piece of it reads, so nothing is built to take them out. read is false when
+// they'd have to be, and nothing is written.
+func WriteFoldedParameterField(w interface {
+	io.Writer
+	io.StringWriter
+}, name, value string) (ok, read bool) {
+	return message.WriteFoldedParameterField(w, name, value)
+}
+
+// FieldScratch is memory for what reading one field builds and then drops, which a host that reads a
+// long field more than once uses again. See [TakeFieldScratch].
+type FieldScratch = message.FieldScratch
+
+// TakeFieldScratch is an empty [FieldScratch] with room for size without growing. What its String and
+// Unfolded answer is good only until its Release.
+func TakeFieldScratch(size int) *FieldScratch { return message.TakeFieldScratch(size) }

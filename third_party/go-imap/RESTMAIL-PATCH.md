@@ -196,3 +196,22 @@ chose on rest-mail/rest-mail-server#1921 to send a space instead:
 this conversion, so data stays exact there rather than encoded. `wireform.SpaceWordNUL`
 lets a host read a Subject or a part's name as a client decodes it.
 `TestFetchRejectsNUL` became `TestFetchReplacesNUL`.
+
+## ENVELOPE takes no buffer to keep a word
+
+`keptWordReader` also has `WriteTo`, which fails as its `Read` does. `io.Copy` takes that
+in place of the 32 KiB buffer it would otherwise take for each word, so a list of words
+in a charset with no reader costs what a list costs (rest-mail/rest-mail-server#1915).
+Nothing sent changes: `mime.WordDecoder` still fails the word, and net/mail still keeps it
+as it was written.
+
+## Reading a long field's words and quoted values
+
+`spacedWord` answers a word with no NUL as it is, with nothing built: `=00` is the only
+spelling of one in a single-octet Q word, and a base64 word of up to 64 octets decodes on
+the stack. `parseKept` reads a plain kept parameter's quoted value itself once the
+parameter is over `longQuoted`, 1 KiB, and nothing in it is escaped, and hands
+`mime.ParseMediaType` a placeholder in its place. An escaped one still goes the long way,
+which is what decides whether a backslash is one (rest-mail/rest-mail-server#1915).
+`TestParseKeptReadsLongQuotedValuesAsParseUncommented` compares the two, including which
+fields read at all.

@@ -2,6 +2,7 @@ package message
 
 import (
 	"cmp"
+	"io"
 	"mime"
 	"slices"
 	"strconv"
@@ -663,15 +664,15 @@ func readableField(value string) string {
 	return b.String()
 }
 
-func writeReadableParameter(b *strings.Builder, name string, piece fieldPiece) {
+func writeReadableParameter(w interface{ WriteString(string) (int, error) }, name string, piece fieldPiece) {
 	text := piece.value
 	if !cleanValue(text) {
 		text = quoteString(lineBreaksAsSpaces.Replace(text))
 	}
-	b.WriteString("; ")
-	b.WriteString(name)
-	b.WriteString("=")
-	b.WriteString(text)
+	_, _ = w.WriteString("; ")
+	_, _ = w.WriteString(name)
+	_, _ = w.WriteString("=")
+	_, _ = w.WriteString(text)
 }
 
 // restoreNames puts the names parameterName spelled back, once the field is read,
@@ -713,7 +714,31 @@ func ParameterField(name, value string) (string, bool) {
 // for the next field, so a field of very many parameters costs little more than its size.
 func WriteParameterField(w wireSink, name, value string) bool {
 	value = trimWSP(value)
+	return writeParameterField(w, name, value, commentClosers(value))
+}
+
+// WriteFoldedParameterField is WriteParameterField of value with its line breaks taken out, when that
+// doesn't change how any piece of it reads: an 8-bit field whose breaks all stand between its pieces.
+// Then nothing is built to take them out. read is false when they'd have to be, and nothing is written.
+func WriteFoldedParameterField(w wireSink, name, value string) (ok, read bool) {
+	value = trimWSP(value)
+	if !has8bit(value) {
+		return false, false
+	}
 	closers := commentClosers(value)
+	if strings.IndexByte(value, '\n') >= 0 {
+		between := true
+		eachFieldPiece(value, closers, func(piece fieldPiece) {
+			between = between && !pieceHasBreak(piece)
+		})
+		if !between {
+			return false, false
+		}
+	}
+	return writeParameterField(w, name, value, closers), true
+}
+
+func writeParameterField(w wireSink, name, value string, closers *commentPairs) bool {
 	var mt string
 	var err error
 	if has8bit(value) {
@@ -745,6 +770,7 @@ func WriteParameterField(w wireSink, name, value string) bool {
 	isExtended := func(base string) bool { return extended != nil && extended.has(base) }
 	seen := takeNameSet(strings.Count(value, ";"))
 	defer seen.release()
+	seen.source = value
 	first := true
 	eachFieldPiece(value, closers, func(piece fieldPiece) {
 		if first {
@@ -774,7 +800,7 @@ func WriteParameterField(w wireSink, name, value string) bool {
 				_, _ = w.WriteString(piece.raw)
 				return
 			}
-			_, _ = w.WriteString(parameterValue(key, piece.value, isExtended))
+			writeParameterValue(w, key, piece.value, isExtended)
 		}
 		for _, comment := range piece.comments {
 			_, _ = w.WriteString(" ")
@@ -904,12 +930,27 @@ func extendedFamilies(pieces []fieldPiece) map[string]bool {
 //     two extended forms that differ make the field unreadable. RFC 2047 §5 forbids
 //     that spelling, but it is the only one that keeps both.
 func parameterValue(key, value string, extended func(base string) bool) string {
+	var b strings.Builder
+	writeParameterValue(&b, key, value, extended)
+	return b.String()
+}
+
+// writeParameterValue is parameterValue into w, and a field holds many, so what most of them say is
+// written as it's read and not built first.
+func writeParameterValue(w io.StringWriter, key, value string, extended func(base string) bool) {
+	writeAll := func(parts ...string) {
+		for _, part := range parts {
+			_, _ = w.WriteString(part)
+		}
+	}
 	sevenBit := !has8bit(value) && !strings.ContainsAny(value, "\r\n")
 	if sevenBit && cleanValue(value) {
-		return key + "=" + value
+		writeAll(key, "=", value)
+		return
 	}
 	if sevenBit {
-		return key + "=" + quoteString(value)
+		writeAll(key, "=", quoteString(value))
+		return
 	}
 	text := value
 	quoted := isQuotedString(value)
@@ -919,35 +960,53 @@ func parameterValue(key, value string, extended func(base string) bool) string {
 	base, segment, isExtended := strings.Cut(key, "*")
 	switch {
 	case !isExtended && extended(base):
-		return key + `="` + strings.Join(encodedWords(text), " ") + `"`
-	case !isExtended:
-		return key + "*=" + wordCharset(text) + "''" + percentEncode(text)
+		writeAll(key, `="`, strings.Join(encodedWords(text), " "), `"`)
+	case !isExtended, segment == "0":
+		writeAll(key, "*=", wordCharset(text), "''")
+		writePercentEncoded(w, text)
 	case segment == "" || strings.HasSuffix(segment, "*"):
 		escaped := escapeOctets(value)
 		if !quoted && !isToken(escaped) {
 			escaped = quoteString(escaped)
 		}
-		return key + "=" + escaped
-	case segment == "0":
-		return key + "*=" + wordCharset(text) + "''" + percentEncode(text)
+		writeAll(key, "=", escaped)
+	default:
+		writeAll(key, "*=")
+		writePercentEncoded(w, text)
 	}
-	return key + "*=" + percentEncode(text)
 }
 
 // percentEncode spells value as an RFC 2231 extended value: every octet that may not
 // stand there is %XX.
 func percentEncode(value string) string {
+	var b strings.Builder
+	writePercentEncoded(&b, value)
+	return b.String()
+}
+
+// percentEscapes holds %XX of every octet, three characters each.
+var percentEscapes = func() string {
 	const hex = "0123456789ABCDEF"
 	var b strings.Builder
+	for c := range 256 {
+		b.Write([]byte{'%', hex[c>>4], hex[c&0x0f]})
+	}
+	return b.String()
+}()
+
+// writePercentEncoded is percentEncode into w.
+func writePercentEncoded(w io.StringWriter, value string) {
+	from := 0
 	for i := 0; i < len(value); i++ {
 		c := value[i]
 		if isAttributeChar(c) {
-			b.WriteByte(c)
-		} else {
-			b.Write([]byte{'%', hex[c>>4], hex[c&0x0f]})
+			continue
 		}
+		_, _ = w.WriteString(value[from:i])
+		_, _ = w.WriteString(percentEscapes[3*int(c) : 3*int(c)+3])
+		from = i + 1
 	}
-	return b.String()
+	_, _ = w.WriteString(value[from:])
 }
 
 // escapeOctets spells only the 8-bit octets of an extended value %XX, and a CR or LF,
