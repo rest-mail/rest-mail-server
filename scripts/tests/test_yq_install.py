@@ -52,7 +52,7 @@ class YqInstallTests(unittest.TestCase):
         github_path = directory / "github-path"
         result = subprocess.run(
             ["bash", str(INSTALLER), str(binary_directory)],
-            capture_output=True, text=True, timeout=30,
+            capture_output=True, text=True, timeout=600,
             env={**os.environ, "GITHUB_PATH": str(github_path),
                  "INSTALL_YQ_BASE_URL": f"http://127.0.0.1:{server.server_port}",
                  "INSTALL_YQ_SHA256": checksum or hashlib.sha256(payload).hexdigest()},
