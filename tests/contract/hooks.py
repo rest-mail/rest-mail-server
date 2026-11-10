@@ -4398,6 +4398,22 @@ INTERNAL_ORIGIN = os.environ.get("CONTRACT_INTERNAL_ENDPOINT") or "https://10.99
 CONTRACT_MTLS = os.environ.get("CONTRACT_MTLS_DIR", ".cache/contract-mtls")
 
 
+def authenticate_gateway_sign_in_examples(transactions):
+    """Prepare example replays, never authorization-matrix transactions."""
+    if os.environ.get("CONTRACT_AUTHORIZATION") != "1":
+        return
+    for transaction in transactions:
+        if not transaction.get("name", "").startswith("/api/v1/gateway-sessions > "):
+            continue
+        if str(transaction.get("expected", {}).get("statusCode")) not in ("201", "422"):
+            continue
+        app = principals()["app_password"]
+        body = hooks.get_json(transaction)
+        if isinstance(body, dict):
+            body["address"], body["password"] = app["address"], app["secret"]
+            hooks.set_json(transaction, body)
+
+
 @hooks.before("/api/v1/gateway-sessions > * > 201 > application/json")
 @hooks.before("/api/v1/gateway-sessions > * > 422 > application/json")
 def sign_in_a_mail_client(transaction):

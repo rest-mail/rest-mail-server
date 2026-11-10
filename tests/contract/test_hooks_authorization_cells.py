@@ -4,6 +4,9 @@ import copy
 import io
 import json
 import os
+from pathlib import Path
+import runpy
+import sys
 import unittest
 from unittest.mock import patch
 
@@ -200,6 +203,64 @@ class ProtocolSignInAuthorizationHooks(unittest.TestCase):
                         self.module.sign_in_a_mail_client(request)
                         self.assertEqual(request, before)
             fixture.assert_not_called()
+
+    def test_authorization_example_replays_get_basic_without_changing_the_contract(self):
+        examples = [self.request(None, status) for status in (200, 400, 422)]
+        examples.append(self.request(None, 422))
+        examples[-1]["request"]["body"] = "[]"
+        untouched = self.request(None, 200)
+        untouched["name"] = "/api/v1/other > Other > 200 > application/json"
+        examples.append(untouched)
+        before = copy.deepcopy(examples)
+        with (
+            patch.dict(os.environ, {"CONTRACT_AUTHORIZATION": "1"}),
+            patch.object(self.module, "principals", return_value={"app_password": self.app}),
+        ):
+            self.module.authenticate_protocol_sign_in_examples(examples)
+            for request in examples[:-1]:
+                self.module.sign_in_a_mail_client(request)
+        for request in before[:-1]:
+            request["request"]["headers"]["Authorization"] = self.module.basic(
+                self.app["address"], self.app["secret"]
+            )
+        self.assertEqual(examples, before)
+
+    def test_example_setup_leaves_unauthenticated_and_other_phase_examples_alone(self):
+        for marker in ("1", "", "0"):
+            statuses = (401, 403) if marker == "1" else (200, 400, 422)
+            examples = [self.request(None, 200) for _ in statuses]
+            for request, status in zip(examples, statuses):
+                request["expected"]["statusCode"] = str(status)
+                request["name"] = request["name"].replace("200", str(status))
+            before = copy.deepcopy(examples)
+            with (
+                patch.dict(os.environ, {"CONTRACT_AUTHORIZATION": marker}),
+                patch.object(self.module, "principals") as fixture,
+            ):
+                self.module.authenticate_protocol_sign_in_examples(examples)
+            self.assertEqual(examples, before)
+            fixture.assert_not_called()
+
+    def test_real_authorization_entrypoint_registers_examples_only_lifecycle(self):
+        callbacks = []
+        self.stub.before_all = lambda function: callbacks.append(function) or function
+        with (
+            patch.dict(os.environ, {"CONTRACT_AUTHORIZATION": "1"}),
+            patch.dict(sys.modules, {"vertrag_hooks": self.stub}),
+        ):
+            runpy.run_path(str(Path(__file__).with_name("entrypoint.py")))
+        self.assertEqual(
+            [callback.__name__ for callback in callbacks],
+            ["authenticate_protocol_sign_in_examples"],
+        )
+        replay = self.request(None, 200)
+        with patch.dict(callbacks[0].__globals__, {"principals": lambda: {"app_password": self.app}}):
+            with patch.dict(os.environ, {"CONTRACT_AUTHORIZATION": "1"}):
+                callbacks[0]([replay])
+        self.assertEqual(
+            replay["request"]["headers"]["Authorization"],
+            self.module.basic(self.app["address"], self.app["secret"]),
+        )
 
     def test_other_phases_still_use_the_app_password(self):
         phases = (
