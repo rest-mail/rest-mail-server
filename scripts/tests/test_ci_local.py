@@ -806,9 +806,12 @@ class VertragShards(unittest.TestCase):
                     }
                 }
             }
-            with patch.object(local, "run", return_value="go1.26.10\n"):
+            with patch.object(local, "run", side_effect=["go1.26.10\n", '{"CC":"clang","CGO_ENABLED":"1"}']) as commands:
                 local.go_toolchain()
             self.assertEqual(local.env["GOTOOLCHAIN"], "go1.26.10")
+            self.assertEqual(local.env["CC"], "clang")
+            self.assertEqual(local.env["CGO_ENABLED"], "1")
+            self.assertEqual(commands.call_args.args[0][1], "scripts/ci/install_cgo.py")
 
     def test_fixture_packages_run_once_in_their_own_step(self):
         with tempfile.TemporaryDirectory() as temporary:

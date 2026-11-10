@@ -11,6 +11,7 @@ import tempfile
 import textwrap
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts/contract_tier_issues.py"
@@ -97,6 +98,8 @@ class Harness(unittest.TestCase):
             "GITHUB_RUN_ID": "77",
             "GITHUB_SERVER_URL": "https://github.com",
         }
+        if "LD_LIBRARY_PATH" in os.environ:
+            self.env["LD_LIBRARY_PATH"] = os.environ["LD_LIBRARY_PATH"]
 
     def fuzz_report(self, results, seed="17760610729703352915"):
         (self.reports / "fuzz.json").write_text(
@@ -196,6 +199,27 @@ class Harness(unittest.TestCase):
 
     def assert_ok(self, out):
         self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+
+
+class InterpreterEnvironment(unittest.TestCase):
+    def test_harness_preserves_runtime_library_path_without_inheriting_credentials(self):
+        with mock.patch.dict(os.environ, {
+            "LD_LIBRARY_PATH": "/runner/python/lib:/runtime libraries",
+            "GH_TOKEN": "unrelated-credential-must-not-reach-child",
+        }):
+            harness = Harness()
+            harness.setUp()
+            self.addCleanup(harness.doCleanups)
+        self.assertEqual(harness.env.get("LD_LIBRARY_PATH"), "/runner/python/lib:/runtime libraries")
+        self.assertNotIn("GH_TOKEN", harness.env)
+
+    def test_harness_does_not_invent_a_runtime_library_path(self):
+        with mock.patch.dict(os.environ):
+            os.environ.pop("LD_LIBRARY_PATH", None)
+            harness = Harness()
+            harness.setUp()
+            self.addCleanup(harness.doCleanups)
+        self.assertNotIn("LD_LIBRARY_PATH", harness.env)
 
 
 class FuzzFindings(Harness):

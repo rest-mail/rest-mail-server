@@ -78,6 +78,14 @@
     }
   },
   "test": {
+    "Set up Python": {
+      "sha256": "8c22eb245f396185d302396a5fc8202e4bb1c86b20085c2cfc57ced074892746",
+      "local": "Python environment"
+    },
+    "Set up cgo": {
+      "sha256": "7658b2058c61b97bc6b1cbe1b7e0c4dc59d3d6dc4baa6fa03983902b32827bce",
+      "local": "Go toolchain"
+    },
     "Checkout code": {
       "sha256": "b0a4e5bf0391db799c7a5df7737abe0814096b1ac377b270f9d560e5f96a2fb3",
       "exception": "Runs on the current working tree, including staged, unstaged and untracked files, or a scratch merge; checkout would discard local work."
@@ -124,6 +132,14 @@
     }
   },
   "test-api": {
+    "Set up Python": {
+      "sha256": "8c22eb245f396185d302396a5fc8202e4bb1c86b20085c2cfc57ced074892746",
+      "local": "Python environment"
+    },
+    "Set up cgo": {
+      "sha256": "7658b2058c61b97bc6b1cbe1b7e0c4dc59d3d6dc4baa6fa03983902b32827bce",
+      "local": "Go toolchain"
+    },
     "Checkout code": {
       "sha256": "b0a4e5bf0391db799c7a5df7737abe0814096b1ac377b270f9d560e5f96a2fb3",
       "exception": "Runs on the current working tree, including staged, unstaged and untracked files, or a scratch merge; checkout would discard local work."
@@ -170,6 +186,14 @@
     }
   },
   "test-handlers": {
+    "Set up Python": {
+      "sha256": "8c22eb245f396185d302396a5fc8202e4bb1c86b20085c2cfc57ced074892746",
+      "local": "Python environment"
+    },
+    "Set up cgo": {
+      "sha256": "7658b2058c61b97bc6b1cbe1b7e0c4dc59d3d6dc4baa6fa03983902b32827bce",
+      "local": "Go toolchain"
+    },
     "Checkout code": {
       "sha256": "b0a4e5bf0391db799c7a5df7737abe0814096b1ac377b270f9d560e5f96a2fb3",
       "exception": "Runs on the current working tree, including staged, unstaged and untracked files, or a scratch merge; checkout would discard local work."
@@ -216,6 +240,10 @@
     }
   },
   "test-contract": {
+    "Set up cgo": {
+      "sha256": "7658b2058c61b97bc6b1cbe1b7e0c4dc59d3d6dc4baa6fa03983902b32827bce",
+      "local": "Go toolchain"
+    },
     "Set up Python": {
       "sha256": "8c22eb245f396185d302396a5fc8202e4bb1c86b20085c2cfc57ced074892746",
       "local": "Python environment"
@@ -250,6 +278,10 @@
     }
   },
   "test-imap": {
+    "Set up cgo": {
+      "sha256": "7658b2058c61b97bc6b1cbe1b7e0c4dc59d3d6dc4baa6fa03983902b32827bce",
+      "local": "Go toolchain"
+    },
     "Set up Python": {
       "sha256": "8c22eb245f396185d302396a5fc8202e4bb1c86b20085c2cfc57ced074892746",
       "local": "Python environment"

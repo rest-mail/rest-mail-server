@@ -99,6 +99,9 @@ jobs:
           go mod download
           go build ./...
 
+      - name: Set up cgo
+        uses: ./.github/actions/setup-cgo
+
       # The race detector's builds have a cache of their own, because they are large and
       # only Test and the internal/api shards use them. The week in the key refreshes it
       # as the code moves. A compile cache cannot change a result: Go looks entries up by
@@ -482,11 +485,17 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
+
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: "1.26.10"
           cache: true
+
+      - name: Set up cgo
+        uses: ./.github/actions/setup-cgo
 
       # The race jobs share their build cache. Set it after setup-go,
       # so that its own cache keeps its own path. seed-caches writes this one, on main.
@@ -631,6 +640,9 @@ jobs:
           go-version: "1.26.10"
           cache: true
 
+      - name: Set up cgo
+        uses: ./.github/actions/setup-cgo
+
       # The race jobs share their build cache. Set it after setup-go,
       # so that its own cache keeps its own path. seed-caches writes this one, on main.
       - name: Restore the race build cache
@@ -688,6 +700,9 @@ jobs:
         with:
           go-version: "1.26.10"
           cache: true
+
+      - name: Set up cgo
+        uses: ./.github/actions/setup-cgo
 
       # The race jobs share their build cache. Set it after setup-go,
       # so that its own cache keeps its own path. seed-caches writes this one, on main.
@@ -779,11 +794,17 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
+
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: "1.26.10"
           cache: true
+
+      - name: Set up cgo
+        uses: ./.github/actions/setup-cgo
 
       # The race jobs share their build cache. Set it after setup-go,
       # so that its own cache keeps its own path. seed-caches writes this one, on main.
@@ -907,11 +928,17 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
+
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: "1.26.10"
           cache: true
+
+      - name: Set up cgo
+        uses: ./.github/actions/setup-cgo
 
       # The race jobs share their build cache. Set it after setup-go,
       # so that its own cache keeps its own path. seed-caches writes this one, on main.
@@ -1154,6 +1181,9 @@ jobs:
         with:
           version: v3.16.2
 
+      - name: Set up yq
+        run: bash scripts/ci/install-yq "$RUNNER_TEMP/bin"
+
       - name: Lint and render (render-test.sh)
         run: helm/restmail/tests/render-test.sh
 
@@ -1385,6 +1415,9 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
+
       - name: Retry transient image pull failures
         run: echo "$GITHUB_WORKSPACE/scripts/ci/docker-retry" >> "$GITHUB_PATH"
 
@@ -1395,7 +1428,7 @@ jobs:
           cache: true
 
       - name: Tools
-        run: sudo apt-get install -y --no-install-recommends oathtool
+        run: python3 scripts/ci/install_oathtool.py "$RUNNER_TEMP/oathtool"
 
       - name: Build the CLI and the API image
         run: |
