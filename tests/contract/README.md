@@ -2312,6 +2312,15 @@ operations are selected, because the declared id is an account's, and the
 account list beside them: tenant `b`'s list of accounts must not contain tenant
 `a`'s account id, or the other way round.
 
+For `deleteQuarantine`, the report fixture also holds one real message for each
+account tenant. The configuration signs in as each victim and reads that
+victim's own quarantine list, declaring the verified message as `path.mid`
+beside its account's `path.id`. The attack still uses the other tenant's
+original credential and refusal expectation. Missing or malformed resources
+remain undeclared and visibly unproved; one tenant's setup failure does not
+discard the other's resource. These report-only targets do not change the
+gate's held-mail fixtures or make role-denied app-password cells pass.
+
 A second run sends the domain operations. `chore test:contract-domain-tenants`
 makes two domain administrators directly in the database: one of restmail.test
 (tenant `a`) and one of a second disposable domain, contract-other.test (tenant

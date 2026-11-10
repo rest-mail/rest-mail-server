@@ -1489,7 +1489,7 @@ def an_api_key_of_its_own_to_edit(transaction):
     if a_later_request_of_the_coverage_process(transaction):
         an_api_key_of_its_own_for_a_probe(transaction)
         return
-    if not as_the_two_factor_admin(transaction):
+    if not sent_as_the_two_factor_admin(transaction):
         return
     body = hooks.get_json(transaction)
     # The body_array refusal has no password to set, a probe of an empty one
@@ -2021,7 +2021,7 @@ def link_an_account_linked_already(transaction):
     # to: the two-factor administrator's request names one linked to it just
     # before, never the seeded eve. It runs before link_a_seeded_account, which
     # then leaves the body alone: it names none of that hook's fixtures.
-    if f" > {ALREADY_LINKED_SUMMARY} > " not in transaction.get("name", ""):
+    if str(transaction.get("expected", {}).get("statusCode", "")) != "409":
         return
     if session_address(transaction) != mfa_admin.ADDRESS:
         return
@@ -3310,7 +3310,7 @@ def a_mailbox_at_each_test_send_address(transaction):
         hooks.stash["test_send_mailboxes"] = ready
 
 
-def schedule_a_message(transaction):
+def schedule_a_message(transaction, address=None, authorization=None):
     """Store a scheduled message through the API and return its id, so the
     list and cancel examples have something of their own to act on."""
     origin = "{}//{}:{}".format(
@@ -3318,13 +3318,14 @@ def schedule_a_message(transaction):
         transaction["host"],
         transaction["port"],
     )
+    address = ADMIN if address is None else address
     headers = {
         "Content-Type": "application/json",
-        "Authorization": "Bearer " + admin_token(origin),
+        "Authorization": authorization if authorization is not None else "Bearer " + admin_token(origin),
     }
     body = {
-        "from": ADMIN,
-        "to": [ADMIN],
+        "from": address,
+        "to": [address],
         "subject": "contract scheduled message",
         "body_text": "Contract fixture.",
         "scheduled_at": time.strftime(
@@ -3378,6 +3379,22 @@ def cancel_a_message_we_made(transaction):
     # example's id that no message holds. Only the found example's message
     # (52), and the valid probe built from it, get a real message.
     path = transaction.get("fullPath", "").split("?")[0]
+    target = path.rsplit("/", 1)[-1]
+    if (
+        os.environ.get("CONTRACT_AUTHORIZATION") == "1"
+        and " > 204" in transaction.get("name", "")
+        and positive_id(target)
+        and target != "2147483647"
+        and session_address(transaction) in (ADMIN, mfa_admin.ADDRESS)
+    ):
+        scheduled_id = schedule_a_message(
+            transaction,
+            address=session_address(transaction),
+            authorization=transaction["request"]["headers"]["Authorization"],
+        )
+        if isinstance(scheduled_id, int):
+            transaction["fullPath"] = f"/api/v1/messages/scheduled/{scheduled_id:d}"
+        return
     if path.rsplit("/", 1)[-1] != "52":
         return
     scheduled_id = schedule_a_message(transaction)
@@ -3724,6 +3741,23 @@ def a_message_in(transaction, account, folder, sender, subject, body):
             "internal_date": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         },
     )
+
+
+@hooks.before("listAccountAddresses")
+def report_addresses_of_the_callers_own_account(transaction):
+    if (
+        not any(os.environ.get(phase) == "1" for phase in (
+            "CONTRACT_AUTHORIZATION", "CONTRACT_OWNERSHIP"
+        ))
+        or " > 200 > " not in transaction.get("name", "")
+        or transaction.get("fullPath") != "/api/v1/accounts/10/addresses"
+    ):
+        return
+    address = session_address(transaction)
+    if address not in (ADMIN, mfa_admin.ADDRESS):
+        return
+    account = mailbox_id(origin_of(transaction), address)
+    transaction["fullPath"] = f"/api/v1/accounts/{account:d}/addresses"
 
 
 @hooks.before("listThreads")
@@ -5083,7 +5117,7 @@ def recover_an_account_of_its_own(transaction):
 
 # The password resetAdmin's reset example sets on the account made for it. Not
 # a secret: it proves only a disposable account (an_owner_reset_target).
-OWNER_RESET_PASSWORD = "contract-owner-reset-account"
+OWNER_RESET_PASSWORD = "saffron-glacier-kestrel-violet-73"
 
 
 def an_owner_reset_target(origin):
@@ -5498,10 +5532,14 @@ def delete_the_fixture_quarantined_message(transaction):
     # are the refusals' and the probes', sent as they are.
     # Only the example's own path: a probe that changes either id is sent as it is.
     path, _, query = transaction["fullPath"].partition("?")
-    if path != "/api/v1/accounts/1/quarantine/41" or not with_the_fixture_admins_session(transaction):
+    address = session_address(transaction)
+    if path != "/api/v1/accounts/1/quarantine/41" or not (
+        address == ADMIN
+        or (os.environ.get("CONTRACT_AUTHORIZATION") == "1" and address == mfa_admin.ADDRESS)
+    ):
         return
     origin = origin_of(transaction)
-    collection = "/api/v1/accounts/{}/quarantine".format(mailbox_id(origin, ADMIN))
+    collection = "/api/v1/accounts/{}/quarantine".format(mailbox_id(origin, address))
     held = [
         m
         for m in list_rows(
@@ -6061,7 +6099,9 @@ def import_into_an_account_with_room(transaction):
         or transaction.get("fullPath") != "/api/v1/accounts/12/messages/import"
     ):
         return
-    if os.environ.get("CONTRACT_COVERAGE") != "1":
+    if not any(os.environ.get(phase) == "1" for phase in (
+        "CONTRACT_COVERAGE", "CONTRACT_AUTHORIZATION", "CONTRACT_OWNERSHIP"
+    )):
         body = hooks.get_json(transaction)
         if not isinstance(body, dict) or (
             body.get("always_store") is not True
@@ -6163,18 +6203,18 @@ def close_an_import_session_the_run_opened(transaction):
 # the examples' sender and the authorization phase's admin principal, just
 # before the request: an admin role at a domain no one hosts, named by the time,
 # which gives a superadmin at * nothing it lacked. Keyed by the action and the
-# example's summary; the value is the state to prepare and whether the body
+# expected status; the value is the state to prepare and whether the body
 # gets an unused second factor of that administrator's (the examples carry a
 # placeholder code; invalid_code keeps its wrong one).
 GRANT_STATES = {
-    ("activate", "An eligible grant is switched on for an hour"): ("eligible", True),
-    ("activate", "The grant is on already"): ("switched_on", True),
-    ("activate", "The second factor does not match"): ("eligible", False),
-    ("deactivate", "The running activation ends"): ("switched_on", None),
-    ("deactivate", "Nothing to switch off"): ("eligible", None),
-    ("make-eligible", "An active grant becomes eligible"): ("active", True),
-    ("make-eligible", "The second factor does not match"): ("active", False),
-    ("make-eligible", "The grant is eligible already"): ("eligible", True),
+    ("activate", "201"): ("eligible", True),
+    ("activate", "409"): ("switched_on", True),
+    ("activate", "403"): ("eligible", False),
+    ("deactivate", "200"): ("switched_on", None),
+    ("deactivate", "409"): ("eligible", None),
+    ("make-eligible", "200"): ("active", True),
+    ("make-eligible", "403"): ("active", False),
+    ("make-eligible", "409"): ("eligible", True),
 }
 # The grant id every one of those examples names.
 EXAMPLE_GRANT_ID = "7"
@@ -6235,8 +6275,8 @@ def a_grant_of_the_callers_own(transaction):
     path, _, query = transaction["fullPath"].partition("?")
     parent, _, action = path.rpartition("/")
     base, _, grant_id = parent.rpartition("/")
-    summary = transaction.get("name", "").split(" > ")[1:2]
-    wanted = GRANT_STATES.get((action, summary[0] if summary else ""))
+    status = str(transaction.get("expected", {}).get("statusCode", ""))
+    wanted = GRANT_STATES.get((action, status))
     if wanted is None or grant_id != EXAMPLE_GRANT_ID:
         return
     if session_address(transaction) != mfa_admin.ADDRESS:
@@ -6273,23 +6313,17 @@ def remove_the_throwaway_grant(transaction):
 # The password of each account linked for unlinkAccount's unlinked and
 # linkAccount's already_linked examples (existing_link). Not a secret: it
 # proves only a disposable account made for one request.
-LINKED_PASSWORD = "contract-linked-account"
+LINKED_PASSWORD = "tundra-saffron-orbit-badger-84"
 UNLINKED_SUMMARY = "The link is given up"
 ALREADY_LINKED_SUMMARY = "The account is linked already"
 
 
 def a_throwaway_link(origin):
     """A fresh account with a password, linked to the two-factor
-    administrator: its address and id."""
+    administrator by its creation grant: its address and id."""
     address = fresh_address("linked")
-    a_new_account(origin, address, "Linked", LINKED_PASSWORD)
-    # Linking is throttled like sign-in.
-    rate_limits.pace(1.1)
-    linked = as_the_two_factor_admin_call(
-        origin, "POST", "/api/v1/accounts/link", {"address": address, "password": LINKED_PASSWORD}
-    )
-    rate_limits.pace(1.1)
-    return address, linked["id"]
+    account_id = a_new_account(origin, address, "Linked", LINKED_PASSWORD)
+    return address, account_id
 
 
 @hooks.before("unlinkAccount")
@@ -6297,7 +6331,7 @@ def unlink_a_link_of_its_own(transaction):
     # unlinked (existing_link) names account 2, a seeded account. The
     # two-factor administrator's request gives up a link made for it alone,
     # just before; other principals' requests are sent as they are.
-    if f" > {UNLINKED_SUMMARY} > " not in transaction.get("name", ""):
+    if str(transaction.get("expected", {}).get("statusCode", "")) != "204":
         return
     if session_address(transaction) != mfa_admin.ADDRESS:
         return
@@ -6317,7 +6351,7 @@ def grant_to_an_account_of_its_own(transaction):
     # account made for it alone, without credentials, just before: the eligible
     # grant it gets touches none of the run's own accounts. Made as the
     # two-factor administrator; refusals keep the documented holder.
-    if f" > {GRANTED_SUMMARY} > " not in transaction.get("name", ""):
+    if str(transaction.get("expected", {}).get("statusCode", "")) != "201":
         return
     body = hooks.get_json(transaction)
     if not isinstance(body, dict) or not isinstance(body.get("holder"), dict):

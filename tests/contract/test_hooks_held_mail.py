@@ -3,6 +3,7 @@ hold for them, and only for their found examples (#1334)."""
 
 import io
 import json
+import os
 import unittest
 from unittest.mock import patch
 
@@ -34,6 +35,30 @@ class HeldMailHookTests(unittest.TestCase):
         self.module.mailbox_id.assert_called_once_with("http://api:8080", self.module.ADMIN)
         request = self.urlopen.call_args.args[0]
         self.assertEqual(request.full_url, "http://api:8080/api/v1/accounts/6/quarantine?limit=200&offset=0")
+
+    def test_authorization_admin_deletes_its_own_held_mail_without_changing_credentials(self):
+        own = session(self.module.mfa_admin.ADDRESS)
+        self.answers([{"id": 8, "released": False}])
+        with patch.dict(os.environ, {"CONTRACT_AUTHORIZATION": "1"}), \
+                patch.object(self.module, "mailbox_id", return_value=6) as lookup:
+            sent = transaction("/api/v1/accounts/1/quarantine/41", own)
+            self.module.delete_the_fixture_quarantined_message(sent)
+        self.assertEqual(sent["fullPath"], "/api/v1/accounts/6/quarantine/8")
+        self.assertEqual(sent["request"]["headers"]["Authorization"], own)
+        lookup.assert_called_once_with("http://api:8080", self.module.mfa_admin.ADDRESS)
+        self.assertEqual(self.urlopen.call_args.args[0].headers["Authorization"], own)
+
+    def test_authorization_held_mail_refusals_and_foreign_targets_are_preserved(self):
+        for path, address in (("/api/v1/accounts/1/quarantine/2147483647", self.module.mfa_admin.ADDRESS),
+                              ("/api/v1/accounts/0/quarantine/41", self.module.mfa_admin.ADDRESS),
+                              ("/api/v1/accounts/7/quarantine/41", self.module.mfa_admin.ADDRESS),
+                              ("/api/v1/accounts/1/quarantine/41", "contract-ordinary@restmail.test")):
+            with self.subTest(path=path, address=address), patch.dict(os.environ, {"CONTRACT_AUTHORIZATION": "1"}):
+                sent = transaction(path, session(address))
+                before = json.loads(json.dumps(sent))
+                self.module.delete_the_fixture_quarantined_message(sent)
+                self.assertEqual(sent, before)
+        self.urlopen.assert_not_called()
 
     def test_the_admins_id_is_looked_up_by_address(self):
         patch.object(self.module, "admin_token", return_value="admin-token").start()

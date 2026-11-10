@@ -241,10 +241,16 @@ def main(spec_path, config_path, principals_path, out_path, report_path):
     config = run_config(spec_path, config_path, report_path)
     config["only-matching"] = [ACCOUNT_OPERATIONS]
     config["principals"] = account_principals(fixture)
+    with open(spec_path) as source:
+        specification = yaml.safe_load(source)
+    quarantine = specification.get("paths", {}).get(
+        "/api/v1/accounts/{id}/quarantine/{mid}", {}
+    ).get("delete", {}).get("operationId") == "deleteQuarantine"
+    held = quarantine_targets(config["endpoint"], fixture) if quarantine else {}
     config["tenants"] = {
         tenant: {
             "principals": principals,
-            "ids": {"path.id": str(fixture[principals[0]]["id"])},
+            "ids": {"path.id": str(fixture[principals[0]]["id"]), **held.get(tenant, {})},
         }
         for tenant, principals in ACCOUNT_TENANTS.items()
     }
@@ -288,6 +294,30 @@ def call(endpoint, method, path, body=None, token=None):
         request.add_header("Authorization", "Bearer " + token)
     with urllib.request.urlopen(request, timeout=20) as response:
         return json.load(response)
+
+
+def quarantine_targets(endpoint, fixture):
+    targets = {}
+    for tenant, principals in ACCOUNT_TENANTS.items():
+        try:
+            owner = fixture[principals[0]]
+            session = call(endpoint, "POST", LOGIN, {
+                "email": owner["address"], "password": owner["password"],
+                "client": "native",
+            })
+            token = session["data"]["access_token"]
+            if not isinstance(token, str) or not token:
+                raise ValueError("missing victim session")
+            listed = call(endpoint, "GET", f"/api/v1/accounts/{owner['id']}/quarantine",
+                          token=token)
+            message = listed["data"][0]["id"]
+            if type(message) is not int or message <= 0:
+                raise ValueError("invalid victim resource")
+            targets[tenant] = {"path.mid": str(message)}
+        except (OSError, ValueError, KeyError, IndexError, TypeError):
+            print(f"ownership.py: tenant {tenant} has no verified quarantine target; "
+                  "its cells remain unproved", file=sys.stderr)
+    return targets
 
 
 def held_attachment(endpoint, principal):
