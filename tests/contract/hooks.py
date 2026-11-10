@@ -2113,6 +2113,21 @@ def give_each_rename_probe_a_folder(transaction):
             raise
 
 
+def authenticate_protocol_sign_in_examples(transactions):
+    """beforeAll sees only examples in Vertrag 0.42.0, never SendAs cells."""
+    if os.environ.get("CONTRACT_AUTHORIZATION") != "1":
+        return
+    for transaction in transactions:
+        if not transaction.get("name", "").startswith("/api/v1/auth/protocol-sign-in > "):
+            continue
+        if str(transaction.get("expected", {}).get("statusCode")) not in ("200", "400", "422"):
+            continue
+        app = principals()["app_password"]
+        transaction["request"]["headers"]["Authorization"] = basic(
+            app["address"], app["secret"]
+        )
+
+
 @hooks.before("/api/v1/auth/protocol-sign-in > * > 200 > application/json")
 @hooks.before("/api/v1/auth/protocol-sign-in > * > 400 > application/json")
 @hooks.before("/api/v1/auth/protocol-sign-in > * > 422 > application/json")
