@@ -133,6 +133,7 @@ class LiveRequirementTests(unittest.TestCase):
             module.oversized_body(transaction)
         self.assertEqual(len(transaction["request"]["body"].encode()), 8193)
         self.assertEqual(transaction["request"]["headers"]["Content-Length"], "8193")
+        self.assertEqual(transaction["request"]["headers"]["Expect"], "100-continue")
         # Once sent, the bytes are not carried through the later hooks.
         module.forget_the_sent_body(transaction)
         self.assertEqual(transaction["request"]["body"], "")
@@ -300,12 +301,13 @@ class GatewayListenerProof(unittest.TestCase):
         self.document["paths"] = {"/api/v1/gateway-sessions/current": {"delete": operation}}
         self.configurations = []
 
-    def invoke(self, endpoint="https://internal.test:8443", transport=None):
+    def invoke(self, endpoint="https://internal.test:8443", transport=None, kind="anonymous"):
         def run(command, **options):
             config_path = Path(command[command.index("--config") + 1])
             self.configurations.append(yaml.safe_load(config_path.read_text()))
             verdict = copy.deepcopy(REPORT)
-            verdict["results"][0].update(expected="400", actual="400")
+            expected = str(self.pair["response"]["status"])
+            verdict["results"][0].update(expected=expected, actual=expected)
             (config_path.parent / "report.json").write_text(json.dumps(verdict))
             return types.SimpleNamespace(returncode=0)
 
@@ -317,10 +319,10 @@ class GatewayListenerProof(unittest.TestCase):
         ):
             code = live_requirements.prove(
                 "vertrag", "http://public.test:8080", self.document,
-                {self.operation: {self.example: self.pair}}, "anonymous", directory,
-                transport=transport,
+                {self.operation: {self.example: self.pair}}, kind, directory,
+                token="actual-mfa-session" if kind == "over-cap" else "", transport=transport,
             )
-            unproven = json.loads((Path(directory) / "anonymous-unproven.json").read_text())
+            unproven = json.loads((Path(directory) / f"{kind}-unproven.json").read_text())
             return code, directory, unproven
 
     def test_missing_session_uses_verified_gateway_transport_without_a_user_credential(self):
@@ -346,6 +348,27 @@ class GatewayListenerProof(unittest.TestCase):
         self.assertEqual(self.configurations, [])
         self.assertIn("HTTPS internal listener", unproven[0]["reason"])
 
+    def test_delivery_uses_its_own_service_certificate_and_keeps_the_mfa_credential(self):
+        self.operation = "deliverMessage"
+        self.pair = {"requires": {"body": "over_cap"}, "response": {"status": 413}}
+        operation = self.document["paths"]["/api/v1/gateway-sessions/current"]["delete"]
+        operation["operationId"] = self.operation
+        response = operation["responses"]["400"]
+        response["content"]["application/json"]["examples"][self.example]["x-requires"] = self.pair["requires"]
+        operation["responses"] = {"413": response}
+        self.document["paths"] = {"/api/v1/messages/deliver": {"post": operation}}
+        code, directory, unproven = self.invoke(kind="over-cap")
+        self.assertEqual((code, unproven), (0, []))
+        config = self.configurations[0]
+        self.assertEqual(config["endpoint"], "https://internal.test:8443")
+        self.assertEqual(config["header"], ["Authorization: Bearer actual-mfa-session"])
+        self.assertEqual(config["endpoints"], [{
+            "endpoint": "https://internal.test:8443", "operation-id": [self.operation],
+            "transport": {"ca-cert": str(Path(directory).resolve() / "internal-ca.crt"),
+                          "cert": str(Path(directory).resolve() / "internal-smtp-delivery.crt"),
+                          "cert-key": str(Path(directory).resolve() / "internal-smtp-delivery.key")},
+        }])
+
     def test_explicit_transport_is_not_replaced(self):
         explicit = {"ca-cert": "/selected/ca.crt", "cert": "/selected/client.crt",
                     "cert-key": "/selected/client.key"}
@@ -360,11 +383,67 @@ class GatewayListenerProof(unittest.TestCase):
     os.environ.get("RESTMAIL_VERTRAG_BINARY"), "set RESTMAIL_VERTRAG_BINARY"
 )
 class RealOverCapExchange(unittest.TestCase):
+    def test_an_early_413_is_validated_without_a_broken_pipe(self):
+        size = 32 * 1024 * 1024 + 1
+        received = []
+
+        class API(BaseHTTPRequestHandler):
+            protocol_version = "HTTP/1.1"
+
+            def log_message(self, *args):
+                pass
+
+            def reject(self):
+                received.append((self.headers.get("Expect"), int(self.headers["Content-Length"])))
+                reply = json.dumps({"error": "too large"}).encode()
+                self.send_response(413)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(reply)))
+                self.send_header("X-Guard", "body-limit")
+                self.send_header("Connection", "close")
+                self.end_headers()
+                self.wfile.write(reply)
+                self.wfile.flush()
+                self.close_connection = True
+
+            def handle_expect_100(self):
+                self.reject()
+                return False
+
+            def do_GET(self):
+                self.reject()
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), API)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        document = copy.deepcopy(DOCUMENT)
+        operation = document["paths"]["/things/{id}"]["get"]
+        response = operation["responses"]["401"]
+        response["content"]["application/json"]["examples"] = {"unauthenticated": {
+            "value": {"error": "too large"}, "x-requires": {"body": "over_cap"},
+        }}
+        operation["responses"] = {"413": response}
+        pair = {"requires": {"body": "over_cap"}, "response": {"status": 413}}
+        with tempfile.TemporaryDirectory() as directory:
+            code = live_requirements.prove(
+                os.environ["RESTMAIL_VERTRAG_BINARY"],
+                f"http://127.0.0.1:{server.server_port}", document,
+                {"getThing": {"unauthenticated": pair}}, "over-cap", directory,
+                "a-session", body_bytes=size,
+            )
+            proofs = json.loads((Path(directory) / "over-cap-proofs.json").read_text())
+        self.assertEqual(code, 0)
+        self.assertEqual(proofs, {"getThing": ["unauthenticated"]})
+        self.assertEqual(received, [("100-continue", size)])
+
     def test_the_whole_body_is_on_the_wire_before_the_hook_forgets_it(self):
         size = 1024 * 1024 + 1
         received = []
 
         class API(BaseHTTPRequestHandler):
+            protocol_version = "HTTP/1.1"
+
             def log_message(self, *args):
                 pass
 

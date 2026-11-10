@@ -956,6 +956,19 @@ tasks:
         mkdir -p .cache/contract
         docker exec -- "${CONTRACT_FIXTURE_PROJECT}-api" go run ./tests/contract/fixtures --test-domain=restmail.test --api-keys > .cache/contract/live-proofs-api-key.log
         sed -n 's/^API_KEY_FIXTURE=//p' .cache/contract/live-proofs-api-key.log > .cache/contract/live-proofs-api-key.json
+        owner=1
+        cleanup_owner() {
+          code=$?
+          trap - EXIT
+          if [ "$owner" -eq 0 ]; then
+            chore test:contract-owner-key -- revoke || code=1
+          else
+            code=1
+          fi
+          exit "$code"
+        }
+        trap cleanup_owner EXIT
+        if chore test:contract-owner-key -- add; then owner=0; fi
         tests/contract/live_proofs.sh .cache/contract/live-proofs-api-key.json
 
   test:contract-mfa-admin:

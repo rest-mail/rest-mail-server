@@ -12,6 +12,7 @@ def oversized_body(transaction):
         raise ValueError("the live body size must be positive")
     transaction["request"]["body"] = " " * size
     transaction["request"]["headers"]["Content-Length"] = str(size)
+    transaction["request"]["headers"]["Expect"] = "100-continue"
 
 
 @hooks.before_each_validation

@@ -2769,6 +2769,9 @@ Bearer credential: the certificate authenticates the gateway, not its user.
 In particular, `closeGatewaySession/session_required` must answer the documented
 400 with its response schema intact, not the public listener's missing-route 404.
 An HTTP internal endpoint fails closed; it never falls back to the public listener.
+The internal address-check and message-delivery examples use the SMTP delivery
+service's certificate instead, matching `vertrag.yml`; their caller credential
+and expected status remain unchanged.
 
 ```sh
 python3 -B tests/contract/live_requirements.py anonymous "$CONTRACT_ENDPOINT" "$work/anonymous" \
@@ -2784,13 +2787,23 @@ python3 -B tests/contract/live_principals.py "$CONTRACT_ENDPOINT" "$work/princip
 - A pair counts only with exactly one passing exchange, the expected status and
   a clean runner exit. A missing route, skipped exchange or tool failure is
   unproven. `--operation-id` narrows the run for local use and is no gate result.
-- The over-cap hook sends 33,554,433 real bytes, above the default API and
-  delivery caps. A deployment with larger limits must pass a larger `--body-bytes`.
+- The over-cap hook constructs a real 33,554,433-byte body, above the default API
+  and delivery caps, with `Expect: 100-continue`. The server can legitimately
+  reject its declared size with 413 before receiving the body, without racing a
+  large upload against connection closure. This is a header-limit proof, not a
+  claim that the server consumed every byte. A separate pinned-Vertrag wire test
+  has the receiver send 100 Continue and verifies every actual payload byte is
+  transmitted; the hook never fabricates a length without its matching body.
+  A deployment with larger limits must pass a larger `--body-bytes`.
 - The `--api-keys` fixture must be fresh, because the runner enrols it in MFA.
 - Push pairs need the real API started with a disposable P-256 APNs key and all
   three APNs settings. These refusals send no notification.
 - The owner refusals need one registered owner key (`restmail-api owner-key add`).
   Without one, the API correctly answers 409 before checking the challenge.
+  `chore test:contract-live-proofs` registers a throwaway key before the runners
+  and revokes it on exit, including after failed proofs. Registration or cleanup
+  failure makes the task fail; failed registration does not suppress other
+  proofs. Direct Python invocations still need that prerequisite prepared.
 - `--workers` runs over-cap cases side by side. Each message carrying a 33 MB body
   costs about 5 seconds of CPU in Vertrag's hook worker. The hook file empties the
   body once it has been sent, so a case pays for one such message, not three.
