@@ -1956,6 +1956,9 @@ case "$1" in
   vet) if [ -f vet-breaks ]; then echo "vet-breaks:1: does not compile"; exit 1; fi ;;
 esac
 """
+FAKE_CGO = """import json
+print(json.dumps({"CC": "cc", "CGO_ENABLED": "1"}))
+"""
 WORKFLOW = """
 jobs:
   lint:
@@ -1993,6 +1996,7 @@ class Stacks(unittest.TestCase):
         self.git("config", "user.email", "test@example.test")
         self.git("config", "user.name", "Local gate test")
         self.write(".github/workflows/ci.yml", WORKFLOW)
+        self.write("scripts/ci/install_cgo.py", FAKE_CGO)
         self.write("scripts/tests/test_fine.py", PASSING_TEST)
         self.write("tests/contract/test_fine_too.py", PASSING_TEST)
         self.write("shared.txt", "base\n")
