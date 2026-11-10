@@ -19,6 +19,22 @@ controller, which serves the peer's Ingress:
 
   <peer domain>      MX <peer host>             A  <peer namespace>/mx
 
+For MTA-STS (RFC 8461) a policy host, mta-sts.<domain>, serves
+/.well-known/mta-sts.txt over HTTPS for two domains the reference receives
+for: reference.test, whose policy names its MX, and sts-mismatch.test, whose
+policy names an MX the domain does not have. Both MX hosts are the
+reference's Service; cluster_e2e.py publishes each _mta-sts TXT record when
+its step runs (mta-sts-enforce, mta-sts-mismatch):
+
+  reference.test     mta-sts  A  the policy host's Service
+  sts-mismatch.test  MX mail.sts-mismatch.test  A  the reference's Service
+                     mta-sts  A  the policy host's Service
+
+The reference's certificate (the Secret reference-mail-tls) names every one
+of those hosts. The workflow issues it from the run's CA, which REST Mail
+trusts, so the MTA-STS checks verify it; without that Secret this script
+makes a self-signed one, which an enforce policy rejects.
+
 The chart's NetworkPolicy lets the SMTP gateway reach port 25 anywhere; a
 pod-to-pod hop arrives on the peer gateway's container port, so a policy of
 this script's opens that one port from the first install's gateway to the
@@ -62,6 +78,44 @@ REFERENCE_USER = "reference"
 SECRET = "reference-mail"
 TLS_SECRET = "reference-mail-tls"
 SERVICE = "mail"
+
+# The MTA-STS policy host: its Deployment, Service and ConfigMap (the server
+# script and a policy file per policy host name).
+STS_NAME = "mta-sts"
+STS_PORT = 443
+MISMATCH_DOMAIN = "sts-mismatch.test"
+MISMATCH_HOST = "mail." + MISMATCH_DOMAIN
+
+# The hosts the reference's certificate names.
+TLS_HOSTS = (REFERENCE_HOST, "mta-sts." + REFERENCE_DOMAIN, MISMATCH_HOST, "mta-sts." + MISMATCH_DOMAIN)
+
+# Serves /etc/mta-sts/policies/<Host header> at the well-known path, over TLS
+# with the reference's certificate. It logs each request, which the check
+# reads back as the proof REST Mail fetched the policy.
+STS_SERVER = '''import http.server, pathlib, ssl
+POLICIES = pathlib.Path("/etc/mta-sts/policies")
+class Handler(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        host = (self.headers.get("Host") or "").split(":")[0].lower().rstrip(".")
+        policy = POLICIES / host
+        if self.path != "/.well-known/mta-sts.txt" or not host or "/" in host or not policy.is_file():
+            self.send_error(404)
+            return
+        body = policy.read_bytes()
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+    def log_message(self, fmt, *args):
+        print("mta-sts %s host=%s %s" % (self.address_string(), self.headers.get("Host"), fmt % args), flush=True)
+context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+context.minimum_version = ssl.TLSVersion.TLSv1_2
+context.load_cert_chain("/etc/reference-tls/tls.crt", "/etc/reference-tls/tls.key")
+server = http.server.ThreadingHTTPServer(("", PORT), Handler)
+server.socket = context.wrap_socket(server.socket, server_side=True)
+server.serve_forever()
+'''.replace("PORT", str(STS_PORT), 1)
 
 # What the reference listens on: inbound SMTP, authenticated submission
 # (STARTTLS) and IMAP over implicit TLS.
@@ -122,8 +176,9 @@ def accounts_line(address: str, password: str) -> str:
 RECORDS_BEGIN, RECORDS_END = "; BEGIN published records", "; END published records"
 
 
-def zone_file(zone: str, mail_host: str, mail_ip: str, serial: int = 1) -> str:
-    """A zone with an SOA, an MX to mail_host and mail_host's address.
+def zone_file(zone: str, mail_host: str, mail_ip: str, serial: int = 1, hosts: dict[str, str] | None = None) -> str:
+    """A zone with an SOA, an MX to mail_host and mail_host's address, and an
+    A record per hosts entry (label relative to the zone: address).
 
     mail_host is inside the zone. CoreDNS's file plugin answers NXDOMAIN and
     NODATA from it properly, which DANE (TLSA) and MTA-STS (TXT) lookups on
@@ -135,13 +190,40 @@ def zone_file(zone: str, mail_host: str, mail_ip: str, serial: int = 1) -> str:
     if not re.fullmatch(r"\d{1,3}(\.\d{1,3}){3}", mail_ip):
         raise ValueError(f"not an IPv4 address: {mail_ip!r}")
     label = mail_host[: -len(zone) - 1]
+    extra = ""
+    for name, ip in sorted((hosts or {}).items()):
+        if not re.fullmatch(r"[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?", name) or name in ("ns", label):
+            raise ValueError(f"not a host label this zone can add: {name!r}")
+        if not re.fullmatch(r"\d{1,3}(\.\d{1,3}){3}", ip):
+            raise ValueError(f"not an IPv4 address for {name}: {ip!r}")
+        extra += f"{name} IN A {ip}\n"
     return (f"$ORIGIN {zone}.\n"
             f"$TTL 30\n"
             f"@ IN SOA ns.{zone}. hostmaster.{zone}. {serial} 30 30 300 30\n"
             f"@ IN NS ns.{zone}.\n"
             f"@ IN MX 10 {mail_host}.\n"
             f"ns IN A {mail_ip}\n"
-            f"{label} IN A {mail_ip}\n")
+            f"{label} IN A {mail_ip}\n"
+            + extra)
+
+
+def sts_policy(mx: list[str], mode: str = "enforce", max_age: int = 86400) -> str:
+    """An MTA-STS policy file (RFC 8461 3.2), CRLF line endings."""
+    if mode not in ("enforce", "testing", "none") or not mx or max_age < 0:
+        raise ValueError(f"not a policy: mode={mode!r} mx={mx!r} max_age={max_age}")
+    for host in mx:
+        if not re.fullmatch(r"(\*\.)?[A-Za-z0-9.-]+", host):
+            raise ValueError(f"not an MX pattern: {host!r}")
+    lines = ["version: STSv1", f"mode: {mode}", *[f"mx: {host}" for host in mx], f"max_age: {max_age}"]
+    return "\r\n".join(lines) + "\r\n"
+
+
+# Each policy host and the policy it serves: reference.test's names its MX,
+# sts-mismatch.test's names the reference's host, which is not that domain's MX.
+STS_POLICIES = {
+    "mta-sts." + REFERENCE_DOMAIN: sts_policy([REFERENCE_HOST]),
+    "mta-sts." + MISMATCH_DOMAIN: sts_policy([REFERENCE_HOST]),
+}
 
 
 def txt_rdata(value: str) -> str:
@@ -261,6 +343,55 @@ def manifests(namespace: str, image: str = REFERENCE_IMAGE) -> dict:
     return {"apiVersion": "v1", "kind": "List", "items": [deployment, service]}
 
 
+def sts_manifests(namespace: str, policies: dict[str, str], image: str = REFERENCE_IMAGE) -> dict:
+    """The MTA-STS policy host: a ConfigMap (server script, policies), a
+    Deployment running it with the reference's certificate, and its Service.
+
+    It runs on the reference's image, already pulled, for its python3.
+    """
+    labels = {"app.kubernetes.io/name": STS_NAME, "app.kubernetes.io/part-of": "restmail-cluster-e2e"}
+    data = {"serve.py": STS_SERVER}
+    items = [{"key": "serve.py", "path": "serve.py"}]
+    for index, (host, policy) in enumerate(sorted(policies.items())):
+        if not re.fullmatch(r"mta-sts\.[a-z0-9.-]+", host):
+            raise ValueError(f"not a policy host: {host!r}")
+        key = f"policy-{index}"
+        data[key] = policy
+        items.append({"key": key, "path": f"policies/{host}"})
+    config_map = {"apiVersion": "v1", "kind": "ConfigMap",
+                  "metadata": {"name": STS_NAME, "namespace": namespace, "labels": labels}, "data": data}
+    deployment = {
+        "apiVersion": "apps/v1", "kind": "Deployment",
+        "metadata": {"name": STS_NAME, "namespace": namespace, "labels": labels},
+        "spec": {
+            "replicas": 1,
+            "selector": {"matchLabels": labels},
+            "template": {
+                "metadata": {"labels": labels},
+                "spec": {
+                    "containers": [{
+                        "name": "policy", "image": image,
+                        "command": ["python3", "-I", "/etc/mta-sts/serve.py"],
+                        "ports": [{"name": "https", "containerPort": STS_PORT}],
+                        "readinessProbe": {"tcpSocket": {"port": STS_PORT}, "periodSeconds": 2,
+                                           "failureThreshold": 60},
+                        "volumeMounts": [{"name": "config", "mountPath": "/etc/mta-sts", "readOnly": True},
+                                         {"name": "tls", "mountPath": "/etc/reference-tls", "readOnly": True}],
+                    }],
+                    "volumes": [{"name": "config", "configMap": {"name": STS_NAME, "items": items}},
+                                {"name": "tls", "secret": {"secretName": TLS_SECRET}}],
+                },
+            },
+        },
+    }
+    service = {
+        "apiVersion": "v1", "kind": "Service",
+        "metadata": {"name": STS_NAME, "namespace": namespace, "labels": labels},
+        "spec": {"selector": labels, "ports": [{"name": "https", "port": STS_PORT, "targetPort": STS_PORT}]},
+    }
+    return {"apiVersion": "v1", "kind": "List", "items": [config_map, deployment, service]}
+
+
 PEER_SERVICE = "mx"
 PEER_POLICY = "cluster-e2e-peer-smtp"
 
@@ -377,12 +508,13 @@ def publish_records(kubectl: Kubectl, zone: str, records: dict[str, str], timeou
     return text
 
 
-def self_signed(host: str) -> tuple[str, str]:
-    """A throwaway certificate and key for host, from openssl."""
+def self_signed(*hosts: str) -> tuple[str, str]:
+    """A throwaway certificate and key for these hosts, from openssl."""
     with tempfile.TemporaryDirectory() as tmp:
         key, crt = Path(tmp, "tls.key"), Path(tmp, "tls.crt")
+        names = ",".join(f"DNS:{host}" for host in hosts)
         subprocess.run(["openssl", "req", "-x509", "-nodes", "-newkey", "rsa:2048", "-days", "2",
-                        "-subj", f"/CN={host}", "-addext", f"subjectAltName=DNS:{host}",
+                        "-subj", f"/CN={hosts[0]}", "-addext", f"subjectAltName={names}",
                         "-keyout", str(key), "-out", str(crt)], check=True, capture_output=True)
         return crt.read_text(), key.read_text()
 
@@ -423,14 +555,20 @@ def main(argv: list[str] | None = None) -> int:
     kubectl.apply(secret_manifest(ns, SECRET, {"address": address, "password": password,
                                                "postfix-accounts.cf": accounts_line(address, password),
                                                "postfix-main.cf": POSTFIX_MAIN}))
-    crt, key = self_signed(REFERENCE_HOST)
-    kubectl.apply(secret_manifest(ns, TLS_SECRET, {"tls.crt": crt, "tls.key": key}, "kubernetes.io/tls"))
+    # The workflow issues this Secret from the run's CA; without it, a
+    # self-signed certificate (mail-out still works, MTA-STS enforce cannot).
+    if not kubectl("-n", ns, "get", "secret", TLS_SECRET, "--ignore-not-found", "-o", "name").strip():
+        crt, key = self_signed(*TLS_HOSTS)
+        kubectl.apply(secret_manifest(ns, TLS_SECRET, {"tls.crt": crt, "tls.key": key}, "kubernetes.io/tls"))
     kubectl.apply(manifests(ns))
+    kubectl.apply(sts_manifests(ns, STS_POLICIES))
 
     # DNS for both domains, pointing at the two Services. The ClusterIPs are
     # known once the Services exist, which the install and the apply above made.
+    reference_ip, sts_ip = kubectl.cluster_ip(ns, SERVICE), kubectl.cluster_ip(ns, STS_NAME)
     zones = {
-        REFERENCE_DOMAIN: zone_file(REFERENCE_DOMAIN, REFERENCE_HOST, kubectl.cluster_ip(ns, SERVICE)),
+        REFERENCE_DOMAIN: zone_file(REFERENCE_DOMAIN, REFERENCE_HOST, reference_ip, hosts={"mta-sts": sts_ip}),
+        MISMATCH_DOMAIN: zone_file(MISMATCH_DOMAIN, MISMATCH_HOST, reference_ip, hosts={"mta-sts": sts_ip}),
         args.mail_domain: zone_file(args.mail_domain, args.mail_host,
                                     kubectl.cluster_ip(args.restmail_namespace, f"{args.release}-smtp-gateway")),
     }
@@ -445,6 +583,7 @@ def main(argv: list[str] | None = None) -> int:
                                             kubectl.cluster_ip(peer, PEER_SERVICE))
     apply_coredns(kubectl, zones, args.timeout)
     kubectl("-n", ns, "rollout", "status", "deployment/reference-mail", f"--timeout={args.timeout}")
+    kubectl("-n", ns, "rollout", "status", f"deployment/{STS_NAME}", f"--timeout={args.timeout}")
     print(f"reference {address} at {REFERENCE_HOST}, {args.mail_domain} MX {args.mail_host}"
           + (f", {args.peer_domain} MX {args.peer_host}" if args.peer_namespace else ""))
     return 0

@@ -72,6 +72,20 @@ Each step tests REST Mail's wiring, not the components' own behaviour:
                 peer's domain; the message carries no Received field the peer's SMTP
                 gateway stamps. A peer identified as REST Mail is never
                 downgraded to SMTP (#291).
+  mta-sts-enforce
+                stage 3: _mta-sts.reference.test TXT is published with a fresh id;
+                its policy host (cluster_reference.py, a certificate from the run's
+                CA) serves mode: enforce, mx: mail.reference.test. The admin sends
+                to the reference, which receives it; the queue logged the enforced
+                policy, the delivery to mail.reference.test over verified TLS
+                ("authenticated"), nothing skipped or refused; the policy host
+                logged the fetch. MTA-STS is the SMTP path's: the reference is not
+                REST Mail, so RESTMAIL is not in play.
+  mta-sts-mismatch
+                stage 3: sts-mismatch.test's MX is mail.sts-mismatch.test (the
+                reference), but its enforce policy names only mail.reference.test.
+                A send to it is not delivered: the queue skipped the MX the policy
+                does not name and logged the failure, nothing went over SMTP to it.
 
 Every step prints one receipt line: the commit, the images the pods run, the
 step and its result. Receipts also go to <report-dir>/receipts.txt.
@@ -121,6 +135,8 @@ STEPS = (
     "pop3-retrieve",
     "dkim-receive",
     "restmail-peer",
+    "mta-sts-enforce",
+    "mta-sts-mismatch",
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -154,6 +170,22 @@ GREYLIST_RETRY = 7 * 60 * 6 // 5
 # #1666 no failed RESTMAIL hop goes to SMTP, so this is what breaking that writes.
 RESTMAIL_DELIVERED = "queue: RESTMAIL delivery succeeded"
 SMTP_DELIVERED = "queue: delivered over SMTP"
+
+# What the queue logs on the SMTP path under a recipient's MTA-STS policy
+# (internal/gateway/queue/worker.go): the policy it resolved, a delivery
+# (with the transport: "authenticated" is a verified STARTTLS certificate), an
+# MX the enforced policy does not name, a refused delivery, and the failure.
+STS_POLICY_FOUND = "queue: MTA-STS policy found"
+SMTP_DELIVERED = "queue: delivered over SMTP"
+STS_MX_SKIPPED = "queue: MTA-STS enforce — MX host not named by policy, skipping"
+STS_REFUSED = "queue: MTA-STS enforce — refusing delivery"
+DELIVERY_FAILED = "queue: delivery failed"
+
+# The reference's MTA-STS policy host and the domains it has policies for
+# (scripts/cluster_reference.py).
+STS_DEPLOYMENT = "mta-sts"
+STS_DOMAIN, STS_MX = "reference.test", "mail.reference.test"
+STS_MISMATCH_DOMAIN, STS_MISMATCH_MX = "sts-mismatch.test", "mail.sts-mismatch.test"
 
 # A recipient on a domain no install hosts (RFC 2606 reserves .invalid).
 UNHOSTED = "nobody@unhosted.invalid"
@@ -747,6 +779,43 @@ def restmail_hops(log: str, recipient: str) -> tuple[list[str], list[str]]:
     return delivered, by_smtp
 
 
+def sts_trail(log: str, domain: str, recipient: str = "") -> dict[str, list]:
+    """What the queue's JSON log lines say happened under domain's MTA-STS
+    policy: the policies resolved (mode, enforce), the SMTP deliveries (host,
+    transport), the MX hosts skipped, the refusals, and recipient's failures."""
+    trail: dict[str, list] = {"policies": [], "delivered": [], "skipped": [], "refused": [], "failed": []}
+    for line in log.splitlines():
+        try:
+            entry = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(entry, dict):
+            continue
+        msg = entry.get("msg")
+        if msg == DELIVERY_FAILED:
+            if recipient and str(entry.get("recipient", "")).lower() == recipient.lower():
+                trail["failed"].append(str(entry.get("error", "")))
+            continue
+        if str(entry.get("domain", "")).lower() != domain.lower():
+            continue
+        if msg == STS_POLICY_FOUND:
+            trail["policies"].append((str(entry.get("mode", "")), entry.get("enforce") is True))
+        elif msg == SMTP_DELIVERED:
+            trail["delivered"].append((str(entry.get("host", "")), str(entry.get("transport", ""))))
+        elif msg == STS_MX_SKIPPED:
+            trail["skipped"].append(str(entry.get("host", "")))
+        elif msg == STS_REFUSED:
+            trail["refused"].append(str(entry.get("host", "")))
+    return trail
+
+
+def policy_fetches(log: str, policy_host: str) -> int:
+    """How many times the policy host's log says it served policy_host's policy."""
+    return sum(1 for line in log.splitlines()
+               if f"host={policy_host} " in line and '"GET /.well-known/mta-sts.txt ' in line
+               and re.search(r'" 200 ', line))
+
+
 def smtp_stamps(raw: bytes, host: str) -> list[str]:
     """The Received fields that host's SMTP gateway stamped (by <host> ... with *SMTP*)."""
     from email import message_from_bytes, policy
@@ -979,6 +1048,105 @@ class Stages:
             raise StepFailed(f"the peer's SMTP gateway stamped the message: {stamps[0][:200]}")
         return (f"from={admin},to={mailbox},after={int(waited)}s,via=RESTMAIL,url={want},smtp=none,"
                 f"peer-smtp-received=none,read=peer-imap,message=restmail-peer.eml")
+
+    def mta_sts_enforce(self) -> str:
+        token, admin = self.need("token"), self.need("admin")
+        reference, password = self.reference_account()
+        if reference.split("@", 1)[1].lower() != STS_DOMAIN:
+            raise StepFailed(f"the reference account {reference} is not on {STS_DOMAIN}")
+        policy_id = self.publish_sts(STS_DOMAIN)
+        since = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 5))
+        subject = mail_marker("sts")
+        self.need_api().expect("2xx", "POST", "/api/v1/messages/send",
+                               {"from": admin, "to": [reference], "subject": subject,
+                                "body_text": "Sent under the recipient's MTA-STS enforce policy (#1750 stage 3)."},
+                               token)
+        port = self.reference_forward("imaps")
+        raw, waited = wait_for(lambda: self.reference_inbox(port, reference, password, subject),
+                               self.args.mail_timeout)
+        log = self.queue_log(since, "mta-sts-enforce-queue.log")
+        if raw is None:
+            raise StepFailed(f"{reference} did not receive {subject!r} within {self.args.mail_timeout}s "
+                             f"under {STS_DOMAIN}'s enforce policy: see mta-sts-enforce-queue.log")
+        (self.report_dir / "mta-sts-enforce.eml").write_bytes(raw)
+        received_with(raw, subject, admin)
+        trail = sts_trail(log, STS_DOMAIN)
+        if ("enforce", True) not in trail["policies"]:
+            raise StepFailed(f"the queue logged no enforced policy for {STS_DOMAIN} "
+                             f"(found {trail['policies']}): see mta-sts-enforce-queue.log")
+        if trail["skipped"] or trail["refused"]:
+            raise StepFailed(f"the queue skipped {trail['skipped']} or refused {trail['refused']} "
+                             f"under a policy that names {STS_MX}")
+        if (STS_MX, "authenticated") not in trail["delivered"]:
+            raise StepFailed(f"the queue logged no delivery to {STS_MX} over verified TLS "
+                             f"(found {trail['delivered']}): see mta-sts-enforce-queue.log")
+        fetches = self.policy_fetches("mta-sts." + STS_DOMAIN, "mta-sts-enforce-policy-host.log")
+        return (f"from={admin},to={reference},txt=_mta-sts.{STS_DOMAIN},id={policy_id},mode=enforce,"
+                f"mx={STS_MX},policy-fetches={fetches},delivered={STS_MX},transport=authenticated,"
+                f"after={int(waited)}s,message=mta-sts-enforce.eml")
+
+    def mta_sts_mismatch(self) -> str:
+        token, admin = self.need("token"), self.need("admin")
+        recipient = f"{self.reference_account()[0].split('@', 1)[0]}@{STS_MISMATCH_DOMAIN}"
+        policy_id = self.publish_sts(STS_MISMATCH_DOMAIN)
+        since = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 5))
+        subject = mail_marker("sts-mismatch")
+        self.need_api().expect("2xx", "POST", "/api/v1/messages/send",
+                               {"from": admin, "to": [recipient], "subject": subject,
+                                "body_text": "Its MX is not one the domain's MTA-STS policy names (#1750 stage 3)."},
+                               token)
+
+        def probe():
+            trail = sts_trail(self.queue_log(since), STS_MISMATCH_DOMAIN, recipient)
+            return trail if trail["failed"] or trail["delivered"] else None
+
+        trail, waited = wait_for(probe, self.args.mail_timeout)
+        self.queue_log(since, "mta-sts-mismatch-queue.log")
+        if trail is None:
+            raise StepFailed(f"the queue logged no delivery attempt to {recipient} within "
+                             f"{self.args.mail_timeout}s: see mta-sts-mismatch-queue.log")
+        if trail["delivered"]:
+            raise StepFailed(f"the queue delivered to {trail['delivered']} although {STS_MISMATCH_DOMAIN}'s "
+                             f"enforce policy names only {STS_MX}")
+        if ("enforce", True) not in trail["policies"]:
+            raise StepFailed(f"the queue logged no enforced policy for {STS_MISMATCH_DOMAIN} "
+                             f"(found {trail['policies']}): see mta-sts-mismatch-queue.log")
+        if STS_MISMATCH_MX not in trail["skipped"]:
+            raise StepFailed(f"the queue did not skip {STS_MISMATCH_MX} as an MX the policy does not name "
+                             f"(skipped {trail['skipped']}, failed {trail['failed']})")
+        if not any("MX host not named by policy" in error for error in trail["failed"]):
+            raise StepFailed(f"the delivery to {recipient} failed for another reason: {trail['failed']}")
+        fetches = self.policy_fetches("mta-sts." + STS_MISMATCH_DOMAIN, "mta-sts-mismatch-policy-host.log")
+        return (f"from={admin},to={recipient},txt=_mta-sts.{STS_MISMATCH_DOMAIN},id={policy_id},mode=enforce,"
+                f"policy-mx={STS_MX},domain-mx={STS_MISMATCH_MX},policy-fetches={fetches},"
+                f"skipped={STS_MISMATCH_MX},delivered=none,after={int(waited)}s,error={trail['failed'][0][:160]}")
+
+    def publish_sts(self, domain: str) -> str:
+        """Publishes _mta-sts.<domain> TXT with a fresh policy id; returns the id."""
+        if not self.args.reference_namespace:
+            raise StepFailed("needs --reference-namespace (REFERENCE_NAMESPACE): run scripts/cluster_reference.py first")
+        policy_id = secrets.token_hex(8)
+        reference = load_reference_module()
+        reference.publish_records(reference.Kubectl(self.args.kubectl, StepFailed), domain,
+                                  {"_mta-sts": f"v=STSv1; id={policy_id}"}, f"{self.args.timeout * 5}s")
+        return policy_id
+
+    def queue_log(self, since: str, name: str = "") -> str:
+        log = self.cluster.run("logs", f"deployment/{self.args.release}-smtp-gateway", "--all-containers=true",
+                               f"--since-time={since}")
+        if name:
+            (self.report_dir / name).write_text(log)
+        return log
+
+    def policy_fetches(self, policy_host: str, name: str) -> int:
+        reference = Cluster(self.args.kubectl, self.args.reference_namespace, STS_DEPLOYMENT, self.report_dir)
+        log = reference.run("logs", f"deployment/{STS_DEPLOYMENT}")
+        (self.report_dir / name).write_text(log)
+        fetches = policy_fetches(log, policy_host)
+        if not fetches:
+            raise StepFailed(f"the policy host logged no fetch of https://{policy_host}/.well-known/mta-sts.txt: "
+                             f"see {name}")
+        return fetches
 
     def mail_out(self) -> str:
         token, admin = self.need("token"), self.need("admin")
