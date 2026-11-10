@@ -807,12 +807,22 @@ func spacedWord(word string) (string, bool) {
 	case "Q", "q":
 		if unit == 1 {
 			// '=' is no hex digit, so this can only be the escape for a NUL.
-			spaced := strings.ReplaceAll(text, "=00", "_")
-			return word[:len(word)-2-len(text)] + spaced + "?=", spaced != text
+			if !strings.Contains(text, "=00") {
+				return word, false
+			}
+			return word[:len(word)-2-len(text)] + strings.ReplaceAll(text, "=00", "_") + "?=", true
 		}
 		octets = looseQDecoded(text)
 	case "B", "b":
-		octets, _ = base64.RawStdEncoding.DecodeString(strings.Map(base64Digit, text))
+		digits := strings.Map(base64Digit, text)
+		// A field can be nothing but words, most of them short enough for this.
+		var short [64]byte
+		octets = short[:]
+		if size := base64.RawStdEncoding.DecodedLen(len(digits)); size > len(short) {
+			octets = make([]byte, size)
+		}
+		n, _ := base64.RawStdEncoding.Decode(octets, unsafe.Slice(unsafe.StringData(digits), len(digits)))
+		octets = octets[:n]
 	default:
 		return word, false
 	}
@@ -1077,7 +1087,13 @@ func sevenBitField(w wireSink, field string) {
 		written := false
 		switch strings.ToLower(strings.TrimSpace(name)) {
 		case "content-type", "content-disposition":
-			written = WriteParameterField(w, name, unfoldHeader(value))
+			var read bool
+			if written, read = WriteFoldedParameterField(w, name, value); !read {
+				// What it writes is the sink's to copy, so the unfolded field needn't outlast it.
+				unfolded := TakeFieldScratch(0)
+				written = WriteParameterField(w, name, unfolded.withoutCRLF(value))
+				unfolded.Release()
+			}
 		}
 		if !written {
 			_, _ = w.WriteString(name)

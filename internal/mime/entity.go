@@ -3,11 +3,9 @@ package mime
 import (
 	"bufio"
 	"bytes"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
-	"mime/quotedprintable"
 	"net/textproto"
 	"strings"
 	"unsafe"
@@ -49,7 +47,9 @@ func (e unknownCoding) Error() string { return "unknown coding: " + e.err.Error(
 // fieldReader reads header fields. Its one buffer is used again for every field of a part, and a
 // message's own fields stay in it, so that together they cost one buffer of about their size.
 type fieldReader struct {
-	line []byte
+	// charsets converts the charsets of the parts these fields open.
+	charsets partCharsets
+	line     []byte
 	// chunk is how large the buffer was when it was last made.
 	chunk int
 	// sourceSize is the size of the whole message, when it is known.
@@ -350,7 +350,7 @@ func (r *fieldReader) readPartFields(br *bufio.Reader) (partFields, error) {
 
 // open makes an entity of a body and its header, decoding its transfer encoding and, for text, its
 // charset. It answers an error wrapping unknownCoding when it can't, with the entity readable.
-func (kept partFields) open(body io.Reader) (*entity, error) {
+func (kept partFields) open(body io.Reader, charsets *partCharsets) (*entity, error) {
 	e := &entity{mediaType: "text/plain", disposition: kept.disposition, dispParams: kept.dispParams, contentID: kept.contentID}
 	if kept.hasType {
 		e.mediaType, e.params, e.typeFailed = kept.mediaType, kept.params, kept.typeFailed
@@ -366,7 +366,7 @@ func (kept partFields) open(body io.Reader) (*entity, error) {
 	}
 	if strings.HasPrefix(e.mediaType, "text/") {
 		if charset, ok := e.params["charset"]; ok {
-			converted, charsetErr := charsetDecoder(charset, body)
+			converted, charsetErr := charsetDecoder(charset, body, charsets)
 			if charsetErr != nil {
 				err = unknownCoding{charsetErr}
 			} else {
@@ -386,30 +386,17 @@ var errCharsetName = errors.New("message: unknown charset")
 func transferDecoder(encoding string, r io.Reader) (io.Reader, error) {
 	switch strings.ToLower(encoding) {
 	case "quoted-printable":
-		return quotedprintable.NewReader(r), nil
+		return newQuotedReader(r), nil
 	case "base64":
-		return base64.NewDecoder(base64.StdEncoding, &spacesAsBreaks{r}), nil
+		return newBase64Reader(r), nil
 	case "7bit", "8bit", "binary", "":
 		return r, nil
 	}
 	return nil, fmt.Errorf("unhandled encoding %q", encoding)
 }
 
-// spacesAsBreaks lets a base64 body with its lines indented decode.
-type spacesAsBreaks struct{ source io.Reader }
-
-func (r *spacesAsBreaks) Read(p []byte) (int, error) {
-	n, err := r.source.Read(p)
-	for i := 0; i < n; i++ {
-		if p[i] == ' ' || p[i] == '\t' {
-			p[i] = '\n'
-		}
-	}
-	return n, err
-}
-
 // charsetDecoder is go-message's charsetReader.
-func charsetDecoder(charset string, input io.Reader) (io.Reader, error) {
+func charsetDecoder(charset string, input io.Reader, charsets *partCharsets) (io.Reader, error) {
 	charset = strings.ToLower(charset)
 	if charset == "utf-8" || charset == "us-ascii" {
 		return input, nil
@@ -419,6 +406,10 @@ func charsetDecoder(charset string, input io.Reader) (io.Reader, error) {
 		return nil, errCharsetName
 	}
 	if gomessage.CharsetReader != nil {
+		// What refuses the charset says why.
+		if reader := charsets.open(charset, input); reader != nil {
+			return reader, nil
+		}
 		return gomessage.CharsetReader(charset, input)
 	}
 	return input, fmt.Errorf("message: unhandled charset %q", charset)
@@ -581,7 +572,7 @@ func (r *multipartReader) nextPart() (*entity, error) {
 				return nil, err
 			}
 			r.current = &multipartPart{mr: r}
-			return kept.open(r.current)
+			return kept.open(r.current, &r.fields.charsets)
 		}
 		if r.isFinalBoundary(line) {
 			return nil, io.EOF

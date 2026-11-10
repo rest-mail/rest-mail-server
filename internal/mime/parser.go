@@ -76,7 +76,7 @@ func (h *HeaderSection) Parse(body string) (*pipeline.EmailJSON, error) {
 
 func (h *HeaderSection) parseBody(source io.Reader, size int) (*pipeline.EmailJSON, error) {
 	// An unknown charset or transfer encoding still gives a readable entity.
-	entity, _ := h.opening.open(source)
+	entity, _ := h.opening.open(source, new(partCharsets))
 	budget := newPartBudget()
 	budget.fields = h.fields
 	body, attachments, inline, calendarEvents, err := parseEntity(entity, size, budget)
