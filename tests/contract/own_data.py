@@ -218,16 +218,15 @@ MOVED = (
     "updateServerLimits",
     "getServerCapabilities",
     "updateServerCapabilities",
-    # The DMARC and TLS report, audit and delivery reads, and the TLS report
+    # The TLS report and audit reads, the dashboard, and the TLS report
     # intake. No link starts from or reaches any of them. A list of TLS reports
     # gets one of its own after its reset; the others need nothing made.
-    # getDmarcReport stays: no API call makes a received DMARC report.
-    "listDmarcReports",
+    # getDmarcReport and listDmarcReports move below, with a report delivered
+    # after their reset, and getDeliveryLogs with a message sent after its.
     "listTlsReports",
     "receiveTlsReport",
     "listAuditEntries",
     "verifyAuditLog",
-    "getDeliveryLogs",
     "getDashboardStats",
     # The mailbox reads listAccounts' link reaches. listAccounts is not
     # selected, and no link starts from any of them. Each goes to the fixture
@@ -251,6 +250,9 @@ MOVED = (
     "restmailCapabilities",
     "restmailCheckMailbox",
     "restmailDeliver",
+    # The delivery log. No link starts from or reaches it. Its listing gets a
+    # message queued for a remote recipient of its own after the reset.
+    "getDeliveryLogs",
     # The rest of the filter operations. No link starts from or reaches any of
     # them. The list gets a custom filter of its own after its reset; the
     # preview and the validation need nothing made.
@@ -329,6 +331,15 @@ MOVED = (
     "accountEvents",
     "probeServices",
     "verifyDelivery",
+    # Clearing a suppression and reading a DMARC report. No link starts from
+    # or reaches either. The clear's success clears a suppression made after
+    # its reset (a message sent to a domain that does not exist, which the
+    # gateway's queue worker bounces), and the read's reads a report delivered
+    # after its reset through deliverMessage. The DMARC report list's success
+    # lists such a report, made for it after its reset.
+    "clearSuppression",
+    "getDmarcReport",
+    "listDmarcReports",
     # The test data operations (#1334). No link starts from or reaches any of
     # them. Each exchange resets and seeds first; the reset's own just runs
     # after it. The restore restores a snapshot taken through the API after

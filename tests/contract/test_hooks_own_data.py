@@ -322,12 +322,10 @@ class OwnDataHooks(unittest.TestCase):
             "updateServerLimits": "server_settings_after_a_reset",
             "getServerCapabilities": "server_settings_after_a_reset",
             "updateServerCapabilities": "server_settings_after_a_reset",
-            "listDmarcReports": "report_and_audit_reads_after_a_reset",
             "listTlsReports": "report_and_audit_reads_after_a_reset",
             "receiveTlsReport": "report_and_audit_reads_after_a_reset",
             "listAuditEntries": "report_and_audit_reads_after_a_reset",
             "verifyAuditLog": "report_and_audit_reads_after_a_reset",
-            "getDeliveryLogs": "report_and_audit_reads_after_a_reset",
             "getDashboardStats": "report_and_audit_reads_after_a_reset",
             "listFolders": "a_mailbox_read_after_a_reset",
             "listMessages": "a_mailbox_read_after_a_reset",
@@ -339,6 +337,7 @@ class OwnDataHooks(unittest.TestCase):
             "restmailCapabilities": "delivery_after_a_reset",
             "restmailCheckMailbox": "delivery_after_a_reset",
             "restmailDeliver": "delivery_after_a_reset",
+            "getDeliveryLogs": "the_delivery_log_after_a_reset",
             "testFilter": "filter_requests_after_a_reset",
             "listCustomFilters": "filter_requests_after_a_reset",
             "validateCustomFilter": "filter_requests_after_a_reset",
@@ -388,6 +387,9 @@ class OwnDataHooks(unittest.TestCase):
             "accountEvents": "the_last_free_operations_after_a_reset",
             "probeServices": "the_last_free_operations_after_a_reset",
             "verifyDelivery": "the_last_free_operations_after_a_reset",
+            "clearSuppression": "clear_a_suppression_made_after_the_reset",
+            "getDmarcReport": "read_a_dmarc_report_delivered_after_the_reset",
+            "listDmarcReports": "list_a_dmarc_report_delivered_after_the_reset",
             "resetTestData": "the_test_data_operations_after_a_reset",
             "seedTestData": "the_test_data_operations_after_a_reset",
             "snapshotTestData": "the_test_data_operations_after_a_reset",
@@ -464,12 +466,10 @@ class OwnDataHooks(unittest.TestCase):
         # Ahead of the two-factor administrator's, the TLS report pacing and
         # the hosting of the reported domains, so they see the clean start.
         for operation in (
-            "listDmarcReports",
             "listTlsReports",
             "receiveTlsReport",
             "listAuditEntries",
             "verifyAuditLog",
-            "getDeliveryLogs",
             "getDashboardStats",
         ):
             names = [h for o, h in self.registered if o == operation]

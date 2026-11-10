@@ -1146,9 +1146,26 @@ an inactive pipeline of its own on a domain of its own, made after its reset
 `2147483647` keep theirs. `listPipelines`, `listPipelineLogs` and
 `getPipelineAnalytics` reset and seed before each exchange as well
 (`pipeline_reads_after_a_reset`). A listing that succeeds gets a pipeline of its
-own on a domain of its own; the logs and the analytics need nothing made. No
-link starts from or reaches the three reads. A run with no reset changes
-nothing in these hooks.
+own on a domain of its own; the analytics need nothing made. No link starts
+from or reaches the three reads. A run with no reset changes nothing in these
+hooks.
+
+`getDeliveryLogs` resets and seeds before each exchange too, refusals included
+(`the_delivery_log_after_a_reset`, its first hook). The 200s of the delivery log
+and the pipeline log each get a message the fixture admin sends after the reset
+(#1785). For the delivery log it goes to a remote recipient of its own
+(`contract-log-<time>@contract-remote.test`), so the send queues it, which is
+what the delivery log reads; the log must list that recipient. Its hook drops
+the `status=pending` Vertrag adds to the documented `limit=20`, since the
+topology's queue worker can claim the entry first, as `listQueue`'s hook does. For the pipeline
+log it goes to the fixture admin's own mailbox (`the_pipeline_log_holds_a_send`,
+after `pipeline_reads_after_a_reset`), because Vertrag sends the documented
+listing with the declared defaults `direction=inbound`, `action=continue` and
+`outcome=delivered`: the local delivery's inbound trace is what it asks for. It
+waits a second for the background trace writer, and the log must list an
+inbound trace with the sent message's Message-ID. Both checks are
+`the_listing_holds_what_was_made`. No link starts from or reaches the delivery
+log.
 
 The server settings, `listRoles`, `listCapabilities`, `getServerLimits`,
 `updateServerLimits`, `getServerCapabilities` and `updateServerCapabilities`,
@@ -1158,18 +1175,17 @@ from or reaches any of them. The reset empties `server_limits`, so the limits ar
 back at their defaults, and puts the server capability ceiling back to every
 capability, so a ceiling one exchange narrows does not bound the next.
 
-`listDmarcReports`, `listTlsReports`, `listAuditEntries`, `verifyAuditLog`,
-`getDeliveryLogs`, `getDashboardStats` and the TLS report intake
-`receiveTlsReport` reset and seed before each exchange too, refusals included
+`listTlsReports`, `listAuditEntries`, `verifyAuditLog`, `getDashboardStats`
+and the TLS report intake `receiveTlsReport` reset and seed before each exchange too, refusals included
 (`report_and_audit_reads_after_a_reset`, registered ahead of their other
 hooks). A listing of TLS reports that succeeds gets a report of its own,
 received after its reset on the seeded `restmail.test`; the intake hosts the
 domains its report names in its own hook, after the reset. The others need
 nothing made. The audit log is append-only and kept by the reset
 (`resetRetainedTables`), so its reads meet what is already in it. No link
-starts from or reaches any of them. `getDmarcReport` has not moved: its success
-needs the received DMARC report the Go fixtures make, and no API call makes one,
-since a report arrives only in mail with an aligned DMARC pass. A run with no
+starts from or reaches any of them. `getDmarcReport` and `listDmarcReports`
+move on their own, with a report delivered after their reset (below), and
+`getDeliveryLogs` with a message sent after its reset (above). A run with no
 reset changes nothing in this hook.
 
 `listFolders`, `listMessages` and `searchMessages`, the mailbox reads
@@ -1243,8 +1259,7 @@ found message by its subject. A documented 200 with nothing made for it fails to
 threads page after the example's cursor holds older threads only and is empty
 by design, so its hook notes that it lists none of it. Refusals and a run with
 no reset are left alone. The other moved listings have nothing an API call can
-make for them after a reset (`listDmarcReports`, `getDeliveryLogs`,
-`listPipelineLogs`, `listAuditEntries`), or list what the seed holds
+make for them after a reset (`listAuditEntries`), or list what the seed holds
 (`listMailboxes`, `listGrants`, `listMyGrants`, `listContacts`), or list a
 domain or message of their own that holds no rows (`listSuppressions`,
 `listAllowlist`, `listBlocklist`, `listAttachments`).
@@ -1277,13 +1292,13 @@ a positive id other than missing's gets a certificate of its own, since the one
 createCertificate's link names is gone. The create needs nothing made: its
 `domain_id` 1 is the seeded `restmail.test`. createCertificate's link reaches the
 read, and the read's the delete; no other link starts from or reaches any of
-them. `clearSuppression` is not moved: a suppression is made only by the Go
-fixtures, which the reset does not run.
+them. `clearSuppression` moved separately (below).
 
 After a reset, the 200 of `listCustomFilters`, `listDomains`, `listAliases`,
-`listDKIMKeys` and `listCertificates` must list the row its before hook made
-(`the_listing_holds_what_was_made`, #1789), since the status and the schema
-alone pass on an empty list. The before hook notes the row in
+`listDKIMKeys`, `listCertificates`, `getDeliveryLogs` and `listPipelineLogs`
+must list the row its before hook made (`the_listing_holds_what_was_made`,
+#1785, #1789), since the status and the schema alone pass on an empty list.
+The before hook notes the row in
 `hooks.stash["listing_made"]`; a documented 200 with nothing noted fails too.
 Refusals and a run without a reset are left alone.
 
@@ -1345,8 +1360,34 @@ no wait, and is answered `found: false` (#388); `probeServices`' 200 probes the
 database. Neither needs anything made. What is still not moved, and why,
 is on #1385: the quarantine operations and `listAccounts` (whose link reaches
 `listQuarantine`) wait on #1163; the reset, seed and snapshot operations can
-never start clean; the push device and ACME routes are not in the topology;
-`clearSuppression` and `getDmarcReport` need state only the Go fixtures make.
+never start clean; the push device and ACME routes are not in the topology.
+
+`clearSuppression` and `getDmarcReport` reset and seed before each exchange too,
+refusals included, and their successes make their state through mail after the
+reset. The clear's 204 has the fixture admin send a message to an address at
+`nowhere.invalid`: the gateway's queue worker finds no mail host, bounces it
+(550 5.1.2, a bad domain) and suppresses the address for `restmail.test`, and
+the hook waits for the suppression to be listed (at most 90 seconds) and clears
+it. The read's 200 gives `restmail.test` an inbound pipeline of its own
+(`spf_check`, `dkim_verify`, `dmarc_check`; the default one greylists a first
+delivery) and delivers an aggregate report to `postmaster@restmail.test` through
+`deliverMessage` as one from the reporter's mail host (`dmarc-sender.test`,
+client 192.0.2.25): SPF passes aligned with the From domain, so DMARC passes and
+the report is stored, and the hook reads it. Neither depends on a third party's
+DNS: `chore contract:dns:register` (part of `chore e2e:up`) publishes
+`tests/contract/dnsmasq.conf` to the testbed dnsmasq, which serves the
+reporter's SPF (`v=spf1 ip4:192.0.2.25 -all`) and DMARC (`v=DMARC1; p=reject`)
+records and answers `.invalid` NXDOMAIN itself (`local=/invalid/`), never
+forwarding it. The fixture hooks for both skip after a reset.
+
+`listDmarcReports` resets and seeds before each exchange too, refusals included,
+and each 200 gets a report delivered after the reset the same way. A listing's
+200 has the same shape with no rows, so `the_listing_holds_what_was_made` fails
+the exchange unless the answer lists that report, by its reporter and report id
+(#1785). The received example's `reporter=reporter.test` filter names the
+report's reporter instead; only its value changes. The other 200 filters by
+domain 4294967295, which no domain is, so its page is empty by design and its
+hook says it lists none of the report.
 
 `createAlias`, `getAlias`, `updateAlias` and `deleteAlias` reset and seed before
 each exchange too, refusals included. A create is sent as documented after its
@@ -2251,8 +2292,8 @@ entrypoint.
 The fixture command seeds one typed received report for `restmail.test` with
 authenticated reporter `reporter.test` and report ID `daily-1`. Repeating setup
 keeps the same row through the production `(reporter, report_id)` unique index.
-There is no HTTP report intake to call for setup: SMTP ingestion is proven by
-the server's mail-delivery tests instead.
+The primary run reads it. The own-data run, whose reset removes it, delivers a
+report of its own through `deliverMessage` instead (above).
 
 Domain-grant variants live in `internal/examplepairs/example-matrix.json`.
 Published credential refusals declare their principal prerequisites, so an
