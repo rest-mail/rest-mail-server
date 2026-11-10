@@ -18,6 +18,7 @@ exchange, so --check does that here: a link that resolved to nothing is not a pa
 
 Usage: own_data.py <vertrag-run.yml> <out.yml>
        own_data.py --check <own-data.xml>
+       own_data.py --endpoint <vertrag-own-data.yml>
 """
 
 import sys
@@ -233,6 +234,21 @@ MOVED = (
     "listFolders",
     "listMessages",
     "searchMessages",
+    # The attachment download. No link reaches it. A read of an attachment
+    # that is there gets one of its own, with known bytes, after its reset.
+    "getAttachment",
+    # The delivery and federation operations: the gateway's mailbox check and
+    # delivery, and RESTMAIL discovery, capabilities, mailbox check and
+    # delivery. No link starts from or reaches any of them. A documented
+    # delivery or mailbox check success goes to a mailbox of its own after its
+    # reset; the others need nothing made. acmeChallenge stays: the server
+    # serves it, and describes it, only with ACME on, which the topology is not.
+    "checkMailboxAddress",
+    "deliverMessage",
+    "restmailDiscover",
+    "restmailCapabilities",
+    "restmailCheckMailbox",
+    "restmailDeliver",
 )
 
 
@@ -259,9 +275,15 @@ def main(argv):
         for name in skipped:
             print("own data: not sent:", name)
         return 1 if skipped else 0
+    if len(argv) == 2 and argv[0] == "--endpoint":
+        # The run's endpoint, where the hooks make their setup calls.
+        with open(argv[1]) as stream:
+            print(yaml.safe_load(stream)["endpoint"])
+        return 0
     if len(argv) != 2:
         sys.exit(
             "usage: own_data.py <vertrag-run.yml> <out.yml> | --check <own-data.xml>"
+            " | --endpoint <vertrag-own-data.yml>"
         )
     source, out = argv
     with open(source) as stream:
