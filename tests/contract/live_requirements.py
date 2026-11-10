@@ -32,6 +32,7 @@ INTERNAL_SERVICES = {
     "openGatewaySession": "imap",
     "closeGatewaySession": "imap",
 }
+OPERATION_BODY_LIMITS = {"receiveTlsReport": 512 * 1024}
 
 
 def gateway_transport(service="imap"):
@@ -206,9 +207,13 @@ def prove(
             )
             with os.fdopen(descriptor, "w") as stream:
                 yaml.safe_dump(config, stream)
+            selected_body_bytes = (
+                OPERATION_BODY_LIMITS[operation_id] + 1
+                if operation_id in OPERATION_BODY_LIMITS else body_bytes
+            )
             environment = {
                 **os.environ,
-                "CONTRACT_OVER_CAP_BYTES": str(body_bytes),
+                "CONTRACT_OVER_CAP_BYTES": str(selected_body_bytes),
             }
             run = subprocess.run(
                 [
@@ -284,6 +289,13 @@ def prove(
                 "requires": requirement,
                 "path_values": path_values or {},
                 "body_bytes": body_bytes if kind == "over-cap" else 0,
+                "body_bytes_by_operation": {
+                    operation_id: (
+                        OPERATION_BODY_LIMITS[operation_id] + 1
+                        if operation_id in OPERATION_BODY_LIMITS else body_bytes
+                    )
+                    for operation_id, _, _ in cases
+                } if kind == "over-cap" else {},
                 "description_sha256": hashlib.sha256(
                     json.dumps(document, sort_keys=True).encode()
                 ).hexdigest(),

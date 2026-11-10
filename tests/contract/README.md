@@ -2795,6 +2795,14 @@ python3 -B tests/contract/live_principals.py "$CONTRACT_ENDPOINT" "$work/princip
   has the receiver send 100 Continue and verifies every actual payload byte is
   transmitted; the hook never fabricates a length without its matching body.
   A deployment with larger limits must pass a larger `--body-bytes`.
+- TLS-RPT ingestion has its own fixed 512 KiB streaming cap rather than the API
+  cap. Its proof sends 524,289 actual bytes: one past that limit. This exercises
+  the streaming byte guard without racing a legitimate early refusal against
+  tens of megabytes the endpoint will never accept. A pinned-Vertrag wire test
+  verifies that every one of these bytes reaches a streaming receiver before
+  the exact 413 response is validated. The inventory records actual body sizes
+  per operation in `body_bytes_by_operation`; the ordinary API and delivery
+  cases retain the configured `--body-bytes` value.
 - The `--api-keys` fixture must be fresh, because the runner enrols it in MFA.
 - Push pairs need the real API started with a disposable P-256 APNs key and all
   three APNs settings. These refusals send no notification.
