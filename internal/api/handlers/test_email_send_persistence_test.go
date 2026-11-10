@@ -69,7 +69,7 @@ func TestTestEmailSendPersistence(t *testing.T) {
 		t.Fatal("test injection lost its two mailbox/folder/read-state copies")
 	}
 	for _, row := range rows {
-		if row.MsgID != result.MsgID || row.ThreadID != result.MsgID || row.Sender != sender.Address || row.SenderName != sender.DisplayName || row.Subject != in.Subject || row.BodyText != in.Body || row.SizeBytes != len(in.Body) || row.ReceivedAt.Before(start) || row.ReceivedAt.After(end) {
+		if row.MsgID != result.MsgID || row.ThreadID != result.MsgID || row.Sender != sender.Address || row.SenderName != sender.DisplayName || row.Subject != in.Subject || row.BodyText != in.Body || row.RawMessage == "" || row.RawSize != len(row.RawMessage) || row.SizeBytes != row.RawSize || row.ReceivedAt.Before(start) || row.ReceivedAt.After(end) {
 			t.Fatal("persisted test copy lost shared identifiers, supplied content, byte size or timestamp")
 		}
 	}
