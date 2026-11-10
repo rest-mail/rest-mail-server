@@ -262,6 +262,9 @@ jobs:
       # scripts from its own head, which on a stale branch would not have a new one.
       # checkout fetches every branch. The base tip can be on none of them: a rerun
       # keeps its event, and a stack's parent branch may have been force-pushed since.
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
+
       - name: Find where the PR branched from its base
         id: branch-point
         env:
@@ -1277,6 +1280,9 @@ jobs:
         uses: ./.github/actions/setup-python
 
       # helm.yml refuses a version already published, which is too late to say so.
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
+
       - name: Refuse a chart change without a new version
         if: github.event_name != 'push'
         run: python3 scripts/check_chart_bump.py --base HEAD^1
@@ -1313,7 +1319,10 @@ jobs:
           # No `cache: pnpm`: its post-job save fails the job when the store path it
           # resolved from the repository root does not exist, which took down builds
           # that had already passed. Installing two small apps is cheap.
-          node-version-file: webmail/package.json
+          node-version: "22"
+
+      - name: Enable pnpm
+        run: corepack enable pnpm
 
       - name: Enable pnpm
         run: |
@@ -1367,7 +1376,10 @@ jobs:
           # No `cache: pnpm`: its post-job save fails the job when the store path it
           # resolved from the repository root does not exist, which took down builds
           # that had already passed. Installing two small apps is cheap.
-          node-version-file: admin/package.json
+          node-version: "22"
+
+      - name: Enable pnpm
+        run: corepack enable pnpm
 
       - name: Enable pnpm
         run: |
@@ -1660,7 +1672,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version-file: scripts/email-explained/package.json
+          node-version: "22"
 
       - name: Install dependencies
         run: npm ci
