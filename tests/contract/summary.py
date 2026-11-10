@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Print the contract run's verdict from its JUnit reports (#627).
 
-One line per phase that ran: transactions, passed, failed and skipped, read from
+One line per phase that ran: checks, passed, failed and skipped, read from
 .cache/contract/<phase>.xml; the same table goes to .cache/contract/summary.md
 beside the HTML and Markdown reports.
+Checks include transaction results and API surface gate assertions.
 
 Usage: summary.py [report directory] [examples coverage authorization ownership fuzz ...]
 """
@@ -27,7 +28,7 @@ PHASES = (
 
 
 def counts(path):
-    """(transactions, failed, skipped) in a JUnit report."""
+    """(checks, failed, skipped) in a JUnit report."""
     root = ET.parse(path).getroot()
     cases = root.iter("testcase")
     total = failed = skipped = 0
@@ -42,7 +43,7 @@ def counts(path):
 
 def summary(directory, phases=None):
     rows = [
-        "| Phase | Transactions | Passed | Failed | Skipped |",
+        "| Phase | Checks | Passed | Failed | Skipped |",
         "|---|---:|---:|---:|---:|",
     ]
     for name, label in PHASES:
@@ -63,7 +64,8 @@ def summary(directory, phases=None):
     operations = (
         operation_summary(directory) if phases is None or "examples" in phases else ""
     )
-    return "\n".join(rows) + "\n" + operations
+    explanation = "\nChecks include transaction results and API surface gate assertions.\n"
+    return "\n".join(rows) + "\n" + explanation + operations
 
 
 def cell(value):
