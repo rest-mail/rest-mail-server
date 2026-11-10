@@ -179,3 +179,93 @@ func TestReadKeptMatchesParseContentType(t *testing.T) {
 		}
 	}
 }
+
+// A long quoted value is read here, where mime.ParseMediaType would build it an octet at a time, and
+// that can't change what it reads as or which fields read at all.
+func TestParseKeptReadsLongQuotedValuesAsParseUncommented(t *testing.T) {
+	rng := rand.New(rand.NewSource(1915))
+	long := func() string { return strings.Repeat("=?x?q?y?= *;=,a", (longQuoted+40)/15) }
+	values := []func() string{
+		func() string { return `"` + long() + `"` },
+		func() string { return `"` + strings.Repeat("y", longQuoted) + `"` },
+		func() string { return `"` + strings.Repeat("y", longQuoted-len("name=")-2) + `"` },
+		func() string { return `"` + long() + `\"a"` },
+		func() string { return `"` + long() + `\a"` },
+		func() string { return `"` + long() + "\r\n" + `"` },
+		func() string { return `"` + long() },
+		func() string { return `"` + long() + `" ` },
+		func() string { return `"` + long() + `"x` },
+		func() string { return strings.Repeat("y", longQuoted+1) },
+		func() string { return `"short"` },
+		func() string { return `""` },
+		func() string { return "token" },
+	}
+	names := []string{"name", "NAME", "Name", "filename", "FILENAME", "boundary", "charset", "name*0", "filename*", "other", "x*"}
+	types := []string{"text/plain", "multipart/mixed", "attachment", "TEXT / plain", "bad", "application/x"}
+	kept := 0
+	for round := range 6000 {
+		var b strings.Builder
+		b.WriteString(types[rng.Intn(len(types))])
+		for range 1 + rng.Intn(4) {
+			b.WriteString(";" + strings.Repeat(" ", rng.Intn(2)) + names[rng.Intn(len(names))] + strings.Repeat(" ", rng.Intn(2)) + "=" + values[rng.Intn(len(values))]())
+		}
+		field := b.String()
+		wantType, wantParams, wantErr := parseUncommented(field)
+		gotType, gotParams, gotErr := parseKept(field, hostFamilies)
+		if (wantErr == nil) != (gotErr == nil) {
+			t.Fatalf("round %d: %.200q: parseUncommented %v, parseKept %v", round, field, wantErr, gotErr)
+		}
+		if wantErr != nil {
+			continue
+		}
+		kept++
+		if gotType != wantType {
+			t.Fatalf("round %d: type %q, want %q", round, gotType, wantType)
+		}
+		for _, family := range hostFamilies {
+			if gotParams[family] != wantParams[family] {
+				t.Fatalf("round %d: %.200q: %s %.200q, want %.200q", round, field, family, gotParams[family], wantParams[family])
+			}
+		}
+	}
+	if kept < 500 {
+		t.Fatalf("only %d fields read", kept)
+	}
+	field := `attachment; filename="` + long() + `"`
+	allocated := testing.AllocsPerRun(5, func() {
+		if _, params, err := parseKept(field, hostFamilies); err != nil || params["filename"] == "" {
+			t.Fatal(params, err)
+		}
+	})
+	if allocated > 40 {
+		t.Fatalf("%.0f allocations reading one value", allocated)
+	}
+}
+
+// A word that spells no NUL costs nothing to look through, and one that spells one still loses it.
+func TestSpacedWordTakesNothingWithNoNUL(t *testing.T) {
+	for _, word := range []string{"=?windows-1252?q?abc?=", "=?windows-1252?b?YWJj?=", "=?utf-8?B?YWJj?=", "=?utf-8?Q?a=20b?="} {
+		if allocated := testing.AllocsPerRun(10, func() {
+			if _, changed := spacedWord(word); changed {
+				t.Fatalf("%s changed", word)
+			}
+		}); allocated != 0 {
+			t.Errorf("%s: %.0f allocations", word, allocated)
+		}
+	}
+	long := strings.Repeat("YWJj", 40)
+	for word, want := range map[string]string{
+		"=?utf-8?q?a=00b?=":            "=?utf-8?q?a_b?=",
+		"=?utf-8?b?YQBi?=":             "=?utf-8?b?YSBi?=",
+		"=?utf-8?B?YQ Bi?=":            "=?utf-8?B?YSBi?=",
+		"=?utf-8?b?" + long + "AAAA?=": "=?utf-8?b?" + long + "ICAg?=",
+		"=?utf-8?b?" + long + "?=":     "=?utf-8?b?" + long + "?=",
+		"=?utf-16be?b?AGEAAABi?=":      "=?utf-16be?b?AGEAIABi?=",
+		"=?windows-1252?b?YWJj*?=":     "=?windows-1252?b?YWJj*?=",
+	} {
+		got, changed := spacedWord(word)
+		if changed != (want != word) || (changed && got != want) {
+			t.Errorf("spacedWord(%s) = %s, %v, want %s", word, got, changed, want)
+		}
+	}
+}
