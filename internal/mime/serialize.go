@@ -88,6 +88,9 @@ func Serialize(email *pipeline.EmailJSON) ([]byte, error) {
 		b.Write(body)
 	default:
 		writeHeader(&b, "Content-Type", contentTypeOr(email.Body.ContentType))
+		if email.Body.TransferEncoding != "" {
+			writeHeader(&b, "Content-Transfer-Encoding", email.Body.TransferEncoding)
+		}
 		b.WriteString("\r\n")
 		b.WriteString(email.Body.Content)
 		if !strings.HasSuffix(email.Body.Content, "\r\n") {
@@ -157,9 +160,11 @@ func renderAlternative(parts []pipeline.Body) (body []byte, boundary string, err
 	w := multipart.NewWriter(&buf)
 
 	for _, part := range parts {
-		pw, err := w.CreatePart(textproto.MIMEHeader{
-			"Content-Type": {contentTypeOr(part.ContentType)},
-		})
+		header := textproto.MIMEHeader{"Content-Type": {contentTypeOr(part.ContentType)}}
+		if part.TransferEncoding != "" {
+			header.Set("Content-Transfer-Encoding", part.TransferEncoding)
+		}
+		pw, err := w.CreatePart(header)
 		if err != nil {
 			return nil, "", err
 		}
