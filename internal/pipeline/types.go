@@ -82,6 +82,10 @@ type Body struct {
 	ContentType string `json:"content_type"`
 	Content     string `json:"content,omitempty"`
 	Parts       []Body `json:"parts,omitempty"`
+	// TransferEncoding names the encoding Content is already in, for the serializer's
+	// Content-Transfer-Encoding header. Only a message the server writes itself sets it: a
+	// parsed body holds decoded text, which is what a filter sees.
+	TransferEncoding string `json:"-"`
 }
 
 // Attachment represents an email attachment or inline image.
