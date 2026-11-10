@@ -233,6 +233,16 @@ def prove(
             written = report.read_text() if report.exists() else ""
             verdict = json.loads(written) if written else {}
             if run.returncode or not passed(verdict, pair["response"]["status"]):
+                diagnostics = []
+                for stream in ("stdout", "stderr"):
+                    diagnostic_path = case_report.with_suffix(f".{stream}.log")
+                    descriptor = os.open(
+                        diagnostic_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600
+                    )
+                    with os.fdopen(descriptor, "wb") as diagnostic_file:
+                        os.fchmod(diagnostic_file.fileno(), 0o600)
+                        diagnostic_file.write(getattr(run, stream, b""))
+                    diagnostics.append(diagnostic_path.name)
                 results = verdict.get("results", [])
                 reason = (
                     f"vertrag exit {run.returncode}; expected {pair['response']['status']}; "
@@ -241,6 +251,7 @@ def prove(
                         + ", ".join(result.get("errors", []))
                         for result in results
                     )
+                    + "; private diagnostics: " + ", ".join(diagnostics)
                 )
             case_report.write_text(json.dumps(verdict, indent=2) + "\n")
         except (

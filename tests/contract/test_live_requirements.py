@@ -280,6 +280,44 @@ class LiveRequirementTests(unittest.TestCase):
         self.assertIn("vertrag exit 70", unproven[0]["reason"])
 
 
+    def test_empty_report_keeps_private_runner_diagnostics(self):
+        diagnostic = b"hook startup failed; Authorization: Bearer disposable-secret\n"
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch.object(
+                live_requirements.subprocess,
+                "run",
+                return_value=types.SimpleNamespace(
+                    returncode=1, stdout=b"runner stopped\n", stderr=diagnostic
+                ),
+            ),
+        ):
+            code = live_requirements.prove(
+                "vertrag",
+                "http://localhost",
+                DOCUMENT,
+                {"getThing": {"unauthenticated": PAIR}},
+                "anonymous",
+                directory,
+            )
+            unproven = json.loads(
+                (Path(directory) / "anonymous-unproven.json").read_text()
+            )
+            for stream, expected in (
+                ("stdout", b"runner stopped\n"), ("stderr", diagnostic)
+            ):
+                saved = Path(directory) / f"anonymous-getThing-unauthenticated.{stream}.log"
+                self.assertTrue(saved.is_file(), str(saved))
+                self.assertEqual(saved.read_bytes(), expected)
+                self.assertEqual(saved.stat().st_mode & 0o777, 0o600)
+                self.assertIn(saved.name, unproven[0]["reason"])
+            self.assertEqual(code, 1)
+            self.assertNotIn("disposable-secret", unproven[0]["reason"])
+            self.assertEqual(
+                json.loads((Path(directory) / "anonymous-proofs.json").read_text()), {}
+            )
+
+
 class GatewayListenerProof(unittest.TestCase):
     def setUp(self):
         self.operation = "closeGatewaySession"
