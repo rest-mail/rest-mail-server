@@ -1130,6 +1130,31 @@ def a_credential_to_manage(transaction):
     transaction["fullPath"] = "/".join(parts) + separator + query
 
 
+@hooks.before("addInstallationSenderRule")
+def a_duplicate_sender_rule_for_authorization(transaction):
+    if not authorization_admin_success(transaction, 409):
+        return
+    path = transaction["fullPath"].partition("?")[0]
+    if path != "/api/v1/admin/sender-rules":
+        return
+    body = hooks.get_json(transaction)
+    if (
+        not isinstance(body, dict)
+        or body.get("list_type") != "block"
+        or body.get("pattern") != "@blocked.example"
+    ):
+        return
+    rules = fixture_call(transaction, "GET", path)
+    if not isinstance(rules, list):
+        raise RuntimeError("could not read the installation sender rules for the duplicate example")
+    if any(
+        rule.get("pattern") == body["pattern"] and rule.get("list_type") == body["list_type"]
+        for rule in rules
+    ):
+        return
+    fixture_call(transaction, "POST", path, body, expect=(201,))
+
+
 @hooks.before("listBans")
 @hooks.before("createBan")
 @hooks.before("deleteBan")

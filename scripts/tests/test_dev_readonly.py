@@ -9,6 +9,7 @@ import tempfile
 import textwrap
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 SERVICES = ("api", "smtp-gateway", "imap-gateway", "pop3-gateway")
@@ -53,6 +54,8 @@ class DevReadonlyTests(unittest.TestCase):
             VERBOSE="",
             **extra_env,
         )
+        if "RESTMAIL_DEV_GOCACHE_VOLUME" not in extra_env:
+            env.pop("RESTMAIL_DEV_GOCACHE_VOLUME", None)
         subprocess.run(["sh", "-n"], input=script, text=True, check=True)
         result = subprocess.run(
             ["sh", "-eu"],
@@ -99,8 +102,9 @@ elif args[0] == "inspect":
     print("1 172.30.0.2")
 """)
                 docker.chmod(0o755)
-                dev, dev_stage = self.launch(service, "dev", directory)
-                prod, prod_stage = self.launch(service, "prod", directory)
+                with patch.dict(os.environ, {"RESTMAIL_DEV_GOCACHE_VOLUME": "inherited-cache"}):
+                    dev, dev_stage = self.launch(service, "dev", directory)
+                    prod, prod_stage = self.launch(service, "prod", directory)
                 uid = 0 if service == "api" else 10001
                 # Off unless a run asks: a person's dev containers keep the bounded tmpfs.
                 self.assertNotIn("/tmp/go-build-cache", [arg.split(":", 1)[-1] for arg in dev["args"]])

@@ -245,6 +245,75 @@ class CoverageTargetHooks(unittest.TestCase):
                 original["request"]["body"] = request["request"]["body"]
                 self.assertEqual(request, original)
 
+    def test_authorization_duplicate_sender_rule_example_owns_its_prerequisite(self):
+        body = {"list_type": "block", "pattern": "@blocked.example", "reason": "Sends spam"}
+        for state in ("empty", "after-success", "existing"):
+            with self.subTest(state=state):
+                self.server.rules = []
+                if state == "after-success":
+                    success = self.sender_rule_probe()
+                    success["expected"] = {"statusCode": "201"}
+                    success["request"]["body"] = json.dumps(body)
+                    self.assertEqual(self.execute_authorization("addInstallationSenderRule", success), 201)
+                    self.assertNotEqual(json.loads(success["request"]["body"])["pattern"], body["pattern"])
+                elif state == "existing":
+                    self.server.rules = [dict(body, id=7)]
+                earlier = copy.deepcopy(self.server.rules)
+                request = self.sender_rule_probe()
+                request["name"] = "Add an installation sender rule > 409 > application/json"
+                request["expected"] = {"statusCode": "409"}
+                request["request"]["body"] = json.dumps(body)
+                original = copy.deepcopy(request)
+                self.assertEqual(self.execute_authorization("addInstallationSenderRule", request), 409)
+                self.assertEqual(request, original)
+                for rule in earlier:
+                    self.assertIn(rule, self.server.rules)
+                prepared = copy.deepcopy(self.server.rules)
+                self.assertEqual(self.execute_authorization("addInstallationSenderRule", request), 409)
+                self.assertEqual(self.server.rules, prepared)
+
+    def test_authorization_duplicate_sender_rule_setup_leaves_other_probes_unchanged(self):
+        for mode in ("ordinary", "anonymous", "app-password", "other-phase", "status", "path", "pattern", "list-type", "body"):
+            with self.subTest(mode=mode):
+                request = self.sender_rule_probe()
+                request["expected"] = {"statusCode": "409"}
+                body = {"list_type": "block", "pattern": "@blocked.example", "reason": "Sends spam"}
+                if mode == "ordinary":
+                    request["request"]["headers"]["Authorization"] = session("ordinary@restmail.test")
+                elif mode == "anonymous":
+                    request["request"]["headers"] = {}
+                elif mode == "app-password":
+                    request["request"]["headers"]["Authorization"] = "Basic app-password"
+                elif mode == "status":
+                    request["expected"]["statusCode"] = "422"
+                elif mode == "path":
+                    request["fullPath"] = "/api/v1/admin/domains/1/blocklist"
+                elif mode == "pattern":
+                    body["pattern"] = "unrelated@example.test"
+                elif mode == "list-type":
+                    body["list_type"] = "allow"
+                elif mode == "body":
+                    body = []
+                request["request"]["body"] = json.dumps(body)
+                original = copy.deepcopy(request)
+                with patch.dict(os.environ, {"CONTRACT_AUTHORIZATION": "0" if mode == "other-phase" else "1"}):
+                    with patch.dict(self.shared, {"fixture_call": unittest.mock.Mock()}) as shared:
+                        self.shared["a_duplicate_sender_rule_for_authorization"](request)
+                        shared["fixture_call"].assert_not_called()
+                self.assertEqual(request, original)
+
+    def test_authorization_duplicate_sender_rule_setup_failure_is_not_hidden(self):
+        request = self.sender_rule_probe()
+        request["expected"] = {"statusCode": "409"}
+        request["request"]["body"] = json.dumps({"list_type": "block", "pattern": "@blocked.example", "reason": "Sends spam"})
+        original = copy.deepcopy(request)
+        self.server.failure = 503
+        with patch.dict(os.environ, {"CONTRACT_AUTHORIZATION": "1"}):
+            with self.assertRaises(urllib.error.HTTPError) as failure:
+                self.shared["a_duplicate_sender_rule_for_authorization"](request)
+        self.assertEqual(failure.exception.code, 503)
+        self.assertEqual(request, original)
+
     def test_authorization_ban_delete_survives_prior_phase_deletion(self):
         request = self.transaction("removeInstallationSenderRule")
         request["fullPath"] = "/api/v1/admin/bans/1?keep=yes"
