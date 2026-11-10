@@ -13,6 +13,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from unittest.mock import patch
 
+import yaml
+
 import live_requirements
 
 PAIR = {"requires": {"principal": "anonymous"}, "response": {"status": 401}}
@@ -275,6 +277,83 @@ class LiveRequirementTests(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertEqual(proofs, {})
         self.assertIn("vertrag exit 70", unproven[0]["reason"])
+
+
+class GatewayListenerProof(unittest.TestCase):
+    def setUp(self):
+        self.operation = "closeGatewaySession"
+        self.example = "session_required"
+        self.pair = {"requires": {"principal": "anonymous"}, "response": {"status": 400}}
+        self.document = copy.deepcopy(DOCUMENT)
+        operation = self.document["paths"]["/things/{id}"]["get"]
+        operation["operationId"] = self.operation
+        operation["responses"] = {"400": {
+            "description": "A gateway session token is required",
+            "content": {"application/json": {
+                "schema": SCHEMA,
+                "examples": {self.example: {
+                    "value": {"error": "session required"},
+                    "x-requires": self.pair["requires"],
+                }},
+            }},
+        }}
+        self.document["paths"] = {"/api/v1/gateway-sessions/current": {"delete": operation}}
+        self.configurations = []
+
+    def invoke(self, endpoint="https://internal.test:8443", transport=None):
+        def run(command, **options):
+            config_path = Path(command[command.index("--config") + 1])
+            self.configurations.append(yaml.safe_load(config_path.read_text()))
+            verdict = copy.deepcopy(REPORT)
+            verdict["results"][0].update(expected="400", actual="400")
+            (config_path.parent / "report.json").write_text(json.dumps(verdict))
+            return types.SimpleNamespace(returncode=0)
+
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch.dict(os.environ, {"CONTRACT_INTERNAL_ENDPOINT": endpoint,
+                                    "CONTRACT_MTLS_DIR": directory}),
+            patch.object(live_requirements.subprocess, "run", side_effect=run),
+        ):
+            code = live_requirements.prove(
+                "vertrag", "http://public.test:8080", self.document,
+                {self.operation: {self.example: self.pair}}, "anonymous", directory,
+                transport=transport,
+            )
+            unproven = json.loads((Path(directory) / "anonymous-unproven.json").read_text())
+            return code, directory, unproven
+
+    def test_missing_session_uses_verified_gateway_transport_without_a_user_credential(self):
+        original = copy.deepcopy(self.document)
+        code, directory, unproven = self.invoke()
+        self.assertEqual((code, unproven), (0, []))
+        config = self.configurations[0]
+        self.assertEqual(config["endpoint"], "https://internal.test:8443")
+        self.assertEqual(config["principals"], [{"name": "anonymous"}])
+        self.assertNotIn("header", config)
+        self.assertEqual(config["endpoints"], [{
+            "endpoint": "https://internal.test:8443",
+            "operation-id": [self.operation],
+            "transport": {"ca-cert": str(Path(directory).resolve() / "internal-ca.crt"),
+                          "cert": str(Path(directory).resolve() / "internal-imap.crt"),
+                          "cert-key": str(Path(directory).resolve() / "internal-imap.key")},
+        }])
+        self.assertEqual(self.document, original)
+
+    def test_an_insecure_internal_listener_is_unproven_not_a_public_fallback(self):
+        code, _, unproven = self.invoke("http://internal.test:8080")
+        self.assertEqual(code, 1)
+        self.assertEqual(self.configurations, [])
+        self.assertIn("HTTPS internal listener", unproven[0]["reason"])
+
+    def test_explicit_transport_is_not_replaced(self):
+        explicit = {"ca-cert": "/selected/ca.crt", "cert": "/selected/client.crt",
+                    "cert-key": "/selected/client.key"}
+        code, _, _ = self.invoke(transport=explicit)
+        self.assertEqual(code, 0)
+        config = self.configurations[0]
+        self.assertEqual(config["endpoint"], "http://public.test:8080")
+        self.assertEqual(config["endpoints"][0]["transport"], explicit)
 
 
 @unittest.skipUnless(

@@ -28,6 +28,18 @@ REQUIREMENTS = {
 }
 
 
+def gateway_transport():
+    endpoint = os.environ.get("CONTRACT_INTERNAL_ENDPOINT") or "https://10.99.0.20:8443"
+    if not endpoint.startswith("https://"):
+        raise ValueError("the gateway session requires the HTTPS internal listener")
+    directory = Path(os.environ.get("CONTRACT_MTLS_DIR", ".cache/contract-mtls")).resolve()
+    return endpoint, {
+        "ca-cert": str(directory / "internal-ca.crt"),
+        "cert": str(directory / "internal-imap.crt"),
+        "cert-key": str(directory / "internal-imap.key"),
+    }
+
+
 def select_pair(document, operation_id, name, pair, path_values=None):
     selected = copy.deepcopy(document)
     for path, item in document["paths"].items():
@@ -141,6 +153,11 @@ def prove(
         case_report.unlink(missing_ok=True)
         try:
             selected = select_pair(document, operation_id, name, pair, path_values)
+            destination, selected_transport = endpoint, transport
+            if transport is None and operation_id in (
+                "openGatewaySession", "closeGatewaySession"
+            ):
+                destination, selected_transport = gateway_transport()
             # A directory for each case: cases can run side by side.
             case_work = work / f"{operation_id}-{name}"
             case_work.mkdir()
@@ -149,17 +166,17 @@ def prove(
             report = case_work / "report.json"
             config = {
                 "spec": str(spec),
-                "endpoint": endpoint,
+                "endpoint": destination,
                 "provides": {key: [value] for key, value in requirement.items()},
                 "checks": {"header-schema": True},
                 "reporter": ["json"],
                 "output": [str(report)],
             }
-            if transport is not None:
+            if selected_transport is not None:
                 config["endpoints"] = [{
-                    "endpoint": endpoint,
+                    "endpoint": destination,
                     "operation-id": [operation_id],
-                    "transport": transport,
+                    "transport": selected_transport,
                 }]
             if "principal" in requirement:
                 principal = {"name": requirement["principal"]}

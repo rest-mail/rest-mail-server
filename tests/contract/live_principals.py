@@ -8,7 +8,6 @@ This does not promote the provisional whole-API authorization matrix to a gate.
 import argparse
 import base64
 import json
-import os
 import ssl
 import urllib.error
 import urllib.request
@@ -17,21 +16,13 @@ from pathlib import Path
 
 import mfa_admin
 from api_keys_live import Client, login, mfa_session, require_fixture_account
-from live_requirements import prove
+from live_requirements import gateway_transport, prove
 
 
 @contextmanager
 def app_gateway(app):
     require_fixture_account(app["address"])
-    endpoint = os.environ.get("CONTRACT_INTERNAL_ENDPOINT") or "https://10.99.0.20:8443"
-    if not endpoint.startswith("https://"):
-        raise ValueError("the gateway session requires the HTTPS internal listener")
-    directory = Path(os.environ.get("CONTRACT_MTLS_DIR", ".cache/contract-mtls")).resolve()
-    transport = {
-        "ca-cert": str(directory / "internal-ca.crt"),
-        "cert": str(directory / "internal-imap.crt"),
-        "cert-key": str(directory / "internal-imap.key"),
-    }
+    endpoint, transport = gateway_transport()
     context = ssl.create_default_context(cafile=transport["ca-cert"])
     context.load_cert_chain(transport["cert"], transport["cert-key"])
     request = urllib.request.Request(

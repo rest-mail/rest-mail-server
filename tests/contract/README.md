@@ -2763,6 +2763,13 @@ both mailboxes. The session and temporary API key are closed/revoked even if a
 proof fails. Run these proofs before destructive own-data checks, which remove
 their fixture accounts.
 
+The named anonymous and over-cap gateway-session examples use this same internal
+listener and IMAP certificate. An anonymous mail-client principal still sends no
+Bearer credential: the certificate authenticates the gateway, not its user.
+In particular, `closeGatewaySession/session_required` must answer the documented
+400 with its response schema intact, not the public listener's missing-route 404.
+An HTTP internal endpoint fails closed; it never falls back to the public listener.
+
 ```sh
 python3 -B tests/contract/live_requirements.py anonymous "$CONTRACT_ENDPOINT" "$work/anonymous" \
   --vertrag "$CONTRACT_VERTRAG"
