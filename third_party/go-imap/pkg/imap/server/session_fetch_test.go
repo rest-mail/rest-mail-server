@@ -309,7 +309,8 @@ func TestIMAP_FetchBody_AutoSeen_ResponseFlagsIncludeSeen(t *testing.T) {
 		t.Fatalf("FETCH 1 BODY[] status = %q", status)
 	}
 	resp := strings.Join(untagged, "\n")
-	if !strings.Contains(resp, `FLAGS (\Seen)`) {
+	// The mock keeps no \Recent state, so every message is also \Recent.
+	if !strings.Contains(resp, `FLAGS (\Seen \Recent)`) {
 		t.Errorf("auto-\\Seen FETCH response FLAGS must include \\Seen (reflect the new state); got: %q", resp)
 	}
 	// The side-effect store must actually have happened.
@@ -322,7 +323,8 @@ func TestIMAP_FetchBody_AutoSeen_ResponseFlagsIncludeSeen(t *testing.T) {
 }
 
 // The peek form BODY.PEEK[] must not set \Seen, and so must NOT add \Seen to the
-// echoed FLAGS: an unseen message stays "FLAGS ()". Pins that the #28 fix keys
+// echoed FLAGS: an unseen message keeps only the \Recent the mock's lack of
+// \Recent state gives every message. Pins that the #28 fix keys
 // off the same non-peek/peek distinction as the \Seen store itself.
 func TestIMAP_FetchBodyPeek_ResponseFlagsOmitSeen(t *testing.T) {
 	m := newMockBackend()
@@ -339,7 +341,7 @@ func TestIMAP_FetchBodyPeek_ResponseFlagsOmitSeen(t *testing.T) {
 	if strings.Contains(resp, `\Seen`) {
 		t.Errorf("BODY.PEEK[] must not add \\Seen to the FETCH FLAGS; got: %q", resp)
 	}
-	if !strings.Contains(resp, "FLAGS ()") {
+	if !strings.Contains(resp, `FLAGS (\Recent)`) {
 		t.Errorf("unseen BODY.PEEK[] should echo empty FLAGS; got: %q", resp)
 	}
 	if _, st := h.command("pk4", "NOOP"); !strings.Contains(st, " OK") {
@@ -366,7 +368,7 @@ func TestIMAP_FetchBody_AlreadySeen_Unchanged(t *testing.T) {
 		t.Fatalf("FETCH 1 BODY[] status = %q", status)
 	}
 	resp := strings.Join(untagged, "\n")
-	if !strings.Contains(resp, `FLAGS (\Seen)`) {
+	if !strings.Contains(resp, `FLAGS (\Seen \Recent)`) {
 		t.Errorf("already-seen message must still echo \\Seen; got: %q", resp)
 	}
 	if _, st := h.command("se4", "NOOP"); !strings.Contains(st, " OK") {
