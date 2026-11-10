@@ -2631,6 +2631,46 @@ def authorization_admin_success(transaction, status):
     )
 
 
+@hooks.before("addInstallationSenderRule")
+def an_unused_sender_rule_for_authorization(transaction):
+    if not authorization_admin_success(transaction, 201):
+        return
+    if transaction["fullPath"].partition("?")[0] != "/api/v1/admin/sender-rules":
+        return
+    body = hooks.get_json(transaction)
+    if not isinstance(body, dict) or body.get("list_type") not in ("allow", "block"):
+        return
+    pattern = body.get("pattern")
+    if pattern not in ("x", "@blocked.example"):
+        return
+    unique = f"contract-sender-{time.time_ns()}"
+    body["pattern"] = f"@{unique}.example.test" if pattern.startswith("@") else f"{unique}@example.test"
+    hooks.set_json(transaction, body)
+
+
+@hooks.before("deleteBan")
+def a_ban_for_the_authorization_admin(transaction):
+    if not authorization_admin_success(transaction, 204):
+        return
+    path, separator, query = transaction["fullPath"].partition("?")
+    parent, _, target = path.rpartition("/")
+    if parent != "/api/v1/admin/bans" or target != "1":
+        return
+    ban = fixture_call(
+        transaction,
+        "POST",
+        parent,
+        {
+            "ip": "192.0.2.77",
+            "reason": "Contract authorization fixture",
+            "protocol": "all",
+            "duration": "1h",
+            "created_by": ADMIN,
+        },
+    )
+    transaction["fullPath"] = f"{parent}/{ban['id']}" + separator + query
+
+
 @hooks.before("createCertificate")
 def a_domain_for_the_authorization_certificate(transaction):
     if not authorization_admin_success(transaction, 201):
