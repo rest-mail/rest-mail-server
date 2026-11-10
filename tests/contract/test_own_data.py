@@ -176,15 +176,13 @@ SERVER_SETTINGS = (
     "getServerCapabilities",
     "updateServerCapabilities",
 )
-# The DMARC and TLS report, audit and delivery reads, and the TLS report
-# intake, which no link starts from or reaches.
+# The TLS report, audit and delivery reads, and the TLS report intake, which
+# no link starts from or reaches.
 REPORTS_AND_AUDIT = (
-    "listDmarcReports",
     "listTlsReports",
     "receiveTlsReport",
     "listAuditEntries",
     "verifyAuditLog",
-    "getDeliveryLogs",
     "getDashboardStats",
 )
 # The mailbox reads: listAccounts' link reaches them, and no link starts from
@@ -260,9 +258,11 @@ LAST_FREE = (
     "probeServices",
     "verifyDelivery",
 )
-# Clearing a suppression and reading a DMARC report: no link starts from or
-# reaches either.
-MADE_THROUGH_MAIL = ("clearSuppression", "getDmarcReport")
+# Clearing a suppression, and reading and listing DMARC reports: no link
+# starts from or reaches any of them.
+MADE_THROUGH_MAIL = ("clearSuppression", "getDmarcReport", "listDmarcReports")
+# The delivery log, which no link starts from or reaches.
+LOGS = ("getDeliveryLogs",)
 TEST_DATA = (
     "resetTestData",
     "seedTestData",
@@ -429,7 +429,8 @@ class Selection(unittest.TestCase):
             - set(SIGN_IN_AND_RECOVERY)
             - set(LAST_FREE)
             - set(TEST_DATA)
-            - set(MADE_THROUGH_MAIL),
+            - set(MADE_THROUGH_MAIL)
+            - set(LOGS),
             link_followers(description, "createDomain") | {"createDomain"},
         )
 
@@ -445,13 +446,13 @@ class Selection(unittest.TestCase):
     def test_the_pipeline_reads_have_moved_and_no_link_touches_them(self):
         description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
         for operation in (
-            PIPELINE_READS + FILTERS + PUBLIC_READS + DOMAIN_LISTS + TOKEN_EXCHANGE + SIGN_IN_AND_RECOVERY
+            PIPELINE_READS + FILTERS + PUBLIC_READS + DOMAIN_LISTS + TOKEN_EXCHANGE + SIGN_IN_AND_RECOVERY + LOGS
         ):
             self.assertEqual(link_followers(description, operation), set())
             for start in description_operations(description):
                 self.assertNotIn(operation, link_followers(description, start), start)
         self.assertLessEqual(
-            set(PIPELINE_READS + FILTERS + PUBLIC_READS + DOMAIN_LISTS + TOKEN_EXCHANGE + SIGN_IN_AND_RECOVERY),
+            set(PIPELINE_READS + FILTERS + PUBLIC_READS + DOMAIN_LISTS + TOKEN_EXCHANGE + SIGN_IN_AND_RECOVERY + LOGS),
             set(own_data.MOVED),
         )
 
