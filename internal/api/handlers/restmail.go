@@ -486,7 +486,10 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput, spoo
 				var holds []models.Quarantine
 				for _, rcpt := range to {
 					if recipient, ok := recipients[rcpt]; ok {
-						holds = append(holds, quarantineHold(recipient.mailbox.ID, req.From, req.Subject, req.BodyText, result))
+						holds = append(holds, quarantineHold(recipient.mailbox.ID, recipient.deliveredTo, req.From, req.Subject, req.BodyText, source, result))
+						delivered = append(delivered, rcpt)
+					} else {
+						failed = append(failed, rcpt)
 					}
 				}
 				if err := h.storeHolds(r.Context(), holds); err != nil {
@@ -495,7 +498,7 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput, spoo
 				}
 				rmTrace.Outcome = outcomeQuarantined
 				h.recordTrace(r.Context(), buildTrace(rmTrace))
-				return RestmailDelivery{Delivered: delivered, Failed: append(failed, to...)}, nil
+				return RestmailDelivery{Delivered: delivered, Failed: failed}, nil
 			}
 			// Fall-through (continue / any non-terminal action): the message will
 			// be delivered — stash the trace to record post-loop with message_id.
@@ -568,7 +571,7 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput, spoo
 		recipient, ok := recipients[rcpt]
 		own, ran := sieved[rcpt]
 		if ok && ran && own.FinalAction == pipeline.ActionQuarantine {
-			holds = append(holds, quarantineHold(recipient.mailbox.ID, req.From, req.Subject, req.BodyText, own))
+			holds = append(holds, quarantineHold(recipient.mailbox.ID, recipient.deliveredTo, req.From, req.Subject, req.BodyText, source, own))
 		}
 	}
 	if err := h.storeHolds(r.Context(), holds); err != nil {
@@ -834,18 +837,22 @@ func (h *RestmailHandler) runRecipientScripts(ctx context.Context, cfg *pipeline
 	return sieved, nil
 }
 
-// quarantineHold is a RESTMAIL message held for mailboxID, with the
-// pipeline's reason.
-func quarantineHold(mailboxID uint, from, subject, bodyText string, result *pipeline.ExecutionResult) models.Quarantine {
+// quarantineHold is a RESTMAIL message held for mailboxID, with the pipeline's reason. It keeps
+// the whole source, as a delivery to the mailbox would: releasing it stores what it holds.
+func quarantineHold(mailboxID uint, deliveredTo, from, subject, bodyText, source string, result *pipeline.ExecutionResult) models.Quarantine {
 	preview := bodyText
 	if len(preview) > 200 {
 		preview = preview[:200]
+	}
+	if deliveredTo != "" && source != "" {
+		source = "Delivered-To: " + deliveredTo + "\r\n" + source
 	}
 	return models.Quarantine{
 		MailboxID:        mailboxID,
 		Sender:           from,
 		Subject:          subject,
 		BodyPreview:      preview,
+		RawMessage:       source,
 		QuarantineReason: quarantineReason(result),
 		ReceivedAt:       time.Now(),
 		ExpiresAt:        time.Now().Add(30 * 24 * time.Hour),
