@@ -717,7 +717,7 @@ class VertragShards(unittest.TestCase):
                 self.assertIn("NOT REQUIRED", local.fixtures())
             commands.assert_not_called()
 
-    def test_imap_module_keeps_a_local_limit_longer_than_its_slowest_test(self):
+    def test_imap_module_uses_the_same_timeout_as_ci(self):
         with tempfile.TemporaryDirectory() as temporary:
             local = gate.Gate(ROOT, Path(temporary), Path(temporary), True)
             with (
@@ -730,7 +730,7 @@ class VertragShards(unittest.TestCase):
             test = next(
                 call for call in commands.call_args_list if "-race" in call.args[0]
             )
-            self.assertIn("-timeout=30m", test.args[0])
+            self.assertIn("-timeout=10m", test.args[0])
             self.assertEqual(test.kwargs["root"], ROOT / "third_party/go-imap")
 
     def test_the_imap_step_runs_each_gate_ci_runs_on_the_module(self):
