@@ -1169,13 +1169,74 @@ needs the received DMARC report the Go fixtures make, and no API call makes one,
 since a report arrives only in mail with an aligned DMARC pass. A run with no
 reset changes nothing in this hook.
 
+`listFolders`, `listMessages` and `searchMessages`, the mailbox reads
+`listAccounts`' link reaches, reset and seed before each exchange too, refusals
+included (`a_mailbox_read_after_a_reset`). Their examples name account 1, the
+fixture admin's mailbox, which the reset seeds again under another id, so an
+exchange aimed at a positive account other than missing's `2147483647` goes to
+that mailbox, looked up by address. A listing that succeeds gets something of
+its own, made through the API after its reset: the folder list a folder, the
+folder's page a message imported into that folder, and a search a message whose
+subject holds the query's words. `0` and every documented 404 keep their ids.
+`listAccounts` is not selected, and no link starts from any of the three. A run
+with no reset changes nothing in this hook.
+
+`getAttachment` resets and seeds before each exchange too, refusals included
+(`on_an_attachment_of_its_own`). Its examples name attachment 1, which the reset
+does not make. A read of an attachment that is there (the whole file, the single
+and multiple ranges, the 304 and 412 conditionals and the 416 range) is sent to
+an attachment of its own: a message holding `ATTACHMENT_BYTES` as an attachment,
+imported into the seeded `admin@restmail.test` through the API after the reset,
+its attachment's id read back from `listAttachments`. Its after hook
+(`the_attachment_answers_its_bytes`) holds the answer to those bytes: the whole
+body, each requested range with its `Content-Range`, and the 416's
+`bytes */<length>`. Refusals keep their ids (`0`, missing's `2147483647` and the
+others' own). No link reaches it. A run with no reset changes nothing in either
+hook.
+
+The delivery and federation operations reset and seed before each exchange
+too, refusals included (`delivery_after_a_reset`, registered ahead of their
+other hooks). They are the gateway's `checkMailboxAddress` and
+`deliverMessage`, and RESTMAIL's `restmailDiscover`, `restmailCapabilities`,
+`restmailCheckMailbox` and `restmailDeliver`. The topology sends the gateway
+routes to the API's internal listener, which serves nothing else. So the hooks
+make their resets and data on the run's endpoint, which run.sh names in
+`CONTRACT_SETUP_ORIGIN` (`setup_origin`).
+
+Each documented success of a check or a delivery goes to a mailbox of its own
+on `restmail.test`, made after the reset:
+- the gateway's found check;
+- the gateway's deliveries to `admin@restmail.test`;
+- the RESTMAIL check's 200, whatever address Vertrag gives it (#1801);
+- the RESTMAIL delivery to `eve@restmail.test`. This one also gets
+  `restmail.test` an active inbound pipeline that only validates headers. After
+  a reset the domain has none, and the default pipeline greylists a new sender,
+  which defers the delivery 503 for five minutes.
+
+Their after hook (`the_answer_names_the_recipient_made`) fails a success unless
+the answer is for that mailbox:
+- a check must say it exists, with its address, and from the gateway its id;
+- a gateway delivery must be stored in it;
+- a RESTMAIL delivery must name it delivered, with nothing failed.
+
+Refusals keep what they name: an empty or missing address,
+`nobody@restmail.test`, missing's `2147483647`, `unavailable@example.com`.
+Discovery asks about the seeded `restmail.test`, and the capabilities need
+nothing made. No link starts from or reaches any of them.
+
+`acmeChallenge` has not moved. The server registers the route, and describes
+it, only with ACME on, which the topology is not, so no run sends it. A run with
+no reset changes nothing in these hooks.
+
 A listing's 200 has the same shape with no rows as with the one made for it, so
 its status and schema alone pass on an empty list (#1785). After a reset,
-`listTlsReports`, `listPipelines` and `listThreads` must list what their before
-hook made, or the exchange fails (`the_listing_holds_what_was_made`, through the
-transaction's `fail` field): the TLS report by its reporter and policy domain,
-the pipeline by its id, the awaiting thread by its subject, which names it by
-the time it is made. A documented 200 with nothing made for it fails too. The
+`listTlsReports`, `listPipelines`, `listThreads`, `listFolders`, `listMessages`
+and `searchMessages` must list what their before hook made, or the exchange
+fails (`the_listing_holds_what_was_made`, through the transaction's `fail`
+field): the TLS report by its reporter and policy domain, the pipeline by its
+id, the awaiting thread by its subject, which names it by the time it is made,
+the folder by its name, the folder's message by its subject and folder, and the
+found message by its subject. A documented 200 with nothing made for it fails too. The
 threads page after the example's cursor holds older threads only and is empty
 by design, so its hook notes that it lists none of it. Refusals and a run with
 no reset are left alone. The other moved listings have nothing an API call can
@@ -1329,7 +1390,12 @@ refusals included. The reset removes the message the link names, so an exchange
 aimed at a positive message id gets a message of its own, made after the reset
 (`on_a_message_of_its_own`): imported into the seeded `admin@restmail.test`,
 looked up by address, or for a trace sent from that address to itself, since
-only a send writes a trace. `getThread` reads the mailbox and thread of a
+only a send writes a trace. The trace is written in the background, so the
+hook asks for it until it is there (`a_traced_message`, up to 10 s). The API
+keeps a delivered message's trace only at `TRACE_SAMPLE_RATE`, 0.1 unless set,
+so a server the own-data phase runs against needs `TRACE_SAMPLE_RATE=1`, as
+`tasks/api.yml` sets for the topology; without it the hook names the setting.
+`getThread` reads the mailbox and thread of a
 message imported for it (`on_a_thread_of_its_own`). Missing's `2147483647`, a
 non-positive or undecodable id and every documented 404 keep their ids. One
 send per run is added, still far below the limit. No message id is carried

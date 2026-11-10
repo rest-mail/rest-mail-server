@@ -133,10 +133,20 @@ def asked_for_a_clean_start():
     return os.environ.get("CONTRACT_RESET_SEED") == "1"
 
 
+def setup_origin(transaction):
+    """Where a hook makes its setup calls: the run's own endpoint, which
+    run.sh's own-data phase names in CONTRACT_SETUP_ORIGIN, or else the
+    exchange's. They differ for the gateway routes, which the topology sends to
+    the API's internal listener (vertrag.yml, endpoints): that listener serves
+    only those routes, to a client certificate, so a reset or an account is
+    made on the public one."""
+    return os.environ.get("CONTRACT_SETUP_ORIGIN") or origin_of(transaction)
+
+
 def start_clean(transaction):
     """Reset and seed before this exchange, and forget what that removed. A
     failed reset raises, so the exchange is reported as an error and not sent."""
-    origin = origin_of(transaction)
+    origin = setup_origin(transaction)
     reset_seed.reset_and_seed(origin, admin_token(origin), fixtures=())
     for key in [k for k in hooks.stash if k not in SURVIVES_A_RESET]:
         del hooks.stash[key]
@@ -607,6 +617,9 @@ def row_field(row, field):
 @hooks.after("listTlsReports")
 @hooks.after("listPipelines")
 @hooks.after("listThreads")
+@hooks.after("listFolders")
+@hooks.after("listMessages")
+@hooks.after("searchMessages")
 def the_listing_holds_what_was_made(transaction):
     # A listing's 200 has the same shape with no rows as with the one its
     # before hook made after the reset, so the status and the schema alone
@@ -2270,6 +2283,35 @@ def a_sent_message(transaction):
     return message_id
 
 
+# How long a sent message's trace may take to be written: the recorder writes
+# a batch every 500 ms (internal/trace/recorder.go), more on a loaded host.
+TRACE_WAIT_SECONDS = 10
+
+
+def a_traced_message(transaction):
+    """The id of a message the fixture admin sends itself, once its trace has
+    been written. Traces are written in the background, so the send's answer
+    comes before its trace; this asks for the trace until it is there. A trace
+    that never comes raises: the API keeps a delivered message's trace only at
+    TRACE_SAMPLE_RATE, 0.1 unless set (internal/config/config.go), and the
+    contract needs every one kept, TRACE_SAMPLE_RATE=1 as tasks/api.yml sets."""
+    message_id = a_sent_message(transaction)
+    deadline = time.monotonic() + TRACE_WAIT_SECONDS
+    while True:
+        trace = fixture_call(
+            transaction, "GET", f"/api/v1/admin/messages/{message_id:d}/trace", expect=(404,)
+        )
+        if trace is not None:
+            return message_id
+        if time.monotonic() >= deadline:
+            raise RuntimeError(
+                f"no trace was written for message {message_id:d} within "
+                f"{TRACE_WAIT_SECONDS:d} s: run the API with TRACE_SAMPLE_RATE=1, "
+                "since it keeps 1 in 10 delivered messages' traces by default"
+            )
+        time.sleep(0.25)
+
+
 @hooks.before("getMessage")
 @hooks.before("updateMessage")
 @hooks.before("getRawMessage")
@@ -2284,9 +2326,10 @@ def on_a_message_of_its_own(transaction):
     # starts clean, and the message the link names went with the reset. So an
     # exchange aimed at a positive message id gets a message of its own, made
     # after the reset: imported into the seeded admin's mailbox, or for a trace
-    # sent, since only a send writes one. A refusal is then refused for its
-    # body and not for a message that is gone. Missing's 2147483647, a
-    # non-positive or undecodable id and every documented 404 keep their ids.
+    # sent, since only a send writes one, and read once its trace is written.
+    # A refusal is then refused for its body and not for a message that is
+    # gone. Missing's 2147483647, a non-positive or undecodable id and every
+    # documented 404 keep their ids.
     # Without a reset the link's message is still there, and nothing changes.
     if not asked_for_a_clean_start():
         return
@@ -2304,11 +2347,162 @@ def on_a_message_of_its_own(transaction):
     if " > 404" in transaction.get("name", ""):
         return
     if traced:
-        message_id = a_sent_message(transaction)
+        message_id = a_traced_message(transaction)
     else:
         message_id = an_imported_message(transaction, "Contract own", "Contract own message")
     parts[segment] = str(message_id)
     transaction["fullPath"] = "/".join(parts) + ("?" + query if query else "")
+
+
+# The bytes of the attachment getAttachment's examples read after a reset:
+# more than the 10 the single range asks for, fewer than the 1000 the
+# unsatisfiable range starts at, and text, so the answer reads back as sent.
+ATTACHMENT_BYTES = b"REST Mail contract attachment: the bytes its ranges are read from.\n"
+
+# getAttachment's statuses that read an attachment which is there: the whole
+# file, a range, the bodyless 304 and 412, and the unsatisfiable range's 416.
+ATTACHMENT_READS = ("200", "206", "304", "412", "416")
+
+
+def an_attachment_of_its_own(transaction):
+    """The id of an attachment holding ATTACHMENT_BYTES, on a message imported
+    into the fixture admin's mailbox through the API, for this exchange."""
+    origin = origin_of(transaction)
+    boundary = f"contract-{time.time_ns():d}"
+    raw = (
+        f"Message-ID: <attachment-{time.time_ns():d}@restmail.test>\r\n"
+        "From: sender@example.test\r\n"
+        f"To: {ADMIN}\r\n"
+        f"Date: {formatdate(usegmt=True)}\r\n"
+        "Subject: Contract attachment\r\n"
+        "MIME-Version: 1.0\r\n"
+        f'Content-Type: multipart/mixed; boundary="{boundary}"\r\n\r\n'
+        f"--{boundary}\r\n"
+        "Content-Type: text/plain; charset=utf-8\r\n\r\n"
+        "A contract fixture with an attachment.\r\n"
+        f"--{boundary}\r\n"
+        "Content-Type: application/octet-stream\r\n"
+        'Content-Disposition: attachment; filename="contract.bin"\r\n'
+        "Content-Transfer-Encoding: base64\r\n\r\n"
+        f"{base64.b64encode(ATTACHMENT_BYTES).decode()}\r\n"
+        f"--{boundary}--\r\n"
+    ).encode()
+    message = fixture_call(
+        transaction,
+        "POST",
+        f"/api/v1/accounts/{mailbox_id(origin, ADMIN):d}/messages/import",
+        {
+            "raw_message": base64.b64encode(raw).decode(),
+            "folder": "INBOX",
+            "internal_date": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        },
+    )
+    message_id = (message or {}).get("id")
+    if type(message_id) is not int or message_id < 1:
+        raise RuntimeError("the fixture import returned no message")
+    attachments = fixture_call(transaction, "GET", f"/api/v1/messages/{message_id:d}/attachments")
+    ids = [row.get("id") for row in attachments or () if isinstance(row, dict)]
+    if len(ids) != 1 or type(ids[0]) is not int or ids[0] < 1:
+        raise RuntimeError(f"the imported message holds no single attachment: {ids!r}")
+    return ids[0]
+
+
+def expected_status(transaction):
+    """The status in a transaction's name: "<path> > <summary> > 206 > ..."."""
+    for part in transaction.get("name", "").split(" > ")[1:]:
+        if len(part) == 3 and part.isdecimal():
+            return part
+    return ""
+
+
+@hooks.before("getAttachment")
+def on_an_attachment_of_its_own(transaction):
+    # getAttachment, moved to a clean start: each exchange, refusals included,
+    # resets and seeds first. Its examples name attachment 1, which the reset
+    # does not make. An exchange that reads an attachment which is there (the
+    # whole file, a range, the 304 and 412 conditionals and the 416 range) is
+    # sent to one of its own, imported after the reset with ATTACHMENT_BYTES,
+    # and its after hook checks the answer against those bytes. Refusals keep
+    # their ids (0, missing's 2147483647 and the others' own), and so does every
+    # documented 404. No link reaches it. A run with no reset changes nothing.
+    if not asked_for_a_clean_start():
+        return
+    start_clean(transaction)
+    path, separator, query = transaction["fullPath"].partition("?")
+    parts = path.split("/")
+    if len(parts) != 5 or not positive_id(parts[4]) or parts[4] == "2147483647":
+        return
+    if expected_status(transaction) not in ATTACHMENT_READS:
+        return
+    parts[4] = str(an_attachment_of_its_own(transaction))
+    transaction["fullPath"] = "/".join(parts) + separator + query
+    hooks.stash["attachment_made"] = transaction.get("name", "")
+
+
+def header_of(message, name):
+    """A header of a request or answer, by name in any case, or ""."""
+    for key, value in ((message or {}).get("headers") or {}).items():
+        if key.lower() == name.lower():
+            return ", ".join(value) if isinstance(value, list) else str(value)
+    return ""
+
+
+@hooks.after("getAttachment")
+def the_attachment_answers_its_bytes(transaction):
+    # After a reset, a read of the attachment made for it must answer that
+    # attachment's bytes, so the status and the headers alone do not pass on
+    # another one: the whole file, each range the request asks for with its
+    # Content-Range, and the unsatisfiable range's "bytes */<length>". The
+    # bodyless 304 and 412 need the attachment to be there, which their
+    # status shows. A status other than the one documented fails on its own.
+    made = hooks.stash.pop("attachment_made", None)
+    status = expected_status(transaction)
+    real = transaction.get("real") or {}
+    if (
+        not asked_for_a_clean_start()
+        or status not in ATTACHMENT_READS
+        or str(real.get("statusCode")) != status
+    ):
+        return
+    if made != transaction.get("name", ""):
+        transaction["fail"] = "no attachment was made for this read"
+        return
+    total = len(ATTACHMENT_BYTES)
+    body = real.get("body") or ""
+    body = body.encode("latin-1") if isinstance(body, str) else bytes(body)
+    ranges = header_of(transaction.get("request"), "Range").partition("=")[2]
+    spans = []
+    for span in filter(None, (s.strip() for s in ranges.split(","))):
+        first, _, last = span.partition("-")
+        if first.isdecimal():
+            spans.append((int(first), min(int(last) if last else total - 1, total - 1)))
+    problems = []
+    if status == "200" and body != ATTACHMENT_BYTES:
+        problems.append(f"the body ({len(body):d} bytes) is not the {total:d} bytes attached")
+    elif status == "206" and len(spans) == 1:
+        first, last = spans[0]
+        if body != ATTACHMENT_BYTES[first : last + 1]:
+            problems.append(f"the body is not bytes {first:d}-{last:d} of the attachment")
+        if header_of(real, "Content-Range") != f"bytes {first:d}-{last:d}/{total:d}":
+            problems.append(
+                f"Content-Range is {header_of(real, 'Content-Range')!r}, "
+                f"not 'bytes {first:d}-{last:d}/{total:d}'"
+            )
+    elif status == "206":
+        # A part per range: its headers, Content-Range among them, then its bytes.
+        for first, last in spans:
+            header = f"Content-Range: bytes {first:d}-{last:d}/{total:d}\r\n".encode()
+            start = body.find(header)
+            start = body.find(b"\r\n\r\n", start) + 4 if start >= 0 else -1
+            want = ATTACHMENT_BYTES[first : last + 1]
+            if start < 4 or body[start : start + len(want)] != want:
+                problems.append(f"no part holds bytes {first:d}-{last:d} of the attachment")
+    elif status == "416" and header_of(real, "Content-Range") != f"bytes */{total:d}":
+        problems.append(
+            f"Content-Range is {header_of(real, 'Content-Range')!r}, not 'bytes */{total:d}'"
+        )
+    if problems:
+        transaction["fail"] = "the attachment made for it was not answered: " + "; ".join(problems)
 
 
 @hooks.before("getThread")
@@ -2344,12 +2538,19 @@ def a_thread_awaiting_a_reply(transaction, account):
     account has a thread whose last message is its own. Answers its subject,
     which names it by the time it is made."""
     subject = f"Contract awaiting {time.time_ns():d}"
+    a_message_in(transaction, account, "Sent", ADMIN, subject, "Waiting for a reply.")
+    return subject
+
+
+def a_message_in(transaction, account, folder, sender, subject, body):
+    """Import a message from sender with that subject and body into the
+    account's folder, through the API."""
     raw = (
-        f"Message-ID: <awaiting-{time.time_ns()}@restmail.test>\r\n"
-        f"From: {ADMIN}\r\n"
-        "To: someone@example.test\r\n"
+        f"Message-ID: <contract-{time.time_ns()}@restmail.test>\r\n"
+        f"From: {sender}\r\n"
+        f"To: {ADMIN if sender != ADMIN else 'someone@example.test'}\r\n"
         f"Date: {formatdate(usegmt=True)}\r\n"
-        f"Subject: {subject}\r\n\r\nWaiting for a reply.\r\n"
+        f"Subject: {subject}\r\n\r\n{body}\r\n"
     ).encode()
     fixture_call(
         transaction,
@@ -2357,11 +2558,10 @@ def a_thread_awaiting_a_reply(transaction, account):
         f"/api/v1/accounts/{account:d}/messages/import",
         {
             "raw_message": base64.b64encode(raw).decode(),
-            "folder": "Sent",
+            "folder": folder,
             "internal_date": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         },
     )
-    return subject
 
 
 @hooks.before("listThreads")
@@ -2400,6 +2600,50 @@ def on_the_admins_mailbox_after_a_reset(transaction):
             made_for_the_listing(transaction, "nothing past the cursor", None)
         else:
             made_for_the_listing(transaction, "thread", {"last_message.subject": subject})
+
+
+@hooks.before("listFolders")
+@hooks.before("listMessages")
+@hooks.before("searchMessages")
+def a_mailbox_read_after_a_reset(transaction):
+    # The mailbox reads listAccounts' link reaches, moved to a clean start:
+    # each exchange, refusals included, resets and seeds first. Their examples
+    # name account 1, the fixture admin's mailbox, which the reset seeds again
+    # under another id; an exchange aimed at a positive account other than
+    # missing's 2147483647 goes to that mailbox, looked up by address. A
+    # listing that succeeds gets something of its own to list, made after the
+    # reset: the folder list a folder, the folder's messages a message in it,
+    # and a search a message its query finds. 0, an undecodable id and every
+    # documented 404 keep their ids. A run with no reset changes nothing here.
+    if not asked_for_a_clean_start():
+        return
+    start_clean(transaction)
+    path, separator, query = transaction["fullPath"].partition("?")
+    parts = path.split("/")
+    if len(parts) < 5 or not positive_id(parts[4]) or parts[4] == "2147483647":
+        return
+    if " > 404" in transaction.get("name", ""):
+        return
+    account = mailbox_id(origin_of(transaction), ADMIN)
+    parts[4] = str(account)
+    transaction["fullPath"] = "/".join(parts) + separator + query
+    if " > 200" not in transaction.get("name", ""):
+        return
+    if parts[-1] == "folders":
+        name = f"Contract own folder {time.time_ns():d}"
+        fixture_call(transaction, "POST", f"/api/v1/accounts/{account:d}/folders", {"name": name})
+        made_for_the_listing(transaction, "folder", {"name": name})
+    elif parts[-1] == "messages" and len(parts) > 6:
+        folder = urllib.parse.unquote(parts[6])
+        subject = f"Contract listed {time.time_ns():d}"
+        a_message_in(transaction, account, folder, "sender@example.test", subject, "Listed.")
+        made_for_the_listing(transaction, "message", {"subject": subject, "folder": folder})
+    elif parts[-1] == "search":
+        # The query's words in the subject, so the full-text search finds it.
+        words = urllib.parse.parse_qs(query).get("q", [""])[0]
+        subject = f"{words} contract found {time.time_ns():d}".strip()
+        a_message_in(transaction, account, "INBOX", "sender@example.test", subject, "Found.")
+        made_for_the_listing(transaction, "message", {"subject": subject})
 
 
 @hooks.before("updateDraft")
@@ -2489,7 +2733,10 @@ def list_the_sent_messages_queue_entry(transaction):
 def wait_for_the_trace(transaction):
     # Traces are written in the background, a batch every 500 ms
     # (internal/trace/recorder.go); the testbed keeps every one
-    # (TRACE_SAMPLE_RATE=1 in tasks/api.yml).
+    # (TRACE_SAMPLE_RATE=1 in tasks/api.yml). After a reset the message is one
+    # of its own, read only once its trace is there (a_traced_message).
+    if asked_for_a_clean_start():
+        return
     time.sleep(1)
 
 
@@ -3511,6 +3758,201 @@ def an_account_of_its_own(origin, prefix, password=None):
     )
     with urllib.request.urlopen(request, timeout=10) as response:
         return json.load(response)["data"]["id"]
+
+
+# The recipient each delivery and mailbox check success names, by operation:
+# a hosted mailbox the reset keeps (the gateway's found example names the
+# in-process fixture's user@example.com, which look_up_a_hosted_mailbox sends
+# to the fixture admin). After a reset the documented success goes to a
+# mailbox of its own instead, made then. The RESTMAIL check's 200 is sent
+# whatever address Vertrag gives it, user@example.test today, which no mailbox
+# has: None takes any one address.
+HOSTED_RECIPIENT = {
+    "checkMailboxAddress": "user@example.com",
+    "deliverMessage": ADMIN,
+    "restmailCheckMailbox": None,
+    "restmailDeliver": "eve@restmail.test",
+}
+
+# The status of each operation's documented success.
+DELIVERY_SUCCESS = {
+    "checkMailboxAddress": "200",
+    "deliverMessage": "201",
+    "restmailCheckMailbox": "200",
+    "restmailDeliver": "201",
+}
+
+
+def operation_of(transaction):
+    """Which delivery or mailbox check operation a transaction is, by its path."""
+    path = transaction["fullPath"].partition("?")[0]
+    return {
+        "/api/mailboxes": "checkMailboxAddress",
+        "/api/v1/messages/deliver": "deliverMessage",
+        "/restmail/mailboxes": "restmailCheckMailbox",
+        "/restmail/messages": "restmailDeliver",
+    }.get(path)
+
+
+def to_a_recipient_of_its_own(transaction, operation):
+    """Send a documented success to a mailbox made for it after the reset, and
+    say which (its id and address), or None when the exchange names another
+    recipient (a refusal's, or a missing mailbox's)."""
+    hosted = HOSTED_RECIPIENT[operation]
+    path, _, query = transaction["fullPath"].partition("?")
+    if operation in ("checkMailboxAddress", "restmailCheckMailbox"):
+        pairs = urllib.parse.parse_qsl(query, keep_blank_values=True)
+        if len(pairs) != 1 or pairs[0][0] != "address" or pairs[0][1] != (hosted or pairs[0][1]):
+            return None
+        made = a_recipient_of_its_own(transaction)
+        transaction["fullPath"] = path + "?" + urllib.parse.urlencode({"address": made["address"]})
+        return made
+    body = hooks.get_json(transaction)
+    if not isinstance(body, dict):
+        return None
+    if operation == "deliverMessage":
+        if body.get("address") != hosted or "raw_message" in body:
+            return None
+        made = a_recipient_of_its_own(transaction)
+        body["address"] = made["address"]
+    else:
+        if body.get("to") != [hosted]:
+            return None
+        made = a_recipient_of_its_own(transaction)
+        body["to"] = [made["address"]]
+        an_inbound_pipeline_without_greylisting(transaction)
+    hooks.set_json(transaction, body)
+    return made
+
+
+def a_recipient_of_its_own(transaction):
+    """A fresh restmail.test mailbox, made on the public listener. Its address
+    is named by the time it is made, like an_account_of_its_own's."""
+    origin = setup_origin(transaction)
+    address = f"contract-own-recipient-{time.time_ns():d}@restmail.test"
+    request = urllib.request.Request(
+        origin + "/api/v1/accounts",
+        data=json.dumps({"address": address, "display_name": "Recipient"}).encode(),
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": "Bearer " + mfa_admin_token(origin),
+        },
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        data = json.load(response)["data"]
+    if type(data.get("id")) is not int or str(data.get("address", "")).lower() != address:
+        raise RuntimeError(f"the recipient was not made as asked: {data!r}")
+    return {"id": data["id"], "address": address}
+
+
+def an_inbound_pipeline_without_greylisting(transaction):
+    """An active inbound pipeline for restmail.test that only validates the
+    headers. After a reset the domain has none, and the default one greylists:
+    a sender, recipient and address it has not seen are deferred 503 for five
+    minutes, so a RESTMAIL delivery from a new mailbox could never succeed."""
+    origin = setup_origin(transaction)
+    headers = {"Content-Type": "application/json", "Authorization": "Bearer " + admin_token(origin)}
+    request = urllib.request.Request(origin + "/api/v1/admin/domains?limit=200", headers=headers)
+    with urllib.request.urlopen(request, timeout=10) as response:
+        domains = json.load(response).get("data") or []
+    domain = next((d for d in domains if d.get("name") == "restmail.test"), None)
+    if domain is None:
+        raise RuntimeError("the reset kept no restmail.test domain")
+    request = urllib.request.Request(
+        origin + "/api/v1/admin/pipelines",
+        data=json.dumps(
+            {
+                "domain_id": domain["id"],
+                "direction": "inbound",
+                "filters": [{"name": "header_validate", "config": {}}],
+                "active": True,
+            }
+        ).encode(),
+        headers=headers,
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=10):
+        pass
+
+
+@hooks.before("checkMailboxAddress")
+@hooks.before("deliverMessage")
+@hooks.before("restmailDiscover")
+@hooks.before("restmailCapabilities")
+@hooks.before("restmailCheckMailbox")
+@hooks.before("restmailDeliver")
+def delivery_after_a_reset(transaction):
+    # The delivery and federation operations, moved to a clean start: each
+    # exchange, refusals included, resets and seeds first, on the public
+    # listener (setup_origin). A documented success of a delivery or a mailbox
+    # check is sent to a mailbox of its own, made after the reset, and its
+    # after hook checks the answer names that mailbox. Refusals keep what they
+    # name: an empty or missing address, nobody@restmail.test, missing's
+    # 2147483647, unavailable@example.com. Discovery asks about the seeded
+    # restmail.test, and the capabilities need nothing made. A RESTMAIL
+    # delivery also gets restmail.test an inbound pipeline that does not
+    # greylist, since the default one defers a new sender.
+    # Registered before the other hooks of these operations, so they see the
+    # clean start and the new recipient. A run with no reset changes nothing.
+    if not asked_for_a_clean_start():
+        return
+    start_clean(transaction)
+    operation = operation_of(transaction)
+    if operation is None or expected_status(transaction) != DELIVERY_SUCCESS[operation]:
+        return
+    made = to_a_recipient_of_its_own(transaction, operation)
+    if made is not None:
+        hooks.stash["recipient_made"] = dict(made, name=transaction.get("name", ""))
+
+
+@hooks.after("checkMailboxAddress")
+@hooks.after("deliverMessage")
+@hooks.after("restmailCheckMailbox")
+@hooks.after("restmailDeliver")
+def the_answer_names_the_recipient_made(transaction):
+    # After a reset a documented success must answer for the mailbox made for
+    # it, so the status and the schema alone do not pass on another mailbox or
+    # on none: a check that it exists, with its address (and, from the
+    # gateway's check, its id), a gateway delivery stored in it, a RESTMAIL
+    # delivery that names it delivered and nothing failed. A documented success
+    # with no mailbox made for it fails too. Refusals and a run with no reset
+    # are left alone; a status other than the one documented fails on its own.
+    made = hooks.stash.pop("recipient_made", None)
+    operation = operation_of(transaction)
+    real = transaction.get("real") or {}
+    if (
+        not asked_for_a_clean_start()
+        or operation is None
+        or expected_status(transaction) != DELIVERY_SUCCESS[operation]
+        or str(real.get("statusCode")) != DELIVERY_SUCCESS[operation]
+    ):
+        return
+    if made is None or made["name"] != transaction.get("name", ""):
+        transaction["fail"] = "no mailbox was made for this exchange"
+        return
+    data = (hooks.get_json(transaction, "real") or {}).get("data")
+    data = data if isinstance(data, dict) else {}
+    address = made["address"]
+    problems = []
+    if operation in ("checkMailboxAddress", "restmailCheckMailbox"):
+        if data.get("exists") is not True:
+            problems.append(f"exists is {data.get('exists')!r}")
+        if str(data.get("address", "")).lower() != address.lower():
+            problems.append(f"the address is {data.get('address')!r}")
+        if operation == "checkMailboxAddress" and data.get("mailbox_id") != made["id"]:
+            problems.append(f"the mailbox id is {data.get('mailbox_id')!r}, not {made['id']:d}")
+    elif operation == "deliverMessage":
+        if data.get("mailbox_id") != made["id"]:
+            problems.append(f"the message is in mailbox {data.get('mailbox_id')!r}, not {made['id']:d}")
+    else:
+        delivered = [str(a).lower() for a in data.get("delivered") or ()]
+        if delivered != [address.lower()]:
+            problems.append(f"delivered is {data.get('delivered')!r}")
+        if data.get("failed"):
+            problems.append(f"failed is {data.get('failed')!r}")
+    if problems:
+        transaction["fail"] = f"the answer is not for the mailbox made for it ({address}): " + "; ".join(problems)
 
 
 @hooks.before("checkMailboxAddress")
