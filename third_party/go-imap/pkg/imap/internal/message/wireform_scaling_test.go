@@ -118,7 +118,45 @@ func TestSevenBitBoundary_ScansInProportion(t *testing.T) {
 	}
 }
 
-// TestParameterWithoutFirstSegment_IsLinear: laterSegments sorts each parameter's
+// TestParameterSegments_AreLinear: extendedValue sorts each parameter's segments once, and
+// looks at nothing else, and a repeated name is read past once. A Content-Type holding no
+// 8-bit octet reaches these without WireForm, which sends it as stored. It counts bytes
+// allocated rather than time, so a pause elsewhere can't fail it, and a value that grew
+// by copying would show up as a quadratic count.
+func TestParameterSegments_AreLinear(t *testing.T) {
+	for name, unit := range map[string]func(n int) string{
+		"a gap in one parameter": func(n int) string { return "; name*" + strconv.Itoa(2*n) + "=x" },
+		"a number repeated":      func(n int) string { return "; name*0=" + strconv.Itoa(n) },
+		"a name repeated":        func(n int) string { return "; a=" + strconv.Itoa(n) },
+		"distinct names":         func(n int) string { return "; n" + strconv.Itoa(n) + "*x=y" },
+	} {
+		t.Run(name, func(t *testing.T) {
+			allocated := func(size int) uint64 {
+				var b strings.Builder
+				b.WriteString("application/pdf")
+				for n := 0; b.Len() < size; n++ {
+					b.WriteString(unit(n))
+				}
+				value := b.String()
+				var before, after runtime.MemStats
+				runtime.ReadMemStats(&before)
+				mt, _, err := parseContentType(value)
+				runtime.ReadMemStats(&after)
+				if err != nil || mt != "application/pdf" {
+					t.Fatalf("parseContentType: %q, %v", mt, err)
+				}
+				return after.TotalAlloc - before.TotalAlloc
+			}
+			const size, maxRatio = 32 << 10, 9
+			small, big := allocated(size), allocated(4*size)
+			if ratio := float64(big) / float64(small); ratio > maxRatio {
+				t.Errorf("4x the input allocated %.1fx as much (%d, then %d), want at most %dx", ratio, small, big, maxRatio)
+			}
+		})
+	}
+}
+
+// TestParameterWithoutFirstSegment_IsLinear: extendedValue sorts each parameter's
 // segments once, and looks at nothing else.
 func TestParameterWithoutFirstSegment_IsLinear(t *testing.T) {
 	assertLinear(t, func(size int) string {
@@ -167,6 +205,52 @@ func TestEncodeHeaderValue_ScansInProportion(t *testing.T) {
 				t.Errorf("scan took %d steps over %d octets, want at most %d", tokens.steps, len(value), limit)
 			}
 		})
+	}
+}
+
+// hasReadableType asks only about the type of a field holding an 8-bit octet. It has to
+// agree with reading the whole field, every time.
+func TestHasReadableType_AgreesWithTheWholeField(t *testing.T) {
+	check := func(value string) {
+		value = trimWSP(value)
+		mt, _, err := parseContentType(value)
+		want := err == nil && !has8bit(mt)
+		if got := hasReadableType(value, readField(value)); got != want {
+			t.Errorf("%q: hasReadableType = %v, the whole field reads %q, %v", value, got, mt, err)
+		}
+	}
+	everyString("a/;=\"(*\xf6", 6, func(s string) {
+		check(s)
+		check("a/a;" + s)
+	})
+}
+
+// withoutRepeats gives up on a field it can't split. Callers can't reach this today, since
+// uncommentMIME and readableField both refuse or respell an opening that never closes.
+func TestWithoutRepeats_LeavesWhatItCantSplit(t *testing.T) {
+	const value = `a/a; b=1; b="x`
+	if got, repeated := withoutRepeats(value); repeated || got != value {
+		t.Fatalf("withoutRepeats = %q, %v", got, repeated)
+	}
+}
+
+// commentPairs walks a field once, however its comments nest or fail to close: a stray
+// ')' pairs with nothing, and a quoted-pair is no delimiter.
+func TestCommentPairs(t *testing.T) {
+	const value = `a(b(c)d)e(f\)(g)h)(`
+	pairs := commentClosers(value)
+	for _, tc := range []struct {
+		at, closer int
+		ok         bool
+	}{
+		{0, 0, false}, {1, 7, true}, {2, 0, false}, {3, 5, true}, {9, 17, true}, {13, 15, true}, {18, 0, false}, {20, 0, false},
+	} {
+		if got, ok := pairs.closer(tc.at); ok != tc.ok || got != tc.closer {
+			t.Errorf("closer(%d) = %d, %v, want %d, %v", tc.at, got, ok, tc.closer, tc.ok)
+		}
+	}
+	if _, ok := commentClosers("no comments").closer(0); ok {
+		t.Error("a value with no comments has a closer")
 	}
 }
 

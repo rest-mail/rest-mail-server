@@ -22,7 +22,12 @@ var partsWant = []string{"H\xc3\xb6", "\xff\xfe"}
 // retrieved logs a session in, and returns what RETR sent and LIST and RETR reported.
 func retrieved(t *testing.T, raw string) (message string, listed, sent int) {
 	t.Helper()
-	c := dialStore(t, raw)
+	return signedInRetrieve(t, dialStore(t, raw))
+}
+
+// signedInRetrieve is retrieved on a session that may have sent a command before signing in.
+func signedInRetrieve(t *testing.T, c *pop3Client) (message string, listed, sent int) {
+	t.Helper()
 	c.do("USER jorg@example.test")
 	c.do("PASS pw")
 	if _, err := fmt.Sscanf(c.do("LIST 1"), "+OK 1 %d", &listed); err != nil {
@@ -232,4 +237,54 @@ func TestBoundaryInOtherPOP3Commands(t *testing.T) {
 			t.Fatalf("TOP\n got %q\nwant %q", got, want)
 		}
 	})
+}
+
+// TestRetrSendsEveryLineInCRLF pins the octets RETR sends for the line breaks a message is
+// stored with (RFC 1939 section 3), with UTF8 and without it, where
+// TestSizesMatchWhatRetrSends counts them: every line ends in CRLF, a last line with no
+// break gains one, and a bare CR stays. A session that sent UTF8 gets the header as stored.
+func TestRetrSendsEveryLineInCRLF(t *testing.T) {
+	for name, tc := range map[string]struct{ raw, sent, utf8 string }{
+		"bare LF, ASCII header": {raw: "Subject: hi\n\nbody\nmore\n", sent: "Subject: hi\r\n\r\nbody\r\nmore\r\n"},
+		"bare LF in the body":   {raw: "Subject: hi\r\n\r\nbody\nmore\r\n", sent: "Subject: hi\r\n\r\nbody\r\nmore\r\n"},
+		"bare LF, 8-bit header": {
+			raw:  "Subject: J\xc3\xb6\n\nbody\nmore\n",
+			sent: "Subject: =?utf-8?q?J=C3=B6?=\r\n\r\nbody\r\nmore\r\n",
+			utf8: "Subject: J\xc3\xb6\r\n\r\nbody\r\nmore\r\n",
+		},
+		"no last break": {raw: "Subject: hi\r\n\r\nbody", sent: "Subject: hi\r\n\r\nbody\r\n"},
+		"no last break, 8-bit": {
+			raw:  "Subject: J\xc3\xb6\r\n\r\nbody",
+			sent: "Subject: =?utf-8?q?J=C3=B6?=\r\n\r\nbody\r\n",
+			utf8: "Subject: J\xc3\xb6\r\n\r\nbody\r\n",
+		},
+		"a CR at the end": {raw: "Subject: hi\r\n\r\nbody\r", sent: "Subject: hi\r\n\r\nbody\r\r\n"},
+		"a bare CR stays": {raw: "Subject: hi\r\n\r\na\rb\r\n", sent: "Subject: hi\r\n\r\na\rb\r\n"},
+		"nothing to add":  {raw: "Subject: hi\r\n\r\nbody\r\n", sent: "Subject: hi\r\n\r\nbody\r\n"},
+		"8-bit boundary, no last break": {
+			raw:  "Subject: J\xc3\xb6\r\nContent-Type: multipart/mixed; boundary=\"\xc3\xb6\"\r\n\r\n--\xc3\xb6\r\n\r\nx\r\n--\xc3\xb6--",
+			sent: "Subject: =?utf-8?q?J=C3=B6?=\r\nContent-Type: multipart/mixed;\r\n boundary=\"=C3=B6\"\r\n\r\n--=C3=B6\r\n\r\nx\r\n--=C3=B6--\r\n",
+			utf8: "Subject: J\xc3\xb6\r\nContent-Type: multipart/mixed; boundary=\"\xc3\xb6\"\r\n\r\n--\xc3\xb6\r\n\r\nx\r\n--\xc3\xb6--\r\n",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			message, listed, sent := retrieved(t, tc.raw)
+			if message != tc.sent {
+				t.Fatalf("RETR sent %q, want %q", message, tc.sent)
+			}
+			requireSameSize(t, message, listed, sent)
+
+			want := tc.utf8
+			if want == "" {
+				want = tc.sent
+			}
+			c := dialStore(t, tc.raw)
+			c.do("UTF8")
+			message, listed, sent = signedInRetrieve(t, c)
+			if message != want {
+				t.Fatalf("after UTF8, RETR sent %q, want %q", message, want)
+			}
+			requireSameSize(t, message, listed, sent)
+		})
+	}
 }
