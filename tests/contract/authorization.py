@@ -177,6 +177,31 @@ def main(spec_path, config_path, principals_path, out_path, report_path, run_spe
     config.pop("surface", None)
     config["skip"] = list(config.get("skip") or []) + OWN_ACCOUNT
     config["authorization"] = {"refuse": HIDING_REFUSAL}
+    with open(spec_path) as source:
+        description = yaml.safe_load(source)
+    operations = {
+        operation.get("operationId")
+        for path in description.get("paths", {}).values()
+        for method, operation in path.items()
+        if method in METHODS and isinstance(operation, dict)
+    }
+    refusals = [
+        {
+            "operation": operation,
+            "principal": "ordinary",
+            "status": 403,
+            "body": {"error": {"code": "two_factor_required"}},
+        }
+        for operation in (
+            "unlinkAccount",
+            "activateGrant",
+            "deactivateGrant",
+            "makeGrantEligible",
+        )
+        if operation in operations
+    ]
+    if refusals:
+        config["authorization"]["refusals"] = refusals
     provides = config.get("provides") or {}
     config["provides"] = {
         kind: sorted(set(provides.get(kind) or []) | set(values))

@@ -206,6 +206,53 @@ class AuthorizationConfig(unittest.TestCase):
         self.assertEqual(config["output"], ["", str(self.report)])
         self.assertEqual(yaml.safe_load(self.config.read_text()), self.settings)
 
+    def test_password_only_assurance_refusals_are_exact_and_scoped(self):
+        operations = [
+            "unlinkAccount", "activateGrant", "deactivateGrant", "makeGrantEligible"
+        ]
+        self.spec.write_text(
+            yaml.safe_dump(
+                {
+                    "paths": {
+                        f"/operation/{operation}": {
+                            "post": {
+                                "operationId": operation,
+                                "security": [{"BearerAuth": []}],
+                            }
+                        }
+                        for operation in operations + ["unrelated"]
+                    }
+                }
+            )
+        )
+        config = self.generate()
+        self.assertEqual(
+            config["authorization"].get("refusals"),
+            [
+                {
+                    "operation": operation,
+                    "principal": "ordinary",
+                    "status": 403,
+                    "body": {"error": {"code": "two_factor_required"}},
+                }
+                for operation in operations
+            ],
+        )
+        ordinary = next(
+            principal
+            for principal in config["principals"]
+            if principal["name"] == "ordinary"
+        )
+        self.assertEqual(
+            ordinary["auth"]["login"]["body"],
+            {
+                "email": self.fixture["ordinary"]["address"],
+                "password": self.fixture["ordinary"]["password"],
+                "client": "native",
+            },
+        )
+        self.assertEqual(ordinary["roles"], [])
+
     def test_a_refusal_may_be_the_404_that_hides_someone_elses_object(self):
         # Decided on #672: only 404, added to the status each cell requires. The
         # statuses a cell already requires stay out, so 401 and 403 do not start
