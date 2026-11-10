@@ -1,6 +1,7 @@
 """The report's one refuse list stays within what the owner decided on #672."""
 
 import contextlib
+import copy
 import io
 import json
 import tempfile
@@ -23,6 +24,12 @@ SPEC = {
         },
         "/api/v1/accounts": {
             "post": {"responses": {"201": {}, "403": {}, "404": {}}},
+        },
+        "/api/v1/messages/send": {
+            "post": {
+                "operationId": "sendMessage",
+                "responses": {"201": {}, "403": {}, "404": {}},
+            },
         },
         "/api/v1/admin/domains/{id}": {
             "get": {"responses": {"200": {}, "403": {}, "404": {}}},
@@ -54,6 +61,44 @@ class Findings(unittest.TestCase):
             ),
             [],
         )
+
+    def test_the_decided_send_body_selector_hides_an_unlinked_sender(self):
+        self.assertEqual(
+            self.findings(cell("POST /api/v1/messages/send", "ordinary", "403", "404")),
+            [],
+        )
+
+    def test_a_sender_selector_does_not_allow_anonymous_or_admin_404s(self):
+        found = self.findings(
+            cell("POST /api/v1/messages/send", "none", "401", "404"),
+            cell("POST /api/v1/admin/sender-rules", "ordinary", "403", "404"),
+        )
+        self.assertEqual(len(found), 2)
+
+    def test_a_body_selector_requires_the_exact_decided_operation_and_documented_404(self):
+        for mode in (
+            "missing-operation", "different-operation", "different-path", "different-method", "no-404"
+        ):
+            with self.subTest(mode=mode):
+                spec = copy.deepcopy(SPEC)
+                operation = spec["paths"]["/api/v1/messages/send"]["post"]
+                selected = "POST /api/v1/messages/send"
+                if mode == "missing-operation":
+                    operation.pop("operationId")
+                elif mode == "different-operation":
+                    operation["operationId"] = "createAccount"
+                elif mode == "different-path":
+                    spec["paths"]["/api/v1/messages/other"] = {"post": operation}
+                    selected = "POST /api/v1/messages/other"
+                elif mode == "different-method":
+                    spec["paths"]["/api/v1/messages/send"]["get"] = operation
+                    selected = "GET /api/v1/messages/send"
+                elif mode == "no-404":
+                    operation["responses"].pop("404")
+                findings = authorization_refusals.findings(
+                    spec, {"authorization": {"cells": [cell(selected, "ordinary", "403", "404")]}}
+                )
+                self.assertEqual(len(findings), 1)
 
     def test_a_query_template_does_not_hide_the_operation(self):
         self.assertEqual(

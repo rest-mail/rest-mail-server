@@ -9,9 +9,9 @@ refusal is required, including where the same decision wants something else: an
 admin route the caller lacks the role for is 403, and no credential is 401.
 
 This reads the finished report and names every 404 that stood in for a required
-refusal anywhere but on an object the path names, on a route that is not an
-admin route and whose description documents the 404. Like the matrix itself it
-is a report, not a gate.
+refusal anywhere but on an object the path names or sendMessage's body-selected
+sender, on a route that is not an admin route and whose description documents
+the 404. Like the matrix itself it is a report, not a gate.
 
 Usage: authorization_refusals.py <openapi.json> <authorization.json>
 """
@@ -31,10 +31,15 @@ def may_hide(spec, operation):
     """Whether a signed-in caller refused this operation may be answered 404."""
     method, _, template = operation.partition(" ")
     path = QUERY_TEMPLATE.sub("", template)
-    if "{" not in path or path.startswith(ADMIN_ROUTES):
+    item = spec.get("paths", {}).get(path, {}).get(method.lower(), {})
+    names_hidden_sender = (
+        method == "POST"
+        and path == "/api/v1/messages/send"
+        and item.get("operationId") == "sendMessage"
+    )
+    if ("{" not in path and not names_hidden_sender) or path.startswith(ADMIN_ROUTES):
         return False
-    item = spec.get("paths", {}).get(path, {})
-    return "404" in item.get(method.lower(), {}).get("responses", {})
+    return "404" in item.get("responses", {})
 
 
 def findings(spec, report):
@@ -49,7 +54,8 @@ def findings(spec, report):
         found.append(
             f"{cell['operation']} as {cell['principal']}: answered 404 where "
             f"{required} is the refusal; only a signed-in caller's refusal of an "
-            "object the path names, on a route that is not an admin route and "
+            "object the path names or sendMessage's body-selected sender, "
+            "on a route that is not an admin route and "
             "documents 404, may be 404"
         )
     return found
