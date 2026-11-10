@@ -1,5 +1,9 @@
 {
   "lint": {
+    "Set up Python": {
+      "sha256": "8c22eb245f396185d302396a5fc8202e4bb1c86b20085c2cfc57ced074892746",
+      "local": "Python environment"
+    },
     "Checkout code": {
       "sha256": "b0a4e5bf0391db799c7a5df7737abe0814096b1ac377b270f9d560e5f96a2fb3",
       "exception": "Runs on the current working tree, including staged, unstaged and untracked files, or a scratch merge; checkout would discard local work."
@@ -46,6 +50,10 @@
     }
   },
   "constellation": {
+    "Set up Python": {
+      "sha256": "8c22eb245f396185d302396a5fc8202e4bb1c86b20085c2cfc57ced074892746",
+      "local": "Python environment"
+    },
     "Checkout code": {
       "sha256": "b0a4e5bf0391db799c7a5df7737abe0814096b1ac377b270f9d560e5f96a2fb3",
       "exception": "Runs on the current working tree, including staged, unstaged and untracked files, or a scratch merge; checkout would discard local work."
@@ -56,12 +64,16 @@
     }
   },
   "contract-tooling": {
+    "Set up Python": {
+      "sha256": "8c22eb245f396185d302396a5fc8202e4bb1c86b20085c2cfc57ced074892746",
+      "local": "Python environment"
+    },
     "Checkout code": {
       "sha256": "b0a4e5bf0391db799c7a5df7737abe0814096b1ac377b270f9d560e5f96a2fb3",
       "exception": "Runs on the current working tree, including staged, unstaged and untracked files, or a scratch merge; checkout would discard local work."
     },
     "Test contract tooling": {
-      "sha256": "6e0c1bf9cff7a0656014030a9a737ff361d807243b0f214fe7de30360e829037",
+      "sha256": "00f87b8dfcce7848ef1b63cfc799cbd456bf9a79e5913a9fd69b03d59f499ccd",
       "local": "tests/contract"
     }
   },
@@ -204,6 +216,10 @@
     }
   },
   "test-contract": {
+    "Set up Python": {
+      "sha256": "8c22eb245f396185d302396a5fc8202e4bb1c86b20085c2cfc57ced074892746",
+      "local": "Python environment"
+    },
     "Checkout code": {
       "sha256": "b0a4e5bf0391db799c7a5df7737abe0814096b1ac377b270f9d560e5f96a2fb3",
       "exception": "Runs on the current working tree, including staged, unstaged and untracked files, or a scratch merge; checkout would discard local work."
@@ -229,11 +245,15 @@
       "local": "Empty database fixtures"
     },
     "Test the contract fault switch": {
-      "sha256": "b1d69dd9b0d22090183917f86de6149853fabdad6f7f3362bdbbfb929509d29c",
+      "sha256": "0112d018ec3fb37d20c1ca807b55c1df9cb333520a9341061e21e58e5f57c360",
       "local": "Contract fault switch"
     }
   },
   "test-imap": {
+    "Set up Python": {
+      "sha256": "8c22eb245f396185d302396a5fc8202e4bb1c86b20085c2cfc57ced074892746",
+      "local": "Python environment"
+    },
     "Checkout code": {
       "sha256": "b0a4e5bf0391db799c7a5df7737abe0814096b1ac377b270f9d560e5f96a2fb3",
       "exception": "Runs on the current working tree, including staged, unstaged and untracked files, or a scratch merge; checkout would discard local work."
@@ -276,6 +296,10 @@
     }
   },
   "release-cli": {
+    "Set up Python": {
+      "sha256": "8c22eb245f396185d302396a5fc8202e4bb1c86b20085c2cfc57ced074892746",
+      "local": "Python environment"
+    },
     "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1": {
       "sha256": "c132f7ccad42e5d1a5cb8c07d5ae5224d8d8cbad18e779568c481d19e1cd6a82",
       "exception": "Runs on the current working tree, including staged, unstaged and untracked files, or a scratch merge; checkout would discard local work."

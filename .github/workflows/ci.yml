@@ -82,6 +82,9 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
+
       - name: Set up Go
         id: go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -194,6 +197,9 @@ jobs:
       # scripts from its own head, which on a stale branch would not have a new one.
       # checkout fetches every branch. The base tip can be on none of them: a rerun
       # keeps its event, and a stack's parent branch may have been force-pushed since.
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
+
       - name: Find where the PR branched from its base
         id: branch-point
         env:
@@ -349,6 +355,9 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
+
       - name: Check constellation inventory
         run: python3 -m unittest discover -s scripts/tests -p 'test_*.py'
 
@@ -361,9 +370,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
+
       - name: Test contract tooling
         run: |
-          python3 -m pip install --quiet pyyaml idna==3.11
           python3 -m unittest discover -s tests/contract -p 'test_*.py'
 
   lint:
@@ -376,6 +387,9 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
 
       - name: Test load tooling
         run: python3 -m unittest discover -s tests/load -p 'test_*.py'
@@ -608,6 +622,9 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
+
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
@@ -650,7 +667,6 @@ jobs:
       - name: Test the contract fault switch
         run: |
           set -euo pipefail
-          python3 -m pip install --quiet pyyaml
           tags="$(python3 -B tests/contract/faults.py tags)"
           go vet -tags "$tags" ./cmd/api ./internal/faultinject
           go test -race -count=1 -tags "$tags" ./internal/faultinject
@@ -663,6 +679,9 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
 
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -997,6 +1016,9 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
+
       - name: Download example proofs
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -1065,6 +1087,9 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
+
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: "1.26.10"
@@ -1117,6 +1142,9 @@ jobs:
           fetch-depth: 2
 
       # helm.yml refuses a version already published, which is too late to say so.
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
+
       - name: Refuse a chart change without a new version
         if: github.event_name != 'push'
         run: python3 scripts/check_chart_bump.py --base HEAD^1
@@ -1144,24 +1172,16 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      # corepack ships with the runner's preinstalled Node and activates the
-      # pnpm version pinned in package.json, so no extra action needs pinning.
-      # It must run BEFORE setup-node, which needs pnpm on PATH to resolve its
-      # dependency cache.
-      - name: Enable pnpm
-        run: corepack enable pnpm
-
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          # The supported range lives in the app's package.json (engines.node);
-          # setup-node reads it, so CI cannot drift from what the app declares.
-          # engine-strict in .npmrc then fails the install if it ever does.
-          #
           # No `cache: pnpm`: its post-job save fails the job when the store path it
           # resolved from the repository root does not exist, which took down builds
           # that had already passed. Installing two small apps is cheap.
-          node-version-file: webmail/package.json
+          node-version: "22"
+
+      - name: Enable pnpm
+        run: corepack enable pnpm
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -1204,24 +1224,16 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      # corepack ships with the runner's preinstalled Node and activates the
-      # pnpm version pinned in package.json, so no extra action needs pinning.
-      # It must run BEFORE setup-node, which needs pnpm on PATH to resolve its
-      # dependency cache.
-      - name: Enable pnpm
-        run: corepack enable pnpm
-
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          # The supported range lives in the app's package.json (engines.node);
-          # setup-node reads it, so CI cannot drift from what the app declares.
-          # engine-strict in .npmrc then fails the install if it ever does.
-          #
           # No `cache: pnpm`: its post-job save fails the job when the store path it
           # resolved from the repository root does not exist, which took down builds
           # that had already passed. Installing two small apps is cheap.
-          node-version-file: admin/package.json
+          node-version: "22"
+
+      - name: Enable pnpm
+        run: corepack enable pnpm
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -1278,6 +1290,9 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
 
       - name: Retry transient image pull failures
         run: echo "$GITHUB_WORKSPACE/scripts/ci/docker-retry" >> "$GITHUB_PATH"
@@ -1502,7 +1517,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version-file: scripts/email-explained/package.json
+          node-version: "22"
 
       - name: Install dependencies
         run: npm ci

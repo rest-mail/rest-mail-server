@@ -83,6 +83,9 @@ jobs:
           # GoReleaser reads tags and history for the version and changelog.
           fetch-depth: 0
 
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
+
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: "1.26.10"
