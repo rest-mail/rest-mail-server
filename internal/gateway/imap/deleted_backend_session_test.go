@@ -83,9 +83,12 @@ func TestDeletedMarkSharedThroughTheAPI(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 
+	// Both sessions run on one gateway, which shares \Recent state: the
+	// desktop selects first, so nothing is \Recent to the phone.
+	backend := NewBackend(apiclient.New(srv.URL), nil)
 	open := func() *imapClient {
 		client, server := net.Pipe()
-		sess := imapserver.NewSession(server, NewBackend(apiclient.New(srv.URL), nil), "imap.test", nil, goimap.NopLimiter{})
+		sess := imapserver.NewSession(server, backend, "imap.test", nil, goimap.NopLimiter{})
 		done := make(chan struct{})
 		go func() {
 			defer close(done)

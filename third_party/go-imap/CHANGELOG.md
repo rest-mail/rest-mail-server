@@ -14,6 +14,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Added
 
 - `Server.Serve` starts the server on listeners the caller has already opened.
+- Real `\Recent` state (RFC 3501 §2.3.2): a Mailbox that implements the new
+  optional `imap.RecentMailbox` interface keeps a per-folder mark, the highest
+  UID a read-write session has claimed. The first read-write SELECT after a
+  message arrives, or the first read-write session told of an arrival, claims
+  it; EXAMINE, a read-only SELECT and STATUS report it without claiming.
+  `* n RECENT`, STATUS RECENT, FETCH FLAGS `\Recent` and SEARCH RECENT, NEW
+  and OLD use that state. Breaking: they no longer report the unseen set. A
+  Mailbox without the interface has every message `\Recent` to every session,
+  as §2.3.2 asks when the server cannot tell which session saw it first.
 - CONDSTORE and QRESYNC (RFC 7162): a Mailbox that implements the new optional
   `imap.ModSeqMailbox` interface reports HIGHESTMODSEQ and each message's
   `Message.ModSeq`, and stores flags through `StoreModSeq`, which applies
