@@ -2752,6 +2752,17 @@ build, and the pinned binary from `scripts/vertrag_pin.py ensure`, not a Vertrag
 found on PATH. Prepare the MFA admin and contract principals first;
 `CONTRACT_MFA_ADMIN` selects their disposable enrollment file.
 
+The app-password cells open a real IMAP gateway session on the HTTPS internal
+listener, using the gateway's client certificate. Set `CONTRACT_INTERNAL_ENDPOINT`
+for a private topology and run `chore test:contract-mtls` in that topology's
+environment first. `CONTRACT_MTLS_DIR` defaults to `.cache/contract-mtls`.
+Both Vertrag exchanges use that verified mTLS transport and the returned session:
+the app password reaches its own mailbox (200), but not the other real mailbox
+(404). Separate requests require HTTP Basic to be refused with exactly 401 on
+both mailboxes. The session and temporary API key are closed/revoked even if a
+proof fails. Run these proofs before destructive own-data checks, which remove
+their fixture accounts.
+
 ```sh
 python3 -B tests/contract/live_requirements.py anonymous "$CONTRACT_ENDPOINT" "$work/anonymous" \
   --vertrag "$CONTRACT_VERTRAG"

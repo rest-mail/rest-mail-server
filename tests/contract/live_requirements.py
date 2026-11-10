@@ -115,6 +115,7 @@ def prove(
     path_values=None,
     renew_token=None,
     workers=1,
+    transport=None,
 ):
     requirement = REQUIREMENTS[kind] if requirement is None else requirement
     output = Path(output).resolve()
@@ -154,6 +155,12 @@ def prove(
                 "reporter": ["json"],
                 "output": [str(report)],
             }
+            if transport is not None:
+                config["endpoints"] = [{
+                    "endpoint": endpoint,
+                    "operation-id": [operation_id],
+                    "transport": transport,
+                }]
             if "principal" in requirement:
                 principal = {"name": requirement["principal"]}
                 if header:
