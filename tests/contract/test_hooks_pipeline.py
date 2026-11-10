@@ -4,6 +4,7 @@ start clean and make what the exchange needs."""
 
 import copy
 import json
+import os
 import runpy
 import sys
 import types
@@ -108,6 +109,7 @@ class TestPipeline(unittest.TestCase):
                 sent(self.hooks.test_the_created_pipeline, documented), documented
             )
 
+    @patch.dict(os.environ, {"RESTMAIL_CONTRACT_LIMITS_RAISED": "false"})
     def test_missing_example_keeps_its_request_expectation_and_credential(self):
         spec = yaml.safe_load((ROOT / "openapi.yaml").read_text())
         op = spec["paths"]["/api/v1/admin/pipelines/test"]["post"]

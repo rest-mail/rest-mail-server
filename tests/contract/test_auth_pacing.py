@@ -2,6 +2,7 @@
 
 import copy
 import importlib.util
+import os
 from pathlib import Path
 import sys
 import types
@@ -12,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class AuthPacing(unittest.TestCase):
+    @patch.dict(os.environ, {"RESTMAIL_CONTRACT_LIMITS_RAISED": "false"})
     def test_examples_and_probes_share_a_sustainable_auth_rate(self):
         hooks = types.ModuleType("vertrag_hooks")
         registered = []
