@@ -121,6 +121,7 @@ class LiveRequirementTests(unittest.TestCase):
         stub = types.ModuleType("vertrag_hooks")
         stub.before_each = lambda function: function
         stub.before_each_validation = lambda function: function
+        stub.after_all = lambda function: function
         path = Path(live_requirements.__file__).with_name("live_requirement_hooks.py")
         spec = importlib.util.spec_from_file_location("live_body_hook", path)
         module = importlib.util.module_from_spec(spec)

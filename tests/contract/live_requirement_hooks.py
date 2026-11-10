@@ -25,3 +25,10 @@ def forget_the_sent_body(transaction):
     and validation judges the response.
     """
     transaction["request"]["body"] = ""
+
+
+@hooks.after_all
+def forget_the_finished_bodies(transactions):
+    """Release sent bodies even when a failed exchange bypassed validation."""
+    for transaction in transactions:
+        forget_the_sent_body(transaction)
