@@ -108,7 +108,7 @@ func (s *addressScan) readsAsList(value string, lastBracket int) bool {
 	if open {
 		return false
 	}
-	_, ok := mailaddr.Valid(unsafe.String(unsafe.SliceData(masked), len(masked)), passThroughCharset)
+	_, ok := mailaddr.Valid(unsafe.String(unsafe.SliceData(masked), len(masked)), passThroughCharset, nil)
 	return ok
 }
 

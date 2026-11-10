@@ -16,6 +16,24 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/pipeline/filters"
 )
 
+// sieveListCeilings is what each address list costs through the engine, as a multiple of the message: its
+// measured cost, rounded up with room for what a run varies by.
+var sieveListCeilings = map[string]uint64{
+	"address list, top level":          20,
+	"address list, encoded names":      18,
+	"address list, names no one reads": 10,
+	"address list, short unread names": 17,
+	"address list, quoted words":       21,
+	"address list, words read":         10,
+	"address list, base64 words read":  10,
+	"address list, short words read":   15,
+	"address list, words in comments":  10,
+	"address list, many charsets":      12,
+	"address list, comments":           19,
+	"address list, 8-bit names":        21,
+	"address list, very short":         102,
+}
+
 // The store-path limit is 8x with a pipeline that reads the address lists too, and these rows are
 // still over it: go-sieve v0.7.0 takes every list as a slice and parses the raw ones again, whatever
 // the script tests. Reading them when a test asks needs a go-sieve release, see #1915. Until then
@@ -81,9 +99,9 @@ func TestStillOverTheLimit_SieveThroughTheEngine(t *testing.T) {
 				best = min(best, allocated)
 			}
 			t.Logf("delivering %d bytes allocated %d, %.1f times over", length, best, float64(best)/float64(length))
-			ceiling := uint64(21)
-			if name == "address list, very short" {
-				ceiling = 105
+			ceiling, measured := sieveListCeilings[name]
+			if !measured {
+				t.Fatalf("delivering %d bytes allocated %d, %.1f times over: this row needs a measured ceiling", length, best, float64(best)/float64(length))
 			}
 			if best > ceiling*uint64(length) {
 				t.Errorf("delivering %d bytes allocated %d", length, best)

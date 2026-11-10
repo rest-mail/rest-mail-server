@@ -3,12 +3,9 @@ package mime
 import (
 	"bufio"
 	"bytes"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
-	stdmime "mime"
-	"mime/quotedprintable"
 	"net/textproto"
 	"strings"
 	"unsafe"
@@ -50,7 +47,9 @@ func (e unknownCoding) Error() string { return "unknown coding: " + e.err.Error(
 // fieldReader reads header fields. Its one buffer is used again for every field of a part, and a
 // message's own fields stay in it, so that together they cost one buffer of about their size.
 type fieldReader struct {
-	line []byte
+	// charsets converts the charsets of the parts these fields open.
+	charsets partCharsets
+	line     []byte
 	// chunk is how large the buffer was when it was last made.
 	chunk int
 	// sourceSize is the size of the whole message, when it is known.
@@ -269,11 +268,35 @@ func isPartField(key []byte) bool {
 
 func isContentType(key []byte) bool { return bytes.EqualFold(key, []byte("Content-Type")) }
 
-// namesMultipart says whether parseMedia could answer a multipart type for a value: true of every
-// value it does, as it lowers and trims the type before the first semicolon, or answers the value.
+// namesMultipart says whether parseContentType could answer a multipart type for a value: true of
+// every value it does, as what stands before the type's slash, comments and white space aside, lowers
+// to "multipart", and a ';' ends the type. It holds nothing, so a part that holds no parts doesn't pay
+// to read its field just to learn that.
 func namesMultipart(value []byte) bool {
-	base, _, _ := bytes.Cut(value, []byte(";"))
-	return bytes.HasPrefix(bytes.ToLower(bytes.TrimSpace(base)), []byte("multipart/"))
+	var main [32]byte
+	size, comments := 0, 0
+	for i := 0; i < len(value); i++ {
+		switch c := value[i]; {
+		case comments > 0 && c == '\\':
+			i++
+		case c == '(':
+			comments++
+		case comments > 0:
+			if c == ')' {
+				comments--
+			}
+		case c == ' ' || c == '\t' || c == '\r' || c == '\n':
+		case c == '/':
+			return bytes.Equal(bytes.ToLower(main[:size]), []byte("multipart"))
+		case c == ';' || size == len(main):
+			return false
+		default:
+			main[size] = c
+			size++
+		}
+	}
+	// A '(' that never closes is text in an 8-bit field, and the type before it can still read.
+	return comments > 0 && bytes.Contains(bytes.ToLower(value), []byte("multipart"))
 }
 
 // partFields is what's read of a header when only opening the entity matters: each field's first
@@ -310,7 +333,7 @@ func (r *fieldReader) readPartFields(br *bufio.Reader) (partFields, error) {
 			if !kept.hasDisp {
 				kept.hasDisp = true
 				view := unfold(value)
-				kept.disposition, kept.dispParams, _ = parseMedia(unsafe.String(unsafe.SliceData(view), len(view)))
+				kept.disposition, kept.dispParams = parseDisposition(unsafe.String(unsafe.SliceData(view), len(view)))
 			}
 		case bytes.EqualFold(key, []byte("Content-Transfer-Encoding")):
 			if !kept.hasEncoding {
@@ -327,7 +350,7 @@ func (r *fieldReader) readPartFields(br *bufio.Reader) (partFields, error) {
 
 // open makes an entity of a body and its header, decoding its transfer encoding and, for text, its
 // charset. It answers an error wrapping unknownCoding when it can't, with the entity readable.
-func (kept partFields) open(body io.Reader) (*entity, error) {
+func (kept partFields) open(body io.Reader, charsets *partCharsets) (*entity, error) {
 	e := &entity{mediaType: "text/plain", disposition: kept.disposition, dispParams: kept.dispParams, contentID: kept.contentID}
 	if kept.hasType {
 		e.mediaType, e.params, e.typeFailed = kept.mediaType, kept.params, kept.typeFailed
@@ -343,7 +366,7 @@ func (kept partFields) open(body io.Reader) (*entity, error) {
 	}
 	if strings.HasPrefix(e.mediaType, "text/") {
 		if charset, ok := e.params["charset"]; ok {
-			converted, charsetErr := charsetDecoder(charset, body)
+			converted, charsetErr := charsetDecoder(charset, body, charsets)
 			if charsetErr != nil {
 				err = unknownCoding{charsetErr}
 			} else {
@@ -363,30 +386,17 @@ var errCharsetName = errors.New("message: unknown charset")
 func transferDecoder(encoding string, r io.Reader) (io.Reader, error) {
 	switch strings.ToLower(encoding) {
 	case "quoted-printable":
-		return quotedprintable.NewReader(r), nil
+		return newQuotedReader(r), nil
 	case "base64":
-		return base64.NewDecoder(base64.StdEncoding, &spacesAsBreaks{r}), nil
+		return newBase64Reader(r), nil
 	case "7bit", "8bit", "binary", "":
 		return r, nil
 	}
 	return nil, fmt.Errorf("unhandled encoding %q", encoding)
 }
 
-// spacesAsBreaks lets a base64 body with its lines indented decode.
-type spacesAsBreaks struct{ source io.Reader }
-
-func (r *spacesAsBreaks) Read(p []byte) (int, error) {
-	n, err := r.source.Read(p)
-	for i := 0; i < n; i++ {
-		if p[i] == ' ' || p[i] == '\t' {
-			p[i] = '\n'
-		}
-	}
-	return n, err
-}
-
 // charsetDecoder is go-message's charsetReader.
-func charsetDecoder(charset string, input io.Reader) (io.Reader, error) {
+func charsetDecoder(charset string, input io.Reader, charsets *partCharsets) (io.Reader, error) {
 	charset = strings.ToLower(charset)
 	if charset == "utf-8" || charset == "us-ascii" {
 		return input, nil
@@ -396,20 +406,13 @@ func charsetDecoder(charset string, input io.Reader) (io.Reader, error) {
 		return nil, errCharsetName
 	}
 	if gomessage.CharsetReader != nil {
+		// What refuses the charset says why.
+		if reader := charsets.open(charset, input); reader != nil {
+			return reader, nil
+		}
 		return gomessage.CharsetReader(charset, input)
 	}
 	return input, fmt.Errorf("message: unhandled charset %q", charset)
-}
-
-// decodeWords is a header value with its RFC 2047 encoded-words decoded, or the value when it can't
-// be, as go-message reads one.
-func decodeWords(value string) string {
-	decoder := stdmime.WordDecoder{CharsetReader: gomessage.CharsetReader}
-	decoded, err := decoder.DecodeHeader(value)
-	if err != nil {
-		return value
-	}
-	return decoded
 }
 
 // multipartReader reads the parts of a multipart. It's go-message's textproto.MultipartReader, in
@@ -569,7 +572,7 @@ func (r *multipartReader) nextPart() (*entity, error) {
 				return nil, err
 			}
 			r.current = &multipartPart{mr: r}
-			return kept.open(r.current)
+			return kept.open(r.current, &r.fields.charsets)
 		}
 		if r.isFinalBoundary(line) {
 			return nil, io.EOF

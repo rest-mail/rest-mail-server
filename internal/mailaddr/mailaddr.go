@@ -11,10 +11,13 @@
 package mailaddr
 
 import (
+	"bytes"
+	"encoding/base64"
 	"errors"
 	"io"
 	"mime"
 	"net"
+	"slices"
 	"strings"
 	"unicode/utf8"
 )
@@ -22,11 +25,25 @@ import (
 // ErrNotAddressList is what a field that doesn't read as an address list gets.
 var ErrNotAddressList = errors.New("mailaddr: not an address list")
 
+// Unread says of a charset that nothing reads it. A word in one is text like any other, whose address
+// is still read, and that takes no reader to find out. It may be nil.
+type Unread func(charset string) bool
+
+// WordCharset is the charset an encoded-word names, if word starts as one.
+func WordCharset(word string) (charset string, ok bool) {
+	rest, ok := strings.CutPrefix(word, "=?")
+	if !ok {
+		return "", false
+	}
+	charset, _, ok = strings.Cut(rest, "?")
+	return charset, ok
+}
+
 // Valid reports whether the field reads as an address list, and how many addresses that gives. An
-// encoded-word that dec can't read changes the answer, as it does for net/mail.
-func Valid(list string, dec *mime.WordDecoder) (int, bool) {
+// encoded-word that dec can't read and unread doesn't name changes the answer, as it does for net/mail.
+func Valid(list string, dec *mime.WordDecoder, unread Unread) (int, bool) {
 	count := 0
-	p := parser{s: list, count: &count}
+	p := parser{s: list, count: &count, unread: unread}
 	p.setDecoder(dec)
 	if p.parseAddressList() != nil {
 		return 0, false
@@ -35,16 +52,16 @@ func Valid(list string, dec *mime.WordDecoder) (int, bool) {
 }
 
 // EachAddress is Each with no name read, for a caller that wants only the addresses.
-func EachAddress(list string, dec *mime.WordDecoder, visit func(address string)) error {
-	p := parser{s: list, addresses: visit}
+func EachAddress(list string, dec *mime.WordDecoder, unread Unread, visit func(address string)) error {
+	p := parser{s: list, addresses: visit, unread: unread}
 	p.setDecoder(dec)
 	return p.parseAddressList()
 }
 
 // Each calls visit with the name and address of everything in the field, which has to be Valid: a
 // field that goes wrong partway has been visited as far as that. What it gets may be views of list.
-func Each(list string, dec *mime.WordDecoder, visit func(name, address string)) error {
-	p := parser{s: list, visit: visit}
+func Each(list string, dec *mime.WordDecoder, unread Unread, visit func(name, address string)) error {
+	p := parser{s: list, visit: visit, unread: unread}
 	p.setDecoder(dec)
 	return p.parseAddressList()
 }
@@ -59,6 +76,11 @@ type parser struct {
 	// is what went wrong.
 	dec           mime.WordDecoder
 	charsetFailed bool
+	unread        Unread
+	// text, source and read are what a word is read with, used again for the next one.
+	text   WordText
+	source bytes.Reader
+	read   bytes.Buffer
 }
 
 func (p *parser) setDecoder(dec *mime.WordDecoder) {
@@ -605,27 +627,28 @@ func (p *parser) skipComment() bool {
 	return depth == 0
 }
 
-// decodeWord is net/mail's decodeRFC2047Word.
+// decodeWord is net/mail's decodeRFC2047Word, with what a word is read into used again. A field can be
+// nothing but words, and mime.WordDecoder builds a reader and two buffers for each one (#1915).
 func (p *parser) decodeWord(s string) (word string, isEncoded bool, err error) {
 	// mime.WordDecoder refuses anything that doesn't start so, and that isn't an encoded-word.
 	if !strings.HasPrefix(s, "=?") {
 		return s, false, nil
 	}
-	if !p.building() {
-		if decodes, empty, known := qWordDecodes(s); known {
-			if !decodes {
-				return s, false, nil
-			}
-			if empty {
-				return "", true, nil
-			}
-			return s, true, nil
+	if p.unread != nil {
+		if charset, ok := WordCharset(s); ok && p.unread(charset) {
+			return s, false, nil
 		}
 	}
 	p.charsetFailed = false
-	word, err = p.dec.Decode(s)
+	err = p.readWord(s)
 	if err == nil {
-		return word, true, nil
+		switch {
+		case p.building():
+			return p.read.String(), true, nil
+		case p.read.Len() == 0:
+			return "", true, nil
+		}
+		return s, true, nil
 	}
 
 	// If the error came from the character set reader
@@ -641,38 +664,106 @@ func (p *parser) decodeWord(s string) (word string, isEncoded bool, err error) {
 	return s, false, nil
 }
 
-// qWordDecodes answers, with nothing built, what mime.WordDecoder.Decode would of a Q-encoded word in
-// a charset it reads by itself: whether it decodes, and whether to nothing. known is false for
-// anything else, for Decode to say.
-func qWordDecodes(s string) (decodes, empty, known bool) {
+// readWord leaves in p.read what mime.WordDecoder.Decode answers of s, and fails where it does.
+// TestWordsReadAsWordDecoderDoes holds the two together.
+func (p *parser) readWord(s string) error {
 	if len(s) < 8 || !strings.HasSuffix(s, "?=") || strings.Count(s, "?") != 4 {
-		return false, false, true
+		return ErrNotAddressList
 	}
 	charset, rest, _ := strings.Cut(s[2:len(s)-2], "?")
-	if !strings.EqualFold(charset, "utf-8") && !strings.EqualFold(charset, "iso-8859-1") && !strings.EqualFold(charset, "us-ascii") {
-		return false, false, false
-	}
 	encoding, text, _ := strings.Cut(rest, "?")
-	if encoding != "q" && encoding != "Q" {
-		return false, false, false
+	if charset == "" || len(encoding) != 1 {
+		return ErrNotAddressList
 	}
-	for i := 0; i < len(text); i++ {
-		switch c := text[i]; {
-		case c == '=':
-			if i+2 >= len(text) || !isHex(text[i+1]) || !isHex(text[i+2]) {
-				return false, false, true
+	content, err := p.text.Read(encoding[0], text)
+	if err != nil {
+		return err
+	}
+	p.read.Reset()
+	switch {
+	case strings.EqualFold("utf-8", charset):
+		p.read.Write(content)
+	case strings.EqualFold("iso-8859-1", charset):
+		for _, c := range content {
+			p.read.WriteRune(rune(c))
+		}
+	case strings.EqualFold("us-ascii", charset):
+		for _, c := range content {
+			if c >= utf8.RuneSelf {
+				p.read.WriteRune(utf8.RuneError)
+			} else {
+				p.read.WriteByte(c)
 			}
-			i += 2
-		case c == '_', (c <= '~' && c >= ' ') || c == '\n' || c == '\r' || c == '\t':
-		default:
-			return false, false, true
+		}
+	default:
+		p.source.Reset(content)
+		r, err := p.dec.CharsetReader(strings.ToLower(charset), &p.source)
+		if err != nil {
+			return err
+		}
+		if _, err := io.Copy(&p.read, r); err != nil {
+			return err
 		}
 	}
-	return true, text == "", true
+	return nil
 }
 
-func isHex(c byte) bool {
-	return c >= '0' && c <= '9' || c >= 'A' && c <= 'F' || c >= 'a' && c <= 'f'
+// WordText reads what encoded-words' text spells, as mime.WordDecoder does, with buffers it uses again
+// for the next word. A field can be nothing but words.
+type WordText struct {
+	encoded, content []byte
+}
+
+// Read is what an encoded-word's text spells, good until the next Read. The error says only that it
+// isn't a word.
+func (w *WordText) Read(encoding byte, text string) ([]byte, error) {
+	switch encoding {
+	case 'B', 'b':
+		w.encoded = append(w.encoded[:0], text...)
+		w.content = slices.Grow(w.content[:0], base64.StdEncoding.DecodedLen(len(text)))
+		n, err := base64.StdEncoding.Decode(w.content[:cap(w.content)], w.encoded)
+		return w.content[:n], err
+	case 'Q', 'q':
+		w.content = w.content[:0]
+		for i := 0; i < len(text); i++ {
+			switch c := text[i]; {
+			case c == '_':
+				w.content = append(w.content, ' ')
+			case c == '=':
+				if i+2 >= len(text) {
+					return nil, ErrNotAddressList
+				}
+				high, highOK := fromHex(text[i+1])
+				low, lowOK := fromHex(text[i+2])
+				if !highOK || !lowOK {
+					return nil, ErrNotAddressList
+				}
+				w.content = append(w.content, high<<4|low)
+				i += 2
+			case (c <= '~' && c >= ' ') || c == '\n' || c == '\r' || c == '\t':
+				w.content = append(w.content, c)
+			default:
+				return nil, ErrNotAddressList
+			}
+		}
+		return w.content, nil
+	}
+	return nil, ErrNotAddressList
+}
+
+// Held is how much a WordText holds on to.
+func (w *WordText) Held() int { return cap(w.encoded) + cap(w.content) }
+
+func fromHex(c byte) (byte, bool) {
+	switch {
+	case c >= '0' && c <= '9':
+		return c - '0', true
+	case c >= 'A' && c <= 'F':
+		return c - 'A' + 10, true
+	case c >= 'a' && c <= 'f':
+		return c - 'a' + 10, true
+	}
+	return 0, false
 }
 
 // isAtext reports whether r is an RFC 5322 atext character, or a period.

@@ -93,6 +93,14 @@ func uncommentMIME(value string) (string, error) {
 	}
 	var b strings.Builder
 	b.Grow(len(value))
+	if !uncommentInto(&b, value) {
+		return "", mime.ErrInvalidMediaParameter
+	}
+	return b.String(), nil
+}
+
+// uncommentInto writes value to b as uncommentMIME reads it, or says it can't be read.
+func uncommentInto(b io.ByteWriter, value string) bool {
 	depth := 0
 	quoted := false
 	for i := 0; i < len(value); i++ {
@@ -111,28 +119,24 @@ func uncommentMIME(value string) (string, error) {
 				}
 			}
 		case quoted:
-			b.WriteByte(c)
+			_ = b.WriteByte(c)
 			if c == '\\' && i+1 < len(value) {
 				i++
-				b.WriteByte(value[i])
+				_ = b.WriteByte(value[i])
 			} else if c == '"' {
 				quoted = false
 			}
 		case c == '(':
 			depth = 1
-			start = i
-			b.WriteByte(' ')
+			_ = b.WriteByte(' ')
 		case c == ')':
-			return "", nil, mime.ErrInvalidMediaParameter
+			return false
 		default:
-			b.WriteByte(c)
+			_ = b.WriteByte(c)
 			quoted = c == '"'
 		}
 	}
-	if depth != 0 || quoted {
-		return "", nil, mime.ErrInvalidMediaParameter
-	}
-	return b.String(), comments, nil
+	return depth == 0 && !quoted
 }
 
 // partStructure builds the body structure for one MIME entity given its header
@@ -250,7 +254,7 @@ func singlePartStructure(maintype, subtype string, params map[string]string, hea
 	b.WriteString(paramList(params, sessionUTF8))
 	fmt.Fprintf(&b, " %s %s %s %d",
 		wire.NilOrQuote(header.Get("Content-Id")),
-		wire.NilOrQuote(header.Get("Content-Description")),
+		wire.NilOrQuote(SpaceWordNUL(header.Get("Content-Description"))),
 		wire.EncodeMailboxName(encoding),
 		len(body))
 	switch {
@@ -355,7 +359,8 @@ func stripComments(s string) string {
 // names and values are strings, not nstrings: an empty value is "", never NIL.
 // Reuse the astring encoder so decoded RFC 2231 values containing CR/LF use counted
 // literals, including in disposition parameters. A value decoded to 8-bit text
-// follows metadataText.
+// follows metadataText. Encoded words follow SpaceWordNUL, but for a boundary's: its
+// delimiter lines hold those octets, and nothing decodes them.
 func paramList(params map[string]string, sessionUTF8 bool) string {
 	if len(params) == 0 {
 		return "NIL"
@@ -373,7 +378,11 @@ func paramList(params map[string]string, sessionUTF8 bool) string {
 		}
 		b.WriteString(wire.EncodeMailboxName(metadataText(upperASCII(k), sessionUTF8)))
 		b.WriteByte(' ')
-		b.WriteString(wire.EncodeMailboxName(metadataText(params[k], sessionUTF8)))
+		value := params[k]
+		if k != "boundary" {
+			value = SpaceWordNUL(value)
+		}
+		b.WriteString(wire.EncodeMailboxName(metadataText(value, sessionUTF8)))
 	}
 	b.WriteByte(')')
 	return b.String()

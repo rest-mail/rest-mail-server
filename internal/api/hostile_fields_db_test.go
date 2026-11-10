@@ -152,7 +152,7 @@ func TestSenderFieldsDoNotRefuseMail(t *testing.T) {
 		{name: "many characters, few of them", message: part(pdf + "\r\nContent-Disposition: attachment; filename*=utf-8''" + strings.Repeat("%E6%97%A5", 200) + ".pdf"),
 			filename: strings.Repeat("日", 200) + ".pdf", mediaType: "application/pdf"},
 		{name: "a NUL in the filename", message: part(pdf + "\r\nContent-Disposition: attachment; filename*=utf-8''a%00b.pdf"),
-			filename: "a�b.pdf", mediaType: "application/pdf"},
+			filename: "a b.pdf", mediaType: "application/pdf"},
 		{name: "invalid UTF-8 in the filename", message: part(pdf + "\r\nContent-Disposition: attachment; filename*=utf-8''a%FFb.pdf"),
 			filename: "a�b.pdf", mediaType: "application/pdf"},
 		{name: "a character across the storage path's cut", message: part(pdf + "\r\nContent-Disposition: attachment; filename*=utf-8''" + strings.Repeat("y", 99) + "%C3%A9.pdf"),

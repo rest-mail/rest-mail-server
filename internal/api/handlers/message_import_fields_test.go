@@ -7,8 +7,12 @@ import (
 	"mime"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
+	"sync"
 	"testing"
+
+	"gorm.io/gorm/schema"
 
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/grants"
@@ -87,7 +91,7 @@ func TestImportStoresAnyFieldASenderWrote(t *testing.T) {
 		{"name*N, a little over the column", part(pdf + continued("name", 10, 30, ".pdf")), strings.Repeat("x", 251) + ".pdf", "application/pdf"},
 		{"name*N, most of a megabyte", part(pdf + continued("name", 15000, 48, ".pdf")), strings.Repeat("x", 251) + ".pdf", "application/pdf"},
 		{"filename*N, a little over the column", part(pdf + "\r\nContent-Disposition: attachment" + continued("filename", 10, 30, ".exe")), strings.Repeat("x", 251) + ".exe", "application/pdf"},
-		{"a NUL in the filename", part(pdf + "\r\nContent-Disposition: attachment; filename*=utf-8''a%00b.pdf"), "a�b.pdf", "application/pdf"},
+		{"a NUL in the filename", part(pdf + "\r\nContent-Disposition: attachment; filename*=utf-8''a%00b.pdf"), "a b.pdf", "application/pdf"},
 		{"invalid UTF-8 in the filename", part(pdf + "\r\nContent-Disposition: attachment; filename*=utf-8''a%FFb.pdf"), "a�b.pdf", "application/pdf"},
 		{"8-bit octets in the filename", part(pdf + "\r\nContent-Disposition: attachment; filename=\"a\xe9b.pdf\""), "a�b.pdf", "application/pdf"},
 		{"a media type past RFC 6838's", part("Content-Type: application/" + strings.Repeat("z", 300) + "\r\nContent-Disposition: attachment; filename=a.bin"), "a.bin", "application/octet-stream"},
@@ -177,5 +181,38 @@ func TestImportLongFieldHidesNoSignal(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// createAttachmentRows names the columns itself, so a new one has to be added there.
+func TestAttachmentRowColumnsAreTheModels(t *testing.T) {
+	parsed, err := schema.Parse(&models.Attachment{}, &sync.Map{}, schema.NamingStrategy{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var columns []string
+	for _, name := range parsed.DBNames {
+		if name != "id" {
+			columns = append(columns, name)
+		}
+	}
+	slices.Sort(columns)
+	want := strings.Split(attachmentRowColumns, ", ")
+	slices.Sort(want)
+	if !slices.Equal(columns, want) {
+		t.Fatalf("the model's columns are %v, createAttachmentRows stores %v", columns, want)
+	}
+	encoded, err := json.Marshal(models.Attachment{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var named map[string]any
+	if err := json.Unmarshal(encoded, &named); err != nil {
+		t.Fatal(err)
+	}
+	for _, column := range columns {
+		if _, ok := named[column]; !ok {
+			t.Fatalf("no JSON field is named %s, in %s", column, encoded)
+		}
 	}
 }

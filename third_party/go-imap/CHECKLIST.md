@@ -2035,13 +2035,12 @@ rev1 extension test to proof of a complete rev2 implementation.
   here also uses. IMAP-INV-ABNF-23 records one choice kept: a sequence number
   beyond the mailbox selects nothing, since §9's lower-case "should" is no RFC
   2119 requirement.
-- 2026-11-04: \Recent (rest-mail/rest-mail-server#1860). The engine reported
-  the unseen set as recent. A store now keeps \Recent through the optional
-  RecentMailbox: a per-folder mark, the highest UID a read-write session has
-  claimed. SELECT and each arrival a read-write session is told of claim;
-  EXAMINE, a read-only SELECT and STATUS read the mark only. FETCH FLAGS
-  carries \Recent, SEARCH RECENT, NEW and OLD use the session's set, and
-  arrivals that are recent to the session send RECENT after EXISTS. A store
-  without the interface has every message recent, the §2.3.2 SHOULD
-  (IMAP-SELECT-08, IMAP-STATUS-07, IMAP-SEARCH-12, IMAP-RESP-15,
-  IMAP-INV-FLAGS-02, IMAP-INV-FLAGS-04).
+
+## Shared field reader (#2107, source #1920 / #1971)
+
+The MIME parser shares go-imap’s kept-parameter reader. Long unescaped quoted
+values remain views; encoded words without NUL avoid per-word copies; unknown
+charsets do not allocate a 32 KiB copy buffer per word. Encoded NUL in display
+strings becomes a space, while boundaries, addr-specs, identifiers and stored
+octets retain their spelling. `TestFetchSpacesNULInEncodedWord` and field-scratch
+tests retain the corresponding semantic and allocation controls.

@@ -26,7 +26,9 @@ func downgradedWireSize(header, sep, body string) int {
 
 // downgradedWireSizeAlso is downgradedWireSize, with also told the downgraded header on the way.
 func downgradedWireSizeAlso(header, sep, body string, also wordSink) int {
-	block, dropped, ok := measuredBlock(header, sep, also)
+	scratch := wireform.TakeFieldScratch(measuredBlockSize(header, sep))
+	defer scratch.Release()
+	block, dropped, ok := measuredBlock(scratch, header, sep, also)
 	if !ok {
 		return wireform.JoinedSize(downgradedBlock(header, sep), body, false)
 	}

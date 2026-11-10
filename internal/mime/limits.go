@@ -148,9 +148,60 @@ func (b *partBudget) enter(depth int) error {
 // message in memory. A message that fails for any other reason is nil here. size is the body's, for
 // a part's long field to be read without growing a buffer to it.
 func (h *HeaderSection) CheckStructure(body io.Reader, size int64) error {
-	entity, _ := h.opening.open(body)
+	entity, _ := h.opening.open(body, new(partCharsets))
+	return checkOpened(entity, &fieldReader{sourceSize: int(size), wanted: isContentType, typeOnly: true})
+}
+
+// CheckSource is CheckStructure of a whole message, for a caller holding no parsed header, and it costs
+// a message that holds few delimiter lines one buffer: only a message with more lines opening with "--"
+// than the limit on parts can be over it. A nesting that's too deep with fewer than that isn't found
+// here, and the parse that follows refuses it as it would have. A source that doesn't read is nil, for
+// the read that follows to say so.
+func CheckSource(source io.ReadSeeker, size int64) error {
+	lines, err := countDelimiterLines(source, CurrentLimits().MaxParts)
+	if err != nil || lines <= CurrentLimits().MaxParts {
+		return nil
+	}
+	if _, err := source.Seek(0, io.SeekStart); err != nil {
+		return nil
+	}
+	br, fields, kept, _, err := readTopForOpening(source, int(size))
+	if err != nil {
+		return nil
+	}
+	fields.wanted, fields.typeOnly = isContentType, true
+	opened, _ := kept.open(br, &fields.charsets)
+	return checkOpened(opened, fields)
+}
+
+// countDelimiterLines counts the lines of source opening with "--", up to one past most. A delimiter
+// line always follows a line break, as the header section ends with one.
+func countDelimiterLines(source io.Reader, most int) (int, error) {
+	const opening = "\n--"
+	buffer := make([]byte, len(opening)-1, delimiterScan)
+	lines := 0
+	for lines <= most {
+		n, err := source.Read(buffer[len(opening)-1 : cap(buffer)])
+		scanned := buffer[:len(opening)-1+n]
+		lines += bytes.Count(scanned, []byte(opening))
+		copy(buffer, scanned[len(scanned)-(len(opening)-1):])
+		if err == io.EOF {
+			return lines, nil
+		}
+		if err != nil {
+			return lines, err
+		}
+	}
+	return lines, nil
+}
+
+// delimiterScan is how much of a message countDelimiterLines holds at once.
+const delimiterScan = 8 << 10
+
+// checkOpened counts the parts of an opened message, whose fields read only what opens a part.
+func checkOpened(entity *entity, fields *fieldReader) error {
 	budget := newPartBudget()
-	budget.fields = &fieldReader{sourceSize: int(size), wanted: isContentType, typeOnly: true}
+	budget.fields = fields
 	mr := entity.multipart(budget.fields)
 	if mr == nil {
 		return nil
