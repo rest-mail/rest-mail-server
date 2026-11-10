@@ -52,7 +52,7 @@ env:
 jobs:
   install:
     name: Install in kind
-    runs-on: ubuntu-latest
+    runs-on: antimatter-vps-linux-x64
     timeout-minutes: 60
     steps:
       - name: Checkout code

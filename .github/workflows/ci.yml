@@ -47,7 +47,7 @@ jobs:
   preflight:
     name: 'Preflight: branch is up to date'
     if: github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != '')
-    runs-on: ubuntu-latest
+    runs-on: antimatter-vps-linux-x64
     timeout-minutes: 5
     outputs:
       runners: ${{ steps.runners.outputs.runners || '{}' }}
@@ -1681,7 +1681,7 @@ jobs:
     name: ${{ github.event_name == 'pull_request' && github.event.action == 'edited' && github.event.changes.base.ref.from == '' && 'CI (ignored edit)' || 'CI' }}
     needs: [preflight, seed-caches, contract-diff, lint, constellation, contract-tooling, test, test-api, test-handlers, test-contract, test-imap, test-report, attachments-s3, build, helm, webmail, admin, js-filter, first-start, webapp-images, guide]
     if: always() && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
-    runs-on: ubuntu-latest
+    runs-on: antimatter-vps-linux-x64
     steps:
       - name: Verdict
         env:

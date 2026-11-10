@@ -26,7 +26,7 @@ jobs:
   preflight:
     name: 'Preflight: branch is up to date'
     if: github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != '')
-    runs-on: ubuntu-latest
+    runs-on: antimatter-vps-linux-x64
     timeout-minutes: 5
     outputs:
       runners: ${{ steps.runners.outputs.runners || '{}' }}

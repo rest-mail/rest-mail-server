@@ -20,7 +20,7 @@ permissions:
 jobs:
   newest-main:
     name: API compatibility with newest main
-    runs-on: ubuntu-latest
+    runs-on: antimatter-vps-linux-x64
     timeout-minutes: 15
     steps:
       # Full history: the squashed entries between main's tip and the group's
