@@ -1371,6 +1371,101 @@ class OwnDataHooks(unittest.TestCase):
             self.assertLessEqual(set(self.stub.stash), set(self.hooks.SURVIVES_A_RESET))
         self.assertEqual(self.resets(), 7)
 
+    def test_client_secret_created_example_prepares_its_requested_scope(self):
+        self.clean_starts_on()
+        self.two_factor_session()
+        transaction = self.transaction(201, "/api/v1/accounts/1/client-secrets")
+        transaction["request"]["method"] = "POST"
+        transaction["request"]["body"] = json.dumps({
+            "name": "Invoice robot", "password": "unchanged-example-password",
+            "permissions": [{"capability": "pipelines:write", "scope": "domain:example.test"}],
+        })
+        request = copy.deepcopy(transaction["request"])
+        with patch.object(self.hooks, "as_the_two_factor_admin_call") as grant:
+            self.hooks.a_credential_to_manage(transaction)
+        account = max(self.server.accounts)
+        origin = f"http://127.0.0.1:{self.server.server_port}"
+        grant.assert_called_once_with(origin, "POST", "/api/v1/admin/grants", {
+            "holder": {"kind": "account", "id": account},
+            "role": "admin", "scope": "domain:example.test", "mode": "active",
+        })
+        self.assertEqual(transaction["request"], request)
+        self.assertEqual(transaction["fullPath"], f"/api/v1/accounts/{account}/client-secrets")
+
+    def test_client_secret_refusals_and_other_scopes_get_no_extra_grant(self):
+        self.clean_starts_on()
+        self.two_factor_session()
+        for status, permissions in (
+            (403, [{"capability": "pipelines:write", "scope": "domain:example.test"}]),
+            (422, [{"capability": "pipelines:write", "scope": "domain:example.test"}]),
+            (201, [{"capability": "mail:read", "scope": "mailbox:other@restmail.test"}]),
+        ):
+            with self.subTest(status=status, permissions=permissions):
+                transaction = self.transaction(status, "/api/v1/accounts/1/client-secrets")
+                transaction["request"]["method"] = "POST"
+                transaction["request"]["body"] = json.dumps({"permissions": permissions})
+                request = copy.deepcopy(transaction["request"])
+                with patch.object(self.hooks, "as_the_two_factor_admin_call") as grant:
+                    self.hooks.a_credential_to_manage(transaction)
+                grant.assert_not_called()
+                self.assertEqual(transaction["request"], request)
+
+    def test_client_secret_listing_makes_the_credential_it_lists_after_its_reset(self):
+        self.clean_starts_on()
+        self.two_factor_session()
+        self.hooks.mailbox_address = lambda origin, account: f"account-{account}@restmail.test"
+        transaction = self.transaction(200, "/api/v1/accounts/1/client-secrets?limit=20")
+        transaction["request"]["method"] = "GET"
+        request = copy.deepcopy(transaction["request"])
+        with patch.object(self.hooks.rate_limits, "pace"):
+            self.hooks.a_credential_to_manage(transaction)
+        account = max(self.server.accounts)
+        self.assertEqual(self.resets(), 1)
+        self.assertEqual(len(self.server.made), 1)
+        self.assertEqual(self.server.made[0][0], f"/api/v1/accounts/{account}/client-secrets")
+        self.assertEqual(transaction["fullPath"], f"/api/v1/accounts/{account}/client-secrets?limit=20")
+        self.assertEqual(transaction["request"], request)
+        self.assertEqual(self.stub.stash["listing_made"], {
+            "name": transaction["name"],
+            "what": "client secret",
+            "match": {"id": self.server.serial, "kind": "client_secret"},
+        })
+
+    def test_client_secret_listing_refusals_do_not_create_a_credential(self):
+        self.clean_starts_on()
+        for path in (
+            "/api/v1/accounts/0/client-secrets",
+            "/api/v1/accounts/2147483647/client-secrets",
+            "/api/v1/accounts/not-an-integer/client-secrets",
+        ):
+            with self.subTest(path=path):
+                transaction = self.transaction(404, path)
+                transaction["request"]["method"] = "GET"
+                self.hooks.a_credential_to_manage(transaction)
+                self.assertEqual(transaction["fullPath"], path)
+                self.assertNotIn("listing_made", self.stub.stash)
+        self.assertEqual(self.server.made, [])
+
+    def test_client_secret_listing_refusal_never_makes_a_credential(self):
+        self.clean_starts_on()
+        self.two_factor_session()
+        transaction = self.transaction(403, "/api/v1/accounts/1/client-secrets")
+        transaction["request"]["method"] = "GET"
+        request = copy.deepcopy(transaction["request"])
+        self.hooks.a_credential_to_manage(transaction)
+        self.assertEqual(self.resets(), 1)
+        self.assertEqual(self.server.made, [])
+        self.assertNotIn("listing_made", self.stub.stash)
+        self.assertEqual(transaction["request"], request)
+
+    def test_client_secret_listing_without_clean_start_is_unchanged(self):
+        transaction = self.transaction(200, "/api/v1/accounts/1/client-secrets")
+        transaction["request"]["method"] = "GET"
+        before = copy.deepcopy(transaction)
+        self.hooks.a_credential_to_manage(transaction)
+        self.assertEqual(transaction, before)
+        self.assertEqual(self.server.calls, [])
+
     def test_credential_refusals_and_the_admin_list_reset_and_keep_their_paths(self):
         self.clean_starts_on()
         for method, path in (
@@ -1491,6 +1586,23 @@ class ListingsHoldWhatWasMade(OwnDataHooks):
             'def the_listing_holds_what_was_made(',
             source,
         )
+
+    def test_client_secret_listing_checks_the_credential_made_for_that_exchange(self):
+        self.clean_starts_on()
+        self.assertIn(("listClientSecrets", "the_listing_holds_what_was_made"), self.registered_after)
+        for rows, succeeds in (
+            ([{"id": 5, "kind": "client_secret"}], True),
+            ([], False),
+            ([{"id": 6, "kind": "client_secret"}], False),
+            ([{"id": 5, "kind": "api_key"}], False),
+        ):
+            with self.subTest(rows=rows):
+                transaction = self.transaction(200, "/api/v1/accounts/4/client-secrets")
+                self.noted(transaction, "client secret", {"id": 5, "kind": "client_secret"})
+                self.answered(transaction, rows)
+                self.hooks.the_listing_holds_what_was_made(transaction)
+                self.assertEqual("fail" not in transaction, succeeds)
+                self.assertNotIn("listing_made", self.stub.stash)
 
     def test_a_tls_report_listing_notes_the_report_it_received(self):
         self.clean_starts_on()
