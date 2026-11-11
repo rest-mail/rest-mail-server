@@ -80,6 +80,15 @@ type sendMessageDescription struct {
 	} `body:""`
 }
 
+type forwardMessageDescription struct {
+	ID   uint32 `path:"id" minimum:"1" example:"1"`
+	Body struct {
+		forwardBody
+		From string   `json:"from" minLength:"1"`
+		To   []string `json:"to" minItems:"1"`
+	} `body:""`
+}
+
 // sendOutcomes are the answers a send gives, each with its own status: the sent message (201),
 // the message scheduled for later (202), or the pipeline's discard (200).
 var sendOutcomes = []oapifly.EndpointResponse{
@@ -232,8 +241,9 @@ func (h *MessageHandler) RegisterCompose(rs endpoint.Routes, audit ...func(strin
 		Errors: append([]int{http.StatusNotFound}, sendRefusals...), Security: delegatedSendSecurity(models.CapMailWrite), Middleware: sendAudit("mail.send_draft")}, h.sendDraft)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/messages/{id}/forward",
 		OperationID: "forwardMessage", Summary: "Forward a message", Tags: []string{"Messages"},
-		Description: "The message (mail:read) is forwarded through the normal sender authorization, rate limit and outbound policy, with Fwd: and the note above its original header. Stored attachments, including empty and inline parts, are re-attached; the Sent copy owns independent attachment objects. The final signed MIME message is bounded by SMTP_MAX_MESSAGE_SIZE, and sender quota includes the copied parts. Sent, attachment references, quota and recipient work commit together. Unavailable or changed source objects fail the forward instead of dropping parts. " + delegatedSendingDescription,
-		Status:      http.StatusCreated, SuccessStatuses: []int{http.StatusOK, http.StatusAccepted}, Responses: append(append([]oapifly.EndpointResponse{}, sentOrDiscarded...), oapifly.EndpointResponse{Status: http.StatusUnprocessableEntity, Description: "Binding validation, sender policy or sender quota refusal", Type: oapifly.TypeOf[ForwardRefusalResponse]()}),
+		DescribedRequest: forwardMessageDescription{},
+		Description:      "The message (mail:read) is forwarded through the normal sender authorization, rate limit and outbound policy, with Fwd: and the note above its original header. Stored attachments, including empty and inline parts, are re-attached; the Sent copy owns independent attachment objects. The final signed MIME message is bounded by SMTP_MAX_MESSAGE_SIZE, and sender quota includes the copied parts. Sent, attachment references, quota and recipient work commit together. Unavailable or changed source objects fail the forward instead of dropping parts. " + delegatedSendingDescription,
+		Status:           http.StatusCreated, SuccessStatuses: []int{http.StatusOK, http.StatusAccepted}, Responses: append(append([]oapifly.EndpointResponse{}, sentOrDiscarded...), oapifly.EndpointResponse{Status: http.StatusUnprocessableEntity, Description: "Binding validation, sender policy or sender quota refusal", Type: oapifly.TypeOf[ForwardRefusalResponse]()}),
 		Errors: append([]int{http.StatusNotFound}, sendRefusals...), Security: delegatedSendSecurity(models.CapMailRead), Middleware: sendAudit("mail.forward")}, h.forwardMessage)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/messages/{id}/unsubscribe",
 		OperationID: "getUnsubscribeOptions", Summary: "List a message's unsubscribe targets", Tags: []string{"Messages"},
