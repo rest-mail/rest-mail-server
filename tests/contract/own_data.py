@@ -272,6 +272,18 @@ MOVED = (
     "mozillaAutoconfig",
     "mozillaAutoconfigWellKnown",
     "microsoftAutodiscover",
+    # The domain administration lists and the certificate operations.
+    # createCertificate's link reaches the read, and the read's the delete:
+    # all moved. No other link starts from or reaches any of them. Each list
+    # gets a row of its own after its reset, and the read and the delete a
+    # certificate of their own.
+    "listDomains",
+    "listAliases",
+    "listDKIMKeys",
+    "listCertificates",
+    "createCertificate",
+    "getCertificate",
+    "deleteCertificate",
 )
 
 
