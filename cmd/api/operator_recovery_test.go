@@ -160,8 +160,15 @@ func TestRevokeSessions_EndsEveryRefreshTokenAndEpoch(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &revoked); err != nil {
 		t.Fatalf("output = %q", out)
 	}
-	if revoked.RefreshTokens != 2 || revoked.Accounts != 1 {
-		t.Errorf("revoked = %+v, want 2 refresh tokens and 1 account", revoked)
+	// A fresh install holds the administrator and the domain's postmaster, and
+	// every account's sessions end.
+	var accounts int64
+	gdb.Model(&models.Mailbox{}).Count(&accounts)
+	if accounts < 2 {
+		t.Fatalf("%d accounts, want the administrator and the postmaster", accounts)
+	}
+	if revoked.RefreshTokens != 2 || int64(revoked.Accounts) != accounts {
+		t.Errorf("revoked = %+v, want 2 refresh tokens and %d accounts", revoked, accounts)
 	}
 	var live int64
 	gdb.Model(&models.RefreshToken{}).Where("status = ?", models.RefreshTokenActive).Count(&live)

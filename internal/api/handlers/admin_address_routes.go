@@ -130,10 +130,12 @@ func (h *MailboxHandler) Register(rs endpoint.Routes, checks MailboxRouteChecks)
 		Errors: []int{http.StatusNotFound}, Middleware: []endpoint.Middleware{checks.OnMailbox(middleware.CapAccountsRead)}}, h.get)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPatch, Path: "/api/v1/admin/mailboxes/{id}",
 		OperationID: "updateMailbox", Summary: "Update an account", Tags: []string{"Admin: Mailboxes"}, Status: http.StatusOK,
-		Errors: []int{http.StatusNotFound}, Middleware: []endpoint.Middleware{checks.OnMailbox(middleware.CapAccountsWrite)}}, h.update)
+		Description: postmasterRequiredDescription,
+		Errors:      []int{http.StatusNotFound, http.StatusConflict}, Middleware: []endpoint.Middleware{checks.OnMailbox(middleware.CapAccountsWrite)}}, h.update)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodDelete, Path: "/api/v1/admin/mailboxes/{id}",
 		OperationID: "deleteMailbox", Summary: "Delete an account", Tags: []string{"Admin: Mailboxes"}, Status: http.StatusNoContent,
-		Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusForbidden}, Middleware: []endpoint.Middleware{checks.OnMailbox(middleware.CapAccountsDel)}}, h.delete)
+		Description: postmasterRequiredDescription,
+		Errors:      []int{http.StatusNotFound, http.StatusConflict, http.StatusForbidden}, Middleware: []endpoint.Middleware{checks.OnMailbox(middleware.CapAccountsDel)}}, h.delete)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodDelete, Path: "/api/v1/admin/mailboxes/{id}/sessions",
 		OperationID: "endMailboxSessions", Summary: "Sign an account out everywhere", Tags: []string{"Admin: Mailboxes"}, Status: http.StatusNoContent,
 		Errors: []int{http.StatusNotFound}, Middleware: []endpoint.Middleware{checks.OnMailbox(middleware.CapAccountsWrite)}}, h.endSessions)
@@ -149,10 +151,12 @@ func (h *AliasHandler) Register(rs endpoint.Routes, checks AliasRouteChecks) {
 		Errors: []int{http.StatusNotFound}, Middleware: []endpoint.Middleware{checks.OnAlias(middleware.CapAccountsRead)}}, h.get)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPatch, Path: "/api/v1/admin/aliases/{id}",
 		OperationID: "updateAlias", Summary: "Update an alias", Tags: []string{"Admin: Aliases"}, Status: http.StatusOK,
-		Errors: []int{http.StatusNotFound}, Middleware: []endpoint.Middleware{checks.OnAlias(middleware.CapAccountsWrite)}}, h.update)
+		Description: postmasterRequiredDescription,
+		Errors:      []int{http.StatusNotFound, http.StatusConflict}, Middleware: []endpoint.Middleware{checks.OnAlias(middleware.CapAccountsWrite)}}, h.update)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodDelete, Path: "/api/v1/admin/aliases/{id}",
 		OperationID: "deleteAlias", Summary: "Delete an alias", Tags: []string{"Admin: Aliases"}, Status: http.StatusNoContent,
-		Errors: []int{http.StatusNotFound}, Middleware: []endpoint.Middleware{checks.OnAlias(middleware.CapAccountsDel)}}, h.delete)
+		Description: postmasterRequiredDescription,
+		Errors:      []int{http.StatusNotFound, http.StatusConflict}, Middleware: []endpoint.Middleware{checks.OnAlias(middleware.CapAccountsDel)}}, h.delete)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/admin/aliases",
 		OperationID: "createAlias", Summary: "Create a new alias", Tags: []string{"Admin: Aliases"}, Status: http.StatusCreated,
 		Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusForbidden}, Middleware: []endpoint.Middleware{checks.OnList(middleware.CapAccountsWrite)}}, h.create)
