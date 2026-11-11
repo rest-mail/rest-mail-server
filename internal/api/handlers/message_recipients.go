@@ -36,17 +36,17 @@ type MessageRecipients struct {
 // sending server, not the person, so only the reason derived from its category is.
 type RecipientStatus struct {
 	Address       string     `json:"address" example:"bob@example.com"`
-	Delivery      string     `json:"delivery" enums:"remote,local" description:"remote: sent to another server through the outbound queue; local: a mailbox on this server"`
+	Delivery      string     `json:"delivery" enums:"remote,local" description:"remote: a recipient on another server; local: a mailbox on this server. Either goes through the outbound queue"`
 	State         string     `json:"state" enums:"queued,retrying,delivered,failed,unknown" description:"queued: waiting for its first attempt; retrying: an attempt failed and it will be tried again; delivered: the recipient's server (or this one) accepted it; failed: it bounced or expired and will not be tried again; unknown: no delivery record was kept"`
 	Reason        string     `json:"reason,omitempty" description:"Why it is retrying, failed or unknown, in a sentence derived from the failure category, never the remote server's own reply"`
 	Category      string     `json:"category,omitempty" enums:"bad_mailbox,bad_domain,policy,other_permanent,mailbox_full,greylisted,rate_limited,connection,tls,dns,other_transient" description:"The kind of failure of the last attempt, when one failed"`
-	Attempts      int        `json:"attempts" description:"Delivery attempts made so far; 0 for a local recipient"`
+	Attempts      int        `json:"attempts" description:"Delivery attempts made so far; 0 for a recipient with no outbound queue entry"`
 	LastAttemptAt *time.Time `json:"last_attempt_at,omitempty" description:"When the last attempt was made; absent before the first one"`
 }
 
 // listMessageRecipients answers, for a message the account sent, what happened to each
-// recipient: from its outbound queue row for a remote one, and from the copy delivered
-// into the mailbox for a local one.
+// recipient: from its outbound queue row, which every send makes for every recipient
+// (#1564), and otherwise from the copy delivered into the mailbox.
 func (h *MessageHandler) listMessageRecipients(r *http.Request, in messagePath) (MessageRecipients, error) {
 	msg, err := h.ownedMessage(r, in.ID, models.CapMailRead, "id", "mailbox_id", "folder", "message_id", "sender", "recipients_to", "recipients_cc", "received_at")
 	if err != nil {
@@ -65,9 +65,9 @@ func (h *MessageHandler) listMessageRecipients(r *http.Request, in messagePath) 
 	if len(queued) == 0 && msg.Folder != "Sent" {
 		return result, nil
 	}
-	remote := map[string]models.OutboundQueue{}
+	rows := map[string]models.OutboundQueue{}
 	for _, row := range queued {
-		remote[strings.ToLower(row.Recipient)] = row // the newest row for an address wins
+		rows[strings.ToLower(row.Recipient)] = row // the newest row for an address wins
 	}
 
 	var owner models.Mailbox
@@ -82,8 +82,12 @@ func (h *MessageHandler) listMessageRecipients(r *http.Request, in messagePath) 
 			continue
 		}
 		seen[key] = true
-		if row, ok := remote[key]; ok {
-			result.Recipients = append(result.Recipients, remoteRecipient(row))
+		if row, ok := rows[key]; ok {
+			status, err := h.queuedRecipient(r, row)
+			if err != nil {
+				return MessageRecipients{}, err
+			}
+			result.Recipients = append(result.Recipients, status)
 			continue
 		}
 		status, err := h.localRecipient(r, msg, owner, address)
@@ -92,21 +96,40 @@ func (h *MessageHandler) listMessageRecipients(r *http.Request, in messagePath) 
 		}
 		result.Recipients = append(result.Recipients, status)
 	}
-	// A Bcc recipient is not in the Sent copy's headers; a remote one has its queue row.
+	// A Bcc recipient is not in the Sent copy's headers; its queue row names it.
 	for _, row := range queued {
 		key := strings.ToLower(row.Recipient)
 		if seen[key] {
 			continue
 		}
 		seen[key] = true
-		result.Recipients = append(result.Recipients, remoteRecipient(remote[key]))
+		status, err := h.queuedRecipient(r, rows[key])
+		if err != nil {
+			return MessageRecipients{}, err
+		}
+		result.Recipients = append(result.Recipients, status)
 	}
 	return result, nil
 }
 
-// remoteRecipient is a queue row as the sender sees it: its state and the category's
-// reason, never last_error.
-func remoteRecipient(row models.OutboundQueue) RecipientStatus {
+// queuedRecipient is a queue row as the sender sees it, named local when its address is
+// a mailbox on this server: a queue row says how the copy travelled, not where it went.
+func (h *MessageHandler) queuedRecipient(r *http.Request, row models.OutboundQueue) (RecipientStatus, error) {
+	status := queueRowStatus(row)
+	var mailbox models.Mailbox
+	err := repositories.FindMailboxByAddress(h.db.WithContext(r.Context()), row.Recipient, &mailbox)
+	switch {
+	case err == nil && mailbox.ID != 0:
+		status.Delivery = "local"
+	case err == nil, errors.Is(err, gorm.ErrRecordNotFound), errors.Is(err, repositories.ErrMailboxUnavailable):
+	default:
+		return RecipientStatus{}, fmt.Errorf("look up a queued recipient: %w", err)
+	}
+	return status, nil
+}
+
+// queueRowStatus is a queue row's state and its category's reason, never last_error.
+func queueRowStatus(row models.OutboundQueue) RecipientStatus {
 	status := RecipientStatus{Address: row.Recipient, Delivery: "remote", Attempts: row.Attempts, LastAttemptAt: row.LastAttempt, Category: string(row.FailureCategory)}
 	switch row.Status {
 	case "pending", "delivering":

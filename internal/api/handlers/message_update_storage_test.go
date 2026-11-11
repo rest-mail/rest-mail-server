@@ -196,14 +196,12 @@ func TestCalendarReplyKeepsAStorageFailure(t *testing.T) {
 		t.Errorf("remote reply: %d commits, %d statements without the request's context", remote.commits, len(remote.lost))
 	}
 
-	// A failed organizer lookup sends nothing anywhere.
+	// Nothing looks the organizer up any more: wherever they are, the reply is
+	// queued, so a store that would have failed that lookup does not matter (#1564).
 	lookup := &messageStorageDB{failOrganizer: true}
 	rr := serveMessage(t, lookup, http.MethodPost, "/api/v1/messages/9/calendar-reply", reply)
-	if rr.Code != http.StatusInternalServerError {
-		t.Errorf("failed organizer lookup: %d %s, want 500", rr.Code, rr.Body.String())
-	}
-	if len(lookup.writes) > 0 {
-		t.Errorf("failed organizer lookup wrote %q", lookup.writes)
+	if rr.Code != http.StatusOK || lookup.commits != 1 {
+		t.Errorf("failed organizer lookup: %d %s, %d commits; want 200 and one", rr.Code, rr.Body.String(), lookup.commits)
 	}
 
 	// A queue insert that fails leaves no Sent copy claiming the reply went.
