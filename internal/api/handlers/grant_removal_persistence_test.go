@@ -23,7 +23,7 @@ import (
 func TestGrantRemovalPersistenceAndAtomicAudit(t *testing.T) {
 	for _, scenario := range []string{"active", "live", "final_audit_failure", "grant_delete_failure", "activation_delete_failure", "cancelled", "cancelled_after_load", "last_superadmin"} {
 		t.Run(scenario, func(t *testing.T) {
-			db := openCustomFilterCreateScratchDB(t, &models.Mailbox{}, &models.Credential{}, &models.Role{}, &models.Capability{}, &models.RoleCapability{}, &models.Grant{}, &models.GrantActivation{}, &models.AuditEntry{})
+			db := openCustomFilterCreateScratchDB(t, &models.Alias{}, &models.Mailbox{}, &models.Credential{}, &models.Role{}, &models.Capability{}, &models.RoleCapability{}, &models.Grant{}, &models.GrantActivation{}, &models.AuditEntry{})
 			create := func(v interface{}) {
 				t.Helper()
 				if err := db.Create(v).Error; err != nil {

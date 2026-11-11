@@ -59,6 +59,7 @@ func (h *MessageHandler) deliverToRecipient(ctx context.Context, recipient repos
 		if recipient.Mailbox.ID != 0 {
 			params.Mailbox = recipient.Mailbox
 		}
+		params.EnvelopeRecipient = recipient.DeliveredTo
 		return h.deliverToLocal(ctx, params)
 	}
 	if strings.TrimSpace(params.RawMessage) == "" {

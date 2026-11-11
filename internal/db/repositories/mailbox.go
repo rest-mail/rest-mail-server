@@ -124,11 +124,21 @@ func RequireMailboxReceive(db *gorm.DB, mailbox *models.Mailbox) error {
 // unknown here (plain gorm.ErrRecordNotFound), and mail addressed to them is refused
 // like any other unknown recipient.
 func FindReceivingMailboxByAddress(db *gorm.DB, address string, mailbox *models.Mailbox) error {
+	return findReceivingMailbox(db, address, mailbox, 0)
+}
+
+// findReceivingMailbox applies that rule, except that a mailbox on setupDomainID
+// does not need its domain to be live. A nonzero setupDomainID is only for checking
+// the postmaster route of a domain that is about to go live (ResolveSetupRecipient).
+func findReceivingMailbox(db *gorm.DB, address string, mailbox *models.Mailbox, setupDomainID uint) error {
 	if err := FindActiveMailboxByAddress(db, address, mailbox); err != nil {
 		return err
 	}
 	if err := RequireMailboxReceive(db, mailbox); err != nil {
 		return err
+	}
+	if setupDomainID != 0 && mailbox.DomainID == setupDomainID {
+		return nil
 	}
 	var live int64
 	if err := db.Model(&models.Domain{}).Where("id = ? AND active", mailbox.DomainID).Count(&live).Error; err != nil {

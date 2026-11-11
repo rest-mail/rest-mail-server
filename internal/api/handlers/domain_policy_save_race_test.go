@@ -59,6 +59,9 @@ func policyRaceDB(t *testing.T, table string) *gorm.DB {
 	t.Helper()
 	db := openScratchDB(t, "policyrace", []any{&models.Domain{}, &models.Mailbox{}, &models.Alias{}, &models.Role{}, &models.Capability{}, &models.RoleCapability{}, &models.Grant{}, &models.GrantActivation{}, &models.Credential{}, &models.Pipeline{}, &models.CustomFilter{}, &models.DomainSenderRule{}, &models.Certificate{}, &models.DKIMRotationKey{}, &models.MTASTSPolicy{}, &models.DomainRelay{}, &models.Suppression{}, withAudit})
 	db.Logger = logger.Default.LogMode(logger.Silent)
+	if err := db.AutoMigrate(&models.DomainRetirement{}); err != nil {
+		t.Fatal(err)
+	}
 	pool, err := db.DB()
 	if err != nil {
 		t.Fatal(err)

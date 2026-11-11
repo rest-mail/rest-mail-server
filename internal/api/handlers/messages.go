@@ -2457,20 +2457,21 @@ func (h *MessageHandler) respondToCalendar(r *http.Request, in calendarReplyRequ
 // localDeliveryParams holds the information needed for local message delivery with
 // full inbound pipeline processing, quota checks, attachment extraction, and SSE events.
 type localDeliveryParams struct {
-	Mailbox      models.Mailbox
-	Sender       string
-	SenderName   string
-	RecipientsTo json.RawMessage
-	RecipientsCc json.RawMessage
-	Subject      string
-	BodyText     string
-	BodyHTML     string
-	MessageID    string
-	InReplyTo    string
-	References   string
-	RawMessage   string
-	ClientIP     string
-	HeloName     string
+	Mailbox           models.Mailbox
+	Sender            string
+	SenderName        string
+	RecipientsTo      json.RawMessage
+	RecipientsCc      json.RawMessage
+	EnvelopeRecipient string
+	Subject           string
+	BodyText          string
+	BodyHTML          string
+	MessageID         string
+	InReplyTo         string
+	References        string
+	RawMessage        string
+	ClientIP          string
+	HeloName          string
 	// Folder is the destination folder the message is created in (empty = INBOX).
 	// Set by the IMAP gateway's COPY/APPEND so the message lands directly in its
 	// destination. The flag pointers and ReceivedAt let COPY preserve the source
@@ -2633,10 +2634,14 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 	}
 
 	// The SMTP envelope is not part of the message body — always set it from the
-	// delivery params, with the resolved mailbox as the authoritative recipient.
+	// delivery params, retaining a resolved alias's original envelope recipient.
+	envelopeRecipient := mailbox.Address
+	if params.EnvelopeRecipient != "" {
+		envelopeRecipient = params.EnvelopeRecipient
+	}
 	emailJSON.Envelope = pipeline.Envelope{
 		MailFrom:  params.Sender,
-		RcptTo:    []string{mailbox.Address},
+		RcptTo:    []string{envelopeRecipient},
 		ClientIP:  params.ClientIP,
 		Helo:      params.HeloName,
 		TLS:       receivedTLSFlag(params.ReceivedTLS),
