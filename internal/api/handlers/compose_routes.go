@@ -84,7 +84,7 @@ type forwardMessageDescription struct {
 	ID   uint32 `path:"id" minimum:"1" example:"1"`
 	Body struct {
 		forwardBody
-		From string   `json:"from" minLength:"1"`
+		From string   `json:"from" minLength:"1" format:"idn-email"`
 		To   []string `json:"to" minItems:"1"`
 	} `body:""`
 }
