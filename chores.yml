@@ -694,7 +694,7 @@ tasks:
   contract:topology:
     desc: 'The topology contract gates and optional reports, with fresh fixtures; independent of the example-pair shards'
     cmds:
-      - CONTRACT_SKIP_PAIRS=true "${CHORE_BIN:-chore}" contract {{.CLI_ARGS}}
+      - CONTRACT_SKIP_PAIRS=true "${CHORE_BIN:-chore}" contract -- {{.CLI_ARGS}}
 
   contract:reports:
     desc: 'Authorization and ownership reports on an independent disposable topology, with fresh principals and fixtures'

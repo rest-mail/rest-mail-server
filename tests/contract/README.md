@@ -2142,7 +2142,16 @@ the 422s included, because the example's `1` and the id a link names are gone af
 the reset. A revoke aimed at a positive credential id other than the missing one
 also gets the app password, API key or client secret it revokes, made on that
 account with the two-factor session, refusals included, so the run never revokes a
-credential it signs in with. The edit already makes the key it changes. `0`, an
+credential it signs in with. A successful `listClientSecrets` also creates a
+disposable client secret after the reset and requires the returned list to contain
+its exact id and `client_secret` kind. Empty lists, another credential and stale
+notes fail the existing listing oracle (#2081); refusal and non-reset requests
+do not acquire this fixture. The documented `createClientSecret` 201 asking for
+`pipelines:write` at `domain:example.test` gives its disposable account the matching
+active domain-administrator grant through the real MFA setup session (#2082).
+The requested permission and caller credential stay unchanged; refusal cases,
+other scopes and non-reset runs receive no extra grant. The edit already makes
+the key it changes. `0`, an
 undecodable id and the missing ids keep theirs.
 The reset keeps only the retained administrators' password, authenticator and
 recovery codes (`resetCredentialKindsKept`), so an app password, API key or client

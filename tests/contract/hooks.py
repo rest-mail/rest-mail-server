@@ -1121,12 +1121,37 @@ def a_credential_to_manage(transaction):
         return
     parts[4] = str(an_account_of_its_own(origin_of(transaction), "contract-own-credential"))
     if (
+        transaction["request"].get("method") == "POST"
+        and len(parts) == 6
+        and parts[5] == "client-secrets"
+        and str(transaction.get("expected", {}).get("statusCode")) == "201"
+    ):
+        body = hooks.get_json(transaction)
+        if isinstance(body, dict) and body.get("permissions") == [
+            {"capability": "pipelines:write", "scope": "domain:example.test"}
+        ]:
+            as_the_two_factor_admin_call(origin_of(transaction), "POST", "/api/v1/admin/grants", {
+                "holder": {"kind": "account", "id": int(parts[4])},
+                "role": "admin", "scope": "domain:example.test", "mode": "active",
+            })
+    if (
         transaction["request"].get("method") == "DELETE"
         and len(parts) == 7
         and positive_id(parts[6])
         and parts[6] != "2147483647"
     ):
         a_credential_of_its_own(transaction, parts)
+    elif (
+        transaction["request"].get("method") == "GET"
+        and len(parts) == 6
+        and parts[5] == "client-secrets"
+        and str(transaction.get("expected", {}).get("statusCode")) == "200"
+    ):
+        credential_parts = parts + ["0"]
+        a_credential_of_its_own(transaction, credential_parts)
+        made_for_the_listing(transaction, "client secret", {
+            "id": int(credential_parts[6]), "kind": "client_secret",
+        })
     transaction["fullPath"] = "/".join(parts) + separator + query
 
 
@@ -1307,6 +1332,7 @@ def row_field(row, field):
 @hooks.after("listDmarcReports")
 @hooks.after("getDeliveryLogs")
 @hooks.after("listPipelineLogs")
+@hooks.after("listClientSecrets")
 @hooks.after("listTlsReports")
 @hooks.after("listPipelines")
 @hooks.after("listThreads")
