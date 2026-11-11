@@ -60,7 +60,7 @@ class TwoFactorAdminHookTests(unittest.TestCase):
         for operation in ("listAPIKeys", "revokeAPIKey", "confirmTwoFactor", "createGrant", "deleteGrant",
                           "activateGrant", "deactivateGrant", "makeGrantEligible", "createAccount", "linkAccount",
                           "unlinkAccount", "revokeCredential", "updateMailbox", "deleteMailbox", "updateDomain",
-                          "deleteDomain", "inviteAccount", "listAuditEntries", "verifyAuditLog",
+                          "deleteDomain", "restoreDomain", "inviteAccount", "listAuditEntries", "verifyAuditLog",
                           "releaseQuarantine", "changeOwnPassword", "disableTwoFactor"):
             self.assertIn("send_as_the_two_factor_admin", self.registered[operation])
         self.assertIn("an_api_key_from_the_two_factor_admin", self.registered["createAPIKey"])

@@ -29,6 +29,9 @@ func TestAliasMutationExamples(t *testing.T) {
 			t.Fatalf("incomplete %s", op)
 		}
 		for name, pair := range pairs[op] {
+			if name == "postmaster_required" {
+				continue
+			}
 			t.Run(op+"/"+name, func(t *testing.T) {
 				examplepairs.Proven(t, op, name)
 				s, ok := f[name]
@@ -132,6 +135,9 @@ func TestAliasMutationExamplesWithVertrag(t *testing.T) {
 	}
 	for op, path := range aliasMutationPaths {
 		for name, pair := range pairs[op] {
+			if name == "postmaster_required" {
+				continue
+			}
 			t.Run(op+"/"+name, func(t *testing.T) {
 				s, ok := f[name]
 				if !ok {

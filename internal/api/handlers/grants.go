@@ -230,10 +230,7 @@ func (h *GrantHandler) delete(r *http.Request, req grantPath) (endpoint.Empty, e
 	if err := RequireTwoFactor(r); err != nil {
 		return endpoint.Empty{}, err
 	}
-	err := h.db.WithContext(r.Context()).Transaction(func(tx *gorm.DB) error {
-		if err := grants.Lock(tx); err != nil {
-			return err
-		}
+	err := preservePostmasters(h.db.WithContext(r.Context()), true, func(tx *gorm.DB) error {
 		var g models.Grant
 		if err := tx.Preload("Role").First(&g, req.ID).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
