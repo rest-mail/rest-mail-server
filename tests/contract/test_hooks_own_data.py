@@ -361,6 +361,13 @@ class OwnDataHooks(unittest.TestCase):
             "mozillaAutoconfig": "public_reads_after_a_reset",
             "mozillaAutoconfigWellKnown": "public_reads_after_a_reset",
             "microsoftAutodiscover": "public_reads_after_a_reset",
+            "listDomains": "domain_administration_after_a_reset",
+            "listAliases": "domain_administration_after_a_reset",
+            "listDKIMKeys": "domain_administration_after_a_reset",
+            "listCertificates": "domain_administration_after_a_reset",
+            "createCertificate": "domain_administration_after_a_reset",
+            "getCertificate": "domain_administration_after_a_reset",
+            "deleteCertificate": "domain_administration_after_a_reset",
         }
         # entrypoint.py registers setDomainRelay's and the quiet hours' (below).
         self.assertEqual(
