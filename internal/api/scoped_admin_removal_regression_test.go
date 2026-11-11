@@ -38,6 +38,12 @@ func (c scopedAdminRemovalConnection) Open(string) (driver.Conn, error) { return
 func (c scopedAdminRemovalConnection) Begin() (driver.Tx, error) { return bulkQueueExampleTx{}, nil }
 
 func (c scopedAdminRemovalConnection) QueryContext(ctx context.Context, q string, args []driver.NamedValue) (driver.Rows, error) {
+	if strings.Contains(q, "EXISTS (SELECT 1 FROM mailboxes") {
+		return &authReadSnapshotRows{columns: []string{"id"}}, nil
+	}
+	if strings.Contains(q, "FROM audit_log") {
+		return &authReadSnapshotRows{columns: []string{"seq", "hash"}}, nil
+	}
 	c.reads.Add(1)
 	return c.domainAliasReadConnection.QueryContext(ctx, q, args)
 }
@@ -45,6 +51,9 @@ func (c scopedAdminRemovalConnection) QueryContext(ctx context.Context, q string
 // Capture actual GORM writes. Fixed row counts prove wiring, not PostgreSQL
 // persistence, key-cache invalidation or live mail routing.
 func (c scopedAdminRemovalConnection) ExecContext(_ context.Context, q string, args []driver.NamedValue) (driver.Result, error) {
+	if strings.HasPrefix(q, "SELECT pg_advisory_xact_lock(") {
+		return driver.RowsAffected(0), nil
+	}
 	if c.operation == "deleteAlias" {
 		if !strings.HasPrefix(q, `DELETE FROM "aliases"`) || !strings.Contains(q, `"id"`) || len(args) != 1 {
 			return nil, errors.New("alias deletion lost exact primary key")

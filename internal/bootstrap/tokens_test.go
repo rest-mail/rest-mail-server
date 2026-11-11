@@ -40,7 +40,7 @@ func newAdmin(t *testing.T, gdb *gorm.DB, address, password string) *models.Mail
 		t.Fatalf("superadmin role: %v", err)
 	}
 	local, domainName, _ := strings.Cut(address, "@")
-	domain, err := ensureDomain(gdb, domainName)
+	domain, _, err := ensureDomain(gdb, domainName)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -245,7 +245,7 @@ func openScratchDatabase(t *testing.T, extraModels ...any) *gorm.DB {
 	setup := []testdb.Setup{testdb.Models(
 		&models.Domain{}, &models.Mailbox{}, &models.Pipeline{}, &models.Role{}, &models.Capability{},
 		&models.RoleCapability{}, &models.Grant{}, &models.GrantActivation{}, &models.OneTimeToken{}, &models.Credential{},
-		&models.RefreshToken{}, &models.GatewaySession{}), {Name: "audit-log", Run: rmdb.MigrateAuditLog}}
+		&models.RefreshToken{}, &models.GatewaySession{}, &models.QuotaUsage{}), {Name: "audit-log", Run: rmdb.MigrateAuditLog}}
 	if len(extraModels) != 0 {
 		setup = append(setup, testdb.Models(extraModels...))
 	}

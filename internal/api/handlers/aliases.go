@@ -183,7 +183,12 @@ func (h *AliasHandler) update(r *http.Request, in updateAliasInput) (Alias, erro
 	}
 
 	if len(updates) > 0 {
-		if err := h.db.WithContext(r.Context()).Model(&alias).Updates(updates).Error; err != nil {
+		if err := preservePostmasters(h.db.WithContext(r.Context()), true, func(tx *gorm.DB) error {
+			return tx.Model(&alias).Updates(updates).Error
+		}); err != nil {
+			if isEndpointError(err) {
+				return Alias{}, err
+			}
 			return Alias{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to update alias")
 		}
 	}
@@ -210,7 +215,12 @@ func (h *AliasHandler) delete(r *http.Request, in adminAddressPath) (endpoint.Em
 		return endpoint.Empty{}, fmt.Errorf("find alias for deletion: %w", err)
 	}
 
-	if err := h.db.Delete(&alias).Error; err != nil {
+	if err := preservePostmasters(h.db, true, func(tx *gorm.DB) error {
+		return tx.Delete(&alias).Error
+	}); err != nil {
+		if isEndpointError(err) {
+			return endpoint.Empty{}, err
+		}
 		return endpoint.Empty{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to delete alias")
 	}
 
