@@ -7,8 +7,6 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-
-	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
 var forwardEnvelopeCases = []struct {
@@ -25,6 +23,8 @@ var forwardEnvelopeCases = []struct {
 	{"missing_recipients", `{"from":"sender@example.test"}`, false},
 	{"empty_sender", `{"from":"","to":["target@remote.test"]}`, false},
 	{"empty_recipients", `{"from":"sender@example.test","to":[]}`, false},
+	{"invalid_sender", `{"from":"x","to":["target@remote.test"]}`, false},
+	{"invalid_recipient", `{"from":"sender@example.test","to":["x"]}`, false},
 	{"minimal", `{"from":"sender@example.test","to":["target@remote.test"]}`, true},
 	{"with_note", `{"from":"sender@example.test","to":["target@remote.test"],"body_text":"See below."}`, true},
 	{"on_behalf_true", `{"from":"sender@example.test","to":["target@remote.test"],"on_behalf":true}`, true},
@@ -34,7 +34,7 @@ var forwardEnvelopeCases = []struct {
 func TestForwardRequestSchemaMatchesRequiredEnvelope(t *testing.T) {
 	for index, generator := range gapGenerators(t) {
 		t.Run(fmt.Sprintf("registration_%d", index), func(t *testing.T) {
-			compiler := jsonschema.NewCompiler()
+			compiler := fuzzFindingCompiler()
 			const resource = "https://rest-mail.test/forward-envelope.json"
 			if err := compiler.AddResource(resource, contractDocument(t, generator)); err != nil {
 				t.Fatal(err)

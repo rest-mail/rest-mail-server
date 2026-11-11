@@ -11,9 +11,10 @@ import (
 // its items. These go into the document only, and binding reads the types, so no answer changes
 // whether or not a type is bound to the body: the drafts' handlers check each item themselves.
 var itemFormats = map[string]map[string]string{
-	"sendMessage": {"to": "idn-email", "cc": "idn-email", "bcc": "idn-email"},
-	"saveDraft":   {"to": "idn-email", "cc": "idn-email"},
-	"updateDraft": {"to": "idn-email", "cc": "idn-email"},
+	"sendMessage":    {"to": "idn-email", "cc": "idn-email", "bcc": "idn-email"},
+	"forwardMessage": {"to": "idn-email"},
+	"saveDraft":      {"to": "idn-email", "cc": "idn-email"},
+	"updateDraft":    {"to": "idn-email", "cc": "idn-email"},
 }
 
 // withItemFormats writes itemFormats into doc. The generator caches the map it generates and
