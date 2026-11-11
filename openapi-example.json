@@ -14460,6 +14460,9 @@
     "example": {
       "summary": "The operation's example",
       "request": {
+        "path": {
+          "id": 7
+        },
         "body": {
           "from": "admin@restmail.test",
           "to": [
@@ -51540,7 +51543,11 @@
     },
     "found": {
       "description": "The real bounded database audit verifier walks fixed, production-hashed entries. Complete pairs expose valid/empty/broken/gapped/truncated chains and anchored matches/mismatches/missing anchors. Controlled rows prove verifier and response wiring, not PostgreSQL traversal or audit append persistence.",
-      "request": {},
+      "request": {
+        "query": {
+          "anchor": ""
+        }
+      },
       "response": {
         "status": 200,
         "body": {
