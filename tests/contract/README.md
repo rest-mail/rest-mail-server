@@ -978,7 +978,7 @@ real handler refuses each for the account's own session and stores nothing
 (`contract_contact_examples_test.go`). The other `/api/v1/accounts/{id}`
 operations keep their exclusions.
 
-`protocolSignIn` uses the E2E fixture's app password with its named requests:
+`openGatewaySession` uses the E2E fixture's app password with its named requests:
 `signed_in` (`{ "protocol": "imap" }`) gets 200, `invalid_body` (`[]`)
 gets 400, and `protocol_missing` (`{}`) gets 422. The hook supplies only
 the Basic credential, so each request body reaches the handler unchanged.
@@ -1709,6 +1709,41 @@ After a reset, the 200 of `listCustomFilters`, `listDomains`, `listAliases`,
 alone pass on an empty list. The before hook notes the row in
 `hooks.stash["listing_made"]`; a documented 200 with nothing noted fails too.
 Refusals and a run without a reset are left alone.
+
+The account link operations (`linkAccount` and `unlinkAccount`) and the token
+exchange (`issueClientCredentialsToken`) reset and seed before each exchange too,
+refusals included (`account_links_and_the_token_exchange_after_a_reset`, each
+operation's first hook); the client secret operations reset with the credentials
+(`a_credential_to_manage`). None needs anything made. The link's 201 links the seeded `eve@restmail.test`,
+which the reset puts back unlinked with the seed's password, so after a reset
+`link_a_seeded_account` no longer undoes an earlier link. The rest are refusals,
+which keep their ids and bodies. linkAccount's link reaches only the unlink; no
+other link starts from or reaches any of them. `listAccounts` and `getAccount`
+are not moved: `listAccounts`' link reaches operations not moved yet, and
+`getAccount` among them. Nor are the push device operations: without an APNs
+key their routes do not exist, so the run sends none of them.
+
+The sign-in and recovery operations reset and seed before each exchange too,
+refusals included (`sign_in_and_recovery_after_a_reset`, each operation's first
+hook): `login`, `logout`, `refreshToken`, `openGatewaySession`, `resetAdmin`,
+`recoverAccount`, the three owner operations, the five two-factor and password
+operations, and the six recovery email operations. No link starts from or
+reaches any of them. Refusals keep their bodies and tokens. A success that ends
+a session, rotates one or starts a second factor acts on an account made for
+it after the reset, with a password of its own, never on a session or
+credential the run uses: `logout`'s 204 ends a session of that account, and
+`the_session_it_ended_is_over` fails the exchange unless its refresh token is
+refused afterwards; `refreshToken`'s 200 rotates that account's refresh token;
+`enrollTwoFactor`'s 200 starts that account's enrollment. `openGatewaySession`
+signs in with an app password the two-factor administrator mints for an
+account made for it, since the reset removed the principal
+`sign_in_a_mail_client` names. The other successes read, sign the fixture
+admin in, or ask about an address no account holds, and need nothing made. The
+local run needs the topology's `RESTMAIL_RECOVERY_EMAIL_BASE_URL`
+(`https://restmail.localhost`): without it `requestRecoveryEmail` answers 503.
+The reset also drops a kept administrator's enrollment that was never
+confirmed, with its recovery codes, so the primary run's enrollment of the
+fixture admin does not come back after it (`TestCleanResetPendingEnrollment`).
 
 `createAlias`, `getAlias`, `updateAlias` and `deleteAlias` reset and seed before
 each exchange too, refusals included. A create is sent as documented after its

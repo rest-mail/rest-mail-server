@@ -85,16 +85,17 @@ class SignedWithTheRunsOwnerKey(unittest.TestCase):
 
     def test_each_runs_after_its_pacing(self):
         self.assertEqual(self.registered["ownerStatus"],
-                         ["pace_owner_requests", "sign_the_status_with_the_runs_owner_key",
+                         ["sign_in_and_recovery_after_a_reset", "pace_owner_requests", "sign_the_status_with_the_runs_owner_key",
                           "refuse_a_status_key_that_is_not_listed"])
         self.assertEqual(self.registered["ownerToken"],
-                         ["pace_owner_requests", "mint_for_an_account_of_its_own",
+                         ["sign_in_and_recovery_after_a_reset", "pace_owner_requests", "mint_for_an_account_of_its_own",
                           "refuse_a_token_to_a_key_that_is_not_an_owner",
                           "refuse_a_token_for_an_account_that_does_not_exist"])
         self.assertEqual(self.registered["resetAdmin"],
-                         ["pace_auth_requests", "reset_an_account_of_its_own"])
-        # A challenge needs nothing but the registered key: it is only paced.
-        self.assertEqual(self.registered["ownerChallenge"], ["pace_owner_requests"])
+                         ["sign_in_and_recovery_after_a_reset", "pace_auth_requests", "reset_an_account_of_its_own"])
+        # A challenge needs no extra fixture after the reset, only pacing.
+        self.assertEqual(self.registered["ownerChallenge"],
+                         ["sign_in_and_recovery_after_a_reset", "pace_owner_requests"])
 
     def test_every_principals_status_is_signed_with_a_fresh_challenge(self):
         for credential in (None, "Bearer ordinary", "Basic app-password"):
