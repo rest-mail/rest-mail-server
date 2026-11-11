@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -147,14 +146,7 @@ func (h *MessageHandler) commitForward(r *http.Request, req sendMessageRequest, 
 	for _, part := range parts {
 		attachmentBytes += part.Size
 	}
-	toJSON, _ := json.Marshal(req.To)
-	ccJSON, _ := json.Marshal(req.Cc)
-	if req.Cc == nil {
-		ccJSON = []byte("[]")
-	}
 	recipients := append(append(append([]string{}, req.To...), req.Cc...), req.Bcc...)
-	var traces forwardTraces
-	var delivered []models.Message
 	err = h.db.WithContext(r.Context()).Transaction(func(tx *gorm.DB) error {
 		cost := int64(sent.SizeBytes) + attachmentBytes
 		if err := repositories.ReserveStorage(tx, sender.ID, cost); err != nil {
@@ -194,38 +186,13 @@ func (h *MessageHandler) commitForward(r *http.Request, req sendMessageRequest, 
 				return err
 			}
 		}
-		for _, rcpt := range recipients {
-			var box models.Mailbox
-			err := repositories.FindActiveMailboxByAddress(tx, rcpt, &box)
-			if err == nil {
-				local := *h
-				local.db = tx
-				local.broker = nil
-				local.newMail = nil
-				local.recorder = &traces
-				msg, err := local.deliverToLocal(r.Context(), localDeliveryParams{Mailbox: box, Sender: req.From, SenderName: sender.DisplayName, RecipientsTo: toJSON, RecipientsCc: ccJSON, Subject: req.Subject, BodyText: req.BodyText, BodyHTML: req.BodyHTML, MessageID: sent.MsgID, InReplyTo: req.InReplyTo, References: sent.References, RawMessage: raw, RequireTLS: req.RequireTLS, IndependentAttachments: true})
-				if err != nil {
-					return err
-				}
-				if msg != nil {
-					delivered = append(delivered, *msg)
-				}
-			} else if errors.Is(err, gorm.ErrRecordNotFound) {
-				id := sent.ID
-				if err := tx.Create(&models.OutboundQueue{MessageID: &id, Sender: req.From, Recipient: rcpt, Domain: rmail.DomainFromAddress(rcpt), RawMessage: raw, Status: "pending", RequireTLS: req.RequireTLS}).Error; err != nil {
-					return err
-				}
-			} else {
-				return err
-			}
-		}
-		return nil
+		// Every recipient goes on the outbound queue, one on this server as much
+		// as one elsewhere (#1564): the worker delivers it through the normal route.
+		rows := queueRowsFor(recipients, sent.ID, req.From, raw, req.RequireTLS)
+		return tx.Create(&rows).Error
 	})
 	if err != nil {
 		return zero, fmt.Errorf("commit forwarded message: %w", err)
-	}
-	for _, trace := range traces.rows {
-		h.recordTrace(r.Context(), trace)
 	}
 	if queued != nil {
 		queued.Outcome = outcomeQueued
@@ -237,68 +204,11 @@ func (h *MessageHandler) commitForward(r *http.Request, req sendMessageRequest, 
 	if h.broker != nil {
 		h.broker.Publish(r.Context(), sender.ID, SSEEvent{Type: "message_sent", Data: map[string]any{"message_id": sent.ID, "folder": "Sent", "subject": sent.Subject}})
 	}
-	for _, msg := range delivered {
-		if h.broker != nil {
-			h.broker.Publish(r.Context(), msg.MailboxID, SSEEvent{Type: "new_message", Data: map[string]any{"message_id": msg.ID, "folder": msg.Folder, "subject": msg.Subject, "sender": msg.Sender}})
-			var unread int64
-			if err := h.db.WithContext(r.Context()).Model(&models.Message{}).Where("mailbox_id = ? AND folder = ? AND is_read = ? AND is_deleted = ?", msg.MailboxID, "INBOX", false, false).Count(&unread).Error; err == nil {
-				h.broker.Publish(r.Context(), msg.MailboxID, SSEEvent{Type: "folder_update", Data: map[string]any{"folder": "INBOX", "unread_count": unread}})
-			}
-		}
-		if h.newMail != nil && msg.Folder == "INBOX" && !msg.IsRead {
-			h.newMail.NewMail(msg.MailboxID)
-		}
-	}
 	for _, rcpt := range recipients {
 		contact := models.Contact{MailboxID: sender.ID, Email: rcpt}
 		h.db.WithContext(r.Context()).Where(contact).Attrs(models.Contact{TrustLevel: "auto", Source: "sent"}).FirstOrCreate(&models.Contact{})
 	}
 	return endpoint.Status[any]{Code: http.StatusCreated, Value: messageOf(*sent)}, nil
-}
-
-type forwardTraces struct{ rows []models.MessageTrace }
-
-func (b *forwardTraces) Record(trace models.MessageTrace) { b.rows = append(b.rows, trace) }
-
-// Local forwarding uses the recipient's inbound pipeline, then gives every
-// surviving part an independent object. An unextracted zero-byte MIME part is
-// still a part; it must acquire a stored reference rather than disappear.
-func (h *MessageHandler) copyLocalForwardParts(ctx context.Context, email *pipeline.EmailJSON) (*pipeline.EmailJSON, error) {
-	copy := *email
-	remaining := h.maxForwardBytes
-	clone := func(input []pipeline.Attachment) ([]pipeline.Attachment, error) {
-		output := make([]pipeline.Attachment, 0, len(input))
-		for _, part := range input {
-			data, err := h.forwardPartBytes(ctx, part, remaining)
-			if err != nil {
-				return nil, err
-			}
-			remaining -= int64(len(data))
-			if h.forwardStore != nil {
-				part.Ref, part.Checksum, err = h.forwardStore.PutIndependent(ctx, data)
-				part.Storage = "s3"
-			} else {
-				part.Ref, part.Checksum, err = attachmentstore.PutIndependentFilesystem(ctx, h.forwardRoot, data)
-				part.Storage = "filesystem"
-			}
-			if err != nil {
-				return nil, err
-			}
-			part.Content = ""
-			output = append(output, part)
-		}
-		return output, nil
-	}
-	var err error
-	copy.Attachments, err = clone(email.Attachments)
-	if err != nil {
-		return nil, err
-	}
-	copy.Inline, err = clone(email.Inline)
-	if err != nil {
-		return nil, err
-	}
-	return &copy, nil
 }
 
 func (h *MessageHandler) forwardPartBytes(ctx context.Context, part pipeline.Attachment, remaining int64) ([]byte, error) {
