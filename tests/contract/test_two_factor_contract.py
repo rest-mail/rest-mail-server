@@ -1,6 +1,7 @@
 """Own-2FA schema, ordinary contract coverage and complete admin route inventory."""
 
 import importlib.util
+import os
 import re
 import sys
 import types
@@ -134,10 +135,28 @@ class TwoFactorContract(unittest.TestCase):
         selected = [
             function for pattern, function in registered if pattern == "enrollTwoFactor"
         ]
-        self.assertEqual(selected, [module.pace_auth_requests])
-        self.assertFalse(
-            any(pattern == "getTwoFactorStatus" for pattern, _ in registered)
+        # The own-data phase's reset hook runs first. Only after a reset does it
+        # send the enrollment as an account made for it; in every other run the
+        # request keeps the fixture admin's session, so neither operation's
+        # principal is rewritten (test_hooks_sign_in_clean_start covers the reset).
+        self.assertEqual(
+            selected,
+            [module.sign_in_and_recovery_after_a_reset, module.pace_auth_requests],
         )
+        self.assertEqual(
+            [function for pattern, function in registered if pattern == "getTwoFactorStatus"],
+            [module.sign_in_and_recovery_after_a_reset],
+        )
+        with patch.dict("os.environ"):
+            os.environ.pop("CONTRACT_RESET_SEED", None)
+            for path in ("/api/v1/auth/2fa/enroll", "/api/v1/auth/2fa"):
+                sent = {
+                    "fullPath": path,
+                    "name": path + " > x > 200 > application/json",
+                    "request": {"body": "", "headers": {"Authorization": "Bearer fixture-admin"}},
+                }
+                module.sign_in_and_recovery_after_a_reset(sent)
+                self.assertEqual(sent["request"]["headers"], {"Authorization": "Bearer fixture-admin"})
 
     def test_response_examples_and_required_fields(self):
         want = {
