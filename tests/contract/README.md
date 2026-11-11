@@ -1605,7 +1605,10 @@ ordinary fixtures are deliberately removed, so later hooks must recreate them.
 
 Reset refills all API token buckets and recovery budgets, invalidates authorization
 and session caches, closes old SSE subscriptions and clears stream caps, counters
-and replay. The non-production delivery worker holds a cross-process database
+and replay. A successful reset also empties the registered outbound `rate_limit`
+filter's minute and hour counters without changing its clock or configured limits.
+A failed reset and production requests leave those counters untouched. The
+non-production delivery worker holds a cross-process database
 barrier from before claiming mail through all delivery/DSN/suppression effects.
 Reset waits for that barrier with a **30-second bound**, excludes new claims while
 cleaning, and fails rather than reporting success when the drain times out. A
