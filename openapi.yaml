@@ -27276,12 +27276,14 @@ components:
             for another mailbox, or mail:send for your own. Read access grants neither.
         from:
           type: string
-          format: email
+          format: idn-email
+          minLength: 1
         to:
           type: array
+          minItems: 1
           items:
             type: string
-            format: email
+            format: idn-email
         body_text:
           type: string
 
