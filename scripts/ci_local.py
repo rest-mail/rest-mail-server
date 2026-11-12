@@ -66,9 +66,7 @@ TIMEOUT_REPORT_LINES = 30
 # load of 300 cannot finish a quarter of the package inside CI's per-shard limit
 # (#1941), so the limit stays and each shard carries less. Tests still run once.
 RACE_SHARDS = 8
-# CI allows 10m. TestIMAPChecklist is one test and alone took longer than that at
-# a load of 300, so shards cannot help it; only the local limit is longer.
-IMAP_TIMEOUT = "30m"
+IMAP_TIMEOUT = "10m"
 # All the *WithVertrag tests took about 32 minutes at a load of 50 to 85, and a 20-minute
 # limit cut them off. Each of the three shards carries a third of them, so this leaves
 # room for much more load than that without calling a healthy run anything but healthy.
@@ -945,6 +943,11 @@ class Gate:
                 f"CI needs go{expected}, found {actual}; install that Go toolchain before rerunning"
             )
         self.env["GOTOOLCHAIN"] = "go" + expected
+        compiler = self.run(
+            [self.python, "scripts/ci/install_cgo.py", str(self.work / "cgo"), "--print-env"],
+            capture=True,
+        )
+        self.env.update(json.loads(compiler))
 
     def python_suite(self, directory):
         self.run(
