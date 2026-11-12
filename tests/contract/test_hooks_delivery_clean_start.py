@@ -191,9 +191,8 @@ class DeliveryCleanStart(unittest.TestCase):
             ("/api/mailboxes?address=", CHECK.replace(" > 200", " > 422"), None),
             ("/api/mailboxes?address=unavailable%40example.com", CHECK, None),
             ("/api/v1/messages/deliver", DELIVER, {"address": "nobody@restmail.test", "sender": "sender@example.net"}),
-            ("/api/v1/messages/deliver", DELIVER, {"mailbox_id": 2147483647}),
-            ("/api/v1/messages/deliver", DELIVER.replace(" > 201", " > 422"),
-             {"address": "admin@restmail.test", "sender": "sender@example.net", "folder": " Archive"}),
+            ("/api/v1/messages/deliver", DELIVER.replace(" > 201", " > 422"), {"address": ""}),
+            ("/api/v1/messages/deliver", DELIVER.replace(" > 201", " > 422"), {"subject": "Hello", "body_text": "Hello"}),
             ("/restmail/messages", RESTMAIL_DELIVER.replace(" > 201", " > 422"), {"from": "someone@ext-contract.test"}),
         ):
             with self.subTest(path=path, body=body):
