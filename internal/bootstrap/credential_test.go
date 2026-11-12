@@ -21,7 +21,7 @@ func hashOf(t *testing.T, password string, cost int) string {
 }
 
 func TestBootstrapFromConfig(t *testing.T) {
-	hash := hashOf(t, installerPassword, 10)
+	hash := hashOf(t, installerPassword, auth.PasswordHashCost)
 
 	if c, err := BootstrapFromConfig("", ""); err != nil || !c.IsZero() {
 		t.Errorf("neither: %+v %v, want nothing", c, err)
@@ -62,12 +62,12 @@ func TestBootstrapPasswordHash_RefusesWhatIsNotOne(t *testing.T) {
 // A restart giving the same credential changes nothing; a different one is a
 // new password. For a hash, that is a different hash.
 func TestBootstrapCredential_Matches(t *testing.T) {
-	hash := hashOf(t, installerPassword, 10)
+	hash := hashOf(t, installerPassword, auth.PasswordHashCost)
 	c, _ := BootstrapPasswordHash(hash)
 	if !c.matches("{BLF-CRYPT}"+hash) || !c.matches(hash) {
 		t.Error("the same hash does not match itself")
 	}
-	if c.matches("{BLF-CRYPT}" + hashOf(t, installerPassword, 10)) {
+	if c.matches("{BLF-CRYPT}" + hashOf(t, installerPassword, auth.PasswordHashCost)) {
 		t.Error("another hash of the same password matched: a new deployment would not re-arm")
 	}
 	p := BootstrapPassword(installerPassword)
@@ -81,7 +81,7 @@ func TestBootstrapCredential_Validate(t *testing.T) {
 	if err := BootstrapPassword("short").validate(); err == nil || !strings.Contains(err.Error(), "at least") {
 		t.Errorf("a short password: %v", err)
 	}
-	c, _ := BootstrapPasswordHash(hashOf(t, "short", 10))
+	c, _ := BootstrapPasswordHash(hashOf(t, "short", auth.PasswordHashCost))
 	if err := c.validate(); err != nil {
 		t.Errorf("a hash: %v", err)
 	}
