@@ -87,13 +87,14 @@ func TestIMAP_AuthenticateWrongCredsStillNO(t *testing.T) {
 	}
 }
 
-// Malformed base64 on the continuation line (that is NOT the abort "*") remains a
-// tagged NO "Invalid base64" — abort handling must not swallow real decode errors.
-func TestIMAP_AuthenticateBadBase64StillNO(t *testing.T) {
+// Malformed base64 on the continuation line (that is NOT the abort "*") is a
+// tagged BAD "Invalid base64" (RFC 9051 §6.2.2) — abort handling must not
+// swallow real decode errors, and valid base64 with wrong credentials stays NO.
+func TestIMAP_AuthenticateBadBase64IsBAD(t *testing.T) {
 	m := newMockBackend()
 	h := newIMAPHarness(t, m)
 
-	// Sanity: the payload really is invalid base64, so the NO is about decoding.
+	// Sanity: the payload really is invalid base64, so the BAD is about decoding.
 	if _, err := base64.StdEncoding.DecodeString("!!!not-base64!!!"); err == nil {
 		t.Fatal("test payload unexpectedly decoded as valid base64")
 	}
@@ -104,7 +105,7 @@ func TestIMAP_AuthenticateBadBase64StillNO(t *testing.T) {
 	}
 	h.send("!!!not-base64!!!")
 	status := h.readLine()
-	if !strings.HasPrefix(status, "a1 NO") {
-		t.Fatalf("bad-base64 AUTHENTICATE = %q, want tagged NO", status)
+	if status != "a1 BAD Invalid base64" {
+		t.Fatalf("bad-base64 AUTHENTICATE = %q, want tagged BAD Invalid base64", status)
 	}
 }
