@@ -3,6 +3,7 @@ package repositories
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"sort"
 	"strings"
 	"time"
@@ -235,23 +236,13 @@ func (r *CredentialRepository) matchPassword(accountID uint, password string, no
 	for i := range creds {
 		if auth.CheckPassword(password, creds[i].SecretHash) == nil {
 			if auth.PasswordNeedsRehash(password, creds[i].SecretHash) {
-				hash, err := auth.HashPassword(password)
+				current, err := r.upgradePasswordHash(&creds[i], password, now)
 				if err != nil {
-					return nil, fmt.Errorf("upgrade imported password: %w", err)
+					return nil, err
 				}
-				// Re-encoding the same password keeps its credential id, grants,
-				// sessions and audit history. Never overwrite a concurrent reset,
-				// replacement or revocation with this proof of the old password.
-				res := r.db.Model(&models.Credential{}).
-					Where("id = ? AND secret_hash = ? AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > ?)", creds[i].ID, creds[i].SecretHash, now).
-					Update("secret_hash", hash)
-				if res.Error != nil {
-					return nil, fmt.Errorf("store upgraded password: %w", res.Error)
-				}
-				if res.RowsAffected == 0 {
+				if !current {
 					return nil, nil
 				}
-				creds[i].SecretHash = hash
 			}
 			if memo != nil {
 				memo.Remember(&creds[i], password)
@@ -260,6 +251,51 @@ func (r *CredentialRepository) matchPassword(accountID uint, password string, no
 		}
 	}
 	return nil, nil
+}
+
+// upgradePasswordHash stores a just-proven password at the server's own hash
+// format and cost, keeping its credential id, grants, sessions and audit
+// history. It reports whether the password is still the credential's.
+//
+// A failure to hash or store the new hash fails nothing: the password was
+// proven, the old hash still works, and the next sign-in tries again. It
+// returns an error only if a lost update cannot be explained, because then the
+// proof may be of a password that has since been replaced.
+//
+// The update names the old hash, so it cannot overwrite a concurrent reset,
+// replacement or revocation with this proof of the old password. When it
+// matches no row, either that happened, or a concurrent sign-in upgraded the
+// same password first, and the row as it is now says which.
+func (r *CredentialRepository) upgradePasswordHash(cred *models.Credential, password string, now time.Time) (bool, error) {
+	hash, err := auth.HashPassword(password)
+	if err != nil {
+		slog.Warn("could not upgrade a password hash", "credential_id", cred.ID, "error", err)
+		return true, nil
+	}
+	res := r.db.Model(&models.Credential{}).
+		Where("id = ? AND secret_hash = ? AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > ?)", cred.ID, cred.SecretHash, now).
+		Update("secret_hash", hash)
+	if res.Error != nil {
+		slog.Warn("could not store an upgraded password hash", "credential_id", cred.ID, "error", res.Error)
+		return true, nil
+	}
+	if res.RowsAffected == 1 {
+		cred.SecretHash = hash
+		return true, nil
+	}
+	var stored models.Credential
+	err = r.db.Where("id = ? AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > ?)", cred.ID, now).Take(&stored).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("re-read an upgraded password: %w", err)
+	}
+	if auth.CheckPassword(password, stored.SecretHash) != nil {
+		return false, nil
+	}
+	*cred = stored
+	return true, nil
 }
 
 // HasTwoFactor reports whether the account has a confirmed, unrevoked TOTP

@@ -50,6 +50,14 @@ type SessionPasswords struct {
 	verify   PasswordVerify
 	refused  PasswordRefusedFunc
 	failures *rateLimiter // nil: refusals are not throttled
+	tarpit   *SignInTarpit
+}
+
+// SetTarpit makes a guess wait as a failed sign-in does, so opening a gateway
+// session is not a faster way to guess a password than signing in. Call it
+// before serving traffic.
+func (a *SessionPasswords) SetTarpit(tarpit *SignInTarpit) {
+	a.tarpit = tarpit
 }
 
 // NewSessionPasswords builds the password check. failures sets the refusal
@@ -113,6 +121,10 @@ func (a *SessionPasswords) Authenticate() func(http.Handler) http.Handler {
 			var refusal *auth.CredentialRefusal
 			switch {
 			case errors.As(err, &refusal):
+				// A secret that matched is not a guess, and is not slowed.
+				if refusal.CredentialID == nil {
+					a.tarpit.Failed(r, address)
+				}
 				if a.failures != nil {
 					key := ipKey
 					if refusal.CredentialID != nil {

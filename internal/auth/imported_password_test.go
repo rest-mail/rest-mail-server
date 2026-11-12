@@ -54,7 +54,7 @@ func TestImportedPasswordHashesRejectMalformedAndUnbounded(t *testing.T) {
 		strings.Replace(importSHA512, "$6$", "$6$rounds=1000001$", 1),
 		strings.Replace(importSHA256, "$5$", "$5$rounds=999$", 1),
 		strings.Replace(importSHA512, "$6$", "$6$rounds=9999999999999999999$", 1),
-		strings.Replace(DummyPasswordHash, "$10$", "$15$", 1),
+		strings.Replace(DummyPasswordHash, "$12$", "$15$", 1),
 		DummyPasswordHash + "extra", "{BLF-CRYPT}$2a$10$", strings.Repeat("x", 257),
 	} {
 		if _, err := NormalizeImportedPasswordHash(hash); err == nil {

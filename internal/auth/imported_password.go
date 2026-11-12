@@ -173,9 +173,18 @@ func isImportedHash(hash string) bool {
 	return false
 }
 
-// PasswordNeedsRehash reports whether a proven password can be upgraded to
-// our bcrypt format. bcrypt cannot represent passwords longer than 72 bytes:
-// keep those imported hashes until the user chooses a shorter password.
+// PasswordNeedsRehash reports whether a proven password should be stored again
+// with HashPassword: an imported SHA-crypt or Argon2 hash, or a bcrypt hash
+// cheaper than the server's own cost. A dearer bcrypt hash is kept: replacing it
+// would weaken it. bcrypt cannot represent passwords longer than 72 bytes: keep
+// those hashes until the user chooses a shorter password.
 func PasswordNeedsRehash(password, hash string) bool {
-	return len(password) <= 72 && isImportedHash(hash)
+	if len(password) > 72 {
+		return false
+	}
+	if isImportedHash(hash) {
+		return true
+	}
+	cost, err := bcrypt.Cost([]byte(strings.TrimPrefix(hash, "{BLF-CRYPT}")))
+	return err == nil && cost < passwordHashCost()
 }

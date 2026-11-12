@@ -371,8 +371,12 @@ var streamClient = &http.Client{Transport: httpClient.Transport}
 // authThrottle spends the sign-in bucket and checks every operation that
 // shares it, then the buckets beside it, then that it comes back.
 func (l *limitsRun) authThrottle(t *testing.T) {
+	spent := 0
 	spend := func() *http.Response {
-		resp, err := newAPIClient().post("/api/v1/auth/login", map[string]string{"email": unknownLimitsAddress, "password": "not the password"})
+		// Another address each time: failures against one address wait, up to
+		// seconds each (#1643), and the bucket would refill during the waits.
+		spent++
+		resp, err := newAPIClient().post("/api/v1/auth/login", map[string]string{"email": fmt.Sprintf("nobody-limits-%d@restmail.test", spent), "password": "not the password"})
 		requireNoError(t, err)
 		return resp
 	}

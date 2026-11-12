@@ -1054,6 +1054,11 @@ paths:
         only through its owners) cannot be signed in to, and is answered as a
         wrong password. There is no other kind of sign-in: no username.
 
+        A wrong password or second-factor code is still answered 401, after a
+        wait that grows with the address's recent failures: up to 3 seconds
+        from anywhere, and up to 5 for failures from the same client. The wait
+        never becomes a refusal, and a correct password is answered without one.
+
         On success a browser gets three cookies: restmail_access (httpOnly, the
         session token), restmail_refresh (httpOnly, scoped to /api/v1/auth), and
         restmail_csrf (readable, for the double-submit CSRF header), and no
@@ -2313,6 +2318,9 @@ paths:
         Bearer on every call the gateway then makes for that connection, over the internal
         listener with the same certificate; the session is checked on every request,
         so revoking the credential or the account''s sessions ends it at the next one.
+        A wrong password is still answered 401, after the same wait as a failed login:
+        it grows with the address''s recent failures, up to 3 seconds from anywhere and
+        up to 5 from the same client. A correct credential is answered without one.
         protocol must be the one the service serves; a caller without a gateway certificate
         is 403 gateway_required.'
       operationId: openGatewaySession

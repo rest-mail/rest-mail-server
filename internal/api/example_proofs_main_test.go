@@ -8,6 +8,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/auth"
 	"github.com/rest-mail/rest-mail-server/internal/examplepairs"
 	"github.com/rest-mail/rest-mail-server/internal/push"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // TestMain writes the example pairs this package's tests proved, when CI asks for
@@ -20,6 +21,9 @@ import (
 func TestMain(m *testing.M) {
 	auth.UseMinimumHashCostInTests()
 	startPushDispatcher = func(*push.Dispatcher) {}
+	// Sign-ins here upgrade their fixtures' cheap hashes unless this binary's
+	// cost is as low; the race detector makes the real cost far too slow.
+	auth.LowerPasswordCostForTests(bcrypt.MinCost)
 	code := m.Run()
 	dropMigratedTemplate()
 	if err := examplepairs.WriteProofs(); err != nil {
