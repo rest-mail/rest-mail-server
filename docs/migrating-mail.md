@@ -64,7 +64,15 @@ Keywords are preserved case-insensitively (first spelling retained), with at mos
 without a backslash. Invalid metadata is refused clearly, never silently dropped.
 
 Source hierarchy delimiters are mapped to `/`. Folder mappings are validated
-before any import, and collisions are refused. Non-selectable parents are
+before any import, and two source folders that the delimiter mapping makes the
+same name are refused. Folder names are saved in Unicode Normalization Form C
+(NFC). Two source folders that match only after that conversion are not refused
+or mixed: the
+first in the source's order keeps the name and the next becomes `Name (2)`. A
+source folder whose name had to be converted also becomes `Name (2)` if the
+destination already has a folder with the converted name, unless that folder
+already holds the same message, which is how a rerun finds where it put the
+mail. Non-selectable parents are
 skipped; their selectable children are still copied. Empty source folders cannot
 be created by this message-import operation. The same Message-ID in different
 folders remains a separate destination copy, including provider label folders.
@@ -96,7 +104,8 @@ restmail import-maildir --server https://mail.example.com --account-id 12 --path
 
 The source root must contain `cur` and `new`. Both are read; `tmp` is skipped.
 Maildir++ `.Archive.2020` becomes `Archive/2020`, and the root becomes INBOX.
-Folder names and original message octets are preserved. Source symlinks are
+Folder names, in NFC as described above, and original message octets are
+preserved. Source symlinks are
 refused, including symlinked folders, so a source tree cannot silently import
 files outside it.
 
@@ -171,7 +180,12 @@ before retiring the old server.
 `POST /api/v1/accounts/{id}/messages/import` accepts `raw_message` as base64,
 `folder` (default INBOX), supported IMAP `flags`, and required RFC3339
 `internal_date`. Its 200 response contains `data.id`, `data.message_id`,
-`data.folder` and `data.imported`; `false` identifies an existing copy.
+`data.folder` and `data.imported`; `false` identifies an existing copy. A
+`folder` that is not in NFC is converted. If a folder with the converted name
+already exists and does not hold this message, the message goes to `Name (2)`, or
+the next free number, and `data.folder` says which. Send the rest of that source
+folder to the folder in the first answer, as the commands above do, so that it
+stays in one place.
 
 Imports preserve original octets and attachment contents without running spam,
 Sieve, forwarding, vacation, notification or other delivery behavior. Successful

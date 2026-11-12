@@ -54,3 +54,48 @@ advertised.
   are added to a revision of this protocol" (§7.1), and RFC 7162 §3.2.11
   requires CLOSED of a server that "advertises "QRESYNC" or "CONDSTORE"",
   which this one does not. ENABLE IMAP4rev2 will turn it on.
+- Mailbox access rights (RFC 9051 §§6.3.2, 6.3.9.2, 6.3.12, 6.4.7, 11.4). The
+  rev2 rules on READ-ONLY selections, TRYCREATE without implicit creation,
+  \Noselect for unopenable LIST-STATUS entries and withholding APPENDUID and
+  COPYUID from a caller who cannot read the destination all need the user's
+  rights, which upstream's Mailbox does not carry. The optional
+  `imap.RightsMailbox` interface reports them; a Mailbox without it keeps every
+  right, so existing hosts see no change. DELETE of a \Noselect level with
+  inferiors answers `NO [HASCHILDREN]` (§6.3.5) for every host.
+- Mailbox name normalization (RFC 9051 §§5.1, 6.3.9.7, go-imap#178,
+  rest-mail/rest-mail-server#1669). Upstream keeps every name as the client
+  spelled it and never sends `OLDNAME`, though §5.1 asks for Net-Unicode, whose
+  form is NFC. This module stays free of dependencies, so the optional
+  `imap.NameNormalizer` interface lets the store supply the form, and the gateway
+  gives it the same NFC the API saves names in. Every name a command carries goes
+  through it, a LIST pattern included, so a client's other spelling reaches the
+  same folder. SELECT, EXAMINE, CREATE, DELETE, RENAME and APPEND send the untagged
+  LIST with `OLDNAME` when a name changed, and only then. That includes an
+  IMAP4rev1 session: RFC 3501 §7 has a client accept any response at any time, and
+  it is drawn only by a client that sent a name in another form. STATUS, COPY, MOVE,
+  SUBSCRIBE and GETQUOTAROOT convert the name without reporting it, because §6.3.9.7
+  does not list them. INBOX in another case is folded as before and not reported;
+  the `select inbox` example in RFC 9051 Appendix B waits on ENABLE IMAP4rev2. A
+  Mailbox without the interface keeps every name as spelled.
+- Folder management (RFC 9051 §§6.3.4-6.3.6, go-imap#160). Upstream's
+  folders are implicit, so CREATE answers OK without creating anything and the
+  new folder vanishes from the next LIST, though "the server MUST NOT return
+  OK unless a new mailbox was created with that name" (§6.3.4). The optional
+  `imap.FolderMailbox` interface lets the store create, delete and rename
+  folders: CREATE then answers once the folder exists, DELETE removes it for
+  good and RENAME renames it with its inferiors, INBOX by moving its messages.
+  A Mailbox without it keeps implicit folders.
+- `\Deleted` kept by the store (RFC 3501 §2.3.2, go-imap#159). Upstream keeps
+  the mark in the session until EXPUNGE, so the user's other devices never see
+  it and a dropped connection loses it. The optional `imap.DeletedMailbox`
+  interface says the store keeps it; EXPUNGE, CLOSE and UID EXPUNGE then remove
+  what the store marks at that moment, so a mark another session cleared is
+  never expunged. A Mailbox without it keeps the session's marks.
+- LIST-EXTENDED in full (RFC 5258, folded into RFC 9051 §6.3.9) needs a real
+  subscription list: "the list MUST include exactly those mailbox names that
+  match the canonical list pattern and are subscribed to" (§3.1), names that
+  no longer exist included. The optional `imap.Subscriber` interface gives the
+  host that list; SUBSCRIBE, UNSUBSCRIBE, LSUB and the SUBSCRIBED selection and
+  return options use it, and RFC 5258 §5 examples 2, 3, 5, 6, 8, 9 and 10 run
+  against it in `rfctest`. A Mailbox without it keeps the all-folders-subscribed
+  model, so existing hosts see no change.

@@ -109,6 +109,7 @@ func IMAP(ctx context.Context, options IMAPOptions, maxBytes int64, visit Visit)
 	}
 	sort.Slice(folders, func(i, j int) bool { return folders[i].Mailbox < folders[j].Mailbox })
 	destinations := make(map[string]string)
+	source := newSourceFolders()
 	for _, folder := range folders {
 		if imapUnselectable(folder.Attrs) {
 			continue
@@ -117,14 +118,14 @@ func IMAP(ctx context.Context, options IMAPOptions, maxBytes int64, visit Visit)
 		if folder.Delim != 0 && folder.Delim != '/' {
 			name = strings.ReplaceAll(name, string(folder.Delim), "/")
 		}
-		name = rmail.CanonicalFolder(name)
+		name = foldInbox(name)
 		if rmail.FolderNameProblem(name) != "" {
 			return errors.New("an IMAP source folder cannot be represented at the destination")
 		}
-		if _, exists := destinations[name]; exists {
+		if _, exists := source.names[name]; exists {
 			return errors.New("IMAP source folder names collide at the destination")
 		}
-		destinations[name] = folder.Mailbox
+		destinations[source.destination(name)] = folder.Mailbox
 	}
 	// Validate all folder mappings before importing anything.
 	names := make([]string, 0, len(destinations))

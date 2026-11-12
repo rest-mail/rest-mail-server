@@ -16,9 +16,11 @@
 // The server caches the slice [Mailbox.Messages] returns for the selected folder
 // and derives sequence numbers, UIDs, flags, ENVELOPE and SEARCH results from it,
 // calling [Mailbox.Fetch] only when a body is requested — and FETCH BODY[] then
-// serves whatever Fetch returns, byte-for-byte. Folders are implicit: there is no
-// folder-management method, so a folder exists once a message names it, and
-// deleting or renaming one is composed from [Mailbox.Messages] and [Mailbox.Move].
+// serves whatever Fetch returns, byte-for-byte. A folder exists when [Mailbox.Folders]
+// lists it. A Mailbox that implements [FolderMailbox] creates, deletes and renames
+// folders itself; for any other, folders are implicit: a folder exists once a
+// message names it, and deleting or renaming one is composed from
+// [Mailbox.Messages] and [Mailbox.Move].
 // The store holds no assumptions about where mail lives: a Backend can be a
 // database, a maildir, or a remote API.
 //
@@ -32,7 +34,12 @@
 // ([RFC 6851]) into a single atomic backend operation. A Mailbox that implements
 // [DateAppender] additionally receives the client-supplied INTERNALDATE on
 // APPEND, and one that implements [UTF8Mailbox] turns on UTF8=ACCEPT
-// ([RFC 6855]) through ENABLE. The advertised CAPABILITY list reflects only the
+// ([RFC 6855]) through ENABLE. One that implements [Subscriber] keeps a real
+// subscription list for SUBSCRIBE, UNSUBSCRIBE, LSUB and LIST's SUBSCRIBED
+// options ([RFC 5258]). One that implements [RightsMailbox] tells the server
+// what the user may do with each mailbox, for read-only selections, TRYCREATE
+// and keeping APPENDUID and COPYUID from callers who cannot read the
+// destination ([RFC 9051] §§6.3.2, 6.3.12, 11.4). The advertised CAPABILITY list reflects only the
 // optional interfaces the concrete Mailbox satisfies, so a backend implementing
 // just [Mailbox] is unaffected and the list never over-promises.
 //
@@ -40,6 +47,8 @@
 // [RFC 4315]: https://www.rfc-editor.org/rfc/rfc4315
 // [RFC 6851]: https://www.rfc-editor.org/rfc/rfc6851
 // [RFC 6855]: https://www.rfc-editor.org/rfc/rfc6855
+// [RFC 5258]: https://www.rfc-editor.org/rfc/rfc5258
+// [RFC 9051]: https://www.rfc-editor.org/rfc/rfc9051
 package imap
 
 import (
@@ -198,6 +207,149 @@ type UIDPlusMailbox interface {
 	// [Mailbox.Copy] and returns the UID assigned to the copy, for COPYUID.
 	// COPYUID is omitted when any returned UID is zero or repeats in the command.
 	CopyUID(srcUID uint32, dest string) (uid uint32, err error)
+}
+
+// Subscriber is the optional interface a [Mailbox] may also implement to keep
+// the user's subscription list (RFC 3501 §§6.3.6-6.3.9, RFC 5258 §3.1). A
+// subscribed name need not exist: a folder deleted while subscribed stays on
+// the list, which LIST (SUBSCRIBED) reports as \NonExistent \Subscribed. Names
+// are store names, as [Folder.Name] holds them, with INBOX in that spelling.
+//
+// A Mailbox that does not implement it has every existing folder subscribed,
+// and nothing else: SUBSCRIBE and UNSUBSCRIBE are acknowledged without effect.
+type Subscriber interface {
+	// Subscriptions returns every subscribed name, in any order.
+	Subscriptions() ([]string, error)
+	// Subscribe adds name to the list; subscribing a listed name again is not
+	// an error.
+	Subscribe(name string) error
+	// Unsubscribe removes name from the list; removing an unlisted name is not
+	// an error.
+	Unsubscribe(name string) error
+}
+
+// Rights is what the signed-in user may do with one mailbox.
+type Rights struct {
+	// Read lets the user SELECT or EXAMINE the mailbox, ask its STATUS and
+	// learn the UIDs its messages have, APPENDUID and COPYUID among them
+	// (RFC 9051 §§6.3.12, 6.4.7, 11.4).
+	Read bool
+	// Write lets the user put messages into the mailbox (APPEND, COPY, MOVE)
+	// and change or expunge the ones there. A mailbox the user may read but
+	// not write is selected read-only, even by SELECT (RFC 9051 §6.3.2).
+	Write bool
+	// Create says the user could create the mailbox when it does not exist,
+	// so a command that needs it answers NO [TRYCREATE]; false means creating
+	// it is known to be impossible and the answer is a plain NO (RFC 9051
+	// §6.3.12).
+	Create bool
+}
+
+// RightsMailbox is the optional interface a [Mailbox] may also implement to
+// tell the server the user's [Rights] on each mailbox. folder is a store name,
+// as [Folder.Name] holds it; it need not exist, and Create then says whether
+// it could be made. With it the server:
+//
+//   - selects a mailbox the user may read but not write read-only, with
+//     [READ-ONLY], and refuses SELECT, EXAMINE and STATUS of one the user may
+//     not read with NO [NOPERM];
+//   - marks a mailbox the user may not read \Noselect in LIST, without STATUS
+//     (RFC 9051 §6.3.9.2);
+//   - refuses APPEND, COPY and MOVE into a mailbox that does not exist with NO
+//     [TRYCREATE], or a plain NO when Create is false, before the store sees
+//     it, so no mailbox is ever made implicitly, and into one the user may not
+//     write with NO [NOPERM];
+//   - sends APPENDUID and COPYUID only for a destination the user may read.
+//
+// A lookup error counts as no rights for that command. A Mailbox that does not
+// implement it gives the user every right on every mailbox, and the store
+// alone decides whether a destination exists ([ErrNoSuchMailbox]).
+type RightsMailbox interface {
+	MailboxRights(folder string) (Rights, error)
+}
+
+// DeletedMailbox is the optional interface a [Mailbox] may also implement to
+// say that the store keeps the \Deleted flag itself, so every session sees one
+// mark: [Message.Deleted] reports it and [Mailbox.Store] writes it through
+// [FlagUpdate.Deleted]. RFC 3501 §2.3.2 and RFC 9051 §2.3.2 make \Deleted a
+// permanent flag, kept from session to session.
+//
+// With it, EXPUNGE, CLOSE and UID EXPUNGE remove the messages DeletedUIDs
+// reports at that moment, not the marks this session last saw, so a mark
+// another session set is expunged and one it cleared is not (RFC 3501
+// §§6.4.2-6.4.3, RFC 4315 §2.1). UID EXPUNGE still removes only those in its
+// UID set, and a message the session has not yet been told about stays until
+// the session has seen it. If DeletedUIDs fails the command answers NO and
+// removes nothing.
+//
+// A Mailbox that does not implement it keeps the marks in the session as
+// before: SELECT seeds them from [Message.Deleted] and EXPUNGE removes the
+// messages this session marked.
+type DeletedMailbox interface {
+	// DeletedUIDs returns the UIDs of the messages in folder that carry
+	// \Deleted now, in any order. folder is a store name, as [Folder.Name]
+	// holds it.
+	DeletedUIDs(folder string) ([]uint32, error)
+}
+
+// FolderMailbox is the optional interface a [Mailbox] may also implement to
+// create, delete and rename folders itself, so a folder exists apart from the
+// messages in it. Every name is a store name, as [Folder.Name] holds it, with
+// "/" between levels of hierarchy. With it the server:
+//
+//   - answers CREATE OK only once CreateFolder has made the folder, so the next
+//     LIST shows it even while it is empty; a name that already exists is NO
+//     [ALREADYEXISTS], a trailing "/" is dropped, and any superior name the new
+//     one needs is created first (RFC 9051 §6.3.4);
+//   - answers DELETE by calling DeleteFolder, which removes the folder and its
+//     messages for good; a name that does not exist is NO [NONEXISTENT], and
+//     the folder's inferiors stay (RFC 9051 §6.3.5);
+//   - answers RENAME by calling RenameFolder for the folder and then for each
+//     inferior, after creating any superior the new name needs; a source that
+//     does not exist is NO [NONEXISTENT] and a destination that does is NO
+//     [ALREADYEXISTS] (RFC 9051 §6.3.6).
+//
+// INBOX is never created or deleted. RenameFolder("INBOX", to) is the one
+// exception to an ordinary rename: it makes the folder to, moves every message
+// in INBOX into it and leaves INBOX in place and empty; INBOX's inferiors are
+// not renamed (RFC 9051 §6.3.6).
+//
+// A [RightsMailbox] is consulted too: a name the user could not create is NO
+// [CANNOT], and a folder the user may not write is not deleted or renamed (NO
+// [NOPERM]). An error from any method answers the command with NO.
+//
+// A Mailbox that does not implement it keeps implicit folders: CREATE
+// acknowledges a valid name without creating anything, DELETE moves the
+// folder's messages to Trash and RENAME moves them one by one.
+type FolderMailbox interface {
+	// CreateFolder makes an empty folder named name, which does not exist.
+	CreateFolder(name string) error
+	// DeleteFolder removes the folder named name and every message in it.
+	DeleteFolder(name string) error
+	// RenameFolder gives the folder from the name to, which does not exist,
+	// keeping its messages. It does not rename from's inferiors: the server
+	// renames each of them itself.
+	RenameFolder(from, to string) error
+}
+
+// NameNormalizer is the optional interface a [Mailbox] implements when its store
+// keeps mailbox names in one normal form. RFC 9051 §5.1 asks for Net-Unicode,
+// whose form is NFC, and lets a server "accept a denormalized UTF-8 mailbox
+// name and convert it". This module has no dependency that knows Unicode
+// normalization, so the store supplies it.
+//
+// When a Mailbox implements it, every mailbox name a command carries goes through
+// NormalizeName before anything uses it, and a LIST pattern is converted the same
+// way, so a client's other spelling reaches the same folder. SELECT, EXAMINE,
+// CREATE, DELETE, RENAME and APPEND report a name that changed with an untagged
+// LIST holding the OLDNAME extended data item (RFC 9051 §6.3.9.7).
+//
+// A Mailbox that does not implement it keeps every name as the client spelled it.
+type NameNormalizer interface {
+	// NormalizeName returns name in the store's normal form. Calling it again on
+	// the result returns the same name. It leaves the case of INBOX alone, which
+	// the server folds itself and does not report.
+	NormalizeName(name string) string
 }
 
 // UTF8Mailbox is the optional interface a [Mailbox] may also implement to

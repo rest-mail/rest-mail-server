@@ -26,8 +26,12 @@ structure; they are not a full protocol conformance oracle.
   errors omit STATUS. Untyped permission denial remains an explicit host gap.
 - All seven standardized special-use attributes are proved, including repeated
   roles on different folders and filtering unknown attributes. The backend still
-  represents at most one role per folder; assignment, METADATA, remote folders,
-  persistent subscriptions and other/shared namespace policy are not added.
+  represents at most one role per folder; assignment, METADATA, remote folders
+  and other/shared namespace policy are not added.
+- Subscriptions are the host's: a Mailbox that implements `imap.Subscriber`
+  keeps the list SUBSCRIBE and UNSUBSCRIBE change, and LSUB and LIST's
+  SUBSCRIBED options read it, subscribed names that do not exist included. For
+  any other Mailbox every existing folder is subscribed.
 
 ## Source crosswalk
 
@@ -121,9 +125,9 @@ Source: [RFC5258](https://www.rfc-editor.org/rfc/rfc5258.txt); SHA256 `9ec84900a
 | RFC5258 §3.2 | `IMAP-LISTEXT-01`, `IMAP-LISTEXT-03`, `IMAP-LISTEXT-09` | SUBSCRIBED and mandatory CHILDREN return options. |
 | RFC5258 §3.3 | `IMAP-LISTEXT-02`, `IMAP-LISTEXT-04`, `IMAP-LISTEXT-05` | One reply per name, selection/recursive inclusion and additive attributes. |
 | RFC5258 §3.4 | `IMAP-LISTEXT-08` | Client inference of stronger attributes. |
-| RFC5258 §3.5 | `IMAP-LISTEXT-02`, `IMAP-LISTEXT-04`, `IMAP-LISTEXT-08`, `IMAP-LISTEXT-09` | CHILDINFO only on recursive selection, criteria strings, missing ancestors and redundant-parent suppression; selective subscriptions remain unsupported. |
+| RFC5258 §3.5 | `IMAP-LISTEXT-02`, `IMAP-LISTEXT-04`, `IMAP-LISTEXT-08`, `IMAP-LISTEXT-09` | CHILDINFO only on recursive selection, criteria strings, missing ancestors and redundant-parent suppression, with selective and missing subscriptions. |
 | RFC5258 §4 | `IMAP-LISTEXT-01`, `IMAP-LISTEXT-11` | Exactly one child attribute and visibility filtering by the host. |
-| RFC5258 §5 | `IMAP-LISTEXT-01`, `IMAP-LISTEXT-02`, `IMAP-LISTEXT-03`, `IMAP-LISTEXT-04`, `IMAP-LISTEXT-05`, `IMAP-LISTEXT-12` | All eleven examples reviewed: supported hierarchy slices have tests; selective/missing subscriptions, remote and ACL variants are not claimed verbatim. |
+| RFC5258 §5 | `IMAP-LISTEXT-01`, `IMAP-LISTEXT-02`, `IMAP-LISTEXT-03`, `IMAP-LISTEXT-04`, `IMAP-LISTEXT-05`, `IMAP-LISTEXT-12` | All eleven examples run against their hierarchies, selective and missing subscriptions included; remote mailboxes are not claimed. |
 | RFC5258 §6 | `IMAP-LISTEXT-05`, `IMAP-LISTEXT-06`, `IMAP-LISTEXT-07`, `IMAP-LISTSTATUS-03` | LIST selection/pattern/return and CHILDINFO grammar. This crosswalk is not a claim to test every ABNF alternative or generic future extension value. |
 | RFC5258 §7 | `IMAP-LISTEXT-08` | Future extension/comparator specification duty; no COMPARATOR extension is offered. |
 | RFC5258 §8 | `IMAP-LISTEXT-11` | Child visibility and disclosure boundary. |

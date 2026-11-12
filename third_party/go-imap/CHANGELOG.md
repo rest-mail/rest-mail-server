@@ -8,14 +8,57 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- Mailbox name normalization (RFC 9051 §§5.1, 6.3.9.7): a Mailbox that implements
+  the new optional `imap.NameNormalizer` interface has every mailbox name a command
+  carries, and each LIST pattern, converted to its normal form. SELECT, EXAMINE,
+  CREATE, DELETE, RENAME and APPEND report a name that changed with an untagged
+  LIST holding `OLDNAME`. A Mailbox without it sees no change.
+- Folder management (RFC 9051 §§6.3.4-6.3.6): a Mailbox that implements the new
+  optional `imap.FolderMailbox` interface (`CreateFolder`, `DeleteFolder`,
+  `RenameFolder`) keeps folders apart from their messages. CREATE then answers
+  OK only once the folder exists, so the next LIST shows it while it is empty;
+  an extant name is `NO [ALREADYEXISTS]`, a trailing delimiter is dropped and
+  missing superior names are created first. DELETE removes the folder and its
+  messages for good, leaves its inferiors, and answers `NO [NONEXISTENT]` for
+  a name that does not exist. RENAME renames the folder and its inferiors,
+  creating superiors of the new name, and refuses a missing source or an
+  extant destination; RENAME of INBOX moves its messages to the new name and
+  leaves INBOX empty, its inferiors untouched. A Mailbox without it keeps
+  implicit folders, as before.
+- `\Deleted` kept by the store (RFC 3501 §§2.3.2, 6.4.2-6.4.3; RFC 4315 §2.1):
+  a Mailbox that implements the new optional `imap.DeletedMailbox` interface
+  says it keeps the flag, and EXPUNGE, CLOSE and UID EXPUNGE then remove the
+  messages its `DeletedUIDs` reports at that moment, so a mark another session
+  set is expunged and one it cleared is not. UID EXPUNGE stays within its set.
+  If the marks cannot be read the command answers NO and removes nothing. A
+  Mailbox without it keeps the session's marks, as before.
+- Mailbox rights (RFC 9051 §§6.3.2, 6.3.9.2, 6.3.12, 6.4.7, 11.4): a Mailbox
+  that implements the new optional `imap.RightsMailbox` interface reports what
+  the user may do with each mailbox (`imap.Rights`: read, write, create). A
+  mailbox the user may read but not write is selected `[READ-ONLY]`, by SELECT
+  too; one the user may not read is refused `NO [NOPERM]` by SELECT, EXAMINE and
+  STATUS and listed `\Noselect` without STATUS. APPEND, COPY and MOVE to a
+  missing mailbox answer `NO [TRYCREATE]` (or `NO [NONEXISTENT]` when it cannot
+  be created) before the store sees them, so none is created implicitly, and to
+  one the user may not write `NO [NOPERM]`. APPENDUID and COPYUID are sent only
+  for a destination the user may read. A Mailbox without it keeps every right.
 - STATUS DELETED (RFC 9051 §6.3.11): STATUS, and LIST's STATUS return option,
   report how many messages carry `\Deleted`.
 - The CLOSED response code (RFC 9051 §§6.3.2, 7.1): SELECT or EXAMINE that
   replaces a selection sends `* OK [CLOSED]` first, to IMAP4rev2 sessions only.
   Nothing enables IMAP4rev2 yet, so IMAP4rev1 sessions see no change.
+- Subscription lists (RFC 5258 §3.1, RFC 3501 §§6.3.6-6.3.9): a Mailbox that
+  implements the new optional `imap.Subscriber` interface keeps the list.
+  SUBSCRIBE and UNSUBSCRIBE change it; LSUB, `LIST (SUBSCRIBED)` and
+  `RETURN (SUBSCRIBED)` read it. A subscribed name that does not exist is
+  answered `\Subscribed \NonExistent`, and LSUB answers an unsubscribed level
+  above a subscribed name `\Noselect`. A Mailbox without it keeps every
+  existing folder subscribed, as before.
 
 ### Fixed
 
+- DELETE of a name that is not a mailbox but has inferior mailboxes is refused
+  `NO [HASCHILDREN]` (RFC 9051 §6.3.5, RFC 5530 §3) instead of answering OK.
 - A SELECT or EXAMINE refused with BAD keeps the mailbox already selected, with
   its read-only mode and deletion marks: a rejected command never changes state
   (RFC 3501 §6). Only a well-formed selection attempt that fails with NO

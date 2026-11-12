@@ -99,7 +99,10 @@ type mailbox struct {
 	utf8 bool
 }
 
-var _ goimap.Mailbox = (*mailbox)(nil)
+var (
+	_ goimap.Mailbox        = (*mailbox)(nil)
+	_ goimap.NameNormalizer = (*mailbox)(nil)
+)
 
 // The mailbox also satisfies the library's optional UIDPLUS (RFC 4315) and atomic
 // MOVE (RFC 6851) interfaces, so the server advertises UIDPLUS and emits
@@ -110,7 +113,69 @@ var (
 	_ goimap.Mover          = (*mailbox)(nil)
 	_ goimap.UTF8Mailbox    = (*mailbox)(nil)
 	_ goimap.DateAppender   = (*mailbox)(nil)
+	_ goimap.RightsMailbox  = (*mailbox)(nil)
+	_ goimap.DeletedMailbox = (*mailbox)(nil)
+	_ goimap.FolderMailbox  = (*mailbox)(nil)
 )
+
+// CreateFolder makes an empty folder through the API (FolderMailbox), so
+// CREATE answers OK only once the folder exists and the next LIST shows it
+// while it holds nothing (RFC 9051 §6.3.4).
+func (m *mailbox) CreateFolder(name string) error {
+	if err := validateFolder(name); err != nil {
+		return err
+	}
+	return m.api.CreateFolder(m.token, m.accountID, name)
+}
+
+// DeleteFolder removes a folder and its messages through the API
+// (FolderMailbox, RFC 9051 §6.3.5). The API keeps the standard folders.
+func (m *mailbox) DeleteFolder(name string) error {
+	if err := validateFolder(name); err != nil {
+		return err
+	}
+	return m.api.DeleteFolder(m.token, m.accountID, name)
+}
+
+// RenameFolder renames a folder through the API, its messages with it
+// (FolderMailbox, RFC 9051 §6.3.6). INBOX is a standard folder the API does
+// not rename, and RFC 9051 has RENAME of INBOX move its messages and leave it
+// empty: so the gateway creates the new folder and moves each message there,
+// each a fresh delivery with a new, higher UID (MoveUID).
+func (m *mailbox) RenameFolder(from, to string) error {
+	if err := validateFolder(to); err != nil {
+		return err
+	}
+	if from != "INBOX" {
+		return m.api.RenameFolder(m.token, m.accountID, from, to)
+	}
+	resp, err := m.api.ListIMAPMessages(m.token, m.accountID, from)
+	if err != nil {
+		return err
+	}
+	if err := m.api.CreateFolder(m.token, m.accountID, to); err != nil {
+		return err
+	}
+	for _, msg := range resp.Data {
+		if _, err := m.MoveUID(toUID(msg.ID), to); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// MailboxRights reports the signed-in user's rights on folder (RightsMailbox).
+// REST Mail keeps no rights per folder: a protocol sign-in reaches only the
+// account's own folders, and the mail.read and mail.write capabilities it is
+// checked against hold for the whole account, so every folder is readable and
+// writable, and the API stays the gate that refuses a call the session may not
+// make. What the gateway does know is which names can never become a folder:
+// one the API's folder name rule refuses (validateFolder). So APPEND, COPY and
+// MOVE to a missing folder answer NO [TRYCREATE] rather than creating it, and a
+// plain NO for a name that could not be created (RFC 9051 §6.3.12).
+func (m *mailbox) MailboxRights(folder string) (goimap.Rights, error) {
+	return goimap.Rights{Read: true, Write: true, Create: validateFolder(folder) == nil}, nil
+}
 
 // EnableUTF8 switches this session to UTF-8 (RFC 6855 UTF8=ACCEPT). The
 // library advertises the capability because the mailbox implements this, and
@@ -254,6 +319,29 @@ func (m *mailbox) MoveUID(uid uint32, dest string) (uint32, error) {
 		return 0, err
 	}
 	return newUID, nil
+}
+
+// DeletedUIDs reports the messages in folder that carry \Deleted now
+// (DeletedMailbox). The mark is the message's imap_deleted state in the API:
+// STORE writes it (Store), every session and device reads it back, and it
+// outlives the connection, as RFC 3501 §2.3.2 asks of a permanent flag. So
+// EXPUNGE, CLOSE and UID EXPUNGE remove what is marked when they run, never a
+// mark another session cleared.
+func (m *mailbox) DeletedUIDs(folder string) ([]uint32, error) {
+	if err := validateFolder(folder); err != nil {
+		return nil, err
+	}
+	resp, err := m.api.ListIMAPMessages(m.token, m.accountID, folder)
+	if err != nil {
+		return nil, err
+	}
+	var uids []uint32
+	for _, msg := range resp.Data {
+		if msg.IMAPDeleted {
+			uids = append(uids, toUID(msg.ID))
+		}
+	}
+	return uids, nil
 }
 
 // Delete permanently removes a message (EXPUNGE/CLOSE).
