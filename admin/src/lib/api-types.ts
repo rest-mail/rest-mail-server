@@ -2888,7 +2888,7 @@ export interface paths {
         put?: never;
         /**
          * Deliver a message into a mailbox (protocol gateways)
-         * @description Machine to machine: no user token. The inbound pipeline decides: 201 with the message made, 200 processed when it quarantined or discarded it, 403 rejected, 503 deferred, 422 mailbox_full over quota. These are REST statuses for every caller; the SMTP gateway rewrites them into its SMTP reply (#1664). A missing mailbox is 404; a failed mailbox lookup is 500, never a missing recipient. Stored text must not contain NUL (U+0000), including strings and object keys anywhere in recipients_to or recipients_cc and the decoded raw_message octets; a refusal is 422 validation_failed naming the field, before any write. raw_message is a standard padded base64 string (format: byte), not unencoded message text. An omitted or empty folder means INBOX; otherwise The name is valid UTF-8 of at most 255 bytes, neither blank nor beginning or ending with a space, with no control character and no ".."; a "/" is the hierarchy delimiter IMAP clients show. Any other name is 422.
+         * @description Machine to machine: no user token. The inbound pipeline decides: 201 with the message made, 200 processed when it quarantined or discarded it, 403 rejected, 503 deferred, 422 mailbox_full over quota. These are REST statuses for every caller; the SMTP gateway rewrites them into its SMTP reply (#1664). A missing mailbox is 404; a failed mailbox lookup is 500, never a missing recipient. Stored text must not contain NUL (U+0000), including strings and object keys anywhere in recipients_to or recipients_cc and the decoded raw_message octets; a refusal is 422 validation_failed naming the field, before any write. raw_message is a standard padded base64 string (format: byte), not unencoded message text. The recipient is resolved from address. Arriving mail uses server time and default Inbox/flags, subject to inbound rules. Import-only fields sent by older callers are ignored.
          */
         post: operations["deliverMessage"];
         delete?: never;
@@ -5732,24 +5732,15 @@ export interface components {
             status: string;
         };
         deliverMessageBody: {
-            address?: string;
+            address: string;
             body_html?: string;
             body_text?: string;
             client_ip?: string;
-            folder?: string & (unknown & unknown & unknown);
             helo_name?: string;
             in_reply_to?: string;
-            is_answered?: boolean | null;
-            is_draft?: boolean | null;
-            is_flagged?: boolean | null;
-            is_read?: boolean | null;
-            is_starred?: boolean | null;
-            mailbox_id?: number;
             message_id?: string;
             /** Format: byte */
             raw_message?: string;
-            /** Format: date-time */
-            received_at?: string | null;
             received_tls?: boolean | null;
             recipients_cc?: unknown;
             recipients_to?: unknown;
@@ -5760,10 +5751,6 @@ export interface components {
             subject?: string;
             tls_cipher?: string;
             tls_version?: string;
-        } | {
-            mailbox_id: unknown;
-        } | {
-            address: unknown;
         };
         disableRequest: {
             recovery_code?: string;

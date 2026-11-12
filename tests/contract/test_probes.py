@@ -92,10 +92,10 @@ class ProbeConfig(unittest.TestCase):
         self.assertEqual(probes.main(source, self.output, report, **options), 0)
         return yaml.safe_load(self.output.read_text())
 
-    def test_fuzz_holds_mailbox_id_at_the_recipient_the_fixtures_make(self):
+    def test_fuzz_holds_address_at_the_recipient_the_fixtures_make(self):
         plan = json.loads((ROOT / "tests/contract/fixtureplan/defaults.json").read_text())
         self.assertEqual(
-            self.fuzz_config()["fuzz"]["pin"]["mailbox_id"], plan["delivery_recipient"]["id"]
+            self.fuzz_config()["fuzz"]["pin"]["address"], plan["delivery_recipient"]["address"]
         )
 
     def test_fuzz_holds_domain_at_the_domain_the_run_hosts(self):
@@ -138,14 +138,14 @@ class ProbeConfig(unittest.TestCase):
         script = (ROOT / "tests/contract/run.sh").read_text()
         self.assertEqual(script.count('CONTRACT_RUN_SPEC= CONTRACT_SPEC= python3 -B tests/contract/reports.py'), 2)
 
-    def test_coverage_does_not_hold_mailbox_id_so_its_type_probes_are_sent(self):
-        self.assertNotIn("mailbox_id", self.config["fuzz"]["pin"])
+    def test_coverage_does_not_hold_address_so_its_type_probes_are_sent(self):
+        self.assertNotIn("address", self.config["fuzz"]["pin"])
 
     def test_a_narrowed_fuzz_run_can_drop_each_pin_it_does_not_reach(self):
         coverage_pins = COVERAGE_PINS
         config = self.fuzz_config(unpinned=coverage_pins)
-        self.assertEqual(config["fuzz"]["pin"].keys(), {"mailbox_id"})
-        config = self.fuzz_config(unpinned=["mailbox_id"])
+        self.assertEqual(config["fuzz"]["pin"].keys(), {"address"})
+        config = self.fuzz_config(unpinned=["address"])
         self.assertEqual(config["fuzz"]["pin"].keys(), set(coverage_pins))
 
     def test_the_fuzz_phase_makes_the_recipient_before_it_pins_it(self):
