@@ -683,6 +683,20 @@ listener, which requires the gateway's client certificate. `vertrag.yml`'s
 `chore test:contract-mtls` copies out of the SMTP gateway. A `CONTRACT_ENDPOINT`
 naming another server sends them to that server instead.
 
+### A mailbox check finds a hosted mailbox
+
+A check's 200 looks the same for a mailbox that is not there
+(`{"data":{"exists":false}}`), so its status and schema alone pass on a miss
+(#1801). The `found` examples of `checkMailboxAddress` and
+`restmailCheckMailbox` name the in-process fixtures' `user@example.com` and
+`user@example.test`, which the topology does not have. So in the examples and
+coverage phases, `look_up_a_hosted_mailbox` sends each one to the fixture admin
+instead. Its after hook, `the_lookup_finds_the_hosted_mailbox`, then fails the
+200 through the transaction's `fail` field unless the answer says the mailbox
+exists, with the admin's address. Other addresses, the refusals' and the
+probes', are sent as they are and not held to it. After a reset the own-data
+phase sends `found` to a mailbox of its own first (below).
+
 ### Operations that take a two-factor session
 
 The grant operations (`createGrant`, `deleteGrant`, `activateGrant`,
@@ -1633,7 +1647,7 @@ Each documented success of a check or a delivery goes to a mailbox of its own
 on `restmail.test`, made after the reset:
 - the gateway's found check;
 - the gateway's deliveries to `admin@restmail.test`;
-- the RESTMAIL check's 200, whatever address Vertrag gives it (#1801);
+- the RESTMAIL check's 200, whatever address Vertrag gives it;
 - the RESTMAIL delivery to `eve@restmail.test`. This one also gets
   `restmail.test` an active inbound pipeline that only validates headers. After
   a reset the domain has none, and the default pipeline greylists a new sender,
