@@ -174,6 +174,7 @@ func testStage7WebmailFlows(t *testing.T) {
 		requireSuccess(t, resp)
 		resp.Body.Close()
 
+		// A self-send takes the outbound queue and the MX like any other (#1564).
 		msgID := waitForMessage(t, client, aliceAcct, "INBOX", subject, 30*time.Second)
 
 		// DELETE is two-stage (standard webmail): the first moves the message to
