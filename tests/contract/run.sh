@@ -45,6 +45,10 @@ fi
 out=.cache/contract
 logs=${CONTRACT_LOGS:-$out}
 mkdir -p "$out" "$logs"
+if [ "$phase" = gate ]; then
+  export CONTRACT_PROBE_REPLAYS="$PWD/$out/replayed-probes.jsonl"
+  : >"$CONTRACT_PROBE_REPLAYS"
+fi
 # Every phase consumes the exact description served by this server. The saved
 # bytes are also the coverage/security inventory, even when Vertrag reads its URL.
 served="$PWD/$out/openapi.json"
@@ -90,7 +94,7 @@ export RESTMAIL_VERTRAG_BINARY="$CONTRACT_VERTRAG"
 PATH="$(dirname "$CONTRACT_VERTRAG"):$PATH"
 export PATH
 "$CONTRACT_VERTRAG" version
-python3 -B -c 'import yaml' 2>/dev/null || pip install --quiet pyyaml
+python3 -B -c 'import yaml, jsonschema, rfc3339_validator' 2>/dev/null || pip install --quiet pyyaml 'jsonschema[format]'
 if [ "$phase" != authorization ] && [ "$phase" != ownership ]; then
   python3 -B tests/contract/description.py vertrag.yml "$served"
 fi
@@ -138,15 +142,18 @@ gate)
   # Probes a hook ends are in no report: the hook worker counts them (lost_probes.py).
   export CONTRACT_LOST_PROBES="$PWD/$out/lost-probes.txt"
   : >"$CONTRACT_LOST_PROBES"
+  : >"$CONTRACT_PROBE_REPLAYS"
   CONTRACT_COVERAGE=1 "$CONTRACT_VERTRAG" run --config "$out/vertrag-probes.yml" --sequence --phases coverage "${select[@]}" \
     2>&1 | tee "$logs/contract.log" || code=$?
   if drop_unmatched_pin "$logs/contract.log" "$out/coverage"; then
     code=0
     : >"$CONTRACT_LOST_PROBES"
+    : >"$CONTRACT_PROBE_REPLAYS"
     CONTRACT_COVERAGE=1 "$CONTRACT_VERTRAG" run --config "$out/vertrag-probes.yml" --sequence --phases coverage "${select[@]}" \
       2>&1 | tee "$logs/contract.log" || code=$?
   fi
   echo "vertrag exited $code"
+  python3 -B tests/contract/probe_refusals.py "$CONTRACT_LOST_PROBES" "$CONTRACT_PROBE_REPLAYS" || code=1
   if [ "$code" -ne 0 ] && [ "$code" -ne 2 ]; then exit "$code"; fi
   if [ ${#select[@]} -eq 0 ]; then
     # The coverage baseline only shrinks.

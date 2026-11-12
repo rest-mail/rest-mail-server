@@ -6,6 +6,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"time"
@@ -25,6 +26,7 @@ func main() {
 	domain := flag.String("test-domain", "", "confirm the disposable restmail.test topology")
 	retryOnly := flag.Bool("retry-only", false, "replenish only the retry example's queue entry, leaving every other fixture as it is")
 	linkOnly := flag.Bool("link-account-only", false, "prepare the generated account-link proof after account-creation probes")
+	invitationProbe := flag.Bool("invitation-probe", false, "prepare an invitation for the generated token read as JSON on stdin")
 	apiKeys := flag.Bool("api-keys", false, "prepare a fresh account for real-MFA API key checks")
 	domainTenants := flag.Bool("domain-tenants", false, "prepare the domain administrators of the ownership phase")
 	mfaAdmin := flag.Bool("mfa-admin", false, "prepare the administrator the contract hooks enroll in real MFA")
@@ -34,7 +36,7 @@ func main() {
 	reportPhase := flag.String("report-targets", "", "top up the held mail one report-only phase consumes (authorization or ownership); no gate calls this")
 	flag.Parse()
 	modes := 0
-	for _, on := range []bool{*linkOnly, *apiKeys, *domainTenants, *mfaAdmin, *deliveryRecipient, *heldMailOnly, *queueEntryOnly, *reportPhase != ""} {
+	for _, on := range []bool{*linkOnly, *invitationProbe, *apiKeys, *domainTenants, *mfaAdmin, *deliveryRecipient, *heldMailOnly, *queueEntryOnly, *reportPhase != ""} {
 		if on {
 			modes++
 		}
@@ -53,7 +55,15 @@ func main() {
 	}
 	database, err := db.WaitForDB(cfg, 10*time.Second)
 	if err == nil {
-		if *apiKeys {
+		if *invitationProbe {
+			var request struct {
+				Token string `json:"token"`
+			}
+			err = json.NewDecoder(io.LimitReader(os.Stdin, 4096)).Decode(&request)
+			if err == nil {
+				err = prepareInvitationProbe(database, *domain, request.Token)
+			}
+		} else if *apiKeys {
 			var account *models.Mailbox
 			account, err = prepareAPIKeyFixture(database, *domain)
 			if err == nil {
