@@ -1,4 +1,9 @@
-"""Provide a live account for quiet-hours requests."""
+"""Provide a live account for quiet-hours requests.
+
+The account's own time zone route needs the same live account, so it registers
+here under its own path and operations. Neither hook touches the body: the
+generator's time_zone is held by a pin (probes.py).
+"""
 
 import json
 import urllib.request
@@ -6,14 +11,16 @@ import urllib.request
 import vertrag_hooks as hooks
 
 
-def register_quiet_hours_hooks(admin_token):
+def register_quiet_hours_hooks(
+    admin_token, route="quiet-hours", operations=("getQuietHours", "setQuietHours")
+):
     def prepare_quiet_hours(transaction):
         if " as " in transaction.get("name", "") or not str(
             transaction.get("expected", {}).get("statusCode", "")
         ).startswith("2"):
             return
         path = transaction.get("fullPath", "")
-        if path != "/api/v1/accounts/1/quiet-hours":
+        if path != f"/api/v1/accounts/1/{route}":
             return
         headers = transaction.get("request", {}).get("headers") or {}
         if not any(
@@ -32,10 +39,10 @@ def register_quiet_hours_hooks(admin_token):
             accounts = json.load(response).get("data") or []
         account_id = accounts[0].get("id") if accounts else None
         if type(account_id) is not int or account_id < 1:
-            raise RuntimeError("quiet-hours fixture has no live account")
+            raise RuntimeError(f"{route} fixture has no live account")
         # Only the path: the generator's time_zone is held by a pin (probes.py).
-        transaction["fullPath"] = f"/api/v1/accounts/{account_id}/quiet-hours"
+        transaction["fullPath"] = f"/api/v1/accounts/{account_id}/{route}"
 
-    for operation in ("getQuietHours", "setQuietHours"):
+    for operation in operations:
         hooks.before(operation)(prepare_quiet_hours)
     return prepare_quiet_hours

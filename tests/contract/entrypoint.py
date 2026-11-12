@@ -25,6 +25,9 @@ dmarc = runpy.run_path(str(directory / "dmarc_report_hooks.py"))
 dmarc["register_dmarc_report_hook"](shared["admin_token"])
 quiet = runpy.run_path(str(directory / "quiet_hours_hooks.py"))
 quiet["register_quiet_hours_hooks"](shared["admin_token"])
+quiet["register_quiet_hours_hooks"](
+    shared["admin_token"], "time-zone", ("getAccountTimeZone", "setAccountTimeZone")
+)
 contact_draft = runpy.run_path(str(directory / "contact_draft_hooks.py"))
 contact_draft["register_contact_draft_hooks"](shared["fixture_call"], shared["ADMIN"])
 # Last, so that it sees the body every hook above leaves.

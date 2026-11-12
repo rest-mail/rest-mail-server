@@ -53,12 +53,16 @@ type patchRecord struct {
 }
 
 type fakeAPI struct {
-	mu      sync.Mutex
-	nextID  uint
-	msgs    map[uint]*fakeMsg
-	patches []patchRecord
-	deletes []uint
-	imports []apiclient.ImportRequest
+	// timeZone is what the account's time-zone route answers; nil is null.
+	timeZone      *string
+	timeZoneFails bool
+	timeZoneReads int
+	mu            sync.Mutex
+	nextID        uint
+	msgs          map[uint]*fakeMsg
+	patches       []patchRecord
+	deletes       []uint
+	imports       []apiclient.ImportRequest
 	// importStatus, when non-zero, is the HTTP status the import endpoint
 	// returns instead of a normal 200; importBody is the JSON body to send with
 	// it. Together they let a test simulate a quarantined/discarded delivery
@@ -127,6 +131,7 @@ var fakeReceivedAt = time.Date(2025, 3, 15, 10, 0, 0, 0, time.UTC)
 func (f *fakeAPI) handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /api/v1/auth/protocol-sign-in", f.login)
+	mux.HandleFunc("GET /api/v1/accounts/{acct}/time-zone", f.accountTimeZone)
 	mux.HandleFunc("GET /api/v1/accounts/{acct}/folders/{folder}/messages", f.listMessages)
 	mux.HandleFunc("POST /api/v1/accounts/{acct}/messages/import", f.importMessage)
 	mux.HandleFunc("GET /api/v1/messages/{id}/raw", f.raw)
@@ -152,6 +157,18 @@ func (f *fakeAPI) login(w http.ResponseWriter, _ *http.Request) {
 	lr.Data.CredentialID, lr.Data.CredentialKind = 1, "password"
 	lr.Data.User.Email = "alice@example.com"
 	writeJSON(w, lr)
+}
+
+// accountTimeZone answers as the API does: the zone set on the account, or null.
+func (f *fakeAPI) accountTimeZone(w http.ResponseWriter, _ *http.Request) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.timeZoneReads++
+	if f.timeZoneFails {
+		http.Error(w, `{"error":{"code":"internal_error","message":"Internal server error"}}`, http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, map[string]any{"data": map[string]any{"time_zone": f.timeZone}})
 }
 
 func (f *fakeAPI) listMessages(w http.ResponseWriter, r *http.Request) {

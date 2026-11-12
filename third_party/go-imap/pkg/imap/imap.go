@@ -41,7 +41,9 @@
 // and keeping APPENDUID and COPYUID from callers who cannot read the
 // destination ([RFC 9051] §§6.3.2, 6.3.12, 11.4). The advertised CAPABILITY list reflects only the
 // optional interfaces the concrete Mailbox satisfies, so a backend implementing
-// just [Mailbox] is unaffected and the list never over-promises.
+// just [Mailbox] is unaffected and the list never over-promises. A Mailbox that
+// implements [SearchZoneMailbox] names the zone whose calendar days SEARCH BEFORE,
+// ON and SINCE compare; no capability goes with it.
 //
 // [RFC 3501]: https://www.rfc-editor.org/rfc/rfc3501
 // [RFC 4315]: https://www.rfc-editor.org/rfc/rfc4315
@@ -414,6 +416,25 @@ type DateAppender interface {
 	// also sets the message's internal date to internalDate, and returns the UID
 	// assigned to the stored message (0 if the backend does not track UIDs).
 	AppendWithDate(dest string, f FlagUpdate, internalDate time.Time, raw []byte) (uid uint32, err error)
+}
+
+// SearchZoneMailbox is the optional interface a [Mailbox] may also implement to
+// say which zone's calendar days SEARCH BEFORE, ON and SINCE compare, because
+// IMAP gives a client no way to say so. A Mailbox that does not implement it
+// keeps exact prior behaviour: the day is the one [Message].Date writes in its
+// own location.
+//
+// INTERNALDATE in FETCH and the SENT* keys do not change: FETCH renders
+// [Message].Date as it is, and SENTBEFORE, SENTON and SENTSINCE read the Date:
+// header as written ([RFC 3501] §6.4.4).
+//
+// [RFC 3501]: https://www.rfc-editor.org/rfc/rfc3501
+type SearchZoneMailbox interface {
+	// SearchZone returns the zone, for one SEARCH or UID SEARCH that has one of
+	// those keys. A nil zone is the same as not implementing this interface. An
+	// error answers the command with NO [UNAVAILABLE], because a guessed zone
+	// could return another day's messages.
+	SearchZone() (*time.Location, error)
 }
 
 // Limiter is the per-IP connection and authentication guard the server
