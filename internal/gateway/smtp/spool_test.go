@@ -15,6 +15,7 @@ import (
 
 	gosmtp "github.com/rest-mail/go-smtp/pkg/smtp"
 
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 	rmime "github.com/rest-mail/rest-mail-server/internal/mime"
 )
@@ -28,19 +29,14 @@ func (m *mockBackend) DeliverMessageFrom(req *apiclient.DeliverRequest, content 
 // wholeDelivery is the request a streamed delivery amounts to.
 func wholeDelivery(req *apiclient.DeliverRequest, content apiclient.DeliverContent) *apiclient.DeliverRequest {
 	whole := *req
-	read := func(open func() io.Reader) []byte {
-		if open == nil {
-			return nil
-		}
-		data, err := io.ReadAll(open())
+	whole.RawMessage = nil
+	if content.RawMessage != nil {
+		data, err := io.ReadAll(content.RawMessage())
 		if err != nil {
 			panic(fmt.Sprintf("read a delivery's content: %v", err))
 		}
-		return data
+		whole.RawMessage = data
 	}
-	whole.RawMessage = read(content.RawMessage)
-	whole.BodyText = string(read(content.BodyText))
-	whole.BodyHTML = string(read(content.BodyHTML))
 	return &whole
 }
 
@@ -83,7 +79,7 @@ func parseWhole(data []byte) (subject, bodyText, bodyHTML, messageID, senderName
 	if err != nil || email == nil {
 		for _, sep := range []string{"\r\n\r\n", "\n\n"} {
 			if _, body, found := strings.Cut(string(data), sep); found {
-				bodyText = body
+				bodyText = models.ReadableText(body)
 				return
 			}
 		}
@@ -94,13 +90,22 @@ func parseWhole(data []byte) (subject, bodyText, bodyHTML, messageID, senderName
 	messageID = strings.Trim(h.MessageID, "<>")
 	inReplyTo = strings.Trim(h.InReplyTo, "<>")
 	references = strings.Join(h.References, " ")
-	if len(h.From) > 0 {
-		senderName = h.From[0].Name
-		fromAddr = h.From[0].Address
+	if from, ok := h.From.First(); ok {
+		senderName = from.Name
+		fromAddr = from.Address
 	}
-	toList = bareAddresses(h.To)
-	ccList = bareAddresses(h.Cc)
+	toList = bareAddresses(h.To.All())
+	ccList = bareAddresses(h.Cc.All())
 	bodyText, bodyHTML = rmime.TextAndHTML(email.Body)
+	// These go in the API's text fields, and a message may hold any octets. Its source keeps them.
+	for _, text := range []*string{&subject, &bodyText, &bodyHTML, &messageID, &senderName, &inReplyTo, &references, &fromAddr} {
+		*text = models.ReadableText(*text)
+	}
+	for _, list := range [][]string{toList, ccList} {
+		for i := range list {
+			list[i] = models.ReadableText(list[i])
+		}
+	}
 	return
 }
 
@@ -382,14 +387,13 @@ func TestDataRemovesItsFilesOnEveryOutcome(t *testing.T) {
 		}
 	})
 
-	t.Run("signed copy of a submission", func(t *testing.T) {
+	t.Run("submission to a local recipient", func(t *testing.T) {
 		t.Setenv("TMPDIR", t.TempDir())
 		back, store := newMockBackend(), newMockStore()
 		back.local["bob@example.com"] = true
 		store.authorized["alice@example.com"] = true
 		store.identities = map[string]uint{"alice@example.com": back.accountID}
-		observed := &observingBackend{mockBackend: back, t: t}
-		h := newSMTPHarness(t, back, store, true, func(s *Server) { s.api = observed })
+		h := newSMTPHarness(t, back, store, true)
 		h.ehlo()
 		if r := h.authPlain(back.user, back.pass); !strings.HasPrefix(r, "235") {
 			t.Fatalf("AUTH = %q", r)
@@ -399,19 +403,20 @@ func TestDataRemovesItsFilesOnEveryOutcome(t *testing.T) {
 			t.Fatalf("reply = %q", reply)
 		}
 		assertSpoolEmpty(t)
-		if observed.sawOnDisk != 3 {
-			t.Errorf("%d files on disk during delivery, want the message, the signed copy and the text body", observed.sawOnDisk)
+		if got := back.deliveredTo(); len(got) != 0 {
+			t.Errorf("delivered directly to %v, want the outbound queue (#1564)", got)
 		}
-		if raw := string(back.lastDeliverReq().RawMessage); !strings.HasPrefix(raw, mockSignature) {
-			t.Errorf("delivered raw message does not start with the signature: %q", clip(raw))
+		queued := store.queued()
+		if len(queued) != 1 || !strings.HasPrefix(queued[0].RawMessage, "Received: ") || !strings.HasSuffix(queued[0].RawMessage, "body\r\n") {
+			t.Fatalf("queued = %+v, want the message with its Received field", queued)
 		}
 	})
 
-	t.Run("refused submission", func(t *testing.T) {
+	t.Run("submission that cannot be queued", func(t *testing.T) {
 		t.Setenv("TMPDIR", t.TempDir())
 		back, store := newMockBackend(), newMockStore()
 		back.local["bob@example.com"] = true
-		store.prepareErr = errors.New("no key")
+		store.enqueueErr = errors.New("no queue")
 		store.identities = map[string]uint{"alice@example.com": back.accountID}
 		h := newSMTPHarness(t, back, store, true)
 		h.ehlo()
@@ -553,7 +558,7 @@ func TestSpoolLeavesNoFileWhenTheSourceFails(t *testing.T) {
 }
 
 // TestDeliveredFieldsMatchTheMessage proves a local delivery carries the raw octets, with the trace
-// field in front, and the decoded bodies, however they are not UTF-8.
+// field in front, and no decoded text beside them: the server reads that from the source (#1915).
 func TestDeliveredFieldsMatchTheMessage(t *testing.T) {
 	t.Setenv("TMPDIR", t.TempDir())
 	back := newMockBackend()
@@ -576,11 +581,8 @@ func TestDeliveredFieldsMatchTheMessage(t *testing.T) {
 	if !bytes.HasSuffix(req.RawMessage, []byte(raw)) {
 		t.Fatalf("raw message does not end with what was sent: %q", clip(string(req.RawMessage)))
 	}
-	if req.BodyText != "café" {
-		t.Errorf("BodyText = %q, want the decoded text", req.BodyText)
-	}
-	if req.BodyHTML != "" {
-		t.Errorf("BodyHTML = %q, want none", req.BodyHTML)
+	if req.BodyText != "" || req.BodyHTML != "" {
+		t.Errorf("text sent beside the source: %q / %q", req.BodyText, req.BodyHTML)
 	}
 	if req.Subject != "hi" || req.SenderName != "S" {
 		t.Errorf("Subject, SenderName = %q, %q", req.Subject, req.SenderName)

@@ -1,12 +1,12 @@
 package smtp
 
 import (
-	"context"
 	"time"
 
 	"go.opentelemetry.io/otel/trace"
 
 	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 )
 
@@ -19,7 +19,8 @@ type Backend interface {
 	// OpenSession signs a mail client in at submission AUTH, with one of the
 	// account's passwords or an app password, and opens the connection's
 	// session with the API (#1586), with the submission service's certificate.
-	OpenSession(email, password, protocol string) (*apitypes.GatewaySessionOpened, error)
+	// clientIP is the address the mail client connected from.
+	OpenSession(email, password, protocol, clientIP string) (*apitypes.GatewaySessionOpened, error)
 	// CloseSession ends the connection's session, at QUIT or disconnect.
 	CloseSession(token string) error
 	// CheckMailbox verifies a recipient address exists locally.
@@ -82,8 +83,8 @@ func withRequestID(b Backend, id string) Backend {
 	return b
 }
 
-func (c Clients) OpenSession(email, password, protocol string) (*apitypes.GatewaySessionOpened, error) {
-	return c.Submission.OpenSession(email, password, protocol)
+func (c Clients) OpenSession(email, password, protocol, clientIP string) (*apitypes.GatewaySessionOpened, error) {
+	return c.Submission.OpenSession(email, password, protocol, clientIP)
 }
 
 func (c Clients) CloseSession(token string) error { return c.Submission.CloseSession(token) }
@@ -127,6 +128,10 @@ type Store interface {
 	// local mailbox to attribute the message to; a returned error must not fail
 	// the submission (delivery proceeds without a linked reference).
 	PersistSubmittedMessage(msg SubmittedMessage) (*uint, error)
+	// RecordLocalRefusals keeps on a persisted submission the local recipients
+	// that refused it, for its sender to read in the recipient status. No
+	// refusals writes nothing, and an error must not fail the submission.
+	RecordLocalRefusals(messageID uint, refusals []models.LocalRefusal) error
 	// EnqueueOutbound appends a message to the outbound delivery queue for the
 	// queue worker to deliver to a remote MX.
 	EnqueueOutbound(msg OutboundMessage) error
@@ -144,12 +149,6 @@ type Store interface {
 	// with can still be used: not revoked, not expired, its mailbox active.
 	// Checked before each message, so revoking one stops it sending at once.
 	CredentialUsable(credentialID uint) (bool, error)
-	// PrepareSubmitted applies the outbound transforms (outbound.Prepare) to
-	// an authenticated submission before a local mailbox receives it: the Bcc
-	// header stripped, and the message DKIM-signed with the sender domain's
-	// key. An error means a configured key could not sign; the caller
-	// defers rather than deliver the message unsigned.
-	PrepareSubmitted(ctx context.Context, sender, raw string) (string, error)
 }
 
 // OutboundMessage is a neutral description of a queued outbound message, keeping

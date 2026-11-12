@@ -364,7 +364,7 @@ projects/           Dockerfiles for the gateways, js-filter sidecar, dnsmasq fra
 helm/               Helm chart for restmail
 monitoring/         Prometheus config, alerting rules, Grafana dashboards
 tasks/              Per-service task files (one per container) included from root chores.yml
-tests/e2e/          End-to-end test suite (14 stages)
+tests/e2e/          End-to-end test suite (15 stages)
 .workspace/         Sibling repos cloned on demand (testbed, reference-mailserver, website) — gitignored
 ```
 
@@ -454,7 +454,7 @@ chore test:limits
 chore test:all
 ```
 
-The e2e suite runs inside a container attached to the testbed mailnet with the testbed dnsmasq as its only resolver — it exercises the stack as just another user of the simulated internet. Its 14 stages cover infrastructure, traditional cross-domain mail, gateway inbound/outbound, protocol indistinguishability, the RESTMAIL upgrade, webmail and console flows, database consistency, email-auth verification, queue retry, bounce DSNs, IMAP IDLE, and app passwords.
+The e2e suite runs inside a container attached to the testbed mailnet with the testbed dnsmasq as its only resolver — it exercises the stack as just another user of the simulated internet. Its 15 stages cover infrastructure, traditional cross-domain mail, gateway inbound/outbound, protocol indistinguishability, the RESTMAIL upgrade, webmail and console flows, database consistency, email-auth verification, queue retry, bounce DSNs, IMAP IDLE, app passwords, and a receiving server's DKIM, SPF and DMARC verdict on mail REST Mail sends.
 
 ### Local Development
 
@@ -549,13 +549,13 @@ For standalone issuance and automated renewal, follow the
 | `SMTP_PORT_INBOUND`           | `25`               | SMTP inbound (relay) port; offers STARTTLS |
 | `SMTP_PORT_SUBMISSION_TLS`    | `465`              | SMTP submission port, implicit TLS |
 | `SMTP_MAX_MESSAGE_SIZE`       | `10485760` (10 MiB) | Maximum accepted message size in bytes — drives both the EHLO `SIZE` advertisement and DATA enforcement. A maximum always exists: zero/negative values are a startup error, and values over 100 MiB log a startup warning (messages are buffered and parsed in memory) |
-| `SMTP_MAX_RECEIVED_HEADERS`   | `50`               | Hop limit: an arriving message with more `Received:` fields than this, ours included, is a mail loop (RFC 5321 §6.3) and refused `554 5.4.6` over SMTP, `550`/`403 rejected` on REST and RESTMAIL delivery. Postfix's `hopcount_limit` default. Import and IMAP APPEND do not count it |
-| `MIME_MAX_NESTING_DEPTH`      | `100`              | Deepest multipart nesting a message may have (Postfix's `mime_nesting_limit`); past it the message is refused `554 5.6.0` over SMTP, `550`/`403 rejected` on delivery, `422` on import |
+| `SMTP_MAX_RECEIVED_HEADERS`   | `50`               | Hop limit: an arriving message with more `Received:` fields than this, ours included, is a mail loop (RFC 5321 §6.3) and refused `554 5.4.6` over SMTP, `403 rejected` on REST and RESTMAIL delivery. Postfix's `hopcount_limit` default. Import and IMAP APPEND do not count it |
+| `MIME_MAX_NESTING_DEPTH`      | `100`              | Deepest multipart nesting a message may have (Postfix's `mime_nesting_limit`); past it the message is refused `554 5.6.0` over SMTP, `403 rejected` on delivery, `422` on import |
 | `MIME_MAX_PARTS`              | `1000`             | Most MIME parts, containers included, a message may hold (Go's `mime/multipart` part limit); refused as for `MIME_MAX_NESTING_DEPTH` |
 | `IMAP_TLS_PORT`               | `993`              | IMAP implicit TLS port        |
 | `POP3_TLS_PORT`               | `995`              | POP3 implicit TLS port        |
 | `QUEUE_WORKERS`               | `4`                | Number of outbound queue workers |
-| `QUEUE_POLL_INTERVAL`         | `5s`               | Queue polling interval        |
+| `QUEUE_POLL_INTERVAL`         | `5s`               | How long an idle queue worker waits before looking again. A worker with mail due goes on to the next message at once |
 | `QUEUE_SMTP_GREETING_TIMEOUT` | `5m`               | Outbound SMTP: wait for the 220 greeting (RFC 5321 §4.5.3.2) |
 | `QUEUE_SMTP_MAIL_TIMEOUT`     | `5m`               | Outbound SMTP: wait for the reply to MAIL |
 | `QUEUE_SMTP_RCPT_TIMEOUT`     | `5m`               | Outbound SMTP: wait for the reply to RCPT |

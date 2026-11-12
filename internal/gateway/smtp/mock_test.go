@@ -2,7 +2,6 @@ package smtp
 
 import (
 	"bufio"
-	"context"
 	"crypto/tls"
 	"encoding/base64"
 	"fmt"
@@ -13,11 +12,11 @@ import (
 	"time"
 
 	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/connlimiter"
 	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
 	"github.com/rest-mail/rest-mail-server/internal/mtls/mtlstest"
-	"github.com/rest-mail/rest-mail-server/internal/outbound"
 )
 
 // mockBackend is an in-memory Backend: it decides recipient locality and
@@ -78,7 +77,7 @@ func newMockBackend() *mockBackend {
 	}
 }
 
-func (m *mockBackend) OpenSession(email, password, _ string) (*apitypes.GatewaySessionOpened, error) {
+func (m *mockBackend) OpenSession(email, password, _, _ string) (*apitypes.GatewaySessionOpened, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.loginCalls++
@@ -177,8 +176,17 @@ func (m *mockBackend) lastDeliverReq() *apiclient.DeliverRequest {
 
 // mockStore is an in-memory Store: it decides sender authorization and records
 // outbound queue inserts, without a database.
+// enqueuedMessages is what has gone on the outbound queue so far.
+func (s *mockStore) enqueuedMessages() []OutboundMessage {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]OutboundMessage(nil), s.enqueued...)
+}
+
 type mockStore struct {
 	mu sync.Mutex
+
+	localRefusals map[uint][]models.LocalRefusal // RecordLocalRefusals calls, by message id
 
 	authorized map[string]bool // MAIL FROM address -> allowed for the account
 	authErr    error           // forced SenderAuthorized error
@@ -198,7 +206,6 @@ type mockStore struct {
 	policies   map[string]string
 	policyErr  error
 	persistErr error // forced PersistSubmittedMessage error
-	prepareErr error // forced PrepareSubmitted error
 
 	// hosted names the domains HostedDomain reports; hostedErr is a forced
 	// HostedDomain error, and relayErr a forced RelayBounce error.
@@ -209,29 +216,7 @@ type mockStore struct {
 
 	enqueued  []OutboundMessage
 	persisted []SubmittedMessage
-	prepared  int  // PrepareSubmitted calls
 	nextMsgID uint // assigned to the most recent persisted submission
-}
-
-// mockSignature is the DKIM-Signature PrepareSubmitted puts on a message.
-const mockSignature = "DKIM-Signature: v=1; a=rsa-sha256; d=mock; b=mock\r\n"
-
-// PrepareSubmitted strips the Bcc header as outbound.Prepare does, and signs
-// with mockSignature.
-func (s *mockStore) PrepareSubmitted(_ context.Context, _, raw string) (string, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.prepared++
-	if s.prepareErr != nil {
-		return "", s.prepareErr
-	}
-	return mockSignature + outbound.StripBcc(raw), nil
-}
-
-func (s *mockStore) preparedCount() int {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.prepared
 }
 
 func newMockStore() *mockStore {
@@ -291,6 +276,22 @@ func (s *mockStore) PersistSubmittedMessage(msg SubmittedMessage) (*uint, error)
 	s.nextMsgID++
 	id := s.nextMsgID
 	return &id, nil
+}
+
+func (s *mockStore) RecordLocalRefusals(messageID uint, refusals []models.LocalRefusal) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.localRefusals == nil {
+		s.localRefusals = map[uint][]models.LocalRefusal{}
+	}
+	s.localRefusals[messageID] = append(s.localRefusals[messageID], refusals...)
+	return nil
+}
+
+func (s *mockStore) recordedRefusals(messageID uint) []models.LocalRefusal {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]models.LocalRefusal(nil), s.localRefusals[messageID]...)
 }
 
 func (s *mockStore) persistedSubmissions() []SubmittedMessage {
