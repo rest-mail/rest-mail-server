@@ -184,7 +184,7 @@ class ListingHoldsWhatWasMade(unittest.TestCase):
     def test_nothing_made_fails(self):
         sent = self.answered([{"id": 41}])
         self.hooks.the_listing_holds_what_was_made(sent)
-        self.assertEqual(sent["fail"], "the listing had nothing made for it to list (#1789)")
+        self.assertEqual(sent["fail"], "the listing had nothing made for it to list (#1785, #1789)")
 
     def test_another_exchanges_note_is_dropped(self):
         other = self.answered([], name="y > 200 > application/json")

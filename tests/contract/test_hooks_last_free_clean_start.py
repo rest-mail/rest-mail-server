@@ -146,7 +146,7 @@ class CleanStart(unittest.TestCase):
         name = "/api/v1/accounts/{id}/calendar-events > x > 200 > application/json"
         sent = answered(transaction("/api/v1/accounts/4/calendar-events", name), 200, [])
         self.after(self.hooks.the_listing_holds_what_was_made, sent)
-        self.assertEqual(sent["fail"], "the listing had nothing made for it to list (#1789)")
+        self.assertEqual(sent["fail"], "the listing had nothing made for it to list (#1785, #1789)")
 
     def test_the_reply_goes_to_an_invitation_made_after_the_reset(self):
         for status, body in (("200", {"from": "admin@restmail.test", "response": "ACCEPTED"}),
@@ -185,9 +185,8 @@ class CleanStart(unittest.TestCase):
     def test_the_listing_after_hook_is_registered_for_the_calendar_list(self):
         # The stub's after() registers nothing, so read the source.
         source = (Path(__file__).resolve().parent / "hooks.py").read_text()
-        self.assertIn(
-            '@hooks.after("listCalendarEvents")\ndef the_listing_holds_what_was_made', source
-        )
+        stack = source.partition("\ndef the_listing_holds_what_was_made(")[0].rsplit("\n\n", 1)[-1]
+        self.assertIn('@hooks.after("listCalendarEvents")', stack.splitlines())
 
 
 if __name__ == "__main__":

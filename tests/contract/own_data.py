@@ -9,8 +9,10 @@ folder, contact or account gone: the same operations without a reset are the com
 
 A reset also removes every principal and fixture the other phases use, and the
 primary run still has operations that depend on them, so this is sent after
-those phases, just before the teardown. The primary run keeps sending every one
-of these operations, without a reset, until the last of them has moved.
+those phases, last. The primary run keeps sending every one of these
+operations, without a reset, until the last of them has moved, but for the
+exchanges that wipe the data (resetTestData's and restoreTestSnapshot's): their
+examples require disposable_data, which only this run provides (#1334).
 
 The configuration is the run's own, narrowed to these operations and without the
 surface gate, which is about the whole API. That gate is also what fails a skipped
@@ -220,16 +222,15 @@ MOVED = (
     "updateServerLimits",
     "getServerCapabilities",
     "updateServerCapabilities",
-    # The DMARC and TLS report, audit and delivery reads, and the TLS report
+    # The TLS report and audit reads, the dashboard, and the TLS report
     # intake. No link starts from or reaches any of them. A list of TLS reports
     # gets one of its own after its reset; the others need nothing made.
-    # getDmarcReport stays: no API call makes a received DMARC report.
-    "listDmarcReports",
+    # getDmarcReport and listDmarcReports move below, with a report delivered
+    # after their reset, and getDeliveryLogs with a message sent after its.
     "listTlsReports",
     "receiveTlsReport",
     "listAuditEntries",
     "verifyAuditLog",
-    "getDeliveryLogs",
     "getDashboardStats",
     # The mailbox reads listAccounts' link reaches. listAccounts is not
     # selected, and no link starts from any of them. Each goes to the fixture
@@ -253,6 +254,9 @@ MOVED = (
     "restmailCapabilities",
     "restmailCheckMailbox",
     "restmailDeliver",
+    # The delivery log. No link starts from or reaches it. Its listing gets a
+    # message queued for a remote recipient of its own after the reset.
+    "getDeliveryLogs",
     # The rest of the filter operations. No link starts from or reaches any of
     # them. The list gets a custom filter of its own after its reset; the
     # preview and the validation need nothing made.
@@ -331,6 +335,23 @@ MOVED = (
     "accountEvents",
     "probeServices",
     "verifyDelivery",
+    # Clearing a suppression and reading a DMARC report. No link starts from
+    # or reaches either. The clear's success clears a suppression made after
+    # its reset (a message sent to a domain that does not exist, which the
+    # gateway's queue worker bounces), and the read's reads a report delivered
+    # after its reset through deliverMessage. The DMARC report list's success
+    # lists such a report, made for it after its reset.
+    "clearSuppression",
+    "getDmarcReport",
+    "listDmarcReports",
+    # The test data operations (#1334). No link starts from or reaches any of
+    # them. Each exchange resets and seeds first; the reset's own just runs
+    # after it. The restore restores a snapshot taken through the API after
+    # its reset, and the reset removes a domain made after it.
+    "resetTestData",
+    "seedTestData",
+    "snapshotTestData",
+    "restoreTestSnapshot",
 )
 
 
@@ -340,7 +361,9 @@ MOVED = (
 # seeded account sends itself an invitation and the reply names its message.
 # accountEvents' stream (event_stream) is not provided: its example is a
 # literal stream the live server never sends, compared byte for byte (#1385).
-PROVIDES = {"state": ["calendar_invitation"]}
+# disposable_data is resetTestData's and restoreTestSnapshot's: what each wipes
+# was made for it by its own reset, and no exchange after it needs that.
+PROVIDES = {"state": ["calendar_invitation", "disposable_data"]}
 
 
 def configure(config):
