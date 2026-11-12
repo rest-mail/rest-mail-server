@@ -1,7 +1,6 @@
 package smtp
 
 import (
-	"errors"
 	"strings"
 	"testing"
 )
@@ -23,31 +22,30 @@ func submitToLocal(t *testing.T, h *smtpHarness) string {
 	return h.dataBody(localSubmissionBody)
 }
 
-// assertDeliveredAsSubmitted checks that the local copy of a submission was
-// prepared like its remote copies, and carries no client for the inbound
-// checks to judge. Delivered with the submitting client's address, the
-// domain's SPF record failed it, and DMARC p=reject refused it (550).
-func assertDeliveredAsSubmitted(t *testing.T, back *mockBackend) {
+// assertQueuedAsSubmitted checks that a submission to a mailbox on this server
+// went on the outbound queue, as one to any other server does, and did not
+// reach the mailbox from here (#1564). The queue worker signs it and strips its
+// Bcc header on the way out.
+func assertQueuedAsSubmitted(t *testing.T, back *mockBackend, store *mockStore) {
 	t.Helper()
-	req := back.lastDeliverReq()
-	if req == nil {
-		t.Fatal("nothing delivered to the local mailbox")
+	if got := back.deliveredTo(); len(got) != 0 {
+		t.Errorf("delivered directly to %v, want nothing", got)
 	}
-	if req.ClientIP != "" || req.HeloName != "" {
-		t.Errorf("delivered with client IP %q and HELO %q, want neither: the submitting client is not a mail server for SPF to judge", req.ClientIP, req.HeloName)
+	queued := store.enqueuedMessages()
+	if len(queued) != 1 {
+		t.Fatalf("queued %d messages, want 1", len(queued))
 	}
-	raw := string(req.RawMessage)
-	if !strings.HasPrefix(raw, mockSignature) {
-		t.Errorf("delivered unsigned; message begins %q", head(raw))
+	if queued[0].Recipient != "bob@example.com" || queued[0].Domain != "example.com" || queued[0].Sender != "alice@example.com" {
+		t.Errorf("queued %+v, want alice to bob at example.com", queued[0])
 	}
-	if strings.Contains(raw, "Bcc:") {
-		t.Errorf("delivered with its Bcc header:\n%s", raw)
+	if !strings.Contains(queued[0].RawMessage, "Subject: Hi") {
+		t.Errorf("queued message is not the one submitted:\n%s", queued[0].RawMessage)
 	}
 }
 
 // TestSMTP_SubmissionToALocalMailbox: a message submitted with the mailbox's
-// password, to a mailbox on this server, is delivered as one sent from the
-// webmail is: signed, Bcc removed, with no client IP or HELO.
+// password, to a mailbox on this server, goes on the outbound queue as one sent
+// from the webmail does.
 func TestSMTP_SubmissionToALocalMailbox(t *testing.T) {
 	back := newMockBackend()
 	back.local["bob@example.com"] = true
@@ -60,7 +58,7 @@ func TestSMTP_SubmissionToALocalMailbox(t *testing.T) {
 	if final := submitToLocal(t, h); replyCode(final) != "250" {
 		t.Fatalf("DATA = %q", final)
 	}
-	assertDeliveredAsSubmitted(t, back)
+	assertQueuedAsSubmitted(t, back, store)
 }
 
 // TestSMTP_AppPasswordSendsToALocalMailbox: the same with an app password (the
@@ -74,12 +72,12 @@ func TestSMTP_AppPasswordSendsToALocalMailbox(t *testing.T) {
 	if final := submitToLocal(t, h); replyCode(final) != "250" {
 		t.Fatalf("DATA = %q", final)
 	}
-	assertDeliveredAsSubmitted(t, back)
+	assertQueuedAsSubmitted(t, back, store)
 }
 
-// TestSMTP_SubmissionPreparedOnceForAllLocalRecipients: two local recipients
-// get the same prepared copy, signed once.
-func TestSMTP_SubmissionPreparedOnceForAllLocalRecipients(t *testing.T) {
+// TestSMTP_SubmissionQueuedForEachLocalRecipient: two local recipients get one
+// queue row each, and share one Sent reference.
+func TestSMTP_SubmissionQueuedForEachLocalRecipient(t *testing.T) {
 	back := newMockBackend()
 	back.local["bob@example.com"] = true
 	back.local["carol@example.com"] = true
@@ -95,33 +93,40 @@ func TestSMTP_SubmissionPreparedOnceForAllLocalRecipients(t *testing.T) {
 	if final := h.dataBody(localSubmissionBody); replyCode(final) != "250" {
 		t.Fatalf("DATA = %q", final)
 	}
-	if got := back.deliveredTo(); len(got) != 2 {
-		t.Fatalf("delivered to %v, want both", got)
+	if got := back.deliveredTo(); len(got) != 0 {
+		t.Errorf("delivered directly to %v, want nothing", got)
 	}
-	if n := store.preparedCount(); n != 1 {
-		t.Errorf("prepared %d times, want once", n)
+	queued := store.enqueuedMessages()
+	if len(queued) != 2 || queued[0].Recipient != "bob@example.com" || queued[1].Recipient != "carol@example.com" {
+		t.Fatalf("queued %+v, want one row for each recipient", queued)
+	}
+	if queued[0].MessageID == nil || queued[1].MessageID == nil || *queued[0].MessageID != *queued[1].MessageID {
+		t.Errorf("queue rows name Sent copies %v and %v, want one", queued[0].MessageID, queued[1].MessageID)
 	}
 }
 
-// TestSMTP_SubmissionThatCannotBeSignedIsDeferred: when the sender domain's
-// key cannot be loaded, the local copy is deferred (451), not delivered
-// unsigned, as the queue worker does with the remote copies.
-func TestSMTP_SubmissionThatCannotBeSignedIsDeferred(t *testing.T) {
+// TestSMTP_SubmissionWithTheAPIDownIsStillQueued: where a submission goes no
+// longer depends on the API's answer about a recipient, so DATA keeps nothing
+// from the queue once RCPT accepted it. A key that cannot sign is the queue
+// worker's to defer: internal/api's TestLocalSendThatCannotBeSigned.
+func TestSMTP_SubmissionWithTheAPIDownIsStillQueued(t *testing.T) {
 	back := newMockBackend()
 	back.local["bob@example.com"] = true
 	store := newMockStore()
-	store.prepareErr = errors.New("dkim key undecryptable")
 	h := newSMTPHarness(t, back, store, true)
 	h.ehlo()
 	if r := h.authPlain(back.user, back.pass); replyCode(r) != "235" {
 		t.Fatalf("AUTH = %q", r)
 	}
-	if final := submitToLocal(t, h); replyCode(final) != "451" {
-		t.Fatalf("DATA = %q, want 451", final)
+	h.cmd("MAIL FROM:<alice@example.com>")
+	h.cmd("RCPT TO:<bob@example.com>")
+	back.mu.Lock()
+	back.checkErr["bob@example.com"] = true
+	back.mu.Unlock()
+	if final := h.dataBody(localSubmissionBody); replyCode(final) != "250" {
+		t.Fatalf("DATA = %q", final)
 	}
-	if got := back.deliveredTo(); len(got) != 0 {
-		t.Errorf("delivered to %v, want nothing", got)
-	}
+	assertQueuedAsSubmitted(t, back, store)
 }
 
 // TestSMTP_InboundToALocalMailboxIsNotPrepared: mail from another server keeps
@@ -144,10 +149,7 @@ func TestSMTP_InboundToALocalMailboxIsNotPrepared(t *testing.T) {
 	if req.ClientIP == "" || req.HeloName == "" {
 		t.Errorf("inbound delivered with client IP %q and HELO %q, want both", req.ClientIP, req.HeloName)
 	}
-	if n := store.preparedCount(); n != 0 {
-		t.Errorf("inbound mail prepared %d times, want never", n)
-	}
-	if strings.HasPrefix(string(req.RawMessage), mockSignature) {
+	if strings.HasPrefix(string(req.RawMessage), "DKIM-Signature:") {
 		t.Error("inbound mail signed")
 	}
 }
