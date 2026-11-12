@@ -393,9 +393,10 @@ export async function sendMessage(data: {
     attendees?: { name?: string; address: string; role?: string; rsvp?: boolean }[];
     sequence?: number;
   };
-}): Promise<void> {
+}, idempotencyKey?: string): Promise<void> {
   await request(`${BASE}/messages/send`, {
     method: 'POST',
+    headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {},
     body: JSON.stringify(data),
   });
 }
@@ -442,9 +443,24 @@ export async function updateDraft(draftId: number, data: Record<string, unknown>
   });
 }
 
-export async function sendDraft(draftId: number): Promise<void> {
+export async function sendDraft(draftId: number, idempotencyKey?: string): Promise<void> {
   await request(`${BASE}/messages/draft/${draftId}/send`, {
     method: 'POST',
+    headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {},
+  });
+}
+
+export async function forwardMessage(messageId: number, data: {
+  from: string;
+  to: string[];
+  body_text?: string;
+  on_behalf?: boolean;
+  list_unsubscribe?: { https?: string; mailto?: string };
+}, idempotencyKey?: string): Promise<void> {
+  await request(`${BASE}/messages/${messageId}/forward`, {
+    method: 'POST',
+    headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {},
+    body: JSON.stringify(data),
   });
 }
 

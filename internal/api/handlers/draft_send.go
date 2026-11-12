@@ -19,6 +19,11 @@ type messageEventPublisher interface {
 // sendDraft holds the draft's row lock through the send and its removal. Queue
 // workers and other send requests cannot observe a partially committed send.
 func (h *MessageHandler) sendDraft(r *http.Request, in sendDraftRequest) (endpoint.Status[any], error) {
+	if r.Header.Get("Idempotency-Key") != "" || len(r.Header.Values("Idempotency-Key")) > 1 {
+		return h.withSendIdempotency(r, in, func(sender *MessageHandler) (endpoint.Status[any], error) {
+			return sender.sendDraftInTransaction(r, in)
+		})
+	}
 	var sent endpoint.Status[any]
 	if middleware.GetClaims(r) == nil {
 		return sent, errNotSignedIn

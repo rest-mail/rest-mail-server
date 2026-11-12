@@ -56,7 +56,9 @@ func checkNamedPairWithVertrag(t *testing.T, binary string, handler http.Handler
 		for _, v := range params {
 			p := v.(map[string]any)
 			delete(p, "examples")
-			p["example"] = 12
+			if p["in"] == "path" {
+				p["example"] = 12
+			}
 		}
 	}
 	dir := t.TempDir()
