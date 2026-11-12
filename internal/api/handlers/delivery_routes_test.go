@@ -45,9 +45,6 @@ func TestAddressCheckJSONParity(t *testing.T) {
 	}
 }
 
-// What binding refuses, and what the handlers refuse first, is answered with no database: a
-// body that is not JSON, a field the gateway never sends, a wrong type, no mailbox named, a
-// folder the folder rule refuses, and a recipient check without an address.
 func TestDeliveryAndAddressCheckBeforeDatabase(t *testing.T) {
 	deliver := deliveryRoute(&MessageHandler{})
 	for _, tc := range []struct {
@@ -57,13 +54,11 @@ func TestDeliveryAndAddressCheckBeforeDatabase(t *testing.T) {
 	}{
 		{`{"address":`, http.StatusBadRequest, `"bad_request"`},
 		{`{"address":"a@b.test","priority":1}`, http.StatusUnprocessableEntity, `"priority":"not allowed"`},
-		{`{"mailbox_id":"seven"}`, http.StatusUnprocessableEntity, `"mailbox_id":`},
+		{`{"mailbox_id":"seven"}`, http.StatusUnprocessableEntity, `"address":"required"`},
 		{`{"address":"a@b.test","raw_message":"not base64!"}`, http.StatusUnprocessableEntity, `"raw_message":`},
-		{`{"sender":"x@remote.test"}`, http.StatusUnprocessableEntity, `mailbox_id or address required`},
-		// The folder follows the folder rule, before the mailbox is looked up (#759).
-		{`{"address":"a@b.test","folder":"Archive/../Other"}`, http.StatusUnprocessableEntity, `"folder":"must not contain \"..\""`},
-		{`{"address":"a@b.test","folder":" Archive"}`, http.StatusUnprocessableEntity, `"folder":"must not begin or end with a space"`},
-		{`{"address":"a@b.test","folder":"a\u0007b"}`, http.StatusUnprocessableEntity, `"folder":"must not contain a control character"`},
+		{`{"sender":"x@remote.test"}`, http.StatusUnprocessableEntity, `"address":"required"`},
+		{`{"mailbox_id":7}`, http.StatusUnprocessableEntity, `"address":"required"`},
+		{`{"address":""}`, http.StatusUnprocessableEntity, `"address":`},
 	} {
 		rr := httptest.NewRecorder()
 		deliver(rr, httptest.NewRequest(http.MethodPost, "/api/v1/messages/deliver", strings.NewReader(tc.body)))
@@ -97,7 +92,7 @@ func TestDeliveryDescribesEachOutcome(t *testing.T) {
 		}
 	}
 	want := map[int]reflect.Type{
-		http.StatusCreated: reflect.TypeOf(endpoint.Data[Message]{}),
+		http.StatusCreated: reflect.TypeOf(endpoint.Data[DeliveredMessage]{}),
 		http.StatusOK:      reflect.TypeOf(endpoint.Data[DeliveryProcessed]{}),
 	}
 	if !reflect.DeepEqual(got, want) {

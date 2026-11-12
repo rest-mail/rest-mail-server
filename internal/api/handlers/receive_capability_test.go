@@ -149,7 +149,7 @@ func TestReceiveCapabilityInbound(t *testing.T) {
 			t.Fatalf("RESTMAIL receive-capable delivery: %d %s", w.Code, w.Body)
 		}
 	}
-	for _, body := range []string{fmt.Sprintf(`{"address":%q}`, disabled.Address), fmt.Sprintf(`{"mailbox_id":%d}`, disabled.ID)} {
+	for _, body := range []string{fmt.Sprintf(`{"address":%q}`, disabled.Address), fmt.Sprintf(`{"address":%q,"mailbox_id":%d}`, disabled.Address, disabled.ID)} {
 		w := httptest.NewRecorder()
 		delivery(w, httptest.NewRequest(http.MethodPost, "/api/v1/messages/deliver", strings.NewReader(body)))
 		missing := httptest.NewRecorder()
