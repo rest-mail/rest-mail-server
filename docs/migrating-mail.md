@@ -103,7 +103,7 @@ name, as Dovecot writes it, and is decoded: `.R&AOk-sum&AOk-.&ZcWITA-` becomes
 it is kept as the UTF-8 name it already is. A level that is neither, such as
 `.Tom & Jerry` (Dovecot writes `Tom & Jerry` as `.Tom &- Jerry`), is still
 imported, under its literal text, and the rename is reported. Original message
-octets are preserved. Source symlinks are
+octets are preserved. Folder names are stored and looked up in Unicode Normalization Form C (NFC); source names that collide after normalization are kept separate under numbered destination names. Source symlinks are
 refused, including symlinked folders, so a source tree cannot silently import
 files outside it.
 

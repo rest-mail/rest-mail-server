@@ -1,9 +1,11 @@
 package message
 
 import (
+	"bufio"
 	"net/mail"
 	"net/textproto"
 	"strings"
+	"sync"
 )
 
 // mimeNode is one entity on a numeric section path: either an RFC 5322
@@ -27,6 +29,11 @@ func messageNode(raw string, depth int) mimeNode {
 	return mimeNode{header: HeaderSection(raw), body: TextSection(raw), message: true, defaultType: "text/plain", depth: depth}
 }
 
+// entityReaders holds the buffers entityHeader reads with. net/mail keeps a reader
+// that is already buffered, and would allocate a full buffer for any other, so a
+// message of many small parts shares these instead of allocating one for each.
+var entityReaders = sync.Pool{New: func() any { return bufio.NewReader(nil) }}
+
 // entityHeader reads a MIME entity's header block (with or without its
 // terminating blank line) with net/mail's RFC 5322 reader. Unlike
 // net/textproto, it accepts the control octets RFC 5322 §4.2 keeps as
@@ -35,7 +42,13 @@ func messageNode(raw string, depth int) mimeNode {
 // read as empty. BODYSTRUCTURE, sections and SEARCH all read part headers
 // here, so they agree on each part's type.
 func entityHeader(header string) textproto.MIMEHeader {
-	m, err := mail.ReadMessage(strings.NewReader(header))
+	r := entityReaders.Get().(*bufio.Reader)
+	defer func() {
+		r.Reset(nil)
+		entityReaders.Put(r)
+	}()
+	r.Reset(strings.NewReader(header))
+	m, err := mail.ReadMessage(r)
 	if err != nil {
 		return textproto.MIMEHeader{}
 	}
@@ -46,18 +59,60 @@ func entityHeader(header string) textproto.MIMEHeader {
 // the same encoding override, defaults and depth limit as partStructure so
 // sections match BODYSTRUCTURE.
 func (n mimeNode) mediaType() (string, map[string]string) {
-	h := entityHeader(n.header)
-	if !knownTransferEncoding(h.Get("Content-Transfer-Encoding")) {
+	var contentType, encoding string
+	if namesContentField(n.header) {
+		h := entityHeader(n.header)
+		contentType, encoding = h.Get("Content-Type"), h.Get("Content-Transfer-Encoding")
+	}
+	if !knownTransferEncoding(encoding) {
 		return "application/octet-stream", map[string]string{}
 	}
-	mt, params, err := parseContentType(h.Get("Content-Type"))
-	if !usableContentType(mt, params, err) {
-		mt, params = n.defaultType, map[string]string{}
+	var mt string
+	var params map[string]string
+	usable := false
+	if contentType != "" {
+		var err error
+		mt, params, err = parseContentType(contentType)
+		usable = usableContentType(mt, params, err)
 	}
-	if opaqueEntity(mt, params, h.Get("Content-Transfer-Encoding"), n.depth) {
-		return "application/octet-stream", map[string]string{}
+	if !usable {
+		mt, params = n.defaultType, noParameters
+	}
+	if opaqueEntity(mt, params, encoding, n.depth) {
+		return "application/octet-stream", noParameters
 	}
 	return mt, params
+}
+
+// noParameters is what an entity with no usable Content-Type has. Nothing writes to it.
+var noParameters = map[string]string{}
+
+// namesContentField reports whether a header block may hold a Content-Type or a
+// Content-Transfer-Encoding, so a part with neither doesn't pay to parse its header.
+func namesContentField(header string) bool {
+	return holdsFold(header, "content-t")
+}
+
+// namesTransferEncoding reports whether a header block may hold a Content-Transfer-Encoding.
+func namesTransferEncoding(header string) bool {
+	return holdsFold(header, "content-transfer-encoding")
+}
+
+// holdsFold reports whether header holds prefix, which is in lower case, in any case.
+func holdsFold(header, prefix string) bool {
+	for i := 0; i+len(prefix) <= len(header); i++ {
+		if header[i]|0x20 != 'c' {
+			continue
+		}
+		j := 1
+		for j < len(prefix) && header[i+j]|0x20 == prefix[j]|0x20 {
+			j++
+		}
+		if j == len(prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 // usableContentType reports whether a parsed Content-Type field describes the
@@ -81,6 +136,11 @@ func usableContentType(mt string, params map[string]string, err error) bool {
 // is not a message that can be parsed as stored. BODYSTRUCTURE, sections and
 // SEARCH all use this, so they agree on where the structure stops.
 func opaqueEntity(mt string, params map[string]string, cte string, depth int) bool {
+	return opaqueType(mt, params["boundary"], cte, depth)
+}
+
+// opaqueType is opaqueEntity given the only parameter it reads.
+func opaqueType(mt, boundary, cte string, depth int) bool {
 	if mt == "message/rfc822" {
 		switch transferEncoding(cte) {
 		case "7BIT", "8BIT", "BINARY":
@@ -88,7 +148,7 @@ func opaqueEntity(mt string, params map[string]string, cte string, depth int) bo
 			return true
 		}
 	}
-	nests := (strings.HasPrefix(mt, "multipart/") && params["boundary"] != "") || mt == "message/rfc822"
+	nests := (strings.HasPrefix(mt, "multipart/") && boundary != "") || mt == "message/rfc822"
 	return nests && depth >= maxMIMEDepth
 }
 
@@ -131,23 +191,67 @@ func splitEntity(raw string) (header, body string) {
 // the delimiter. Preamble and epilogue are skipped; an unterminated last part
 // runs to the end of the body.
 func multipartParts(body, boundary string) []string {
+	spans := multipartSpans(body, boundary)
+	parts := make([]string, len(spans))
+	for i, span := range spans {
+		parts[i] = body[span[0]:span[1]]
+	}
+	return parts
+}
+
+// multipartSpans returns where each part of a multipart body starts and ends.
+func multipartSpans(body, boundary string) [][2]int {
+	return partSpans(body, multipartDelimiters(body, boundary))
+}
+
+// multipartDelimiter is one delimiter line: where "--boundary" starts, where its line
+// ends, and whether it is the close delimiter.
+type multipartDelimiter struct {
+	at, after int
+	closing   bool
+}
+
+// multipartDelimiters finds each delimiter line of a multipart body, up to and
+// including the close delimiter.
+func multipartDelimiters(body, boundary string) []multipartDelimiter {
+	var scan boundaryScan
+	return scan.delimiters(body, boundary)
+}
+
+// appendDelimiters is multipartDelimiters appending to delimiters.
+func appendDelimiters(delimiters []multipartDelimiter, body, boundary string) []multipartDelimiter {
+	var scan boundaryScan
+	return scan.appendDelimiters(delimiters, body, boundary)
+}
+
+// boundaryScan looks for a boundary's lines and counts the octets it looks at. A search
+// repeated from every line allocates nothing, so only this count shows it
+// (TestSevenBitBoundary_ScansInProportion).
+type boundaryScan struct{ steps int }
+
+func (s *boundaryScan) delimiters(body, boundary string) []multipartDelimiter {
+	s.steps += len(body)
+	return s.appendDelimiters(make([]multipartDelimiter, 0, strings.Count(body, "--"+boundary)), body, boundary)
+}
+
+func (s *boundaryScan) appendDelimiters(delimiters []multipartDelimiter, body, boundary string) []multipartDelimiter {
 	delim := "--" + boundary
-	// next finds the next delimiter line at or after from. It returns the
-	// offset of the delimiter, the offset just after its line and whether it
-	// is the close delimiter.
-	next := func(from int) (at, after int, closing, found bool) {
+	// next finds the next delimiter line at or after from.
+	next := func(from int) (multipartDelimiter, bool) {
 		for from <= len(body) {
 			i := strings.Index(body[from:], delim)
 			if i < 0 {
-				return 0, 0, false, false
+				s.steps += len(body) - from
+				return multipartDelimiter{}, false
 			}
-			at = from + i
+			s.steps += i + len(delim)
+			at := from + i
 			from = at + 1
 			if at != 0 && (at < 2 || body[at-2:at] != "\r\n") {
 				continue
 			}
 			rest := body[at+len(delim):]
-			closing = strings.HasPrefix(rest, "--")
+			closing := strings.HasPrefix(rest, "--")
 			if closing {
 				rest = rest[2:]
 			}
@@ -156,35 +260,56 @@ func multipartParts(body, boundary string) []string {
 			if eol >= 0 {
 				line = rest[:eol]
 			}
+			s.steps += len(line)
 			if strings.Trim(line, " \t") != "" {
 				continue
 			}
-			after = len(body) - len(rest) + len(line)
+			after := len(body) - len(rest) + len(line)
 			if eol >= 0 {
 				after += 2
 			}
-			return at, after, closing, true
+			return multipartDelimiter{at, after, closing}, true
 		}
-		return 0, 0, false, false
+		return multipartDelimiter{}, false
 	}
 
-	var parts []string
-	_, start, closing, found := next(0)
-	for found && !closing {
-		at, after, c, ok := next(start)
-		if !ok {
-			parts = append(parts, body[start:])
+	for from := 0; ; {
+		d, found := next(from)
+		if !found {
+			return delimiters
+		}
+		delimiters = append(delimiters, d)
+		if d.closing {
+			return delimiters
+		}
+		from = d.after
+	}
+}
+
+// partSpans returns where the part after each delimiter that isn't the close one
+// starts and ends. The CRLF before a delimiter is part of it, and an unterminated last
+// part runs to the end of the body.
+func partSpans(body string, delimiters []multipartDelimiter) [][2]int {
+	return appendPartSpans(make([][2]int, 0, len(delimiters)), body, delimiters)
+}
+
+// appendPartSpans is partSpans appending to spans.
+func appendPartSpans(spans [][2]int, body string, delimiters []multipartDelimiter) [][2]int {
+	for i, d := range delimiters {
+		if d.closing {
 			break
 		}
-		end := at
-		if end >= 2 {
-			end -= 2 // the CRLF before the delimiter is part of it
+		end := len(body)
+		if i+1 < len(delimiters) {
+			end = delimiters[i+1].at
+			if end >= 2 {
+				end -= 2
+			}
+			if end < d.after {
+				end = d.after
+			}
 		}
-		if end < start {
-			end = start
-		}
-		parts = append(parts, body[start:end])
-		start, closing = after, c
+		spans = append(spans, [2]int{d.after, end})
 	}
-	return parts
+	return spans
 }

@@ -196,8 +196,10 @@ const gatewaySessionPrefix = "rmgs_"
 // is asking. The answer's Token is what every call for the connection then
 // sends, and CloseSession ends it at logout or disconnect. The API checks the
 // session on every call, so a revoked app password fails at the next one.
-func (c *Client) OpenSession(email, password, protocol string) (*apitypes.GatewaySessionOpened, error) {
-	jsonBody, err := json.Marshal(apitypes.GatewaySessionOpenRequest{Protocol: protocol, Address: email, Password: password})
+// clientIP is the address the mail client connected from: the API throttles and
+// records the sign-in by it, not by the gateway's own address.
+func (c *Client) OpenSession(email, password, protocol, clientIP string) (*apitypes.GatewaySessionOpened, error) {
+	jsonBody, err := json.Marshal(apitypes.GatewaySessionOpenRequest{Protocol: protocol, Address: email, Password: password, ClientIP: clientIP})
 	if err != nil {
 		return nil, err
 	}
@@ -306,7 +308,7 @@ func (c *Client) CheckMailbox(address string) (*MailboxCheckResponse, error) {
 
 type DeliverRequest = apitypes.DeliverMessageBody
 
-type deliveredMessageEnvelope = endpoint.Data[apitypes.Message]
+type deliveredMessageEnvelope = endpoint.Data[apitypes.DeliveredMessage]
 
 // DeliverResponse contains either a delivered message or a processed receipt.
 // Processed is local result metadata, decoded from the registered alternative body.
@@ -358,6 +360,10 @@ type SendRequest = apitypes.SendMessageRequest
 // SendMessage sends a message via the webmail send API.
 func (c *Client) SendMessage(token string, req *SendRequest) error {
 	return c.postAuth("/api/v1/messages/send", token, req, nil)
+}
+
+func (c *Client) SendMessageWithIdempotencyKey(token string, req *SendRequest, key string) error {
+	return c.postAuth("/api/v1/messages/send", token, req, nil, key)
 }
 
 // ── Folders ───────────────────────────────────────────────────────────
@@ -670,6 +676,20 @@ func (c *Client) GetQuota(token string, accountID uint) (*QuotaResponse, error) 
 	return &resp, nil
 }
 
+// ── Account time zone ─────────────────────────────────────────────────
+
+type AccountTimeZoneResponse = endpoint.Data[apitypes.AccountTimeZone]
+
+// GetAccountTimeZone returns the account's time zone setting. Its TimeZone is nil
+// when the account has none.
+func (c *Client) GetAccountTimeZone(token string, accountID uint) (*AccountTimeZoneResponse, error) {
+	var resp AccountTimeZoneResponse
+	if err := c.getAuth(fmt.Sprintf("/api/v1/accounts/%d/time-zone", accountID), token, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
 // ── Search ────────────────────────────────────────────────────────────
 
 // Search performs full-text search across messages.
@@ -865,7 +885,7 @@ func (c *Client) getAuth(path, token string, out interface{}) error {
 	return c.decodeResponse(resp, out)
 }
 
-func (c *Client) postAuth(path, token string, body interface{}, out interface{}) error {
+func (c *Client) postAuth(path, token string, body interface{}, out interface{}, idempotencyKey ...string) error {
 	jsonBody, err := json.Marshal(body)
 	if err != nil {
 		return err
@@ -877,6 +897,9 @@ func (c *Client) postAuth(path, token string, body interface{}, out interface{})
 	}
 	authorize(req, token)
 	req.Header.Set("Content-Type", "application/json")
+	if len(idempotencyKey) > 0 && idempotencyKey[0] != "" {
+		req.Header.Set("Idempotency-Key", idempotencyKey[0])
+	}
 	resp, err := c.send(client, req)
 	if err != nil {
 		return fmt.Errorf("POST %s: %w", path, err)

@@ -148,7 +148,9 @@ func (a *account) MoveUID(srcUID uint32, dest string) (uint32, error) {
 | `UTF8Mailbox` | `EnableUTF8` | UTF8=ACCEPT ([RFC 6855]), switched on per session with `ENABLE UTF8=ACCEPT`: UTF-8 quoted strings and mailbox names, raw UTF-8 headers (RFC 6532), and APPEND's `UTF8 (~{n})` data item. |
 | `DateAppender` | `AppendWithDate` | APPEND's date-time argument reaches the store as the message's INTERNALDATE. Without it the date is checked and then dropped. |
 | `ModSeqMailbox` | `HighestModSeq`, `StoreModSeq` | CONDSTORE ([RFC 7162] §3.1): HIGHESTMODSEQ in SELECT and STATUS, FETCH `MODSEQ` and `CHANGEDSINCE`, STORE `UNCHANGEDSINCE` with `MODIFIED`, and SEARCH `MODSEQ`, from `Message.ModSeq`. A folder whose `HighestModSeq` is 0 answers NOMODSEQ. |
+| `RecentMailbox` | `RecentMark`, `ClaimRecent` | Real `\Recent` state ([RFC 3501] §2.3.2) from a per-folder mark: the first read-write SELECT after a message arrives claims it, EXAMINE and STATUS only report it. Without it every message is `\Recent` to every session, as §2.3.2 asks when the server cannot tell which session saw a message first. |
 | `VanishedMailbox` | `Vanished` | With `ModSeqMailbox`, QRESYNC ([RFC 7162] §3.2): `ENABLE QRESYNC`, SELECT `(QRESYNC ...)`, UID FETCH `(CHANGEDSINCE n VANISHED)`, and `VANISHED` instead of `EXPUNGE` once enabled. |
+| `SearchZoneMailbox` | `SearchZone` | Names the zone whose calendar days SEARCH BEFORE, ON and SINCE compare, for example an account's own. Without it the day is the one `Message.Date` writes in its own location. FETCH INTERNALDATE and the SENT* keys do not change. |
 
 ### One connection
 
@@ -298,8 +300,9 @@ The host:
 - Creates a folder when a message first names it, or returns
   `imap.ErrNoSuchMailbox` (wrapped is fine) from `Append`, `Copy` or `Move`, which
   the server answers with `NO [TRYCREATE]` so the client can CREATE and retry.
-- Applies Unicode normalisation (NFC) to UTF-8 names if it wants it; the library
-  has no normalisation tables.
+- Supplies Unicode normalisation (NFC) through `imap.NameNormalizer` if it wants
+  it, since the library has no normalisation tables. The library then uses the
+  normal form for every name and reports a changed one with `OLDNAME`.
 
 ### Messages, UIDs and flags
 
@@ -319,9 +322,11 @@ The host:
 
 - Assigns UIDs: positive, stable and ascending with arrival in each folder, and
   returns messages oldest first.
-- Reports `Size` as the exact octet count of the stored message.
-- Returns the stored octets from `Fetch` unchanged; FETCH `BODY[]` serves them
-  byte for byte.
+- Reports `Size` as the exact octet count FETCH sends for the message, which
+  `wireform.Convert` measures when it is stored.
+- Returns the stored octets from `Fetch` unchanged. FETCH `BODY[]` serves them
+  byte for byte when they are already 7-bit, and converts them as it sends them
+  otherwise.
 - Reports `Quota` in octets; the server converts to the 1024-octet units of
   RFC 2087.
 - Makes `Append`, `Copy`, `Move` and `Delete` atomic per message. The server calls
@@ -332,21 +337,32 @@ The host:
 
 The library:
 
-- Builds BODY, BODYSTRUCTURE and ENVELOPE from the stored octets, and bounds
-  MIME nesting at depth 64.
+- Converts a message as FETCH sends it (RFC 3501 §7.4.2): 8-bit header text
+  becomes RFC 2047 encoded words in charset `UTF-8`, or `UNKNOWN-8BIT` when it is
+  not UTF-8; non-textual data goes out BASE64; text naming no charset goes out
+  QUOTED-PRINTABLE; text naming a charset stays. BINARY sends the stored octets.
+- Keeps every Content-Type and Content-Disposition parameter, whatever its charset.
+  An RFC 2231 value in a charset it can't decode goes out as an encoded word naming
+  that charset, and converting a field changes only what holds an 8-bit octet.
+- Builds BODY and BODYSTRUCTURE from what FETCH sends and ENVELOPE from the stored
+  octets, and bounds MIME nesting at depth 64.
 - Treats an unknown Content-Transfer-Encoding as `application/octet-stream`
   (RFC 2045 §6.4) everywhere: BODYSTRUCTURE, sections and SEARCH.
 - Removes base64 and quoted-printable for BINARY, and answers
   `NO [UNKNOWN-CTE]` when it cannot.
 - Decodes encoded words, transfer encodings and ISO-8859-1 before SEARCH
-  compares text. It accepts the US-ASCII and UTF-8 charsets.
-- Refuses to FETCH a message whose octets, or whose decoded ENVELOPE and MIME
-  strings, hold NUL.
+  compares text, one encoded word at a time, so a word in another charset is compared
+  as stored and the words around it still decode. It accepts the US-ASCII and UTF-8
+  charsets.
+- Sends a space for a NUL in a header or in text, and for one decoded into an
+  ENVELOPE or MIME string, one octet for one, so a FETCH never fails for a NUL. A
+  NUL in non-textual data, or in text whose charset has NUL octets such as UTF-16,
+  goes out encoded. BINARY sends the exact octets.
 
 The host:
 
-- Stores messages as received. The library does not downgrade 8-bit headers or
-  binary bodies for clients that did not ask for them.
+- Stores messages as received. The library converts on the way out and never
+  changes what the host stores.
 
 ## RFC conformance
 
@@ -419,10 +435,9 @@ reason.
 | Area | What go-imap does | Why |
 |------|-------------------|-----|
 | Authentication | PLAIN and LOGIN only: no challenge-response mechanism (CRAM-MD5, DIGEST-MD5, SCRAM), EXTERNAL or ANONYMOUS. | When a TLS config is supplied, PLAIN is only offered inside TLS. A nil TLS config explicitly permits development/legacy cleartext authentication. CRAM-MD5 and DIGEST-MD5 are obsolete and need passwords stored in plaintext-equivalent form. SCRAM needs a second, SCRAM-specific credential store and helps only when TLS is already broken. ANONYMOUS has no use on a server of personal accounts. |
-| `\Recent` | Not tracked: RECENT, NEW and OLD approximate it with unseen. | IMAP4rev2 (RFC 9051) removes `\Recent`. |
 | Subscriptions | No subscription store: every folder counts as subscribed. | Clients show every folder anyway; a second list of folders would only go stale. |
 | UIDs | Without `UIDPlusMailbox`, UIDVALIDITY is 1 and UIDNEXT is the highest UID plus one. UIDNOTSTICKY is never reported. | A backend that has real values implements `UIDPlusMailbox`; UIDs are expected to persist. |
-| ENVELOPE | Source routes are always NIL, and obsolete address syntax that `net/mail` rejects gives NIL. | Source routes are obsolete. |
+| ENVELOPE | Obsolete address syntax that `net/mail` rejects, other than a source route, gives NIL for the whole header. | Reading it needs an address parser of our own: rest-mail/rest-mail-server#1862. |
 
 #### Not planned
 

@@ -36,6 +36,9 @@ type Backend struct {
 	// per-IP tracker cannot see a distributed attack that rotates source IPs
 	// against one account. A nil limiter disables per-account throttling.
 	limiter *connlimiter.Limiter
+	// clientIP is the address of the mail client this Backend signs in, set by
+	// ForClient. The API throttles and records a sign-in by it.
+	clientIP string
 }
 
 // NewBackend creates a Backend over the given API client. limiter enables
@@ -48,6 +51,14 @@ var (
 	_ gopop3.Backend     = (*Backend)(nil)
 	_ gopop3.UTF8Backend = (*Backend)(nil)
 )
+
+// ForClient returns the Backend that signs in the mail client connected from
+// ip. [Server] gives each connection its own.
+func (b *Backend) ForClient(ip string) *Backend {
+	forClient := *b
+	forClient.clientIP = ip
+	return &forClient
+}
 
 // Authenticate signs in a client that has not sent UTF8; the library calls
 // [Backend.AuthenticateUTF8] instead, since the Backend implements it.
@@ -87,7 +98,7 @@ func (b *Backend) AuthenticateUTF8(user, pass string, utf8 bool) (gopop3.Mailbox
 	// The connection gets its own session with the API (#1586): the address
 	// and password go once, and every call that follows sends the session's
 	// token. An app password signs in without the API's interactive login (#344).
-	resp, err := api.OpenSession(user, pass, "pop3")
+	resp, err := api.OpenSession(user, pass, "pop3", b.clientIP)
 	if err != nil {
 		// A failed POP3 login is a security-relevant event (credential stuffing /
 		// enumeration). Log it structured, with the attacker-controlled username
@@ -152,11 +163,10 @@ func (m *mailbox) Messages() ([]gopop3.Message, error) {
 	for _, msg := range resp.Data {
 		out = append(out, gopop3.Message{
 			UID: strconv.FormatUint(uint64(msg.ID), 10),
-			// WireSizeFor: exact stored-raw octet count when the server has one
-			// (POP3 STAT/LIST must report the transmitted size exactly), or
-			// its downgraded size when this session did not send UTF8 and
-			// RETR sends the downgraded form; size_bytes for messages without
-			// a stored raw.
+			// WireSizeFor: the octets RETR sends this session when the server
+			// has a stored raw (POP3 STAT/LIST must report the transmitted size
+			// exactly), which the API measures as the library sends it, with
+			// every line ending in CRLF; size_bytes for messages without one.
 			Size: msg.WireSizeFor(m.utf8),
 			Seen: msg.IsRead,
 		})
@@ -179,12 +189,12 @@ func (m *mailbox) Retrieve(uid string) ([]byte, error) {
 		return nil, err
 	}
 	raw := m.rawMessage(detail.Data)
-	if m.utf8 {
-		return []byte(raw), nil
+	if !m.utf8 {
+		// A client that did not send UTF8 gets headers downgraded to ASCII (RFC
+		// 6856 §3, RFC 6857).
+		raw = rawmsg.DowngradeForPOP3(raw)
 	}
-	// A client that did not send UTF8 gets headers downgraded to ASCII (RFC
-	// 6856 §3, RFC 6857).
-	return []byte(rawmsg.Downgrade(raw)), nil
+	return rawmsg.SpaceNUL(raw), nil
 }
 
 // rawMessage returns the stored raw bytes when present, else the rebuild.

@@ -48,9 +48,9 @@ func TestSearchFromMatchesTheEnvelopeMailbox(t *testing.T) {
 // TestSearchNewAndOld: NEW "is functionally equivalent to (RECENT UNSEEN)" and
 // OLD to "NOT RECENT (as opposed to NOT NEW)" (RFC 3501 §6.4.4). Both are search
 // keys without an operand, case-insensitive, and combine with other keys; each
-// answers exactly what its equivalent answers, so they follow RECENT. This
-// engine's RECENT is the unseen set (IMAP-SEARCH-12), which makes NEW the unseen
-// messages and OLD the seen ones.
+// answers exactly what its equivalent answers, so they follow RECENT. Here
+// every message above UID 30 is \Recent, so OLD is UID 10 alone while NOT NEW
+// also takes the seen recent UID 90.
 //
 // checklist: IMAP-SEARCH-27
 func TestSearchNewAndOld(t *testing.T) {
@@ -59,7 +59,7 @@ func TestSearchNewAndOld(t *testing.T) {
 			t.Run(fmt.Sprintf("%s/empty=%t", selection, empty), func(t *testing.T) {
 				box := newFetchMailbox()
 				box.messages = []imap.Message{
-					{UID: 10, Seen: true},
+					{UID: 10, Seen: true, Flagged: true},
 					{UID: 40},
 					{UID: 90, Seen: true, Flagged: true},
 					{UID: 150, Flagged: true},
@@ -67,19 +67,23 @@ func TestSearchNewAndOld(t *testing.T) {
 				if empty {
 					box.messages = nil
 				}
-				c := fetchClient(t, box, selection)
+				store := newRecentStore()
+				store.mark["INBOX"] = 30
+				c := selectionClient(t, &recentFetchMailbox{box, store})
+				_, tagged := c.command("S1", "%s INBOX", selection)
+				requireOK(t, tagged, "S1")
 				for _, tc := range []struct{ query, equivalent, seqs, uids string }{
 					{"NEW", "(RECENT UNSEEN)", "2 4", "40 150"},
 					{"nEw", "(RECENT UNSEEN)", "2 4", "40 150"},
-					{"OLD", "NOT RECENT", "1 3", "10 90"},
-					{"oLd", "NOT RECENT", "1 3", "10 90"},
+					{"OLD", "NOT RECENT", "1", "10"},
+					{"oLd", "NOT RECENT", "1", "10"},
 					{"NEW FLAGGED", "(RECENT UNSEEN) FLAGGED", "4", "150"},
-					{"OLD FLAGGED", "NOT RECENT FLAGGED", "3", "90"},
+					{"OLD FLAGGED", "NOT RECENT FLAGGED", "1", "10"},
 					{"NEW 2:3", "(RECENT UNSEEN) 2:3", "2", "40"},
-					{"OR NEW OLD", "OR (RECENT UNSEEN) NOT RECENT", "1 2 3 4", "10 40 90 150"},
+					{"OR NEW OLD", "OR (RECENT UNSEEN) NOT RECENT", "1 2 4", "10 40 150"},
 					{"NOT NEW", "NOT (RECENT UNSEEN)", "1 3", "10 90"},
-					{"NOT OLD", "RECENT", "2 4", "40 150"},
-					{"(OLD) UID 1:90", "(NOT RECENT) UID 1:90", "1 3", "10 90"},
+					{"NOT OLD", "RECENT", "2 3 4", "40 90 150"},
+					{"(OLD) UID 1:90", "(NOT RECENT) UID 1:90", "1", "10"},
 					{"NEW OLD", "(RECENT UNSEEN) NOT RECENT", "", ""},
 				} {
 					t.Run(tc.query, func(t *testing.T) {
@@ -157,4 +161,19 @@ func TestSearchDeletedUnflaggedAndTo(t *testing.T) {
 	if len(box.fetches) != 0 {
 		t.Fatalf("metadata searches read content: %v", box.fetches)
 	}
+}
+
+// recentFetchMailbox is a fetchMailbox whose \Recent state lives in a
+// recentStore.
+type recentFetchMailbox struct {
+	*fetchMailbox
+	store *recentStore
+}
+
+func (m *recentFetchMailbox) RecentMark(folder string) (uint32, error) {
+	return m.store.RecentMark(folder)
+}
+
+func (m *recentFetchMailbox) ClaimRecent(folder string, upTo uint32) (uint32, error) {
+	return m.store.ClaimRecent(folder, upTo)
 }

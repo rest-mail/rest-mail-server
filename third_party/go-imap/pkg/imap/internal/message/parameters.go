@@ -1,0 +1,1060 @@
+package message
+
+import (
+	"cmp"
+	"io"
+	"mime"
+	"slices"
+	"strconv"
+	"strings"
+	"unicode/utf8"
+)
+
+// parseMediaType is mime.ParseMediaType with RFC 2231 parameters read here, because
+// it drops one in any charset but UTF-8 and US-ASCII, and keeps only the later
+// segments of a continued one, and none of one with no first segment. It also refuses
+// a repeated name, and a name with a '*' that isn't RFC 2231 form, though RFC 2045 §5.1
+// has neither as a syntax error. v holds no comments, and a field holding an 8-bit octet
+// has been through readableField. See extendedValue for what a parameter becomes.
+func parseMediaType(v string) (string, map[string]string, error) {
+	mt, params, err := mime.ParseMediaType(v)
+	if err != nil {
+		var repeated bool
+		if v, repeated = withoutRepeats(v); !repeated {
+			return mt, params, err
+		}
+		if mt, params, err = mime.ParseMediaType(v); err != nil {
+			return mt, params, err
+		}
+	}
+	if !strings.Contains(v, "*") {
+		return mt, params, nil
+	}
+	segments, ok := fieldSegments(v)
+	if !ok {
+		return mt, params, nil
+	}
+	families := map[string][]parameterSegment{}
+	for _, segment := range segments[1:] {
+		key, value, ok := strings.Cut(segment, "=")
+		if !ok {
+			continue
+		}
+		key = strings.ToLower(strings.TrimSpace(key))
+		base, suffix, extended := strings.Cut(key, "*")
+		if !extended {
+			continue
+		}
+		value = unquoteParameter(strings.TrimSpace(value))
+		if base == "" || !validExtendedSuffix(suffix) {
+			// '*' is a token character, so this is a parameter of that name (RFC 2045 §5.1).
+			// mime.ParseMediaType reads "*0" as a segment of a parameter with no name.
+			delete(params, "")
+			params[key] = value
+			continue
+		}
+		families[base] = append(families[base], parameterSegment{suffix, value})
+	}
+	for base, pieces := range families {
+		value, first, whole := extendedValue(base, pieces)
+		setExtended(params, mt, base, value, first, whole)
+	}
+	return mt, params, nil
+}
+
+// setExtended puts what extendedValue read of a parameter among the ones already read.
+func setExtended(params map[string]string, mt, base, value string, first, whole bool) {
+	_, plain := params[base]
+	switch {
+	case base == "boundary" && strings.HasPrefix(mt, "multipart/") && !whole:
+		// Delimiter lines match a boundary's whole value, and this is only part of one.
+		if first {
+			delete(params, base)
+		}
+	case first || !plain:
+		params[base] = value
+	}
+}
+
+// withoutRepeats is v with only the first parameter of each name, so a repeated name
+// reads as it does in a field holding an 8-bit octet (see readableField). RFC 2045 §5.1
+// doesn't make it a syntax error, so §5.2's default doesn't apply, but a later value that
+// is itself malformed still does. repeated is false when no name repeats, or the field
+// has that other fault. A later value stays in the header section, as stored.
+func withoutRepeats(v string) (first string, repeated bool) {
+	segments, ok := fieldSegments(v)
+	if !ok {
+		return v, false
+	}
+	seen := make(map[string]bool, len(segments))
+	kept := append(make([]string, 0, len(segments)), segments[0])
+	for _, segment := range segments[1:] {
+		key, _, hasValue := strings.Cut(segment, "=")
+		key = strings.ToLower(strings.TrimSpace(key))
+		if !hasValue || !seen[key] {
+			seen[key] = hasValue
+			kept = append(kept, segment)
+			continue
+		}
+		if _, _, err := mime.ParseMediaType("a/a;" + segment); err != nil {
+			return v, false
+		}
+		repeated = true
+	}
+	return strings.Join(kept, ";"), repeated
+}
+
+// WithoutRepeats is withoutRepeats, for wireform.
+func WithoutRepeats(v string) (first string, repeated bool) { return withoutRepeats(v) }
+
+// isQuotedString reports whether value is one whole quoted-string.
+func isQuotedString(value string) bool {
+	if len(value) < 2 || value[0] != '"' {
+		return false
+	}
+	for i := 1; i < len(value); i++ {
+		switch value[i] {
+		case '\\':
+			i++
+		case '"':
+			return i == len(value)-1
+		}
+	}
+	return false
+}
+
+var quoteEscapes = strings.NewReplacer(`\`, `\\`, `"`, `\"`)
+
+func quoteString(value string) string {
+	return `"` + quoteEscapes.Replace(value) + `"`
+}
+
+// cleanValue reports whether value is one a reader of the field can take as it is.
+func cleanValue(value string) bool {
+	return (isToken(value) || isQuotedString(value)) && !strings.ContainsAny(value, "\r\n")
+}
+
+// isToken reports whether value may stand as a MIME token (RFC 2045 §5.1).
+func isToken(value string) bool {
+	for i := 0; i < len(value); i++ {
+		if c := value[i]; c <= 0x20 || c >= 0x7f || strings.IndexByte(`()<>@,;:\"/[]?=`, c) >= 0 {
+			return false
+		}
+	}
+	return value != ""
+}
+
+// trimWSP trims white space only. strings.TrimSpace would also take a no-break space
+// or NEL off the end of a value, and those are its text.
+func trimWSP(s string) string {
+	return strings.Trim(s, " \t\r\n")
+}
+
+// parameterSegment is one piece of an RFC 2231 parameter: suffix is what follows the
+// first '*' of its lower-case name, and value is unquoted.
+type parameterSegment struct{ suffix, value string }
+
+// segmentNumber is the number in a segment's suffix with no leading zeros. It can be too long to
+// parse, and the longer is then the larger.
+func segmentNumber(suffix string) string {
+	return strings.TrimLeft(strings.TrimSuffix(suffix, "*"), "0")
+}
+
+// extendedValue puts an RFC 2231 parameter back together. A value in a charset go-imap
+// decodes, or naming none, is its text; one in any other charset goes on as a word that
+// names the charset (see keptValue).
+//
+// Segments join in number order. Nothing stands in for one that never came: a gap closes
+// up, and only a first segment can name a charset (RFC 2231 §4.1), so with none the octets
+// name none. first reports that it came, and whole that no segment is missing or doubled.
+func extendedValue(base string, segments []parameterSegment) (value string, first, whole bool) {
+	size := 0
+	for _, s := range segments {
+		size += len(s.value)
+	}
+	return joinSegments(base, segments, size,
+		func(s parameterSegment) string { return s.suffix },
+		func(s parameterSegment) string { return s.value })
+}
+
+// joinSegments is extendedValue of segments however they're held: suffix and text read one, and
+// size is at least the length of their text. It reorders them.
+func joinSegments[S any](base string, segments []S, size int, suffix, text func(S) string) (value string, first, whole bool) {
+	for _, s := range segments {
+		if suffix(s) == "" {
+			charset, octets := splitExtendedValue(text(s))
+			return keptValue(base, charset, octets), true, true
+		}
+	}
+	// The suffix settles a tie, so the same field always reads the same. Only the same
+	// name twice is left to compact, with the same value, or the field wouldn't parse.
+	slices.SortFunc(segments, func(a, b S) int {
+		x, y := segmentNumber(suffix(a)), segmentNumber(suffix(b))
+		return cmp.Or(cmp.Compare(len(x), len(y)), cmp.Compare(x, y), cmp.Compare(suffix(a), suffix(b)))
+	})
+	segments = slices.CompactFunc(segments, func(a, b S) bool { return suffix(a) == suffix(b) })
+	var octets strings.Builder
+	octets.Grow(size)
+	charset := ""
+	whole = true
+	var digits [20]byte
+	for i, s := range segments {
+		v := text(s)
+		end := suffix(s)
+		switch {
+		case i == 0 && end == "0*":
+			charset, v = splitExtendedValue(v)
+			octets.WriteString(v)
+		case strings.HasSuffix(end, "*"):
+			writePercentDecoded(&octets, v)
+		default:
+			octets.WriteString(v)
+		}
+		first = first || end == "0" || end == "0*"
+		whole = whole && strings.TrimSuffix(end, "*") == string(strconv.AppendInt(digits[:0], int64(i), 10))
+	}
+	return keptValue(base, charset, octets.String()), first, whole
+}
+
+// splitExtendedValue reads charset'language'text. A value without both quotes is
+// malformed, and stays the text it was sent as, naming no charset.
+func splitExtendedValue(v string) (charset, octets string) {
+	parts := strings.SplitN(v, "'", 3)
+	if len(parts) != 3 {
+		return "", v
+	}
+	return parts[0], percentDecode(parts[2])
+}
+
+// percentDecode reads the %XX escapes of an extended value. An escape that isn't
+// one stays as it was sent.
+func percentDecode(s string) string {
+	if !strings.Contains(s, "%") {
+		return s
+	}
+	var b strings.Builder
+	b.Grow(len(s))
+	writePercentDecoded(&b, s)
+	return b.String()
+}
+
+// writePercentDecoded is percentDecode into b, so a value of many segments costs one buffer.
+func writePercentDecoded(b *strings.Builder, s string) {
+	for i := 0; i < len(s); i++ {
+		if s[i] == '%' && i+2 < len(s) {
+			if c, err := strconv.ParseUint(s[i+1:i+3], 16, 8); err == nil {
+				b.WriteByte(byte(c))
+				i += 2
+				continue
+			}
+		}
+		b.WriteByte(s[i])
+	}
+}
+
+// keptValue is octets as a parameter value. Text in a charset go-imap decodes is
+// that text, and follows metadataText like any other. Any other charset stays named:
+// the value becomes one encoded word in it, in either session, so no byte is guessed.
+// It stays one word however long, because go-imap can't tell where a character ends
+// in that charset and a word may not split one (RFC 2047 §5); that outranks the
+// length limit (§2), which no reader needs in order to decode the word.
+//
+// A boundary and a charset name are ASCII by their own grammar, whatever their
+// RFC 2231 form names (RFC 2046 §5.1.1, RFC 2045 §5.1), and the structure of the
+// message depends on them, so they stay plain text when they are ASCII. A boundary
+// that isn't stays its octets, whatever charset it names, because delimiter lines
+// match octets and nothing decodes those.
+func keptValue(base, charset, octets string) string {
+	switch {
+	case base == "boundary", !validWordCharset(charset), strings.EqualFold(charset, "UTF-8"), strings.EqualFold(charset, "US-ASCII"):
+		return octets
+	case isLatin1(charset):
+		return latin1ToUTF8([]byte(octets))
+	case base == "charset" && !has8bit(octets):
+		return octets
+	}
+	return "=?" + charset + "?Q?" + qEncode(octets) + "?="
+}
+
+// validWordCharset reports whether charset can stand in an encoded word (RFC 2047
+// §2): a token with none of the especials, not empty. An extended value can name
+// anything in a quoted-string, and what isn't a charset names none.
+func validWordCharset(charset string) bool {
+	if charset == "" {
+		return false
+	}
+	for i := 0; i < len(charset); i++ {
+		if c := charset[i]; c <= 0x20 || c >= 0x7f || strings.IndexByte(`()<>@,;:"/[]?.=\`, c) >= 0 {
+			return false
+		}
+	}
+	return true
+}
+
+// fieldSegments splits a Content-Type or Content-Disposition value at each ';'
+// outside a quoted-string or comment. ok is false when one of those never closes.
+func fieldSegments(value string) (segments []string, ok bool) {
+	for more := true; more; {
+		var segment string
+		segment, value, more, ok = cutFieldSegment(value)
+		if !ok {
+			return nil, false
+		}
+		segments = append(segments, segment)
+	}
+	return segments, true
+}
+
+// cutFieldSegment is the first of fieldSegments, and what follows it when more says there's a ';'.
+func cutFieldSegment(value string) (segment, rest string, more, ok bool) {
+	comments := 0
+	quoted := false
+	for i := 0; i < len(value); i++ {
+		c := value[i]
+		switch {
+		case c == '\\' && (quoted || comments > 0):
+			i++
+		case quoted:
+			quoted = c != '"'
+		case c == '"' && comments == 0:
+			quoted = true
+		case c == '(':
+			comments++
+		case c == ')' && comments > 0:
+			comments--
+		case c == ';' && comments == 0:
+			return value[:i], value[i+1:], true, true
+		}
+	}
+	if quoted || comments > 0 {
+		return "", "", false, false
+	}
+	return value, "", false, true
+}
+
+// unquoteParameter reads a parameter value as mime.ParseMediaType does: a backslash
+// escapes only an especial, because some mailers send "C:\dev\file" unescaped. A
+// value that isn't a quoted-string comes back as it is.
+func unquoteParameter(value string) string {
+	if len(value) < 2 || value[0] != '"' || value[len(value)-1] != '"' {
+		return value
+	}
+	value = value[1 : len(value)-1]
+	if !strings.Contains(value, `\`) {
+		return value
+	}
+	var b strings.Builder
+	for i := 0; i < len(value); i++ {
+		if value[i] == '\\' && i+1 < len(value) && strings.IndexByte(`()<>@,;:\"/[]?=`, value[i+1]) >= 0 {
+			i++
+		}
+		b.WriteByte(value[i])
+	}
+	return b.String()
+}
+
+// fieldPiece is one ';'-separated piece of a field holding an 8-bit octet, as
+// readField reads it.
+type fieldPiece struct {
+	raw      string   // as sent, trimmed
+	key      string   // text before the first '=', comments cut out, trimmed
+	value    string   // text after it, from the first character that isn't a comment to the last
+	hasValue bool     // there was an '='
+	comments []string // comments around the key and value, with their delimiters
+	broken   string   // first piece only: what follows the type from an unbalanced delimiter on
+}
+
+// readField reads a field holding an 8-bit octet without refusing it. RFC 2045 §5.1
+// has no reading for most of what this accepts, but mailers do send name=Jörg (1).pdf
+// and name=Jö"rg.pdf, and refusing one would cost the real type and every other
+// parameter.
+//
+//   - A quoted-string or comment that closes is one, and a ';' inside it separates
+//     nothing. A '"' or '(' that never closes, or a stray ')', is text.
+//   - A value runs from the first character that isn't white space or a comment to
+//     the last. A comment with value text on both sides is that text, because a
+//     value can't be split, and a comment around the value is a comment.
+//
+// It takes time linear in value, however many delimiters never close.
+func readField(value string) []fieldPiece {
+	var pieces []fieldPiece
+	eachFieldPiece(value, commentClosers(value), func(piece fieldPiece) {
+		piece.comments = slices.Clone(piece.comments)
+		pieces = append(pieces, piece)
+	})
+	return pieces
+}
+
+// eachFieldPiece is readField one piece at a time, holding none of them. A piece's comments are good
+// only for the call that's handed them, as the list is used again for the next, though their text is
+// value's. closers is commentClosers(value), which a walk of the same field can use again.
+func eachFieldPiece(value string, closers *commentPairs, each func(fieldPiece)) {
+	walkFieldPieces(value, closers, func(piece fieldPiece) bool {
+		each(piece)
+		return true
+	})
+}
+
+// firstFieldPiece is the first piece eachFieldPiece reads, reading no further.
+func firstFieldPiece(value string, closers *commentPairs) fieldPiece {
+	var first fieldPiece
+	walkFieldPieces(value, closers, func(piece fieldPiece) bool {
+		first = piece
+		return false
+	})
+	return first
+}
+
+// walkFieldPieces is eachFieldPiece until each answers false.
+func walkFieldPieces(value string, closers *commentPairs, each func(fieldPiece) bool) {
+	closers.at = 0
+	quotes := true // false once a '"' has found nothing to close it
+	start, eq, broken := 0, -1, -1
+	var comments [][2]int
+	var texts []string
+	first, more := true, true
+	flush := func(end int) {
+		var piece fieldPiece
+		piece, texts = newFieldPiece(value, start, end, eq, broken, comments, first, texts[:0])
+		more = each(piece)
+		first = false
+		// A piece holds only the text of its comments, so where they are can be used again.
+		start, eq, broken, comments = end+1, -1, -1, comments[:0]
+	}
+	for i := 0; i < len(value) && more; i++ {
+		switch c := value[i]; c {
+		case '"':
+			end := -1
+			if quotes {
+				if end = quoteEnd(value, i); end < 0 {
+					quotes = false
+				}
+			}
+			if end >= 0 {
+				i = end
+			} else if broken < 0 {
+				broken = i
+			}
+		case '(':
+			if end, ok := closers.closer(i); ok {
+				comments = append(comments, [2]int{i, end + 1})
+				i = end
+			} else if broken < 0 {
+				broken = i
+			}
+		case ')':
+			if broken < 0 {
+				broken = i
+			}
+		case '=':
+			if eq < 0 {
+				eq = i
+			}
+		case ';':
+			flush(i)
+		}
+	}
+	if more {
+		flush(len(value))
+	}
+}
+
+// newFieldPiece reads value[start:end]: see readField. eq is the first '=' and broken
+// the first unbalanced delimiter in it, or -1, and comments are where its comments are. The text of
+// those goes in texts, which it answers as well, for the next piece to use again.
+func newFieldPiece(value string, start, end, eq, broken int, comments [][2]int, first bool, texts []string) (fieldPiece, []string) {
+	piece := fieldPiece{raw: trimWSP(value[start:end])}
+	if first {
+		if broken >= 0 {
+			piece.broken = trimWSP(value[broken:end])
+			piece.raw = trimWSP(value[start:broken])
+			end = broken
+		}
+		piece.key, _ = cutComments(value, start, end, comments, nil)
+		return piece, texts
+	}
+	keyEnd := end
+	if eq >= 0 {
+		keyEnd = eq
+	}
+	piece.key, texts = cutComments(value, start, keyEnd, comments, texts)
+	piece.comments = texts
+	if eq < 0 {
+		return piece, texts
+	}
+	from, to := eq+1, end
+	// comments is in order, so each end of the value walks it once.
+	lo, hi, last := 0, len(comments)-1, len(comments)-1
+	for lo <= hi && comments[lo][0] < from {
+		lo++
+	}
+	for {
+		for from < to && isHeaderSpace(value[from]) {
+			from++
+		}
+		if lo > hi || comments[lo][0] != from {
+			break
+		}
+		texts = append(texts, value[comments[lo][0]:comments[lo][1]])
+		from = comments[lo][1]
+		lo++
+	}
+	for {
+		for to > from && isHeaderSpace(value[to-1]) {
+			to--
+		}
+		if lo > hi || comments[hi][1] != to {
+			break
+		}
+		to = comments[hi][0]
+		hi--
+	}
+	for i := hi + 1; i <= last; i++ {
+		texts = append(texts, value[comments[i][0]:comments[i][1]])
+	}
+	piece.comments = texts
+	piece.value, piece.hasValue = value[from:to], true
+	if piece.key == "" {
+		// No name. The whole of it is one, as what has no value is.
+		piece.key, piece.value, piece.hasValue = "="+piece.value, "", false
+	}
+	return piece, texts
+}
+
+// cutComments is value[start:end] with each comment in it replaced by a space, as
+// uncommentMIME does, and those comments, after cut. A comment after end is left for later.
+func cutComments(value string, start, end int, comments [][2]int, cut []string) (string, []string) {
+	if len(comments) == 0 || comments[0][0] >= end {
+		if start >= end {
+			return "", cut
+		}
+		return trimWSP(value[start:end]), cut
+	}
+	var b strings.Builder
+	at := start
+	for _, comment := range comments {
+		if comment[0] >= end {
+			break
+		}
+		b.WriteString(value[at:comment[0]])
+		b.WriteByte(' ')
+		cut = append(cut, value[comment[0]:comment[1]])
+		at = comment[1]
+	}
+	if at < end {
+		b.WriteString(value[at:end])
+	}
+	return trimWSP(b.String()), cut
+}
+
+// commentPairs pairs each '(' with the ')' that closes it, in one pass. A quoted-pair
+// is skipped wherever it stands. A '(' inside a quoted-string pairs here too, but only
+// one outside a quoted-string is ever looked up.
+type commentPairs struct {
+	opens, closes []int32 // by opening position; a close of -1 never came
+	at            int     // where the last lookup stopped
+}
+
+func commentClosers(value string) *commentPairs {
+	pairs := &commentPairs{}
+	count := strings.Count(value, "(")
+	if count == 0 {
+		return pairs
+	}
+	pairs.opens, pairs.closes = make([]int32, 0, count), make([]int32, 0, count)
+	var open []int
+	for i := 0; i < len(value); i++ {
+		switch value[i] {
+		case '\\':
+			i++
+		case '(':
+			open = append(open, len(pairs.opens))
+			pairs.opens = append(pairs.opens, int32(i))
+			pairs.closes = append(pairs.closes, -1)
+		case ')':
+			if len(open) > 0 {
+				pairs.closes[open[len(open)-1]] = int32(i)
+				open = open[:len(open)-1]
+			}
+		}
+	}
+	return pairs
+}
+
+// closer is where the comment opening at position closes. Positions must rise from one
+// call to the next, so every lookup of a field together walks the list once.
+func (p *commentPairs) closer(position int) (int, bool) {
+	for p.at < len(p.opens) && int(p.opens[p.at]) < position {
+		p.at++
+	}
+	if p.at == len(p.opens) || int(p.opens[p.at]) != position || p.closes[p.at] < 0 {
+		return 0, false
+	}
+	return int(p.closes[p.at]), true
+}
+
+// quoteEnd is where the quoted-string opening at value[open] closes, or -1.
+func quoteEnd(value string, open int) int {
+	for i := open + 1; i < len(value); i++ {
+		switch value[i] {
+		case '\\':
+			i++
+		case '"':
+			return i
+		}
+	}
+	return -1
+}
+
+// parameterName spells a parameter's name so it may stand as a token (RFC 2045 §5.1).
+// An 8-bit octet has no other spelling: neither RFC 2231 nor an encoded word (RFC 2047
+// §5) reaches a name. '%' is a token character, so what's spelled %XX reads as a name
+// like any other, and the text survives. What makes a name RFC 2231 stays outside.
+func parameterName(key string) string {
+	base, suffix, extended := strings.Cut(key, "*")
+	switch {
+	case !extended && isToken(base):
+		return key
+	case !extended || !validExtendedSuffix(suffix):
+		return percentEncode(key)
+	case isToken(base):
+		return key
+	}
+	return percentEncode(base) + "*" + suffix
+}
+
+// validExtendedSuffix reports whether suffix is what follows the first '*' of an RFC
+// 2231 name: nothing, a segment number, or one and its own '*'. mime.ParseMediaType
+// would drop a parameter with anything else after one.
+func validExtendedSuffix(suffix string) bool {
+	number := strings.TrimSuffix(suffix, "*")
+	if suffix != "" && number == "" {
+		return false
+	}
+	for i := 0; i < len(number); i++ {
+		if number[i] < '0' || number[i] > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+var lineBreaksAsSpaces = strings.NewReplacer("\r", " ", "\n", " ")
+
+// readableField rewrites a field holding an 8-bit octet into what mime.ParseMediaType
+// accepts: no comments, every name a token (see parameterName), every value a token or
+// a quoted-string, and each name once. See readField for how it reads, and for a
+// repeated name the first stands, which is also what ParameterField keeps as one.
+func readableField(value string) string {
+	pieces := readField(value)
+	var b strings.Builder
+	b.WriteString(pieces[0].key)
+	seen := map[string]bool{}
+	for _, piece := range pieces[1:] {
+		if piece.key == "" {
+			continue
+		}
+		name := parameterName(piece.key)
+		if seen[strings.ToLower(name)] {
+			continue
+		}
+		seen[strings.ToLower(name)] = true
+		writeReadableParameter(&b, name, piece)
+	}
+	return b.String()
+}
+
+func writeReadableParameter(w interface{ WriteString(string) (int, error) }, name string, piece fieldPiece) {
+	text := piece.value
+	if !cleanValue(text) {
+		text = quoteString(lineBreaksAsSpaces.Replace(text))
+	}
+	_, _ = w.WriteString("; ")
+	_, _ = w.WriteString(name)
+	_, _ = w.WriteString("=")
+	_, _ = w.WriteString(text)
+}
+
+// restoreNames puts the names parameterName spelled back, once the field is read,
+// because a session that took the field as stored agreed to read UTF-8 (RFC 6855).
+// stored is the field as sent, and a field that was 7-bit needed no spelling.
+func restoreNames(stored string, params map[string]string) map[string]string {
+	if !has8bit(stored) {
+		return params
+	}
+	names := map[string]string{}
+	for key := range params {
+		if name := percentDecode(key); strings.Contains(key, "%") && !isToken(name) && utf8.ValidString(name) {
+			names[key] = name
+		}
+	}
+	for key, name := range names {
+		params[name] = params[key]
+		delete(params, key)
+	}
+	return params
+}
+
+// ParameterField makes a Content-Type or Content-Disposition field 7-bit by changing
+// only what holds an 8-bit octet, or what a reader of the 7-bit result couldn't read.
+// Every other parameter stays as it was sent, in its order, because the text of one
+// go-imap can't read is still the only copy of it. ok is false when the value holds
+// no readable type, or the type itself is 8-bit.
+func ParameterField(name, value string) (string, bool) {
+	var b strings.Builder
+	b.Grow(len(name) + len(": ") + len(value) + len(value)/4)
+	if !WriteParameterField(&b, name, value) {
+		return "", false
+	}
+	return b.String(), true
+}
+
+// WriteParameterField is ParameterField into w, holding one parameter at a time, and
+// writes nothing when ok would be false. It remembers the names it has seen in a set kept
+// for the next field, so a field of very many parameters costs little more than its size.
+func WriteParameterField(w wireSink, name, value string) bool {
+	value = trimWSP(value)
+	return writeParameterField(w, name, value, commentClosers(value))
+}
+
+// WriteFoldedParameterField is WriteParameterField of value with its line breaks taken out, when that
+// doesn't change how any piece of it reads: an 8-bit field whose breaks all stand between its pieces.
+// Then nothing is built to take them out. read is false when they'd have to be, and nothing is written.
+func WriteFoldedParameterField(w wireSink, name, value string) (ok, read bool) {
+	value = trimWSP(value)
+	if !has8bit(value) {
+		return false, false
+	}
+	closers := commentClosers(value)
+	if strings.IndexByte(value, '\n') >= 0 {
+		between := true
+		eachFieldPiece(value, closers, func(piece fieldPiece) {
+			between = between && !pieceHasBreak(piece)
+		})
+		if !between {
+			return false, false
+		}
+	}
+	return writeParameterField(w, name, value, closers), true
+}
+
+func writeParameterField(w wireSink, name, value string, closers *commentPairs) bool {
+	var mt string
+	var err error
+	if has8bit(value) {
+		// Every parameter of a field holding an 8-bit octet is spelled so it can't be refused, so only
+		// the type is left to ask about (hasReadableType).
+		mt, _, err = parseContentType(firstFieldPiece(value, closers).key)
+	} else {
+		mt, _, err = parseKeptParameters(value)
+	}
+	if err != nil || has8bit(mt) {
+		return false
+	}
+	// Only a name holding a '*' is extended.
+	var extended *nameSet
+	if strings.IndexByte(value, '*') >= 0 {
+		// Few names are extended however many parameters there are, so this grows if it has to.
+		extended = takeNameSet(0)
+		defer extended.release()
+		first := true
+		eachFieldPiece(value, closers, func(piece fieldPiece) {
+			if !first {
+				if base, _, ok := strings.Cut(parameterName(piece.key), "*"); ok {
+					extended.add(base)
+				}
+			}
+			first = false
+		})
+	}
+	isExtended := func(base string) bool { return extended != nil && extended.has(base) }
+	seen := takeNameSet(strings.Count(value, ";"))
+	defer seen.release()
+	seen.source = value
+	first := true
+	eachFieldPiece(value, closers, func(piece fieldPiece) {
+		if first {
+			first = false
+			_, _ = w.WriteString(name)
+			_, _ = w.WriteString(": ")
+			_, _ = w.WriteString(sevenBitComments(piece.raw))
+			if text := piece.broken; text != "" {
+				_, _ = w.WriteString(" (")
+				writeSpacedWords(w, text)
+				_, _ = w.WriteString(")")
+			}
+			return
+		}
+		key := parameterName(piece.key)
+		switch piece.key {
+		case "":
+		default:
+			if seen.add(key) {
+				_, _ = w.WriteString(" (")
+				writeSpacedWords(w, repeatedText(piece))
+				_, _ = w.WriteString(")")
+				break
+			}
+			_, _ = w.WriteString(";\r\n ")
+			if !has8bit(piece.raw) && piece.hasValue && key == piece.key && cleanValue(piece.value) {
+				_, _ = w.WriteString(piece.raw)
+				return
+			}
+			writeParameterValue(w, key, piece.value, isExtended)
+		}
+		for _, comment := range piece.comments {
+			_, _ = w.WriteString(" ")
+			_, _ = w.WriteString(sevenBitComments(comment))
+		}
+	})
+	return true
+}
+
+// writeSpacedWords is strings.Join(encodedWords(text), " ") into w.
+func writeSpacedWords(w wireSink, text string) {
+	first := true
+	eachEncodedWord(text, func(open string, content []byte) {
+		if !first {
+			_, _ = w.WriteString(" ")
+		}
+		first = false
+		_, _ = w.WriteString(open)
+		_, _ = w.Write(content)
+		_, _ = w.WriteString(wordClose)
+	})
+}
+
+// parameterField rewrites a field with the boundary parameter, whichever way it was
+// spelled, replaced by boundary. A message that has to move a boundary has its conversion
+// built, so this holds the whole field as it works.
+func parameterField(name, value, boundary string) (string, bool) {
+	value = trimWSP(value)
+	pieces := readField(value)
+	if !hasReadableType(value, pieces) {
+		return "", false
+	}
+	head := sevenBitComments(pieces[0].raw)
+	if text := pieces[0].broken; text != "" {
+		head += " (" + strings.Join(encodedWords(text), " ") + ")"
+	}
+	// Each element is a parameter and any comments that went on after it.
+	out := [][]string{{head}}
+	extended := extendedFamilies(pieces[1:])
+	seen := map[string]bool{}
+	boundaryAt := -1
+	for _, piece := range pieces[1:] {
+		at := len(out) - 1
+		switch key := parameterName(piece.key); {
+		case piece.key == "":
+		case boundary != "" && isBoundaryName(key):
+			if boundaryAt >= 0 {
+				at = boundaryAt
+				break
+			}
+			base, _, _ := strings.Cut(key, "*")
+			out = append(out, []string{base + `="` + boundary + `"`})
+			at, boundaryAt = len(out)-1, len(out)-1
+		case seen[strings.ToLower(key)]:
+			out[at] = append(out[at], "("+strings.Join(encodedWords(repeatedText(piece)), " ")+")")
+		default:
+			seen[strings.ToLower(key)] = true
+			if !has8bit(piece.raw) && piece.hasValue && key == piece.key && cleanValue(piece.value) {
+				out = append(out, []string{piece.raw})
+				continue
+			}
+			out = append(out, []string{parameterValue(key, piece.value, func(base string) bool { return extended[strings.ToLower(base)] })})
+			at = len(out) - 1
+		}
+		for _, comment := range piece.comments {
+			out[at] = append(out[at], sevenBitComments(comment))
+		}
+	}
+	var b strings.Builder
+	b.WriteString(name + ": ")
+	for i, parts := range out {
+		if i > 0 {
+			b.WriteString(";\r\n ")
+		}
+		b.WriteString(strings.Join(parts, " "))
+	}
+	return b.String(), true
+}
+
+// hasReadableType reports whether parseContentType reads a type from value. readableField
+// spells every parameter of a field holding an 8-bit octet so it can't be refused, so
+// only the type is left to ask about, and measuring a message doesn't read each parameter
+// of a very long field again. A 7-bit field gets the strict reading.
+func hasReadableType(value string, pieces []fieldPiece) bool {
+	if has8bit(value) {
+		value = pieces[0].key
+	}
+	mt, _, err := parseContentType(value)
+	return err == nil && !has8bit(mt)
+}
+
+func isBoundaryName(key string) bool {
+	base, _, _ := strings.Cut(key, "*")
+	return strings.EqualFold(base, "boundary")
+}
+
+// repeatedText is the text of a parameter whose name has already stood. It goes in a
+// comment, because two values for one name make a field unreadable.
+func repeatedText(piece fieldPiece) string {
+	if !piece.hasValue {
+		return piece.key
+	}
+	return piece.key + "=" + piece.value
+}
+
+// extendedFamilies names each parameter sent in RFC 2231 form, in lower case.
+func extendedFamilies(pieces []fieldPiece) map[string]bool {
+	families := map[string]bool{}
+	for _, piece := range pieces {
+		if base, _, ok := strings.Cut(parameterName(piece.key), "*"); ok {
+			families[strings.ToLower(base)] = true
+		}
+	}
+	return families
+}
+
+// parameterValue spells key=value in 7 bits. key is already a token. A value that
+// isn't a token or a quoted-string reads as if it were quoted, see readField.
+//
+//   - 7-bit text is a quoted-string when it can't stand as it is.
+//   - A segment already extended keeps its charset: its 8-bit octets are escaped.
+//   - Otherwise it becomes extended (RFC 2231 §4), and a first or only segment names
+//     what the octets are, as an encoded word would. A later segment can't name one
+//     (§4.1), and reads in the charset of the first, as it did as stored.
+//   - A plain value beside an extended form of the same parameter becomes encoded
+//     words in its quoted-string, which readers take the extended form over, since
+//     two extended forms that differ make the field unreadable. RFC 2047 §5 forbids
+//     that spelling, but it is the only one that keeps both.
+func parameterValue(key, value string, extended func(base string) bool) string {
+	var b strings.Builder
+	writeParameterValue(&b, key, value, extended)
+	return b.String()
+}
+
+// writeParameterValue is parameterValue into w, and a field holds many, so what most of them say is
+// written as it's read and not built first.
+func writeParameterValue(w io.StringWriter, key, value string, extended func(base string) bool) {
+	writeAll := func(parts ...string) {
+		for _, part := range parts {
+			_, _ = w.WriteString(part)
+		}
+	}
+	sevenBit := !has8bit(value) && !strings.ContainsAny(value, "\r\n")
+	if sevenBit && cleanValue(value) {
+		writeAll(key, "=", value)
+		return
+	}
+	if sevenBit {
+		writeAll(key, "=", quoteString(value))
+		return
+	}
+	text := value
+	quoted := isQuotedString(value)
+	if quoted {
+		text = unquoteParameter(value)
+	}
+	base, segment, isExtended := strings.Cut(key, "*")
+	switch {
+	case !isExtended && extended(base):
+		writeAll(key, `="`, strings.Join(encodedWords(text), " "), `"`)
+	case !isExtended, segment == "0":
+		writeAll(key, "*=", wordCharset(text), "''")
+		writePercentEncoded(w, text)
+	case segment == "" || strings.HasSuffix(segment, "*"):
+		escaped := escapeOctets(value)
+		if !quoted && !isToken(escaped) {
+			escaped = quoteString(escaped)
+		}
+		writeAll(key, "=", escaped)
+	default:
+		writeAll(key, "*=")
+		writePercentEncoded(w, text)
+	}
+}
+
+// percentEncode spells value as an RFC 2231 extended value: every octet that may not
+// stand there is %XX.
+func percentEncode(value string) string {
+	var b strings.Builder
+	writePercentEncoded(&b, value)
+	return b.String()
+}
+
+// percentEscapes holds %XX of every octet, three characters each.
+var percentEscapes = func() string {
+	const hex = "0123456789ABCDEF"
+	var b strings.Builder
+	for c := range 256 {
+		b.Write([]byte{'%', hex[c>>4], hex[c&0x0f]})
+	}
+	return b.String()
+}()
+
+// writePercentEncoded is percentEncode into w.
+func writePercentEncoded(w io.StringWriter, value string) {
+	from := 0
+	for i := 0; i < len(value); i++ {
+		c := value[i]
+		if isAttributeChar(c) {
+			continue
+		}
+		_, _ = w.WriteString(value[from:i])
+		_, _ = w.WriteString(percentEscapes[3*int(c) : 3*int(c)+3])
+		from = i + 1
+	}
+	_, _ = w.WriteString(value[from:])
+}
+
+// escapeOctets spells only the 8-bit octets of an extended value %XX, and a CR or LF,
+// which a quoted-string may not hold either.
+func escapeOctets(value string) string {
+	const hex = "0123456789ABCDEF"
+	var b strings.Builder
+	for i := 0; i < len(value); i++ {
+		if c := value[i]; c >= 0x80 || c == '\r' || c == '\n' {
+			b.Write([]byte{'%', hex[c>>4], hex[c&0x0f]})
+		} else {
+			b.WriteByte(c)
+		}
+	}
+	return b.String()
+}
+
+// sevenBitComments turns the text of any 8-bit comment in s into encoded words, which
+// RFC 2047 §5(2) allows in a comment. What is outside a comment stays. The comment's
+// own delimiters stay too, and any nested inside it go into the word.
+func sevenBitComments(s string) string {
+	if !has8bit(s) {
+		return s
+	}
+	var b strings.Builder
+	start, comments := 0, 0
+	for i := 0; i < len(s); i++ {
+		switch c := s[i]; {
+		case c == '\\' && comments > 0:
+			i++
+		case c == '(':
+			if comments == 0 {
+				b.WriteString(s[start : i+1])
+				start = i + 1
+			}
+			comments++
+		case c == ')' && comments > 0:
+			comments--
+			if comments == 0 {
+				if text := s[start:i]; has8bit(text) {
+					b.WriteString(strings.Join(encodedWords(text), " "))
+				} else {
+					b.WriteString(text)
+				}
+				start = i
+			}
+		}
+	}
+	b.WriteString(s[start:])
+	return b.String()
+}

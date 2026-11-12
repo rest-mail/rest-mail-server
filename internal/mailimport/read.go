@@ -24,6 +24,74 @@ import (
 
 type Visit func(source string, message apitypes.ImportMessageBody) error
 
+// foldInbox is name with INBOX, in any case, written INBOX. Any other name stays as the source
+// spells it, because the API has to see a name that is not in NFC to apply its rule for one.
+func foldInbox(name string) string {
+	if strings.EqualFold(name, "INBOX") {
+		return "INBOX"
+	}
+	return name
+}
+
+// sourceFolders names one run's source folders at the destination. Two that match after
+// conversion to NFC are not refused and are not mixed: the first in the source's order keeps the
+// name and the next is numbered, so a rerun of the same source chooses the same names.
+type sourceFolders struct {
+	names map[string]string // source folder's name to the name it was given
+	taken map[string]bool   // names in NFC given so far
+}
+
+func newSourceFolders() *sourceFolders {
+	return &sourceFolders{names: map[string]string{}, taken: map[string]bool{}}
+}
+
+// destination is the folder to give messages from the source folder called name.
+func (f *sourceFolders) destination(name string) string {
+	if given, ok := f.names[name]; ok {
+		return given
+	}
+	canonical := rmail.CanonicalFolder(name)
+	given := name
+	for n := 2; f.taken[canonical]; n++ {
+		canonical = rmail.NumberedFolder(rmail.CanonicalFolder(name), n)
+		given = canonical
+	}
+	f.taken[canonical] = true
+	f.names[name] = given
+	return given
+}
+
+// Destinations remembers, for one run, which folder the API stored each supplied folder's mail
+// in. A name the API had to convert may have gone to a numbered folder, and the rest of that
+// source folder has to follow it there.
+type Destinations struct {
+	stored map[string]string
+}
+
+// NewDestinations returns the memory for one import run.
+func NewDestinations() *Destinations {
+	return &Destinations{stored: map[string]string{}}
+}
+
+// For is the folder to send a message from supplied to.
+func (d *Destinations) For(supplied string) string {
+	if stored, ok := d.stored[supplied]; ok {
+		return stored
+	}
+	return supplied
+}
+
+// Record notes the folder the API answered with for supplied. It reports false for an answer the
+// API's rule cannot give: only a converted name may come back numbered.
+func (d *Destinations) Record(supplied, stored string) bool {
+	canonical := rmail.CanonicalFolder(supplied)
+	if stored != canonical && (rmail.NormalizeFolderName(supplied) == supplied || !rmail.IsNumberedFolder(stored, canonical)) {
+		return false
+	}
+	d.stored[supplied] = stored
+	return true
+}
+
 // Maildir reads cur/new and Maildir++ dot folders in deterministic order. The
 // source file's mtime is its Dovecot INTERNALDATE. tmp is never imported.
 // Folder names are planned before any message is read: renamed, if not nil,
@@ -173,7 +241,7 @@ func Mbox(ctx context.Context, source io.Reader, folder, format string, maxBytes
 	if problem := rmail.FolderNameProblem(folder); problem != "" {
 		return fmt.Errorf("destination folder: %s", problem)
 	}
-	folder = rmail.CanonicalFolder(folder)
+	folder = foldInbox(folder)
 	r := bufio.NewReader(source)
 	var raw []byte
 	var date time.Time

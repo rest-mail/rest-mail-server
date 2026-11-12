@@ -105,6 +105,7 @@ func runImportMail(ctx context.Context, mode string, args []string, token string
 			fmt.Fprintf(stdout, "Source folder %q is imported as %q: %s.\n", rename.Source, rename.Folder, rename.Reason)
 		}
 	}
+	destinations := mailimport.NewDestinations()
 	visit := func(source string, message apitypes.ImportMessageBody) error {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -116,6 +117,8 @@ func runImportMail(ctx context.Context, mode string, args []string, token string
 		if *dry {
 			return nil
 		}
+		supplied := message.Folder
+		message.Folder = destinations.For(supplied)
 		if session == nil {
 			opened, err := openImportSession(ctx, client, base, token, uint32(*account), mode)
 			if err != nil {
@@ -130,7 +133,7 @@ func runImportMail(ctx context.Context, mode string, args []string, token string
 		if status != http.StatusOK {
 			return fmt.Errorf("%s: server refused import (HTTP %d); check destination, scope, size and quota", source, status)
 		}
-		if result.ID == 0 || result.MessageID == "" || result.Folder != message.Folder {
+		if result.ID == 0 || result.MessageID == "" || !destinations.Record(supplied, result.Folder) {
 			return fmt.Errorf("%s: server returned an invalid import result", source)
 		}
 		if result.Imported {

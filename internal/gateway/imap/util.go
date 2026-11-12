@@ -41,6 +41,12 @@ func validateFolder(folder string) error {
 	return nil
 }
 
+// NormalizeName is the form the API saves a folder name in, so the engine resolves every name a
+// client sends as the API will (imap.NameNormalizer).
+func (m *mailbox) NormalizeName(name string) string {
+	return rmail.NormalizeFolderName(name)
+}
+
 // toUID converts a rest-mail message ID to an IMAP UID. rest-mail's message ID is
 // the message's IMAP UID (a global message-ID-as-UID model). The ID is a uint,
 // which may be 64-bit, so clamp values that do not fit in the 32-bit UID space to
@@ -99,8 +105,8 @@ func parseBasicHeaders(data []byte) (subject, bodyText, bodyHTML, messageID, sen
 
 	subject = email.Headers.Subject
 	messageID = strings.Trim(email.Headers.MessageID, "<>")
-	if from := email.Headers.From; len(from) > 0 {
-		senderName = from[0].Name
+	if from, ok := email.Headers.From.First(); ok {
+		senderName = from.Name
 	}
 	bodyText, bodyHTML = rmime.TextAndHTML(email.Body)
 	return

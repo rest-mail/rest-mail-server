@@ -15,12 +15,13 @@
 // the authenticated account's view of its mail, every method scoped to that user.
 // The server caches the slice [Mailbox.Messages] returns for the selected folder
 // and derives sequence numbers, UIDs, flags, ENVELOPE and SEARCH results from it,
-// calling [Mailbox.Fetch] only when a body is requested — and FETCH BODY[] then
-// serves whatever Fetch returns, byte-for-byte. A folder exists when [Mailbox.Folders]
-// lists it. A Mailbox that implements [FolderMailbox] creates, deletes and renames
-// folders itself; for any other, folders are implicit: a folder exists once a
-// message names it, and deleting or renaming one is composed from
-// [Mailbox.Messages] and [Mailbox.Move].
+// calling [Mailbox.Fetch] only when a body is requested. FETCH BODY[] then serves
+// what Fetch returned, byte-for-byte when it is already 7-bit; otherwise it is
+// converted as it is sent, and only BINARY sends the octets as Fetch returned them.
+// A folder exists when [Mailbox.Folders] lists it. A Mailbox that implements
+// [FolderMailbox] creates, deletes and renames folders itself; for any other,
+// folders are implicit: a folder exists once a message names it, and deleting
+// or renaming one is composed from [Mailbox.Messages] and [Mailbox.Move].
 // The store holds no assumptions about where mail lives: a Backend can be a
 // database, a maildir, or a remote API.
 //
@@ -43,7 +44,9 @@
 // [ModSeqMailbox] turns on CONDSTORE ([RFC 7162]), and one that also
 // implements [VanishedMailbox] turns on QRESYNC. The advertised CAPABILITY list reflects only the
 // optional interfaces the concrete Mailbox satisfies, so a backend implementing
-// just [Mailbox] is unaffected and the list never over-promises.
+// just [Mailbox] is unaffected and the list never over-promises. A Mailbox that
+// implements [SearchZoneMailbox] names the zone whose calendar days SEARCH BEFORE,
+// ON and SINCE compare; no capability goes with it.
 //
 // [RFC 3501]: https://www.rfc-editor.org/rfc/rfc3501
 // [RFC 4315]: https://www.rfc-editor.org/rfc/rfc4315
@@ -74,8 +77,11 @@ type Message struct {
 	// ascends with arrival order within the mailbox. The Server also passes it to
 	// the Backend to name this message.
 	UID uint32
-	// Size is the nonnegative RFC822.SIZE octet count of the complete message,
-	// including headers. It backs FETCH RFC822.SIZE and SEARCH LARGER/SMALLER.
+	// Size is the nonnegative RFC822.SIZE octet count of the complete message as
+	// FETCH sends it, including headers, which [wireform.Convert] measures. It
+	// backs FETCH RFC822.SIZE and SEARCH LARGER/SMALLER.
+	//
+	// [wireform.Convert]: https://pkg.go.dev/github.com/rest-mail/go-imap/pkg/imap/wireform#Convert
 	Size int
 	// Seen, Answered, Flagged, Draft and Deleted are the persistent system
 	// flags IMAP reports; Keywords holds the message's flag-keyword atoms.
@@ -144,6 +150,15 @@ type Backend interface {
 	// (counting as an auth failure against the [Limiter]); on success it returns
 	// the [Mailbox] the session operates on.
 	Authenticate(user, pass string) (Mailbox, error)
+}
+
+// ClientAddressBackend is an optional interface a [Backend] implements to learn
+// which address a client connected from, for a store that signs clients in on
+// their behalf and has to tell it apart from its own. The server asks for the
+// Backend to use for each sign-in, with the client's IP address as the session
+// sees it.
+type ClientAddressBackend interface {
+	ForClient(ip string) Backend
 }
 
 // CommandObserver is an optional interface a [Backend] implements to learn how
@@ -250,6 +265,38 @@ type UIDNextMailbox interface {
 	// larger of it and the highest UID present plus one, so 0 means
 	// "unknown". An error makes SELECT, EXAMINE and STATUS answer NO.
 	UIDNext(folder string) (uint32, error)
+}
+
+// RecentMailbox is the optional interface a [Mailbox] may also implement to
+// keep \Recent state ([RFC 3501] §2.3.2): a message is recent in exactly one
+// session, the first read-write session told of it after it arrived. The store
+// keeps it as a per-folder mark, the highest UID a read-write session has been
+// told of; every message above the mark is recent and claimed by no session
+// yet. UIDs ascend with arrival order (see [Message.UID]), so the mark divides
+// the folder into old and new.
+//
+// SELECT claims: it raises the mark to the highest UID it reports, and the
+// messages between the old mark and that UID are \Recent to it alone. A
+// read-write session claims again for each arrival it is told of. EXAMINE, a
+// SELECT the user may only read, and STATUS read the mark and never move it.
+//
+// A Mailbox that does not implement it cannot tell which session was first to
+// see a message, so every message is recent to every session, as §2.3.2 asks:
+// "If it is not possible to determine whether or not this session is the
+// first session to be notified about a message, then that message SHOULD be
+// considered recent."
+//
+// [RFC 3501]: https://www.rfc-editor.org/rfc/rfc3501
+type RecentMailbox interface {
+	// RecentMark returns folder's mark: the highest UID a read-write session
+	// has claimed, or 0 when none has. The messages above it are \Recent.
+	RecentMark(folder string) (uint32, error)
+	// ClaimRecent raises folder's mark to upTo unless it is already at least
+	// that, and returns the mark it had before, in one atomic step: of two
+	// sessions that claim the same message, only one is given the lower mark.
+	// The messages above the returned mark up to upTo are \Recent to the
+	// session that claimed them.
+	ClaimRecent(folder string, upTo uint32) (uint32, error)
 }
 
 // ErrModified is the error [ModSeqMailbox.StoreModSeq] returns, possibly
@@ -484,6 +531,26 @@ type SetMailbox interface {
 	MoveMessages(folder string, uids []uint32, dest string) ([]uint32, error)
 }
 
+// NameNormalizer is the optional interface a [Mailbox] implements when its store
+// keeps mailbox names in one normal form. RFC 9051 §5.1 asks for Net-Unicode,
+// whose form is NFC, and lets a server "accept a denormalized UTF-8 mailbox
+// name and convert it". This module has no dependency that knows Unicode
+// normalization, so the store supplies it.
+//
+// When a Mailbox implements it, every mailbox name a command carries goes through
+// NormalizeName before anything uses it, and a LIST pattern is converted the same
+// way, so a client's other spelling reaches the same folder. SELECT, EXAMINE,
+// CREATE, DELETE, RENAME and APPEND report a name that changed with an untagged
+// LIST holding the OLDNAME extended data item (RFC 9051 §6.3.9.7).
+//
+// A Mailbox that does not implement it keeps every name as the client spelled it.
+type NameNormalizer interface {
+	// NormalizeName returns name in the store's normal form. Calling it again on
+	// the result returns the same name. It leaves the case of INBOX alone, which
+	// the server folds itself and does not report.
+	NormalizeName(name string) string
+}
+
 // UTF8Mailbox is the optional interface a [Mailbox] may also implement to
 // support internationalized email in IMAP ([RFC 6855] UTF8=ACCEPT). When the
 // authenticated Mailbox satisfies it, the server advertises UTF8=ACCEPT and
@@ -546,6 +613,25 @@ type DateAppender interface {
 	// also sets the message's internal date to internalDate, and returns the UID
 	// assigned to the stored message (0 if the backend does not track UIDs).
 	AppendWithDate(dest string, f FlagUpdate, internalDate time.Time, raw []byte) (uid uint32, err error)
+}
+
+// SearchZoneMailbox is the optional interface a [Mailbox] may also implement to
+// say which zone's calendar days SEARCH BEFORE, ON and SINCE compare, because
+// IMAP gives a client no way to say so. A Mailbox that does not implement it
+// keeps exact prior behaviour: the day is the one [Message].Date writes in its
+// own location.
+//
+// INTERNALDATE in FETCH and the SENT* keys do not change: FETCH renders
+// [Message].Date as it is, and SENTBEFORE, SENTON and SENTSINCE read the Date:
+// header as written ([RFC 3501] §6.4.4).
+//
+// [RFC 3501]: https://www.rfc-editor.org/rfc/rfc3501
+type SearchZoneMailbox interface {
+	// SearchZone returns the zone, for one SEARCH or UID SEARCH that has one of
+	// those keys. A nil zone is the same as not implementing this interface. An
+	// error answers the command with NO [UNAVAILABLE], because a guessed zone
+	// could return another day's messages.
+	SearchZone() (*time.Location, error)
 }
 
 // Limiter is the per-IP connection and authentication guard the server

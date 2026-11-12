@@ -93,16 +93,14 @@ func TestMessageStructureScalarStrings(t *testing.T) {
 	}{
 		{"quoted", "Subject: a \"quote\" and \\slash\r\n", `(NIL "a \"quote\" and \\slash" NIL NIL NIL NIL NIL NIL NIL NIL)`, nil},
 		{"encoded-word", "Subject: =?UTF-8?Q?caf=C3=A9?=\r\n", `(NIL "=?UTF-8?Q?caf=C3=A9?=" NIL NIL NIL NIL NIL NIL NIL NIL)`, nil},
-		{"literal", "Subject: café\r\nIn-Reply-To: <é@x>\r\nMessage-ID: <é@y>\r\n",
-			`(NIL {5} NIL NIL NIL NIL NIL NIL {6} {6})`, []string{"café", "<é@x>", "<é@y>"}},
-		{"address literals", "From: =?UTF-8?Q?J=C3=B6rg?= <j@example.com>\r\nTo: jörg@exämple.com\r\nCc: =?UTF-8?Q?a=0D=0Ab?= <x@example.com>\r\n",
-			`(NIL NIL (({5} NIL "j" "example.com")) (({5} NIL "j" "example.com")) (({5} NIL "j" "example.com")) ((NIL NIL {5} {12})) (({4} NIL "x" "example.com")) NIL NIL NIL)`,
-			[]string{"Jörg", "Jörg", "Jörg", "jörg", "exämple.com", "a\r\nb"}},
+		{"address literals", "From: =?UTF-8?Q?J=C3=B6rg?= <j@example.com>\r\nCc: =?UTF-8?Q?a=0D=0Ab?= <x@example.com>\r\n",
+			`(NIL NIL (("=?UTF-8?Q?J=C3=B6rg?=" NIL "j" "example.com")) (("=?UTF-8?Q?J=C3=B6rg?=" NIL "j" "example.com")) (("=?UTF-8?Q?J=C3=B6rg?=" NIL "j" "example.com")) NIL (({4} NIL "x" "example.com")) NIL NIL NIL)`,
+			[]string{"a\r\nb"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			lines := 3
 			if tc.literals != nil {
-				lines = 5
+				lines = 4
 			}
 			messageStructureResponse(t, tc.headers+"\r\nx", tc.envelope,
 				`("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 1 1)`,

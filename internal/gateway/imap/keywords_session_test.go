@@ -60,7 +60,7 @@ func TestKeywordsPersistThroughTheAPI(t *testing.T) {
 		t.Fatal(status)
 	}
 	// NOOP reports the other session's change as an untagged FETCH.
-	if lines, _ = first.command("n1", "NOOP"); !slices.Contains(lines, "* 1 FETCH (UID 1 FLAGS ($Forwarded))") {
+	if lines, _ = first.command("n1", "NOOP"); !slices.Contains(lines, `* 1 FETCH (UID 1 FLAGS ($Forwarded \Recent))`) {
 		t.Fatalf("first session after the other removed Work: %v", lines)
 	}
 

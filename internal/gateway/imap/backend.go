@@ -25,6 +25,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/metrics"
 	"github.com/rest-mail/rest-mail-server/internal/requestid"
 	"github.com/rest-mail/rest-mail-server/internal/tracing"
+	"github.com/rest-mail/rest-mail-server/internal/timezone"
 )
 
 // errAccountLocked is returned when an account is temporarily banned for too
@@ -41,15 +42,31 @@ type Backend struct {
 	// per-IP tracker cannot see a distributed attack that rotates source IPs
 	// against one account. A nil limiter disables per-account throttling.
 	limiter *connlimiter.Limiter
+	// clientIP is the address of the mail client this Backend signs in, set by
+	// ForClient. The API throttles and records a sign-in by it.
+	clientIP string
+	// recent is the \Recent state every session this Backend serves shares.
+	recent *recentMarks
 }
 
 // NewBackend creates a Backend over the given API client. limiter enables
 // per-account brute-force throttling (pass nil to disable it).
 func NewBackend(api *apiclient.Client, limiter *connlimiter.Limiter) *Backend {
-	return &Backend{api: api, limiter: limiter}
+	return &Backend{api: api, limiter: limiter, recent: newRecentMarks()}
 }
 
-var _ goimap.Backend = (*Backend)(nil)
+var (
+	_ goimap.Backend              = (*Backend)(nil)
+	_ goimap.ClientAddressBackend = (*Backend)(nil)
+)
+
+// ForClient returns the Backend that signs in the mail client connected from
+// ip (goimap.ClientAddressBackend).
+func (b *Backend) ForClient(ip string) goimap.Backend {
+	forClient := *b
+	forClient.clientIP = ip
+	return &forClient
+}
 
 // Authenticate signs the user in via the API, with the mailbox's password or
 // an app password, and returns a Mailbox scoped to the resulting token and
@@ -91,7 +108,7 @@ func (b *Backend) Authenticate(user, pass string) (goimap.Mailbox, error) {
 	// The connection gets its own session with the API (#1586): the address
 	// and password go once, and every call that follows sends the session's
 	// token. An app password signs in without the API's interactive login (#344).
-	resp, err := api.OpenSession(user, pass, "imap")
+	resp, err := api.OpenSession(user, pass, "imap", b.clientIP)
 	if err != nil {
 		// A failed IMAP login is a security-relevant event (credential stuffing /
 		// enumeration). Log it structured, with the attacker-controlled username
@@ -121,6 +138,7 @@ func (b *Backend) Authenticate(user, pass string) (goimap.Mailbox, error) {
 		email:     user,
 		token:     resp.Token,
 		accountID: resp.User.ID,
+		recent:    b.recent,
 	}, nil
 }
 
@@ -151,6 +169,7 @@ type mailbox struct {
 	email     string
 	token     string
 	accountID uint
+	recent    *recentMarks
 	// utf8 is set once the client has sent ENABLE UTF8=ACCEPT (RFC 6855 §3):
 	// from then on it takes raw UTF-8 header fields, so FETCH stops
 	// downgrading them.
@@ -166,6 +185,10 @@ type mailbox struct {
 }
 
 var _ goimap.MailboxCloser = (*mailbox)(nil)
+var (
+	_ goimap.Mailbox        = (*mailbox)(nil)
+	_ goimap.NameNormalizer = (*mailbox)(nil)
+)
 
 // The mailbox also satisfies the library's optional UIDPLUS (RFC 4315) and atomic
 // MOVE (RFC 6851) interfaces, so the server advertises UIDPLUS and emits
@@ -189,6 +212,8 @@ var (
 	// and per folder, and the UIDs that left each folder.
 	_ goimap.ModSeqMailbox   = (*mailbox)(nil)
 	_ goimap.VanishedMailbox = (*mailbox)(nil)
+	// SEARCH's calendar days are the account's (SearchZoneMailbox).
+	_ goimap.SearchZoneMailbox = (*mailbox)(nil)
 )
 
 // importMessage stores a message through the import operation, counted in this
@@ -352,9 +377,10 @@ func (m *mailbox) Messages(folder string) ([]goimap.Message, error) {
 	out := make([]goimap.Message, 0, len(resp.Data))
 	for _, msg := range resp.Data {
 		item := toMessage(msg)
-		// FETCH sends the downgraded form to a session that has not enabled
-		// UTF-8, so RFC822.SIZE counts that form's octets.
-		item.Size = msg.WireSizeFor(m.utf8)
+		// FETCH sends the downgraded headers to a session that has not enabled
+		// UTF-8, and the engine converts both kinds of session to 7-bit where
+		// RFC 3501 section 7.4.2 requires it, so RFC822.SIZE counts those octets.
+		item.Size = msg.IMAPWireSizeFor(m.utf8)
 		out = append(out, item)
 	}
 	return out, nil
@@ -366,7 +392,8 @@ func (m *mailbox) Messages(folder string) ([]goimap.Message, error) {
 // one (RFC 3501 requires RFC822.SIZE to be the transmitted size exactly),
 // falling back to size_bytes for messages without a stored raw. The UID uses
 // toUID, the same 32-bit clamp APPENDUID/COPYUID apply, so an ID past the UID
-// space clamps to 0 rather than wrapping to a small, wrong UID.
+// space clamps to 0 rather than wrapping to a small, wrong UID. Date is in UTC, so
+// INTERNALDATE is rendered in UTC whatever zone the API process runs in.
 func toMessage(msg apiclient.MessageSummary) goimap.Message {
 	return goimap.Message{
 		UID:      toUID(msg.ID),
@@ -381,15 +408,30 @@ func toMessage(msg apiclient.MessageSummary) goimap.Message {
 		Subject:  msg.Subject,
 		From:     goimap.Address{Name: msg.SenderName, Email: msg.Sender},
 		To:       string(msg.RecipientsTo),
-		Date:     msg.ReceivedAt,
+		Date:     msg.ReceivedAt.UTC(),
 	}
+}
+
+// SearchZone is the account's time zone, whose calendar days SEARCH BEFORE, ON and
+// SINCE compare, or UTC when the account has none. It is read for each such SEARCH,
+// so a change reaches a connection that is already open.
+func (m *mailbox) SearchZone() (*time.Location, error) {
+	resp, err := m.api.GetAccountTimeZone(m.token, m.accountID)
+	if err != nil {
+		return nil, err
+	}
+	if resp.Data.TimeZone == nil {
+		return time.UTC, nil
+	}
+	return timezone.Load(*resp.Data.TimeZone)
 }
 
 // Fetch returns the full-fidelity RFC 2822 form of a message: the pristine
 // stored original when the server has one, otherwise a best-effort
 // reconstruction from the structured detail (for locally-composed items that
 // have no stored raw). Serving the stored original preserves attachments, To/Cc,
-// custom headers and any DKIM-Signature verbatim.
+// custom headers and any DKIM-Signature verbatim, in the store and through RFC
+// 3516 BINARY. The engine converts what FETCH BODY sends from these octets.
 func (m *mailbox) Fetch(uid uint32) ([]byte, error) {
 	detail, err := m.api.GetMessage(m.token, uint(uid))
 	if err != nil {

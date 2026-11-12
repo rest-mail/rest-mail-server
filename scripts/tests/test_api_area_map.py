@@ -13,6 +13,7 @@ class APIAreaMap(unittest.TestCase):
         operation_ids = [operation for operations in areas.values() for operation in operations]
         self.assertEqual(len(operation_ids), len(set(operation_ids)))
         described = set(json.loads((root / "openapi-example.json").read_text()))
+        self.assertTrue({"getAccountTimeZone", "setAccountTimeZone"} <= described)
         self.assertEqual(
             sorted(described - set(operation_ids)), [], "operations without an area"
         )

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/rest-mail/go-imap/pkg/imap"
 	"github.com/rest-mail/go-imap/pkg/imap/internal/wire"
 )
 
@@ -179,11 +180,14 @@ func (s *Session) handleAuthenticate(tag, args string) {
 			return
 		}
 	}
-	// An initial response's decoding errors are handled as any client
-	// response's (RFC 4959 §3).
+	// A response that is not valid base64 (a character outside the alphabet,
+	// a non-terminal "=") MUST be rejected with a tagged BAD (RFC 9051
+	// §6.2.2). An initial response's decoding errors are handled as any client
+	// response's (RFC 4959 §3), so both forms answer BAD. RFC 3501 sets no
+	// rule here, so rev1 sessions get the same answer.
 	decoded, err := wire.DecodeBase64(line)
 	if err != nil || strings.ContainsAny(line, "\r\n") {
-		s.tagged(tag, "NO", "Invalid base64")
+		s.tagged(tag, "BAD", "Invalid base64")
 		return
 	}
 	// RFC 4616 section 2: exactly two NUL delimiters, nonempty authcid and
@@ -216,7 +220,11 @@ func (s *Session) handleAuthenticate(tag, args string) {
 func (s *Session) authenticate(tag, username, password, okMsg string) {
 	ip := extractIP(s.conn.RemoteAddr().String())
 
-	mailbox, err := s.backend.Authenticate(username, password)
+	backend := s.backend
+	if b, ok := backend.(imap.ClientAddressBackend); ok {
+		backend = b.ForClient(ip)
+	}
+	mailbox, err := backend.Authenticate(username, password)
 	if err != nil {
 		slog.Warn("imap: auth failed",
 			"remote", s.conn.RemoteAddr(),

@@ -57,6 +57,9 @@ type patchRecord struct {
 }
 
 type fakeAPI struct {
+	timeZone *string
+	timeZoneFails bool
+	timeZoneReads int
 	mu      sync.Mutex
 	nextID  uint
 	msgs    map[uint]*fakeMsg
@@ -185,6 +188,7 @@ func (f *fakeAPI) handler() http.Handler {
 	mux.HandleFunc("POST /api/v1/gateway-sessions", f.login)
 	mux.HandleFunc("DELETE /api/v1/gateway-sessions/current", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
 	mux.HandleFunc("GET /api/v1/accounts/{acct}/folders", f.listFolders)
+	mux.HandleFunc("GET /api/v1/accounts/{acct}/time-zone", f.accountTimeZone)
 	mux.HandleFunc("GET /api/v1/accounts/{acct}/folders/{folder}/messages", f.listMessages)
 	mux.HandleFunc("GET /api/v1/accounts/{acct}/folders/{folder}/vanished", f.listVanished)
 	mux.HandleFunc("POST /api/v1/accounts/{acct}/messages/import", f.importMessage)
@@ -217,6 +221,18 @@ func (f *fakeAPI) login(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, lr)
 }
 
+// accountTimeZone answers as the API does: the zone set on the account, or null.
+func (f *fakeAPI) accountTimeZone(w http.ResponseWriter, _ *http.Request) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.timeZoneReads++
+	if f.timeZoneFails {
+		http.Error(w, `{"error":{"code":"internal_error","message":"Internal server error"}}`, http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, map[string]any{"data": map[string]any{"time_zone": f.timeZone}})
+}
+
 func (f *fakeAPI) listMessages(w http.ResponseWriter, r *http.Request) {
 	folder := r.PathValue("folder")
 	f.mu.Lock()
@@ -232,20 +248,22 @@ func (f *fakeAPI) listMessages(w http.ResponseWriter, r *http.Request) {
 			received = fakeReceivedAt
 		}
 		out = append(out, apiclient.MessageSummary{
-			ID:          m.id,
-			Folder:      m.folder,
-			Subject:     m.subject,
-			Sender:      m.sender,
-			SenderName:  m.senderNm,
-			RawSize:     len(m.raw),
-			IMAPDeleted: m.imapDeleted,
-			Keywords:    m.keywords,
-			IsRead:      m.isRead,
-			IsFlagged:   m.isFlagged,
-			IsStarred:   m.isStarred,
-			IsDraft:     m.isDraft,
-			ModSeq:      m.modSeq,
-			ReceivedAt:  received,
+			ID:           m.id,
+			Folder:       m.folder,
+			Subject:      m.subject,
+			Sender:       m.sender,
+			SenderName:   m.senderNm,
+			RawSize:      len(m.raw),
+			IMAPSize:     len(m.raw),
+			IMAPUTF8Size: len(m.raw),
+			IMAPDeleted:  m.imapDeleted,
+			Keywords:     m.keywords,
+			IsRead:       m.isRead,
+			IsFlagged:    m.isFlagged,
+			IsStarred:    m.isStarred,
+			IsDraft:      m.isDraft,
+			ModSeq: m.modSeq,
+		ReceivedAt: received,
 		})
 	}
 	f.mu.Unlock()
@@ -404,21 +422,23 @@ func (f *fakeAPI) detail(m *fakeMsg) apiclient.MessageDetailResponse {
 	}
 	var dr apiclient.MessageDetailResponse
 	dr.Data = apiclient.MessageSummary{
-		ID:          m.id,
-		MailboxID:   7,
-		Folder:      m.folder,
-		Subject:     m.subject,
-		Sender:      m.sender,
-		SenderName:  m.senderNm,
-		RawSize:     len(m.raw),
-		IMAPDeleted: m.imapDeleted,
-		Keywords:    m.keywords,
-		IsRead:      m.isRead,
-		IsFlagged:   m.isFlagged,
-		IsStarred:   m.isStarred,
-		IsDraft:     m.isDraft,
-		ModSeq:      m.modSeq,
-		ReceivedAt:  received,
+		ID:           m.id,
+		MailboxID:    7,
+		Folder:       m.folder,
+		Subject:      m.subject,
+		Sender:       m.sender,
+		SenderName:   m.senderNm,
+		RawSize:      len(m.raw),
+		IMAPSize:     len(m.raw),
+		IMAPUTF8Size: len(m.raw),
+		IMAPDeleted:  m.imapDeleted,
+		Keywords:     m.keywords,
+		IsRead:       m.isRead,
+		IsFlagged:    m.isFlagged,
+		IsStarred:    m.isStarred,
+		IsDraft:      m.isDraft,
+		ModSeq: m.modSeq,
+		ReceivedAt: received,
 	}
 	return dr
 }
