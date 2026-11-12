@@ -76,6 +76,7 @@ var resetMailboxKept = map[string]string{
 	"domain_id":                "The account's address is on that domain, which the reset keeps.",
 	"local_part":               "Part of the address the retained administrator signs in with.",
 	"address":                  "The retained administrator signs in with it.",
+	"provisioned_postmaster":   "Whether this account was provisioned with its domain is provenance, not a resettable setting.",
 	"display_name":             "Part of who the retained administrator is, given when the installation was made.",
 	"active":                   "The reset caller signs in with this account, so it stays as it is.",
 	"last_login_at":            "Bookkeeping, not a setting.",

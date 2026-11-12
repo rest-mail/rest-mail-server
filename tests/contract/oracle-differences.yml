@@ -630,10 +630,6 @@
   difference: "response 201 application/json.properties.data.properties.domain: openapi.yaml absent, generated *"
   reason: >-
     The public Alias type permits a readable, loaded domain association. Creation does not preload it and omits the association; it never emits an invalid zero domain. The oracle omits this optional property.
-- operation: deleteMailbox
-  difference: "response 409 application/json: generated only"
-  reason: >-
-    Deleting an account can refuse removal of its grants with the existing grant errors (403 two_factor_required or grant_exceeds_held; 409 conflict or last_superadmin). The oracle lists the status without its JSON error envelope.
 - operation: getAlias
   difference: "response 200 application/json.properties.data.properties.domain: openapi.yaml absent, generated *"
   reason: >-

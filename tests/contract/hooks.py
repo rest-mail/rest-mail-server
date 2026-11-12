@@ -1393,6 +1393,7 @@ def the_listing_holds_what_was_made(transaction):
 @hooks.before("updateDomain")
 @hooks.before("deleteDomain")
 @hooks.before("inviteAccount")
+@hooks.before("restoreDomain")
 @hooks.before("listAuditEntries")
 @hooks.before("verifyAuditLog")
 @hooks.before("releaseQuarantine")
@@ -2201,6 +2202,22 @@ def keep_the_created_domain(transaction):
         return
     hooks.stash["domain_id"] = data.get("id")
     hooks.stash["domain"] = data.get("name")
+
+
+@hooks.before("restoreDomain")
+def an_archived_domain_to_restore(transaction):
+    path, separator, query = transaction["fullPath"].partition("?")
+    matched = re.fullmatch(r"/api/v1/admin/domains/([1-9][0-9]*)/restore", path)
+    if not matched or not any(f" > {status}" in transaction.get("name", "") for status in (200, 403, 409)):
+        return
+    if asked_for_a_clean_start():
+        start_clean(transaction)
+    name = f"contract-restore-{time.time_ns()}.test"
+    domain = fixture_call(transaction, "POST", "/api/v1/admin/domains", {"name": name})
+    as_the_two_factor_admin_call(origin_of(transaction), "DELETE", f"/api/v1/admin/domains/{domain['id']:d}")
+    if " > 409" in transaction.get("name", ""):
+        fixture_call(transaction, "POST", "/api/v1/admin/domains", {"name": name})
+    transaction["fullPath"] = f"/api/v1/admin/domains/{domain['id']:d}/restore" + (separator + query if separator else "")
 
 
 @hooks.before("deleteDomain")
@@ -3855,11 +3872,13 @@ def a_message_in(transaction, account, folder, sender, subject, body):
 
 @hooks.before("listAccountAddresses")
 def report_addresses_of_the_callers_own_account(transaction):
+    # The documented success names account 10, which is only an id: which
+    # account holds it depends on how many were made before, and a domain's
+    # provisioned postmaster takes one too (e2e stage 2's throwaway domain's
+    # postmaster is 10 and is retired with it). Sent by an administrator, in
+    # any run, it asks for the caller's own account, looked up by address.
     if (
-        not any(os.environ.get(phase) == "1" for phase in (
-            "CONTRACT_AUTHORIZATION", "CONTRACT_OWNERSHIP"
-        ))
-        or " > 200 > " not in transaction.get("name", "")
+        " > 200 > " not in transaction.get("name", "")
         or transaction.get("fullPath") != "/api/v1/accounts/10/addresses"
     ):
         return
@@ -5783,20 +5802,22 @@ def positive_id(text):
     return text.isdecimal() and int(text) > 0
 
 
-def fixture_call(transaction, method, path, body=None, expect=(200, 201, 204)):
+def fixture_call(transaction, method, path, body=None, expect=(200, 201, 204), two_factor=False):
     """One admin API call for fixture setup, answering its JSON data, or None
-    for an expected refusal such as a 404 on a delete of nothing."""
+    for an expected refusal such as a 404 on a delete of nothing. two_factor
+    sends it as the two-factor administrator, which removing a grant needs."""
     origin = "{}//{}:{}".format(
         transaction["protocol"],
         transaction["host"],
         transaction["port"],
     )
+    token = mfa_admin_token(origin) if two_factor else admin_token(origin)
     request = urllib.request.Request(
         origin + path,
         data=json.dumps(body).encode() if body is not None else None,
         headers={
             "Content-Type": "application/json",
-            "Authorization": "Bearer " + admin_token(origin),
+            "Authorization": "Bearer " + token,
         },
         method=method,
     )
@@ -6110,7 +6131,10 @@ def empty_the_generated_domain(transaction, domain_id, domain_name=GENERATED_DOM
 
     A hook cannot change a generated body (lost_probes.py), so createDomain's probes
     keep their drawn ASCII or IDN name, and the setup makes that name free. The domain's
-    accounts take a two-factor session to remove, as the domain's grants do."""
+    accounts take a two-factor session to remove, as the domain's grants do. Its own
+    postmaster account stays: the server refuses to delete a domain's last postmaster
+    on its own (409 postmaster_required), and deleting the domain retires it with the
+    domain (#1705)."""
     origin = origin_of(transaction)
     headers = {
         "Content-Type": "application/json",
@@ -6125,9 +6149,12 @@ def empty_the_generated_domain(transaction, domain_id, domain_name=GENERATED_DOM
 
     for alias in list(list_rows(origin, f"/api/v1/admin/aliases?domain_id={domain_id:d}", headers)):
         call("DELETE", f"/api/v1/admin/aliases/{alias['id']:d}")
-    for account in list(list_rows(origin, f"/api/v1/admin/mailboxes?domain_id={domain_id:d}", headers)):
-        call("DELETE", f"/api/v1/admin/mailboxes/{account['id']:d}")
     canonical = domain_key(domain_name)
+    for account in list(list_rows(origin, f"/api/v1/admin/mailboxes?domain_id={domain_id:d}", headers)):
+        local, _, at = (account.get("address") or "").rpartition("@")
+        if local.lower() == "postmaster" and domain_key(at) == canonical:
+            continue
+        call("DELETE", f"/api/v1/admin/mailboxes/{account['id']:d}")
     for name in ADDRESSES_REMEMBERED:
         remembered = hooks.stash.get(name, {})
         for key in [k for k in remembered if domain_key(k.rpartition("@")[2]) == canonical]:
@@ -6135,6 +6162,21 @@ def empty_the_generated_domain(transaction, domain_id, domain_name=GENERATED_DOM
     hooks.stash.get("link_fixture_prepared", {}).pop(origin, None)
     if canonical == GENERATED_DOMAIN:
         hooks.stash["generated_domain_freed"] = True
+
+
+def delete_a_domain(transaction, domain_id):
+    """Delete a leftover domain, retiring its provisioned postmaster with it.
+
+    That postmaster holds the domain's receive grant, and removing a grant takes
+    a two-factor session (#1705), so the delete is sent as the two-factor
+    administrator: with the setup session it is refused 403 and the hook ends."""
+    fixture_call(
+        transaction,
+        "DELETE",
+        f"/api/v1/admin/domains/{domain_id:d}",
+        expect=PROBE_REFUSALS,
+        two_factor=True,
+    )
 
 
 @hooks.before("*")
@@ -6148,7 +6190,7 @@ def host_the_generated_domain_again(transaction):
     hooks.stash["generated_domain_freed"] = False
     for domain in fixture_call(transaction, "GET", "/api/v1/admin/domains") or []:
         if domain.get("name") == GENERATED_DOMAIN:
-            fixture_call(transaction, "DELETE", f"/api/v1/admin/domains/{domain['id']:d}", expect=PROBE_REFUSALS)
+            delete_a_domain(transaction, domain["id"])
     # The fixtures host it live, which the admin API cannot do without a certificate.
     subprocess.run(
         ["chore", "test:contract-link-fixture"],
@@ -6185,12 +6227,7 @@ def create_a_domain_that_is_not_there(transaction):
     if domain is None:
         return
     empty_the_generated_domain(transaction, domain["id"], name)
-    fixture_call(
-        transaction,
-        "DELETE",
-        f"/api/v1/admin/domains/{domain['id']:d}",
-        expect=PROBE_REFUSALS,
-    )
+    delete_a_domain(transaction, domain["id"])
 
 
 @hooks.before("importMessage")

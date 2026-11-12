@@ -43,6 +43,9 @@ func (c *aliasMutationConnection) record(q string, args []driver.NamedValue) {
 }
 
 func (c *aliasMutationConnection) QueryContext(ctx context.Context, q string, args []driver.NamedValue) (driver.Rows, error) {
+	if strings.Contains(q, "EXISTS (SELECT 1 FROM mailboxes") {
+		return &authReadSnapshotRows{columns: []string{"id"}}, nil
+	}
 	if strings.HasPrefix(q, `INSERT INTO "aliases"`) {
 		c.record(q, args)
 		fields, err := exampleInsertFields(q, args)
@@ -128,6 +131,9 @@ func (c *aliasMutationConnection) QueryContext(ctx context.Context, q string, ar
 }
 
 func (c *aliasMutationConnection) ExecContext(_ context.Context, q string, args []driver.NamedValue) (driver.Result, error) {
+	if strings.HasPrefix(q, "SELECT pg_advisory_xact_lock(") {
+		return driver.RowsAffected(0), nil
+	}
 	if !strings.HasPrefix(q, `UPDATE "aliases" SET`) {
 		return nil, errors.New("unexpected ancillary alias write")
 	}

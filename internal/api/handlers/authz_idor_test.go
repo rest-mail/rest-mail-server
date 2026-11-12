@@ -28,6 +28,7 @@ func openAuthzTestDB(t *testing.T) *gorm.DB {
 	if err := migrateModels(gdb,
 		&models.Domain{},
 		&models.Mailbox{},
+		&models.Alias{},
 		&models.Role{},
 		&models.Capability{},
 		&models.RoleCapability{},

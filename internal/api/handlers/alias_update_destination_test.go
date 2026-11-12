@@ -19,7 +19,7 @@ import (
 // index matches the production migration, which creates it separately from the
 // model's field tags.
 var aliasTables = scratchStep{"alias-tables", func(db *gorm.DB) error {
-	if err := db.AutoMigrate(&models.Domain{}, &models.Alias{}); err != nil {
+	if err := db.AutoMigrate(&models.Domain{}, &models.Alias{}, &models.Mailbox{}); err != nil {
 		return err
 	}
 	return db.Exec("CREATE UNIQUE INDEX idx_aliases_source_dest ON aliases(source_address, destination_address)").Error
