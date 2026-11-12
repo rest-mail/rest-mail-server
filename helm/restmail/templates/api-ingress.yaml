@@ -37,7 +37,9 @@ spec:
           The documents other mail servers fetch from this host at its root, whatever
           api.ingress.path is: RESTMAIL discovery, which a peer asks the MX host for
           (https://<MX>/.well-known/restmail?domain=...), and TLS-RPT reports posted to
-          the rua the domain's _smtp._tls record names (RFC 8460 §3).
+          the rua the domain's _smtp._tls record names (RFC 8460 §3). Then the RESTMAIL
+          protocol itself, which discovery names as https://<mail host>/restmail: a peer
+          delivers to /restmail/messages there.
           */}}
           {{- range list "/.well-known/restmail" "/.well-known/smtp-tlsrpt" }}
           - path: {{ . }}
@@ -48,6 +50,13 @@ spec:
                 port:
                   number: {{ $.Values.api.service.port }}
           {{- end }}
+          - path: /restmail
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "restmail.componentName" (list $ "api") }}
+                port:
+                  number: {{ $.Values.api.service.port }}
     {{- range .Values.api.mtaSts.hosts }}
     - host: {{ . | quote }}
       http:
