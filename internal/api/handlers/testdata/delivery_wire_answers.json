@@ -1,8 +1,8 @@
 {
  "gateway/all_fields": {
-  "status": 201,
-  "answer": "{\"data\":{\"class\":\"person\",\"id\":0,\"mailbox_id\":0,\"folder\":\"Archive\",\"message_id\":\"\\u003call@remote.test\\u003e\",\"in_reply_to\":\"\\u003cp@remote.test\\u003e\",\"references\":\"\\u003cr@remote.test\\u003e \\u003cp@remote.test\\u003e\",\"thread_id\":\"\\u003cr@remote.test\\u003e\",\"sender\":\"someone@remote.test\",\"sender_name\":\"Some One\",\"recipients_to\":[\"owner@spool.test\"],\"recipients_cc\":[\"cc@remote.test\"],\"subject\":\"s\",\"body_text\":\"t\",\"body_html\":\"h\",\"sealed_hash\":\"fb4899af54fcb7244f01a47c96aee80c85414910329cfe764dea85d400de77f3\",\"size_bytes\":3,\"raw_size\":327,\"downgraded_size\":327,\"received_tls\":true,\"tls_version\":\"TLS1.3\",\"has_attachments\":false,\"is_answered\":true,\"is_read\":true,\"is_dsn\":false,\"is_flagged\":true,\"is_starred\":true,\"is_draft\":true,\"mod_seq\":2,\"is_deleted\":false,\"at\":\"…\",\"date_header\":null,\"at\":\"…\",\"at\":\"…\"}}\n",
-  "stored": "{\"attachments\":[],\"calendar\":[],\"holds\":[],\"messages\":[{\"answered\":true,\"body_html\":\"h\",\"body_text\":\"t\",\"calendar\":\"[]\",\"cc\":\"[\\\"cc@remote.test\\\"]\",\"downgraded_size\":327,\"draft\":true,\"flagged\":true,\"folder\":\"Archive\",\"has_attachments\":false,\"headers\":\"[]\",\"in_reply_to\":\"\\u003cp@remote.test\\u003e\",\"internal_date_fixed\":true,\"message_id\":\"\\u003call@remote.test\\u003e\",\"raw_is_text\":true,\"raw_sha256\":\"d0c5b49c32bb6df7cd9a218618366b2b3a0beb2c4136ab235b8ad0dc4803a059\",\"raw_size\":327,\"read\":true,\"references\":\"\\u003cr@remote.test\\u003e \\u003cp@remote.test\\u003e\",\"require_tls\":true,\"rule_class\":\"\",\"sealed\":\"fb4899af54fcb7244f01a47c96aee80c85414910329cfe764dea85d400de77f3\",\"sender\":\"someone@remote.test\",\"sender_name\":\"Some One\",\"size_bytes\":3,\"starred\":true,\"subject\":\"s\",\"thread_id\":\"\\u003cr@remote.test\\u003e\",\"tls\":true,\"tls_version\":\"TLS1.3\",\"to\":\"[\\\"owner@spool.test\\\"]\"}],\"usage\":[{\"attachment\":0,\"body\":2,\"count\":1,\"subject\":1}],\"used\":[3,0]}"
+  "status": 422,
+  "answer": "{\"error\":{\"code\":\"validation_failed\",\"message\":\"Request body failed validation\",\"details\":{\"fields\":{\"address\":\"required\"}}}}\n",
+  "stored": "{\"attachments\":[],\"calendar\":[],\"holds\":[],\"messages\":[],\"usage\":[{\"attachment\":0,\"body\":0,\"count\":0,\"subject\":0}],\"used\":[0,0]}"
  },
  "gateway/array": {
   "status": 422,
@@ -16,7 +16,7 @@
  },
  "gateway/arrival_mail_loop_no_mailbox": {
   "status": 422,
-  "answer": "{\"error\":{\"code\":\"validation_failed\",\"message\":\"Request body failed validation\",\"details\":{\"fields\":{\"address\":\"mailbox_id or address required\"}}}}\n",
+  "answer": "{\"error\":{\"code\":\"validation_failed\",\"message\":\"Request body failed validation\",\"details\":{\"fields\":{\"address\":\"required\"}}}}\n",
   "stored": "{\"attachments\":[],\"calendar\":[],\"holds\":[],\"messages\":[],\"usage\":[{\"attachment\":0,\"body\":0,\"count\":0,\"subject\":0}],\"used\":[0,0]}"
  },
  "gateway/arrival_mail_loop_raw_twice": {
@@ -85,14 +85,14 @@
   "stored": "{\"attachments\":[],\"calendar\":[],\"holds\":[],\"messages\":[],\"usage\":[{\"attachment\":0,\"body\":0,\"count\":0,\"subject\":0}],\"used\":[0,0]}"
  },
  "gateway/folder_bad": {
-  "status": 422,
-  "answer": "{\"error\":{\"code\":\"validation_failed\",\"message\":\"Request body failed validation\",\"details\":{\"fields\":{\"folder\":\"must not begin or end with a space\"}}}}\n",
-  "stored": "{\"attachments\":[],\"calendar\":[],\"holds\":[],\"messages\":[],\"usage\":[{\"attachment\":0,\"body\":0,\"count\":0,\"subject\":0}],\"used\":[0,0]}"
+  "status": 201,
+  "answer": "{\"data\":{\"class\":\"person\",\"id\":0,\"mailbox_id\":0,\"folder\":\"INBOX\",\"message_id\":\"\u003cgenerated@remote.test\\u003e\",\"in_reply_to\":\"\\u003cparent@remote.test\\u003e\",\"references\":\"\\u003croot@remote.test\\u003e \\u003cparent@remote.test\\u003e\",\"thread_id\":\"\\u003croot@remote.test\\u003e\",\"sender\":\"someone@remote.test\",\"sender_name\":\"\",\"recipients_to\":[],\"recipients_cc\":[],\"subject\":\"s\",\"sealed\":\"…\",\"size_bytes\":1,\"raw_size\":327,\"downgraded_size\":327,\"has_attachments\":false,\"is_read\":false,\"is_dsn\":false,\"is_flagged\":false,\"is_starred\":false,\"is_draft\":false,\"mod_seq\":2,\"is_deleted\":false,\"at\":\"…\",\"date_header\":null,\"at\":\"…\",\"at\":\"…\"}}\n",
+  "stored": "{\"attachments\":[],\"calendar\":[],\"holds\":[],\"messages\":[{\"answered\":false,\"body_html\":\"\",\"body_text\":\"\",\"calendar\":\"[]\",\"cc\":\"[]\",\"downgraded_size\":327,\"draft\":false,\"flagged\":false,\"folder\":\"INBOX\",\"has_attachments\":false,\"headers\":\"[]\",\"in_reply_to\":\"\\u003cparent@remote.test\\u003e\",\"internal_date_fixed\":false,\"message_id\":\"\u003cgenerated@remote.test\\u003e\",\"raw_is_text\":true,\"raw_sha256\":\"d0c5b49c32bb6df7cd9a218618366b2b3a0beb2c4136ab235b8ad0dc4803a059\",\"raw_size\":327,\"read\":false,\"references\":\"\\u003croot@remote.test\\u003e \\u003cparent@remote.test\\u003e\",\"require_tls\":false,\"rule_class\":\"\",\"sealed\":\"…\",\"sender\":\"someone@remote.test\",\"sender_name\":\"\",\"size_bytes\":1,\"starred\":false,\"subject\":\"s\",\"thread_id\":\"\\u003croot@remote.test\\u003e\",\"tls\":null,\"tls_version\":\"\",\"to\":\"[]\"}],\"usage\":[{\"attachment\":0,\"body\":0,\"count\":1,\"subject\":1}],\"used\":[1,0]}"
  },
  "gateway/folder_dots": {
-  "status": 422,
-  "answer": "{\"error\":{\"code\":\"validation_failed\",\"message\":\"Request body failed validation\",\"details\":{\"fields\":{\"folder\":\"must not contain \\\"..\\\"\"}}}}\n",
-  "stored": "{\"attachments\":[],\"calendar\":[],\"holds\":[],\"messages\":[],\"usage\":[{\"attachment\":0,\"body\":0,\"count\":0,\"subject\":0}],\"used\":[0,0]}"
+  "status": 201,
+  "answer": "{\"data\":{\"class\":\"person\",\"id\":0,\"mailbox_id\":0,\"folder\":\"INBOX\",\"message_id\":\"\u003cgenerated@remote.test\\u003e\",\"in_reply_to\":\"\\u003cparent@remote.test\\u003e\",\"references\":\"\\u003croot@remote.test\\u003e \\u003cparent@remote.test\\u003e\",\"thread_id\":\"\\u003croot@remote.test\\u003e\",\"sender\":\"someone@remote.test\",\"sender_name\":\"\",\"recipients_to\":[],\"recipients_cc\":[],\"subject\":\"s\",\"sealed\":\"…\",\"size_bytes\":1,\"raw_size\":327,\"downgraded_size\":327,\"has_attachments\":false,\"is_read\":false,\"is_dsn\":false,\"is_flagged\":false,\"is_starred\":false,\"is_draft\":false,\"mod_seq\":2,\"is_deleted\":false,\"at\":\"…\",\"date_header\":null,\"at\":\"…\",\"at\":\"…\"}}\n",
+  "stored": "{\"attachments\":[],\"calendar\":[],\"holds\":[],\"messages\":[{\"answered\":false,\"body_html\":\"\",\"body_text\":\"\",\"calendar\":\"[]\",\"cc\":\"[]\",\"downgraded_size\":327,\"draft\":false,\"flagged\":false,\"folder\":\"INBOX\",\"has_attachments\":false,\"headers\":\"[]\",\"in_reply_to\":\"\\u003cparent@remote.test\\u003e\",\"internal_date_fixed\":false,\"message_id\":\"\u003cgenerated@remote.test\\u003e\",\"raw_is_text\":true,\"raw_sha256\":\"d0c5b49c32bb6df7cd9a218618366b2b3a0beb2c4136ab235b8ad0dc4803a059\",\"raw_size\":327,\"read\":false,\"references\":\"\\u003croot@remote.test\\u003e \\u003cparent@remote.test\\u003e\",\"require_tls\":false,\"rule_class\":\"\",\"sealed\":\"…\",\"sender\":\"someone@remote.test\",\"sender_name\":\"\",\"size_bytes\":1,\"starred\":false,\"subject\":\"s\",\"thread_id\":\"\\u003croot@remote.test\\u003e\",\"tls\":null,\"tls_version\":\"\",\"to\":\"[]\"}],\"usage\":[{\"attachment\":0,\"body\":0,\"count\":1,\"subject\":1}],\"used\":[1,0]}"
  },
  "gateway/folder_inbox_any_case": {
   "status": 201,
@@ -106,7 +106,7 @@
  },
  "gateway/mailbox_id_bad": {
   "status": 422,
-  "answer": "{\"error\":{\"code\":\"validation_failed\",\"message\":\"Request body failed validation\",\"details\":{\"fields\":{\"mailbox_id\":\"must be a non-negative integer\"}}}}\n",
+  "answer": "{\"error\":{\"code\":\"validation_failed\",\"message\":\"Request body failed validation\",\"details\":{\"fields\":{\"address\":\"required\"}}}}\n",
   "stored": "{\"attachments\":[],\"calendar\":[],\"holds\":[],\"messages\":[],\"usage\":[{\"attachment\":0,\"body\":0,\"count\":0,\"subject\":0}],\"used\":[0,0]}"
  },
  "gateway/no_content_type": {
@@ -121,7 +121,7 @@
  },
  "gateway/no_mailbox": {
   "status": 422,
-  "answer": "{\"error\":{\"code\":\"validation_failed\",\"message\":\"Request body failed validation\",\"details\":{\"fields\":{\"address\":\"mailbox_id or address required\"}}}}\n",
+  "answer": "{\"error\":{\"code\":\"validation_failed\",\"message\":\"Request body failed validation\",\"details\":{\"fields\":{\"address\":\"required\"}}}}\n",
   "stored": "{\"attachments\":[],\"calendar\":[],\"holds\":[],\"messages\":[],\"usage\":[{\"attachment\":0,\"body\":0,\"count\":0,\"subject\":0}],\"used\":[0,0]}"
  },
  "gateway/no_message_at_all": {
@@ -140,8 +140,8 @@
   "stored": "{\"attachments\":[],\"calendar\":[],\"holds\":[],\"messages\":[],\"usage\":[{\"attachment\":0,\"body\":0,\"count\":0,\"subject\":0}],\"used\":[0,0]}"
  },
  "gateway/no_such_id": {
-  "status": 404,
-  "answer": "{\"error\":{\"code\":\"mailbox_not_found\",\"message\":\"Mailbox not found\"}}\n",
+  "status": 422,
+  "answer": "{\"error\":{\"code\":\"validation_failed\",\"message\":\"Request body failed validation\",\"details\":{\"fields\":{\"address\":\"required\"}}}}\n",
   "stored": "{\"attachments\":[],\"calendar\":[],\"holds\":[],\"messages\":[],\"usage\":[{\"attachment\":0,\"body\":0,\"count\":0,\"subject\":0}],\"used\":[0,0]}"
  },
  "gateway/not_json": {
@@ -166,7 +166,7 @@
  },
  "gateway/object_empty": {
   "status": 422,
-  "answer": "{\"error\":{\"code\":\"validation_failed\",\"message\":\"Request body failed validation\",\"details\":{\"fields\":{\"address\":\"mailbox_id or address required\"}}}}\n",
+  "answer": "{\"error\":{\"code\":\"validation_failed\",\"message\":\"Request body failed validation\",\"details\":{\"fields\":{\"address\":\"required\"}}}}\n",
   "stored": "{\"attachments\":[],\"calendar\":[],\"holds\":[],\"messages\":[],\"usage\":[{\"attachment\":0,\"body\":0,\"count\":0,\"subject\":0}],\"used\":[0,0]}"
  },
  "gateway/only_our_verdicts": {

@@ -218,7 +218,8 @@ func TestDeliveryRefusalsDoNotHoldTheMessage(t *testing.T) {
 	}{
 		{"no such mailbox", map[string]any{"address": "no@spool.test", "body_text": large}, 404},
 		{"a mailbox that can't receive", map[string]any{"address": "silent@spool.test", "body_html": large}, 404},
-		{"a bad folder", map[string]any{"folder": " x", "body_text": large}, 422},
+		// A declared field's own rule, read after the large body.
+		{"a bad HELO name", map[string]any{"helo_name": "a\x00b", "body_text": large}, 422},
 		{"a field no one declared", map[string]any{"x": 1}, 422},
 		{"NUL in the body text", map[string]any{"body_text": large + "\x00"}, 422},
 	} {

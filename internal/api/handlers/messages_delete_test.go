@@ -33,7 +33,9 @@ type msgDeleteFixture struct {
 
 func seedMsgDeleteFixture(t *testing.T, db *gorm.DB, quotaUsed int64) msgDeleteFixture {
 	t.Helper()
-	domain := models.Domain{Name: "delq.test"}
+	// Live, because delivery names the mailbox by address (#1474) and an address on a
+	// domain that is not live names no mailbox (#1845).
+	domain := models.Domain{Name: "delq.test", Active: true}
 	if err := db.Create(&domain).Error; err != nil {
 		t.Fatalf("create domain: %v", err)
 	}

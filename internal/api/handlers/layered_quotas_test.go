@@ -123,8 +123,17 @@ func grantOwnerRole(t *testing.T, db *gorm.DB, holder uint, address string) {
 	}
 }
 
-func deliverQuotaMessage(db *gorm.DB, id uint, subject string) *httptest.ResponseRecorder {
-	r := httptest.NewRequest(http.MethodPost, "/api/v1/messages/deliver", strings.NewReader(fmt.Sprintf(`{"mailbox_id":%d,"sender":"sender@remote.test","subject":%q,"folder":"Archive"}`, id, subject)))
+func deliverQuotaMessage(t *testing.T, db *gorm.DB, id uint, subject string) *httptest.ResponseRecorder {
+	t.Helper()
+	var mailbox models.Mailbox
+	if err := db.First(&mailbox, id).Error; err != nil {
+		t.Fatal(err)
+	}
+	// Delivery names the mailbox by address (#1474), which a domain that is not live hides (#1845).
+	if err := db.Model(&models.Domain{}).Where("id = ?", mailbox.DomainID).Update("active", true).Error; err != nil {
+		t.Fatal(err)
+	}
+	r := httptest.NewRequest(http.MethodPost, "/api/v1/messages/deliver", strings.NewReader(fmt.Sprintf(`{"address":%q,"sender":"sender@remote.test","subject":%q}`, mailbox.Address, subject)))
 	rr := httptest.NewRecorder()
 	deliveryRoute(NewMessageHandler(db, nil, nil, "", nil))(rr, r)
 	return rr
@@ -147,29 +156,29 @@ func TestOwnedQuotaSharedDeliveryBudget(t *testing.T) {
 	// Every owner up the chain bounds it, so the top owner holds it too.
 	grantOwnerRole(t, tx, fx.admin.ID, grandchild.Address)
 	for _, target := range []uint{a.ID, b.ID, fx.admin.ID, grandchild.ID} {
-		rr := deliverQuotaMessage(tx, target, strings.Repeat("x", 11))
+		rr := deliverQuotaMessage(t, tx, target, strings.Repeat("x", 11))
 		if rr.Code != http.StatusUnprocessableEntity || errorCode(rr) != "mailbox_full" {
 			t.Errorf("shared budget %d: %d %s", target, rr.Code, rr.Body.String())
 		}
 	}
-	if rr := deliverQuotaMessage(tx, a.ID, strings.Repeat("x", 10)); rr.Code != http.StatusCreated {
+	if rr := deliverQuotaMessage(t, tx, a.ID, strings.Repeat("x", 10)); rr.Code != http.StatusCreated {
 		t.Fatalf("exact boundary: %d %s", rr.Code, rr.Body.String())
 	}
-	if rr := deliverQuotaMessage(tx, b.ID, "x"); rr.Code != http.StatusUnprocessableEntity {
+	if rr := deliverQuotaMessage(t, tx, b.ID, "x"); rr.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("sibling budget: %d %s", rr.Code, rr.Body.String())
 	}
 	// Reclaimed child storage immediately restores the owner's allowance.
 	if err := tx.Model(&a).Update("quota_used_bytes", 20).Error; err != nil {
 		t.Fatal(err)
 	}
-	if rr := deliverQuotaMessage(tx, b.ID, "x"); rr.Code != http.StatusCreated {
+	if rr := deliverQuotaMessage(t, tx, b.ID, "x"); rr.Code != http.StatusCreated {
 		t.Fatalf("reclaimed: %d %s", rr.Code, rr.Body.String())
 	}
 	// Lowering the owner restricts already-created children live.
 	if err := tx.Model(&fx.admin).Update("quota_bytes", 90).Error; err != nil {
 		t.Fatal(err)
 	}
-	if rr := deliverQuotaMessage(tx, a.ID, "x"); rr.Code != http.StatusUnprocessableEntity {
+	if rr := deliverQuotaMessage(t, tx, a.ID, "x"); rr.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("live ceiling: %d %s", rr.Code, rr.Body.String())
 	}
 }
@@ -188,7 +197,7 @@ func TestOwnedQuotaConcurrentAppends(t *testing.T) {
 	var wg sync.WaitGroup
 	for _, id := range []uint{a.ID, b.ID} {
 		wg.Add(1)
-		go func(id uint) { defer wg.Done(); <-start; results <- deliverQuotaMessage(db, id, "123456") }(id)
+		go func(id uint) { defer wg.Done(); <-start; results <- deliverQuotaMessage(t, db, id, "123456") }(id)
 	}
 	close(start)
 	wg.Wait()
@@ -266,22 +275,22 @@ func TestOwnedQuotaExplicitChildCap(t *testing.T) {
 		t.Fatal(err)
 	}
 	child := quotaChild(t, tx, fx.admin, "small", 5, 0)
-	if rr := deliverQuotaMessage(tx, child.ID, "123456"); rr.Code != 422 {
+	if rr := deliverQuotaMessage(t, tx, child.ID, "123456"); rr.Code != 422 {
 		t.Fatalf("child cap: %d %s", rr.Code, rr.Body.String())
 	}
-	if rr := deliverQuotaMessage(tx, child.ID, "12345"); rr.Code != 201 {
+	if rr := deliverQuotaMessage(t, tx, child.ID, "12345"); rr.Code != 201 {
 		t.Fatalf("child boundary: %d %s", rr.Code, rr.Body.String())
 	}
 	if err := tx.Model(&fx.admin).Update("quota_bytes", 0).Error; err != nil {
 		t.Fatal(err)
 	}
-	if rr := deliverQuotaMessage(tx, child.ID, "1"); rr.Code != 422 {
+	if rr := deliverQuotaMessage(t, tx, child.ID, "1"); rr.Code != 422 {
 		t.Fatalf("unlimited owner preserves child cap: %d %s", rr.Code, rr.Body.String())
 	}
 	if err := tx.Model(&child).Update("quota_bytes", 0).Error; err != nil {
 		t.Fatal(err)
 	}
-	if rr := deliverQuotaMessage(tx, child.ID, strings.Repeat("x", 101)); rr.Code != 201 {
+	if rr := deliverQuotaMessage(t, tx, child.ID, strings.Repeat("x", 101)); rr.Code != 201 {
 		t.Fatalf("unlimited inheritance: %d %s", rr.Code, rr.Body.String())
 	}
 }

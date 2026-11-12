@@ -36,8 +36,9 @@ func nestedRaw(depth int, to string) string {
 	return head.String() + tail.String()
 }
 
-func deliverRaw(h *MessageHandler, mailboxID uint, raw string, arrival bool) *httptest.ResponseRecorder {
-	body := map[string]any{"mailbox_id": mailboxID, "sender": "sender@external.test", "raw_message": base64.StdEncoding.EncodeToString([]byte(raw))}
+// deliverRaw names the mailbox by address, as a delivery does (#1474).
+func deliverRaw(h *MessageHandler, address string, raw string, arrival bool) *httptest.ResponseRecorder {
+	body := map[string]any{"address": address, "sender": "sender@external.test", "raw_message": base64.StdEncoding.EncodeToString([]byte(raw))}
 	if arrival {
 		body["received_tls"] = false
 	}
@@ -50,7 +51,7 @@ func deliverRaw(h *MessageHandler, mailboxID uint, raw string, arrival bool) *ht
 // An arrival with more Received: fields than the hop limit is a mail loop, refused 403 before
 // the database is touched (#1647).
 func TestDeliveryRefusesMailLoopBeforeDatabase(t *testing.T) {
-	rr := deliverRaw(&MessageHandler{}, 1, receivedMessage(rmime.CurrentLimits().MaxReceived+1, "eve@limits.test"), true)
+	rr := deliverRaw(&MessageHandler{}, "eve@limits.test", receivedMessage(rmime.CurrentLimits().MaxReceived+1, "eve@limits.test"), true)
 	if rr.Code != http.StatusForbidden || !strings.Contains(rr.Body.String(), `"rejected"`) {
 		t.Fatalf("got %d %s, want 403 rejected", rr.Code, rr.Body)
 	}
@@ -70,14 +71,14 @@ func TestDeliveryInboundLimits(t *testing.T) {
 	h := NewMessageHandler(tx, nil, nil, "", nil)
 	limits := rmime.CurrentLimits()
 
-	if rr := deliverRaw(h, fx.mailbox.ID, receivedMessage(limits.MaxReceived, fx.mailbox.Address), true); rr.Code != http.StatusCreated {
+	if rr := deliverRaw(h, fx.mailbox.Address, receivedMessage(limits.MaxReceived, fx.mailbox.Address), true); rr.Code != http.StatusCreated {
 		t.Fatalf("arrival at the hop limit: got %d %s, want 201", rr.Code, rr.Body)
 	}
-	if rr := deliverRaw(h, fx.mailbox.ID, receivedMessage(limits.MaxReceived+10, fx.mailbox.Address), false); rr.Code != http.StatusCreated {
+	if rr := deliverRaw(h, fx.mailbox.Address, receivedMessage(limits.MaxReceived+10, fx.mailbox.Address), false); rr.Code != http.StatusCreated {
 		t.Fatalf("APPEND past the hop limit: got %d %s, want 201", rr.Code, rr.Body)
 	}
 	before := countMessages(t, tx, fx.mailbox.ID)
-	rr := deliverRaw(h, fx.mailbox.ID, nestedRaw(limits.MaxNestingDepth+1, fx.mailbox.Address), true)
+	rr := deliverRaw(h, fx.mailbox.Address, nestedRaw(limits.MaxNestingDepth+1, fx.mailbox.Address), true)
 	if rr.Code != http.StatusForbidden || !strings.Contains(rr.Body.String(), `"rejected"`) {
 		t.Fatalf("nested past the limit: got %d %s, want 403 rejected", rr.Code, rr.Body)
 	}
