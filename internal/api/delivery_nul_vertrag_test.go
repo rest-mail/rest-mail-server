@@ -31,7 +31,7 @@ func TestGatewayDeliveryNULExamplesWithVertrag(t *testing.T) {
 	description["paths"] = map[string]any{path: map[string]any{"post": operation}}
 	selected := map[string]bool{}
 	for _, name := range gatewayDeliveryExamples {
-		if strings.HasSuffix(name, "_nul") || name == "folder_blank" || name == "raw_message_invalid" {
+		if strings.HasSuffix(name, "_nul") || name == "raw_message_invalid" {
 			selected[name] = true
 		}
 	}

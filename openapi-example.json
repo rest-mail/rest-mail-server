@@ -12317,7 +12317,7 @@
             "message": "Request body failed validation",
             "details": {
               "fields": {
-                "address": "mailbox_id or address required"
+                "address": "required"
               }
             }
           }
@@ -12375,8 +12375,8 @@
       "summary": "Body html nul is refused before storage",
       "request": {
         "body": {
-          "mailbox_id": 900100,
-          "body_html": "before\u0000after"
+          "body_html": "before\u0000after",
+          "address": "fuzz-recipient@contract-recipient.test"
         },
         "invalid": true
       },
@@ -12400,8 +12400,8 @@
       "summary": "Body text nul is refused before storage",
       "request": {
         "body": {
-          "mailbox_id": 900100,
-          "body_text": "before\u0000after"
+          "body_text": "before\u0000after",
+          "address": "fuzz-recipient@contract-recipient.test"
         },
         "invalid": true
       },
@@ -12425,8 +12425,8 @@
       "summary": "Client ip nul is refused before storage",
       "request": {
         "body": {
-          "mailbox_id": 900100,
-          "client_ip": "before\u0000after"
+          "client_ip": "before\u0000after",
+          "address": "fuzz-recipient@contract-recipient.test"
         },
         "invalid": true
       },
@@ -12518,66 +12518,12 @@
         "mediaType": "application/json"
       }
     },
-    "folder_blank": {
-      "summary": "Folder blank is refused before storage",
-      "request": {
-        "body": {
-          "mailbox_id": 900100,
-          "folder": " "
-        },
-        "invalid": true
-      },
-      "response": {
-        "status": 422,
-        "body": {
-          "error": {
-            "code": "validation_failed",
-            "message": "Request body failed validation",
-            "details": {
-              "fields": {
-                "folder": "required"
-              }
-            }
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "folder_invalid": {
-      "summary": "The folder name is refused",
-      "description": "A name the folder rule refuses is 422 on folder, behind the gateway's own check.",
-      "request": {
-        "body": {
-          "address": "admin@restmail.test",
-          "sender": "sender@example.net",
-          "subject": "Hello",
-          "body_text": "Hello",
-          "folder": " Archive"
-        },
-        "invalid": true
-      },
-      "response": {
-        "status": 422,
-        "body": {
-          "error": {
-            "code": "validation_failed",
-            "message": "Request body failed validation",
-            "details": {
-              "fields": {
-                "folder": "must not begin or end with a space"
-              }
-            }
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
     "helo_name_nul": {
       "summary": "Helo name nul is refused before storage",
       "request": {
         "body": {
-          "mailbox_id": 900100,
-          "helo_name": "before\u0000after"
+          "helo_name": "before\u0000after",
+          "address": "fuzz-recipient@contract-recipient.test"
         },
         "invalid": true
       },
@@ -12601,8 +12547,8 @@
       "summary": "In reply to nul is refused before storage",
       "request": {
         "body": {
-          "mailbox_id": 900100,
-          "in_reply_to": "before\u0000after"
+          "in_reply_to": "before\u0000after",
+          "address": "fuzz-recipient@contract-recipient.test"
         },
         "invalid": true
       },
@@ -12646,31 +12592,6 @@
         "mediaType": "application/json"
       }
     },
-    "mailbox_id_zero": {
-      "summary": "The mailbox id is zero",
-      "description": "Zero names no mailbox, so the body names none.",
-      "request": {
-        "body": {
-          "mailbox_id": 0
-        },
-        "invalid": true
-      },
-      "response": {
-        "status": 422,
-        "body": {
-          "error": {
-            "code": "validation_failed",
-            "message": "Request body failed validation",
-            "details": {
-              "fields": {
-                "address": "mailbox_id or address required"
-              }
-            }
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
     "malformed_json": {
       "summary": "The body is not JSON",
       "description": "The wire body is the raw truncated JSON byte {, with application/json content type: it is refused before anything else is read.",
@@ -12696,8 +12617,8 @@
       "summary": "Message id nul is refused before storage",
       "request": {
         "body": {
-          "mailbox_id": 900100,
-          "message_id": "before\u0000after"
+          "message_id": "before\u0000after",
+          "address": "fuzz-recipient@contract-recipient.test"
         },
         "invalid": true
       },
@@ -12738,25 +12659,6 @@
         "mediaType": "application/json"
       }
     },
-    "no_mailbox_by_id": {
-      "summary": "No mailbox has that id",
-      "description": "A well-formed id that names nothing is 404, as an address that names nothing is.",
-      "request": {
-        "body": {
-          "mailbox_id": 2147483647
-        }
-      },
-      "response": {
-        "status": 404,
-        "body": {
-          "error": {
-            "code": "mailbox_not_found",
-            "message": "Mailbox not found"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
     "processed": {
       "summary": "The inbound pipeline quarantines or discards it",
       "requires": {
@@ -12784,8 +12686,8 @@
       "summary": "Raw message invalid is refused before storage",
       "request": {
         "body": {
-          "mailbox_id": 900100,
-          "raw_message": "a"
+          "raw_message": "a",
+          "address": "fuzz-recipient@contract-recipient.test"
         }
       },
       "response": {
@@ -12808,8 +12710,8 @@
       "summary": "Raw message nul is refused before storage",
       "request": {
         "body": {
-          "mailbox_id": 900100,
-          "raw_message": "U3ViamVjdDogSGVsbG8NCg0KYmVmb3JlAGFmdGVy"
+          "raw_message": "U3ViamVjdDogSGVsbG8NCg0KYmVmb3JlAGFmdGVy",
+          "address": "fuzz-recipient@contract-recipient.test"
         }
       },
       "response": {
@@ -12846,7 +12748,7 @@
             "message": "Request body failed validation",
             "details": {
               "fields": {
-                "address": "mailbox_id or address required"
+                "address": "required"
               }
             }
           }
@@ -12858,8 +12760,8 @@
       "summary": "Recipients cc nul is refused before storage",
       "request": {
         "body": {
-          "mailbox_id": 900100,
-          "recipients_cc": "before\u0000after"
+          "recipients_cc": "before\u0000after",
+          "address": "fuzz-recipient@contract-recipient.test"
         }
       },
       "response": {
@@ -12882,12 +12784,12 @@
       "summary": "Recipients nested nul is refused before storage",
       "request": {
         "body": {
-          "mailbox_id": 900100,
           "recipients_to": [
             {
               "name": "before\u0000after"
             }
-          ]
+          ],
+          "address": "fuzz-recipient@contract-recipient.test"
         }
       },
       "response": {
@@ -12910,8 +12812,8 @@
       "summary": "Recipients to nul is refused before storage",
       "request": {
         "body": {
-          "mailbox_id": 900100,
-          "recipients_to": "before\u0000after"
+          "recipients_to": "before\u0000after",
+          "address": "fuzz-recipient@contract-recipient.test"
         }
       },
       "response": {
@@ -12934,8 +12836,8 @@
       "summary": "References nul is refused before storage",
       "request": {
         "body": {
-          "mailbox_id": 900100,
-          "references": "before\u0000after"
+          "references": "before\u0000after",
+          "address": "fuzz-recipient@contract-recipient.test"
         },
         "invalid": true
       },
@@ -13000,8 +12902,8 @@
       "summary": "Sender name nul is refused before storage",
       "request": {
         "body": {
-          "mailbox_id": 900100,
-          "sender_name": "before\u0000after"
+          "sender_name": "before\u0000after",
+          "address": "fuzz-recipient@contract-recipient.test"
         },
         "invalid": true
       },
@@ -13025,8 +12927,8 @@
       "summary": "Sender nul is refused before storage",
       "request": {
         "body": {
-          "mailbox_id": 900100,
-          "sender": "before\u0000after"
+          "sender": "before\u0000after",
+          "address": "fuzz-recipient@contract-recipient.test"
         },
         "invalid": true
       },
@@ -13050,8 +12952,8 @@
       "summary": "Subject nul is refused before storage",
       "request": {
         "body": {
-          "mailbox_id": 900100,
-          "subject": "before\u0000after"
+          "subject": "before\u0000after",
+          "address": "fuzz-recipient@contract-recipient.test"
         },
         "invalid": true
       },
@@ -13075,8 +12977,8 @@
       "summary": "Tls version nul is refused before storage",
       "request": {
         "body": {
-          "mailbox_id": 900100,
-          "tls_version": "before\u0000after"
+          "tls_version": "before\u0000after",
+          "address": "fuzz-recipient@contract-recipient.test"
         },
         "invalid": true
       },

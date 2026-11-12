@@ -79,7 +79,7 @@ func TestThreadRootDeliveryAndDraftRoutes(t *testing.T) {
 				var serve http.HandlerFunc
 				switch route {
 				case "gateway":
-					body["mailbox_id"], body["sender"], body["raw_message"] = owner.ID, other.Address, []byte(raw)
+					body["address"], body["sender"], body["raw_message"] = owner.Address, other.Address, []byte(raw)
 					serve = deliveryRoute(handler)
 				case "restmail":
 					body["from"], body["to"], body["raw_message"] = other.Address, []string{owner.Address}, raw

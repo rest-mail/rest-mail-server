@@ -16,19 +16,9 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// The gateway delivery pairs the inbound pipeline never sees run the production router
-// with internal mTLS off, where the route is on the public router (#642): a body that is
-// not JSON or not an object, a folder the rule refuses, and an address that is no mailbox
-// here. The mailbox lookup answers from the rows checkMailboxAddress's pairs use.
-//
-// address_empty, mailbox_id_zero, recipient_missing and no_mailbox_by_id are the refusals
-// the fuzz phase stops sending once it holds mailbox_id at a real recipient (probes.py).
-//
-// The *_nul examples, folder_blank and raw_message_invalid are refused before any lookup or
-// write, so their mailbox_id need not exist when they run.
 var gatewayDeliveryExamples = []string{
-	"malformed_json", "body_array", "folder_invalid", "folder_blank", "no_mailbox", "raw_message_invalid",
-	"address_empty", "mailbox_id_zero", "recipient_missing", "no_mailbox_by_id",
+	"malformed_json", "body_array", "no_mailbox", "raw_message_invalid",
+	"address_empty", "recipient_missing",
 	"recipients_nested_nul", "address_nul", "sender_nul", "sender_name_nul", "subject_nul", "body_text_nul", "body_html_nul",
 	"message_id_nul", "in_reply_to_nul", "references_nul", "client_ip_nul", "helo_name_nul", "tls_version_nul",
 	"raw_message_nul", "recipients_to_nul", "recipients_cc_nul",

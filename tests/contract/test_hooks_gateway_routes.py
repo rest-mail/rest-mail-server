@@ -68,9 +68,9 @@ class GatewayRoutes(unittest.TestCase):
         module, _, registered = load_hooks()
         self.assertTrue(registered["deliverMessage"])
         for body in (
-            '{"mailbox_id":900100}',
-            '{"mailbox_id": 900100, "sender": "a", "subject": "\\u0000", "address": "a"}',
-            '{"mailbox_id":900100,"raw_message":"QQ==","folder":"kahbk"}',
+            '{"address":"fuzz-recipient@contract-recipient.test"}',
+            '{"sender": "a", "subject": "\\u0000", "address": "a"}',
+            '{"address":"fuzz-recipient@contract-recipient.test","raw_message":"QQ==","subject":"generated"}',
         ):
             for name in registered["deliverMessage"]:
                 with self.subTest(body=body, hook=name):

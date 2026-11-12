@@ -1177,7 +1177,7 @@ func (h *MessageHandler) RegisterDelivery(rs endpoint.Routes, bodyLimit endpoint
 			"Stored text must not contain NUL (U+0000), including strings and object keys anywhere in recipients_to or recipients_cc " +
 			"and the decoded raw_message octets; a refusal is 422 validation_failed naming the field, before any write. " +
 			"raw_message is a standard padded base64 string (format: byte), not unencoded message text. " +
-			"An omitted or empty folder means INBOX; otherwise " + folderNameRule,
+			"The recipient is resolved from address. Arriving mail uses server time and default Inbox/flags, subject to inbound rules. Import-only fields sent by older callers are ignored.",
 		Status: http.StatusCreated, SuccessStatuses: []int{http.StatusOK},
 		Responses: []oapifly.EndpointResponse{
 			{Status: http.StatusCreated, Description: "Delivered; the message made", Type: oapifly.TypeOf[endpoint.Data[Message]]()},
@@ -1194,7 +1194,7 @@ var deliveryDeclaredFields = declaredFieldsOf(deliverMessageBody{})
 // and every file is gone when it answers, however it answers, a panic included.
 func (h *MessageHandler) deliverSpooledMessage(r *http.Request, _ struct{}) (endpoint.Status[any], error) {
 	var req deliverMessageBody
-	spool, err := spoolDelivery(r, &req, spooledBodySpec{declared: deliveryDeclaredFields}, func() []byte { return req.RawMessage })
+	spool, err := spoolDelivery(r, &req, spooledBodySpec{declared: deliveryDeclaredFields, ignored: deliveryImportOnlyFields}, func() []byte { return req.RawMessage })
 	if err != nil {
 		return endpoint.Status[any]{}, err
 	}
@@ -1229,17 +1229,6 @@ func (h *MessageHandler) deliverMessage(r *http.Request, req deliverMessageBody,
 		return zero, endpoint.Invalid(fields)
 	}
 
-	// The folder a gateway delivers into follows the folder rule, behind the gateway's own
-	// check (#759): a name the rule refuses is 422 on folder, and INBOX in any case is INBOX.
-	// No folder is the inbox.
-	folder := req.Folder
-	if folder != "" {
-		if problem := rmail.FolderNameProblem(folder); problem != "" {
-			return zero, endpoint.Invalid(map[string]string{"folder": problem})
-		}
-		folder = rmail.CanonicalFolder(folder)
-	}
-
 	// Hop count (RFC 5321 §6.3, #1647): an arrival from another server (ReceivedTLS set) with
 	// more Received: fields than the limit is a mail loop, refused as the SMTP gateway refuses it.
 	// A message filed into a mailbox (IMAP APPEND, ReceivedTLS nil) is not a hop: old mail may
@@ -1257,14 +1246,9 @@ func (h *MessageHandler) deliverMessage(r *http.Request, req deliverMessageBody,
 	var mailbox models.Mailbox
 	var recipient repositories.Recipient
 	var lookupErr error
-	if req.MailboxID > 0 {
-		lookupErr = h.db.WithContext(r.Context()).First(&mailbox, req.MailboxID).Error
-	} else if req.Address != "" {
-		recipient, lookupErr = repositories.ResolveRecipient(h.db.WithContext(r.Context()), req.Address, false)
-		mailbox = recipient.Mailbox
-	} else {
-		return zero, endpoint.Invalid(map[string]string{"mailbox_id": "mailbox_id or address required", "address": "mailbox_id or address required"})
-	}
+	// The recipient is named by address alone (#1474).
+	recipient, lookupErr = repositories.ResolveRecipient(h.db.WithContext(r.Context()), req.Address, false)
+	mailbox = recipient.Mailbox
 	if errors.Is(lookupErr, repositories.ErrAliasRouting) {
 		slog.WarnContext(r.Context(), "delivery alias refused", "address", req.Address, "error", lookupErr)
 		return zero, endpoint.Refuse(http.StatusForbidden, "rejected", rmail.AliasRoutingRefusal)
@@ -1317,13 +1301,6 @@ func (h *MessageHandler) deliverMessage(r *http.Request, req deliverMessageBody,
 		RawMessage:   rawMessage,
 		ClientIP:     req.ClientIP,
 		HeloName:     req.HeloName,
-		Folder:       folder,
-		IsAnswered:   req.IsAnswered,
-		IsRead:       req.IsRead,
-		IsFlagged:    req.IsFlagged,
-		IsStarred:    req.IsStarred,
-		IsDraft:      req.IsDraft,
-		ReceivedAt:   req.ReceivedAt,
 		ReceivedTLS:  req.ReceivedTLS,
 		TLSVersion:   req.TLSVersion,
 		RequireTLS:   req.RequireTLS,
@@ -2411,19 +2388,6 @@ type localDeliveryParams struct {
 	RawMessage        string
 	ClientIP          string
 	HeloName          string
-	// Folder is the destination folder the message is created in (empty = INBOX).
-	// Set by the IMAP gateway's COPY/APPEND so the message lands directly in its
-	// destination. The flag pointers and ReceivedAt let COPY preserve the source
-	// message's flags and INTERNALDATE and APPEND apply the client-supplied flags;
-	// a nil flag / nil-or-zero ReceivedAt keeps the delivery default, so ordinary
-	// inbound mail (which never sets them) is unaffected.
-	Folder     string
-	IsAnswered *bool
-	IsRead     *bool
-	IsFlagged  *bool
-	IsStarred  *bool
-	IsDraft    *bool
-	ReceivedAt *time.Time
 	// Inbound transport-security (always-on, inbound-MX only). Nil ReceivedTLS =
 	// not an inbound-MX delivery (IMAP APPEND / submission) →
 	// persisted as NULL, never counted as a plaintext arrival.
@@ -2761,14 +2725,8 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 	}
 
 	// ── Create message ───────────────────────────────────────────────
-	// The destination folder defaults to INBOX; the IMAP gateway sets params.Folder
-	// on COPY/APPEND so the message is created directly in its destination instead
-	// of being delivered to INBOX and then moved (a non-atomic two-call flow).
-	// Otherwise it is the folder a Sieve fileinto chose, INBOX when none did (#787).
-	folder := params.Folder
-	if folder == "" {
-		folder = sieveFolder(ctx, emailJSON, mailbox.Address)
-	}
+	// The folder a Sieve fileinto chose, INBOX when none did (#787).
+	folder := sieveFolder(ctx, emailJSON, mailbox.Address)
 	msg := models.Message{
 		MailboxID:    mailbox.ID,
 		Folder:       folder,
@@ -2798,34 +2756,8 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 		RequireTLS:  params.RequireTLS,
 	}
 
-	// The flags a Sieve script's imap4flags actions set (RFC 5232, #787); the flags a
-	// gateway carried, below, are the client's own and win.
 	flags := sieveFlagsOf(emailJSON)
 	msg.IsRead, msg.IsFlagged, msg.IsDraft, msg.RuleClass = flags.seen, flags.flagged, flags.draft, flags.ruleClass
-
-	// Apply IMAP flags / INTERNALDATE the gateway carried through: COPY preserves
-	// the source message's flags and internal date (RFC 3501 §6.4.7); APPEND
-	// applies the client-supplied flags. A nil flag pointer leaves the model
-	// default; a nil-or-zero ReceivedAt leaves the column's `default:now()` to fill
-	// the internal date, so ordinary inbound mail keeps arriving stamped with now().
-	if params.IsAnswered != nil {
-		msg.IsAnswered = *params.IsAnswered
-	}
-	if params.IsRead != nil {
-		msg.IsRead = *params.IsRead
-	}
-	if params.IsFlagged != nil {
-		msg.IsFlagged = *params.IsFlagged
-	}
-	if params.IsStarred != nil {
-		msg.IsStarred = *params.IsStarred
-	}
-	if params.IsDraft != nil {
-		msg.IsDraft = *params.IsDraft
-	}
-	if params.ReceivedAt != nil && !params.ReceivedAt.IsZero() {
-		msg.ReceivedAt = *params.ReceivedAt
-	}
 
 	// Attachment references, message and quota commit together. If metadata
 	// cannot be saved, the sender retries; an uploaded content-addressed object
