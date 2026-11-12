@@ -7,8 +7,7 @@ import (
 	"fmt"
 	"io"
 	"sync/atomic"
-
-	gomessage "github.com/emersion/go-message"
+	"unsafe"
 )
 
 // Defaults for Limits. Each is what an established implementation already applies to real mail:
@@ -78,7 +77,16 @@ func structureLimit(format string, args ...any) error {
 type partBudget struct {
 	limits Limits
 	parts  int
+	// sourceSize is the size of the whole message, when it is known.
+	sourceSize int
+	// arena holds what's read of the parts. See readPart.
+	arena []byte
+	// fields reads the parts' headers, in the one buffer the message's header used.
+	fields *fieldReader
 }
+
+// partArenaLeast is the least an arena holds, for a message whose size isn't known.
+const partArenaLeast = 4 << 10
 
 func newPartBudget() *partBudget { return &partBudget{limits: CurrentLimits()} }
 
@@ -91,6 +99,41 @@ func (b *partBudget) part() error {
 	return nil
 }
 
+// readPart reads a part's content onto the end of the arena, and answers it. It stays there until
+// release, so a part that's kept is a view of the arena and costs no copy of its own, and a
+// message's parts together cost one buffer of the message's size, which they nearly always fit in.
+// When they don't, because a charset grew them, the part moves to a new arena and what's kept stays
+// on the old one. Nothing is written over a part that wasn't released.
+func (b *partBudget) readPart(r io.Reader) ([]byte, error) {
+	start := len(b.arena)
+	for {
+		if len(b.arena) == cap(b.arena) {
+			held := len(b.arena) - start
+			next := b.fields.takeBuffer(max(2*held, fieldBufferDoubles))
+			if next == nil {
+				next = make([]byte, 0, max(2*held, b.sourceSize+bytes.MinRead, partArenaLeast))
+			}
+			next = next[:held]
+			copy(next, b.arena[start:])
+			b.arena, start = next, 0
+		}
+		n, err := r.Read(b.arena[len(b.arena):cap(b.arena)])
+		b.arena = b.arena[:len(b.arena)+n]
+		if err == io.EOF {
+			return b.arena[start:], nil
+		}
+		if err != nil {
+			b.arena = b.arena[:start]
+			return nil, err
+		}
+	}
+}
+
+// release gives the arena back the part readPart last answered, for one nothing keeps.
+func (b *partBudget) release(content []byte) {
+	b.arena = b.arena[:len(b.arena)-len(content)]
+}
+
 // enter answers an error when a multipart at depth would nest too deep.
 func (b *partBudget) enter(depth int) error {
 	if depth > b.limits.MaxNestingDepth {
@@ -99,20 +142,70 @@ func (b *partBudget) enter(depth int) error {
 	return nil
 }
 
-// CheckStructure reads a message from source and answers the ErrStructureLimit that Parse would,
-// wrapped, or nil. It holds no part's content, for a caller that must refuse such a message before
-// it does anything that needs the message in memory. A message Parse fails on for any other reason
-// is nil here.
-func CheckStructure(source io.Reader) error {
-	entity, _ := gomessage.Read(source)
-	if entity == nil {
+// CheckStructure reads a message's body as Parse reads it, and answers the ErrStructureLimit that
+// Parse would, wrapped, or nil. It holds no part's content and keeps none of a field it doesn't open
+// a part with, for a caller that must refuse such a message before it does anything that needs the
+// message in memory. A message that fails for any other reason is nil here. size is the body's, for
+// a part's long field to be read without growing a buffer to it.
+func (h *HeaderSection) CheckStructure(body io.Reader, size int64) error {
+	entity, _ := h.opening.open(body, new(partCharsets))
+	return checkOpened(entity, &fieldReader{sourceSize: int(size), wanted: isContentType, typeOnly: true})
+}
+
+// CheckSource is CheckStructure of a whole message, for a caller holding no parsed header, and it costs
+// a message that holds few delimiter lines one buffer: only a message with more lines opening with "--"
+// than the limit on parts can be over it. A nesting that's too deep with fewer than that isn't found
+// here, and the parse that follows refuses it as it would have. A source that doesn't read is nil, for
+// the read that follows to say so.
+func CheckSource(source io.ReadSeeker, size int64) error {
+	lines, err := countDelimiterLines(source, CurrentLimits().MaxParts)
+	if err != nil || lines <= CurrentLimits().MaxParts {
 		return nil
 	}
-	mr := entity.MultipartReader()
+	if _, err := source.Seek(0, io.SeekStart); err != nil {
+		return nil
+	}
+	br, fields, kept, _, err := readTopForOpening(source, int(size))
+	if err != nil {
+		return nil
+	}
+	fields.wanted, fields.typeOnly = isContentType, true
+	opened, _ := kept.open(br, &fields.charsets)
+	return checkOpened(opened, fields)
+}
+
+// countDelimiterLines counts the lines of source opening with "--", up to one past most. A delimiter
+// line always follows a line break, as the header section ends with one.
+func countDelimiterLines(source io.Reader, most int) (int, error) {
+	const opening = "\n--"
+	buffer := make([]byte, len(opening)-1, delimiterScan)
+	lines := 0
+	for lines <= most {
+		n, err := source.Read(buffer[len(opening)-1 : cap(buffer)])
+		scanned := buffer[:len(opening)-1+n]
+		lines += bytes.Count(scanned, []byte(opening))
+		copy(buffer, scanned[len(scanned)-(len(opening)-1):])
+		if err == io.EOF {
+			return lines, nil
+		}
+		if err != nil {
+			return lines, err
+		}
+	}
+	return lines, nil
+}
+
+// delimiterScan is how much of a message countDelimiterLines holds at once.
+const delimiterScan = 8 << 10
+
+// checkOpened counts the parts of an opened message, whose fields read only what opens a part.
+func checkOpened(entity *entity, fields *fieldReader) error {
+	budget := newPartBudget()
+	budget.fields = fields
+	mr := entity.multipart(budget.fields)
 	if mr == nil {
 		return nil
 	}
-	budget := newPartBudget()
 	if err := budget.enter(1); err != nil {
 		return fmt.Errorf("parse message: %w", err)
 	}
@@ -124,19 +217,19 @@ func CheckStructure(source io.Reader) error {
 
 // checkParts counts the parts of a multipart at depth as parseMultipart counts them. Asking for the
 // next part passes over what is left of the one before.
-func checkParts(mr gomessage.MultipartReader, depth int, budget *partBudget) error {
+func checkParts(mr *multipartReader, depth int, budget *partBudget) error {
 	for {
-		part, err := mr.NextPart()
+		part, err := mr.nextPart()
 		if err == io.EOF {
 			return nil
 		}
-		if err != nil && !gomessage.IsUnknownCharset(err) && !gomessage.IsUnknownEncoding(err) {
+		if err != nil && !isUnknownCoding(err) {
 			return nil // a malformed boundary: nothing further can be read
 		}
 		if err := budget.part(); err != nil {
 			return err
 		}
-		if nested := part.MultipartReader(); nested != nil {
+		if nested := part.multipart(budget.fields); nested != nil {
 			if err := budget.enter(depth + 1); err != nil {
 				return err
 			}
@@ -151,10 +244,14 @@ func checkParts(mr gomessage.MultipartReader, depth int, budget *partBudget) err
 // first empty line. A folded field counts once.
 func ReceivedCount(raw []byte) int {
 	count := 0
-	scanner := bufio.NewScanner(bytes.NewReader(raw))
-	scanner.Buffer(make([]byte, 0, 4096), len(raw)+1)
-	for scanner.Scan() {
-		line := bytes.TrimRight(scanner.Bytes(), "\r")
+	for rest := raw; len(rest) != 0; {
+		line := rest
+		if end := bytes.IndexByte(rest, '\n'); end >= 0 {
+			line, rest = rest[:end], rest[end+1:]
+		} else {
+			rest = nil
+		}
+		line = bytes.TrimRight(line, "\r")
 		if len(line) == 0 {
 			break
 		}
@@ -213,8 +310,9 @@ func CountReceived(src io.Reader) (int, error) {
 	}
 }
 
-// TooManyReceived reports whether raw carries more Received: header fields than the limit in
-// force, which RFC 5321 §6.3 takes as a mail loop.
-func TooManyReceived(raw []byte) bool {
-	return ReceivedCount(raw) > CurrentLimits().MaxReceived
+// TooManyReceived reports whether a header section carries more Received: header fields than the
+// limit in force, which RFC 5321 §6.3 takes as a mail loop. ReceivedCount only reads what it's given,
+// so a section as long as its sender likes isn't copied to count them.
+func TooManyReceived(section string) bool {
+	return ReceivedCount(unsafe.Slice(unsafe.StringData(section), len(section))) > CurrentLimits().MaxReceived
 }

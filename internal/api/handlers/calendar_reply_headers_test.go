@@ -274,6 +274,10 @@ func TestCalendarReplySummaryCannotAddAHeader(t *testing.T) {
 		t.Run(name+" to a hosted organizer", func(t *testing.T) {
 			f := newCalendarReplyFixture(t)
 			f.reply(t, f.deliverInvitation(t, f.organizer.Address, summary))
+			raw := f.queued(t, f.organizer.Address)
+			checkReplyHeaders(t, raw, wantSubject)
+			checkReplyBody(t, raw, wantNote)
+			deliverQueued(t, f.h, f.tx, f.sentCopy(t))
 			var delivered models.Message
 			if err := f.tx.Where("mailbox_id = ? AND folder = ?", f.organizer.ID, "INBOX").First(&delivered).Error; err != nil {
 				t.Fatalf("no delivered reply: %v", err)
@@ -369,6 +373,20 @@ func TestCalendarReplyNonASCIISummaryRoundTrips(t *testing.T) {
 				t.Errorf("the Sent copy has subject %q", sent.Subject)
 			}
 		})
+	}
+}
+
+// The Sent copy holds the source the reply left as, so a mail client reads that message and the
+// size reported for it, not a rebuild from the row (#1902).
+func TestCalendarReplySentCopyStoresItsSource(t *testing.T) {
+	f := newCalendarReplyFixture(t)
+	f.reply(t, f.deliverInvitation(t, f.remote, "SUMMARY:Lunch"))
+	raw, sent := f.queued(t, f.remote), f.sentCopy(t)
+	if raw == "" || sent.RawMessage != raw || sent.RawSize != len(raw) || sent.SizeBytes != len(raw) {
+		t.Fatalf("the Sent copy stores %d octets with raw_size %d and size_bytes %d; the reply is %d", len(sent.RawMessage), sent.RawSize, sent.SizeBytes, len(raw))
+	}
+	if sent.IMAPSize == 0 || sent.POP3UTF8Size == 0 || sent.DowngradedSize == 0 {
+		t.Fatalf("the Sent copy's sizes are not measured: %d %d %d", sent.IMAPSize, sent.POP3UTF8Size, sent.DowngradedSize)
 	}
 }
 

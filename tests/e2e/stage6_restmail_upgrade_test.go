@@ -1,6 +1,7 @@
 package e2e
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -74,7 +75,7 @@ func testStage6RestmailUpgrade(t *testing.T) {
 			"to":          []string{"other@restmail.test"},
 			"subject":     subject,
 			"body_text":   "Direct REST delivery test",
-			"raw_message": raw,
+			"raw_message": base64.StdEncoding.EncodeToString([]byte(raw)),
 		})
 		resp, err := httpClient.Post(apiBaseURL+"/restmail/messages",
 			"application/json", strings.NewReader(string(reqBody)))
@@ -112,7 +113,8 @@ func testStage6RestmailUpgrade(t *testing.T) {
 		resp.Body.Close()
 
 		otherClient, otherClientAcct := restmailInbox(t, "other@restmail.test", accountPassword)
-		msgID := waitForMessage(t, otherClient, otherClientAcct, "INBOX", subject, 15*time.Second)
+		// A same-server send takes the outbound queue and the MX like any other (#1564).
+		msgID := waitForMessage(t, otherClient, otherClientAcct, "INBOX", subject, 30*time.Second)
 		t.Logf("Mail3→Mail3 delivery (upgrade path): id=%d", msgID)
 	})
 

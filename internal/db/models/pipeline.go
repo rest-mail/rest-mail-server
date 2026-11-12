@@ -3,6 +3,8 @@ package models
 import (
 	"encoding/json"
 	"time"
+
+	"gorm.io/gorm"
 )
 
 // Pipeline represents a filter pipeline configured for a domain.
@@ -177,12 +179,15 @@ func (GreylistEntry) TableName() string { return "greylist_entries" }
 
 // Quarantine holds messages that were quarantined by the pipeline.
 type Quarantine struct {
-	ID               uint      `gorm:"primaryKey" json:"id"`
-	MailboxID        uint      `gorm:"not null;index" json:"mailbox_id"`
-	Sender           string    `gorm:"size:255;not null" json:"sender"`
-	Subject          string    `gorm:"type:text" json:"subject"`
-	BodyPreview      string    `gorm:"type:text" json:"body_preview"`
+	ID          uint   `gorm:"primaryKey" json:"id"`
+	MailboxID   uint   `gorm:"not null;index" json:"mailbox_id"`
+	Sender      string `gorm:"size:255;not null" json:"sender"`
+	Subject     string `gorm:"type:text" json:"subject"`
+	BodyPreview string `gorm:"type:text" json:"body_preview"`
+	// RawMessage is the message in memory, whatever its octets; a row holds it in raw_message,
+	// or in raw_octets when text can't represent it. See OutboundQueue.
 	RawMessage       string    `gorm:"type:text;not null" json:"-"`
+	RawOctets        []byte    `gorm:"type:bytea" json:"-"`
 	SpamScore        *float32  `json:"spam_score,omitempty"`
 	QuarantineReason string    `gorm:"size:50;not null" json:"quarantine_reason"`
 	ReceivedAt       time.Time `json:"received_at"`
@@ -193,6 +198,32 @@ type Quarantine struct {
 }
 
 func (Quarantine) TableName() string { return "quarantine" }
+
+// BeforeCreate puts the message in the column that can hold it, and keeps the columns decoded
+// from it readable: a preview cut at a byte count can end inside a character.
+func (q *Quarantine) BeforeCreate(*gorm.DB) error {
+	q.RawMessage, q.RawOctets = SourceColumns(q.RawMessage)
+	q.Subject, q.BodyPreview = ReadableText(q.Subject), ReadableText(q.BodyPreview)
+	return nil
+}
+
+// AfterCreate gives the caller back the message it stored.
+func (q *Quarantine) AfterCreate(*gorm.DB) error {
+	q.joinSource()
+	return nil
+}
+
+// AfterFind reads the message from the column that holds it.
+func (q *Quarantine) AfterFind(*gorm.DB) error {
+	q.joinSource()
+	return nil
+}
+
+func (q *Quarantine) joinSource() {
+	if q.RawOctets != nil {
+		q.RawMessage, q.RawOctets = string(q.RawOctets), nil
+	}
+}
 
 // VacationResponse tracks sent auto-replies to prevent duplicates.
 type VacationResponse struct {
@@ -226,12 +257,13 @@ type VacationConfig struct {
 
 func (VacationConfig) TableName() string { return "vacation_configs" }
 
-// Attachment represents a stored attachment reference.
+// Attachment represents a stored attachment reference. Filename and ContentType are what a sender
+// wrote, so BeforeCreate fits them to their columns. The message's source keeps them as they arrived.
 type Attachment struct {
 	ID          uint      `gorm:"primaryKey" json:"id"`
 	MessageID   uint      `gorm:"not null;index" json:"message_id"`
 	Filename    string    `gorm:"size:255" json:"filename"`
-	ContentType string    `gorm:"size:100" json:"content_type"`
+	ContentType string    `gorm:"size:255" json:"content_type"` // RFC 6838 section 4.2: 127 + "/" + 127
 	SizeBytes   int64     `json:"size_bytes"`
 	StorageType string    `gorm:"size:20;default:filesystem" json:"storage_type"` // "filesystem" or "s3"
 	StorageRef  string    `gorm:"size:500;not null;index" json:"storage_ref"`
@@ -245,6 +277,17 @@ type Attachment struct {
 }
 
 func (Attachment) TableName() string { return "attachments" }
+
+// BeforeCreate is here so that no way of storing an attachment can refuse its message over what the
+// sender called it (#1915).
+func (a *Attachment) BeforeCreate(*gorm.DB) error {
+	a.ContentType = ReadableText(a.ContentType)
+	a.Filename = FitFilename(a.Filename)
+	if !fitsColumn(a.ContentType, attachmentTypeColumn) {
+		a.ContentType = "application/octet-stream"
+	}
+	return nil
+}
 
 // SieveScript stores per-mailbox Sieve filter scripts.
 //

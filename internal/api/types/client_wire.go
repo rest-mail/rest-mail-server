@@ -7,8 +7,6 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/antimatter-studios/go-oapifly"
-
 	"github.com/rest-mail/rest-mail-server/internal/grants"
 	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 )
@@ -56,6 +54,7 @@ type gatewaySessionOpenRequest struct {
 	Protocol string `json:"protocol" enums:"imap,pop3,smtp" message:"must be \"imap\", \"pop3\" or \"smtp\"" missing:"must be \"imap\", \"pop3\" or \"smtp\""`
 	Address  string `json:"address" format:"email" description:"The account's address, as the mail client gave it"`
 	Password string `json:"password" format:"password" description:"What the mail client gave as its password: an app password, or one of the account's passwords. Never stored or recorded"`
+	ClientIP string `json:"client_ip" description:"The IP address the mail client is connected to the gateway from. The sign-in throttle and the audit record use it, and the API takes it only from a gateway's own certificate"`
 }
 
 type sendMessageRequest struct {
@@ -86,8 +85,7 @@ type sendMessageRequest struct {
 }
 
 type deliverMessageBody struct {
-	MailboxID    uint            `json:"mailbox_id,omitempty"`
-	Address      string          `json:"address,omitempty" pattern:"^[^\\x00]*$" message:"must not contain a NUL byte"`
+	Address      string          `json:"address" minLength:"1" minLengthMessage:"required" missing:"required" pattern:"^[^\\x00]*$" message:"must not contain a NUL byte"`
 	Sender       string          `json:"sender,omitempty" pattern:"^[^\\x00]*$" message:"must not contain a NUL byte"`
 	SenderName   string          `json:"sender_name,omitempty" pattern:"^[^\\x00]*$" message:"must not contain a NUL byte"`
 	RecipientsTo json.RawMessage `json:"recipients_to,omitempty"`
@@ -104,21 +102,6 @@ type deliverMessageBody struct {
 	RawMessage []byte `json:"raw_message,omitempty"`
 	ClientIP   string `json:"client_ip,omitempty" pattern:"^[^\\x00]*$" message:"must not contain a NUL byte"`
 	HeloName   string `json:"helo_name,omitempty" pattern:"^[^\\x00]*$" message:"must not contain a NUL byte"`
-	// Folder is the destination folder the message must be created in (empty =
-	// INBOX). Set by the IMAP gateway's COPY/APPEND so the message is created
-	// directly in its destination in one atomic delivery, rather than delivered
-	// to INBOX and then moved. Flags and ReceivedAt (INTERNALDATE) let COPY
-	// preserve the source message's flags/internal date and APPEND apply the
-	// client-supplied flags at creation time. A nil flag pointer / nil (or zero)
-	// ReceivedAt keeps the delivery default, so ordinary inbound mail is
-	// unaffected.
-	Folder     string     `json:"folder,omitempty" maxLength:"255" maxLengthMessage:"must be at most 255 bytes" pattern:"^$|[^\\x09-\\x0d \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]" patternMessage:"required" pattern2:"^$|^[^\\x09-\\x0d \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]([\\s\\S]*[^\\x09-\\x0d \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000])?$" pattern2Message:"must not begin or end with a space" pattern3:"^[^\\x00-\\x1f\\x7f-\\x9f]*$" pattern3Message:"must not contain a control character" pattern4:"^([^.]|\\.[^.])*(\\.)?$" pattern4Message:"must not contain \"..\""`
-	IsAnswered *bool      `json:"is_answered,omitempty"`
-	IsRead     *bool      `json:"is_read,omitempty"`
-	IsFlagged  *bool      `json:"is_flagged,omitempty"`
-	IsStarred  *bool      `json:"is_starred,omitempty"`
-	IsDraft    *bool      `json:"is_draft,omitempty"`
-	ReceivedAt *time.Time `json:"received_at,omitempty"`
 	// Inbound transport-security metrics (always-on, inbound-MX only). A nil
 	// ReceivedTLS means the caller is not an inbound-MX delivery, persisted as
 	// NULL. TLSCipher is accepted for wire completeness but only the version is
@@ -261,12 +244,15 @@ type Message struct {
 	Subject           string                `json:"subject"`
 	BodyText          string                `json:"body_text,omitempty"`
 	BodyHTML          string                `json:"body_html,omitempty"`
-	Headers           json.RawMessage       `json:"headers,omitempty"`
+	Headers           json.RawMessage       `json:"headers,omitempty" description:"The message's header fields as it arrived, each name with its values; an empty array when none were recorded (mail sent from here, drafts, mail delivered by a gateway, and imported or federated mail whose fields come to 64 KiB or more). GET /messages/{id}/raw answers them all"`
 	SealedHash        string                `json:"sealed_hash,omitempty" description:"SHA-256 receipt seal (restmail-seal-v1); covers the exact stored source and displayed headers and bodies. Absent on historical unsealed messages. Does not authenticate the author or establish safety"`
 	CalendarEventsRaw json.RawMessage       `json:"calendar_events,omitempty"`
 	SizeBytes         int                   `json:"size_bytes"`
 	RawSize           int                   `json:"raw_size" description:"The exact octet count of the stored raw message; 0 when none is stored"`
-	DowngradedSize    int                   `json:"downgraded_size" description:"The octet count of the stored raw message with its headers downgraded to ASCII (RFC 6857), as sent to a POP3 or IMAP client that has not enabled UTF-8; 0 when not measured"`
+	DowngradedSize    int                   `json:"downgraded_size" description:"The octet count POP3 RETR sends a client that has not enabled UTF-8: the stored raw message with its headers downgraded to ASCII (RFC 6857) and every line ending in CRLF; 0 when not measured"`
+	POP3UTF8Size      int                   `json:"pop3_utf8_size" description:"The octet count POP3 RETR sends a client that has enabled UTF-8: the stored raw message with every line ending in CRLF; 0 when not measured"`
+	IMAPSize          int                   `json:"imap_size" description:"The octet count of the message as an IMAP FETCH sends it to a session that has not enabled UTF-8, with headers 7-bit and non-textual data transfer-encoded (RFC 3501 section 7.4.2); the stored message does not change; 0 when no raw message is stored"`
+	IMAPUTF8Size      int                   `json:"imap_utf8_size" description:"The octet count of the message as an IMAP FETCH sends it to a session that has enabled UTF-8; 0 when no raw message is stored"`
 	ReceivedTLS       *bool                 `json:"received_tls,omitempty" description:"For an inbound-MX delivery, whether it arrived encrypted"`
 	TLSVersion        string                `json:"tls_version,omitempty"`
 	HasAttachments    bool                  `json:"has_attachments"`
@@ -377,6 +363,12 @@ type VanishedUID struct {
 	ModSeq uint64 `json:"mod_seq" minimum:"1" description:"The folder's mod-sequence when the message left it"`
 }
 
+// AccountTimeZone is the account's own time zone, which IMAP SEARCH's calendar
+// days follow. Null means none is set.
+type AccountTimeZone struct {
+	TimeZone *string `json:"time_zone" format:"iana-time-zone" example:"Europe/Berlin" description:"An IANA time zone name; null means none is set, and IMAP uses UTC"`
+}
+
 type Quota struct {
 	MessageCount   int64   `json:"message_count"`
 	PercentUsed    float64 `json:"percent_used"`
@@ -450,20 +442,6 @@ type GatewaySessionOpenRequest = gatewaySessionOpenRequest
 // SendMessageRequest is the sendMessageRequest wire type used by the endpoint registration.
 type SendMessageRequest = sendMessageRequest
 
-// AnyOf states what no one field can: a delivery names its mailbox by a nonzero
-// mailbox_id or a nonempty address. The binder refuses a body naming neither
-// with the handler's own words, as its description says.
-func (deliverMessageBody) AnyOf() oapifly.AnyOfRule {
-	return oapifly.AnyOfRule{
-		Alternatives: []oapifly.Alternative{
-			{Required: []string{"mailbox_id"}, Fields: map[string]string{"mailbox_id": `minimum:"1"`}},
-			{Required: []string{"address"}, Fields: map[string]string{"address": `minLength:"1"`}},
-		},
-		Field:   "address",
-		Message: "mailbox_id or address required",
-	}
-}
-
 // DeliverMessageBody is the deliverMessageBody wire type used by the endpoint registration.
 type DeliverMessageBody = deliverMessageBody
 
@@ -508,19 +486,41 @@ func (m Message) WireSize() int {
 	return m.SizeBytes
 }
 
-// WireSizeFor is the size a POP3 or IMAP session is sent: WireSize for a
-// session that enabled UTF-8, and the downgraded size for one that did not.
-// A message whose downgraded size is not measured yet reports WireSize.
+// WireSizeFor is the size a POP3 session is sent, with UTF-8 enabled or not, which STAT,
+// LIST and RETR report alike. A message whose size is not measured yet reports WireSize.
 func (m Message) WireSizeFor(utf8 bool) int {
-	if !utf8 && m.RawSize > 0 && m.DowngradedSize > 0 {
-		return m.DowngradedSize
+	size := m.DowngradedSize
+	if utf8 {
+		size = m.POP3UTF8Size
+	}
+	if m.RawSize > 0 && size > 0 {
+		return size
 	}
 	return m.WireSize()
+}
+
+// IMAPWireSizeFor is the size an IMAP session is sent by FETCH, which RFC822.SIZE
+// reports. A message with no stored raw form reports its rebuilt size.
+func (m Message) IMAPWireSizeFor(utf8 bool) int {
+	switch {
+	case m.RawSize == 0:
+		return m.SizeBytes
+	case utf8:
+		return m.IMAPUTF8Size
+	}
+	return m.IMAPSize
 }
 
 // RestmailDiscovery is the unwrapped RESTMAIL protocol discovery document.
 type RestmailDiscovery struct {
 	Endpoint string `json:"endpoint" format:"uri" pattern:"^https://"`
+}
+
+// DeliveredMessage names the message a delivery made.
+type DeliveredMessage struct {
+	ID        uint   `json:"id"`
+	MessageID string `json:"message_id"`
+	Folder    string `json:"folder"`
 }
 
 // DeliveryProcessed is an accepted message quarantined or discarded without a mailbox row.

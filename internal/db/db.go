@@ -7,7 +7,6 @@ import (
 
 	"github.com/rest-mail/rest-mail-server/internal/config"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
-	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -85,6 +84,7 @@ func autoMigrate(db *gorm.DB) error {
 		// Mail the user asked the server to send later; replayed through the
 		// ordinary send path when due.
 		&models.ScheduledSend{},
+		&models.SendIdempotency{},
 		// Accepted messages waiting for their content checks and delivery.
 		&models.InboundMessage{},
 		&models.ServerLimits{},
@@ -240,6 +240,12 @@ func autoMigrate(db *gorm.DB) error {
 		slog.Warn("pg_stat_statements not available; the slow statement view will answer 503", "error", err)
 	}
 
+	// What the queue worker claims from. Every message that has left stays in the table with
+	// the oldest next_attempt there is, so without this each claim walks past all of them.
+	if err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_outbound_queue_due ON outbound_queue(next_attempt) WHERE status IN ('pending', 'deferred', 'delivering')`).Error; err != nil {
+		slog.Warn("failed to create outbound queue due index", "error", err)
+	}
+
 	// Pipeline indexes
 	db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_contacts_mailbox_email ON contacts(mailbox_id, email)`)
 	db.Exec(`CREATE INDEX IF NOT EXISTS idx_contacts_trust_level ON contacts(mailbox_id, trust_level)`)
@@ -256,50 +262,7 @@ func autoMigrate(db *gorm.DB) error {
 	db.Exec(`DROP INDEX IF EXISTS idx_vacation_responses_unique`)
 	db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_vacation_responses_handle ON vacation_responses(mailbox_id, sender, handle)`)
 
-	// Messages stored before downgraded_size existed get it measured once.
-	if err := BackfillDowngradedSize(db); err != nil {
-		slog.Warn("failed to backfill downgraded message sizes", "error", err)
-	}
-
 	slog.Info("database migration completed")
-	return nil
-}
-
-// downgradedSizeBatch is how many messages BackfillDowngradedSize reads at a time.
-const downgradedSizeBatch = 200
-
-// BackfillDowngradedSize measures downgraded_size for messages stored with a
-// raw source before the column existed. A message whose headers are ASCII gets
-// its raw_size. Until a row is measured the gateways report raw_size, as before,
-// so a backfill that stops part way leaves nothing worse than it was. Rows are
-// read in id order a batch at a time; a measured row is never read again.
-func BackfillDowngradedSize(db *gorm.DB) error {
-	var lastID uint
-	measured := 0
-	for {
-		var rows []models.Message
-		err := db.Select("id", "raw_size", "raw_message", "raw_octets").
-			Where("id > ? AND raw_size > 0 AND downgraded_size = 0", lastID).
-			Order("id").Limit(downgradedSizeBatch).Find(&rows).Error
-		if err != nil {
-			return err
-		}
-		if len(rows) == 0 {
-			break
-		}
-		for _, row := range rows {
-			size := rmail.DowngradedSize(string(row.Source()))
-			if err := db.Model(&models.Message{}).Where("id = ?", row.ID).
-				UpdateColumn("downgraded_size", size).Error; err != nil {
-				return err
-			}
-			lastID = row.ID
-			measured++
-		}
-	}
-	if measured > 0 {
-		slog.Info("backfilled downgraded message sizes", "messages", measured)
-	}
 	return nil
 }
 

@@ -127,20 +127,27 @@ type restmailDeliverBody struct {
 	InReplyTo  string                     `json:"in_reply_to,omitempty" pattern:"^[^\\x00-\\x08\\x0A-\\x1F\\x7F-\\x9F]*$" patternMessage:"must not contain line breaks or other control characters" pattern2:"^$|^[ \\t]*<(?:[^\\x00-\\x20\\x7F()<>\\[\\]:;@\\\\,.\"]+(?:\\.[^\\x00-\\x20\\x7F()<>\\[\\]:;@\\\\,.\"]+)*|\"(?:[^\"\\\\\\x00-\\x08\\x0A-\\x1F\\x7F]|\\\\[^\\x00-\\x08\\x0A-\\x1F\\x7F])*\")@(?:[^\\x00-\\x20\\x7F()<>\\[\\]:;@\\\\,.\"]+(?:\\.[^\\x00-\\x20\\x7F()<>\\[\\]:;@\\\\,.\"]+)*|\\[[^\\x00-\\x20\\x7F\\[\\]\\\\]*\\])>(?:[ \\t]*<(?:[^\\x00-\\x20\\x7F()<>\\[\\]:;@\\\\,.\"]+(?:\\.[^\\x00-\\x20\\x7F()<>\\[\\]:;@\\\\,.\"]+)*|\"(?:[^\"\\\\\\x00-\\x08\\x0A-\\x1F\\x7F]|\\\\[^\\x00-\\x08\\x0A-\\x1F\\x7F])*\")@(?:[^\\x00-\\x20\\x7F()<>\\[\\]:;@\\\\,.\"]+(?:\\.[^\\x00-\\x20\\x7F()<>\\[\\]:;@\\\\,.\"]+)*|\\[[^\\x00-\\x20\\x7F\\[\\]\\\\]*\\])>)*[ \\t]*$" pattern2Message:"must be one or more RFC 5322 msg-ids (<id-left@id-right>), separated by spaces" description:"One or more RFC 5322 msg-ids separated by spaces, with no line break or other control character; refused 422 otherwise. Empty is the same as omitted"`
 	References string                     `json:"references,omitempty" pattern:"^[^\\x00-\\x08\\x0A-\\x1F\\x7F-\\x9F]*$" patternMessage:"must not contain line breaks or other control characters" pattern2:"^$|^[ \\t]*<(?:[^\\x00-\\x20\\x7F()<>\\[\\]:;@\\\\,.\"]+(?:\\.[^\\x00-\\x20\\x7F()<>\\[\\]:;@\\\\,.\"]+)*|\"(?:[^\"\\\\\\x00-\\x08\\x0A-\\x1F\\x7F]|\\\\[^\\x00-\\x08\\x0A-\\x1F\\x7F])*\")@(?:[^\\x00-\\x20\\x7F()<>\\[\\]:;@\\\\,.\"]+(?:\\.[^\\x00-\\x20\\x7F()<>\\[\\]:;@\\\\,.\"]+)*|\\[[^\\x00-\\x20\\x7F\\[\\]\\\\]*\\])>(?:[ \\t]*<(?:[^\\x00-\\x20\\x7F()<>\\[\\]:;@\\\\,.\"]+(?:\\.[^\\x00-\\x20\\x7F()<>\\[\\]:;@\\\\,.\"]+)*|\"(?:[^\"\\\\\\x00-\\x08\\x0A-\\x1F\\x7F]|\\\\[^\\x00-\\x08\\x0A-\\x1F\\x7F])*\")@(?:[^\\x00-\\x20\\x7F()<>\\[\\]:;@\\\\,.\"]+(?:\\.[^\\x00-\\x20\\x7F()<>\\[\\]:;@\\\\,.\"]+)*|\\[[^\\x00-\\x20\\x7F\\[\\]\\\\]*\\])>)*[ \\t]*$" pattern2Message:"must be one or more RFC 5322 msg-ids (<id-left@id-right>), separated by spaces" description:"One or more RFC 5322 msg-ids separated by spaces, with no line break or other control character; refused 422 otherwise. Empty is the same as omitted"`
 	Headers    map[string]json.RawMessage `json:"headers,omitempty"`
-	RawMessage string                     `json:"raw_message,omitempty"`
+	RawMessage []byte                     `json:"raw_message,omitempty" description:"Full RFC 5322 message, base64-encoded so any octets arrive exactly as sent"`
 	Sender     string                     `json:"sender,omitempty"`
 	Recipients *[]string                  `json:"recipients,omitempty"`
 }
 
+// restmailShortestAddressedMessage is the base64 length of the shortest RFC 5322 message that can
+// name a recipient on its own: "To:a@b.c\r\n". A field ends in CRLF (RFC 5322 section 2.2), and a
+// hosted domain has a dot in it (validateDomainName).
+const restmailShortestAddressedMessage = "16"
+
 // AnyOf states what no one field can: a delivery names its recipients in a nonempty to,
-// a nonempty recipients, or a raw_message whose To header the handler parses. The binder
-// refuses a body meeting none with the handler's own 422.
+// a nonempty recipients, or a raw_message whose To header the handler parses. A schema can't say a
+// message has a To header, but it can say how short one can be, and base64 shorter than that is
+// refused whatever it holds. The binder refuses a body meeting none with the handler's own 422; it
+// reads no length on a raw_message, so one too short gets that 422 from the handler.
 func (restmailDeliverBody) AnyOf() oapifly.AnyOfRule {
 	return oapifly.AnyOfRule{
 		Alternatives: []oapifly.Alternative{
 			{Required: []string{"to"}, Fields: map[string]string{"to": `minItems:"1"`}},
 			{Required: []string{"recipients"}, Fields: map[string]string{"recipients": `minItems:"1"`}},
-			{Required: []string{"raw_message"}, Fields: map[string]string{"raw_message": `minLength:"1"`}},
+			{Required: []string{"raw_message"}, Fields: map[string]string{"raw_message": `minLength:"` + restmailShortestAddressedMessage + `"`}},
 		},
 		Field:   "to",
 		Message: "at least one recipient required",
@@ -160,12 +167,12 @@ var restmailDeclaredFields = declaredFieldsOf(restmailDeliverBody{})
 // every file is gone when it answers, however it answers, a panic included.
 func (h *RestmailHandler) deliverSpooled(r *http.Request, _ struct{}) (RestmailDelivery, error) {
 	var in restmailDeliverInput
-	spool, err := spoolDelivery(r, &in, spooledBodySpec{rawIsText: true, declared: restmailDeclaredFields}, func() []byte { return []byte(in.Body.RawMessage) })
+	spool, err := spoolDelivery(r, &in, spooledBodySpec{declared: restmailDeclaredFields}, func() []byte { return in.Body.RawMessage })
 	if err != nil {
 		return RestmailDelivery{}, err
 	}
 	defer spool.remove()
-	in.Body.RawMessage = ""
+	in.Body.RawMessage = nil
 	return h.deliver(r, in, spool)
 }
 
@@ -200,11 +207,6 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput, spoo
 	if len(to) == 0 && req.Recipients != nil && len(*req.Recipients) > 0 {
 		to = *req.Recipients
 	}
-	var headers json.RawMessage
-	if req.Headers != nil {
-		headers, _ = json.Marshal(req.Headers)
-	}
-
 	// When raw_message is provided, its headers fill the structured fields a request left empty.
 	//
 	// Authentication-Results claiming this server's authserv-id did not come
@@ -216,30 +218,36 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput, spoo
 	}
 	// A message from another server with more Received: fields than the hop limit is a mail
 	// loop (RFC 5321 §6.3, #1647), refused as the SMTP gateway refuses it.
-	if rmime.TooManyReceived([]byte(headerSection)) {
+	if rmime.TooManyReceived(headerSection) {
 		return RestmailDelivery{}, endpoint.Refuse(http.StatusForbidden, "rejected", "Routing loop detected: too many Received headers")
+	}
+	// A source says what its headers are. A peer's own account of them is kept only when there's no
+	// source, or it could call a list's mail a person's (#1915).
+	var headers json.RawMessage
+	if req.Headers != nil && headerSection == "" {
+		headers, _ = json.Marshal(req.Headers)
 	}
 	if headerSection != "" {
 		// Nested deeper or holding more parts than the MIME limits allow (#1641). This passes over
 		// the message in its file and holds none of it, and it comes before any lookup.
-		err := spool.checkStructure()
+		parsed, parseErr, err := spool.readHeaders()
 		if errors.Is(err, rmime.ErrStructureLimit) {
 			return RestmailDelivery{}, endpoint.Refuse(http.StatusForbidden, "rejected", "Message structure too complex: too deeply nested or too many MIME parts")
 		}
 		if err != nil {
 			return RestmailDelivery{}, restmailReadRefusal(r.Context(), "spooled message")
 		}
-		parsedHeaders, err := rmime.ParseHeaders(strings.NewReader(headerSection))
-		if err != nil {
-			slog.WarnContext(r.Context(), "restmail: failed to parse raw_message", "error", err)
+		if parseErr != nil {
+			slog.WarnContext(r.Context(), "restmail: failed to parse raw_message", "error", parseErr)
 			// Fall through to use whatever structured fields were provided
 		} else {
-			if len(parsedHeaders.From) > 0 && req.From == "" {
-				req.From = parsedHeaders.From[0].Address
+			parsedHeaders := parsed.Headers
+			if parsedHeaders.From.Len() > 0 && req.From == "" {
+				req.From = parsedHeaders.From.FirstAddress()
 			}
-			if len(parsedHeaders.To) > 0 && len(to) == 0 {
-				addrs := make([]string, len(parsedHeaders.To))
-				for i, a := range parsedHeaders.To {
+			if parsedHeaders.To.Len() > 0 && len(to) == 0 {
+				addrs := make([]string, parsedHeaders.To.Len())
+				for i, a := range parsedHeaders.To.All() {
 					addrs[i] = a.Address
 				}
 				to = addrs
@@ -261,13 +269,17 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput, spoo
 			}
 			// Preserve raw headers as JSON
 			if headers == nil && parsedHeaders.Raw != nil {
-				headers, _ = json.Marshal(parsedHeaders.Raw)
+				headers = decodedHeadersColumn(parsedHeaders.Raw)
 			}
 		}
 	}
 
 	if req.MessageID == "" {
 		req.MessageID = rmail.GenerateMessageID(rmail.DomainFromAddress(req.From))
+	}
+	// What was read from the message goes in text columns, and any octets may have come with it.
+	for _, text := range []*string{&req.Subject, &req.MessageID, &req.InReplyTo, &req.References} {
+		*text = models.ReadableText(*text)
 	}
 
 	if len(to) == 0 {
@@ -302,13 +314,12 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput, spoo
 	// external sender is accepted regardless of signature.
 	// A message with no signature in its header section has nothing to verify, so it isn't read.
 	aligned, keyUnavailable := false, false
+	source := ""
 	if !h.deliverAuth.trusted(clientIP) && (h.deliverAuth.strict || fromLocal) && headerNamesDKIMSignature(headerSection) {
-		raw, err := spool.message()
-		if err != nil {
+		if source, err = spool.message(); err != nil {
 			return RestmailDelivery{}, restmailReadRefusal(r.Context(), "spooled message")
 		}
-		aligned, keyUnavailable = dkimAlignedWith(r.Context(), raw, fromDomain)
-		req.RawMessage = raw
+		aligned, keyUnavailable = dkimAlignedWith(r.Context(), source, fromDomain)
 	}
 	if ok, reason := h.deliverAuth.authorize(clientIP, fromDomain, fromLocal, aligned); !ok {
 		if keyUnavailable {
@@ -358,15 +369,17 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput, spoo
 	// Every refusal that needs no more than the headers has been made. Past this the pipeline and
 	// the row need the message whole, parsed for the body, attachments and calendar events.
 	var parsed *pipeline.EmailJSON
-	if parsed, err = spool.readRestmailMessage(&req); err != nil {
+	if parsed, err = spool.readRestmailMessage(&req, &source); err != nil {
 		return RestmailDelivery{}, restmailReadRefusal(r.Context(), "spooled message")
 	}
+	// The body comes from the message or its file, and any octets may have come with it.
+	req.BodyText, req.BodyHTML = models.ReadableText(req.BodyText), models.ReadableText(req.BodyHTML)
 
 	// Only receive-capable identities reach filters. In a mixed delivery a
 	// discard or redirect must not turn refused recipients into acceptances.
 	to = accepted
 	if hasAlias {
-		return h.deliverResolvedRecipients(r.Context(), req, envelopeFrom, clientIP, accepted, refused, resolvedRecipients)
+		return h.deliverResolvedRecipients(r.Context(), req, source, envelopeFrom, clientIP, accepted, refused, resolvedRecipients)
 	}
 
 	delivered := []string{}
@@ -378,7 +391,7 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput, spoo
 		remaining := make([]string, 0, len(to))
 		for _, rcpt := range to {
 			if recipient, ok := recipients[rcpt]; ok {
-				consumed, err := h.tlsReports.receive(r.Context(), recipient.mailbox.Address, req.RawMessage)
+				consumed, err := h.tlsReports.receive(r.Context(), recipient.mailbox.Address, source)
 				if err != nil {
 					return RestmailDelivery{}, endpoint.Refuse(http.StatusServiceUnavailable, "deferred", "Message deferred, retry later")
 				}
@@ -403,7 +416,7 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput, spoo
 	// (with its real headers, including Headers.Raw) seeds the message so
 	// header-dependent filters see the actual headers, mirroring the SMTP inbound
 	// path; the structured request fields fill any gaps.
-	emailJSON := buildInboundEmail(parsed, envelopeFrom, req.From, to, req.Subject, req.Date, req.MessageID, req.BodyText, req.BodyHTML, req.RawMessage, restmailClientIP(r))
+	emailJSON := buildInboundEmail(parsed, envelopeFrom, req.From, to, req.Subject, req.Date, req.MessageID, req.BodyText, req.BodyHTML, source, restmailClientIP(r))
 
 	// Look up inbound pipeline for the recipient domain
 	var domainName string
@@ -463,7 +476,7 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput, spoo
 				// the peer retries.
 				rmTrace.Outcome = outcomeDeferred
 				h.recordTrace(r.Context(), buildTrace(rmTrace))
-				return RestmailDelivery{}, endpoint.Refuse(http.StatusServiceUnavailable, "deferred", "Message deferred, retry later")
+				return RestmailDelivery{}, restmailDeferral(deferredError(result, "pipeline deferred delivery"))
 			case pipeline.ActionDiscard:
 				rmTrace.Outcome = outcomeDiscarded
 				h.recordTrace(r.Context(), buildTrace(rmTrace))
@@ -472,7 +485,10 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput, spoo
 				var holds []models.Quarantine
 				for _, rcpt := range to {
 					if recipient, ok := recipients[rcpt]; ok {
-						holds = append(holds, quarantineHold(recipient.mailbox.ID, req.From, req.Subject, req.BodyText, result))
+						holds = append(holds, quarantineHold(recipient.mailbox.ID, recipient.deliveredTo, req.From, req.Subject, req.BodyText, source, result))
+						delivered = append(delivered, rcpt)
+					} else {
+						failed = append(failed, rcpt)
 					}
 				}
 				if err := h.storeHolds(r.Context(), holds); err != nil {
@@ -501,7 +517,7 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput, spoo
 			// actually enqueued, so a redirect that cannot be honoured never loses
 			// the message.
 			forwarded := 0
-			for _, fwd := range buildRedirectForwards(r.Context(), result.FinalEmail, req.RawMessage, req.From, to, domainName, authResults) {
+			for _, fwd := range buildRedirectForwards(r.Context(), result.FinalEmail, source, req.From, to, domainName, authResults) {
 				row := fwd
 				if err := h.db.WithContext(r.Context()).Create(&row).Error; err != nil {
 					slog.ErrorContext(r.Context(), "restmail: failed to enqueue sieve redirect",
@@ -529,7 +545,7 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput, spoo
 	// prepended). Previously the stored message had no raw form at all, so
 	// RESTMAIL-delivered mail lost its full MIME (attachments, headers) over
 	// IMAP/POP3 and couldn't be re-verified.
-	rawMessage := req.RawMessage
+	rawMessage := source
 	if rawMessage != "" {
 		rawMessage = pipeline.AuthResultsHeader(authResults) + rawMessage
 	}
@@ -554,7 +570,7 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput, spoo
 		recipient, ok := recipients[rcpt]
 		own, ran := sieved[rcpt]
 		if ok && ran && own.FinalAction == pipeline.ActionQuarantine {
-			holds = append(holds, quarantineHold(recipient.mailbox.ID, req.From, req.Subject, req.BodyText, own))
+			holds = append(holds, quarantineHold(recipient.mailbox.ID, recipient.deliveredTo, req.From, req.Subject, req.BodyText, source, own))
 		}
 	}
 	if err := h.storeHolds(r.Context(), holds); err != nil {
@@ -590,7 +606,7 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput, spoo
 				continue
 			}
 			forwarded := 0
-			for _, fwd := range buildRedirectForwards(r.Context(), final, req.RawMessage, req.From, []string{rcpt}, domainName, authResults) {
+			for _, fwd := range buildRedirectForwards(r.Context(), final, source, req.From, []string{rcpt}, domainName, authResults) {
 				row := fwd
 				if err := h.db.WithContext(r.Context()).Create(&row).Error; err != nil {
 					slog.ErrorContext(r.Context(), "restmail: failed to enqueue sieve redirect", "recipient", row.Recipient, "error", err)
@@ -671,7 +687,7 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput, spoo
 			if err := repositories.ReserveStorage(tx, mailbox.ID, int64(sizeBytes)+attachmentBytes); err != nil {
 				return err
 			}
-			if err := tx.Create(&msg).Error; err != nil {
+			if err := createDeliveredMessage(tx, &msg); err != nil {
 				return err
 			}
 			for _, attachment := range attachmentRows {
@@ -722,10 +738,10 @@ func headerNamesDKIMSignature(section string) bool {
 	return strings.Contains(strings.ToLower(section), "dkim-signature")
 }
 
-// readRestmailMessage reads the message and the text fields from their files into req, and fills
-// the text a request left empty from the message's own parts. It answers the parsed message, or
-// nil for one that doesn't parse.
-func (s *deliverySpool) readRestmailMessage(req *restmailDeliverBody) (*pipeline.EmailJSON, error) {
+// readRestmailMessage reads the text fields from their files into req, and the message into source
+// unless the caller has already read it, and fills the text a request left empty from the message's
+// own parts. It answers the parsed message, or nil for one that doesn't parse.
+func (s *deliverySpool) readRestmailMessage(req *restmailDeliverBody, source *string) (*pipeline.EmailJSON, error) {
 	var err error
 	if req.BodyText, err = s.text(deliveryBodyText, req.BodyText); err != nil {
 		return nil, err
@@ -733,17 +749,21 @@ func (s *deliverySpool) readRestmailMessage(req *restmailDeliverBody) (*pipeline
 	if req.BodyHTML, err = s.text(deliveryBodyHTML, req.BodyHTML); err != nil {
 		return nil, err
 	}
-	if req.RawMessage == "" {
-		if req.RawMessage, err = s.message(); err != nil {
+	if *source == "" {
+		if *source, err = s.message(); err != nil {
 			return nil, err
 		}
 	}
-	if req.RawMessage == "" {
+	if *source == "" {
 		return nil, nil
 	}
-	parsed, err := rmime.ParseReader(strings.NewReader(req.RawMessage))
-	if err != nil {
+	if s.parsed == nil {
 		return nil, nil // Said when its headers were read.
+	}
+	// The section at the start of the message is the one already parsed.
+	parsed, err := s.parsed.Parse((*source)[len(s.section):])
+	if err != nil {
+		return nil, nil
 	}
 	if req.BodyText == "" || req.BodyHTML == "" {
 		text, html := extractBodyParts(parsed.Body)
@@ -820,18 +840,22 @@ func (h *RestmailHandler) runRecipientScripts(ctx context.Context, cfg *pipeline
 	return sieved, nil
 }
 
-// quarantineHold is a RESTMAIL message held for mailboxID, with the
-// pipeline's reason.
-func quarantineHold(mailboxID uint, from, subject, bodyText string, result *pipeline.ExecutionResult) models.Quarantine {
+// quarantineHold is a RESTMAIL message held for mailboxID, with the pipeline's reason. It keeps
+// the whole source, as a delivery to the mailbox would: releasing it stores what it holds.
+func quarantineHold(mailboxID uint, deliveredTo, from, subject, bodyText, source string, result *pipeline.ExecutionResult) models.Quarantine {
 	preview := bodyText
 	if len(preview) > 200 {
 		preview = preview[:200]
+	}
+	if deliveredTo != "" && source != "" {
+		source = "Delivered-To: " + deliveredTo + "\r\n" + source
 	}
 	return models.Quarantine{
 		MailboxID:        mailboxID,
 		Sender:           from,
 		Subject:          subject,
 		BodyPreview:      preview,
+		RawMessage:       source,
 		QuarantineReason: quarantineReason(result),
 		ReceivedAt:       time.Now(),
 		ExpiresAt:        time.Now().Add(30 * 24 * time.Hour),
@@ -899,11 +923,11 @@ func buildInboundEmail(parsed *pipeline.EmailJSON, envelopeFrom, from string, to
 	}
 
 	// Fill any header the parse didn't populate from the structured request fields.
-	if len(emailJSON.Headers.From) == 0 {
-		emailJSON.Headers.From = []pipeline.Address{{Address: from}}
+	if emailJSON.Headers.From.Len() == 0 {
+		emailJSON.Headers.From = pipeline.Addresses(pipeline.Address{Address: from})
 	}
-	if len(emailJSON.Headers.To) == 0 {
-		emailJSON.Headers.To = toAddrs
+	if emailJSON.Headers.To.Len() == 0 {
+		emailJSON.Headers.To = pipeline.Addresses(toAddrs...)
 	}
 	if emailJSON.Headers.Subject == "" {
 		emailJSON.Headers.Subject = subject
@@ -979,6 +1003,16 @@ func (h *RestmailHandler) inboundPipeline(ctx context.Context, domainName string
 	}
 	return &pipeline.PipelineConfig{ID: stored.ID, DomainID: stored.DomainID,
 		Direction: stored.Direction, Filters: pipeline.WithDMARCReportsStep(pipeline.WithVacationStep(filters)), Active: stored.Active}, nil
+}
+
+func restmailDeferral(err error) error {
+	switch {
+	case errors.Is(err, errGreylisted):
+		return endpoint.Refuse(http.StatusServiceUnavailable, rmail.GreylistedRefusal, "Greylisted, retry later")
+	case errors.Is(err, errRateLimited):
+		return endpoint.Refuse(http.StatusServiceUnavailable, rmail.RateLimitedRefusal, "Too many messages, retry later")
+	}
+	return endpoint.Refuse(http.StatusServiceUnavailable, "deferred", "Message deferred, retry later")
 }
 
 func restmailReadRefusal(ctx context.Context, stage string) error {

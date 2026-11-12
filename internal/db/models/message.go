@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
+	"unsafe"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -19,7 +20,9 @@ func (j JSONB) Value() (driver.Value, error) {
 	if len(j) == 0 {
 		return "[]", nil
 	}
-	return string(j), nil
+	// A view, because the column can be as long as a header a sender wrote, and the driver only
+	// reads it while a statement runs, and nothing writes to a JSONB in that time.
+	return unsafe.String(unsafe.SliceData(j), len(j)), nil
 }
 
 func (j *JSONB) Scan(value interface{}) error {
@@ -59,6 +62,14 @@ func MessageReplyParentSQL(prefix string) string {
 	return `left(btrim(COALESCE(NULLIF(` + prefix + `in_reply_to, ''), (regexp_match(` + prefix + `"references", '([^\s<>]+)[\s<>]*$'))[1], ''), '<> '), 255)`
 }
 
+// LocalRefusal is one recipient on this server that refused a sent message, and the kind
+// of refusal. What the refusing filter said is not kept: only the category reaches the
+// sender.
+type LocalRefusal struct {
+	Address  string          `json:"address"`
+	Category FailureCategory `json:"category"`
+}
+
 type Message struct {
 	ID        uint   `gorm:"primaryKey" json:"id"`
 	MailboxID uint   `gorm:"not null;index:idx_messages_mailbox_folder;index:idx_messages_mailbox_deleted" json:"mailbox_id"`
@@ -85,12 +96,18 @@ type Message struct {
 	RawMessage   string     `gorm:"type:text" json:"-"`
 	AuthResults  JSONB      `gorm:"type:jsonb;default:null" json:"-"`
 	SealedHash   string     `gorm:"size:64;default:null" json:"sealed_hash,omitempty"`
+	// LocalRefusals are the recipients on this server that refused this Sent copy when it
+	// was sent, as a JSON array of LocalRefusal. A refused local recipient leaves no queue
+	// row and no delivered copy, and is not tried again, so this is its only record (#1899).
+	// NULL when none refused.
+	LocalRefusals JSONB `gorm:"type:jsonb;default:null" json:"-"`
 	// RuleClass is the class a Sieve rule assigned at delivery, recorded once with the message
 	// so the answer stays the same when the script later changes. NULL on every row delivered
 	// before this column existed, with no backfill, and when no rule assigned one.
 	RuleClass    string `gorm:"size:16;default:null" json:"-"`
 	PendingDraft bool   `gorm:"-" json:"-"`
-	// RawOctets preserves imported sources that PostgreSQL text cannot represent.
+	// RawOctets preserves sources that PostgreSQL text cannot represent. RawMessage is empty
+	// then: Source and SourceText read whichever holds the message.
 	RawOctets         []byte `gorm:"type:bytea" json:"-"`
 	CalendarEventsRaw JSONB  `gorm:"column:calendar_events;type:jsonb" json:"calendar_events,omitempty"`
 	SizeBytes         int    `gorm:"not null;default:0" json:"size_bytes"`
@@ -101,14 +118,26 @@ type Message struct {
 	// subject/body lengths) does not guarantee. Zero means "no stored raw";
 	// consumers fall back to SizeBytes.
 	RawSize int `gorm:"not null;default:0" json:"raw_size"`
-	// DowngradedSize is the octet count a POP3 or IMAP client that has not
-	// enabled UTF-8 receives: the stored raw with its header block downgraded
-	// to ASCII (RFC 6857). It equals RawSize when the headers are already ASCII.
-	// STAT, LIST and RFC822.SIZE report it to such a client, because the size
-	// must count the octets actually sent (RFC 1939 section 5, RFC 3501
-	// section 2.3.4). Zero means "not measured yet" (a row stored before this
-	// column existed and not yet backfilled); consumers fall back to RawSize.
+	// DowngradedSize is the octet count a POP3 client that has not enabled UTF-8
+	// receives: the stored raw with its header block downgraded to ASCII (RFC
+	// 6857) and a top-level 8-bit boundary respelled, see rmail.DowngradeForPOP3,
+	// with every line ending in CRLF as RETR sends it. POP3UTF8Size is the same
+	// count for a client that has enabled UTF-8, which gets the headers as stored.
+	// Both equal RawSize when the headers are already ASCII, every line ends in
+	// CRLF and the last line has one. STAT and LIST report them, because the size
+	// must count the octets actually sent (RFC 1939 section 5). BeforeCreate measures
+	// both for every stored raw, so zero means there is no stored raw.
 	DowngradedSize int `gorm:"not null;default:0" json:"downgraded_size"`
+	POP3UTF8Size   int `gorm:"column:pop3_utf8_size;not null;default:0" json:"pop3_utf8_size"`
+	// IMAPSize and IMAPUTF8Size are the octet counts an IMAP FETCH of the whole
+	// message sends, without and with UTF-8 enabled: FETCH converts a message to
+	// 7-bit on the way out (RFC 3501 section 7.4.2) and RawMessage never changes.
+	// RFC822.SIZE reports them, so a client's size matches what it receives
+	// without the message being loaded for every metadata FETCH. They equal
+	// RawSize when the message is already 7-bit, and are zero only when no raw
+	// source is stored.
+	IMAPSize     int `gorm:"column:imap_size;not null;default:0" json:"imap_size"`
+	IMAPUTF8Size int `gorm:"column:imap_utf8_size;not null;default:0" json:"imap_utf8_size"`
 	// ReceivedTLS records the inbound transport security of an inbound-MX
 	// (port 25) delivery: true = the connection was encrypted (implicit TLS or
 	// STARTTLS), false = plaintext. It is a pointer so NULL can mean "not an
@@ -162,14 +191,34 @@ type Message struct {
 
 func (Message) TableName() string { return "messages" }
 
-// BeforeCreate measures the downgraded size of a message stored with its raw
-// source, on every path that stores one, so no delivery path can forget it. It
-// also has the INSERT return mod_seq, so the row it answers holds the value the
-// trigger stored and not the model's default (#1756).
+// BeforeCreate measures the sizes a gateway reports for a message stored with its
+// raw source, on every path that stores one, so no delivery path can forget them.
 func (m *Message) BeforeCreate(tx *gorm.DB) error {
 	returnStoredModSeq(tx)
-	if m.DowngradedSize == 0 && m.RawSize > 0 {
-		m.DowngradedSize = rmail.DowngradedSize(m.sourceText())
+	m.fitColumns()
+	if m.RawOctets == nil {
+		m.RawMessage, m.RawOctets = SourceColumns(m.RawMessage)
+	}
+	for _, text := range []*string{&m.MsgID, &m.InReplyTo, &m.References, &m.ThreadID, &m.Sender, &m.SenderName, &m.Subject, &m.BodyText, &m.BodyHTML} {
+		*text = ReadableText(*text)
+	}
+	for _, list := range []*JSONB{&m.RecipientsTo, &m.RecipientsCc, &m.Headers, &m.CalendarEventsRaw} {
+		*list = readableJSON(*list)
+	}
+	if m.RawSize > 0 && (m.DowngradedSize == 0 || m.POP3UTF8Size == 0 || m.IMAPSize == 0 || m.IMAPUTF8Size == 0) {
+		sizes := rmail.MeasureWireSizes(m.sourceView())
+		if m.DowngradedSize == 0 {
+			m.DowngradedSize = sizes.Downgraded
+		}
+		if m.POP3UTF8Size == 0 {
+			m.POP3UTF8Size = sizes.POP3UTF8
+		}
+		if m.IMAPSize == 0 {
+			m.IMAPSize = sizes.IMAP
+		}
+		if m.IMAPUTF8Size == 0 {
+			m.IMAPUTF8Size = sizes.IMAPUTF8
+		}
 	}
 	if m.PendingDraft || (m.IsDeleted && m.Sender == "system" && m.Subject == "" && m.BodyText == "" && m.BodyHTML == "" && m.RawMessage == "" && m.RawOctets == nil) {
 		m.SealedHash = ""
@@ -180,10 +229,11 @@ func (m *Message) BeforeCreate(tx *gorm.DB) error {
 	return err
 }
 
-// sourceText is Source as text. A message held as text isn't copied for it.
-func (m Message) sourceText() string {
+// sourceView is the source as a string without copying it, for reading it while nothing
+// else writes to it: measuring a message must not cost a copy of it. Nothing may keep it.
+func (m *Message) sourceView() string {
 	if m.RawOctets != nil {
-		return string(m.RawOctets)
+		return unsafe.String(unsafe.SliceData(m.RawOctets), len(m.RawOctets))
 	}
 	return m.RawMessage
 }
@@ -230,4 +280,12 @@ func (m Message) Source() []byte {
 		return m.RawOctets
 	}
 	return []byte(m.RawMessage)
+}
+
+// SourceText is Source as a string, with no copy of a source stored as text.
+func (m Message) SourceText() string {
+	if m.RawOctets != nil {
+		return string(m.RawOctets)
+	}
+	return m.RawMessage
 }

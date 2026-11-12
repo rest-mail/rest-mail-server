@@ -43,7 +43,7 @@ func TestRESTMAILStoredHeadersThroughPOP3RETR(t *testing.T) {
 			router := chi.NewRouter()
 			rs := endpoint.Routes{Router: router, Registry: endpoint.NewRegistry()}
 			NewGatewaySessionHandler(db, middleware.DefaultGatewayServices).Register(rs, GatewaySessionRouteChecks{
-				Credential: endpoint.Middleware{Wrap: middleware.NewSessionPasswords(PasswordVerifier(db), nil, nil).Authenticate()},
+				Credential: endpoint.Middleware{Wrap: middleware.NewSessionPasswords(PasswordVerifier(db), nil, nil, nil).Authenticate()},
 				Throttle:   passingSignInChecks.Throttle,
 				Audit:      passingSignInChecks.Audit,
 			})
@@ -78,7 +78,6 @@ func TestRESTMAILStoredHeadersThroughPOP3RETR(t *testing.T) {
 			row.SizeBytes = len(row.Subject) + len(row.BodyText)
 			if withRaw {
 				row.RawMessage = "From: sender@external.test\r\nSubject: Stored headers\r\nMessage-ID: <original@example.test>\r\n\r\nOriginal body.\r\n"
-				row.RawSize = len(row.RawMessage)
 			}
 			if err := db.Create(&row).Error; err != nil {
 				t.Fatal(err)

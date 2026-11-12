@@ -158,7 +158,7 @@ func gatewayBody(message string, extra map[string]any) []byte {
 }
 
 func restmailBody(message string, extra map[string]any) []byte {
-	body := map[string]any{"from": "someone@remote.test", "to": []string{"owner@spool.test"}, "raw_message": message}
+	body := map[string]any{"from": "someone@remote.test", "to": []string{"owner@spool.test"}, "raw_message": spoolBase64(message)}
 	for key, value := range extra {
 		if value == nil {
 			delete(body, key)
@@ -218,7 +218,8 @@ func TestDeliveryRefusalsDoNotHoldTheMessage(t *testing.T) {
 	}{
 		{"no such mailbox", map[string]any{"address": "no@spool.test", "body_text": large}, 404},
 		{"a mailbox that can't receive", map[string]any{"address": "silent@spool.test", "body_html": large}, 404},
-		{"a bad folder", map[string]any{"folder": " x", "body_text": large}, 422},
+		// Delivery names its recipient by address alone (#1474): none is refused like any bad field.
+		{"no address", map[string]any{"address": "", "body_text": large}, 422},
 		{"a field no one declared", map[string]any{"x": 1}, 422},
 		{"NUL in the body text", map[string]any{"body_text": large + "\x00"}, 422},
 	} {
@@ -229,12 +230,6 @@ func TestDeliveryRefusalsDoNotHoldTheMessage(t *testing.T) {
 			status int
 		}{"gateway " + c.name, gatewayBody(message, c.extra), gateway, c.status})
 	}
-	cases = append(cases, struct {
-		name   string
-		body   []byte
-		serve  func(w http.ResponseWriter, body io.Reader)
-		status int
-	}{"gateway NUL in the message", gatewayBody(message+"\x00", nil), gateway, 422})
 	for _, c := range []struct {
 		name   string
 		extra  map[string]any

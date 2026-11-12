@@ -1,24 +1,23 @@
 // Package mime provides RFC 2822 email parsing and serialization.
 // It converts between raw email messages and the pipeline's EmailJSON format.
 //
-// MIME envelope and body parsing are delegated to github.com/emersion/go-message,
-// which handles RFC 2047 encoded-words, charset conversion, transfer-encoding
-// decoding, and nested multipart structures. iCalendar (text/calendar) parsing
-// is not part of go-message and remains in icalendar.go.
+// Messages are read as github.com/emersion/go-message reads them (see entity.go),
+// with its charset conversion. iCalendar (text/calendar) parsing is in icalendar.go.
 package mime
 
 import (
 	"bytes"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
+	"unsafe"
 
-	gomessage "github.com/emersion/go-message"
-	// Registers a charset reader so go-message decodes non-UTF-8 text parts.
+	// Registers a charset reader so non-UTF-8 text parts decode.
 	_ "github.com/emersion/go-message/charset"
-	"github.com/emersion/go-message/mail"
 
+	"github.com/rest-mail/go-imap/pkg/imap/wireform"
 	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 )
 
@@ -32,63 +31,109 @@ func Parse(raw []byte) (*pipeline.EmailJSON, error) {
 // ParseReader is Parse from a reader, for a caller that holds the message in some other form and
 // has no need to copy it to parse it. What it builds is held whole, as Parse's is.
 func ParseReader(source io.Reader) (*pipeline.EmailJSON, error) {
-	// go-message returns a usable *Entity even when it reports an unknown charset
-	// or transfer encoding, so only a nil entity is a hard failure.
-	entity, err := gomessage.Read(source)
-	if entity == nil {
-		return nil, fmt.Errorf("parse message: %w", err)
+	var sourceSize int
+	if sized, ok := source.(interface{ Len() int }); ok {
+		sourceSize = sized.Len()
 	}
-
-	email := &pipeline.EmailJSON{
-		Headers: parseHeaders(entity.Header),
-	}
-
-	body, attachments, inline, calendarEvents, err := parseEntity(entity, newPartBudget())
+	fields, br, reader, headerSize, err := readTopFields(source, sourceSize)
 	if err != nil {
 		return nil, fmt.Errorf("parse message: %w", err)
 	}
-	email.Body = body
-	email.Attachments = attachments
-	email.Inline = inline
-	email.CalendarEvents = calendarEvents
-
-	return email, nil
+	// The body is what's left of the source.
+	return newHeaderSection(fields, reader).parseBody(br, max(sourceSize-int(headerSize), 0))
 }
 
-func parseHeaders(h gomessage.Header) pipeline.Headers {
-	// Wrap the raw header to reuse go-message's RFC 5322 address and
-	// encoded-word aware helpers.
-	mh := mail.Header{Header: h}
+// HeaderSection is a message's header section, parsed once, for a caller that decides what it can
+// from that before it reads the body, and then has no need to read it again. Headers is the caller's
+// from then on, and Parse's answer holds the same one.
+type HeaderSection struct {
+	Headers pipeline.Headers
+	opening partFields
+	// fields holds the values of the section's fields, and has room left after them.
+	fields *fieldReader
+}
 
+func newHeaderSection(fields []field, reader *fieldReader) *HeaderSection {
+	return &HeaderSection{Headers: parseHeaders(fields), opening: fieldsOpening(fields), fields: reader}
+}
+
+// ReadHeaderSection parses a message's header section, which is everything before its body. It
+// fails for what ParseReader fails for on the same section.
+func ReadHeaderSection(section string) (*HeaderSection, error) {
+	fields, _, reader, _, err := readTopFields(strings.NewReader(section), len(section))
+	if err != nil {
+		return nil, fmt.Errorf("parse message: %w", err)
+	}
+	return newHeaderSection(fields, reader), nil
+}
+
+// Parse reads the body that follows the section, whose size is known, and answers what ParseReader
+// answers for the whole message.
+func (h *HeaderSection) Parse(body string) (*pipeline.EmailJSON, error) {
+	h.fields.sourceSize = len(body)
+	return h.parseBody(strings.NewReader(body), len(body))
+}
+
+func (h *HeaderSection) parseBody(source io.Reader, size int) (*pipeline.EmailJSON, error) {
+	// An unknown charset or transfer encoding still gives a readable entity.
+	entity, _ := h.opening.open(source, new(partCharsets))
+	budget := newPartBudget()
+	budget.fields = h.fields
+	body, attachments, inline, calendarEvents, err := parseEntity(entity, size, budget)
+	if err != nil {
+		return nil, fmt.Errorf("parse message: %w", err)
+	}
+	return &pipeline.EmailJSON{Headers: h.Headers, Body: body, Attachments: attachments, Inline: inline, CalendarEvents: calendarEvents}, nil
+}
+
+// fieldsOpening is what opening a message needs of its fields, which are already read.
+func fieldsOpening(fields []field) partFields {
+	var kept partFields
+	for i := range fields {
+		switch fields[i].key {
+		case "Content-Type":
+			if !kept.hasType {
+				kept.hasType = true
+				kept.mediaType, kept.params, kept.typeFailed = parseContentType(fields[i].value)
+			}
+		case "Content-Transfer-Encoding":
+			if !kept.hasEncoding {
+				kept.hasEncoding, kept.encoding = true, fields[i].value
+			}
+		}
+	}
+	return kept
+}
+
+func parseHeaders(fields []field) pipeline.Headers {
 	headers := pipeline.Headers{
-		Date:      h.Get("Date"),
-		MessageID: h.Get("Message-Id"),
-		InReplyTo: h.Get("In-Reply-To"),
-		Raw:       make(map[string][]string),
+		Date:      firstField(fields, "Date"),
+		MessageID: firstField(fields, "Message-Id"),
+		InReplyTo: firstField(fields, "In-Reply-To"),
 	}
 
-	// Subject returns the RFC 2047-decoded value (or the raw value on error).
+	// Subject is RFC 2047-decoded (or the raw value when it can't be).
 	// Sanitize it (and every other decoded scalar header) so an encoded-word that
 	// decodes to bytes containing CR/LF cannot inject a header on re-serialization.
-	subject, _ := mh.Subject()
-	headers.Subject = sanitizeHeaderValue(subject)
+	// A NUL an encoded word spells reads as the space a client is sent for it.
+	headers.Subject = sanitizeHeaderValue(decodeWords(wireform.SpaceWordNUL(firstField(fields, "Subject"))))
 	headers.Date = sanitizeHeaderValue(headers.Date)
 	headers.MessageID = sanitizeHeaderValue(headers.MessageID)
 	headers.InReplyTo = sanitizeHeaderValue(headers.InReplyTo)
 
-	headers.From = parseAddressList(&mh, "From")
-	headers.To = parseAddressList(&mh, "To")
-	headers.Cc = parseAddressList(&mh, "Cc")
+	headers.From = addressList(firstField(fields, "From"))
+	headers.To = addressList(firstField(fields, "To"))
+	headers.Cc = addressList(firstField(fields, "Cc"))
 
 	// References is kept as the raw whitespace-separated list of message-ids
 	// (angle brackets preserved), matching the historical output contract.
-	if refs := h.Get("References"); refs != "" {
+	if refs := firstField(fields, "References"); refs != "" {
 		headers.References = append(headers.References, strings.Fields(refs)...)
 	}
 
-	// Preserve all raw headers under their canonical MIME keys. go-message
-	// returns the undecoded (RFC 2047-encoded) values, exactly as net/mail did,
-	// which downstream DKIM/ARC/Authentication-Results logic relies on.
+	// Preserve all raw headers under their canonical MIME keys, with their
+	// undecoded (RFC 2047-encoded) values, exactly as net/mail did, which
+	// downstream DKIM/ARC/Authentication-Results logic relies on.
 	//
 	// EXCEPT inbound Authentication-Results, which are rehomed to
 	// X-Original-Authentication-Results: they are other servers' claims, so they
@@ -98,33 +143,30 @@ func parseHeaders(h gomessage.Header) pipeline.Headers {
 	// any field claiming our own authserv-id is removed from the raw message
 	// before it is parsed (StripAuthResults). ARC-* headers are cryptographically
 	// verified by arc_verify and are left untouched.
-	fields := h.Fields()
-	for fields.Next() {
-		key := fields.Key()
-		if strings.EqualFold(key, "Authentication-Results") {
-			key = "X-Original-Authentication-Results"
-		}
-		headers.Raw[key] = append(headers.Raw[key], fields.Value())
-	}
+	headers.Raw = rawFields(fields)
 
 	return headers
 }
 
-func parseAddressList(h *mail.Header, key string) []pipeline.Address {
-	list, err := h.AddressList(key)
-	if err != nil {
-		return nil
+func rawFields(fields []field) map[string][]string {
+	raw := make(map[string][]string)
+	for i := range fields {
+		key := fields[i].key
+		if strings.EqualFold(key, "Authentication-Results") {
+			key = "X-Original-Authentication-Results"
+		}
+		raw[key] = append(raw[key], fields[i].value)
 	}
-	var addrs []pipeline.Address
-	for _, addr := range list {
-		// addr.Name is RFC 2047-decoded; strip any embedded CR/LF so a crafted
-		// display name cannot inject a header when the address is re-serialized.
-		addrs = append(addrs, pipeline.Address{
-			Name:    sanitizeHeaderValue(addr.Name),
-			Address: sanitizeHeaderValue(addr.Address),
-		})
-	}
-	return addrs
+	return raw
+}
+
+// SourceHeaders reads the header fields of a source as a parse keeps them, stopping at the first
+// blank line and never reading the body. A malformed field ends the read: what came before it still
+// counts, and a signal after it is not seen, so the message stays visible.
+func SourceHeaders(source io.Reader) map[string][]string {
+	// The error is that malformed field, and the fields before it are returned with it.
+	fields, _, _, _, _ := readTopFields(source, 0)
+	return rawFields(fields)
 }
 
 // sanitizeHeaderValue removes CR and LF from a decoded header value. RFC 2047
@@ -142,25 +184,33 @@ func sanitizeHeaderValue(s string) string {
 
 var headerLineBreakStripper = strings.NewReplacer("\r", "", "\n", "")
 
-// parseEntity converts a go-message entity (whole message or a single part)
-// into the body tree, attachments, inline parts, and calendar events.
-func parseEntity(e *gomessage.Entity, budget *partBudget) (pipeline.Body, []pipeline.Attachment, []pipeline.Attachment, []pipeline.CalendarEvent, error) {
-	mediaType, _, _ := e.Header.ContentType()
-	mediaType = strings.ToLower(mediaType)
+// parseEntity converts an opened message into the body tree, attachments, inline
+// parts, and calendar events.
+func parseEntity(e *entity, sourceSize int, budget *partBudget) (pipeline.Body, []pipeline.Attachment, []pipeline.Attachment, []pipeline.CalendarEvent, error) {
+	mediaType := strings.ToLower(e.mediaType)
 
-	if mr := e.MultipartReader(); mr != nil {
+	if mr := e.multipart(budget.fields); mr != nil {
 		if err := budget.enter(1); err != nil {
 			return pipeline.Body{}, nil, nil, nil, err
 		}
+		budget.sourceSize = sourceSize
 		return parseMultipart(mr, mediaType, 1, budget)
 	}
 
-	// Single-part body. go-message has already decoded the transfer encoding
+	// Single-part body. Opening it has already decoded the transfer encoding
 	// and (for text/*) converted the charset to UTF-8.
-	content, _ := io.ReadAll(e.Body)
+	// The buffer is the source's size, which the decoded body fits unless a charset grows it, and
+	// it's the body's own from here on, so the text can be the same octets.
+	room := budget.fields.takeBuffer(sourceSize + bytes.MinRead)
+	if room == nil {
+		room = make([]byte, 0, sourceSize+bytes.MinRead)
+	}
+	buffer := bytes.NewBuffer(room)
+	_, _ = buffer.ReadFrom(e.body)
+	content := buffer.Bytes()
 	body := pipeline.Body{
 		ContentType: mediaType,
-		Content:     string(content),
+		Content:     unsafe.String(unsafe.SliceData(content), len(content)),
 	}
 
 	var calEvents []pipeline.CalendarEvent
@@ -176,34 +226,31 @@ func parseEntity(e *gomessage.Entity, budget *partBudget) (pipeline.Body, []pipe
 // parseMultipart reads the parts of a multipart at depth. Each nested multipart wraps every
 // reader above it, so reading a byte at depth d costs d boundary scans: the depth limit is what
 // keeps a deeply nested message from costing the square of its depth.
-func parseMultipart(mr gomessage.MultipartReader, mediaType string, depth int, budget *partBudget) (pipeline.Body, []pipeline.Attachment, []pipeline.Attachment, []pipeline.CalendarEvent, error) {
+func parseMultipart(mr *multipartReader, mediaType string, depth int, budget *partBudget) (pipeline.Body, []pipeline.Attachment, []pipeline.Attachment, []pipeline.CalendarEvent, error) {
 	body := pipeline.Body{ContentType: mediaType}
 	var attachments, inline []pipeline.Attachment
 	var calendarEvents []pipeline.CalendarEvent
 
 	for {
-		part, err := mr.NextPart()
+		part, err := mr.nextPart()
 		if err == io.EOF {
 			break
 		}
-		if err != nil {
-			// Unknown charset/encoding still yields a readable part; anything
-			// else is a malformed boundary — stop reading further parts.
-			if !gomessage.IsUnknownCharset(err) && !gomessage.IsUnknownEncoding(err) {
-				break
-			}
+		// Unknown charset/encoding still yields a readable part; anything
+		// else is a malformed boundary — stop reading further parts.
+		if err != nil && !isUnknownCoding(err) {
+			break
 		}
 
 		if err := budget.part(); err != nil {
 			return body, attachments, inline, calendarEvents, err
 		}
 
-		partMediaType, _, _ := part.Header.ContentType()
-		partMediaType = strings.ToLower(partMediaType)
+		partMediaType := strings.ToLower(part.mediaType)
 
 		// Recurse into nested multiparts (e.g. multipart/alternative inside
 		// multipart/mixed), preserving the body tree.
-		if pmr := part.MultipartReader(); pmr != nil {
+		if pmr := part.multipart(budget.fields); pmr != nil {
 			if err := budget.enter(depth + 1); err != nil {
 				return body, attachments, inline, calendarEvents, err
 			}
@@ -218,24 +265,26 @@ func parseMultipart(mr gomessage.MultipartReader, mediaType string, depth int, b
 			continue
 		}
 
-		content, err := io.ReadAll(part.Body)
+		// Every part reads into one buffer. A part that's kept stays there, and one that's encoded
+		// gives the room back.
+		content, err := budget.readPart(part.body)
 		if err != nil {
 			continue
 		}
+		kept := unsafe.String(unsafe.SliceData(content), len(content))
 
-		disposition, _, _ := part.Header.ContentDisposition()
-		disposition = strings.ToLower(disposition)
-		filename := partFilename(part.Header)
+		disposition := strings.ToLower(part.disposition)
+		filename := part.filename()
 
 		// Calendar invite: parse events regardless of disposition, and also
 		// keep the raw .ics content available as a body part.
 		if partMediaType == "text/calendar" {
-			if events, parseErr := ParseCalendar(string(content)); parseErr == nil && len(events) > 0 {
+			if events, parseErr := ParseCalendar(kept); parseErr == nil && len(events) > 0 {
 				calendarEvents = append(calendarEvents, events...)
 			}
 			body.Parts = append(body.Parts, pipeline.Body{
 				ContentType: partMediaType,
-				Content:     string(content),
+				Content:     kept,
 			})
 			continue
 		}
@@ -244,7 +293,7 @@ func parseMultipart(mr gomessage.MultipartReader, mediaType string, depth int, b
 		// checked before the attachment case so an explicitly inline part with a
 		// Content-ID is not misfiled as an attachment when it also has a filename
 		// (which would drop the Content-ID needed for cid: rendering).
-		contentID := part.Header.Get("Content-Id")
+		contentID := part.contentID
 		if disposition == "inline" && contentID != "" {
 			inline = append(inline, pipeline.Attachment{
 				Filename:    filename,
@@ -254,6 +303,7 @@ func parseMultipart(mr gomessage.MultipartReader, mediaType string, depth int, b
 				ContentID:   contentID,
 				Content:     base64.StdEncoding.EncodeToString(content),
 			})
+			budget.release(content)
 			continue
 		}
 
@@ -266,36 +316,21 @@ func parseMultipart(mr gomessage.MultipartReader, mediaType string, depth int, b
 				Disposition: "attachment",
 				Content:     base64.StdEncoding.EncodeToString(content),
 			})
+			budget.release(content)
 			continue
 		}
 
 		// Regular body part.
 		body.Parts = append(body.Parts, pipeline.Body{
 			ContentType: partMediaType,
-			Content:     string(content),
+			Content:     kept,
 		})
 	}
 
 	return body, attachments, inline, calendarEvents, nil
 }
 
-// partFilename returns the part's filename, preferring the Content-Disposition
-// "filename" parameter and falling back to the Content-Type "name" parameter.
-// go-message decodes any RFC 2047 encoded-words in the parameter values.
-func partFilename(h gomessage.Header) string {
-	// Both the Content-Disposition "filename" and Content-Type "name" parameters are
-	// RFC 2047-decoded by go-message, so sanitize them: a filename that decodes to a
-	// value containing CR/LF must not be able to inject a header when the part is
-	// re-serialized. (OSI-23)
-	if _, params, err := h.ContentDisposition(); err == nil {
-		if fn := params["filename"]; fn != "" {
-			return sanitizeHeaderValue(fn)
-		}
-	}
-	if _, params, err := h.ContentType(); err == nil {
-		if fn := params["name"]; fn != "" {
-			return sanitizeHeaderValue(fn)
-		}
-	}
-	return ""
+func isUnknownCoding(err error) bool {
+	var unknown unknownCoding
+	return errors.As(err, &unknown)
 }

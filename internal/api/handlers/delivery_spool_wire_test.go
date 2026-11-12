@@ -36,11 +36,6 @@ type deliveryWireAnswer struct {
 	Stored string `json:"stored"`
 }
 
-func deliveryJSONString(text string) string {
-	encoded, _ := json.Marshal(text)
-	return string(encoded)
-}
-
 func deliveryWireCases() []deliveryWireCase {
 	const (
 		plain = "From: Some One <someone@remote.test>\r\nTo: owner@spool.test\r\nCc: cc@remote.test\r\nSubject: =?UTF-8?Q?caf=C3=A9?=\r\nDate: Thu, 02 Jan 2020 03:04:05 +0000\r\nMessage-ID: <plain@remote.test>\r\nIn-Reply-To: <parent@remote.test>\r\nReferences: <root@remote.test> <parent@remote.test>\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nbody caf\xc3\xa9\r\n"
@@ -81,7 +76,7 @@ func deliveryWireCases() []deliveryWireCase {
 	gateway("text_and_message", `{`+address+`,"body_text":"text","body_html":"<p>html</p>",`+raw(plain)+`}`)
 	gateway("text_with_escapes", `{`+address+`,"body_text":"café 😀 \ud83d \\ \" \/ \b\f\n\r\t","message_id":"<e@remote.test>"}`)
 	gateway("text_not_utf8", "{"+address+",\"body_text\":\"a\xffb\xc3\",\"message_id\":\"<u@remote.test>\"}")
-	gateway("all_fields", `{"mailbox_id":MAILBOX,"sender":"someone@remote.test","sender_name":"Some One","recipients_to":["owner@spool.test"],"recipients_cc":["cc@remote.test"],"subject":"s","body_text":"t","body_html":"h","message_id":"<all@remote.test>","in_reply_to":"<p@remote.test>","references":"<r@remote.test> <p@remote.test>",`+raw(plain)+`,"client_ip":"192.0.2.1","helo_name":"mx.remote.test","folder":"Archive","is_answered":true,"is_read":true,"is_flagged":true,"is_starred":true,"is_draft":true,"received_at":"2020-01-02T03:04:05Z","received_tls":true,"tls_version":"TLS1.3","require_tls":true}`)
+	gateway("all_fields", `{"address":"owner@spool.test","mailbox_id":MAILBOX,"sender":"someone@remote.test","sender_name":"Some One","recipients_to":["owner@spool.test"],"recipients_cc":["cc@remote.test"],"subject":"s","body_text":"t","body_html":"h","message_id":"<all@remote.test>","in_reply_to":"<p@remote.test>","references":"<r@remote.test> <p@remote.test>",`+raw(plain)+`,"client_ip":"192.0.2.1","helo_name":"mx.remote.test","folder":"Archive","is_answered":true,"is_read":true,"is_flagged":true,"is_starred":true,"is_draft":true,"received_at":"2020-01-02T03:04:05Z","received_tls":true,"tls_version":"TLS1.3","require_tls":true}`)
 	gateway("folder_inbox_any_case", `{`+address+`,"folder":"inbox",`+raw(plain)+`}`)
 	gateway("field_order", `{`+raw(plain)+`,"body_text":"t",`+address+`}`)
 	gateway("raw_empty", `{`+address+`,"raw_message":"","body_text":"t","message_id":"<z@remote.test>"}`)
@@ -152,37 +147,37 @@ func deliveryWireCases() []deliveryWireCase {
 	rm := func(name, body string, auth *RestmailDeliverAuthConfig) {
 		cases = append(cases, deliveryWireCase{name: "restmail/" + name, route: "restmail", body: body, auth: auth})
 	}
-	text := func(message string) string { return `"raw_message":` + deliveryJSONString(message) }
 	const to = `"to":["owner@spool.test"]`
-	rm("plain", `{`+to+`,`+text(plain)+`}`, trusted)
-	rm("parts", `{`+to+`,`+text(multi)+`}`, trusted)
-	rm("calendar", `{`+to+`,`+text(calendar)+`}`, trusted)
-	rm("not_utf8", "{"+to+",\"raw_message\":\""+strings.NewReplacer("\r", `\r`, "\n", `\n`).Replace(latin)+"\"}", trusted)
-	rm("claims_our_verdicts", `{`+to+`,`+text(ours)+`}`, trusted)
-	rm("only_our_verdicts", `{`+to+`,"from":"someone@remote.test","message_id":"<o@remote.test>",`+text(only)+`}`, trusted)
-	rm("no_message_id", `{`+to+`,`+text(noID)+`}`, trusted)
-	rm("unparseable", `{`+to+`,"from":"someone@remote.test","subject":"s","body_text":"t","message_id":"<u@remote.test>",`+text(broken)+`}`, trusted)
-	rm("no_headers", `{`+to+`,"from":"someone@remote.test","message_id":"<h@remote.test>",`+text(headless)+`}`, trusted)
-	rm("no_empty_line", `{`+text(noEnd)+`}`, trusted)
-	rm("bare_lf", `{`+text(lfOnly)+`}`, trusted)
-	rm("recipients_from_headers", `{`+text(plain)+`}`, trusted)
-	rm("no_recipients_anywhere", `{`+text(noTo)+`}`, trusted)
-	rm("no_sender_anywhere", `{`+text(noFrom)+`}`, trusted)
+	rm("plain", `{`+to+`,`+raw(plain)+`}`, trusted)
+	rm("parts", `{`+to+`,`+raw(multi)+`}`, trusted)
+	rm("calendar", `{`+to+`,`+raw(calendar)+`}`, trusted)
+	rm("not_utf8", `{`+to+`,`+raw(latin)+`}`, trusted)
+	rm("claims_our_verdicts", `{`+to+`,`+raw(ours)+`}`, trusted)
+	rm("only_our_verdicts", `{`+to+`,"from":"someone@remote.test","message_id":"<o@remote.test>",`+raw(only)+`}`, trusted)
+	rm("no_message_id", `{`+to+`,`+raw(noID)+`}`, trusted)
+	rm("unparseable", `{`+to+`,"from":"someone@remote.test","subject":"s","body_text":"t","message_id":"<u@remote.test>",`+raw(broken)+`}`, trusted)
+	rm("no_headers", `{`+to+`,"from":"someone@remote.test","message_id":"<h@remote.test>",`+raw(headless)+`}`, trusted)
+	rm("no_empty_line", `{`+raw(noEnd)+`}`, trusted)
+	rm("bare_lf", `{`+raw(lfOnly)+`}`, trusted)
+	rm("recipients_from_headers", `{`+raw(plain)+`}`, trusted)
+	rm("no_recipients_anywhere", `{`+raw(noTo)+`}`, trusted)
+	rm("no_sender_anywhere", `{`+raw(noFrom)+`}`, trusted)
 	rm("no_message_at_all", `{"from":"someone@remote.test",`+to+`,"subject":"s","date":"Thu, 02 Jan 2020 03:04:05 +0000","body_text":"t","body_html":"<p>h</p>","message_id":"<m@remote.test>","in_reply_to":"<p@remote.test>","references":"<r@remote.test>","headers":{"X-A":["b"]}}`, trusted)
-	rm("sender_and_recipients", `{"sender":"someone@remote.test","recipients":["owner@spool.test"],`+text(plain)+`}`, trusted)
-	rm("request_beats_headers", `{"from":"other@remote.test",`+to+`,"subject":"mine","date":"d","message_id":"<mine@remote.test>","in_reply_to":"<i@remote.test>","references":"<f@remote.test>","body_text":"mine","body_html":"<p>mine</p>","headers":{"X-A":["b"]},`+text(plain)+`}`, trusted)
-	rm("text_fills_html", `{`+to+`,"body_text":"mine",`+text(multi)+`}`, trusted)
+	rm("sender_and_recipients", `{"sender":"someone@remote.test","recipients":["owner@spool.test"],`+raw(plain)+`}`, trusted)
+	rm("request_beats_headers", `{"from":"other@remote.test",`+to+`,"subject":"mine","date":"d","message_id":"<mine@remote.test>","in_reply_to":"<i@remote.test>","references":"<f@remote.test>","body_text":"mine","body_html":"<p>mine</p>","headers":{"X-A":["b"]},`+raw(plain)+`}`, trusted)
+	rm("text_fills_html", `{`+to+`,"body_text":"mine",`+raw(multi)+`}`, trusted)
 	rm("text_with_escapes", `{"from":"someone@remote.test",`+to+`,"body_text":"café 😀 \ud83d \udc00x \\ \" \/ \b\f\n\r\t","message_id":"<e@remote.test>"}`, trusted)
 	rm("text_not_utf8", "{\"from\":\"someone@remote.test\","+to+",\"body_text\":\"a\xffb\xc3\",\"message_id\":\"<u8@remote.test>\"}", trusted)
-	rm("raw_escaped", `{`+to+`,"from":"someone@remote.test","raw_message":"Subject: café 😀\r\nMessage-ID: <esc@remote.test>\r\n\r\nb\ud83dA\/\r\n"}`, trusted)
-	rm("raw_not_utf8", "{"+to+",\"from\":\"someone@remote.test\",\"raw_message\":\"Subject: \xe9\\r\\nMessage-ID: <n8@remote.test>\\r\\n\\r\\nb\xc3\xa9\xf0\\r\\n\"}", trusted)
-	rm("raw_nul", `{`+to+`,"from":"someone@remote.test","raw_message":"Message-ID: <nul@remote.test>\r\n\r\nb\u0000dy"}`, trusted)
+	rm("raw_escaped", `{`+to+`,"from":"someone@remote.test","message_id":"<esc@remote.test>","raw_message":"U3VieW\/jdDogeA0KDQpib2R5DQo="}`, trusted)
+	rm("raw_not_base64", `{`+to+`,"from":"someone@remote.test","raw_message":"Subject: x\r\n\r\nbody"}`, trusted)
+	rm("raw_not_utf8", `{`+to+`,"from":"someone@remote.test",`+raw("Subject: \xe9\r\nMessage-ID: <n8@remote.test>\r\n\r\nb\xc3\xa9\xf0\r\n")+`}`, trusted)
+	rm("raw_nul", `{`+to+`,"from":"someone@remote.test",`+raw("Message-ID: <nul@remote.test>\r\n\r\nb\x00dy")+`}`, trusted)
 	rm("raw_empty", `{`+to+`,"from":"someone@remote.test","raw_message":"","message_id":"<z@remote.test>"}`, trusted)
 	rm("raw_empty_and_no_recipients", `{"raw_message":""}`, trusted)
 	rm("raw_null", `{`+to+`,"from":"someone@remote.test","raw_message":null,"message_id":"<n@remote.test>"}`, trusted)
 	rm("raw_number", `{`+to+`,"raw_message":1}`, trusted)
-	rm("raw_twice", `{`+to+`,"raw_message":"x","raw_message":`+deliveryJSONString(plain)+`}`, trusted)
-	rm("raw_twice_then_null", `{`+to+`,"raw_message":`+deliveryJSONString(plain)+`,"raw_message":null}`, trusted)
+	rm("raw_twice", `{`+to+`,"raw_message":"QQ==",`+raw(plain)+`}`, trusted)
+	rm("raw_twice_then_null", `{`+to+`,`+raw(plain)+`,"raw_message":null}`, trusted)
 	rm("raw_bad_escape", `{`+to+`,"raw_message":"\q"}`, trusted)
 	rm("raw_cut_short", `{`+to+`,"raw_message":"abc`, trusted)
 	rm("text_twice", `{"from":"someone@remote.test",`+to+`,"body_text":"one","body_text":"two","message_id":"<tw@remote.test>"}`, trusted)
@@ -190,20 +185,20 @@ func deliveryWireCases() []deliveryWireCase {
 	rm("text_null", `{"from":"someone@remote.test",`+to+`,"body_text":null,"body_html":null,"message_id":"<nu@remote.test>"}`, trusted)
 	rm("text_number", `{`+to+`,"body_text":1}`, trusted)
 	rm("text_nul", `{"from":"someone@remote.test",`+to+`,"body_text":"a\u0000b","message_id":"<tn0@remote.test>"}`, trusted)
-	rm("to_empty", `{"to":[],`+text(plain)+`}`, trusted)
+	rm("to_empty", `{"to":[],`+raw(plain)+`}`, trusted)
 	rm("to_empty_alone", `{"to":[]}`, trusted)
 	rm("to_not_array", `{"to":"x"}`, trusted)
-	rm("recipient_unknown", `{"to":["no@spool.test"],`+text(plain)+`}`, trusted)
-	rm("recipient_cannot_receive", `{"to":["silent@spool.test"],`+text(plain)+`}`, trusted)
-	rm("recipient_bad", `{"to":["not an address"],`+text(plain)+`}`, trusted)
-	rm("recipients_mixed", `{"to":["no@spool.test","owner@spool.test","owner@spool.test"],`+text(plain)+`}`, trusted)
-	rm("plus_address", `{"to":["owner+tag@spool.test"],`+text(plain)+`}`, trusted)
-	rm("untrusted_remote", `{`+to+`,`+text(plain)+`}`, open)
-	rm("untrusted_spoof", `{`+to+`,`+text(spoofed)+`}`, open)
-	rm("untrusted_spoof_in_request", `{`+to+`,"from":"x@spool.test",`+text(plain)+`}`, open)
-	rm("untrusted_spoof_badly_signed", `{`+to+`,`+text(signed)+`}`, open)
-	rm("untrusted_strict_unsigned", `{`+to+`,`+text(plain)+`}`, strict)
-	rm("undeclared", `{`+to+`,"x":"y",`+text(plain)+`}`, trusted)
+	rm("recipient_unknown", `{"to":["no@spool.test"],`+raw(plain)+`}`, trusted)
+	rm("recipient_cannot_receive", `{"to":["silent@spool.test"],`+raw(plain)+`}`, trusted)
+	rm("recipient_bad", `{"to":["not an address"],`+raw(plain)+`}`, trusted)
+	rm("recipients_mixed", `{"to":["no@spool.test","owner@spool.test","owner@spool.test"],`+raw(plain)+`}`, trusted)
+	rm("plus_address", `{"to":["owner+tag@spool.test"],`+raw(plain)+`}`, trusted)
+	rm("untrusted_remote", `{`+to+`,`+raw(plain)+`}`, open)
+	rm("untrusted_spoof", `{`+to+`,`+raw(spoofed)+`}`, open)
+	rm("untrusted_spoof_in_request", `{`+to+`,"from":"x@spool.test",`+raw(plain)+`}`, open)
+	rm("untrusted_spoof_badly_signed", `{`+to+`,`+raw(signed)+`}`, open)
+	rm("untrusted_strict_unsigned", `{`+to+`,`+raw(plain)+`}`, strict)
+	rm("undeclared", `{`+to+`,"x":"y",`+raw(plain)+`}`, trusted)
 	rm("empty", ``, trusted)
 	rm("object_empty", `{}`, trusted)
 	rm("array", `[]`, trusted)
@@ -213,24 +208,24 @@ func deliveryWireCases() []deliveryWireCase {
 	// The hop and structure limits come before the recipients are required, and before the sender
 	// and the recipients are looked up, so each of these is the limit's refusal.
 	looping, nested := receivedMessage(rmime.DefaultMaxReceived+1, "owner@spool.test"), nestedRaw(rmime.DefaultMaxNestingDepth+1, "owner@spool.test")
-	rm("mail_loop", `{`+to+`,`+text(looping)+`}`, trusted)
-	rm("mail_loop_no_recipients", `{`+text(receivedMessage(rmime.DefaultMaxReceived+1, ""))+`}`, trusted)
-	rm("mail_loop_spoofed", `{`+to+`,"from":"x@spool.test",`+text(looping)+`}`, open)
-	rm("mail_loop_recipient_unknown", `{"to":["no@spool.test"],`+text(looping)+`}`, trusted)
-	rm("too_nested", `{`+to+`,`+text(nested)+`}`, trusted)
-	rm("too_nested_no_recipients", `{`+text(nestedRaw(rmime.DefaultMaxNestingDepth+1, ""))+`}`, trusted)
-	rm("too_nested_spoofed", `{`+to+`,"from":"x@spool.test",`+text(nested)+`}`, open)
-	rm("too_nested_recipient_unknown", `{"to":["no@spool.test"],`+text(nested)+`}`, trusted)
-	rm("mail_loop_raw_twice", `{`+to+`,"raw_message":"x",`+text(looping)+`}`, trusted)
-	rm("too_nested_raw_twice", `{`+to+`,"raw_message":"x",`+text(nested)+`}`, trusted)
-	rm("too_nested_claims_our_verdicts", `{`+to+`,`+text("Authentication-Results: restmail; spf=pass\r\n"+nested)+`}`, trusted)
+	rm("mail_loop", `{`+to+`,`+raw(looping)+`}`, trusted)
+	rm("mail_loop_no_recipients", `{`+raw(receivedMessage(rmime.DefaultMaxReceived+1, ""))+`}`, trusted)
+	rm("mail_loop_spoofed", `{`+to+`,"from":"x@spool.test",`+raw(looping)+`}`, open)
+	rm("mail_loop_recipient_unknown", `{"to":["no@spool.test"],`+raw(looping)+`}`, trusted)
+	rm("too_nested", `{`+to+`,`+raw(nested)+`}`, trusted)
+	rm("too_nested_no_recipients", `{`+raw(nestedRaw(rmime.DefaultMaxNestingDepth+1, ""))+`}`, trusted)
+	rm("too_nested_spoofed", `{`+to+`,"from":"x@spool.test",`+raw(nested)+`}`, open)
+	rm("too_nested_recipient_unknown", `{"to":["no@spool.test"],`+raw(nested)+`}`, trusted)
+	rm("mail_loop_raw_twice", `{`+to+`,"raw_message":"QQ==",`+raw(looping)+`}`, trusted)
+	rm("too_nested_raw_twice", `{`+to+`,"raw_message":"QQ==",`+raw(nested)+`}`, trusted)
+	rm("too_nested_claims_our_verdicts", `{`+to+`,`+raw("Authentication-Results: restmail; spf=pass\r\n"+nested)+`}`, trusted)
 	for _, action := range []pipeline.Action{pipeline.ActionReject, pipeline.ActionDefer, pipeline.ActionDiscard, pipeline.ActionQuarantine} {
 		cases = append(cases, deliveryWireCase{name: "restmail/pipeline_" + string(action), route: "restmail", action: action, auth: trusted,
-			body: `{` + to + `,"body_text":"text",` + text(plain) + `}`})
+			body: `{` + to + `,"body_text":"text",` + raw(plain) + `}`})
 	}
 	cases = append(cases,
-		deliveryWireCase{name: "restmail/no_content_type", route: "restmail", auth: trusted, contentType: "-", body: `{` + to + `,` + text(plain) + `}`},
-		deliveryWireCase{name: "restmail/other_content_type", route: "restmail", auth: trusted, contentType: "text/plain", body: `{` + to + `,` + text(plain) + `}`},
+		deliveryWireCase{name: "restmail/no_content_type", route: "restmail", auth: trusted, contentType: "-", body: `{` + to + `,` + raw(plain) + `}`},
+		deliveryWireCase{name: "restmail/other_content_type", route: "restmail", auth: trusted, contentType: "text/plain", body: `{` + to + `,` + raw(plain) + `}`},
 	)
 	return cases
 }
