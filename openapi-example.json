@@ -14400,6 +14400,35 @@
         "mediaType": "application/json"
       }
     },
+    "idempotency_conflict": {
+      "description": "A successful send has already used this account-scoped key for a different request. The setup hook sends the first request; the retry queues nothing.",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "header": {
+          "Idempotency-Key": "contract-idempotency-conflict"
+        },
+        "body": {
+          "from": "admin@restmail.test",
+          "to": [
+            "admin@restmail.test"
+          ],
+          "body_text": "A different request"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 409,
+        "body": {
+          "error": {
+            "code": "idempotency_conflict",
+            "message": "Idempotency-Key was already used for a different send request"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "mailbox_full": {
       "requires": {
         "state": "full_mailbox"
@@ -39362,6 +39391,31 @@
         "mediaType": "application/json"
       }
     },
+    "idempotency_conflict": {
+      "description": "A successful send has already used this account-scoped key for a different request. The setup hook sends the first request; the retry queues nothing.",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "header": {
+          "Idempotency-Key": "contract-idempotency-conflict"
+        },
+        "body": {
+          "on_behalf": true
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 409,
+        "body": {
+          "error": {
+            "code": "idempotency_conflict",
+            "message": "Idempotency-Key was already used for a different send request"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "internal_error": {
       "summary": "A database fault is not a client error",
       "requires": {
@@ -39649,6 +39703,32 @@
                 "from": "from is required"
               }
             }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "idempotency_conflict": {
+      "description": "A successful send has already used this account-scoped key for a different request. The setup hook sends the first request; the retry queues nothing.",
+      "request": {
+        "header": {
+          "Idempotency-Key": "contract-idempotency-conflict"
+        },
+        "body": {
+          "from": "admin@restmail.test",
+          "to": [
+            "admin@restmail.test"
+          ],
+          "body_text": "A different request"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 409,
+        "body": {
+          "error": {
+            "code": "idempotency_conflict",
+            "message": "Idempotency-Key was already used for a different send request"
           }
         },
         "mediaType": "application/json"
