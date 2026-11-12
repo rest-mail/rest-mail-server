@@ -181,6 +181,7 @@ func (h *MessageHandler) unsubscribeOneClick(r *http.Request, in messagePath) (U
 
 // unsubscribeMailto sends the message a mailto: target asks for through sendMessage, so the
 // sender authorization, rate limits, recipient checks and outbound policy of every send apply.
+// It takes no Idempotency-Key, so it sends past sendMessage's idempotency wrapper.
 func (h *MessageHandler) unsubscribeMailto(r *http.Request, in unsubscribeMailtoRequest) (endpoint.Status[any], error) {
 	var zero endpoint.Status[any]
 	msg, err := h.ownedMessage(r, in.ID, models.CapMailRead, unsubscribeMessageFields...)
@@ -212,7 +213,7 @@ func (h *MessageHandler) unsubscribeMailto(r *http.Request, in unsubscribeMailto
 	if body == "" {
 		body = "unsubscribe"
 	}
-	return h.sendMessage(r, sendMessageRequest{From: from, To: []string{target.To}, Subject: subject, BodyText: body})
+	return h.sendMessageWithParts(r, sendMessageRequest{From: from, To: []string{target.To}, Subject: subject, BodyText: body}, nil)
 }
 
 // oneClickPoster sends the RFC 8058 POST. blocked decides which addresses it refuses, and

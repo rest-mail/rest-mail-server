@@ -207,6 +207,43 @@ func TestUnsubscribeMailto_SendsThroughTheSendPath(t *testing.T) {
 	}
 }
 
+// A mailto: unsubscribe takes no Idempotency-Key (only send, send-draft and forward do), so a
+// stray one in the request neither replays the first send nor stores a send receipt.
+func TestUnsubscribeMailto_IgnoresIdempotencyKey(t *testing.T) {
+	h, mailbox, msg := seedUnsubscribeMessage(t, "unsubscribe-mailto-key", map[string][]string{
+		"List-Unsubscribe": {"<mailto:leave@remote.test>"},
+	}, "")
+	if err := h.db.AutoMigrate(&models.SendIdempotency{}); err != nil {
+		t.Fatal(err)
+	}
+	claims := &auth.Claims{AccountID: mailbox.ID, CredentialKind: "app_password"}
+	var sentIDs []uint
+	for range 2 {
+		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/v1/messages/%d/unsubscribe/mailto", msg.ID), strings.NewReader(`{}`))
+		req.Header.Set("Idempotency-Key", "unsubscribe-key")
+		rr := httptest.NewRecorder()
+		composeRoute(h)(rr, withClaims(req, claims))
+		if rr.Code != http.StatusCreated {
+			t.Fatalf("unsubscribe by mailto: %d %s", rr.Code, rr.Body.String())
+		}
+		var sent models.Message
+		if err := json.Unmarshal(dataOf(t, rr), &sent); err != nil {
+			t.Fatal(err)
+		}
+		sentIDs = append(sentIDs, sent.ID)
+	}
+	if sentIDs[0] == sentIDs[1] {
+		t.Fatalf("the second unsubscribe replayed the first: both answered message %d", sentIDs[0])
+	}
+	var receipts int64
+	if err := h.db.Model(&models.SendIdempotency{}).Where("account_id = ?", mailbox.ID).Count(&receipts).Error; err != nil {
+		t.Fatal(err)
+	}
+	if receipts != 0 {
+		t.Fatalf("send receipts stored for an unsubscribe = %d, want 0", receipts)
+	}
+}
+
 // receivedListMail is the stored source of a list message as delivery writes it: this
 // server's Authentication-Results first, with dkimResult for the one DKIM-Signature, whose h=
 // is signed. With dkimResult empty the message has no signature.
