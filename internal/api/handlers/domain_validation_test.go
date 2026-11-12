@@ -71,6 +71,28 @@ func TestDomainCreate_NameValidation(t *testing.T) {
 		refusedName(t, rr, "must be a fully-qualified domain name")
 	})
 
+	// An empty label is no hostname, and was stored before #1762. A name with
+	// no ASCII dot ("。") is already the body's refusal, the rest the handler's.
+	for _, name := range []string{".a", "a..b", "..", "a..", "a。", "。"} {
+		t.Run("empty label rejected: "+name, func(t *testing.T) {
+			refusedName(t, create(t, name), "")
+		})
+	}
+
+	t.Run("one trailing dot removed", func(t *testing.T) {
+		rr := create(t, "restmail.test.")
+		if rr.Code != http.StatusCreated {
+			t.Fatalf("status = %d, want 201 (body %s)", rr.Code, rr.Body.String())
+		}
+		var resp struct {
+			Data models.Domain `json:"data"`
+		}
+		_ = json.Unmarshal(rr.Body.Bytes(), &resp)
+		if resp.Data.Name != "restmail.test" {
+			t.Errorf("stored name = %q, want restmail.test", resp.Data.Name)
+		}
+	})
+
 	t.Run("valid IDN accepted and normalized", func(t *testing.T) {
 		rr := create(t, "münchen.test")
 		if rr.Code != http.StatusCreated {
