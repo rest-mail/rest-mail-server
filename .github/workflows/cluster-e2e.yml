@@ -10,8 +10,12 @@ name: Cluster Install Check
 # Then stage 1 of the installed-cluster check (#1750), scripts/cluster_e2e.py:
 # the bootstrap admin signs in through the API, an SMTP RCPT through the
 # installed gateway, an IMAP sign-in and SELECT INBOX, and a JavaScript filter
-# validated by the js-filter sidecar. Locally, against any cluster with the
-# chart installed: `chore cluster:e2e`, the same script.
+# validated by the js-filter sidecar. Then stage 2: Vertrag's examples phase
+# sent through the install's Ingress (ingress-nginx in kind, TLS from the
+# self-signed Secret), against the description the install serves there; its
+# HTML report is in the cluster-report artifact, under contract/. Locally,
+# against any cluster with the chart installed: `chore cluster:e2e`, the same
+# script.
 #
 # Daily, on every v* tag, and by hand, never on a pull request: it builds seven
 # images and takes several minutes. It gates nothing.
@@ -40,6 +44,11 @@ env:
   KIND_VERSION: v0.33.0
   KIND_SHA256: aee6151561422756b764a4ae28e7f44cda5af5a9eead3cc9985112b1de8d8e0d
   KIND_NODE_IMAGE: kindest/node:v1.37.0@sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5
+  # ingress-nginx's manifest for kind, pinned by release and checksum; its
+  # images are pinned by digest inside it. It binds host ports 80 and 443 on
+  # the node, which the cluster maps to the runner.
+  INGRESS_NGINX_MANIFEST: https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.15.1/deploy/static/provider/kind/deploy.yaml
+  INGRESS_NGINX_SHA256: 2a3ae008c8786431115502644e77ab398fdebfb721a5d1195ed3089cde3299df
   CLUSTER: restmail-ci
   NAMESPACE: restmail
   RELEASE: restmail
@@ -48,6 +57,9 @@ env:
   IMAGE_PREFIX: ghcr.io/rest-mail
   IMAGE_TAG: ci
   REPORT_DIR: ${{ github.workspace }}/cluster-report
+  # The API Ingress's host (api.ingress in values-ci.yaml), which the runner
+  # resolves to the node's mapped port 443.
+  INGRESS_HOST: mail.restmail-ci.test
 
 jobs:
   install:
@@ -79,7 +91,25 @@ jobs:
           kubectl version --client
 
       - name: Create the cluster
-        run: kind create cluster --name "$CLUSTER" --image "$KIND_NODE_IMAGE" --wait 180s
+        run: |
+          cat > "$RUNNER_TEMP/kind.yaml" <<'EOF'
+          kind: Cluster
+          apiVersion: kind.x-k8s.io/v1alpha4
+          nodes:
+            - role: control-plane
+              extraPortMappings:
+                - {containerPort: 80, hostPort: 80, listenAddress: 127.0.0.1, protocol: TCP}
+                - {containerPort: 443, hostPort: 443, listenAddress: 127.0.0.1, protocol: TCP}
+          EOF
+          kind create cluster --name "$CLUSTER" --image "$KIND_NODE_IMAGE" --config "$RUNNER_TEMP/kind.yaml" --wait 180s
+
+      # Started now, so it is up by the time the images are built.
+      - name: Install the ingress controller
+        run: |
+          curl -fsSLo "$RUNNER_TEMP/ingress-nginx.yaml" "$INGRESS_NGINX_MANIFEST"
+          echo "${INGRESS_NGINX_SHA256}  $RUNNER_TEMP/ingress-nginx.yaml" | sha256sum -c -
+          kubectl apply -f "$RUNNER_TEMP/ingress-nginx.yaml"
+          echo "127.0.0.1 $INGRESS_HOST" | sudo tee -a /etc/hosts
 
       # The same images, Dockerfiles and build contexts as docker.yml, built
       # for the runner's platform only and loaded into the cluster instead of
@@ -115,8 +145,11 @@ jobs:
           kubectl -n "$NAMESPACE" create secret tls restmail-ci-tls \
             --cert="$RUNNER_TEMP/tls.crt" --key="$RUNNER_TEMP/tls.key"
 
+      # Its admission webhook must answer before the chart's Ingress is made.
       - name: Install the chart
         run: |
+          kubectl -n ingress-nginx wait --for=condition=Ready pod \
+            --selector=app.kubernetes.io/component=controller --timeout=300s
           password="$(openssl rand -base64 24)"
           echo "::add-mask::$password"
           helm install "$RELEASE" helm/restmail --namespace "$NAMESPACE" \
@@ -140,11 +173,15 @@ jobs:
             exit 1
           fi
 
-      # Port-forwards the API and the gateways itself and prints one receipt
-      # line per step (commit, images, step, result) to the log and to
-      # cluster-report/receipts.txt.
-      - name: Stage 1 against the install
-        run: python3 -B scripts/cluster_e2e.py --namespace "$NAMESPACE" --release "$RELEASE" --report-dir "$REPORT_DIR" --commit "$GITHUB_SHA"
+      # Stage 1 port-forwards the API and the gateways itself; stage 2 goes
+      # through the Ingress, trusting the self-signed certificate it serves.
+      # One receipt line per step (commit, images, step, result) to the log and
+      # to cluster-report/receipts.txt.
+      - name: Stages 1 and 2 against the install
+        run: |
+          python3 -B -c 'import yaml' 2>/dev/null || pip install --quiet pyyaml
+          python3 -B scripts/cluster_e2e.py --namespace "$NAMESPACE" --release "$RELEASE" --report-dir "$REPORT_DIR" --commit "$GITHUB_SHA" \
+            --ingress-url "https://$INGRESS_HOST" --ingress-ca "$RUNNER_TEMP/tls.crt"
 
       # Always, and most of all on a failure: everything needed to see why a
       # pod did not come up, without re-running the job.
@@ -157,6 +194,7 @@ jobs:
           kubectl -n "$NAMESPACE" get all,pvc,secret,configmap,networkpolicy,ingress -o wide > resources.txt 2>&1 || true
           kubectl -n "$NAMESPACE" describe pods,deployments,statefulsets,services,pvc > describe.txt 2>&1 || true
           kubectl get events -A --sort-by=.lastTimestamp > events.txt 2>&1 || true
+          kubectl -n ingress-nginx logs deployment/ingress-nginx-controller > logs/ingress-nginx-controller.log 2>&1 || true
           helm -n "$NAMESPACE" status "$RELEASE" > helm-status.txt 2>&1 || true
           for pod in $(kubectl -n "$NAMESPACE" get pods -o name 2>/dev/null); do
             name="${pod#pod/}"
