@@ -26,7 +26,8 @@ import (
 // domainNameProfile is a strict IDNA profile used to validate and normalize a
 // user-supplied domain name before it is stored. It maps the input for lookup
 // (case-folding, IDN → punycode), enforces the STD3 LDH rule and per-label
-// validity, and applies the Bidi rule. A stored domain name flows into DNS
+// validity, applies the Bidi rule, and verifies DNS lengths (no empty label, none
+// over 63 octets, #1762). A stored domain name flows into DNS
 // lookups, MTA-STS host matching, sieve redirect allowlists and outbound routing,
 // so only a resolvable hostname may be persisted.
 var domainNameProfile = idna.New(
@@ -34,6 +35,7 @@ var domainNameProfile = idna.New(
 	idna.BidiRule(),
 	idna.ValidateLabels(true),
 	idna.StrictDomainName(true),
+	idna.VerifyDNSLength(true),
 )
 
 // maxDomainNameLength is the RFC 1035 limit on a domain name's total length.
@@ -41,8 +43,9 @@ const maxDomainNameLength = 253
 
 // validateDomainName normalizes and validates a user-supplied domain name,
 // returning the canonical lowercase ASCII (A-label / punycode) form to store. It
-// rejects empty input, over-long names, single-label hosts, and anything that is
-// not a valid hostname. A valid internationalized name (e.g. "münchen.test") is
+// rejects empty input, over-long names, single-label hosts, names with an empty
+// label (".a", "a..b", "a.."), and anything that is not a valid hostname. One
+// trailing dot, the root, is removed first, so "restmail.test." is accepted. A valid internationalized name (e.g. "münchen.test") is
 // accepted and returned in its ASCII-compatible encoding.
 func validateDomainName(name string) (string, error) {
 	name = strings.TrimSuffix(strings.TrimSpace(name), ".")
@@ -52,6 +55,13 @@ func validateDomainName(name string) (string, error) {
 	ascii, err := domainNameProfile.ToASCII(name)
 	if err != nil {
 		return "", fmt.Errorf("not a valid hostname: %w", err)
+	}
+	// The profile lets a trailing empty label through ("a.." arrives here as "a.",
+	// and so does "a。"), so every label is checked for itself (#1762).
+	for _, label := range strings.Split(ascii, ".") {
+		if label == "" {
+			return "", errors.New("domain name has an empty label")
+		}
 	}
 	if len(ascii) > maxDomainNameLength {
 		return "", errors.New("domain name exceeds the maximum length")
