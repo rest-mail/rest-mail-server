@@ -110,20 +110,23 @@ func TestSMTP_LocalVsRemoteRouting(t *testing.T) {
 		t.Errorf("DATA final = %q, want 250", final)
 	}
 
-	// Local recipient delivered via the API.
-	if got := back.deliveredTo(); !reflect.DeepEqual(got, []string{"bob@local.test"}) {
-		t.Errorf("delivered = %v, want [bob@local.test]", got)
+	// A submission delivers nothing directly, whoever it is for (#1564).
+	if got := back.deliveredTo(); len(got) != 0 {
+		t.Errorf("delivered = %v, want nothing", got)
 	}
-	// Remote recipient enqueued for outbound, with the destination domain parsed.
+	// Both recipients enqueued for outbound, each with its domain parsed.
 	queued := store.queued()
-	if len(queued) != 1 {
-		t.Fatalf("enqueued %d messages, want 1: %+v", len(queued), queued)
+	if len(queued) != 2 {
+		t.Fatalf("enqueued %d messages, want 2: %+v", len(queued), queued)
 	}
-	if queued[0].Recipient != "carol@remote.test" || queued[0].Domain != "remote.test" {
-		t.Errorf("enqueued = %+v, want recipient carol@remote.test domain remote.test", queued[0])
+	if queued[0].Recipient != "bob@local.test" || queued[0].Domain != "local.test" {
+		t.Errorf("enqueued = %+v, want recipient bob@local.test domain local.test", queued[0])
 	}
-	if queued[0].Sender != "alice@example.com" {
-		t.Errorf("enqueued sender = %q, want alice@example.com", queued[0].Sender)
+	if queued[1].Recipient != "carol@remote.test" || queued[1].Domain != "remote.test" {
+		t.Errorf("enqueued = %+v, want recipient carol@remote.test domain remote.test", queued[1])
+	}
+	if queued[0].Sender != "alice@example.com" || queued[1].Sender != "alice@example.com" {
+		t.Errorf("enqueued senders = %q, %q, want alice@example.com", queued[0].Sender, queued[1].Sender)
 	}
 }
 

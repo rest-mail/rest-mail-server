@@ -245,11 +245,34 @@ tasks:
           -e INTERNAL_MTLS_SUBMISSION_CERT=/certs/internal-smtp-submission.crt \
           -e INTERNAL_MTLS_SUBMISSION_KEY=/certs/internal-smtp-submission.key \
           {{.SMTP_GATEWAY_IMAGE}} >$OUTPUT 2>&1
+      - |
+        # The MX host's HTTPS front. A sender that sees RESTMAIL in this gateway's EHLO
+        # asks https://<MX>/.well-known/restmail and posts to the /restmail endpoint it
+        # names, both on the MX host name's port 443; in a cluster the API ingress
+        # serves them (helm/restmail/templates/api-ingress.yaml). Here nothing else
+        # listens on the MX address, and the queue worker delivers this server's own
+        # local mail by that route (#1564), so the front lives in the gateway's network
+        # namespace and passes the decrypted bytes to the API. It presents the gateway's
+        # own certificate for the MX name, and runs as the gateway's user with no
+        # capabilities; 443 binds through the namespace's sysctl set above.
+        api="{{.SMTP_GATEWAY_API_BASE_URL}}"; api="${api#*://}"; api="${api%%/*}"
+        conf="events {}\nstream { server { listen 443 ssl; ssl_certificate {{.SMTP_GATEWAY_TLS_CERT_PATH}}; ssl_certificate_key {{.SMTP_GATEWAY_TLS_KEY_PATH}}; proxy_pass $api; } }\n"
+        docker rm -f {{.SMTP_GATEWAY_CONTAINER_NAME}}-https >$OUTPUT 2>&1 || true
+        docker run -d --label "$RESTMAIL_LABEL" --name {{.SMTP_GATEWAY_CONTAINER_NAME}}-https \
+          --security-opt no-new-privileges:true --user 10001:10001 --cap-drop ALL \
+          --read-only --tmpfs /tmp:rw,nosuid,nodev,size=16m,mode=1777 \
+          --pids-limit 64 --memory 64m --cpus 0.25 \
+          --restart unless-stopped \
+          --network container:{{.SMTP_GATEWAY_CONTAINER_NAME}} \
+          -v {{.SMTP_GATEWAY_OWN_CERTS_VOLUME}}:/certs:ro \
+          --entrypoint sh nginxinc/nginx-unprivileged:1.30-alpine-slim \
+          -c "printf '$conf' > /tmp/front.conf && exec nginx -e /dev/stderr -c /tmp/front.conf -g 'daemon off; pid /tmp/front.pid;'" >$OUTPUT 2>&1
 
   down:
-    desc: Stop and remove smtp-gateway (preserves the logs volume)
+    desc: Stop and remove smtp-gateway and its HTTPS front (preserves the logs volume)
     cmds:
       - |
+        docker rm -f {{.SMTP_GATEWAY_CONTAINER_NAME}}-https >$OUTPUT 2>&1 || true
         if docker ps -aq --filter "name=^/{{.SMTP_GATEWAY_CONTAINER_NAME}}$" | grep -q .; then
           echo "  stopping {{.SMTP_GATEWAY_CONTAINER_NAME}}"
           docker rm -f {{.SMTP_GATEWAY_CONTAINER_NAME}} >$OUTPUT 2>&1

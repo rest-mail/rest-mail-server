@@ -47,14 +47,29 @@ class CleanStart(unittest.TestCase):
         self.made = []
 
         self.invitations = [{"uid": self.globals["OWN_INVITATION_UID"], "message_id": 31}]
+        # What each read of the sent message's recipients answers, in turn; the
+        # last answer repeats.
+        self.deliveries = [["delivered"]]
 
         def fixture_call(transaction, method, path, body=None, expect=(200, 201, 204)):
             self.made.append((method, path, body))
             if method == "GET" and path.endswith("/calendar-events"):
                 return self.invitations
+            if method == "GET" and path.endswith("/recipients"):
+                states = self.deliveries.pop(0) if len(self.deliveries) > 1 else self.deliveries[0]
+                return {"message_id": 7, "recipients": [
+                    {"address": self.globals["ADMIN"], "state": state} for state in states]}
             return {"id": 7}
 
         names["fixture_call"] = fixture_call
+        # How many fixture calls had been made each time restmail.test was
+        # given an inbound pipeline that does not greylist.
+        self.pipelines = []
+        names["an_inbound_pipeline_without_greylisting"] = Mock(
+            side_effect=lambda transaction: self.pipelines.append(len(self.made)))
+        sleep = patch.object(self.globals["time"], "sleep")
+        self.sleep = sleep.start()
+        self.addCleanup(sleep.stop)
         names["mailbox_id"] = Mock(return_value=4)
         self.stash = self.globals["hooks"].stash
         self.stash.clear()
@@ -127,10 +142,15 @@ class CleanStart(unittest.TestCase):
         sent = transaction("/api/v1/accounts/1/calendar-events", name)
         self.hook(sent)
         self.assertEqual(sent["fullPath"], "/api/v1/accounts/4/calendar-events")
-        [(method, path, body)] = self.made
+        [(method, path, body), (read, waited, _)] = self.made
         self.assertEqual((method, path), ("POST", "/api/v1/messages/send"))
+        self.assertEqual((read, waited), ("GET", "/api/v1/messages/7/recipients"))
         self.assertEqual(body["to"], [body["from"]])
         self.assertEqual(body["calendar_event"]["method"], "REQUEST")
+        # The invitation comes back through restmail.test's inbound pipeline
+        # (#1564), so the domain gets one that does not greylist before the
+        # send: the default one defers a new sender for five minutes.
+        self.assertEqual(self.pipelines, [0])
         uid = body["calendar_event"]["uid"]
         self.after(self.hooks.the_listing_holds_what_was_made, answered(sent, 200, [{"uid": uid}]))
         self.assertNotIn("fail", sent)
@@ -159,11 +179,13 @@ class CleanStart(unittest.TestCase):
                 self.start_clean.assert_called_with(sent)
                 self.assertEqual(sent["fullPath"], "/api/v1/messages/31/calendar-reply")
                 self.assertEqual(json.loads(sent["request"]["body"]), body)
-                [(method, path, made), (read, listing, _)] = self.made
+                [(method, path, made), (wait, waited, _), (read, listing, _)] = self.made
                 self.assertEqual((method, path), ("POST", "/api/v1/messages/send"))
+                self.assertEqual((wait, waited), ("GET", "/api/v1/messages/7/recipients"))
                 self.assertEqual(made["to"], [made["from"]])
                 self.assertEqual(made["calendar_event"]["method"], "REQUEST")
                 self.assertEqual((read, listing), ("GET", "/api/v1/accounts/4/calendar-events"))
+                self.assertEqual(self.pipelines[-1], 0)
 
     def test_a_reply_with_no_invitation_delivered_is_not_sent(self):
         self.invitations = [{"uid": "someone-elses@restmail.test", "message_id": 9}]
@@ -171,6 +193,43 @@ class CleanStart(unittest.TestCase):
         sent = transaction("/api/v1/messages/1/calendar-reply", name, {"from": "admin@restmail.test"})
         with self.assertRaisesRegex(RuntimeError, "was not delivered"):
             self.hook(sent)
+
+    def test_the_invitation_is_read_only_once_the_queue_worker_delivered_it(self):
+        # A send to a mailbox on this server is queued (#1564): the 201 comes
+        # before the queue worker delivers it, so the invitation is looked for
+        # only once the sent message's recipient reads delivered.
+        self.deliveries = [["queued"], ["retrying"], ["delivered"]]
+        for name, path in (
+            ("/api/v1/accounts/{id}/calendar-events > x > 200 > application/json",
+             "/api/v1/accounts/1/calendar-events"),
+            ("/api/v1/messages/{id}/calendar-reply > x > 200 > application/json",
+             "/api/v1/messages/1/calendar-reply"),
+        ):
+            with self.subTest(name=name):
+                self.made.clear()
+                self.sleep.reset_mock()
+                self.deliveries = [["queued"], ["retrying"], ["delivered"]]
+                self.hook(transaction(path, name, {"from": "admin@restmail.test"}))
+                reads = [path for method, path, _ in self.made if method == "GET"]
+                self.assertEqual(reads[:3], ["/api/v1/messages/7/recipients"] * 3)
+                self.assertEqual(self.sleep.call_count, 2)
+
+    def test_an_invitation_that_bounced_is_an_error(self):
+        self.deliveries = [["queued"], ["failed"]]
+        name = "/api/v1/messages/{id}/calendar-reply > x > 200 > application/json"
+        sent = transaction("/api/v1/messages/1/calendar-reply", name, {"from": "admin@restmail.test"})
+        with self.assertRaisesRegex(RuntimeError, "was not delivered: .*failed"):
+            self.hook(sent)
+        self.assertFalse(any(path.endswith("/calendar-events") for _, path, _ in self.made))
+
+    def test_an_invitation_never_delivered_is_an_error_after_the_wait(self):
+        self.deliveries = [["queued"]]
+        clock = iter(range(0, 10_000, 30))
+        name = "/api/v1/accounts/{id}/calendar-events > x > 200 > application/json"
+        sent = transaction("/api/v1/accounts/1/calendar-events", name)
+        with patch.object(self.globals["time"], "monotonic", lambda: next(clock)):
+            with self.assertRaisesRegex(RuntimeError, "not delivered within 60 seconds: .*queued"):
+                self.hook(sent)
 
     def test_the_stream_is_not_given_events(self):
         # Its example is a literal stream the live server never sends, so the

@@ -381,6 +381,48 @@ OWN_INVITATION = {
 }
 
 
+# Mail to a mailbox on this server goes on the outbound queue like any other
+# and comes back in through the MX (#1564), so the send's 201 says it was
+# queued, not that it arrived. The queue worker polls every 5 seconds by
+# default (QUEUE_POLL_INTERVAL) and delivers on its first try, so this is many
+# polls.
+LOCAL_DELIVERY_WAIT = 60
+
+
+def delivered_here(transaction, sent):
+    """Wait until every recipient of sent, a message the fixture admin sent to
+    mailboxes on this server, has it: the queue worker delivered it through
+    the inbound route. Answers sent. A recipient that failed, or one still not
+    delivered at LOCAL_DELIVERY_WAIT, is an error naming its state."""
+    if not isinstance(sent, dict) or not sent.get("id"):
+        raise RuntimeError("the fixture send returned no message")
+    deadline = time.monotonic() + LOCAL_DELIVERY_WAIT
+    while True:
+        status = fixture_call(transaction, "GET", "/api/v1/messages/{:d}/recipients".format(sent["id"])) or {}
+        recipients = status.get("recipients") or []
+        states = {row.get("address"): row.get("state") for row in recipients}
+        if recipients and all(state == "delivered" for state in states.values()):
+            return sent
+        failed = {address: state for address, state in states.items() if state == "failed"}
+        if failed:
+            raise RuntimeError(f"the message sent to a mailbox on this server was not delivered: {failed}")
+        if time.monotonic() >= deadline:
+            raise RuntimeError(
+                f"the message sent to a mailbox on this server was not delivered within "
+                f"{LOCAL_DELIVERY_WAIT:d} seconds: {states or 'no recipients listed'}"
+            )
+        time.sleep(1)
+
+
+def an_invitation_delivered(transaction):
+    """The seeded admin@restmail.test sends itself OWN_INVITATION after the
+    reset, and it is in that account's mailbox when this returns. The mail
+    comes back through restmail.test's inbound pipeline (#1564), so that
+    pipeline must not greylist it first."""
+    an_inbound_pipeline_without_greylisting(transaction)
+    delivered_here(transaction, fixture_call(transaction, "POST", "/api/v1/messages/send", OWN_INVITATION))
+
+
 @hooks.before("getAccount")
 @hooks.before("listCalendarEvents")
 @hooks.before("accountEvents")
@@ -395,7 +437,8 @@ def the_last_free_operations_after_a_reset(transaction):
     #   admin@restmail.test: the reset removed the account their example names
     #   and seeded that address again under another id. Only the id in the
     #   path changes (to_the_seeded_account).
-    # - listCalendarEvents' 200 gets an invitation of its own, which the after
+    # - listCalendarEvents' 200 gets an invitation of its own, delivered
+    #   before the listing is sent (an_invitation_delivered), which the after
     #   hook the_listing_holds_what_was_made requires it to list.
     # - respondToCalendar's 200 and 403 reply to an invitation of their own
     #   (to_the_invitation_made_for_it).
@@ -418,7 +461,7 @@ def the_last_free_operations_after_a_reset(transaction):
     if path.startswith("/api/v1/accounts/"):
         to_the_seeded_account(transaction)
     if path.endswith("/calendar-events"):
-        fixture_call(transaction, "POST", "/api/v1/messages/send", OWN_INVITATION)
+        an_invitation_delivered(transaction)
         made_for_the_listing(transaction, "invitation", {"uid": OWN_INVITATION_UID})
 
 
@@ -742,11 +785,12 @@ def to_the_invitation_made_for_it(transaction):
     """respondToCalendar's accepted (200) and foreign_sender (403) need a
     received invitation (x-requires state calendar_invitation, which the
     own-data run provides): the seeded admin@restmail.test sends itself one
-    after the reset, and the reply goes to the message it was delivered in.
+    after the reset, waits for the queue worker to deliver it, and the reply
+    goes to the message it was delivered in.
     Only the message id in the path changes; foreign_sender's from stays an
     address the session cannot send as, so it is refused after the invitation
     is found."""
-    fixture_call(transaction, "POST", "/api/v1/messages/send", OWN_INVITATION)
+    an_invitation_delivered(transaction)
     account = mailbox_id(origin_of(transaction), ADMIN)
     rows = fixture_call(transaction, "GET", f"/api/v1/accounts/{account:d}/calendar-events") or []
     found = [row.get("message_id") for row in rows if row.get("uid") == OWN_INVITATION_UID]
@@ -2403,8 +2447,8 @@ def pipeline_reads_after_a_reset(transaction):
 # The delivery log and the pipeline log (#1785). Each lists what a send wrote.
 # A message to a remote recipient is queued (outbound_queue, which the delivery
 # log reads); the recipient's domain is a .test name nothing hosts, so the
-# queue only defers it. A message to a local mailbox is delivered through the
-# inbound pipeline, whose trace (message_traces, which the pipeline log reads)
+# queue only defers it. A message to a local mailbox is queued as well, and the
+# queue worker delivers it back through the inbound pipeline (#1564), whose trace (message_traces, which the pipeline log reads)
 # is what the documented 200 asks for: Vertrag sends the declared defaults,
 # direction=inbound, action=continue and outcome=delivered. The testbed keeps
 # every trace (TRACE_SAMPLE_RATE=1).
@@ -2463,13 +2507,17 @@ def the_delivery_log_after_a_reset(transaction):
 def the_pipeline_log_holds_a_send(transaction):
     # Registered after pipeline_reads_after_a_reset, which resets first. A
     # listing that succeeds gets the inbound trace of a message the fixture
-    # admin sends itself after the reset, and the_listing_holds_what_was_made
-    # fails it unless the answer lists that trace, by its Message-ID. A run
-    # with no reset changes nothing here.
+    # admin sends itself after the reset, once the queue worker has delivered
+    # it (delivered_here), and the_listing_holds_what_was_made
+    # fails it unless the answer lists that trace, by its Message-ID. The send
+    # comes back through restmail.test's inbound pipeline (#1564), which gets
+    # one that does not greylist first. A run with no reset changes nothing
+    # here.
     if not asked_for_a_clean_start() or " > 200" not in transaction.get("name", ""):
         return
-    sent = a_message_for_the_logs(transaction, ADMIN)
-    # Traces are written in the background, a batch every 500 ms
+    an_inbound_pipeline_without_greylisting(transaction)
+    sent = delivered_here(transaction, a_message_for_the_logs(transaction, ADMIN))
+    # The trace is of the delivery, and traces are written in the background, a batch every 500 ms
     # (internal/trace/recorder.go).
     time.sleep(1)
     made_for_the_listing(
@@ -5459,7 +5507,9 @@ def an_inbound_pipeline_without_greylisting(transaction):
     """An active inbound pipeline for restmail.test that only validates the
     headers. After a reset the domain has none, and the default one greylists:
     a sender, recipient and address it has not seen are deferred 503 for five
-    minutes, so a RESTMAIL delivery from a new mailbox could never succeed."""
+    minutes, so a RESTMAIL delivery from a new mailbox, or a message sent to a
+    mailbox on this server (which the queue worker delivers back through the
+    inbound route, #1564), could never arrive within the hooks' waits."""
     origin = setup_origin(transaction)
     headers = {"Content-Type": "application/json", "Authorization": "Bearer " + admin_token(origin)}
     request = urllib.request.Request(origin + "/api/v1/admin/domains?limit=200", headers=headers)
