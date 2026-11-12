@@ -1,6 +1,7 @@
 """Locate the read-only DMARC fixture without weakening any refusal probe."""
 
 import json
+import os
 import urllib.request
 
 import vertrag_hooks as hooks
@@ -9,6 +10,10 @@ import vertrag_hooks as hooks
 def register_dmarc_report_hook(admin_token):
     @hooks.before("getDmarcReport")
     def existing_report(transaction):
+        # After a reset (the own-data run) the fixture report is gone, and
+        # hooks.py delivers one of its own first.
+        if os.environ.get("CONTRACT_RESET_SEED") == "1":
+            return
         request = transaction.get("request", {})
         expected = transaction.get("expected", {})
         if (

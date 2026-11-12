@@ -29,7 +29,7 @@ class ReportTargets(unittest.TestCase):
                 self.assertLess(body.index(TASK), body.index("$CONTRACT_VERTRAG"))
 
     def test_no_gate_tops_up(self):
-        for phase in ("gate", "teardown", "fuzz"):
+        for phase in ("gate", "own-data", "fuzz"):
             with self.subTest(phase=phase):
                 self.assertNotIn(TASK, arm(self.script, phase))
 
