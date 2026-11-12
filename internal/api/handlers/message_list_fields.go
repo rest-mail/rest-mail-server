@@ -15,7 +15,7 @@ const messageListFields = messageListColumns + `, ` + messageSourceHeaderSection
 const messageListColumns = `messages.id, messages.mailbox_id, messages.folder, messages.message_id,
 	messages.in_reply_to, messages."references", messages.thread_id, messages.sender, messages.sender_name,
 	messages.recipients_to, messages.recipients_cc, messages.subject, messages.body_text, messages.body_html,
-	messages.headers, messages.auth_results, messages.sealed_hash, messages.rule_class, messages.calendar_events,
+	messages.headers, messages.auth_results, messages.sealed_hash, messages.local_refusals, messages.rule_class, messages.calendar_events,
 	messages.size_bytes, messages.raw_size, messages.downgraded_size, messages.received_tls, messages.require_tls, messages.submitted_at,
 	messages.tls_version, messages.has_attachments, messages.is_answered, messages.is_read, messages.is_dsn,
 	messages.is_flagged, messages.is_starred, messages.keywords, messages.imap_deleted, messages.mod_seq, messages.is_draft,

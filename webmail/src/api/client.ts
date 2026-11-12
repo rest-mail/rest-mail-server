@@ -1,4 +1,5 @@
 import type { LoginResponse, Folder, MessageSummary, MessageDetail, Account, Pagination, Attachment, AwaitingThreadsPage } from '../types';
+import { ApiError, apiErrorFromBody } from './apiError';
 import { API_BASE as BASE } from './base';
 import type { components, paths } from './types';
 import type { PushDeviceList } from '../lib/webPush';
@@ -24,17 +25,7 @@ export function getCsrfToken(): string {
   return match ? decodeURIComponent(match[1]) : '';
 }
 
-export class ApiError extends Error {
-  status: number;
-  code: string;
-
-  constructor(status: number, code: string, message: string) {
-    super(message);
-    this.name = 'ApiError';
-    this.status = status;
-    this.code = code;
-  }
-}
+export { ApiError };
 
 let onUnauthorized: (() => void) | null = null;
 
@@ -60,16 +51,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     if (res.status === 401 && onUnauthorized) {
       onUnauthorized();
     }
-    const body = await res.text();
-    try {
-      const parsed = JSON.parse(body);
-      if (parsed.error) {
-        throw new ApiError(res.status, parsed.error.code || 'unknown', parsed.error.message || body);
-      }
-    } catch (e) {
-      if (e instanceof ApiError) throw e;
-    }
-    throw new ApiError(res.status, 'unknown', `API error ${res.status}: ${body}`);
+    throw apiErrorFromBody(res.status, await res.text());
   }
   return res.json();
 }
@@ -90,16 +72,7 @@ async function requestNoContent(path: string, options: RequestInit = {}): Promis
     if (res.status === 401 && onUnauthorized) {
       onUnauthorized();
     }
-    const body = await res.text();
-    try {
-      const parsed = JSON.parse(body);
-      if (parsed.error) {
-        throw new ApiError(res.status, parsed.error.code || 'unknown', parsed.error.message || body);
-      }
-    } catch (e) {
-      if (e instanceof ApiError) throw e;
-    }
-    throw new ApiError(res.status, 'unknown', `API error ${res.status}: ${body}`);
+    throw apiErrorFromBody(res.status, await res.text());
   }
 }
 
@@ -359,6 +332,17 @@ export async function setQuietHours(accountId: number, setting: QuietHoursSettin
   return request(`${BASE}/accounts/${accountId}/quiet-hours`, { method: 'PUT', body: JSON.stringify(setting) });
 }
 
+type AccountTimeZoneResponse = paths['/api/v1/accounts/{id}/time-zone']['get']['responses'][200]['content']['application/json'];
+
+export async function getAccountTimeZone(accountId: number): Promise<AccountTimeZoneResponse> {
+  return request(`${BASE}/accounts/${accountId}/time-zone`);
+}
+
+/** Null clears the zone, and IMAP then uses UTC. An unknown name is a 422 ApiError with `fields.time_zone`. */
+export async function setAccountTimeZone(accountId: number, timeZone: string | null): Promise<AccountTimeZoneResponse> {
+  return request(`${BASE}/accounts/${accountId}/time-zone`, { method: 'PUT', body: JSON.stringify({ time_zone: timeZone }) });
+}
+
 export async function getContactReplyTimeSetting(accountId: number): Promise<ContactReplyTimeSetting> {
   return request(`${BASE}/accounts/${accountId}/contact-reply-time`);
 }
@@ -393,9 +377,10 @@ export async function sendMessage(data: {
     attendees?: { name?: string; address: string; role?: string; rsvp?: boolean }[];
     sequence?: number;
   };
-}): Promise<void> {
+}, idempotencyKey?: string): Promise<void> {
   await request(`${BASE}/messages/send`, {
     method: 'POST',
+    headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {},
     body: JSON.stringify(data),
   });
 }
@@ -442,9 +427,24 @@ export async function updateDraft(draftId: number, data: Record<string, unknown>
   });
 }
 
-export async function sendDraft(draftId: number): Promise<void> {
+export async function sendDraft(draftId: number, idempotencyKey?: string): Promise<void> {
   await request(`${BASE}/messages/draft/${draftId}/send`, {
     method: 'POST',
+    headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {},
+  });
+}
+
+export async function forwardMessage(messageId: number, data: {
+  from: string;
+  to: string[];
+  body_text?: string;
+  on_behalf?: boolean;
+  list_unsubscribe?: { https?: string; mailto?: string };
+}, idempotencyKey?: string): Promise<void> {
+  await request(`${BASE}/messages/${messageId}/forward`, {
+    method: 'POST',
+    headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {},
+    body: JSON.stringify(data),
   });
 }
 
