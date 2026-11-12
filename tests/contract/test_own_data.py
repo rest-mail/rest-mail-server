@@ -250,6 +250,18 @@ SIGN_IN_AND_RECOVERY = (
     "recoveryEmailLink",
     "verifyRecoveryEmail",
 )
+# The last operations step 2 found free. No link starts from any of them;
+# listAccounts' links reach the account read and the calendar list, and
+# linkAccount's reaches the account read of the account it linked (#1780),
+# and sendMessage's reaches the reply to the invitation it sent (#1764).
+LAST_FREE = (
+    "getAccount",
+    "listCalendarEvents",
+    "respondToCalendar",
+    "accountEvents",
+    "probeServices",
+    "verifyDelivery",
+)
 FOLLOWS_THE_SENT_MESSAGE = {
     "getMessage",
     "updateMessage",
@@ -344,7 +356,8 @@ class Selection(unittest.TestCase):
             - set(CERTIFICATES)
             - set(ACCOUNT_LINKS)
             - set(TOKEN_EXCHANGE)
-            - set(SIGN_IN_AND_RECOVERY),
+            - set(SIGN_IN_AND_RECOVERY)
+            - set(LAST_FREE),
             link_followers(description, "createDomain") | {"createDomain"},
         )
 
@@ -369,6 +382,44 @@ class Selection(unittest.TestCase):
             set(PIPELINE_READS + FILTERS + PUBLIC_READS + DOMAIN_LISTS + TOKEN_EXCHANGE + SIGN_IN_AND_RECOVERY),
             set(own_data.MOVED),
         )
+
+    def test_the_last_free_operations_have_moved_and_only_account_lists_and_links_reach_them(self):
+        description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
+        for operation in LAST_FREE:
+            self.assertEqual(link_followers(description, operation), set())
+        for start in description_operations(description):
+            reached = set(LAST_FREE) & link_followers(description, start)
+            if start == "listAccounts":
+                self.assertEqual(reached, {"getAccount", "listCalendarEvents"})
+            elif start == "linkAccount":
+                self.assertEqual(reached, {"getAccount"})
+            elif start == "sendMessage":
+                # A sent invitation is answered from its Sent copy (#1764).
+                self.assertEqual(reached, {"respondToCalendar"})
+            else:
+                self.assertFalse(reached, start)
+        # Both links hand getAccount the id of the account their own response
+        # carries, so the seeded admin account getAccount reads never depends
+        # on an account another operation linked.
+        for start, path in (
+            ("listAccounts", "/api/v1/accounts"),
+            ("linkAccount", "/api/v1/accounts/link"),
+        ):
+            operation = next(
+                o for o in description["paths"][path].values()
+                if isinstance(o, dict) and o.get("operationId") == start
+            )
+            links = [
+                link
+                for response in operation["responses"].values()
+                for link in (response.get("links") or {}).values()
+                if link["operationId"] == "getAccount"
+            ]
+            self.assertTrue(links, start)
+            for link in links:
+                self.assertTrue(link["parameters"]["id"].startswith("$response.body#/data"), start)
+        self.assertNotIn("listAccounts", own_data.MOVED)
+        self.assertLessEqual(set(LAST_FREE), set(own_data.MOVED))
 
     def test_it_selects_every_account_link_operation_and_its_links(self):
         description = yaml.safe_load((ROOT / "openapi.yaml").read_text())

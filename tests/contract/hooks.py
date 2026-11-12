@@ -355,6 +355,67 @@ def the_session_it_ended_is_over(transaction):
         transaction["fail"] = f"the session made for it was not ended: its refresh token answered {status:d}, not 401"
 
 
+# The invitation listCalendarEvents' 200 lists after its reset: a calendar
+# request the seeded admin@restmail.test sends itself, so it is delivered to
+# that account with its version recorded.
+OWN_INVITATION_UID = "contract-own-invitation@restmail.test"
+OWN_INVITATION = {
+    "from": ADMIN,
+    "to": [ADMIN],
+    "subject": "Contract invitation",
+    "body_text": "An invitation made for this exchange after its reset.",
+    "calendar_event": {
+        "uid": OWN_INVITATION_UID,
+        "sequence": 0,
+        "method": "REQUEST",
+        "summary": "Contract invitation",
+        "dtstart": "2030-01-01T10:00:00Z",
+        "dtend": "2030-01-01T11:00:00Z",
+        "all_day": False,
+        "organizer": {"address": ADMIN},
+        "attendees": [{"address": ADMIN}],
+    },
+}
+
+
+@hooks.before("getAccount")
+@hooks.before("listCalendarEvents")
+@hooks.before("accountEvents")
+@hooks.before("respondToCalendar")
+@hooks.before("probeServices")
+@hooks.before("verifyDelivery")
+def the_last_free_operations_after_a_reset(transaction):
+    # The last operations step 2 found free, moved to a clean start: each
+    # exchange, refusals included, resets and seeds first. Refusals keep their
+    # ids and bodies. The successes:
+    # - getAccount's and listCalendarEvents' 200 go to the seeded
+    #   admin@restmail.test: the reset removed the account their example names
+    #   and seeded that address again under another id. Only the id in the
+    #   path changes (to_the_seeded_account).
+    # - listCalendarEvents' 200 gets an invitation of its own, which the after
+    #   hook the_listing_holds_what_was_made requires it to list.
+    # - verifyDelivery's 200 asks about an address no mailbox has, with no
+    #   wait, and is answered found: false (#388); probeServices' 200 probes
+    #   the database. Neither needs anything made.
+    # No link starts from any of them. listAccounts' link reaches getAccount
+    # and listCalendarEvents, linkAccount's reaches getAccount (#1780) and
+    # sendMessage's reaches respondToCalendar (#1764); nothing else does.
+    # Registered ahead of every other hook of these operations. A run with no
+    # reset changes nothing here.
+    if not asked_for_a_clean_start():
+        return
+    start_clean(transaction)
+    name = transaction.get("name", "")
+    if " > 200 > " not in name:
+        return
+    path = transaction["fullPath"].partition("?")[0]
+    if path.startswith("/api/v1/accounts/"):
+        to_the_seeded_account(transaction)
+    if path.endswith("/calendar-events"):
+        fixture_call(transaction, "POST", "/api/v1/messages/send", OWN_INVITATION)
+        made_for_the_listing(transaction, "invitation", {"uid": OWN_INVITATION_UID})
+
+
 @hooks.before("domainDNSCheck")
 @hooks.before("getDomainRelay")
 @hooks.before("listSuppressions")
@@ -1388,6 +1449,7 @@ def row_field(row, field):
 @hooks.after("listAliases")
 @hooks.after("listDKIMKeys")
 @hooks.after("listCertificates")
+@hooks.after("listCalendarEvents")
 def the_listing_holds_what_was_made(transaction):
     # A listing's 200 has the same shape with no rows as with the one its
     # before hook made after the reset, so the status and the schema alone

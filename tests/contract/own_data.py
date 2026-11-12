@@ -318,6 +318,21 @@ MOVED = (
     "registerRecoveryEmail",
     "recoveryEmailLink",
     "verifyRecoveryEmail",
+    # The last operations step 2 found free. No link starts from any of them.
+    # listAccounts' link reaches getAccount and listCalendarEvents,
+    # linkAccount's reaches getAccount with the id its own response carries
+    # (#1780), and sendMessage's reaches respondToCalendar (#1764); nothing
+    # else reaches them, and each is sent with its own id. The
+    # account read and the calendar list go to the seeded account after their
+    # reset, and the list gets an invitation of its own. The delivery check's
+    # success asks about an address no mailbox has, and the probe's probes the
+    # database: neither needs anything made. The rest are refusals.
+    "getAccount",
+    "listCalendarEvents",
+    "respondToCalendar",
+    "accountEvents",
+    "probeServices",
+    "verifyDelivery",
 )
 
 
