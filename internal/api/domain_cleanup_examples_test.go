@@ -23,16 +23,21 @@ import (
 var domainCleanupTables = []string{"pipelines", "custom_filters", "domain_sender_rules", "certificates", "dkim_rotation_keys", "mtasts_policies", "domain_relays", "suppressions"}
 
 type domainCleanupLedger struct {
-	domains map[int64]map[string]any
-	live    map[string]map[int64]int64
-	grants  []map[string]any
-	audit   []map[string]any
+	domains  map[int64]map[string]any
+	live     map[string]map[int64]int64
+	grants   []map[string]any
+	audit    []map[string]any
+	archived map[int64]json.RawMessage
 }
 
 func (s domainCleanupLedger) clone() domainCleanupLedger {
 	c := domainCleanupLedger{domains: map[int64]map[string]any{}, live: map[string]map[int64]int64{}, grants: append([]map[string]any(nil), s.grants...), audit: append([]map[string]any(nil), s.audit...)}
 	for id, row := range s.domains {
 		c.domains[id] = row
+	}
+	c.archived = map[int64]json.RawMessage{}
+	for id, state := range s.archived {
+		c.archived[id] = append(json.RawMessage(nil), state...)
 	}
 	for name, rows := range s.live {
 		c.live[name] = map[int64]int64{}
@@ -106,6 +111,33 @@ func (c *domainCleanupConnection) QueryContext(ctx context.Context, q string, ar
 		return nil, err
 	}
 	c.queries = append(c.queries, q)
+	if strings.HasPrefix(q, "SELECT COALESCE(jsonb_agg") {
+		table, id := cleanupTable(q), cleanupID(args)
+		var snapshot []map[string]any
+		if table == "domains" {
+			if row, ok := c.ledger.domains[id]; ok {
+				snapshot = append(snapshot, row)
+			}
+		} else {
+			for count := int64(0); count < c.ledger.live[table][id]; count++ {
+				snapshot = append(snapshot, map[string]any{"domain_id": id})
+			}
+		}
+		if snapshot == nil {
+			snapshot = []map[string]any{}
+		}
+		encoded, err := json.Marshal(snapshot)
+		if err != nil {
+			return nil, err
+		}
+		return invitationRows([]string{"state"}, []driver.Value{encoded}), nil
+	}
+	if strings.Contains(q, `FROM "mailboxes"`) && strings.Contains(q, "domain_id =") && strings.Contains(q, "FOR UPDATE") {
+		if c.mode == "account" {
+			return importRows(map[string]any{"id": int64(99), "domain_id": cleanupID(args), "address": "account@example.test"}), nil
+		}
+		return invitationRows([]string{"id"}), nil
+	}
 	if strings.HasPrefix(q, "SELECT count(*)") {
 		var n int64
 		if strings.Contains(q, "grants AS g") {
@@ -145,7 +177,16 @@ func (c *domainCleanupConnection) QueryContext(ctx context.Context, q string, ar
 	if strings.Contains(q, `FROM "grants"`) {
 		return importRows(c.ledger.grants...), nil
 	}
+	if strings.HasPrefix(q, `INSERT INTO "mailboxes"`) || strings.HasPrefix(q, `INSERT INTO "grants"`) {
+		return invitationRows([]string{"id"}, []driver.Value{int64(100)}), nil
+	}
+	if strings.HasPrefix(q, `INSERT INTO "quota_usage"`) {
+		return invitationRows([]string{"mailbox_id"}, []driver.Value{int64(100)}), nil
+	}
 	if strings.Contains(q, `FROM "roles"`) {
+		if strings.HasPrefix(q, `SELECT "name"`) {
+			return invitationRows([]string{"name"}, []driver.Value{"receiver"}), nil
+		}
 		return importRows(map[string]any{"id": int64(7), "name": "domain-reader"}), nil
 	}
 	if strings.Contains(q, `FROM "grant_activations"`) {
@@ -189,6 +230,26 @@ func (c *domainCleanupConnection) ExecContext(ctx context.Context, q string, arg
 		return nil, err
 	}
 	c.queries = append(c.queries, q)
+	if strings.HasPrefix(q, `INSERT INTO "domain_retirements"`) {
+		row, err := invitationFields(q, args)
+		if err != nil {
+			return nil, err
+		}
+		var encoded []byte
+		switch value := row["state"].(type) {
+		case []byte:
+			encoded = value
+		case string:
+			encoded = []byte(value)
+		default:
+			return nil, fmt.Errorf("archive missing state: %T", row["state"])
+		}
+		if c.ledger.archived == nil {
+			c.ledger.archived = map[int64]json.RawMessage{}
+		}
+		c.ledger.archived[row["domain_id"].(int64)] = append(json.RawMessage(nil), encoded...)
+		return driver.RowsAffected(1), nil
+	}
 	if strings.HasPrefix(q, `INSERT INTO "audit_log"`) {
 		rows, err := c.QueryContext(ctx, q, args)
 		if rows != nil {

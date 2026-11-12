@@ -106,6 +106,9 @@ func (c *grantRemovalConnection) auditRow(q string, args []driver.NamedValue) (d
 }
 
 func (c *grantRemovalConnection) QueryContext(ctx context.Context, q string, args []driver.NamedValue) (driver.Rows, error) {
+	if strings.Contains(q, "EXISTS (SELECT 1 FROM mailboxes") {
+		return &authReadSnapshotRows{columns: []string{"id"}}, nil
+	}
 	if strings.HasPrefix(q, `SELECT * FROM "grants"`) {
 		c.record(q, args)
 		if len(args) != 2 || args[0].Value != c.target || args[1].Value != int64(1) || !strings.Contains(q, `"grants"."id" =`) {

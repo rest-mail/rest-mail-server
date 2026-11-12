@@ -6,6 +6,7 @@
     "getDomain",
     "listDomains",
     "restartDomainOutbound",
+    "restoreDomain",
     "stopDomainOutbound",
     "updateDomain"
   ]

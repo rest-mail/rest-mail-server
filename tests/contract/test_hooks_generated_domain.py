@@ -70,7 +70,8 @@ class GeneratedDomain(unittest.TestCase):
         elif request.get_method() == "GET" and parsed.path == "/api/v1/admin/aliases" and parse_qs(parsed.query).get("domain_id") == ["18"]:
             data = [{"id": 5}]
         elif request.get_method() == "GET" and parsed.path == "/api/v1/admin/mailboxes" and parse_qs(parsed.query).get("domain_id") == ["18"]:
-            data = [{"id": 7}, {"id": 9}]
+            data = [{"id": 7, "address": "someone@" + self.domains[0]["name"]}, {"id": 9}]
+            data.append({"id": 11, "address": "postmaster@" + self.domains[0]["name"]})
         return Answer(json.dumps({"data": data}).encode())
 
     def probe(self, name, status=CREATE):
@@ -100,12 +101,20 @@ class GeneratedDomain(unittest.TestCase):
                 ("DELETE", "/api/v1/admin/aliases/5", "Bearer two-factor"),
                 ("DELETE", "/api/v1/admin/mailboxes/7", "Bearer two-factor"),
                 ("DELETE", "/api/v1/admin/mailboxes/9", "Bearer two-factor"),
-                ("DELETE", "/api/v1/admin/domains/18", "Bearer setup"),
+                ("DELETE", "/api/v1/admin/domains/18", "Bearer two-factor"),
             ],
         )
         self.assertEqual(self.stub.stash["probe_mailboxes"], {ORIGIN + "\nadmin@restmail.test": True})
         self.assertEqual(self.stub.stash["created_account_probes"], {})
         self.assertNotIn(ORIGIN, self.stub.stash["link_fixture_prepared"])
+
+    def test_the_domain_postmaster_is_retired_with_the_domain(self):
+        # Deleting a domain's last postmaster on its own is refused with 409
+        # postmaster_required; the domain DELETE retires it (#1705).
+        self.hooks.create_a_domain_that_is_not_there(self.probe("example.com"))
+        deleted = [call[1] for call in self.calls if call[0] == "DELETE"]
+        self.assertNotIn("/api/v1/admin/mailboxes/11", deleted)
+        self.assertEqual(deleted[-1], "/api/v1/admin/domains/18")
 
     def test_what_follows_the_probes_hosts_the_domain_again(self):
         self.hooks.create_a_domain_that_is_not_there(self.probe("example.com"))
@@ -117,11 +126,14 @@ class GeneratedDomain(unittest.TestCase):
         following["operationId"] = "microsoftAutodiscover"
         with patch.object(self.hooks.subprocess, "run") as fixture:
             self.hooks.host_the_generated_domain_again(following)
+            # The domain's provisioned postmaster holds its receive grant, and
+            # removing a grant takes a two-factor session (#1705): with the
+            # setup session the delete is refused 403 and the hook ends.
             self.assertEqual(
-                [call[:2] for call in self.calls],
+                self.calls,
                 [
-                    ("GET", "/api/v1/admin/domains"),
-                    ("DELETE", "/api/v1/admin/domains/18"),
+                    ("GET", "/api/v1/admin/domains", "Bearer setup"),
+                    ("DELETE", "/api/v1/admin/domains/18", "Bearer two-factor"),
                 ],
             )
             self.assertEqual(fixture.call_args.args[0], ["chore", "test:contract-link-fixture"])
@@ -178,7 +190,7 @@ class GeneratedDomain(unittest.TestCase):
                 ("DELETE", "/api/v1/admin/aliases/5", "Bearer two-factor"),
                 ("DELETE", "/api/v1/admin/mailboxes/7", "Bearer two-factor"),
                 ("DELETE", "/api/v1/admin/mailboxes/9", "Bearer two-factor"),
-                ("DELETE", "/api/v1/admin/domains/18", "Bearer setup"),
+                ("DELETE", "/api/v1/admin/domains/18", "Bearer two-factor"),
             ],
         )
         self.assertEqual(self.stub.stash["sender_mailboxes"], {ORIGIN + "\nother@restmail.test": True})
