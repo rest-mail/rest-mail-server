@@ -45,6 +45,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import mfa_admin  # noqa: E402
 import rate_limits
 import owner_key  # noqa: E402
+from probe_refusals import send_refusal_probe, tls_report_refusal  # noqa: E402
 import reset_seed
 from identities import address_key, domain_key
 from api_keys_live import totp  # noqa: E402
@@ -381,6 +382,48 @@ OWN_INVITATION = {
 }
 
 
+# Mail to a mailbox on this server goes on the outbound queue like any other
+# and comes back in through the MX (#1564), so the send's 201 says it was
+# queued, not that it arrived. The queue worker polls every 5 seconds by
+# default (QUEUE_POLL_INTERVAL) and delivers on its first try, so this is many
+# polls.
+LOCAL_DELIVERY_WAIT = 60
+
+
+def delivered_here(transaction, sent):
+    """Wait until every recipient of sent, a message the fixture admin sent to
+    mailboxes on this server, has it: the queue worker delivered it through
+    the inbound route. Answers sent. A recipient that failed, or one still not
+    delivered at LOCAL_DELIVERY_WAIT, is an error naming its state."""
+    if not isinstance(sent, dict) or not sent.get("id"):
+        raise RuntimeError("the fixture send returned no message")
+    deadline = time.monotonic() + LOCAL_DELIVERY_WAIT
+    while True:
+        status = fixture_call(transaction, "GET", "/api/v1/messages/{:d}/recipients".format(sent["id"])) or {}
+        recipients = status.get("recipients") or []
+        states = {row.get("address"): row.get("state") for row in recipients}
+        if recipients and all(state == "delivered" for state in states.values()):
+            return sent
+        failed = {address: state for address, state in states.items() if state == "failed"}
+        if failed:
+            raise RuntimeError(f"the message sent to a mailbox on this server was not delivered: {failed}")
+        if time.monotonic() >= deadline:
+            raise RuntimeError(
+                f"the message sent to a mailbox on this server was not delivered within "
+                f"{LOCAL_DELIVERY_WAIT:d} seconds: {states or 'no recipients listed'}"
+            )
+        time.sleep(1)
+
+
+def an_invitation_delivered(transaction):
+    """The seeded admin@restmail.test sends itself OWN_INVITATION after the
+    reset, and it is in that account's mailbox when this returns. The mail
+    comes back through restmail.test's inbound pipeline (#1564), so that
+    pipeline must not greylist it first."""
+    an_inbound_pipeline_without_greylisting(transaction)
+    delivered_here(transaction, fixture_call(transaction, "POST", "/api/v1/messages/send", OWN_INVITATION))
+
+
 @hooks.before("getAccount")
 @hooks.before("listCalendarEvents")
 @hooks.before("accountEvents")
@@ -395,7 +438,8 @@ def the_last_free_operations_after_a_reset(transaction):
     #   admin@restmail.test: the reset removed the account their example names
     #   and seeded that address again under another id. Only the id in the
     #   path changes (to_the_seeded_account).
-    # - listCalendarEvents' 200 gets an invitation of its own, which the after
+    # - listCalendarEvents' 200 gets an invitation of its own, delivered
+    #   before the listing is sent (an_invitation_delivered), which the after
     #   hook the_listing_holds_what_was_made requires it to list.
     # - respondToCalendar's 200 and 403 reply to an invitation of their own
     #   (to_the_invitation_made_for_it).
@@ -418,7 +462,7 @@ def the_last_free_operations_after_a_reset(transaction):
     if path.startswith("/api/v1/accounts/"):
         to_the_seeded_account(transaction)
     if path.endswith("/calendar-events"):
-        fixture_call(transaction, "POST", "/api/v1/messages/send", OWN_INVITATION)
+        an_invitation_delivered(transaction)
         made_for_the_listing(transaction, "invitation", {"uid": OWN_INVITATION_UID})
 
 
@@ -742,11 +786,12 @@ def to_the_invitation_made_for_it(transaction):
     """respondToCalendar's accepted (200) and foreign_sender (403) need a
     received invitation (x-requires state calendar_invitation, which the
     own-data run provides): the seeded admin@restmail.test sends itself one
-    after the reset, and the reply goes to the message it was delivered in.
+    after the reset, waits for the queue worker to deliver it, and the reply
+    goes to the message it was delivered in.
     Only the message id in the path changes; foreign_sender's from stays an
     address the session cannot send as, so it is refused after the invitation
     is found."""
-    fixture_call(transaction, "POST", "/api/v1/messages/send", OWN_INVITATION)
+    an_invitation_delivered(transaction)
     account = mailbox_id(origin_of(transaction), ADMIN)
     rows = fixture_call(transaction, "GET", f"/api/v1/accounts/{account:d}/calendar-events") or []
     found = [row.get("message_id") for row in rows if row.get("uid") == OWN_INVITATION_UID]
@@ -1409,6 +1454,9 @@ def send_as_the_two_factor_admin(transaction):
     # disableTwoFactor's refusals stay refusals.
     # Confirming its authenticator again is refused (409): it is already on,
     # and the fixture admin's sign-in requirements are left alone.
+    if transaction.get("operationId") == "createAppPassword" and a_later_request_of_the_coverage_process(transaction):
+        an_api_key_probe_as_the_probe_admin(transaction)
+        return
     as_the_two_factor_admin(transaction)
 
 
@@ -1518,7 +1566,7 @@ def an_api_key_of_its_own_for_a_probe(transaction):
     if not positive_id(parent.split("/")[-2]) or not positive_id(credential) or credential == "2147483647":
         return
     origin = origin_of(transaction)
-    rate_limits.pace(1.1)
+    rate_limits.pace(1.1)  # making the key spends the same budget as the edit
     request = urllib.request.Request(
         origin + parent,
         data=json.dumps({
@@ -1569,7 +1617,7 @@ def an_api_key_of_its_own_to_edit(transaction):
     # The missing pair names a key that is not there, and keeps it.
     if credential == "2147483647" or not address:
         return
-    rate_limits.pace(1.1)
+    rate_limits.pace(1.1)  # making the key spends the same budget as the edit
     request = urllib.request.Request(
         origin + parent,
         data=json.dumps({
@@ -1724,6 +1772,7 @@ def pace_auth_requests(transaction):
     # repeats valid requests as well as refusals, so even correct credentials
     # drain its burst. Wait for a token without changing or retrying the probe.
     # Leave a small margin for clock/scheduling differences at the boundary.
+    # Not while the contract phases run with raised limits (rate_limits.py).
     rate_limits.pace(1.1)
 
 
@@ -2014,10 +2063,9 @@ def a_well_formed_app_password_request(transaction, body):
     must reach the handler as drawn: its refusal is what it tests, and Vertrag
     would end it if the password were added.
 
-    One that breaks none still gets the password, and is ended, because the
-    description lets it leave the password out (required: [name]) while the
-    handler answers 403 reauth_required, which Vertrag would call a disagreement.
-    gate.py counts each of those (lost-probes-baseline.txt)."""
+    The published schema now requires a nonempty password. Generated requests
+    using the probe administrator keep their original body, including its
+    password; only documented examples still need their fixture password."""
     path = transaction.get("fullPath", "").partition("?")[0].split("/")
     return (
         len(path) > 4
@@ -2033,6 +2081,8 @@ def confirm_with_the_admin_password(transaction):
     body = hooks.get_json(transaction)
     # The body_array refusal sends a JSON array, which has no password to set.
     if not isinstance(body, dict):
+        return
+    if in_the_coverage_process() and session_address(transaction) == mfa_admin.PROBE_ADDRESS:
         return
     if in_the_coverage_process() and not a_well_formed_app_password_request(transaction, body):
         return
@@ -2099,7 +2149,8 @@ def link_a_seeded_account(transaction):
     # password that no account has; the fixture's credentials make it the link
     # it is named for. Missing, null and empty credentials stay as sent.
     if (
-        " > 201 > " in transaction.get("name", "")
+        not in_the_coverage_process()
+        and " > 201 > " in transaction.get("name", "")
         and all(
             isinstance(body.get(field), str) and body[field]
             for field in ("address", "password")
@@ -2403,8 +2454,8 @@ def pipeline_reads_after_a_reset(transaction):
 # The delivery log and the pipeline log (#1785). Each lists what a send wrote.
 # A message to a remote recipient is queued (outbound_queue, which the delivery
 # log reads); the recipient's domain is a .test name nothing hosts, so the
-# queue only defers it. A message to a local mailbox is delivered through the
-# inbound pipeline, whose trace (message_traces, which the pipeline log reads)
+# queue only defers it. A message to a local mailbox is queued as well, and the
+# queue worker delivers it back through the inbound pipeline (#1564), whose trace (message_traces, which the pipeline log reads)
 # is what the documented 200 asks for: Vertrag sends the declared defaults,
 # direction=inbound, action=continue and outcome=delivered. The testbed keeps
 # every trace (TRACE_SAMPLE_RATE=1).
@@ -2463,13 +2514,17 @@ def the_delivery_log_after_a_reset(transaction):
 def the_pipeline_log_holds_a_send(transaction):
     # Registered after pipeline_reads_after_a_reset, which resets first. A
     # listing that succeeds gets the inbound trace of a message the fixture
-    # admin sends itself after the reset, and the_listing_holds_what_was_made
-    # fails it unless the answer lists that trace, by its Message-ID. A run
-    # with no reset changes nothing here.
+    # admin sends itself after the reset, once the queue worker has delivered
+    # it (delivered_here), and the_listing_holds_what_was_made
+    # fails it unless the answer lists that trace, by its Message-ID. The send
+    # comes back through restmail.test's inbound pipeline (#1564), which gets
+    # one that does not greylist first. A run with no reset changes nothing
+    # here.
     if not asked_for_a_clean_start() or " > 200" not in transaction.get("name", ""):
         return
-    sent = a_message_for_the_logs(transaction, ADMIN)
-    # Traces are written in the background, a batch every 500 ms
+    an_inbound_pipeline_without_greylisting(transaction)
+    sent = delivered_here(transaction, a_message_for_the_logs(transaction, ADMIN))
+    # The trace is of the delivery, and traces are written in the background, a batch every 500 ms
     # (internal/trace/recorder.go).
     time.sleep(1)
     made_for_the_listing(
@@ -4087,6 +4142,20 @@ def pace_the_tls_reports(transaction):
     rate_limits.pace(1)
 
 
+@hooks.before("testFilter")
+def test_a_filter_that_exists(transaction):
+    # The generator's stand-ins name no filter and no configuration. A probe of
+    # a refused value keeps it.
+    body = hooks.get_json(transaction)
+    if not isinstance(body, dict) or " > 200 > " not in transaction["name"]:
+        return
+    if body.get("filter_name") == "x":
+        body["filter_name"] = "header_validate"
+    if body.get("config") == "x":
+        body["config"] = {}
+    hooks.set_json(transaction, body)
+
+
 @hooks.before("receiveTlsReport")
 def host_the_reported_policy_domains(transaction):
     # Generated reports name domains other than restmail.test. Host them so
@@ -4094,6 +4163,9 @@ def host_the_reported_policy_domains(transaction):
     # The 422 is the report that names no hosted domain: leave it unhosted.
     if " > 422 > " in transaction["name"]:
         return
+    sends = hooks.stash.setdefault("tls_report_sends", {})
+    name = transaction.get("name", "")
+    sends[name] = sends.get(name, 0) + 1
     body = hooks.get_json(transaction)
     policies = body.get("policies") if isinstance(body, dict) else None
     if not isinstance(policies, list):
@@ -4106,6 +4178,10 @@ def host_the_reported_policy_domains(transaction):
         if isinstance(entry, dict) and isinstance(entry.get("policy"), dict)
     ]
     if policies and isinstance(policies[0], dict) and not any(named):
+        if in_the_coverage_process():
+            if sends[name] > DOCUMENTED_SENDS:
+                tls_report_refusal(transaction)
+                return
         policies[0]["policy"] = {"policy-domain": "restmail.test"}
         hooks.set_json(transaction, body)
     origin = "{}//{}:{}".format(
@@ -4321,21 +4397,19 @@ def a_folder_to_delete_of_its_own(transaction):
 # session routes there with the same one).
 INTERNAL_ORIGIN = os.environ.get("CONTRACT_INTERNAL_ENDPOINT") or "https://10.99.0.20:8443"
 CONTRACT_MTLS = os.environ.get("CONTRACT_MTLS_DIR", ".cache/contract-mtls")
+# The mail client the contract run's gateway signs in (RFC 5737).
+CONTRACT_MAIL_CLIENT_IP = "198.51.100.7"
 
 
 @hooks.before("/api/v1/gateway-sessions > * > 201 > application/json")
 @hooks.before("/api/v1/gateway-sessions > * > 422 > application/json")
 def sign_in_a_mail_client(transaction):
-    """The IMAP gateway opens a session for the app password principal: its
-    address and secret go in the body, the only place a mail client's password
-    is sent (#1586). The pair's protocol stays, so 422 still names another."""
-    # After a reset the principal is gone: sign_in_and_recovery_after_a_reset
-    # gives the exchange an app password of an account made for it.
-    if asked_for_a_clean_start():
+    if os.environ.get("CONTRACT_AUTHORIZATION") == "1" or asked_for_a_clean_start():
         return
     app = principals()["app_password"]
     body = hooks.get_json(transaction)
     body["address"], body["password"] = app["address"], app["secret"]
+    body["client_ip"] = CONTRACT_MAIL_CLIENT_IP
     hooks.set_json(transaction, body)
 
 
@@ -4348,7 +4422,8 @@ def open_gateway_session():
     pace_auth_requests(None)
     request = urllib.request.Request(
         INTERNAL_ORIGIN + "/api/v1/gateway-sessions",
-        data=json.dumps({"protocol": "imap", "address": app["address"], "password": app["secret"]}).encode(),
+        data=json.dumps({"protocol": "imap", "address": app["address"], "password": app["secret"],
+                         "client_ip": CONTRACT_MAIL_CLIENT_IP}).encode(),
         headers={"Content-Type": "application/json"},
         method="POST",
     )
@@ -5459,7 +5534,9 @@ def an_inbound_pipeline_without_greylisting(transaction):
     """An active inbound pipeline for restmail.test that only validates the
     headers. After a reset the domain has none, and the default one greylists:
     a sender, recipient and address it has not seen are deferred 503 for five
-    minutes, so a RESTMAIL delivery from a new mailbox could never succeed."""
+    minutes, so a RESTMAIL delivery from a new mailbox, or a message sent to a
+    mailbox on this server (which the queue worker delivers back through the
+    inbound route, #1564), could never arrive within the hooks' waits."""
     origin = setup_origin(transaction)
     headers = {"Content-Type": "application/json", "Authorization": "Bearer " + admin_token(origin)}
     request = urllib.request.Request(origin + "/api/v1/admin/domains?limit=200", headers=headers)
@@ -5647,6 +5724,7 @@ def deliver_a_whole_message(transaction):
             f"{body.get('body_text', '')}\r\n"
         )
         body["raw_message"] = base64.b64encode(message.encode()).decode()
+        body.pop("body_text", None)
     hooks.set_json(transaction, body)
 
 
@@ -5731,7 +5809,13 @@ def invite_an_account_without_credentials(transaction):
     # probe runs under its transaction's own name (the "coverage:" prefix is
     # added to the report later), so the id is what tells it from the example.
     if placeholder == "1" and " > 201 > " in name and " as " not in name:
-        transaction["skip"] = True
+        if in_the_coverage_process():
+            send_refusal_probe(
+                transaction, 409, "account_not_invitable",
+                "The minimum id names the credentialed fixture administrator; no schema can express database eligibility.",
+            )
+        else:
+            transaction["skip"] = True
         return
     if placeholder != "12":
         return
@@ -5760,6 +5844,20 @@ def redeem_a_fresh_invitation(transaction):
     if asked_for_a_clean_start():
         start_clean(transaction)
     body = hooks.get_json(transaction)
+    if a_later_request_of_the_coverage_process(transaction) and " > 200 > " in transaction.get("name", ""):
+        if (
+            isinstance(body, dict)
+            and isinstance(body.get("token"), str) and body["token"].strip()
+            and isinstance(body.get("password"), str) and 12 <= len(body["password"]) and len(body["password"].encode()) <= 72
+            and body.get("client", "native") == "native"
+            and set(body) <= {"token", "password", "client"}
+        ):
+            subprocess.run(
+                ["chore", "test:contract-invitation-fixture"],
+                input=json.dumps({"token": body["token"]}).encode(),
+                check=True, capture_output=True, timeout=30,
+            )
+        return
     # The accepted example and every coverage probe of its 200 need an unspent
     # invitation: coverage runs no after hooks, and a schema-valid body with an
     # unknown token is a 401. The named refusals (invalid_token, invalid_field,
@@ -5997,6 +6095,33 @@ def send_a_draft_of_its_own(transaction):
     transaction["fullPath"] = f"{drafts}/{draft_id:d}/{action}" + (
         "?" + query if query else ""
     )
+
+
+@hooks.before("sendMessage")
+@hooks.before("sendDraft")
+@hooks.before("forwardMessage")
+def a_used_send_idempotency_key(transaction):
+    if " > 409 > " not in transaction.get("name", ""):
+        return
+    headers = transaction["request"]["headers"]
+    if headers.get("Idempotency-Key") != "contract-idempotency-conflict":
+        return
+    key = "contract-send-" + str(time.time_ns())
+    origin = origin_of(transaction)
+    request = urllib.request.Request(
+        origin + "/api/v1/messages/send",
+        data=json.dumps({"from": ADMIN, "to": [ADMIN], "body_text": "The first request"}).encode(),
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": "Bearer " + admin_token(origin),
+            "Idempotency-Key": key,
+        },
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        if response.status != 201:
+            raise RuntimeError("idempotency setup did not queue the first send")
+    headers["Idempotency-Key"] = key
 
 
 @hooks.before("retryQueueEntry")
@@ -6505,3 +6630,15 @@ def grant_to_an_account_of_its_own(transaction):
         return
     body["holder"]["id"] = an_account_of_its_own(origin_of(transaction), "grant-holder")
     hooks.set_json(transaction, body)
+
+
+def authenticate_protocol_sign_in_examples(transactions):
+    if os.environ.get("CONTRACT_AUTHORIZATION") != "1":
+        return
+    for transaction in transactions:
+        if not transaction.get("name", "").startswith("/api/v1/auth/protocol-sign-in > "):
+            continue
+        if str(transaction.get("expected", {}).get("statusCode")) not in ("200", "400", "422"):
+            continue
+        app = principals()["app_password"]
+        transaction["request"]["headers"]["Authorization"] = basic(app["address"], app["secret"])

@@ -13,7 +13,12 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class AuthPacing(unittest.TestCase):
-    @patch.dict(os.environ, {"RESTMAIL_CONTRACT_LIMITS_RAISED": "false"})
+    def setUp(self):
+        environment = patch.dict(os.environ, {"RESTMAIL_CONTRACT_LIMITS_RAISED": "false"})
+        environment.start()
+        self.addCleanup(environment.stop)
+        os.environ.pop("CONTRACT_RAISED_LIMITS", None)
+
     def test_examples_and_probes_share_a_sustainable_auth_rate(self):
         hooks = types.ModuleType("vertrag_hooks")
         registered = []

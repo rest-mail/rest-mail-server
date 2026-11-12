@@ -8,7 +8,7 @@ and omits the 4xx transactions whose probes gate.py already ignores. All probes
 from successful transactions remain enabled. The first run enforces the full
 surface gate.
 
-A fuzz run (a report named fuzz.xml) also holds a delivery's mailbox_id at the
+A fuzz run (a report named fuzz.xml) also holds a delivery's address at the
 recipient the fixtures make, and discovery's domain at the hosted fixture in a
 fuzz-only description. A coverage run does not.
 
@@ -58,7 +58,7 @@ KEY_PERMISSIONS = [{"capability": "mail:read", "scope": "mailbox:contract-probe-
 # Sieve script, an RFC 5322 message. The generator draws "x" or base64 of "vertrag",
 # and a hook cannot supply them. Refusals of these fields are named pairs:
 # invalid_zone; invalid_syntax, script_missing, script_null; script_empty,
-# script_wrong_type; invalid_base64, missing_raw, raw_message_invalid, raw_message_nul.
+# script_wrong_type; invalid_base64, missing_raw, raw_message_invalid.
 TIME_ZONE = "UTC"
 SCRIPT = "keep;"
 RAW_MESSAGE = base64.b64encode(
@@ -66,8 +66,8 @@ RAW_MESSAGE = base64.b64encode(
     b"From: Original <old@example.test>\r\n"
     b"Subject: imported\r\n\r\nhistory\r\n"
 ).decode()
-# raw_message also reaches restmailDeliver, whose field is the message itself and not
-# base64, so the handler cannot read a recipient or a Date from the value above. Only
+# raw_message also reaches restmailDeliver, and the handler cannot read a recipient or a
+# Date from the value above, which names neither. Only
 # restmailDeliver's body has these two fields: a delivery to a mailbox the run has,
 # on the documented date. Refusals: recipients_missing, recipients_wrong_type,
 # recipient_wrong_type, date_wrong_type.
@@ -85,11 +85,11 @@ FILTER_NAME = "header_validate"
 # (remove_the_probe_certificates). Refusals: cert_missing, cert_empty, cert_wrong_type,
 # cert_invalid, key_missing, key_empty, key_wrong_type.
 PROBE_CERTIFICATE_NAME = "contract-probe-certificate"
-# A schema cannot say a mailbox must exist either. Fuzz draws a mailbox_id or an
-# address that names nothing and reads the 404 as a disagreement, so the rest of
-# delivery is never reached. The fuzz run holds mailbox_id at the recipient the
+# A schema cannot say a mailbox must exist either. Fuzz draws an address that
+# names nothing and reads the 404 as a disagreement, so the rest of
+# delivery is never reached. The fuzz run holds address at the recipient the
 # fixtures make (fixtures --delivery-recipient). The coverage run does not: it has
-# no valid delivery probe to hold, and a pin would stop its two mailbox_id probes.
+# no valid delivery probe to hold, and a pin would stop its address probes.
 FIXTURE_PLAN = Path(__file__).resolve().parent / "fixtureplan/defaults.json"
 
 
@@ -111,7 +111,7 @@ def probe_certificate(common_name=None):
 
 def fuzz_pins():
     plan = json.loads(FIXTURE_PLAN.read_text())
-    return {"mailbox_id": plan["delivery_recipient"]["id"]}
+    return {"address": plan["delivery_recipient"]["address"]}
 
 
 def hold_discovery_domain(config, out_path):

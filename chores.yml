@@ -632,11 +632,17 @@ tasks:
       - python3 scripts/vertrag_pin.py install .cache/bin
 
   cluster:e2e:
-    desc: 'Stage 1 of the installed-cluster check against a fresh helm/restmail install (kubectl context); the same script cluster-e2e.yml runs'
+    desc: 'Stages 1 to 3 of the installed-cluster check against a fresh helm/restmail install (kubectl context); the same script cluster-e2e.yml runs'
     cmds:
-      # Needs python3 and kubectl only. NAMESPACE, RELEASE and REPORT_DIR
+      # Stage 1 needs python3 and kubectl only; stage 2 (contract-examples)
+      # also PyYAML, the pinned Vertrag (installed into .cache/bin) and the
+      # install's API Ingress: INGRESS_URL, with INGRESS_CA for a certificate
+      # the system does not trust. NAMESPACE, RELEASE and REPORT_DIR
       # (defaults restmail, restmail, cluster-report) pick the install; extra
       # arguments go to the script, e.g. `chore cluster:e2e -- --only health`.
+      # Stage 3 (mail-out, mail-in, pop3-retrieve) needs the reference mail
+      # server scripts/cluster_reference.py deploys, which changes the
+      # cluster's DNS (throwaway clusters only): REFERENCE_NAMESPACE names it.
       - python3 -B scripts/cluster_e2e.py {{.CLI_ARGS}}
 
   test:coverage:
@@ -667,6 +673,11 @@ tasks:
           chore contract:pairs
         fi
         if [ -z "${CONTRACT_ENDPOINT:-}" ]; then chore e2e:up; fi
+        # The hooks stop pacing under CONTRACT_RAISED_LIMITS=1, so the API must
+        # really have the raised limits (chore contract:limits:raise, #1979).
+        if [ -n "${CONTRACT_RAISED_LIMITS:-}" ]; then
+          python3 -B tests/contract/rate_limits.py check raised "{{.RESTMAIL_PROJECT}}-api"
+        fi
         if [ ! -s .cache/contract-principals.json ]; then
           API_BASE_URL="${CONTRACT_ENDPOINT:-http://10.99.0.20:8080}" E2E_REQUIRE_STACK=1 chore test:e2e -- -run '^TestContractPrincipals$'
         fi
@@ -717,6 +728,18 @@ tasks:
         chore test:contract-domain-tenants || echo "the domain tenants could not be prepared; the ownership run of domains is not sent"
         tests/contract/run.sh ownership {{.CLI_ARGS}} || echo "the ownership phase is a report, not a gate"
         chore api:coverage:report || echo "the API's coverage is a report, not a gate"
+  contract:limits:raise:
+    desc: 'Recreate the topology API with the contract phases'' raised rate limits (tests/contract/raised-limits.env, #1979); contract:limits:default undoes it'
+    cmds:
+      - RESTMAIL_API_LIMITS_ENV="{{.ROOT_DIR}}/tests/contract/raised-limits.env" "${CHORE_BIN:-chore}" api:up
+      - task: health:wait
+
+  contract:limits:default:
+    desc: 'Recreate the topology API on its default rate limits, as the live proofs, the Limits suite and the teardown need (#1979)'
+    cmds:
+      - env -u RESTMAIL_API_LIMITS_ENV "${CHORE_BIN:-chore}" api:up
+      - task: health:wait
+      - CONTRACT_RAISED_LIMITS= python3 -B tests/contract/rate_limits.py check default "{{.RESTMAIL_PROJECT}}-api"
 
   contract:pairs:
     desc: 'The registered example-pair boundary checks (internal/api *WithVertrag), in parallel shards; a gate in CI, no topology needed'
@@ -1018,6 +1041,19 @@ tasks:
         fi
         docker exec -- "${CONTRACT_FIXTURE_PROJECT}-api" go run ./tests/contract/fixtures --test-domain=restmail.test --link-account-only
 
+  test:contract-invitation-fixture:
+    desc: Prepare a fresh disposable account for an unchanged generated invitation token
+    env:
+      CONTRACT_FIXTURE_CONFIG: '{{.CONFIG}}'
+      CONTRACT_FIXTURE_PROJECT: '{{.RESTMAIL_PROJECT}}'
+    cmds:
+      - |
+        if [ "$CONTRACT_FIXTURE_CONFIG" != "restmail.test" ] || [ -z "$CONTRACT_FIXTURE_PROJECT" ]; then
+          echo "contract fixtures require the disposable restmail.test config" >&2
+          exit 1
+        fi
+        docker exec -i -- "${CONTRACT_FIXTURE_PROJECT}-api" go run ./tests/contract/fixtures --test-domain=restmail.test --invitation-probe
+
   test:e2e:
     desc: 'Run e2e tests against an already-running topology (use `chore e2e` to also bring it up + tear down)'
     cmds:
@@ -1190,6 +1226,7 @@ tasks:
   e2e:mail2:
     desc: Start and wait for the second reference instance
     cmds:
+      - cp tests/e2e/testdata/rspamd-verdict/*.conf .workspace/reference-mailserver/configs/{{.TOPOLOGY_REF2 | default "mail2"}}/rspamd-overlay/
       - >-
         {{.REFERENCE_PATH}}"${CHORE_BIN:-chore}" -C .workspace/reference-mailserver up CONFIG={{.TOPOLOGY_REF2 | default "mail2"}}
         {{.REFERENCE_PLACEMENT}}

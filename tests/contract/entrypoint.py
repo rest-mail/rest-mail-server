@@ -1,5 +1,6 @@
 """Load the shared hooks and register fixtures that reuse their setup session."""
 
+import os
 import runpy
 from pathlib import Path
 
@@ -9,6 +10,8 @@ directory = Path(__file__).resolve().parent
 shared = runpy.run_path(str(directory / "hooks.py"))
 settings = runpy.run_path(str(directory / "account_settings_hooks.py"))
 settings["register_absent_settings_hooks"](shared)
+if os.environ.get("CONTRACT_AUTHORIZATION") == "1":
+    vertrag_hooks.before_all(shared["authenticate_protocol_sign_in_examples"])
 # Only a reset and the path, and only with a reset asked for (own_data.py):
 # generated bodies stay whole.
 vertrag_hooks.before("setDomainRelay")(shared["a_domain_setting_of_its_own"])
@@ -36,6 +39,12 @@ quiet["register_quiet_hours_hooks"](
 # live account for the examples' 1 without changing the body: then the reset,
 # and an account of its own, only with a reset asked for (own_data.py).
 for operation in ("getQuietHours", "setQuietHours"):
+    vertrag_hooks.before(operation)(shared["account_settings_of_its_own"])
+quiet["register_quiet_hours_hooks"](
+    shared["admin_token"], shared["asked_for_a_clean_start"],
+    "time-zone", ("getAccountTimeZone", "setAccountTimeZone")
+)
+for operation in ("getAccountTimeZone", "setAccountTimeZone"):
     vertrag_hooks.before(operation)(shared["account_settings_of_its_own"])
 contact_draft = runpy.run_path(str(directory / "contact_draft_hooks.py"))
 contact_draft["register_contact_draft_hooks"](shared["fixture_call"], shared["ADMIN"])

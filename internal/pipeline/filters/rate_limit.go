@@ -37,6 +37,12 @@ func newRateLimitStore() *rateLimitStore {
 // registry, the one every pipeline the server runs uses.
 var registeredRateLimit = newRateLimitStore()
 
+func ResetRateLimit() {
+	registeredRateLimit.mu.Lock()
+	defer registeredRateLimit.mu.Unlock()
+	clear(registeredRateLimit.buckets)
+}
+
 // SetRateLimitClock makes the registered rate_limit filter read the time from
 // now, with its counters emptied, so a test can move through the minute and
 // hour windows instead of waiting for them. The returned func puts the wall
@@ -101,8 +107,8 @@ func (f *rateLimitFilter) rateKey(email *pipeline.EmailJSON) string {
 		return "acct:" + acct
 	}
 	sender := email.Envelope.MailFrom
-	if sender == "" && len(email.Headers.From) > 0 {
-		sender = email.Headers.From[0].Address
+	if sender == "" && email.Headers.From.Len() > 0 {
+		sender = email.Headers.From.FirstAddress()
 	}
 	return "sender:" + sender
 }
@@ -128,7 +134,7 @@ func (f *rateLimitFilter) Execute(ctx context.Context, email *pipeline.EmailJSON
 			return &pipeline.FilterResult{
 				Type:      pipeline.FilterTypeAction,
 				Action:    pipeline.ActionDefer,
-				RejectMsg: "452 Too many messages, try again later",
+				RejectMsg: "450 Too many messages, try again later",
 				Log: pipeline.FilterLog{
 					Filter: "rate_limit",
 					Result: "defer",
@@ -148,7 +154,7 @@ func (f *rateLimitFilter) Execute(ctx context.Context, email *pipeline.EmailJSON
 			return &pipeline.FilterResult{
 				Type:      pipeline.FilterTypeAction,
 				Action:    pipeline.ActionDefer,
-				RejectMsg: "452 Hourly sending limit exceeded",
+				RejectMsg: "450 Hourly sending limit exceeded",
 				Log: pipeline.FilterLog{
 					Filter: "rate_limit",
 					Result: "defer",

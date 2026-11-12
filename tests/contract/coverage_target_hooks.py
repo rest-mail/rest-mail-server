@@ -6,12 +6,16 @@ Only paths change: rewriting a generated body would discard its probe.
 import json
 import os
 import subprocess
+import sys
 import tempfile
 import time
 import urllib.request
 from pathlib import Path
 
 import vertrag_hooks as hooks
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import rate_limits  # noqa: E402
 
 
 def coverage_placeholder(transaction, status, paths):
@@ -89,7 +93,7 @@ def register_coverage_target_hooks(shared):
             body["permissions"] = [
                 {"capability": "mail:read", "scope": "mailbox:" + address}
             ]
-        time.sleep(1.1)
+        rate_limits.pace(1.1)
         request = urllib.request.Request(
             origin + collection,
             data=json.dumps(body).encode(),

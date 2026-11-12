@@ -7,27 +7,24 @@
 # after examples and fixture replenishment: 158 probes across 15 operations on main,
 # 107 across 10 after the pins and setup of Part of #1443, 91 across 8 once testFilter
 # and createCertificate were pinned. A probe counted here was not sent, so it proves
-# nothing. Vertrag 0.43.0 added fuzz.pin-valid and changes no other probe, so these
-# counts were not measured again for it.
+# nothing unless replayed-probes.jsonl records its separately verified send (below).
 # The local dependency and skip differences do not prove the gate.
 #
-# The server cannot accept what the generator draws, and a fuzz.pin would be global.
-# fuzz.pin-valid may keep some of these; it has not been tried on them:
-# acceptInvitation: a token only the server can make, per probe, and the served
-# schema lets a request omit it and draw a password of one byte.
-acceptInvitation 8
-# A well-formed request may leave the password out, and the handler answers 403.
-createAppPassword 5
 # domain_id must name the run's domain, which no static pin can hold.
 createCustomFilter 20
 createPipeline 12
-# The served address has no format, so the generator draws "!", which no account has.
-linkAccount 10
-# Also an address with no format, and a mail client's password only the fixture holds.
-openGatewaySession 14
-# A report must name a hosted policy domain, and the served schema lets an entry omit it.
+# These 32 are sent unchanged by probe_refusals.py, checked against the published
+# response schema and exact refusal code, and recorded in replayed-probes.jsonl.
+# Their engine send ends afterwards: Vertrag 0.42 cannot attribute a legitimate
+# no_matching_domains refusal to a schema-valid body. External reports stay lenient.
 receiveTlsReport 32
+# Account timezone placeholder is held by its timezone hook.
+setAccountTimeZone 3
 # pipeline_id must name a pipeline.
 testPipeline 3
-# The minimum id is the fixture admin, who holds a password: the hook skips that probe.
+# Sent unchanged and verified as 409 account_not_invitable by probe_refusals.py;
+# only its duplicate engine send is skipped. The minimum id remains 1, not hidden.
 inviteAccount 1
+
+# The gateway session adds source client_ip validation to the held probes.
+openGatewaySession 17
