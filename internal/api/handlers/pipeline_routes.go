@@ -195,7 +195,8 @@ func (h *PipelineHandler) Register(rs endpoint.Routes, checks PipelineRouteCheck
 		Middleware: []endpoint.Middleware{checks.OnList(middleware.CapPipelinesWrite), checks.TestThrottle}}, h.testPipeline)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/admin/pipelines/test-filter",
 		OperationID: "testFilter", Summary: "Test filter", Tags: []string{"Admin: Pipelines"},
-		Middleware: []endpoint.Middleware{checks.At(middleware.CapPipelinesWrite), checks.TestThrottle}}, h.testFilter)
+		DescribedRequest: describedTestFilterBody{},
+		Middleware:       []endpoint.Middleware{checks.At(middleware.CapPipelinesWrite), checks.TestThrottle}}, h.testFilter)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/admin/custom-filters",
 		OperationID: "listCustomFilters", Summary: "List custom filters", Tags: []string{"Admin: Pipelines"},
 		Middleware: []endpoint.Middleware{checks.OnList(middleware.CapPipelinesRead)}}, h.listCustomFilters)

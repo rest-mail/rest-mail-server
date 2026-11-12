@@ -41,6 +41,7 @@ class SelectedGate(unittest.TestCase):
                 "summary.py",
                 "reports.py",
                 "probes.py",
+                "probe_refusals.py",
             ):
                 shutil.copy2(ROOT / "tests/contract" / name, helpers / name)
             (helpers / "fixtures").mkdir()
@@ -198,18 +199,29 @@ class SelectedGate(unittest.TestCase):
                 self.assertNotIn("coverage", [c["phase"] for c in calls])
                 self.assertIn("| examples | 1 | 0 | 1 | 0 |", report)
 
-    def test_full_gate_retains_the_baselines_authority(self):
+    def test_full_gate_holds_vertrags_verdict_and_the_baselines(self):
         for complete in (False, True):
-            for ratchet in (0, 7):
-                with self.subTest(complete=complete, ratchet=ratchet):
-                    result, calls, report = self.run_gate(
-                        coverage=2, ratchet=ratchet, complete=complete
+            for coverage, ratchet, expected in ((2, 0, 2), (2, 7, 7), (0, 7, 7), (0, 0, 0)):
+                with self.subTest(complete=complete, coverage=coverage, ratchet=ratchet):
+                    result, calls, _ = self.run_gate(
+                        coverage=coverage, ratchet=ratchet, complete=complete
                     )
                     self.assertEqual(
-                        result.returncode, ratchet, result.stdout + result.stderr
+                        result.returncode, expected, result.stdout + result.stderr
                     )
                     self.assertIn("ratchet", [c["phase"] for c in calls])
-                    self.assertIn("| coverage | 1 | 0 | 1 | 0 |", report)
+
+    def test_every_coverage_run_fails_on_skipped_probes(self):
+        for selection in ((), SELECTIONS[0]):
+            with self.subTest(selection=selection):
+                _, calls, _ = self.run_gate(selection)
+                sent = [c for c in calls if c["phase"] == "coverage"]
+                self.assertTrue(sent)
+                for call in sent:
+                    self.assertIn("--fail-on-skipped-probes", call["args"])
+                for call in calls:
+                    if call["phase"] == "examples":
+                        self.assertNotIn("--fail-on-skipped-probes", call["args"])
 
     def test_selection_with_nothing_to_pin_runs_without_the_pin(self):
         result, calls, report = self.run_gate(SELECTIONS[1], nothing_to_pin=True)

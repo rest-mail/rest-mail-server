@@ -48,7 +48,7 @@ func (h *InvitationHandler) RegisterAdmin(rs endpoint.Routes, checks MailboxRout
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/admin/mailboxes/{id}/invitation",
 		OperationID: "inviteAccount", Summary: "Invite an account to choose its first password", Tags: []string{"Admin: Mailboxes"},
 		Status: http.StatusCreated, Headers: invitationHeaders, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusServiceUnavailable},
-		Description: "For an active account created without credentials. The invitation lasts 15 minutes; issuing another invalidates the previous one. Only a hash is stored. Authenticator enrollment and server encryption must be enabled before invitations can be issued.",
+		Description: "Requires an active account that has never held credentials: credential_epoch is zero, last_password_change is absent, and no credential exists. Otherwise the response is 409 account_not_invitable, even for a schema-valid account id. The invitation lasts 15 minutes; issuing another invalidates the previous one. Only a hash is stored. Authenticator enrollment and server encryption must be enabled before invitations can be issued.",
 		Middleware:  []endpoint.Middleware{checks.OnMailbox(middleware.CapAccountsWrite)}}, h.issue)
 }
 
@@ -57,9 +57,10 @@ func (h *InvitationHandler) RegisterPublic(rs endpoint.Routes, checks SessionRou
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/auth/invitation",
 		OperationID: "acceptInvitation", Summary: "Choose your first password with an invitation", Tags: []string{"Auth"},
 		Security: oapifly.Public, Headers: invitationSessionHeaders,
-		Errors:      []int{http.StatusUnauthorized, http.StatusServiceUnavailable},
-		Description: "Redeems an invitation once, chooses a password of 12–72 bytes and signs in. The session can only finish authenticator enrollment until it is confirmed. Owner reset tokens cannot be used here. Native clients send client: native; browsers receive httpOnly session cookies.",
-		Middleware:  []endpoint.Middleware{checks.Throttle, checks.Audit("auth.invitation", middleware.AuditStartedSession())}}, h.accept)
+		DescribedRequest: describedAcceptInvitationRequest{},
+		Errors:           []int{http.StatusUnauthorized, http.StatusServiceUnavailable},
+		Description:      "Redeems an invitation once, chooses a password of at least 12 characters and at most 72 UTF-8 bytes and signs in. The session can only finish authenticator enrollment until it is confirmed. Owner reset tokens cannot be used here. Native clients send client: native; browsers receive httpOnly session cookies.",
+		Middleware:       []endpoint.Middleware{checks.Throttle, checks.Audit("auth.invitation", middleware.AuditStartedSession())}}, h.accept)
 }
 
 func invitationSecretHeaders() http.Header {
@@ -97,6 +98,12 @@ type acceptInvitationRequest struct {
 	Token    string `json:"token,omitempty"`
 	Password string `json:"password" missing:"must be at least 12 characters and at most 72 bytes"`
 	Client   string `json:"client,omitempty" enums:"native" message:"must be \"native\" or omitted"`
+}
+
+type describedAcceptInvitationRequest = struct {
+	Token    string `json:"token" minLength:"1" pattern:"\\S"`
+	Password string `json:"password" minLength:"12" maxLength:"72" description:"At least 12 characters and at most 72 UTF-8 bytes; the byte limit is checked by the handler."`
+	Client   string `json:"client,omitempty" enums:"native"`
 }
 
 func (h *InvitationHandler) accept(r *http.Request, req acceptInvitationRequest) (endpoint.Headed[loginResponse], error) {

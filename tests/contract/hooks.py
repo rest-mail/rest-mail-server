@@ -40,7 +40,9 @@ LINKABLE_PASSWORD = "password123"
 # The two-factor administrator for setup a password cannot do.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import mfa_admin  # noqa: E402
+from probe_refusals import send_refusal_probe, tls_report_refusal  # noqa: E402
 import reset_seed
+from lost_probes import DOCUMENTED_SENDS  # noqa: E402
 
 PRINCIPALS = os.environ.get("CONTRACT_PRINCIPALS", ".cache/contract-principals.json")
 
@@ -270,6 +272,9 @@ def send_as_the_two_factor_admin(transaction):
     # disableTwoFactor's refusals stay refusals.
     # Confirming its authenticator again is refused (409): it is already on,
     # and the fixture admin's sign-in requirements are left alone.
+    if transaction.get("operationId") == "createAppPassword" and a_later_request_of_the_coverage_process(transaction):
+        an_api_key_probe_as_the_probe_admin(transaction)
+        return
     as_the_two_factor_admin(transaction)
 
 
@@ -684,10 +689,9 @@ def a_well_formed_app_password_request(transaction, body):
     must reach the handler as drawn: its refusal is what it tests, and Vertrag
     would end it if the password were added.
 
-    One that breaks none still gets the password, and is ended, because the
-    description lets it leave the password out (required: [name]) while the
-    handler answers 403 reauth_required, which Vertrag would call a disagreement.
-    gate.py counts each of those (lost-probes-baseline.txt)."""
+    The published schema now requires a nonempty password. Generated requests
+    using the probe administrator keep their original body, including its
+    password; only documented examples still need their fixture password."""
     path = transaction.get("fullPath", "").partition("?")[0].split("/")
     return (
         len(path) > 4
@@ -703,6 +707,8 @@ def confirm_with_the_admin_password(transaction):
     body = hooks.get_json(transaction)
     # The body_array refusal sends a JSON array, which has no password to set.
     if not isinstance(body, dict):
+        return
+    if in_the_coverage_process() and session_address(transaction) == mfa_admin.PROBE_ADDRESS:
         return
     if in_the_coverage_process() and not a_well_formed_app_password_request(transaction, body):
         return
@@ -730,7 +736,8 @@ def link_a_seeded_account(transaction):
     # password that no account has; the fixture's credentials make it the link
     # it is named for. Missing, null and empty credentials stay as sent.
     if (
-        " > 201 > " in transaction.get("name", "")
+        not in_the_coverage_process()
+        and " > 201 > " in transaction.get("name", "")
         and all(
             isinstance(body.get(field), str) and body[field]
             for field in ("address", "password")
@@ -1133,13 +1140,18 @@ def a_fresh_signing_key(transaction):
         hooks.set_json(transaction, body)
 
 
+# The issuer of the certificate probes.py pins, as the API lists it, which is how the
+# hooks tell a probe's certificate from every other.
+PROBE_CERTIFICATE_ISSUER = "CN=contract-probe-certificate"
+CERTIFICATE_PAGE = 100
+
+
 @hooks.before("createCertificate")
 def a_self_signed_certificate(transaction):
     body = hooks.get_json(transaction)
-    # Replace only the documented material placeholders, and the schema-valid
-    # placeholder material of a coverage probe named for the 201, which no
-    # server accepts as a certificate. Preserve incomplete, invalid and refusal
-    # bodies and the caller's renewal policy.
+    # Replace only the documented material placeholders, and, in a probing process,
+    # the pinned material of the documented sends named for the 201. Preserve
+    # incomplete, invalid and refusal bodies and the caller's renewal policy.
     if not isinstance(body, dict):
         return
     documented = body.get("cert_pem") == "certificate" and body.get("key_pem") == "key"
@@ -1154,6 +1166,18 @@ def a_self_signed_certificate(transaction):
         or not (documented or succeeds)
     ):
         return
+    if not documented:
+        # A probing process sends each transaction's documented request first, and
+        # what follows those is a probe: its body goes out as drawn, or it is not sent
+        # at all (lost_probes.py). Its pinned material lands on its domain_id, the
+        # fixture admin's domain, until remove_the_probe_certificates. The documented
+        # sends keep their own certificate on the run's domain, for getCertificate's
+        # link to find.
+        sends = hooks.stash.setdefault("documented_certificates", {})
+        sends[transaction["name"]] = sends.get(transaction["name"], 0) + 1
+        if sends[transaction["name"]] > DOCUMENTED_SENDS:
+            hooks.stash["probe_certificates_installed"] = True
+            return
     name = hooks.stash.get("domain") or "example.org"
     with tempfile.TemporaryDirectory() as d:
         key, cert = os.path.join(d, "tls.key"), os.path.join(d, "tls.crt")
@@ -1180,6 +1204,32 @@ def a_self_signed_certificate(transaction):
             if body.get("domain_id") == 1 and hooks.stash.get("domain_id") is not None:
                 body["domain_id"] = hooks.stash["domain_id"]
             hooks.set_json(transaction, body)
+
+
+@hooks.before("*")
+def remove_the_probe_certificates(transaction):
+    # Coverage runs no after hook, so what follows createCertificate's probes removes
+    # what they installed. Nothing else carries this issuer.
+    if (
+        not hooks.stash.get("probe_certificates_installed")
+        or transaction.get("operationId") == "createCertificate"
+    ):
+        return
+    hooks.stash["probe_certificates_installed"] = False
+    held = []
+    offset = 0
+    while True:
+        page = fixture_call(
+            transaction,
+            "GET",
+            f"/api/v1/admin/certificates?limit={CERTIFICATE_PAGE:d}&offset={offset:d}",
+        )
+        if not page:
+            break
+        held += [c["id"] for c in page if c.get("issuer") == PROBE_CERTIFICATE_ISSUER]
+        offset += len(page)
+    for certificate_id in held:
+        fixture_call(transaction, "DELETE", f"/api/v1/admin/certificates/{certificate_id:d}")
 
 
 @hooks.before("updateDomain")
@@ -1718,20 +1768,6 @@ def pace_the_tls_reports(transaction):
     time.sleep(1)
 
 
-@hooks.before("testFilter")
-def test_a_filter_that_exists(transaction):
-    # The generator's stand-ins name no filter and no configuration. A probe of
-    # a refused value keeps it.
-    body = hooks.get_json(transaction)
-    if not isinstance(body, dict) or " > 200 > " not in transaction["name"]:
-        return
-    if body.get("filter_name") == "x":
-        body["filter_name"] = "header_validate"
-    if body.get("config") == "x":
-        body["config"] = {}
-    hooks.set_json(transaction, body)
-
-
 @hooks.before("receiveTlsReport")
 def host_the_reported_policy_domains(transaction):
     # Generated reports name domains other than restmail.test. Host them so
@@ -1739,6 +1775,9 @@ def host_the_reported_policy_domains(transaction):
     # The 422 is the report that names no hosted domain: leave it unhosted.
     if " > 422 > " in transaction["name"]:
         return
+    sends = hooks.stash.setdefault("tls_report_sends", {})
+    name = transaction.get("name", "")
+    sends[name] = sends.get(name, 0) + 1
     body = hooks.get_json(transaction)
     policies = body.get("policies") if isinstance(body, dict) else None
     if not isinstance(policies, list):
@@ -1751,6 +1790,10 @@ def host_the_reported_policy_domains(transaction):
         if isinstance(entry, dict) and isinstance(entry.get("policy"), dict)
     ]
     if policies and isinstance(policies[0], dict) and not any(named):
+        if in_the_coverage_process():
+            if sends[name] > DOCUMENTED_SENDS:
+                tls_report_refusal(transaction)
+                return
         policies[0]["policy"] = {"policy-domain": "restmail.test"}
         hooks.set_json(transaction, body)
     origin = "{}//{}:{}".format(
@@ -2427,12 +2470,6 @@ def host_the_account_probe_domain(transaction):
     from urllib.error import HTTPError
 
     body = hooks.get_json(transaction)
-    # An owned account needs a session that signed in with a second factor
-    # (#341, Decided 12), and the fixture admin has none: its refusal is the
-    # rule, not a disagreement. TestCreateOwnedAccount proves both sides.
-    if isinstance(body, dict) and body.get("owned") is True:
-        transaction["skip"] = True
-        return
     address = body.get("address") if isinstance(body, dict) else None
     if not isinstance(address, str) or address.count("@") != 1:
         return
@@ -2700,7 +2737,13 @@ def invite_an_account_without_credentials(transaction):
     # probe runs under its transaction's own name (the "coverage:" prefix is
     # added to the report later), so the id is what tells it from the example.
     if placeholder == "1" and " > 201 > " in name and " as " not in name:
-        transaction["skip"] = True
+        if in_the_coverage_process():
+            send_refusal_probe(
+                transaction, 409, "account_not_invitable",
+                "The minimum id names the credentialed fixture administrator; no schema can express database eligibility.",
+            )
+        else:
+            transaction["skip"] = True
         return
     if placeholder != "12":
         return
@@ -2725,6 +2768,20 @@ def invite_an_account_without_credentials(transaction):
 @hooks.before("acceptInvitation")
 def redeem_a_fresh_invitation(transaction):
     body = hooks.get_json(transaction)
+    if a_later_request_of_the_coverage_process(transaction) and " > 200 > " in transaction.get("name", ""):
+        if (
+            isinstance(body, dict)
+            and isinstance(body.get("token"), str) and body["token"].strip()
+            and isinstance(body.get("password"), str) and 12 <= len(body["password"]) and len(body["password"].encode()) <= 72
+            and body.get("client", "native") == "native"
+            and set(body) <= {"token", "password", "client"}
+        ):
+            subprocess.run(
+                ["chore", "test:contract-invitation-fixture"],
+                input=json.dumps({"token": body["token"]}).encode(),
+                check=True, capture_output=True, timeout=30,
+            )
+        return
     # The accepted example and every coverage probe of its 200 need an unspent
     # invitation: coverage runs no after hooks, and a schema-valid body with an
     # unknown token is a 401. The named refusals (invalid_token, invalid_field,
@@ -2982,6 +3039,71 @@ def unban_an_ip_that_is_banned(transaction):
     )
 
 
+# The one name the generator draws for a domain. Earlier probes host it and give
+# it accounts and aliases on demand, so a create of it must find it gone.
+GENERATED_DOMAIN = "example.com"
+# What remembers an address at that domain, keyed "<origin>\\n<address>" or
+# by the address's account. Each rebuilds what it needs when it finds nothing.
+ADDRESSES_REMEMBERED = (
+    "probe_mailboxes",
+    "sender_mailboxes",
+    "test_send_mailboxes",
+    "created_account_probes",
+    "link_fixture_ids",
+)
+
+
+def empty_the_generated_domain(transaction, domain_id):
+    """Remove the accounts and aliases earlier probes made at the generated domain.
+
+    A hook cannot change a generated body (lost_probes.py), so createDomain's probes
+    name example.com as drawn, and the setup makes that name free. The domain's
+    accounts take a two-factor session to remove, as the domain's grants do."""
+    origin = origin_of(transaction)
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + mfa_admin_token(origin),
+    }
+
+    def call(method, path):
+        request = urllib.request.Request(origin + path, headers=headers, method=method)
+        with urllib.request.urlopen(request, timeout=10) as response:
+            payload = response.read()
+        return (json.loads(payload).get("data") if payload else None) or []
+
+    for alias in call("GET", f"/api/v1/admin/aliases?domain_id={domain_id:d}"):
+        call("DELETE", f"/api/v1/admin/aliases/{alias['id']:d}")
+    for account in call("GET", f"/api/v1/admin/mailboxes?domain_id={domain_id:d}"):
+        call("DELETE", f"/api/v1/admin/mailboxes/{account['id']:d}")
+    for name in ADDRESSES_REMEMBERED:
+        remembered = hooks.stash.get(name, {})
+        for key in [k for k in remembered if k.endswith("@" + GENERATED_DOMAIN)]:
+            del remembered[key]
+    hooks.stash.get("link_fixture_prepared", {}).pop(origin, None)
+    hooks.stash["generated_domain_freed"] = True
+
+
+@hooks.before("*")
+def host_the_generated_domain_again(transaction):
+    # Coverage runs no after hook, so what follows createDomain's probes puts back
+    # what they used: the domain as other operations' hooks expect it, whatever
+    # policy the last probe gave it. Other accounts come back on demand, as they
+    # first did.
+    if not hooks.stash.get("generated_domain_freed") or transaction.get("operationId") == "createDomain":
+        return
+    hooks.stash["generated_domain_freed"] = False
+    for domain in fixture_call(transaction, "GET", "/api/v1/admin/domains") or []:
+        if domain.get("name") == GENERATED_DOMAIN:
+            fixture_call(transaction, "DELETE", f"/api/v1/admin/domains/{domain['id']:d}", expect=PROBE_REFUSALS)
+    # The fixtures host it live, which the admin API cannot do without a certificate.
+    subprocess.run(
+        ["chore", "test:contract-link-fixture"],
+        check=True,
+        capture_output=True,
+        timeout=20,
+    )
+
+
 @hooks.before("createDomain")
 def create_a_domain_that_is_not_there(transaction):
     # The documented create (201) makes example.org, and the coverage process
@@ -2996,20 +3118,17 @@ def create_a_domain_that_is_not_there(transaction):
         or not name
     ):
         return
-    # A probe's name is the generator's example.com, which is the fixtures'
-    # hosted domain: it creates a domain of its own instead.
-    if name == "example.com":
-        name = "domain-probe.example.net"
-        body["name"] = name
-        transaction["request"]["body"] = json.dumps(body)
     for domain in fixture_call(transaction, "GET", "/api/v1/admin/domains") or []:
-        if domain.get("name") == name:
-            fixture_call(
-                transaction,
-                "DELETE",
-                f"/api/v1/admin/domains/{domain['id']:d}",
-                expect=PROBE_REFUSALS,
-            )
+        if domain.get("name") != name:
+            continue
+        if name == GENERATED_DOMAIN:
+            empty_the_generated_domain(transaction, domain["id"])
+        fixture_call(
+            transaction,
+            "DELETE",
+            f"/api/v1/admin/domains/{domain['id']:d}",
+            expect=PROBE_REFUSALS,
+        )
 
 
 @hooks.before("putSieveScript")
@@ -3021,44 +3140,7 @@ def install_a_sieve_script_where_there_is_none(transaction):
     account = path.rsplit("/", 2)[1]
     if " > 201 > " not in transaction.get("name", "") or not positive_id(account):
         return
-    # A coverage probe's script is whatever string the generator drew, which no
-    # schema can make Sieve: it installs the documented "keep;" and keeps the
-    # rest of its body, so what it tests is the other fields.
-    body = hooks.get_json(transaction)
-    if (
-        isinstance(body, dict)
-        and isinstance(body.get("script"), str)
-        and body["script"] != "keep;"
-    ):
-        body["script"] = "keep;"
-        hooks.set_json(transaction, body)
+    # A coverage probe's script is held at the documented "keep;" (probes.py).
     fixture_call(
         transaction, "DELETE", path[path.index("/api/") :], expect=PROBE_REFUSALS
     )
-
-
-@hooks.before("importMessage")
-def import_a_message_a_parser_can_read(transaction):
-    # A coverage probe's raw_message is base64 of whatever the generator drew,
-    # which no schema can make RFC 5322. Such a probe imports a small message of
-    # its own, with its own Message-ID so repeats are not duplicates, and keeps
-    # the rest of its body. A documented message, which has headers, is left.
-    if " > 200 > " not in transaction.get("name", ""):
-        return
-    body = hooks.get_json(transaction)
-    raw = body.get("raw_message") if isinstance(body, dict) else None
-    if not isinstance(raw, str):
-        return
-    try:
-        octets = base64.b64decode(raw, validate=True)
-    except ValueError:
-        octets = b""
-    if b"\r\n\r\n" in octets or b"\n\n" in octets:
-        return
-    message = (
-        f"Message-ID: <contract-import-{time.time_ns()}@example.test>\r\n"
-        "From: Original <old@example.test>\r\n"
-        "Subject: imported\r\n\r\nhistory\r\n"
-    )
-    body["raw_message"] = base64.b64encode(message.encode()).decode()
-    hooks.set_json(transaction, body)

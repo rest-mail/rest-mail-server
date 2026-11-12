@@ -45,6 +45,10 @@ fi
 out=.cache/contract
 logs=${CONTRACT_LOGS:-$out}
 mkdir -p "$out" "$logs"
+if [ "$phase" = gate ]; then
+  export CONTRACT_PROBE_REPLAYS="$PWD/$out/replayed-probes.jsonl"
+  : >"$CONTRACT_PROBE_REPLAYS"
+fi
 # Every phase consumes the exact description served by this server. The saved
 # bytes are also the coverage/security inventory, even when Vertrag reads its URL.
 served="$PWD/$out/openapi.json"
@@ -90,7 +94,7 @@ export RESTMAIL_VERTRAG_BINARY="$CONTRACT_VERTRAG"
 PATH="$(dirname "$CONTRACT_VERTRAG"):$PATH"
 export PATH
 "$CONTRACT_VERTRAG" version
-python3 -B -c 'import yaml' 2>/dev/null || pip install --quiet pyyaml
+python3 -B -c 'import yaml, jsonschema, rfc3339_validator' 2>/dev/null || pip install --quiet pyyaml 'jsonschema[format]'
 if [ "$phase" != authorization ] && [ "$phase" != ownership ]; then
   python3 -B tests/contract/description.py vertrag.yml "$served"
 fi
@@ -121,7 +125,7 @@ gate)
     --output "$out/browser-sessions.json"
   # 1 is a failed transaction (or a run that could not be carried out) and 3 an
   # operation not exercised and passing (the surface gate): either fails here,
-  # at once. 2 is a failed boundary probe, which the baseline judges below.
+  # at once.
   python3 -B tests/contract/reports.py "$out/vertrag-run.yml" "$out/vertrag-examples.yml" "$out/examples" "${narrowed[@]}"
   "$CONTRACT_VERTRAG" run --config "$out/vertrag-examples.yml" --sequence --phases examples "${select[@]}" 2>&1 | tee "$logs/contract-examples.log"
   if [ ${#select[@]} -eq 0 ]; then
@@ -136,27 +140,32 @@ gate)
   python3 -B tests/contract/reports.py "$out/vertrag-probes.yml" "$out/vertrag-probes.yml" "$out/coverage" "${narrowed[@]}"
   code=0
   # Probes a hook ends are in no report: the hook worker counts them (lost_probes.py).
+  # --fail-on-skipped-probes: valid probes not sent because an example failed are
+  # a failure, not a count. Vertrag's exit 2 now means that or a failed probe.
   export CONTRACT_LOST_PROBES="$PWD/$out/lost-probes.txt"
   : >"$CONTRACT_LOST_PROBES"
-  CONTRACT_COVERAGE=1 "$CONTRACT_VERTRAG" run --config "$out/vertrag-probes.yml" --sequence --phases coverage "${select[@]}" \
+  : >"$CONTRACT_PROBE_REPLAYS"
+  CONTRACT_COVERAGE=1 "$CONTRACT_VERTRAG" run --config "$out/vertrag-probes.yml" --sequence --phases coverage --fail-on-skipped-probes "${select[@]}" \
     2>&1 | tee "$logs/contract.log" || code=$?
   if drop_unmatched_pin "$logs/contract.log" "$out/coverage"; then
     code=0
     : >"$CONTRACT_LOST_PROBES"
-    CONTRACT_COVERAGE=1 "$CONTRACT_VERTRAG" run --config "$out/vertrag-probes.yml" --sequence --phases coverage "${select[@]}" \
+    : >"$CONTRACT_PROBE_REPLAYS"
+    CONTRACT_COVERAGE=1 "$CONTRACT_VERTRAG" run --config "$out/vertrag-probes.yml" --sequence --phases coverage --fail-on-skipped-probes "${select[@]}" \
       2>&1 | tee "$logs/contract.log" || code=$?
   fi
   echo "vertrag exited $code"
+  python3 -B tests/contract/probe_refusals.py "$CONTRACT_LOST_PROBES" "$CONTRACT_PROBE_REPLAYS" || code=1
   if [ "$code" -ne 0 ] && [ "$code" -ne 2 ]; then exit "$code"; fi
   if [ ${#select[@]} -eq 0 ]; then
-    # The coverage baseline only shrinks.
+    # What Vertrag cannot see: the configuration, and the probes a hook ended.
     python3 -B tests/contract/gate.py "$CONTRACT_SPEC" vertrag.yml "$out/coverage.xml" tests/contract/coverage-baseline.txt \
-      tests/contract/skipped-probes-baseline.txt tests/contract/lost-probes-baseline.txt "$CONTRACT_LOST_PROBES"
+      --lost-probes tests/contract/lost-probes-baseline.txt "$CONTRACT_LOST_PROBES"
   else
     echo "a narrowed run: the coverage baseline is not applied"
-    # Without the whole-API ratchet, Vertrag's selected probe verdict is final.
-    exit "$code"
   fi
+  # Vertrag's verdict is final: a failed probe or a skipped valid probe fails here.
+  exit "$code"
   ;;
 authorization)
   # Examples always run first, then the matrix repeats destructive requests as

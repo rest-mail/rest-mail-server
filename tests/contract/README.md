@@ -29,7 +29,7 @@ In the `E2E (full topology)` job (`.github/workflows/e2e-suite.yml`), after the
 | --- | --- | --- |
 | example pairs | Each registered `*WithVertrag` test in `internal/api` sends its documented example pairs and their boundary cases through Vertrag to the API in the test process (`chore contract:pairs`). It needs no topology. | Gate, first |
 | `examples` | Each documented request gets its documented answer. Ordered by the spec's links (`--sequence`), so a read, an update or a delete addresses what its create made. | Gate |
-| `coverage` | Every boundary each schema implies (the maximum, one past it, a required property missing) gets a 4xx, never a 2xx or a 5xx. | Gate, as a ratchet (below) |
+| `coverage` | Every boundary each schema implies (the maximum, one past it, a required property missing) gets a 4xx, never a 2xx or a 5xx. Valid probes skipped because an example failed fail it too. | Gate (below) |
 | `ignored-auth` check | Every authenticated request, sent again with no credential, is refused. | Gate |
 | `authorization` | Every selected operation as each configured principal, checked against the spec's security roles. A signed-in caller refused an object the path names may get the 404 that hides it (#672); `authorization_refusals.py` names any 404 outside that, so an admin route stays 403 and no credential stays 401. | Report only, after the gates |
 | `ownership` | Each account tenant's principals sent the other tenant's account id, on the operations they are entitled to; every answer must be 403 or 404. | Report only, after authorization |
@@ -168,18 +168,12 @@ or depend on `sendDraft` or its separate #1529 repair.
 Only the merge-queue topology proves the whole gate: a focused local run has
 previously passed while that gate failed because `sendDraft` needed #1529.
 
-`skipped-probes-baseline.txt` holds the **0 remaining probes across 0
-operations**, individually, not as a shared budget. `gate.py` reads 0.42.0's
-JUnit skipped-case reason and fails on a new operation, an increased count,
-an unknown skip format, or a decrease not removed from the baseline. Skipped
-cases never count as passing boundary probes. This file does not exclude
-anything: the requests and valid probes remain selected. The actual whole-API
-count still requires the merge-queue topology; narrowed local proofs cannot
-establish it.
-
-Vertrag 0.42.0's `--fail-on-skipped-probes` fails coverage with exit 2 when
-non-login valid probes are skipped; it deliberately exempts login. Once this
-baseline is empty, use that flag directly instead of retaining skip debt.
+The coverage phase runs with Vertrag's `--fail-on-skipped-probes`, which fails it
+with exit 2 when non-login valid probes are skipped and deliberately exempts login.
+`run.sh` treats that exit as final, on a whole-API run and a narrowed one. The log
+names each operation and what its example answered. A skipped case never counts as
+a passing boundary probe, and `gate.py` still fails on a skipped result in any other
+form. `skipped-probes-baseline.txt` is empty, and `run.sh` no longer reads it.
 
 ### A hook cannot change a generated body
 
@@ -198,16 +192,21 @@ operation. A new operation or a larger count fails. A probe whose body a hook
 changes, or that a hook skips, is a line in `lost-probes.txt`, and a passing gate
 prints how many there were. The first two requests of each transaction are the
 documented ones, which a hook may rewrite: only a generated body is compared. The
-file says why each operation is there. The counter also registers after the
-quiet-hours hooks, so replacing the generated `time_zone` placeholder `x` with
-`UTC` cannot silently discard probes.
+file says why each operation is there. Normally a counted probe was not sent,
+so the count is a limit, not a pass. The explicit business-rule replays below
+are different: their original request is sent and verified before their duplicate
+engine send is ended, and each has a receipt in `replayed-probes.jsonl`.
 
 There are three ways to keep a probe:
 
 - **`fuzz.pin`** holds a value the schema cannot describe, before the probe is
   rendered. `snoozed_until` and `expires_at` are held in the future because the
   generator's only date-time is in 2020, and the server rightly refuses that
-  (`probes.py`). `permissions` is held at a real capability the probe
+  (`probes.py`). `time_zone`, `script` and `raw_message` are held because the
+  generator's `x` and base64 of `vertrag` are not a zone, Sieve or a message.
+  `script` also reaches `validateSieveScript` and `validateCustomFilter`, and
+  `raw_message` reaches `deliverMessage` and `restmailDeliver`. `permissions` is held
+  at a real capability the probe
   administrator has, because the generator's stand-in is capability `x` at scope
   `x`. A pin is global by field name, so it does not suit `password`, which eleven
   operations have. Vertrag does not look through a body's nested `$ref` to see
@@ -232,13 +231,88 @@ For `createAPIKey` and `updateAPIKey`: `permissions_missing`, `permissions_empty
 `permissions_too_many`, `permissions_wrong_type`, `permission_scope_missing`,
 `permission_capability_wrong_type` and `permission_unknown_field`. For
 `createAPIKey` too: `expires_at_malformed`, `expires_at_wrong_type` and
-`expires_at_past`.
+`expires_at_past`. For `time_zone`: `invalid_zone`. For `script`: `script_missing`,
+`script_null`, `script_wrong_type` and `invalid_syntax` on the Sieve operations, and
+`script_missing`, `script_null`, `script_empty` and `script_wrong_type` on
+`validateCustomFilter`. For `raw_message`: `missing_raw`, `raw_wrong_type` and
+`invalid_base64` on `importMessage`, `raw_message_invalid` and `raw_message_nul` on
+`deliverMessage`, and `raw_message_wrong_type` on `restmailDeliver`. For `filter_name`:
+`filter_name_missing`, `filter_name_empty` and `filter_name_wrong_type`. For `cert_pem`
+and `key_pem`: `cert_missing`, `cert_empty`, `cert_wrong_type`, `cert_invalid`,
+`key_missing`, `key_empty` and `key_wrong_type`.
 
-`createAppPassword` cannot be held this way. Its description lets a request leave
-out `password`, and the handler answers that with the documented 403
-`reauth_required`, which Vertrag calls a disagreement. So its probes the schema
-forbids reach the handler as drawn, and its well-formed ones are still given the
-password, and counted, until that disagreement is decided.
+A pin engages only on a body whose schema holds its fields at the top, and a body that
+is a reference to a schema with references of its own does not (Vertrag 0.42.0,
+`fuzz/pin.go`). `testFilter`'s email has to stay a reference, because its parts refer to
+themselves. So its description states the body in the operation
+(`describedTestFilterBody`), which also says what the handler has always required of
+`config`: an object. A generator that may draw any `config` draws `"x"`, which the
+handler refuses, so `filter_name` alone would not have sent these probes.
+
+`createCertificate`'s `cert_pem` and `key_pem` hold a throwaway self-signed certificate
+that `probes.py` makes for each run, and its probes' `domain_id` is 1, the fixture
+admin's domain. A hook cannot change that, and the mail gateways serve a domain's current
+certificates by name. So this one is already expired: the handler accepts it, and neither
+the gateways nor `updateDomain`'s certificate check count it. `a_self_signed_certificate` leaves them
+as drawn, and the first hook after them, `remove_the_probe_certificates`, deletes each
+certificate with that issuer. The documented sends before them keep a certificate of
+their own, which `getCertificate`'s link needs, on the run's domain when the run has
+one. A run narrowed to `createCertificate` alone has no hook after its probes, so
+their certificates stay on its disposable database.
+
+`createDomain` needs no pin, because its setup makes the generated name free. Its
+hook removes what earlier probes put at `example.com`, and the first hook after its
+probes hosts that domain again through the fixture, so what follows finds it live.
+
+### The owner-decided schema and business-state probes
+
+The 2026-11-03 decision on #1443 tightens the published descriptions, not binding.
+`linkAccount` declares an email address. `acceptInvitation` requires a nonblank
+token and a password of at least 12 characters, with the 72 UTF-8 byte ceiling
+stated explicitly (a character ceiling alone cannot enforce that byte ceiling).
+`createAppPassword` requires a nonempty current password and a nonblank name.
+Their `DescribedRequest` types are separate from the types the handlers bind:
+missing invitation tokens still answer 401, missing app-password proofs still
+answer 403, and malformed link proofs keep their existing refusals.
+
+`linkAccount` now draws the existing `someone@example.com` fixture. App-password
+probes use the already enrolled probe administrator, whose password is the drawn
+`x`, without a global password pin or a body rewrite. Invitation probes use
+`chore test:contract-invitation-fixture`: the guarded disposable fixture hashes
+the drawn token and attaches it to a fresh credential-free account before each
+valid request. Repeated token values never reuse a redeemed account. No token
+is logged or sent on the command line, and the real handler still consumes it
+once and installs the drawn password.
+
+`inviteAccount`'s positive-id schema remains honest: any positive id could name
+an eligible account. Its description now spells out the actual database rule:
+the account is active, has credential epoch zero, has no last password change,
+and has no credential. A schema cannot encode that state, so changing minimum
+id 1 to 2 would merely hide the credentialed fixture administrator.
+
+`receiveTlsReport` remains lenient, including optional `policy` and
+`policy-domain`. Vertrag 0.42 treats a legitimate business refusal of a valid
+shape as a finding. `probe_refusals.py` therefore sends those unchanged generated
+requests directly, rather than inventing a hosted policy. The published request
+schema, including date-time formats, decides the expected code: a valid report
+with no hosted domain must answer 422 `no_matching_domains`; an invalid report
+must answer 422 `validation_failed`. The exact status, code and published
+response schema must all match. The minimum-id invitation probe is sent the
+same way, requiring 409 `account_not_invitable`. Any mismatch fails the hook
+before it may end the engine send; no status is globally excused.
+
+In the narrowed local gate, hook-ended counts are 56 before and 33 after:
+`linkAccount` 10→0, `acceptInvitation` 8→0, `createAppPassword` 5→0,
+`receiveTlsReport` 32→32, `inviteAccount` 1→1. All remaining 33 were sent by the
+alternate sender: 23 invalid TLS reports, nine schema-valid domainless TLS
+reports, and the credentialed invitation target. Each receipt records the
+transaction, original body SHA-256, status, error code and explanation.
+The gate clears old receipts before coverage and checks that verified sends
+exactly match those operations' hook endings. Missing or extra receipts fail
+the run. CI retains both the receipts and hook-ending list as artifacts.
+They remain in the hook-ended counter because the engine's duplicate send is
+skipped after verification; none is an unsent probe. No baseline is raised.
+The narrowed gate passes with zero findings and zero skipped valid probes.
 
 ### Coverage keeps restmail.test unchanged
 
@@ -413,12 +487,11 @@ Two gates judge the primary run:
   `exclude-operation-id` leaves to the teardown phase. No status is excluded:
   `status-baseline.txt`, which `run.sh` adds to the run's `surface.exclude`
   and `status_baseline.py` holds to only shrink, is empty (#1334).
-- **coverage, a ratchet, in `gate.py`:** `coverage-baseline.txt` lists the
-  operations whose boundary probes still fail (#388). A failing probe on any
-  other operation fails the job, and so does an operation in the baseline
-  whose probes all pass now. A fix takes its operation out of the baseline in
-  the same change, so the baseline only shrinks after its initial seeding in
-  #376. `gate.py` also fails when `exclude-operation-id` and
+- **coverage, Vertrag's verdict, then `gate.py`:** any failed probe or skipped
+  valid probe exits 2, and `run.sh` treats that as final. `coverage-baseline.txt` is
+  empty and can excuse nothing now. `gate.py` still fails on a listed operation
+  whose probes all pass, and on the probes a hook ended beyond their baseline. It
+  also fails when `exclude-operation-id` and
   `surface.exclude` disagree about which operations are left out, or name one
   the spec does not have.
 
@@ -1380,8 +1453,8 @@ not run them.
 A narrowed run (`--tag`, `--operation-id`, `--only-matching`)
 reports without the surface gate and the baseline, which are about the whole API.
 Its coverage verdict comes directly from Vertrag: exit 0 for passing selected
-probes, exit 2 for findings. A narrowed finding is not excused by the whole-API
-baseline. The complete command preserves that failure while still running the
+probes, exit 2 for findings or skipped valid probes. A narrowed finding is not
+excused by the whole-API baseline. The complete command preserves that failure while still running the
 secret scan and producing the authorization report.
 
 The secret scan also runs locally, including after a failing examples gate.

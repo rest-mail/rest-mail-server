@@ -4,36 +4,22 @@
 # probes remain selected. A new operation or a larger count fails. A smaller count
 # is noted by the gate: lower it here in the same change once a topology run shows it.
 # Measured with a whole-API run of Vertrag 0.42.0 against a local build, 2026-11-03,
-# after examples and fixture replenishment, on main after #1529, #1534 and #1536:
-# 158 probes across 15 operations, including the quiet-hours hooks (Part of #1443).
+# after examples and fixture replenishment: 158 probes across 15 operations on main,
+# 107 across 10 after the pins and setup of Part of #1443, 91 across 8 once testFilter
+# and createCertificate were pinned. A probe counted here was not sent, so it proves
+# nothing unless replayed-probes.jsonl records its separately verified send (below).
 # The local dependency and skip differences do not prove the gate.
 #
-# The server cannot accept what the generator draws, and a pin would be global:
-# acceptInvitation: a token only the server can make, per probe.
-acceptInvitation 8
-# A well-formed request may leave the password out, and the handler answers 403.
-createAppPassword 5
-# Certificate and key material the generator cannot draw.
-createCertificate 8
 # domain_id must name the run's domain, which no static pin can hold.
 createCustomFilter 20
 createPipeline 12
-# The generator's name, example.com, is the fixtures' hosted domain.
-createDomain 22
-# raw_message must parse as a message and carry its own Message-ID.
-importMessage 12
-# The fixture's address and password; a pin of password would reach ten operations.
-linkAccount 10
-# script must be Sieve.
-putSieveScript 6
-# A report must name a hosted policy domain.
+# These 32 are sent unchanged by probe_refusals.py, checked against the published
+# response schema and exact refusal code, and recorded in replayed-probes.jsonl.
+# Their engine send ends afterwards: Vertrag 0.42 cannot attribute a legitimate
+# no_matching_domains refusal to a schema-valid body. External reports stay lenient.
 receiveTlsReport 32
-# The hook replaces the generator's unknown time_zone placeholder x with UTC.
-setQuietHours 10
-# filter_name must name a filter.
-testFilter 8
 # pipeline_id must name a pipeline.
 testPipeline 3
-# The hook skips the probe whose id cannot be what its name documents.
-createAccount 1
+# Sent unchanged and verified as 409 account_not_invitable by probe_refusals.py;
+# only its duplicate engine send is skipped. The minimum id remains 1, not hidden.
 inviteAccount 1

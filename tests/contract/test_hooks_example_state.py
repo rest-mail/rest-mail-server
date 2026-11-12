@@ -326,43 +326,18 @@ class ExampleStateHookTest(unittest.TestCase):
             ["DELETE /api/v1/admin/domains/7", "DELETE /api/v1/accounts/4/sieve"],
         )
 
-    def test_probe_values_no_schema_can_make_valid_are_replaced(self):
-        # A probe's Sieve script and raw message are generator strings; it
-        # sends usable ones and keeps the rest of its body.
+    def test_probe_values_no_schema_can_make_valid_are_left_to_the_pins(self):
+        # A probe's Sieve script and raw message are held by pins (probes.py). A
+        # hook that changed them would end the probe, so none does.
         sieve = "/api/v1/accounts/{id}/sieve > Create or replace the Sieve filter script > 201 > application/json"
         probe = self.transaction(
             sieve, "/api/v1/accounts/4/sieve", {"script": "x", "active": True}
         )
         self.hooks.install_a_sieve_script_where_there_is_none(probe)
         self.assertEqual(
-            json.loads(probe["request"]["body"]), {"script": "keep;", "active": True}
+            json.loads(probe["request"]["body"]), {"script": "x", "active": True}
         )
-
-        imported = "/api/v1/accounts/{id}/messages/import > Import one historical message > 200 > application/json"
-        probe = self.transaction(
-            imported,
-            "/api/v1/accounts/4/messages/import",
-            {
-                "raw_message": "dmVydHJhZw==",
-                "internal_date": "2020-01-02T03:04:05Z",
-                "folder": "Archive",
-            },
-        )
-        self.hooks.import_a_message_a_parser_can_read(probe)
-        body = json.loads(probe["request"]["body"])
-        raw = base64.b64decode(body["raw_message"])
-        self.assertIn(b"\r\n\r\n", raw)
-        self.assertIn(b"Message-ID: <contract-import-", raw)
-        self.assertEqual(body["folder"], "Archive")
-
-        documented = base64.b64encode(b"Subject: kept\r\n\r\nbody\r\n").decode()
-        probe = self.transaction(
-            imported, "/api/v1/accounts/4/messages/import", {"raw_message": documented}
-        )
-        self.hooks.import_a_message_a_parser_can_read(probe)
-        self.assertEqual(
-            json.loads(probe["request"]["body"])["raw_message"], documented
-        )
+        self.assertFalse(hasattr(self.hooks, "import_a_message_a_parser_can_read"))
 
     def test_an_invitation_probe_gets_a_token_and_a_password_it_can_redeem(self):
         # The token is optional in the schema and the 12-byte password rule is

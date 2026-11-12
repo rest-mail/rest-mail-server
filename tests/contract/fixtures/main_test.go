@@ -224,6 +224,25 @@ func TestAPIKeyFixtureRequiresTheDisposableDomain(t *testing.T) {
 	}
 }
 
+// createDomain's probes remove the generated domain, and the fixture hosts it again for
+// what follows them, which needs it live.
+func TestLinkFixtureHostsAnAbsentDomainLive(t *testing.T) {
+	db := fixtureDB(t)
+	if err := db.Create(&models.Domain{Name: "restmail.test"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := prepareLinkFixture(db, "restmail.test"); err != nil {
+		t.Fatal(err)
+	}
+	var hosted models.Domain
+	if err := db.Where("name = ?", "example.com").First(&hosted).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !hosted.Active {
+		t.Fatal("the generated domain was hosted but not live")
+	}
+}
+
 func TestLinkFixtureSupportsUnmodifiedGeneratedProof(t *testing.T) {
 	db := fixtureDB(t)
 	if err := db.Create(&models.Domain{Name: "restmail.test"}).Error; err != nil {

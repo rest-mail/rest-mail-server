@@ -75,7 +75,7 @@ class QuietHoursFixtures(unittest.TestCase):
             send.assert_not_called()
             self.assertEqual(transaction, original)
 
-    def test_supplies_only_the_compilers_unknown_time_zone_format(self):
+    def test_leaves_the_generated_time_zone_to_the_pin(self):
         self.transaction["request"]["body"] = (
             '{"enabled":false,"start":"","end":"","time_zone":"x"}'
         )
@@ -84,5 +84,5 @@ class QuietHoursFixtures(unittest.TestCase):
             self.prepare(self.transaction)
         self.assertEqual(
             json.loads(self.transaction["request"]["body"]),
-            {"enabled": False, "start": "", "end": "", "time_zone": "UTC"},
+            {"enabled": False, "start": "", "end": "", "time_zone": "x"},
         )

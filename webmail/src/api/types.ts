@@ -1612,7 +1612,7 @@ export interface paths {
         put?: never;
         /**
          * Invite an account to choose its first password
-         * @description For an active account created without credentials. The invitation lasts 15 minutes; issuing another invalidates the previous one. Only a hash is stored. Authenticator enrollment and server encryption must be enabled before invitations can be issued.
+         * @description Requires an active account that has never held credentials: credential_epoch is zero, last_password_change is absent, and no credential exists. Otherwise the response is 409 account_not_invitable, even for a schema-valid account id. The invitation lasts 15 minutes; issuing another invalidates the previous one. Only a hash is stored. Authenticator enrollment and server encryption must be enabled before invitations can be issued.
          */
         post: operations["inviteAccount"];
         delete?: never;
@@ -2231,7 +2231,7 @@ export interface paths {
         put?: never;
         /**
          * Choose your first password with an invitation
-         * @description Redeems an invitation once, chooses a password of 12–72 bytes and signs in. The session can only finish authenticator enrollment until it is confirmed. Owner reset tokens cannot be used here. Native clients send client: native; browsers receive httpOnly session cookies.
+         * @description Redeems an invitation once, chooses a password of at least 12 characters and at most 72 UTF-8 bytes and signs in. The session can only finish authenticator enrollment until it is confirmed. Owner reset tokens cannot be used here. Native clients send client: native; browsers receive httpOnly session cookies.
          */
         post: operations["acceptInvitation"];
         delete?: never;
@@ -4824,12 +4824,6 @@ export interface components {
         ValidationErrorResponse: {
             error: components["schemas"]["ValidationErrorBody"];
         };
-        acceptInvitationRequest: {
-            /** @enum {string} */
-            client?: "native";
-            password: string;
-            token?: string;
-        };
         accountResponse: {
             address: string;
             display_name: string;
@@ -4968,12 +4962,6 @@ export interface components {
             name?: string;
             /** @enum {string|null} */
             trust_level?: "auto" | "trusted" | "blocked" | null;
-        };
-        createCredentialBody: {
-            /** Format: date-time */
-            expires_at?: string | null;
-            name: string;
-            password?: string;
         };
         createCustomFilterRequestBody: {
             config?: unknown;
@@ -5204,13 +5192,6 @@ export interface components {
             /** Format: date-time */
             expires_at: string;
             token: string;
-        };
-        linkAccountRequest: {
-            address: string;
-            display_name?: string;
-            password: string;
-            recovery_code?: string;
-            totp_code?: string;
         };
         listUnsubscribe: {
             https?: string;
@@ -5543,11 +5524,6 @@ export interface components {
         };
         testCustomFilterRequestBody: {
             email?: unknown;
-        };
-        testFilterRequestBody: {
-            config: unknown;
-            email: components["schemas"]["sampleEmail"] | null;
-            filter_name: string;
         };
         testPipelineRequestBody: {
             email: components["schemas"]["sampleEmail"] | null;
@@ -6305,7 +6281,14 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["linkAccountRequest"];
+                "application/json": {
+                    /** Format: email */
+                    address: string;
+                    display_name?: string;
+                    password: string;
+                    recovery_code?: string;
+                    totp_code?: string;
+                };
             };
         };
         responses: {
@@ -8403,7 +8386,12 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["createCredentialBody"];
+                "application/json": {
+                    /** Format: date-time */
+                    expires_at?: string | null;
+                    name: string;
+                    password: string;
+                };
             };
         };
         responses: {
@@ -18307,7 +18295,13 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["testFilterRequestBody"];
+                "application/json": {
+                    config: {
+                        [key: string]: unknown;
+                    };
+                    email: components["schemas"]["sampleEmail"] | null;
+                    filter_name: string;
+                };
             };
         };
         responses: {
@@ -21218,7 +21212,12 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["acceptInvitationRequest"];
+                "application/json": {
+                    /** @enum {string} */
+                    client?: "native";
+                    password: string;
+                    token: string;
+                };
             };
         };
         responses: {

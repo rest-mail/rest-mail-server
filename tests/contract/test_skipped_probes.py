@@ -150,10 +150,12 @@ class SkippedProbes(unittest.TestCase):
         self.assertEqual(len({entry[0] for entry in entries}), len(entries))
         self.assertNotIn("createAPIKey", {entry[0] for entry in entries})
         self.assertNotIn("updateAPIKey", {entry[0] for entry in entries})
+        for sent in ("createAccount", "createDomain", "importMessage", "putSieveScript", "setQuietHours"):
+            self.assertNotIn(sent, {entry[0] for entry in entries})
 
     def test_the_run_passes_the_lost_probe_count_to_the_gate(self):
         script = (Path(__file__).resolve().parent / "run.sh").read_text()
-        self.assertIn('tests/contract/lost-probes-baseline.txt "$CONTRACT_LOST_PROBES"', script)
+        self.assertIn('--lost-probes tests/contract/lost-probes-baseline.txt "$CONTRACT_LOST_PROBES"', script)
 
     def test_coverage_marker_is_scoped_to_both_coverage_commands(self):
         script = (Path(__file__).resolve().parent / "run.sh").read_text()
@@ -162,7 +164,38 @@ class SkippedProbes(unittest.TestCase):
         for command in marked:
             self.assertTrue(command.strip().startswith('CONTRACT_COVERAGE=1 "$CONTRACT_VERTRAG" run'))
             self.assertIn("--phases coverage", command)
-        self.assertIn("tests/contract/skipped-probes-baseline.txt", script)
+            self.assertIn("--fail-on-skipped-probes", command)
+        self.assertNotIn("tests/contract/skipped-probes-baseline.txt", script)
+
+    def test_without_a_skip_baseline_the_gate_leaves_skips_to_vertrag(self):
+        self.report.write_text(
+            '<testsuite><testcase name="coverage: /things &gt; Things &gt; 200 · valid probes skipped">'
+            '<skipped message="2 valid probe(s) skipped: its example answered 404, documented 200"/>'
+            "</testcase></testsuite>"
+        )
+        with contextlib.redirect_stdout(io.StringIO()) as output:
+            status = gate.gate(self.spec, self.config, self.report, self.coverage)
+        self.assertEqual(status, 0, output.getvalue())
+        self.assertIn("--fail-on-skipped-probes decides", output.getvalue())
+
+    def test_without_a_skip_baseline_an_unknown_skip_still_fails(self):
+        self.report.write_text(
+            '<testsuite><testcase name="coverage: /things &gt; Things &gt; 200 · valid probes skipped">'
+            '<skipped message="skipped by a hook"/></testcase></testsuite>'
+        )
+        with contextlib.redirect_stdout(io.StringIO()):
+            status = gate.gate(self.spec, self.config, self.report, self.coverage)
+        self.assertEqual(status, 1)
+
+    def test_the_command_line_passes_lost_probes_without_a_skip_baseline(self):
+        limit = self.write("lost-baseline.txt", "createThing 1\n")
+        counted = self.write("lost.txt", "createThing\ncreateThing\n")
+        self.report.write_text("<testsuite/>")
+        with contextlib.redirect_stdout(io.StringIO()) as output:
+            status = gate.main([str(self.spec), str(self.config), str(self.report), str(self.coverage),
+                                "--lost-probes", str(limit), str(counted)])
+        self.assertEqual(status, 1)
+        self.assertIn("createThing: 2 > 1", output.getvalue())
 
 
 if __name__ == "__main__":

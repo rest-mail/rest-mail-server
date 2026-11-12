@@ -804,6 +804,19 @@ type testFilterRequestBody struct {
 	Config     json.RawMessage `json:"config" missing:"must be an object"`
 	Email      *sampleEmail    `json:"email" missing:"required"`
 }
+
+// describedTestFilterBody is what testFilter's description says of testFilterRequestBody.
+// config is bound raw so that plugin fields survive unchanged, and the handler refuses anything
+// but an object, so the description says so; binding that too would change which fields a
+// refusal names. It is an alias so that the description holds these fields in the operation's
+// own body: Vertrag 0.42.0 does not look through a body that refers to a schema with references
+// of its own, and its fuzz.pin would then not engage on filter_name (tests/contract/probes.py).
+// sampleEmail keeps its name, because its body parts refer to themselves.
+type describedTestFilterBody = struct {
+	FilterName string         `json:"filter_name" minLength:"1" message:"required" missing:"required"`
+	Config     map[string]any `json:"config" missing:"must be an object"`
+	Email      *sampleEmail   `json:"email" missing:"required"`
+}
 type createCustomFilterRequestBody struct {
 	DomainID    uint            `json:"domain_id,omitempty"`
 	Name        string          `json:"name,omitempty"`

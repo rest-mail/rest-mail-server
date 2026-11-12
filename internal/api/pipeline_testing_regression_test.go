@@ -178,6 +178,7 @@ func newPipelineTestingScenarios(t *testing.T) map[string]bulkQueueExampleScenar
 		"execution_cancelled",
 		"execution_failure",
 		"execution_panic",
+		"filter_name_empty",
 		"filter_name_missing",
 		"filter_name_wrong_type",
 		"invalid_body",
