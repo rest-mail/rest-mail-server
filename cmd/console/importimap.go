@@ -110,6 +110,7 @@ func runImportIMAPSource(ctx context.Context, args []string, token, password, ac
 		}
 	}
 	total, imported, skipped := 0, 0, 0
+	destinations := mailimport.NewDestinations()
 	visit := func(source string, message apitypes.ImportMessageBody) error {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -121,6 +122,8 @@ func runImportIMAPSource(ctx context.Context, args []string, token, password, ac
 		if *dry {
 			return nil
 		}
+		supplied := message.Folder
+		message.Folder = destinations.For(supplied)
 		result, status, err := postImportedMessage(ctx, client, base, token, uint32(*account), message)
 		if err != nil {
 			return fmt.Errorf("%s: %w", source, err)
@@ -128,7 +131,7 @@ func runImportIMAPSource(ctx context.Context, args []string, token, password, ac
 		if status != http.StatusOK {
 			return fmt.Errorf("%s: server refused import (HTTP %d); check destination, scope, size and quota", source, status)
 		}
-		if result.ID == 0 || result.MessageID == "" || result.Folder != message.Folder {
+		if result.ID == 0 || result.MessageID == "" || !destinations.Record(supplied, result.Folder) {
 			return fmt.Errorf("%s: server returned an invalid import result", source)
 		}
 		if result.Imported {

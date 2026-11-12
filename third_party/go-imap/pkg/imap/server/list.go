@@ -13,8 +13,8 @@ import (
 // return options after them. RFC 6154's SPECIAL-USE and RFC 5819's STATUS are
 // options of the same syntax.
 //
-// This engine keeps no subscription list (see handleSubscription): every
-// existing folder counts as subscribed, which is what LSUB answers too.
+// Subscriptions come from a Mailbox that implements [imap.Subscriber]; for any
+// other, every existing folder counts as subscribed (see handleSubscription).
 
 // listRequest is one LIST or LSUB command, parsed.
 type listRequest struct {
@@ -137,9 +137,10 @@ func listReturnOptions(list string, returns map[string]bool) (status []string, r
 // listEntry is a name LIST may answer: a folder, or a level of hierarchy above
 // one that is not itself a mailbox.
 type listEntry struct {
-	folder imap.Folder
-	wire   string
-	exists bool
+	folder     imap.Folder
+	wire       string
+	exists     bool
+	subscribed bool
 }
 
 func (s *Session) handleList(tag, args, cmd string) {
@@ -176,7 +177,7 @@ func (s *Session) handleList(tag, args, cmd string) {
 		if req.reference != "" && !strings.HasPrefix(p, "/") {
 			p = req.reference + p
 		}
-		patterns = append(patterns, p)
+		patterns = append(patterns, s.normalizedPattern(p))
 	}
 
 	folders, err := s.mailbox.Folders()
@@ -184,7 +185,17 @@ func (s *Session) handleList(tag, args, cmd string) {
 		s.tagged(tag, "NO", "Failed to list folders")
 		return
 	}
-	entries := s.listEntries(folders)
+	// LSUB and LIST (SUBSCRIBED) select subscribed names, not existing ones.
+	bySubscription := cmd == "LSUB" || req.selection["SUBSCRIBED"]
+	var subscriptions []string
+	sub, hasList := s.mailbox.(imap.Subscriber)
+	if hasList && (bySubscription || req.returns["SUBSCRIBED"]) {
+		if subscriptions, err = sub.Subscriptions(); err != nil {
+			s.tagged(tag, "NO", "Failed to list subscriptions")
+			return
+		}
+	}
+	entries := s.listEntries(folders, subscriptions, hasList)
 	matched := func(encoded string) bool {
 		for _, p := range patterns {
 			if matchIMAPPattern(p, encoded) {
@@ -193,10 +204,15 @@ func (s *Session) handleList(tag, args, cmd string) {
 		}
 		return false
 	}
-	// meets reports whether an existing folder satisfies the selection options:
-	// every folder is subscribed, and SPECIAL-USE asks for a role (RFC 6154 §3).
+	// meets reports whether a name satisfies the selection options: it exists,
+	// or under SUBSCRIBED is subscribed, existing or not (RFC 5258 §3.1), and
+	// SPECIAL-USE asks for a role (RFC 6154 §3).
 	meets := func(e listEntry) bool {
-		return e.exists && (!req.selection["SPECIAL-USE"] || specialUses[e.folder.SpecialUse])
+		selected := e.exists
+		if bySubscription {
+			selected = e.subscribed
+		}
+		return selected && (!req.selection["SPECIAL-USE"] || specialUses[e.folder.SpecialUse])
 	}
 
 	// One reply per matched name (RFC 5258 §3.3): one that meets the selection,
@@ -218,7 +234,15 @@ func (s *Session) handleList(tag, args, cmd string) {
 			}
 		}
 		childInfo := req.selection["RECURSIVEMATCH"] && qualifying
-		if !meets(e) && (!qualifying || e.exists && !childInfo) {
+		switch {
+		case meets(e):
+		case cmd == "LSUB":
+			// LSUB answers a level that is not subscribed but has a subscribed
+			// name below it with \Noselect (RFC 3501 §6.3.9).
+			if !qualifying {
+				continue
+			}
+		case !qualifying || e.exists && !childInfo:
 			continue
 		}
 
@@ -227,21 +251,18 @@ func (s *Session) handleList(tag, args, cmd string) {
 		// Folders and Messages must be marked Noselect, not just lose STATUS.
 		var status string
 		var statusErr error
-		statusRequested := req.status != nil && meets(e)
+		// A mailbox the user may not read cannot be selected: it is \Noselect
+		// and gets no STATUS (RFC 9051 §6.3.9.2).
+		readable := !e.exists || s.mayRead(e.folder.Name)
+		statusRequested := req.status != nil && meets(e) && e.exists && readable
 		if statusRequested {
 			status, statusErr = s.statusData(e.folder.Name, req.status)
 		}
 
 		var attrs []string
-		if errors.Is(statusErr, imap.ErrNoSuchMailbox) {
+		noselect := !readable || errors.Is(statusErr, imap.ErrNoSuchMailbox)
+		if noselect {
 			attrs = append(attrs, `\Noselect`)
-		}
-		if !e.exists {
-			if req.extended {
-				attrs = append(attrs, `\NonExistent`)
-			} else {
-				attrs = append(attrs, `\Noselect`)
-			}
 		}
 		// The role is the store's, reported on every LIST (RFC 6154 §2 allows it
 		// on the ordinary command too); an attribute the RFC does not define is
@@ -249,8 +270,23 @@ func (s *Session) handleList(tag, args, cmd string) {
 		if specialUses[e.folder.SpecialUse] {
 			attrs = append(attrs, e.folder.SpecialUse)
 		}
-		if req.returns["SUBSCRIBED"] && e.exists {
+		// \Subscribed is accurate for every name returned (RFC 5258 §3.2),
+		// \NonExistent for every name that is not a mailbox (§3).
+		if req.returns["SUBSCRIBED"] && e.subscribed {
 			attrs = append(attrs, `\Subscribed`)
+		}
+		switch {
+		case cmd == "LSUB":
+			// LSUB keeps \Noselect's second meaning: not subscribed itself. A
+			// subscribed name that does not exist is listed plainly.
+			if !meets(e) && !noselect {
+				attrs = append(attrs, `\Noselect`)
+			}
+		case e.exists:
+		case req.extended:
+			attrs = append(attrs, `\NonExistent`)
+		default:
+			attrs = append(attrs, `\Noselect`)
 		}
 		hasChildren := false
 		for _, d := range entries {
@@ -260,7 +296,9 @@ func (s *Session) handleList(tag, args, cmd string) {
 			}
 		}
 		switch {
-		case req.returns["CHILDREN"] && hasChildren, !e.exists && req.extended && !childInfo:
+		// A level that is answered only for a descendant that meets the
+		// selection says so with \HasChildren when CHILDINFO cannot (§3.5).
+		case req.returns["CHILDREN"] && hasChildren, !e.exists && req.extended && !childInfo && !meets(e):
 			attrs = append(attrs, `\HasChildren`)
 		case req.returns["CHILDREN"]:
 			attrs = append(attrs, `\HasNoChildren`)
@@ -285,12 +323,40 @@ func (s *Session) handleList(tag, args, cmd string) {
 	s.tagged(tag, "OK", cmd+" completed")
 }
 
-// listEntries are the folders as this session writes their names, each
-// preceded by the levels of hierarchy above it that are not folders.
-func (s *Session) listEntries(folders []imap.Folder) []listEntry {
+// normalizedPattern is a LIST pattern in the store's normal form, so that a
+// client's other spelling of a name matches it. A store with no normal form
+// compares the pattern as the client sent it.
+func (s *Session) normalizedPattern(pattern string) string {
+	if _, ok := s.mailbox.(imap.NameNormalizer); !ok {
+		return pattern
+	}
+	name, ok := s.mailboxName(pattern)
+	if !ok {
+		return pattern
+	}
+	return s.wireName(name)
+}
+
+// listEntries are the folders as this session writes their names, then the
+// subscribed names that are not folders, each preceded by the levels of
+// hierarchy above it that are neither. Without a subscription list (hasList
+// false) every folder is subscribed.
+func (s *Session) listEntries(folders []imap.Folder, subscriptions []string, hasList bool) []listEntry {
 	exists := make(map[string]bool, len(folders))
 	for _, f := range folders {
 		exists[s.wireName(f.Name)] = true
+	}
+	subscribed := exists
+	if hasList {
+		subscribed = make(map[string]bool, len(subscriptions))
+		folders = append([]imap.Folder(nil), folders...) // the store's slice stays its own
+		for _, name := range subscriptions {
+			name = canonicalizeInbox(name)
+			subscribed[s.wireName(name)] = true
+			if !exists[s.wireName(name)] {
+				folders = append(folders, imap.Folder{Name: name})
+			}
+		}
 	}
 	seen := map[string]bool{}
 	var entries []listEntry
@@ -302,12 +368,12 @@ func (s *Session) listEntries(folders []imap.Folder) []listEntry {
 			}
 			if parent := encoded[:i]; !exists[parent] && !seen[parent] {
 				seen[parent] = true
-				entries = append(entries, listEntry{wire: parent})
+				entries = append(entries, listEntry{wire: parent, subscribed: subscribed[parent]})
 			}
 		}
 		if !seen[encoded] {
 			seen[encoded] = true
-			entries = append(entries, listEntry{folder: f, wire: encoded, exists: true})
+			entries = append(entries, listEntry{folder: f, wire: encoded, exists: exists[encoded], subscribed: subscribed[encoded]})
 		}
 	}
 	return entries

@@ -124,6 +124,7 @@ func (s *Session) handleAppend(tag, args string) (closeConn bool) {
 	}
 	// "INBOX" is case-insensitive (RFC 3501 §5.1): fold to canonical so an any-case
 	// destination delivers to the one real INBOX, not a phantom "inbox" mailbox.
+	supplied := folder
 	folder, ok = s.folderName(folder)
 	if !ok {
 		s.tagged(tag, "NO", "No such mailbox")
@@ -277,6 +278,13 @@ func (s *Session) handleAppend(tag, args string) (closeConn bool) {
 		return false
 	}
 
+	// The user's rights refuse a destination that does not exist or cannot be
+	// written before the store could create it (RFC 9051 §6.3.12).
+	if err := s.destinationRefusal(folder); err != nil {
+		s.tagged(tag, "NO", failText(err, "APPEND failed"))
+		return false
+	}
+
 	var err error
 	// Deliver. Precedence: a client date-time with a DateAppender backend honours
 	// INTERNALDATE; otherwise a UIDPlusMailbox reports the assigned UID; otherwise
@@ -306,11 +314,13 @@ func (s *Session) handleAppend(tag, args string) (closeConn bool) {
 	// completion — including the APPENDUID branch below — so the EXISTS precedes
 	// the OK, as untagged responses must (RFC 3501 §7).
 	s.notifyAppendToSelected(folder)
+	s.announceOldName(folder, false, supplied)
 
 	// APPENDUID (RFC 4315) is emitted only for a UIDPLUS backend that reported a
 	// real UID, whether the store handled the append via AppendUID or the
-	// date-aware AppendWithDate.
-	if isUIDPlus && uid != 0 {
+	// date-aware AppendWithDate, and only to a user who may read the
+	// destination (RFC 9051 §§6.3.12, 11.4).
+	if isUIDPlus && uid != 0 && s.mayRead(folder) {
 		if v, ok := s.uidValidity(folder); ok {
 			s.tagged(tag, "OK", fmt.Sprintf("[APPENDUID %d %d] APPEND completed", v, uid))
 			return

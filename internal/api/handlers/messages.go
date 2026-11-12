@@ -256,7 +256,7 @@ func decodeMessageCursor(cursor string) (messageCursor, bool) {
 func (h *MessageHandler) listMessages(r *http.Request, in listMessagesRequest) (endpoint.List[Message], error) {
 	h = h.forRequest(r)
 	var zero endpoint.List[Message]
-	folder := in.Folder
+	folder := rmail.CanonicalFolder(in.Folder)
 	if folder == "" {
 		folder = "INBOX"
 	}
@@ -1366,7 +1366,8 @@ func (h *MessageHandler) folderExists(ctx context.Context, mailboxID uint, folde
 
 // folderNameRule is what createFolder and renameFolder take as a name, as rmail.FolderNameProblem has it.
 const folderNameRule = "The name is valid UTF-8 of at most 255 bytes, neither blank nor beginning or ending with a space, " +
-	`with no control character and no ".."; a "/" is the hierarchy delimiter IMAP clients show. Any other name is 422.`
+	`with no control character and no ".."; a "/" is the hierarchy delimiter IMAP clients show. Any other name is 422. ` +
+	"The name is saved in Unicode Normalization Form C, and the answer gives it in that form; a name that matches an existing folder once converted is that folder."
 
 // RegisterFolders mounts the account's folders and its quota.
 func (h *MessageHandler) RegisterFolders(rs endpoint.Routes) {
