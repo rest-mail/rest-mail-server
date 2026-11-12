@@ -13,12 +13,21 @@ name: Cluster Install Check
 # validated by the js-filter sidecar. Then stage 2: Vertrag's examples phase
 # sent through the install's Ingress (ingress-nginx in kind, TLS from the
 # self-signed Secret), against the description the install serves there; its
-# HTML report is in the cluster-report artifact, under contract/. Locally,
+# HTML report is in the cluster-report artifact, under contract/. Then stage
+# 3: a reference Postfix/Dovecot in the cluster (scripts/cluster_reference.py,
+# with CoreDNS zones giving each domain its MX), mail from REST Mail to it
+# through the API, mail from it to REST Mail read back over IMAP, and the same
+# message over POP3; the messages are in the report too. Locally,
 # against any cluster with the chart installed: `chore cluster:e2e`, the same
 # script.
 #
 # Daily, on every v* tag, and by hand, never on a pull request: it builds seven
 # images and takes several minutes. It gates nothing.
+#
+# One failure issue ("cluster-e2e is failing", label cluster-e2e): a failed
+# scheduled, v* tag or main run opens it, or comments on the open one with the
+# run, commit, images and the failing step's receipts; a passing one closes it.
+# A run dispatched on any other ref leaves it alone (scripts/cluster_e2e_issue.py).
 #
 # Run by hand: Actions → Cluster Install Check → Run workflow, or
 #   gh workflow run cluster-e2e.yml --ref <branch>
@@ -60,6 +69,10 @@ env:
   # The API Ingress's host (api.ingress in values-ci.yaml), which the runner
   # resolves to the node's mapped port 443.
   INGRESS_HOST: mail.restmail-ci.test
+  # Stage 3: the install's mail domain (mailserver.domain in values-ci.yaml;
+  # its MX is INGRESS_HOST, the mail host), and where the reference runs.
+  MAIL_DOMAIN: restmail-ci.test
+  REFERENCE_NAMESPACE: reference
 
 jobs:
   install:
@@ -170,15 +183,25 @@ jobs:
             exit 1
           fi
 
+      # Stage 3's other side: a reference Postfix/Dovecot, pinned by digest,
+      # in its own namespace, and DNS in the cluster for both mail domains.
+      - name: Deploy the reference mail server
+        run: |
+          python3 -B scripts/cluster_reference.py --namespace "$REFERENCE_NAMESPACE" \
+            --restmail-namespace "$NAMESPACE" --release "$RELEASE" \
+            --mail-domain "$MAIL_DOMAIN" --mail-host "$INGRESS_HOST"
+
       # Stage 1 port-forwards the API and the gateways itself; stage 2 goes
-      # through the Ingress, trusting the self-signed certificate it serves.
+      # through the Ingress, trusting the self-signed certificate it serves;
+      # stage 3 sends mail between the install and the reference both ways.
       # One receipt line per step (commit, images, step, result) to the log and
       # to cluster-report/receipts.txt.
-      - name: Stages 1 and 2 against the install
+      - name: Stages 1 to 3 against the install
         run: |
           python3 -B -c 'import yaml' 2>/dev/null || pip install --quiet pyyaml
           python3 -B scripts/cluster_e2e.py --namespace "$NAMESPACE" --release "$RELEASE" --report-dir "$REPORT_DIR" --commit "$GITHUB_SHA" \
-            --ingress-url "https://$INGRESS_HOST" --ingress-ca "$RUNNER_TEMP/tls.crt"
+            --ingress-url "https://$INGRESS_HOST" --ingress-ca "$RUNNER_TEMP/tls.crt" \
+            --reference-namespace "$REFERENCE_NAMESPACE"
 
       # Always, and most of all on a failure: everything needed to see why a
       # pod did not come up, without re-running the job.
@@ -192,6 +215,10 @@ jobs:
           kubectl -n "$NAMESPACE" describe pods,deployments,statefulsets,services,pvc > describe.txt 2>&1 || true
           kubectl get events -A --sort-by=.lastTimestamp > events.txt 2>&1 || true
           kubectl -n ingress-nginx logs deployment/ingress-nginx-controller > logs/ingress-nginx-controller.log 2>&1 || true
+          kubectl -n "$REFERENCE_NAMESPACE" logs deployment/reference-mail --all-containers > logs/reference-mail.log 2>&1 || true
+          kubectl -n "$REFERENCE_NAMESPACE" describe pods > describe-reference.txt 2>&1 || true
+          kubectl -n kube-system get configmap coredns -o yaml > coredns.yaml 2>&1 || true
+          kubectl -n kube-system logs deployment/coredns > logs/coredns.log 2>&1 || true
           helm -n "$NAMESPACE" status "$RELEASE" > helm-status.txt 2>&1 || true
           for pod in $(kubectl -n "$NAMESPACE" get pods -o name 2>/dev/null); do
             name="${pod#pod/}"
@@ -212,3 +239,34 @@ jobs:
           path: cluster-report/
           retention-days: 14
           if-no-files-found: warn
+
+  # Its own job, so only this one can write issues: the install job builds and
+  # runs the images with a read-only token.
+  failure-issue:
+    name: Failure issue
+    needs: install
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+      actions: read # the install job's failed steps
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Missing when the install failed before anything was written.
+      - name: Download the cluster report
+        continue-on-error: true
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: cluster-report
+          path: cluster-report
+
+      - name: Open, update or close the failure issue
+        run: |
+          python3 -B scripts/cluster_e2e_issue.py --result "${{ needs.install.result }}" \
+            --receipts cluster-report/receipts.txt --image-tag "$IMAGE_PREFIX/*:$IMAGE_TAG"
