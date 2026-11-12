@@ -15,29 +15,30 @@ import (
 	"gorm.io/gorm"
 )
 
-func (h *RestmailHandler) deliverResolvedRecipients(ctx context.Context, req restmailDeliverBody, sender, clientIP string, accepted, refused []string, recipients map[string]repositories.Recipient) (RestmailDelivery, error) {
+func (h *RestmailHandler) deliverResolvedRecipients(ctx context.Context, req restmailDeliverBody, source, sender, clientIP string, accepted, refused []string, recipients map[string]repositories.Recipient) (RestmailDelivery, error) {
 	result := RestmailDelivery{Delivered: []string{}, Failed: refused}
-	var lastError error
-	deferred := false
+	var lastError, deferred error
 	to, _ := json.Marshal(accepted)
 	for _, address := range accepted {
 		recipient := recipients[address]
 		_, err := h.localDelivery.deliverToRecipient(ctx, recipient, localDeliveryParams{
 			Mailbox: recipient.Mailbox, Sender: sender, RecipientsTo: to, Subject: req.Subject,
 			BodyText: req.BodyText, BodyHTML: req.BodyHTML, MessageID: req.MessageID,
-			InReplyTo: req.InReplyTo, References: req.References, RawMessage: req.RawMessage, ClientIP: clientIP,
+			InReplyTo: req.InReplyTo, References: req.References, RawMessage: source, ClientIP: clientIP,
 		})
 		if err != nil {
 			lastError = err
-			deferred = deferred || (!strings.HasPrefix(err.Error(), "rejected:") && !strings.HasPrefix(err.Error(), "mailbox_full:"))
+			if deferred == nil && !strings.HasPrefix(err.Error(), "rejected:") && !strings.HasPrefix(err.Error(), "mailbox_full:") {
+				deferred = err
+			}
 			result.Failed = append(result.Failed, address)
 			continue
 		}
 		result.Delivered = append(result.Delivered, address)
 	}
 	if len(result.Delivered) == 0 {
-		if deferred {
-			return RestmailDelivery{}, endpoint.Refuse(http.StatusServiceUnavailable, "deferred", "Message deferred, retry later")
+		if deferred != nil {
+			return RestmailDelivery{}, restmailDeferral(deferred)
 		}
 		return RestmailDelivery{}, endpoint.Refuse(http.StatusUnprocessableEntity, "undeliverable", lastError.Error())
 	}
@@ -53,7 +54,7 @@ func (h *MessageHandler) deliverToRecipient(ctx context.Context, recipient repos
 				}
 			}
 		}
-		params.RawMessage = "Delivered-To: " + recipient.DeliveredTo + "\r\n" + params.RawMessage
+		params.RawMessage = stampDeliveredTo(params.RawMessage, recipient.DeliveredTo)
 	}
 	if recipient.Mailbox.ID != 0 || !recipient.Alias {
 		if recipient.Mailbox.ID != 0 {
@@ -99,7 +100,7 @@ func (h *MessageHandler) deliverToRecipient(ctx context.Context, recipient repos
 		case pipeline.ActionDefer:
 			deliveredTrace.Outcome = outcomeDeferred
 			h.recordTrace(ctx, buildTrace(*deliveredTrace))
-			return nil, fmt.Errorf("deferred: alias pipeline deferred delivery")
+			return nil, deferredError(result, "alias pipeline deferred delivery")
 		default:
 			deliveredTrace.Outcome = outcomeRejected
 			h.recordTrace(ctx, buildTrace(*deliveredTrace))

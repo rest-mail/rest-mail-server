@@ -48,6 +48,7 @@ type MessageHandler struct {
 	masterKey string
 	recorder  traceRecorder
 	draftSend *draftSendEffects
+	sendReceipt *models.SendIdempotency
 
 	// Send-path abuse limits (#184), configured from config in routes.go. A single
 	// compromised webmail credential must not be able to fan out unlimited bulk
@@ -209,7 +210,7 @@ func (h *MessageHandler) RegisterMessages(rs endpoint.Routes) {
 		Errors:      []int{http.StatusForbidden, http.StatusNotFound}, Security: reads}, h.verifyMessageSeal)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/messages/{id}/recipients",
 		OperationID: "listMessageRecipients", Summary: "What happened to a sent message, recipient by recipient", Tags: tags,
-		Description: "For a message this account sent: each recipient's state (queued, retrying, delivered, failed, or unknown when no delivery record was kept), the reason in a sentence derived from the failure category, the attempts made and when the last one was. A remote recipient is read from its outbound queue row; a local one from the copy the send put in that mailbox. The remote server's own reply is never returned, only the category's reason. A message this account did not send has no recipients. Uses the same mail:read authorization as reading the message; another account's message is 404.",
+		Description: "For a message this account sent: each recipient's state (queued, retrying, delivered, failed, or unknown when no delivery record was kept), the reason in a sentence derived from the failure category, the attempts made and when the last one was. A recipient is read from its outbound queue row, which every send makes, whether its mailbox is here or elsewhere; one with no row, from its copy in a mailbox on this server. The remote server's own reply is never returned, only the category's reason. A message this account did not send has no recipients. Uses the same mail:read authorization as reading the message; another account's message is 404.",
 		Errors:      []int{http.StatusForbidden, http.StatusNotFound}, Security: reads}, h.listMessageRecipients)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPatch, Path: "/api/v1/messages/{id}",
 		OperationID: "updateMessage", Summary: "Update message flags or move to a folder", Tags: tags,
@@ -269,7 +270,7 @@ func decodeMessageCursor(cursor string) (messageCursor, bool) {
 func (h *MessageHandler) listMessages(r *http.Request, in listMessagesRequest) (endpoint.List[Message], error) {
 	h = h.forRequest(r)
 	var zero endpoint.List[Message]
-	folder := in.Folder
+	folder := rmail.CanonicalFolder(in.Folder)
 	if folder == "" {
 		folder = "INBOX"
 	}
@@ -602,7 +603,9 @@ type sendMessageRequest = apitypes.SendMessageRequest
 
 // SendMessage composes and sends a message from an authenticated user.
 func (h *MessageHandler) sendMessage(r *http.Request, req sendMessageRequest) (endpoint.Status[any], error) {
-	return h.sendMessageWithParts(r, req, nil)
+	return h.withSendIdempotency(r, req, func(sender *MessageHandler) (endpoint.Status[any], error) {
+		return sender.sendMessageWithParts(r, req, nil)
+	})
 }
 
 func (h *MessageHandler) sendMessageWithParts(r *http.Request, req sendMessageRequest, parts []pipeline.Attachment) (endpoint.Status[any], error) {
@@ -702,6 +705,9 @@ func (h *MessageHandler) sendComposedMessage(r *http.Request, req sendMessageReq
 	}
 	senderMailbox := *sender
 	req.From = senderMailbox.Address
+	if h.sendReceipt != nil {
+		h.sendReceipt.From, h.sendReceipt.OnBehalf = req.From, req.OnBehalf
+	}
 	if req.OnBehalf {
 		var actor models.Mailbox
 		if err := h.db.WithContext(r.Context()).First(&actor, claims.AccountID).Error; err != nil {
@@ -810,9 +816,9 @@ func (h *MessageHandler) sendComposedMessage(r *http.Request, req sendMessageReq
 				Direction: "outbound",
 			},
 			Headers: pipeline.Headers{
-				From:    []pipeline.Address{{Name: senderMailbox.DisplayName, Address: req.From}},
-				To:      outToAddrs,
-				Cc:      outCcAddrs,
+				From:    pipeline.Addresses([]pipeline.Address{{Name: senderMailbox.DisplayName, Address: req.From}}...),
+				To:      pipeline.Addresses(outToAddrs...),
+				Cc:      pipeline.Addresses(outCcAddrs...),
 				Subject: req.Subject,
 			},
 			Body: pipeline.Body{
@@ -1090,82 +1096,21 @@ func (h *MessageHandler) sendComposedMessage(r *http.Request, req sendMessageReq
 		h.recordTrace(r.Context(), buildTrace(*queuedTrace))
 	}
 
-	// Deliver to each recipient in to + cc + bcc
+	// Every recipient in to + cc + bcc goes on the outbound queue, one on this
+	// server as much as one elsewhere (#1564): the worker delivers it through the
+	// normal route, and the recipient's domain judges the signed message as it
+	// judges any other. The answer says the message was durably queued, not that
+	// it arrived: a later refusal becomes a bounce to the sender.
 	allRecipients := make([]string, 0, len(req.To)+len(req.Cc)+len(req.Bcc))
 	allRecipients = append(allRecipients, req.To...)
 	allRecipients = append(allRecipients, req.Cc...)
 	allRecipients = append(allRecipients, req.Bcc...)
 
-	// Where each recipient is decided before anything is sent: a lookup that
-	// failed says nothing about where the recipient is, and taking it for a
-	// remote one would queue a local recipient's copy for the internet.
-	type localRecipient struct {
-		address string
-		mailbox models.Mailbox
-	}
-	var locals []localRecipient
-	var remote []models.OutboundQueue
+	queued := queueRowsFor(allRecipients, sentMsg.ID, req.From, rawMessage, req.RequireTLS)
 	db := h.db.WithContext(r.Context())
-	for _, rcpt := range allRecipients {
-		var recipientMailbox models.Mailbox
-		err := repositories.FindActiveMailboxByAddress(db, rcpt, &recipientMailbox)
-		switch {
-		case err == nil:
-			locals = append(locals, localRecipient{address: rcpt, mailbox: recipientMailbox})
-		case errors.Is(err, gorm.ErrRecordNotFound), errors.Is(err, repositories.ErrMailboxUnavailable):
-			recipientDomain := rcpt
-			if idx := strings.LastIndex(rcpt, "@"); idx >= 0 {
-				recipientDomain = rcpt[idx+1:]
-			}
-			msgID := sentMsg.ID
-			remote = append(remote, models.OutboundQueue{
-				MessageID:  &msgID,
-				Sender:     req.From,
-				Recipient:  rcpt,
-				Domain:     recipientDomain,
-				RawMessage: rawMessage,
-				Status:     "pending",
-				RequireTLS: req.RequireTLS,
-			})
-		default:
-			slog.ErrorContext(r.Context(), "send: could not look up a recipient", "recipient", rcpt, "error", err)
-			return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to look up a recipient")
-		}
-	}
-
-	// Remote recipients are queued together, before any local delivery: a
-	// queue entry that was not stored must not be answered as sent, and the
-	// client's retry then delivers nothing locally twice.
-	if len(remote) > 0 {
-		if err := db.Transaction(func(tx *gorm.DB) error { return tx.Create(&remote).Error }); err != nil {
-			slog.ErrorContext(r.Context(), "send: could not queue the message for remote recipients", "error", err)
-			return zero, endpoint.Refuse(http.StatusServiceUnavailable, "deferred", "Try again later")
-		}
-	}
-
-	for _, local := range locals {
-		// Local delivery with full inbound pipeline
-		_, deliverErr := h.deliverToLocal(r.Context(), localDeliveryParams{
-			Mailbox:      local.mailbox,
-			Sender:       req.From,
-			SenderName:   senderMailbox.DisplayName,
-			RecipientsTo: toJSON,
-			RecipientsCc: ccJSON,
-			Subject:      req.Subject,
-			BodyText:     req.BodyText,
-			BodyHTML:     req.BodyHTML,
-			MessageID:    messageID,
-			InReplyTo:    req.InReplyTo,
-			References:   references,
-			RawMessage:   rawMessage,
-			RequireTLS:   req.RequireTLS,
-		})
-		if deliverErr != nil {
-			slog.WarnContext(r.Context(), "local delivery failed for recipient", "recipient", local.address, "error", deliverErr)
-			if h.draftSend != nil {
-				return zero, endpoint.Refuse(http.StatusServiceUnavailable, "deferred", "Try again later")
-			}
-		}
+	if err := db.Transaction(func(tx *gorm.DB) error { return tx.Create(&queued).Error }); err != nil {
+		slog.ErrorContext(r.Context(), "send: could not queue the message", "error", err)
+		return zero, endpoint.Refuse(http.StatusServiceUnavailable, "deferred", "Try again later")
 	}
 
 	// Publish SSE event for sent message
@@ -1193,6 +1138,25 @@ func (h *MessageHandler) sendComposedMessage(r *http.Request, req sendMessageReq
 	return endpoint.Status[any]{Code: http.StatusCreated, Value: messageOf(sentMsg)}, nil
 }
 
+// queueRowsFor is one pending outbound queue row per recipient of the sent
+// message messageID.
+func queueRowsFor(recipients []string, messageID uint, sender, raw string, requireTLS bool) []models.OutboundQueue {
+	rows := make([]models.OutboundQueue, 0, len(recipients))
+	for _, rcpt := range recipients {
+		id := messageID
+		rows = append(rows, models.OutboundQueue{
+			MessageID:  &id,
+			Sender:     sender,
+			Recipient:  rcpt,
+			Domain:     rmail.DomainFromAddress(rcpt),
+			RawMessage: raw,
+			Status:     "pending",
+			RequireTLS: requireTLS,
+		})
+	}
+	return rows
+}
+
 // deliverMessageBody is a message a protocol gateway delivers into a mailbox, named by
 // mailbox_id or address. Every field is optional to binding: the handler checks the mailbox,
 // and the gateway sends only what it has.
@@ -1202,22 +1166,29 @@ type deliverMessageBody = apitypes.DeliverMessageBody
 // accepted, and no message made.
 type DeliveryProcessed = apitypes.DeliveryProcessed
 
+// DeliveredMessage names the message a delivery made. A gateway has no use for its body, and
+// writing that into the answer cost several times the message (#1915).
+type DeliveredMessage = apitypes.DeliveredMessage
+
 // RegisterDelivery mounts inbound delivery, which only the protocol gateways call: on the
 // internal mTLS listener, or the public one where internal mTLS is off. bodyLimit is the
 // delivery body cap, which takes a full max-size message.
 func (h *MessageHandler) RegisterDelivery(rs endpoint.Routes, bodyLimit endpoint.Middleware) {
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/messages/deliver",
 		OperationID: "deliverMessage", Summary: "Deliver a message into a mailbox (protocol gateways)", Tags: []string{"Messages"},
-		Description: "Machine to machine: no user token. The inbound pipeline decides: 201 with the message made, " +
-			"200 processed when it quarantined or discarded it, 403 rejected, 503 deferred, 422 mailbox_full " +
-			"over quota. These are REST statuses for every caller; the SMTP gateway rewrites them into its SMTP reply (#1664). A missing mailbox is 404; a failed mailbox lookup is 500, never a missing recipient. " +
-			"Stored text must not contain NUL (U+0000), including strings and object keys anywhere in recipients_to or recipients_cc " +
-			"and the decoded raw_message octets; a refusal is 422 validation_failed naming the field, before any write. " +
-			"raw_message is a standard padded base64 string (format: byte), not unencoded message text. " +
-			"An omitted or empty folder means INBOX; otherwise " + folderNameRule,
+		Description: "Machine to machine: no user token. The inbound pipeline decides: 201 naming the message made, " +
+		"200 processed when it quarantined or discarded it, 403 rejected, 503 deferred (greylisted or rate_limited when the greylist or rate_limit step " +
+			"held it back), 422 mailbox_full over quota. These are REST statuses for every caller; the SMTP gateway rewrites them into its SMTP reply (#1664). A missing mailbox is 404; a failed mailbox lookup is 500, never a missing recipient. " +
+			"Stored text must not contain NUL (U+0000), including strings and object keys anywhere in recipients_to or recipients_cc; " +
+			"a refusal is 422 validation_failed naming the field, before any write. " +
+			"raw_message is a standard padded base64 string (format: byte), not unencoded message text, and may hold any octets: they are stored exactly. " +
+			"With raw_message and neither body_text nor body_html, the stored text is read from raw_message; when it can't be parsed, " +
+			"the text is whatever follows its first blank line. " +
+			"An arrival (received_tls set) past the hop limit and a reserved alias that cannot route are 403 rejected before the pipeline runs. " +
+			"The recipient is resolved from address. Arriving mail uses server time and default Inbox/flags, subject to inbound rules. Import-only fields sent by older callers are ignored.",
 		Status: http.StatusCreated, SuccessStatuses: []int{http.StatusOK},
 		Responses: []oapifly.EndpointResponse{
-			{Status: http.StatusCreated, Description: "Delivered; the message made", Type: oapifly.TypeOf[endpoint.Data[Message]]()},
+			{Status: http.StatusCreated, Description: "Delivered; which message was made", Type: oapifly.TypeOf[endpoint.Data[DeliveredMessage]]()},
 			{Status: http.StatusOK, Description: "Quarantined or discarded by the inbound pipeline", Type: oapifly.TypeOf[endpoint.Data[DeliveryProcessed]]()},
 		},
 		Errors:   []int{http.StatusUnprocessableEntity, http.StatusNotFound, http.StatusForbidden, http.StatusServiceUnavailable},
@@ -1231,7 +1202,7 @@ var deliveryDeclaredFields = declaredFieldsOf(deliverMessageBody{})
 // and every file is gone when it answers, however it answers, a panic included.
 func (h *MessageHandler) deliverSpooledMessage(r *http.Request, _ struct{}) (endpoint.Status[any], error) {
 	var req deliverMessageBody
-	spool, err := spoolDelivery(r, &req, spooledBodySpec{declared: deliveryDeclaredFields}, func() []byte { return req.RawMessage })
+	spool, err := spoolDelivery(r, &req, spooledBodySpec{declared: deliveryDeclaredFields, ignored: deliveryImportOnlyFields}, func() []byte { return req.RawMessage })
 	if err != nil {
 		return endpoint.Status[any]{}, err
 	}
@@ -1245,9 +1216,6 @@ func (h *MessageHandler) deliverSpooledMessage(r *http.Request, _ struct{}) (end
 func (h *MessageHandler) deliverMessage(r *http.Request, req deliverMessageBody, spool *deliverySpool) (endpoint.Status[any], error) {
 	var zero endpoint.Status[any]
 	fields := make(map[string]string)
-	if spool.raw.nul {
-		fields["raw_message"] = "must not contain a NUL byte"
-	}
 	for field, raw := range map[string]json.RawMessage{"recipients_to": req.RecipientsTo, "recipients_cc": req.RecipientsCc} {
 		decoder := json.NewDecoder(bytes.NewReader(raw))
 		decoder.UseNumber()
@@ -1266,17 +1234,6 @@ func (h *MessageHandler) deliverMessage(r *http.Request, req deliverMessageBody,
 		return zero, endpoint.Invalid(fields)
 	}
 
-	// The folder a gateway delivers into follows the folder rule, behind the gateway's own
-	// check (#759): a name the rule refuses is 422 on folder, and INBOX in any case is INBOX.
-	// No folder is the inbox.
-	folder := req.Folder
-	if folder != "" {
-		if problem := rmail.FolderNameProblem(folder); problem != "" {
-			return zero, endpoint.Invalid(map[string]string{"folder": problem})
-		}
-		folder = rmail.CanonicalFolder(folder)
-	}
-
 	// Hop count (RFC 5321 §6.3, #1647): an arrival from another server (ReceivedTLS set) with
 	// more Received: fields than the limit is a mail loop, refused as the SMTP gateway refuses it.
 	// A message filed into a mailbox (IMAP APPEND, ReceivedTLS nil) is not a hop: old mail may
@@ -1286,7 +1243,7 @@ func (h *MessageHandler) deliverMessage(r *http.Request, req deliverMessageBody,
 		if err != nil {
 			return zero, err
 		}
-		if rmime.TooManyReceived([]byte(headerSection)) {
+		if rmime.TooManyReceived(headerSection) {
 			return zero, endpoint.Refuse(http.StatusForbidden, "rejected", "Routing loop detected: too many Received headers")
 		}
 	}
@@ -1294,14 +1251,9 @@ func (h *MessageHandler) deliverMessage(r *http.Request, req deliverMessageBody,
 	var mailbox models.Mailbox
 	var recipient repositories.Recipient
 	var lookupErr error
-	if req.MailboxID > 0 {
-		lookupErr = h.db.WithContext(r.Context()).First(&mailbox, req.MailboxID).Error
-	} else if req.Address != "" {
-		recipient, lookupErr = repositories.ResolveRecipient(h.db.WithContext(r.Context()), req.Address, false)
-		mailbox = recipient.Mailbox
-	} else {
-		return zero, endpoint.Invalid(map[string]string{"mailbox_id": "mailbox_id or address required", "address": "mailbox_id or address required"})
-	}
+	// The recipient is named by address alone (#1474).
+	recipient, lookupErr = repositories.ResolveRecipient(h.db.WithContext(r.Context()), req.Address, false)
+	mailbox = recipient.Mailbox
 	if errors.Is(lookupErr, repositories.ErrAliasRouting) {
 		slog.WarnContext(r.Context(), "delivery alias refused", "address", req.Address, "error", lookupErr)
 		return zero, endpoint.Refuse(http.StatusForbidden, "rejected", rmail.AliasRoutingRefusal)
@@ -1354,13 +1306,6 @@ func (h *MessageHandler) deliverMessage(r *http.Request, req deliverMessageBody,
 		RawMessage:   rawMessage,
 		ClientIP:     req.ClientIP,
 		HeloName:     req.HeloName,
-		Folder:       folder,
-		IsAnswered:   req.IsAnswered,
-		IsRead:       req.IsRead,
-		IsFlagged:    req.IsFlagged,
-		IsStarred:    req.IsStarred,
-		IsDraft:      req.IsDraft,
-		ReceivedAt:   req.ReceivedAt,
 		ReceivedTLS:  req.ReceivedTLS,
 		TLSVersion:   req.TLSVersion,
 		RequireTLS:   req.RequireTLS,
@@ -1376,6 +1321,10 @@ func (h *MessageHandler) deliverMessage(r *http.Request, req deliverMessageBody,
 		switch {
 		case strings.HasPrefix(errStr, "rejected:"):
 			return zero, endpoint.Refuse(http.StatusForbidden, "rejected", strings.TrimPrefix(errStr, "rejected: "))
+		case errors.Is(err, errGreylisted):
+			return zero, endpoint.Refuse(http.StatusServiceUnavailable, rmail.GreylistedRefusal, "Greylisted, try again later")
+		case errors.Is(err, errRateLimited):
+			return zero, endpoint.Refuse(http.StatusServiceUnavailable, rmail.RateLimitedRefusal, "Too many messages, try again later")
 		case strings.HasPrefix(errStr, "deferred:"):
 			return zero, endpoint.Refuse(http.StatusServiceUnavailable, "deferred", "Try again later")
 		case strings.HasPrefix(errStr, "mailbox_full:"):
@@ -1389,7 +1338,7 @@ func (h *MessageHandler) deliverMessage(r *http.Request, req deliverMessageBody,
 		return endpoint.Status[any]{Code: http.StatusOK, Value: DeliveryProcessed{Status: "processed"}}, nil
 	}
 
-	return endpoint.Status[any]{Code: http.StatusCreated, Value: messageOf(*msg)}, nil
+	return endpoint.Status[any]{Code: http.StatusCreated, Value: DeliveredMessage{ID: msg.ID, MessageID: msg.MsgID, Folder: msg.Folder}}, nil
 }
 
 // FolderSummary is a folder of an account, with how many messages it holds, how many of
@@ -1470,7 +1419,8 @@ func (h *MessageHandler) folderExists(ctx context.Context, mailboxID uint, folde
 
 // folderNameRule is what createFolder and renameFolder take as a name, as rmail.FolderNameProblem has it.
 const folderNameRule = "The name is valid UTF-8 of at most 255 bytes, neither blank nor beginning or ending with a space, " +
-	`with no control character and no ".."; a "/" is the hierarchy delimiter IMAP clients show. Any other name is 422.`
+	`with no control character and no ".."; a "/" is the hierarchy delimiter IMAP clients show. Any other name is 422. ` +
+	"The name is saved in Unicode Normalization Form C, and the answer gives it in that form; a name that matches an existing folder once converted is that folder."
 
 // RegisterFolders mounts the account's folders and its quota.
 func (h *MessageHandler) RegisterFolders(rs endpoint.Routes) {
@@ -2007,8 +1957,9 @@ func (h *MessageHandler) updateDraft(r *http.Request, in updateDraftRequest) (Me
 // hold: the unsubscribe details a bulk domain's mail needs (#144). Without a body the draft
 // is sent as it is.
 type sendDraftRequest struct {
-	ID   uint32         `path:"id" minimum:"1" example:"1"`
-	Body *sendDraftBody `body:""`
+	IdempotencyKey string         `header:"Idempotency-Key" maxLength:"255" json:"-" description:"Optional account-scoped retry key, retained for 24 hours after success. Reuse only for the same route, resource and body."`
+	ID             uint32         `path:"id" minimum:"1" example:"1"`
+	Body           *sendDraftBody `body:""`
 }
 
 type sendDraftBody struct {
@@ -2030,6 +1981,9 @@ func (h *MessageHandler) sendDraftInTransaction(r *http.Request, in sendDraftReq
 	}
 	if err := h.draftAccess(r, &draft); err != nil {
 		return zero, err
+	}
+	if h.sendReceipt != nil {
+		h.sendReceipt.SourceMailboxID, h.sendReceipt.SourceCapability = draft.MailboxID, models.CapMailWrite
 	}
 
 	var toList []string
@@ -2060,7 +2014,7 @@ func (h *MessageHandler) sendDraftInTransaction(r *http.Request, in sendDraftReq
 	if err != nil {
 		return zero, err
 	}
-	// Removal, Sent, local deliveries and queue rows share the enclosing
+	// Removal, Sent and queue rows share the enclosing
 	// transaction. A failed removal must roll them all back before any worker
 	// can send the message, so the retained draft is safe to retry (#1265).
 	if err := removeSentDraft(r.Context(), h.db, &draft); err != nil {
@@ -2150,8 +2104,9 @@ func (h *MessageHandler) getRawMessage(r *http.Request, in messagePath) (endpoin
 // forwardRequest forwards message {id}. from and to are checked in the handler, as they always
 // were: both are required.
 type forwardRequest struct {
-	ID   uint32      `path:"id" minimum:"1" example:"1"`
-	Body forwardBody `body:""`
+	IdempotencyKey string      `header:"Idempotency-Key" maxLength:"255" json:"-" description:"Optional account-scoped retry key, retained for 24 hours after success. Reuse only for the same route, resource and body."`
+	ID             uint32      `path:"id" minimum:"1" example:"1"`
+	Body           forwardBody `body:""`
 }
 
 type forwardBody struct {
@@ -2167,10 +2122,19 @@ type forwardBody struct {
 // forwardMessage forwards an existing message to new recipients, through sendMessage.
 // POST /api/v1/messages/{id}/forward
 func (h *MessageHandler) forwardMessage(r *http.Request, in forwardRequest) (endpoint.Status[any], error) {
+	return h.withSendIdempotency(r, in, func(sender *MessageHandler) (endpoint.Status[any], error) {
+		return sender.forwardWithoutIdempotency(r, in)
+	})
+}
+
+func (h *MessageHandler) forwardWithoutIdempotency(r *http.Request, in forwardRequest) (endpoint.Status[any], error) {
 	var zero endpoint.Status[any]
 	original, err := h.ownedMessage(r, in.ID, models.CapMailRead)
 	if err != nil {
 		return zero, err
+	}
+	if h.sendReceipt != nil {
+		h.sendReceipt.SourceMailboxID, h.sendReceipt.SourceCapability = original.MailboxID, models.CapMailRead
 	}
 	req := in.Body
 	if req.From == "" || len(req.To) == 0 {
@@ -2390,68 +2354,85 @@ func (h *MessageHandler) respondToCalendar(r *http.Request, in calendarReplyRequ
 		RecipientsCc: models.JSONB([]byte("[]")),
 		Subject:      subject,
 		BodyText:     note,
+		RawMessage:   rawMessage,
+		RawSize:      len(rawMessage),
 		IsRead:       true,
 		SizeBytes:    len(rawMessage),
 		ReceivedAt:   now,
 	}
 
-	// Deliver to organizer if local, else queue for remote delivery. A lookup
-	// that failed says nothing about where the organizer is: it must not send
-	// a local organizer's reply out to the internet.
-	var recipientMailbox models.Mailbox
-	lookupErr := repositories.FindActiveMailboxByAddress(h.db, organizer, &recipientMailbox)
-	if lookupErr != nil && !errors.Is(lookupErr, gorm.ErrRecordNotFound) &&
-		!errors.Is(lookupErr, repositories.ErrMailboxUnavailable) {
-		return CalendarReplied{}, fmt.Errorf("find the organizer's mailbox: %w", lookupErr)
-	}
-
-	if lookupErr == nil {
-		if err := h.db.Create(&sentMsg).Error; err != nil {
-			return CalendarReplied{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to save calendar reply")
+	// The Sent copy and its queue entry commit together, so a reply is never
+	// shown as sent with nothing queued to send it. An organizer on this server
+	// gets it through the normal route too (#1564).
+	err = h.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&sentMsg).Error; err != nil {
+			return err
 		}
-		_, deliverErr := h.deliverToLocal(r.Context(), localDeliveryParams{
-			Mailbox:      recipientMailbox,
-			Sender:       req.From,
-			SenderName:   senderMailbox.DisplayName,
-			RecipientsTo: toJSON,
-			RecipientsCc: json.RawMessage("[]"),
-			Subject:      subject,
-			BodyText:     sentMsg.BodyText,
-			MessageID:    messageID,
-			InReplyTo:    inReplyTo,
-			References:   references,
-			RawMessage:   rawMessage,
-		})
-		if deliverErr != nil {
-			slog.WarnContext(r.Context(), "calendar reply local delivery failed", "recipient", organizer, "error", deliverErr)
-		}
-	} else {
-		// Remote delivery: the Sent copy and its queue entry commit together,
-		// so a reply is never shown as sent with nothing queued to send it.
-		recipientDomain := organizer
-		if idx := strings.LastIndex(organizer, "@"); idx >= 0 {
-			recipientDomain = organizer[idx+1:]
-		}
-		err := h.db.Transaction(func(tx *gorm.DB) error {
-			if err := tx.Create(&sentMsg).Error; err != nil {
-				return err
-			}
-			msgID := sentMsg.ID
-			return tx.Create(&models.OutboundQueue{
-				MessageID:  &msgID,
-				Sender:     req.From,
-				Recipient:  organizer,
-				Domain:     recipientDomain,
-				RawMessage: rawMessage,
-				Status:     "pending",
-			}).Error
-		})
-		if err != nil {
-			return CalendarReplied{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to save calendar reply")
-		}
+		queued := queueRowsFor([]string{organizer}, sentMsg.ID, req.From, rawMessage, false)
+		return tx.Create(&queued).Error
+	})
+	if err != nil {
+		return CalendarReplied{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to save calendar reply")
 	}
 
 	return CalendarReplied{Response: response, Status: "sent"}, nil
+}
+
+// deliveredColumnOnItsOwnFrom is the size of a message's text, or of one of its JSON columns, from
+// which it's written after the row. The driver builds each statement's parameters into one buffer,
+// growing it as it goes, so a source and a text as large as it cost about 7x when written together
+// and about 4.6x apart (#1915). Below this it costs nothing worth a second statement.
+const deliveredColumnOnItsOwnFrom = 64 << 10
+
+// decodedHeadersColumn is what the row keeps of a message's header fields beside its source, encoded.
+// Header fields as long as these stay only in the source, as all of a message's do on /deliver:
+// nothing is lost, and encoding them, sending them and sealing them again cost about 3x of them
+// (#1915). A reader of the message's class reads them from the source (messageClass).
+func decodedHeadersColumn(raw map[string][]string) []byte {
+	size := 0
+	for key, values := range raw {
+		size += len(key)
+		for _, value := range values {
+			size += len(value)
+		}
+	}
+	if size >= deliveredColumnOnItsOwnFrom {
+		return nil
+	}
+	return rmime.RawHeadersJSON(raw)
+}
+
+// createDeliveredMessage stores a message, in the caller's transaction, so its row and what's
+// written after it are written together or not at all. BeforeCreate seals the whole message either
+// way. A sender chooses how large the text and the header fields behind the JSON columns are.
+func createDeliveredMessage(tx *gorm.DB, msg *models.Message) error {
+	var omit []string
+	var later []map[string]any
+	if len(msg.BodyText)+len(msg.BodyHTML) >= deliveredColumnOnItsOwnFrom {
+		omit = append(omit, "BodyText", "BodyHTML")
+		later = append(later, map[string]any{"body_text": msg.BodyText, "body_html": msg.BodyHTML})
+	}
+	for _, column := range []struct {
+		field, name string
+		value       models.JSONB
+	}{{"Headers", "headers", msg.Headers}, {"RecipientsTo", "recipients_to", msg.RecipientsTo}, {"RecipientsCc", "recipients_cc", msg.RecipientsCc}} {
+		if len(column.value) >= deliveredColumnOnItsOwnFrom {
+			omit = append(omit, column.field)
+			later = append(later, map[string]any{column.name: column.value})
+		}
+	}
+	if len(omit) == 0 {
+		return tx.Create(msg).Error
+	}
+	if err := tx.Omit(omit...).Create(msg).Error; err != nil {
+		return err
+	}
+	for _, columns := range later {
+		if err := tx.Model(&models.Message{}).Where("id = ?", msg.ID).UpdateColumns(columns).Error; err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // localDeliveryParams holds the information needed for local message delivery with
@@ -2472,21 +2453,8 @@ type localDeliveryParams struct {
 	RawMessage        string
 	ClientIP          string
 	HeloName          string
-	// Folder is the destination folder the message is created in (empty = INBOX).
-	// Set by the IMAP gateway's COPY/APPEND so the message lands directly in its
-	// destination. The flag pointers and ReceivedAt let COPY preserve the source
-	// message's flags and INTERNALDATE and APPEND apply the client-supplied flags;
-	// a nil flag / nil-or-zero ReceivedAt keeps the delivery default, so ordinary
-	// inbound mail (which never sets them) is unaffected.
-	Folder     string
-	IsAnswered *bool
-	IsRead     *bool
-	IsFlagged  *bool
-	IsStarred  *bool
-	IsDraft    *bool
-	ReceivedAt *time.Time
 	// Inbound transport-security (always-on, inbound-MX only). Nil ReceivedTLS =
-	// not an inbound-MX delivery (local send / IMAP APPEND / submission) →
+	// not an inbound-MX delivery (IMAP APPEND / submission) →
 	// persisted as NULL, never counted as a plaintext arrival.
 	ReceivedTLS *bool
 	TLSVersion  string
@@ -2500,15 +2468,13 @@ type localDeliveryParams struct {
 	// InCommit runs in the transaction that stores the message, so taking a queued message
 	// off its queue and storing it happen together or not at all.
 	InCommit func(tx *gorm.DB) error
-	// IndependentAttachments gives a forwarded local copy its own object lifetime.
-	IndependentAttachments bool
 	// ReceiveChecked says the caller has already found that the mailbox can receive.
 	ReceiveChecked bool
 }
 
 // receivedTLSFlag reports whether an inbound delivery arrived over TLS, for the
 // pipeline Envelope.TLS so filters/pipeline see transport. A nil ReceivedTLS
-// (non inbound-MX: IMAP APPEND / local webmail send, where transport is not
+// (non inbound-MX: IMAP APPEND, where transport is not
 // applicable) is treated as false.
 func receivedTLSFlag(receivedTLS *bool) bool {
 	return receivedTLS != nil && *receivedTLS
@@ -2516,8 +2482,8 @@ func receivedTLSFlag(receivedTLS *bool) bool {
 
 // recordInboundReceived counts one inbound-MX arrival on messages_received,
 // labelled by transport (tls when ReceivedTLS is true, plaintext when false).
-// A nil ReceivedTLS marks a non inbound-MX delivery (IMAP APPEND, local webmail
-// send) which is NOT counted — this metric measures mail received from the
+// A nil ReceivedTLS marks a non inbound-MX delivery (IMAP APPEND)
+// which is NOT counted — this metric measures mail received from the
 // internet. The transport label is strictly bounded to tls|plaintext.
 func recordInboundReceived(receivedTLS *bool) {
 	if receivedTLS == nil {
@@ -2531,8 +2497,9 @@ func recordInboundReceived(receivedTLS *bool) {
 }
 
 // deliverToLocal runs the inbound pipeline and delivers a message to a local mailbox.
-// This is the shared logic used by both DeliverMessage (gateway inbound) and
-// SendMessage (local recipient delivery).
+// DeliverMessage, the gateways' inbound route, is what reaches it; a send never
+// does, because its message comes back in through that route from the outbound
+// queue (#1564).
 func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliveryParams) (stored *models.Message, deliverErr error) {
 	// The local delivery's span (#1580): the pipeline run is its child. It
 	// holds the mailbox's and the stored message's ids, never an address.
@@ -2595,6 +2562,8 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 	// cherry-picked params, so constructing solely from those silently dropped
 	// every attachment (and the Date header, which header_validate then rejected
 	// on). Fall back to the params only when there is no parseable raw message.
+	// A caller that sent the source and no text gets the text read from the source: what the
+	// parser can't read is still stored, with whatever follows the first blank line as its text.
 	var emailJSON *pipeline.EmailJSON
 	// rawCalendar is what the message holds of calendar events when it parsed, kept for the row
 	// so that the message needn't be parsed again. A filter can't change it.
@@ -2605,9 +2574,16 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 			// Nested deeper or holding more parts than the MIME limits allow (#1641).
 			return nil, fmt.Errorf("rejected: message structure too complex: %w", perr)
 		}
+		textFromSource := params.BodyText == "" && params.BodyHTML == ""
 		if perr == nil {
 			emailJSON = parsed
 			rawCalendar = parsed.CalendarEvents
+			if textFromSource {
+				text, html := rmime.TextAndHTML(parsed.Body)
+				params.BodyText, params.BodyHTML = importedText(text), importedText(html)
+			}
+		} else if textFromSource {
+			params.BodyText = importedText(rmime.RecoverBody(params.RawMessage))
 		}
 	}
 	rawParsed := emailJSON != nil
@@ -2648,14 +2624,14 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 		Direction: "inbound",
 	}
 	// Fill any header the parse didn't populate from the gateway-extracted params.
-	if len(emailJSON.Headers.From) == 0 {
-		emailJSON.Headers.From = []pipeline.Address{{Name: params.SenderName, Address: params.Sender}}
+	if emailJSON.Headers.From.Len() == 0 {
+		emailJSON.Headers.From = pipeline.Addresses(pipeline.Address{Name: params.SenderName, Address: params.Sender})
 	}
-	if len(emailJSON.Headers.To) == 0 {
-		emailJSON.Headers.To = toAddrs
+	if emailJSON.Headers.To.Len() == 0 {
+		emailJSON.Headers.To = pipeline.Addresses(toAddrs...)
 	}
-	if len(emailJSON.Headers.Cc) == 0 {
-		emailJSON.Headers.Cc = ccAddrs
+	if emailJSON.Headers.Cc.Len() == 0 {
+		emailJSON.Headers.Cc = pipeline.Addresses(ccAddrs...)
 	}
 	if emailJSON.Headers.Subject == "" {
 		emailJSON.Headers.Subject = params.Subject
@@ -2743,7 +2719,7 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 		case pipeline.ActionDefer:
 			traceBase.Outcome = outcomeDeferred
 			h.recordTrace(ctx, buildTrace(traceBase))
-			return nil, fmt.Errorf("deferred: try again later")
+			return nil, deferredError(pipelineResult, "try again later")
 		case pipeline.ActionContinue:
 			// The required checks passed: the message is accepted, and the rest of
 			// delivery is the content stage's. The trace is recorded there, at the end.
@@ -2823,14 +2799,8 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 	}
 
 	// ── Create message ───────────────────────────────────────────────
-	// The destination folder defaults to INBOX; the IMAP gateway sets params.Folder
-	// on COPY/APPEND so the message is created directly in its destination instead
-	// of being delivered to INBOX and then moved (a non-atomic two-call flow).
-	// Otherwise it is the folder a Sieve fileinto chose, INBOX when none did (#787).
-	folder := params.Folder
-	if folder == "" {
-		folder = sieveFolder(ctx, emailJSON, mailbox.Address)
-	}
+	// The folder a Sieve fileinto chose, INBOX when none did (#787).
+	folder := sieveFolder(ctx, emailJSON, mailbox.Address)
 	msg := models.Message{
 		MailboxID:    mailbox.ID,
 		Folder:       folder,
@@ -2860,34 +2830,8 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 		RequireTLS:  params.RequireTLS,
 	}
 
-	// The flags a Sieve script's imap4flags actions set (RFC 5232, #787); the flags a
-	// gateway carried, below, are the client's own and win.
 	flags := sieveFlagsOf(emailJSON)
 	msg.IsRead, msg.IsFlagged, msg.IsDraft, msg.RuleClass = flags.seen, flags.flagged, flags.draft, flags.ruleClass
-
-	// Apply IMAP flags / INTERNALDATE the gateway carried through: COPY preserves
-	// the source message's flags and internal date (RFC 3501 §6.4.7); APPEND
-	// applies the client-supplied flags. A nil flag pointer leaves the model
-	// default; a nil-or-zero ReceivedAt leaves the column's `default:now()` to fill
-	// the internal date, so ordinary inbound mail keeps arriving stamped with now().
-	if params.IsAnswered != nil {
-		msg.IsAnswered = *params.IsAnswered
-	}
-	if params.IsRead != nil {
-		msg.IsRead = *params.IsRead
-	}
-	if params.IsFlagged != nil {
-		msg.IsFlagged = *params.IsFlagged
-	}
-	if params.IsStarred != nil {
-		msg.IsStarred = *params.IsStarred
-	}
-	if params.IsDraft != nil {
-		msg.IsDraft = *params.IsDraft
-	}
-	if params.ReceivedAt != nil && !params.ReceivedAt.IsZero() {
-		msg.ReceivedAt = *params.ReceivedAt
-	}
 
 	// Attachment references, message and quota commit together. If metadata
 	// cannot be saved, the sender retries; an uploaded content-addressed object
@@ -2895,13 +2839,6 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 	// would permanently hide them from the recipient.
 	var attachmentRows []models.Attachment
 	var totalAttBytes int64
-	if params.IndependentAttachments && emailJSON != nil {
-		var err error
-		emailJSON, err = h.copyLocalForwardParts(ctx, emailJSON)
-		if err != nil {
-			return nil, err
-		}
-	}
 	if emailJSON != nil {
 		for _, group := range [][]pipeline.Attachment{emailJSON.Attachments, emailJSON.Inline} {
 			for _, att := range group {
@@ -2972,7 +2909,7 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 		if err := repositories.ReserveStorage(tx, mailbox.ID, int64(sizeBytes)+totalAttBytes); err != nil {
 			return err
 		}
-		if err := tx.Create(&msg).Error; err != nil {
+		if err := createDeliveredMessage(tx, &msg); err != nil {
 			return err
 		}
 		if len(calendarVersions) > 0 {

@@ -383,7 +383,12 @@ func TestRelaySuccess(t *testing.T) {
 					t.Fatal("unexpected AUTH")
 				}
 				commands := strings.Join(result.commands, "\n")
-				if !strings.Contains(commands, "MAIL FROM:<"+item.Sender+"> BODY=8BITMIME SMTPUTF8") || !strings.Contains(commands, "RCPT TO:<"+item.Recipient+">") {
+				// Only the internationalized message is tagged SMTPUTF8 (RFC 6531 section 3.4).
+				wantMail := "MAIL FROM:<" + item.Sender + "> BODY=8BITMIME"
+				if auth {
+					wantMail += " SMTPUTF8"
+				}
+				if !strings.Contains(commands, wantMail+"\n") || !strings.Contains(commands, "RCPT TO:<"+item.Recipient+">") {
 					t.Fatalf("envelope/capabilities changed: %s", commands)
 				}
 				wantEHLO := 2

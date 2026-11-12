@@ -46,6 +46,9 @@ type SMTPError struct {
 	// plumbed into the DSN's Remote-MTA field (RFC 3464 §2.3.5). Empty for a
 	// failure with no identified peer (e.g. a locally synthesized error).
 	RemoteMTA string
+	// HopLacksExtension says this next hop lacks an extension the message needs: no reply
+	// from it refused the message, and another MX may offer what this one doesn't.
+	HopLacksExtension bool
 }
 
 func (e *SMTPError) Error() string {
@@ -164,6 +167,32 @@ func messageRequires8BitTransport(bodyType, raw string) bool {
 		}
 	}
 	return false
+}
+
+// errDataCannotCarry is the refusal when a message's line ends can't be made what SMTP requires
+// without breaking a part (RFC 5321 section 2.3.8). RFC 6152 section 3 and RFC 3030 leave a client
+// with data a next hop can't take two choices: convert it or return it as a permanent error.
+func errDataCannotCarry(host string) error {
+	return &SMTPError{Code: 550, Enhanced: "5.6.3", RemoteMTA: host, Message: rmail.ErrDataCannotCarry.Error()}
+}
+
+// forData is the message as SMTP DATA carries it, made before it is signed, so that the signature
+// matches what is sent, and before dot-stuffing, so that nothing in it can read as an end of data
+// downstream. The row keeps the exact source, and RESTMAIL carries that. A message whose line ends
+// are all CRLF comes back as it is, with no copy made.
+func forData(raw, host string) (string, error) {
+	if !rmail.HasBareLineEnds(raw) {
+		return raw, nil
+	}
+	var normal strings.Builder
+	normal.Grow(len(raw) + strings.Count(raw, "\n") + strings.Count(raw, "\r"))
+	if err := rmail.ForData(&normal, raw); err != nil {
+		if errors.Is(err, rmail.ErrDataCannotCarry) {
+			return "", errDataCannotCarry(host)
+		}
+		return "", err
+	}
+	return normal.String(), nil
 }
 
 // Worker processes outbound mail queue entries.
@@ -323,8 +352,8 @@ func (w *Worker) SetMasterKey(key string) {
 }
 
 // prepareOutbound applies the outbound transforms to a queue row's raw message
-// immediately before it is written to the wire: the Bcc header is stripped and,
-// when the message arrived unsigned, it is DKIM-signed with the sender domain's
+// immediately before it is written to the wire: the Bcc and Resent-Bcc headers are
+// stripped and, when the message arrived unsigned, it is DKIM-signed with the sender domain's
 // key. This is the single choke point every outbound message passes through, so
 // SMTP-submitted mail (which enqueues raw MUA bytes) gets the same treatment the
 // API path applies at submission (#171); the transforms are idempotent, so
@@ -549,16 +578,36 @@ func (w *Worker) processLoop(workerID int) {
 		case <-w.shutdown:
 			return
 		case <-ticker.C:
-			w.processOne(workerID)
+			w.drain(workerID)
 		}
 	}
 }
 
-func (w *Worker) processOne(workerID int) {
-	if !w.testReset {
-		w.processNext(workerID)
-		return
+// drain works through what is due, one message after another, until nothing is
+// or the worker is shut down. The poll interval is how long an idle worker waits
+// before looking again, not the pace of a backlog: taking one message per tick
+// held a whole gateway to QUEUE_WORKERS / QUEUE_POLL_INTERVAL, 0.8 messages a
+// second by default, however little each delivery took (#1583).
+//
+// It cannot spin on a message it just tried: a failed attempt leaves the row
+// deferred until a later time, bounced, or delivering, none of which is due. A
+// failed claim also ends it, so a database outage waits for the next tick.
+func (w *Worker) drain(workerID int) {
+	for w.processOne(workerID) {
+		select {
+		case <-w.shutdown:
+			return
+		default:
+		}
 	}
+}
+
+// processOne attempts the next message due, and reports whether there was one.
+func (w *Worker) processOne(workerID int) bool {
+	if !w.testReset {
+		return w.processNext(workerID)
+	}
+	claimed := false
 	if err := testreset.Delivery(w.db, func(conn *gorm.DB) {
 		delivery := &Worker{
 			db: conn, hostname: w.hostname,
@@ -574,22 +623,24 @@ func (w *Worker) processOne(workerID int) {
 			// holds the reset barrier, and a timed-out statement would close it.
 			heartbeatDB: w.db,
 		}
-		delivery.processNext(workerID)
+		claimed = delivery.processNext(workerID)
 	}); err != nil {
 		slog.Error("queue: test reset barrier failed", "error", err)
+		return false
 	}
+	return claimed
 }
 
 func (w *Worker) EnableTestReset(cfg *config.Config) {
 	w.testReset = !cfg.IsProduction()
 }
 
-func (w *Worker) processNext(workerID int) {
+func (w *Worker) processNext(workerID int) bool {
 	now := time.Now()
 	item, err := w.claim(now)
 	if err != nil {
 		// No items to process (or DB error)
-		return
+		return false
 	}
 
 	// Each claimed attempt is one background job (#1580): a trace of its own
@@ -612,7 +663,25 @@ func (w *Worker) processNext(workerID int) {
 	)
 
 	w.process(ctx, item, now)
+	return true
 }
+
+// claimSQL finds the next message due: its parameters are now, the time before
+// which a delivering row is stale, and now again. Delivered and bounced rows stay
+// in the table, and their next_attempt is the oldest there is, so
+// idx_outbound_queue_due (internal/db/db.go) covers only the rows it can return.
+// The first status test repeats what the rest says because Postgres does not work
+// that out from the OR, and would not use that index without it.
+const claimSQL = `SELECT * FROM outbound_queue
+	 WHERE status IN ('pending', 'deferred', 'delivering')
+	 AND (
+	     (status IN ('pending', 'deferred') AND next_attempt <= ?)
+	     OR (status = 'delivering' AND last_attempt < ?)
+	 ) AND expires_at > ?
+	 AND NOT ` + models.OutboundQueueHeldSQL + `
+	 ORDER BY next_attempt ASC
+	 LIMIT 1
+	 FOR UPDATE SKIP LOCKED`
 
 // claim takes the next message due for an attempt and marks it delivering, using
 // FOR UPDATE SKIP LOCKED so workers never claim the same row.
@@ -627,17 +696,7 @@ func (w *Worker) claim(now time.Time) (models.OutboundQueue, error) {
 	// lifted (#1590).
 	staleDelivering := now.Add(-w.reclaim)
 	err := w.db.Transaction(func(tx *gorm.DB) error {
-		result := tx.Raw(
-			`SELECT * FROM outbound_queue
-			 WHERE (
-			     (status IN ('pending', 'deferred') AND next_attempt <= ?)
-			     OR (status = 'delivering' AND last_attempt < ?)
-			 ) AND expires_at > ?
-			 AND NOT `+models.OutboundQueueHeldSQL+`
-			 ORDER BY next_attempt ASC
-			 LIMIT 1
-			 FOR UPDATE SKIP LOCKED`, now, staleDelivering, now,
-		).Scan(&item)
+		result := tx.Raw(claimSQL, now, staleDelivering, now).Scan(&item)
 
 		if result.Error != nil {
 			return result.Error
@@ -645,6 +704,7 @@ func (w *Worker) claim(now time.Time) (models.OutboundQueue, error) {
 		if result.RowsAffected == 0 {
 			return gorm.ErrRecordNotFound
 		}
+		item.JoinSource()
 
 		// Mark as delivering
 		return tx.Model(&item).Updates(map[string]interface{}{
@@ -999,8 +1059,10 @@ func (w *Worker) deliver(ctx context.Context, item models.OutboundQueue) error {
 	}
 
 	// A message that requires TLS bounces when no MX can take it so (RFC 8689 §4.2.1), but an
-	// MX that could not be reached at all might: it is tried again, as any message is.
-	if item.RequireTLS && transientErr != nil {
+	// MX that could not be reached at all might: it is tried again, as any message is. So too a
+	// message an MX could not take for lack of an extension: that says nothing of the others.
+	var lacking *SMTPError
+	if transientErr != nil && (item.RequireTLS || errors.As(lastErr, &lacking) && lacking.HopLacksExtension) {
 		lastErr = transientErr
 	}
 	return fmt.Errorf("all MX hosts failed: %w", lastErr)
@@ -1141,7 +1203,7 @@ func (w *Worker) deliverRESTMAILHTTPS(ctx context.Context, endpointURL string, i
 	payload := map[string]interface{}{
 		"from":        item.Sender,
 		"to":          []string{item.Recipient},
-		"raw_message": item.RawMessage,
+		"raw_message": []byte(item.RawMessage),
 	}
 	payloadBytes, _ := json.Marshal(payload)
 
@@ -1204,11 +1266,12 @@ func (w *Worker) deliverRESTMAILHTTPS(ctx context.Context, endpointURL string, i
 // RESTMAIL; any other 4xx is the receiving server refusing the message, so it
 // bounces with the server's own words in the DSN.
 //
-// A 503 whose error code is "deferred" is the receiving server's inbound
-// pipeline holding the message back. Its default pipeline greylists a first
-// message from a new sender (5 minutes), and the answer does not name the
-// filter, so it is retried on the greylisting schedule: a first retry that
-// lands after the greylist delay instead of just before it.
+// A 503's error code says why the receiving server's inbound pipeline held the
+// message back. Greylisting and a rate limit are retried on their own schedules:
+// the first retry lands after the greylist delay instead of just before it, and
+// well after a limit's window. Those replies are the ones a REST Mail server's
+// SMTP gateway gives for the same reasons. Any other deferral, a fault included, is
+// an ordinary transient failure.
 func restmailRefusal(status int, body []byte) *SMTPError {
 	text := strings.TrimSpace(string(body))
 	if len(text) > 512 {
@@ -1216,9 +1279,10 @@ func restmailRefusal(status int, body []byte) *SMTPError {
 	}
 	msg := fmt.Sprintf("RESTMAIL delivery got HTTP %d: %s", status, text)
 	switch {
-	case status == http.StatusServiceUnavailable && restmailErrorCode(body) == restmailDeferred:
-		return &SMTPError{Code: 451, Enhanced: "4.7.1",
-			Message: "deferred by the receiving server's inbound pipeline (greylisting or another filter), retry later: " + msg}
+	case status == http.StatusServiceUnavailable && restmailErrorCode(body) == rmail.GreylistedRefusal:
+		return &SMTPError{Code: 450, Enhanced: "4.7.1", Message: "greylisted by the receiving server, retry later: " + msg}
+	case status == http.StatusServiceUnavailable && restmailErrorCode(body) == rmail.RateLimitedRefusal:
+		return &SMTPError{Code: 450, Enhanced: "4.7.1", Message: "rate limited by the receiving server, retry later: " + msg}
 	case status == http.StatusTooManyRequests:
 		return &SMTPError{Code: 451, Enhanced: "4.7.0", Message: "rate limited: " + msg}
 	case status == http.StatusRequestTimeout || status == http.StatusTooEarly || status < 400 || status >= 500:
@@ -1228,10 +1292,6 @@ func restmailRefusal(status int, body []byte) *SMTPError {
 	}
 	return &SMTPError{Code: 550, Enhanced: "5.0.0", Message: msg}
 }
-
-// restmailDeferred is the error code a REST Mail server's deliver endpoint
-// answers, with a 503, when its inbound pipeline defers the message.
-const restmailDeferred = "deferred"
 
 // restmailErrorCode is the code of a REST Mail error body
 // ({"error":{"code":...,"message":...}}), or "" when the body is not one.
@@ -1660,8 +1720,9 @@ func buildDSNMessage(hostname string, item models.OutboundQueue, smtpErr *SMTPEr
 		remoteMTA = rmail.SanitizeHeaderValue(smtpErr.RemoteMTA)
 	}
 
-	// Extract original headers from RawMessage for Part 3.
-	originalHeaders := item.RawMessage
+	// Extract original headers from RawMessage for Part 3, without the hidden fields. Part 3 sits
+	// in the notice's body, where prepareOutbound's strip of the notice's own head can't reach it.
+	originalHeaders := outbound.StripBcc(item.RawMessage)
 	if idx := strings.Index(originalHeaders, "\r\n\r\n"); idx >= 0 {
 		originalHeaders = originalHeaders[:idx]
 	} else if idx := strings.Index(originalHeaders, "\n\n"); idx >= 0 {
@@ -1796,6 +1857,11 @@ func (w *Worker) deliverSMTPWith(ctx context.Context, addr, host string, item mo
 	if records != nil {
 		stsPolicy, stsErr = nil, nil
 	}
+	normal, err := forData(item.RawMessage, host)
+	if err != nil {
+		return err
+	}
+	item.RawMessage = normal
 	// Strip Bcc and DKIM-sign before transmission (#171). Fail closed on a key
 	// that cannot be loaded so the send retries rather than going out unsigned.
 	prepared, err := w.prepareOutbound(ctx, item)
@@ -1936,10 +2002,11 @@ func (w *Worker) deliverSMTPWith(ctx context.Context, addr, host string, item mo
 		slog.WarnContext(ctx, "queue: next hop lacks 8BITMIME for 8-bit message, refusing (no 7-bit downconversion)",
 			"host", host, "domain", item.Domain, "body_type", item.BodyType)
 		return &SMTPError{
-			Code:      550,
-			Enhanced:  "5.6.3",
-			Message:   "next hop does not support 8BITMIME and 7-bit conversion is not implemented",
-			RemoteMTA: host,
+			Code:              550,
+			Enhanced:          "5.6.3",
+			Message:           "next hop does not support 8BITMIME and 7-bit conversion is not implemented",
+			RemoteMTA:         host,
+			HopLacksExtension: true,
 		}
 	}
 
@@ -1948,12 +2015,8 @@ func (w *Worker) deliverSMTPWith(ctx context.Context, addr, host string, item mo
 	}
 
 	// Set sender, with REQUIRETLS when the message requires it (RFC 8689 §4.2.1).
-	mail := client.Mail
-	if requireTLS {
-		mail = func(from string) error { return mailRequireTLS(client, from) }
-	}
 	armStep(link.conn, timeouts.Mail)
-	if err := mail(sender); err != nil {
+	if err := mailFrom(client, sender, smtpUTF8Status(sender, recipient, item.RawMessage) != "", requireTLS); err != nil {
 		se := parseSMTPError(err)
 		se.RemoteMTA = host
 		return se
@@ -2097,10 +2160,12 @@ func verifyPeerCertificate(cs tls.ConnectionState, host string, roots *x509.Cert
 	return err
 }
 
-// mailRequireTLS issues MAIL FROM with the REQUIRETLS parameter (RFC 8689 §4.2.1), which
-// net/smtp's Mail cannot add, alongside the BODY=8BITMIME and SMTPUTF8 parameters Mail adds
-// when the server offers them.
-func mailRequireTLS(c *smtp.Client, from string) error {
+// mailFrom sends MAIL with the parameters this message calls for, which net/smtp's Mail can't
+// choose: it adds SMTPUTF8 whenever the server offers it, and RFC 6531 section 3.4 says a client
+// that knows the message doesn't need the extension SHOULD NOT, since a server takes the tag as
+// a promise to keep it and a later hop without SMTPUTF8 would refuse plain mail. REQUIRETLS is
+// RFC 8689 section 4.2.1's.
+func mailFrom(c *smtp.Client, from string, smtpUTF8, requireTLS bool) error {
 	if strings.ContainsAny(from, "\r\n") {
 		return errors.New("smtp: a line must not contain CR or LF")
 	}
@@ -2108,10 +2173,13 @@ func mailRequireTLS(c *smtp.Client, from string) error {
 	if ok, _ := c.Extension("8BITMIME"); ok {
 		cmd += " BODY=8BITMIME"
 	}
-	if ok, _ := c.Extension("SMTPUTF8"); ok {
+	if smtpUTF8 {
 		cmd += " SMTPUTF8"
 	}
-	id, err := c.Text.Cmd("%s REQUIRETLS", cmd)
+	if requireTLS {
+		cmd += " REQUIRETLS"
+	}
+	id, err := c.Text.Cmd("%s", cmd)
 	if err != nil {
 		return err
 	}
