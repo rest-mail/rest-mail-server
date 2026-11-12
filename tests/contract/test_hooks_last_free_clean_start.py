@@ -46,8 +46,12 @@ class CleanStart(unittest.TestCase):
         names["start_clean"] = self.start_clean
         self.made = []
 
+        self.invitations = [{"uid": self.globals["OWN_INVITATION_UID"], "message_id": 31}]
+
         def fixture_call(transaction, method, path, body=None, expect=(200, 201, 204)):
             self.made.append((method, path, body))
+            if method == "GET" and path.endswith("/calendar-events"):
+                return self.invitations
             return {"id": 7}
 
         names["fixture_call"] = fixture_call
@@ -143,6 +147,40 @@ class CleanStart(unittest.TestCase):
         sent = answered(transaction("/api/v1/accounts/4/calendar-events", name), 200, [])
         self.after(self.hooks.the_listing_holds_what_was_made, sent)
         self.assertEqual(sent["fail"], "the listing had nothing made for it to list (#1789)")
+
+    def test_the_reply_goes_to_an_invitation_made_after_the_reset(self):
+        for status, body in (("200", {"from": "admin@restmail.test", "response": "ACCEPTED"}),
+                             ("403", {"from": "someone@other.test", "response": "ACCEPTED"})):
+            with self.subTest(status=status):
+                self.made.clear()
+                name = f"/api/v1/messages/{{id}}/calendar-reply > x > {status} > application/json"
+                sent = transaction("/api/v1/messages/1/calendar-reply", name, body)
+                self.hook(sent)
+                self.start_clean.assert_called_with(sent)
+                self.assertEqual(sent["fullPath"], "/api/v1/messages/31/calendar-reply")
+                self.assertEqual(json.loads(sent["request"]["body"]), body)
+                [(method, path, made), (read, listing, _)] = self.made
+                self.assertEqual((method, path), ("POST", "/api/v1/messages/send"))
+                self.assertEqual(made["to"], [made["from"]])
+                self.assertEqual(made["calendar_event"]["method"], "REQUEST")
+                self.assertEqual((read, listing), ("GET", "/api/v1/accounts/4/calendar-events"))
+
+    def test_a_reply_with_no_invitation_delivered_is_not_sent(self):
+        self.invitations = [{"uid": "someone-elses@restmail.test", "message_id": 9}]
+        name = "/api/v1/messages/{id}/calendar-reply > x > 200 > application/json"
+        sent = transaction("/api/v1/messages/1/calendar-reply", name, {"from": "admin@restmail.test"})
+        with self.assertRaisesRegex(RuntimeError, "was not delivered"):
+            self.hook(sent)
+
+    def test_the_stream_is_not_given_events(self):
+        # Its example is a literal stream the live server never sends, so the
+        # run does not provide event_stream and the stream gets nothing made.
+        name = "/api/v1/accounts/{id}/events > x > 200 > text/event-stream"
+        sent = transaction("/api/v1/accounts/1/events", name)
+        self.hook(sent)
+        self.assertEqual(sent["fullPath"], "/api/v1/accounts/4/events")
+        self.assertNotIn("Last-Event-ID", sent["request"]["headers"])
+        self.assertEqual(self.made, [])
 
     def test_the_listing_after_hook_is_registered_for_the_calendar_list(self):
         # The stub's after() registers nothing, so read the source.
