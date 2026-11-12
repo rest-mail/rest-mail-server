@@ -10,11 +10,29 @@ name: Cluster Install Check
 # Then stage 1 of the installed-cluster check (#1750), scripts/cluster_e2e.py:
 # the bootstrap admin signs in through the API, an SMTP RCPT through the
 # installed gateway, an IMAP sign-in and SELECT INBOX, and a JavaScript filter
-# validated by the js-filter sidecar. Locally, against any cluster with the
-# chart installed: `chore cluster:e2e`, the same script.
+# validated by the js-filter sidecar. Then stage 2: Vertrag's examples phase
+# sent through the install's Ingress (ingress-nginx in kind, TLS from the
+# self-signed Secret), against the description the install serves there; its
+# HTML report is in the cluster-report artifact, under contract/. Then stage
+# 3: a reference Postfix/Dovecot in the cluster (scripts/cluster_reference.py,
+# with CoreDNS zones giving each domain its MX), mail from REST Mail to it
+# through the API, mail from it to REST Mail read back over IMAP, and the same
+# message over POP3; the messages are in the report too. The install's DKIM
+# key, set through the API and published in its zone, signs the mail the
+# reference receives, and that signature is verified (the pinned dkimpy). A
+# second install from the same chart and images (values-ci-peer.yaml, its own
+# namespace and domain) takes mail from the first over RESTMAIL, never SMTP,
+# read back over its IMAP. Locally,
+# against any cluster with the chart installed: `chore cluster:e2e`, the same
+# script.
 #
 # Daily, on every v* tag, and by hand, never on a pull request: it builds seven
 # images and takes several minutes. It gates nothing.
+#
+# One failure issue ("cluster-e2e is failing", label cluster-e2e): a failed
+# scheduled, v* tag or main run opens it, or comments on the open one with the
+# run, commit, images and the failing step's receipts; a passing one closes it.
+# A run dispatched on any other ref leaves it alone (scripts/cluster_e2e_issue.py).
 #
 # Run by hand: Actions → Cluster Install Check → Run workflow, or
 #   gh workflow run cluster-e2e.yml --ref <branch>
@@ -40,6 +58,11 @@ env:
   KIND_VERSION: v0.33.0
   KIND_SHA256: aee6151561422756b764a4ae28e7f44cda5af5a9eead3cc9985112b1de8d8e0d
   KIND_NODE_IMAGE: kindest/node:v1.37.0@sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5
+  # ingress-nginx's manifest for kind, pinned by release and checksum; its
+  # images are pinned by digest inside it. It binds host ports 80 and 443 on
+  # the node, which the cluster maps to the runner.
+  INGRESS_NGINX_MANIFEST: https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.15.1/deploy/static/provider/kind/deploy.yaml
+  INGRESS_NGINX_SHA256: 2a3ae008c8786431115502644e77ab398fdebfb721a5d1195ed3089cde3299df
   CLUSTER: restmail-ci
   NAMESPACE: restmail
   RELEASE: restmail
@@ -48,15 +71,34 @@ env:
   IMAGE_PREFIX: ghcr.io/rest-mail
   IMAGE_TAG: ci
   REPORT_DIR: ${{ github.workspace }}/cluster-report
+  # The API Ingress's host (api.ingress in values-ci.yaml), which the runner
+  # resolves to the node's mapped port 443.
+  INGRESS_HOST: mail.restmail-ci.test
+  # Stage 3: the install's mail domain (mailserver.domain in values-ci.yaml;
+  # its MX is INGRESS_HOST, the mail host), and where the reference runs.
+  MAIL_DOMAIN: restmail-ci.test
+  REFERENCE_NAMESPACE: reference
+  # The second install (helm/restmail/values-ci-peer.yaml), same release name.
+  PEER_NAMESPACE: restmail-peer
+  PEER_MAIL_DOMAIN: restmail-ci2.test
+  PEER_MAIL_HOST: mail.restmail-ci2.test
+  # dkimpy verifies the DKIM signature of the mail the reference received: its
+  # source release from PyPI, pinned by checksum, put on PYTHONPATH (pure
+  # Python, nothing to build).
+  DKIMPY_VERSION: 1.1.8
+  DKIMPY_SHA256: b5f60fb47bbf5d8d762f134bcea0c388eba6b498342a682a21f1686545094b77
 
 jobs:
   install:
     name: Install in kind
-    runs-on: ubuntu-latest
+    runs-on: antimatter-vps-linux-x64
     timeout-minutes: 60
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
 
       - name: Retry transient image pull failures
         run: echo "$GITHUB_WORKSPACE/scripts/ci/docker-retry" >> "$GITHUB_PATH"
@@ -76,7 +118,25 @@ jobs:
           kubectl version --client
 
       - name: Create the cluster
-        run: kind create cluster --name "$CLUSTER" --image "$KIND_NODE_IMAGE" --wait 180s
+        run: |
+          cat > "$RUNNER_TEMP/kind.yaml" <<'EOF'
+          kind: Cluster
+          apiVersion: kind.x-k8s.io/v1alpha4
+          nodes:
+            - role: control-plane
+              extraPortMappings:
+                - {containerPort: 80, hostPort: 80, listenAddress: 127.0.0.1, protocol: TCP}
+                - {containerPort: 443, hostPort: 443, listenAddress: 127.0.0.1, protocol: TCP}
+          EOF
+          kind create cluster --name "$CLUSTER" --image "$KIND_NODE_IMAGE" --config "$RUNNER_TEMP/kind.yaml" --wait 180s
+
+      # Started now, so it is up by the time the images are built.
+      - name: Install the ingress controller
+        run: |
+          curl -fsSLo "$RUNNER_TEMP/ingress-nginx.yaml" "$INGRESS_NGINX_MANIFEST"
+          echo "${INGRESS_NGINX_SHA256}  $RUNNER_TEMP/ingress-nginx.yaml" | sha256sum -c -
+          kubectl apply -f "$RUNNER_TEMP/ingress-nginx.yaml"
+          echo "127.0.0.1 $INGRESS_HOST" | sudo tee -a /etc/hosts
 
       # The same images, Dockerfiles and build contexts as docker.yml, built
       # for the runner's platform only and loaded into the cluster instead of
@@ -99,25 +159,60 @@ jobs:
           build_and_load webmail      webmail/Dockerfile                   webmail
           build_and_load admin        admin/Dockerfile                     admin
 
-      # Stands in for cert-manager. The gateways serve the mail host's
-      # certificate from it, and Postgres serves TLS from it too, so it names
-      # the Postgres Service as well. Nothing verifies it against a CA here.
-      - name: Create the self-signed TLS Secret
+      # Stands in for cert-manager: a CA made for this run issues each
+      # install's certificate, and each Secret carries the CA as ca.crt. The
+      # gateways serve the mail host's certificate from it, and Postgres serves
+      # TLS from it too, so it names the Postgres Service as well. The SMTP
+      # gateway's queue trusts ca.crt for the RESTMAIL HTTPS it always
+      # verifies, which is how the first install trusts the second; its
+      # entrypoint adds ca.crt to the system roots too, which verify an MX's
+      # STARTTLS certificate and an MTA-STS policy host. The reference mail
+      # server's certificate comes from the same CA: it names its MX hosts and
+      # the MTA-STS policy hosts (scripts/cluster_reference.py TLS_HOSTS).
+      - name: Create the TLS Secrets
         run: |
-          kubectl create namespace "$NAMESPACE"
-          openssl req -x509 -nodes -newkey rsa:2048 -days 2 \
-            -subj "/CN=mail.restmail-ci.test" \
-            -addext "subjectAltName=DNS:mail.restmail-ci.test,DNS:$RELEASE-postgres,DNS:$RELEASE-postgres.$NAMESPACE.svc" \
-            -keyout "$RUNNER_TEMP/tls.key" -out "$RUNNER_TEMP/tls.crt"
-          kubectl -n "$NAMESPACE" create secret tls restmail-ci-tls \
-            --cert="$RUNNER_TEMP/tls.crt" --key="$RUNNER_TEMP/tls.key"
+          cd "$RUNNER_TEMP"
+          openssl req -x509 -nodes -newkey rsa:2048 -days 2 -subj "/CN=restmail-ci run CA" \
+            -addext "basicConstraints=critical,CA:TRUE" -addext "keyUsage=critical,keyCertSign,cRLSign" \
+            -keyout ca.key -out ca.crt
+          issue() { # issue <namespace> <secret> <common name> <subjectAltName>
+            kubectl create namespace "$1"
+            printf '%s\n' "subjectAltName=$4" \
+              "basicConstraints=CA:FALSE" "keyUsage=critical,digitalSignature,keyEncipherment" \
+              "extendedKeyUsage=serverAuth" "subjectKeyIdentifier=hash" "authorityKeyIdentifier=keyid" > "$2.ext"
+            openssl req -nodes -newkey rsa:2048 -subj "/CN=$3" -keyout "$2.key" -out "$2.csr"
+            openssl x509 -req -in "$2.csr" -CA ca.crt -CAkey ca.key -CAcreateserial -days 2 \
+              -extfile "$2.ext" -out "$2.crt"
+            kubectl -n "$1" create secret generic "$2" --type=kubernetes.io/tls \
+              --from-file=tls.crt="$2.crt" --from-file=tls.key="$2.key" --from-file=ca.crt=ca.crt
+          }
+          # An install's certificate names its mail domain too: the API takes a
+          # domain's certificate only if it names the domain (#1715), and
+          # restmail-peer uploads the peer's.
+          install_names() { # install_names <namespace> <mail host> <mail domain>
+            echo "DNS:$2,DNS:$3,DNS:$RELEASE-postgres,DNS:$RELEASE-postgres.$1.svc"
+          }
+          issue "$NAMESPACE" restmail-ci-tls "$INGRESS_HOST" "$(install_names "$NAMESPACE" "$INGRESS_HOST" "$MAIL_DOMAIN")"
+          issue "$PEER_NAMESPACE" restmail-ci2-tls "$PEER_MAIL_HOST" "$(install_names "$PEER_NAMESPACE" "$PEER_MAIL_HOST" "$PEER_MAIL_DOMAIN")"
+          reference_names="$(python3 -B -c 'import sys; sys.path.insert(0, "'"$GITHUB_WORKSPACE"'/scripts"); import cluster_reference as r; print(",".join("DNS:" + h for h in r.TLS_HOSTS))')"
+          issue "$REFERENCE_NAMESPACE" reference-mail-tls mail.reference.test "$reference_names"
+          rm ca.key
 
+      # Its admission webhook must answer before the chart's Ingress is made.
       - name: Install the chart
         run: |
+          kubectl -n ingress-nginx wait --for=condition=Ready pod \
+            --selector=app.kubernetes.io/component=controller --timeout=300s
           password="$(openssl rand -base64 24)"
           echo "::add-mask::$password"
           helm install "$RELEASE" helm/restmail --namespace "$NAMESPACE" \
             -f helm/restmail/values-ci.yaml \
+            --set "api.bootstrapAdminPassword=$password"
+          # The second install: same chart and images, its own bootstrap admin.
+          password="$(openssl rand -base64 24)"
+          echo "::add-mask::$password"
+          helm install "$RELEASE" helm/restmail --namespace "$PEER_NAMESPACE" \
+            -f helm/restmail/values-ci.yaml -f helm/restmail/values-ci-peer.yaml \
             --set "api.bootstrapAdminPassword=$password"
 
       # Every Deployment and StatefulSet must finish rolling out, then every pod
@@ -125,23 +220,56 @@ jobs:
       # that crashed once and came back is a start-up bug, not a pass.
       - name: Wait for every pod to be ready
         run: |
-          for workload in $(kubectl -n "$NAMESPACE" get deployment,statefulset -o name); do
-            kubectl -n "$NAMESPACE" rollout status "$workload" --timeout=600s
+          for ns in "$NAMESPACE" "$PEER_NAMESPACE"; do
+            for workload in $(kubectl -n "$ns" get deployment,statefulset -o name); do
+              kubectl -n "$ns" rollout status "$workload" --timeout=600s
+            done
+            kubectl -n "$ns" wait --for=condition=Ready pods --all --timeout=120s
+            kubectl -n "$ns" get pods -o wide
+            restarts="$(kubectl -n "$ns" get pods -o json \
+              | jq '[.items[].status.containerStatuses[]?.restartCount] | add // 0')"
+            if [ "$restarts" -ne 0 ]; then
+              echo "::error::containers in $ns restarted $restarts time(s) before every pod was ready"
+              exit 1
+            fi
           done
-          kubectl -n "$NAMESPACE" wait --for=condition=Ready pods --all --timeout=120s
-          kubectl -n "$NAMESPACE" get pods -o wide
-          restarts="$(kubectl -n "$NAMESPACE" get pods -o json \
-            | jq '[.items[].status.containerStatuses[]?.restartCount] | add // 0')"
-          if [ "$restarts" -ne 0 ]; then
-            echo "::error::containers restarted $restarts time(s) before every pod was ready"
-            exit 1
-          fi
 
-      # Port-forwards the API and the gateways itself and prints one receipt
-      # line per step (commit, images, step, result) to the log and to
-      # cluster-report/receipts.txt.
-      - name: Stage 1 against the install
-        run: python3 -B scripts/cluster_e2e.py --namespace "$NAMESPACE" --release "$RELEASE" --report-dir "$REPORT_DIR" --commit "$GITHUB_SHA"
+      # Stage 3's other side: a reference Postfix/Dovecot, pinned by digest,
+      # in its own namespace, and DNS in the cluster for the three mail
+      # domains, the second install's MX on one address for SMTP and HTTPS.
+      - name: Deploy the reference mail server
+        run: |
+          python3 -B scripts/cluster_reference.py --namespace "$REFERENCE_NAMESPACE" \
+            --restmail-namespace "$NAMESPACE" --release "$RELEASE" \
+            --mail-domain "$MAIL_DOMAIN" --mail-host "$INGRESS_HOST" \
+            --peer-namespace "$PEER_NAMESPACE" --peer-release "$RELEASE" \
+            --peer-domain "$PEER_MAIL_DOMAIN" --peer-host "$PEER_MAIL_HOST"
+
+      # Stage 3's other side: a reference Postfix/Dovecot, pinned by digest,
+      # in its own namespace, and DNS in the cluster for both mail domains.
+      - name: Deploy the reference mail server
+        run: |
+          python3 -B scripts/cluster_reference.py --namespace "$REFERENCE_NAMESPACE" \
+            --restmail-namespace "$NAMESPACE" --release "$RELEASE" \
+            --mail-domain "$MAIL_DOMAIN" --mail-host "$INGRESS_HOST"
+
+      # Stage 1 port-forwards the API and the gateways itself; stage 2 goes
+      # through the Ingress, trusting the self-signed certificate it serves;
+      # stage 3 sends mail between the install and the reference both ways.
+      # One receipt line per step (commit, images, step, result) to the log and
+      # to cluster-report/receipts.txt.
+      - name: Stages 1 to 3 against the install
+        run: |
+          python3 -B -c 'import yaml' 2>/dev/null || pip install --quiet pyyaml
+          curl -fsSLo "$RUNNER_TEMP/dkimpy.tar.gz" \
+            "https://files.pythonhosted.org/packages/source/d/dkimpy/dkimpy-${DKIMPY_VERSION}.tar.gz"
+          echo "${DKIMPY_SHA256}  $RUNNER_TEMP/dkimpy.tar.gz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/dkimpy.tar.gz" -C "$RUNNER_TEMP"
+          export PYTHONPATH="$RUNNER_TEMP/dkimpy-${DKIMPY_VERSION}"
+          python3 -B scripts/cluster_e2e.py --namespace "$NAMESPACE" --release "$RELEASE" --report-dir "$REPORT_DIR" --commit "$GITHUB_SHA" \
+            --ingress-url "https://$INGRESS_HOST" --ingress-ca "$RUNNER_TEMP/ca.crt" \
+            --reference-namespace "$REFERENCE_NAMESPACE" \
+            --peer-namespace "$PEER_NAMESPACE" --peer-release "$RELEASE"
 
       # Always, and most of all on a failure: everything needed to see why a
       # pod did not come up, without re-running the job.
@@ -154,13 +282,25 @@ jobs:
           kubectl -n "$NAMESPACE" get all,pvc,secret,configmap,networkpolicy,ingress -o wide > resources.txt 2>&1 || true
           kubectl -n "$NAMESPACE" describe pods,deployments,statefulsets,services,pvc > describe.txt 2>&1 || true
           kubectl get events -A --sort-by=.lastTimestamp > events.txt 2>&1 || true
+          kubectl -n ingress-nginx logs deployment/ingress-nginx-controller > logs/ingress-nginx-controller.log 2>&1 || true
+          kubectl -n "$REFERENCE_NAMESPACE" logs deployment/reference-mail --all-containers > logs/reference-mail.log 2>&1 || true
+          kubectl -n "$REFERENCE_NAMESPACE" describe pods > describe-reference.txt 2>&1 || true
+          kubectl -n kube-system get configmap coredns -o yaml > coredns.yaml 2>&1 || true
+          kubectl -n kube-system logs deployment/coredns > logs/coredns.log 2>&1 || true
+          kubectl -n "$PEER_NAMESPACE" get all,endpointslice,networkpolicy,ingress -o wide > resources-peer.txt 2>&1 || true
+          kubectl -n "$PEER_NAMESPACE" describe pods,deployments,statefulsets,services > describe-peer.txt 2>&1 || true
           helm -n "$NAMESPACE" status "$RELEASE" > helm-status.txt 2>&1 || true
-          for pod in $(kubectl -n "$NAMESPACE" get pods -o name 2>/dev/null); do
-            name="${pod#pod/}"
-            for c in $(kubectl -n "$NAMESPACE" get "$pod" -o jsonpath='{.spec.initContainers[*].name} {.spec.containers[*].name}'); do
-              kubectl -n "$NAMESPACE" logs "$pod" -c "$c" > "logs/$name.$c.log" 2>&1 || true
-              kubectl -n "$NAMESPACE" logs "$pod" -c "$c" --previous > "logs/$name.$c.previous.log" 2>/dev/null \
-                || rm -f "logs/$name.$c.previous.log"
+          for ns in "$NAMESPACE" "$PEER_NAMESPACE"; do
+            dir=logs
+            [ "$ns" = "$NAMESPACE" ] || dir="logs/$ns"
+            mkdir -p "$dir"
+            for pod in $(kubectl -n "$ns" get pods -o name 2>/dev/null); do
+              name="${pod#pod/}"
+              for c in $(kubectl -n "$ns" get "$pod" -o jsonpath='{.spec.initContainers[*].name} {.spec.containers[*].name}'); do
+                kubectl -n "$ns" logs "$pod" -c "$c" > "$dir/$name.$c.log" 2>&1 || true
+                kubectl -n "$ns" logs "$pod" -c "$c" --previous > "$dir/$name.$c.previous.log" 2>/dev/null \
+                  || rm -f "$dir/$name.$c.previous.log"
+              done
             done
           done
 
@@ -174,3 +314,34 @@ jobs:
           path: cluster-report/
           retention-days: 14
           if-no-files-found: warn
+
+  # Its own job, so only this one can write issues: the install job builds and
+  # runs the images with a read-only token.
+  failure-issue:
+    name: Failure issue
+    needs: install
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+      actions: read # the install job's failed steps
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Missing when the install failed before anything was written.
+      - name: Download the cluster report
+        continue-on-error: true
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: cluster-report
+          path: cluster-report
+
+      - name: Open, update or close the failure issue
+        run: |
+          python3 -B scripts/cluster_e2e_issue.py --result "${{ needs.install.result }}" \
+            --receipts cluster-report/receipts.txt --image-tag "$IMAGE_PREFIX/*:$IMAGE_TAG"

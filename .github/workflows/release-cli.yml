@@ -36,7 +36,7 @@ jobs:
   preflight:
     name: 'Preflight: branch is up to date'
     if: github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != '')
-    runs-on: ubuntu-latest
+    runs-on: antimatter-vps-linux-x64
     timeout-minutes: 5
     steps:
       - name: Checkout the pull request head, not GitHub's merge commit
@@ -72,7 +72,7 @@ jobs:
     needs: preflight
     name: Release the restmail CLI
     if: github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != '')
-    runs-on: ubuntu-latest
+    runs-on: antimatter-vps-linux-x64
     permissions:
       contents: write # creates the GitHub Release
       id-token: write # signs the build-provenance attestation
@@ -82,6 +82,9 @@ jobs:
         with:
           # GoReleaser reads tags and history for the version and changelog.
           fetch-depth: 0
+
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:

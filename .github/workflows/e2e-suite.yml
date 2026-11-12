@@ -31,7 +31,7 @@ permissions:
 jobs:
   suite:
     name: topology
-    runs-on: ubuntu-latest
+    runs-on: antimatter-vps-linux-x64
     # The suite took 52 minutes before the live proofs, which may take up to 25.
     timeout-minutes: 85
     env:
@@ -49,6 +49,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
 
       - name: Retry transient image pull failures
         run: echo "$GITHUB_WORKSPACE/scripts/ci/docker-retry" >> "$GITHUB_PATH"
@@ -142,7 +145,7 @@ jobs:
         if: inputs.contract-phases != 'live' && inputs.contract-phases != 'pairs'
         # Belt-and-suspenders on top of E2E_REQUIRE_STACK: a green e2e must mean
         # the stages actually RAN. Fail if any top-level stage skipped, or if
-        # fewer than all 14 stages reached PASS.
+        # fewer than all 15 stages reached PASS.
         run: |
           log="$RUNNER_TEMP/e2e.log"
           skipped=$(grep -cE -- '--- SKIP: TestStages/Stage[0-9]+_[A-Za-z]+ \(' "$log" || true)
@@ -153,11 +156,11 @@ jobs:
             grep -E -- '--- SKIP: TestStages/Stage' "$log" || true
             exit 1
           fi
-          if [ "$passed" -lt 14 ]; then
-            echo "::error::expected all 14 e2e stages to PASS, only $passed did"
+          if [ "$passed" -lt 15 ]; then
+            echo "::error::expected all 15 e2e stages to PASS, only $passed did"
             exit 1
           fi
-          echo "all 14 e2e stages executed and passed"
+          echo "all 15 e2e stages executed and passed"
 
       - name: Copy a mailbox into REST Mail with imapsync
         # What an operator cutting over from Dovecot reaches for (#734): folders,
@@ -338,6 +341,7 @@ jobs:
           cp "$RUNNER_TEMP"/contract*.log "$out/" 2>/dev/null || true
           cp .cache/contract/openapi.json .cache/contract/examples.json .cache/contract/coverage.json .cache/contract/authorization.json .cache/contract/ownership.json .cache/contract/ownership-domains.json .cache/contract/ownership-mailboxes.json .cache/contract/ownership-messages.json .cache/contract/fuzz.json "$out/" 2>/dev/null || true
           cp .cache/contract/*.xml .cache/contract/*.html .cache/contract/*.md "$out/" 2>/dev/null || true
+          cp .cache/contract/replayed-probes.jsonl .cache/contract/lost-probes.txt "$out/" 2>/dev/null || true
           cp -R .cache/contract/api-coverage "$out/" 2>/dev/null || true
           docker ps -a > "$out/docker-ps.txt" 2>&1 || true
           docker network inspect testbed_mailnet > "$out/network.txt" 2>&1 || true
@@ -399,7 +403,7 @@ jobs:
     # topology job does, so the required `E2E (full topology)` check waits for it.
     name: JS filter isolation
     if: inputs.contract-phases == 'gate'
-    runs-on: ubuntu-latest
+    runs-on: antimatter-vps-linux-x64
     timeout-minutes: 30
     env:
       RESTMAIL_SKIP_FRONTENDS: "true"
@@ -407,6 +411,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
 
       - name: Retry transient image pull failures
         run: echo "$GITHUB_WORKSPACE/scripts/ci/docker-retry" >> "$GITHUB_PATH"

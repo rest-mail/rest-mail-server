@@ -51,7 +51,7 @@ jobs:
   preflight:
     name: 'Preflight: branch is up to date'
     if: github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != '')
-    runs-on: ubuntu-latest
+    runs-on: antimatter-vps-linux-x64
     timeout-minutes: 5
     steps:
       - name: Checkout the pull request head, not GitHub's merge commit
@@ -87,7 +87,7 @@ jobs:
     needs: preflight
     name: Publish the guide's bundle
     if: github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != '')
-    runs-on: ubuntu-latest
+    runs-on: antimatter-vps-linux-x64
     defaults:
       run:
         working-directory: scripts/email-explained
@@ -101,7 +101,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version-file: scripts/email-explained/package.json
+          node-version: "22"
 
       - name: Install dependencies
         run: npm ci

@@ -2,7 +2,7 @@ name: E2E
 
 # Full end-to-end suite: stands up the whole simulated-internet topology
 # (testbed dnsmasq + certs, reference mail1/mail2, the restmail.test product
-# stack) and runs the 14 staged tests in tests/e2e/ from a golang container on
+# stack) and runs the 15 staged tests in tests/e2e/ from a golang container on
 # the mailnet. Heavy (~20 min), so it lives in its own workflow rather than
 # bloating ci.yml.
 #
@@ -20,14 +20,14 @@ name: E2E
 #                  skipped for a docs-only change. Because this job always posts,
 #                  the required context is satisfied on every PR — code or docs.
 # Stack layers use the same opt-in and merge-queue rules as PRs targeting main.
-# Metadata-only edits allocate no runners and cannot replace a required verdict.
+# Metadata edits run only ci-retarget.yml, which dispatches checks on retarget to main.
 #   * `e2e-proofs` — after the heavy suite, every example that needs setup is proven
 #                  by an in-process test or a live runner; the gate needs it too.
 on:
   push:
     branches: [main]
   pull_request:
-    types: [opened, synchronize, reopened, edited]
+    types: [opened, synchronize, reopened]
   workflow_dispatch:
     inputs:
       description-mode:
@@ -41,7 +41,7 @@ on:
 
 # e2e is expensive — supersede in-flight runs for the same ref.
 concurrency:
-  group: ${{ github.event_name == 'pull_request' && github.event.action == 'edited' && github.event.changes.base.ref.from == '' && format('e2e-ignored-{0}', github.run_id) || format('e2e-{0}', github.ref) }}
+  group: e2e-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -52,7 +52,7 @@ jobs:
   preflight:
     name: 'Preflight: branch is up to date'
     if: github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != '')
-    runs-on: ubuntu-latest
+    runs-on: antimatter-vps-linux-x64
     timeout-minutes: 5
     steps:
       - name: Checkout the pull request head, not GitHub's merge commit
@@ -88,7 +88,7 @@ jobs:
     needs: preflight
     name: Classify changed paths
     if: github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != '')
-    runs-on: ubuntu-latest
+    runs-on: antimatter-vps-linux-x64
     timeout-minutes: 5
     outputs:
       run_e2e: ${{ steps.classify.outputs.run_e2e }}
@@ -218,7 +218,7 @@ jobs:
     name: E2E (every example is proven)
     needs: [preflight, changes, e2e-run, e2e-contract-pairs, e2e-live]
     if: always() && needs.preflight.result == 'success' && needs.changes.outputs.run_e2e == 'true' && github.event_name != 'workflow_dispatch' && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
-    runs-on: ubuntu-latest
+    runs-on: antimatter-vps-linux-x64
     timeout-minutes: 70
     permissions:
       contents: read
@@ -226,6 +226,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
 
       - name: Download the live proofs
         continue-on-error: true
@@ -262,7 +265,7 @@ jobs:
     name: ${{ github.event_name == 'pull_request' && github.event.action == 'edited' && github.event.changes.base.ref.from == '' && 'E2E (ignored edit)' || 'E2E (full topology)' }}
     needs: [preflight, changes, e2e-run, e2e-contract-pairs, e2e-proofs]
     if: always() && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
-    runs-on: ubuntu-latest
+    runs-on: antimatter-vps-linux-x64
     timeout-minutes: 5
     steps:
       - name: Verify e2e outcome

@@ -1,0 +1,40 @@
+name: CI retarget
+
+# ci.yml and e2e.yml own the required checks, so they do not run on `edited`: every edit
+# starts a run, and from then on GitHub says the required check is expected, whatever an
+# older run on that head reported (#1876). Each `edited` event lands here instead. This
+# workflow reports no required check, so its runs cost a pull request nothing, like
+# ci-labels.yml's. A retarget to main is the one edit that needs the checks, because a
+# stack layer has skipped them until now (#1775).
+#
+# A run started with the workflow's own token can only be a dispatch. The dispatch reads
+# the workflow files on the branch, so a branch from before this file must be rebased:
+# gh refuses the inputs, this job fails, and the required checks stay expected.
+on:
+  pull_request:
+    types: [edited]
+
+permissions:
+  contents: read
+
+jobs:
+  dispatch-required-checks:
+    name: Start the required checks after a retarget to main
+    if: github.base_ref == 'main' && github.event.changes.base.ref.from != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Dispatch CI and E2E for the pull request's head
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_REF: ${{ github.head_ref }}
+          PR: ${{ github.event.pull_request.number }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          gh workflow run ci.yml --repo "$GITHUB_REPOSITORY" --ref "$HEAD_REF" \
+            -f pull-request="$PR" -f base-sha="$BASE_SHA"
+          gh workflow run e2e.yml --repo "$GITHUB_REPOSITORY" --ref "$HEAD_REF"

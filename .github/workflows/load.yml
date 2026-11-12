@@ -50,7 +50,7 @@ permissions:
 jobs:
   load:
     name: Load run
-    runs-on: ubuntu-latest
+    runs-on: antimatter-vps-linux-x64
     timeout-minutes: 90
     steps:
       - name: Checkout
@@ -58,6 +58,9 @@ jobs:
         with:
           # git describe in the results names the version tested.
           fetch-depth: 0
+
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
 
       - name: Retry transient image pull failures
         run: echo "$GITHUB_WORKSPACE/scripts/ci/docker-retry" >> "$GITHUB_PATH"
