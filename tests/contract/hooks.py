@@ -5999,6 +5999,33 @@ def send_a_draft_of_its_own(transaction):
     )
 
 
+@hooks.before("sendMessage")
+@hooks.before("sendDraft")
+@hooks.before("forwardMessage")
+def a_used_send_idempotency_key(transaction):
+    if " > 409 > " not in transaction.get("name", ""):
+        return
+    headers = transaction["request"]["headers"]
+    if headers.get("Idempotency-Key") != "contract-idempotency-conflict":
+        return
+    key = "contract-send-" + str(time.time_ns())
+    origin = origin_of(transaction)
+    request = urllib.request.Request(
+        origin + "/api/v1/messages/send",
+        data=json.dumps({"from": ADMIN, "to": [ADMIN], "body_text": "The first request"}).encode(),
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": "Bearer " + admin_token(origin),
+            "Idempotency-Key": key,
+        },
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        if response.status != 201:
+            raise RuntimeError("idempotency setup did not queue the first send")
+    headers["Idempotency-Key"] = key
+
+
 @hooks.before("retryQueueEntry")
 def retry_a_held_entry_after_bulk_examples(transaction):
     # After a reset the fixture entry is gone: queued_and_held_mail_of_its_own

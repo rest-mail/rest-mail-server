@@ -2948,7 +2948,7 @@ export interface paths {
         put?: never;
         /**
          * Send a draft
-         * @description The draft (mail:write) is sent as sendMessage sends, and deleted once it is; a refused send keeps it. Draft lookup/access dependency failures return 500 and follow request cancellation. A 201 means the message is durably queued, not that it has arrived. Every recipient, on this server or elsewhere, gets it through the outbound queue, signed where the sender domain has a DKIM key, and through the receiving domain's normal inbound checks. The answer does not wait for delivery: a later temporary refusal is retried, and a permanent one fails that recipient's queue entry and bounces to the sender as a DSN. Sending from your own mailbox requires mail:send. From another mailbox requires mail:send_as on that mailbox. Set on_behalf to true to require mail:send_on_behalf instead: From stays the represented mailbox and RFC 5322 Sender is the authenticated account's own address. Read access grants neither mode. An unknown sender and a sender the caller has no link to return the same 404 not_found. A visible sender without the selected sending capability returns 403 forbidden. Parsed fields that break sender policy or scheduling rules return 422 validation_failed with details.fields naming them. Both modes audit the real account, credential and represented mailbox.
+         * @description The draft (mail:write) is sent as sendMessage sends, and deleted once it is; a refused send keeps it. Draft lookup/access dependency failures return 500 and follow request cancellation. A 201 means the message is durably queued, not that it has arrived. Every recipient, on this server or elsewhere, gets it through the outbound queue, signed where the sender domain has a DKIM key, and through the receiving domain's normal inbound checks. The answer does not wait for delivery: a later temporary refusal is retried, and a permanent one fails that recipient's queue entry and bounces to the sender as a DSN. Optional Idempotency-Key (at most 255 bytes) is scoped to the authenticated account across send, send-draft and forward, and retained for 24 hours after a successful send. A retry of the same route, resource and parsed body returns the original status and result without sending again, even if the draft or original message no longer exists. Different bodies, routes or resources with the same live key return 409 idempotency_conflict. Concurrent matching requests wait for the first transaction to commit, then replay it; if the wait is cancelled or fails, the retry returns 503 deferred and queues nothing. Failed sends roll back and do not consume the key. Current sender and source-mailbox permissions are checked on every replay. Omitting the header preserves ordinary sending. Sending from your own mailbox requires mail:send. From another mailbox requires mail:send_as on that mailbox. Set on_behalf to true to require mail:send_on_behalf instead: From stays the represented mailbox and RFC 5322 Sender is the authenticated account's own address. Read access grants neither mode. An unknown sender and a sender the caller has no link to return the same 404 not_found. A visible sender without the selected sending capability returns 403 forbidden. Parsed fields that break sender policy or scheduling rules return 422 validation_failed with details.fields naming them. Both modes audit the real account, credential and represented mailbox.
          */
         post: operations["sendDraft"];
         delete?: never;
@@ -3028,7 +3028,7 @@ export interface paths {
         put?: never;
         /**
          * Send a message
-         * @description Queued at once (201), or with scheduled_at stored and queued then (202); the outbound pipeline may discard it (200). to needs at least one address. from, to, cc and bcc are described as bare addresses, internationalized or not; the handler also accepts an RFC 5322 display name around one. scheduled_at must be at least a minute ahead and within a year; null or omitted sends at once. A 201 means the message is durably queued, not that it has arrived. Every recipient, on this server or elsewhere, gets it through the outbound queue, signed where the sender domain has a DKIM key, and through the receiving domain's normal inbound checks. The answer does not wait for delivery: a later temporary refusal is retried, and a permanent one fails that recipient's queue entry and bounces to the sender as a DSN. Sending from your own mailbox requires mail:send. From another mailbox requires mail:send_as on that mailbox. Set on_behalf to true to require mail:send_on_behalf instead: From stays the represented mailbox and RFC 5322 Sender is the authenticated account's own address. Read access grants neither mode. An unknown sender and a sender the caller has no link to return the same 404 not_found. A visible sender without the selected sending capability returns 403 forbidden. Parsed fields that break sender policy or scheduling rules return 422 validation_failed with details.fields naming them. Both modes audit the real account, credential and represented mailbox.
+         * @description Queued at once (201), or with scheduled_at stored and queued then (202); the outbound pipeline may discard it (200). to needs at least one address. from, to, cc and bcc are described as bare addresses, internationalized or not; the handler also accepts an RFC 5322 display name around one. scheduled_at must be at least a minute ahead and within a year; null or omitted sends at once. A 201 means the message is durably queued, not that it has arrived. Every recipient, on this server or elsewhere, gets it through the outbound queue, signed where the sender domain has a DKIM key, and through the receiving domain's normal inbound checks. The answer does not wait for delivery: a later temporary refusal is retried, and a permanent one fails that recipient's queue entry and bounces to the sender as a DSN. Optional Idempotency-Key (at most 255 bytes) is scoped to the authenticated account across send, send-draft and forward, and retained for 24 hours after a successful send. A retry of the same route, resource and parsed body returns the original status and result without sending again, even if the draft or original message no longer exists. Different bodies, routes or resources with the same live key return 409 idempotency_conflict. Concurrent matching requests wait for the first transaction to commit, then replay it; if the wait is cancelled or fails, the retry returns 503 deferred and queues nothing. Failed sends roll back and do not consume the key. Current sender and source-mailbox permissions are checked on every replay. Omitting the header preserves ordinary sending. Sending from your own mailbox requires mail:send. From another mailbox requires mail:send_as on that mailbox. Set on_behalf to true to require mail:send_on_behalf instead: From stays the represented mailbox and RFC 5322 Sender is the authenticated account's own address. Read access grants neither mode. An unknown sender and a sender the caller has no link to return the same 404 not_found. A visible sender without the selected sending capability returns 403 forbidden. Parsed fields that break sender policy or scheduling rules return 422 validation_failed with details.fields naming them. Both modes audit the real account, credential and represented mailbox.
          */
         post: operations["sendMessage"];
         delete?: never;
@@ -3107,7 +3107,7 @@ export interface paths {
         put?: never;
         /**
          * Forward a message
-         * @description The message (mail:read) is forwarded through the normal sender authorization, rate limit and outbound policy, with Fwd: and the note above its original header. Stored attachments, including empty and inline parts, are re-attached; the Sent copy owns independent attachment objects. The final signed MIME message is bounded by SMTP_MAX_MESSAGE_SIZE, and sender quota includes the copied parts. Sent, attachment references, quota and queue entries commit together. Unavailable or changed source objects fail the forward instead of dropping parts. A 201 means the message is durably queued, not that it has arrived. Every recipient, on this server or elsewhere, gets it through the outbound queue, signed where the sender domain has a DKIM key, and through the receiving domain's normal inbound checks. The answer does not wait for delivery: a later temporary refusal is retried, and a permanent one fails that recipient's queue entry and bounces to the sender as a DSN. Sending from your own mailbox requires mail:send. From another mailbox requires mail:send_as on that mailbox. Set on_behalf to true to require mail:send_on_behalf instead: From stays the represented mailbox and RFC 5322 Sender is the authenticated account's own address. Read access grants neither mode. An unknown sender and a sender the caller has no link to return the same 404 not_found. A visible sender without the selected sending capability returns 403 forbidden. Parsed fields that break sender policy or scheduling rules return 422 validation_failed with details.fields naming them. Both modes audit the real account, credential and represented mailbox.
+         * @description The message (mail:read) is forwarded through the normal sender authorization, rate limit and outbound policy, with Fwd: and the note above its original header. Stored attachments, including empty and inline parts, are re-attached; the Sent copy owns independent attachment objects. The final signed MIME message is bounded by SMTP_MAX_MESSAGE_SIZE, and sender quota includes the copied parts. Sent, attachment references, quota and queue entries commit together. Unavailable or changed source objects fail the forward instead of dropping parts. A 201 means the message is durably queued, not that it has arrived. Every recipient, on this server or elsewhere, gets it through the outbound queue, signed where the sender domain has a DKIM key, and through the receiving domain's normal inbound checks. The answer does not wait for delivery: a later temporary refusal is retried, and a permanent one fails that recipient's queue entry and bounces to the sender as a DSN. Optional Idempotency-Key (at most 255 bytes) is scoped to the authenticated account across send, send-draft and forward, and retained for 24 hours after a successful send. A retry of the same route, resource and parsed body returns the original status and result without sending again, even if the draft or original message no longer exists. Different bodies, routes or resources with the same live key return 409 idempotency_conflict. Concurrent matching requests wait for the first transaction to commit, then replay it; if the wait is cancelled or fails, the retry returns 503 deferred and queues nothing. Failed sends roll back and do not consume the key. Current sender and source-mailbox permissions are checked on every replay. Omitting the header preserves ordinary sending. Sending from your own mailbox requires mail:send. From another mailbox requires mail:send_as on that mailbox. Set on_behalf to true to require mail:send_on_behalf instead: From stays the represented mailbox and RFC 5322 Sender is the authenticated account's own address. Read access grants neither mode. An unknown sender and a sender the caller has no link to return the same 404 not_found. A visible sender without the selected sending capability returns 403 forbidden. Parsed fields that break sender policy or scheduling rules return 422 validation_failed with details.fields naming them. Both modes audit the real account, credential and represented mailbox.
          */
         post: operations["forwardMessage"];
         delete?: never;
@@ -42812,7 +42812,10 @@ export interface operations {
     sendDraft: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Optional account-scoped retry key, retained for 24 hours after success. Reuse only for the same route, resource and body. */
+                "Idempotency-Key"?: string;
+            };
             path: {
                 id: number;
             };
@@ -42940,6 +42943,25 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
                     "Content-Security-Policy": string;
@@ -43592,7 +43614,10 @@ export interface operations {
     sendMessage: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Optional account-scoped retry key, retained for 24 hours after success. Reuse only for the same route, resource and body. */
+                "Idempotency-Key"?: string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -43734,6 +43759,25 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
                     "Content-Security-Policy": string;
@@ -44849,7 +44893,10 @@ export interface operations {
     forwardMessage: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Optional account-scoped retry key, retained for 24 hours after success. Reuse only for the same route, resource and body. */
+                "Idempotency-Key"?: string;
+            };
             path: {
                 id: number;
             };
@@ -44977,6 +45024,25 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
                     "Content-Security-Policy": string;

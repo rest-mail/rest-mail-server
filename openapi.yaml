@@ -7331,6 +7331,8 @@ paths:
   /api/v1/messages/send:
     post:
       operationId: sendMessage
+      parameters:
+        - $ref: "#/components/parameters/SendIdempotencyKey"
       tags: [Messages]
       security:
         - CookieAuth: [mail:send]
@@ -7370,6 +7372,7 @@ paths:
         not wait for delivery: a later temporary refusal is retried, and a
         permanent one fails that recipient's queue entry and bounces to the
         sender as a DSN.
+        Optional Idempotency-Key is scoped to the authenticated account across send, send-draft and forward for 24 hours after success. The same route, resource and parsed body replay the first status and result without sending again, even after the source is removed. A different body, route or resource returns 409 idempotency_conflict. Concurrent matching requests wait for commit, then replay; cancellation or failure while waiting returns 503 deferred with no new send. Failed sends roll back and do not consume the key. Current sender and source-mailbox permissions apply to replays. Without the header, sending is unchanged.
       requestBody:
         required: true
         content:
@@ -7408,6 +7411,8 @@ paths:
                   list_unsubscribe:
                     mailto: unsubscribe@restmail.test
       responses:
+        "409":
+          $ref: "#/components/responses/SendIdempotencyConflict"
         "201":
           description: Message sent
           content:
@@ -8226,6 +8231,8 @@ paths:
       - $ref: "#/components/parameters/MessageId"
     post:
       operationId: forwardMessage
+      parameters:
+        - $ref: "#/components/parameters/SendIdempotencyKey"
       tags: [Messages]
       security:
         - CookieAuth: [mail:read, mail:send]
@@ -8241,7 +8248,7 @@ paths:
         - GatewaySessionAuth: [mail:read, mail:send_as]
         - GatewaySessionAuth: [mail:read, mail:send_on_behalf]
       summary: Forward a message
-      description: "The message (mail:read) is forwarded through the normal sender authorization, rate limit and outbound policy, with Fwd: and the note above its original header. Stored attachments, including empty and inline parts, are re-attached; the Sent copy owns independent attachment objects. The final signed MIME message is bounded by SMTP_MAX_MESSAGE_SIZE, and sender quota includes the copied parts. Sent, attachment references, quota and queue entries commit together. Unavailable or changed source objects fail the forward instead of dropping parts. A 201 means the message is durably queued, not that it has arrived. Every recipient, on this server or elsewhere, gets it through the outbound queue and the receiving domain's normal inbound checks: a later temporary refusal is retried, and a permanent one bounces to the sender as a DSN."
+      description: "The message (mail:read) is forwarded through the normal sender authorization, rate limit and outbound policy, with Fwd: and the note above its original header. Stored attachments, including empty and inline parts, are re-attached; the Sent copy owns independent attachment objects. The final signed MIME message is bounded by SMTP_MAX_MESSAGE_SIZE, and sender quota includes the copied parts. Sent, attachment references, quota and queue entries commit together. Unavailable or changed source objects fail the forward instead of dropping parts. A 201 means the message is durably queued, not that it has arrived. Every recipient, on this server or elsewhere, gets it through the outbound queue and the receiving domain's normal inbound checks: a later temporary refusal is retried, and a permanent one bounces to the sender as a DSN. Optional Idempotency-Key is scoped to the authenticated account across send, send-draft and forward for 24 hours after success. The same route, resource and parsed body replay the first status and result without sending again, even after the source is removed. A different body, route or resource returns 409 idempotency_conflict. Concurrent matching requests wait for commit, then replay; cancellation or failure while waiting returns 503 deferred with no new send. Failed sends roll back and do not consume the key. Current sender and source-mailbox permissions apply to replays. Without the header, sending is unchanged."
       requestBody:
         required: true
         content:
@@ -8253,6 +8260,8 @@ paths:
               to: [admin@restmail.test]
               body_text: See below.
       responses:
+        "409":
+          $ref: "#/components/responses/SendIdempotencyConflict"
         '202':
           description: 'Retained: scheduled for later, or held by a send limit until human release'
           content:
@@ -8555,6 +8564,8 @@ paths:
       - $ref: "#/components/parameters/MessageId"
     post:
       operationId: sendDraft
+      parameters:
+        - $ref: "#/components/parameters/SendIdempotencyKey"
       description: >-
         Draft lookup/access dependency failures return 500 and follow request cancellation. The broader send and post-send cleanup behavior is unchanged.
         A 201 means the message is durably queued, not that it has arrived.
@@ -8564,6 +8575,7 @@ paths:
         not wait for delivery: a later temporary refusal is retried, and a
         permanent one fails that recipient's queue entry and bounces to the
         sender as a DSN.
+        Optional Idempotency-Key is scoped to the authenticated account across send, send-draft and forward for 24 hours after success. The same route, resource and parsed body replay the first status and result without sending again, even after the source is removed. A different body, route or resource returns 409 idempotency_conflict. Concurrent matching requests wait for commit, then replay; cancellation or failure while waiting returns 503 deferred with no new send. Failed sends roll back and do not consume the key. Current sender and source-mailbox permissions apply to replays. Without the header, sending is unchanged.
       tags: [Drafts]
       security:
         - CookieAuth: [mail:write, mail:send]
@@ -8597,6 +8609,8 @@ paths:
                     https:
                       type: string
       responses:
+        "409":
+          $ref: "#/components/responses/SendIdempotencyConflict"
         '202':
           description: 'Retained: scheduled for later, or held by a send limit until human release'
           content:
@@ -25500,6 +25514,14 @@ components:
       schema:
         type: string
   parameters:
+    SendIdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: Optional account-scoped retry key, retained for 24 hours after success. Reuse only for the same route, resource and body.
+      schema:
+        type: string
+        maxLength: 255
     CSRFToken:
       name: X-CSRF-Token
       in: header
@@ -25558,6 +25580,29 @@ components:
       example: INBOX
 
   responses:
+    SendIdempotencyConflict:
+      description: Idempotency-Key was already used for a different send request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            idempotency_conflict:
+              value:
+                error:
+                  code: idempotency_conflict
+                  message: Idempotency-Key was already used for a different send request
+      "headers":
+        "Content-Security-Policy":
+          "$ref": "#/components/headers/Content-Security-Policy"
+        "Referrer-Policy":
+          "$ref": "#/components/headers/Referrer-Policy"
+        "Strict-Transport-Security":
+          "$ref": "#/components/headers/Strict-Transport-Security"
+        "X-Content-Type-Options":
+          "$ref": "#/components/headers/X-Content-Type-Options"
+        "X-Frame-Options":
+          "$ref": "#/components/headers/X-Frame-Options"
     Unauthorized:
       description: Authentication required or invalid credentials
       content:
