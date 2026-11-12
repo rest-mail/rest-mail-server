@@ -34,6 +34,7 @@ import (
 	rmime "github.com/rest-mail/rest-mail-server/internal/mime"
 	"github.com/rest-mail/rest-mail-server/internal/requestid"
 	"github.com/rest-mail/rest-mail-server/internal/rollup"
+	"github.com/rest-mail/rest-mail-server/internal/sendidempotency"
 	"github.com/rest-mail/rest-mail-server/internal/trace"
 	"github.com/rest-mail/rest-mail-server/internal/tracing"
 	"github.com/rest-mail/rest-mail-server/internal/vacation"
@@ -418,6 +419,8 @@ func main() {
 	// bounded rather than growing one row per (mailbox, sender) forever.
 	vacationPurger := vacation.NewPurger(database, time.Hour, vacation.DefaultRetention)
 	vacationPurger.Start()
+	sendIdempotencyPurger := sendidempotency.NewPurger(database, time.Hour)
+	sendIdempotencyPurger.Start()
 
 	// Rotate the DKIM key of every domain with an interval (#728). The worker never writes
 	// DNS: a staged key's record joins the operator's records (restmail-api dns), and the
@@ -502,6 +505,7 @@ func main() {
 	gatewaySessionSweeper.Shutdown()
 	attachmentCleaner.Stop()
 	vacationPurger.Shutdown()
+	sendIdempotencyPurger.Shutdown()
 	dkimRotation.Shutdown()
 	digestWorker.Shutdown()
 	// Stop sending scheduled mail before the trace recorder it reports to.
