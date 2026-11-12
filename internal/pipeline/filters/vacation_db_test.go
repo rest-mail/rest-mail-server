@@ -54,7 +54,7 @@ func TestVacation_ReplyLeavesWithNullSender(t *testing.T) {
 	}
 	res, err := f.Execute(context.Background(), &pipeline.EmailJSON{
 		Envelope: pipeline.Envelope{MailFrom: "Friend@Elsewhere.test", RcptTo: []string{box.Address}},
-		Headers:  pipeline.Headers{From: []pipeline.Address{{Address: "friend@elsewhere.test"}}, MessageID: "<m1@elsewhere.test>"},
+		Headers:  pipeline.Headers{From: pipeline.Addresses([]pipeline.Address{{Address: "friend@elsewhere.test"}}...), MessageID: "<m1@elsewhere.test>"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -160,7 +160,7 @@ func TestVacation_IntervalRunsFromTheLatestReply(t *testing.T) {
 		t.Helper()
 		res, err := f.Execute(context.Background(), &pipeline.EmailJSON{
 			Envelope: pipeline.Envelope{MailFrom: "friend@elsewhere.test", RcptTo: []string{box.Address}},
-			Headers:  pipeline.Headers{From: []pipeline.Address{{Address: "friend@elsewhere.test"}}, MessageID: fmt.Sprintf("<m%d@elsewhere.test>", n)},
+			Headers:  pipeline.Headers{From: pipeline.Addresses([]pipeline.Address{{Address: "friend@elsewhere.test"}}...), MessageID: fmt.Sprintf("<m%d@elsewhere.test>", n)},
 		})
 		if err != nil {
 			t.Fatal(err)

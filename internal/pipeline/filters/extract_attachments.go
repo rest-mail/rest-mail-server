@@ -9,7 +9,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/rest-mail/rest-mail-server/internal/attachmentstore"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
@@ -181,17 +183,20 @@ func (f *extractAttFilter) store(ctx context.Context, att pipeline.Attachment, d
 	return ref, checksum, nil
 }
 
+// sanitizeFilename is the part of a stored attachment's path that comes from its name. The path is a
+// file's name and a text column, so it's short enough for one and valid UTF-8 for the other, cut
+// between characters: a sender chooses the name.
 func sanitizeFilename(name string) string {
-	// Remove path separators and null bytes
-	result := make([]byte, 0, len(name))
-	for _, b := range []byte(name) {
-		if b == '/' || b == '\\' || b == 0 {
+	const longest = 100
+	result := make([]byte, 0, min(len(name), longest))
+	for _, r := range strings.ToValidUTF8(name, "") {
+		if r == '/' || r == '\\' || r == 0 {
 			continue
 		}
-		result = append(result, b)
-	}
-	if len(result) > 100 {
-		result = result[:100]
+		if len(result)+utf8.RuneLen(r) > longest {
+			break
+		}
+		result = utf8.AppendRune(result, r)
 	}
 	return string(result)
 }

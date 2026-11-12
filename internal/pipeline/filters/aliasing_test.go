@@ -82,7 +82,7 @@ func TestDKIMVerify_CoexistsWithSPFAuthResults(t *testing.T) {
 	email := &pipeline.EmailJSON{
 		Envelope: pipeline.Envelope{ClientIP: "203.0.113.7", MailFrom: "user@example.com"},
 		Headers: pipeline.Headers{
-			From: []pipeline.Address{{Address: "user@example.com"}},
+			From: pipeline.Addresses([]pipeline.Address{{Address: "user@example.com"}}...),
 		},
 	}
 

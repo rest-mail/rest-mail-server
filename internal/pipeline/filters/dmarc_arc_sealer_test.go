@@ -16,7 +16,7 @@ func arcEmail(fromDomain, arcStatus, arcSealer string) (context.Context, *pipeli
 	ctx := authCtx(pipeline.AuthResult{Method: pipeline.AuthARC, Result: arcStatus, Domain: arcSealer})
 	return ctx, &pipeline.EmailJSON{
 		Headers: pipeline.Headers{
-			From: []pipeline.Address{{Address: "ceo@" + fromDomain}},
+			From: pipeline.Addresses([]pipeline.Address{{Address: "ceo@" + fromDomain}}...),
 		},
 	}
 }

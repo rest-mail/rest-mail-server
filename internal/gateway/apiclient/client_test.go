@@ -195,8 +195,8 @@ func TestDeliverMessage_Success(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"data": map[string]interface{}{
 				"id":         100,
-				"mailbox_id": 42,
-				"subject":    "Hello",
+				"message_id": "hello@example.com",
+				"folder":     "INBOX",
 			},
 		})
 	})
@@ -214,8 +214,8 @@ func TestDeliverMessage_Success(t *testing.T) {
 	if resp.Data.ID != 100 {
 		t.Fatalf("expected message ID 100, got %d", resp.Data.ID)
 	}
-	if resp.Data.Subject != "Hello" {
-		t.Fatalf("expected subject 'Hello', got %q", resp.Data.Subject)
+	if resp.Data.Folder != "INBOX" {
+		t.Fatalf("expected folder 'INBOX', got %q", resp.Data.Folder)
 	}
 }
 
@@ -1241,6 +1241,9 @@ func TestOpenSession_OnePathForEveryPasswordAndNoBasic(t *testing.T) {
 			t.Errorf("the open call carried Authorization %q", h)
 		}
 		seen = append(seen, body.Password)
+		if body.ClientIP != "198.51.100.7" {
+			t.Errorf("the open call says the mail client is at %q", body.ClientIP)
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{"data": map[string]interface{}{
@@ -1266,7 +1269,7 @@ func TestOpenSession_OnePathForEveryPasswordAndNoBasic(t *testing.T) {
 
 	c := New(srv.URL)
 	for _, password := range []string{"the account's own password", "rm_AAAAAAAAAAAA_secretsecretsecretsecretsecretsecretsecretsec"} {
-		resp, err := c.OpenSession("chris@example.test", password, "pop3")
+		resp, err := c.OpenSession("chris@example.test", password, "pop3", "198.51.100.7")
 		if err != nil {
 			t.Fatalf("OpenSession(%q): %v", password, err)
 		}

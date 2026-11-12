@@ -64,9 +64,9 @@ type Address struct {
 
 // Headers holds parsed and raw headers.
 type Headers struct {
-	From       []Address           `json:"from"`
-	To         []Address           `json:"to"`
-	Cc         []Address           `json:"cc,omitempty"`
+	From       AddressList         `json:"from"`
+	To         AddressList         `json:"to"`
+	Cc         AddressList         `json:"cc,omitzero"`
 	Bcc        []Address           `json:"bcc,omitempty"`
 	Subject    string              `json:"subject"`
 	Date       string              `json:"date"`
@@ -82,6 +82,10 @@ type Body struct {
 	ContentType string `json:"content_type"`
 	Content     string `json:"content,omitempty"`
 	Parts       []Body `json:"parts,omitempty"`
+	// TransferEncoding names the encoding Content is already in, for the serializer's
+	// Content-Transfer-Encoding header. Only a message the server writes itself sets it: a
+	// parsed body holds decoded text, which is what a filter sees.
+	TransferEncoding string `json:"-"`
 }
 
 // Attachment represents an email attachment or inline image.

@@ -41,7 +41,7 @@ func (f *headerValidateFilter) Type() pipeline.FilterType { return pipeline.Filt
 func (f *headerValidateFilter) Execute(_ context.Context, email *pipeline.EmailJSON) (*pipeline.FilterResult, error) {
 	var issues []string
 
-	if f.cfg.RequireFrom && len(email.Headers.From) == 0 {
+	if f.cfg.RequireFrom && email.Headers.From.Len() == 0 {
 		issues = append(issues, "missing From header")
 	}
 
