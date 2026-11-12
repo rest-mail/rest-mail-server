@@ -12022,8 +12022,9 @@ paths:
         Stored text, recipient JSON strings and keys, and decoded raw_message octets
         must not contain NUL (U+0000); invalid input is 422 validation_failed naming
         the field before any write. raw_message is standard padded base64 (format: byte).
-        Empty or omitted folder means INBOX; a nonempty name is at most 255 UTF-8 bytes,
-        has no surrounding whitespace, control characters or "..".
+        The recipient is resolved from address. Arriving mail uses server time and
+        default Inbox/flags, subject to inbound rules. Import-only fields sent by
+        older callers are ignored.
       security: []
       x-internal-mtls: true
       requestBody:
@@ -12041,16 +12042,10 @@ paths:
                 value: {"address": "admin@restmail.test", "sender": "sender@example.net", "subject": "Hello", "body_text": "Hello"}
               delivered:
                 value: {"address": "admin@restmail.test", "sender": "sender@example.net", "subject": "Subject", "body_text": "Hello"}
-              folder_invalid:
-                value: {"address": "admin@restmail.test", "sender": "sender@example.net", "subject": "Hello", "body_text": "Hello", "folder": " Archive"}
               internal_error:
                 value: {"address": "admin@restmail.test", "sender": "sender@example.net", "subject": "Subject", "body_text": "Hello"}
-              mailbox_id_zero:
-                value: {"mailbox_id": 0}
               no_mailbox:
                 value: {"address": "nobody@restmail.test", "sender": "sender@example.net", "subject": "Hello", "body_text": "Hello"}
-              no_mailbox_by_id:
-                value: {"mailbox_id": 2147483647}
               processed:
                 value: {"address": "admin@restmail.test", "sender": "sender@example.net", "subject": "Hello", "body_text": "Hello"}
               recipient_missing:
@@ -12087,15 +12082,11 @@ paths:
                 $ref: '#/components/schemas/ValidationErrorResponse'
               examples:
                 address_empty:
-                  value: {"error": {"code": "validation_failed", "message": "Request body failed validation", "details": {"fields": {"address": "mailbox_id or address required"}}}}
+                  value: {"error": {"code": "validation_failed", "message": "Request body failed validation", "details": {"fields": {"address": "required"}}}}
                 body_array:
                   value: {"error": {"code": "validation_failed", "message": "Request body failed validation", "details": {"fields": {"body": "the body is not a JSON object"}}}}
-                folder_invalid:
-                  value: {"error": {"code": "validation_failed", "message": "Request body failed validation", "details": {"fields": {"folder": "must not begin or end with a space"}}}}
-                mailbox_id_zero:
-                  value: {"error": {"code": "validation_failed", "message": "Request body failed validation", "details": {"fields": {"address": "mailbox_id or address required"}}}}
                 recipient_missing:
-                  value: {"error": {"code": "validation_failed", "message": "Request body failed validation", "details": {"fields": {"address": "mailbox_id or address required"}}}}
+                  value: {"error": {"code": "validation_failed", "message": "Request body failed validation", "details": {"fields": {"address": "required"}}}}
           "headers":
             "Content-Security-Policy":
               "$ref": "#/components/headers/Content-Security-Policy"
@@ -27980,25 +27971,11 @@ components:
 
     DeliverMessageRequest:
       type: object
-      required: [address, sender]
-      # A delivery names its mailbox by a nonzero mailbox_id or a nonempty
-      # address; the binder refuses one naming neither.
-      anyOf:
-        - required: [mailbox_id]
-          properties:
-            mailbox_id:
-              minimum: 1
-        - required: [address]
-          properties:
-            address:
-              minLength: 1
+      required: [address]
       properties:
-        is_answered:
-          type:
-          - boolean
-          - 'null'
         address:
           type: string
+          minLength: 1
           pattern: '^[^\x00]*$'
           format: email
           description: Recipient address

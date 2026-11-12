@@ -130,7 +130,7 @@ func bindDeliveryBody(t *testing.T, route, contentType string, body []byte) (ref
 	var boundText, boundHTML string
 	if route == "gateway" {
 		var req deliverMessageBody
-		spool, err = spoolDelivery(r, &req, spooledBodySpec{declared: deliveryDeclaredFields}, func() []byte { return req.RawMessage })
+		spool, err = spoolDelivery(r, &req, spooledBodySpec{declared: deliveryDeclaredFields, ignored: deliveryImportOnlyFields}, func() []byte { return req.RawMessage })
 		boundText, boundHTML = req.BodyText, req.BodyHTML
 	} else {
 		var in restmailDeliverInput

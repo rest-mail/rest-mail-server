@@ -137,7 +137,7 @@ func deliverInvite(t *testing.T, d *calendarDeliveryDB) *httptest.ResponseRecord
 	NewMessageHandler(db, nil, nil, "", nil).RegisterDelivery(
 		endpoint.Routes{Router: router, Registry: endpoint.NewRegistry()},
 		endpoint.Middleware{Wrap: func(next http.Handler) http.Handler { return next }})
-	body, _ := json.Marshal(map[string]any{"mailbox_id": 2, "sender": "organizer@remote.example",
+	body, _ := json.Marshal(map[string]any{"address": "one@example.test", "sender": "organizer@remote.example",
 		"subject": "Planning", "body_text": "Join us.", "raw_message": []byte(inviteRaw)})
 	rr := httptest.NewRecorder()
 	router.ServeHTTP(rr, deliveryRequest(t, string(body), "/api/v1/messages/deliver"))
