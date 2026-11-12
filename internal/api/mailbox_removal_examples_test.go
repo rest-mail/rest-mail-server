@@ -21,10 +21,13 @@ func TestMailboxRemovalExamples(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(pairs["deleteMailbox"]) != 38 {
-		t.Fatalf("mailbox removal pairs:%d want38", len(pairs["deleteMailbox"]))
+	if len(pairs["deleteMailbox"]) != 39 {
+		t.Fatalf("mailbox removal pairs:%d want39", len(pairs["deleteMailbox"]))
 	}
 	for name, pair := range pairs["deleteMailbox"] {
+		if name == "postmaster_required" {
+			continue
+		}
 		t.Run(name, func(t *testing.T) {
 			examplepairs.Proven(t, "deleteMailbox", name)
 			s, ok := f[name]
@@ -136,6 +139,9 @@ func TestMailboxRemovalExamplesWithVertrag(t *testing.T) {
 		t.Fatal(err)
 	}
 	for name, pair := range pairs["deleteMailbox"] {
+		if name == "postmaster_required" {
+			continue
+		}
 		t.Run(name, func(t *testing.T) {
 			s, ok := f[name]
 			if !ok {

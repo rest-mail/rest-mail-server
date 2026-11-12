@@ -339,7 +339,7 @@ func (h *AccountHandler) create(r *http.Request, req createAccountRequest) (acco
 	}
 	errExists := errors.New("exists")
 	errOwnedLimit := endpoint.Refuse(http.StatusConflict, "owned_account_limit", "The maximum number of owned accounts has been reached")
-	err = h.db.Transaction(func(tx *gorm.DB) error {
+	err = preservePostmasters(h.db, true, func(tx *gorm.DB) error {
 		if req.Owned {
 			chain, err := repositories.StorageQuotaChain(tx, claims.AccountID, true)
 			if err != nil {

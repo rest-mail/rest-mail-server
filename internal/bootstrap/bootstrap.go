@@ -326,7 +326,7 @@ func EnsureFirstAdminWith(database *gorm.DB, address string, credential Bootstra
 
 	created := false
 	err = database.Transaction(func(tx *gorm.DB) error {
-		d, err := ensureDomain(tx, domain)
+		d, newDomain, err := ensureDomain(tx, domain)
 		if err != nil {
 			return err
 		}
@@ -355,6 +355,11 @@ func EnsureFirstAdminWith(database *gorm.DB, address string, credential Bootstra
 				return err
 			}
 		}
+		if newDomain && local != "postmaster" {
+			if _, err := repositories.CreateDomainPostmaster(tx, *d); err != nil {
+				return err
+			}
+		}
 		// The admin role at "*" to work with day to day, and superadmin at "*"
 		// to escalate to: eligible, switched on with a fresh code and a reason
 		// only when needed (#346), so a stolen phone or session never carries
@@ -379,18 +384,18 @@ func EnsureFirstAdminWith(database *gorm.DB, address string, credential Bootstra
 // ensureDomain finds the domain name, or creates it as a fresh install's
 // first domain: not live (it has no certificate yet), with the default
 // inbound and outbound pipelines, as the admin API creates one.
-func ensureDomain(tx *gorm.DB, name string) (*models.Domain, error) {
+func ensureDomain(tx *gorm.DB, name string) (*models.Domain, bool, error) {
 	var d models.Domain
 	err := tx.Where("name = ?", name).First(&d).Error
 	if err == nil {
-		return &d, nil
+		return &d, false, nil
 	}
 	if !errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, err
+		return nil, false, err
 	}
 	d = models.Domain{Name: name, ServerType: "restmail", Active: false, DefaultQuotaBytes: 1 << 30}
 	if err := tx.Create(&d).Error; err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	for _, direction := range []string{"inbound", "outbound"} {
 		if err := tx.Create(&models.Pipeline{
@@ -399,10 +404,10 @@ func ensureDomain(tx *gorm.DB, name string) (*models.Domain, error) {
 			Filters:   pipeline.DefaultPipelineJSON(direction),
 			Active:    true,
 		}).Error; err != nil {
-			return nil, err
+			return nil, false, err
 		}
 	}
-	return &d, nil
+	return &d, true, nil
 }
 
 // AdminExists reports whether any account holds a grant at "*", active or

@@ -45,6 +45,8 @@ func (c *mailboxUpdateConnection) record(q string, args []driver.NamedValue) {
 
 func (c *mailboxUpdateConnection) QueryContext(ctx context.Context, q string, args []driver.NamedValue) (driver.Rows, error) {
 	switch {
+	case strings.Contains(q, "EXISTS (SELECT 1 FROM mailboxes"):
+		return &authReadSnapshotRows{columns: []string{"id"}}, nil
 	case strings.Contains(q, `FROM "mailboxes"`) && strings.HasPrefix(q, `SELECT "address"`) && !strings.Contains(q, "active"):
 		c.record(q, args)
 		if len(args) < 1 || !strings.Contains(q, "id =") {
@@ -77,6 +79,9 @@ func (c *mailboxUpdateConnection) QueryContext(ctx context.Context, q string, ar
 }
 
 func (c *mailboxUpdateConnection) ExecContext(_ context.Context, q string, args []driver.NamedValue) (driver.Result, error) {
+	if strings.Contains(q, "pg_advisory_xact_lock") {
+		return driver.RowsAffected(0), nil
+	}
 	if !strings.HasPrefix(q, `UPDATE "mailboxes" SET`) {
 		return nil, errors.New("unexpected ancillary mailbox write")
 	}

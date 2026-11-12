@@ -82,7 +82,7 @@ func TestDomainMutationExamples(t *testing.T) {
 					case "ROLLBACK":
 						rollbacks++
 					default:
-						if !strings.HasPrefix(m.query, "SELECT") {
+						if strings.HasPrefix(m.query, `INSERT INTO "domains"`) || strings.HasPrefix(m.query, `INSERT INTO "pipelines"`) || strings.HasPrefix(m.query, `UPDATE "domains"`) {
 							writes = append(writes, m)
 						}
 					}
@@ -114,6 +114,22 @@ func TestDomainMutationExamples(t *testing.T) {
 						var answer struct{ Data map[string]interface{} }
 						if err := json.Unmarshal(pair.Response.Body, &answer); err != nil {
 							t.Fatal(err)
+						}
+						var provisioned []bulkQueueExampleMutation
+						for _, mutation := range calls {
+							if strings.HasPrefix(mutation.query, `INSERT INTO "mailboxes"`) {
+								provisioned = append(provisioned, mutation)
+							}
+						}
+						if len(provisioned) != 1 {
+							t.Fatalf("postmaster inserts: %d, want 1", len(provisioned))
+						}
+						account, err := exampleInsertFields(provisioned[0].query, provisioned[0].args)
+						if err != nil {
+							t.Fatal(err)
+						}
+						if account["domain_id"] != int64(1) || account["local_part"] != "postmaster" || account["address"] != "postmaster@"+answer.Data["name"].(string) || account["active"] != true {
+							t.Fatalf("postmaster defaults: %v", account)
 						}
 						fields, err := exampleInsertFields(writes[0].query, writes[0].args)
 						if err != nil {

@@ -202,9 +202,15 @@ class ExampleStateHookTest(unittest.TestCase):
     def test_report_address_success_uses_the_callers_live_mailbox(self):
         name = "/api/v1/accounts/{id}/addresses > List the addresses an account receives at and may send from > 200 > application/json"
         example = json.loads((ROOT / "openapi-example.json").read_text())["listAccountAddresses"]["primary"]
-        for phase in ("CONTRACT_AUTHORIZATION", "CONTRACT_OWNERSHIP"):
+        # None is the primary and examples run, where id 10 is whichever
+        # account was made tenth (e2e stage 2's retired postmaster).
+        for phase in (None, "CONTRACT_AUTHORIZATION", "CONTRACT_OWNERSHIP"):
             for address in (self.hooks.ADMIN, self.hooks.mfa_admin.ADDRESS):
-                with self.subTest(phase=phase, address=address), patch.dict(os.environ, {phase: "1"}):
+                with self.subTest(phase=phase, address=address), patch.dict(os.environ):
+                    for marker in ("CONTRACT_AUTHORIZATION", "CONTRACT_OWNERSHIP"):
+                        os.environ.pop(marker, None)
+                    if phase:
+                        os.environ[phase] = "1"
                     sent = self.transaction(name, f"/api/v1/accounts/{example['request']['path']['id']}/addresses")
                     payload = base64.urlsafe_b64encode(json.dumps({"address": address}).encode()).decode().rstrip("=")
                     sent["request"]["headers"] = {"Authorization": f"Bearer fixture.{payload}.signature"}
@@ -221,12 +227,11 @@ class ExampleStateHookTest(unittest.TestCase):
     def test_address_refusals_foreign_targets_and_non_report_examples_are_preserved(self):
         name = "/api/v1/accounts/{id}/addresses > List the addresses an account receives at and may send from > 200 > application/json"
         cases = [(phase, status, account, address)
-                 for phase in ("CONTRACT_AUTHORIZATION", "CONTRACT_OWNERSHIP")
+                 for phase in (None, "CONTRACT_AUTHORIZATION", "CONTRACT_OWNERSHIP")
                  for status, account, address in (
                      (422, 0, self.hooks.ADMIN), (404, 2147483647, self.hooks.ADMIN),
                      (200, 7, self.hooks.ADMIN), (200, 9, self.hooks.ADMIN),
                      (200, 10, "ordinary@restmail.test"), (200, 10, None))]
-        cases.append((None, 200, 10, self.hooks.ADMIN))
         for phase, status, account, address in cases:
             with self.subTest(phase=phase, status=status, account=account, address=address), patch.dict(os.environ):
                 for marker in ("CONTRACT_AUTHORIZATION", "CONTRACT_OWNERSHIP"):

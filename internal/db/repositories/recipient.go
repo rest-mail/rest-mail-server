@@ -64,6 +64,14 @@ func findRecipientAlias(db *gorm.DB, address string, liveDomainOnly bool) (model
 }
 
 func ResolveRecipient(db *gorm.DB, address string, liveDomainOnly bool) (Recipient, error) {
+	return resolveRecipient(db, address, liveDomainOnly, 0)
+}
+
+func ResolveSetupRecipient(db *gorm.DB, address string, domainID uint) (Recipient, error) {
+	return resolveRecipient(db, address, false, domainID)
+}
+
+func resolveRecipient(db *gorm.DB, address string, liveDomainOnly bool, setupDomainID uint) (Recipient, error) {
 	resolved := Recipient{Address: address}
 	seen := make(map[string]bool)
 	for hops := 0; ; {
@@ -97,9 +105,11 @@ func ResolveRecipient(db *gorm.DB, address string, liveDomainOnly bool) (Recipie
 		}
 		seen[canonical] = true
 		var mailbox models.Mailbox
-		err = FindReceivingMailboxByAddress(db, resolved.Address, &mailbox)
-		// FindReceivingMailboxByAddress already refuses a mailbox on a domain that
-		// is not live, so every caller gets delivery's rule (#1845).
+		err = findReceivingMailbox(db, resolved.Address, &mailbox, setupDomainID)
+		// findReceivingMailbox already refuses a mailbox on a domain that is not
+		// live, so every caller gets delivery's rule (#1845). Only the domain being
+		// set up is excused, because its postmaster route is checked before it goes
+		// live.
 		if err == nil {
 			resolved.Mailbox, resolved.Address = mailbox, mailbox.Address
 			return resolved, nil
@@ -112,7 +122,7 @@ func ResolveRecipient(db *gorm.DB, address string, liveDomainOnly bool) (Recipie
 			if !alias.Active {
 				return Recipient{}, aliasRoutingError("inactive alias")
 			}
-			if !alias.Domain.Active {
+			if !alias.Domain.Active && alias.DomainID != setupDomainID {
 				return Recipient{}, aliasRoutingError("alias domain is not active")
 			}
 			if hops == MaxAliasHops {
@@ -131,7 +141,7 @@ func ResolveRecipient(db *gorm.DB, address string, liveDomainOnly bool) (Recipie
 			return Recipient{}, err
 		}
 		if base, _, tagged := rmail.StripSubaddress(resolved.Address); tagged {
-			if err := FindReceivingMailboxByAddress(db, base, &mailbox); err == nil {
+			if err := findReceivingMailbox(db, base, &mailbox, setupDomainID); err == nil {
 				resolved.Mailbox, resolved.Address, resolved.DeliveredTo = mailbox, mailbox.Address, address
 				return resolved, nil
 			} else if errors.Is(err, ErrMailboxUnavailable) || !errors.Is(err, gorm.ErrRecordNotFound) {
