@@ -1393,6 +1393,7 @@ def the_listing_holds_what_was_made(transaction):
 @hooks.before("updateDomain")
 @hooks.before("deleteDomain")
 @hooks.before("inviteAccount")
+@hooks.before("restoreDomain")
 @hooks.before("listAuditEntries")
 @hooks.before("verifyAuditLog")
 @hooks.before("releaseQuarantine")
@@ -2201,6 +2202,22 @@ def keep_the_created_domain(transaction):
         return
     hooks.stash["domain_id"] = data.get("id")
     hooks.stash["domain"] = data.get("name")
+
+
+@hooks.before("restoreDomain")
+def an_archived_domain_to_restore(transaction):
+    path, separator, query = transaction["fullPath"].partition("?")
+    matched = re.fullmatch(r"/api/v1/admin/domains/([1-9][0-9]*)/restore", path)
+    if not matched or not any(f" > {status}" in transaction.get("name", "") for status in (200, 403, 409)):
+        return
+    if asked_for_a_clean_start():
+        start_clean(transaction)
+    name = f"contract-restore-{time.time_ns()}.test"
+    domain = fixture_call(transaction, "POST", "/api/v1/admin/domains", {"name": name})
+    as_the_two_factor_admin_call(origin_of(transaction), "DELETE", f"/api/v1/admin/domains/{domain['id']:d}")
+    if " > 409" in transaction.get("name", ""):
+        fixture_call(transaction, "POST", "/api/v1/admin/domains", {"name": name})
+    transaction["fullPath"] = f"/api/v1/admin/domains/{domain['id']:d}/restore" + (separator + query if separator else "")
 
 
 @hooks.before("deleteDomain")
@@ -3855,11 +3872,13 @@ def a_message_in(transaction, account, folder, sender, subject, body):
 
 @hooks.before("listAccountAddresses")
 def report_addresses_of_the_callers_own_account(transaction):
+    # The documented success names account 10, which is only an id: which
+    # account holds it depends on how many were made before, and a domain's
+    # provisioned postmaster takes one too (e2e stage 2's throwaway domain's
+    # postmaster is 10 and is retired with it). Sent by an administrator, in
+    # any run, it asks for the caller's own account, looked up by address.
     if (
-        not any(os.environ.get(phase) == "1" for phase in (
-            "CONTRACT_AUTHORIZATION", "CONTRACT_OWNERSHIP"
-        ))
-        or " > 200 > " not in transaction.get("name", "")
+        " > 200 > " not in transaction.get("name", "")
         or transaction.get("fullPath") != "/api/v1/accounts/10/addresses"
     ):
         return

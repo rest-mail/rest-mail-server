@@ -58,7 +58,7 @@ func TestInvitationRefusesBadInputBeforeStorage(t *testing.T) {
 func TestInvitationPersistence(t *testing.T) {
 	gdb := openScratchDatabase(t)
 	mustRBAC(t, gdb)
-	domain, err := ensureDomain(gdb, "invitation.example")
+	domain, _, err := ensureDomain(gdb, "invitation.example")
 	if err != nil {
 		t.Fatal(err)
 	}

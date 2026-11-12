@@ -73,6 +73,9 @@ func (tx *mailboxRemovalTx) Rollback() error {
 }
 
 func (c *mailboxRemovalConnection) QueryContext(ctx context.Context, q string, args []driver.NamedValue) (driver.Rows, error) {
+	if strings.Contains(q, "EXISTS (SELECT 1 FROM mailboxes") {
+		return &authReadSnapshotRows{columns: []string{"id"}}, nil
+	}
 	if strings.Contains(q, `FROM "mailboxes"`) {
 		if strings.HasPrefix(q, `SELECT "active"`) {
 			return &authReadSnapshotRows{columns: []string{"active"}, rows: [][]driver.Value{{true}}}, nil

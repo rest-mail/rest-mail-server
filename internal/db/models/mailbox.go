@@ -10,6 +10,7 @@ type Mailbox struct {
 	DomainID                uint   `gorm:"not null;index" json:"domain_id"`
 	LocalPart               string `gorm:"size:64;not null" json:"local_part"`
 	Address                 string `gorm:"size:255;not null;uniqueIndex" json:"address"`
+	ProvisionedPostmaster   bool   `gorm:"not null;default:false" json:"-"`
 	DisplayName             string `gorm:"size:255" json:"display_name"`
 	ContactReplyTimeEnabled bool   `gorm:"not null;default:false" json:"-"`
 	QuietHoursEnabled       bool   `gorm:"not null;default:false" json:"-"`

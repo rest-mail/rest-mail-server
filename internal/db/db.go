@@ -74,6 +74,7 @@ func autoMigrate(db *gorm.DB) error {
 
 	err := db.AutoMigrate(
 		&models.Domain{},
+		&models.DomainRetirement{},
 		&models.DKIMRotationKey{},
 		&models.Mailbox{},
 		&models.Alias{},
