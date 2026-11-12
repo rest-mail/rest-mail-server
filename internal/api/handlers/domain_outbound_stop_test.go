@@ -127,7 +127,7 @@ func TestDomainOutboundStop_ThroughTheAdminAPI(t *testing.T) {
 	// Inbound mail to the stopped domain is delivered as before.
 	rr := httptest.NewRecorder()
 	deliveryRoute(NewMessageHandler(tx, nil, nil, "", nil))(rr, httptest.NewRequest(http.MethodPost, "/api/v1/messages/deliver",
-		strings.NewReader(fmt.Sprintf(`{"mailbox_id":%d,"sender":"someone@remote.test","subject":"still arrives","body_text":"hello"}`, fx.mailbox.ID))))
+		strings.NewReader(fmt.Sprintf(`{"address":%q,"sender":"someone@remote.test","subject":"still arrives","body_text":"hello"}`, fx.mailbox.Address))))
 	if rr.Code != http.StatusCreated || countMessages(t, tx, fx.mailbox.ID) != 1 {
 		t.Fatalf("inbound delivery to a stopped domain: %d %s, %d messages; want 201 and the message stored", rr.Code, rr.Body, countMessages(t, tx, fx.mailbox.ID))
 	}
