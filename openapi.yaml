@@ -1054,6 +1054,11 @@ paths:
         only through its owners) cannot be signed in to, and is answered as a
         wrong password. There is no other kind of sign-in: no username.
 
+        A wrong password or second-factor code is still answered 401, after a
+        wait that grows with the address's recent failures: up to 3 seconds
+        from anywhere, and up to 5 for failures from the same client. The wait
+        never becomes a refusal, and a correct password is answered without one.
+
         On success a browser gets three cookies: restmail_access (httpOnly, the
         session token), restmail_refresh (httpOnly, scoped to /api/v1/auth), and
         restmail_csrf (readable, for the double-submit CSRF header), and no
@@ -2309,10 +2314,16 @@ paths:
         The mail client''s address and password or app password come once, in the body:
         this is the only request that takes a mail client''s password (there is no HTTP
         Basic). A refused one is recorded as auth.credential_refused and refusals are
-        throttled; an account with two-factor authentication needs an app password. The answer''s token is sent as
+        throttled; client_ip is the address the mail client connected to the gateway from,
+        and the throttle, the refusals'' budget and the audit record go by it instead of the
+        gateway''s own. Only a gateway''s certificate is believed about it. An account with
+        two-factor authentication needs an app password. The answer''s token is sent as
         Bearer on every call the gateway then makes for that connection, over the internal
         listener with the same certificate; the session is checked on every request,
         so revoking the credential or the account''s sessions ends it at the next one.
+        A wrong password is still answered 401, after the same wait as a failed login:
+        it grows with the address''s recent failures, up to 3 seconds from anywhere and
+        up to 5 from the same client. A correct credential is answered without one.
         protocol must be the one the service serves; a caller without a gateway certificate
         is 403 gateway_required.'
       operationId: openGatewaySession
@@ -2322,7 +2333,7 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [protocol, address, password]
+              required: [protocol, address, password, client_ip]
               properties:
                 protocol:
                   type: string
@@ -2338,6 +2349,12 @@ paths:
                   description: >
                     What the mail client gave as its password: an app password, or one
                     of the account's passwords. Never stored or recorded.
+                client_ip:
+                  type: string
+                  description: >
+                    The IP address the mail client is connected to the gateway from. The
+                    sign-in throttle and the audit record use it, and the API takes it only
+                    from a gateway's own certificate.
         required: true
       responses:
         "201":
@@ -2646,6 +2663,14 @@ paths:
           links:
             getAccount:
               operationId: getAccount
+              parameters:
+                id: '$response.body#/data/0/id'
+            getAccountTimeZone:
+              operationId: getAccountTimeZone
+              parameters:
+                id: '$response.body#/data/0/id'
+            setAccountTimeZone:
+              operationId: setAccountTimeZone
               parameters:
                 id: '$response.body#/data/0/id'
             listCredentials:
@@ -3382,6 +3407,8 @@ paths:
               properties:
                 name:
                   type: string
+                  minLength: 1
+                  pattern: '\S'
                   maxLength: 100
                   example: iPhone Mail
                 expires_at:
@@ -3393,9 +3420,10 @@ paths:
                   format: password
                   writeOnly: true
                   description: The session's own current password, entered again.
+                  minLength: 1
             examples:
               created:
-                value: {name: iPhone Mail}
+                value: {name: iPhone Mail, password: x}
               name_missing:
                 value: {}
               name_empty:
@@ -7323,6 +7351,8 @@ paths:
   /api/v1/messages/send:
     post:
       operationId: sendMessage
+      parameters:
+        - $ref: "#/components/parameters/SendIdempotencyKey"
       tags: [Messages]
       security:
         - CookieAuth: [mail:send]
@@ -7355,6 +7385,14 @@ paths:
         An unknown sender and a sender with no link to the caller return
         identical 404 `not_found` answers. A visible sender without the
         selected sending capability returns 403 `forbidden`.
+        A 201 means the message is durably queued, not that it has arrived.
+        Every recipient, on this server or elsewhere, gets it through the
+        outbound queue, signed where the sender domain has a DKIM key, and
+        through the receiving domain's normal inbound checks. The answer does
+        not wait for delivery: a later temporary refusal is retried, and a
+        permanent one fails that recipient's queue entry and bounces to the
+        sender as a DSN.
+        Optional Idempotency-Key is scoped to the authenticated account across send, send-draft and forward for 24 hours after success. The same route, resource and parsed body replay the first status and result without sending again, even after the source is removed. A different body, route or resource returns 409 idempotency_conflict. Concurrent matching requests wait for commit, then replay; cancellation or failure while waiting returns 503 deferred with no new send. Failed sends roll back and do not consume the key. Current sender and source-mailbox permissions apply to replays. Without the header, sending is unchanged.
       requestBody:
         required: true
         content:
@@ -7367,7 +7405,8 @@ paths:
               # imap.restmail.test resolves in the testbed but takes no mail
               # on port 25: the delivery is refused for now and the queue
               # entry is deferred, so the queue operations' links have one to
-              # retry. A domain that does not resolve bounces at once.
+              # retry. A domain that does not resolve bounces at once. The other
+              # recipient is on this server, and waits on the same queue (#1564).
               valid:
                 value:
                   from: admin@restmail.test
@@ -7392,6 +7431,8 @@ paths:
                   list_unsubscribe:
                     mailto: unsubscribe@restmail.test
       responses:
+        "409":
+          $ref: "#/components/responses/SendIdempotencyConflict"
         "201":
           description: Message sent
           content:
@@ -7933,7 +7974,8 @@ paths:
       description: 'For a message this account sent: each recipient''s state (queued, retrying, delivered,
         failed, or unknown when no delivery record was kept), the reason in a sentence derived from the
         failure category, the attempts made and when the last one was. A remote recipient is read from its
-        outbound queue row; a local one from the copy the send put in that mailbox. The remote server''s
+        outbound queue row; a local one from the copy the send put in that mailbox, or from the refusal
+        recorded when that mailbox refused it, which is failed and is not tried again. The remote server''s
         own reply is never returned, only the category''s reason. A message this account did not send has
         no recipients. Uses the same mail:read authorization as reading the message; another account''s
         message is 404.'
@@ -8209,6 +8251,8 @@ paths:
       - $ref: "#/components/parameters/MessageId"
     post:
       operationId: forwardMessage
+      parameters:
+        - $ref: "#/components/parameters/SendIdempotencyKey"
       tags: [Messages]
       security:
         - CookieAuth: [mail:read, mail:send]
@@ -8224,7 +8268,7 @@ paths:
         - GatewaySessionAuth: [mail:read, mail:send_as]
         - GatewaySessionAuth: [mail:read, mail:send_on_behalf]
       summary: Forward a message
-      description: "The message (mail:read) is forwarded through the normal sender authorization, rate limit and outbound policy, with Fwd: and the note above its original header. Stored attachments, including empty and inline parts, are re-attached; the Sent copy owns independent attachment objects. The final signed MIME message is bounded by SMTP_MAX_MESSAGE_SIZE, and sender quota includes the copied parts. Sent, attachment references, quota and recipient work commit together. Unavailable or changed source objects fail the forward instead of dropping parts."
+      description: "The message (mail:read) is forwarded through the normal sender authorization, rate limit and outbound policy, with Fwd: and the note above its original header. Stored attachments, including empty and inline parts, are re-attached; the Sent copy owns independent attachment objects. The final signed MIME message is bounded by SMTP_MAX_MESSAGE_SIZE, and sender quota includes the copied parts. Sent, attachment references, quota and queue entries commit together. Unavailable or changed source objects fail the forward instead of dropping parts. A 201 means the message is durably queued, not that it has arrived. Every recipient, on this server or elsewhere, gets it through the outbound queue and the receiving domain's normal inbound checks: a later temporary refusal is retried, and a permanent one bounces to the sender as a DSN. Optional Idempotency-Key is scoped to the authenticated account across send, send-draft and forward for 24 hours after success. The same route, resource and parsed body replay the first status and result without sending again, even after the source is removed. A different body, route or resource returns 409 idempotency_conflict. Concurrent matching requests wait for commit, then replay; cancellation or failure while waiting returns 503 deferred with no new send. Failed sends roll back and do not consume the key. Current sender and source-mailbox permissions apply to replays. Without the header, sending is unchanged."
       requestBody:
         required: true
         content:
@@ -8236,6 +8280,8 @@ paths:
               to: [admin@restmail.test]
               body_text: See below.
       responses:
+        "409":
+          $ref: "#/components/responses/SendIdempotencyConflict"
         '202':
           description: 'Retained: scheduled for later, or held by a send limit until human release'
           content:
@@ -8538,8 +8584,18 @@ paths:
       - $ref: "#/components/parameters/MessageId"
     post:
       operationId: sendDraft
+      parameters:
+        - $ref: "#/components/parameters/SendIdempotencyKey"
       description: >-
         Draft lookup/access dependency failures return 500 and follow request cancellation. The broader send and post-send cleanup behavior is unchanged.
+        A 201 means the message is durably queued, not that it has arrived.
+        Every recipient, on this server or elsewhere, gets it through the
+        outbound queue, signed where the sender domain has a DKIM key, and
+        through the receiving domain's normal inbound checks. The answer does
+        not wait for delivery: a later temporary refusal is retried, and a
+        permanent one fails that recipient's queue entry and bounces to the
+        sender as a DSN.
+        Optional Idempotency-Key is scoped to the authenticated account across send, send-draft and forward for 24 hours after success. The same route, resource and parsed body replay the first status and result without sending again, even after the source is removed. A different body, route or resource returns 409 idempotency_conflict. Concurrent matching requests wait for commit, then replay; cancellation or failure while waiting returns 503 deferred with no new send. Failed sends roll back and do not consume the key. Current sender and source-mailbox permissions apply to replays. Without the header, sending is unchanged.
       tags: [Drafts]
       security:
         - CookieAuth: [mail:write, mail:send]
@@ -8573,6 +8629,8 @@ paths:
                     https:
                       type: string
       responses:
+        "409":
+          $ref: "#/components/responses/SendIdempotencyConflict"
         '202':
           description: 'Retained: scheduled for later, or held by a send limit until human release'
           content:
@@ -10164,6 +10222,93 @@ paths:
   # ═══════════════════════════════════════════════════════════════
   # Contacts
   # ═══════════════════════════════════════════════════════════════
+  /api/v1/accounts/{id}/time-zone:
+    parameters:
+      - $ref: "#/components/parameters/AccountId"
+    get:
+      operationId: getAccountTimeZone
+      tags: [Accounts]
+      security:
+        - CookieAuth: [mail:read]
+        - BearerAuth: [mail:read]
+        - APIKeyAuth: [mail:read]
+        - BasicAuth: [mail:read]
+      summary: Get the account's time zone
+      description: The IANA time zone whose calendar days IMAP SEARCH ON, BEFORE and SINCE compare for this account. Null when none is set, and IMAP then uses UTC. Timestamps are stored and returned in UTC whatever this says.
+      responses:
+        "200":
+          description: The account's time zone
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/AccountTimeZone"
+        "403":
+          description: Access denied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          description: Too many requests
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      operationId: setAccountTimeZone
+      tags: [Accounts]
+      security:
+        - CookieAuth: [mail:write]
+        - BearerAuth: [mail:write]
+        - APIKeyAuth: [mail:write]
+        - BasicAuth: [mail:write]
+      summary: Set the account's time zone
+      description: Set the IANA time zone whose calendar days IMAP SEARCH ON, BEFORE and SINCE compare for this account, or null to clear it and use UTC. It applies to the next SEARCH, including on connections already open. An unknown name is refused. Stored timestamps do not change, and IMAP INTERNALDATE is still rendered in UTC.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccountTimeZone"
+      responses:
+        "400":
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "200":
+          description: The saved time zone
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/AccountTimeZone"
+        "403":
+          description: Access denied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          description: Too many requests
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/v1/accounts/{id}/quiet-hours:
     parameters:
       - $ref: "#/components/parameters/AccountId"
@@ -11995,11 +12140,15 @@ paths:
         is served ONLY on the dedicated internal listener (verified gateway client
         certificate required) and is absent from the public listener; when disabled
         it is unauthenticated on the public listener. Never accepts a user JWT.
-        Stored text, recipient JSON strings and keys, and decoded raw_message octets
-        must not contain NUL (U+0000); invalid input is 422 validation_failed naming
-        the field before any write. raw_message is standard padded base64 (format: byte).
-        Empty or omitted folder means INBOX; a nonempty name is at most 255 UTF-8 bytes,
-        has no surrounding whitespace, control characters or "..".
+        Stored text and recipient JSON strings and keys must not contain NUL (U+0000);
+        invalid input is 422 validation_failed naming the field before any write.
+        raw_message is standard padded base64 (format: byte) and may hold any octets,
+        which are stored exactly.
+        The recipient is resolved from address. Arriving mail uses server time and
+        default Inbox/flags, subject to inbound rules. Import-only fields sent by
+        older callers are ignored.
+        An arrival (received_tls set) past the hop limit and a reserved alias that cannot
+        route are 403 rejected before the pipeline runs.
       security: []
       x-internal-mtls: true
       requestBody:
@@ -12017,16 +12166,10 @@ paths:
                 value: {"address": "admin@restmail.test", "sender": "sender@example.net", "subject": "Hello", "body_text": "Hello"}
               delivered:
                 value: {"address": "admin@restmail.test", "sender": "sender@example.net", "subject": "Subject", "body_text": "Hello"}
-              folder_invalid:
-                value: {"address": "admin@restmail.test", "sender": "sender@example.net", "subject": "Hello", "body_text": "Hello", "folder": " Archive"}
               internal_error:
                 value: {"address": "admin@restmail.test", "sender": "sender@example.net", "subject": "Subject", "body_text": "Hello"}
-              mailbox_id_zero:
-                value: {"mailbox_id": 0}
               no_mailbox:
                 value: {"address": "nobody@restmail.test", "sender": "sender@example.net", "subject": "Hello", "body_text": "Hello"}
-              no_mailbox_by_id:
-                value: {"mailbox_id": 2147483647}
               processed:
                 value: {"address": "admin@restmail.test", "sender": "sender@example.net", "subject": "Hello", "body_text": "Hello"}
               recipient_missing:
@@ -12035,7 +12178,7 @@ paths:
                 value: {"address": "admin@restmail.test", "sender": "sender@example.net", "subject": "Hello", "body_text": "Hello"}
       responses:
         "201":
-          description: Message delivered
+          description: Delivered; which message was made
           content:
             application/json:
               schema:
@@ -12063,15 +12206,11 @@ paths:
                 $ref: '#/components/schemas/ValidationErrorResponse'
               examples:
                 address_empty:
-                  value: {"error": {"code": "validation_failed", "message": "Request body failed validation", "details": {"fields": {"address": "mailbox_id or address required"}}}}
+                  value: {"error": {"code": "validation_failed", "message": "Request body failed validation", "details": {"fields": {"address": "required"}}}}
                 body_array:
                   value: {"error": {"code": "validation_failed", "message": "Request body failed validation", "details": {"fields": {"body": "the body is not a JSON object"}}}}
-                folder_invalid:
-                  value: {"error": {"code": "validation_failed", "message": "Request body failed validation", "details": {"fields": {"folder": "must not begin or end with a space"}}}}
-                mailbox_id_zero:
-                  value: {"error": {"code": "validation_failed", "message": "Request body failed validation", "details": {"fields": {"address": "mailbox_id or address required"}}}}
                 recipient_missing:
-                  value: {"error": {"code": "validation_failed", "message": "Request body failed validation", "details": {"fields": {"address": "mailbox_id or address required"}}}}
+                  value: {"error": {"code": "validation_failed", "message": "Request body failed validation", "details": {"fields": {"address": "required"}}}}
           "headers":
             "Content-Security-Policy":
               "$ref": "#/components/headers/Content-Security-Policy"
@@ -12085,6 +12224,8 @@ paths:
               "$ref": "#/components/headers/X-Frame-Options"
         "403":
           description: "rejected: the inbound pipeline refused the message; the SMTP gateway answers its peer 550 5.7.1"
+        "403":
+          description: "rejected: the inbound pipeline refused the message, it came past the hop limit, or a reserved alias cannot route; the SMTP gateway answers its peer 550"
           content:
             application/json:
               schema:
@@ -12311,8 +12452,10 @@ paths:
         From domain, unless it is external mail accepted by non-strict mode. A failed
         sender-domain lookup cannot establish an external sender. Failed sender,
         recipient or inbound-policy lookups and corrupt stored policy defer with 503.
-        Recipient lookups finish before delivery side effects. A genuine absent
-        recipient remains a permanent failure.
+        The inbound pipeline's deferral is also 503, with error code greylisted when
+        its greylist step held the message back, rate_limited when its rate_limit step
+        did, and deferred otherwise. Recipient lookups finish before delivery side
+        effects. A genuine absent recipient remains a permanent failure.
       security: []
       requestBody:
         required: true
@@ -24043,7 +24186,10 @@ paths:
   /api/v1/admin/mailboxes/{id}/invitation:
     post:
       summary: Invite an account to choose its first password
-      description: For an active account created without credentials. The invitation
+      description: Requires an active account that has never held credentials;
+        credential_epoch is zero, last_password_change is absent, and no credential
+        exists. Otherwise even a schema-valid id receives 409 account_not_invitable.
+        The invitation
         lasts 15 minutes; issuing another invalidates the previous one. Only a hash
         is stored. Authenticator enrollment and server encryption must be enabled before
         invitations can be issued.
@@ -24278,7 +24424,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/resetRequest'
+              $ref: '#/components/schemas/AcceptInvitationRequest'
             # Named, as are the responses they produce. A hook swaps the
             # accepted token for a fresh invitation; invalid_token's is unknown.
             examples:
@@ -24505,7 +24651,10 @@ paths:
         (10 MiB by default); the general API body limit may be stricter. Deleted state
         and up to 100 case-insensitive keywords of 1-255 ASCII bytes are preserved.
         Keywords must be RFC 3501 atoms without backslash. Deleted messages use
-        IMAP deletion state, not API tombstones; EXPUNGE removes them.
+        IMAP deletion state, not API tombstones; EXPUNGE removes them. A folder name
+        is saved in Unicode Normalization Form C. A name that had to be converted and
+        matches an existing folder that does not hold this message goes to "name (2)"
+        or the next free number, and the answer's folder says which.
       operationId: importMessage
       parameters:
       - example: 1
@@ -25485,6 +25634,14 @@ components:
       schema:
         type: string
   parameters:
+    SendIdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: Optional account-scoped retry key, retained for 24 hours after success. Reuse only for the same route, resource and body.
+      schema:
+        type: string
+        maxLength: 255
     CSRFToken:
       name: X-CSRF-Token
       in: header
@@ -25543,6 +25700,29 @@ components:
       example: INBOX
 
   responses:
+    SendIdempotencyConflict:
+      description: Idempotency-Key was already used for a different send request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            idempotency_conflict:
+              value:
+                error:
+                  code: idempotency_conflict
+                  message: Idempotency-Key was already used for a different send request
+      "headers":
+        "Content-Security-Policy":
+          "$ref": "#/components/headers/Content-Security-Policy"
+        "Referrer-Policy":
+          "$ref": "#/components/headers/Referrer-Policy"
+        "Strict-Transport-Security":
+          "$ref": "#/components/headers/Strict-Transport-Security"
+        "X-Content-Type-Options":
+          "$ref": "#/components/headers/X-Content-Type-Options"
+        "X-Frame-Options":
+          "$ref": "#/components/headers/X-Frame-Options"
     Unauthorized:
       description: Authentication required or invalid credentials
       content:
@@ -26266,6 +26446,23 @@ components:
       - token
       - expires_at
       type: object
+    AcceptInvitationRequest:
+      additionalProperties: false
+      type: object
+      required: [token, password]
+      properties:
+        token:
+          type: string
+          minLength: 1
+          pattern: '\S'
+        password:
+          type: string
+          minLength: 12
+          maxLength: 72
+          description: At least 12 characters and at most 72 UTF-8 bytes; the byte limit is checked by the handler.
+        client:
+          type: string
+          enum: [native]
     resetRequest:
       additionalProperties: false
       properties:
@@ -27322,7 +27519,9 @@ components:
           description: >-
             The message's header fields as it arrived, each name with its
             values; an empty array when none were recorded (mail sent from
-            here, drafts).
+            here, drafts, mail delivered by a gateway, and imported or
+            federated mail whose fields come to 64 KiB or more).
+            GET /messages/{id}/raw answers them all.
           oneOf:
             - type: object
               additionalProperties:
@@ -27344,10 +27543,31 @@ components:
         downgraded_size:
           type: integer
           description: >-
-            Octet count of the stored raw message with its headers downgraded
-            to ASCII (RFC 6857), as sent to a POP3 or IMAP client that has not
-            enabled UTF-8. Equals raw_size when the headers are already ASCII.
-            0 when not measured; consumers should fall back to raw_size.
+            Octet count POP3 RETR sends a client that has not enabled UTF-8: the
+            stored raw message with its headers downgraded to ASCII (RFC 6857)
+            and every line ending in CRLF. Equals raw_size when the headers are
+            already ASCII and every line, the last one included, ends in CRLF. 0
+            when not measured; consumers should fall back to raw_size.
+        pop3_utf8_size:
+          type: integer
+          description: >-
+            Octet count POP3 RETR sends a client that has enabled UTF-8: the
+            stored raw message with every line ending in CRLF. Equals raw_size
+            when every line, the last one included, already does. 0 when not
+            measured; consumers should fall back to raw_size.
+        imap_size:
+          type: integer
+          description: >-
+            Octet count of the message as an IMAP FETCH sends it to a session
+            that has not enabled UTF-8, with headers 7-bit and non-textual data
+            transfer-encoded (RFC 3501 section 7.4.2). The stored message does
+            not change. Equals raw_size when the message is already 7-bit. 0
+            when no raw message is stored.
+        imap_utf8_size:
+          type: integer
+          description: >-
+            Octet count of the message as an IMAP FETCH sends it to a session
+            that has enabled UTF-8. 0 when no raw message is stored.
         auth_results:
           type: array
           items:
@@ -27584,12 +27804,14 @@ components:
             for another mailbox, or mail:send for your own. Read access grants neither.
         from:
           type: string
-          format: email
+          format: idn-email
+          minLength: 1
         to:
           type: array
+          minItems: 1
           items:
             type: string
-            format: email
+            format: idn-email
         body_text:
           type: string
 
@@ -27686,8 +27908,16 @@ components:
           type: integer
         filename:
           type: string
+          description: >-
+            What the sender called it, for showing: at most 255 characters of
+            valid UTF-8, with U+FFFD for a NUL or an invalid octet. A longer
+            name keeps its start and its last extension.
+            GET /messages/{id}/raw answers the name as it was sent.
         content_type:
           type: string
+          description: >-
+            The part's media type, or application/octet-stream when it is not
+            one a media type can be: over 255 characters, or not valid UTF-8.
         size_bytes:
           type: integer
           format: int64
@@ -27701,6 +27931,16 @@ components:
     # ─────────────────────────────────────────────────────────────
     # Contact
     # ─────────────────────────────────────────────────────────────
+    AccountTimeZone:
+      type: object
+      required: [time_zone]
+      properties:
+        time_zone:
+          type: [string, "null"]
+          format: iana-time-zone
+          example: Europe/Berlin
+          description: An IANA time zone name; null means none is set, and IMAP uses UTC
+
     QuietHoursSetting:
       type: object
       required: [enabled, start, end, time_zone]
@@ -27954,27 +28194,23 @@ components:
           type: string
           format: email
 
+    DeliveredMessage:
+      type: object
+      required: [id, message_id, folder]
+      properties:
+        id:
+          type: integer
+        message_id:
+          type: string
+        folder:
+          type: string
     DeliverMessageRequest:
       type: object
-      required: [address, sender]
-      # A delivery names its mailbox by a nonzero mailbox_id or a nonempty
-      # address; the binder refuses one naming neither.
-      anyOf:
-        - required: [mailbox_id]
-          properties:
-            mailbox_id:
-              minimum: 1
-        - required: [address]
-          properties:
-            address:
-              minLength: 1
+      required: [address]
       properties:
-        is_answered:
-          type:
-          - boolean
-          - 'null'
         address:
           type: string
+          minLength: 1
           pattern: '^[^\x00]*$'
           format: email
           description: Recipient address
@@ -28067,7 +28303,10 @@ components:
         Recipients come from a non-empty to list, otherwise a non-empty
         recipients list, otherwise the To header parsed from raw_message.
         A raw message must contain a parseable To header when neither list
-        supplies recipients; an empty or missing recipient set is refused.
+        supplies recipients, so it is then at least 16 base64 characters, the
+        length of the shortest RFC 5322 message naming an address on a hosted
+        domain;
+        an empty or missing recipient set is refused.
       anyOf:
         - required: [to]
           properties:
@@ -28080,7 +28319,7 @@ components:
         - required: [raw_message]
           properties:
             raw_message:
-              minLength: 1
+              minLength: 16
       properties:
         from:
           type: string
@@ -28123,7 +28362,8 @@ components:
           description: Raw headers as JSON
         raw_message:
           type: string
-          description: Full RFC 2822 raw message
+          format: byte
+          description: Full RFC 5322 message, base64-encoded so any octets arrive exactly as sent
         sender:
           type: string
           format: email

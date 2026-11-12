@@ -162,7 +162,8 @@
         "body": {
           "password": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
           "token": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-        }
+        },
+        "invalid": true
       },
       "response": {
         "status": 413,
@@ -5801,7 +5802,8 @@
     "created": {
       "request": {
         "body": {
-          "name": "iPhone Mail"
+          "name": "iPhone Mail",
+          "password": "x"
         }
       },
       "response": {
@@ -5830,7 +5832,8 @@
           "id": 1
         },
         "body": {
-          "name": "Thunderbird"
+          "name": "Thunderbird",
+          "password": "x"
         }
       },
       "response": {
@@ -5854,7 +5857,8 @@
           "id": 1
         },
         "body": {
-          "name": "iPhone Mail"
+          "name": "iPhone Mail",
+          "password": "x"
         }
       },
       "response": {
@@ -5898,7 +5902,8 @@
           "id": 2147483647
         },
         "body": {
-          "name": "Thunderbird"
+          "name": "Thunderbird",
+          "password": "x"
         }
       },
       "response": {
@@ -5915,7 +5920,8 @@
     "name_control": {
       "request": {
         "body": {
-          "name": "Mail\nClient"
+          "name": "Mail\nClient",
+          "password": "x"
         }
       },
       "response": {
@@ -5943,7 +5949,8 @@
           "id": 1
         },
         "body": {
-          "name": "iPhone Mail"
+          "name": "iPhone Mail",
+          "password": "x"
         }
       },
       "response": {
@@ -5967,7 +5974,8 @@
           "id": 1
         },
         "body": {
-          "name": "iPhone Mail"
+          "name": "iPhone Mail",
+          "password": "x"
         }
       },
       "response": {
@@ -5991,7 +5999,8 @@
           "id": 1
         },
         "body": {
-          "name": "iPhone Mail"
+          "name": "iPhone Mail",
+          "password": "x"
         }
       },
       "response": {
@@ -6015,7 +6024,8 @@
           "id": 1
         },
         "body": {
-          "name": "iPhone Mail"
+          "name": "iPhone Mail",
+          "password": "x"
         }
       },
       "response": {
@@ -6039,7 +6049,8 @@
           "id": 1
         },
         "body": {
-          "name": "iPhone Mail"
+          "name": "iPhone Mail",
+          "password": "x"
         }
       },
       "response": {
@@ -6064,7 +6075,8 @@
           "id": 1
         },
         "body": {
-          "name": "iPhone Mail"
+          "name": "iPhone Mail",
+          "password": "x"
         }
       },
       "response": {
@@ -6088,7 +6100,8 @@
           "id": 1
         },
         "body": {
-          "name": "iPhone Mail"
+          "name": "iPhone Mail",
+          "password": "x"
         }
       },
       "response": {
@@ -12304,7 +12317,7 @@
             "message": "Request body failed validation",
             "details": {
               "fields": {
-                "address": "mailbox_id or address required"
+                "address": "required"
               }
             }
           }
@@ -12362,8 +12375,8 @@
       "summary": "Body html nul is refused before storage",
       "request": {
         "body": {
-          "mailbox_id": 900100,
-          "body_html": "before\u0000after"
+          "body_html": "before\u0000after",
+          "address": "fuzz-recipient@contract-recipient.test"
         },
         "invalid": true
       },
@@ -12387,8 +12400,8 @@
       "summary": "Body text nul is refused before storage",
       "request": {
         "body": {
-          "mailbox_id": 900100,
-          "body_text": "before\u0000after"
+          "body_text": "before\u0000after",
+          "address": "fuzz-recipient@contract-recipient.test"
         },
         "invalid": true
       },
@@ -12412,8 +12425,8 @@
       "summary": "Client ip nul is refused before storage",
       "request": {
         "body": {
-          "mailbox_id": 900100,
-          "client_ip": "before\u0000after"
+          "client_ip": "before\u0000after",
+          "address": "fuzz-recipient@contract-recipient.test"
         },
         "invalid": true
       },
@@ -12471,89 +12484,9 @@
         "status": 201,
         "body": {
           "data": {
-            "class": "person",
             "id": 1,
-            "mailbox_id": 1,
-            "folder": "INBOX",
             "message_id": "\u003cmessage@example.net\u003e",
-            "in_reply_to": "",
-            "references": "",
-            "thread_id": "",
-            "sender": "sender@example.net",
-            "sender_name": "Sender",
-            "recipients_to": [
-              "recipient@example.com"
-            ],
-            "recipients_cc": [],
-            "subject": "Subject",
-            "size_bytes": 80,
-            "raw_size": 137,
-            "downgraded_size": 137,
-            "has_attachments": false,
-            "is_read": false,
-            "is_dsn": false,
-            "is_flagged": false,
-            "is_starred": false,
-            "is_draft": false,
-            "is_deleted": false,
-            "received_at": "2026-10-20T00:00:00Z",
-            "date_header": "2026-10-20T00:00:00Z",
-            "created_at": "2026-10-20T00:00:00Z",
-            "updated_at": "2026-10-20T00:00:00Z"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "folder_blank": {
-      "summary": "Folder blank is refused before storage",
-      "request": {
-        "body": {
-          "mailbox_id": 900100,
-          "folder": " "
-        },
-        "invalid": true
-      },
-      "response": {
-        "status": 422,
-        "body": {
-          "error": {
-            "code": "validation_failed",
-            "message": "Request body failed validation",
-            "details": {
-              "fields": {
-                "folder": "required"
-              }
-            }
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "folder_invalid": {
-      "summary": "The folder name is refused",
-      "description": "A name the folder rule refuses is 422 on folder, behind the gateway's own check.",
-      "request": {
-        "body": {
-          "address": "admin@restmail.test",
-          "sender": "sender@example.net",
-          "subject": "Hello",
-          "body_text": "Hello",
-          "folder": " Archive"
-        },
-        "invalid": true
-      },
-      "response": {
-        "status": 422,
-        "body": {
-          "error": {
-            "code": "validation_failed",
-            "message": "Request body failed validation",
-            "details": {
-              "fields": {
-                "folder": "must not begin or end with a space"
-              }
-            }
+            "folder": "INBOX"
           }
         },
         "mediaType": "application/json"
@@ -12563,8 +12496,8 @@
       "summary": "Helo name nul is refused before storage",
       "request": {
         "body": {
-          "mailbox_id": 900100,
-          "helo_name": "before\u0000after"
+          "helo_name": "before\u0000after",
+          "address": "fuzz-recipient@contract-recipient.test"
         },
         "invalid": true
       },
@@ -12588,8 +12521,8 @@
       "summary": "In reply to nul is refused before storage",
       "request": {
         "body": {
-          "mailbox_id": 900100,
-          "in_reply_to": "before\u0000after"
+          "in_reply_to": "before\u0000after",
+          "address": "fuzz-recipient@contract-recipient.test"
         },
         "invalid": true
       },
@@ -12633,26 +12566,24 @@
         "mediaType": "application/json"
       }
     },
-    "mailbox_id_zero": {
-      "summary": "The mailbox id is zero",
-      "description": "Zero names no mailbox, so the body names none.",
+    "mail_loop": {
+      "summary": "An arrival past the hop limit",
+      "description": "More Received fields than the limit on a message from another server is a mail loop, refused before the mailbox lookup. The SMTP gateway answers its own peer before it gets this far.",
       "request": {
         "body": {
-          "mailbox_id": 0
-        },
-        "invalid": true
+          "address": "admin@restmail.test",
+          "sender": "sender@example.net",
+          "subject": "Hello",
+          "received_tls": true,
+          "raw_message": "UmVjZWl2ZWQ6IGJ5IHJlbGF5LnRlc3QNClJlY2VpdmVkOiBieSByZWxheS50ZXN0DQpSZWNlaXZlZDogYnkgcmVsYXkudGVzdA0KUmVjZWl2ZWQ6IGJ5IHJlbGF5LnRlc3QNClJlY2VpdmVkOiBieSByZWxheS50ZXN0DQpSZWNlaXZlZDogYnkgcmVsYXkudGVzdA0KUmVjZWl2ZWQ6IGJ5IHJlbGF5LnRlc3QNClJlY2VpdmVkOiBieSByZWxheS50ZXN0DQpSZWNlaXZlZDogYnkgcmVsYXkudGVzdA0KUmVjZWl2ZWQ6IGJ5IHJlbGF5LnRlc3QNClJlY2VpdmVkOiBieSByZWxheS50ZXN0DQpSZWNlaXZlZDogYnkgcmVsYXkudGVzdA0KUmVjZWl2ZWQ6IGJ5IHJlbGF5LnRlc3QNClJlY2VpdmVkOiBieSByZWxheS50ZXN0DQpSZWNlaXZlZDogYnkgcmVsYXkudGVzdA0KUmVjZWl2ZWQ6IGJ5IHJlbGF5LnRlc3QNClJlY2VpdmVkOiBieSByZWxheS50ZXN0DQpSZWNlaXZlZDogYnkgcmVsYXkudGVzdA0KUmVjZWl2ZWQ6IGJ5IHJlbGF5LnRlc3QNClJlY2VpdmVkOiBieSByZWxheS50ZXN0DQpSZWNlaXZlZDogYnkgcmVsYXkudGVzdA0KUmVjZWl2ZWQ6IGJ5IHJlbGF5LnRlc3QNClJlY2VpdmVkOiBieSByZWxheS50ZXN0DQpSZWNlaXZlZDogYnkgcmVsYXkudGVzdA0KUmVjZWl2ZWQ6IGJ5IHJlbGF5LnRlc3QNClJlY2VpdmVkOiBieSByZWxheS50ZXN0DQpSZWNlaXZlZDogYnkgcmVsYXkudGVzdA0KUmVjZWl2ZWQ6IGJ5IHJlbGF5LnRlc3QNClJlY2VpdmVkOiBieSByZWxheS50ZXN0DQpSZWNlaXZlZDogYnkgcmVsYXkudGVzdA0KUmVjZWl2ZWQ6IGJ5IHJlbGF5LnRlc3QNClJlY2VpdmVkOiBieSByZWxheS50ZXN0DQpSZWNlaXZlZDogYnkgcmVsYXkudGVzdA0KUmVjZWl2ZWQ6IGJ5IHJlbGF5LnRlc3QNClJlY2VpdmVkOiBieSByZWxheS50ZXN0DQpSZWNlaXZlZDogYnkgcmVsYXkudGVzdA0KUmVjZWl2ZWQ6IGJ5IHJlbGF5LnRlc3QNClJlY2VpdmVkOiBieSByZWxheS50ZXN0DQpSZWNlaXZlZDogYnkgcmVsYXkudGVzdA0KUmVjZWl2ZWQ6IGJ5IHJlbGF5LnRlc3QNClJlY2VpdmVkOiBieSByZWxheS50ZXN0DQpSZWNlaXZlZDogYnkgcmVsYXkudGVzdA0KUmVjZWl2ZWQ6IGJ5IHJlbGF5LnRlc3QNClJlY2VpdmVkOiBieSByZWxheS50ZXN0DQpSZWNlaXZlZDogYnkgcmVsYXkudGVzdA0KUmVjZWl2ZWQ6IGJ5IHJlbGF5LnRlc3QNClJlY2VpdmVkOiBieSByZWxheS50ZXN0DQpSZWNlaXZlZDogYnkgcmVsYXkudGVzdA0KUmVjZWl2ZWQ6IGJ5IHJlbGF5LnRlc3QNClJlY2VpdmVkOiBieSByZWxheS50ZXN0DQpSZWNlaXZlZDogYnkgcmVsYXkudGVzdA0KRnJvbTogc2VuZGVyQGV4YW1wbGUubmV0DQpTdWJqZWN0OiBIZWxsbw0KDQpIZWxsbw0K"
+        }
       },
       "response": {
-        "status": 422,
+        "status": 403,
         "body": {
           "error": {
-            "code": "validation_failed",
-            "message": "Request body failed validation",
-            "details": {
-              "fields": {
-                "address": "mailbox_id or address required"
-              }
-            }
+            "code": "rejected",
+            "message": "Routing loop detected: too many Received headers"
           }
         },
         "mediaType": "application/json"
@@ -12683,8 +12614,8 @@
       "summary": "Message id nul is refused before storage",
       "request": {
         "body": {
-          "mailbox_id": 900100,
-          "message_id": "before\u0000after"
+          "message_id": "before\u0000after",
+          "address": "fuzz-recipient@contract-recipient.test"
         },
         "invalid": true
       },
@@ -12725,25 +12656,6 @@
         "mediaType": "application/json"
       }
     },
-    "no_mailbox_by_id": {
-      "summary": "No mailbox has that id",
-      "description": "A well-formed id that names nothing is 404, as an address that names nothing is.",
-      "request": {
-        "body": {
-          "mailbox_id": 2147483647
-        }
-      },
-      "response": {
-        "status": 404,
-        "body": {
-          "error": {
-            "code": "mailbox_not_found",
-            "message": "Mailbox not found"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
     "processed": {
       "summary": "The inbound pipeline quarantines or discards it",
       "requires": {
@@ -12771,8 +12683,8 @@
       "summary": "Raw message invalid is refused before storage",
       "request": {
         "body": {
-          "mailbox_id": 900100,
-          "raw_message": "a"
+          "raw_message": "a",
+          "address": "fuzz-recipient@contract-recipient.test"
         }
       },
       "response": {
@@ -12784,30 +12696,6 @@
             "details": {
               "fields": {
                 "raw_message": "must be a base64 string"
-              }
-            }
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "raw_message_nul": {
-      "summary": "Raw message nul is refused before storage",
-      "request": {
-        "body": {
-          "mailbox_id": 900100,
-          "raw_message": "U3ViamVjdDogSGVsbG8NCg0KYmVmb3JlAGFmdGVy"
-        }
-      },
-      "response": {
-        "status": 422,
-        "body": {
-          "error": {
-            "code": "validation_failed",
-            "message": "Request body failed validation",
-            "details": {
-              "fields": {
-                "raw_message": "must not contain a NUL byte"
               }
             }
           }
@@ -12833,7 +12721,7 @@
             "message": "Request body failed validation",
             "details": {
               "fields": {
-                "address": "mailbox_id or address required"
+                "address": "required"
               }
             }
           }
@@ -12845,8 +12733,8 @@
       "summary": "Recipients cc nul is refused before storage",
       "request": {
         "body": {
-          "mailbox_id": 900100,
-          "recipients_cc": "before\u0000after"
+          "recipients_cc": "before\u0000after",
+          "address": "fuzz-recipient@contract-recipient.test"
         }
       },
       "response": {
@@ -12869,12 +12757,12 @@
       "summary": "Recipients nested nul is refused before storage",
       "request": {
         "body": {
-          "mailbox_id": 900100,
           "recipients_to": [
             {
               "name": "before\u0000after"
             }
-          ]
+          ],
+          "address": "fuzz-recipient@contract-recipient.test"
         }
       },
       "response": {
@@ -12897,8 +12785,8 @@
       "summary": "Recipients to nul is refused before storage",
       "request": {
         "body": {
-          "mailbox_id": 900100,
-          "recipients_to": "before\u0000after"
+          "recipients_to": "before\u0000after",
+          "address": "fuzz-recipient@contract-recipient.test"
         }
       },
       "response": {
@@ -12921,8 +12809,8 @@
       "summary": "References nul is refused before storage",
       "request": {
         "body": {
-          "mailbox_id": 900100,
-          "references": "before\u0000after"
+          "references": "before\u0000after",
+          "address": "fuzz-recipient@contract-recipient.test"
         },
         "invalid": true
       },
@@ -12987,8 +12875,8 @@
       "summary": "Sender name nul is refused before storage",
       "request": {
         "body": {
-          "mailbox_id": 900100,
-          "sender_name": "before\u0000after"
+          "sender_name": "before\u0000after",
+          "address": "fuzz-recipient@contract-recipient.test"
         },
         "invalid": true
       },
@@ -13012,8 +12900,8 @@
       "summary": "Sender nul is refused before storage",
       "request": {
         "body": {
-          "mailbox_id": 900100,
-          "sender": "before\u0000after"
+          "sender": "before\u0000after",
+          "address": "fuzz-recipient@contract-recipient.test"
         },
         "invalid": true
       },
@@ -13037,8 +12925,8 @@
       "summary": "Subject nul is refused before storage",
       "request": {
         "body": {
-          "mailbox_id": 900100,
-          "subject": "before\u0000after"
+          "subject": "before\u0000after",
+          "address": "fuzz-recipient@contract-recipient.test"
         },
         "invalid": true
       },
@@ -13062,8 +12950,8 @@
       "summary": "Tls version nul is refused before storage",
       "request": {
         "body": {
-          "mailbox_id": 900100,
-          "tls_version": "before\u0000after"
+          "tls_version": "before\u0000after",
+          "address": "fuzz-recipient@contract-recipient.test"
         },
         "invalid": true
       },
@@ -14447,6 +14335,9 @@
     "example": {
       "summary": "The operation's example",
       "request": {
+        "path": {
+          "id": 7
+        },
         "body": {
           "from": "admin@restmail.test",
           "to": [
@@ -14493,6 +14384,35 @@
             "last_error": "account:1: messages_per_hour",
             "created_at": "2026-10-31T00:10:00Z",
             "updated_at": "2026-10-31T00:10:00Z"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "idempotency_conflict": {
+      "description": "A successful send has already used this account-scoped key for a different request. The setup hook sends the first request; the retry queues nothing.",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "header": {
+          "Idempotency-Key": "contract-idempotency-conflict"
+        },
+        "body": {
+          "from": "admin@restmail.test",
+          "to": [
+            "admin@restmail.test"
+          ],
+          "body_text": "A different request"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 409,
+        "body": {
+          "error": {
+            "code": "idempotency_conflict",
+            "message": "Idempotency-Key was already used for a different send request"
           }
         },
         "mediaType": "application/json"
@@ -15089,6 +15009,184 @@
           "error": {
             "code": "unauthorized",
             "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
+  "getAccountTimeZone": {
+    "internal_error": {
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "path": {
+          "id": 3
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_id": {
+      "request": {
+        "path": {
+          "id": 0
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "request": {
+        "path": {
+          "id": 2147483647
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Account not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "not_set": {
+      "summary": "None is set by default, and IMAP uses UTC",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "time_zone": null
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "without_capability": {
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
           }
         },
         "mediaType": "application/json"
@@ -17609,6 +17707,9 @@
             "created_at": "2026-10-20T00:00:00Z",
             "date_header": null,
             "downgraded_size": 0,
+            "pop3_utf8_size": 0,
+            "imap_size": 202,
+            "imap_utf8_size": 137,
             "folder": "INBOX",
             "has_attachments": true,
             "headers": {
@@ -17663,6 +17764,9 @@
             "created_at": "2026-10-20T00:00:00Z",
             "date_header": null,
             "downgraded_size": 0,
+            "pop3_utf8_size": 0,
+            "imap_size": 202,
+            "imap_utf8_size": 137,
             "folder": "INBOX",
             "has_attachments": true,
             "headers": {
@@ -17717,6 +17821,9 @@
             "created_at": "2026-10-20T00:00:00Z",
             "date_header": null,
             "downgraded_size": 0,
+            "pop3_utf8_size": 0,
+            "imap_size": 202,
+            "imap_utf8_size": 137,
             "folder": "INBOX",
             "has_attachments": true,
             "headers": {
@@ -17771,6 +17878,9 @@
             "created_at": "2026-10-20T00:00:00Z",
             "date_header": null,
             "downgraded_size": 0,
+            "pop3_utf8_size": 0,
+            "imap_size": 127,
+            "imap_utf8_size": 78,
             "folder": "INBOX",
             "has_attachments": true,
             "id": 104,
@@ -17840,6 +17950,9 @@
             "size_bytes": 80,
             "raw_size": 137,
             "downgraded_size": 0,
+            "pop3_utf8_size": 0,
+            "imap_size": 202,
+            "imap_utf8_size": 137,
             "received_tls": true,
             "tls_version": "TLS1.3",
             "has_attachments": true,
@@ -20434,6 +20547,9 @@
               "size_bytes": 80,
               "raw_size": 128,
               "downgraded_size": 0,
+              "pop3_utf8_size": 0,
+              "imap_size": 128,
+              "imap_utf8_size": 128,
               "has_attachments": false,
               "is_read": true,
               "is_dsn": true,
@@ -20465,6 +20581,9 @@
               "size_bytes": 80,
               "raw_size": 128,
               "downgraded_size": 0,
+              "pop3_utf8_size": 0,
+              "imap_size": 128,
+              "imap_utf8_size": 128,
               "has_attachments": false,
               "is_read": false,
               "is_dsn": false,
@@ -20498,6 +20617,9 @@
               "size_bytes": 80,
               "raw_size": 128,
               "downgraded_size": 0,
+              "pop3_utf8_size": 0,
+              "imap_size": 128,
+              "imap_utf8_size": 128,
               "has_attachments": true,
               "is_read": false,
               "is_dsn": false,
@@ -27745,6 +27867,9 @@
               "size_bytes": 80,
               "raw_size": 128,
               "downgraded_size": 0,
+              "pop3_utf8_size": 0,
+              "imap_size": 128,
+              "imap_utf8_size": 128,
               "has_attachments": true,
               "is_read": false,
               "is_dsn": false,
@@ -27792,6 +27917,9 @@
               "size_bytes": 80,
               "raw_size": 128,
               "downgraded_size": 0,
+              "pop3_utf8_size": 0,
+              "imap_size": 128,
+              "imap_utf8_size": 128,
               "has_attachments": false,
               "is_read": false,
               "is_dsn": false,
@@ -27821,6 +27949,9 @@
               "size_bytes": 80,
               "raw_size": 128,
               "downgraded_size": 0,
+              "pop3_utf8_size": 0,
+              "imap_size": 128,
+              "imap_utf8_size": 128,
               "has_attachments": false,
               "is_read": true,
               "is_dsn": true,
@@ -29897,6 +30028,9 @@
                 "size_bytes": 18,
                 "raw_size": 0,
                 "downgraded_size": 0,
+                "pop3_utf8_size": 0,
+                "imap_size": 0,
+                "imap_utf8_size": 0,
                 "has_attachments": false,
                 "is_read": true,
                 "is_dsn": false,
@@ -29958,6 +30092,9 @@
                 "size_bytes": 18,
                 "raw_size": 0,
                 "downgraded_size": 0,
+                "pop3_utf8_size": 0,
+                "imap_size": 0,
+                "imap_utf8_size": 0,
                 "has_attachments": false,
                 "is_read": true,
                 "is_dsn": false,
@@ -29995,6 +30132,9 @@
                 "size_bytes": 18,
                 "raw_size": 0,
                 "downgraded_size": 0,
+                "pop3_utf8_size": 0,
+                "imap_size": 0,
+                "imap_utf8_size": 0,
                 "has_attachments": false,
                 "is_read": true,
                 "is_dsn": false,
@@ -30106,6 +30246,9 @@
                 "size_bytes": 18,
                 "raw_size": 0,
                 "downgraded_size": 0,
+                "pop3_utf8_size": 0,
+                "imap_size": 0,
+                "imap_utf8_size": 0,
                 "has_attachments": false,
                 "is_read": true,
                 "is_dsn": false,
@@ -31739,7 +31882,8 @@
         "body": {
           "protocol": "imap",
           "address": "contract-ordinary@restmail.test",
-          "password": "rm_AAAAAAAAAAAA_secretsecretsecretsecretsecretsecretsecretsec"
+          "password": "rm_AAAAAAAAAAAA_secretsecretsecretsecretsecretsecretsecretsec",
+          "client_ip": "198.51.100.7"
         }
       },
       "response": {
@@ -31762,7 +31906,8 @@
         "body": {
           "protocol": "imap",
           "address": "contract-ordinary@restmail.test",
-          "password": "rm_AAAAAAAAAAAA_secretsecretsecretsecretsecretsecretsecretsec"
+          "password": "rm_AAAAAAAAAAAA_secretsecretsecretsecretsecretsecretsecretsec",
+          "client_ip": "198.51.100.7"
         }
       },
       "response": {
@@ -31801,7 +31946,8 @@
         "body": {
           "protocol": "imap",
           "address": "contract-ordinary@restmail.test",
-          "password": "rm_AAAAAAAAAAAA_secretsecretsecretsecretsecretsecretsecretsec"
+          "password": "rm_AAAAAAAAAAAA_secretsecretsecretsecretsecretsecretsecretsec",
+          "client_ip": "198.51.100.7"
         }
       },
       "response": {
@@ -31828,7 +31974,8 @@
         "body": {
           "protocol": "pop3",
           "address": "contract-ordinary@restmail.test",
-          "password": "rm_AAAAAAAAAAAA_secretsecretsecretsecretsecretsecretsecretsec"
+          "password": "rm_AAAAAAAAAAAA_secretsecretsecretsecretsecretsecretsecretsec",
+          "client_ip": "198.51.100.7"
         }
       },
       "response": {
@@ -31855,7 +32002,8 @@
         "body": {
           "protocol": "imap",
           "address": "contract-ordinary@restmail.test",
-          "password": "rm_AAAAAAAAAAAA_secretsecretsecretsecretsecretsecretsecretsec"
+          "password": "rm_AAAAAAAAAAAA_secretsecretsecretsecretsecretsecretsecretsec",
+          "client_ip": "198.51.100.7"
         }
       },
       "response": {
@@ -31877,7 +32025,8 @@
         "body": {
           "protocol": "imap",
           "address": "contract-ordinary@restmail.test",
-          "password": "rm_AAAAAAAAAAAA_secretsecretsecretsecretsecretsecretsecretsec"
+          "password": "rm_AAAAAAAAAAAA_secretsecretsecretsecretsecretsecretsecretsec",
+          "client_ip": "198.51.100.7"
         }
       },
       "response": {
@@ -31899,7 +32048,8 @@
         "body": {
           "protocol": "imap",
           "address": "contract-ordinary@restmail.test",
-          "password": "rm_AAAAAAAAAAAA_secretsecretsecretsecretsecretsecretsecretsec"
+          "password": "rm_AAAAAAAAAAAA_secretsecretsecretsecretsecretsecretsecretsec",
+          "client_ip": "198.51.100.7"
         }
       },
       "response": {
@@ -31919,7 +32069,8 @@
         "body": {
           "protocol": "imap",
           "address": "contract-ordinary@restmail.test",
-          "password": "rm_AAAAAAAAAAAA_wrongwrongwrongwrongwrongwrongwrongwrongwr"
+          "password": "rm_AAAAAAAAAAAA_wrongwrongwrongwrongwrongwrongwrongwrongwr",
+          "client_ip": "198.51.100.7"
         }
       },
       "response": {
@@ -38796,6 +38947,9 @@
             "size_bytes": 0,
             "raw_size": 0,
             "downgraded_size": 0,
+            "pop3_utf8_size": 0,
+            "imap_size": 0,
+            "imap_utf8_size": 0,
             "has_attachments": false,
             "is_read": true,
             "is_dsn": false,
@@ -39041,6 +39195,9 @@
               "created_at": "2026-10-20T00:00:00Z",
               "date_header": "2026-10-20T00:00:00Z",
               "downgraded_size": 137,
+              "pop3_utf8_size": 137,
+              "imap_size": 137,
+              "imap_utf8_size": 137,
               "folder": "INBOX",
               "has_attachments": false,
               "headers": {
@@ -39460,6 +39617,31 @@
         "mediaType": "application/json"
       }
     },
+    "idempotency_conflict": {
+      "description": "A successful send has already used this account-scoped key for a different request. The setup hook sends the first request; the retry queues nothing.",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "header": {
+          "Idempotency-Key": "contract-idempotency-conflict"
+        },
+        "body": {
+          "on_behalf": true
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 409,
+        "body": {
+          "error": {
+            "code": "idempotency_conflict",
+            "message": "Idempotency-Key was already used for a different send request"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "internal_error": {
       "summary": "A database fault is not a client error",
       "requires": {
@@ -39599,6 +39781,9 @@
             "created_at": "2026-10-27T07:00:00Z",
             "date_header": null,
             "downgraded_size": 200,
+            "pop3_utf8_size": 200,
+            "imap_size": 200,
+            "imap_utf8_size": 200,
             "folder": "Sent",
             "has_attachments": false,
             "id": 13,
@@ -39747,6 +39932,32 @@
                 "from": "from is required"
               }
             }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "idempotency_conflict": {
+      "description": "A successful send has already used this account-scoped key for a different request. The setup hook sends the first request; the retry queues nothing.",
+      "request": {
+        "header": {
+          "Idempotency-Key": "contract-idempotency-conflict"
+        },
+        "body": {
+          "from": "admin@restmail.test",
+          "to": [
+            "admin@restmail.test"
+          ],
+          "body_text": "A different request"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 409,
+        "body": {
+          "error": {
+            "code": "idempotency_conflict",
+            "message": "Idempotency-Key was already used for a different send request"
           }
         },
         "mediaType": "application/json"
@@ -40084,6 +40295,9 @@
             "created_at": "2026-10-21T12:00:00Z",
             "date_header": null,
             "downgraded_size": 297,
+            "pop3_utf8_size": 297,
+            "imap_size": 297,
+            "imap_utf8_size": 297,
             "folder": "Sent",
             "has_attachments": false,
             "id": 1,
@@ -40140,6 +40354,9 @@
             "created_at": "2026-10-21T12:00:00Z",
             "date_header": null,
             "downgraded_size": 297,
+            "pop3_utf8_size": 297,
+            "imap_size": 297,
+            "imap_utf8_size": 297,
             "folder": "Sent",
             "has_attachments": false,
             "id": 1,
@@ -40278,6 +40495,9 @@
             "created_at": "2026-10-21T12:00:00Z",
             "date_header": null,
             "downgraded_size": 297,
+            "pop3_utf8_size": 297,
+            "imap_size": 297,
+            "imap_utf8_size": 297,
             "folder": "Sent",
             "has_attachments": false,
             "id": 1,
@@ -40821,6 +41041,330 @@
           "error": {
             "code": "two_factor_required",
             "message": "Sign in as a person with two-factor authentication"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
+  "setAccountTimeZone": {
+    "cleared": {
+      "summary": "Null clears the zone, and IMAP uses UTC",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "time_zone": null
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "time_zone": null
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "internal_error": {
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "path": {
+          "id": 3
+        },
+        "body": {
+          "time_zone": "Europe/Berlin"
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_id": {
+      "request": {
+        "path": {
+          "id": 0
+        },
+        "body": {
+          "time_zone": "Europe/Berlin"
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_zone": {
+      "summary": "A name that is not an IANA time zone",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "time_zone": "Mars/Olympus"
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "time_zone": "must be an IANA time zone name"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "malformed_json": {
+      "description": "The wire body is the raw truncated JSON byte {, with application/json content type. The route and Vertrag transport hook send those exact bytes rather than JSON-quoting them.",
+      "requires": {
+        "body": "malformed"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": "{",
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "request": {
+        "path": {
+          "id": 2147483647
+        },
+        "body": {
+          "time_zone": "Europe/Berlin"
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Account not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "time_zone": "Europe/Berlin"
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "time_zone": "Europe/Berlin"
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "time_zone": "Europe/Berlin"
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "set": {
+      "summary": "IMAP SEARCH uses this zone's calendar days",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "time_zone": "Europe/Berlin"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "time_zone": "Europe/Berlin"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "time_zone_missing": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {},
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "time_zone": "required"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "time_zone_wrong_type": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "time_zone": 42
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "time_zone": "must be a string"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "time_zone": "Europe/Berlin"
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "without_capability": {
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "time_zone": "Europe/Berlin"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
           }
         },
         "mediaType": "application/json"
@@ -43421,6 +43965,9 @@
                 "size_bytes": 123,
                 "raw_size": 0,
                 "downgraded_size": 0,
+                "pop3_utf8_size": 0,
+                "imap_size": 0,
+                "imap_utf8_size": 0,
                 "has_attachments": false,
                 "is_read": false,
                 "is_dsn": false,
@@ -49251,6 +49798,9 @@
             "size_bytes": 18,
             "raw_size": 0,
             "downgraded_size": 0,
+            "pop3_utf8_size": 0,
+            "imap_size": 0,
+            "imap_utf8_size": 0,
             "has_attachments": false,
             "is_read": true,
             "is_dsn": false,
@@ -50005,6 +50555,9 @@
             "created_at": "2026-10-20T00:00:00Z",
             "date_header": "2026-10-20T00:00:00Z",
             "downgraded_size": 137,
+            "pop3_utf8_size": 137,
+            "imap_size": 137,
+            "imap_utf8_size": 137,
             "folder": "INBOX",
             "has_attachments": false,
             "headers": {
@@ -51527,7 +52080,11 @@
     },
     "found": {
       "description": "The real bounded database audit verifier walks fixed, production-hashed entries. Complete pairs expose valid/empty/broken/gapped/truncated chains and anchored matches/mismatches/missing anchors. Controlled rows prove verifier and response wiring, not PostgreSQL traversal or audit append persistence.",
-      "request": {},
+      "request": {
+        "query": {
+          "anchor": ""
+        }
+      },
       "response": {
         "status": 200,
         "body": {

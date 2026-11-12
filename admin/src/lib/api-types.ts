@@ -549,7 +549,7 @@ export interface paths {
         put?: never;
         /**
          * Create a new folder
-         * @description The name is valid UTF-8 of at most 255 bytes, neither blank nor beginning or ending with a space, with no control character and no ".."; a "/" is the hierarchy delimiter IMAP clients show. Any other name is 422. A folder that already exists is 409 already_exists, INBOX in any case, Sent, Drafts and Trash among them: they are listed empty or not.
+         * @description The name is valid UTF-8 of at most 255 bytes, neither blank nor beginning or ending with a space, with no control character and no ".."; a "/" is the hierarchy delimiter IMAP clients show. Any other name is 422. The name is saved in Unicode Normalization Form C, and the answer gives it in that form; a name that matches an existing folder once converted is that folder. A folder that already exists is 409 already_exists, INBOX in any case, Sent, Drafts and Trash among them: they are listed empty or not.
          */
         post: operations["createFolder"];
         delete?: never;
@@ -577,7 +577,7 @@ export interface paths {
         head?: never;
         /**
          * Rename a folder
-         * @description A standard folder (INBOX, Sent, Drafts, Trash, Spam, Archive) is not renamed, and no folder is renamed to one: 422 validation_failed. A name another folder has is 409 already_exists: folders are not merged. The name is valid UTF-8 of at most 255 bytes, neither blank nor beginning or ending with a space, with no control character and no ".."; a "/" is the hierarchy delimiter IMAP clients show. Any other name is 422.
+         * @description A standard folder (INBOX, Sent, Drafts, Trash, Spam, Archive) is not renamed, and no folder is renamed to one: 422 validation_failed. A name another folder has is 409 already_exists: folders are not merged. The name is valid UTF-8 of at most 255 bytes, neither blank nor beginning or ending with a space, with no control character and no ".."; a "/" is the hierarchy delimiter IMAP clients show. Any other name is 422. The name is saved in Unicode Normalization Form C, and the answer gives it in that form; a name that matches an existing folder once converted is that folder.
          */
         patch: operations["renameFolder"];
         trace?: never;
@@ -647,7 +647,7 @@ export interface paths {
         put?: never;
         /**
          * Store a message the account already has
-         * @description Stores original message octets, folder, supported system flags and required internal_date without delivery rules or push notifications. Requires mail:import on the destination, which every account is granted on its own mailbox by the importer role; an owner can revoke that grant, and the account is then refused with 403. A message whose Message-ID and exact octets are already in that account and folder is skipped without changing its flags or date; the same Message-ID with different octets is stored as another message. With always_store true no such check is made: a new message is stored with its own id, flags and date, and the one already there is left as it was. With match_submission true and folder Sent, a message whose Message-ID is on one authenticated SMTP submission saved in that account's Sent in the last 5 minutes is not stored, whatever always_store says, and the answer names the saved message with imported false. Messages without Message-ID use a deterministic SHA-256 import identity; the raw source remains unchanged. The one exception is a leading mbox From_ separator line (RFC 4155), which is dropped so the message starts at its first header, and counted as mbox_separator_stripped; any other header block that does not parse is refused. Every attempt the route can read is audited in a messages.import summary, never one entry per message of a session. With import_session (from createImportSession) it is counted in that session's summary, written once when the session closes; without it, it is written at once as a summary of its one message. A summary counts, per folder, messages imported (in the same transaction as the message), deduplicated (a copy matched to its submission included) and refused (stored nothing, including server failures), and the bytes imported. A request over the body limit, or one that cannot be read as this request, is refused before it is counted. An unknown, closed or other opener's import_session is refused as import_session_not_found. The decoded message is bounded by SMTP_MAX_MESSAGE_SIZE (10 MiB by default); the general API body limit may be stricter. Deleted state and up to 100 case-insensitive keywords of 1–255 ASCII bytes are preserved. Keywords must be RFC 3501 atoms without backslash. Deleted messages use IMAP deletion state, not API tombstones; EXPUNGE removes them.
+         * @description Stores original message octets, folder, supported system flags and required internal_date without delivery rules or push notifications. Requires mail:import on the destination, which every account is granted on its own mailbox by the importer role; an owner can revoke that grant, and the account is then refused with 403. A message whose Message-ID and exact octets are already in that account and folder is skipped without changing its flags or date; the same Message-ID with different octets is stored as another message. With always_store true no such check is made: a new message is stored with its own id, flags and date, and the one already there is left as it was. With match_submission true and folder Sent, a message whose Message-ID is on one authenticated SMTP submission saved in that account's Sent in the last 5 minutes is not stored, whatever always_store says, and the answer names the saved message with imported false. Messages without Message-ID use a deterministic SHA-256 import identity; the raw source remains unchanged. The one exception is a leading mbox From_ separator line (RFC 4155), which is dropped so the message starts at its first header, and counted as mbox_separator_stripped; any other header block that does not parse is refused. Every attempt the route can read is audited in a messages.import summary, never one entry per message of a session. With import_session (from createImportSession) it is counted in that session's summary, written once when the session closes; without it, it is written at once as a summary of its one message. A summary counts, per folder, messages imported (in the same transaction as the message), deduplicated (a copy matched to its submission included) and refused (stored nothing, including server failures), and the bytes imported. A request over the body limit, or one that cannot be read as this request, is refused before it is counted. An unknown, closed or other opener's import_session is refused as import_session_not_found. The decoded message is bounded by SMTP_MAX_MESSAGE_SIZE (10 MiB by default); the general API body limit may be stricter. Deleted state and up to 100 case-insensitive keywords of 1–255 ASCII bytes are preserved. Keywords must be RFC 3501 atoms without backslash. Deleted messages use IMAP deletion state, not API tombstones; EXPUNGE removes them. A folder name is saved in Unicode Normalization Form C. A name that had to be converted and matches an existing folder that does not hold this message goes to "name (2)" or the next free number, and the answer's folder says which.
          */
         post: operations["importMessage"];
         delete?: never;
@@ -927,7 +927,7 @@ export interface paths {
         get?: never;
         /**
          * Subscribe to a folder name
-         * @description The account's IMAP subscription list (RFC 9051 §6.3.7, RFC 3501 §6.3.6): the names LSUB and LIST (SUBSCRIBED) return. A name need not be a folder: deleting or renaming a folder leaves its subscription, as RFC 9051 §§6.3.6-6.3.7 have it. A new account starts subscribed to INBOX, Sent, Drafts, Trash, Spam and Archive. Subscribing a name already subscribed answers the same. The name is valid UTF-8 of at most 255 bytes, neither blank nor beginning or ending with a space, with no control character and no ".."; a "/" is the hierarchy delimiter IMAP clients show. Any other name is 422.
+         * @description The account's IMAP subscription list (RFC 9051 §6.3.7, RFC 3501 §6.3.6): the names LSUB and LIST (SUBSCRIBED) return. A name need not be a folder: deleting or renaming a folder leaves its subscription, as RFC 9051 §§6.3.6-6.3.7 have it. A new account starts subscribed to INBOX, Sent, Drafts, Trash, Spam and Archive. Subscribing a name already subscribed answers the same. The name is valid UTF-8 of at most 255 bytes, neither blank nor beginning or ending with a space, with no control character and no ".."; a "/" is the hierarchy delimiter IMAP clients show. Any other name is 422. The name is saved in Unicode Normalization Form C, and the answer gives it in that form; a name that matches an existing folder once converted is that folder.
          */
         put: operations["subscribeFolder"];
         post?: never;
@@ -1012,6 +1012,30 @@ export interface paths {
          * @description Hides every message in this account's thread from folder listings, unless a listing asks for include_snoozed=true, without changing messages or search results. A future snoozed_until sets or replaces the durable deadline; null cancels it. The existing background worker returns due threads at startup and within 30 seconds of their deadline, publishing folder_update to the account's event streams.
          */
         post: operations["snoozeThread"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounts/{id}/time-zone": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the account's time zone
+         * @description The IANA time zone whose calendar days IMAP SEARCH ON, BEFORE and SINCE compare for this account. Null when none is set, and IMAP then uses UTC. Timestamps are stored and returned in UTC whatever this says.
+         */
+        get: operations["getAccountTimeZone"];
+        /**
+         * Set the account's time zone
+         * @description Set the IANA time zone whose calendar days IMAP SEARCH ON, BEFORE and SINCE compare for this account, or null to clear it and use UTC. It applies to the next SEARCH, including on connections already open. An unknown name is refused. Stored timestamps do not change, and IMAP INTERNALDATE is still rendered in UTC.
+         */
+        put: operations["setAccountTimeZone"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1873,7 +1897,7 @@ export interface paths {
         put?: never;
         /**
          * Invite an account to choose its first password
-         * @description For an active account created without credentials. The invitation lasts 15 minutes; issuing another invalidates the previous one. Only a hash is stored. Authenticator enrollment and server encryption must be enabled before invitations can be issued.
+         * @description Requires an active account that has never held credentials: credential_epoch is zero, last_password_change is absent, and no credential exists. Otherwise the response is 409 account_not_invitable, even for a schema-valid account id. The invitation lasts 15 minutes; issuing another invalidates the previous one. Only a hash is stored. Authenticator enrollment and server encryption must be enabled before invitations can be issued.
          */
         post: operations["inviteAccount"];
         delete?: never;
@@ -2577,7 +2601,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Sign an account in with its address and password */
+        /**
+         * Sign an account in with its address and password
+         * @description A wrong password or second-factor code is still answered 401, after a wait that grows with the address's recent failures: up to 3 seconds from anywhere, and up to 5 for failures from the same client. The wait never becomes a refusal, and a correct password is answered without one.
+         */
         post: operations["login"];
         delete?: never;
         options?: never;
@@ -2845,7 +2872,7 @@ export interface paths {
         put?: never;
         /**
          * Open a mail client's connection session (protocol gateways)
-         * @description Internal: served on the mTLS listener, for a gateway presenting its own client certificate, which names its service (IMAP, POP3 or SMTP submission). The mail client's address and password or app password come once, in the body: this is the only request that takes a mail client's password. A refused one is recorded as auth.credential_refused and refusals are throttled; an account with two-factor authentication needs an app password. The answer's token is sent as Bearer on every call the gateway then makes for that connection, over the internal listener with the same certificate; the session is checked on every request, so revoking the credential or the account's sessions ends it at the next one. protocol must be the one the service serves; a caller without a gateway certificate is 403 gateway_required.
+         * @description Internal: served on the mTLS listener, for a gateway presenting its own client certificate, which names its service (IMAP, POP3 or SMTP submission). The mail client's address and password or app password come once, in the body: this is the only request that takes a mail client's password. A refused one is recorded as auth.credential_refused and refusals are throttled; client_ip is the address the mail client connected to the gateway from, and the throttle, the refusals' budget and the audit record go by it instead of the gateway's own. Only a gateway's certificate is believed about it. An account with two-factor authentication needs an app password. The answer's token is sent as Bearer on every call the gateway then makes for that connection, over the internal listener with the same certificate; the session is checked on every request, so revoking the credential or the account's sessions ends it at the next one. A wrong password is still answered 401, after the same wait as a failed login: it grows with the address's recent failures, up to 3 seconds from anywhere and up to 5 from the same client. A correct credential is answered without one. protocol must be the one the service serves; a caller without a gateway certificate is 403 gateway_required.
          */
         post: operations["openGatewaySession"];
         delete?: never;
@@ -2885,7 +2912,7 @@ export interface paths {
         put?: never;
         /**
          * Deliver a message into a mailbox (protocol gateways)
-         * @description Machine to machine: no user token. The inbound pipeline decides: 201 with the message made, 200 processed when it quarantined or discarded it, 403 rejected, 503 deferred, 422 mailbox_full over quota. These are REST statuses for every caller; the SMTP gateway rewrites them into its SMTP reply (#1664). A missing mailbox is 404; a failed mailbox lookup is 500, never a missing recipient. Stored text must not contain NUL (U+0000), including strings and object keys anywhere in recipients_to or recipients_cc and the decoded raw_message octets; a refusal is 422 validation_failed naming the field, before any write. raw_message is a standard padded base64 string (format: byte), not unencoded message text. An omitted or empty folder means INBOX; otherwise The name is valid UTF-8 of at most 255 bytes, neither blank nor beginning or ending with a space, with no control character and no ".."; a "/" is the hierarchy delimiter IMAP clients show. Any other name is 422.
+         * @description Machine to machine: no user token. The inbound pipeline decides: 201 naming the message made, 200 processed when it quarantined or discarded it, 403 rejected, 503 deferred (greylisted or rate_limited when the greylist or rate_limit step held it back), 422 mailbox_full over quota. These are REST statuses for every caller; the SMTP gateway rewrites them into its SMTP reply (#1664). A missing mailbox is 404; a failed mailbox lookup is 500, never a missing recipient. Stored text must not contain NUL (U+0000), including strings and object keys anywhere in recipients_to or recipients_cc; a refusal is 422 validation_failed naming the field, before any write. raw_message is a standard padded base64 string (format: byte), not unencoded message text, and may hold any octets: they are stored exactly. With raw_message and neither body_text nor body_html, the stored text is read from raw_message; when it can't be parsed, the text is whatever follows its first blank line. An arrival (received_tls set) past the hop limit and a reserved alias that cannot route are 403 rejected before the pipeline runs. The recipient is resolved from address. Arriving mail uses server time and default Inbox/flags, subject to inbound rules. Import-only fields sent by older callers are ignored.
          */
         post: operations["deliverMessage"];
         delete?: never;
@@ -2945,7 +2972,7 @@ export interface paths {
         put?: never;
         /**
          * Send a draft
-         * @description The draft (mail:write) is sent as sendMessage sends, and deleted once it is; a refused send keeps it. Draft lookup/access dependency failures return 500 and follow request cancellation. Sending from your own mailbox requires mail:send. From another mailbox requires mail:send_as on that mailbox. Set on_behalf to true to require mail:send_on_behalf instead: From stays the represented mailbox and RFC 5322 Sender is the authenticated account's own address. Read access grants neither mode. An unknown sender and a sender the caller has no link to return the same 404 not_found. A visible sender without the selected sending capability returns 403 forbidden. Parsed fields that break sender policy or scheduling rules return 422 validation_failed with details.fields naming them. Both modes audit the real account, credential and represented mailbox.
+         * @description The draft (mail:write) is sent as sendMessage sends, and deleted once it is; a refused send keeps it. Draft lookup/access dependency failures return 500 and follow request cancellation. A 201 means the message is durably queued, not that it has arrived. Every recipient, on this server or elsewhere, gets it through the outbound queue, signed where the sender domain has a DKIM key, and through the receiving domain's normal inbound checks. The answer does not wait for delivery: a later temporary refusal is retried, and a permanent one fails that recipient's queue entry and bounces to the sender as a DSN. Optional Idempotency-Key (at most 255 bytes) is scoped to the authenticated account across send, send-draft and forward, and retained for 24 hours after a successful send. A retry of the same route, resource and parsed body returns the original status and result without sending again, even if the draft or original message no longer exists. Different bodies, routes or resources with the same live key return 409 idempotency_conflict. Concurrent matching requests wait for the first transaction to commit, then replay it; if the wait is cancelled or fails, the retry returns 503 deferred and queues nothing. Failed sends roll back and do not consume the key. Current sender and source-mailbox permissions are checked on every replay. Omitting the header preserves ordinary sending. Sending from your own mailbox requires mail:send. From another mailbox requires mail:send_as on that mailbox. Set on_behalf to true to require mail:send_on_behalf instead: From stays the represented mailbox and RFC 5322 Sender is the authenticated account's own address. Read access grants neither mode. An unknown sender and a sender the caller has no link to return the same 404 not_found. A visible sender without the selected sending capability returns 403 forbidden. Parsed fields that break sender policy or scheduling rules return 422 validation_failed with details.fields naming them. Both modes audit the real account, credential and represented mailbox.
          */
         post: operations["sendDraft"];
         delete?: never;
@@ -3025,7 +3052,7 @@ export interface paths {
         put?: never;
         /**
          * Send a message
-         * @description Sent at once (201), or with scheduled_at stored and sent then (202); the outbound pipeline may discard it (200). to needs at least one address. from, to, cc and bcc are described as bare addresses, internationalized or not; the handler also accepts an RFC 5322 display name around one. scheduled_at must be at least a minute ahead and within a year; null or omitted sends at once. Sending from your own mailbox requires mail:send. From another mailbox requires mail:send_as on that mailbox. Set on_behalf to true to require mail:send_on_behalf instead: From stays the represented mailbox and RFC 5322 Sender is the authenticated account's own address. Read access grants neither mode. An unknown sender and a sender the caller has no link to return the same 404 not_found. A visible sender without the selected sending capability returns 403 forbidden. Parsed fields that break sender policy or scheduling rules return 422 validation_failed with details.fields naming them. Both modes audit the real account, credential and represented mailbox.
+         * @description Queued at once (201), or with scheduled_at stored and queued then (202); the outbound pipeline may discard it (200). to needs at least one address. from, to, cc and bcc are described as bare addresses, internationalized or not; the handler also accepts an RFC 5322 display name around one. scheduled_at must be at least a minute ahead and within a year; null or omitted sends at once. A 201 means the message is durably queued, not that it has arrived. Every recipient, on this server or elsewhere, gets it through the outbound queue, signed where the sender domain has a DKIM key, and through the receiving domain's normal inbound checks. The answer does not wait for delivery: a later temporary refusal is retried, and a permanent one fails that recipient's queue entry and bounces to the sender as a DSN. Optional Idempotency-Key (at most 255 bytes) is scoped to the authenticated account across send, send-draft and forward, and retained for 24 hours after a successful send. A retry of the same route, resource and parsed body returns the original status and result without sending again, even if the draft or original message no longer exists. Different bodies, routes or resources with the same live key return 409 idempotency_conflict. Concurrent matching requests wait for the first transaction to commit, then replay it; if the wait is cancelled or fails, the retry returns 503 deferred and queues nothing. Failed sends roll back and do not consume the key. Current sender and source-mailbox permissions are checked on every replay. Omitting the header preserves ordinary sending. Sending from your own mailbox requires mail:send. From another mailbox requires mail:send_as on that mailbox. Set on_behalf to true to require mail:send_on_behalf instead: From stays the represented mailbox and RFC 5322 Sender is the authenticated account's own address. Read access grants neither mode. An unknown sender and a sender the caller has no link to return the same 404 not_found. A visible sender without the selected sending capability returns 403 forbidden. Parsed fields that break sender policy or scheduling rules return 422 validation_failed with details.fields naming them. Both modes audit the real account, credential and represented mailbox.
          */
         post: operations["sendMessage"];
         delete?: never;
@@ -3084,7 +3111,7 @@ export interface paths {
         put?: never;
         /**
          * Reply to a calendar invitation
-         * @description The invitation's message is read with mail:read; the reply is sent from an address the session may send as (mail:send).
+         * @description The invitation's message is read with mail:read; the reply is sent from an address the session may send as (mail:send). The 200 means the reply is durably queued for the organizer, on this server or elsewhere, not that it has arrived: a later permanent refusal bounces to the sender as a DSN.
          */
         post: operations["respondToCalendar"];
         delete?: never;
@@ -3104,7 +3131,7 @@ export interface paths {
         put?: never;
         /**
          * Forward a message
-         * @description The message (mail:read) is forwarded through the normal sender authorization, rate limit and outbound policy, with Fwd: and the note above its original header. Stored attachments, including empty and inline parts, are re-attached; the Sent copy owns independent attachment objects. The final signed MIME message is bounded by SMTP_MAX_MESSAGE_SIZE, and sender quota includes the copied parts. Sent, attachment references, quota and recipient work commit together. Unavailable or changed source objects fail the forward instead of dropping parts. Sending from your own mailbox requires mail:send. From another mailbox requires mail:send_as on that mailbox. Set on_behalf to true to require mail:send_on_behalf instead: From stays the represented mailbox and RFC 5322 Sender is the authenticated account's own address. Read access grants neither mode. An unknown sender and a sender the caller has no link to return the same 404 not_found. A visible sender without the selected sending capability returns 403 forbidden. Parsed fields that break sender policy or scheduling rules return 422 validation_failed with details.fields naming them. Both modes audit the real account, credential and represented mailbox.
+         * @description The message (mail:read) is forwarded through the normal sender authorization, rate limit and outbound policy, with Fwd: and the note above its original header. Stored attachments, including empty and inline parts, are re-attached; the Sent copy owns independent attachment objects. The final signed MIME message is bounded by SMTP_MAX_MESSAGE_SIZE, and sender quota includes the copied parts. Sent, attachment references, quota and recipient work commit together. Unavailable or changed source objects fail the forward instead of dropping parts. A 201 means the message is durably queued, not that it has arrived. Every recipient, on this server or elsewhere, gets it through the outbound queue, signed where the sender domain has a DKIM key, and through the receiving domain's normal inbound checks. The answer does not wait for delivery: a later temporary refusal is retried, and a permanent one fails that recipient's queue entry and bounces to the sender as a DSN. Optional Idempotency-Key (at most 255 bytes) is scoped to the authenticated account across send, send-draft and forward, and retained for 24 hours after a successful send. A retry of the same route, resource and parsed body returns the original status and result without sending again, even if the draft or original message no longer exists. Different bodies, routes or resources with the same live key return 409 idempotency_conflict. Concurrent matching requests wait for the first transaction to commit, then replay it; if the wait is cancelled or fails, the retry returns 503 deferred and queues nothing. Failed sends roll back and do not consume the key. Current sender and source-mailbox permissions are checked on every replay. Omitting the header preserves ordinary sending. Sending from your own mailbox requires mail:send. From another mailbox requires mail:send_as on that mailbox. Set on_behalf to true to require mail:send_on_behalf instead: From stays the represented mailbox and RFC 5322 Sender is the authenticated account's own address. Read access grants neither mode. An unknown sender and a sender the caller has no link to return the same 404 not_found. A visible sender without the selected sending capability returns 403 forbidden. Parsed fields that break sender policy or scheduling rules return 422 validation_failed with details.fields naming them. Both modes audit the real account, credential and represented mailbox.
          */
         post: operations["forwardMessage"];
         delete?: never;
@@ -3142,7 +3169,7 @@ export interface paths {
         };
         /**
          * What happened to a sent message, recipient by recipient
-         * @description For a message this account sent: each recipient's state (queued, retrying, delivered, failed, or unknown when no delivery record was kept), the reason in a sentence derived from the failure category, the attempts made and when the last one was. A remote recipient is read from its outbound queue row; a local one from the copy the send put in that mailbox. The remote server's own reply is never returned, only the category's reason. A message this account did not send has no recipients. Uses the same mail:read authorization as reading the message; another account's message is 404.
+         * @description For a message this account sent: each recipient's state (queued, retrying, delivered, failed, or unknown when no delivery record was kept), the reason in a sentence derived from the failure category, the attempts made and when the last one was. A recipient is read from its outbound queue row, which every send makes, whether its mailbox is here or elsewhere; one with no row, from its copy in a mailbox on this server. The remote server's own reply is never returned, only the category's reason. A message this account did not send has no recipients. Uses the same mail:read authorization as reading the message; another account's message is 404.
          */
         get: operations["listMessageRecipients"];
         put?: never;
@@ -3375,7 +3402,7 @@ export interface paths {
         put?: never;
         /**
          * Deliver a message via RESTMAIL protocol
-         * @description Server-to-server delivery. Unauthenticated at the HTTP layer: a delivery must come from a trusted peer network or carry a DKIM signature aligned with its From domain, or it is refused 403 unauthorized. The inbound pipeline can refuse it 403 rejected or defer it 503 deferred. When no recipient takes the message the answer is 422 undeliverable. Failed sender/recipient, DKIM key or inbound-policy lookups and corrupt stored policy defer with 503; recipient lookups finish before delivery side effects.
+         * @description Server-to-server delivery. Unauthenticated at the HTTP layer: a delivery must come from a trusted peer network or carry a DKIM signature aligned with its From domain, or it is refused 403 unauthorized. The inbound pipeline can refuse it 403 rejected or defer it 503, with error code greylisted when its greylist step held the message back, rate_limited when its rate_limit step did, and deferred for any other deferral. The sending queue retries on the schedule for that code. When no recipient takes the message the answer is 422 undeliverable. Failed sender/recipient, DKIM key or inbound-policy lookups and corrupt stored policy defer with 503; recipient lookups finish before delivery side effects.
          */
         post: operations["restmailDeliver"];
         delete?: never;
@@ -3400,6 +3427,13 @@ export interface components {
             health: string;
             login: string;
         };
+        AccountTimeZone: {
+            /**
+             * Format: iana-time-zone
+             * @example Europe/Berlin
+             */
+            time_zone: string | null;
+        };
         Address: {
             address: string;
             name?: string;
@@ -3409,6 +3443,7 @@ export interface components {
             exists: boolean;
             mailbox_id?: number;
         };
+        AddressList: Record<string, never>;
         Alias: {
             active: boolean;
             /** Format: date-time */
@@ -3726,6 +3761,9 @@ export interface components {
         "Data-APIRoot": {
             data: components["schemas"]["APIRoot"];
         };
+        "Data-AccountTimeZone": {
+            data: components["schemas"]["AccountTimeZone"];
+        };
         "Data-AddressCheck": {
             data: components["schemas"]["AddressCheck"];
         };
@@ -3764,6 +3802,9 @@ export interface components {
         };
         "Data-DashboardStats": {
             data: components["schemas"]["DashboardStats"];
+        };
+        "Data-DeliveredMessage": {
+            data: components["schemas"]["DeliveredMessage"];
         };
         "Data-DeliveryProcessed": {
             data: components["schemas"]["DeliveryProcessed"];
@@ -4011,6 +4052,11 @@ export interface components {
         "Data-vacationSetting": {
             data: components["schemas"]["vacationSetting"];
         };
+        DeliveredMessage: {
+            folder: string;
+            id: number;
+            message_id: string;
+        };
         DeliveryLogEntry: {
             attempts: number;
             body_type: string;
@@ -4167,12 +4213,12 @@ export interface components {
         };
         Headers: {
             bcc?: components["schemas"]["Address"][];
-            cc?: components["schemas"]["Address"][];
+            cc: components["schemas"]["AddressList"];
             date: string;
             extra?: {
                 [key: string]: string;
             };
-            from: components["schemas"]["Address"][];
+            from: components["schemas"]["AddressList"];
             "in-reply-to"?: string;
             "message-id": string;
             raw?: {
@@ -4180,7 +4226,7 @@ export interface components {
             };
             references?: string[];
             subject: string;
-            to: components["schemas"]["Address"][];
+            to: components["schemas"]["AddressList"];
         };
         Health: {
             cert_warnings?: components["schemas"]["CertWarning"][];
@@ -4448,6 +4494,8 @@ export interface components {
             headers?: unknown;
             id: number;
             imap_deleted?: boolean;
+            imap_size: number;
+            imap_utf8_size: number;
             in_reply_to: string;
             is_answered?: boolean;
             is_deleted: boolean;
@@ -4461,6 +4509,7 @@ export interface components {
             mailbox_id: number;
             message_id: string;
             mod_seq?: number;
+            pop3_utf8_size: number;
             raw_size: number;
             /** Format: date-time */
             received_at: string;
@@ -4885,6 +4934,8 @@ export interface components {
             headers?: unknown;
             id?: number;
             imap_deleted?: boolean;
+            imap_size?: number;
+            imap_utf8_size?: number;
             in_reply_to?: string;
             is_answered?: boolean;
             is_deleted?: boolean;
@@ -4897,6 +4948,7 @@ export interface components {
             mailbox?: components["schemas"]["RestoreSnapshotMailbox"];
             mailbox_id?: number;
             message_id?: string;
+            pop3_utf8_size?: number;
             raw_size?: number;
             /** Format: date-time */
             received_at?: string;
@@ -5337,6 +5389,8 @@ export interface components {
             headers?: unknown;
             id: number;
             imap_deleted?: boolean;
+            imap_size: number;
+            imap_utf8_size: number;
             in_reply_to: string;
             is_answered?: boolean;
             is_deleted: boolean;
@@ -5349,6 +5403,7 @@ export interface components {
             mailbox?: components["schemas"]["TestSnapshotMailbox"];
             mailbox_id: number;
             message_id: string;
+            pop3_utf8_size: number;
             raw_size: number;
             /** Format: date-time */
             received_at: string;
@@ -5476,12 +5531,6 @@ export interface components {
         VanishedUID: {
             mod_seq: number;
             uid: number;
-        };
-        acceptInvitationRequest: {
-            /** @enum {string} */
-            client?: "native";
-            password: string;
-            token?: string;
         };
         accountAddresses: {
             account_id: number;
@@ -5635,12 +5684,6 @@ export interface components {
             /** @enum {string|null} */
             trust_level?: "auto" | "trusted" | "blocked" | null;
         };
-        createCredentialBody: {
-            /** Format: date-time */
-            expires_at?: string | null;
-            name: string;
-            password?: string;
-        };
         createCustomFilterRequestBody: {
             config?: unknown;
             description?: string;
@@ -5741,24 +5784,15 @@ export interface components {
             status: string;
         };
         deliverMessageBody: {
-            address?: string;
+            address: string;
             body_html?: string;
             body_text?: string;
             client_ip?: string;
-            folder?: string & (unknown & unknown & unknown);
             helo_name?: string;
             in_reply_to?: string;
-            is_answered?: boolean | null;
-            is_draft?: boolean | null;
-            is_flagged?: boolean | null;
-            is_read?: boolean | null;
-            is_starred?: boolean | null;
-            mailbox_id?: number;
             message_id?: string;
             /** Format: byte */
             raw_message?: string;
-            /** Format: date-time */
-            received_at?: string | null;
             received_tls?: boolean | null;
             recipients_cc?: unknown;
             recipients_to?: unknown;
@@ -5769,10 +5803,6 @@ export interface components {
             subject?: string;
             tls_cipher?: string;
             tls_version?: string;
-        } | {
-            mailbox_id: unknown;
-        } | {
-            address: unknown;
         };
         disableRequest: {
             recovery_code?: string;
@@ -5827,16 +5857,10 @@ export interface components {
         folderNameBody: {
             name: string;
         };
-        forwardBody: {
-            body_text?: string;
-            from?: string;
-            list_unsubscribe?: components["schemas"]["listUnsubscribe"] | null;
-            on_behalf?: boolean;
-            to?: string[];
-        };
         gatewaySessionOpenRequest: {
             /** Format: email */
             address: string;
+            client_ip: string;
             /** Format: password */
             password: string;
             /** @enum {string} */
@@ -5878,13 +5902,6 @@ export interface components {
             /** Format: date-time */
             expires_at: string;
             token: string;
-        };
-        linkAccountRequest: {
-            address: string;
-            display_name?: string;
-            password: string;
-            recovery_code?: string;
-            totp_code?: string;
         };
         listUnsubscribe: {
             https?: string;
@@ -6028,6 +6045,7 @@ export interface components {
             };
             in_reply_to?: string & unknown;
             message_id?: string & unknown;
+            /** Format: byte */
             raw_message?: string;
             recipients?: string[] | null;
             references?: string & unknown;
@@ -7516,7 +7534,14 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["linkAccountRequest"];
+                "application/json": {
+                    /** Format: email */
+                    address: string;
+                    display_name?: string;
+                    password: string;
+                    recovery_code?: string;
+                    totp_code?: string;
+                };
             };
         };
         responses: {
@@ -11750,7 +11775,12 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["createCredentialBody"];
+                "application/json": {
+                    /** Format: date-time */
+                    expires_at?: string | null;
+                    name: string;
+                    password: string;
+                };
             };
         };
         responses: {
@@ -18220,6 +18250,401 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Data-ThreadSnooze"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, a session that has ended, or a gateway session that has ended */
+            401: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused API keys, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After": number;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
+            503: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getAccountTimeZone: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-AccountTimeZone"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, a session that has ended, or a gateway session that has ended */
+            401: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused API keys, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After": number;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
+            503: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    setAccountTimeZone: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountTimeZone"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-AccountTimeZone"];
                 };
             };
             /** @description Bad Request */
@@ -39540,7 +39965,12 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["acceptInvitationRequest"];
+                "application/json": {
+                    /** @enum {string} */
+                    client?: "native";
+                    password: string;
+                    token: string;
+                };
             };
         };
         responses: {
@@ -42268,7 +42698,7 @@ export interface operations {
                     "application/json": components["schemas"]["Data-DeliveryProcessed"];
                 };
             };
-            /** @description Delivered; the message made */
+            /** @description Delivered; which message was made */
             201: {
                 headers: {
                     /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
@@ -42284,7 +42714,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Data-Message"];
+                    "application/json": components["schemas"]["Data-DeliveredMessage"];
                 };
             };
             /** @description Bad Request */
@@ -42822,7 +43252,10 @@ export interface operations {
     sendDraft: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Optional account-scoped retry key, retained for 24 hours after success. Reuse only for the same route, resource and body. */
+                "Idempotency-Key"?: string;
+            };
             path: {
                 id: number;
             };
@@ -42853,7 +43286,7 @@ export interface operations {
                     "application/json": components["schemas"]["Data-SendDiscarded"];
                 };
             };
-            /** @description Sent; the copy kept in Sent */
+            /** @description Queued for every recipient; the copy kept in Sent */
             201: {
                 headers: {
                     /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
@@ -42950,6 +43383,25 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
                     "Content-Security-Policy": string;
@@ -43602,7 +44054,10 @@ export interface operations {
     sendMessage: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Optional account-scoped retry key, retained for 24 hours after success. Reuse only for the same route, resource and body. */
+                "Idempotency-Key"?: string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -43647,7 +44102,7 @@ export interface operations {
                     "application/json": components["schemas"]["Data-SendDiscarded"];
                 };
             };
-            /** @description Sent; the copy kept in Sent */
+            /** @description Queued for every recipient; the copy kept in Sent */
             201: {
                 headers: {
                     /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
@@ -43744,6 +44199,25 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
                     "Content-Security-Policy": string;
@@ -44867,7 +45341,14 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["forwardBody"];
+                "application/json": {
+                    body_text?: string;
+                    /** Format: idn-email */
+                    from: string;
+                    list_unsubscribe?: components["schemas"]["listUnsubscribe"] | null;
+                    on_behalf?: boolean;
+                    to: string[];
+                };
             };
         };
         responses: {
@@ -44890,7 +45371,7 @@ export interface operations {
                     "application/json": components["schemas"]["Data-SendDiscarded"];
                 };
             };
-            /** @description Sent; the copy kept in Sent */
+            /** @description Queued for every recipient; the copy kept in Sent */
             201: {
                 headers: {
                     /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
@@ -44987,6 +45468,25 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
                     "Content-Security-Policy": string;
@@ -45881,7 +46381,7 @@ export interface operations {
                     "application/json": components["schemas"]["Data-SendDiscarded"];
                 };
             };
-            /** @description Sent; the copy kept in Sent */
+            /** @description Queued for every recipient; the copy kept in Sent */
             201: {
                 headers: {
                     /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
