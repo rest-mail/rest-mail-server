@@ -245,6 +245,10 @@ var exampleRequirements = map[string][]string{
 		// key (owner_key), so it cannot send them; in process they are proven
 		// on a server with an empty owner registry.
 		"no_owner_keys",
+		// A run that resets and seeds before each exchange (#1334, #1385): an
+		// exchange that wipes the data, or whose probes would, takes nothing
+		// another exchange needs.
+		"disposable_data",
 	},
 }
 
