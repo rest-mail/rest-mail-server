@@ -2577,7 +2577,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Sign an account in with its address and password */
+        /**
+         * Sign an account in with its address and password
+         * @description A wrong password or second-factor code is still answered 401, after a wait that grows with the address's recent failures: up to 3 seconds from anywhere, and up to 5 for failures from the same client. The wait never becomes a refusal, and a correct password is answered without one.
+         */
         post: operations["login"];
         delete?: never;
         options?: never;
@@ -2845,7 +2848,7 @@ export interface paths {
         put?: never;
         /**
          * Open a mail client's connection session (protocol gateways)
-         * @description Internal: served on the mTLS listener, for a gateway presenting its own client certificate, which names its service (IMAP, POP3 or SMTP submission). The mail client's address and password or app password come once, in the body: this is the only request that takes a mail client's password. A refused one is recorded as auth.credential_refused and refusals are throttled; an account with two-factor authentication needs an app password. The answer's token is sent as Bearer on every call the gateway then makes for that connection, over the internal listener with the same certificate; the session is checked on every request, so revoking the credential or the account's sessions ends it at the next one. protocol must be the one the service serves; a caller without a gateway certificate is 403 gateway_required.
+         * @description Internal: served on the mTLS listener, for a gateway presenting its own client certificate, which names its service (IMAP, POP3 or SMTP submission). The mail client's address and password or app password come once, in the body: this is the only request that takes a mail client's password. A refused one is recorded as auth.credential_refused and refusals are throttled; an account with two-factor authentication needs an app password. The answer's token is sent as Bearer on every call the gateway then makes for that connection, over the internal listener with the same certificate; the session is checked on every request, so revoking the credential or the account's sessions ends it at the next one. A wrong password is still answered 401, after the same wait as a failed login: it grows with the address's recent failures, up to 3 seconds from anywhere and up to 5 from the same client. A correct credential is answered without one. protocol must be the one the service serves; a caller without a gateway certificate is 403 gateway_required.
          */
         post: operations["openGatewaySession"];
         delete?: never;
