@@ -48,6 +48,16 @@ api:
   attachments:
     persistence:
       size: 1Gi
+  # Stage 2 (#1750) sends the contract examples through this Ingress, served
+  # by the ingress-nginx the workflow installs, on the mail host the TLS
+  # Secret's certificate names.
+  ingress:
+    enabled: true
+    className: nginx
+    host: mail.restmail-ci.test
+    tls:
+      enabled: true
+      secretName: restmail-ci-tls
 
 jsFilter:
   image:
@@ -76,8 +86,8 @@ pop3Gateway:
   service:
     type: ClusterIP
 
-# ── Web apps — no ingress controller in the cluster; the Ingress objects
-# are still made, they just route nowhere ───────────────────────────────────
+# ── Web apps — their Ingress objects are made on hosts of their own, which
+# nothing in the check resolves ─────────────────────────────────────────────
 webmail:
   image:
     tag: ci
