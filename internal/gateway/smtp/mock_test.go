@@ -2,7 +2,6 @@ package smtp
 
 import (
 	"bufio"
-	"context"
 	"crypto/tls"
 	"encoding/base64"
 	"fmt"
@@ -17,7 +16,6 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/gateway/connlimiter"
 	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
 	"github.com/rest-mail/rest-mail-server/internal/mtls/mtlstest"
-	"github.com/rest-mail/rest-mail-server/internal/outbound"
 )
 
 // mockBackend is an in-memory Backend: it decides recipient locality and
@@ -177,6 +175,13 @@ func (m *mockBackend) lastDeliverReq() *apiclient.DeliverRequest {
 
 // mockStore is an in-memory Store: it decides sender authorization and records
 // outbound queue inserts, without a database.
+// enqueuedMessages is what has gone on the outbound queue so far.
+func (s *mockStore) enqueuedMessages() []OutboundMessage {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]OutboundMessage(nil), s.enqueued...)
+}
+
 type mockStore struct {
 	mu sync.Mutex
 
@@ -198,7 +203,6 @@ type mockStore struct {
 	policies   map[string]string
 	policyErr  error
 	persistErr error // forced PersistSubmittedMessage error
-	prepareErr error // forced PrepareSubmitted error
 
 	// hosted names the domains HostedDomain reports; hostedErr is a forced
 	// HostedDomain error, and relayErr a forced RelayBounce error.
@@ -209,29 +213,7 @@ type mockStore struct {
 
 	enqueued  []OutboundMessage
 	persisted []SubmittedMessage
-	prepared  int  // PrepareSubmitted calls
 	nextMsgID uint // assigned to the most recent persisted submission
-}
-
-// mockSignature is the DKIM-Signature PrepareSubmitted puts on a message.
-const mockSignature = "DKIM-Signature: v=1; a=rsa-sha256; d=mock; b=mock\r\n"
-
-// PrepareSubmitted strips the Bcc header as outbound.Prepare does, and signs
-// with mockSignature.
-func (s *mockStore) PrepareSubmitted(_ context.Context, _, raw string) (string, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.prepared++
-	if s.prepareErr != nil {
-		return "", s.prepareErr
-	}
-	return mockSignature + outbound.StripBcc(raw), nil
-}
-
-func (s *mockStore) preparedCount() int {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.prepared
 }
 
 func newMockStore() *mockStore {

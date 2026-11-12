@@ -112,7 +112,8 @@ func testStage6RestmailUpgrade(t *testing.T) {
 		resp.Body.Close()
 
 		otherClient, otherClientAcct := restmailInbox(t, "other@restmail.test", accountPassword)
-		msgID := waitForMessage(t, otherClient, otherClientAcct, "INBOX", subject, 15*time.Second)
+		// A same-server send takes the outbound queue and the MX like any other (#1564).
+		msgID := waitForMessage(t, otherClient, otherClientAcct, "INBOX", subject, 30*time.Second)
 		t.Logf("Mail3→Mail3 delivery (upgrade path): id=%d", msgID)
 	})
 
