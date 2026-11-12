@@ -360,6 +360,10 @@ func (c *Client) SendMessage(token string, req *SendRequest) error {
 	return c.postAuth("/api/v1/messages/send", token, req, nil)
 }
 
+func (c *Client) SendMessageWithIdempotencyKey(token string, req *SendRequest, key string) error {
+	return c.postAuth("/api/v1/messages/send", token, req, nil, key)
+}
+
 // ── Folders ───────────────────────────────────────────────────────────
 
 type Folder = apitypes.FolderSummary
@@ -865,7 +869,7 @@ func (c *Client) getAuth(path, token string, out interface{}) error {
 	return c.decodeResponse(resp, out)
 }
 
-func (c *Client) postAuth(path, token string, body interface{}, out interface{}) error {
+func (c *Client) postAuth(path, token string, body interface{}, out interface{}, idempotencyKey ...string) error {
 	jsonBody, err := json.Marshal(body)
 	if err != nil {
 		return err
@@ -877,6 +881,9 @@ func (c *Client) postAuth(path, token string, body interface{}, out interface{})
 	}
 	authorize(req, token)
 	req.Header.Set("Content-Type", "application/json")
+	if len(idempotencyKey) > 0 && idempotencyKey[0] != "" {
+		req.Header.Set("Idempotency-Key", idempotencyKey[0])
+	}
 	resp, err := c.send(client, req)
 	if err != nil {
 		return fmt.Errorf("POST %s: %w", path, err)
