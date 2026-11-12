@@ -136,11 +136,15 @@ func TestSMTP_SMTPUTF8SubmissionAuthorizationAndRouting(t *testing.T) {
 		if spoof {
 			want = 0
 		}
-		if len(back.deliveredTo()) != want || len(store.queued()) != want || len(store.persistedSubmissions()) != want {
-			t.Fatalf("spoof=%t: delivery/queue/persistence = %d/%d/%d, want %d each", spoof, len(back.deliveredTo()), len(store.queued()), len(store.persistedSubmissions()), want)
+		// Both recipients go on the queue, the one on this server too (#1564).
+		if len(back.deliveredTo()) != 0 || len(store.queued()) != 2*want || len(store.persistedSubmissions()) != want {
+			t.Fatalf("spoof=%t: delivery/queue/persistence = %d/%d/%d, want 0/%d/%d", spoof, len(back.deliveredTo()), len(store.queued()), len(store.persistedSubmissions()), 2*want, want)
 		}
 	}
-	q := store.queued()[0]
+	if local := store.queued()[0]; local.Recipient != "受信者@例え.jp" || local.Domain != "例え.jp" {
+		t.Errorf("internationalized local recipient changed: %+v", local)
+	}
+	q := store.queued()[1]
 	if q.Sender != back.user || q.Recipient != "münchen@städte.de" || q.Domain != "städte.de" || q.BodyType != "8BITMIME" || !strings.Contains(q.RawMessage, internationalBody) {
 		t.Errorf("internationalized submission changed: %+v", q)
 	}
@@ -228,8 +232,8 @@ func TestSMTP_SMTPUTF8HeaderPolicy(t *testing.T) {
 			if strings.HasPrefix(tc.reply, "250") {
 				want = 1
 			}
-			if len(back.deliveredTo()) != want || len(store.queued()) != want || len(store.persistedSubmissions()) != want {
-				t.Fatalf("delivery/queue/persistence = %d/%d/%d, want %d each", len(back.deliveredTo()), len(store.queued()), len(store.persistedSubmissions()), want)
+			if len(back.deliveredTo()) != 0 || len(store.queued()) != 2*want || len(store.persistedSubmissions()) != want {
+				t.Fatalf("delivery/queue/persistence = %d/%d/%d, want 0/%d/%d", len(back.deliveredTo()), len(store.queued()), len(store.persistedSubmissions()), 2*want, want)
 			}
 			if want == 1 {
 				if q := store.queued()[0]; !strings.Contains(q.RawMessage, body) || q.BodyType != "8BITMIME" {
