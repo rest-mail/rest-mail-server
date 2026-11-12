@@ -389,6 +389,12 @@ class OwnDataHooks(unittest.TestCase):
             "registerRecoveryEmail": "sign_in_and_recovery_after_a_reset",
             "recoveryEmailLink": "sign_in_and_recovery_after_a_reset",
             "verifyRecoveryEmail": "sign_in_and_recovery_after_a_reset",
+            "getAccount": "the_last_free_operations_after_a_reset",
+            "listCalendarEvents": "the_last_free_operations_after_a_reset",
+            "respondToCalendar": "the_last_free_operations_after_a_reset",
+            "accountEvents": "the_last_free_operations_after_a_reset",
+            "probeServices": "the_last_free_operations_after_a_reset",
+            "verifyDelivery": "the_last_free_operations_after_a_reset",
         }
         # entrypoint.py registers setDomainRelay's and the quiet hours' (below).
         self.assertEqual(
