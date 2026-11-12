@@ -382,14 +382,13 @@ func TestDataRemovesItsFilesOnEveryOutcome(t *testing.T) {
 		}
 	})
 
-	t.Run("signed copy of a submission", func(t *testing.T) {
+	t.Run("submission to a local recipient", func(t *testing.T) {
 		t.Setenv("TMPDIR", t.TempDir())
 		back, store := newMockBackend(), newMockStore()
 		back.local["bob@example.com"] = true
 		store.authorized["alice@example.com"] = true
 		store.identities = map[string]uint{"alice@example.com": back.accountID}
-		observed := &observingBackend{mockBackend: back, t: t}
-		h := newSMTPHarness(t, back, store, true, func(s *Server) { s.api = observed })
+		h := newSMTPHarness(t, back, store, true)
 		h.ehlo()
 		if r := h.authPlain(back.user, back.pass); !strings.HasPrefix(r, "235") {
 			t.Fatalf("AUTH = %q", r)
@@ -399,19 +398,20 @@ func TestDataRemovesItsFilesOnEveryOutcome(t *testing.T) {
 			t.Fatalf("reply = %q", reply)
 		}
 		assertSpoolEmpty(t)
-		if observed.sawOnDisk != 3 {
-			t.Errorf("%d files on disk during delivery, want the message, the signed copy and the text body", observed.sawOnDisk)
+		if got := back.deliveredTo(); len(got) != 0 {
+			t.Errorf("delivered directly to %v, want the outbound queue (#1564)", got)
 		}
-		if raw := string(back.lastDeliverReq().RawMessage); !strings.HasPrefix(raw, mockSignature) {
-			t.Errorf("delivered raw message does not start with the signature: %q", clip(raw))
+		queued := store.queued()
+		if len(queued) != 1 || !strings.HasPrefix(queued[0].RawMessage, "Received: ") || !strings.HasSuffix(queued[0].RawMessage, "body\r\n") {
+			t.Fatalf("queued = %+v, want the message with its Received field", queued)
 		}
 	})
 
-	t.Run("refused submission", func(t *testing.T) {
+	t.Run("submission that cannot be queued", func(t *testing.T) {
 		t.Setenv("TMPDIR", t.TempDir())
 		back, store := newMockBackend(), newMockStore()
 		back.local["bob@example.com"] = true
-		store.prepareErr = errors.New("no key")
+		store.enqueueErr = errors.New("no queue")
 		store.identities = map[string]uint{"alice@example.com": back.accountID}
 		h := newSMTPHarness(t, back, store, true)
 		h.ehlo()

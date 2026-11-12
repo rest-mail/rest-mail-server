@@ -274,6 +274,10 @@ func TestCalendarReplySummaryCannotAddAHeader(t *testing.T) {
 		t.Run(name+" to a hosted organizer", func(t *testing.T) {
 			f := newCalendarReplyFixture(t)
 			f.reply(t, f.deliverInvitation(t, f.organizer.Address, summary))
+			raw := f.queued(t, f.organizer.Address)
+			checkReplyHeaders(t, raw, wantSubject)
+			checkReplyBody(t, raw, wantNote)
+			deliverQueued(t, f.h, f.tx, f.sentCopy(t))
 			var delivered models.Message
 			if err := f.tx.Where("mailbox_id = ? AND folder = ?", f.organizer.ID, "INBOX").First(&delivered).Error; err != nil {
 				t.Fatalf("no delivered reply: %v", err)

@@ -250,7 +250,6 @@ func (h *MessageHandler) releaseHeldSend(r *http.Request, in scheduledPath) (end
 		}
 		sender := *h
 		sender.db = tx
-		sender.draftSend = effects
 		if h.broker != nil {
 			sender.broker = effects
 		}

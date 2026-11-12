@@ -37,14 +37,13 @@ func TestSMTP_REQUIRETLSTagsTheMessage(t *testing.T) {
 	send("")
 
 	queued := store.queued()
-	if len(queued) != 2 || !queued[0].RequireTLS || queued[1].RequireTLS {
-		t.Fatalf("queued %+v, want the first tagged and the second not", queued)
+	// Each message has two queue rows, one for bob on this server and one for
+	// carol elsewhere: the tag goes on with both.
+	if len(queued) != 4 || !queued[0].RequireTLS || !queued[1].RequireTLS || queued[2].RequireTLS || queued[3].RequireTLS {
+		t.Fatalf("queued %+v, want the first message's rows tagged and the second's not", queued)
 	}
-	back.mu.Lock()
-	reqs := back.deliverReqs
-	back.mu.Unlock()
-	if len(reqs) != 2 || !reqs[0].RequireTLS || reqs[1].RequireTLS {
-		t.Fatalf("local deliveries %d, tagged %v, want the first tagged and the second not", len(reqs), []bool{len(reqs) > 0 && reqs[0].RequireTLS, len(reqs) > 1 && reqs[1].RequireTLS})
+	if got := back.deliveredTo(); len(got) != 0 {
+		t.Fatalf("delivered directly to %v, want nothing", got)
 	}
 }
 

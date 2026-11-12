@@ -160,6 +160,7 @@ func TestThreadRootConversationThroughSendRoutes(t *testing.T) {
 		if err := tx.Where("mailbox_id = ? AND folder = ?", from.ID, "Sent").Order("id DESC").First(&sent).Error; err != nil {
 			t.Fatal(err)
 		}
+		deliverQueued(t, handler, tx, sent)
 		if turn == 0 {
 			root = sent.MsgID
 			response := httptest.NewRecorder()

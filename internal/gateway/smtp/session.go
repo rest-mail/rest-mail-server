@@ -660,8 +660,8 @@ func (s *session) rcptSRS(to string) (handled bool, err error) {
 }
 
 // Data receives the message and handles every recipient of the transaction:
-// local recipients are delivered via the API, remote ones are enqueued for
-// the outbound queue worker.
+// inbound mail is delivered via the API, and an authenticated submission is
+// enqueued for the outbound queue worker, whoever its recipients are.
 //
 // DATA gets a SINGLE reply for the whole message. Handle every recipient and
 // aggregate: only fail the transaction (4xx/5xx) if NOTHING was committed —
@@ -841,25 +841,17 @@ func (s *session) Data(r io.Reader) (err error) {
 	var submittedMsgID *uint
 	submittedOnce := false
 
-	// What a local recipient is delivered. Inbound, it is the message as
-	// received, from the server that connected. An authenticated submission
-	// comes from one of this server's own mailboxes, so a local recipient gets
-	// it as one sent from the webmail (SendMessage): prepared as its remote
-	// copies are (Bcc stripped, DKIM-signed), and with no client IP or HELO.
-	// The client that submitted it is a mail program, not a server the
-	// sender's SPF record lists: delivered unsigned from its address, the
-	// message failed SPF and the domain's DMARC p=reject refused it (550),
-	// however the session had signed in. Prepared once, at the first local
-	// recipient.
-	localSource, localClientIP, localHelo := source, extractIP(s.remoteAddr()), s.conn.Hostname()
-	var preparedFile *spoolFile
-	defer func() { preparedFile.remove() }()
-	prepareLocal := s.isSubmission && s.authenticated
-	var localErr error
+	// An authenticated submission is outbound mail wherever it is addressed: a
+	// recipient on this server gets it through the outbound queue and the normal
+	// inbound route, as anyone else does, signed by the queue worker (#1564).
+	// Only mail arriving from another server is delivered here.
+	submitted := s.isSubmission && s.authenticated
 	type recipientLookup struct {
 		check *apiclient.MailboxCheckResponse
 		err   error
 	}
+	// The recheck hears a route that broke after RCPT, whichever way the message
+	// is going: an alias that cannot route refuses the whole transaction.
 	lookups := make(map[string]recipientLookup, len(s.rcptTo))
 	for _, rcpt := range s.rcptTo {
 		if _, bounce := s.srsRelays[rcpt]; bounce {
@@ -896,31 +888,31 @@ func (s *session) Data(r io.Reader) (err error) {
 			continue
 		}
 
-		// Check if this is a local recipient.
-		check, err := lookups[rcpt].check, lookups[rcpt].err
-		if err != nil {
-			// Classification failed: we cannot tell whether this recipient is
-			// local or remote. Do NOT fall through to the outbound queue — a
-			// local recipient (this is the inbound-MX path) would then be
-			// relayed externally (a leak) or MX-delivered back to ourselves.
-			// Tempfail (451) so the sender retries once the API recovers,
-			// matching the RCPT-time path. The default fail reply is already a
-			// 451, so counting this recipient as failed yields the right reply
-			// when nothing else commits.
-			s.log.Error("smtp: API error re-checking mailbox at DATA time; tempfailing to avoid misroute",
-				"from", s.mailFrom, "to", rcpt, "error", err)
-			failed++
-			continue
-		}
-		if !check.Data.Exists {
-			// A recipient accepted at RCPT can lose receive permission before
-			// DATA. Inbound mail must never become an outbound relay then.
-			if !(s.isSubmission && s.authenticated) {
+		if !submitted {
+			// Inbound mail is for a local recipient, or for nobody.
+			check, err := lookups[rcpt].check, lookups[rcpt].err
+			if err != nil {
+				// Classification failed: we cannot tell whether this recipient
+				// exists. Tempfail (451) so the sender retries once the API
+				// recovers, matching the RCPT-time path. The default fail reply is
+				// already a 451, so counting this recipient as failed yields the
+				// right reply when nothing else commits.
+				s.log.Error("smtp: API error re-checking mailbox at DATA time; tempfailing",
+					"from", s.mailFrom, "to", rcpt, "error", err)
+				failed++
+				continue
+			}
+			if !check.Data.Exists {
+				// A recipient accepted at RCPT can lose receive permission before
+				// DATA. Inbound mail must never become an outbound relay then.
 				failCode, failEnhanced, failMsg = 550, gosmtp.EnhancedCode{5, 1, 1}, "No such user"
 				failed++
 				continue
 			}
-			// Non-local: insert into the outbound queue for the queue worker.
+		}
+
+		if submitted {
+			// Into the outbound queue for the queue worker.
 			recipientDomain := rcpt
 			if idx := strings.LastIndex(rcpt, "@"); idx >= 0 {
 				recipientDomain = rcpt[idx+1:]
@@ -988,29 +980,6 @@ func (s *session) Data(r io.Reader) (err error) {
 			continue
 		}
 
-		if prepareLocal {
-			prepareLocal = false
-			localClientIP, localHelo = "", ""
-			// The signed copy goes back to disk, so what follows reads it as it reads any
-			// other message.
-			file, err := s.prepareSubmitted(wholeMessage)
-			if err != nil {
-				// A configured DKIM key could not be loaded: defer, as the queue
-				// worker does, rather than deliver the message unsigned.
-				s.log.Error("smtp: could not prepare a submission for local delivery; deferring",
-					"from", s.mailFrom, "error", err)
-				localErr = err
-			} else {
-				preparedFile = file
-				localSource = messageSource{body: file}
-			}
-		}
-		if localErr != nil {
-			failCode, failEnhanced, failMsg = 451, gosmtp.EnhancedCode{4, 3, 0}, "Temporary delivery failure"
-			failed++
-			continue
-		}
-
 		// Local delivery via API.
 		deliverReq := &apiclient.DeliverRequest{
 			Address:    rcpt,
@@ -1020,8 +989,8 @@ func (s *session) Data(r io.Reader) (err error) {
 			MessageID:  messageID,
 			InReplyTo:  inReplyTo,
 			References: references,
-			ClientIP:   localClientIP,
-			HeloName:   localHelo,
+			ClientIP:   extractIP(s.remoteAddr()),
+			HeloName:   s.conn.Hostname(),
 			// Always-on inbound transport-security metrics (inbound-MX only).
 			ReceivedTLS: receivedTLS,
 			TLSVersion:  tlsVersion,
@@ -1038,7 +1007,7 @@ func (s *session) Data(r io.Reader) (err error) {
 		}
 
 		if _, err := s.api.DeliverMessageFrom(deliverReq, apiclient.DeliverContent{
-			RawMessage: localSource.open,
+			RawMessage: source.open,
 			BodyText:   parsed.text.opener(),
 			BodyHTML:   parsed.html.opener(),
 		}); err != nil {
@@ -1123,21 +1092,6 @@ func isDeliveryRefusal(err error) bool {
 			apiErr.StatusCode == http.StatusServiceUnavailable && refusal.Error.Code == "deferred"
 	}
 	return false
-}
-
-// prepareSubmitted applies the outbound transforms to a submission for a local mailbox, and
-// answers the result on disk. Signing is the one step of a local delivery that holds the whole
-// message, because the DKIM signer takes it whole.
-func (s *session) prepareSubmitted(whole func() (string, error)) (*spoolFile, error) {
-	raw, err := whole()
-	if err != nil {
-		return nil, err
-	}
-	prepared, err := s.store.PrepareSubmitted(s.ctx, s.mailFrom, raw)
-	if err != nil {
-		return nil, err
-	}
-	return spool(strings.NewReader(prepared))
 }
 
 // aliasRoutingRefusal recognises the API's permanent refusal of a reserved alias that

@@ -1,7 +1,6 @@
 package smtp
 
 import (
-	"context"
 	"errors"
 	"log/slog"
 	"strings"
@@ -11,7 +10,6 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/db/repositories"
 	"github.com/rest-mail/rest-mail-server/internal/grants"
 	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
-	"github.com/rest-mail/rest-mail-server/internal/outbound"
 	"github.com/rest-mail/rest-mail-server/internal/sendlimits"
 	"gorm.io/gorm"
 )
@@ -141,13 +139,6 @@ func (s *dbStore) PersistSubmittedMessage(msg SubmittedMessage) (*uint, error) {
 // reads grants.
 func (s *dbStore) CredentialUsable(credentialID uint) (bool, error) {
 	return repositories.NewCredentialRepository(s.db).Usable(credentialID, time.Now())
-}
-
-// PrepareSubmitted runs the transforms the queue worker runs on the same
-// submission's remote copies, so a local mailbox receives what a remote one
-// does.
-func (s *dbStore) PrepareSubmitted(ctx context.Context, sender, raw string) (string, error) {
-	return outbound.Prepare(ctx, s.db, s.masterKey, rmail.DomainFromAddress(sender), raw)
 }
 
 // SendingPolicy reads the sending policy of the domain the address is on.
