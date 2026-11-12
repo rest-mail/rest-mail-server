@@ -7,10 +7,6 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// productionHashCost is the bcrypt cost of every password and recovery code the
-// server stores. A binary that is not a test binary always hashes at this cost.
-const productionHashCost = 10
-
 var minimumHashCostInTests atomic.Bool
 
 // UseMinimumHashCostInTests makes HashPassword and HashRecoveryCode hash at
@@ -27,9 +23,12 @@ func UseMinimumHashCostInTests() {
 	minimumHashCostInTests.Store(true)
 }
 
-func hashCost() int {
+// passwordHashCost is the cost HashPassword uses and PasswordNeedsRehash holds a
+// stored hash to: bcrypt.MinCost in a test binary that asked for the minimum,
+// otherwise passwordCost (PasswordHashCost, or what LowerPasswordCostForTests set).
+func passwordHashCost() int {
 	if minimumHashCostInTests.Load() {
 		return bcrypt.MinCost
 	}
-	return productionHashCost
+	return passwordCost
 }

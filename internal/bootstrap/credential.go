@@ -25,7 +25,7 @@ type BootstrapCredential struct {
 
 // minBootstrapHashCost is the weakest bcrypt cost accepted: the cost the
 // server hashes passwords with itself.
-const minBootstrapHashCost = 10
+const minBootstrapHashCost = auth.PasswordHashCost
 
 const blfCrypt = "{BLF-CRYPT}"
 

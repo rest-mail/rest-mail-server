@@ -36,6 +36,14 @@ type AccountHandler struct {
 	// masterKey decrypts TOTP secrets, for linking an account with 2FA.
 	masterKey        string
 	maxOwnedAccounts int
+	// signInTarpit slows a wrong password for the account being linked, as a
+	// failed sign-in is slowed (#1643). Nil does nothing.
+	signInTarpit *middleware.SignInTarpit
+}
+
+// SetSignInTarpit makes a failed link wait. Call before the router serves traffic.
+func (h *AccountHandler) SetSignInTarpit(tarpit *middleware.SignInTarpit) {
+	h.signInTarpit = tarpit
 }
 
 func NewAccountHandler(db *gorm.DB, cache *grants.Cache, masterKey string, maxOwnedAccounts ...int) *AccountHandler {
@@ -104,6 +112,7 @@ func (h *AccountHandler) RegisterLinks(rs endpoint.Routes, checks SessionRouteCh
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/accounts/link",
 		OperationID: "linkAccount", Summary: "Link an existing account by proving its password", Tags: tags,
 		Status: http.StatusCreated, Errors: []int{http.StatusForbidden, http.StatusConflict},
+		DescribedRequest: describedLinkAccountRequest{},
 		Middleware: []endpoint.Middleware{checks.Throttle,
 			checks.Audit("accounts.link", middleware.AuditBodyFields("address"))}}, h.link)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodDelete, Path: "/api/v1/accounts/{id}",
@@ -453,6 +462,14 @@ type linkAccountRequest struct {
 	RecoveryCode string `json:"recovery_code,omitempty"`
 }
 
+type describedLinkAccountRequest = struct {
+	Address      string `json:"address" format:"email" minLength:"1" pattern:"\\S"`
+	Password     string `json:"password" minLength:"1"`
+	DisplayName  string `json:"display_name,omitempty"`
+	TOTPCode     string `json:"totp_code,omitempty"`
+	RecoveryCode string `json:"recovery_code,omitempty"`
+}
+
 // LinkAccount grants the session's account the owner role on an existing
 // account, by proving one of its passwords, and its second factor when it has
 // one: the same proof as signing in to it. Throttled like sign-in, and
@@ -484,6 +501,7 @@ func (h *AccountHandler) link(r *http.Request, req linkAccountRequest) (accountR
 		return accountResponse{}, fmt.Errorf("verify the password: %w", err)
 	}
 	if lookupErr != nil || cred == nil || !account.Active {
+		h.signInTarpit.Failed(r, req.Address)
 		return accountResponse{}, endpoint.Refuse(http.StatusForbidden, "invalid_credentials", "Invalid email or password")
 	}
 	// The password is proven; what follows may say why it is not enough.
@@ -500,6 +518,7 @@ func (h *AccountHandler) link(r *http.Request, req linkAccountRequest) (accountR
 			if req.TOTPCode == "" && req.RecoveryCode == "" {
 				return accountResponse{}, endpoint.Refuse(http.StatusForbidden, "totp_required", "That account has two-factor authentication: send its code too")
 			}
+			h.signInTarpit.Failed(r, req.Address)
 			return accountResponse{}, endpoint.Refuse(http.StatusForbidden, "invalid_totp", "Invalid two-factor authentication code")
 		}
 	} else if !errors.Is(err, repositories.ErrTwoFactorNotFound) {

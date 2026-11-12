@@ -54,7 +54,7 @@ func TestIMAPSnoozeKeepsMessagesUIDsAndCounts(t *testing.T) {
 	server := httptest.NewServer(fixture.router)
 	t.Cleanup(server.Close)
 	client, peer := net.Pipe()
-	session := imapserver.NewSession(peer, imapgw.NewBackend(fixture.gatewayClient(server.URL, imapCN), nil), "imap.test", nil, goimap.NopLimiter{})
+	session := imapserver.NewSession(clientAtAddress{Conn: peer}, imapgw.NewBackend(fixture.gatewayClient(server.URL, imapCN), nil), "imap.test", nil, goimap.NopLimiter{})
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
@@ -221,4 +221,12 @@ func imapHangDeadline(t *testing.T) time.Time {
 		return time.Time{}
 	}
 	return deadline.Add(-margin)
+}
+
+// clientAtAddress is a pipe's end with a mail client's address, which a pipe
+// has none of and the API requires of a sign-in.
+type clientAtAddress struct{ net.Conn }
+
+func (clientAtAddress) RemoteAddr() net.Addr {
+	return &net.TCPAddr{IP: net.ParseIP(testClientIP), Port: 50000}
 }
