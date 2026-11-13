@@ -150,7 +150,11 @@ func TestSendIdempotencyWaitCancellationAndRollback(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	defer f.db.Callback().Create().Remove("idempotency_block_send")
+	t.Cleanup(func() {
+		if err := f.db.Callback().Create().Remove("idempotency_block_send"); err != nil {
+			t.Error(err)
+		}
+	})
 	finished := make(chan *httptest.ResponseRecorder, 1)
 	go func() { finished <- f.request(0, "/api/v1/messages/send", body, "wait-key") }()
 	select {
