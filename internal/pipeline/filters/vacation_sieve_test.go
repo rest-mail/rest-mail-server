@@ -58,6 +58,9 @@ func TestVacation_SieveReply(t *testing.T) {
 	}
 	tx := gdb.Begin()
 	t.Cleanup(func() { tx.Rollback() })
+	if err := tx.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_vacation_responses_handle ON vacation_responses(mailbox_id, sender, handle)`).Error; err != nil {
+		t.Fatal(err)
+	}
 
 	domain := models.Domain{Name: fmt.Sprintf("sieve-vacation-%d.test", time.Now().UnixNano()), Active: true}
 	if err := tx.Create(&domain).Error; err != nil {
