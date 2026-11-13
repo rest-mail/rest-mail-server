@@ -852,3 +852,28 @@ func TestRawJSONMatchesEncodingJSON(t *testing.T) {
 		check(raw, list)
 	}
 }
+
+func TestKnownSourceFieldBufferGrowth(t *testing.T) {
+	reader := fieldReader{sourceSize: 1 << 20}
+	total := 0
+	for _, capacity := range []int{1 << 10, 4 << 10, 16 << 10, (1 << 20) + 2*bytes.MinRead} {
+		previous := len(reader.line)
+		reader.room(1)
+		if cap(reader.line) != capacity {
+			t.Fatalf("after %d bytes: capacity %d, want %d", previous, cap(reader.line), capacity)
+		}
+		for index, value := range reader.line {
+			if value != byte(index) {
+				t.Fatalf("byte %d changed to %d", index, value)
+			}
+		}
+		total += cap(reader.line)
+		reader.line = reader.line[:cap(reader.line)]
+		for index := previous; index < len(reader.line); index++ {
+			reader.line[index] = byte(index)
+		}
+	}
+	if total > (1<<20)+(22<<10) {
+		t.Fatalf("buffer growth reserved %d bytes", total)
+	}
+}

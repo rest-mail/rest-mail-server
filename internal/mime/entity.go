@@ -72,7 +72,11 @@ func (r *fieldReader) room(need int) {
 	if cap(r.line)-len(r.line) >= need {
 		return
 	}
-	size := max(2*r.chunk, 2*len(r.line)+need, 1<<10)
+	growth := 2 * r.chunk
+	if r.sourceSize > fieldBufferDoubles && r.chunk < fieldBufferDoubles {
+		growth = min(4*r.chunk, fieldBufferDoubles)
+	}
+	size := max(growth, 2*len(r.line)+need, 1<<10)
 	if size > fieldBufferDoubles {
 		// With room left to read what follows the header into, which takeBuffer gives away.
 		size = max(size, r.sourceSize+2*bytes.MinRead)

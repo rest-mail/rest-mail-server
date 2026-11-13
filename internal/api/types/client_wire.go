@@ -485,8 +485,8 @@ func (m Message) WireSize() int {
 	return m.SizeBytes
 }
 
-// WireSizeFor is the size a POP3 session is sent, with UTF-8 enabled or not, which STAT,
-// LIST and RETR report alike. A message whose size is not measured yet reports WireSize.
+// WireSizeFor reports POP3 transmission octets: CRLF-normalized UTF-8 when
+// enabled, or downgraded headers otherwise. Unmeasured messages report WireSize.
 func (m Message) WireSizeFor(utf8 bool) int {
 	size := m.DowngradedSize
 	if utf8 {
