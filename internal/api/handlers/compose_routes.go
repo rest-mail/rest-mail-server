@@ -82,8 +82,9 @@ type sendMessageDescription struct {
 }
 
 type forwardMessageDescription struct {
-	ID   uint32 `path:"id" minimum:"1" example:"1"`
-	Body struct {
+	IdempotencyKey string `header:"Idempotency-Key" maxLength:"255" json:"-" description:"Optional account-scoped retry key, retained for 24 hours after success. Reuse only for the same route, resource and body."`
+	ID             uint32 `path:"id" minimum:"1" example:"1"`
+	Body           struct {
 		forwardBody
 		From string   `json:"from" minLength:"1" format:"idn-email"`
 		To   []string `json:"to" minItems:"1"`
