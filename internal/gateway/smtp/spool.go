@@ -234,13 +234,20 @@ func (p *parsedMessage) applyHeaders(h pipeline.Headers) {
 	p.inReplyTo = models.ReadableText(strings.Trim(h.InReplyTo, "<>"))
 	// References stays the whitespace-separated list with brackets intact, matching the
 	// historical output contract.
-	p.references = strings.Join(h.References, " ")
+	p.references = models.ReadableText(strings.Join(h.References, " "))
 	if from, ok := h.From.First(); ok {
-		p.senderName = from.Name
-		p.fromAddr = from.Address
+		p.senderName = models.ReadableText(from.Name)
+		p.fromAddr = models.ReadableText(from.Address)
 	}
-	p.toList = bareAddresses(h.To.All())
-	p.ccList = bareAddresses(h.Cc.All())
+	p.toList = readableList(bareAddresses(h.To.All()))
+	p.ccList = readableList(bareAddresses(h.Cc.All()))
+}
+
+func readableList(list []string) []string {
+	for i := range list {
+		list[i] = models.ReadableText(list[i])
+	}
+	return list
 }
 
 // onlyWhitespace says whether src holds nothing but what bytes.TrimSpace would remove, reading no

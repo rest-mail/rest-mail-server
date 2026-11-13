@@ -763,7 +763,7 @@ func (s *deliverySpool) readRestmailMessage(req *restmailDeliverBody, source *st
 		return nil, nil // Said when its headers were read.
 	}
 	// The section at the start of the message is the one already parsed.
-	parsed, err := s.parsed.Parse(req.RawMessage[len(s.section):])
+	parsed, err := s.parsed.Parse((*source)[len(s.section):])
 	if err != nil {
 		return nil, nil
 	}

@@ -179,6 +179,8 @@ func (m *mailbox) Retrieve(uid string) ([]byte, error) {
 	}
 	raw := m.rawMessage(detail.Data)
 	if !m.utf8 {
+		// A client that did not send UTF8 gets headers downgraded to ASCII (RFC
+		// 6856 §3, RFC 6857).
 		raw = rawmsg.DowngradeForPOP3(raw)
 	}
 	return rawmsg.SpaceNUL(raw), nil

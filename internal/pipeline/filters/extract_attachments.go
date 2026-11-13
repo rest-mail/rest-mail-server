@@ -187,6 +187,8 @@ func (f *extractAttFilter) store(ctx context.Context, att pipeline.Attachment, d
 // file's name and a text column, so it's short enough for one and valid UTF-8 for the other, cut
 // between characters: a sender chooses the name.
 func sanitizeFilename(name string) string {
+	// Remove path separators and null bytes, and any octets a text column can't hold: a part's
+	// own headers may be in any charset, and this name goes in the attachment's storage_ref.
 	const longest = 100
 	result := make([]byte, 0, min(len(name), longest))
 	for _, r := range strings.ToValidUTF8(name, "") {

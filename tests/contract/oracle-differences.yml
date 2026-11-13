@@ -2411,47 +2411,6 @@
 # Inbound delivery from the protocol gateways (#642)
 
 - operation: deliverMessage
-  difference: "request body application/json.properties.folder: openapi.yaml absent, generated *"
-  reason: >-
-    The IMAP gateway's COPY and APPEND, and the inbound MX, send it: the destination folder,
-    the flags and internal date to keep, the mailbox by id, and how the message arrived (TLS).
-    The oracle omits it.
-- operation: deliverMessage
-  difference: "request body application/json.properties.is_draft: openapi.yaml absent, generated *"
-  reason: >-
-    The IMAP gateway's COPY and APPEND, and the inbound MX, send it: the destination folder,
-    the flags and internal date to keep, the mailbox by id, and how the message arrived (TLS).
-    The oracle omits it.
-- operation: deliverMessage
-  difference: "request body application/json.properties.is_flagged: openapi.yaml absent, generated *"
-  reason: >-
-    The IMAP gateway's COPY and APPEND, and the inbound MX, send it: the destination folder,
-    the flags and internal date to keep, the mailbox by id, and how the message arrived (TLS).
-    The oracle omits it.
-- operation: deliverMessage
-  difference: "request body application/json.properties.is_read: openapi.yaml absent, generated *"
-  reason: >-
-    The IMAP gateway's COPY and APPEND, and the inbound MX, send it: the destination folder,
-    the flags and internal date to keep, the mailbox by id, and how the message arrived (TLS).
-    The oracle omits it.
-- operation: deliverMessage
-  difference: "request body application/json.properties.is_starred: openapi.yaml absent, generated *"
-  reason: >-
-    The IMAP gateway's COPY and APPEND, and the inbound MX, send it: the destination folder,
-    the flags and internal date to keep, the mailbox by id, and how the message arrived (TLS).
-    The oracle omits it.
-- operation: deliverMessage
-  difference: "request body application/json.properties.mailbox_id: openapi.yaml absent, generated *"
-  reason: >-
-    The IMAP gateway's COPY and APPEND, and the inbound MX, send it: the destination folder,
-    the flags and internal date to keep, the mailbox by id, and how the message arrived (TLS).
-    The oracle omits it.
-- operation: deliverMessage
-  difference: "request body application/json.properties.received_at: openapi.yaml absent, generated *"
-  reason: >-
-    The IMAP gateway's COPY and APPEND, and the inbound MX, send it: the destination folder,
-    the flags and internal date to keep, the mailbox by id, and how the message arrived (TLS).
-    The oracle omits it.
 - operation: deliverMessage
   difference: "request body application/json.properties.received_tls: openapi.yaml absent, generated *"
   reason: >-

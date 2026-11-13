@@ -18,24 +18,16 @@ func (backend *nulDeliveryBackend) DeliverMessageFrom(request *apiclient.Deliver
 	return &apiclient.DeliverResponse{}, nil
 }
 
-func TestSMTPNULDeliveryIsRefused(t *testing.T) {
-	for _, field := range []string{"subject", "raw_message"} {
-		t.Run(field, func(t *testing.T) {
-			router := chi.NewRouter()
-			(&handlers.MessageHandler{}).RegisterDelivery(endpoint.Routes{Router: router, Registry: endpoint.NewRegistry()}, endpoint.Middleware{Wrap: func(next http.Handler) http.Handler { return next }})
-			type answer struct {
-				status int
-				body   string
-			}
-			answers := make(chan answer, 1)
-			api := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-				recorder := httptest.NewRecorder()
-				router.ServeHTTP(recorder, request)
-				answers <- answer{recorder.Code, recorder.Body.String()}
-				writer.WriteHeader(recorder.Code)
-				_, _ = writer.Write(recorder.Body.Bytes())
-			}))
-			t.Cleanup(api.Close)
+// A message may hold a NUL or any other octet. The source goes to the API exactly, and what the
+// gateway read from it goes in the API's text fields, which can't hold them (#1921).
+func TestSMTPDeliveryCarriesAnyOctetsInTheSourceOnly(t *testing.T) {
+	for name, body := range map[string]string{
+		"subject":    "Subject: before\x00after\r\n\r\nHello\r\n",
+		"body_text":  "Subject: Hello\r\nContent-Type: text/plain\r\n\r\nbefore\x00after\r\n",
+		"8-bit body": "Subject: Hello\r\nContent-Type: text/plain\r\n\r\nbefore\xe9after\r\n",
+		"attachment": "Subject: Hello\r\nContent-Type: application/octet-stream\r\n\r\nbefore\x00\xe9after\r\n",
+	} {
+		t.Run(name, func(t *testing.T) {
 			mock := newMockBackend()
 			mock.local["receiver@local.test"] = true
 			backend := &nulDeliveryBackend{mockBackend: mock, requests: make(chan *apiclient.DeliverRequest, 1)}
@@ -47,9 +39,8 @@ func TestSMTPNULDeliveryIsRefused(t *testing.T) {
 			if reply := harness.cmd("RCPT TO:<receiver@local.test>"); replyCode(reply) != "250" {
 				t.Fatal(reply)
 			}
-			body := "Subject: Hello\r\nContent-Type: application/octet-stream\r\n\r\nbefore\x00after\r\n"
-			if field == "subject" {
-				body = "Subject: before\x00after\r\n\r\nHello\r\n"
+			if reply := harness.dataBody(body); replyCode(reply) != "250" {
+				t.Fatalf("SMTP answer = %q", reply)
 			}
 			request := <-backend.requests
 			if !strings.Contains(string(request.RawMessage), body) {

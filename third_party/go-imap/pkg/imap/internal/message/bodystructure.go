@@ -91,12 +91,55 @@ func uncommentMIME(value string) (string, error) {
 		}
 		return value, nil
 	}
+	text, _, err := splitComments(value)
+	return text, err
+}
+
+// splitComments is uncommentMIME that also returns each comment it replaced, with
+// its delimiters.
+func splitComments(value string) (string, []string, error) {
 	var b strings.Builder
-	b.Grow(len(value))
-	if !uncommentInto(&b, value) {
-		return "", mime.ErrInvalidMediaParameter
+	var comments []string
+	depth, start := 0, 0
+	quoted := false
+	for i := 0; i < len(value); i++ {
+		c := value[i]
+		switch {
+		case depth > 0:
+			switch c {
+			case '\\':
+				i++
+			case '(':
+				depth++
+			case ')':
+				depth--
+				if depth == 0 {
+					comments = append(comments, value[start:i+1])
+				}
+			}
+		case quoted:
+			_ = b.WriteByte(c)
+			if c == '\\' && i+1 < len(value) {
+				i++
+				_ = b.WriteByte(value[i])
+			} else if c == '"' {
+				quoted = false
+			}
+		case c == '(':
+			depth = 1
+			start = i
+			b.WriteByte(' ')
+		case c == ')':
+			return "", nil, mime.ErrInvalidMediaParameter
+		default:
+			_ = b.WriteByte(c)
+			quoted = c == '"'
+		}
 	}
-	return b.String(), nil
+	if depth != 0 || quoted {
+		return "", nil, mime.ErrInvalidMediaParameter
+	}
+	return b.String(), comments, nil
 }
 
 // uncommentInto writes value to b as uncommentMIME reads it, or says it can't be read.
@@ -114,9 +157,6 @@ func uncommentInto(b io.ByteWriter, value string) bool {
 				depth++
 			case ')':
 				depth--
-				if depth == 0 {
-					comments = append(comments, value[start:i+1])
-				}
 			}
 		case quoted:
 			_ = b.WriteByte(c)

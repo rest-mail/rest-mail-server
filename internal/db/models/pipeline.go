@@ -276,18 +276,13 @@ type Attachment struct {
 	// RFC 5322 Message-ID string) during AutoMigrate, rewriting it to bigint.
 }
 
-// BeforeCreate keeps what was read from a part's own headers readable: those are not held to
-// the message header rules, and a filename may be in any charset.
-func (a *Attachment) BeforeCreate(*gorm.DB) error {
-	a.Filename, a.ContentType = ReadableText(a.Filename), ReadableText(a.ContentType)
-	return nil
-}
-
 func (Attachment) TableName() string { return "attachments" }
 
-// BeforeCreate is here so that no way of storing an attachment can refuse its message over what the
-// sender called it (#1915).
+// BeforeCreate keeps what was read from a part's own headers readable, since those are not held to
+// the message header rules and a filename may be in any charset, and fits them to their columns, so
+// that no way of storing an attachment can refuse its message over what the sender called it (#1915).
 func (a *Attachment) BeforeCreate(*gorm.DB) error {
+	a.Filename, a.ContentType = ReadableText(a.Filename), ReadableText(a.ContentType)
 	a.Filename = FitFilename(a.Filename)
 	if !fitsColumn(a.ContentType, attachmentTypeColumn) {
 		a.ContentType = "application/octet-stream"

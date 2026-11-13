@@ -297,15 +297,3 @@ func (s *streamParse) store(part io.Reader) (StoredPart, bool) {
 	}
 	return stored, true
 }
-
-// doublingBuilder is a strings.Builder that at least doubles when it grows. Left to itself
-// one grows large text by a quarter at a time, which allocates five times what it ends up
-// holding, as a store of a large text part reads it in small pieces.
-type doublingBuilder struct{ strings.Builder }
-
-func (b *doublingBuilder) Write(p []byte) (int, error) {
-	if b.Cap()-b.Len() < len(p) {
-		b.Grow(max(len(p), b.Len()))
-	}
-	return b.Builder.Write(p)
-}

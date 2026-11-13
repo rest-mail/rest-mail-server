@@ -363,8 +363,9 @@ func (m *mailbox) Messages(folder string) ([]goimap.Message, error) {
 	out := make([]goimap.Message, 0, len(resp.Data))
 	for _, msg := range resp.Data {
 		item := toMessage(msg)
-		// FETCH sends the downgraded form to a session that has not enabled
-		// UTF-8, so RFC822.SIZE counts that form's octets.
+		// FETCH sends the downgraded headers to a session that has not enabled
+		// UTF-8, and the engine converts both kinds of session to 7-bit where
+		// RFC 3501 section 7.4.2 requires it, so RFC822.SIZE counts those octets.
 		item.Size = msg.IMAPWireSizeFor(m.utf8)
 		out = append(out, item)
 	}

@@ -2912,7 +2912,7 @@ export interface paths {
         put?: never;
         /**
          * Deliver a message into a mailbox (protocol gateways)
-         * @description Machine to machine: no user token. The inbound pipeline decides: 201 naming the message made, 200 processed when it quarantined or discarded it, 403 rejected, 503 deferred, 422 mailbox_full over quota. These are REST statuses for every caller; the SMTP gateway rewrites them into its SMTP reply (#1664). A missing mailbox is 404; a failed mailbox lookup is 500, never a missing recipient. Stored text must not contain NUL (U+0000), including strings and object keys anywhere in recipients_to or recipients_cc and the decoded raw_message octets; a refusal is 422 validation_failed naming the field, before any write. raw_message is a standard padded base64 string (format: byte), not unencoded message text. An omitted or empty folder means INBOX; otherwise The name is valid UTF-8 of at most 255 bytes, neither blank nor beginning or ending with a space, with no control character and no ".."; a "/" is the hierarchy delimiter IMAP clients show. Any other name is 422.
+         * @description Machine to machine: no user token. The inbound pipeline decides: 201 naming the message made, 200 processed when it quarantined or discarded it, 403 rejected, 503 deferred (greylisted or rate_limited when the greylist or rate_limit step held it back), 422 mailbox_full over quota. These are REST statuses for every caller; the SMTP gateway rewrites them into its SMTP reply (#1664). A missing mailbox is 404; a failed mailbox lookup is 500, never a missing recipient. Stored text must not contain NUL (U+0000), including strings and object keys anywhere in recipients_to or recipients_cc; a refusal is 422 validation_failed naming the field, before any write. raw_message is a standard padded base64 string (format: byte), not unencoded message text, and may hold any octets: they are stored exactly. With raw_message and neither body_text nor body_html, the stored text is read from raw_message; when it can't be parsed, the text is whatever follows its first blank line. An arrival (received_tls set) past the hop limit and a reserved alias that cannot route are 403 rejected before the pipeline runs. The recipient is resolved from address. Arriving mail uses server time and default Inbox/flags, subject to inbound rules. Import-only fields sent by older callers are ignored.
          */
         post: operations["deliverMessage"];
         delete?: never;
@@ -3443,6 +3443,7 @@ export interface components {
             exists: boolean;
             mailbox_id?: number;
         };
+        AddressList: Record<string, never>;
         Alias: {
             active: boolean;
             /** Format: date-time */
@@ -4051,6 +4052,11 @@ export interface components {
         "Data-vacationSetting": {
             data: components["schemas"]["vacationSetting"];
         };
+        DeliveredMessage: {
+            folder: string;
+            id: number;
+            message_id: string;
+        };
         DeliveryLogEntry: {
             attempts: number;
             body_type: string;
@@ -4074,11 +4080,6 @@ export interface components {
             sender: string;
             /** @enum {string} */
             status: "pending" | "delivering" | "deferred" | "delivered" | "bounced" | "expired";
-        };
-        DeliveredMessage: {
-            folder: string;
-            id: number;
-            message_id: string;
         };
         DeliveryProcessed: {
             /** @enum {string} */
@@ -4212,12 +4213,12 @@ export interface components {
         };
         Headers: {
             bcc?: components["schemas"]["Address"][];
-            cc?: components["schemas"]["Address"][];
+            cc: components["schemas"]["AddressList"];
             date: string;
             extra?: {
                 [key: string]: string;
             };
-            from: components["schemas"]["Address"][];
+            from: components["schemas"]["AddressList"];
             "in-reply-to"?: string;
             "message-id": string;
             raw?: {
@@ -4225,7 +4226,7 @@ export interface components {
             };
             references?: string[];
             subject: string;
-            to: components["schemas"]["Address"][];
+            to: components["schemas"]["AddressList"];
         };
         Health: {
             cert_warnings?: components["schemas"]["CertWarning"][];
@@ -4484,9 +4485,6 @@ export interface components {
             /** Format: date-time */
             date_header: string | null;
             downgraded_size: number;
-            pop3_utf8_size: number;
-            imap_size: number;
-            imap_utf8_size: number;
             /** Format: date-time */
             due?: string | null;
             /** @enum {string|null} */
@@ -4931,9 +4929,6 @@ export interface components {
             /** Format: date-time */
             date_header?: string | null;
             downgraded_size?: number;
-            pop3_utf8_size?: number;
-            imap_size?: number;
-            imap_utf8_size?: number;
             folder?: string;
             has_attachments?: boolean;
             headers?: unknown;

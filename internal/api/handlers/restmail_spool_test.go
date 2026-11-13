@@ -140,14 +140,16 @@ func restmailBoundWhole(body []byte) restmailBindAnswer {
 func restmailBoundSpooled(t *testing.T, body []byte) restmailBindAnswer {
 	t.Helper()
 	var in restmailDeliverInput
-	spool, err := spoolDelivery(restmailBindRequest(body), &in, spooledBodySpec{rawIsText: true, declared: restmailDeclaredFields}, func() []byte { return []byte(in.Body.RawMessage) })
+	spool, err := spoolDelivery(restmailBindRequest(body), &in, spooledBodySpec{declared: restmailDeclaredFields}, func() []byte { return []byte(in.Body.RawMessage) })
 	if err != nil {
 		return restmailBindAnswer{refusal: refusalText(err)}
 	}
 	defer spool.remove()
-	if in.Body.RawMessage, err = spool.raw.text(); err != nil {
+	raw, err := spool.raw.text()
+	if err != nil {
 		t.Fatal(err)
 	}
+	in.Body.RawMessage = []byte(raw)
 	if in.Body.BodyText, err = spool.text(deliveryBodyText, in.Body.BodyText); err != nil {
 		t.Fatal(err)
 	}
