@@ -696,7 +696,7 @@ func readFolder(t *testing.T, client *imapclient.Client, folder string) map[stri
 }
 
 // checkMaildirOverIMAP compares what an IMAP client finds with the source.
-func (s *migrationServer) checkMaildirOverIMAP(t *testing.T, address, password string, messages []sourceMessage, date time.Time) {
+func (s *migrationServer) checkMaildirOverIMAP(t *testing.T, address, password string, messages []sourceMessage, date time.Time, recent bool) {
 	t.Helper()
 	client, err := s.signIn(t, address, password)
 	if err != nil {
@@ -730,8 +730,12 @@ func (s *migrationServer) checkMaildirOverIMAP(t *testing.T, address, password s
 			if !ok {
 				t.Fatalf("%s has no message %q", folder, subject)
 			}
-			if !sameFlags(message.flags, source.flags) {
-				t.Errorf("%s %q: flags %v, want %v", folder, subject, message.flags, source.flags)
+			flags := source.flags
+			if recent {
+				flags = append(slices.Clone(flags), imap.Flag(`\Recent`))
+			}
+			if !sameFlags(message.flags, flags) {
+				t.Errorf("%s %q: flags %v, want %v", folder, subject, message.flags, flags)
 			}
 			if !message.date.Equal(date) {
 				t.Errorf("%s %q: internal date %v, want %v", folder, subject, message.date, date)
@@ -788,7 +792,7 @@ func TestMaildirImportsIntoTheRightMailboxesAndASecondRunAddsNothing(t *testing.
 	if len(afterFirst.Messages) != len(messages) || afterFirst.Used == 0 || afterFirst.Counted != int64(len(messages)) {
 		t.Fatalf("first run stored %d messages, %d bytes, counted %d; want %d", len(afterFirst.Messages), afterFirst.Used, afterFirst.Counted, len(messages))
 	}
-	s.checkMaildirOverIMAP(t, address, dovecotSHA512Password, messages, date)
+	s.checkMaildirOverIMAP(t, address, dovecotSHA512Password, messages, date, true)
 
 	// The second run, at cutover: every message is found and nothing is stored.
 	second := s.importMaildir(t, account, root)
@@ -798,7 +802,7 @@ func TestMaildirImportsIntoTheRightMailboxesAndASecondRunAddsNothing(t *testing.
 	if afterSecond := s.storedMail(t, account); !reflect.DeepEqual(afterSecond, afterFirst) {
 		t.Fatalf("the second run changed what is stored:\nbefore %+v\nafter  %+v", afterFirst, afterSecond)
 	}
-	s.checkMaildirOverIMAP(t, address, dovecotSHA512Password, messages, date)
+	s.checkMaildirOverIMAP(t, address, dovecotSHA512Password, messages, date, false)
 
 	// A user read a message on the new server between the runs. The run after
 	// that adds nothing and takes the user's change back from nobody.
