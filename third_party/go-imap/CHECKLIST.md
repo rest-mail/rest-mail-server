@@ -1651,7 +1651,7 @@ Continuation through section 6.3.13. Client-only hierarchy-browser assumptions, 
 | IMAP2-CMD-130 | RFC 9051 §6.3.12 | MUST NOT | Disclose APPENDUID to a caller that can append but cannot read the destination. | TestRightsUIDDisclosure |
 | IMAP2-CMD-131 | RFC 9051 §6.3.12 | SHOULD | Notify a selected mailbox of newly appended mail using EXISTS. | TestAppendSelectedMailbox |
 | IMAP2-CMD-132 | RFC 9051 §6.3.12 | SHOULD | Report OLDNAME when APPEND normalizes the destination mailbox name. | TestOldNameAppend |
-| IMAP2-CMD-133 | RFC 9051 §6.3.13 | MUST | Include UID in unsolicited FETCH updates sent during IDLE. | n/a: current IDLE flag updates contain FLAGS without UID. Rev2 unsolicited FETCH rules are not implemented; rest-mail/rest-mail-server#718. |
+| IMAP2-CMD-133 | RFC 9051 §6.3.13 | MUST | Include UID in unsolicited FETCH updates sent during IDLE. | TestUnsolicitedFetchIncludesUID |
 
 ## RFC 9051: selected-state command inventory (first pass)
 

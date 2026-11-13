@@ -124,9 +124,9 @@ func TestServer_RepeatedAppendWithDateTimeAddsEachMessageAtItsDate(t *testing.T)
 	}
 
 	for _, tc := range []struct{ seq, uid, date string }{
-		{"1", "UID 100", earlier},
-		{"2", "UID 101", later},
-		{"3", "UID 102", earlier},
+		{"1", "UID 100", "08-Feb-1994 06:43:04 +0000"},
+		{"2", "UID 101", "08-Mar-1995 00:02:03 +0000"},
+		{"3", "UID 102", "08-Feb-1994 06:43:04 +0000"},
 	} {
 		unt, st := h.command("f"+tc.seq, "FETCH %s (UID INTERNALDATE)", tc.seq)
 		joined := strings.Join(unt, "\n")
