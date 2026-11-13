@@ -238,7 +238,7 @@ class TaskFileTests(unittest.TestCase):
 
     def script(self, instance):
         commands = self.chores["tasks"][f"e2e:{instance}"]["cmds"]
-        return next(command for command in commands if isinstance(command, str) and "reference-mailserver" in command)
+        return next(command for command in commands if isinstance(command, str) and "POSTGRES_IP=" in command)
 
     def test_each_reference_server_takes_its_addresses_from_variables(self):
         for instance, roles in self.DEFAULTS.items():
