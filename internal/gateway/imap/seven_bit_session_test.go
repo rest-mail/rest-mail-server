@@ -174,3 +174,29 @@ func TestSevenBitMessageIsServedAsStored(t *testing.T) {
 		t.Fatalf("RFC822.SIZE in %q", framing)
 	}
 }
+
+func TestSevenBitParameterThroughTheGateway(t *testing.T) {
+	for _, tc := range []struct{ name, stored, structure string }{
+		{"repeated name", "a=1; other=keep; a=2", `("A" "1" "OTHER" "keep")`},
+		{"gap in a continued value", "name*0=a; name*2=c", `("NAME" "ac")`},
+		{"a star that isn't RFC 2231", "name*x=y; other=keep", `("NAME*X" "y" "OTHER" "keep")`},
+	} {
+		for head, downgraded := range map[string]string{
+			"": "", "Subject: J\xc3\xb6\r\n": "Subject: =?utf-8?q?J=C3=B6?=\r\n",
+		} {
+			t.Run(tc.name+" after "+head, func(t *testing.T) {
+				field := "Content-Type: application/pdf; " + tc.stored + "\r\n\r\n"
+				c := dialStore(t, head+field+"data\r\n")
+				c.do("a1", "LOGIN jorg@example.test pw")
+				c.do("a2", "SELECT INBOX")
+				if _, header := fetchedLiteral(t, c.do("a3", "FETCH 1 BODY.PEEK[HEADER]")); header != downgraded+field {
+					t.Fatalf("HEADER = %q\n  want %q", header, downgraded+field)
+				}
+				got := c.do("a4", "FETCH 1 BODYSTRUCTURE")
+				if want := `"APPLICATION" "PDF" ` + tc.structure; !strings.Contains(got, want) {
+					t.Fatalf("%q lacks %q", got, want)
+				}
+			})
+		}
+	}
+}
