@@ -181,7 +181,7 @@ func TestBodyFieldAlternatives(t *testing.T) {
 		{"no parameters", "Content-Type: application/x-a\r\n", `("APPLICATION" "X-A" NIL NIL NIL "7BIT" 4 NIL NIL NIL NIL)`},
 		{"empty parameter", "Content-Type: application/x-a; name=\"\"\r\n", `("APPLICATION" "X-A" ("NAME" "") NIL NIL "7BIT" 4 NIL NIL NIL NIL)`},
 		{"id and description", "Content-ID: <i@x>\r\nContent-Description: words\r\n", `("TEXT" "PLAIN" ("CHARSET" "US-ASCII") "<i@x>" "words" "7BIT" 4 1 NIL NIL NIL NIL)`},
-		{"8-bit description", "Content-Description: caf\xc3\xa9\r\n", `("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL "café" "7BIT" 4 1 NIL NIL NIL NIL)`},
+		{"8-bit description", "Content-Description: caf\xc3\xa9\r\n", `("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL "=?UTF-8?Q?caf=C3=A9?=" "7BIT" 4 1 NIL NIL NIL NIL)`},
 		{"encoding in capitals", "Content-Transfer-Encoding: Quoted-Printable\r\n", `("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "QUOTED-PRINTABLE" 4 1 NIL NIL NIL NIL)`},
 		{"disposition without parameters", "Content-Disposition: inline\r\n", `("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 4 1 NIL ("INLINE" NIL) NIL NIL)`},
 		{"disposition with parameters", "Content-Disposition: attachment; filename=a.txt\r\n", `("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 4 1 NIL ("ATTACHMENT" ("FILENAME" "a.txt")) NIL NIL)`},
@@ -215,7 +215,7 @@ func TestBodyStringFraming(t *testing.T) {
 		noChild bool
 	}{
 		{name: "quoted-specials", header: `a "b" \c`, want: `a "b" \c`},
-		{name: "8-bit", header: "caf\xc3\xa9", want: "caf\xc3\xa9"},
+		{name: "8-bit", header: "caf\xc3\xa9", want: "=?UTF-8?Q?caf=C3=A9?="},
 		{name: "tab", header: "a\tb", want: "a\tb"},
 		{name: "controls", header: "a\x01b\x7fc", want: "a\x01b\x7fc", noChild: true},
 	}
@@ -411,8 +411,12 @@ func TestEnvelopeFields(t *testing.T) {
 				t.Fatalf("\n got %s\nwant %s", got, tc.want)
 			}
 			structure, _ := fetchBoth(t, "Content-Type: message/rfc822\r\n\r\n"+tc.raw)
-			if got := structure.envelope.String(); got != tc.want {
-				t.Fatalf("encapsulated:\n got %s\nwant %s", got, tc.want)
+			wantNested := tc.want
+			if tc.name == "literal scalars" {
+				wantNested = `(NIL "=?UTF-8?Q?caf=C3=A9?=" NIL NIL NIL NIL NIL NIL NIL "<=?UTF-8?Q?=C3=A9=40x?=>")`
+			}
+			if got := structure.envelope.String(); got != wantNested {
+				t.Fatalf("encapsulated:\n got %s\nwant %s", got, wantNested)
 			}
 		})
 	}

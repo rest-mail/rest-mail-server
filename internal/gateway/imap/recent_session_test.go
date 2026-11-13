@@ -2,6 +2,7 @@ package imap
 
 import (
 	"bufio"
+	"encoding/json"
 	"io"
 	"net"
 	"net/http"
@@ -27,12 +28,19 @@ func TestRecentSharedByTheGatewaysSessions(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = io.WriteString(w, body)
 	}
-	mux.HandleFunc("/api/v1/auth/protocol-sign-in", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/v1/gateway-sessions", func(w http.ResponseWriter, r *http.Request) {
+		var credentials struct {
+			Address string `json:"address"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&credentials); err != nil {
+			t.Fatal(err)
+		}
 		user := "1"
-		if email, _, _ := r.BasicAuth(); email == "erin@example.test" {
+		if credentials.Address == "erin@example.test" {
 			user = "2"
 		}
-		reply(w, `{"data":{"access_token":"tok","user":{"id":`+user+`}}}`)
+		w.WriteHeader(http.StatusCreated)
+		reply(w, `{"data":{"token":"rmgs_tok","protocol":"imap","user":{"id":`+user+`}}}`)
 	})
 	for _, account := range []string{"1", "2"} {
 		mux.HandleFunc("/api/v1/accounts/"+account+"/folders", func(w http.ResponseWriter, r *http.Request) {

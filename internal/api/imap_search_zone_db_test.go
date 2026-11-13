@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -149,11 +148,10 @@ func utcInstant(t *testing.T, value string) time.Time {
 // BEFORE and SINCE take the client's date on the account's calendar, and UTC when
 // the account has no zone. It runs a real session through the gateway and the API.
 func TestIMAPSearchUsesTheAccountZone(t *testing.T) {
-	f := newCredentialFixture(t)
-	srv := httptest.NewServer(f.router)
-	t.Cleanup(srv.Close)
-	api := apiclient.New(srv.URL)
-	session := openIMAPZoneSession(t, f, api, f.createAppPassword("Thunderbird").Password)
+	gateway := newGatewayFixture(t)
+	f := gateway.credentialFixture
+	api := gatewayAPI(t, gateway.router, gateway.internal, imapCN)
+	session := openIMAPZoneSession(t, f, api, gateway.app.Password)
 
 	// Sequence numbers follow the order of these APPENDs.
 	for _, message := range []struct{ instant, date string }{
@@ -249,22 +247,21 @@ func TestIMAPSearchUsesTheAccountZone(t *testing.T) {
 }
 
 // TestIMAPSearchOnADayWithoutMidnight holds the day to its real first second where
-// the clock skips midnight: Havana goes from 00:00 to 01:00 on 8 March 2026, and
-// back from 01:00 to 00:00 on 1 November 2026, so that day has two midnights.
+// the clock skips midnight: Havana goes from 00:00 to 01:00 on 9 March 2025, and
+// back from 01:00 to 00:00 on 2 November 2025, so that day has two midnights.
 func TestIMAPSearchOnADayWithoutMidnight(t *testing.T) {
-	f := newCredentialFixture(t)
-	srv := httptest.NewServer(f.router)
-	t.Cleanup(srv.Close)
-	api := apiclient.New(srv.URL)
-	session := openIMAPZoneSession(t, f, api, f.createAppPassword("Thunderbird").Password)
+	gateway := newGatewayFixture(t)
+	f := gateway.credentialFixture
+	api := gatewayAPI(t, gateway.router, gateway.internal, imapCN)
+	session := openIMAPZoneSession(t, f, api, gateway.app.Password)
 	for _, instant := range []string{
-		"2026-03-08T04:59:59Z", // 1: 23:59:59 on 7 March
-		"2026-03-08T05:00:00Z", // 2: 01:00:00 on 8 March, its first second
-		"2026-11-01T03:59:59Z", // 3: 23:59:59 on 31 October
-		"2026-11-01T04:00:00Z", // 4: the first 00:00:00 on 1 November
-		"2026-11-01T05:00:00Z", // 5: the second 00:00:00 on 1 November
-		"2026-11-02T04:59:59Z", // 6: 23:59:59 on 1 November
-		"2026-11-02T05:00:00Z", // 7: 00:00:00 on 2 November
+		"2025-03-09T04:59:59Z", // 1: 23:59:59 on 8 March
+		"2025-03-09T05:00:00Z", // 2: 01:00:00 on 9 March, its first second
+		"2025-11-02T03:59:59Z", // 3: 23:59:59 on 1 November
+		"2025-11-02T04:00:00Z", // 4: the first 00:00:00 on 2 November
+		"2025-11-02T05:00:00Z", // 5: the second 00:00:00 on 2 November
+		"2025-11-03T04:59:59Z", // 6: 23:59:59 on 2 November
+		"2025-11-03T05:00:00Z", // 7: 00:00:00 on 3 November
 	} {
 		session.appendAt(utcInstant(t, instant), "Mon, 1 Jan 2024 00:00:00 +0000")
 	}
@@ -272,10 +269,10 @@ func TestIMAPSearchOnADayWithoutMidnight(t *testing.T) {
 	if _, status := session.command("SELECT INBOX"); !strings.Contains(status, " OK") {
 		t.Fatalf("SELECT: %q", status)
 	}
-	session.requireSearch("ON 7-Mar-2026", "1")
-	session.requireSearch("ON 8-Mar-2026", "2")
-	session.requireSearch("BEFORE 8-Mar-2026", "1")
-	session.requireSearch("ON 31-Oct-2026", "3")
-	session.requireSearch("ON 1-Nov-2026", "4 5 6")
-	session.requireSearch("SINCE 2-Nov-2026", "7")
+	session.requireSearch("ON 8-Mar-2025", "1")
+	session.requireSearch("ON 9-Mar-2025", "2")
+	session.requireSearch("BEFORE 9-Mar-2025", "1")
+	session.requireSearch("ON 1-Nov-2025", "3")
+	session.requireSearch("ON 2-Nov-2025", "4 5 6")
+	session.requireSearch("SINCE 3-Nov-2025", "7")
 }

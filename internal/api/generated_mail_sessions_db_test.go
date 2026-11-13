@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"net/http/httptest"
 	"net/mail"
 	"strconv"
 	"strings"
@@ -32,15 +31,14 @@ import (
 type generatedMailSessions struct {
 	f        *credentialFixture
 	api      *apiclient.Client
+	imapAPI  *apiclient.Client
 	password string
 }
 
 func newGeneratedMailSessions(t *testing.T) *generatedMailSessions {
 	t.Helper()
-	f := newCredentialFixture(t)
-	srv := httptest.NewServer(f.router)
-	t.Cleanup(srv.Close)
-	return &generatedMailSessions{f: f, api: apiclient.New(srv.URL), password: f.createAppPassword("mail client").Password}
+	gateway := newGatewayFixture(t)
+	return &generatedMailSessions{f: gateway.credentialFixture, api: gatewayAPI(t, gateway.router, gateway.internal, pop3CN), imapAPI: gatewayAPI(t, gateway.router, gateway.internal, imapCN), password: gateway.app.Password}
 }
 
 // pop3Sizes runs a POP3 session and returns what STAT, LIST n, LIST and RETR's status report,
@@ -119,7 +117,7 @@ func (s *generatedMailSessions) pop3Sizes(t *testing.T, utf8 bool) (stat, listed
 func (s *generatedMailSessions) imapSizes(t *testing.T, utf8 bool) (size int, sent []byte) {
 	t.Helper()
 	client, server := net.Pipe()
-	session := imapserver.NewSession(server, imapgw.NewBackend(s.api, nil), "imap.test", nil, goimap.NopLimiter{})
+	session := imapserver.NewSession(server, imapgw.NewBackend(s.imapAPI, nil), "imap.test", nil, goimap.NopLimiter{})
 	done := make(chan struct{})
 	go func() {
 		defer close(done)

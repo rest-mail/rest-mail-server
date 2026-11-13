@@ -10223,12 +10223,23 @@ paths:
         - CookieAuth: [mail:read]
         - BearerAuth: [mail:read]
         - APIKeyAuth: [mail:read]
-        - BasicAuth: [mail:read]
+        - GatewaySessionAuth: [mail:read]
       summary: Get the account's time zone
       description: The IANA time zone whose calendar days IMAP SEARCH ON, BEFORE and SINCE compare for this account. Null when none is set, and IMAP then uses UTC. Timestamps are stored and returned in UTC whatever this says.
       responses:
         "200":
           description: The account's time zone
+          headers:
+            Content-Security-Policy:
+              $ref: "#/components/headers/Content-Security-Policy"
+            Referrer-Policy:
+              $ref: "#/components/headers/Referrer-Policy"
+            Strict-Transport-Security:
+              $ref: "#/components/headers/Strict-Transport-Security"
+            X-Content-Type-Options:
+              $ref: "#/components/headers/X-Content-Type-Options"
+            X-Frame-Options:
+              $ref: "#/components/headers/X-Frame-Options"
           content:
             application/json:
               schema:
@@ -10239,6 +10250,17 @@ paths:
                     $ref: "#/components/schemas/AccountTimeZone"
         "403":
           description: Access denied
+          headers:
+            Content-Security-Policy:
+              $ref: "#/components/headers/Content-Security-Policy"
+            Referrer-Policy:
+              $ref: "#/components/headers/Referrer-Policy"
+            Strict-Transport-Security:
+              $ref: "#/components/headers/Strict-Transport-Security"
+            X-Content-Type-Options:
+              $ref: "#/components/headers/X-Content-Type-Options"
+            X-Frame-Options:
+              $ref: "#/components/headers/X-Frame-Options"
           content:
             application/json:
               schema:
@@ -10247,6 +10269,17 @@ paths:
           $ref: "#/components/responses/NotFound"
         "429":
           description: Too many requests
+          headers:
+            Content-Security-Policy:
+              $ref: "#/components/headers/Content-Security-Policy"
+            Referrer-Policy:
+              $ref: "#/components/headers/Referrer-Policy"
+            Strict-Transport-Security:
+              $ref: "#/components/headers/Strict-Transport-Security"
+            X-Content-Type-Options:
+              $ref: "#/components/headers/X-Content-Type-Options"
+            X-Frame-Options:
+              $ref: "#/components/headers/X-Frame-Options"
           content:
             application/json:
               schema:
@@ -10258,7 +10291,7 @@ paths:
         - CookieAuth: [mail:write]
         - BearerAuth: [mail:write]
         - APIKeyAuth: [mail:write]
-        - BasicAuth: [mail:write]
+        - GatewaySessionAuth: [mail:write]
       summary: Set the account's time zone
       description: Set the IANA time zone whose calendar days IMAP SEARCH ON, BEFORE and SINCE compare for this account, or null to clear it and use UTC. It applies to the next SEARCH, including on connections already open. An unknown name is refused. Stored timestamps do not change, and IMAP INTERNALDATE is still rendered in UTC.
       requestBody:
@@ -10270,12 +10303,34 @@ paths:
       responses:
         "400":
           description: Invalid request body
+          headers:
+            Content-Security-Policy:
+              $ref: "#/components/headers/Content-Security-Policy"
+            Referrer-Policy:
+              $ref: "#/components/headers/Referrer-Policy"
+            Strict-Transport-Security:
+              $ref: "#/components/headers/Strict-Transport-Security"
+            X-Content-Type-Options:
+              $ref: "#/components/headers/X-Content-Type-Options"
+            X-Frame-Options:
+              $ref: "#/components/headers/X-Frame-Options"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "200":
           description: The saved time zone
+          headers:
+            Content-Security-Policy:
+              $ref: "#/components/headers/Content-Security-Policy"
+            Referrer-Policy:
+              $ref: "#/components/headers/Referrer-Policy"
+            Strict-Transport-Security:
+              $ref: "#/components/headers/Strict-Transport-Security"
+            X-Content-Type-Options:
+              $ref: "#/components/headers/X-Content-Type-Options"
+            X-Frame-Options:
+              $ref: "#/components/headers/X-Frame-Options"
           content:
             application/json:
               schema:
@@ -10286,6 +10341,17 @@ paths:
                     $ref: "#/components/schemas/AccountTimeZone"
         "403":
           description: Access denied
+          headers:
+            Content-Security-Policy:
+              $ref: "#/components/headers/Content-Security-Policy"
+            Referrer-Policy:
+              $ref: "#/components/headers/Referrer-Policy"
+            Strict-Transport-Security:
+              $ref: "#/components/headers/Strict-Transport-Security"
+            X-Content-Type-Options:
+              $ref: "#/components/headers/X-Content-Type-Options"
+            X-Frame-Options:
+              $ref: "#/components/headers/X-Frame-Options"
           content:
             application/json:
               schema:
@@ -10296,6 +10362,17 @@ paths:
           $ref: "#/components/responses/ValidationError"
         "429":
           description: Too many requests
+          headers:
+            Content-Security-Policy:
+              $ref: "#/components/headers/Content-Security-Policy"
+            Referrer-Policy:
+              $ref: "#/components/headers/Referrer-Policy"
+            Strict-Transport-Security:
+              $ref: "#/components/headers/Strict-Transport-Security"
+            X-Content-Type-Options:
+              $ref: "#/components/headers/X-Content-Type-Options"
+            X-Frame-Options:
+              $ref: "#/components/headers/X-Frame-Options"
           content:
             application/json:
               schema:
