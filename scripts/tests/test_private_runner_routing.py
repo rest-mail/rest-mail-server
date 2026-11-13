@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[2]
 RUNNER_POOL = "antimatter-vps-linux-x64"
 DOCKER_COMMAND = re.compile(r"(?m)(?:^\s*(?:(?:if|then|exec|!)\s+)?|[;&|]\s*|\$\()(?:sudo\s+)?(?:docker(?:-compose)?|podman|kind|minikube|k3d)(?:\s|$)")
 CONTAINER_TASK = re.compile(r"\bchore\s+(?:e2e:(?:up|down)|testbed:up|test:load)\b")
-SCRIPT_PATH = re.compile(r"(?:\./)?(?:scripts|\.github/scripts)/[\w./-]+")
+SCRIPT_PATH = re.compile(r"(?:\./)?(?:scripts|\.github/scripts|helm/restmail/tests)/[\w./-]+")
 
 
 def requires_docker(job, root=ROOT, seen=None):
@@ -79,6 +79,7 @@ class PrivateRunnerRouting(unittest.TestCase):
             {"steps": [{"uses": "docker/setup-buildx-action@pinned"}]},
             {"steps": [{"uses": "docker/build-push-action@pinned"}]},
             {"steps": [{"run": "python3 scripts/garage-attachment-test.py"}]},
+            {"steps": [{"run": "bash helm/restmail/tests/dane-resolver-test.sh"}]},
             {"steps": [{"run": "chore e2e:up"}]},
         ]
         jobs.extend({"steps": [{"run": command}]} for command in (

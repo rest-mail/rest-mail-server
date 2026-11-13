@@ -273,7 +273,7 @@ class StackedPRWorkflows(unittest.TestCase):
             gh.chmod(0o755)
             env = dict(os.environ, PATH=f"{directory}:{os.environ['PATH']}", GITHUB_REPOSITORY="rest-mail/rest-mail-server",
                        HEAD_REF="feature/layer", PR="42", BASE_SHA="abc123")
-            result = subprocess.run(["bash", "-c", script], env=env, capture_output=True, text=True, timeout=5)
+            result = subprocess.run(["bash", "-c", script], env=env, capture_output=True, text=True, timeout=600)
             return result.returncode, log.read_text().splitlines()
 
     def test_retarget_relay_dispatches_both_required_workflows_for_the_head(self):

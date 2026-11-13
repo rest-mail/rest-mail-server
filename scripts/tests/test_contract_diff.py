@@ -9,6 +9,8 @@ import textwrap
 import unittest
 from pathlib import Path
 
+from test_stacked_pr_workflows import blocks, context, evaluate, field
+
 ROOT = Path(__file__).resolve().parents[2]
 BINARY = os.environ.get("OASDIFF")
 
@@ -434,13 +436,13 @@ class BranchPointStep(unittest.TestCase):
 
     def test_the_job_checks_out_the_step_result_and_keeps_its_event(self):
         head = workflow_step("Checkout the exact PR head")
-        self.assertIn("ref: ${{ github.event.pull_request.head.sha }}", head)
+        self.assertIn("ref: ${{ github.event.pull_request.head.sha || github.sha }}", head)
         self.assertIn("fetch-depth: 0", head)
         self.assertIn("persist-credentials: false", head)
         step = workflow_step(BRANCH_POINT_STEP)
         self.assertIn("id: branch-point", step)
-        self.assertIn("BASE_SHA: ${{ github.event.pull_request.base.sha }}", step)
-        self.assertIn("HEAD_SHA: ${{ github.event.pull_request.head.sha }}", step)
+        self.assertIn("BASE_SHA: ${{ github.event.pull_request.base.sha || inputs.base-sha }}", step)
+        self.assertIn("HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}", step)
         base = workflow_step("Checkout the comparison base")
         self.assertIn("ref: ${{ steps.branch-point.outputs.sha }}", base)
         self.assertIn("path: .cache/contract-diff-base", base)
@@ -452,8 +454,10 @@ class BranchPointStep(unittest.TestCase):
         # A merge group has no pull request: the job stays skipped there, and the
         # verdict accepts that, so the queue's result does not depend on this job.
         text = CI_WORKFLOW.read_text()
-        job = text[text.index("  contract-diff:\n") :]
-        self.assertIn("if: github.event_name == 'pull_request'", job[:200])
+        job = blocks(blocks(text, 0)["jobs"], 2)["contract-diff"]
+        expression = field(job, "if", 4)
+        self.assertTrue(evaluate(expression, context()))
+        self.assertFalse(evaluate(expression, context(event="merge_group")))
         self.assertIn("success | skipped) ;;", text)
 
 
