@@ -5,12 +5,10 @@ import (
 
 	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
-	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
 )
 
-// A row stored before pop3_utf8_size existed holds a downgraded_size that counted the stored
-// line breaks. The backfill measures both from the stored source and changes nothing else.
-func TestBackfillPOP3Sizes(t *testing.T) {
+// Startup migration never reads or rewrites stored message sizes.
+func TestAutoMigrateDoesNotBackfillPOP3Sizes(t *testing.T) {
 	database := openDKIMRotationTestDB(t)
 	domain := models.Domain{Name: "pop3-sizes.test"}
 	if err := database.Create(&domain).Error; err != nil {
@@ -40,7 +38,7 @@ func TestBackfillPOP3Sizes(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := rmdb.BackfillPOP3Sizes(database); err != nil {
+	if err := rmdb.AutoMigrate(database); err != nil {
 		t.Fatal(err)
 	}
 
@@ -49,7 +47,7 @@ func TestBackfillPOP3Sizes(t *testing.T) {
 		if err := database.Where("message_id = ?", raw).First(&got).Error; err != nil {
 			t.Fatal(err)
 		}
-		if got.DowngradedSize != rmail.DowngradedSize(raw) || got.POP3UTF8Size != rmail.POP3WireSize(raw) {
+		if got.DowngradedSize != len(raw) || got.POP3UTF8Size != 0 {
 			t.Fatalf("%q: downgraded_size %d, pop3_utf8_size %d", raw, got.DowngradedSize, got.POP3UTF8Size)
 		}
 		if got.RawMessage != raw || got.RawSize != len(raw) {

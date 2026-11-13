@@ -180,7 +180,7 @@ func (Message) TableName() string { return "messages" }
 func (m *Message) BeforeCreate(tx *gorm.DB) error {
 	returnStoredModSeq(tx)
 	if m.RawSize > 0 && (m.DowngradedSize == 0 || m.POP3UTF8Size == 0 || m.IMAPSize == 0 || m.IMAPUTF8Size == 0) {
-		sizes := rmail.MeasureWireSizes(m.SourceView())
+		sizes := rmail.MeasureWireSizes(m.sourceView())
 		if m.DowngradedSize == 0 {
 			m.DowngradedSize = sizes.Downgraded
 		}
@@ -203,9 +203,9 @@ func (m *Message) BeforeCreate(tx *gorm.DB) error {
 	return err
 }
 
-// SourceView is the source as a string without copying it, for reading it while nothing
+// sourceView is the source as a string without copying it, for reading it while nothing
 // else writes to it: measuring a message must not cost a copy of it. Nothing may keep it.
-func (m *Message) SourceView() string {
+func (m *Message) sourceView() string {
 	if m.RawOctets != nil {
 		return unsafe.String(unsafe.SliceData(m.RawOctets), len(m.RawOctets))
 	}

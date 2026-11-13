@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- MIME parameters keep the first repeated name, segments after gaps, and literal stars in names that are not RFC 2231 continuations. Incomplete multipart boundaries remain unusable. Parameter conversion uses a single field scan and sorted comment positions.
+
 - This copy's gates run from the server's root workflows: its own `ci.yml` could
   not run there and is removed. Fuzz targets run nightly instead of on each push.
 
