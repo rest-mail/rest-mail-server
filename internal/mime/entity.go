@@ -48,8 +48,13 @@ func (e unknownCoding) Error() string { return "unknown coding: " + e.err.Error(
 // message's own fields stay in it, so that together they cost one buffer of about their size.
 type fieldReader struct {
 	// charsets converts the charsets of the parts these fields open.
-	charsets partCharsets
-	line     []byte
+	charsets       partCharsets
+	lastType       string
+	lastMediaType  string
+	lastParams     map[string]string
+	lastTypeFailed bool
+	copying        []byte
+	line           []byte
 	// chunk is how large the buffer was when it was last made.
 	chunk int
 	// sourceSize is the size of the whole message, when it is known.
@@ -319,6 +324,18 @@ type partFields struct {
 	contentID   string
 }
 
+func (r *fieldReader) partType(value []byte) (string, map[string]string, bool) {
+	spelled := unsafe.String(unsafe.SliceData(value), len(value))
+	if r.lastType != "" && spelled == r.lastType {
+		return r.lastMediaType, r.lastParams, r.lastTypeFailed
+	}
+	mediaType, params, failed := parseContentType(spelled)
+	if len(value) <= 256 {
+		r.lastType, r.lastMediaType, r.lastParams, r.lastTypeFailed = string(value), mediaType, params, failed
+	}
+	return mediaType, params, failed
+}
+
 // readPartFields reads a header block and keeps only partFields of it. A value can be as long as
 // its sender likes, and it's read in the shared buffer, so nothing that's kept may be a view of it.
 func (r *fieldReader) readPartFields(br *bufio.Reader) (partFields, error) {
@@ -330,7 +347,7 @@ func (r *fieldReader) readPartFields(br *bufio.Reader) (partFields, error) {
 				kept.hasType = true
 				view := unfold(value)
 				if !r.typeOnly || namesMultipart(view) {
-					kept.mediaType, kept.params, kept.typeFailed = parseContentType(unsafe.String(unsafe.SliceData(view), len(view)))
+					kept.mediaType, kept.params, kept.typeFailed = r.partType(view)
 				}
 			}
 		case bytes.EqualFold(key, []byte("Content-Disposition")):
@@ -361,7 +378,7 @@ func (kept partFields) open(body io.Reader, charsets *partCharsets) (*entity, er
 	}
 	var err error
 	if !strings.HasPrefix(e.mediaType, "multipart/") {
-		decoded, encodingErr := transferDecoder(kept.encoding, body)
+		decoded, encodingErr := transferDecoder(kept.encoding, body, &charsets.rooms)
 		if encodingErr != nil {
 			err = unknownCoding{encodingErr}
 		} else {
@@ -387,12 +404,12 @@ const maxCharsetName = 256
 var errCharsetName = errors.New("message: unknown charset")
 
 // transferDecoder is go-message's encodingReader.
-func transferDecoder(encoding string, r io.Reader) (io.Reader, error) {
+func transferDecoder(encoding string, r io.Reader, rooms *partDecoderRooms) (io.Reader, error) {
 	switch strings.ToLower(encoding) {
 	case "quoted-printable":
-		return newQuotedReader(r), nil
+		return rooms.quotedReader(r), nil
 	case "base64":
-		return newBase64Reader(r), nil
+		return rooms.base64Reader(r), nil
 	case "7bit", "8bit", "binary", "":
 		return r, nil
 	}
@@ -554,8 +571,11 @@ func matchAfterPrefix(buf, prefix []byte, readErr error) int {
 // nextPart opens the next part. The error is io.EOF when there are no more, and wraps unknownCoding
 // when the part is readable but can't be decoded.
 func (r *multipartReader) nextPart() (*entity, error) {
-	if r.current != nil {
-		_, _ = io.Copy(io.Discard, r.current)
+	if r.current != nil && (r.current.n > 0 || r.current.err == nil) {
+		if r.fields.copying == nil {
+			r.fields.copying = make([]byte, multipartPeek)
+		}
+		_, _ = io.CopyBuffer(struct{ io.Writer }{io.Discard}, r.current, r.fields.copying)
 	}
 	if string(r.dashBoundary) == "--" {
 		return nil, errors.New("multipart: boundary is empty")

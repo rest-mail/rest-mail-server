@@ -10,19 +10,20 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"sync"
+
+	"github.com/rest-mail/rest-mail-server/internal/boundedpool"
 )
 
 // copying holds the buffers Copy reads through. A message can name a thousand parts of a few bytes
 // each, and a buffer per part is 32 KiB for each of them, whatever its size.
-var copying = sync.Pool{New: func() any { return new([32 << 10]byte) }}
+var copying = boundedpool.New(16, func() *[32 << 10]byte { return new([32 << 10]byte) })
 
 // Copy is io.Copy through a buffer that outlives the call, for a caller making many short copies.
 // A destination's ReadFrom is passed over, because the one on *os.File allocates a buffer of its own
 // for a source that isn't a file, and a part being decoded never is. A source that can write itself
 // still does.
 func Copy(destination io.Writer, source io.Reader) (int64, error) {
-	buffer := copying.Get().(*[32 << 10]byte)
+	buffer := copying.Get()
 	defer copying.Put(buffer)
 	return io.CopyBuffer(struct{ io.Writer }{destination}, source, buffer[:])
 }
@@ -60,6 +61,7 @@ type FilesystemObjects struct {
 	directory, subdir string
 	root              *os.Root
 	hash              hash.Hash
+	copying           []byte
 }
 
 // OpenFilesystemImports opens where PutFilesystemReader stores objects.
@@ -108,7 +110,10 @@ func (s *FilesystemObjects) Put(ctx context.Context, source io.Reader) (ref, che
 		}
 	}()
 	s.hash.Reset()
-	size, writeErr := Copy(io.MultiWriter(f, s.hash), source)
+	if s.copying == nil {
+		s.copying = make([]byte, 32<<10)
+	}
+	size, writeErr := io.CopyBuffer(io.MultiWriter(f, s.hash), source, s.copying)
 	closeErr := f.Close()
 	if writeErr != nil {
 		return "", "", 0, writeErr

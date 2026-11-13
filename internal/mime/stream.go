@@ -217,7 +217,7 @@ func (s *streamParse) readSized(part io.Reader, size int64) (string, error) {
 	if _, err := io.CopyBuffer(&text, io.LimitReader(part, s.options.MaxText), s.copying); err != nil {
 		return text.String(), err
 	}
-	rest, err := io.Copy(io.Discard, part)
+	rest, err := io.CopyBuffer(struct{ io.Writer }{io.Discard}, part, s.copying)
 	if err != nil {
 		return text.String(), err
 	}

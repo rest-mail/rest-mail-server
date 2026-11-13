@@ -381,3 +381,22 @@ func TestFieldsReadAsBodyStructureTellsAClient(t *testing.T) {
 		}
 	})
 }
+
+func TestPartTypeCacheOwnsItsFieldAndKeepsOnlyAShortValue(t *testing.T) {
+	reader := &fieldReader{}
+	value := []byte("text/plain; charset=iso-8859-1")
+	mediaType, params, failed := reader.partType(value)
+	if failed || mediaType != "text/plain" || params["charset"] != "iso-8859-1" {
+		t.Fatalf("first type: %q %v %v", mediaType, params, failed)
+	}
+	copy(value, strings.Repeat("x", len(value)))
+	mediaType, params, failed = reader.partType([]byte("text/plain; charset=iso-8859-1"))
+	if failed || mediaType != "text/plain" || params["charset"] != "iso-8859-1" {
+		t.Fatalf("cached type: %q %v %v", mediaType, params, failed)
+	}
+	long := "text/html; name=" + strings.Repeat("x", 300)
+	mediaType, params, failed = reader.partType([]byte(long))
+	if failed || mediaType != "text/html" || params["name"] != strings.Repeat("x", 300) || reader.lastType == long {
+		t.Fatalf("long type: %q %v %v, cached %q", mediaType, params, failed, reader.lastType)
+	}
+}

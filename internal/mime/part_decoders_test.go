@@ -164,3 +164,42 @@ func TestPartDecodersKeepLittlePerPart(t *testing.T) {
 		})
 	}
 }
+
+func TestPartDecodersKeepRoomWithinAMessage(t *testing.T) {
+	rooms := &partDecoderRooms{}
+	for _, encoding := range []string{"base64", "quoted-printable"} {
+		t.Run(encoding, func(t *testing.T) {
+			encoded := "b25l"
+			if encoding == "quoted-printable" {
+				encoded = "=6Fne"
+			}
+			first, err := transferDecoder(encoding, strings.NewReader(encoded), rooms)
+			if err != nil {
+				t.Fatal(err)
+			}
+			second, err := transferDecoder(encoding, strings.NewReader(encoded), rooms)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, reader := range []io.Reader{first, second} {
+				value, err := io.ReadAll(reader)
+				if err != nil || string(value) != "one" {
+					t.Fatalf("overlapping readers: %q %v", value, err)
+				}
+			}
+			base64Room, quotedBuffer := rooms.base64, rooms.quoted
+			runtime.GC()
+			runtime.GC()
+			third, err := transferDecoder(encoding, strings.NewReader(encoded), rooms)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if decoder, ok := third.(*base64Reader); ok && decoder.room != base64Room {
+				t.Fatal("message lost its base64 room across collection")
+			}
+			if decoder, ok := third.(*quotedReader); ok && decoder.buffer != quotedBuffer {
+				t.Fatal("message lost its quoted-printable buffer across collection")
+			}
+		})
+	}
+}

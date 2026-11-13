@@ -6,7 +6,6 @@ import (
 	"io"
 	stdmime "mime"
 	"strings"
-	"sync"
 	"unicode/utf8"
 
 	gomessage "github.com/emersion/go-message"
@@ -17,6 +16,7 @@ import (
 	"golang.org/x/text/encoding/unicode"
 	"golang.org/x/text/transform"
 
+	"github.com/rest-mail/rest-mail-server/internal/boundedpool"
 	"github.com/rest-mail/rest-mail-server/internal/mailaddr"
 )
 
@@ -36,9 +36,9 @@ const (
 // transform.Reader fails one.
 var errTransformLeftOver = errors.New("mime: transform left part of its source unread")
 
-var wordReaders = sync.Pool{New: func() any {
+var wordReaders = boundedpool.New(16, func() *wordReader {
 	return &wordReader{decoders: make(map[string]*encoding.Decoder, maxWordDecoders)}
-}}
+})
 
 // wordCharsetReader reads what gomessage.CharsetReader reads. A mime.WordDecoder asks for a reader for
 // each word and copies from it, and that reader's buffers and the copy's came to about 40 KiB for a
@@ -46,10 +46,10 @@ var wordReaders = sync.Pool{New: func() any {
 // reader that writes itself out, so this one does, with a decoder and a buffer it uses again.
 // TestWordCharsetReaderReadsAsGoMessageDoes holds the two together.
 func wordCharsetReader(charset string, input io.Reader) (io.Reader, error) {
-	r, _ := wordReaders.Get().(*wordReader)
+	r := wordReaders.Get()
 	r.dec = r.decoderFor(charset)
 	if r.dec == nil {
-		wordReaders.Put(r)
+		r.release()
 		// What refuses the charset says why.
 		return gomessage.CharsetReader(charset, input)
 	}
@@ -58,7 +58,7 @@ func wordCharsetReader(charset string, input io.Reader) (io.Reader, error) {
 		r.src.Grow(sized.Len() + bytes.MinRead)
 	}
 	if _, err := r.src.ReadFrom(input); err != nil {
-		wordReaders.Put(r)
+		r.release()
 		return nil, err
 	}
 	return r, nil
@@ -117,12 +117,18 @@ func wordEncoding(charset string) encoding.Encoding {
 // WriteTo is what io.Copy calls, the word's only use of this reader, which goes back to be used again.
 func (r *wordReader) WriteTo(w io.Writer) (int64, error) {
 	written, err := r.convert(w)
+	r.release()
+	return written, err
+}
+
+func (r *wordReader) release() {
 	if r.src.Cap() > maxKeptWord {
 		r.src = bytes.Buffer{}
+	} else {
+		r.src.Reset()
 	}
 	r.dec = nil
 	wordReaders.Put(r)
-	return written, err
 }
 
 // convert goes through the source as transform.Reader does, which has it all from the start.
@@ -168,7 +174,7 @@ func decodeWords(value string) string {
 	if !strings.Contains(value, "=?") {
 		return value
 	}
-	words, _ := headerWordBuffers.Get().(*headerWords)
+	words := headerWordBuffers.Get()
 	decoded, err := words.decodeHeader(value)
 	// The pool would keep a long word's room for every word after it.
 	if words.text.Held() > maxKeptWord {
@@ -182,7 +188,7 @@ func decodeWords(value string) string {
 	return decoded
 }
 
-var headerWordBuffers = sync.Pool{New: func() any { return new(headerWords) }}
+var headerWordBuffers = boundedpool.New(16, func() *headerWords { return new(headerWords) })
 
 // headerWords reads the words of a field with what it read the last one with.
 type headerWords struct {
@@ -317,6 +323,7 @@ func hasNonWhitespace(s string) bool {
 // do for all of them. go-message's reader costs 8 KiB for a part of however few octets, and a message
 // can have as many of those as its part limit (#1915). A parse's fieldReader holds it.
 type partCharsets struct {
+	rooms    partDecoderRooms
 	decoders map[string]*encoding.Decoder
 	reader   *partCharsetReader
 }

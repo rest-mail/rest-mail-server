@@ -211,10 +211,25 @@ func TestDecodeWordsTakesNoBufferPerWord(t *testing.T) {
 	}
 	decodeWords("=?windows-1252?b?" + strings.Repeat("6Q", 2*maxKeptWord) + "?=")
 	for range 8 {
-		words, _ := headerWordBuffers.Get().(*headerWords)
+		words := headerWordBuffers.Get()
 		defer headerWordBuffers.Put(words)
 		if words.text.Held() > maxKeptWord {
 			t.Fatalf("kept %d octets of room for the next word", words.text.Held())
+		}
+	}
+}
+
+func TestFailedWordReaderKeepsNoLongBuffer(t *testing.T) {
+	broken := errors.New("broken word")
+	_, err := wordCharsetReader("windows-1252", &failingReader{octets: bytes.Repeat([]byte("x"), 2*maxKeptWord), err: broken})
+	if !errors.Is(err, broken) {
+		t.Fatalf("failed word: %v", err)
+	}
+	for range 16 {
+		reader := wordReaders.Get()
+		defer wordReaders.Put(reader)
+		if reader.src.Cap() > maxKeptWord {
+			t.Fatalf("failed word retained %d bytes", reader.src.Cap())
 		}
 	}
 }
