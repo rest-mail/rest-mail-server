@@ -64,9 +64,9 @@ type Address struct {
 
 // Headers holds parsed and raw headers.
 type Headers struct {
-	From       AddressList         `json:"from"`
-	To         AddressList         `json:"to"`
-	Cc         AddressList         `json:"cc,omitzero"`
+	From       AddressList         `json:"from" type:"array" items:"object"`
+	To         AddressList         `json:"to" type:"array" items:"object"`
+	Cc         AddressList         `json:"cc,omitempty,omitzero" type:"array" items:"object"`
 	Bcc        []Address           `json:"bcc,omitempty"`
 	Subject    string              `json:"subject"`
 	Date       string              `json:"date"`

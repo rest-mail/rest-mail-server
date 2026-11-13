@@ -282,8 +282,8 @@ func (Attachment) TableName() string { return "attachments" }
 // the message header rules and a filename may be in any charset, and fits them to their columns, so
 // that no way of storing an attachment can refuse its message over what the sender called it (#1915).
 func (a *Attachment) BeforeCreate(*gorm.DB) error {
-	a.Filename, a.ContentType = ReadableText(a.Filename), ReadableText(a.ContentType)
-	a.Filename = FitFilename(a.Filename)
+	a.Filename = FitFilename(ReadableText(a.Filename))
+	// A media type that can't be stored as sent names no type a reader could trust.
 	if !fitsColumn(a.ContentType, attachmentTypeColumn) {
 		a.ContentType = "application/octet-stream"
 	}

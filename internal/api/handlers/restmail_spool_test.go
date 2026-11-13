@@ -3,6 +3,7 @@ package handlers
 import (
 	"bufio"
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -179,6 +180,12 @@ func TestRestmailStandInAnswersAsTheWholeBodyDoes(t *testing.T) {
 	}
 	for _, body := range bodies {
 		want, got := restmailBoundWhole([]byte(body)), restmailBoundSpooled(t, []byte(body))
+		// raw_message is octets: an absent one and an empty one both stand for none.
+		for _, answer := range []*restmailBindAnswer{&want, &got} {
+			if len(answer.body.RawMessage) == 0 {
+				answer.body.RawMessage = nil
+			}
+		}
 		if !reflect.DeepEqual(got, want) {
 			t.Fatalf("%q:\nspooled %+v\nwhole   %+v", body, got, want)
 		}
@@ -245,7 +252,7 @@ func restmailLimitFixture(t *testing.T) (http.Handler, models.Mailbox, func(*tes
 // What the federation client sends: the envelope and the source.
 func restmailClientBody(t *testing.T, to, message string) []byte {
 	t.Helper()
-	body, err := json.Marshal(map[string]any{"from": "old@example.test", "to": []string{to}, "raw_message": message})
+	body, err := json.Marshal(map[string]any{"from": "old@example.test", "to": []string{to}, "raw_message": base64.StdEncoding.EncodeToString([]byte(message))})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -342,29 +349,28 @@ func TestRestmailHoldsTheLimitOnHostileShapes(t *testing.T) {
 	}
 }
 
-// A hostile string stores what encoding/json makes of it, the same way a refusal leaves no file.
+// A source of any octets is stored exactly as raw_message's base64 spells it, and a refusal leaves
+// no file. (raw_message was a JSON string before #2111 made it octets, so encoding/json no longer
+// decides what is stored.)
 func TestRestmailStoresTheStringAsJSONReadsIt(t *testing.T) {
 	spool := t.TempDir()
 	t.Setenv("TMPDIR", spool)
 	routes, mailbox, last := restmailLimitFixture(t)
-	head := `Message-ID: <hostile@example.test>\r\nFrom: old@example.test\r\nSubject: s\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n`
-	content := head + "a\\uD83D\\uDE00b\\uD83Dc\\uDE00d\xc3\xa9e\xc3f\xffg\\u00e9h\\/i\\n"
-	body := []byte(`{"from":"old@example.test","to":["` + mailbox.Address + `"],"raw_message":"` + content + `"}`)
-	var want struct {
-		RawMessage string `json:"raw_message"`
-	}
-	if err := json.Unmarshal(body, &want); err != nil {
+	head := "Message-ID: <hostile@example.test>\r\nFrom: old@example.test\r\nSubject: s\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n"
+	content := head + "a\U0001F600b\xed\xa0\xbdc\xc3\xa9e\xc3f\xffg\x00h/i\n"
+	body, err := json.Marshal(map[string]any{"from": "old@example.test", "to": []string{mailbox.Address}, "raw_message": base64.StdEncoding.EncodeToString([]byte(content))})
+	if err != nil {
 		t.Fatal(err)
 	}
 	if w := postRestmail(routes, body); w.Code != http.StatusCreated {
 		t.Fatalf("%d %s", w.Code, w.Body)
 	}
 	stored := last(t)
-	if stored.RawMessage != want.RawMessage || !strings.HasSuffix(want.RawMessage, "a\U0001F600b\ufffdc\ufffdd\u00e9e\ufffdf\ufffdg\u00e9h/i\n") {
-		t.Fatalf("stored %q, encoding/json read %q", stored.RawMessage, want.RawMessage)
+	if got := string(stored.Source()); got != content {
+		t.Fatalf("stored %q, sent %q", got, content)
 	}
-	if stored.RawSize != len(want.RawMessage) {
-		t.Fatalf("raw size %d for %d octets", stored.RawSize, len(want.RawMessage))
+	if stored.RawSize != len(content) {
+		t.Fatalf("raw size %d for %d octets", stored.RawSize, len(content))
 	}
 	if w := postRestmail(routes, []byte(`{"to":["`+mailbox.Address+`"],"raw_message":"cut`)); w.Code != http.StatusBadRequest {
 		t.Fatalf("%d %s", w.Code, w.Body)

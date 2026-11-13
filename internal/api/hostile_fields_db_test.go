@@ -83,7 +83,7 @@ func senderRoutes(t *testing.T) (*credentialFixture, []senderRoute) {
 		return nil
 	}
 	viaRestmail := func(t *testing.T, message string) error {
-		body, err := json.Marshal(map[string]any{"from": "sender@remote.test", "to": []string{f.address}, "raw_message": message})
+		body, err := json.Marshal(map[string]any{"from": "sender@remote.test", "to": []string{f.address}, "raw_message": base64.StdEncoding.EncodeToString([]byte(message))})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -470,7 +470,7 @@ func TestLongFieldDoesNotChangeAMalformedFieldsClass(t *testing.T) {
 func TestRestmailHeadersDoNotDecideTheClass(t *testing.T) {
 	f, _ := senderRoutes(t)
 	message := "Message-ID: <claim@remote.test>\r\nFrom: old@remote.test\r\nTo: chris@example.test\r\nList-Id: News <news.remote.test>\r\n\r\nb\r\n"
-	body, err := json.Marshal(map[string]any{"from": "old@remote.test", "to": []string{f.address}, "raw_message": message, "headers": map[string][]string{"X-Plain": {"nothing"}}})
+	body, err := json.Marshal(map[string]any{"from": "old@remote.test", "to": []string{f.address}, "raw_message": base64.StdEncoding.EncodeToString([]byte(message)), "headers": map[string][]string{"X-Plain": {"nothing"}}})
 	if err != nil {
 		t.Fatal(err)
 	}

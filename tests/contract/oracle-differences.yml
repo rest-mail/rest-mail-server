@@ -2411,7 +2411,6 @@
 # Inbound delivery from the protocol gateways (#642)
 
 - operation: deliverMessage
-- operation: deliverMessage
   difference: "request body application/json.properties.received_tls: openapi.yaml absent, generated *"
   reason: >-
     The inbound MX sends how the message arrived (TLS).

@@ -4213,12 +4213,12 @@ export interface components {
         };
         Headers: {
             bcc?: components["schemas"]["Address"][];
-            cc: components["schemas"]["AddressList"];
+            cc?: Record<string, never>[];
             date: string;
             extra?: {
                 [key: string]: string;
             };
-            from: components["schemas"]["AddressList"];
+            from: Record<string, never>[];
             "in-reply-to"?: string;
             "message-id": string;
             raw?: {
@@ -4226,7 +4226,7 @@ export interface components {
             };
             references?: string[];
             subject: string;
-            to: components["schemas"]["AddressList"];
+            to: Record<string, never>[];
         };
         Health: {
             cert_warnings?: components["schemas"]["CertWarning"][];
