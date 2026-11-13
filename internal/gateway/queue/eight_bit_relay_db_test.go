@@ -408,14 +408,28 @@ func TestEightBitRetryAfterTemporaryFailure(t *testing.T) {
 	}
 }
 
-// deadAddr is an address nothing listens on.
+// deadAddr is a peer that drops connections before giving an SMTP greeting.
 func deadAddr(t *testing.T) string {
 	t.Helper()
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = listener.Close() }()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for {
+			connection, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			_ = connection.Close()
+		}
+	}()
+	t.Cleanup(func() {
+		_ = listener.Close()
+		<-done
+	})
 	return listener.Addr().String()
 }
 
@@ -661,16 +675,12 @@ func newEightBitAPI(t *testing.T, db *gorm.DB, domain, script string) *eightBitA
 	if err != nil {
 		t.Fatal(err)
 	}
-	port := listener.Addr().(*net.TCPAddr).Port
-	if err := listener.Close(); err != nil {
-		t.Fatal(err)
-	}
 	gateway := smtpgateway.NewServer("mx."+domain, apiclient.New(server.URL), nil, smtpgateway.NewStore(db, relayRouteMasterKey), connlimiter.New(connlimiter.Config{}))
-	if err := gateway.ListenAndServe(smtpgateway.SMTPPorts{Inbound: port}); err != nil {
+	if err := gateway.Serve(smtpgateway.SMTPListeners{Inbound: listener}); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(gateway.Shutdown)
-	return &eightBitAPI{url: server.URL, smtpAddr: net.JoinHostPort("127.0.0.1", strconv.Itoa(port))}
+	return &eightBitAPI{url: server.URL, smtpAddr: listener.Addr().String()}
 }
 
 // sendSMTP sends a message in a real SMTP session.

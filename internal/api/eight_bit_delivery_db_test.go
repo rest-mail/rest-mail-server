@@ -154,24 +154,24 @@ func newEightBitServer(t *testing.T) *eightBitServer {
 	t.Cleanup(certSrv.Close)
 	s.rootCAs = x509.NewCertPool()
 	s.rootCAs.AddCert(certSrv.Certificate())
-	freePort := func() int {
-		free, err := net.Listen("tcp", "127.0.0.1:0")
+	listen := func() net.Listener {
+		listener, err := net.Listen("tcp", "127.0.0.1:0")
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer free.Close()
-		return free.Addr().(*net.TCPAddr).Port
+		t.Cleanup(func() { _ = listener.Close() })
+		return listener
 	}
-	port, subPort := freePort(), freePort()
+	inbound, submission := listen(), listen()
 	gateway := smtpgw.NewServer("mail.example.test", s.api,
 		&tls.Config{Certificates: certSrv.TLS.Certificates, MinVersion: tls.VersionTLS12},
 		smtpgw.NewStore(f.db, ""), connlimiter.New(connlimiter.Config{MaxPerIP: 100, MaxGlobal: 100}))
-	if err := gateway.ListenAndServe(smtpgw.SMTPPorts{Inbound: port, SubmissionTLS: subPort}); err != nil {
+	if err := gateway.Serve(smtpgw.SMTPListeners{Inbound: inbound, SubmissionTLS: submission}); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(gateway.Shutdown)
-	s.addr = fmt.Sprintf("127.0.0.1:%d", port)
-	s.subAddr = fmt.Sprintf("127.0.0.1:%d", subPort)
+	s.addr = inbound.Addr().String()
+	s.subAddr = submission.Addr().String()
 	return s
 }
 
