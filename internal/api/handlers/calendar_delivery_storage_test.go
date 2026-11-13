@@ -73,6 +73,8 @@ func (d *calendarDeliveryDB) QueryContext(_ context.Context, q string, args []dr
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	switch {
+	case strings.Contains(q, "SELECT COALESCE(SUM(quota_used_bytes), 0) FROM owned"):
+		return &deliveryReadRows{columns: []string{"used"}, values: []driver.Value{int64(0)}}, nil
 	case strings.HasPrefix(q, `INSERT INTO "calendar_event_versions"`):
 		if d.failVersions {
 			return nil, errors.New("private calendar store failure")
