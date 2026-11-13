@@ -186,7 +186,7 @@ func (s *streamParse) walk(mr *multipartReader, mediaType string, depth int) pip
 
 func appendBodyPart(parts []pipeline.Body, part pipeline.Body) []pipeline.Body {
 	if len(parts) == cap(parts) {
-		grown := make([]pipeline.Body, len(parts), max(1, 2*cap(parts)))
+		grown := make([]pipeline.Body, len(parts), max(1, 4*cap(parts)))
 		copy(grown, parts)
 		parts = grown
 	}
