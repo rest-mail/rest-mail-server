@@ -155,6 +155,12 @@ func TestAccountTimeZoneCoverageWithVertrag(t *testing.T) {
 	operations := document["paths"].(map[string]any)[path].(map[string]any)
 	for _, method := range []string{"get", "put"} {
 		operation := operations[method].(map[string]any)
+		for _, security := range operation["security"].([]any) {
+			if _, ok := security.(map[string]any)["BearerAuth"]; ok {
+				operation["security"] = []any{security}
+				break
+			}
+		}
 		responses := operation["responses"].(map[string]any)
 		operation["responses"] = map[string]any{"200": responses["200"]}
 		if body, ok := operation["requestBody"].(map[string]any); ok {
@@ -182,10 +188,10 @@ func TestAccountTimeZoneCoverageWithVertrag(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(directory, "time_zone.py"), []byte(hook), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(directory, "vertrag.yml"), []byte("language: python\nhookfiles: ./time_zone.py\n"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(directory, "vertrag.yml"), []byte("language: python\nhookfiles: ./time_zone.py\nfuzz:\n  pin:\n    time_zone: UTC\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	server := httptest.NewServer(fixture.router)
+	server := servedAsDescribed(fixture.router)
 	defer server.Close()
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	defer cancel()
@@ -205,6 +211,7 @@ func TestAccountTimeZoneCoverageWithVertrag(t *testing.T) {
 	if err := json.Unmarshal(data, &report); err != nil {
 		t.Fatal(err)
 	}
+	t.Logf("time-zone coverage: total=%d passing=%d failing=%d errors=%d skipped=%d", report.Summary.Total, report.Summary.Passing, report.Summary.Failing, report.Summary.Errors, report.Summary.Skipped)
 	if report.Summary.Total <= 3 || report.Summary.Failing != 0 || report.Summary.Errors != 0 || report.Summary.Skipped != 0 {
 		t.Fatalf("coverage did not execute without skips: %s", data)
 	}
