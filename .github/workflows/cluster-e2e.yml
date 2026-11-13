@@ -313,7 +313,7 @@ jobs:
     name: Failure issue
     needs: install
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: antimatter-vps-linux-x64
     timeout-minutes: 10
     permissions:
       contents: read
@@ -324,6 +324,9 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
 
       # Missing when the install failed before anything was written.
       - name: Download the cluster report
