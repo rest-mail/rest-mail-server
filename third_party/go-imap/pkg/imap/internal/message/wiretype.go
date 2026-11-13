@@ -55,6 +55,10 @@ func contentFields(header string) (contentType, encoding string) {
 // readContentFields is contentFields. With keepFolded, a Content-Type stays as it's spelled, line
 // breaks and all, for readWireField.
 func readContentFields(header string, keepFolded bool) (contentType, encoding string) {
+	if len(header)-strings.LastIndexByte(header, '\n')-1 >= entityHeaderBuffer-1 {
+		fields := entityHeader(header)
+		return fields.Get("Content-Type"), fields.Get("Content-Transfer-Encoding")
+	}
 	if header != "" && (header[0] == ' ' || header[0] == '\t') {
 		return "", ""
 	}
@@ -67,7 +71,6 @@ func readContentFields(header string, keepFolded bool) (contentType, encoding st
 		}
 		field := after
 		folded := false
-		lost := 0
 		for ended {
 			spaces := 0
 			for spaces < len(field) && (field[spaces] == ' ' || field[spaces] == '\t') {
@@ -85,11 +88,11 @@ func readContentFields(header string, keepFolded bool) (contentType, encoding st
 			var next string
 			next, field, ended = cutHeaderLine(field[spaces:])
 			if !ended && lostHeaderLine(next) {
-				lost = len(next)
+				return contentType, encoding
 			}
 			folded = true
 		}
-		continuation := after[:len(after)-len(field)-lost]
+		continuation := after[:len(after)-len(field)]
 		line := trimHeaderSpace(first)
 		name, value, named := strings.Cut(line, ":")
 		switch {
@@ -102,7 +105,7 @@ func readContentFields(header string, keepFolded bool) (contentType, encoding st
 			if isType && !haveType || isEncoding && !haveEncoding {
 				if folded {
 					// The value and its lines lie side by side in the block.
-					spelled := rest[strings.IndexByte(rest, ':')+1 : len(rest)-len(field)-lost]
+					spelled := rest[strings.IndexByte(rest, ':')+1 : len(rest)-len(field)]
 					if keepFolded && isType {
 						value = strings.TrimRight(spelled, " \t\r\n")
 					} else {
