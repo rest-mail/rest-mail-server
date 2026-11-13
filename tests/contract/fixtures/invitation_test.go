@@ -19,7 +19,7 @@ func TestInvitationProbePreparesTheDrawnTokenWithoutReusingAnAccount(t *testing.
 		if err := prepareInvitationProbe(database, hosted.Name, "x"); err != nil {
 			t.Fatal(err)
 		}
-		account, err := bootstrap.AcceptInvitation(context.Background(), database, "x", "twelve-characters")
+		account, err := bootstrap.AcceptInvitation(context.Background(), database, "x", "Qv7#mZ2!pL9k$R5x")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -27,7 +27,7 @@ func TestInvitationProbePreparesTheDrawnTokenWithoutReusingAnAccount(t *testing.
 			t.Fatal("a consumed invitation's account was reused")
 		}
 		previous = account.ID
-		if _, err := bootstrap.AcceptInvitation(context.Background(), database, "x", "twelve-characters"); err != bootstrap.ErrTokenInvalid {
+		if _, err := bootstrap.AcceptInvitation(context.Background(), database, "x", "Qv7#mZ2!pL9k$R5x"); err != bootstrap.ErrTokenInvalid {
 			t.Fatalf("a second redemption = %v, want invalid token", err)
 		}
 	}
