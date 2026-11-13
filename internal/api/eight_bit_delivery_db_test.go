@@ -21,6 +21,7 @@ import (
 
 	goimap "github.com/rest-mail/go-imap/pkg/imap"
 	imapserver "github.com/rest-mail/go-imap/pkg/imap/server"
+	"github.com/rest-mail/go-imap/pkg/imap/wireform"
 	pop3server "github.com/rest-mail/go-pop3/pkg/pop3/server"
 	"github.com/rest-mail/rest-mail-server/internal/config"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
@@ -29,6 +30,7 @@ import (
 	imapgw "github.com/rest-mail/rest-mail-server/internal/gateway/imap"
 	pop3gw "github.com/rest-mail/rest-mail-server/internal/gateway/pop3"
 	smtpgw "github.com/rest-mail/rest-mail-server/internal/gateway/smtp"
+	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
 	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 )
 
@@ -84,6 +86,8 @@ func manyParameters(size int) string {
 type eightBitServer struct {
 	*credentialFixture
 	api     *apiclient.Client
+	imapAPI *apiclient.Client
+	pop3API *apiclient.Client
 	addr    string
 	subAddr string
 	rootCAs *x509.CertPool
@@ -119,23 +123,33 @@ func newEightBitServer(t *testing.T) *eightBitServer {
 	if err := f.db.Create(&models.QuotaUsage{MailboxID: f.mailboxID}).Error; err != nil {
 		t.Fatal(err)
 	}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		rec := httptest.NewRecorder()
-		f.router.ServeHTTP(rec, r)
-		if r.URL.Path == "/api/v1/messages/deliver" {
-			s.mu.Lock()
-			s.status = append(s.status, rec.Code)
-			s.bodies = append(s.bodies, rec.Body.String())
-			s.mu.Unlock()
-		}
-		for k, v := range rec.Header() {
-			w.Header()[k] = v
-		}
-		w.WriteHeader(rec.Code)
-		_, _ = w.Write(rec.Body.Bytes())
-	}))
-	t.Cleanup(srv.Close)
-	s.api = apiclient.New(srv.URL)
+	internal := f.gatewayRouter()
+	clientFor := func(identity string) *apiclient.Client {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			rec := httptest.NewRecorder()
+			caller := identity
+			if r.URL.Path == "/api/v1/messages/deliver" {
+				caller = deliveryCN
+			}
+			asGateway(caller, internal).ServeHTTP(rec, r)
+			if r.URL.Path == "/api/v1/messages/deliver" {
+				s.mu.Lock()
+				s.status = append(s.status, rec.Code)
+				s.bodies = append(s.bodies, rec.Body.String())
+				s.mu.Unlock()
+			}
+			for key, value := range rec.Header() {
+				w.Header()[key] = value
+			}
+			w.WriteHeader(rec.Code)
+			_, _ = w.Write(rec.Body.Bytes())
+		}))
+		t.Cleanup(srv.Close)
+		return apiclient.New(srv.URL)
+	}
+	s.api = clientFor(submissionCN)
+	s.imapAPI = clientFor(imapCN)
+	s.pop3API = clientFor(pop3CN)
 	certSrv := httptest.NewTLSServer(http.NotFoundHandler())
 	t.Cleanup(certSrv.Close)
 	s.rootCAs = x509.NewCertPool()
@@ -213,7 +227,7 @@ func (s *eightBitServer) newest() models.Message {
 }
 
 // proveStored checks the newest message holds message's exact octets after the trace fields
-// this server prepends, sizes them truly, and reads back exactly through the API, IMAP and POP3.
+// this server prepends, sizes them truly, and reads back exactly through the API and BINARY.
 func (s *eightBitServer) proveStored(message, password string) {
 	s.t.Helper()
 	stored := s.newest()
@@ -236,25 +250,40 @@ func (s *eightBitServer) proveStored(message, password string) {
 	if raw.Code != http.StatusOK || !bytes.Equal(raw.Body.Bytes(), source) {
 		s.t.Fatalf("API raw: %d, %d octets, want %d", raw.Code, raw.Body.Len(), len(source))
 	}
-	// A literal may not hold a NUL (RFC 3501 section 9). IMAP refuses to FETCH that message, as it
-	// does an imported one, so POP3 and the API are how it is read; #1921 tracks that.
-	if got, size, refused := s.imapFetch(password); refused != (bytes.IndexByte(source, 0) >= 0) {
-		s.t.Fatalf("IMAP FETCH refused = %v for a source with %d NUL octets", refused, bytes.Count(source, []byte{0}))
-	} else if !refused && (!bytes.Equal(got, source) || size != len(source)) {
-		s.t.Fatalf("IMAP FETCH BODY.PEEK[] changed the message (RFC822.SIZE %d, want %d):\n got %q\nwant %q", size, len(source), got, source)
+	for _, utf8 := range []bool{false, true} {
+		view := string(source)
+		if !utf8 {
+			view = rmail.DowngradeHeaders(view)
+		}
+		want := wireform.Convert(view, utf8)
+		got, size, refused := s.imapFetch(password, utf8, false)
+		if refused || bytes.IndexByte(got, 0) >= 0 || string(got) != want || size != len(got) {
+			s.t.Fatalf("IMAP BODY[] UTF8=%v: refused=%v RFC822.SIZE=%d got %q, want %q", utf8, refused, size, got, want)
+		}
+		storedSize := stored.IMAPSize
+		if utf8 {
+			storedSize = stored.IMAPUTF8Size
+		}
+		if size != storedSize {
+			s.t.Fatalf("IMAP BODY[] UTF8=%v: RFC822.SIZE=%d, stored size=%d", utf8, size, storedSize)
+		}
 	}
-	if got, size := s.pop3Retr(password); !bytes.Equal(got, source) || size != len(source) {
-		s.t.Fatalf("POP3 RETR changed the message (LIST %d, want %d):\n got %q\nwant %q", size, len(source), got, source)
+	if got, _, refused := s.imapFetch(password, true, true); refused || !bytes.Equal(got, source) {
+		s.t.Fatalf("IMAP BINARY[]: refused=%v got %q, want exact source %q", refused, got, source)
+	}
+	wantPOP3 := wireform.SpaceNUL(rmail.DowngradeForPOP3(string(source)))
+	if got, size := s.pop3Retr(password); !bytes.Equal(got, wantPOP3) || size != len(wantPOP3) {
+		s.t.Fatalf("POP3 RETR changed the message (LIST %d, want %d):\n got %q\nwant %q", size, len(wantPOP3), got, wantPOP3)
 	}
 }
 
 // imapFetch signs in over a real IMAP session and returns the newest message, its RFC822.SIZE,
 // and whether FETCH refused it.
-func (s *eightBitServer) imapFetch(password string) ([]byte, int, bool) {
+func (s *eightBitServer) imapFetch(password string, utf8, binary bool) ([]byte, int, bool) {
 	s.t.Helper()
 	client, server := net.Pipe()
 	defer client.Close()
-	session := imapserver.NewSession(server, imapgw.NewBackend(s.api, nil), "imap.test", nil, goimap.NopLimiter{})
+	session := imapserver.NewSession(server, imapgw.NewBackend(s.imapAPI, nil), "imap.test", nil, goimap.NopLimiter{})
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
@@ -301,10 +330,20 @@ func (s *eightBitServer) imapFetch(password string) ([]byte, int, bool) {
 			}
 		}
 	}
-	if !command("a1", fmt.Sprintf("LOGIN %q %q", s.address, password)) || !command("a2", "SELECT INBOX") {
+	if !command("a1", fmt.Sprintf("LOGIN %q %q", s.address, password)) {
 		s.t.Fatal("IMAP sign-in or SELECT refused")
 	}
-	refused := !command("a3", fmt.Sprintf("FETCH %d (RFC822.SIZE BODY.PEEK[])", exists))
+	if utf8 && !command("a2", "ENABLE UTF8=ACCEPT") {
+		s.t.Fatal("IMAP UTF8=ACCEPT refused")
+	}
+	if !command("a3", "SELECT INBOX") {
+		s.t.Fatal("IMAP SELECT refused")
+	}
+	item := "(RFC822.SIZE BODY.PEEK[])"
+	if binary {
+		item = "BINARY.PEEK[]"
+	}
+	refused := !command("a4", fmt.Sprintf("FETCH %d %s", exists, item))
 	return literal, size, refused
 }
 
@@ -314,7 +353,7 @@ func (s *eightBitServer) pop3Retr(password string) ([]byte, int) {
 	s.t.Helper()
 	client, server := net.Pipe()
 	defer client.Close()
-	session := pop3server.NewSession(server, pop3gw.NewBackend(s.api, nil), nil, nil)
+	session := pop3server.NewSession(server, pop3gw.NewBackend(s.pop3API, nil), nil, nil)
 	done := make(chan struct{})
 	go func() {
 		defer close(done)

@@ -38,7 +38,6 @@ func storeAPI(t *testing.T, raw string) *apiclient.Client {
 		_, _ = io.WriteString(w, body)
 	}
 	mux.HandleFunc("/api/v1/gateway-sessions", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusCreated)
 		reply(w, `{"data":{"token":"rmgs_tok","protocol":"imap","user":{"id":1,"email":"jorg@example.test"}}}`)
 	})
 	mux.HandleFunc("/api/v1/accounts/1/folders", func(w http.ResponseWriter, r *http.Request) {

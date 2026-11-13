@@ -901,7 +901,7 @@ func TestEightBitRelayByRESTMAIL(t *testing.T) {
 				received = body.RawMessage
 			})
 			item := models.OutboundQueue{Sender: "alice@sender.test", Recipient: "bob@elsewhere.test", Domain: "elsewhere.test", RawMessage: mail.message}
-			if err := w.deliverRESTMAILHTTPS(server.URL+"/restmail", item); err != nil {
+			if err := w.deliverRESTMAILHTTPS(context.Background(), server.URL+"/restmail", item); err != nil {
 				t.Fatal(err)
 			}
 			if string(received) != mail.message {

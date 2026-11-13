@@ -47414,6 +47414,8 @@
             "folder": "Sent",
             "has_attachments": false,
             "id": 1,
+            "imap_size": 297,
+            "imap_utf8_size": 297,
             "in_reply_to": "",
             "is_deleted": false,
             "is_draft": false,

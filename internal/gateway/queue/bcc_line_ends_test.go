@@ -128,12 +128,12 @@ func TestBccDoesNotReachARESTMAILPeer(t *testing.T) {
 				case "/restmail/messages":
 					body, _ := io.ReadAll(r.Body)
 					var payload struct {
-						RawMessage string `json:"raw_message"`
+						RawMessage []byte `json:"raw_message"`
 					}
 					if err := json.Unmarshal(body, &payload); err != nil {
 						t.Errorf("the POST is not JSON: %v", err)
 					}
-					posted = append(posted, payload.RawMessage)
+					posted = append(posted, string(payload.RawMessage))
 				default:
 					rw.WriteHeader(http.StatusNotFound)
 				}
@@ -147,7 +147,7 @@ func TestBccDoesNotReachARESTMAILPeer(t *testing.T) {
 			}
 			t.Cleanup(func() { gdb.Delete(&models.OutboundQueue{}, item.ID) })
 
-			if err := w.deliver(item); err != nil {
+			if err := w.deliver(context.Background(), item); err != nil {
 				t.Fatalf("deliver: %v", err)
 			}
 			if len(posted) != 1 {
@@ -182,7 +182,7 @@ func TestBccDoesNotReachAnSMTPPeer(t *testing.T) {
 			cert, _ := relayTestCertificate(t, false)
 			settings, finish := relayTestPeer(t, cert, relayPeerOptions{})
 			addr := net.JoinHostPort(settings.host, strconv.Itoa(settings.port))
-			if err := w.deliverSMTP(addr, settings.host, item, nil, nil); err != nil {
+			if err := w.deliverSMTP(context.Background(), addr, settings.host, item, nil, nil); err != nil {
 				t.Fatalf("deliverSMTP: %v", err)
 			}
 			result := finish()
@@ -217,7 +217,7 @@ func TestForwardedMessageLeavesWithoutHiddenFields(t *testing.T) {
 
 			for i, tc := range bccPeerShapes {
 				t.Run(tc.name, func(t *testing.T) {
-					payload, _ := json.Marshal(map[string]any{"from": "author@original.test", "to": []string{inbound}, "raw_message": tc.raw})
+					payload, _ := json.Marshal(map[string]any{"from": "author@original.test", "to": []string{inbound}, "raw_message": []byte(tc.raw)})
 					req := httptest.NewRequest(http.MethodPost, "/restmail/messages", strings.NewReader(string(payload)))
 					req.RemoteAddr = "127.0.0.1:5000"
 					rr := httptest.NewRecorder()
@@ -241,7 +241,7 @@ func TestForwardedMessageLeavesWithoutHiddenFields(t *testing.T) {
 						t.Fatal("the forward has no ARC results, so it isn't on the sealing branch")
 					}
 
-					if err := w.deliverRESTMAILHTTPS(srv.URL, row); err != nil {
+					if err := w.deliverRESTMAILHTTPS(context.Background(), srv.URL, row); err != nil {
 						t.Fatalf("RESTMAIL: %v", err)
 					}
 					if !strings.HasSuffix(posted, tc.peer) {
@@ -257,7 +257,7 @@ func TestForwardedMessageLeavesWithoutHiddenFields(t *testing.T) {
 					cert, _ := relayTestCertificate(t, false)
 					settings, finish := relayTestPeer(t, cert, relayPeerOptions{})
 					addr := net.JoinHostPort(settings.host, strconv.Itoa(settings.port))
-					if err := w.deliverSMTP(addr, settings.host, row, nil, nil); err != nil {
+					if err := w.deliverSMTP(context.Background(), addr, settings.host, row, nil, nil); err != nil {
 						t.Fatalf("SMTP: %v", err)
 					}
 					result := finish()
@@ -359,7 +359,7 @@ func TestHiddenFieldsDoNotComeBackInADSN(t *testing.T) {
 	for i, tc := range bccPeerShapes {
 		t.Run(tc.name, func(t *testing.T) {
 			author := fmt.Sprintf("author-%d@original.test", i)
-			w.generateBounce(models.OutboundQueue{ID: uint(i + 1), Sender: author, Recipient: "gone@far.test", Domain: "far.test", RawMessage: tc.raw},
+			w.generateBounce(context.Background(), models.OutboundQueue{ID: uint(i + 1), Sender: author, Recipient: "gone@far.test", Domain: "far.test", RawMessage: tc.raw},
 				&SMTPError{Code: 550, Enhanced: "5.1.1", Message: "no such user"})
 			var notice models.OutboundQueue
 			if err := tx.Where("recipient = ?", author).First(&notice).Error; err != nil {
@@ -368,7 +368,7 @@ func TestHiddenFieldsDoNotComeBackInADSN(t *testing.T) {
 			cert, _ := relayTestCertificate(t, false)
 			settings, finish := relayTestPeer(t, cert, relayPeerOptions{})
 			addr := net.JoinHostPort(settings.host, strconv.Itoa(settings.port))
-			if err := w.deliverSMTP(addr, settings.host, notice, nil, nil); err != nil {
+			if err := w.deliverSMTP(context.Background(), addr, settings.host, notice, nil, nil); err != nil {
 				t.Fatalf("deliverSMTP: %v", err)
 			}
 			data := finish().data
@@ -419,7 +419,7 @@ func TestSignatureHiddenByLineEndsIsNotSignedAgain(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			item := models.OutboundQueue{Sender: "a@" + domain, Recipient: "bob@example.net", RawMessage: raw}
-			if err := w.deliverRESTMAILHTTPS(srv.URL, item); err != nil {
+			if err := w.deliverRESTMAILHTTPS(context.Background(), srv.URL, item); err != nil {
 				t.Fatalf("deliverRESTMAILHTTPS: %v", err)
 			}
 			if got != raw {

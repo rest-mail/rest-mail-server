@@ -282,6 +282,8 @@ func TestFetchNULAcrossMessageShapes(t *testing.T) {
 
 // A NUL in a boundary can't go out, so the field and the delimiter lines take one 7-bit
 // spelling, and a client still splits the parts, in either kind of session.
+//
+// checklist: IMAP-ENV-12
 func TestFetchNULInBoundary(t *testing.T) {
 	for _, tc := range []struct{ name, boundary, spelled string }{
 		{"7-bit", "a\x00B", "a=00B"},

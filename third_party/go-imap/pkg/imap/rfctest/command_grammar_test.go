@@ -931,7 +931,7 @@ func TestStringGrammar(t *testing.T) {
 	t.Run("a value a quoted string cannot carry is a literal", func(t *testing.T) {
 		box := newFetchMailbox()
 		box.raw[10] = "Subject: caf\xc3\xa9\r\n\r\nx\r\n"
-		c := fetchClient(t, box, "SELECT")
+		c := utf8FetchClient(t, box)
 		replies, tagged := fetchCommand(t, c, "FETCH 1 ENVELOPE")
 		requireOK(t, tagged, "F1")
 		if len(replies) != 1 || !strings.Contains(replies[0].framing, "ENVELOPE (NIL {5} NIL") || !slices.Equal(replies[0].literals, []string{"caf\xc3\xa9"}) {

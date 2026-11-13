@@ -74,27 +74,6 @@ type entityContext struct {
 	lastLineGrows bool
 }
 
-// lineAt finds the line starting at start: its content ends at end, and the next line starts at
-// next. A run of CRs before an LF is one line end. eol is false for a last line with no line end.
-func lineAt(s string, start int) (end, next int, eol bool) {
-	i := strings.IndexAny(s[start:], "\r\n")
-	if i < 0 {
-		return len(s), len(s), false
-	}
-	end = start + i
-	if s[end] == '\n' {
-		return end, end + 1, true
-	}
-	j := end
-	for j < len(s) && s[j] == '\r' {
-		j++
-	}
-	if j < len(s) && s[j] == '\n' {
-		return end, j + 1, true
-	}
-	return end, end + 1, true
-}
-
 // writeLines writes s with every line end as CRLF. It refuses a line the rewrite would take over
 // the limit that it was within. One already over goes as it is, and the next hop decides.
 func (n *dataNormaliser) writeLines(s string) error {

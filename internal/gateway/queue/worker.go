@@ -181,6 +181,7 @@ func errDataCannotCarry(host string) error {
 // downstream. The row keeps the exact source, and RESTMAIL carries that. A message whose line ends
 // are all CRLF comes back as it is, with no copy made.
 func forData(raw, host string) (string, error) {
+	raw = outbound.StripBcc(raw)
 	if !rmail.HasBareLineEnds(raw) {
 		return raw, nil
 	}
