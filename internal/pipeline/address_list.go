@@ -131,7 +131,13 @@ func (l AddressList) All() []Address {
 }
 
 // MarshalJSON writes the list as an array of addresses.
-func (l AddressList) MarshalJSON() ([]byte, error) { return json.Marshal(l.All()) }
+func (l AddressList) MarshalJSON() ([]byte, error) {
+	addresses := l.All()
+	if addresses == nil {
+		return []byte("[]"), nil
+	}
+	return json.Marshal(addresses)
+}
 
 // UnmarshalJSON reads an array of addresses.
 func (l *AddressList) UnmarshalJSON(data []byte) error {
