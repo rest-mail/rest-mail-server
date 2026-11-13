@@ -4,8 +4,8 @@ name: CI retarget
 # starts a run, and from then on GitHub says the required check is expected, whatever an
 # older run on that head reported (#1876). Each `edited` event lands here instead. This
 # workflow reports no required check, so its runs cost a pull request nothing, like
-# ci-labels.yml's. A retarget to main is the one edit that needs the checks, because a
-# stack layer has skipped them until now (#1775).
+# ci-labels.yml's. A retarget to main needs fresh checks against its changed base;
+# stack layers already test their full heads before retargeting.
 #
 # A run started with the workflow's own token can only be a dispatch. The dispatch reads
 # the workflow files on the branch, so a branch from before this file must be rebased:
