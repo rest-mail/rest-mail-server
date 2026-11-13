@@ -93,11 +93,9 @@ func inboundRoute(t *testing.T, steps ...pipeline.FilterConfig) (*Worker, *gorm.
 	if err != nil {
 		t.Fatal(err)
 	}
-	port := free.Addr().(*net.TCPAddr).Port
-	_ = free.Close()
 	gateway := smtpgateway.NewServer("mx."+inboundRouteDomain, apiclient.New(apiServer.URL), nil,
 		smtpgateway.NewStore(db, ""), connlimiter.New(connlimiter.Config{}))
-	if err := gateway.ListenAndServe(smtpgateway.SMTPPorts{Inbound: port}); err != nil {
+	if err := gateway.Serve(smtpgateway.SMTPListeners{Inbound: free}); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(gateway.Shutdown)
@@ -107,7 +105,7 @@ func inboundRoute(t *testing.T, steps ...pipeline.FilterConfig) (*Worker, *gorm.
 	w := NewWorker(db, "sender.test", 1, time.Second)
 	w.allowPrivateDest = true
 	w.resolver = fixedMXResolver{host: "mx." + inboundRouteDomain}
-	w.smtpAddr = func(string) string { return net.JoinHostPort("127.0.0.1", strconv.Itoa(port)) }
+	w.smtpAddr = func(string) string { return free.Addr().String() }
 	w.sts.LookupTXT = func(context.Context, string) ([]string, error) { return nil, mtasts.ErrNoPolicy }
 	return w, db, mailbox
 }
