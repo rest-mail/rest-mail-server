@@ -132,7 +132,7 @@ func TestRetrSendsEveryLineInCRLF(t *testing.T) {
 		"nothing to add":  {raw: "Subject: hi\r\n\r\nbody\r\n", sent: "Subject: hi\r\n\r\nbody\r\n"},
 		"8-bit boundary, no last break": {
 			raw:  "Subject: J\xc3\xb6\r\nContent-Type: multipart/mixed; boundary=\"\xc3\xb6\"\r\n\r\n--\xc3\xb6\r\n\r\nx\r\n--\xc3\xb6--",
-			sent: "Subject: =?utf-8?q?J=C3=B6?=\r\nContent-Type: multipart/mixed;\r\n boundary*=UTF-8''%C3%B6\r\n\r\n--\xc3\xb6\r\n\r\nx\r\n--\xc3\xb6--\r\n",
+			sent: "Subject: =?utf-8?q?J=C3=B6?=\r\nContent-Type: multipart/mixed;\r\n boundary=\"=C3=B6\"\r\n\r\n--=C3=B6\r\n\r\nx\r\n--=C3=B6--\r\n",
 			utf8: "Subject: J\xc3\xb6\r\nContent-Type: multipart/mixed; boundary=\"\xc3\xb6\"\r\n\r\n--\xc3\xb6\r\n\r\nx\r\n--\xc3\xb6--\r\n",
 		},
 	} {
