@@ -67,14 +67,10 @@ func TestIMAPAppendAfterLocalOnlySubmissionKeepsOneSentCopy(t *testing.T) {
 		t.Fatal(err)
 	}
 	address := listener.Addr().String()
-	port := listener.Addr().(*net.TCPAddr).Port
-	if err := listener.Close(); err != nil {
-		t.Fatal(err)
-	}
 	server := gatewaysmtp.NewServer("smtp.test", backend, &tls.Config{
 		Certificates: []tls.Certificate{certificate}, MinVersion: tls.VersionTLS12,
 	}, gatewaysmtp.NewStore(db, ""), connlimiter.New(connlimiter.Config{MaxPerIP: 10, MaxGlobal: 10}))
-	if err := server.ListenAndServe(gatewaysmtp.SMTPPorts{SubmissionTLS: port}); err != nil {
+	if err := server.Serve(gatewaysmtp.SMTPListeners{SubmissionTLS: listener}); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(server.Shutdown)
