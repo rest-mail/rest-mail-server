@@ -78,7 +78,7 @@ type imapSession struct {
 func openIMAPSession(t *testing.T, f *credentialFixture, api *apiclient.Client) *imapSession {
 	t.Helper()
 	client, server := net.Pipe()
-	session := imapserver.NewSession(server, imapgw.NewBackend(api, nil), "imap.test", nil, goimap.NopLimiter{})
+	session := imapserver.NewSession(clientAtAddress{Conn: server}, imapgw.NewBackend(api, nil), "imap.test", nil, goimap.NopLimiter{})
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
