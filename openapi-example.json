@@ -12485,7 +12485,7 @@
         "body": {
           "data": {
             "id": 1,
-            "message_id": "<message@example.net>",
+            "message_id": "\u003cmessage@example.net\u003e",
             "folder": "INBOX"
           }
         },
