@@ -40,6 +40,8 @@ jobs:
     if: github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != '')
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    outputs:
+      runners: ${{ steps.runners.outputs.runners || '{}' }}
     steps:
       - name: Checkout the pull request head, not GitHub's merge commit
         if: github.event_name == 'pull_request'
@@ -70,13 +72,37 @@ jobs:
           echo "$message" >&2
           exit 1
 
+      - name: Pick runners (antimatter-vps runners while free, else GitHub's)
+        id: runners
+        # runner-gate.antimatter-studios.com answers per job: our ARC runner while one is free and
+        # the actor may use it, otherwise the fallback. Unreachable gate -> GitHub. /status shows it.
+        env:
+          ORG: ${{ github.repository_owner }}
+          ACTOR: ${{ github.triggering_actor }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+          JOBS: test js-filter webapp-images first-start test-contract test-api test-handlers lint test-imap constellation contract-tooling attachments-s3 build helm webmail admin guide test-report seed-caches
+        run: |
+          set -euo pipefail
+          pick() {
+            curl -fsS --max-time 10 --get https://runner-gate.antimatter-studios.com/pick \
+              --data-urlencode "org=$ORG" --data-urlencode prefer=antimatter-vps-linux-x64 \
+              --data-urlencode fallback=ubuntu-latest --data-urlencode "actor=$ACTOR" \
+              --data-urlencode "author=$AUTHOR" || echo ubuntu-latest
+          }
+          runners='{}'
+          for job in $JOBS; do
+            runners=$(jq -c --arg j "$job" --arg r "$(pick)" '. + {($j): $r}' <<<"$runners")
+          done
+          echo "$runners" | jq .
+          echo "runners=$runners" >> "$GITHUB_OUTPUT"
+
   seed-caches:
     needs: preflight
     name: Keep main's build caches warm
     # A cache made on main is the one every branch can read, and the runs above no longer
     # write them on a merge. Mostly this finds nothing to do, and takes about a minute.
     if: github.event_name == 'push'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.preflight.outputs.runners)['seed-caches'] || 'ubuntu-latest' }}
     timeout-minutes: 30
     steps:
       - name: Checkout code
@@ -344,7 +370,7 @@ jobs:
     needs: preflight
     name: Check constellation inventory
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.preflight.outputs.runners)['constellation'] || 'ubuntu-latest' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -356,7 +382,7 @@ jobs:
     needs: preflight
     name: Test contract tooling
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.preflight.outputs.runners)['contract-tooling'] || 'ubuntu-latest' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -370,7 +396,7 @@ jobs:
     needs: preflight
     name: Lint
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.preflight.outputs.runners)['lint'] || 'ubuntu-latest' }}
     outputs:
       go_imap_changed: ${{ steps.go-imap.outputs.go_imap_changed }}
     steps:
@@ -449,7 +475,7 @@ jobs:
     needs: preflight
     name: Test
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.preflight.outputs.runners)['test'] || 'ubuntu-latest' }}
     services:
       postgres:
         image: postgres:16-alpine
@@ -589,7 +615,7 @@ jobs:
     needs: preflight
     name: Test contract fixtures and faults
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.preflight.outputs.runners)['test-contract'] || 'ubuntu-latest' }}
     services:
       postgres:
         image: postgres:16-alpine
@@ -658,7 +684,7 @@ jobs:
   test-imap:
     name: Test IMAP module
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.preflight.outputs.runners)['test-imap'] || 'ubuntu-latest' }}
     needs: [preflight, lint]
     steps:
       - name: Checkout code
@@ -737,7 +763,7 @@ jobs:
     needs: preflight
     name: Test internal/api/handlers (${{ matrix.shard }} of 4)
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.preflight.outputs.runners)['test-handlers'] || 'ubuntu-latest' }}
     strategy:
       fail-fast: false
       matrix:
@@ -865,7 +891,7 @@ jobs:
     # detector, most of it in PostgreSQL fixtures, against a 20 minute limit per
     # package (#1307). Each shard runs every fourth of its top-level tests, by
     # name, against a database of its own, beside the Test job.
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.preflight.outputs.runners)['test-api'] || 'ubuntu-latest' }}
     strategy:
       fail-fast: false
       matrix:
@@ -991,7 +1017,7 @@ jobs:
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     # Joins what Test and both API matrices wrote: the example
     # proofs, judged as one set, and the coverage, as one profile.
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.preflight.outputs.runners)['test-report'] || 'ubuntu-latest' }}
     needs: [preflight, test, test-api, test-handlers, test-contract, test-imap]
     steps:
       - name: Checkout code
@@ -1061,7 +1087,7 @@ jobs:
     needs: preflight
     name: Garage attachment storage
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.preflight.outputs.runners)['attachments-s3'] || 'ubuntu-latest' }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1075,7 +1101,7 @@ jobs:
   build:
     name: Build
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.preflight.outputs.runners)['build'] || 'ubuntu-latest' }}
     needs: [preflight, test, test-api, test-handlers, test-contract, test-imap]
     steps:
       - name: Checkout code
@@ -1109,7 +1135,7 @@ jobs:
     needs: preflight
     name: Helm Chart
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.preflight.outputs.runners)['helm'] || 'ubuntu-latest' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1136,7 +1162,7 @@ jobs:
     needs: preflight
     name: Webmail Build
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.preflight.outputs.runners)['webmail'] || 'ubuntu-latest' }}
     defaults:
       run:
         working-directory: webmail
@@ -1196,7 +1222,7 @@ jobs:
     needs: preflight
     name: Admin Build
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.preflight.outputs.runners)['admin'] || 'ubuntu-latest' }}
     defaults:
       run:
         working-directory: admin
@@ -1271,7 +1297,7 @@ jobs:
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     # The sidecar that runs javascript filters: its own tests (the sandbox
     # escapes of #160 among them), then the API's filter against it, end to end.
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.preflight.outputs.runners)['js-filter'] || 'ubuntu-latest' }}
     defaults:
       run:
         working-directory: projects/js-filter-sidecar
@@ -1365,7 +1391,7 @@ jobs:
     # the public API with an owner key (no platform assumed) -- after which
     # nothing the first holder had works, an unexpired access token included.
     # tests/first-start/agent-e2e.sh.
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.preflight.outputs.runners)['first-start'] || 'ubuntu-latest' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1400,7 +1426,7 @@ jobs:
     needs: preflight
     name: Web app image (${{ matrix.app }})
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.preflight.outputs.runners)['webapp-images'] || 'ubuntu-latest' }}
     strategy:
       fail-fast: false
       matrix:
@@ -1491,7 +1517,7 @@ jobs:
     # chapter or a diagram Archify refuses fails the pull request that broke it
     # (docs/design/email-explained-website.md). Outside links change on other
     # sites' schedules, so scheduled.yml checks those daily.
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.preflight.outputs.runners)['guide'] || 'ubuntu-latest' }}
     defaults:
       run:
         working-directory: scripts/email-explained

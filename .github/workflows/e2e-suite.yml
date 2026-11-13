@@ -9,6 +9,10 @@ name: E2E suite
 on:
   workflow_call:
     inputs:
+      runner:
+        description: The runner label for the suite job (the caller asks runner-gate.antimatter-studios.com).
+        type: string
+        default: ubuntu-latest
       contract-phases:
         description: >-
           "gate" runs the examples and coverage gates; "pairs" runs the independent
@@ -31,7 +35,7 @@ permissions:
 jobs:
   suite:
     name: topology
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runner }}
     # The suite took 52 minutes before the live proofs, which may take up to 25.
     timeout-minutes: 85
     env:
@@ -58,6 +62,9 @@ jobs:
         with:
           go-version: "1.26.10"
           cache: true
+
+      - name: Install gh where the runner has none (antimatter-vps runners)
+        run: command -v gh >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq gh >/dev/null && gh --version | head -1; }
 
       - name: Install chore (the newest release, attested)
         # The repo is driven by chores.yml, whose tasks declare `args:`. go-task

@@ -91,6 +91,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
+      runners: ${{ steps.runners.outputs.runners || '{}' }}
       run_e2e: ${{ steps.classify.outputs.run_e2e }}
     steps:
       - name: Checkout
@@ -174,12 +175,37 @@ jobs:
           echo "run_e2e=$run_e2e" >> "$GITHUB_OUTPUT"
           echo "decision: run_e2e=$run_e2e"
 
+      - name: Pick runners (antimatter-vps runners while free, else GitHub's)
+        id: runners
+        # runner-gate.antimatter-studios.com answers per job: our ARC runner while one is free and
+        # the actor may use it, otherwise the fallback. Unreachable gate -> GitHub. /status shows it.
+        env:
+          ORG: ${{ github.repository_owner }}
+          ACTOR: ${{ github.triggering_actor }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+          JOBS: e2e-run e2e-contract-pairs e2e-reports e2e-live
+        run: |
+          set -euo pipefail
+          pick() {
+            curl -fsS --max-time 10 --get https://runner-gate.antimatter-studios.com/pick \
+              --data-urlencode "org=$ORG" --data-urlencode prefer=antimatter-vps-linux-x64 \
+              --data-urlencode fallback=ubuntu-latest --data-urlencode "actor=$ACTOR" \
+              --data-urlencode "author=$AUTHOR" || echo ubuntu-latest
+          }
+          runners='{}'
+          for job in $JOBS; do
+            runners=$(jq -c --arg j "$job" --arg r "$(pick)" '. + {($j): $r}' <<<"$runners")
+          done
+          echo "$runners" | jq .
+          echo "runners=$runners" >> "$GITHUB_OUTPUT"
+
   e2e-run:
     name: E2E (run full suite)
     needs: [preflight, changes]
     if: needs.changes.outputs.run_e2e == 'true' && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     uses: ./.github/workflows/e2e-suite.yml
     with:
+      runner: ${{ fromJSON(needs.changes.outputs.runners)['e2e-run'] || 'ubuntu-latest' }}
       contract-phases: gate
       description-mode: ${{ inputs.description-mode || 'saved' }}
 
@@ -189,6 +215,7 @@ jobs:
     if: needs.changes.outputs.run_e2e == 'true' && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     uses: ./.github/workflows/e2e-suite.yml
     with:
+      runner: ${{ fromJSON(needs.changes.outputs.runners)['e2e-contract-pairs'] || 'ubuntu-latest' }}
       contract-phases: pairs
       description-mode: ${{ inputs.description-mode || 'saved' }}
 
@@ -198,6 +225,7 @@ jobs:
     if: needs.changes.outputs.run_e2e == 'true' && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     uses: ./.github/workflows/e2e-suite.yml
     with:
+      runner: ${{ fromJSON(needs.changes.outputs.runners)['e2e-reports'] || 'ubuntu-latest' }}
       contract-phases: reports
       description-mode: ${{ inputs.description-mode || 'saved' }}
 
@@ -207,6 +235,7 @@ jobs:
     if: needs.changes.outputs.run_e2e == 'true' && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     uses: ./.github/workflows/e2e-suite.yml
     with:
+      runner: ${{ fromJSON(needs.changes.outputs.runners)['e2e-live'] || 'ubuntu-latest' }}
       contract-phases: live
       description-mode: ${{ inputs.description-mode || 'saved' }}
 
