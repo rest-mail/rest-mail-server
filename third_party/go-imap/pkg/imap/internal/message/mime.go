@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"net/mail"
 	"net/textproto"
+	"slices"
 	"strings"
 )
 
@@ -219,6 +220,7 @@ func multipartDelimiters(body, boundary string) []multipartDelimiter {
 
 // appendDelimiters is multipartDelimiters appending to delimiters.
 func appendDelimiters(delimiters []multipartDelimiter, body, boundary string) []multipartDelimiter {
+	delimiters = slices.Grow(delimiters, strings.Count(body, "--"+boundary))
 	var scan boundaryScan
 	return scan.appendDelimiters(delimiters, body, boundary)
 }
@@ -294,6 +296,7 @@ func partSpans(body string, delimiters []multipartDelimiter) [][2]int {
 
 // appendPartSpans is partSpans appending to spans.
 func appendPartSpans(spans [][2]int, body string, delimiters []multipartDelimiter) [][2]int {
+	spans = slices.Grow(spans, len(delimiters))
 	for i, d := range delimiters {
 		if d.closing {
 			break
