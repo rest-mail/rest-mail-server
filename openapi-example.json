@@ -12488,7 +12488,7 @@
             "id": 1,
             "mailbox_id": 1,
             "folder": "INBOX",
-            "message_id": "<message@example.net>",
+            "message_id": "\u003cmessage@example.net\u003e",
             "in_reply_to": "",
             "references": "",
             "thread_id": "",
@@ -14184,7 +14184,7 @@
         "body": {
           "data": {
             "secret": "JBSWY3DPEHPK3PXP",
-            "otpauth_url": "otpauth://totp/REST%20Mail:user%40restmail.test?secret=JBSWY3DPEHPK3PXP&issuer=REST%20Mail",
+            "otpauth_url": "otpauth://totp/REST%20Mail:user%40restmail.test?secret=JBSWY3DPEHPK3PXP\u0026issuer=REST%20Mail",
             "recovery_codes": [
               "0123456789abcdef"
             ]
@@ -17754,7 +17754,7 @@
         "status": 200,
         "body": {
           "data": {
-            "body_html": "<p>Hello café</p>",
+            "body_html": "\u003cp\u003eHello café\u003c/p\u003e",
             "body_text": "Hello café",
             "class": "newsletter",
             "created_at": "2026-10-20T00:00:00Z",
@@ -17766,7 +17766,7 @@
             "has_attachments": true,
             "headers": {
               "List-Id": [
-                "<news.example.test>"
+                "\u003cnews.example.test\u003e"
               ]
             },
             "id": 101,
@@ -17778,7 +17778,7 @@
             "is_read": false,
             "is_starred": false,
             "mailbox_id": 1,
-            "message_id": "<message@example.net>",
+            "message_id": "\u003cmessage@example.net\u003e",
             "raw_size": 137,
             "received_at": "2026-10-20T00:00:00Z",
             "received_tls": true,
@@ -17811,7 +17811,7 @@
         "status": 200,
         "body": {
           "data": {
-            "body_html": "<p>Hello café</p>",
+            "body_html": "\u003cp\u003eHello café\u003c/p\u003e",
             "body_text": "Hello café",
             "class": "notification",
             "created_at": "2026-10-20T00:00:00Z",
@@ -17835,7 +17835,7 @@
             "is_read": false,
             "is_starred": false,
             "mailbox_id": 1,
-            "message_id": "<message@example.net>",
+            "message_id": "\u003cmessage@example.net\u003e",
             "raw_size": 137,
             "received_at": "2026-10-20T00:00:00Z",
             "received_tls": true,
@@ -17868,7 +17868,7 @@
         "status": 200,
         "body": {
           "data": {
-            "body_html": "<p>Hello café</p>",
+            "body_html": "\u003cp\u003eHello café\u003c/p\u003e",
             "body_text": "Hello café",
             "class": "receipt",
             "created_at": "2026-10-20T00:00:00Z",
@@ -17880,7 +17880,7 @@
             "has_attachments": true,
             "headers": {
               "List-Id": [
-                "<shop.example.test>"
+                "\u003cshop.example.test\u003e"
               ]
             },
             "id": 103,
@@ -17892,7 +17892,7 @@
             "is_read": false,
             "is_starred": false,
             "mailbox_id": 1,
-            "message_id": "<message@example.net>",
+            "message_id": "\u003cmessage@example.net\u003e",
             "raw_size": 137,
             "received_at": "2026-10-20T00:00:00Z",
             "received_tls": true,
@@ -17925,7 +17925,7 @@
         "status": 200,
         "body": {
           "data": {
-            "body_html": "<p>Hello café</p>",
+            "body_html": "\u003cp\u003eHello café\u003c/p\u003e",
             "body_text": "Hello café",
             "class": "newsletter",
             "created_at": "2026-10-20T00:00:00Z",
@@ -17944,7 +17944,7 @@
             "is_read": false,
             "is_starred": false,
             "mailbox_id": 1,
-            "message_id": "<message@example.net>",
+            "message_id": "\u003cmessage@example.net\u003e",
             "raw_size": 78,
             "received_at": "2026-10-20T00:00:00Z",
             "received_tls": true,
@@ -17981,7 +17981,7 @@
             "class": "person",
             "mailbox_id": 1,
             "folder": "INBOX",
-            "message_id": "<message@example.net>",
+            "message_id": "\u003cmessage@example.net\u003e",
             "in_reply_to": "",
             "references": "",
             "thread_id": "",
@@ -17993,7 +17993,7 @@
             "recipients_cc": [],
             "subject": "Subject café",
             "body_text": "Hello café",
-            "body_html": "<p>Hello café</p>",
+            "body_html": "\u003cp\u003eHello café\u003c/p\u003e",
             "headers": {
               "X-Trace": [
                 "one",
@@ -18241,7 +18241,7 @@
           "data": {
             "id": 101,
             "message_id": 1,
-            "rfc_message_id": "<fixture@example.com>",
+            "rfc_message_id": "\u003cfixture@example.com\u003e",
             "direction": "inbound",
             "transport": "tls",
             "mail_from": "sender@example.com",
@@ -20588,9 +20588,9 @@
               "class": "person",
               "mailbox_id": 1,
               "folder": "INBOX",
-              "message_id": "<message-52@example.net>",
-              "in_reply_to": "<parent@example.net>",
-              "references": "<parent@example.net>",
+              "message_id": "\u003cmessage-52@example.net\u003e",
+              "in_reply_to": "\u003cparent@example.net\u003e",
+              "references": "\u003cparent@example.net\u003e",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
               "sender_name": "Sender café",
@@ -20622,9 +20622,9 @@
               "class": "person",
               "mailbox_id": 1,
               "folder": "INBOX",
-              "message_id": "<message-53@example.net>",
-              "in_reply_to": "<parent@example.net>",
-              "references": "<parent@example.net>",
+              "message_id": "\u003cmessage-53@example.net\u003e",
+              "in_reply_to": "\u003cparent@example.net\u003e",
+              "references": "\u003cparent@example.net\u003e",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
               "sender_name": "Sender café",
@@ -20654,9 +20654,9 @@
               "class": "person",
               "mailbox_id": 1,
               "folder": "INBOX",
-              "message_id": "<message-51@example.net>",
-              "in_reply_to": "<parent@example.net>",
-              "references": "<parent@example.net>",
+              "message_id": "\u003cmessage-51@example.net\u003e",
+              "in_reply_to": "\u003cparent@example.net\u003e",
+              "references": "\u003cparent@example.net\u003e",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
               "sender_name": "Sender café",
@@ -20684,7 +20684,7 @@
               "created_at": "2026-10-20T00:00:00Z",
               "updated_at": "2026-10-20T00:00:00Z",
               "body_text": "Hello café",
-              "body_html": "<p>Hello café</p>",
+              "body_html": "\u003cp\u003eHello café\u003c/p\u003e",
               "headers": {
                 "Subject": [
                   "Hello café"
@@ -21699,7 +21699,7 @@
           "data": {
             "id": 42,
             "imported": true,
-            "message_id": "<history@example.test>",
+            "message_id": "\u003chistory@example.test\u003e",
             "folder": "Archive"
           }
         },
@@ -21819,7 +21819,7 @@
           "data": {
             "id": 41,
             "imported": true,
-            "message_id": "<history@example.test>",
+            "message_id": "\u003chistory@example.test\u003e",
             "folder": "Archive"
           }
         },
@@ -21847,7 +21847,7 @@
           "data": {
             "id": 41,
             "imported": true,
-            "message_id": "<history@example.test>",
+            "message_id": "\u003chistory@example.test\u003e",
             "folder": "Archive"
           }
         },
@@ -21971,7 +21971,7 @@
           "data": {
             "id": 41,
             "imported": true,
-            "message_id": "<history@example.test>",
+            "message_id": "\u003chistory@example.test\u003e",
             "folder": "Archive"
           }
         },
@@ -22058,7 +22058,7 @@
           "data": {
             "id": 41,
             "imported": false,
-            "message_id": "<history@example.test>",
+            "message_id": "\u003chistory@example.test\u003e",
             "folder": "Sent"
           }
         },
@@ -22603,7 +22603,7 @@
   "issueClientCredentialsToken": {
     "duplicate_parameter": {
       "request": {
-        "body": "grant_type=client_credentials&client_id=9Hm3yU1cNp5Q&client_secret=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA&client_id=other",
+        "body": "grant_type=client_credentials\u0026client_id=9Hm3yU1cNp5Q\u0026client_secret=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\u0026client_id=other",
         "mediaType": "application/x-www-form-urlencoded"
       },
       "response": {
@@ -22620,7 +22620,7 @@
         "state": "client_secret"
       },
       "request": {
-        "body": "grant_type=client_credentials&client_id=9Hm3yU1cNp5Q&client_secret=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "body": "grant_type=client_credentials\u0026client_id=9Hm3yU1cNp5Q\u0026client_secret=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
         "mediaType": "application/x-www-form-urlencoded"
       },
       "response": {
@@ -22638,7 +22638,7 @@
         "limit": "rate"
       },
       "request": {
-        "body": "grant_type=client_credentials&client_id=9Hm3yU1cNp5Q&client_secret=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "body": "grant_type=client_credentials\u0026client_id=9Hm3yU1cNp5Q\u0026client_secret=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
         "mediaType": "application/x-www-form-urlencoded"
       },
       "response": {
@@ -22674,7 +22674,7 @@
         "state": "revoked_client_secret"
       },
       "request": {
-        "body": "grant_type=client_credentials&client_id=9Hm3yU1cNp5Q&client_secret=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "body": "grant_type=client_credentials\u0026client_id=9Hm3yU1cNp5Q\u0026client_secret=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
         "mediaType": "application/x-www-form-urlencoded"
       },
       "response": {
@@ -22688,7 +22688,7 @@
     },
     "scope_refused": {
       "request": {
-        "body": "grant_type=client_credentials&client_id=9Hm3yU1cNp5Q&client_secret=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA&scope=mail:read",
+        "body": "grant_type=client_credentials\u0026client_id=9Hm3yU1cNp5Q\u0026client_secret=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\u0026scope=mail:read",
         "mediaType": "application/x-www-form-urlencoded"
       },
       "response": {
@@ -22706,7 +22706,7 @@
         "fault": "database"
       },
       "request": {
-        "body": "grant_type=client_credentials&client_id=9Hm3yU1cNp5Q&client_secret=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "body": "grant_type=client_credentials\u0026client_id=9Hm3yU1cNp5Q\u0026client_secret=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
         "mediaType": "application/x-www-form-urlencoded"
       },
       "response": {
@@ -22720,7 +22720,7 @@
     },
     "unsupported_grant": {
       "request": {
-        "body": "grant_type=password&client_id=9Hm3yU1cNp5Q&client_secret=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "body": "grant_type=password\u0026client_id=9Hm3yU1cNp5Q\u0026client_secret=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
         "mediaType": "application/x-www-form-urlencoded"
       },
       "response": {
@@ -22737,7 +22737,7 @@
         "state": "client_secret"
       },
       "request": {
-        "body": "grant_type=client_credentials&client_id=9Hm3yU1cNp5Q&client_secret=wrong-secret",
+        "body": "grant_type=client_credentials\u0026client_id=9Hm3yU1cNp5Q\u0026client_secret=wrong-secret",
         "mediaType": "application/x-www-form-urlencoded"
       },
       "response": {
@@ -27904,9 +27904,9 @@
               "class": "person",
               "mailbox_id": 1,
               "folder": "INBOX",
-              "message_id": "<message-51@example.net>",
-              "in_reply_to": "<parent@example.net>",
-              "references": "<parent@example.net>",
+              "message_id": "\u003cmessage-51@example.net\u003e",
+              "in_reply_to": "\u003cparent@example.net\u003e",
+              "references": "\u003cparent@example.net\u003e",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
               "sender_name": "Sender café",
@@ -27934,7 +27934,7 @@
               "created_at": "2026-10-20T00:00:00Z",
               "updated_at": "2026-10-20T00:00:00Z",
               "body_text": "Hello café",
-              "body_html": "<p>Hello café</p>",
+              "body_html": "\u003cp\u003eHello café\u003c/p\u003e",
               "headers": {
                 "Subject": [
                   "Hello café"
@@ -27958,9 +27958,9 @@
               "class": "person",
               "mailbox_id": 1,
               "folder": "INBOX",
-              "message_id": "<message-53@example.net>",
-              "in_reply_to": "<parent@example.net>",
-              "references": "<parent@example.net>",
+              "message_id": "\u003cmessage-53@example.net\u003e",
+              "in_reply_to": "\u003cparent@example.net\u003e",
+              "references": "\u003cparent@example.net\u003e",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
               "sender_name": "Sender café",
@@ -27990,9 +27990,9 @@
               "class": "person",
               "mailbox_id": 1,
               "folder": "INBOX",
-              "message_id": "<message-52@example.net>",
-              "in_reply_to": "<parent@example.net>",
-              "references": "<parent@example.net>",
+              "message_id": "\u003cmessage-52@example.net\u003e",
+              "in_reply_to": "\u003cparent@example.net\u003e",
+              "references": "\u003cparent@example.net\u003e",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
               "sender_name": "Sender café",
@@ -30058,17 +30058,17 @@
         "body": {
           "data": [
             {
-              "thread_id": "<thread-72@example.com>",
+              "thread_id": "\u003cthread-72@example.com\u003e",
               "awaiting_since": "2026-10-20T02:00:00Z",
               "last_message": {
                 "id": 72,
                 "class": "person",
                 "mailbox_id": 1,
                 "folder": "Sent",
-                "message_id": "<message-72@example.com>",
+                "message_id": "\u003cmessage-72@example.com\u003e",
                 "in_reply_to": "",
                 "references": "",
-                "thread_id": "<thread-72@example.com>",
+                "thread_id": "\u003cthread-72@example.com\u003e",
                 "awaiting_since": "2026-10-20T02:00:00Z",
                 "sender": "linked@example.com",
                 "sender_name": "Linked",
@@ -30122,17 +30122,17 @@
         "body": {
           "data": [
             {
-              "thread_id": "<thread-72@example.com>",
+              "thread_id": "\u003cthread-72@example.com\u003e",
               "awaiting_since": "2026-10-20T02:00:00Z",
               "last_message": {
                 "id": 72,
                 "class": "person",
                 "mailbox_id": 1,
                 "folder": "Sent",
-                "message_id": "<message-72@example.com>",
+                "message_id": "\u003cmessage-72@example.com\u003e",
                 "in_reply_to": "",
                 "references": "",
-                "thread_id": "<thread-72@example.com>",
+                "thread_id": "\u003cthread-72@example.com\u003e",
                 "awaiting_since": "2026-10-20T02:00:00Z",
                 "sender": "linked@example.com",
                 "sender_name": "Linked",
@@ -30162,17 +30162,17 @@
               }
             },
             {
-              "thread_id": "<thread-71@example.com>",
+              "thread_id": "\u003cthread-71@example.com\u003e",
               "awaiting_since": "2026-10-20T01:00:00Z",
               "last_message": {
                 "id": 71,
                 "class": "person",
                 "mailbox_id": 1,
                 "folder": "Sent",
-                "message_id": "<message-71@example.com>",
+                "message_id": "\u003cmessage-71@example.com\u003e",
                 "in_reply_to": "",
                 "references": "",
-                "thread_id": "<thread-71@example.com>",
+                "thread_id": "\u003cthread-71@example.com\u003e",
                 "awaiting_since": "2026-10-20T01:00:00Z",
                 "sender": "linked@example.com",
                 "sender_name": "Linked",
@@ -30276,17 +30276,17 @@
         "body": {
           "data": [
             {
-              "thread_id": "<thread-71@example.com>",
+              "thread_id": "\u003cthread-71@example.com\u003e",
               "awaiting_since": "2026-10-20T01:00:00Z",
               "last_message": {
                 "id": 71,
                 "class": "person",
                 "mailbox_id": 1,
                 "folder": "Sent",
-                "message_id": "<message-71@example.com>",
+                "message_id": "\u003cmessage-71@example.com\u003e",
                 "in_reply_to": "",
                 "references": "",
-                "thread_id": "<thread-71@example.com>",
+                "thread_id": "\u003cthread-71@example.com\u003e",
                 "awaiting_since": "2026-10-20T01:00:00Z",
                 "sender": "linked@example.com",
                 "sender_name": "Linked",
@@ -31521,7 +31521,7 @@
         "query": {
           "emailaddress": ""
         },
-        "body": "<Autodiscover><Request><EMailAddress>not-an-address</EMailAddress></Request></Autodiscover>",
+        "body": "\u003cAutodiscover\u003e\u003cRequest\u003e\u003cEMailAddress\u003enot-an-address\u003c/EMailAddress\u003e\u003c/Request\u003e\u003c/Autodiscover\u003e",
         "mediaType": "application/xml"
       },
       "response": {
@@ -31549,7 +31549,7 @@
         "query": {
           "emailaddress": ""
         },
-        "body": "<Autodiscover><Request><EMailAddress>user@example.com</EMailAddress></Request></Autodiscover>",
+        "body": "\u003cAutodiscover\u003e\u003cRequest\u003e\u003cEMailAddress\u003euser@example.com\u003c/EMailAddress\u003e\u003c/Request\u003e\u003c/Autodiscover\u003e",
         "mediaType": "application/xml"
       },
       "response": {
@@ -31567,7 +31567,7 @@
         "query": {
           "emailaddress": ""
         },
-        "body": "<Autodiscover><Request><EMailAddress>user@example.com</EMailAddress></Request></Autodiscover>",
+        "body": "\u003cAutodiscover\u003e\u003cRequest\u003e\u003cEMailAddress\u003euser@example.com\u003c/EMailAddress\u003e\u003c/Request\u003e\u003c/Autodiscover\u003e",
         "mediaType": "application/xml"
       },
       "response": {
@@ -31590,7 +31590,7 @@
         "query": {
           "emailaddress": ""
         },
-        "body": "<Autodiscover><Request><EMailAddress>user@example.com</EMailAddress></Request></Autodiscover>",
+        "body": "\u003cAutodiscover\u003e\u003cRequest\u003e\u003cEMailAddress\u003euser@example.com\u003c/EMailAddress\u003e\u003c/Request\u003e\u003c/Autodiscover\u003e",
         "mediaType": "application/xml"
       },
       "response": {
@@ -31605,7 +31605,7 @@
         "query": {
           "emailaddress": ""
         },
-        "body": "<Autodiscover><Request>",
+        "body": "\u003cAutodiscover\u003e\u003cRequest\u003e",
         "mediaType": "application/xml"
       },
       "response": {
@@ -31653,7 +31653,7 @@
       },
       "response": {
         "status": 200,
-        "body": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Autodiscover xmlns=\"http://schemas.microsoft.com/exchange/autodiscover/responseschema/2006\">\n  <Response xmlns=\"http://schemas.microsoft.com/exchange/autodiscover/outlook/responseschema/2006a\">\n    <Account>\n      <AccountType>email</AccountType>\n      <Action>settings</Action>\n      <Protocol>\n        <Type>IMAP</Type>\n        <Server>restmail.test</Server>\n        <Port>993</Port>\n        <SSL>on</SSL>\n        <Encryption>SSL</Encryption>\n        <LoginName>user@example.com</LoginName>\n      </Protocol>\n      <Protocol>\n        <Type>SMTP</Type>\n        <Server>restmail.test</Server>\n        <Port>465</Port>\n        <SSL>on</SSL>\n        <Encryption>SSL</Encryption>\n        <LoginName>user@example.com</LoginName>\n      </Protocol>\n    </Account>\n  </Response>\n</Autodiscover>",
+        "body": "\u003c?xml version=\"1.0\" encoding=\"UTF-8\"?\u003e\n\u003cAutodiscover xmlns=\"http://schemas.microsoft.com/exchange/autodiscover/responseschema/2006\"\u003e\n  \u003cResponse xmlns=\"http://schemas.microsoft.com/exchange/autodiscover/outlook/responseschema/2006a\"\u003e\n    \u003cAccount\u003e\n      \u003cAccountType\u003eemail\u003c/AccountType\u003e\n      \u003cAction\u003esettings\u003c/Action\u003e\n      \u003cProtocol\u003e\n        \u003cType\u003eIMAP\u003c/Type\u003e\n        \u003cServer\u003erestmail.test\u003c/Server\u003e\n        \u003cPort\u003e993\u003c/Port\u003e\n        \u003cSSL\u003eon\u003c/SSL\u003e\n        \u003cEncryption\u003eSSL\u003c/Encryption\u003e\n        \u003cLoginName\u003euser@example.com\u003c/LoginName\u003e\n      \u003c/Protocol\u003e\n      \u003cProtocol\u003e\n        \u003cType\u003eSMTP\u003c/Type\u003e\n        \u003cServer\u003erestmail.test\u003c/Server\u003e\n        \u003cPort\u003e465\u003c/Port\u003e\n        \u003cSSL\u003eon\u003c/SSL\u003e\n        \u003cEncryption\u003eSSL\u003c/Encryption\u003e\n        \u003cLoginName\u003euser@example.com\u003c/LoginName\u003e\n      \u003c/Protocol\u003e\n    \u003c/Account\u003e\n  \u003c/Response\u003e\n\u003c/Autodiscover\u003e",
         "mediaType": "application/xml"
       }
     }
@@ -31669,7 +31669,7 @@
       },
       "response": {
         "status": 200,
-        "body": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<clientConfig version=\"1.1\">\n  <emailProvider id=\"example.com\">\n    <domain>example.com</domain>\n    <displayName>example.com Mail</displayName>\n    <incomingServer type=\"imap\">\n      <hostname>restmail.test</hostname>\n      <port>993</port>\n      <socketType>SSL</socketType>\n      <authentication>password-cleartext</authentication>\n      <username>%EMAILADDRESS%</username>\n    </incomingServer>\n    <outgoingServer type=\"smtp\">\n      <hostname>restmail.test</hostname>\n      <port>465</port>\n      <socketType>SSL</socketType>\n      <authentication>password-cleartext</authentication>\n      <username>%EMAILADDRESS%</username>\n    </outgoingServer>\n  </emailProvider>\n</clientConfig>",
+        "body": "\u003c?xml version=\"1.0\" encoding=\"UTF-8\"?\u003e\n\u003cclientConfig version=\"1.1\"\u003e\n  \u003cemailProvider id=\"example.com\"\u003e\n    \u003cdomain\u003eexample.com\u003c/domain\u003e\n    \u003cdisplayName\u003eexample.com Mail\u003c/displayName\u003e\n    \u003cincomingServer type=\"imap\"\u003e\n      \u003chostname\u003erestmail.test\u003c/hostname\u003e\n      \u003cport\u003e993\u003c/port\u003e\n      \u003csocketType\u003eSSL\u003c/socketType\u003e\n      \u003cauthentication\u003epassword-cleartext\u003c/authentication\u003e\n      \u003cusername\u003e%EMAILADDRESS%\u003c/username\u003e\n    \u003c/incomingServer\u003e\n    \u003coutgoingServer type=\"smtp\"\u003e\n      \u003chostname\u003erestmail.test\u003c/hostname\u003e\n      \u003cport\u003e465\u003c/port\u003e\n      \u003csocketType\u003eSSL\u003c/socketType\u003e\n      \u003cauthentication\u003epassword-cleartext\u003c/authentication\u003e\n      \u003cusername\u003e%EMAILADDRESS%\u003c/username\u003e\n    \u003c/outgoingServer\u003e\n  \u003c/emailProvider\u003e\n\u003c/clientConfig\u003e",
         "mediaType": "application/xml"
       }
     },
@@ -31766,7 +31766,7 @@
       },
       "response": {
         "status": 200,
-        "body": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<clientConfig version=\"1.1\">\n  <emailProvider id=\"example.com\">\n    <domain>example.com</domain>\n    <displayName>example.com Mail</displayName>\n    <incomingServer type=\"imap\">\n      <hostname>restmail.test</hostname>\n      <port>993</port>\n      <socketType>SSL</socketType>\n      <authentication>password-cleartext</authentication>\n      <username>%EMAILADDRESS%</username>\n    </incomingServer>\n    <outgoingServer type=\"smtp\">\n      <hostname>restmail.test</hostname>\n      <port>465</port>\n      <socketType>SSL</socketType>\n      <authentication>password-cleartext</authentication>\n      <username>%EMAILADDRESS%</username>\n    </outgoingServer>\n  </emailProvider>\n</clientConfig>",
+        "body": "\u003c?xml version=\"1.0\" encoding=\"UTF-8\"?\u003e\n\u003cclientConfig version=\"1.1\"\u003e\n  \u003cemailProvider id=\"example.com\"\u003e\n    \u003cdomain\u003eexample.com\u003c/domain\u003e\n    \u003cdisplayName\u003eexample.com Mail\u003c/displayName\u003e\n    \u003cincomingServer type=\"imap\"\u003e\n      \u003chostname\u003erestmail.test\u003c/hostname\u003e\n      \u003cport\u003e993\u003c/port\u003e\n      \u003csocketType\u003eSSL\u003c/socketType\u003e\n      \u003cauthentication\u003epassword-cleartext\u003c/authentication\u003e\n      \u003cusername\u003e%EMAILADDRESS%\u003c/username\u003e\n    \u003c/incomingServer\u003e\n    \u003coutgoingServer type=\"smtp\"\u003e\n      \u003chostname\u003erestmail.test\u003c/hostname\u003e\n      \u003cport\u003e465\u003c/port\u003e\n      \u003csocketType\u003eSSL\u003c/socketType\u003e\n      \u003cauthentication\u003epassword-cleartext\u003c/authentication\u003e\n      \u003cusername\u003e%EMAILADDRESS%\u003c/username\u003e\n    \u003c/outgoingServer\u003e\n  \u003c/emailProvider\u003e\n\u003c/clientConfig\u003e",
         "mediaType": "application/xml"
       }
     },
@@ -33934,7 +33934,7 @@
       "request": {},
       "response": {
         "status": 200,
-        "body": "<!doctype html><html lang=\"en\"><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>REST Mail account recovery</title><main><h1>Account recovery</h1><p id=\"message\" role=\"status\">Confirm the action below to use your private link.</p><form id=\"recovery\"><label>New password <input id=\"password\" type=\"password\" autocomplete=\"new-password\" minlength=\"12\" maxlength=\"72\"></label><button id=\"submit\" type=\"submit\">Continue</button></form><p>After changing your password, sign in through your usual mail app. Your existing second factor still applies.</p></main><script>\nlet token = location.hash.slice(1);\nconst mode = new URLSearchParams(location.search).get('mode');\nhistory.replaceState(null, '', location.pathname);\nconst form = document.getElementById('recovery');\nconst message = document.getElementById('message');\nconst password = document.getElementById('password');\nconst button = document.getElementById('submit');\nif (!token || !['verify','recover'].includes(mode)) {\n message.textContent = 'Invalid link. Request another link.'; form.hidden = true;\n} else {\n password.parentElement.hidden = mode !== 'recover';\n password.required = mode === 'recover';\n button.textContent = mode === 'verify' ? 'Verify recovery email' : 'Change password';\n form.addEventListener('submit', async event => {\n  event.preventDefault(); button.disabled = true;\n  const body = { token };\n  if (mode === 'recover') body.new_password = password.value;\n  try {\n   const response = await fetch(mode === 'verify' ? '/api/v1/auth/recovery-email/verify' : '/api/v1/auth/recover/email/redeem', {\n    method: 'POST', credentials: 'omit', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)\n   });\n   const result = await response.json();\n   message.textContent = response.ok ? result.data.message : result.error.message;\n   if (response.ok) { form.hidden = true; password.value = ''; token = ''; } else { button.disabled = false; }\n  } catch (_) { message.textContent = 'Request failed. Please try again.'; button.disabled = false; }\n });\n}\n</script></html>",
+        "body": "\u003c!doctype html\u003e\u003chtml lang=\"en\"\u003e\u003cmeta charset=\"utf-8\"\u003e\u003cmeta name=\"viewport\" content=\"width=device-width,initial-scale=1\"\u003e\u003ctitle\u003eREST Mail account recovery\u003c/title\u003e\u003cmain\u003e\u003ch1\u003eAccount recovery\u003c/h1\u003e\u003cp id=\"message\" role=\"status\"\u003eConfirm the action below to use your private link.\u003c/p\u003e\u003cform id=\"recovery\"\u003e\u003clabel\u003eNew password \u003cinput id=\"password\" type=\"password\" autocomplete=\"new-password\" minlength=\"12\" maxlength=\"72\"\u003e\u003c/label\u003e\u003cbutton id=\"submit\" type=\"submit\"\u003eContinue\u003c/button\u003e\u003c/form\u003e\u003cp\u003eAfter changing your password, sign in through your usual mail app. Your existing second factor still applies.\u003c/p\u003e\u003c/main\u003e\u003cscript\u003e\nlet token = location.hash.slice(1);\nconst mode = new URLSearchParams(location.search).get('mode');\nhistory.replaceState(null, '', location.pathname);\nconst form = document.getElementById('recovery');\nconst message = document.getElementById('message');\nconst password = document.getElementById('password');\nconst button = document.getElementById('submit');\nif (!token || !['verify','recover'].includes(mode)) {\n message.textContent = 'Invalid link. Request another link.'; form.hidden = true;\n} else {\n password.parentElement.hidden = mode !== 'recover';\n password.required = mode === 'recover';\n button.textContent = mode === 'verify' ? 'Verify recovery email' : 'Change password';\n form.addEventListener('submit', async event =\u003e {\n  event.preventDefault(); button.disabled = true;\n  const body = { token };\n  if (mode === 'recover') body.new_password = password.value;\n  try {\n   const response = await fetch(mode === 'verify' ? '/api/v1/auth/recovery-email/verify' : '/api/v1/auth/recover/email/redeem', {\n    method: 'POST', credentials: 'omit', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)\n   });\n   const result = await response.json();\n   message.textContent = response.ok ? result.data.message : result.error.message;\n   if (response.ok) { form.hidden = true; password.value = ''; token = ''; } else { button.disabled = false; }\n  } catch (_) { message.textContent = 'Request failed. Please try again.'; button.disabled = false; }\n });\n}\n\u003c/script\u003e\u003c/html\u003e",
         "mediaType": "text/html"
       }
     },
@@ -37421,7 +37421,7 @@
           ],
           "subject": "Delivered over RESTMAIL",
           "body_text": "Hello, Eve.",
-          "message_id": "<restmail-delivery@ext-contract.test>",
+          "message_id": "\u003crestmail-delivery@ext-contract.test\u003e",
           "date": "Sat, 17 Oct 2026 12:00:00 +0000"
         }
       },
@@ -37477,7 +37477,7 @@
           ],
           "subject": "Delivered over RESTMAIL",
           "body_text": "Hello, Eve.",
-          "message_id": "<restmail-delivery@ext-contract.test>",
+          "message_id": "\u003crestmail-delivery@ext-contract.test\u003e",
           "date": "Sat, 17 Oct 2026 12:00:00 +0000"
         }
       },
@@ -37521,7 +37521,7 @@
           ],
           "subject": "Delivered over RESTMAIL",
           "body_text": "Hello, Eve.",
-          "message_id": "<restmail-delivery@ext-contract.test>\r\nBcc: eve@restmail.test",
+          "message_id": "\u003crestmail-delivery@ext-contract.test\u003e\r\nBcc: eve@restmail.test",
           "date": "Sat, 17 Oct 2026 12:00:00 +0000"
         },
         "invalid": true
@@ -37547,7 +37547,7 @@
           "from": "someone@ext-contract.test",
           "subject": "Delivered over RESTMAIL",
           "body_text": "Hello, Eve.",
-          "message_id": "<restmail-delivery@ext-contract.test>",
+          "message_id": "\u003crestmail-delivery@ext-contract.test\u003e",
           "date": "Sat, 17 Oct 2026 12:00:00 +0000"
         },
         "invalid": true
@@ -37580,7 +37580,7 @@
           ],
           "subject": "Delivered over RESTMAIL",
           "body_text": "Hello, Eve.",
-          "message_id": "<restmail-delivery@ext-contract.test>",
+          "message_id": "\u003crestmail-delivery@ext-contract.test\u003e",
           "date": "Sat, 17 Oct 2026 12:00:00 +0000"
         }
       },
@@ -38979,11 +38979,11 @@
             "class": "person",
             "mailbox_id": 1,
             "folder": "Drafts",
-            "message_id": "<draft/2026@restmail.test>",
+            "message_id": "\u003cdraft/2026@restmail.test\u003e",
             "mod_seq": 2,
             "in_reply_to": "",
             "references": "",
-            "thread_id": "<draft/2026@restmail.test>",
+            "thread_id": "\u003cdraft/2026@restmail.test\u003e",
             "sender": "",
             "sender_name": "",
             "recipients_to": [],
@@ -39259,7 +39259,7 @@
               "is_read": false,
               "is_starred": false,
               "mailbox_id": 1,
-              "message_id": "<message@example.net>",
+              "message_id": "\u003cmessage@example.net\u003e",
               "mod_seq": 2,
               "raw_size": 137,
               "received_at": "2026-10-20T00:00:00Z",
@@ -39840,7 +39840,7 @@
             "is_read": true,
             "is_starred": false,
             "mailbox_id": 1,
-            "message_id": "<draft-sent@restmail.test>",
+            "message_id": "\u003cdraft-sent@restmail.test\u003e",
             "mod_seq": 2,
             "raw_size": 200,
             "received_at": "2026-10-27T07:00:00Z",
@@ -39854,7 +39854,7 @@
             "sender_name": "",
             "size_bytes": 18,
             "subject": "Draft",
-            "thread_id": "<draft-sent@restmail.test>",
+            "thread_id": "\u003cdraft-sent@restmail.test\u003e",
             "updated_at": "2026-10-27T07:00:00Z"
           }
         },
@@ -40354,7 +40354,7 @@
             "is_read": true,
             "is_starred": false,
             "mailbox_id": 2,
-            "message_id": "<00000000-0000-4000-8000-000000000001@restmail.test>",
+            "message_id": "\u003c00000000-0000-4000-8000-000000000001@restmail.test\u003e",
             "mod_seq": 2,
             "raw_size": 297,
             "received_at": "2026-10-21T12:00:00Z",
@@ -40368,7 +40368,7 @@
             "sender_name": "",
             "size_bytes": 31,
             "subject": "Hello",
-            "thread_id": "<00000000-0000-4000-8000-000000000001@restmail.test>",
+            "thread_id": "\u003c00000000-0000-4000-8000-000000000001@restmail.test\u003e",
             "updated_at": "2026-10-21T12:00:00Z"
           }
         }
@@ -40413,7 +40413,7 @@
             "is_read": true,
             "is_starred": false,
             "mailbox_id": 2,
-            "message_id": "<00000000-0000-4000-8000-000000000001@restmail.test>",
+            "message_id": "\u003c00000000-0000-4000-8000-000000000001@restmail.test\u003e",
             "mod_seq": 2,
             "raw_size": 297,
             "received_at": "2026-10-21T12:00:00Z",
@@ -40427,7 +40427,7 @@
             "sender_name": "",
             "size_bytes": 31,
             "subject": "Hello",
-            "thread_id": "<00000000-0000-4000-8000-000000000001@restmail.test>",
+            "thread_id": "\u003c00000000-0000-4000-8000-000000000001@restmail.test\u003e",
             "updated_at": "2026-10-21T12:00:00Z"
           }
         }
@@ -40554,7 +40554,7 @@
             "is_read": true,
             "is_starred": false,
             "mailbox_id": 1,
-            "message_id": "<00000000-0000-4000-8000-000000000001@restmail.test>",
+            "message_id": "\u003c00000000-0000-4000-8000-000000000001@restmail.test\u003e",
             "mod_seq": 2,
             "raw_size": 297,
             "received_at": "2026-10-21T12:00:00Z",
@@ -40569,7 +40569,7 @@
             "sender_name": "",
             "size_bytes": 31,
             "subject": "Hello",
-            "thread_id": "<00000000-0000-4000-8000-000000000001@restmail.test>",
+            "thread_id": "\u003c00000000-0000-4000-8000-000000000001@restmail.test\u003e",
             "updated_at": "2026-10-21T12:00:00Z"
           }
         }
@@ -40613,7 +40613,7 @@
         "body": {
           "data": {
             "message_id": 1,
-            "msg_id": "<0a1b2c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d@restmail.test>",
+            "msg_id": "\u003c0a1b2c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d@restmail.test\u003e",
             "from": "postmaster@restmail.test",
             "to": "admin@restmail.test",
             "subject": "Test"
@@ -43281,7 +43281,7 @@
       "request": {
         "path": {
           "id": 1,
-          "threadID": "<due/2026@example.net>"
+          "threadID": "\u003cdue/2026@example.net\u003e"
         },
         "body": {
           "due": null,
@@ -43292,7 +43292,7 @@
         "status": 200,
         "body": {
           "data": {
-            "thread_id": "<due/2026@example.net>",
+            "thread_id": "\u003cdue/2026@example.net\u003e",
             "due": null,
             "due_source": null
           }
@@ -43305,7 +43305,7 @@
       "request": {
         "path": {
           "id": 0,
-          "threadID": "<due/2026@example.net>"
+          "threadID": "\u003cdue/2026@example.net\u003e"
         },
         "body": {
           "due": "2026-12-01T10:00:00Z",
@@ -43335,7 +43335,7 @@
       "request": {
         "path": {
           "id": 1,
-          "threadID": "<due/2026@example.net>"
+          "threadID": "\u003cdue/2026@example.net\u003e"
         },
         "body": {
           "due": "2026-12-01T10:00:00Z",
@@ -43358,7 +43358,7 @@
       "request": {
         "path": {
           "id": 1,
-          "threadID": "<due/2026@example.net>"
+          "threadID": "\u003cdue/2026@example.net\u003e"
         },
         "body": {
           "due": "tomorrow",
@@ -43389,7 +43389,7 @@
       "request": {
         "path": {
           "id": 1,
-          "threadID": "<due/2026@example.net>"
+          "threadID": "\u003cdue/2026@example.net\u003e"
         },
         "body": "{",
         "invalid": true
@@ -43412,7 +43412,7 @@
       "request": {
         "path": {
           "id": 1,
-          "threadID": "<due/2026@example.net>"
+          "threadID": "\u003cdue/2026@example.net\u003e"
         },
         "body": {
           "due": "2026-12-01T10:00:00Z",
@@ -43437,7 +43437,7 @@
       "request": {
         "path": {
           "id": 1,
-          "threadID": "<due/2026@example.net>"
+          "threadID": "\u003cdue/2026@example.net\u003e"
         },
         "body": {
           "due": "2026-12-01T10:00:00Z",
@@ -43463,7 +43463,7 @@
       "request": {
         "path": {
           "id": 1,
-          "threadID": "<due/2026@example.net>"
+          "threadID": "\u003cdue/2026@example.net\u003e"
         },
         "body": {
           "due": "2026-12-01T10:00:00Z",
@@ -43488,7 +43488,7 @@
       "request": {
         "path": {
           "id": 1,
-          "threadID": "<due/2026@example.net>"
+          "threadID": "\u003cdue/2026@example.net\u003e"
         },
         "body": {
           "due": "2026-12-01T10:00:00Z",
@@ -43511,7 +43511,7 @@
       "request": {
         "path": {
           "id": 1,
-          "threadID": "<due/2026@example.net>"
+          "threadID": "\u003cdue/2026@example.net\u003e"
         },
         "body": {
           "due": "2026-12-01T10:00:00Z",
@@ -43522,7 +43522,7 @@
         "status": 200,
         "body": {
           "data": {
-            "thread_id": "<due/2026@example.net>",
+            "thread_id": "\u003cdue/2026@example.net\u003e",
             "due": "2026-12-01T10:00:00Z",
             "due_source": "user"
           }
@@ -43535,7 +43535,7 @@
       "request": {
         "path": {
           "id": 1,
-          "threadID": "<due/2026@example.net>"
+          "threadID": "\u003cdue/2026@example.net\u003e"
         },
         "body": {
           "due": "2026-12-01T10:00:00Z",
@@ -43564,7 +43564,7 @@
       "request": {
         "path": {
           "id": 1,
-          "threadID": "<due/2026@example.net>"
+          "threadID": "\u003cdue/2026@example.net\u003e"
         },
         "body": {
           "due": "2026-12-01T10:00:00Z",
@@ -43618,7 +43618,7 @@
       "request": {
         "path": {
           "id": 1,
-          "threadID": "<due/2026@example.net>"
+          "threadID": "\u003cdue/2026@example.net\u003e"
         },
         "body": {
           "due": "2026-12-01T10:00:00Z",
@@ -43992,7 +43992,7 @@
                 "id": 41,
                 "mailbox_id": 21,
                 "folder": "INBOX",
-                "message_id": "<snapshot-fixture@example.com>",
+                "message_id": "\u003csnapshot-fixture@example.com\u003e",
                 "in_reply_to": "",
                 "references": "",
                 "thread_id": "",
@@ -44221,7 +44221,7 @@
       "request": {
         "path": {
           "id": 1,
-          "threadID": "<thread/2026@example.net>"
+          "threadID": "\u003cthread/2026@example.net\u003e"
         },
         "body": {
           "snoozed_until": null
@@ -44231,7 +44231,7 @@
         "status": 200,
         "body": {
           "data": {
-            "thread_id": "<thread/2026@example.net>",
+            "thread_id": "\u003cthread/2026@example.net\u003e",
             "snoozed_until": null
           }
         },
@@ -44243,7 +44243,7 @@
       "request": {
         "path": {
           "id": 0,
-          "threadID": "<thread/2026@example.net>"
+          "threadID": "\u003cthread/2026@example.net\u003e"
         },
         "body": {
           "snoozed_until": "2099-01-01T10:00:00Z"
@@ -44272,7 +44272,7 @@
       "request": {
         "path": {
           "id": 1,
-          "threadID": "<thread/2026@example.net>"
+          "threadID": "\u003cthread/2026@example.net\u003e"
         },
         "body": {
           "snoozed_until": "2099-01-01T10:00:00Z"
@@ -44297,7 +44297,7 @@
       "request": {
         "path": {
           "id": 1,
-          "threadID": "<thread/2026@example.net>"
+          "threadID": "\u003cthread/2026@example.net\u003e"
         },
         "body": "{",
         "invalid": true
@@ -44317,7 +44317,7 @@
       "request": {
         "path": {
           "id": 1,
-          "threadID": "<thread/2026@example.net>"
+          "threadID": "\u003cthread/2026@example.net\u003e"
         },
         "body": {
           "snoozed_until": "tomorrow"
@@ -44346,7 +44346,7 @@
       "request": {
         "path": {
           "id": 1,
-          "threadID": "<thread/2026@example.net>"
+          "threadID": "\u003cthread/2026@example.net\u003e"
         },
         "body": {
           "snoozed_until": "2099-01-01T10:00:00Z"
@@ -44367,7 +44367,7 @@
       "request": {
         "path": {
           "id": 1,
-          "threadID": "<thread/2026@example.net>"
+          "threadID": "\u003cthread/2026@example.net\u003e"
         },
         "body": {
           "snoozed_until": "2000-01-01T00:00:00Z"
@@ -44396,7 +44396,7 @@
       "request": {
         "path": {
           "id": 1,
-          "threadID": "<thread/2026@example.net>"
+          "threadID": "\u003cthread/2026@example.net\u003e"
         },
         "body": {
           "snoozed_until": "2099-01-01T10:00:00Z"
@@ -44421,7 +44421,7 @@
       "request": {
         "path": {
           "id": 1,
-          "threadID": "<thread/2026@example.net>"
+          "threadID": "\u003cthread/2026@example.net\u003e"
         },
         "body": {
           "snoozed_until": "2099-01-01T10:00:00Z"
@@ -44445,7 +44445,7 @@
       "request": {
         "path": {
           "id": 1,
-          "threadID": "<thread/2026@example.net>"
+          "threadID": "\u003cthread/2026@example.net\u003e"
         },
         "body": {
           "snoozed_until": "2099-01-01T10:00:00Z"
@@ -44466,7 +44466,7 @@
       "request": {
         "path": {
           "id": 1,
-          "threadID": "<thread/2026@example.net>"
+          "threadID": "\u003cthread/2026@example.net\u003e"
         },
         "body": {
           "snoozed_until": "2099-01-01T10:00:00Z"
@@ -44476,7 +44476,7 @@
         "status": 200,
         "body": {
           "data": {
-            "thread_id": "<thread/2026@example.net>",
+            "thread_id": "\u003cthread/2026@example.net\u003e",
             "snoozed_until": "2099-01-01T10:00:00Z"
           }
         },
@@ -44487,7 +44487,7 @@
       "request": {
         "path": {
           "id": 1,
-          "threadID": "<thread/2026@example.net>"
+          "threadID": "\u003cthread/2026@example.net\u003e"
         },
         "body": {},
         "invalid": true
@@ -44512,7 +44512,7 @@
       "request": {
         "path": {
           "id": 1,
-          "threadID": "<thread/2026@example.net>"
+          "threadID": "\u003cthread/2026@example.net\u003e"
         },
         "body": {
           "snoozed_until": 12345
@@ -44563,7 +44563,7 @@
       "request": {
         "path": {
           "id": 1,
-          "threadID": "<thread/2026@example.net>"
+          "threadID": "\u003cthread/2026@example.net\u003e"
         },
         "body": {
           "snoozed_until": "2099-01-01T10:00:00Z"
@@ -45587,7 +45587,7 @@
                 }
               ],
               "subject": "A filter test",
-              "message-id": "<filter-test@example.com>",
+              "message-id": "\u003cfilter-test@example.com\u003e",
               "date": "Sat, 17 Oct 2026 12:00:00 +0000"
             },
             "body": {
@@ -45638,7 +45638,7 @@
                 }
               ],
               "subject": "A filter test",
-              "message-id": "<filter-test@example.com>",
+              "message-id": "\u003cfilter-test@example.com\u003e",
               "date": "Sat, 17 Oct 2026 12:00:00 +0000"
             },
             "body": {
@@ -45693,7 +45693,7 @@
                 }
               ],
               "subject": "A filter test",
-              "message-id": "<filter-test@example.com>",
+              "message-id": "\u003cfilter-test@example.com\u003e",
               "date": "Sat, 17 Oct 2026 12:00:00 +0000"
             },
             "body": {
@@ -45742,7 +45742,7 @@
                 }
               ],
               "subject": "A filter test",
-              "message-id": "<filter-test@example.com>",
+              "message-id": "\u003cfilter-test@example.com\u003e",
               "date": "Sat, 17 Oct 2026 12:00:00 +0000"
             },
             "body": {
@@ -45791,7 +45791,7 @@
                 }
               ],
               "subject": "A filter test",
-              "message-id": "<filter-test@example.com>",
+              "message-id": "\u003cfilter-test@example.com\u003e",
               "date": "Sat, 17 Oct 2026 12:00:00 +0000"
             },
             "body": {
@@ -45840,7 +45840,7 @@
                 }
               ],
               "subject": "A filter test",
-              "message-id": "<filter-test@example.com>",
+              "message-id": "\u003cfilter-test@example.com\u003e",
               "date": "Sat, 17 Oct 2026 12:00:00 +0000"
             },
             "body": {
@@ -45889,7 +45889,7 @@
                 }
               ],
               "subject": "A filter test",
-              "message-id": "<filter-test@example.com>",
+              "message-id": "\u003cfilter-test@example.com\u003e",
               "date": "Sat, 17 Oct 2026 12:00:00 +0000"
             },
             "body": {
@@ -45938,7 +45938,7 @@
                 }
               ],
               "subject": "A filter test",
-              "message-id": "<filter-test@example.com>",
+              "message-id": "\u003cfilter-test@example.com\u003e",
               "date": "Sat, 17 Oct 2026 12:00:00 +0000"
             },
             "body": {
@@ -45987,7 +45987,7 @@
                 }
               ],
               "subject": "A filter test",
-              "message-id": "<filter-test@example.com>",
+              "message-id": "\u003cfilter-test@example.com\u003e",
               "date": "Sat, 17 Oct 2026 12:00:00 +0000"
             },
             "body": {
@@ -46034,7 +46034,7 @@
                 }
               ],
               "subject": "A filter test",
-              "message-id": "<filter-test@example.com>",
+              "message-id": "\u003cfilter-test@example.com\u003e",
               "date": "Sat, 17 Oct 2026 12:00:00 +0000"
             },
             "body": {
@@ -46071,7 +46071,7 @@
                   }
                 ],
                 "subject": "A filter test",
-                "message-id": "<filter-test@example.com>",
+                "message-id": "\u003cfilter-test@example.com\u003e",
                 "date": "Sat, 17 Oct 2026 12:00:00 +0000"
               },
               "body": {
@@ -47249,7 +47249,7 @@
   },
   "unsubscribeMailto": {
     "discarded": {
-      "description": "Message 1 is a received list message whose List-Unsubscribe offers <mailto:leave@news.example.com?subject=unsubscribe%20weekly%20news>, in the account chris@example.test. The outbound Sieve policy discards the unsubscribe message: nothing is kept in Sent or queued.",
+      "description": "Message 1 is a received list message whose List-Unsubscribe offers \u003cmailto:leave@news.example.com?subject=unsubscribe%20weekly%20news\u003e, in the account chris@example.test. The outbound Sieve policy discards the unsubscribe message: nothing is kept in Sent or queued.",
       "requires": {
         "state": "discarding_pipeline"
       },
@@ -47270,7 +47270,7 @@
       }
     },
     "held": {
-      "description": "Message 1 is a received list message whose List-Unsubscribe offers <mailto:leave@news.example.com?subject=unsubscribe%20weekly%20news>, in the account chris@example.test. The account's send limit is spent, so the unsubscribe message is held until a person releases it; generated identifiers and timestamps are illustrative.",
+      "description": "Message 1 is a received list message whose List-Unsubscribe offers \u003cmailto:leave@news.example.com?subject=unsubscribe%20weekly%20news\u003e, in the account chris@example.test. The account's send limit is spent, so the unsubscribe message is held until a person releases it; generated identifiers and timestamps are illustrative.",
       "requires": {
         "state": "spent_send_limit"
       },
@@ -47413,7 +47413,7 @@
       }
     },
     "sent": {
-      "description": "Message 1 is a received list message whose List-Unsubscribe offers <mailto:leave@news.example.com?subject=unsubscribe%20weekly%20news>, in the account chris@example.test. With no from, the unsubscribe message is sent from that account through sendMessage, leaving one Sent copy and one queued recipient; generated identifiers, sizes and timestamps are illustrative.",
+      "description": "Message 1 is a received list message whose List-Unsubscribe offers \u003cmailto:leave@news.example.com?subject=unsubscribe%20weekly%20news\u003e, in the account chris@example.test. With no from, the unsubscribe message is sent from that account through sendMessage, leaving one Sent copy and one queued recipient; generated identifiers, sizes and timestamps are illustrative.",
       "requires": {
         "state": "unsubscribe_target"
       },
@@ -47446,7 +47446,7 @@
             "is_read": true,
             "is_starred": false,
             "mailbox_id": 1,
-            "message_id": "<00000000-0000-4000-8000-000000000001@restmail.test>",
+            "message_id": "\u003c00000000-0000-4000-8000-000000000001@restmail.test\u003e",
             "mod_seq": 2,
             "raw_size": 297,
             "received_at": "2026-10-21T12:00:00Z",
@@ -47460,7 +47460,7 @@
             "sender_name": "",
             "size_bytes": 34,
             "subject": "unsubscribe weekly news",
-            "thread_id": "<00000000-0000-4000-8000-000000000001@restmail.test>",
+            "thread_id": "\u003c00000000-0000-4000-8000-000000000001@restmail.test\u003e",
             "updated_at": "2026-10-21T12:00:00Z"
           }
         },
@@ -49831,11 +49831,11 @@
             "class": "person",
             "mailbox_id": 1,
             "folder": "Drafts",
-            "message_id": "<draft/2026@restmail.test>",
+            "message_id": "\u003cdraft/2026@restmail.test\u003e",
             "mod_seq": 2,
             "in_reply_to": "",
             "references": "",
-            "thread_id": "<draft/2026@restmail.test>",
+            "thread_id": "\u003cdraft/2026@restmail.test\u003e",
             "sender": "admin@restmail.test",
             "sender_name": "",
             "recipients_to": [
@@ -50622,7 +50622,7 @@
             "is_read": true,
             "is_starred": false,
             "mailbox_id": 1,
-            "message_id": "<message@example.net>",
+            "message_id": "\u003cmessage@example.net\u003e",
             "mod_seq": 3,
             "raw_size": 137,
             "received_at": "2026-10-20T00:00:00Z",
@@ -52178,7 +52178,7 @@
             "message": "Query parameters failed validation",
             "details": {
               "fields": {
-                "anchor": "must be <seq>:<hash>, a positive whole number and 64 hex digits"
+                "anchor": "must be \u003cseq\u003e:\u003chash\u003e, a positive whole number and 64 hex digits"
               }
             }
           }
@@ -52324,7 +52324,7 @@
           "data": {
             "found": true,
             "message_id": 51,
-            "msg_id": "<verify@example.net>",
+            "msg_id": "\u003cverify@example.net\u003e",
             "subject": "50%_\\off",
             "sender": "sender@example.net",
             "received_at": "2026-10-20T00:00:00Z"
