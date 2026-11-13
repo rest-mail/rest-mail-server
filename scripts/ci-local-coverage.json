@@ -77,7 +77,7 @@
       "exception": "Runs on the current working tree, including staged, unstaged and untracked files, or a scratch merge; checkout would discard local work."
     },
     "Test contract tooling": {
-      "sha256": "00f87b8dfcce7848ef1b63cfc799cbd456bf9a79e5913a9fd69b03d59f499ccd",
+      "sha256": "4365988fae95f8271306c83e9214c92a62975b7a3e598a968e1b2d5505db6a1a",
       "local": "tests/contract"
     }
   },
@@ -277,7 +277,7 @@
       "local": "Empty database fixtures"
     },
     "Test the contract fault switch": {
-      "sha256": "0112d018ec3fb37d20c1ca807b55c1df9cb333520a9341061e21e58e5f57c360",
+      "sha256": "b0e18c3c2a8d9db9a4a2243dc824ce682c20c19e3d81e339548a43f4cb71358a",
       "local": "Contract fault switch"
     }
   },
