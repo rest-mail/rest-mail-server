@@ -40,7 +40,7 @@ func TestClientAddressBackendLearnsTheAddress(t *testing.T) {
 		NewSession(conn, backend, "imap.test", nil, imap.NopLimiter{}).Handle()
 	}()
 
-	dialer := net.Dialer{LocalAddr: &net.TCPAddr{IP: net.ParseIP("127.0.1.9")}, Timeout: 5 * time.Second}
+	dialer := net.Dialer{LocalAddr: &net.TCPAddr{IP: net.ParseIP("127.0.0.1")}, Timeout: 5 * time.Second}
 	conn, err := dialer.Dial("tcp", listener.Addr().String())
 	if err != nil {
 		t.Fatal(err)
@@ -64,7 +64,7 @@ func TestClientAddressBackendLearnsTheAddress(t *testing.T) {
 	}
 	_ = conn.Close()
 	<-done
-	if len(backend.asked) != 1 || backend.asked[0] != "127.0.1.9" {
-		t.Fatalf("the backend was told %v, want the client's 127.0.1.9 once", backend.asked)
+	if len(backend.asked) != 1 || backend.asked[0] != "127.0.0.1" {
+		t.Fatalf("the backend was told %v, want the client's 127.0.0.1 once", backend.asked)
 	}
 }

@@ -3,7 +3,6 @@ package pop3
 import (
 	"context"
 	"crypto/tls"
-	pop3server "github.com/rest-mail/go-pop3/pkg/pop3/server"
 	"net"
 	"net/http"
 	"net/http/httptest"

@@ -197,7 +197,7 @@ func TestRepeatedSignInsFromOneClientAreThrottled(t *testing.T) {
 		t.Run(gw.protocol, func(t *testing.T) {
 			g := throttledGatewayFixture(t, true)
 			signIn := gw.start(t, g)
-			busy, other := clientSource(100), clientSource(101)
+			busy, other := clientSource(0), clientSource(1)
 			for i := range signInBurst {
 				if !signIn(t, busy, g.app.Password) {
 					t.Fatalf("sign-in %d of the burst was refused", i+1)
@@ -366,5 +366,15 @@ func TestLoginStillGoesByItsCallersOwnAddress(t *testing.T) {
 	}
 	if rr := login(); rr.Code != http.StatusTooManyRequests {
 		t.Fatalf("a login past the burst = %d %s, want 429", rr.Code, rr.Body.String())
+	}
+}
+
+func TestGatewayAllowanceSeparatesTwentyStatedClientAddresses(t *testing.T) {
+	fixture := throttledGatewayFixture(t, true)
+	for index := range signInBurst + 5 {
+		address := fmt.Sprintf("198.51.100.%d", index+1)
+		if response := fixture.openFrom(imapCN, "imap", fixture.app.Password, address); response.Code != http.StatusCreated {
+			t.Fatalf("client %s: %d %s", address, response.Code, response.Body.String())
+		}
 	}
 }

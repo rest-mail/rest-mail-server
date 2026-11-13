@@ -49,7 +49,7 @@ func startServer(t *testing.T, a *sessionAPI, source string) (*Server, *pop3Clie
 // the mail client connected from, whichever of them it is (#1957).
 func TestPOP3SignInStatesTheClientsAddress(t *testing.T) {
 	a := &sessionAPI{}
-	_, c := startServer(t, a, "127.0.2.7")
+	_, c := startServer(t, a, "127.0.0.1")
 	c.do("USER dana@example.test")
 	if r := c.do("PASS app-password"); !strings.HasPrefix(r, "+OK") {
 		t.Fatalf("PASS = %q", r)
@@ -62,14 +62,14 @@ func TestPOP3SignInStatesTheClientsAddress(t *testing.T) {
 	if err := json.Unmarshal([]byte(a.openedB), &body); err != nil {
 		t.Fatal(err)
 	}
-	if body.ClientIP != "127.0.2.7" {
-		t.Fatalf("the open call says the client is at %q, want 127.0.2.7: %s", body.ClientIP, a.openedB)
+	if body.ClientIP != "127.0.0.1" {
+		t.Fatalf("the open call says the client is at %q, want 127.0.0.1: %s", body.ClientIP, a.openedB)
 	}
 }
 
 // A connection that has TLS already is not offered STLS, and may log in.
 func TestPOP3SessionDoesNotOfferSTLS(t *testing.T) {
-	_, c := startServer(t, &sessionAPI{}, "127.0.2.8")
+	_, c := startServer(t, &sessionAPI{}, "127.0.0.1")
 	if _, err := fmt.Fprint(c.conn, "CAPA\r\n"); err != nil {
 		t.Fatal(err)
 	}
@@ -86,7 +86,7 @@ func TestPOP3SessionDoesNotOfferSTLS(t *testing.T) {
 
 // Shutdown waits for the session it finds, which then ends; Close ends it at once.
 func TestPOP3ServerShutdownWaitsAndCloseEnds(t *testing.T) {
-	srv, c := startServer(t, &sessionAPI{}, "127.0.2.9")
+	srv, c := startServer(t, &sessionAPI{}, "127.0.0.1")
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 	if err := srv.Shutdown(ctx); !errors.Is(err, context.DeadlineExceeded) {

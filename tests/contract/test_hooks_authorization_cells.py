@@ -1,5 +1,6 @@
 """Authorization cells get disposable targets without changing their principal."""
 
+import base64
 import copy
 import io
 import json
@@ -190,7 +191,7 @@ class GatewaySignInAuthorizationHooks(unittest.TestCase):
             "admin": session(self.module.ADMIN),
             "two-factor-admin": session(self.module.mfa_admin.ADDRESS),
             "ordinary": session(self.app["address"]),
-            "app-password": self.module.basic(self.app["address"], self.app["secret"]),
+            "app-password": "Basic " + base64.b64encode(f"{self.app['address']}:{self.app['secret']}".encode()).decode(),
         }
         with (
             patch.dict(os.environ, {"CONTRACT_AUTHORIZATION": "1"}),
