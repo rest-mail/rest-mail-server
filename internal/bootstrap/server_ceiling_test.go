@@ -200,13 +200,13 @@ func TestServerCeiling_ExistingSessionSeesRemovalOnNextRequest(t *testing.T) {
 		t.Errorf("empty ceiling allowed admin: HTTP %d", got)
 	}
 	const callback = "server-ceiling:unavailable"
-	if err := db.Callback().Row().Before("gorm:row").Register(callback, func(tx *gorm.DB) {
+	if err := db.Callback().Query().Before("gorm:query").Register(callback, func(tx *gorm.DB) {
 		// Actor grants are already cached; the only query is the ceiling.
 		_ = tx.AddError(errors.New("server ceiling unavailable"))
 	}); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = db.Callback().Row().Remove(callback) })
+	t.Cleanup(func() { _ = db.Callback().Query().Remove(callback) })
 	if got := request(caches[0], admin, "domains:write", grants.All); got != http.StatusServiceUnavailable {
 		t.Errorf("unreadable ceiling must fail closed: HTTP %d", got)
 	}
