@@ -147,7 +147,7 @@ func (s *streamParse) walk(mr *multipartReader, mediaType string, depth int) pip
 			if s.failed = s.budget.enter(depth + 1); s.failed != nil {
 				break
 			}
-			body.Parts = appendBodyPart(body.Parts, s.walk(nested, partType, depth+1))
+			body.Parts = appendParsedPart(body.Parts, s.walk(nested, partType, depth+1))
 			continue
 		}
 		disposition := strings.ToLower(part.disposition)
@@ -160,7 +160,7 @@ func (s *streamParse) walk(mr *multipartReader, mediaType string, depth int) pip
 				continue
 			}
 			s.calendar(content)
-			body.Parts = appendBodyPart(body.Parts, pipeline.Body{ContentType: partType, Content: content})
+			body.Parts = appendParsedPart(body.Parts, pipeline.Body{ContentType: partType, Content: content})
 		case disposition == "inline" && contentID != "":
 			if stored, ok := s.store(part.body); ok {
 				s.email.Inline = append(s.email.Inline, attachmentOf(filename, partType, "inline", contentID, stored))
@@ -171,22 +171,22 @@ func (s *streamParse) walk(mr *multipartReader, mediaType string, depth int) pip
 			}
 		case s.wantsText(partType):
 			if s.textPart(partType, part.body) {
-				body.Parts = appendBodyPart(body.Parts, pipeline.Body{ContentType: partType})
+				body.Parts = appendParsedPart(body.Parts, pipeline.Body{ContentType: partType})
 			}
 		default:
 			content, err := s.readText(part.body)
 			if err != nil {
 				continue
 			}
-			body.Parts = appendBodyPart(body.Parts, pipeline.Body{ContentType: partType, Content: content})
+			body.Parts = appendParsedPart(body.Parts, pipeline.Body{ContentType: partType, Content: content})
 		}
 	}
 	return body
 }
 
-func appendBodyPart(parts []pipeline.Body, part pipeline.Body) []pipeline.Body {
+func appendParsedPart[Part any](parts []Part, part Part) []Part {
 	if len(parts) == cap(parts) {
-		grown := make([]pipeline.Body, len(parts), max(1, 4*cap(parts)))
+		grown := make([]Part, len(parts), max(1, 4*cap(parts)))
 		copy(grown, parts)
 		parts = grown
 	}

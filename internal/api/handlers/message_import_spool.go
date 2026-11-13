@@ -24,6 +24,7 @@ import (
 
 	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
 	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
+	"github.com/rest-mail/rest-mail-server/internal/attachmentstore"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 )
 
@@ -105,7 +106,7 @@ func readSpooledBody(r *http.Request, spec *spooledBodySpec) (importBodyScan, er
 	}
 	defer removeRequest()
 	if r.Body != nil {
-		if _, err := io.Copy(request, r.Body); err != nil {
+		if _, err := attachmentstore.Copy(request, r.Body); err != nil {
 			return importBodyScan{}, importSpoolFailure(err)
 		}
 		if _, err := request.Seek(0, io.SeekStart); err != nil {
@@ -313,7 +314,7 @@ func (s *importSource) text() (string, error) {
 	}
 	var whole strings.Builder
 	whole.Grow(int(s.size))
-	if _, err := io.Copy(&whole, io.LimitReader(reader, s.limit)); err != nil {
+	if _, err := attachmentstore.Copy(&whole, io.LimitReader(reader, s.limit)); err != nil {
 		return "", fmt.Errorf("read a spooled message: %w", err)
 	}
 	return whole.String(), nil

@@ -25,6 +25,12 @@ var copying = boundedpool.New(16, func() *[32 << 10]byte { return new([32 << 10]
 func Copy(destination io.Writer, source io.Reader) (int64, error) {
 	buffer := copying.Get()
 	defer copying.Put(buffer)
+	if writer, ok := destination.(io.StringWriter); ok {
+		return io.CopyBuffer(struct {
+			io.Writer
+			io.StringWriter
+		}{destination, writer}, source, buffer[:])
+	}
 	return io.CopyBuffer(struct{ io.Writer }{destination}, source, buffer[:])
 }
 

@@ -5,7 +5,6 @@ import (
 	"net/mail"
 	"net/textproto"
 	"strings"
-	"sync"
 )
 
 // mimeNode is one entity on a numeric section path: either an RFC 5322
@@ -32,7 +31,7 @@ func messageNode(raw string, depth int) mimeNode {
 // entityReaders holds the buffers entityHeader reads with. net/mail keeps a reader
 // that is already buffered, and would allocate a full buffer for any other, so a
 // message of many small parts shares these instead of allocating one for each.
-var entityReaders = sync.Pool{New: func() any { return bufio.NewReader(nil) }}
+var entityReaders = newScratchPool(func() any { return bufio.NewReader(nil) }, func(any) bool { return true })
 
 // entityHeader reads a MIME entity's header block (with or without its
 // terminating blank line) with net/mail's RFC 5322 reader. Unlike

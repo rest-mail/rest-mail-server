@@ -7,7 +7,6 @@ import (
 	"mime"
 	"slices"
 	"strings"
-	"sync"
 	"unicode"
 	"unsafe"
 )
@@ -549,7 +548,7 @@ func onlyRepeatsFollow(before, after string) bool {
 // them holds them only until it's read, and it's read more than once.
 type keptPieces struct{ pieces []keptPiece }
 
-var keptPieceLists = sync.Pool{New: func() any { return new(keptPieces) }}
+var keptPieceLists = newScratchPool(func() any { return new(keptPieces) }, func(value any) bool { return cap(value.(*keptPieces).pieces) <= 1<<18 })
 
 func takeKeptPieces(count int) *keptPieces {
 	list := keptPieceLists.Get().(*keptPieces)
@@ -699,7 +698,10 @@ func (s *nameSet) matches(slot nameSlot, lowered []byte) bool {
 }
 
 var (
-	nameSets = sync.Pool{New: func() any { return new(nameSet) }}
+	nameSets = newScratchPool(func() any { return new(nameSet) }, func(value any) bool {
+		set := value.(*nameSet)
+		return cap(set.slots) <= 1<<16 && cap(set.arena) <= 1<<16
+	})
 	nameSeed = maphash.MakeSeed()
 )
 

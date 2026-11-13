@@ -2,7 +2,6 @@ package message
 
 import (
 	"strings"
-	"sync"
 	"unsafe"
 )
 
@@ -15,7 +14,7 @@ import (
 // so what's kept of one is cloned on its way out.
 type FieldScratch struct{ b []byte }
 
-var fieldScratches = sync.Pool{New: func() any { return new(FieldScratch) }}
+var fieldScratches = newScratchPool(func() any { return new(FieldScratch) }, func(value any) bool { return cap(value.(*FieldScratch).b) <= 1<<20 })
 
 // TakeFieldScratch is an empty FieldScratch with room for size without growing.
 func TakeFieldScratch(size int) *FieldScratch {

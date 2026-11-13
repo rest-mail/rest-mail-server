@@ -139,3 +139,5 @@ type FieldScratch = message.FieldScratch
 // TakeFieldScratch is an empty [FieldScratch] with room for size without growing. What its String and
 // Unfolded answer is good only until its Release.
 func TakeFieldScratch(size int) *FieldScratch { return message.TakeFieldScratch(size) }
+
+func ReleaseReadCaches() { message.ReleaseReadCaches() }

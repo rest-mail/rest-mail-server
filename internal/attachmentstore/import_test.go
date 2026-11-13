@@ -156,3 +156,36 @@ func TestCopyOfAFileUsesItsOwnBuffer(t *testing.T) {
 		t.Fatalf("%d bytes a copy", each)
 	}
 }
+
+type copyFastPathWriter struct {
+	strings.Builder
+	stringsWritten int
+	bytesWritten   int
+	reads          int
+}
+
+func (writer *copyFastPathWriter) Write(content []byte) (int, error) {
+	writer.bytesWritten++
+	return writer.Builder.Write(content)
+}
+
+func (writer *copyFastPathWriter) WriteString(content string) (int, error) {
+	writer.stringsWritten++
+	return writer.Builder.WriteString(content)
+}
+
+func (writer *copyFastPathWriter) ReadFrom(io.Reader) (int64, error) {
+	writer.reads++
+	return 0, errors.New("ReadFrom must not allocate its own copy buffer")
+}
+
+func TestCopyPreservesStringWritesWithoutDestinationReadFrom(t *testing.T) {
+	writer := new(copyFastPathWriter)
+	written, err := Copy(writer, strings.NewReader("source"))
+	if err != nil || written != 6 || writer.String() != "source" {
+		t.Fatalf("copied %d bytes: %q, %v", written, writer.String(), err)
+	}
+	if writer.stringsWritten != 1 || writer.bytesWritten != 0 || writer.reads != 0 {
+		t.Fatalf("copy paths: string=%d bytes=%d ReadFrom=%d", writer.stringsWritten, writer.bytesWritten, writer.reads)
+	}
+}

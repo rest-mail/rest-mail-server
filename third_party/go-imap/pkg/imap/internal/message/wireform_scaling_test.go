@@ -25,11 +25,14 @@ func assertLinear(t *testing.T, input func(size int) string, work func(string)) 
 }
 
 // bytesAllocated is what one run allocates, the least of a few runs so that anything
-// else the process allocates in between doesn't count, and neither does filling a pool.
+// else the process allocates in between does not count. Each sample includes filling cold read caches.
 func bytesAllocated(input string, work func(string)) uint64 {
 	var before, after runtime.MemStats
 	best := ^uint64(0)
 	for range 3 {
+		ReleaseReadCaches()
+		runtime.GC()
+		runtime.GC()
 		runtime.ReadMemStats(&before)
 		work(input)
 		runtime.ReadMemStats(&after)

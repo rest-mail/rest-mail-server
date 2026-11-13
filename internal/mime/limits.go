@@ -105,13 +105,17 @@ func (b *partBudget) part() error {
 // When they don't, because a charset grew them, the part moves to a new arena and what's kept stays
 // on the old one. Nothing is written over a part that wasn't released.
 func (b *partBudget) readPart(r io.Reader) ([]byte, error) {
+	return b.readPartWithHint(r, b.sourceSize)
+}
+
+func (b *partBudget) readPartWithHint(r io.Reader, sourceSize int) ([]byte, error) {
 	start := len(b.arena)
 	for {
 		if len(b.arena) == cap(b.arena) {
 			held := len(b.arena) - start
 			next := b.fields.takeBuffer(max(2*held, fieldBufferDoubles))
 			if next == nil {
-				next = make([]byte, 0, max(2*held, b.sourceSize+bytes.MinRead, partArenaLeast))
+				next = make([]byte, 0, max(2*held, sourceSize+bytes.MinRead, partArenaLeast))
 			}
 			next = next[:held]
 			copy(next, b.arena[start:])

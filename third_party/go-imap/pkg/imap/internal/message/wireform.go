@@ -8,7 +8,6 @@ import (
 	"mime/quotedprintable"
 	"strconv"
 	"strings"
-	"sync"
 	"unicode/utf8"
 	"unsafe"
 )
@@ -390,7 +389,10 @@ type partScratch struct {
 	spans      [][2]int
 }
 
-var partScratches = sync.Pool{New: func() any { return new(partScratch) }}
+var partScratches = newScratchPool(func() any { return new(partScratch) }, func(value any) bool {
+	scratch := value.(*partScratch)
+	return cap(scratch.delimiters) <= 8192 && cap(scratch.spans) <= 8192
+})
 
 // multipartTexts is what a multipart's delimiter lines divide its body into.
 type multipartTexts struct {
@@ -936,7 +938,7 @@ func writeWithout8bit(w wireSink, s string) {
 const wireChunk = 1 << 12
 
 // base64Chunks keeps a message of many small encoded parts from allocating for each.
-var base64Chunks = sync.Pool{New: func() any { return new([wireChunk / 76 * 78]byte) }}
+var base64Chunks = newScratchPool(func() any { return new([wireChunk / 76 * 78]byte) }, func(any) bool { return true })
 
 // writeQuotedPrintable encodes text, so a NUL goes in as a space rather than as =00.
 func writeQuotedPrintable(w wireSink, body string) {
@@ -1330,7 +1332,7 @@ func eachEncodedWord(text string, emit func(open string, content []byte)) {
 }
 
 // wordBuffers keeps a message of many small encoded fields from allocating for each.
-var wordBuffers = sync.Pool{New: func() any { return new([75]byte) }}
+var wordBuffers = newScratchPool(func() any { return new([75]byte) }, func(any) bool { return true })
 
 // qEncode is the Q encoding restricted to what RFC 2047 §5(3) allows wherever an
 // encoded word may stand.

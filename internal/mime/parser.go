@@ -258,7 +258,7 @@ func parseMultipart(mr *multipartReader, mediaType string, depth int, budget *pa
 			if err != nil {
 				return body, attachments, inline, calendarEvents, err
 			}
-			body.Parts = append(body.Parts, subBody)
+			body.Parts = appendParsedPart(body.Parts, subBody)
 			attachments = append(attachments, subAtt...)
 			inline = append(inline, subInl...)
 			calendarEvents = append(calendarEvents, subCal...)
@@ -267,7 +267,11 @@ func parseMultipart(mr *multipartReader, mediaType string, depth int, budget *pa
 
 		// Every part reads into one buffer. A part that's kept stays there, and one that's encoded
 		// gives the room back.
-		content, err := budget.readPart(part.body)
+		sourceSize := budget.sourceSize
+		if partMediaType != "text/calendar" && (part.disposition == "attachment" || (part.disposition == "inline" && part.contentID != "")) {
+			sourceSize = 0
+		}
+		content, err := budget.readPartWithHint(part.body, sourceSize)
 		if err != nil {
 			continue
 		}
@@ -282,7 +286,7 @@ func parseMultipart(mr *multipartReader, mediaType string, depth int, budget *pa
 			if events, parseErr := ParseCalendar(kept); parseErr == nil && len(events) > 0 {
 				calendarEvents = append(calendarEvents, events...)
 			}
-			body.Parts = append(body.Parts, pipeline.Body{
+			body.Parts = appendParsedPart(body.Parts, pipeline.Body{
 				ContentType: partMediaType,
 				Content:     kept,
 			})
@@ -295,7 +299,7 @@ func parseMultipart(mr *multipartReader, mediaType string, depth int, budget *pa
 		// (which would drop the Content-ID needed for cid: rendering).
 		contentID := part.contentID
 		if disposition == "inline" && contentID != "" {
-			inline = append(inline, pipeline.Attachment{
+			inline = appendParsedPart(inline, pipeline.Attachment{
 				Filename:    filename,
 				ContentType: partMediaType,
 				Size:        int64(len(content)),
@@ -309,7 +313,7 @@ func parseMultipart(mr *multipartReader, mediaType string, depth int, budget *pa
 
 		// Attachment.
 		if disposition == "attachment" || (filename != "" && !strings.HasPrefix(partMediaType, "text/")) {
-			attachments = append(attachments, pipeline.Attachment{
+			attachments = appendParsedPart(attachments, pipeline.Attachment{
 				Filename:    filename,
 				ContentType: partMediaType,
 				Size:        int64(len(content)),
@@ -321,7 +325,7 @@ func parseMultipart(mr *multipartReader, mediaType string, depth int, budget *pa
 		}
 
 		// Regular body part.
-		body.Parts = append(body.Parts, pipeline.Body{
+		body.Parts = appendParsedPart(body.Parts, pipeline.Body{
 			ContentType: partMediaType,
 			Content:     kept,
 		})

@@ -110,3 +110,27 @@ func TestReadPartTakesBackWhatFailed(t *testing.T) {
 		t.Fatalf("moved %d bytes, kept %q", len(moved), kept)
 	}
 }
+
+func TestTemporaryPartArenaDoesNotReserveTheWholeMessage(t *testing.T) {
+	budget := newPartBudget()
+	budget.fields = &fieldReader{}
+	budget.sourceSize = 1 << 20
+	for range 1000 {
+		content, err := budget.readPartWithHint(strings.NewReader("small"), 0)
+		if err != nil || string(content) != "small" {
+			t.Fatalf("temporary part: %q, %v", content, err)
+		}
+		budget.release(content)
+	}
+	if capacity := cap(budget.arena); capacity != partArenaLeast {
+		t.Fatalf("temporary parts reserved %d bytes, want %d", capacity, partArenaLeast)
+	}
+	text := strings.Repeat("text", partArenaLeast)
+	content, err := budget.readPart(strings.NewReader(text))
+	if err != nil || string(content) != text {
+		t.Fatalf("retained text: %d bytes, %v", len(content), err)
+	}
+	if cap(budget.arena) < budget.sourceSize {
+		t.Fatal("retained text lost its known-source growth hint")
+	}
+}

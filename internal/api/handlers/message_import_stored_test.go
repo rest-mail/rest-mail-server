@@ -16,6 +16,8 @@ import (
 
 	"gorm.io/gorm"
 
+	"github.com/rest-mail/go-imap/pkg/imap/wireform"
+
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/grants"
 	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
@@ -436,6 +438,7 @@ func shapesUnderTheLimit(id string, cost func(stillOverCost) uint64) map[string]
 // 2x of a long field, which is either side of 8x for some rows, so a row that's measured with it warm
 // passes or fails by what a collection did. sync.Pool holds what it has through one collection.
 func emptyPools() {
+	wireform.ReleaseReadCaches()
 	runtime.GC()
 	runtime.GC()
 }
