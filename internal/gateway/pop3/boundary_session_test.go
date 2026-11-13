@@ -19,39 +19,6 @@ const boundaryParts = "--%[1]s\r\nContent-Type: text/plain\r\n\r\nH\xc3\xb6\r\n-
 // partsWant is what boundaryParts holds, as the stored message has it.
 var partsWant = []string{"H\xc3\xb6", "\xff\xfe"}
 
-// retrieved logs a session in, and returns what RETR sent and LIST and RETR reported.
-func retrieved(t *testing.T, raw string) (message string, listed, sent int) {
-	t.Helper()
-	c := dialStore(t, raw)
-	c.do("USER jorg@example.test")
-	c.do("PASS pw")
-	if _, err := fmt.Sscanf(c.do("LIST 1"), "+OK 1 %d", &listed); err != nil {
-		t.Fatalf("LIST: %v", err)
-	}
-	if _, err := fmt.Fprintf(c.conn, "RETR 1\r\n"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := fmt.Sscanf(c.line(), "+OK %d octets", &sent); err != nil {
-		t.Fatalf("RETR: %v", err)
-	}
-	var b strings.Builder
-	for {
-		l := c.line()
-		if l == ".\r\n" {
-			return b.String(), listed, sent
-		}
-		b.WriteString(strings.TrimPrefix(l, "."))
-	}
-}
-
-// requireSameSize proves LIST and RETR report the octets RETR sends (RFC 1939 section 5).
-func requireSameSize(t *testing.T, message string, listed, sent int) {
-	t.Helper()
-	if listed != len(message) || sent != len(message) {
-		t.Fatalf("LIST says %d and RETR %d, but RETR sends %d octets", listed, sent, len(message))
-	}
-}
-
 // splitParts reads message as a client does: the top-level header and its boundary, then
 // the parts, with their octets undecoded. It fails on a header that isn't 7-bit.
 func splitParts(t *testing.T, message string) []string {

@@ -99,7 +99,7 @@ func TestDigestOfEightBitHolds(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	NewWorker(db, time.Hour).sendDigests()
+	NewWorker(db, time.Hour).SendDigests()
 
 	var digests []models.Message
 	if err := db.Where("mailbox_id = ?", mailbox.ID).Find(&digests).Error; err != nil {

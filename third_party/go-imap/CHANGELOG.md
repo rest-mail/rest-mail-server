@@ -105,6 +105,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   answered `\Subscribed \NonExistent`, and LSUB answers an unsubscribed level
   above a subscribed name `\Noselect`. A Mailbox without it keeps every
   existing folder subscribed, as before.
+- `SearchZoneMailbox`, an optional `Mailbox` interface that names the zone whose
+  calendar days SEARCH BEFORE, ON and SINCE compare. A zone the store cannot give
+  answers NO `[UNAVAILABLE]`. A mailbox without it sees no change.
 - `wireform.SevenBitBoundary`, for a host that downgrades only the top-level header
   and sends the body as stored, as POP3 does. A top-level multipart's 8-bit boundary
   takes the spelling FETCH gives it, in Content-Type and on its delimiter lines, and

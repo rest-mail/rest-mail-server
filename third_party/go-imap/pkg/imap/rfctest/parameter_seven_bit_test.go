@@ -213,12 +213,3 @@ func fetchParameterMetadata(t *testing.T, c *client, item string) string {
 	}
 	return framing
 }
-
-func requireHolds(t *testing.T, got string, want ...string) {
-	t.Helper()
-	for _, w := range want {
-		if !strings.Contains(got, w) {
-			t.Fatalf("%q lacks %q", got, w)
-		}
-	}
-}

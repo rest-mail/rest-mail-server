@@ -8,8 +8,6 @@ import (
 
 // sizeShapes are stored messages whose octets RETR doesn't send as they are, or that sit
 // next to a form it does. Each goes through a session with UTF-8 enabled and one without.
-const boundaryParts = "--%[1]s\r\nContent-Type: text/plain\r\n\r\nHö\r\n--%[1]s\r\nContent-Type: application/pdf\r\n\r\n\xff\xfe\r\n--%[1]s--\r\n"
-
 var sizeShapes = []struct{ name, raw string }{
 	{"CRLF throughout", "Subject: hi\r\n\r\nbody\r\n"},
 	{"bare LF", "Subject: hi\n\nline one\nline two\n"},

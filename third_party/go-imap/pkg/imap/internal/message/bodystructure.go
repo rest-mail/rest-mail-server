@@ -69,8 +69,16 @@ func uncommentMIME(value string) (string, error) {
 	if has8bit(value) {
 		return readableField(value), nil
 	}
+	text, _, err := splitComments(value)
+	return text, err
+}
+
+// splitComments is uncommentMIME that also returns each comment it replaced, with
+// its delimiters.
+func splitComments(value string) (string, []string, error) {
 	var b strings.Builder
-	depth := 0
+	var comments []string
+	depth, start := 0, 0
 	quoted := false
 	for i := 0; i < len(value); i++ {
 		c := value[i]
@@ -83,6 +91,9 @@ func uncommentMIME(value string) (string, error) {
 				depth++
 			case ')':
 				depth--
+				if depth == 0 {
+					comments = append(comments, value[start:i+1])
+				}
 			}
 		case quoted:
 			b.WriteByte(c)
@@ -94,18 +105,19 @@ func uncommentMIME(value string) (string, error) {
 			}
 		case c == '(':
 			depth = 1
+			start = i
 			b.WriteByte(' ')
 		case c == ')':
-			return "", mime.ErrInvalidMediaParameter
+			return "", nil, mime.ErrInvalidMediaParameter
 		default:
 			b.WriteByte(c)
 			quoted = c == '"'
 		}
 	}
 	if depth != 0 || quoted {
-		return "", mime.ErrInvalidMediaParameter
+		return "", nil, mime.ErrInvalidMediaParameter
 	}
-	return b.String(), nil
+	return b.String(), comments, nil
 }
 
 // partStructure builds the body structure for one MIME entity given its header

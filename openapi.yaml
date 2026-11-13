@@ -12212,8 +12212,10 @@ paths:
         invalid input is 422 validation_failed naming the field before any write.
         raw_message is standard padded base64 (format: byte) and may hold any octets,
         which are stored exactly.
-        Empty or omitted folder means INBOX; a nonempty name is at most 255 UTF-8 bytes,
-        has no surrounding whitespace, control characters or "..".
+        The recipient is resolved from address. Arriving mail uses server time and
+        default Inbox/flags, subject to inbound rules. Import-only fields sent by
+        older callers are ignored. An arrival past the hop limit or a reserved alias
+        that cannot route is 403 rejected before the pipeline runs.
       security: []
       x-internal-mtls: true
       requestBody:

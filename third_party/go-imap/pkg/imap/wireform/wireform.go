@@ -56,6 +56,14 @@ func EncodeWords(text string) string {
 	return message.EncodeWords(text)
 }
 
+// WriteEncodedWords is [EncodeWords] into w, holding one word at a time.
+func WriteEncodedWords(w interface {
+	io.Writer
+	io.StringWriter
+}, text string) {
+	message.WriteEncodedWords(w, text)
+}
+
 // ParameterField renders a Content-Type or Content-Disposition field 7-bit, changing
 // only what holds an 8-bit octet or couldn't be read once 7-bit, so a parameter in any
 // charset or spelling keeps its text. ok is false when the value holds no readable

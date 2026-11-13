@@ -334,6 +334,11 @@ fields and one call after authentication.
   record of expunged UIDs and turns on QRESYNC: ENABLE QRESYNC, SELECT/EXAMINE
   (QRESYNC ...), UID FETCH (CHANGEDSINCE n VANISHED), and VANISHED in place of
   EXPUNGE once enabled. A Mailbox without them advertises neither.
+
+## Consolidated protocol parameter fixes
+
+`parseMediaType` preserves repeated names, discontinuous RFC 2231 values, and non-continuation stars from source PR #1903 (`bb89fac36672623ff761b91e1f86fd950ce54bf3`). The shared parameter scanner is carried from #2111 as a prerequisite; this branch does not import its ENVELOPE or session-aware BODYSTRUCTURE conversion. Parameter tests retain the current counted-literal transport policy while checking the preserved values.
+
 ## FETCH sends a space for a NUL instead of refusing the message
 
 RFC 3501 §9 leaves NUL out of CHAR8, so FETCH used to answer `NO` for a message

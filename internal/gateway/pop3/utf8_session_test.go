@@ -19,8 +19,12 @@ import (
 
 const utf8Raw = "From: Jörg <joerg@bücher.example>\r\nSubject: Grüße\r\n\r\nHallo, Jörg.\r\n"
 
-// storeAPI answers the calls a POP3 session makes for one account whose INBOX
-// holds raw.
+// utf8API answers the calls a POP3 session makes for one account whose INBOX
+// holds one message with raw UTF-8 headers.
+func utf8API(t *testing.T) *apiclient.Client {
+	return storeAPI(t, utf8Raw)
+}
+
 func storeAPI(t *testing.T, raw string) *apiclient.Client {
 	t.Helper()
 	mux := http.NewServeMux()
@@ -33,7 +37,8 @@ func storeAPI(t *testing.T, raw string) *apiclient.Client {
 		reply(w, `{"data":{"token":"rmgs_tok","protocol":"pop3","user":{"id":1,"email":"jorg@example.test"}}}`)
 	})
 	mux.HandleFunc("/api/v1/accounts/1/folders/INBOX/messages", func(w http.ResponseWriter, r *http.Request) {
-		reply(w, fmt.Sprintf(`{"data":[{"id":7,"raw_size":%d,"downgraded_size":%d}]}`, len(raw), rmail.DowngradedSize(raw)))
+		reply(w, fmt.Sprintf(`{"data":[{"id":7,"raw_size":%d,"downgraded_size":%d,"pop3_utf8_size":%d}]}`,
+			len(raw), rmail.DowngradedSize(raw), rmail.POP3WireSize(raw)))
 	})
 	mux.HandleFunc("/api/v1/messages/7", func(w http.ResponseWriter, r *http.Request) {
 		reply(w, `{"data":{"id":7}}`)
@@ -54,11 +59,6 @@ type pop3Client struct {
 }
 
 func dialUTF8(t *testing.T) *pop3Client {
-	return dialStore(t, utf8Raw)
-}
-
-func dialStore(t *testing.T, raw string) *pop3Client {
-	t.Helper()
 	return dialStore(t, utf8Raw)
 }
 
