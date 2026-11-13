@@ -491,24 +491,25 @@ const attachmentRowColumns = "message_id, filename, content_type, size_bytes, st
 // a buffer for each. The rows store the same as gorm's would, without their ids, which no caller reads.
 func createAttachmentRows(tx *gorm.DB, rows []models.Attachment) error {
 	now := time.Now()
-	// One row at a time, because all of them at once is encoding/json's own buffer doubling and a copy.
-	encoded := append(make([]byte, 0, 512*len(rows)), '[')
+	// One encoder reuses its row buffer without making a temporary JSON copy per attachment.
+	encoded := bytes.NewBuffer(make([]byte, 0, 512*len(rows)))
+	encoded.WriteByte('[')
+	encoder := json.NewEncoder(encoded)
 	for i := range rows {
 		rows[i].CreatedAt = now
 		if err := rows[i].BeforeCreate(tx); err != nil {
 			return err
 		}
-		row, err := json.Marshal(&rows[i])
-		if err != nil {
+		if i != 0 {
+			encoded.WriteByte(',')
+		}
+		if err := encoder.Encode(&rows[i]); err != nil {
 			return err
 		}
-		if i != 0 {
-			encoded = append(encoded, ',')
-		}
-		encoded = append(encoded, row...)
 	}
+	encoded.WriteByte(']')
 	return tx.Exec("INSERT INTO attachments ("+attachmentRowColumns+") SELECT "+attachmentRowColumns+
-		" FROM jsonb_populate_recordset(NULL::attachments, ?::jsonb)", append(encoded, ']')).Error
+		" FROM jsonb_populate_recordset(NULL::attachments, ?::jsonb)", encoded.Bytes()).Error
 }
 
 // storedImportSource is a stored message with what identifies its source, which the database

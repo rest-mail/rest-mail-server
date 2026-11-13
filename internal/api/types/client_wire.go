@@ -248,7 +248,7 @@ type Message struct {
 	CalendarEventsRaw json.RawMessage       `json:"calendar_events,omitempty"`
 	SizeBytes         int                   `json:"size_bytes"`
 	RawSize           int                   `json:"raw_size" description:"The exact octet count of the stored raw message; 0 when none is stored"`
-	DowngradedSize    int                   `json:"downgraded_size" description:"The octet count POP3 RETR sends a client that has not enabled UTF-8: the stored raw message with its headers downgraded to ASCII (RFC 6857) and every line ending in CRLF; 0 when not measured"`
+	DowngradedSize    int                   `json:"downgraded_size" description:"The octet count of the stored raw message with its headers downgraded to ASCII (RFC 6857), as sent to a POP3 or IMAP client that has not enabled UTF-8; 0 when not measured"`
 	POP3UTF8Size      int                   `json:"pop3_utf8_size" description:"The octet count POP3 RETR sends a client that has enabled UTF-8: the stored raw message with every line ending in CRLF; 0 when not measured"`
 	IMAPSize          int                   `json:"imap_size" description:"The octet count of the message as an IMAP FETCH sends it to a session that has not enabled UTF-8, with headers 7-bit and non-textual data transfer-encoded (RFC 3501 section 7.4.2); the stored message does not change; 0 when no raw message is stored"`
 	IMAPUTF8Size      int                   `json:"imap_utf8_size" description:"The octet count of the message as an IMAP FETCH sends it to a session that has enabled UTF-8; 0 when no raw message is stored"`
@@ -505,9 +505,15 @@ func (m Message) IMAPWireSizeFor(utf8 bool) int {
 	case m.RawSize == 0:
 		return m.SizeBytes
 	case utf8:
-		return m.IMAPUTF8Size
+		if m.IMAPUTF8Size > 0 {
+			return m.IMAPUTF8Size
+		}
+		return m.WireSizeFor(true)
 	}
-	return m.IMAPSize
+	if m.IMAPSize > 0 {
+		return m.IMAPSize
+	}
+	return m.WireSizeFor(false)
 }
 
 // RestmailDiscovery is the unwrapped RESTMAIL protocol discovery document.

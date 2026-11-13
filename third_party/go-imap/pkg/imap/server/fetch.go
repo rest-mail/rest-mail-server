@@ -118,9 +118,9 @@ func (s *Session) fetchResponse(seq int, msg imap.Message, tokens []string) erro
 			plain = append(plain, fmt.Sprintf("INTERNALDATE %q", msg.Date.Format("02-Jan-2006 15:04:05 -0700")))
 		case up == "ENVELOPE":
 			// ENVELOPE's recipient/reference fields and its date come from the
-			// message's own headers (RFC 3501 §7.4.2), so load the message. This
-			// is still metadata: loadSent never sets \Seen. A load failure is
-			// reported before sending this message's response.
+			// message's own headers (RFC 3501 §7.4.2), so load the raw message.
+			// This is still metadata: loadRaw never sets \Seen. A load failure
+			// is reported before sending this message's response.
 			r, ok := loadSent()
 			plain = append(plain, "ENVELOPE "+message.BuildEnvelope(msg, r, ok, s.utf8))
 		case up == "BODYSTRUCTURE":
@@ -179,7 +179,7 @@ func (s *Session) fetchResponse(seq int, msg imap.Message, tokens []string) erro
 		}
 	}
 
-	if (storedLoaded && !storedOK) || (sentLoaded && !sentOK) {
+	if storedLoaded && !storedOK {
 		return errors.New("cannot load message data")
 	}
 

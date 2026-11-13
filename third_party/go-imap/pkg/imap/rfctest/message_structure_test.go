@@ -11,7 +11,12 @@ import (
 // lines is independently specified by each fixture, not derived by a MIME parser.
 func messageStructureResponse(t *testing.T, inner, envelope, body, extended string, lines int, literals ...string) {
 	t.Helper()
-	base := fmt.Sprintf(`("MESSAGE" "RFC822" NIL NIL NIL "7BIT" %d %s `, len(inner), envelope)
+	messageStructureSizedResponse(t, inner, envelope, body, extended, lines, len(inner), literals...)
+}
+
+func messageStructureSizedResponse(t *testing.T, inner, envelope, body, extended string, lines, octets int, literals ...string) {
+	t.Helper()
+	base := fmt.Sprintf(`("MESSAGE" "RFC822" NIL NIL NIL "7BIT" %d %s `, octets, envelope)
 	wantBody := fmt.Sprintf("%s%s %d)", base, body, lines)
 	wantExtended := fmt.Sprintf(`%s%s %d NIL ("ATTACHMENT" ("FILENAME" "forward.eml")) NIL NIL)`, base, extended, lines)
 	headers := "Content-Type: message/rfc822\r\nContent-Disposition: attachment; filename=forward.eml\r\n\r\n"
@@ -93,18 +98,23 @@ func TestMessageStructureScalarStrings(t *testing.T) {
 	}{
 		{"quoted", "Subject: a \"quote\" and \\slash\r\n", `(NIL "a \"quote\" and \\slash" NIL NIL NIL NIL NIL NIL NIL NIL)`, nil},
 		{"encoded-word", "Subject: =?UTF-8?Q?caf=C3=A9?=\r\n", `(NIL "=?UTF-8?Q?caf=C3=A9?=" NIL NIL NIL NIL NIL NIL NIL NIL)`, nil},
-		{"address literals", "From: =?UTF-8?Q?J=C3=B6rg?= <j@example.com>\r\nCc: =?UTF-8?Q?a=0D=0Ab?= <x@example.com>\r\n",
+		{"literal", "Subject: café\r\nIn-Reply-To: <é@x>\r\nMessage-ID: <é@y>\r\n",
+			`(NIL "=?UTF-8?Q?caf=C3=A9?=" NIL NIL NIL NIL NIL NIL "<=?UTF-8?Q?=C3=A9=40x?=>" "<=?UTF-8?Q?=C3=A9=40y?=>")`, nil},
+		{"address literals", "From: =?UTF-8?Q?J=C3=B6rg?= <j@example.com>\r\nTo: jörg@exämple.com\r\nCc: =?UTF-8?Q?a=0D=0Ab?= <x@example.com>\r\n",
 			`(NIL NIL (("=?UTF-8?Q?J=C3=B6rg?=" NIL "j" "example.com")) (("=?UTF-8?Q?J=C3=B6rg?=" NIL "j" "example.com")) (("=?UTF-8?Q?J=C3=B6rg?=" NIL "j" "example.com")) NIL (({4} NIL "x" "example.com")) NIL NIL NIL)`,
 			[]string{"a\r\nb"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			lines := 3
-			if tc.literals != nil {
-				lines = 4
+			lines, octets := 3, len(tc.headers)+3
+			switch tc.name {
+			case "literal":
+				lines, octets = 5, 112
+			case "address literals":
+				lines, octets = 5, 138
 			}
-			messageStructureResponse(t, tc.headers+"\r\nx", tc.envelope,
+			messageStructureSizedResponse(t, tc.headers+"\r\nx", tc.envelope,
 				`("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 1 1)`,
-				`("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 1 1 NIL NIL NIL NIL)`, lines, tc.literals...)
+				`("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 1 1 NIL NIL NIL NIL)`, lines, octets, tc.literals...)
 		})
 	}
 }

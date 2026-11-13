@@ -157,7 +157,7 @@ func TestRepeatedParameterReadsTheSameEverywhere(t *testing.T) {
 	}
 	srv := httptest.NewServer(f.router)
 	t.Cleanup(srv.Close)
-	imap := openIMAPSession(t, f, apiclient.New(srv.URL))
+	imap := openIMAPSession(t, f, f.gatewayClient(srv.URL, imapCN))
 	many := func(field string) string {
 		var b strings.Builder
 		for i := range 20 {

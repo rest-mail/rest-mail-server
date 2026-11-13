@@ -14,7 +14,6 @@ import (
 
 	"github.com/rest-mail/rest-mail-server/internal/config"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
-	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 )
 
@@ -75,7 +74,7 @@ func TestFieldFaultsReadTheSameEverywhere(t *testing.T) {
 	}
 	srv := httptest.NewServer(f.router)
 	t.Cleanup(srv.Close)
-	imap := openIMAPSession(t, f, apiclient.New(srv.URL))
+	imap := openIMAPSession(t, f, f.gatewayClient(srv.URL, imapCN))
 	many := func(field string) string {
 		var b strings.Builder
 		for i := range 20 {
@@ -244,7 +243,7 @@ func TestAddressNamesReadTheSameEverywhere(t *testing.T) {
 	}
 	srv := httptest.NewServer(f.router)
 	t.Cleanup(srv.Close)
-	imap := openIMAPSession(t, f, apiclient.New(srv.URL))
+	imap := openIMAPSession(t, f, f.gatewayClient(srv.URL, imapCN))
 	const aSent = `"a" "example.com"`
 	one := func(name string) string { return `((` + name + ` NIL ` + aSent + `))` }
 	listed := func(name string) string { return fmt.Sprintf("{%q a@example.com}", name) }
@@ -329,7 +328,7 @@ func TestAddressFieldsKeepTheirAddressesPastAName(t *testing.T) {
 	}
 	srv := httptest.NewServer(f.router)
 	t.Cleanup(srv.Close)
-	imap := openIMAPSession(t, f, apiclient.New(srv.URL))
+	imap := openIMAPSession(t, f, f.gatewayClient(srv.URL, imapCN))
 	message := "From: =?x-none?Q?f?= <from@example.com>\r\nTo: =?x-none?Q?t?= <to@example.com>, chris@example.test\r\nCc: =?x-none?Q?c?= <cc@example.com>\r\n" +
 		"Subject: =?utf-7?Q?a+AAA-b?=\r\nDate: Thu, 02 Jan 2020 03:04:05 +0000\r\n\r\nbody\r\n"
 	payload, err := json.Marshal(map[string]any{"address": f.address, "sender": "sender@remote.test", "recipients_to": []string{f.address},

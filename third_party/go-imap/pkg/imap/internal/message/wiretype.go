@@ -67,6 +67,7 @@ func readContentFields(header string, keepFolded bool) (contentType, encoding st
 		}
 		field := after
 		folded := false
+		lost := 0
 		for ended {
 			spaces := 0
 			for spaces < len(field) && (field[spaces] == ' ' || field[spaces] == '\t') {
@@ -76,17 +77,19 @@ func readContentFields(header string, keepFolded bool) (contentType, encoding st
 				break
 			}
 			if spaces == len(field) {
-				// A continuation that never comes loses the field it continues.
-				return contentType, encoding
+				// An unfinished whitespace continuation contributes its unfolding space.
+				folded = true
+				field = ""
+				break
 			}
 			var next string
 			next, field, ended = cutHeaderLine(field[spaces:])
 			if !ended && lostHeaderLine(next) {
-				return contentType, encoding
+				lost = len(next)
 			}
 			folded = true
 		}
-		continuation := after[:len(after)-len(field)]
+		continuation := after[:len(after)-len(field)-lost]
 		line := trimHeaderSpace(first)
 		name, value, named := strings.Cut(line, ":")
 		switch {
@@ -99,7 +102,7 @@ func readContentFields(header string, keepFolded bool) (contentType, encoding st
 			if isType && !haveType || isEncoding && !haveEncoding {
 				if folded {
 					// The value and its lines lie side by side in the block.
-					spelled := rest[strings.IndexByte(rest, ':')+1 : len(rest)-len(field)]
+					spelled := rest[strings.IndexByte(rest, ':')+1 : len(rest)-len(field)-lost]
 					if keepFolded && isType {
 						value = strings.TrimRight(spelled, " \t\r\n")
 					} else {

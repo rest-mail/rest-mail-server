@@ -95,9 +95,13 @@ func TestFilesystemObjectsStoreManyWithOneBuffer(t *testing.T) {
 	// A reader with no WriteTo, as a part being decoded has none.
 	source := func(i int) io.Reader { return struct{ io.Reader }{strings.NewReader(fmt.Sprintf("part %d", i))} }
 	var before, after runtime.MemStats
-	runtime.ReadMemStats(&before)
+	var allocated uint64
 	for i := range parts {
-		ref, checksum, size, err := store.Put(context.Background(), source(i))
+		part := source(i)
+		runtime.ReadMemStats(&before)
+		ref, checksum, size, err := store.Put(context.Background(), part)
+		runtime.ReadMemStats(&after)
+		allocated += after.TotalAlloc - before.TotalAlloc
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -113,10 +117,9 @@ func TestFilesystemObjectsStoreManyWithOneBuffer(t *testing.T) {
 			t.Fatalf("part %d: %q %v", i, got, err)
 		}
 	}
-	runtime.ReadMemStats(&after)
-	// Each read back above costs its path and contents as well, so this is well over what a part costs
-	// and well under the 32 KiB a part's own buffer would be.
-	if each := (after.TotalAlloc - before.TotalAlloc) / parts; each > 8<<10 {
+	// Measure the store, not the path-resolution and read-back oracle, whose os.Root
+	// allocations vary by platform. Every part still gets its exact bytes and hash checked.
+	if each := allocated / parts; each > 8<<10 {
 		t.Fatalf("%d bytes a part", each)
 	}
 	broken := errors.New("broken")
