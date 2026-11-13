@@ -313,7 +313,8 @@ jobs:
     name: Failure issue
     needs: install
     if: always()
-    runs-on: antimatter-vps-linux-x64
+    # The failure reporter invokes gh, which the private runner does not provide.
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       contents: read
