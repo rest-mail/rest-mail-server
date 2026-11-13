@@ -125,6 +125,12 @@ func TestUnsubscribeTargetExamplesWithVertrag(t *testing.T) {
 						t.Fatalf("response and stored message differ: %s", response.Body.String())
 					}
 					assertExampleReceipt(t, data, stored.RawMessage, stored.SealedHash)
+					for field, size := range map[string]int{"imap_size": stored.IMAPSize, "imap_utf8_size": stored.IMAPUTF8Size, "pop3_utf8_size": stored.POP3UTF8Size} {
+						if data[field] != float64(size) {
+							t.Fatalf("%s = %v, stored %d", field, data[field], size)
+						}
+						data[field] = want["data"][field]
+					}
 					var delivery models.OutboundQueue
 					if err := f.db.First(&delivery).Error; err != nil || delivery.MessageID == nil || *delivery.MessageID != stored.ID || delivery.Recipient != "leave@news.example.com" ||
 						delivery.Sender != f.address || delivery.RawMessage != stored.RawMessage || !strings.Contains(delivery.RawMessage, "Subject: unsubscribe weekly news") {
