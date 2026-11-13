@@ -93,7 +93,7 @@ const pipelineRowRaw = "From: sender@sender.test\r\nTo: chris@example.test\r\nSu
 func pipelineRowDeliver(t *testing.T, fixture *credentialFixture, raw string, status int, stored int64) *httptest.ResponseRecorder {
 	t.Helper()
 	request := httptest.NewRequest(http.MethodPost, "/restmail/messages", strings.NewReader(string(pipelineRowJSON(t, map[string]any{
-		"from": "sender@sender.test", "to": []string{fixture.address}, "raw_message": raw,
+		"from": "sender@sender.test", "to": []string{fixture.address}, "raw_message": base64.StdEncoding.EncodeToString([]byte(raw)),
 	}))))
 	request.RemoteAddr = "127.0.0.1:12345"
 	request.Header.Set("Content-Type", "application/json")
