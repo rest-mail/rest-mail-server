@@ -35,11 +35,9 @@ func TestSMTPInboundStoresTextReadFromTheSource(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	port := free.Addr().(*net.TCPAddr).Port
-	_ = free.Close()
 	gateway := smtpgw.NewServer("mail.example.test", apiclient.New(srv.URL), nil,
 		smtpgw.NewStore(f.db, ""), connlimiter.New(connlimiter.Config{MaxPerIP: 100, MaxGlobal: 100}))
-	if err := gateway.ListenAndServe(smtpgw.SMTPPorts{Inbound: port}); err != nil {
+	if err := gateway.Serve(smtpgw.SMTPListeners{Inbound: free}); err != nil {
 		t.Fatalf("start the SMTP gateway: %v", err)
 	}
 	t.Cleanup(gateway.Shutdown)
