@@ -57,8 +57,40 @@ def requires_docker(job, root=ROOT, seen=None):
     return False
 
 
+def requires_github_cli(job, root=ROOT, seen=None):
+    seen = set() if seen is None else seen
+    for step in job.get("steps", []):
+        action = step.get("uses", "")
+        if action.startswith("./") and action not in seen:
+            seen.add(action)
+            for filename in ("action.yml", "action.yaml"):
+                path = root / action / filename
+                if path.is_file() and requires_github_cli(yaml.safe_load(path.read_text())["runs"], root, seen):
+                    return True
+        command = step.get("run", "")
+        if re.search(r"(?m)(?:^\s*(?:(?:if|then|exec|!)\s+)?|[;&|]\s*|[<$]\()gh(?:\s|$)", command):
+            return True
+        for filename in SCRIPT_PATH.findall(command):
+            path = root / filename
+            if not path.is_file() or filename in seen:
+                continue
+            seen.add(filename)
+            source = path.read_text()
+            if path.suffix == ".py":
+                for call in ast.walk(ast.parse(source)):
+                    if isinstance(call, ast.Call) and call.args:
+                        arguments = call.args[0]
+                        if isinstance(arguments, (ast.List, ast.Tuple)) and arguments.elts:
+                            first = arguments.elts[0]
+                            if isinstance(first, ast.Constant) and first.value == "gh":
+                                return True
+            elif requires_github_cli({"steps": [{"run": source}]}, root, seen):
+                return True
+    return False
+
+
 def requires_hosted_runner(job):
-    return requires_docker(job) or any(
+    return requires_docker(job) or requires_github_cli(job) or any(
         step.get("uses", "").startswith("actions/setup-node@")
         and "node-version-file" in step.get("with", {})
         for step in job.get("steps", [])
@@ -97,6 +129,19 @@ class PrivateRunnerRouting(unittest.TestCase):
         for job in jobs:
             with self.subTest(job=job):
                 self.assertTrue(requires_docker(job))
+
+    def test_github_cli_consumers_require_a_runner_that_provides_it(self):
+        commands = (
+            "gh pr view 1", "labels=$(gh pr view 1)",
+            "while read -r label; do true; done < <(gh pr view 1)",
+            "python3 scripts/contract_compat.py base.json head.json",
+        )
+        for command in commands:
+            with self.subTest(command=command):
+                job = {"steps": [{"run": command}]}
+                self.assertTrue(requires_github_cli(job))
+                self.assertTrue(requires_hosted_runner(job))
+        self.assertFalse(requires_github_cli({"steps": [{"run": "echo github"}]}))
 
     def test_package_selected_node_requires_the_hosted_runtime(self):
         job = {"steps": [{"uses": "actions/setup-node@pinned", "with": {"node-version-file": "webmail/package.json"}}]}

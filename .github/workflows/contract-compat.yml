@@ -20,7 +20,8 @@ permissions:
 jobs:
   newest-main:
     name: API compatibility with newest main
-    runs-on: antimatter-vps-linux-x64
+    # This job invokes gh, which the private runner does not provide.
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       # Full history: the squashed entries between main's tip and the group's

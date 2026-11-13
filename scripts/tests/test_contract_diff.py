@@ -443,6 +443,9 @@ class BranchPointStep(unittest.TestCase):
         self.assertIn("id: branch-point", step)
         self.assertIn("BASE_SHA: ${{ github.event.pull_request.base.sha || inputs.base-sha }}", step)
         self.assertIn("HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}", step)
+        verdict_scripts = workflow_step("Take the verdict scripts from the base tip")
+        self.assertIn("BASE_SHA: ${{ github.event.pull_request.base.sha || inputs.base-sha }}", verdict_scripts)
+        self.assertIn("HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}", verdict_scripts)
         base = workflow_step("Checkout the comparison base")
         self.assertIn("ref: ${{ steps.branch-point.outputs.sha }}", base)
         self.assertIn("path: .cache/contract-diff-base", base)
@@ -755,6 +758,15 @@ class VerdictScripts(unittest.TestCase):
     def assert_contract_label_required(self, result):
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
         self.assertEqual(self.git.report()["missing_labels"], ["contract-change"])
+
+    def test_a_failed_label_read_cannot_become_an_empty_label_set(self):
+        env = self.git.env_for("base", "base", "head")
+        github = self.git.temp / "bin/gh"
+        github.write_text("#!/bin/sh\nexit 17\n")
+        self.git.clone.mkdir()
+        result = self.git.run_step(run_block(workflow_step(VERDICT_STEP)), env)
+        self.assertEqual(result.returncode, 17, result.stdout + result.stderr)
+        self.assertFalse((self.git.temp / "contract-diff/changes.json").exists())
 
     def test_a_head_that_rewrites_the_script_does_not_decide_its_verdict(self):
         base_tip = self.base_with_gate()

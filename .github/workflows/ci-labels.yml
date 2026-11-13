@@ -24,7 +24,8 @@ jobs:
     name: Re-run the contract gate for its labels
     # Not a required check, so being skipped for other labels decides nothing.
     if: contains(fromJSON('["contract-change", "permission-change"]'), github.event.label.name)
-    runs-on: antimatter-vps-linux-x64
+    # This job invokes gh, which the private runner does not provide.
+    runs-on: ubuntu-latest
     timeout-minutes: 150
     permissions:
       actions: write
