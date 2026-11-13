@@ -80,10 +80,8 @@ func readContentFields(header string, keepFolded bool) (contentType, encoding st
 				break
 			}
 			if spaces == len(field) {
-				// An unfinished whitespace continuation contributes its unfolding space.
-				folded = true
-				field = ""
-				break
+				fields := entityHeader(header)
+				return fields.Get("Content-Type"), fields.Get("Content-Transfer-Encoding")
 			}
 			var next string
 			next, field, ended = cutHeaderLine(field[spaces:])
