@@ -68,7 +68,7 @@ class ContractRateLimits(unittest.TestCase):
         self.assertNotIn("time.sleep(0.55)", source)
         self.assertIn("time.sleep(int(retry_after))", source)
         self.assertIn("time.sleep(1)", source)
-        for name in ("mfa_admin.py", "api_keys_live.py", "owner_key.py"):
+        for name in ("mfa_admin.py", "api_keys_live.py", "owner_key.py", "coverage_target_hooks.py"):
             helper = (ROOT / "tests/contract" / name).read_text()
             self.assertIn("rate_limits.pace(1.1)", helper)
             self.assertNotIn("time.sleep(1.1)", helper)
