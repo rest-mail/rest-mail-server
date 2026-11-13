@@ -52,7 +52,8 @@ env:
 jobs:
   install:
     name: Install in kind
-    runs-on: antimatter-vps-linux-x64
+    # This job needs Docker; the rootless private runner has no daemon.
+    runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
       - name: Checkout code

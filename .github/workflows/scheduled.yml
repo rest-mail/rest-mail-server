@@ -75,7 +75,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: "22"
+          node-version-file: ${{ matrix.app }}/package.json
 
       - name: Enable pnpm
         run: corepack enable pnpm
@@ -255,7 +255,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: "22"
+          node-version-file: scripts/email-explained/package.json
 
       - name: Install dependencies
         working-directory: scripts/email-explained
