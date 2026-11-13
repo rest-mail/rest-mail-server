@@ -301,7 +301,7 @@ class ArchiveCacheTests(unittest.TestCase):
                     if 'git show "$BASE_SHA:$path" > "$path"' in step.get("run", ""):
                         self.assertEqual(
                             step["env"]["BASE_SHA"],
-                            "${{ github.event.pull_request.base.sha }}",
+                            "${{ github.event.pull_request.base.sha || inputs.base-sha }}",
                         )
                         for path in (
                             ".github/actions/cache-pinned-tool/action.yml",

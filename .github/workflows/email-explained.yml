@@ -87,8 +87,7 @@ jobs:
     needs: preflight
     name: Publish the guide's bundle
     if: github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != '')
-    # This job needs Docker; the rootless private runner has no daemon.
-    runs-on: ubuntu-latest
+    runs-on: antimatter-vps-linux-x64
     defaults:
       run:
         working-directory: scripts/email-explained

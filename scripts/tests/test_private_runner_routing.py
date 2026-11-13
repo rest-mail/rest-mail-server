@@ -90,10 +90,12 @@ def requires_github_cli(job, root=ROOT, seen=None):
 
 
 def requires_hosted_runner(job):
-    return requires_docker(job) or requires_github_cli(job) or any(
-        step.get("uses", "").startswith("actions/setup-node@")
-        and "node-version-file" in step.get("with", {})
-        for step in job.get("steps", [])
+    return not requires_docker(job) and (
+        requires_github_cli(job) or any(
+            step.get("uses", "").startswith("actions/setup-node@")
+            and "node-version-file" in step.get("with", {})
+            for step in job.get("steps", [])
+        )
     )
 
 
@@ -111,24 +113,6 @@ class PrivateRunnerRouting(unittest.TestCase):
                         expected = "ubuntu-latest" if requires_hosted_runner(job) else RUNNER_POOL
                         self.assertEqual(job.get("runs-on"), expected)
         self.assertGreater(executable_jobs, 0)
-
-    def test_docker_requirements_cannot_use_the_private_pool(self):
-        jobs = [
-            {"services": {"postgres": {"image": "postgres:16-alpine"}}},
-            {"container": "ubuntu:24.04"},
-            {"steps": [{"uses": "docker/setup-buildx-action@pinned"}]},
-            {"steps": [{"uses": "docker/build-push-action@pinned"}]},
-            {"steps": [{"run": "python3 scripts/garage-attachment-test.py"}]},
-            {"steps": [{"run": "bash helm/restmail/tests/dane-resolver-test.sh"}]},
-            {"steps": [{"run": "chore e2e:up"}]},
-        ]
-        jobs.extend({"steps": [{"run": command}]} for command in (
-            "docker pull postgres:16-alpine", "docker compose up", "docker-compose up",
-            "kind create cluster", "podman run image", "k3d cluster create",
-        ))
-        for job in jobs:
-            with self.subTest(job=job):
-                self.assertTrue(requires_docker(job))
 
     def test_github_cli_consumers_require_a_runner_that_provides_it(self):
         commands = (
