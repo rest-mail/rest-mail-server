@@ -19,12 +19,6 @@ import (
 
 const utf8Raw = "From: Jörg <joerg@bücher.example>\r\nSubject: Grüße\r\n\r\nHallo, Jörg.\r\n"
 
-// utf8API answers the calls a POP3 session makes for one account whose INBOX
-// holds one message with raw UTF-8 headers.
-func utf8API(t *testing.T) *apiclient.Client {
-	return storeAPI(t, utf8Raw)
-}
-
 func storeAPI(t *testing.T, raw string) *apiclient.Client {
 	t.Helper()
 	mux := http.NewServeMux()
