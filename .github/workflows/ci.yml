@@ -1322,7 +1322,9 @@ jobs:
           node-version-file: webmail/package.json
 
       - name: Enable pnpm
-        run: corepack enable pnpm
+        run: |
+          npm install --global corepack@0.34.7
+          corepack enable pnpm
 
       - name: Enable pnpm
         run: |
@@ -1379,7 +1381,9 @@ jobs:
           node-version-file: admin/package.json
 
       - name: Enable pnpm
-        run: corepack enable pnpm
+        run: |
+          npm install --global corepack@0.34.7
+          corepack enable pnpm
 
       - name: Enable pnpm
         run: |

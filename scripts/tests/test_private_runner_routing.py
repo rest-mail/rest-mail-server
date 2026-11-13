@@ -57,6 +57,14 @@ def requires_docker(job, root=ROOT, seen=None):
     return False
 
 
+def requires_hosted_runner(job):
+    return requires_docker(job) or any(
+        step.get("uses", "").startswith("actions/setup-node@")
+        and "node-version-file" in step.get("with", {})
+        for step in job.get("steps", [])
+    )
+
+
 class PrivateRunnerRouting(unittest.TestCase):
     def test_every_executable_job_uses_a_capable_runner(self):
         executable_jobs = 0
@@ -68,7 +76,7 @@ class PrivateRunnerRouting(unittest.TestCase):
                         self.assertNotIn("runs-on", job)
                     else:
                         executable_jobs += 1
-                        expected = "ubuntu-latest" if requires_docker(job) else RUNNER_POOL
+                        expected = "ubuntu-latest" if requires_hosted_runner(job) else RUNNER_POOL
                         self.assertEqual(job.get("runs-on"), expected)
         self.assertGreater(executable_jobs, 0)
 
@@ -89,6 +97,12 @@ class PrivateRunnerRouting(unittest.TestCase):
         for job in jobs:
             with self.subTest(job=job):
                 self.assertTrue(requires_docker(job))
+
+    def test_package_selected_node_requires_the_hosted_runtime(self):
+        job = {"steps": [{"uses": "actions/setup-node@pinned", "with": {"node-version-file": "webmail/package.json"}}]}
+        self.assertFalse(requires_docker(job))
+        self.assertTrue(requires_hosted_runner(job))
+        self.assertFalse(requires_hosted_runner({"steps": [{"run": "go build ./..."}]}))
 
     def test_local_actions_carry_their_docker_requirement_to_the_job(self):
         for runs in (
@@ -151,7 +165,7 @@ class PrivateRunnerRouting(unittest.TestCase):
         self.assertEqual(steps[0]["with"]["python-version"], "3.13")
         self.assertEqual(
             steps[1]["run"],
-            "python3 -m pip install --disable-pip-version-check PyYAML==6.0.3 idna==3.11",
+            "python3 -m pip install --disable-pip-version-check PyYAML==6.0.3 idna==3.11 'jsonschema[format]' requests",
         )
         self.assertEqual(steps[1]["shell"], "bash")
 
@@ -172,4 +186,5 @@ class PrivateRunnerRouting(unittest.TestCase):
                         ]
                         self.assertEqual(len(setup), 1)
                         self.assertIn("node-version-file", setup[0]["with"])
+                        self.assertIn("npm install --global corepack@0.34.7", step["run"])
         self.assertEqual(consumers, 3)
