@@ -176,11 +176,7 @@ func TestCopyReadOnlyAndNames(t *testing.T) {
 				requireOK(t, tagged, "S1")
 				lines, tagged := c.command("C1", "%s %s", prefix, dest)
 				requireOK(t, tagged, "C1")
-				if dest == "iNbOx" {
-					requireExactly(t, lines, "* 4 EXISTS")
-				} else {
-					requireExactly(t, lines)
-				}
+				requireExactly(t, lines)
 				want := "INBOX"
 				if strings.HasPrefix(dest, `"`) {
 					want = "Project Archive"

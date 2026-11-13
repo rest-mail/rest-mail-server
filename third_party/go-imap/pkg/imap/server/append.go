@@ -373,11 +373,12 @@ func (s *Session) notifyAppendToSelected(folder string) {
 		}
 	}
 	s.announceKeywords(messages)
-	s.send("* %d EXISTS", len(messages))
+	// An APPEND the store answered with a message already there adds nothing, so the
+	// count stays and no EXISTS is due.
+	if s.selected.total != int64(len(messages)) {
+		s.send("* %d EXISTS", len(messages))
+	}
 	s.noteArrivals(messages)
 	s.messages = messages
-	if s.selected.total == int64(len(messages)) {
-		return
-	}
 	s.selected.total = int64(len(messages))
 }
