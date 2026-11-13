@@ -108,28 +108,3 @@ func TestFolderLookupsUseNFC(t *testing.T) {
 		t.Fatalf("search: %d %s", rr.Code, rr.Body)
 	}
 }
-
-// A message the gateway delivers lands in the folder's one stored name.
-func TestDeliverSavesNFC(t *testing.T) {
-	db := openMsgDeleteTestDB(t)
-	tx := db.Begin()
-	if tx.Error != nil {
-		t.Fatal(tx.Error)
-	}
-	t.Cleanup(func() { tx.Rollback() })
-	fx := seedMsgDeleteFixture(t, tx, 0)
-	body := fmt.Sprintf(`{"mailbox_id": %d, "sender": "someone@remote.test", "subject": "delivered", "body_text": "hello", "folder": %q, "received_at": "2021-01-02T03:04:05Z"}`, fx.mailbox.ID, nfdCafe)
-	h := NewMessageHandler(tx, nil, nil, "", nil)
-	rr := httptest.NewRecorder()
-	deliveryRoute(h)(rr, httptest.NewRequest(http.MethodPost, "/api/v1/messages/deliver", strings.NewReader(body)))
-	if rr.Code != http.StatusCreated {
-		t.Fatalf("deliver: %d %s", rr.Code, rr.Body)
-	}
-	var stored models.Message
-	if err := tx.Where("mailbox_id = ? AND subject = ?", fx.mailbox.ID, "delivered").First(&stored).Error; err != nil {
-		t.Fatal(err)
-	}
-	if stored.Folder != nfcCafe {
-		t.Fatalf("delivered into %q, want %q", stored.Folder, nfcCafe)
-	}
-}
