@@ -1012,7 +1012,7 @@ class Stages:
         peer_domain = peer_admin.split("@", 1)[1]
         # Like the first install's (domain-live), the peer's domain starts not
         # live, and it would refuse the mailbox below as unknown.
-        put_domain_live(peer_api, peer_token, peer, peer_domain)
+        put_domain_live(peer_api, peer_token, peer_domain)
         mailbox, password = f"cluster-e2e@{peer_domain}", secrets.token_urlsafe(18)
         peer_api.expect(201, "POST", "/api/v1/accounts",
                         {"address": mailbox, "password": password, "display_name": "Cluster E2E peer"}, peer_token)

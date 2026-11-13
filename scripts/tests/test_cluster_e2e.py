@@ -855,9 +855,23 @@ class RestmailPeerTests(unittest.TestCase):
     def test_the_peers_domain_goes_live_before_anything_is_sent_to_it(self):
         import inspect
         source = inspect.getsource(cluster_e2e.Stages.restmail_peer)
-        live = source.index("put_domain_live(peer_api, peer_token, peer, peer_domain)")
+        live = source.index("put_domain_live(peer_api, peer_token, peer_domain)")
         self.assertLess(source.index("bootstrap_session(peer_api, peer)"), live)
         self.assertLess(live, source.index('"/api/v1/messages/send"'))
+
+    def test_peer_domain_live_uses_the_current_domain_certificate_helper(self):
+        args = cluster_e2e.parse_args(["--commit", "c", "--peer-namespace", "peer"])
+        stage = cluster_e2e.Stages(args, cluster=unittest.mock.Mock())
+        stage.state.update(token="t", admin="admin@restmail-ci.test")
+        with patch.object(cluster_e2e, "Cluster"), \
+                patch.object(cluster_e2e, "Api") as api, \
+                patch.object(cluster_e2e, "wait_for"), \
+                patch.object(cluster_e2e, "bootstrap_session", return_value=("peer-token", "admin@peer.test")), \
+                patch.object(cluster_e2e, "put_domain_live", autospec=True) as live:
+            api.return_value.expect.side_effect = cluster_e2e.StepFailed("mailbox creation reached")
+            with self.assertRaisesRegex(cluster_e2e.StepFailed, "mailbox creation reached"):
+                stage.restmail_peer()
+            live.assert_called_once_with(api.return_value, "peer-token", "peer.test")
 
     def test_the_new_steps_run_in_order_after_the_mail_they_check(self):
         steps = list(cluster_e2e.STEPS)
