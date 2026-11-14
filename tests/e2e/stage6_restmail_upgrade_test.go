@@ -1,6 +1,7 @@
 package e2e
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -74,7 +75,7 @@ func testStage6RestmailUpgrade(t *testing.T) {
 			"to":          []string{"other@restmail.test"},
 			"subject":     subject,
 			"body_text":   "Direct REST delivery test",
-			"raw_message": raw,
+			"raw_message": base64.StdEncoding.EncodeToString([]byte(raw)),
 		})
 		resp, err := httpClient.Post(apiBaseURL+"/restmail/messages",
 			"application/json", strings.NewReader(string(reqBody)))

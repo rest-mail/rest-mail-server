@@ -130,9 +130,74 @@ keeps upstream behaviour.
     or quoted-printable keeps that encoding, so nothing is encoded twice.
   - After `ENABLE UTF8=ACCEPT`, valid UTF-8 stays in headers and in text naming no
     charset, whose default there is UTF-8 (RFC 6532 §3).
-  - ENVELOPE reads the unconverted header, as before, because an address with an
-    8-bit mailbox has no 7-bit form. It and BODYSTRUCTURE still send a string
-    decoded from an encoded word or RFC 2231 value as a literal.
+  - ENVELOPE and BODYSTRUCTURE read the converted message, for
+    rest-mail/rest-mail-server#1882, because those strings have nowhere to name a
+    charset (RFC 3501 §4.3.1). Without UTF-8, a string a decoder produced (a name
+    from an encoded word, a parameter from RFC 2231) goes out as encoded words,
+    even a parameter, since the rule against that (RFC 2047 §5) is about message
+    headers and an IMAP string can hold nothing else. An address with an 8-bit
+    mailbox has no 7-bit form, so it is left out of its field, which reads NIL when
+    none remains, at the top of a message and in an encapsulated one alike. After `ENABLE UTF8=ACCEPT`, valid
+    UTF-8 goes out as a literal, as before.
+  - An address name in a charset go-imap has no reader for stays the encoded word
+    it was sent as, in either session, for rest-mail/rest-mail-server#1885. It
+    already names its charset, so no byte is guessed, and the address stays. The
+    module has no dependencies, so that is every charset but UTF-8, US-ASCII and
+    ISO-8859-1. This relies on `net/mail` keeping a word whose charset reader
+    fails on read, which the session tests would catch if it changed.
+  - An RFC 2231 parameter in such a charset gets the same treatment, for
+    rest-mail/rest-mail-server#1886, and go-imap reads these parameters itself
+    because `mime.ParseMediaType` drops them. The value goes out as one encoded word
+    naming the charset, in either session, however long, because go-imap can't tell
+    where a character of that charset ends and a word may not split one (RFC 2047
+    §5). That outranks the 75-character limit (§2). A boundary or a charset name
+    that is ASCII stays plain text, because the structure depends on it.
+  - Converting a Content-Type or Content-Disposition field changes only the
+    parameter holding an 8-bit octet, and the field is otherwise as it was sent.
+    A plain 8-bit value beside an extended form of the same parameter becomes encoded
+    words in its quoted-string, against RFC 2047 §5, because a second extended form
+    would make the field unreadable. Readers take the extended form.
+  - A Content-Type or Content-Disposition holding an 8-bit octet is read without
+    refusing it, for rest-mail/rest-mail-server#1890 and #1894, because
+    `mime.ParseMediaType` refuses the whole field and the entity would read as
+    `text/plain`. `readField` splits it at each `;` outside a quoted-string or comment
+    that closes, in time linear in the field. A `"` or `(` that never closes and a
+    stray `)` are text. A value runs from its first character that isn't white space
+    or a comment to its last, so a comment with value text on both sides is that text,
+    and one around the value is still a comment. A field with no 8-bit octet keeps the
+    strict reading (IMAP-BS-21, IMAP-BS-23, IMAP-CDP-03).
+  - RFC 2045 has no spelling for an 8-bit parameter name, and neither RFC 2231 nor an
+    encoded word reaches one, so it goes out as a token with `%XX`, as in
+    `n%C3%A4me=x`. BODYSTRUCTURE reads that too, or the UTF-8 name after UTF8=ACCEPT.
+    Conversion rewrites a 7-bit parameter only when the 7-bit result couldn't be read
+    otherwise, because such a field no longer gets the lenient reading: a malformed
+    value becomes a quoted-string. A repeated name, and an unbalanced delimiter after
+    the type, go in a comment as an encoded word, because a second value would make
+    the field unreadable.
+  - A boundary is octets that delimiter lines match, so `keptValue` no longer decodes
+    an 8-bit one, whatever charset its RFC 2231 form names. `wireMultipart` gives the
+    header and every delimiter line one spelling for a boundary that can't go out as
+    stored, for rest-mail/rest-mail-server#1893: each octet outside RFC 2046 §5.1.1's
+    characters is `=XX`, in at most 70 characters. That spelling, or a 7-bit boundary
+    conversion would make collide, takes a suffix hashed from the converted body when
+    a line there would otherwise match, so the parts stay where the stored message has
+    them, and every FETCH and size measurement gets the same octets.
+  - `parseMediaType` keeps a continued parameter with no first segment, for
+    rest-mail/rest-mail-server#1897, where `mime.ParseMediaType` and `extendedValue`
+    both stop at a missing `*0`. `laterSegments` joins what came in segment order, with
+    no charset, since only a first segment can name one (RFC 2231 §4.1). A plain value
+    of the same name stands instead, and a multipart's boundary stays absent, because
+    delimiter lines match a whole value (IMAP-BS-11).
+  - `SevenBitBoundary` is new and exported through `wireform`, for the same issue. FETCH
+    doesn't use it. It gives a host that sends the body as stored, as a POP3 server does,
+    what `wireMultipart` gives FETCH for a top-level 8-bit boundary: one spelling in
+    Content-Type and on the delimiter lines. Other octets stay. It adds no dependency.
+
+- SEARCH decodes a header one encoded word at a time, for
+  rest-mail/rest-mail-server#1887, rather than through
+  `mime.WordDecoder.DecodeHeader`, which gives up on the whole header at a charset
+  with no reader. It finds each word's bounds itself to do that: a word no longer
+  spans lines, and a word it can't decode ends at white space.
 
 ## RFC 9051 additions
 
@@ -273,3 +338,29 @@ fields and one call after authentication.
 ## Consolidated protocol parameter fixes
 
 `parseMediaType` preserves repeated names, discontinuous RFC 2231 values, and non-continuation stars from source PR #1903 (`bb89fac36672623ff761b91e1f86fd950ce54bf3`). The shared parameter scanner is carried from #2111 as a prerequisite; this branch does not import its ENVELOPE or session-aware BODYSTRUCTURE conversion. Parameter tests retain the current counted-literal transport policy while checking the preserved values.
+
+## FETCH sends a space for a NUL instead of refusing the message
+
+RFC 3501 §9 leaves NUL out of CHAR8, so FETCH used to answer `NO` for a message
+holding one in a header or in text, and a range stopped there. SMTP can deliver such
+a message, so one sender could stop an IMAP client reading the mailbox. The owner
+chose on rest-mail/rest-mail-server#1921 to send a space instead:
+
+- A NUL in a header or a textual leaf goes out as a space, one octet for one, and so
+  does one decoded into an ENVELOPE or BODYSTRUCTURE string. In an 8-bit field the
+  space comes first, so no encoded word spells the NUL.
+- A NUL in a multipart's boundary can't be a space, which could end the boundary or
+  spell another line, so the field and the delimiter lines take the 7-bit spelling an
+  8-bit boundary gets (`wireBoundary`).
+- Where a NUL is data, a space would corrupt it, so it is encoded. That covers
+  non-textual leaves, an encoding nobody can remove, and text in a charset with NUL
+  octets (`utf-16`, `utf-32`, `ucs-2`, `ucs-4`).
+- `BINARY[]` and `BINARY[n]` still send the stored octets, as a literal8 when they
+  hold a NUL. The stored message never changes.
+- An encoding that spells a NUL (`=00`, `%00`, base64) in what is sent stays as it
+  is, since no NUL octet goes out. ENVELOPE and BODYSTRUCTURE are the exception,
+  because the engine decodes those strings itself.
+
+`wireform.SpaceNUL` is the same rule for a host whose protocol has neither BINARY nor
+this conversion, so data stays exact there rather than encoded.
+`TestFetchRejectsNUL` became `TestFetchReplacesNUL`.

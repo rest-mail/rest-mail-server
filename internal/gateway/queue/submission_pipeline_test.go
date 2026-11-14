@@ -32,10 +32,10 @@ func captureRESTMAILServer(t *testing.T, gotRaw *string, gotTo *[]string) *httpt
 		body, _ := io.ReadAll(r.Body)
 		var payload struct {
 			To         []string `json:"to"`
-			RawMessage string   `json:"raw_message"`
+			RawMessage []byte   `json:"raw_message"`
 		}
 		_ = json.Unmarshal(body, &payload)
-		*gotRaw = payload.RawMessage
+		*gotRaw = string(payload.RawMessage)
 		*gotTo = payload.To
 		w.WriteHeader(http.StatusOK)
 	}))

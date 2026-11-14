@@ -310,7 +310,7 @@ func TestFetchBinaryKeepsStoredOctets(t *testing.T) {
 	}
 
 	// Binary data holding a NUL can be sent now that it is encoded, and BINARY
-	// sends it as a literal8. NUL in a header or in text stays refused
+	// sends it as a literal8. A NUL in a header or in text goes out as a space
 	// (IMAP-ENV-12).
 	box := sevenBitBox("Content-Type: application/octet-stream\r\nContent-Transfer-Encoding: binary\r\n\r\na\x00b\r\n")
 	nul := fetchClient(t, box, "EXAMINE")

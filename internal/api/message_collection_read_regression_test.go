@@ -56,7 +56,7 @@ func (c messageCollectionReadConnection) QueryContext(ctx context.Context, query
 	if id == "4" {
 		return nil, errors.New("private message collection detail")
 	}
-	columns := []string{"id", "mailbox_id", "folder", "message_id", "in_reply_to", "references", "thread_id", "sender", "sender_name", "recipients_to", "recipients_cc", "subject", "body_text", "body_html", "headers", "calendar_events", "size_bytes", "raw_size", "received_tls", "tls_version", "has_attachments", "is_read", "is_dsn", "is_flagged", "is_starred", "is_draft", "is_deleted", "received_at", "date_header", "created_at", "updated_at", "raw_message", "require_tls"}
+	columns := []string{"id", "mailbox_id", "folder", "message_id", "in_reply_to", "references", "thread_id", "sender", "sender_name", "recipients_to", "recipients_cc", "subject", "body_text", "body_html", "headers", "calendar_events", "size_bytes", "raw_size", "imap_size", "imap_utf8_size", "received_tls", "tls_version", "has_attachments", "is_read", "is_dsn", "is_flagged", "is_starred", "is_draft", "is_deleted", "received_at", "date_header", "created_at", "updated_at", "raw_message", "require_tls"}
 	r := &authReadSnapshotRows{columns: columns}
 	if id == "2" || target == "Unknown" || target == "unknown-thread" {
 		return r, nil
@@ -137,7 +137,7 @@ func (c messageCollectionReadConnection) QueryContext(ctx context.Context, query
 			read = true
 			dsn = true
 		}
-		r.rows = append(r.rows, []driver.Value{messageID, mailbox, folder, fmt.Sprintf("<message-%d@example.net>", messageID), "<parent@example.net>", "<parent@example.net>", "thread/2026@example.net", "sender@example.net", "Sender café", to, cc, "Subject café", body, html, headers, events, int64(80), int64(128), encrypted, tlsVersion, attachments, read, dsn, flagged, starred, false, false, received, date, stamp, stamp, "private-raw-message-sentinel", true})
+		r.rows = append(r.rows, []driver.Value{messageID, mailbox, folder, fmt.Sprintf("<message-%d@example.net>", messageID), "<parent@example.net>", "<parent@example.net>", "thread/2026@example.net", "sender@example.net", "Sender café", to, cc, "Subject café", body, html, headers, events, int64(80), int64(128), int64(128), int64(128), encrypted, tlsVersion, attachments, read, dsn, flagged, starred, false, false, received, date, stamp, stamp, "private-raw-message-sentinel", true})
 	}
 	return r, nil
 }

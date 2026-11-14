@@ -34,7 +34,7 @@ func messageOf(m models.Message) Message {
 		loaded := mailboxOf(m.Mailbox)
 		mailbox = &loaded
 	}
-	authResults, authed := pipeline.ParseStoredAuthResults(m.RawMessage)
+	authResults, authed := pipeline.ParseStoredAuthResults(m.SourceText())
 	authVerdict := ""
 	if authed {
 		authVerdict = pipeline.AuthVerdict(authResults)

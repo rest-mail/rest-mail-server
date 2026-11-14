@@ -32,7 +32,7 @@ func TestRetrieve_DowngradesUTF8Headers(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Retrieve: %v", err)
 	}
-	want := "From: =?utf-8?q?J=C3=B6rg?= <joerg@xn--bcher-kva.example>\r\n" +
+	want := "From: =?UTF-8?Q?J=C3=B6rg?= <joerg@xn--bcher-kva.example>\r\n" +
 		"Subject: =?utf-8?q?Gr=C3=BC=C3=9Fe?=\r\n\r\nHallo, Jörg.\r\n"
 	if string(got) != want {
 		t.Fatalf("Retrieve served:\n%q\nwant\n%q", got, want)
@@ -44,7 +44,7 @@ func TestRetrieve_DowngradesUTF8Headers(t *testing.T) {
 // told the downgraded size, one that did is told the stored size.
 func TestMessages_SizeCountsDowngradedOctets(t *testing.T) {
 	const raw = "From: Jörg <joerg@bücher.example>\r\nSubject: Grüße\r\n\r\nHallo, Jörg.\r\n"
-	downgraded := rawmsg.Downgrade(raw)
+	downgraded := rawmsg.DowngradeForPOP3(raw)
 	list := fmt.Sprintf(`{"data":[{"id":7,"raw_size":%d,"downgraded_size":%d}]}`, len(raw), len(downgraded))
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/accounts/0/folders/INBOX/messages", func(w http.ResponseWriter, r *http.Request) {

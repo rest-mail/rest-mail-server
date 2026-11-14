@@ -80,6 +80,57 @@ func TestWireForm_HeaderConversionIsLinear(t *testing.T) {
 	}
 }
 
+// sevenBitBoundaryHead and sevenBitBoundaryUnits are what POP3 adds to a downgrade: many
+// delimiter lines, lines that only look like one, lines holding the new spelling, bare
+// LFs, and delimiters with no line to stand on.
+const sevenBitBoundaryHead = "Content-Type: multipart/mixed; boundary=\"\xf6\"\r\n\r\n"
+
+var sevenBitBoundaryUnits = map[string]string{
+	"delimiters":      "--\xf6\r\n\r\nx\r\n",
+	"near misses":     "--\xf6x\r\n",
+	"new spelling":    "--=F6\r\n",
+	"bare line feeds": "--\xf6\nx\n",
+	"no line breaks":  "--\xf6",
+}
+
+func TestSevenBitBoundary_IsLinear(t *testing.T) {
+	for name, unit := range sevenBitBoundaryUnits {
+		t.Run(name, func(t *testing.T) {
+			assertLinear(t, func(size int) string { return sevenBitBoundaryHead + repeated(unit, size) }, func(raw string) { SevenBitBoundary(raw) })
+		})
+	}
+}
+
+// TestSevenBitBoundary_ScansInProportion counts the octets a rewrite looks at. Searching
+// the body again from each delimiter would allocate nothing and look at all of it each
+// time, which assertLinear can't see.
+func TestSevenBitBoundary_ScansInProportion(t *testing.T) {
+	const size = 32 << 10
+	for name, unit := range sevenBitBoundaryUnits {
+		t.Run(name, func(t *testing.T) {
+			raw := sevenBitBoundaryHead + repeated(unit, size)
+			var scan boundaryScan
+			scan.sevenBitBoundary(raw)
+			if low, limit := len(raw)/2, 6*len(raw); scan.steps < low || scan.steps > limit {
+				t.Errorf("rewrite took %d steps over %d octets, want %d to %d", scan.steps, len(raw), low, limit)
+			}
+		})
+	}
+}
+
+// TestParameterWithoutFirstSegment_IsLinear: laterSegments sorts each parameter's
+// segments once, and looks at nothing else.
+func TestParameterWithoutFirstSegment_IsLinear(t *testing.T) {
+	assertLinear(t, func(size int) string {
+		var b strings.Builder
+		b.WriteString("Content-Type: application/pdf; a=\xf6")
+		for n := 1; b.Len() < size; n++ {
+			b.WriteString("; name*" + strconv.Itoa(n) + "=x")
+		}
+		return b.String() + "\r\n\r\nbody\r\n"
+	}, func(raw string) { WireForm(raw, false) })
+}
+
 // TestParameterField_IsLinear covers what a downgrade reaches without WireForm.
 func TestParameterField_IsLinear(t *testing.T) {
 	assertLinear(t, func(size int) string {
@@ -311,5 +362,68 @@ func TestCommentPairs(t *testing.T) {
 	}
 	if _, ok := commentClosers("no comments").closer(0); ok {
 		t.Error("a value with no comments has a closer")
+	}
+}
+
+// TestEntityHeader_SharesItsBuffer: net/mail allocates a 4 KiB buffer per read unless
+// it is given one, which a message of many small parts would pay for each part.
+func TestEntityHeader_SharesItsBuffer(t *testing.T) {
+	const reads, wholeBuffer = 200, 4096
+	entityHeader("Content-Type: text/plain\r\n\r\n")
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	for range reads {
+		if entityHeader("Content-Type: text/plain\r\n\r\n").Get("Content-Type") != "text/plain" {
+			t.Fatal("header not read")
+		}
+	}
+	runtime.ReadMemStats(&after)
+	if each := (after.TotalAlloc - before.TotalAlloc) / reads; each >= wholeBuffer*3/4 {
+		t.Errorf("each read allocated %d bytes, want well under the %d of a buffer", each, wholeBuffer)
+	}
+}
+
+// TestNULReplacement_HoldsNoCopy: a space for a NUL is written where the NUL was, so
+// measuring text full of them holds nothing that grows with it, and SpaceNUL builds the
+// message once (#1437).
+func TestNULReplacement_HoldsNoCopy(t *testing.T) {
+	const size = 1 << 20
+	text := "Content-Type: text/plain; charset=utf-8\r\n\r\n" + repeated("a\x00", size) + "\r\n"
+	if got := bytesAllocated(text, func(raw string) { WireFormSize(raw, false) }); got > 64<<10 {
+		t.Errorf("measuring %d bytes of text allocated %d", len(text), got)
+	}
+	if got := bytesAllocated(text, func(raw string) { SpaceNUL(raw) }); got > uint64(len(text))+64<<10 {
+		t.Errorf("SpaceNUL of %d bytes allocated %d", len(text), got)
+	}
+	data := "Content-Type: application/pdf\r\nContent-Transfer-Encoding: binary\r\n\r\n" + repeated("a\x00", size) + "\r\n"
+	if got := bytesAllocated(data, func(raw string) { WireFormSize(raw, false) }); got > 64<<10 {
+		t.Errorf("measuring %d bytes of data allocated %d", len(data), got)
+	}
+	if got := bytesAllocated(data, func(raw string) { SpaceNUL(raw) }); got > uint64(len(data))+64<<10 {
+		t.Errorf("SpaceNUL of %d bytes of data allocated %d", len(data), got)
+	}
+}
+
+// TestNULReplacement_IsLinear covers the shapes that go through a copy of a field: an
+// 8-bit field holding NULs, many of them, and many parts.
+func TestNULReplacement_IsLinear(t *testing.T) {
+	field := func(prefix, unit string) func(int) string {
+		return func(size int) string { return prefix + repeated(unit, size) + "\r\n\r\nbody\r\n" }
+	}
+	cases := map[string]func(int) string{
+		"8-bit field":       field("Subject: \xf6 ", "\x00"),
+		"7-bit field":       field("Subject: ", "\x00"),
+		"many fields":       field("", "Subject: \xf6\x00\r\n"),
+		"8-bit parameter":   field("Content-Type: text/plain; a=\"\xf6", "\x00"),
+		"encoded body type": field("Content-Type: application/pdf\r\nX-Other: \x00", "\r\n y\x00"),
+		"many parts": func(size int) string {
+			return "Content-Type: multipart/mixed; boundary=b\r\n\r\n" + repeated("--b\r\nSubject: \x00\r\n\r\n\x00\r\n", size) + "--b--\r\n"
+		},
+	}
+	for name, input := range cases {
+		t.Run(name, func(t *testing.T) {
+			assertLinear(t, input, func(raw string) { WireForm(raw, false) })
+			assertLinear(t, input, func(raw string) { SpaceNUL(raw) })
+		})
 	}
 }

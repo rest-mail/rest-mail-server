@@ -23,7 +23,7 @@ func TestEnvelopeGroups(t *testing.T) {
 		{name: "nested comments", header: `Team (outer (inner : , ;) \) tail): a@example.com; (end)`, list: `((NIL NIL "Team" NIL)(NIL NIL "a" "example.com")(NIL NIL NIL NIL))`},
 		{name: "domain literal", header: `Team: x@[127.0.0.1];`, list: `((NIL NIL "Team" NIL)(NIL NIL "x" "[127.0.0.1]")(NIL NIL NIL NIL))`},
 		{name: "colon without group", header: `"a:b" <x@[127.0.0.1]>`, list: `(("a:b" NIL "x" "[127.0.0.1]"))`},
-		{name: "encoded group name", header: "=?utf-8?Q?caf=C3=A9?=:;", list: `((NIL NIL {5} NIL)(NIL NIL NIL NIL))`, literals: []string{"café"}},
+		{name: "encoded group name", header: "=?utf-8?Q?caf=C3=A9?=:;", list: `((NIL NIL "=?UTF-8?Q?caf=C3=A9?=" NIL)(NIL NIL NIL NIL))`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			for _, field := range []string{"To", "Cc", "Bcc"} {

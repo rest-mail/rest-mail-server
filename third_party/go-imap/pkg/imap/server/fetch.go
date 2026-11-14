@@ -78,14 +78,13 @@ func (s *Session) fetchResponse(seq int, msg imap.Message, tokens []string) erro
 	}
 	// loadSent is the message as this response sends it (RFC 3501 §7.4.2): every
 	// section, partial offset and described size is taken from these octets. Only
-	// BINARY reads the stored ones (RFC 3516). A NUL that conversion left behind,
-	// in a header or in text, cannot be sent at all.
+	// BINARY reads the stored ones (RFC 3516). The conversion leaves no NUL, so one
+	// message can't stop a FETCH of a range.
 	loadSent := func() (string, bool) {
 		if !sentLoaded {
 			sentLoaded = true
 			if raw, ok := loadStored(); ok {
-				sent = message.WireForm(raw, s.utf8)
-				sentOK = strings.IndexByte(sent, 0) < 0
+				sent, sentOK = message.WireForm(raw, s.utf8), true
 			}
 		}
 		return sent, sentOK
@@ -119,25 +118,22 @@ func (s *Session) fetchResponse(seq int, msg imap.Message, tokens []string) erro
 			plain = append(plain, fmt.Sprintf("INTERNALDATE %q", msg.Date.Format("02-Jan-2006 15:04:05 -0700")))
 		case up == "ENVELOPE":
 			// ENVELOPE's recipient/reference fields and its date come from the
-			// message's own headers (RFC 3501 §7.4.2), so load the raw message.
-			// This is still metadata: loadRaw never sets \Seen. A load failure
-			// is reported before sending this message's response.
-			r, ok := loadStored()
-			if _, sendable := loadSent(); !sendable {
-				ok = false
-			}
-			plain = append(plain, "ENVELOPE "+message.BuildEnvelope(msg, r, ok))
+			// message's own headers (RFC 3501 §7.4.2), so load the message. This
+			// is still metadata: loadSent never sets \Seen. A load failure is
+			// reported before sending this message's response.
+			r, ok := loadSent()
+			plain = append(plain, "ENVELOPE "+message.BuildEnvelope(msg, r, ok, s.utf8))
 		case up == "BODYSTRUCTURE":
 			// Body structure is metadata (RFC 3501 §7.4.2): it must never set
 			// \Seen. It needs the raw message to describe the MIME layout.
 			if r, ok := loadSent(); ok {
-				plain = append(plain, "BODYSTRUCTURE "+message.BuildBodyStructure(r, true))
+				plain = append(plain, "BODYSTRUCTURE "+message.BuildBodyStructure(r, true, s.utf8))
 			}
 		case up == "BODY":
 			// The bare BODY item is the non-extensible form of BODYSTRUCTURE
 			// (no extension fields); likewise metadata, so no \Seen.
 			if r, ok := loadSent(); ok {
-				plain = append(plain, "BODY "+message.BuildBodyStructure(r, false))
+				plain = append(plain, "BODY "+message.BuildBodyStructure(r, false, s.utf8))
 			}
 		case up == "RFC822":
 			if r, ok := loadSent(); ok {
@@ -185,17 +181,6 @@ func (s *Session) fetchResponse(seq int, msg imap.Message, tokens []string) erro
 
 	if (storedLoaded && !storedOK) || (sentLoaded && !sentOK) {
 		return errors.New("cannot load message data")
-	}
-
-	// RFC 3501 CHAR8 excludes NUL. MIME/encoded-word decoders can produce
-	// one even when the raw message has none. Validate decoded metadata
-	// before any Seen write or response bytes, including nested envelopes.
-	// Body literals were already checked in loadSent, and BINARY sends a NUL as a
-	// literal8.
-	for _, field := range plain {
-		if strings.IndexByte(field, 0) >= 0 {
-			return errors.New("NUL in message metadata")
-		}
 	}
 
 	// Only advertise a new \Seen after the backend accepted it. Earlier

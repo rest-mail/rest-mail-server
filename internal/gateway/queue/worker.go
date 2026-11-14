@@ -46,6 +46,9 @@ type SMTPError struct {
 	// plumbed into the DSN's Remote-MTA field (RFC 3464 §2.3.5). Empty for a
 	// failure with no identified peer (e.g. a locally synthesized error).
 	RemoteMTA string
+	// HopLacksExtension says this next hop lacks an extension the message needs: no reply
+	// from it refused the message, and another MX may offer what this one doesn't.
+	HopLacksExtension bool
 }
 
 func (e *SMTPError) Error() string {
@@ -164,6 +167,33 @@ func messageRequires8BitTransport(bodyType, raw string) bool {
 		}
 	}
 	return false
+}
+
+// errDataCannotCarry is the refusal when a message's line ends can't be made what SMTP requires
+// without breaking a part (RFC 5321 section 2.3.8). RFC 6152 section 3 and RFC 3030 leave a client
+// with data a next hop can't take two choices: convert it or return it as a permanent error.
+func errDataCannotCarry(host string) error {
+	return &SMTPError{Code: 550, Enhanced: "5.6.3", RemoteMTA: host, Message: rmail.ErrDataCannotCarry.Error()}
+}
+
+// forData is the message as SMTP DATA carries it, made before it is signed, so that the signature
+// matches what is sent, and before dot-stuffing, so that nothing in it can read as an end of data
+// downstream. The row keeps the exact source, and RESTMAIL carries that. A message whose line ends
+// are all CRLF comes back as it is, with no copy made.
+func forData(raw, host string) (string, error) {
+	raw = outbound.StripBcc(raw)
+	if !rmail.HasBareLineEnds(raw) {
+		return raw, nil
+	}
+	var normal strings.Builder
+	normal.Grow(len(raw) + strings.Count(raw, "\n") + strings.Count(raw, "\r"))
+	if err := rmail.ForData(&normal, raw); err != nil {
+		if errors.Is(err, rmail.ErrDataCannotCarry) {
+			return "", errDataCannotCarry(host)
+		}
+		return "", err
+	}
+	return normal.String(), nil
 }
 
 // Worker processes outbound mail queue entries.
@@ -323,8 +353,8 @@ func (w *Worker) SetMasterKey(key string) {
 }
 
 // prepareOutbound applies the outbound transforms to a queue row's raw message
-// immediately before it is written to the wire: the Bcc header is stripped and,
-// when the message arrived unsigned, it is DKIM-signed with the sender domain's
+// immediately before it is written to the wire: the Bcc and Resent-Bcc headers are
+// stripped and, when the message arrived unsigned, it is DKIM-signed with the sender domain's
 // key. This is the single choke point every outbound message passes through, so
 // SMTP-submitted mail (which enqueues raw MUA bytes) gets the same treatment the
 // API path applies at submission (#171); the transforms are idempotent, so
@@ -675,6 +705,7 @@ func (w *Worker) claim(now time.Time) (models.OutboundQueue, error) {
 		if result.RowsAffected == 0 {
 			return gorm.ErrRecordNotFound
 		}
+		item.JoinSource()
 
 		// Mark as delivering
 		return tx.Model(&item).Updates(map[string]interface{}{
@@ -1029,8 +1060,10 @@ func (w *Worker) deliver(ctx context.Context, item models.OutboundQueue) error {
 	}
 
 	// A message that requires TLS bounces when no MX can take it so (RFC 8689 §4.2.1), but an
-	// MX that could not be reached at all might: it is tried again, as any message is.
-	if item.RequireTLS && transientErr != nil {
+	// MX that could not be reached at all might: it is tried again, as any message is. So too a
+	// message an MX could not take for lack of an extension: that says nothing of the others.
+	var lacking *SMTPError
+	if transientErr != nil && (item.RequireTLS || errors.As(lastErr, &lacking) && lacking.HopLacksExtension) {
 		lastErr = transientErr
 	}
 	return fmt.Errorf("all MX hosts failed: %w", lastErr)
@@ -1171,7 +1204,7 @@ func (w *Worker) deliverRESTMAILHTTPS(ctx context.Context, endpointURL string, i
 	payload := map[string]interface{}{
 		"from":        item.Sender,
 		"to":          []string{item.Recipient},
-		"raw_message": item.RawMessage,
+		"raw_message": []byte(item.RawMessage),
 	}
 	payloadBytes, _ := json.Marshal(payload)
 
@@ -1688,8 +1721,9 @@ func buildDSNMessage(hostname string, item models.OutboundQueue, smtpErr *SMTPEr
 		remoteMTA = rmail.SanitizeHeaderValue(smtpErr.RemoteMTA)
 	}
 
-	// Extract original headers from RawMessage for Part 3.
-	originalHeaders := item.RawMessage
+	// Extract original headers from RawMessage for Part 3, without the hidden fields. Part 3 sits
+	// in the notice's body, where prepareOutbound's strip of the notice's own head can't reach it.
+	originalHeaders := outbound.StripBcc(item.RawMessage)
 	if idx := strings.Index(originalHeaders, "\r\n\r\n"); idx >= 0 {
 		originalHeaders = originalHeaders[:idx]
 	} else if idx := strings.Index(originalHeaders, "\n\n"); idx >= 0 {
@@ -1824,6 +1858,11 @@ func (w *Worker) deliverSMTPWith(ctx context.Context, addr, host string, item mo
 	if records != nil {
 		stsPolicy, stsErr = nil, nil
 	}
+	normal, err := forData(item.RawMessage, host)
+	if err != nil {
+		return err
+	}
+	item.RawMessage = normal
 	// Strip Bcc and DKIM-sign before transmission (#171). Fail closed on a key
 	// that cannot be loaded so the send retries rather than going out unsigned.
 	prepared, err := w.prepareOutbound(ctx, item)
@@ -1964,10 +2003,11 @@ func (w *Worker) deliverSMTPWith(ctx context.Context, addr, host string, item mo
 		slog.WarnContext(ctx, "queue: next hop lacks 8BITMIME for 8-bit message, refusing (no 7-bit downconversion)",
 			"host", host, "domain", item.Domain, "body_type", item.BodyType)
 		return &SMTPError{
-			Code:      550,
-			Enhanced:  "5.6.3",
-			Message:   "next hop does not support 8BITMIME and 7-bit conversion is not implemented",
-			RemoteMTA: host,
+			Code:              550,
+			Enhanced:          "5.6.3",
+			Message:           "next hop does not support 8BITMIME and 7-bit conversion is not implemented",
+			RemoteMTA:         host,
+			HopLacksExtension: true,
 		}
 	}
 
@@ -1976,12 +2016,8 @@ func (w *Worker) deliverSMTPWith(ctx context.Context, addr, host string, item mo
 	}
 
 	// Set sender, with REQUIRETLS when the message requires it (RFC 8689 §4.2.1).
-	mail := client.Mail
-	if requireTLS {
-		mail = func(from string) error { return mailRequireTLS(client, from) }
-	}
 	armStep(link.conn, timeouts.Mail)
-	if err := mail(sender); err != nil {
+	if err := mailFrom(client, sender, smtpUTF8Status(sender, recipient, item.RawMessage) != "", requireTLS); err != nil {
 		se := parseSMTPError(err)
 		se.RemoteMTA = host
 		return se
@@ -2125,10 +2161,12 @@ func verifyPeerCertificate(cs tls.ConnectionState, host string, roots *x509.Cert
 	return err
 }
 
-// mailRequireTLS issues MAIL FROM with the REQUIRETLS parameter (RFC 8689 §4.2.1), which
-// net/smtp's Mail cannot add, alongside the BODY=8BITMIME and SMTPUTF8 parameters Mail adds
-// when the server offers them.
-func mailRequireTLS(c *smtp.Client, from string) error {
+// mailFrom sends MAIL with the parameters this message calls for, which net/smtp's Mail can't
+// choose: it adds SMTPUTF8 whenever the server offers it, and RFC 6531 section 3.4 says a client
+// that knows the message doesn't need the extension SHOULD NOT, since a server takes the tag as
+// a promise to keep it and a later hop without SMTPUTF8 would refuse plain mail. REQUIRETLS is
+// RFC 8689 section 4.2.1's.
+func mailFrom(c *smtp.Client, from string, smtpUTF8, requireTLS bool) error {
 	if strings.ContainsAny(from, "\r\n") {
 		return errors.New("smtp: a line must not contain CR or LF")
 	}
@@ -2136,10 +2174,13 @@ func mailRequireTLS(c *smtp.Client, from string) error {
 	if ok, _ := c.Extension("8BITMIME"); ok {
 		cmd += " BODY=8BITMIME"
 	}
-	if ok, _ := c.Extension("SMTPUTF8"); ok {
+	if smtpUTF8 {
 		cmd += " SMTPUTF8"
 	}
-	id, err := c.Text.Cmd("%s REQUIRETLS", cmd)
+	if requireTLS {
+		cmd += " REQUIRETLS"
+	}
+	id, err := c.Text.Cmd("%s", cmd)
 	if err != nil {
 		return err
 	}

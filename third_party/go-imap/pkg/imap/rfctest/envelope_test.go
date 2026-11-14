@@ -109,13 +109,15 @@ func TestEnvelopeScalarStrings(t *testing.T) {
 		})
 	}
 	requireEnvelope(t, "Subject: café\r\nMessage-ID: <é@example.com>\r\n\r\nbody",
-		"(NIL {5} NIL NIL NIL NIL NIL NIL NIL {16})", "café", "<é@example.com>")
+		`(NIL "=?UTF-8?Q?caf=C3=A9?=" NIL NIL NIL NIL NIL NIL NIL "<=?UTF-8?Q?=C3=A9=40example=2Ecom?=>")`)
 }
 
 // TestEnvelopeAddressStrings frames each address component independently:
-// quoted-specials stay escaped, while 8-bit names, mailboxes and hosts, and a
-// CRLF decoded from an RFC 2047 personal name, use counted literals so they
-// cannot break the quoted string or inject a response line.
+// quoted-specials stay escaped, and a CRLF decoded from an RFC 2047 personal name
+// uses a counted literal so it cannot break the quoted string or inject a response
+// line. Without UTF-8, a decoded 8-bit name goes out as an encoded word and an
+// 8-bit mailbox, which has no 7-bit form, reads NIL (TestMetadataStringsInUTF8Session
+// has them after ENABLE UTF8=ACCEPT).
 //
 // checklist: IMAP-ENV-03 IMAP-ENV-05 IMAP-ENV-13
 func TestEnvelopeAddressStrings(t *testing.T) {
@@ -124,8 +126,8 @@ func TestEnvelopeAddressStrings(t *testing.T) {
 		literals           []string
 	}{
 		{"quoted-specials", `To: "a \"b\" \\c" <x@example.com>`, `(("a \"b\" \\c" NIL "x" "example.com"))`, nil},
-		{"encoded-word name", "To: =?UTF-8?Q?J=C3=B6rg?= <j@example.com>", `(({5} NIL "j" "example.com"))`, []string{"Jörg"}},
-		{"utf-8 mailbox and host", "To: jörg@exämple.com", `((NIL NIL {5} {12}))`, []string{"jörg", "exämple.com"}},
+		{"encoded-word name", "To: =?UTF-8?Q?J=C3=B6rg?= <j@example.com>", `(("=?UTF-8?Q?J=C3=B6rg?=" NIL "j" "example.com"))`, nil},
+		{"utf-8 mailbox and host", "To: jörg@exämple.com", `NIL`, nil},
 		{"decoded CRLF name", "To: =?UTF-8?Q?a=0D=0A*_1_BYE?= <x@example.com>", `(({10} NIL "x" "example.com"))`, []string{"a\r\n* 1 BYE"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

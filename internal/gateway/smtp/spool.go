@@ -12,6 +12,7 @@ import (
 
 	gosmtp "github.com/rest-mail/go-smtp/pkg/smtp"
 
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	rmime "github.com/rest-mail/rest-mail-server/internal/mime"
 	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 )
@@ -130,7 +131,8 @@ func (b *bodyTexts) take(mediaType string, part io.Reader) error {
 		return err
 	}
 	reading := &sourceRead{source: part}
-	file, err := spool(reading)
+	// These go in the API's text fields, and a message may hold any octets. Its source keeps them.
+	file, err := spool(models.NewReadableReader(reading))
 	if err != nil {
 		if reading.err == nil {
 			b.failed = err
@@ -234,20 +236,27 @@ func parseSpooled(message *spoolFile) (*parsedMessage, error) {
 }
 
 func (p *parsedMessage) applyHeaders(h pipeline.Headers) {
-	p.subject = h.Subject
+	p.subject = models.ReadableText(h.Subject)
 	// The stored form is the bare id; the angle brackets are re-added wherever the message is
 	// rendered back into a header.
-	p.messageID = strings.Trim(h.MessageID, "<>")
-	p.inReplyTo = strings.Trim(h.InReplyTo, "<>")
+	p.messageID = models.ReadableText(strings.Trim(h.MessageID, "<>"))
+	p.inReplyTo = models.ReadableText(strings.Trim(h.InReplyTo, "<>"))
 	// References stays the whitespace-separated list with brackets intact, matching the
 	// historical output contract.
-	p.references = strings.Join(h.References, " ")
+	p.references = models.ReadableText(strings.Join(h.References, " "))
 	if len(h.From) > 0 {
-		p.senderName = h.From[0].Name
-		p.fromAddr = h.From[0].Address
+		p.senderName = models.ReadableText(h.From[0].Name)
+		p.fromAddr = models.ReadableText(h.From[0].Address)
 	}
-	p.toList = bareAddresses(h.To)
-	p.ccList = bareAddresses(h.Cc)
+	p.toList = readableList(bareAddresses(h.To))
+	p.ccList = readableList(bareAddresses(h.Cc))
+}
+
+func readableList(list []string) []string {
+	for i := range list {
+		list[i] = models.ReadableText(list[i])
+	}
+	return list
 }
 
 // onlyWhitespace says whether src holds nothing but what bytes.TrimSpace would remove, reading no
@@ -326,7 +335,7 @@ func recoverBody(message *spoolFile) (*spoolFile, error) {
 	if err != nil || start < 0 || start >= message.size {
 		return nil, err
 	}
-	return spool(io.NewSectionReader(message.file, start, message.size-start))
+	return spool(models.NewReadableReader(io.NewSectionReader(message.file, start, message.size-start)))
 }
 
 // messageDiskFailure is the answer when this server cannot read or write its own copy of a

@@ -14,9 +14,18 @@ import (
 // data goes out transfer-encoded, and 8-bit textual data stays when its section
 // names a charset. A message that is already 7-bit comes back byte for byte.
 // utf8 is whether the session enabled UTF8=ACCEPT (RFC 6855): valid UTF-8 then
-// stays in headers and in a textual body that names no charset.
+// stays in headers and in a textual body that names no charset. A NUL in a header
+// or in text comes back as a space, one octet for one; one in data is encoded.
 func Convert(raw string, utf8 bool) string {
 	return message.WireForm(raw, utf8)
+}
+
+// SpaceNUL returns raw with a space for each NUL in a header or in text, one octet for
+// one. Where a NUL is data, in anything not text or in text whose charset has NUL
+// octets, the entity stays as it is. This is for a protocol that sends a message as
+// stored, with no BINARY to fetch the exact octets and no conversion to encode data.
+func SpaceNUL(raw string) []byte {
+	return message.SpaceNUL(raw)
 }
 
 // Size is len(Convert(raw, utf8)): the same conversion, counted rather than built, so
@@ -29,6 +38,15 @@ func Size(raw string, utf8 bool) int {
 // the header block of a message and keeps its stored body.
 func JoinedSize(block, body string, utf8 bool) int {
 	return message.WireFormJoinedSize(block, body, utf8)
+}
+
+// SevenBitBoundary is raw for a host that downgrades only the top-level header and
+// sends the body as stored, as POP3 does. A top-level multipart's 8-bit boundary takes
+// the 7-bit spelling [Convert] gives it, in Content-Type and on its delimiter lines, so
+// a client can split the parts without decoding anything. Any other message comes back
+// as it is. It doesn't make the rest of the header 7-bit.
+func SevenBitBoundary(raw string) string {
+	return message.SevenBitBoundary(raw)
 }
 
 // EncodeWords renders text as RFC 2047 encoded words: charset UTF-8 when it is
@@ -47,8 +65,9 @@ func WriteEncodedWords(w interface {
 }
 
 // ParameterField renders a Content-Type or Content-Disposition field 7-bit, changing
-// only what holds an 8-bit octet, so a parameter in any charset keeps its text. ok is
-// false when the value does not parse, or the type itself is 8-bit.
+// only what holds an 8-bit octet or couldn't be read once 7-bit, so a parameter in any
+// charset or spelling keeps its text. ok is false when the value holds no readable
+// type, or the type itself is 8-bit.
 func ParameterField(name, value string) (field string, ok bool) {
 	return message.ParameterField(name, value)
 }

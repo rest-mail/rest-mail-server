@@ -8,8 +8,6 @@ import (
 
 // sizeShapes are stored messages whose octets RETR doesn't send as they are, or that sit
 // next to a form it does. Each goes through a session with UTF-8 enabled and one without.
-const boundaryParts = "--%[1]s\r\nContent-Type: text/plain\r\n\r\nHö\r\n--%[1]s\r\nContent-Type: application/pdf\r\n\r\n\xff\xfe\r\n--%[1]s--\r\n"
-
 var sizeShapes = []struct{ name, raw string }{
 	{"CRLF throughout", "Subject: hi\r\n\r\nbody\r\n"},
 	{"bare LF", "Subject: hi\n\nline one\nline two\n"},
@@ -134,7 +132,7 @@ func TestRetrSendsEveryLineInCRLF(t *testing.T) {
 		"nothing to add":  {raw: "Subject: hi\r\n\r\nbody\r\n", sent: "Subject: hi\r\n\r\nbody\r\n"},
 		"8-bit boundary, no last break": {
 			raw:  "Subject: J\xc3\xb6\r\nContent-Type: multipart/mixed; boundary=\"\xc3\xb6\"\r\n\r\n--\xc3\xb6\r\n\r\nx\r\n--\xc3\xb6--",
-			sent: "Subject: =?utf-8?q?J=C3=B6?=\r\nContent-Type: multipart/mixed;\r\n boundary*=UTF-8''%C3%B6\r\n\r\n--\xc3\xb6\r\n\r\nx\r\n--\xc3\xb6--\r\n",
+			sent: "Subject: =?utf-8?q?J=C3=B6?=\r\nContent-Type: multipart/mixed;\r\n boundary=\"=C3=B6\"\r\n\r\n--=C3=B6\r\n\r\nx\r\n--=C3=B6--\r\n",
 			utf8: "Subject: J\xc3\xb6\r\nContent-Type: multipart/mixed; boundary=\"\xc3\xb6\"\r\n\r\n--\xc3\xb6\r\n\r\nx\r\n--\xc3\xb6--\r\n",
 		},
 	} {

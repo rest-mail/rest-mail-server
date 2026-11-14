@@ -301,7 +301,7 @@ func TestAliasDeliverySMTPChangedLoopRefusesBeforePartialCommit(t *testing.T) {
 func (fixture *aliasDeliveryFixture) sendRESTMAIL(t *testing.T, recipients ...string) error {
 	t.Helper()
 	body, _ := json.Marshal(map[string]any{"from": "sender@outside.test", "to": recipients,
-		"raw_message": "From: sender@outside.test\r\nTo: " + strings.Join(recipients, ", ") + "\r\nSubject: alias delivery\r\n\r\nbody\r\n"})
+		"raw_message": []byte("From: sender@outside.test\r\nTo: " + strings.Join(recipients, ", ") + "\r\nSubject: alias delivery\r\n\r\nbody\r\n")})
 	response, err := http.Post(fixture.api.URL+"/restmail/messages", "application/json", strings.NewReader(string(body)))
 	if err != nil {
 		t.Fatal(err)
