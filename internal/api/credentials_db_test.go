@@ -900,14 +900,14 @@ func TestAppPasswords_GatewaySignIn(t *testing.T) {
 	created := f.createAppPassword("Thunderbird")
 	api, pop3API := f.gatewayClient(srv.URL, imapCN), f.gatewayClient(srv.URL, pop3CN)
 
-	imapMailbox, err := imapgw.NewBackend(api, nil).Authenticate(f.address, created.Password)
+	imapMailbox, err := imapgw.NewBackend(api, nil).ForClient(testClientIP).Authenticate(f.address, created.Password)
 	if err != nil {
 		t.Fatalf("IMAP sign-in with the app password: %v", err)
 	}
 	if _, err := imapMailbox.Folders(); err != nil {
 		t.Fatalf("IMAP LIST: %v", err)
 	}
-	pop3Mailbox, err := pop3gw.NewBackend(pop3API, nil).Authenticate(f.address, created.Password)
+	pop3Mailbox, err := pop3gw.NewBackend(pop3API, nil).ForClient(testClientIP).Authenticate(f.address, created.Password)
 	if err != nil {
 		t.Fatalf("POP3 sign-in with the app password: %v", err)
 	}
@@ -915,7 +915,7 @@ func TestAppPasswords_GatewaySignIn(t *testing.T) {
 		t.Fatalf("POP3 STAT: %v", err)
 	}
 	// The mailbox's own password still signs in through the same path.
-	if _, err := imapgw.NewBackend(api, nil).Authenticate(f.address, credentialTestPassword); err != nil {
+	if _, err := imapgw.NewBackend(api, nil).ForClient(testClientIP).Authenticate(f.address, credentialTestPassword); err != nil {
 		t.Fatalf("IMAP sign-in with the mailbox's password: %v", err)
 	}
 	if n := len(f.entries("auth.gateway_session_open")); n != 3 {
@@ -934,7 +934,7 @@ func TestAppPasswords_GatewaySignIn(t *testing.T) {
 	if _, err := pop3Mailbox.Messages(); !apiclient.IsAuthRejection(err) {
 		t.Errorf("POP3 STAT after revoking = %v, want a rejection", err)
 	}
-	if _, err := imapgw.NewBackend(api, nil).Authenticate(f.address, created.Password); !apiclient.IsAuthRejection(err) {
+	if _, err := imapgw.NewBackend(api, nil).ForClient(testClientIP).Authenticate(f.address, created.Password); !apiclient.IsAuthRejection(err) {
 		t.Errorf("IMAP sign-in after revoking = %v, want a rejection", err)
 	}
 }
@@ -978,11 +978,11 @@ func TestAppPasswords_RevokedByANewPassword(t *testing.T) {
 	danaFolders := fmt.Sprintf("/api/v1/accounts/%d/folders", danaID)
 
 	// An IMAP and a POP3 session, open before the change.
-	imapMailbox, err := imapgw.NewBackend(api, nil).Authenticate(f.address, thunderbird.Password)
+	imapMailbox, err := imapgw.NewBackend(api, nil).ForClient(testClientIP).Authenticate(f.address, thunderbird.Password)
 	if err != nil {
 		t.Fatalf("IMAP sign-in with the app password: %v", err)
 	}
-	pop3Mailbox, err := pop3gw.NewBackend(pop3API, nil).Authenticate(f.address, n8n.Password)
+	pop3Mailbox, err := pop3gw.NewBackend(pop3API, nil).ForClient(testClientIP).Authenticate(f.address, n8n.Password)
 	if err != nil {
 		t.Fatalf("POP3 sign-in with the app password: %v", err)
 	}
@@ -1029,7 +1029,7 @@ func TestAppPasswords_RevokedByANewPassword(t *testing.T) {
 		if usable, err := smtpgw.NewStore(f.db, "").CredentialUsable(thunderbird.ID); err != nil || usable {
 			t.Errorf("SMTP's check after a new password = %v, %v", usable, err)
 		}
-		if _, err := imapgw.NewBackend(api, nil).Authenticate(f.address, thunderbird.Password); !apiclient.IsAuthRejection(err) {
+		if _, err := imapgw.NewBackend(api, nil).ForClient(testClientIP).Authenticate(f.address, thunderbird.Password); !apiclient.IsAuthRejection(err) {
 			t.Errorf("IMAP sign-in after a new password = %v, want a rejection", err)
 		}
 	})

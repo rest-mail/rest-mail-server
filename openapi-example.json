@@ -31882,7 +31882,8 @@
         "body": {
           "protocol": "imap",
           "address": "contract-ordinary@restmail.test",
-          "password": "rm_AAAAAAAAAAAA_secretsecretsecretsecretsecretsecretsecretsec"
+          "password": "rm_AAAAAAAAAAAA_secretsecretsecretsecretsecretsecretsecretsec",
+          "client_ip": "198.51.100.7"
         }
       },
       "response": {
@@ -31905,7 +31906,8 @@
         "body": {
           "protocol": "imap",
           "address": "contract-ordinary@restmail.test",
-          "password": "rm_AAAAAAAAAAAA_secretsecretsecretsecretsecretsecretsecretsec"
+          "password": "rm_AAAAAAAAAAAA_secretsecretsecretsecretsecretsecretsecretsec",
+          "client_ip": "198.51.100.7"
         }
       },
       "response": {
@@ -31944,7 +31946,8 @@
         "body": {
           "protocol": "imap",
           "address": "contract-ordinary@restmail.test",
-          "password": "rm_AAAAAAAAAAAA_secretsecretsecretsecretsecretsecretsecretsec"
+          "password": "rm_AAAAAAAAAAAA_secretsecretsecretsecretsecretsecretsecretsec",
+          "client_ip": "198.51.100.7"
         }
       },
       "response": {
@@ -31971,7 +31974,8 @@
         "body": {
           "protocol": "pop3",
           "address": "contract-ordinary@restmail.test",
-          "password": "rm_AAAAAAAAAAAA_secretsecretsecretsecretsecretsecretsecretsec"
+          "password": "rm_AAAAAAAAAAAA_secretsecretsecretsecretsecretsecretsecretsec",
+          "client_ip": "198.51.100.7"
         }
       },
       "response": {
@@ -31998,7 +32002,8 @@
         "body": {
           "protocol": "imap",
           "address": "contract-ordinary@restmail.test",
-          "password": "rm_AAAAAAAAAAAA_secretsecretsecretsecretsecretsecretsecretsec"
+          "password": "rm_AAAAAAAAAAAA_secretsecretsecretsecretsecretsecretsecretsec",
+          "client_ip": "198.51.100.7"
         }
       },
       "response": {
@@ -32020,7 +32025,8 @@
         "body": {
           "protocol": "imap",
           "address": "contract-ordinary@restmail.test",
-          "password": "rm_AAAAAAAAAAAA_secretsecretsecretsecretsecretsecretsecretsec"
+          "password": "rm_AAAAAAAAAAAA_secretsecretsecretsecretsecretsecretsecretsec",
+          "client_ip": "198.51.100.7"
         }
       },
       "response": {
@@ -32042,7 +32048,8 @@
         "body": {
           "protocol": "imap",
           "address": "contract-ordinary@restmail.test",
-          "password": "rm_AAAAAAAAAAAA_secretsecretsecretsecretsecretsecretsecretsec"
+          "password": "rm_AAAAAAAAAAAA_secretsecretsecretsecretsecretsecretsecretsec",
+          "client_ip": "198.51.100.7"
         }
       },
       "response": {
@@ -32062,7 +32069,8 @@
         "body": {
           "protocol": "imap",
           "address": "contract-ordinary@restmail.test",
-          "password": "rm_AAAAAAAAAAAA_wrongwrongwrongwrongwrongwrongwrongwrongwr"
+          "password": "rm_AAAAAAAAAAAA_wrongwrongwrongwrongwrongwrongwrongwrongwr",
+          "client_ip": "198.51.100.7"
         }
       },
       "response": {

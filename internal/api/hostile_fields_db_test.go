@@ -327,11 +327,11 @@ func TestRowWithALongFieldServesEveryReader(t *testing.T) {
 	srv := httptest.NewServer(f.router)
 	t.Cleanup(srv.Close)
 	api := f.gatewayClient(srv.URL, imapCN)
-	imapMailbox, err := imapgw.NewBackend(api, nil).Authenticate(f.address, f.password)
+	imapMailbox, err := imapgw.NewBackend(api, nil).ForClient(testClientIP).Authenticate(f.address, f.password)
 	if err != nil {
 		t.Fatal(err)
 	}
-	pop3Mailbox, err := pop3gw.NewBackend(f.gatewayClient(srv.URL, pop3CN), nil).Authenticate(f.address, f.password)
+	pop3Mailbox, err := pop3gw.NewBackend(f.gatewayClient(srv.URL, pop3CN), nil).ForClient(testClientIP).Authenticate(f.address, f.password)
 	if err != nil {
 		t.Fatal(err)
 	}

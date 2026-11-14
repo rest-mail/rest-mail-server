@@ -197,7 +197,7 @@ Webmail treats a 404 while disabling vacation as already absent, not an error.
 - `POST /api/v1/auth/password`, `POST /api/v1/auth/2fa/{enroll,confirm,disable}` — any account's own password and authenticator
 - `POST /api/v1/auth/logout` — revoke session
 - `POST /api/v1/auth/refresh` — rotate access token
-- `POST /api/v1/gateway-sessions` — internal, mTLS: a gateway opens a mail client's connection session (address and password in the body: an app password, or the password of an account without 2FA); the one path every gateway uses. `DELETE /api/v1/gateway-sessions/current` closes it
+- `POST /api/v1/gateway-sessions` — internal, mTLS: a gateway opens a mail client's connection session (`client_ip` names the mail client's address; address and password in the body: an app password, or the password of an account without 2FA); the one path every gateway uses. `DELETE /api/v1/gateway-sessions/current` closes it
 - `GET|POST /api/v1/accounts/:id/credentials`, `DELETE /api/v1/accounts/:id/credentials/:credential_id` — app passwords of the session's own account or one it owns; `restmail app-password list|create|revoke` from the CLI
 - `GET|POST /api/v1/devices`, `DELETE /api/v1/devices/:id` — phones registered for push by this session (404 when push is off)
 
@@ -1465,3 +1465,5 @@ These source documents have since been removed from the repository — completed
 - This manual supersedes the retired plan documents; update it when a feature lands or a gap is identified.
 - When a Feb-2026 design doc item (§5.3) is verified in code, move it into §4 with concrete file paths.
 - `docs/adapter-filters.md`, `docs/dns-providers.md`, `docs/fail2ban-setup.md`, `docs/proxy-protocol.md` remain as-is — they are operational guides summarized in §4 but still useful at full length.
+
+Gateway sign-in throttling and failure audit records use the mail client address stated by an authenticated IMAP, POP3, or SMTP submission gateway. Other certificates, public requests, and forwarded headers cannot supply that identity. IMAP and POP3 behind a TCP proxy still see the proxy address; only SMTP applies PROXY protocol.

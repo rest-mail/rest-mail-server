@@ -8,8 +8,10 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/netip"
 	"strconv"
 
+	"github.com/rest-mail/rest-mail-server/internal/api/respond"
 	"github.com/rest-mail/rest-mail-server/internal/auth"
 )
 
@@ -24,6 +26,10 @@ type PasswordVerify func(ctx context.Context, address, password string) (*auth.C
 // production.
 type PasswordRefusedFunc func(r *http.Request, address string, refusal *auth.CredentialRefusal)
 
+// SpeaksForMailClient says whether r comes from a gateway that may state the
+// address of the mail client it is signing in.
+type SpeaksForMailClient func(r *http.Request) bool
+
 // SessionPasswords checks the one password the API still takes from a mail
 // client: the address and password (an app password, #344, or one of the
 // account's passwords) a protocol gateway sends in the body of the request
@@ -34,6 +40,13 @@ type PasswordRefusedFunc func(r *http.Request, address string, refusal *auth.Cre
 // cannot send a code: it needs an app password) or is still in setup. Every
 // refusal is recorded.
 //
+// The request's client address is the gateway's own, which everyone using that
+// gateway shares. So a gateway states the mail client's in the body's client_ip,
+// and from here on the request is known by that address, in RemoteAddr like one
+// TrustedRealIP resolved: the refusals below, the route's throttle and its audit
+// all go by it. Only a request speaksForClient accepts is believed. On any other
+// the field is ignored, and no header ever changes this.
+//
 // Refusals are throttled, so nobody can write to the audit log faster than the
 // limit allows. A guess (an unknown public id, a wrong secret, a wrong
 // password) is charged to the client's IP, and once that IP has used up its
@@ -42,15 +55,16 @@ type PasswordRefusedFunc func(r *http.Request, address string, refusal *auth.Cre
 // an account that cannot use it here) is charged to that credential instead:
 // such a request comes from whoever holds the secret, often a mail client
 // still using one its owner has just revoked, and it must not use up the
-// budget of the protocol gateway whose address it arrives from, which every
-// other user of that gateway shares. Requests that succeed cost nothing.
+// budget of an address that may be shared, such as a NAT's. Requests that
+// succeed cost nothing.
 //
 // No answer carries WWW-Authenticate.
 type SessionPasswords struct {
-	verify   PasswordVerify
-	refused  PasswordRefusedFunc
-	failures *rateLimiter // nil: refusals are not throttled
-	tarpit   *SignInTarpit
+	verify          PasswordVerify
+	refused         PasswordRefusedFunc
+	failures        *rateLimiter // nil: refusals are not throttled
+	tarpit          *SignInTarpit
+	speaksForClient SpeaksForMailClient
 }
 
 // SetTarpit makes a guess wait as a failed sign-in does, so opening a gateway
@@ -62,8 +76,12 @@ func (a *SessionPasswords) SetTarpit(tarpit *SignInTarpit) {
 
 // NewSessionPasswords builds the password check. failures sets the refusal
 // budget, per client IP and per credential; nil leaves refusals unthrottled.
-func NewSessionPasswords(verify PasswordVerify, refused PasswordRefusedFunc, failures *RateLimitConfig) *SessionPasswords {
+// speaksForClient says which requests' client_ip is believed.
+func NewSessionPasswords(verify PasswordVerify, refused PasswordRefusedFunc, failures *RateLimitConfig, speakers ...SpeaksForMailClient) *SessionPasswords {
 	a := &SessionPasswords{verify: verify, refused: refused}
+	if len(speakers) != 0 {
+		a.speaksForClient = speakers[0]
+	}
 	if failures != nil {
 		a.failures = newRateLimiter(*failures)
 	}
@@ -77,6 +95,18 @@ const maxSignInBody = 64 << 10
 type signInCredential struct {
 	Address  string `json:"address"`
 	Password string `json:"password"`
+	ClientIP string `json:"client_ip"`
+}
+
+// mailClientAddress is the address a gateway stated for its mail client, in the
+// one form the throttle's key takes, whichever way the gateway's socket wrote
+// it: no zone, and an IPv4 client as IPv4.
+func mailClientAddress(stated string) (string, bool) {
+	addr, err := netip.ParseAddr(stated)
+	if err != nil {
+		return "", false
+	}
+	return addr.WithZone("").Unmap().String(), true
 }
 
 // Authenticate checks the address and password in the request's JSON body and
@@ -108,6 +138,17 @@ func (a *SessionPasswords) Authenticate() func(http.Handler) http.Handler {
 				return
 			}
 			address, password := cred.Address, cred.Password
+
+			if a.speaksForClient != nil && a.speaksForClient(r) {
+				stated, ok := mailClientAddress(cred.ClientIP)
+				if !ok {
+					respond.ValidationError(w, map[string]string{"client_ip": "must be the IP address the mail client connected from"})
+					return
+				}
+				// A copy: the access log, holding this request, keeps the gateway's address.
+				r = r.WithContext(r.Context())
+				r.RemoteAddr = stated
+			}
 
 			ipKey := "ip:" + clientIP(r)
 			if a.failures != nil {

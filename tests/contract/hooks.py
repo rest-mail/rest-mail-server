@@ -4396,6 +4396,25 @@ def a_folder_to_delete_of_its_own(transaction):
 # session routes there with the same one).
 INTERNAL_ORIGIN = os.environ.get("CONTRACT_INTERNAL_ENDPOINT") or "https://10.99.0.20:8443"
 CONTRACT_MTLS = os.environ.get("CONTRACT_MTLS_DIR", ".cache/contract-mtls")
+# The mail client the contract run's gateway signs in (RFC 5737).
+CONTRACT_MAIL_CLIENT_IP = "198.51.100.7"
+
+
+def authenticate_gateway_sign_in_examples(transactions):
+    """Prepare example replays, never authorization-matrix transactions."""
+    if os.environ.get("CONTRACT_AUTHORIZATION") != "1":
+        return
+    for transaction in transactions:
+        if not transaction.get("name", "").startswith("/api/v1/gateway-sessions > "):
+            continue
+        if str(transaction.get("expected", {}).get("statusCode")) not in ("201", "422"):
+            continue
+        body = hooks.get_json(transaction)
+        if isinstance(body, dict):
+            app = principals()["app_password"]
+            body["address"], body["password"] = app["address"], app["secret"]
+            body["client_ip"] = CONTRACT_MAIL_CLIENT_IP
+            hooks.set_json(transaction, body)
 
 
 @hooks.before("/api/v1/gateway-sessions > * > 201 > application/json")
@@ -4406,11 +4425,14 @@ def sign_in_a_mail_client(transaction):
     is sent (#1586). The pair's protocol stays, so 422 still names another."""
     # After a reset the principal is gone: sign_in_and_recovery_after_a_reset
     # gives the exchange an app password of an account made for it.
-    if asked_for_a_clean_start():
+    if os.environ.get("CONTRACT_AUTHORIZATION") == "1" or asked_for_a_clean_start():
+        return
+    body = hooks.get_json(transaction)
+    if not isinstance(body, dict):
         return
     app = principals()["app_password"]
-    body = hooks.get_json(transaction)
     body["address"], body["password"] = app["address"], app["secret"]
+    body["client_ip"] = CONTRACT_MAIL_CLIENT_IP
     hooks.set_json(transaction, body)
 
 
@@ -4423,7 +4445,8 @@ def open_gateway_session():
     pace_auth_requests(None)
     request = urllib.request.Request(
         INTERNAL_ORIGIN + "/api/v1/gateway-sessions",
-        data=json.dumps({"protocol": "imap", "address": app["address"], "password": app["secret"]}).encode(),
+        data=json.dumps({"protocol": "imap", "address": app["address"], "password": app["secret"],
+                         "client_ip": CONTRACT_MAIL_CLIENT_IP}).encode(),
         headers={"Content-Type": "application/json"},
         method="POST",
     )

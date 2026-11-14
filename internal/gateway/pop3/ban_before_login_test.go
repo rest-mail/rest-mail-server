@@ -2,7 +2,6 @@ package pop3
 
 import (
 	"bufio"
-	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -11,8 +10,6 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
-
-	pop3server "github.com/rest-mail/go-pop3/pkg/pop3/server"
 
 	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/connlimiter"
@@ -41,12 +38,17 @@ func TestBannedAddressRefusedAtConnect(t *testing.T) {
 		t.Fatal("setup: 127.0.0.1 is not banned")
 	}
 
-	srv, ports := serveOnFreePorts(t, false, func() *pop3server.Server {
-		return pop3server.New(NewBackend(apiclient.New(api.URL), lim), nil, lim)
-	})
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := NewServer(NewBackend(apiclient.New(api.URL), lim), lim)
+	if err := srv.Serve(listener); err != nil {
+		t.Fatal(err)
+	}
 	t.Cleanup(func() { _ = srv.Close() })
 
-	conn, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", ports.POP3))
+	conn, err := net.Dial("tcp", listener.Addr().String())
 	if err != nil {
 		t.Fatal(err)
 	}

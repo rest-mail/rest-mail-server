@@ -251,7 +251,8 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	if cfg.AuthRateLimitEnabled {
 		credentialRefusals = &middleware.RateLimitConfig{RPS: cfg.AuthRateLimitRPS, Burst: cfg.AuthRateLimitBurst}
 	}
-	sessionPasswords := middleware.NewSessionPasswords(handlers.PasswordVerifier(db), auditor.CredentialRefused, credentialRefusals)
+	sessionPasswords := middleware.NewSessionPasswords(handlers.PasswordVerifier(db), auditor.CredentialRefused, credentialRefusals,
+		handlers.GatewaySignsInMailClients(middleware.DefaultGatewayServices))
 	// Every way of guessing an account's password waits the same, and the
 	// counts are shared: see middleware.SignInTarpit (#1643).
 	var signInTarpit *middleware.SignInTarpit
