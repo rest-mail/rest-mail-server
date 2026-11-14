@@ -210,7 +210,7 @@ func newDomainDNSCheckScenarios(t *testing.T) (map[string]bulkQueueExampleScenar
 		_ = pc.Close()
 		select {
 		case <-done:
-		case <-time.After(time.Second):
+		case <-time.After(30 * time.Second):
 			t.Error("DNS fixture failed to stop")
 		}
 	})
@@ -219,7 +219,7 @@ func newDomainDNSCheckScenarios(t *testing.T) (map[string]bulkQueueExampleScenar
 		if ctx.Value(domainDNSCheckContextKey{}) != true || !deadline {
 			return nil, errors.New("resolver lost HTTP context")
 		}
-		return (&net.Dialer{Timeout: time.Second}).DialContext(ctx, "udp", pc.LocalAddr().String())
+		return (&net.Dialer{Timeout: 30 * time.Second}).DialContext(ctx, "udp", pc.LocalAddr().String())
 	}}
 	return newDomainDNSCheckRouters(t, resolver), calls
 }
@@ -348,7 +348,7 @@ func newDomainDNSCheckRouters(t *testing.T, resolver *net.Resolver) map[string]b
 		}()
 		t.Cleanup(r.Close)
 		return bulkQueueExampleScenario{accountReadScenario{http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-			ctx, cancel := context.WithTimeout(context.WithValue(req.Context(), domainDNSCheckContextKey{}, true), time.Second)
+			ctx, cancel := context.WithTimeout(context.WithValue(req.Context(), domainDNSCheckContextKey{}, true), 30*time.Second)
 			defer cancel()
 			req = req.WithContext(ctx)
 			r.Public.ServeHTTP(w, req)

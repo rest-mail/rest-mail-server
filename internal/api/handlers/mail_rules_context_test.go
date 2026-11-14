@@ -69,7 +69,7 @@ func TestMailRulesRoutesCarryTheRequestContext(t *testing.T) {
 			NewSieveHandler(db).Register(rs)
 			NewVacationHandler(db).Register(rs)
 
-			ctx, cancel := context.WithTimeout(context.WithValue(t.Context(), mailRulesContextKey{}, true), 4*time.Second)
+			ctx, cancel := context.WithTimeout(context.WithValue(t.Context(), mailRulesContextKey{}, true), 30*time.Second)
 			defer cancel()
 			r := httptest.NewRequest(route.method, route.path, bytes.NewBufferString(route.body)).WithContext(ctx)
 			r.Header.Set("Content-Type", "application/json")

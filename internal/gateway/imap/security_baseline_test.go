@@ -200,7 +200,7 @@ func dialPort(t *testing.T, port int) net.Conn {
 	addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(port))
 	var conn net.Conn
 	var err error
-	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(20 * time.Millisecond) {
+	for deadline := time.Now().Add(30 * time.Second); ; time.Sleep(20 * time.Millisecond) {
 		conn, err = net.DialTimeout("tcp", addr, time.Second)
 		if err == nil || time.Now().After(deadline) {
 			break
@@ -209,7 +209,7 @@ func dialPort(t *testing.T, port int) net.Conn {
 	if err != nil {
 		t.Fatalf("dial %s: %v", addr, err)
 	}
-	_ = conn.SetDeadline(time.Now().Add(10 * time.Second))
+	_ = conn.SetDeadline(time.Now().Add(30 * time.Second))
 	t.Cleanup(func() { _ = conn.Close() })
 	return conn
 }

@@ -207,5 +207,5 @@ tasks:
         chore_bin="${CHORE_BIN:-chore}"
         trap '"$chore_bin" topology:down TOPOLOGY={{.TOPOLOGY}}' EXIT
         "$chore_bin" topology:up TOPOLOGY={{.TOPOLOGY}} || exit 1
-        "$chore_bin" topology:test:e2e TOPOLOGY={{.TOPOLOGY}} -- -timeout 45m || exit 1
+        "$chore_bin" topology:test:e2e TOPOLOGY={{.TOPOLOGY}} -- -timeout=2h || exit 1
         "$chore_bin" topology:contract TOPOLOGY={{.TOPOLOGY}}

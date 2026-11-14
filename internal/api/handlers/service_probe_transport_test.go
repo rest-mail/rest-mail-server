@@ -111,7 +111,7 @@ func TestServiceProbeLocalTCPListeners(t *testing.T) {
 		}
 		checkServiceProbeLatency(t, r)
 	}
-	timer := time.NewTimer(2 * time.Second)
+	timer := time.NewTimer(30 * time.Second)
 	defer timer.Stop()
 	for range 4 {
 		select {
@@ -279,7 +279,7 @@ func TestServiceProbeLocalDNSRecords(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-			case <-time.After(2 * time.Second):
+			case <-time.After(30 * time.Second):
 				t.Fatal("local DNS exchange did not complete")
 			}
 		})

@@ -97,13 +97,13 @@ func TestDeliverMessage_SizeAwareDeadlineGoverns(t *testing.T) {
 		}
 		select {
 		case <-entered:
-		case <-time.After(2 * time.Second):
+		case <-time.After(30 * time.Second):
 			t.Fatal("the request did not reach the blocked API")
 		}
 	})
 
 	t.Run("generous deadline succeeds", func(t *testing.T) {
-		c := New(srv.URL, WithMessageDeadline(2*time.Second))
+		c := New(srv.URL, WithMessageDeadline(30*time.Second))
 		go func() {
 			select {
 			case <-entered:
@@ -113,7 +113,7 @@ func TestDeliverMessage_SizeAwareDeadlineGoverns(t *testing.T) {
 		}()
 		resp, err := c.DeliverMessage(&DeliverRequest{Address: "a@local", RawMessage: []byte("hi")})
 		if err != nil {
-			t.Fatalf("expected success under a 2s deadline, got %v", err)
+			t.Fatalf("expected success under a 30s deadline, got %v", err)
 		}
 		if resp.Data.ID != 1 {
 			t.Errorf("unexpected response id %d", resp.Data.ID)

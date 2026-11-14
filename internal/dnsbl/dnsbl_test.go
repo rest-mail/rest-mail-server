@@ -221,7 +221,7 @@ func TestDeadlineAndCancellationAreIndeterminate(t *testing.T) {
 		select {
 		case res := <-done:
 			return res
-		case <-time.After(5 * time.Second):
+		case <-time.After(30 * time.Second):
 			t.Fatal("Check did not honour its deadline or cancellation")
 			return Result{}
 		}

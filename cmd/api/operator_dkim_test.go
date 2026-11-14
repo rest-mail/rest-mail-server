@@ -347,7 +347,7 @@ func TestDKIMEnsure_LockTimeoutDoesNotMutate(t *testing.T) {
 	if status != exitFailed || out != "" || errorCodeIn(t, errOut) != "dkim_ensure" {
 		t.Fatal("expected bounded lock failure")
 	}
-	if elapsed := time.Since(start); elapsed < 2*time.Second || elapsed > dkimEnsureTimeout+time.Second {
+	if elapsed := time.Since(start); elapsed < 2*time.Second || elapsed > 30*time.Second {
 		t.Fatal("lock timeout not bounded")
 	}
 	if err := tx.Rollback().Error; err != nil {

@@ -20,8 +20,8 @@ func handshakeSerialFor(t *testing.T, config *tls.Config, name string) string {
 	serverConn, clientConn := net.Pipe()
 	defer serverConn.Close()
 	defer clientConn.Close()
-	_ = serverConn.SetDeadline(time.Now().Add(2 * time.Second))
-	_ = clientConn.SetDeadline(time.Now().Add(2 * time.Second))
+	_ = serverConn.SetDeadline(time.Now().Add(30 * time.Second))
+	_ = clientConn.SetDeadline(time.Now().Add(30 * time.Second))
 	server := tls.Server(serverConn, config)
 	client := tls.Client(clientConn, &tls.Config{ServerName: name, InsecureSkipVerify: true, MinVersion: tls.VersionTLS12})
 	done := make(chan error, 1)
@@ -37,7 +37,7 @@ func handshakeSerialFor(t *testing.T, config *tls.Config, name string) string {
 
 func awaitHandshakeSerial(t *testing.T, config *tls.Config, name, want string) {
 	t.Helper()
-	deadline := time.Now().Add(7 * time.Second)
+	deadline := time.Now().Add(30 * time.Second)
 	for {
 		if got := handshakeSerialFor(t, config, name); got == want {
 			return

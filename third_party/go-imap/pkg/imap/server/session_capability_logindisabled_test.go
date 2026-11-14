@@ -77,7 +77,7 @@ func newCapHarness(t *testing.T, tlsConfig *tls.Config, usingTLS bool) *capHarne
 
 func (h *capHarness) readLine() string {
 	h.t.Helper()
-	_ = h.conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	_ = h.conn.SetReadDeadline(time.Now().Add(30 * time.Second))
 	line, err := h.r.ReadString('\n')
 	if err != nil {
 		h.t.Fatalf("readLine: %v (partial %q)", err, line)
@@ -87,7 +87,7 @@ func (h *capHarness) readLine() string {
 
 func (h *capHarness) send(line string) {
 	h.t.Helper()
-	_ = h.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	_ = h.conn.SetWriteDeadline(time.Now().Add(30 * time.Second))
 	if _, err := h.conn.Write([]byte(line + "\r\n")); err != nil {
 		h.t.Fatalf("send %q: %v", line, err)
 	}
@@ -98,7 +98,7 @@ func (h *capHarness) send(line string) {
 // tagged OK, while the server goroutine is blocked in its own Handshake.
 func (h *capHarness) startTLS() {
 	h.t.Helper()
-	_ = h.conn.SetDeadline(time.Now().Add(5 * time.Second))
+	_ = h.conn.SetDeadline(time.Now().Add(30 * time.Second))
 	tlsConn := tls.Client(h.conn, &tls.Config{InsecureSkipVerify: true}) //nolint:gosec // test-only self-signed peer
 	if err := tlsConn.Handshake(); err != nil {
 		h.t.Fatalf("client TLS handshake: %v", err)

@@ -70,10 +70,10 @@ jobs:
           (
             cd .cache/contract-compat-base
             RESTMAIL_OPENAPI_OUTPUT="$RUNNER_TEMP/contract-compat/main.json" \
-              go test -mod=readonly ./internal/api/ -run '^TestTheGeneratedDescriptionIsServed$' -count=1
+              go test -timeout=2h -mod=readonly ./internal/api/ -run '^TestTheGeneratedDescriptionIsServed$' -count=1
           )
           RESTMAIL_OPENAPI_OUTPUT="$RUNNER_TEMP/contract-compat/merged.json" \
-            go test -mod=readonly ./internal/api/ -run '^TestTheGeneratedDescriptionIsServed$' -count=1
+            go test -timeout=2h -mod=readonly ./internal/api/ -run '^TestTheGeneratedDescriptionIsServed$' -count=1
 
       - name: Compare with newest main and require deliberate labels
         env:

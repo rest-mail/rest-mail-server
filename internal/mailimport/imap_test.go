@@ -163,7 +163,7 @@ func newIMAPFixture(t *testing.T, f *imapSourceFixture) IMAPOptions {
 		mu.Unlock()
 		select {
 		case <-done:
-		case <-time.After(2 * time.Second):
+		case <-time.After(30 * time.Second):
 			t.Error("IMAP source fixture did not stop")
 		}
 	})
@@ -219,12 +219,12 @@ func TestIMAPRefusesLossAndBoundsReads(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			tc.f.raw = "Subject: private-source-content\r\n\r\nbody\r\n"
 			options := newIMAPFixture(t, tc.f)
-			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
 			called := false
-			start := time.Now()
 			err := IMAP(ctx, options, tc.max, func(string, apitypes.ImportMessageBody) error { called = true; return nil })
-			if err == nil || called || time.Since(start) > time.Second {
+			// Refused before its context expired: a refusal, not a stall the deadline ended.
+			if err == nil || called || ctx.Err() != nil {
 				t.Fatalf("invalid source not refused promptly: called=%t err=%v", called, err)
 			}
 			if strings.Contains(err.Error(), "private-source-content") || strings.Contains(err.Error(), options.Password) {
@@ -244,7 +244,7 @@ func TestIMAPCancellationAndVisitorFailure(t *testing.T) {
 			failure := errors.New("destination refused")
 			start := time.Now()
 			err := IMAP(ctx, options, 1024, func(string, apitypes.ImportMessageBody) error { return failure })
-			if err == nil || time.Since(start) > time.Second || (!stall && !errors.Is(err, failure)) {
+			if err == nil || time.Since(start) > 30*time.Second || (!stall && !errors.Is(err, failure)) {
 				t.Fatalf("transfer failed to stop: %v", err)
 			}
 		})

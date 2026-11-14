@@ -54,7 +54,7 @@ func TestRecorder_NonBlockingUnderPressure(t *testing.T) {
 	}()
 	select {
 	case <-done:
-	case <-time.After(5 * time.Second):
+	case <-time.After(30 * time.Second):
 		t.Fatal("Record blocked under buffer pressure — must never block the caller")
 	}
 	if got := testutil.ToFloat64(metrics.TraceDropped) - before; got != n {

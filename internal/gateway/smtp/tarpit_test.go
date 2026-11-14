@@ -79,12 +79,12 @@ func TestTarpitSleepAbortsOnCancelledContext(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		tarpitSleep(ctx, 10*time.Second)
+		tarpitSleep(ctx, 60*time.Second)
 		close(done)
 	}()
 	select {
 	case <-done:
-	case <-time.After(2 * time.Second):
+	case <-time.After(30 * time.Second):
 		t.Fatal("tarpitSleep did not abort on an already-cancelled context")
 	}
 }

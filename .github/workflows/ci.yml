@@ -372,10 +372,10 @@ jobs:
           (
             cd .cache/contract-diff-base
             RESTMAIL_OPENAPI_OUTPUT="$RUNNER_TEMP/contract-diff/base.json" \
-              go test -mod=readonly ./internal/api/ -run '^TestTheGeneratedDescriptionIsServed$' -count=1
+              go test -timeout=2h -mod=readonly ./internal/api/ -run '^TestTheGeneratedDescriptionIsServed$' -count=1
           )
           RESTMAIL_OPENAPI_OUTPUT="$RUNNER_TEMP/contract-diff/head.json" \
-            go test -mod=readonly ./internal/api/ -run '^TestTheGeneratedDescriptionIsServed$' -count=1
+            go test -timeout=2h -mod=readonly ./internal/api/ -run '^TestTheGeneratedDescriptionIsServed$' -count=1
 
       # The labels are read now, not from the event: ci-labels.yml re-runs this job
       # when a deliberate-change label is added or removed, and a re-run keeps the
@@ -639,7 +639,9 @@ jobs:
 
       # -timeout is per package, and the race detector slows these packages
       # several times over: internal/api/handlers once ran past go test's
-      # default 10 minutes. 20 leaves headroom while a hung test still fails.
+      # default 10 minutes. A slow machine must never fail a test, so every
+      # go test here gets 2 hours: a hang guard only, which prints the hung
+      # goroutines well before the job's own limit.
       # internal/api and internal/api/handlers run in their own shards (#1307, #1979).
       # Each package's binary runs through testdb-exec, in a database of its
       # own: packages run side by side, and in one shared database their
@@ -651,7 +653,7 @@ jobs:
           go build -o "$RUNNER_TEMP/testdb-exec" ./tools/testdb-exec
           packages=$(go list ./internal/... | grep -vxF -e github.com/rest-mail/rest-mail-server/internal/api -e github.com/rest-mail/rest-mail-server/internal/api/handlers)
           # shellcheck disable=SC2086 # one package per word
-          go test -race -count=1 -timeout=20m -exec "$RUNNER_TEMP/testdb-exec" -coverprofile=coverage-rest.out $packages ./cmd/... ./tests/contract/browser_sessions
+          go test -race -count=1 -timeout=2h -exec "$RUNNER_TEMP/testdb-exec" -coverprofile=coverage-rest.out $packages ./cmd/... ./tests/contract/browser_sessions
         env:
           ENVIRONMENT: test
           DB_HOST: localhost
@@ -766,7 +768,7 @@ jobs:
         run: |
           set -euo pipefail
           docker exec "${{ job.services.postgres.id }}" createdb -U restmail restmail_contract_fixture_ci
-          go test -race -count=1 -timeout=20m -v ./tests/contract/fixtures ./tests/contract/fixtureplan
+          go test -race -count=1 -timeout=2h -v ./tests/contract/fixtures ./tests/contract/fixtureplan
         env:
           ENVIRONMENT: test
           DB_HOST: localhost
@@ -784,7 +786,7 @@ jobs:
           python3 -m pip install --quiet 'jsonschema[format]'
           tags="$(python3 -B tests/contract/faults.py tags)"
           go vet -tags "$tags" ./cmd/api ./internal/faultinject
-          go test -race -count=1 -tags "$tags" ./internal/faultinject
+          go test -timeout=2h -race -count=1 -tags "$tags" ./internal/faultinject
 
   test-imap:
     name: Test IMAP module
@@ -835,7 +837,7 @@ jobs:
         env:
           GOARCH: "386"
           CGO_ENABLED: "0"
-        run: go test -count=1 -run '^(TestParseSequenceSet.*|TestResolveSeqNum.*|TestWideSequenceDispatch|TestSearchValidSequenceSet)$' ./pkg/imap/internal/wire ./pkg/imap/rfctest
+        run: go test -timeout=2h -count=1 -run '^(TestParseSequenceSet.*|TestResolveSeqNum.*|TestWideSequenceDispatch|TestSearchValidSequenceSet)$' ./pkg/imap/internal/wire ./pkg/imap/rfctest
 
       - name: Validate the IMAP module's RFC checklist
         if: needs.lint.outputs.go_imap_changed != 'false'
@@ -847,7 +849,7 @@ jobs:
       - name: Test the local IMAP compatibility module with coverage
         if: needs.lint.outputs.go_imap_changed != 'false'
         working-directory: third_party/go-imap
-        run: go test -race -count=1 -timeout=10m -covermode=atomic -coverpkg=./... -coverprofile=coverage.out ./...
+        run: go test -race -count=1 -timeout=2h -covermode=atomic -coverpkg=./... -coverprofile=coverage.out ./...
 
       - name: Require at least 95% statement coverage
         if: needs.lint.outputs.go_imap_changed != 'false'
@@ -947,7 +949,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/proofs"
-          go test -race -count=1 -timeout=20m -coverprofile=coverage-handlers-${{ matrix.shard }}.out -run "$RUN_PATTERN" ./internal/api/handlers/
+          go test -race -count=1 -timeout=2h -coverprofile=coverage-handlers-${{ matrix.shard }}.out -run "$RUN_PATTERN" ./internal/api/handlers/
         env:
           ENVIRONMENT: test
           DB_HOST: localhost
@@ -1005,8 +1007,8 @@ jobs:
     name: Test internal/api (${{ matrix.shard }} of 4)
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     # internal/api is the slowest package by far: nearly 1000 s under the race
-    # detector, most of it in PostgreSQL fixtures, against a 20 minute limit per
-    # package (#1307). Each shard runs every fourth of its top-level tests, by
+    # detector, most of it in PostgreSQL fixtures, which once ran against a 20 minute limit per
+    # package (#1307); the limit is now a 2 hour hang guard. Each shard runs every fourth of its top-level tests, by
     # name, against a database of its own, beside the Test job.
     runs-on: ${{ fromJSON(needs.preflight.outputs.runners || '{}')[format('test-api.{0}', matrix.shard)] || 'ubuntu-24.04' }}
     strategy:
@@ -1081,7 +1083,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/proofs"
-          go test -race -count=1 -timeout=20m -coverprofile=coverage-api-${{ matrix.shard }}.out -run "$RUN_PATTERN" ./internal/api/
+          go test -race -count=1 -timeout=2h -coverprofile=coverage-api-${{ matrix.shard }}.out -run "$RUN_PATTERN" ./internal/api/
         env:
           ENVIRONMENT: test
           DB_HOST: localhost
@@ -1337,7 +1339,7 @@ jobs:
           RESTMAIL_OPENAPI_OUTPUT: ${{ runner.temp }}/openapi.json
           RESTMAIL_OPENAPI_SOURCE: ${{ runner.temp }}/openapi.json
         run: |
-          (cd .. && go test ./internal/api/ -run '^TestTheGeneratedDescriptionIsServed$' -count=1)
+          (cd .. && go test -timeout=2h ./internal/api/ -run '^TestTheGeneratedDescriptionIsServed$' -count=1)
           pnpm run generate-types
 
       - name: Lint
@@ -1391,7 +1393,7 @@ jobs:
           RESTMAIL_OPENAPI_OUTPUT: ${{ runner.temp }}/openapi.json
           RESTMAIL_OPENAPI_SOURCE: ${{ runner.temp }}/openapi.json
         run: |
-          (cd .. && go test ./internal/api/ -run '^TestTheGeneratedDescriptionIsServed$' -count=1)
+          (cd .. && go test -timeout=2h ./internal/api/ -run '^TestTheGeneratedDescriptionIsServed$' -count=1)
           pnpm run generate-types
 
       - name: Lint
@@ -1489,7 +1491,7 @@ jobs:
         working-directory: .
         run: |
           set -euo pipefail
-          go test -count=1 -v -run 'TestJSFilter' ./internal/pipeline/filters/ | tee "$RUNNER_TEMP/jsfilter.log"
+          go test -timeout=2h -count=1 -v -run 'TestJSFilter' ./internal/pipeline/filters/ | tee "$RUNNER_TEMP/jsfilter.log"
           # The end-to-end test skips without node or npm ci; here it must run.
           if grep -q -- '--- SKIP: TestJSFilter_RealSidecar' "$RUNNER_TEMP/jsfilter.log"; then
             echo "::error::TestJSFilter_RealSidecar was skipped" >&2

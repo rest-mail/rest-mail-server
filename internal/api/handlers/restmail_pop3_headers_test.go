@@ -106,13 +106,13 @@ func TestRESTMAILStoredHeadersThroughPOP3RETR(t *testing.T) {
 					pop3server.NewSession(conn, pop3gateway.NewBackend(apiclient.New(api.URL), nil), nil, nil).Handle()
 				}
 			}()
-			conn, err := net.DialTimeout("tcp", listener.Addr().String(), 10*time.Second)
+			conn, err := net.DialTimeout("tcp", listener.Addr().String(), 30*time.Second)
 			if err != nil {
 				t.Fatal(err)
 			}
 			client := textproto.NewConn(conn)
 			t.Cleanup(func() { _ = client.Close(); <-done })
-			if err := conn.SetDeadline(time.Now().Add(20 * time.Second)); err != nil {
+			if err := conn.SetDeadline(time.Now().Add(30 * time.Second)); err != nil {
 				t.Fatal(err)
 			}
 			status := func() {

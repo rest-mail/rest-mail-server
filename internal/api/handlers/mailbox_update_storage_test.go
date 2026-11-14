@@ -115,7 +115,7 @@ func serveMailbox(t *testing.T, d *mailboxDB, method, path, body string) *httpte
 	h.Register(rs, MailboxRouteChecks{OnList: noop, OnMailbox: noop})
 	h.RegisterAddressCheck(rs)
 
-	ctx, cancel := context.WithTimeout(context.WithValue(t.Context(), mailboxContextKey{}, true), 4*time.Second)
+	ctx, cancel := context.WithTimeout(context.WithValue(t.Context(), mailboxContextKey{}, true), 30*time.Second)
 	t.Cleanup(cancel)
 	r := httptest.NewRequest(method, path, bytes.NewBufferString(body)).WithContext(ctx)
 	r.Header.Set("Content-Type", "application/json")

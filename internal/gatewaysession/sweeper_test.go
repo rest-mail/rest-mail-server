@@ -102,7 +102,7 @@ func TestSweeperRunsOnItsTicker(t *testing.T) {
 	s := NewSweeper(db, 20*time.Millisecond)
 	s.Start()
 	defer s.Shutdown()
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(30 * time.Second)
 	for closedAt(t, db, idle.ID) == nil {
 		if time.Now().After(deadline) {
 			t.Fatal("the started sweeper did not close the idle session")

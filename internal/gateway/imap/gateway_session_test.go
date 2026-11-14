@@ -79,7 +79,7 @@ func runSession(t *testing.T, api *apiclient.Client, idlePoll time.Duration, scr
 		defer close(done)
 		sess.Handle()
 	}()
-	if err := client.SetDeadline(time.Now().Add(10 * time.Second)); err != nil {
+	if err := client.SetDeadline(time.Now().Add(30 * time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	c := &imapClient{t: t, conn: client, r: bufio.NewReader(client)}

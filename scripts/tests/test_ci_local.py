@@ -255,7 +255,7 @@ class LinuxGoTests(unittest.TestCase):
         self.assertEqual(
             args[image_index + 1:],
             [
-                "go", "test", "-race", "-count=1", "-timeout=20m",
+                "go", "test", "-race", "-count=1", "-timeout=2h",
                 "-skip", "WithVertrag$", self.loadgen,
             ],
         )
@@ -688,7 +688,7 @@ class VertragShards(unittest.TestCase):
             ):
                 local.go_tests()
             self.assertEqual(shards.call_args.args[0], ["TestA", "TestB"])
-            self.assertEqual(shards.call_args.args[3:5], (local.race_shards, "20m"))
+            self.assertEqual(shards.call_args.args[3:5], (local.race_shards, "2h"))
             self.assertIn("-race", commands.call_args_list[1].args[0])
 
     def test_a_failing_guard_stops_the_step_before_the_race_shards(self):
@@ -730,7 +730,7 @@ class VertragShards(unittest.TestCase):
             test = next(
                 call for call in commands.call_args_list if "-race" in call.args[0]
             )
-            self.assertIn("-timeout=10m", test.args[0])
+            self.assertIn("-timeout=2h", test.args[0])
             self.assertEqual(test.kwargs["root"], ROOT / "third_party/go-imap")
 
     def test_the_imap_step_runs_each_gate_ci_runs_on_the_module(self):
@@ -1062,7 +1062,7 @@ class VertragShards(unittest.TestCase):
 
     def test_vertrag_shards_allow_more_than_a_healthy_run_took_under_load(self):
         # The *WithVertrag tests took about 32 minutes at load 50 to 85.
-        self.assertGreaterEqual(int(gate.VERTRAG_TIMEOUT.removesuffix("m")), 60)
+        self.assertEqual(gate.VERTRAG_TIMEOUT, "2h")
         with tempfile.TemporaryDirectory() as temporary:
             local = gate.Gate(ROOT, Path(temporary), Path(temporary), True)
             local.api_changed = True

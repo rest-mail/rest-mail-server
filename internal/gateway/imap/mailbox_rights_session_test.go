@@ -56,7 +56,7 @@ func dialRights(t *testing.T) (*imapClient, *atomic.Int32) {
 		_ = client.Close()
 		<-done
 	})
-	if err := client.SetDeadline(time.Now().Add(10 * time.Second)); err != nil {
+	if err := client.SetDeadline(time.Now().Add(30 * time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	c := &imapClient{t: t, conn: client, r: bufio.NewReader(client)}

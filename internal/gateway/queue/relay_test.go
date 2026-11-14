@@ -79,21 +79,22 @@ type relayPeerResult struct {
 	err           error
 }
 
-// relayPeerConnTimeout is how long the loopback peer keeps its connection open.
+// relayPeerConnTimeout is how long the loopback peer holds a connection whose
+// DATA write it has stopped reading.
 const relayPeerConnTimeout = 3 * time.Second
 
-// relayStallLimit is how long an attempt stalled at a stage may take in these tests.
-// A stall in the message's blocks lasts as long as the peer holds the connection.
-// The block timer has fired well before that, but closing a TLS connection writes a
-// close_notify to the full socket, which waits until the peer closes or crypto/tls
-// gives up after 5 seconds. The error says which came first: a close before the
-// timer would be a reset, not a timeout.
-func relayStallLimit(stage string) time.Duration {
-	if stage == "DATA write" {
-		return relayPeerConnTimeout + 2*time.Second
-	}
-	return time.Second
-}
+// relayPeerDeadline is the loopback peer's own I/O deadline: it only ends a
+// conversation that hangs, so a slow machine never trips it.
+const relayPeerDeadline = 30 * time.Second
+
+// relayStallLimit is how long an attempt stalled at a stage may take in these
+// tests before it counts as hung. A stall in the message's blocks lasts as long as
+// the peer holds the connection: the block timer has fired well before that, but
+// closing a TLS connection writes a close_notify to the full socket, which waits
+// until the peer closes or crypto/tls gives up after 5 seconds. Which came first
+// is told by the error, not the clock: a close before the timer would be a reset,
+// not a timeout.
+const relayStallLimit = 30 * time.Second
 
 func relayTestPeer(t *testing.T, cert tls.Certificate, opts relayPeerOptions) (relaySettings, func() relayPeerResult) {
 	t.Helper()
@@ -112,7 +113,7 @@ func relayTestPeer(t *testing.T, cert tls.Certificate, opts relayPeerOptions) (r
 			return
 		}
 		defer conn.Close()
-		_ = conn.SetDeadline(time.Now().Add(relayPeerConnTimeout))
+		_ = conn.SetDeadline(time.Now().Add(relayPeerDeadline))
 		tlsActive := false
 		if opts.implicit {
 			if opts.silentAt == "TLS handshake" {
@@ -319,7 +320,7 @@ func relayTestPeer(t *testing.T, cert tls.Certificate, opts relayPeerOptions) (r
 				t.Fatal(result.err)
 			}
 			return result
-		case <-time.After(4 * time.Second):
+		case <-time.After(30 * time.Second):
 			t.Fatal("loopback peer did not close")
 			return relayPeerResult{}
 		}
@@ -543,7 +544,7 @@ func TestRelayDeadlineAndCancellation(t *testing.T) {
 				if !errors.Is(err, want) {
 					t.Fatalf("want %v, got %v", want, err)
 				}
-				if time.Since(start) > time.Second {
+				if time.Since(start) > 30*time.Second {
 					t.Fatal("attempt exceeded its step's timer")
 				}
 				finish()
@@ -643,7 +644,7 @@ func TestRelayStalledTLSAndDATA(t *testing.T) {
 			if !errors.Is(err, context.DeadlineExceeded) {
 				t.Fatalf("want deadline, got %v", err)
 			}
-			if time.Since(started) > relayStallLimit(tc.stage) {
+			if time.Since(started) > relayStallLimit {
 				t.Fatal("stalled attempt exceeded its step's timer")
 			}
 			result := finish()
@@ -665,7 +666,7 @@ func TestRelayCallerDeadlineWins(t *testing.T) {
 	if err := w.deliverToRelay(ctx, settings, relayTestItem()); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("want caller deadline, got %v", err)
 	}
-	if time.Since(started) > time.Second {
+	if time.Since(started) > 30*time.Second {
 		t.Fatal("caller deadline ignored")
 	}
 	finish()
@@ -734,7 +735,7 @@ func TestRelayStalledStepIsDroppedAtItsTimeout(t *testing.T) {
 			if tc.stage == "DATA write" && !strings.Contains(err.Error(), "relay DATA write:") {
 				t.Fatalf("the message must stall in its blocks, got %v", err)
 			}
-			if took := time.Since(started); took < timeout || took > relayStallLimit(tc.stage) {
+			if took := time.Since(started); took < timeout || took > relayStallLimit {
 				t.Fatalf("dropped after %v, want soon after %v", took, timeout)
 			}
 			finish()

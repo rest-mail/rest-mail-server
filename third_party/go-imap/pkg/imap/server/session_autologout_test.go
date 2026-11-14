@@ -43,7 +43,7 @@ func startIdleSession(t *testing.T, backend imap.Backend, timeout time.Duration)
 	})
 
 	cr := bufio.NewReader(client)
-	_ = client.SetReadDeadline(time.Now().Add(5 * time.Second))
+	_ = client.SetReadDeadline(time.Now().Add(30 * time.Second))
 	if g, err := cr.ReadString('\n'); err != nil || !strings.HasPrefix(g, "* OK") {
 		t.Fatalf("greeting = %q, err = %v", g, err)
 	}
@@ -57,7 +57,7 @@ func startIdleSession(t *testing.T, backend imap.Backend, timeout time.Duration)
 func drainForBye(t *testing.T, conn net.Conn, cr *bufio.Reader) (sawBye bool) {
 	t.Helper()
 	for {
-		_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+		_ = conn.SetReadDeadline(time.Now().Add(30 * time.Second))
 		line, err := cr.ReadString('\n')
 		if err != nil {
 			return sawBye // EOF (or the guard deadline) — connection closed.
@@ -125,7 +125,7 @@ func TestSession_CommandActivityResetsAutologout(t *testing.T) {
 
 func writeCmd(t *testing.T, conn net.Conn, line string) {
 	t.Helper()
-	_ = conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	_ = conn.SetWriteDeadline(time.Now().Add(30 * time.Second))
 	if _, err := fmt.Fprintf(conn, "%s\r\n", line); err != nil {
 		t.Fatalf("write %q: %v", line, err)
 	}
@@ -133,7 +133,7 @@ func writeCmd(t *testing.T, conn net.Conn, line string) {
 
 func readOneLine(t *testing.T, conn net.Conn, cr *bufio.Reader) string {
 	t.Helper()
-	_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	_ = conn.SetReadDeadline(time.Now().Add(30 * time.Second))
 	line, err := cr.ReadString('\n')
 	if err != nil {
 		t.Fatalf("readLine: %v (partial %q)", err, line)

@@ -140,7 +140,7 @@ func ownSecurityRouter(db *gorm.DB) http.Handler {
 
 func ownSecurityRequest(t *testing.T, method, path, body string) (*http.Request, context.CancelFunc) {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.WithValue(t.Context(), ownSecurityContextKey{}, true), 4*time.Second)
+	ctx, cancel := context.WithTimeout(context.WithValue(t.Context(), ownSecurityContextKey{}, true), 30*time.Second)
 	r := httptest.NewRequest(method, path, bytes.NewBufferString(body)).WithContext(ctx)
 	r.Header.Set("Content-Type", "application/json")
 	return withClaims(r, mailboxClaims(7, "owner@example.test")), cancel
@@ -234,7 +234,7 @@ func TestOwnSecurityRoutesStopWhenTheRequestIsCancelled(t *testing.T) {
 			go func() { ownSecurityRouter(ownSecurityGorm(t, d)).ServeHTTP(rr, r); close(done) }()
 			select {
 			case <-done:
-			case <-time.After(3 * time.Second):
+			case <-time.After(30 * time.Second):
 				t.Fatal("the SQL kept running after the request was cancelled")
 			}
 			if rr.Code < 400 {

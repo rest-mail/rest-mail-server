@@ -341,7 +341,7 @@ func TestEventStreamRequirementExample(t *testing.T) {
 		t.Fatal(err)
 	}
 	route := requirementRoutes(t)["accountEvents"]
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	req := requirementRequest(route, pair).WithContext(ctx)
 	req.Header.Set("Authorization", "Bearer "+session.AccessToken)

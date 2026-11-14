@@ -35,6 +35,7 @@ type queueRequestDB struct {
 	beginDelay     time.Duration
 	beforeWrite    func()
 	writeWait      error
+	lostCancel     bool
 	active         atomic.Bool
 	commits        atomic.Int32
 	rollbacks      atomic.Int32
@@ -93,7 +94,7 @@ func (c *queueRequestDB) QueryContext(ctx context.Context, query string, args []
 		return nil, errors.New("private queue read failure")
 	}
 	if c.stage == "wait-read" {
-		return nil, waitQueueContext(ctx)
+		return nil, c.waitContext(ctx)
 	}
 	if strings.Contains(query, "count(*)") && !strings.Contains(query, "GROUP BY") {
 		return &queueRequestRows{columns: []string{"count"}, values: [][]driver.Value{{int64(0)}}}, nil
@@ -124,7 +125,7 @@ func (c *queueRequestDB) ExecContext(ctx context.Context, query string, args []d
 		return nil, errors.New("private queue write failure")
 	}
 	if c.stage == "wait-write" {
-		c.writeWait = waitQueueContext(ctx)
+		c.writeWait = c.waitContext(ctx)
 		return nil, c.writeWait
 	}
 	if c.zeroAffected {
@@ -133,11 +134,15 @@ func (c *queueRequestDB) ExecContext(ctx context.Context, query string, args []d
 	return driver.RowsAffected(1), nil
 }
 
-func waitQueueContext(ctx context.Context) error {
+// waitContext blocks until the request's context ends. The backstop only keeps
+// a regression finite; it records the loss, so tests judge it by that flag and
+// not by how long the request took.
+func (c *queueRequestDB) waitContext(ctx context.Context) error {
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
-	case <-time.After(2 * time.Second):
+	case <-time.After(30 * time.Second):
+		c.lostCancel = true
 		return errors.New("request cancellation did not reach queue SQL")
 	}
 }
@@ -202,7 +207,7 @@ func TestQueueRequestContextReachesEveryOperation(t *testing.T) {
 	for _, op := range queueRequestOperations {
 		t.Run(op.method+op.path, func(t *testing.T) {
 			c := &queueRequestDB{}
-			rr := serveQueueRequest(t, c, op.method, op.path, op.body, time.Second)
+			rr := serveQueueRequest(t, c, op.method, op.path, op.body, 30*time.Second)
 			want := 200
 			if op.method == "DELETE" && op.body == "" {
 				want = 204
@@ -222,10 +227,9 @@ func TestQueueRequestCancellationStopsSQL(t *testing.T) {
 				stage = "wait-read"
 			}
 			c := &queueRequestDB{stage: stage}
-			start := time.Now()
 			rr := serveQueueRequest(t, c, op.method, op.path, op.body, 20*time.Millisecond)
-			if rr.Code != 500 || time.Since(start) > time.Second || c.contextMissing || c.commits.Load() != 0 || strings.Contains(rr.Body.String(), "private") {
-				t.Fatalf("status=%d elapsed=%s contextMissing=%t commits=%d body=%s", rr.Code, time.Since(start), c.contextMissing, c.commits.Load(), rr.Body)
+			if rr.Code != 500 || c.lostCancel || c.contextMissing || c.commits.Load() != 0 || strings.Contains(rr.Body.String(), "private") {
+				t.Fatalf("status=%d lostCancel=%t contextMissing=%t commits=%d body=%s", rr.Code, c.lostCancel, c.contextMissing, c.commits.Load(), rr.Body)
 			}
 		})
 	}
@@ -245,7 +249,7 @@ func TestQueueRequestStorageFailuresAreSanitized(t *testing.T) {
 		for _, stage := range stages {
 			t.Run(op.method+op.path+"/"+stage, func(t *testing.T) {
 				c := &queueRequestDB{stage: stage}
-				rr := serveQueueRequest(t, c, op.method, op.path, op.body, time.Second)
+				rr := serveQueueRequest(t, c, op.method, op.path, op.body, 30*time.Second)
 				if rr.Code != 500 || strings.Contains(rr.Body.String(), "private") {
 					t.Fatalf("status=%d body=%s", rr.Code, rr.Body)
 				}
@@ -273,7 +277,7 @@ func TestQueueSingleMutationLocksAndPreservesRefusals(t *testing.T) {
 					c.status = "delivered"
 					want = 400
 				}
-				rr := serveQueueRequest(t, c, "POST", "/api/v1/admin/queue/1/"+action, "", time.Second)
+				rr := serveQueueRequest(t, c, "POST", "/api/v1/admin/queue/1/"+action, "", 30*time.Second)
 				if rr.Code != want || c.beginCalls != 1 || c.lockReads != 1 {
 					t.Fatalf("status=%d want=%d begins=%d lockedReads=%d body=%s", rr.Code, want, c.beginCalls, c.lockReads, rr.Body)
 				}
@@ -293,7 +297,7 @@ func TestQueueMutationCancellationAfterLockedRead(t *testing.T) {
 	// The watchdog only bounds a hung request. Cancellation fires from the
 	// driver at the write stage, after the locked read, so setup time cannot
 	// consume it.
-	const watchdog = 5 * time.Second
+	const watchdog = 30 * time.Second
 	for _, action := range []string{"retry", "bounce"} {
 		for _, scenario := range []string{"cancel", "setup-delay"} {
 			t.Run(action+"/"+scenario, func(t *testing.T) {

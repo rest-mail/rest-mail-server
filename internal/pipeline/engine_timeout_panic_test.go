@@ -139,7 +139,7 @@ func TestEngine_BlockingFilter_TimesOut(t *testing.T) {
 		if len(o.res.Steps) != 1 || o.res.Steps[0].Error == "" {
 			t.Fatalf("want 1 step with a recorded timeout error, got %d steps", len(o.res.Steps))
 		}
-	case <-time.After(3 * time.Second):
+	case <-time.After(30 * time.Second):
 		t.Fatal("engine did not return: a blocking filter hung the pipeline (no per-filter timeout)")
 	}
 }

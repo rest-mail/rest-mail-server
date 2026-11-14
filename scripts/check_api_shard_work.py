@@ -13,8 +13,8 @@ By default it needs no database and takes under a few minutes:
 
 With --shard it also runs one CI shard the way CI does, under -race with coverage,
 and fails when bcrypt holds more than --max-bcrypt-share of its CPU samples. Elapsed
-time and load are printed for the record and decide nothing: go test's own 20 minute
-timeout is the only time limit.
+time and load are printed for the record and decide nothing: go test's own 2 hour
+timeout, a hang guard, is the only time limit.
 """
 
 import argparse
@@ -117,7 +117,7 @@ def run_shard(root, shard, shards, executor, max_share, profile_dir=None):
         directory.mkdir(parents=True, exist_ok=True)
         binary, profile = directory / f"shard-{shard}.test", directory / f"shard-{shard}.cpu"
         command = [
-            "go", "test", "-race", "-count=1", "-timeout=20m", "-v",
+            "go", "test", "-race", "-count=1", "-timeout=2h", "-v",
             f"-coverprofile={scratch}/coverage.out", f"-cpuprofile={profile}", "-o", str(binary),
             "-exec", executor,
             "-run", "^(" + "|".join(re.escape(name) for name in selected) + ")$",

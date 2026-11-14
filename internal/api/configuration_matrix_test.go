@@ -342,7 +342,7 @@ func matrixCheckInternalRoutesBehindMTLS(t *testing.T, s *matrixServer) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	gateway := &http.Client{Transport: &http.Transport{TLSClientConfig: clientTLS}, Timeout: 10 * time.Second}
+	gateway := &http.Client{Transport: &http.Transport{TLSClientConfig: clientTLS}, Timeout: 30 * time.Second}
 	t.Cleanup(gateway.CloseIdleConnections)
 	for _, tc := range []struct{ method, path, body string }{
 		{http.MethodGet, "/api/mailboxes?address=a@matrix.test", ""},

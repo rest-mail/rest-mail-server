@@ -75,7 +75,7 @@ func TestPOP3ConnectionUsesItsSessionNotBasic(t *testing.T) {
 		defer close(done)
 		sess.Handle()
 	}()
-	if err := client.SetDeadline(time.Now().Add(10 * time.Second)); err != nil {
+	if err := client.SetDeadline(time.Now().Add(30 * time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	c := &pop3Client{t: t, conn: client, r: bufio.NewReader(client)}

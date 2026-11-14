@@ -115,7 +115,7 @@
       "local": "PostgreSQL"
     },
     "Run unit tests with race detector": {
-      "sha256": "3df288869fba12519d699a39188b5d950e8b40a95d45c1dfdd1c5e5b65c74ce7",
+      "sha256": "4a43de014c075c99c5e54a496538d2915431d0bfaa641bd08e74d1f8d2e01210",
       "local": "Go tests"
     },
     "Upload example proofs": {
@@ -169,7 +169,7 @@
       "exception": "Local discovery uses the same sorted round-robin split, across more shards and with isolated databases, rather than a GitHub matrix. Selection runs affected packages; --all runs every package. Vertrag suffix tests run separately with no skips."
     },
     "Run internal/api tests with race detector": {
-      "sha256": "85acbc401112d93400332c7e09482a196196162a4beae7020969608d347f7c84",
+      "sha256": "7b8492021fc2b672909328fdb7fe519423f8eb00ddf439c3ea3cd05b9da70058",
       "local": "Go tests"
     },
     "Upload example proofs": {
@@ -223,7 +223,7 @@
       "exception": "Local discovery uses the same sorted round-robin split, across more shards and with isolated databases, rather than a GitHub matrix. Selection runs affected packages; --all runs every package. Vertrag suffix tests run separately with no skips."
     },
     "Run internal/api/handlers tests with race detector": {
-      "sha256": "d140b7a7319dd9dca3c1600afb539c9bd4efd07ee79e7bed2ac4319b7aec30b9",
+      "sha256": "28ef18dfa91e2241361a680a4490d0761eecc1aeb780c507f29fd42e1b72d6b6",
       "local": "Go tests"
     },
     "Upload example proofs": {
@@ -273,11 +273,11 @@
       "local": "Go dependencies"
     },
     "Test contract fixtures against an empty database": {
-      "sha256": "a0f877a08df729ff8128e39daba1ccb67952d983300d7ae2c829e2e651b8e394",
+      "sha256": "9319af54db97001e0626c8a3c0ffb64a200057f8f4d802b2a4fb73c0b3160d4b",
       "local": "Empty database fixtures"
     },
     "Test the contract fault switch": {
-      "sha256": "b0e18c3c2a8d9db9a4a2243dc824ce682c20c19e3d81e339548a43f4cb71358a",
+      "sha256": "1787896ceca263fe7b129064d9459473bf37587494f8cb06f3751af95cd0c8b8",
       "local": "Contract fault switch"
     }
   },
@@ -311,7 +311,7 @@
       "local": "Go dependencies"
     },
     "Check the IMAP module's 32-bit sequence dispatch": {
-      "sha256": "ce652bcb59ea4b0ec21a57f6560128816ee58c2a322daecf0901df38d5695648",
+      "sha256": "5cf1cae91ab7bee02b3f81d8e772480575fc2fdbd7fd19a59c0abb6d6384f802",
       "exception": "CI runs these wire proofs on linux/386. A Mac cannot run 386 at all, so the IMAP module step only builds them for linux/386; only CI shows they pass."
     },
     "Validate the IMAP module's RFC checklist": {
@@ -319,7 +319,7 @@
       "local": "IMAP module"
     },
     "Test the local IMAP compatibility module with coverage": {
-      "sha256": "c1517492f86bede877bc6b1838f642eadbd7030ff29eb8aaf96515642fe8d427",
+      "sha256": "c53e46ec6a73f04f27ff7c40625baa9cd4ef5db8b079b555a42e9b315b09f362",
       "local": "IMAP module"
     },
     "Require at least 95% statement coverage": {

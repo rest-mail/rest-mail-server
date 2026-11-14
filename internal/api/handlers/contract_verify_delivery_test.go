@@ -89,12 +89,12 @@ func TestVerifyDelivery_Recipients(t *testing.T) {
 		return body.Data
 	}
 
-	start := time.Now()
+	// The answer itself says whether the handler polled: a poll that ran out
+	// reports "no matching message found within timeout", whatever the clock did.
 	if got := verify(url.Values{"to": {"someone@example.com"}, "timeout": {"30s"}}); got["found"] != false {
 		t.Errorf("an address with no mailbox: want found false, got %v", got)
-	}
-	if elapsed := time.Since(start); elapsed > 5*time.Second {
-		t.Errorf("an address with no mailbox polled for %s", elapsed)
+	} else if got["message"] != "no mailbox at that address" {
+		t.Errorf("an address with no mailbox polled instead of answering at once: %v", got)
 	}
 	if got := verify(url.Values{"to": {mb.Address}, "subject": {"Delivered"}}); got["found"] != true {
 		t.Errorf("a delivered message: want found true, got %v", got)

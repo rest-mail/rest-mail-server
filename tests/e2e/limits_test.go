@@ -350,7 +350,7 @@ func (l *limitsRun) eventStreams(t *testing.T) {
 
 	open[0].Body.Close()
 	open = open[1:]
-	deadline := time.Now().Add(15 * time.Second)
+	deadline := time.Now().Add(30 * time.Second)
 	for {
 		resp := stream(l.a, l.aID)
 		if resp.StatusCode == http.StatusOK {
@@ -551,12 +551,12 @@ func (l *limitsRun) bodyCaps(t *testing.T) {
 // declareOversizedBody sends a request whose Content-Length is over every cap,
 // without its body, and reads the status the server answers before the body.
 func declareOversizedBody(host, method, path, token string) (int, error) {
-	conn, err := net.DialTimeout("tcp", host, 10*time.Second)
+	conn, err := net.DialTimeout("tcp", host, 30*time.Second)
 	if err != nil {
 		return 0, err
 	}
 	defer conn.Close()
-	_ = conn.SetDeadline(time.Now().Add(15 * time.Second))
+	_ = conn.SetDeadline(time.Now().Add(30 * time.Second))
 	fmt.Fprintf(conn, "%s %s HTTP/1.1\r\nHost: %s\r\nAuthorization: Bearer %s\r\nContent-Type: application/json\r\nContent-Length: %d\r\n\r\n",
 		method, path, host, token, overEveryBodyCap)
 	resp, err := http.ReadResponse(bufio.NewReader(conn), nil)

@@ -69,7 +69,7 @@ func brokenTLSMX(t *testing.T) (host string, port int, finish func() []string) {
 			if err != nil {
 				return
 			}
-			_ = conn.SetDeadline(time.Now().Add(3 * time.Second))
+			_ = conn.SetDeadline(time.Now().Add(30 * time.Second))
 			r, wr := bufio.NewReader(conn), bufio.NewWriter(conn)
 			reply := func(s string) { _, _ = wr.WriteString(s + "\r\n"); _ = wr.Flush() }
 			reply("220 loopback ready")
@@ -118,7 +118,7 @@ func brokenTLSMX(t *testing.T) (host string, port int, finish func() []string) {
 		select {
 		case c := <-done:
 			return c
-		case <-time.After(5 * time.Second):
+		case <-time.After(30 * time.Second):
 			t.Fatal("the MX did not finish")
 			return nil
 		}

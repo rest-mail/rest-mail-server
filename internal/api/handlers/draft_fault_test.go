@@ -47,7 +47,8 @@ func (d *draftFaultDB) fault(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-time.After(2 * time.Second):
+		case <-time.After(30 * time.Second):
+			d.lost++ // callers hold d.mu; assertDraftFault fails on it, whatever the clock did
 			return errors.New("HTTP cancellation lost")
 		}
 	}
@@ -179,7 +180,7 @@ var draftFaultRoutes = []struct{ name, method, path, body string }{
 func draftFaultRequest(t *testing.T, index int) *http.Request {
 	t.Helper()
 	route := draftFaultRoutes[index]
-	ctx, cancel := context.WithTimeout(context.WithValue(t.Context(), draftFaultContextKey{}, true), 3*time.Second)
+	ctx, cancel := context.WithTimeout(context.WithValue(t.Context(), draftFaultContextKey{}, true), 30*time.Second)
 	t.Cleanup(cancel)
 	ctx = context.WithValue(ctx, middleware.ClaimsKey, &auth.Claims{AccountID: 1, CredentialID: 1, CredentialKind: "app_password"})
 	r := httptest.NewRequest(route.method, route.path, strings.NewReader(route.body)).WithContext(ctx)
@@ -252,13 +253,13 @@ func TestDraftAndScheduledCancellationReachesSQL(t *testing.T) {
 			select {
 			case <-d.started:
 				cancel()
-			case <-time.After(time.Second):
+			case <-time.After(30 * time.Second):
 				t.Error("SQL did not start")
 				cancel()
 			}
 			select {
 			case <-done:
-			case <-time.After(3 * time.Second):
+			case <-time.After(30 * time.Second):
 				t.Fatal("cancelled operation did not return")
 			}
 			assertDraftFault(t, d, rr, 500)
@@ -309,13 +310,13 @@ func TestDraftUpdateCancellationRollsBackWriteAndReload(t *testing.T) {
 			select {
 			case <-d.started:
 				cancel()
-			case <-time.After(time.Second):
+			case <-time.After(30 * time.Second):
 				t.Error("transactional SQL did not start")
 				cancel()
 			}
 			select {
 			case <-done:
-			case <-time.After(3 * time.Second):
+			case <-time.After(30 * time.Second):
 				t.Fatal("transactional SQL ignored cancellation")
 			}
 			assertDraftFault(t, d, rr, 500)

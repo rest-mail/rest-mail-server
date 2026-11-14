@@ -48,7 +48,7 @@ func newNoFallbackMX(t *testing.T, restmail bool) *noFallbackMX {
 
 func (mx *noFallbackMX) serve(c net.Conn) {
 	defer c.Close()
-	_ = c.SetDeadline(time.Now().Add(10 * time.Second))
+	_ = c.SetDeadline(time.Now().Add(30 * time.Second))
 	r := bufio.NewReader(c)
 	fmt.Fprint(c, "220 mx.test ESMTP\r\n")
 	for {

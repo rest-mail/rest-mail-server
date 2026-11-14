@@ -156,7 +156,7 @@ func testStage10Verification(t *testing.T) {
 		}
 
 		// RESTMAIL path should be near-instant for same-server
-		msgID := waitForMessage(t, recvClient, accountID, "INBOX", subject, 10*time.Second)
+		msgID := waitForMessage(t, recvClient, accountID, "INBOX", subject, 30*time.Second)
 		if msgID == 0 {
 			t.Fatal("restmail fast delivery failed")
 		}
@@ -165,7 +165,7 @@ func testStage10Verification(t *testing.T) {
 
 	t.Run("SmtpAuth_Port587", func(t *testing.T) {
 		// Connect to submission port with STARTTLS
-		conn, err := net.DialTimeout("tcp", mail1SubmitAddr, 10*time.Second)
+		conn, err := net.DialTimeout("tcp", mail1SubmitAddr, 30*time.Second)
 		if err != nil {
 			t.Skipf("Cannot connect to submission port %s: %v", mail1SubmitAddr, err)
 		}
@@ -221,7 +221,7 @@ func testStage10Verification(t *testing.T) {
 	t.Run("Imaps_Port993", func(t *testing.T) {
 		// Connect via TLS to IMAPS port
 		conn, err := tls.DialWithDialer(
-			&net.Dialer{Timeout: 10 * time.Second},
+			&net.Dialer{Timeout: 30 * time.Second},
 			"tcp",
 			imapsGWAddr,
 			&tls.Config{InsecureSkipVerify: true},
@@ -235,7 +235,7 @@ func testStage10Verification(t *testing.T) {
 		// (esp. SELECT's untagged * lines + the tagged OK) arrive across
 		// several — read until the tag.
 		reader := bufio.NewReader(conn)
-		_ = conn.SetDeadline(time.Now().Add(10 * time.Second))
+		_ = conn.SetDeadline(time.Now().Add(30 * time.Second))
 		greeting, _ := reader.ReadString('\n')
 		if !strings.Contains(greeting, "OK") {
 			t.Fatalf("unexpected IMAP greeting: %s", greeting)

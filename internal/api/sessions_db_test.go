@@ -94,7 +94,7 @@ func (f *epochFixture) folders(s epochSession) int {
 // closed again at once.
 func (f *epochFixture) events(s epochSession) int {
 	f.t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("%s/api/v1/accounts/%d/events", f.srv.URL, f.accountID), nil)
 	req.Header.Set("Authorization", "Bearer "+s.access)

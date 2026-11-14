@@ -46,7 +46,7 @@ func (c *publicContextDB) observe(ctx context.Context) error {
 		case <-ctx.Done():
 			c.cancelled.Add(1)
 			return ctx.Err()
-		case <-time.After(2 * time.Second):
+		case <-time.After(30 * time.Second):
 			return errors.New("finite database backstop: HTTP cancellation was lost")
 		}
 	}
@@ -108,7 +108,7 @@ func TestPublicDiscoveryAndHealthCarryHTTPContext(t *testing.T) {
 		t.Run(route.name, func(t *testing.T) {
 			c := &publicContextDB{}
 			handler := route.handler(publicContextGorm(t, c))
-			ctx, cancel := context.WithTimeout(context.WithValue(t.Context(), publicRequestContextKey{}, true), time.Second)
+			ctx, cancel := context.WithTimeout(context.WithValue(t.Context(), publicRequestContextKey{}, true), 30*time.Second)
 			defer cancel()
 			r := httptest.NewRequest(route.method, route.path, nil).WithContext(ctx)
 			r.Host = "example.test"
@@ -126,7 +126,7 @@ func TestPublicDiscoveryAndHealthCancelBlockedDatabaseWork(t *testing.T) {
 		t.Run(route.name, func(t *testing.T) {
 			c := &publicContextDB{wait: true, started: make(chan struct{}, 1)}
 			handler := route.handler(publicContextGorm(t, c))
-			ctx, cancel := context.WithTimeout(context.WithValue(t.Context(), publicRequestContextKey{}, true), 5*time.Second)
+			ctx, cancel := context.WithTimeout(context.WithValue(t.Context(), publicRequestContextKey{}, true), 30*time.Second)
 			defer cancel()
 			r := httptest.NewRequest(route.method, route.path, nil).WithContext(ctx)
 			r.Host = "example.test"
@@ -139,13 +139,13 @@ func TestPublicDiscoveryAndHealthCancelBlockedDatabaseWork(t *testing.T) {
 			select {
 			case <-c.started:
 				cancel()
-			case <-time.After(time.Second):
+			case <-time.After(30 * time.Second):
 				cancel()
 				t.Error("database operation never started")
 			}
 			select {
 			case <-done:
-			case <-time.After(3 * time.Second):
+			case <-time.After(30 * time.Second):
 				t.Fatal("cancelled request did not return before the finite database backstop")
 			}
 			if rr.Code != route.failureStatus || c.calls.Load() != 1 || c.lost.Load() != 0 || c.cancelled.Load() != 1 {

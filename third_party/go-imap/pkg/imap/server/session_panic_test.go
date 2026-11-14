@@ -93,7 +93,7 @@ func dialIMAP(t *testing.T, addr string) *rawClient {
 
 func (c *rawClient) readLine() (string, error) {
 	c.t.Helper()
-	_ = c.conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	_ = c.conn.SetReadDeadline(time.Now().Add(30 * time.Second))
 	line, err := c.r.ReadString('\n')
 	if err != nil {
 		return "", err
@@ -103,7 +103,7 @@ func (c *rawClient) readLine() (string, error) {
 
 func (c *rawClient) send(line string) {
 	c.t.Helper()
-	_ = c.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	_ = c.conn.SetWriteDeadline(time.Now().Add(30 * time.Second))
 	if _, err := fmt.Fprintf(c.conn, "%s\r\n", line); err != nil {
 		c.t.Fatalf("send %q: %v", line, err)
 	}

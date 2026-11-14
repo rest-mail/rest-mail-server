@@ -68,7 +68,7 @@ func TestAliasRoutesCarryTheRequestContext(t *testing.T) {
 			NewAliasHandler(db).Register(endpoint.Routes{Router: router, Registry: endpoint.NewRegistry()},
 				AliasRouteChecks{OnList: noop, OnAlias: noop})
 
-			ctx, cancel := context.WithTimeout(context.WithValue(t.Context(), aliasContextKey{}, true), 4*time.Second)
+			ctx, cancel := context.WithTimeout(context.WithValue(t.Context(), aliasContextKey{}, true), 30*time.Second)
 			defer cancel()
 			r := withClaims(httptest.NewRequest(route.method, route.path, nil).WithContext(ctx), mailboxClaims(1, "admin@example.test"))
 			rr := httptest.NewRecorder()

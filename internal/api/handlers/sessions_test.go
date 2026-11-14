@@ -184,7 +184,7 @@ func eventStream(t *testing.T, h *EventHandler, jwt *auth.JWTService, accountID 
 func untilEnd(t *testing.T, lines <-chan string) []string {
 	t.Helper()
 	var got []string
-	timeout := time.After(5 * time.Second)
+	timeout := time.After(30 * time.Second)
 	for {
 		select {
 		case line, ok := <-lines:
@@ -201,7 +201,7 @@ func untilEnd(t *testing.T, lines <-chan string) []string {
 // waitFor reads lines until one has prefix, failing after a few seconds.
 func waitFor(t *testing.T, lines <-chan string, prefix string) {
 	t.Helper()
-	timeout := time.After(5 * time.Second)
+	timeout := time.After(30 * time.Second)
 	for {
 		select {
 		case line, ok := <-lines:

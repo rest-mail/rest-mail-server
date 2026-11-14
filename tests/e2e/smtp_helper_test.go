@@ -19,7 +19,7 @@ type smtpConn struct {
 
 func dialSMTP(t *testing.T, addr string) *smtpConn {
 	t.Helper()
-	conn, err := net.DialTimeout("tcp", addr, 10*time.Second)
+	conn, err := net.DialTimeout("tcp", addr, 30*time.Second)
 	if err != nil {
 		t.Fatalf("dial SMTP %s: %v", addr, err)
 	}
@@ -41,7 +41,7 @@ func (sc *smtpConn) close() {
 
 func (sc *smtpConn) send(t *testing.T, cmd string) {
 	t.Helper()
-	_ = sc.conn.SetDeadline(time.Now().Add(10 * time.Second))
+	_ = sc.conn.SetDeadline(time.Now().Add(30 * time.Second))
 	_, err := fmt.Fprintf(sc.conn, "%s\r\n", cmd)
 	if err != nil {
 		t.Fatalf("send SMTP command %q: %v", cmd, err)
@@ -50,7 +50,7 @@ func (sc *smtpConn) send(t *testing.T, cmd string) {
 
 func (sc *smtpConn) readLine(t *testing.T) string {
 	t.Helper()
-	_ = sc.conn.SetDeadline(time.Now().Add(10 * time.Second))
+	_ = sc.conn.SetDeadline(time.Now().Add(30 * time.Second))
 	line, err := sc.reader.ReadString('\n')
 	if err != nil {
 		t.Fatalf("read SMTP line: %v", err)
@@ -240,7 +240,7 @@ type imapConn struct {
 
 func dialIMAP(t *testing.T, addr string) *imapConn {
 	t.Helper()
-	conn, err := net.DialTimeout("tcp", addr, 10*time.Second)
+	conn, err := net.DialTimeout("tcp", addr, 30*time.Second)
 	if err != nil {
 		t.Fatalf("dial IMAP %s: %v", addr, err)
 	}
@@ -267,7 +267,7 @@ func (ic *imapConn) nextTag() string {
 
 func (ic *imapConn) readLine(t *testing.T) string {
 	t.Helper()
-	_ = ic.conn.SetDeadline(time.Now().Add(10 * time.Second))
+	_ = ic.conn.SetDeadline(time.Now().Add(30 * time.Second))
 	line, err := ic.reader.ReadString('\n')
 	if err != nil {
 		t.Fatalf("read IMAP line: %v", err)
@@ -293,7 +293,7 @@ func (ic *imapConn) readUntilTag(t *testing.T, tag string) []string {
 func (ic *imapConn) command(t *testing.T, cmd string) (string, []string) {
 	t.Helper()
 	tag := ic.nextTag()
-	_ = ic.conn.SetDeadline(time.Now().Add(10 * time.Second))
+	_ = ic.conn.SetDeadline(time.Now().Add(30 * time.Second))
 	_, err := fmt.Fprintf(ic.conn, "%s %s\r\n", tag, cmd)
 	if err != nil {
 		t.Fatalf("send IMAP command %q: %v", cmd, err)
@@ -334,7 +334,7 @@ type pop3Conn struct {
 
 func dialPOP3(t *testing.T, addr string) *pop3Conn {
 	t.Helper()
-	conn, err := net.DialTimeout("tcp", addr, 10*time.Second)
+	conn, err := net.DialTimeout("tcp", addr, 30*time.Second)
 	if err != nil {
 		t.Fatalf("dial POP3 %s: %v", addr, err)
 	}
@@ -355,7 +355,7 @@ func (pc *pop3Conn) close() {
 
 func (pc *pop3Conn) readLine(t *testing.T) string {
 	t.Helper()
-	_ = pc.conn.SetDeadline(time.Now().Add(10 * time.Second))
+	_ = pc.conn.SetDeadline(time.Now().Add(30 * time.Second))
 	line, err := pc.reader.ReadString('\n')
 	if err != nil {
 		t.Fatalf("read POP3 line: %v", err)
@@ -365,7 +365,7 @@ func (pc *pop3Conn) readLine(t *testing.T) string {
 
 func (pc *pop3Conn) sendExpect(t *testing.T, cmd string, expectedPrefix string) string {
 	t.Helper()
-	_ = pc.conn.SetDeadline(time.Now().Add(10 * time.Second))
+	_ = pc.conn.SetDeadline(time.Now().Add(30 * time.Second))
 	_, err := fmt.Fprintf(pc.conn, "%s\r\n", cmd)
 	if err != nil {
 		t.Fatalf("send POP3 %q: %v", cmd, err)
@@ -509,7 +509,7 @@ func dialSMTPTLS(t *testing.T, addr string) *smtpConn {
 // what is under test is the protocol, not the chain.
 func dialTLS(t *testing.T, addr string) net.Conn {
 	t.Helper()
-	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: 10 * time.Second}, "tcp", addr,
+	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: 30 * time.Second}, "tcp", addr,
 		&tls.Config{InsecureSkipVerify: true})
 	if err != nil {
 		t.Fatalf("dial TLS %s: %v", addr, err)

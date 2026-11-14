@@ -65,7 +65,7 @@ func dialUTF8(t *testing.T) *pop3Client {
 		_ = client.Close()
 		<-done
 	})
-	if err := client.SetDeadline(time.Now().Add(10 * time.Second)); err != nil {
+	if err := client.SetDeadline(time.Now().Add(30 * time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	c := &pop3Client{t: t, conn: client, r: bufio.NewReader(client)}

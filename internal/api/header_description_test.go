@@ -108,7 +108,7 @@ func TestEveryPublicResponseCarriesSecurityHeaders(t *testing.T) {
 	for _, op := range operationsOf(doc) {
 		t.Run(op.id, func(t *testing.T) {
 			path := concretePath(op.path)
-			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+			ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 			defer cancel()
 			req := httptest.NewRequest(strings.ToUpper(op.method), path, nil).WithContext(ctx)
 			req.RemoteAddr = "192.0.2.10:40000"

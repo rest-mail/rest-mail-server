@@ -31,7 +31,7 @@ func startMTLSServer(t *testing.T, cfg *tls.Config, handler http.Handler) string
 
 func serveMTLSServer(t *testing.T, cfg *tls.Config, handler http.Handler, ln net.Listener) (string, func()) {
 	t.Helper()
-	srv := &http.Server{TLSConfig: cfg, Handler: handler, ReadHeaderTimeout: time.Second}
+	srv := &http.Server{TLSConfig: cfg, Handler: handler, ReadHeaderTimeout: 30 * time.Second}
 	done := make(chan error, 1)
 	go func() { done <- srv.ServeTLS(ln, "", "") }()
 	stop := func() {
@@ -99,7 +99,7 @@ func TestMTLSHandshakesReloadFilePairs(t *testing.T) {
 				defer stop()
 				transport := &http.Transport{TLSClientConfig: clientCfg, DisableKeepAlives: true, DialContext: listener.DialContext}
 				defer transport.CloseIdleConnections()
-				client := &http.Client{Transport: transport, Timeout: 2 * time.Second}
+				client := &http.Client{Transport: transport, Timeout: 30 * time.Second}
 				serials := func() string {
 					t.Helper()
 					resp, err := client.Get(url)
@@ -129,7 +129,7 @@ func TestMTLSHandshakesReloadFilePairs(t *testing.T) {
 					t.Fatal("half-written renewal displaced old pair")
 				}
 				replacePEM(t, filepath.Join(dir, side+".crt"), cert)
-				deadline := time.Now().Add(7 * time.Second)
+				deadline := time.Now().Add(30 * time.Second)
 				for serials() != want {
 					if time.Now().After(deadline) {
 						t.Fatal("renewal was not picked up on a new handshake")

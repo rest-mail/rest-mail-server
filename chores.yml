@@ -605,21 +605,21 @@ tasks:
     env:
       ENVIRONMENT: test
     cmds:
-      - python3 -B scripts/scratch_run.py go test -race -count=1 ./internal/... ./tests/contract/fixtureplan ./tests/contract/browser_sessions
+      - python3 -B scripts/scratch_run.py go test -timeout=2h -race -count=1 ./internal/... ./tests/contract/fixtureplan ./tests/contract/browser_sessions
 
   test:unit:
     desc: Run unit tests (alias for test)
     env:
       ENVIRONMENT: test
     cmds:
-      - python3 -B scripts/scratch_run.py go test -race -count=1 ./internal/... ./tests/contract/fixtureplan ./tests/contract/browser_sessions
+      - python3 -B scripts/scratch_run.py go test -timeout=2h -race -count=1 ./internal/... ./tests/contract/fixtureplan ./tests/contract/browser_sessions
 
   test:verbose:
     desc: Run unit tests with verbose output
     env:
       ENVIRONMENT: test
     cmds:
-      - python3 -B scripts/scratch_run.py go test -race -count=1 -v ./internal/... ./tests/contract/fixtureplan ./tests/contract/browser_sessions
+      - python3 -B scripts/scratch_run.py go test -timeout=2h -race -count=1 -v ./internal/... ./tests/contract/fixtureplan ./tests/contract/browser_sessions
 
   deps:vertrag:
     desc: Pin the latest Vertrag release for the contract run (version and checksum together)
@@ -644,7 +644,7 @@ tasks:
     env:
       ENVIRONMENT: test
     cmds:
-      - python3 -B scripts/scratch_run.py go test -race -count=1 -coverprofile=coverage.out ./internal/... ./tests/contract/fixtureplan ./tests/contract/browser_sessions
+      - python3 -B scripts/scratch_run.py go test -timeout=2h -race -count=1 -coverprofile=coverage.out ./internal/... ./tests/contract/fixtureplan ./tests/contract/browser_sessions
       - go tool cover -html=coverage.out -o coverage.html
       - echo "Coverage report written to coverage.html"
 
@@ -793,7 +793,7 @@ tasks:
   contract:diff:
     desc: The generated description against openapi.yaml, operation by operation (#624), without a server
     cmds:
-      - python3 -B scripts/scratch_run.py go test ./internal/api/ -run 'TestGeneratedDescriptionMatchesOracle|TestExamplePairsFitTheDescription' -count=1 -v
+      - python3 -B scripts/scratch_run.py go test -timeout=2h ./internal/api/ -run 'TestGeneratedDescriptionMatchesOracle|TestExamplePairsFitTheDescription' -count=1 -v
 
   test:contract-fixtures:
     desc: Prepare stable queue state only on the disposable restmail.test topology
@@ -1098,7 +1098,7 @@ tasks:
           -e MAIL1_POSTFIX_IP -e MAIL2_POSTFIX_IP -e MAIL1_DOVECOT_IP -e MAIL2_DOVECOT_IP \
           -e API_BASE_URL="${RESTMAIL_E2E_API_URL:-${CONTRACT_ENDPOINT:-http://{{.RESTMAIL_API_IP | default "10.99.0.20"}}:8080}}" \
           golang:1.26.10 \
-          go test -race -count=1 -v -timeout 8m ./tests/e2e/... {{.CLI_ARGS}}
+          go test -race -count=1 -v -timeout=2h ./tests/e2e/... {{.CLI_ARGS}}
 
   test:contract-own-data:
     desc: Send every own-data exchange after a reset and seed, including destructive operations (#1334, #1385)

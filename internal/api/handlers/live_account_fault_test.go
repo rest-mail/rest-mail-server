@@ -44,7 +44,8 @@ func (d *liveAccountDB) failure(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-time.After(2 * time.Second):
+		case <-time.After(30 * time.Second):
+			d.lost.Add(1) // assertLiveAccountFault fails on it, whatever the clock did
 			return errors.New("HTTP cancellation lost")
 		}
 	}
@@ -133,7 +134,7 @@ func liveAccountRouter(db *gorm.DB) (http.Handler, *SSEBroker) {
 func liveAccountRequest(t *testing.T, index int) *http.Request {
 	t.Helper()
 	route := liveAccountRoutes[index]
-	ctx, cancel := context.WithTimeout(context.WithValue(t.Context(), liveAccountContextKey{}, true), 3*time.Second)
+	ctx, cancel := context.WithTimeout(context.WithValue(t.Context(), liveAccountContextKey{}, true), 30*time.Second)
 	t.Cleanup(cancel)
 	claims := freshTwoFactorClaims(1, "")
 	claims.SessionID = "session-one"
@@ -180,13 +181,13 @@ func TestLiveAccountCancellationReachesSQL(t *testing.T) {
 			select {
 			case <-d.started:
 				cancel()
-			case <-time.After(time.Second):
+			case <-time.After(30 * time.Second):
 				t.Error("SQL never started")
 				cancel()
 			}
 			select {
 			case <-done:
-			case <-time.After(3 * time.Second):
+			case <-time.After(30 * time.Second):
 				t.Fatal("handler ignored cancellation")
 			}
 			assertLiveAccountFault(t, d, broker, rr)
@@ -225,13 +226,13 @@ func TestDeviceRegistrationTransactionRetainsHTTPContext(t *testing.T) {
 				select {
 				case <-d.started:
 					cancel()
-				case <-time.After(time.Second):
+				case <-time.After(30 * time.Second):
 					t.Error("registration SQL never started")
 					cancel()
 				}
 				select {
 				case <-done:
-				case <-time.After(3 * time.Second):
+				case <-time.After(30 * time.Second):
 					t.Fatal("registration ignored cancellation")
 				}
 			} else {
@@ -260,13 +261,13 @@ func TestAccountUnlinkTransactionRetainsHTTPContext(t *testing.T) {
 				select {
 				case <-d.started:
 					cancel()
-				case <-time.After(time.Second):
+				case <-time.After(30 * time.Second):
 					t.Error("grant lock never started")
 					cancel()
 				}
 				select {
 				case <-done:
-				case <-time.After(3 * time.Second):
+				case <-time.After(30 * time.Second):
 					t.Fatal("grant lock ignored cancellation")
 				}
 			} else {

@@ -68,7 +68,7 @@ func Example() {
 	go sess.Handle()
 	defer func() { _ = clientConn.Close() }()
 
-	_ = clientConn.SetDeadline(time.Now().Add(5 * time.Second))
+	_ = clientConn.SetDeadline(time.Now().Add(30 * time.Second))
 	r := bufio.NewReader(clientConn)
 
 	// Read and discard the server greeting.

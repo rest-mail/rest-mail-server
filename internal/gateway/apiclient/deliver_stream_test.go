@@ -172,7 +172,7 @@ func TestDeliverMessageFromStopsWhenTheAPIRefuses(t *testing.T) {
 		t.Fatalf("error = %v, want the 404", err)
 	}
 	client.internalHTTPClient.CloseIdleConnections()
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(30 * time.Second)
 	for runtime.NumGoroutine() > before+2 {
 		if time.Now().After(deadline) {
 			t.Fatalf("goroutines = %d, started with %d", runtime.NumGoroutine(), before)

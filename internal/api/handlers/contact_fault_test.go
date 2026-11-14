@@ -51,7 +51,10 @@ func (d *contactFaultDB) fault(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-time.After(2 * time.Second):
+		case <-time.After(30 * time.Second):
+			// Callers hold d.mu. Counting the loss makes assertContactFault
+			// fail on it, whatever the wall clock did meanwhile.
+			d.lost++
 			return errors.New("private contact HTTP cancellation lost")
 		}
 	}
@@ -188,7 +191,7 @@ func contactFaultRouter(db *gorm.DB) http.Handler {
 func contactFaultRequest(t *testing.T, index int) *http.Request {
 	t.Helper()
 	route := contactFaultRoutes[index]
-	ctx, cancel := context.WithTimeout(context.WithValue(t.Context(), contactFaultContextKey{}, true), 4*time.Second)
+	ctx, cancel := context.WithTimeout(context.WithValue(t.Context(), contactFaultContextKey{}, true), 30*time.Second)
 	t.Cleanup(cancel)
 	ctx = context.WithValue(ctx, middleware.ClaimsKey, &auth.Claims{AccountID: 7, Address: "reader@example.test", CredentialID: 11, CredentialKind: "app_password"})
 	r := httptest.NewRequest(route.method, route.path, strings.NewReader(route.body)).WithContext(ctx)
@@ -205,7 +208,7 @@ func assertContactFault(t *testing.T, d *contactFaultDB, rr *httptest.ResponseRe
 	if needsRollback {
 		select {
 		case <-d.rolledBack:
-		case <-time.After(time.Second):
+		case <-time.After(30 * time.Second):
 			t.Fatal("transaction rollback did not finish")
 		}
 	}
@@ -242,13 +245,13 @@ func TestContactRoutesCarryCancellationThroughAccess(t *testing.T) {
 			go func() { defer close(done); router.ServeHTTP(rr, r.WithContext(ctx)) }()
 			select {
 			case <-d.started:
-			case <-time.After(time.Second):
+			case <-time.After(30 * time.Second):
 				t.Fatal("access not reached")
 			}
 			cancel()
 			select {
 			case <-done:
-			case <-time.After(time.Second):
+			case <-time.After(30 * time.Second):
 				t.Fatal("access ignored HTTP cancellation")
 			}
 			assertContactFault(t, d, rr, 500)
@@ -275,13 +278,13 @@ func TestContactReadAndMutationFaults(t *testing.T) {
 						go func() { defer close(done); router.ServeHTTP(rr, r.WithContext(ctx)) }()
 						select {
 						case <-d.started:
-						case <-time.After(time.Second):
+						case <-time.After(30 * time.Second):
 							t.Fatal("contact read not reached")
 						}
 						cancel()
 						select {
 						case <-done:
-						case <-time.After(time.Second):
+						case <-time.After(30 * time.Second):
 							t.Fatal("contact read ignored cancellation")
 						}
 					} else {
@@ -378,13 +381,13 @@ func TestContactWritesAndSessionGrantsFollowCancellation(t *testing.T) {
 			go func() { defer close(done); router.ServeHTTP(rr, r.WithContext(ctx)) }()
 			select {
 			case <-d.started:
-			case <-time.After(time.Second):
+			case <-time.After(30 * time.Second):
 				t.Fatal("write not reached")
 			}
 			cancel()
 			select {
 			case <-done:
-			case <-time.After(time.Second):
+			case <-time.After(30 * time.Second):
 				t.Fatal("write ignored cancellation")
 			}
 			assertContactFault(t, d, rr, 500)
@@ -404,13 +407,13 @@ func TestContactWritesAndSessionGrantsFollowCancellation(t *testing.T) {
 			go func() { defer close(done); router.ServeHTTP(rr, r.WithContext(ctx)) }()
 			select {
 			case <-d.started:
-			case <-time.After(time.Second):
+			case <-time.After(30 * time.Second):
 				t.Fatal("grant stage not reached")
 			}
 			cancel()
 			select {
 			case <-done:
-			case <-time.After(time.Second):
+			case <-time.After(30 * time.Second):
 				t.Fatal("grant ignored cancellation")
 			}
 			assertContactFault(t, d, rr, 500)

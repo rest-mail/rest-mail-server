@@ -74,13 +74,13 @@ func TestGatewayInboundPolicyCancellationReachesEveryRead(t *testing.T) {
 			select {
 			case <-d.started:
 				cancel()
-			case <-time.After(time.Second):
+			case <-time.After(30 * time.Second):
 				cancel()
 				t.Error("policy read did not start")
 			}
 			select {
 			case <-done:
-			case <-time.After(3 * time.Second):
+			case <-time.After(30 * time.Second):
 				t.Fatal("delivery ignored cancellation")
 			}
 			assertDeliveryReadRefusal(t, d, rr, http.StatusServiceUnavailable, "deferred")

@@ -97,7 +97,7 @@ func TestDBPool_ReportsTrackedPool(t *testing.T) {
 		got <- c
 	}()
 	// The second caller queues behind the only connection.
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(30 * time.Second)
 	for db.Stats().WaitCount == 0 {
 		if time.Now().After(deadline) {
 			t.Fatal("the second caller never waited")

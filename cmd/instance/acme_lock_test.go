@@ -74,7 +74,7 @@ func TestACMELockProcess(t *testing.T) {
 
 func runACMELockProcess(t *testing.T, dir string, busy bool) {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestACMELockProcess$")
 	cmd.Env = append(os.Environ(), "RESTMAIL_TEST_ACME_LOCK_DIR="+dir, "RESTMAIL_TEST_ACME_LOCK_BUSY=0")

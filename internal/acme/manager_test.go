@@ -38,7 +38,7 @@ func TestManagerShutdownCancelsRenewalInFlight(t *testing.T) {
 
 	select {
 	case <-r.entered:
-	case <-time.After(5 * time.Second):
+	case <-time.After(30 * time.Second):
 		t.Fatal("renewal never started")
 	}
 
@@ -49,7 +49,7 @@ func TestManagerShutdownCancelsRenewalInFlight(t *testing.T) {
 	}()
 	select {
 	case <-stopped:
-	case <-time.After(5 * time.Second):
+	case <-time.After(30 * time.Second):
 		t.Fatal("Shutdown did not cancel the renewal in flight")
 	}
 
@@ -72,7 +72,7 @@ func TestManagerShutdownBeforeFirstCheck(t *testing.T) {
 	}()
 	select {
 	case <-stopped:
-	case <-time.After(5 * time.Second):
+	case <-time.After(30 * time.Second):
 		t.Fatal("Shutdown waited for the first check")
 	}
 	if len(r.renewed) != 0 {

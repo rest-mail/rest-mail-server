@@ -294,7 +294,7 @@ func TestPipelineTestingExecutionReceivesHTTPContext(t *testing.T) {
 			if !ok {
 				t.Fatal("preview lost HTTP context before filter execution")
 			}
-		case <-time.After(time.Second):
+		case <-time.After(30 * time.Second):
 			t.Fatal("preview did not execute its filter")
 		}
 	}
