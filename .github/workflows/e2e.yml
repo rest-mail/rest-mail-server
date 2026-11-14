@@ -222,8 +222,8 @@ jobs:
     if: needs.changes.outputs.run_e2e == 'true' && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     uses: ./.github/workflows/e2e-suite.yml
     with:
-      runner: ${{ fromJSON(needs.changes.outputs.runners)['suite.run'] || 'ubuntu-24.04' }}
-      isolation-runner: ${{ fromJSON(needs.changes.outputs.runners)['js-filter-isolation.run'] || 'ubuntu-24.04' }}
+      runner: ${{ fromJSON(needs.changes.outputs.runners || '{}')['suite.run'] || 'ubuntu-24.04' }}
+      isolation-runner: ${{ fromJSON(needs.changes.outputs.runners || '{}')['js-filter-isolation.run'] || 'ubuntu-24.04' }}
       contract-phases: gate
       description-mode: ${{ inputs.description-mode || 'saved' }}
 
@@ -233,7 +233,7 @@ jobs:
     if: needs.changes.outputs.run_e2e == 'true' && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     uses: ./.github/workflows/e2e-suite.yml
     with:
-      runner: ${{ fromJSON(needs.changes.outputs.runners)['suite.pairs'] || 'ubuntu-24.04' }}
+      runner: ${{ fromJSON(needs.changes.outputs.runners || '{}')['suite.pairs'] || 'ubuntu-24.04' }}
       contract-phases: pairs
       description-mode: ${{ inputs.description-mode || 'saved' }}
 
@@ -243,7 +243,7 @@ jobs:
     if: needs.changes.outputs.run_e2e == 'true' && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     uses: ./.github/workflows/e2e-suite.yml
     with:
-      runner: ${{ fromJSON(needs.changes.outputs.runners)['suite.reports'] || 'ubuntu-24.04' }}
+      runner: ${{ fromJSON(needs.changes.outputs.runners || '{}')['suite.reports'] || 'ubuntu-24.04' }}
       contract-phases: reports
       description-mode: ${{ inputs.description-mode || 'saved' }}
 
@@ -253,7 +253,7 @@ jobs:
     if: needs.changes.outputs.run_e2e == 'true' && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     uses: ./.github/workflows/e2e-suite.yml
     with:
-      runner: ${{ fromJSON(needs.changes.outputs.runners)['suite.live'] || 'ubuntu-24.04' }}
+      runner: ${{ fromJSON(needs.changes.outputs.runners || '{}')['suite.live'] || 'ubuntu-24.04' }}
       contract-phases: live
       description-mode: ${{ inputs.description-mode || 'saved' }}
 

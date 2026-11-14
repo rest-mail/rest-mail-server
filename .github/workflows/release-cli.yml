@@ -114,7 +114,7 @@ jobs:
     if: github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != '')
     # A pull request's snapshot build may take an antimatter-vps runner. A tag's release
     # stays on GitHub's, so the provenance it signs names a GitHub-hosted build.
-    runs-on: ${{ github.event_name == 'pull_request' && (fromJSON(needs.preflight.outputs.runners)['release'] || 'ubuntu-24.04') || 'ubuntu-latest' }}
+    runs-on: ${{ github.event_name == 'pull_request' && (fromJSON(needs.preflight.outputs.runners || '{}')['release'] || 'ubuntu-24.04') || 'ubuntu-latest' }}
     permissions:
       contents: write # creates the GitHub Release
       id-token: write # signs the build-provenance attestation

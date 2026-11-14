@@ -102,7 +102,7 @@ jobs:
     needs: preflight
     name: Pulumi package and secret boundaries
     if: github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != '')
-    runs-on: ${{ fromJSON(needs.preflight.outputs.runners)['component'] || 'ubuntu-24.04' }}
+    runs-on: ${{ fromJSON(needs.preflight.outputs.runners || '{}')['component'] || 'ubuntu-24.04' }}
     timeout-minutes: 10
     defaults:
       run:

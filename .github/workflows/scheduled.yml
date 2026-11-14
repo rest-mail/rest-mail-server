@@ -14,7 +14,7 @@ jobs:
   tidy-check:
     needs: dependency-review
     name: go mod tidy Check
-    runs-on: ${{ fromJSON(needs.dependency-review.outputs.runners)['tidy-check'] || 'ubuntu-24.04' }}
+    runs-on: ${{ fromJSON(needs.dependency-review.outputs.runners || '{}')['tidy-check'] || 'ubuntu-24.04' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -38,7 +38,7 @@ jobs:
   security-audit:
     needs: dependency-review
     name: Security Audit
-    runs-on: ${{ fromJSON(needs.dependency-review.outputs.runners)['security-audit'] || 'ubuntu-24.04' }}
+    runs-on: ${{ fromJSON(needs.dependency-review.outputs.runners || '{}')['security-audit'] || 'ubuntu-24.04' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -62,7 +62,7 @@ jobs:
   frontend-audit:
     needs: dependency-review
     name: Frontend Dependency Audit
-    runs-on: ${{ fromJSON(needs.dependency-review.outputs.runners)[format('frontend-audit.{0}', matrix.app)] || 'ubuntu-24.04' }}
+    runs-on: ${{ fromJSON(needs.dependency-review.outputs.runners || '{}')[format('frontend-audit.{0}', matrix.app)] || 'ubuntu-24.04' }}
     strategy:
       # Report both frontends every run; one failing app must not mask the other.
       fail-fast: false
@@ -158,7 +158,7 @@ jobs:
     # only their seed inputs. A failure opens an issue (or updates the one that is
     # open) and keeps the failing inputs as an artifact; the issue closes itself once
     # a whole run passes. Nine targets, at most ten minutes each.
-    runs-on: ${{ fromJSON(needs.dependency-review.outputs.runners)['go-imap-fuzz'] || 'ubuntu-24.04' }}
+    runs-on: ${{ fromJSON(needs.dependency-review.outputs.runners || '{}')['go-imap-fuzz'] || 'ubuntu-24.04' }}
     timeout-minutes: 100
     env:
       GH_TOKEN: ${{ github.token }}
@@ -238,7 +238,7 @@ jobs:
     # Every outside link in docs/email-explained, and every anchor in one, still
     # answers. A broken one opens an issue listing them (or updates the one that
     # is open), and the issue closes itself once they all answer again.
-    runs-on: ${{ fromJSON(needs.dependency-review.outputs.runners)['guide-links'] || 'ubuntu-24.04' }}
+    runs-on: ${{ fromJSON(needs.dependency-review.outputs.runners || '{}')['guide-links'] || 'ubuntu-24.04' }}
     env:
       GH_TOKEN: ${{ github.token }}
       TITLE: "Email, explained: outside links that no longer answer"

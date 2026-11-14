@@ -29,7 +29,7 @@ FALLBACK = "ubuntu-24.04"
 PICK_STEP = "Pick runners (antimatter-vps runners while free, else GitHub's)"
 PICKER_OUTPUT = "${{ steps.runners.outputs.runners || '{}' }}"
 PICKED = (
-    r"fromJSON\(needs\.(?P<picker>[\w-]+)\.outputs\.runners\)"
+    r"fromJSON\(needs\.(?P<picker>[\w-]+)\.outputs\.runners \|\| '\{\}'\)"
     r"\[(?:'(?P<key>[\w.-]+)'|format\('(?P<format>[\w-]+)\.\{0\}', matrix\.(?P<axis>\w+)\))\]"
     r" \|\| 'ubuntu-24\.04'"
 )
@@ -40,7 +40,7 @@ GATED = re.compile(
 )
 REUSABLE_INPUT = re.compile(r"^\$\{\{ inputs\.(?P<input>[\w-]+) \|\| 'ubuntu-24\.04' \}\}$")
 CALLER_RUNNER = re.compile(
-    r"^\$\{\{ fromJSON\(needs\.(?P<picker>[\w-]+)\.outputs\.runners\)\['(?P<key>[\w.-]+)'\] \|\| 'ubuntu-24\.04' \}\}$"
+    r"^\$\{\{ fromJSON\(needs\.(?P<picker>[\w-]+)\.outputs\.runners \|\| '\{\}'\)\['(?P<key>[\w.-]+)'\] \|\| 'ubuntu-24\.04' \}\}$"
 )
 
 # Jobs that stay on GitHub's runners, and why. A job missing from here must be gated, so a
@@ -262,7 +262,7 @@ class RunnerGate(unittest.TestCase):
                         if base in document["jobs"] and "strategy" in document["jobs"][base]:
                             self.assertIn(f"format('{base}.{{0}}', matrix.", text)
                         else:
-                            self.assertIn(f"outputs.runners)['{entry}']", text)
+                            self.assertIn(f"outputs.runners || '{{}}')['{entry}']", text)
 
     def test_buildx_jobs_stay_on_github(self):
         found = 0
