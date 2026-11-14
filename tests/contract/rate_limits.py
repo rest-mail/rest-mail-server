@@ -2,8 +2,10 @@
 
 import json
 import os
+import subprocess
 import sys
 import time
+from pathlib import Path
 
 
 DEFAULTS = {
@@ -19,15 +21,65 @@ DEFAULTS = {
 }
 
 
+SWITCH = "RESTMAIL_CONTRACT_LIMITS_RAISED"
+RAISED_ENV = Path(__file__).resolve().with_name("raised-limits.env")
+
+
+def raised():
+    return os.environ.get(SWITCH) == "true"
+
+
+def settings(path=RAISED_ENV):
+    pairs = {}
+    for line in Path(path).read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        key, separator, value = line.partition("=")
+        if not separator:
+            raise ValueError(f"{path}: not KEY=VALUE: {line!r}")
+        pairs[key] = value
+    return pairs
+
+
+def problems(expect, environment, switch=None, wanted=None):
+    wanted = settings() if wanted is None else wanted
+    switch = os.environ.get(SWITCH) if switch is None else switch
+    given = dict(entry.split("=", 1) for entry in environment if "=" in entry)
+    found = []
+    if expect == "raised":
+        if switch != "true":
+            found.append(f"{SWITCH} must be true for raised API limits")
+        for key, value in wanted.items():
+            if given.get(key) != value:
+                found.append(f"{key} does not match the raised setting")
+    elif expect == "default":
+        if switch not in (None, "", "false"):
+            found.append(f"{SWITCH} reached a default-limit phase")
+        for key, value in DEFAULTS.items():
+            if given.get(key, value) != value:
+                found.append(f"Limits suite requires the default {key}")
+    else:
+        raise ValueError(f"expect raised or default, not {expect!r}")
+    return found
+
+
+def container_environment(container):
+    result = subprocess.run(
+        ["docker", "inspect", "-f", "{{json .Config.Env}}", container],
+        check=True, capture_output=True, text=True,
+    )
+    return json.loads(result.stdout) or []
+
+
 def pace(seconds):
-    if os.environ.get("RESTMAIL_CONTRACT_LIMITS_RAISED") != "true":
+    if not raised():
         time.sleep(seconds)
 
 
 def docker_flags():
     return " ".join(
-        f"-e {name}={'true' if name.endswith('_ENABLED') else '10000'}"
-        for name in DEFAULTS
+        f"-e {name}={value}" for name, value in settings().items()
     )
 
 
@@ -46,9 +98,14 @@ def main(arguments):
     elif arguments == ["--assert-defaults"]:
         assert_defaults(json.load(sys.stdin))
         print("Limits suite API uses the default rate limits")
+    elif len(arguments) == 3 and arguments[0] == "check":
+        found = problems(arguments[1], container_environment(arguments[2]))
+        for problem in found:
+            print(f"rate limits: {problem}", file=sys.stderr)
+        return 1 if found else 0
     else:
-        raise ValueError("expected --docker-flags or --assert-defaults")
+        raise ValueError("expected --docker-flags, --assert-defaults, or check raised|default CONTAINER")
 
 
 if __name__ == "__main__":
-    main(sys.argv[1:])
+    sys.exit(main(sys.argv[1:]))

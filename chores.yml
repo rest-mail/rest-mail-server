@@ -667,6 +667,9 @@ tasks:
           chore contract:pairs
         fi
         if [ -z "${CONTRACT_ENDPOINT:-}" ]; then chore e2e:up; fi
+        if [ "${RESTMAIL_CONTRACT_LIMITS_RAISED:-false}" = true ]; then
+          python3 -B tests/contract/rate_limits.py check raised "{{.RESTMAIL_PROJECT}}-api"
+        fi
         if [ ! -s .cache/contract-principals.json ]; then
           API_BASE_URL="${CONTRACT_ENDPOINT:-http://10.99.0.20:8080}" E2E_REQUIRE_STACK=1 chore test:e2e -- -run '^TestContractPrincipals$'
         fi
@@ -690,6 +693,25 @@ tasks:
         chore api:coverage:report || echo "the API's coverage is a report, not a gate"
         if [ "$code" -ne 0 ]; then exit "$code"; fi
         exit "$scan"
+
+  contract:limits:raise:
+    desc: Recreate the API with raised contract rate limits and verify its environment
+    env:
+      RESTMAIL_CONTRACT_LIMITS_RAISED: 'true'
+    cmds:
+      - RESTMAIL_API_LIMITS_ENV="{{.ROOT_DIR}}/tests/contract/raised-limits.env" "${CHORE_BIN:-chore}" api:up
+      - task: health:wait
+      - python3 -B tests/contract/rate_limits.py check raised "{{.RESTMAIL_PROJECT}}-api"
+
+  contract:limits:default:
+    desc: Restore and verify the API's default rate limits
+    env:
+      RESTMAIL_CONTRACT_LIMITS_RAISED: 'false'
+      RESTMAIL_LOAD_LIMITS_OFF: 'false'
+    cmds:
+      - env -u RESTMAIL_API_LIMITS_ENV "${CHORE_BIN:-chore}" api:up
+      - task: health:wait
+      - python3 -B tests/contract/rate_limits.py check default "{{.RESTMAIL_PROJECT}}-api"
 
   contract:topology:
     desc: 'The topology contract gates and optional reports, with fresh fixtures; independent of the example-pair shards'
@@ -1076,10 +1098,13 @@ tasks:
 
   test:limits:
     desc: 'Spend every limit the API declares (#660) on a freshly restarted API; it changes the topology, so run it last'
+    env:
+      RESTMAIL_CONTRACT_LIMITS_RAISED: 'false'
+      RESTMAIL_LOAD_LIMITS_OFF: 'false'
     cmds:
       # The buckets live in the API's memory, and the stages and contract
       # phases spend them; a restart gives the suite buckets of its own.
-      - RESTMAIL_CONTRACT_LIMITS_RAISED=false RESTMAIL_LOAD_LIMITS_OFF=false RESTMAIL_INTERNAL_MTLS=true "${CHORE_BIN:-chore}" api:up
+      - env -u RESTMAIL_API_LIMITS_ENV RESTMAIL_CONTRACT_LIMITS_RAISED=false RESTMAIL_LOAD_LIMITS_OFF=false RESTMAIL_INTERNAL_MTLS=true "${CHORE_BIN:-chore}" api:up
       - task: health:wait
       - docker inspect "{{.RESTMAIL_PROJECT}}-api" | python3 -B tests/contract/rate_limits.py --assert-defaults
       - E2E_LIMITS=1 E2E_REQUIRE_STACK=1 "${CHORE_BIN:-chore}" test:e2e -- -run '^TestLimits$'
