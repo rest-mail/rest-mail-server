@@ -555,7 +555,7 @@ For standalone issuance and automated renewal, follow the
 | `IMAP_TLS_PORT`               | `993`              | IMAP implicit TLS port        |
 | `POP3_TLS_PORT`               | `995`              | POP3 implicit TLS port        |
 | `QUEUE_WORKERS`               | `4`                | Number of outbound queue workers |
-| `QUEUE_POLL_INTERVAL`         | `5s`               | Queue polling interval        |
+| `QUEUE_POLL_INTERVAL`         | `5s`               | How long an idle queue worker waits before looking again. A worker with mail due goes on to the next message at once |
 | `QUEUE_SMTP_GREETING_TIMEOUT` | `5m`               | Outbound SMTP: wait for the 220 greeting (RFC 5321 §4.5.3.2) |
 | `QUEUE_SMTP_MAIL_TIMEOUT`     | `5m`               | Outbound SMTP: wait for the reply to MAIL |
 | `QUEUE_SMTP_RCPT_TIMEOUT`     | `5m`               | Outbound SMTP: wait for the reply to RCPT |
