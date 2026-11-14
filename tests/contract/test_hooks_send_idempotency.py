@@ -43,11 +43,42 @@ class SendIdempotencyHookTests(unittest.TestCase):
                 self.assertEqual(transaction["fullPath"], path)
                 self.assertEqual(json.loads(request.data)["body_text"], "The first request")
 
-    def test_other_statuses_and_generated_keys_are_untouched(self):
-        for status, key in ((201, "contract-idempotency-conflict"), (409, "probe-key")):
+    def test_other_requests_get_an_unused_key_of_the_same_length(self):
+        # Keys are account-scoped, and Vertrag sends the same values on send,
+        # draft send and forward: the 409's example key on every request, and
+        # header probes such as maxLength (255). None may be claimed by one
+        # operation for the next to conflict on, and a length probe keeps its length.
+        cases = (
+            (201, "contract-idempotency-conflict"),
+            (404, "contract-idempotency-conflict"),
+            (201, "x" * 255),
+            (201, "x" * 256),
+            (409, "x" * 255),
+            (201, "k"),
+        )
+        keys = set()
+        for index, (status, sent) in enumerate(cases):
+            with self.subTest(status=status, length=len(sent)):
+                transaction = copy.deepcopy(self.transaction)
+                transaction["name"] = transaction["name"].replace("409", str(status))
+                transaction["request"]["headers"]["Idempotency-Key"] = sent
+                before = copy.deepcopy(transaction)
+                with patch.object(self.module.time, "time_ns", return_value=1000 + index), patch.object(self.module.urllib.request, "urlopen") as call:
+                    self.module.a_used_send_idempotency_key(transaction)
+                call.assert_not_called()
+                key = transaction["request"]["headers"]["Idempotency-Key"]
+                self.assertEqual(len(key), len(sent))
+                self.assertNotEqual(key, sent)
+                keys.add(key)
+                transaction["request"]["headers"]["Idempotency-Key"] = sent
+                self.assertEqual(transaction, before)
+        self.assertEqual(len(keys), len(cases))
+
+    def test_a_request_without_a_key_is_untouched(self):
+        for headers in ({"Authorization": "Bearer caller"}, {"Authorization": "Bearer caller", "Idempotency-Key": ""}):
             transaction = copy.deepcopy(self.transaction)
-            transaction["name"] = transaction["name"].replace("409", str(status))
-            transaction["request"]["headers"]["Idempotency-Key"] = key
+            transaction["name"] = transaction["name"].replace("409", "201")
+            transaction["request"]["headers"] = headers
             before = copy.deepcopy(transaction)
             with patch.object(self.module.urllib.request, "urlopen") as call:
                 self.module.a_used_send_idempotency_key(transaction)

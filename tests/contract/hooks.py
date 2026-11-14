@@ -6108,12 +6108,23 @@ def send_a_draft_of_its_own(transaction):
 @hooks.before("sendDraft")
 @hooks.before("forwardMessage")
 def a_used_send_idempotency_key(transaction):
-    if " > 409 > " not in transaction.get("name", ""):
-        return
-    headers = transaction["request"]["headers"]
-    if headers.get("Idempotency-Key") != "contract-idempotency-conflict":
+    # Idempotency keys are scoped to the account, not the route (#2110), so
+    # one key sent on two of these operations is a conflict. Vertrag sends
+    # the same values on all three: the 409's example key,
+    # contract-idempotency-conflict, on every request, and the same generated
+    # header probes (maxLength (255) is 255 x's) on each operation. The first
+    # success claims a value for its own route and body, and the next
+    # operation's otherwise valid request answers 409 idempotency_conflict.
+    # Only the 409 keeps a used key, primed here. Every other key becomes an
+    # unused one of the same length, so a length probe still probes its length.
+    headers = transaction["request"].get("headers") or {}
+    sent = headers.get("Idempotency-Key")
+    if not sent:
         return
     key = "contract-send-" + str(time.time_ns())
+    if " > 409 > " not in transaction.get("name", "") or sent != "contract-idempotency-conflict":
+        headers["Idempotency-Key"] = key[-len(sent):] if len(sent) < len(key) else key + "x" * (len(sent) - len(key))
+        return
     origin = origin_of(transaction)
     request = urllib.request.Request(
         origin + "/api/v1/messages/send",
