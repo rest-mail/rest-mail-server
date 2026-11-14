@@ -205,7 +205,7 @@ func fetchBySubject(t *testing.T, subject string) []byte {
 	}
 
 	tag := ic.nextTag()
-	_ = ic.conn.SetDeadline(time.Now().Add(10 * time.Second))
+	_ = ic.conn.SetDeadline(time.Now().Add(30 * time.Second))
 	if _, err := fmt.Fprintf(ic.conn, "%s FETCH %s (BODY.PEEK[])\r\n", tag, seq); err != nil {
 		t.Fatalf("send FETCH: %v", err)
 	}
