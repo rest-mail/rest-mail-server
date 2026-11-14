@@ -378,7 +378,7 @@ func TestDeliveryCountsMailThatArrivedNotMailThatWasAccepted(t *testing.T) {
 		t.Fatalf("the gateway should have accepted all 10: ok=%d errors=%d %v", sent.OK, sent.Errors, sent.ErrorKinds)
 	}
 
-	got, drained := awaitDelivery(d, file, 200*time.Millisecond, 10*time.Second, 10*time.Millisecond)
+	got, drained := awaitDelivery(d, file, 200*time.Millisecond, 30*time.Second, 10*time.Millisecond)
 	if got == nil {
 		t.Fatal("the sink did not read the sender's result")
 	}
@@ -528,7 +528,7 @@ func TestSourcesAreWhatTheServerSees(t *testing.T) {
 		_ = c.Close()
 	}
 	seen := map[string]int{}
-	deadline := time.After(5 * time.Second)
+	deadline := time.After(30 * time.Second)
 	for range 6 {
 		select {
 		case host := <-accepted:

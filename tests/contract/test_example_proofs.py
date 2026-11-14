@@ -454,7 +454,7 @@ class Workflows(unittest.TestCase):
         self.assertIn("^TestContractPrincipals$", preparation["run"])
         self.assertIn("chore test:contract-fixtures", preparation["run"])
         self.assertLess(names.index(preparation["name"]), names.index(stage["name"]))
-        # The limits suite spends the API's buckets; the teardown clears every principal.
+        # The limits suite spends the API's buckets; the own-data run's resets clear every principal.
         self.assertLess(names.index(stage["name"]), names.index("Limits suite"))
         upload = next(s for s in self.suite["steps"] if s.get("with", {}).get("name") == "live-example-proofs")
         self.assertEqual(upload["if"], "always() && inputs.contract-phases == 'live'")

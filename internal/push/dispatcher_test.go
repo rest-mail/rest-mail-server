@@ -58,8 +58,8 @@ func waitPush(t *testing.T, sent chan Notification) Notification {
 	select {
 	case n := <-sent:
 		return n
-	case <-time.After(5 * time.Second):
-		t.Fatal("no push within 5s")
+	case <-time.After(30 * time.Second):
+		t.Fatal("no push within 30s")
 		return Notification{}
 	}
 }
@@ -92,7 +92,7 @@ func TestDispatcherWorker(t *testing.T) {
 	go func() { d.Close(); close(closed) }()
 	select {
 	case <-closed:
-	case <-time.After(5 * time.Second):
+	case <-time.After(30 * time.Second):
 		t.Fatal("Close did not stop the worker")
 	}
 }
@@ -118,7 +118,7 @@ func TestDispatcherCloseWithoutStart(t *testing.T) {
 	go func() { d.Close(); d.Close(); close(done) }()
 	select {
 	case <-done:
-	case <-time.After(time.Second):
+	case <-time.After(30 * time.Second):
 		t.Fatal("Close of a dispatcher never started blocked")
 	}
 }

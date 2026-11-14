@@ -59,7 +59,7 @@ func TestAttachmentRoutesCarryTheRequestContext(t *testing.T) {
 			router := chi.NewRouter()
 			NewAttachmentHandler(db, nil).Register(endpoint.Routes{Router: router, Registry: endpoint.NewRegistry()})
 
-			ctx, cancel := context.WithTimeout(context.WithValue(t.Context(), attachmentContextKey{}, true), 4*time.Second)
+			ctx, cancel := context.WithTimeout(context.WithValue(t.Context(), attachmentContextKey{}, true), 30*time.Second)
 			defer cancel()
 			r := withClaims(httptest.NewRequest(http.MethodGet, path, nil).WithContext(ctx), mailboxClaims(7, "reader@example.test"))
 			rr := httptest.NewRecorder()

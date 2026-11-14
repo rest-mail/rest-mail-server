@@ -82,7 +82,7 @@ func TestAccountRoutesCarryTheRequestContext(t *testing.T) {
 			h.RegisterLinks(rs, SessionRouteChecks{Throttle: noop,
 				Audit: func(string, ...middleware.AuditOption) endpoint.Middleware { return noop }})
 
-			ctx, cancel := context.WithTimeout(context.WithValue(t.Context(), accountContextKey{}, true), 4*time.Second)
+			ctx, cancel := context.WithTimeout(context.WithValue(t.Context(), accountContextKey{}, true), 30*time.Second)
 			defer cancel()
 			r := httptest.NewRequest(route.method, route.path, bytes.NewBufferString(route.body)).WithContext(ctx)
 			r.Header.Set("Content-Type", "application/json")

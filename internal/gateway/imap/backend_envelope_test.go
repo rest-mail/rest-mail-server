@@ -40,7 +40,7 @@ func (h *transcript) fetchSizeAndBodyLen(tag string, seq int) (size, bodyLen int
 // readN consumes exactly n raw octets from the connection (an IMAP literal body).
 func (h *transcript) readN(n int) {
 	h.t.Helper()
-	_ = h.conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	_ = h.conn.SetReadDeadline(time.Now().Add(30 * time.Second))
 	if _, err := io.ReadFull(h.cr, make([]byte, n)); err != nil {
 		h.t.Fatalf("readN(%d): %v", n, err)
 	}

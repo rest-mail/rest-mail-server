@@ -21,7 +21,7 @@ func TestTestResetWorkerSingleConnectionPool(t *testing.T) {
 	go func() { worker.processOne(0); close(finished) }()
 	select {
 	case <-finished:
-	case <-time.After(5 * time.Second):
+	case <-time.After(30 * time.Second):
 		pool.SetMaxOpenConns(2)
 		t.Fatal("reset-enabled worker deadlocked a single-connection pool")
 	}

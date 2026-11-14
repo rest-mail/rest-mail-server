@@ -6,6 +6,7 @@ import io
 import json
 import re
 import unittest
+import unittest.mock
 from unittest.mock import patch
 
 from test_hooks_delete_domain import load_hooks
@@ -151,6 +152,27 @@ class Invitations(unittest.TestCase):
         self.module.redeem_a_fresh_invitation(transaction)
         self.start_clean.assert_not_called()
         self.assertEqual(json.loads(transaction["request"]["body"])["token"], "fresh")
+
+    def test_a_coverage_probe_hands_its_token_to_the_fixture_in_the_environment(self):
+        # chore passes a task no standard input, so the request goes in the
+        # environment; a failed fixture says why, and no time limit applies.
+        body = {"token": "drawn $(token) 'x'", "password": "the recipient chooses this password"}
+        transaction = self.transaction(ACCEPT_NAME % "200", ACCEPT, body)
+        made = unittest.mock.MagicMock(returncode=0, stderr=b"")
+        with patch.object(self.module, "a_later_request_of_the_coverage_process", return_value=True), \
+                patch.object(self.module.subprocess, "run", return_value=made) as run:
+            self.module.redeem_a_fresh_invitation(transaction)
+        (command,), options = run.call_args
+        self.assertEqual(command, ["chore", "test:contract-invitation-fixture"])
+        self.assertNotIn("input", options)
+        self.assertNotIn("timeout", options)
+        self.assertEqual(json.loads(options["env"]["CONTRACT_INVITATION_REQUEST"]), {"token": body["token"]})
+        self.assertEqual(json.loads(transaction["request"]["body"]), body)
+        made.returncode, made.stderr = 1, b"contract fixtures require --test-domain=restmail.test"
+        with patch.object(self.module, "a_later_request_of_the_coverage_process", return_value=True), \
+                patch.object(self.module.subprocess, "run", return_value=made):
+            with self.assertRaisesRegex(RuntimeError, "require --test-domain"):
+                self.module.redeem_a_fresh_invitation(self.transaction(ACCEPT_NAME % "200", ACCEPT, body))
 
 
 if __name__ == "__main__":

@@ -134,7 +134,7 @@ func TestSTARTTLS_DiscardsPipelinedPlaintext(t *testing.T) {
 	// Pipeline STARTTLS and an injected plaintext command in ONE write, so the
 	// server's cleartext bufio.Reader buffers the injected command while it reads
 	// the STARTTLS line.
-	_ = h.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	_ = h.conn.SetWriteDeadline(time.Now().Add(30 * time.Second))
 	if _, err := h.conn.Write([]byte("a1 STARTTLS\r\na2 NOOP\r\n")); err != nil {
 		t.Fatalf("pipelined write: %v", err)
 	}

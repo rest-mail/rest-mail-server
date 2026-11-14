@@ -72,6 +72,7 @@ func (h *CredentialHandler) Register(rs endpoint.Routes, checks SessionRouteChec
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/accounts/{id}/credentials",
 		OperationID: "createAppPassword", Summary: "Make an app password", Tags: tags,
 		Status: http.StatusCreated, Errors: refusals, Security: manage,
+		DescribedRequest: describedCreateCredentialRequest{},
 		Middleware: []endpoint.Middleware{checks.Throttle, checks.Audit("credentials.create", middleware.AuditBodyFields("name"),
 			middleware.AuditResponseField("id", "credential_id"), middleware.AuditResponseField("public_id", "public_id"))}}, h.create)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodDelete, Path: "/api/v1/accounts/{id}/credentials/{credential_id}",
@@ -199,6 +200,15 @@ type createCredentialBody struct {
 type createCredentialRequest struct {
 	ID   uint32               `path:"id" minimum:"1" example:"1"`
 	Body createCredentialBody `body:""`
+}
+
+type describedCreateCredentialRequest = struct {
+	ID   uint32 `path:"id" minimum:"1" example:"1"`
+	Body struct {
+		Name      string     `json:"name" minLength:"1" pattern:"\\S"`
+		ExpiresAt *time.Time `json:"expires_at,omitempty"`
+		Password  string     `json:"password" minLength:"1"`
+	} `body:""`
 }
 
 // create makes an app password and answers with it, once.

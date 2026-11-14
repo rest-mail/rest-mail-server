@@ -149,7 +149,7 @@ func (rc *contactRace) serve(ctx context.Context, call contactCall) <-chan *http
 // the lock, not by timing.
 func (rc *contactRace) race(first, second contactCall) (*httptest.ResponseRecorder, *httptest.ResponseRecorder) {
 	rc.t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	h := &contactRaceHold{held: make(chan struct{}), release: make(chan struct{})}
 	released := false

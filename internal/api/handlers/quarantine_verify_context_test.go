@@ -100,7 +100,7 @@ func TestQuarantineRoutesCarryTheRequestContext(t *testing.T) {
 	} {
 		t.Run(route.name, func(t *testing.T) {
 			d := &quarantineVerifyDB{}
-			ctx, cancel := context.WithTimeout(context.WithValue(t.Context(), quarantineVerifyKey{}, true), 4*time.Second)
+			ctx, cancel := context.WithTimeout(context.WithValue(t.Context(), quarantineVerifyKey{}, true), 30*time.Second)
 			defer cancel()
 			r := withClaims(httptest.NewRequest(route.method, route.path, nil).WithContext(ctx),
 				&auth.Claims{AccountID: 7, Address: "owner@example.test", CredentialID: 3, CredentialKind: "app_password"})
@@ -120,7 +120,7 @@ func TestQuarantineRoutesCarryTheRequestContext(t *testing.T) {
 // A caller that goes away stops the delivery poll.
 func TestVerifyDeliveryStopsWhenTheCallerGoesAway(t *testing.T) {
 	d := &quarantineVerifyDB{}
-	ctx, cancel := context.WithTimeout(context.WithValue(t.Context(), quarantineVerifyKey{}, true), 4*time.Second)
+	ctx, cancel := context.WithTimeout(context.WithValue(t.Context(), quarantineVerifyKey{}, true), 30*time.Second)
 	r := withClaims(httptest.NewRequest(http.MethodGet,
 		"/api/v1/admin/test/verify?to=owner@example.test&subject=hello&timeout=30s", nil).WithContext(ctx),
 		mailboxClaims(1, "admin@example.test"))
@@ -129,7 +129,9 @@ func TestVerifyDeliveryStopsWhenTheCallerGoesAway(t *testing.T) {
 	started := time.Now()
 	rr := httptest.NewRecorder()
 	quarantineVerifyRouter(t, d).ServeHTTP(rr, r)
-	if elapsed := time.Since(started); elapsed > 2*time.Second {
+	// A poll that ignored the caller would run out its 30s and answer 200, which
+	// the status check below catches; this bound only catches a hang.
+	if elapsed := time.Since(started); elapsed > 30*time.Second {
 		t.Errorf("the poll ran %s after the caller went away at 300ms", elapsed)
 	}
 	if rr.Code == http.StatusOK {

@@ -84,7 +84,7 @@ func policyRaceDB(t *testing.T, table string) *gorm.DB {
 // once done is closed.
 func policyRaceCall(t *testing.T, h http.Handler, racer *policyRacer, method, path, body string) (*httptest.ResponseRecorder, <-chan struct{}) {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	ctx = context.WithValue(ctx, domainPolicyContextKey{}, true)
 	ctx = context.WithValue(ctx, middleware.ClaimsKey, freshTwoFactorClaims(1, "admin@other.test"))
 	if racer != nil {
@@ -106,7 +106,7 @@ func waitPolicyRace(t *testing.T, what string, ch <-chan struct{}) {
 	t.Helper()
 	select {
 	case <-ch:
-	case <-time.After(10 * time.Second):
+	case <-time.After(30 * time.Second):
 		t.Fatalf("%s never happened", what)
 	}
 }
@@ -116,7 +116,7 @@ func waitPolicyRace(t *testing.T, what string, ch <-chan struct{}) {
 func racePolicySaves(t *testing.T, h http.Handler, path, bodyA, bodyB string) (a, b *httptest.ResponseRecorder) {
 	t.Helper()
 	aFinished := make(chan struct{})
-	bRacer := newPolicyRacer(aFinished, 10*time.Second)
+	bRacer := newPolicyRacer(aFinished, 30*time.Second)
 	aRacer := newPolicyRacer(bRacer.read, policyRaceHold)
 	a, aDone := policyRaceCall(t, h, aRacer, http.MethodPut, path, bodyA)
 	waitPolicyRace(t, "save A reading the policy", aRacer.read)

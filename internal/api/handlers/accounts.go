@@ -104,6 +104,7 @@ func (h *AccountHandler) RegisterLinks(rs endpoint.Routes, checks SessionRouteCh
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/accounts/link",
 		OperationID: "linkAccount", Summary: "Link an existing account by proving its password", Tags: tags,
 		Status: http.StatusCreated, Errors: []int{http.StatusForbidden, http.StatusConflict},
+		DescribedRequest: describedLinkAccountRequest{},
 		Middleware: []endpoint.Middleware{checks.Throttle,
 			checks.Audit("accounts.link", middleware.AuditBodyFields("address"))}}, h.link)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodDelete, Path: "/api/v1/accounts/{id}",
@@ -448,6 +449,14 @@ func grantOwner(tx *gorm.DB, r *http.Request, claims *auth.Claims, account *mode
 type linkAccountRequest struct {
 	Address      string `json:"address" minLength:"1" pattern:"\\S" message:"required" missing:"required"`
 	Password     string `json:"password" minLength:"1" message:"required" missing:"required"`
+	DisplayName  string `json:"display_name,omitempty"`
+	TOTPCode     string `json:"totp_code,omitempty"`
+	RecoveryCode string `json:"recovery_code,omitempty"`
+}
+
+type describedLinkAccountRequest = struct {
+	Address      string `json:"address" format:"email" minLength:"1" pattern:"\\S"`
+	Password     string `json:"password" minLength:"1"`
 	DisplayName  string `json:"display_name,omitempty"`
 	TOTPCode     string `json:"totp_code,omitempty"`
 	RecoveryCode string `json:"recovery_code,omitempty"`

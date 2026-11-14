@@ -854,6 +854,7 @@ class Wiring(unittest.TestCase):
         self.assertNotIn("run.sh teardown", chores)
         self.assertNotIn("teardown)", (ROOT / "tests/contract/run.sh").read_text())
         self.assertNotIn("tests/contract/teardown.py", (ROOT / "tests/contract/run.sh").read_text())
+        self.assertFalse((ROOT / "tests/contract/teardown.py").exists())
         workflow = yaml.safe_load((ROOT / ".github/workflows/e2e-suite.yml").read_text())
         steps = workflow["jobs"]["suite"]["steps"]
         names = [step.get("name", "") for step in steps]

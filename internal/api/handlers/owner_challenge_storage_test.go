@@ -137,7 +137,7 @@ func ownerPost(t *testing.T, router http.Handler, path string, signer ssh.Signer
 		body[k] = v
 	}
 	encoded, _ := json.Marshal(body)
-	ctx, cancel := context.WithTimeout(context.WithValue(t.Context(), ownerContextKey{}, true), 4*time.Second)
+	ctx, cancel := context.WithTimeout(context.WithValue(t.Context(), ownerContextKey{}, true), 30*time.Second)
 	t.Cleanup(cancel)
 	r := httptest.NewRequest(http.MethodPost, path, bytes.NewReader(encoded)).WithContext(ctx)
 	r.Header.Set("Content-Type", "application/json")

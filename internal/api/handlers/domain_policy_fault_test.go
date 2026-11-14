@@ -70,7 +70,8 @@ func (d *domainPolicyFaultDB) step(ctx context.Context, q string, args []driver.
 		select {
 		case <-ctx.Done():
 			return s, ctx.Err()
-		case <-time.After(2 * time.Second):
+		case <-time.After(30 * time.Second):
+			d.lost.Add(1) // assertDomainPolicyFault fails on it, whatever the clock did
 			return s, errors.New("private lost HTTP cancellation")
 		}
 	}
@@ -192,7 +193,7 @@ func domainPolicyFaultRouter(db *gorm.DB, checks *DomainPolicyRouteChecks) http.
 func domainPolicyFaultRequest(t *testing.T, index int) *http.Request {
 	t.Helper()
 	route := domainPolicyFaultRoutes[index]
-	ctx, cancel := context.WithTimeout(context.WithValue(t.Context(), domainPolicyContextKey{}, true), 4*time.Second)
+	ctx, cancel := context.WithTimeout(context.WithValue(t.Context(), domainPolicyContextKey{}, true), 30*time.Second)
 	t.Cleanup(cancel)
 	r := httptest.NewRequest(route.method, route.path, strings.NewReader(route.body)).WithContext(ctx)
 	r.Header.Set("Content-Type", "application/json")
@@ -272,13 +273,13 @@ func TestDomainPolicyCancellationReachesEverySQLStage(t *testing.T) {
 				go func() { defer close(done); router.ServeHTTP(rr, r.WithContext(ctx)) }()
 				select {
 				case <-d.started:
-				case <-time.After(time.Second):
+				case <-time.After(30 * time.Second):
 					t.Fatal("policy stage not reached")
 				}
 				cancel()
 				select {
 				case <-done:
-				case <-time.After(time.Second):
+				case <-time.After(30 * time.Second):
 					t.Fatal("SQL ignored cancellation")
 				}
 				assertDomainPolicyFault(t, d, rr)

@@ -97,7 +97,7 @@ func TestAdminReadRoutesCarryTheRequestContext(t *testing.T) {
 			stats.Register(rs, pass)
 			stats.RegisterPipelineAnalytics(rs, pass(""))
 
-			ctx, cancel := context.WithTimeout(context.WithValue(t.Context(), adminReadsContextKey{}, true), 4*time.Second)
+			ctx, cancel := context.WithTimeout(context.WithValue(t.Context(), adminReadsContextKey{}, true), 30*time.Second)
 			defer cancel()
 			r := withClaims(httptest.NewRequest(route.method, route.path, nil).WithContext(ctx), mailboxClaims(1, "admin@example.test"))
 			rr := httptest.NewRecorder()

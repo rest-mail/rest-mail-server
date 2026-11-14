@@ -41,7 +41,7 @@ func securityClient(t *testing.T, backend imap.Backend, limiter imap.Limiter) *c
 		defer close(done)
 		session.Handle()
 	}()
-	if err := peer.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
+	if err := peer.SetDeadline(time.Now().Add(30 * time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	c := &client{t: t, conn: peer, r: bufio.NewReader(peer), done: done}

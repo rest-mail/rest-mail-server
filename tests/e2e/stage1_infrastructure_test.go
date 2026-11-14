@@ -27,14 +27,14 @@ func testStage1Infrastructure(t *testing.T) {
 	})
 
 	t.Run("SmtpReachable_Mail1", func(t *testing.T) {
-		conn, err := net.DialTimeout("tcp", mail1SMTPAddr, 10*time.Second)
+		conn, err := net.DialTimeout("tcp", mail1SMTPAddr, 30*time.Second)
 		if err != nil {
 			t.Fatalf("cannot reach SMTP on mail1: %v", err)
 		}
 		defer conn.Close()
 
 		buf := make([]byte, 512)
-		conn.SetDeadline(time.Now().Add(5 * time.Second))
+		conn.SetDeadline(time.Now().Add(30 * time.Second))
 		n, _ := conn.Read(buf)
 		greeting := string(buf[:n])
 		if !strings.HasPrefix(greeting, "220") {
@@ -43,14 +43,14 @@ func testStage1Infrastructure(t *testing.T) {
 	})
 
 	t.Run("SmtpReachable_Mail2", func(t *testing.T) {
-		conn, err := net.DialTimeout("tcp", mail2SMTPAddr, 10*time.Second)
+		conn, err := net.DialTimeout("tcp", mail2SMTPAddr, 30*time.Second)
 		if err != nil {
 			t.Fatalf("cannot reach SMTP on mail2: %v", err)
 		}
 		defer conn.Close()
 
 		buf := make([]byte, 512)
-		conn.SetDeadline(time.Now().Add(5 * time.Second))
+		conn.SetDeadline(time.Now().Add(30 * time.Second))
 		n, _ := conn.Read(buf)
 		greeting := string(buf[:n])
 		if !strings.HasPrefix(greeting, "220") {
@@ -59,14 +59,14 @@ func testStage1Infrastructure(t *testing.T) {
 	})
 
 	t.Run("SmtpReachable_Mail3_Gateway", func(t *testing.T) {
-		conn, err := net.DialTimeout("tcp", restmailSMTPAddr, 10*time.Second)
+		conn, err := net.DialTimeout("tcp", restmailSMTPAddr, 30*time.Second)
 		if err != nil {
 			t.Fatalf("cannot reach SMTP on restmail (gateway): %v", err)
 		}
 		defer conn.Close()
 
 		buf := make([]byte, 512)
-		conn.SetDeadline(time.Now().Add(5 * time.Second))
+		conn.SetDeadline(time.Now().Add(30 * time.Second))
 		n, _ := conn.Read(buf)
 		greeting := string(buf[:n])
 		if !strings.HasPrefix(greeting, "220") {
@@ -75,14 +75,14 @@ func testStage1Infrastructure(t *testing.T) {
 	})
 
 	t.Run("ImapReachable_Mail1", func(t *testing.T) {
-		conn, err := net.DialTimeout("tcp", mail1IMAPAddr, 10*time.Second)
+		conn, err := net.DialTimeout("tcp", mail1IMAPAddr, 30*time.Second)
 		if err != nil {
 			t.Fatalf("cannot reach IMAP on mail1: %v", err)
 		}
 		defer conn.Close()
 
 		buf := make([]byte, 512)
-		conn.SetDeadline(time.Now().Add(5 * time.Second))
+		conn.SetDeadline(time.Now().Add(30 * time.Second))
 		n, _ := conn.Read(buf)
 		greeting := string(buf[:n])
 		if !strings.Contains(greeting, "OK") {
@@ -91,14 +91,14 @@ func testStage1Infrastructure(t *testing.T) {
 	})
 
 	t.Run("ImapReachable_Mail2", func(t *testing.T) {
-		conn, err := net.DialTimeout("tcp", mail2IMAPAddr, 10*time.Second)
+		conn, err := net.DialTimeout("tcp", mail2IMAPAddr, 30*time.Second)
 		if err != nil {
 			t.Fatalf("cannot reach IMAP on mail2: %v", err)
 		}
 		defer conn.Close()
 
 		buf := make([]byte, 512)
-		conn.SetDeadline(time.Now().Add(5 * time.Second))
+		conn.SetDeadline(time.Now().Add(30 * time.Second))
 		n, _ := conn.Read(buf)
 		greeting := string(buf[:n])
 		if !strings.Contains(greeting, "OK") {

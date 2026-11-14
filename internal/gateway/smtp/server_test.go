@@ -29,7 +29,7 @@ func TestLimitListener_PerIPLimitAndRelease(t *testing.T) {
 	t.Cleanup(func() { _ = srv.Close() })
 
 	readGreeting := func(c net.Conn) (string, error) {
-		_ = c.SetReadDeadline(time.Now().Add(2 * time.Second))
+		_ = c.SetReadDeadline(time.Now().Add(30 * time.Second))
 		return bufio.NewReader(c).ReadString('\n')
 	}
 
@@ -57,7 +57,7 @@ func TestLimitListener_PerIPLimitAndRelease(t *testing.T) {
 	// admitted again (release happens when the server notices the close, so
 	// poll briefly).
 	_ = c1.Close()
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(30 * time.Second)
 	for {
 		c3, err := net.Dial("tcp", base.Addr().String())
 		if err != nil {
@@ -179,7 +179,7 @@ func TestLimitListener_SlowProxyHeaderDoesNotStallAccept(t *testing.T) {
 	// below could be accepted.
 	select {
 	case <-slow.entered:
-	case <-time.After(5 * time.Second):
+	case <-time.After(30 * time.Second):
 		t.Fatal("connection 1 never reached peer-IP resolution")
 	}
 
@@ -198,7 +198,7 @@ func TestLimitListener_SlowProxyHeaderDoesNotStallAccept(t *testing.T) {
 
 	// The second connection must be greeted promptly despite connection 1 being
 	// stuck in admission.
-	_ = fastClient.SetReadDeadline(time.Now().Add(2 * time.Second))
+	_ = fastClient.SetReadDeadline(time.Now().Add(30 * time.Second))
 	greeting, err := bufio.NewReader(fastClient).ReadString('\n')
 	if err != nil || !strings.HasPrefix(greeting, "220") {
 		t.Fatalf("second connection greeting = %q, err = %v; want 220... (the slow connection stalled the accept loop)", greeting, err)

@@ -47,12 +47,12 @@ func TestGreetingByeOnRefusal(t *testing.T) {
 		_ = srv.Shutdown(ctx)
 	})
 
-	conn, err := net.DialTimeout("tcp", listener.Addr().String(), 2*time.Second)
+	conn, err := net.DialTimeout("tcp", listener.Addr().String(), 30*time.Second)
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
 	defer func() { _ = conn.Close() }()
-	_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	_ = conn.SetReadDeadline(time.Now().Add(30 * time.Second))
 	r := bufio.NewReader(conn)
 
 	greeting, err := r.ReadString('\n')

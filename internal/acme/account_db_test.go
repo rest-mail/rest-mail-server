@@ -119,7 +119,7 @@ func TestObtainCertificate_RefusesUnusableStoredAccountKey(t *testing.T) {
 				t.Fatalf("store account: %v", err)
 			}
 
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
 			_, err := c.ObtainCertificate(ctx, domain)
 			if err == nil {

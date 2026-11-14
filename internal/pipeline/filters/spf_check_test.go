@@ -210,7 +210,7 @@ func TestSPFCheck_Timeout(t *testing.T) {
 		if res.Log.Result != "temperror" {
 			t.Fatalf("got %s (%s), want temperror", res.Log.Result, res.Log.Detail)
 		}
-	case <-time.After(3 * time.Second):
+	case <-time.After(30 * time.Second):
 		t.Fatal("spf_check did not return: the evaluation is not bounded by spfTimeout")
 	}
 }

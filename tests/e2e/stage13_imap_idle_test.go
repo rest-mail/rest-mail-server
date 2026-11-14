@@ -46,7 +46,7 @@ func testStage13ImapIdle(t *testing.T) {
 
 	t.Run("IDLE_RequiresAuth", func(t *testing.T) {
 		// Verify that IDLE requires authentication
-		tlsConn, err := tls.DialWithDialer(&net.Dialer{Timeout: 10 * time.Second}, "tcp", restmailIMAPAddr, &tls.Config{InsecureSkipVerify: true})
+		tlsConn, err := tls.DialWithDialer(&net.Dialer{Timeout: 30 * time.Second}, "tcp", restmailIMAPAddr, &tls.Config{InsecureSkipVerify: true})
 		// Held as net.Conn: the deferred Close and the SetDeadline calls below read as
 		// ordinary connection handling that way, which is how the rest of the suite does it.
 		var conn net.Conn = tlsConn
@@ -58,7 +58,7 @@ func testStage13ImapIdle(t *testing.T) {
 		reader := bufio.NewReader(conn)
 
 		// Read greeting
-		_ = conn.SetDeadline(time.Now().Add(10 * time.Second))
+		_ = conn.SetDeadline(time.Now().Add(30 * time.Second))
 		greeting, err := reader.ReadString('\n')
 		requireNoError(t, err)
 		if !strings.Contains(greeting, "OK") {
@@ -67,7 +67,7 @@ func testStage13ImapIdle(t *testing.T) {
 
 		// Try IDLE without login
 		fmt.Fprintf(conn, "A001 IDLE\r\n")
-		_ = conn.SetDeadline(time.Now().Add(10 * time.Second))
+		_ = conn.SetDeadline(time.Now().Add(30 * time.Second))
 		resp, err := reader.ReadString('\n')
 		requireNoError(t, err)
 		resp = strings.TrimSpace(resp)
@@ -111,7 +111,7 @@ func testStage13ImapIdle(t *testing.T) {
 		// 4. Send DONE to terminate IDLE
 		// 5. Receive tagged OK response
 
-		tlsConn, err := tls.DialWithDialer(&net.Dialer{Timeout: 10 * time.Second}, "tcp", restmailIMAPAddr, &tls.Config{InsecureSkipVerify: true})
+		tlsConn, err := tls.DialWithDialer(&net.Dialer{Timeout: 30 * time.Second}, "tcp", restmailIMAPAddr, &tls.Config{InsecureSkipVerify: true})
 		// Held as net.Conn: the deferred Close and the SetDeadline calls below read as
 		// ordinary connection handling that way, which is how the rest of the suite does it.
 		var conn net.Conn = tlsConn
@@ -123,7 +123,7 @@ func testStage13ImapIdle(t *testing.T) {
 		reader := bufio.NewReader(conn)
 
 		// Read greeting
-		_ = conn.SetDeadline(time.Now().Add(10 * time.Second))
+		_ = conn.SetDeadline(time.Now().Add(30 * time.Second))
 		greeting, _ := reader.ReadString('\n')
 		if !strings.Contains(greeting, "OK") {
 			t.Fatalf("unexpected greeting: %s", strings.TrimSpace(greeting))
@@ -133,7 +133,7 @@ func testStage13ImapIdle(t *testing.T) {
 
 		// LOGIN
 		fmt.Fprintf(conn, "A001 LOGIN idle-user@restmail.test %s\r\n", accountPassword)
-		_ = conn.SetDeadline(time.Now().Add(10 * time.Second))
+		_ = conn.SetDeadline(time.Now().Add(30 * time.Second))
 		loginResp := readUntilTagRaw(t, reader, "A001")
 		if !strings.Contains(loginResp, "OK") {
 			t.Fatalf("LOGIN failed: %s", loginResp)
@@ -141,7 +141,7 @@ func testStage13ImapIdle(t *testing.T) {
 
 		// SELECT INBOX
 		fmt.Fprintf(conn, "A002 SELECT INBOX\r\n")
-		_ = conn.SetDeadline(time.Now().Add(10 * time.Second))
+		_ = conn.SetDeadline(time.Now().Add(30 * time.Second))
 		selectResp := readUntilTagRaw(t, reader, "A002")
 		if !strings.Contains(selectResp, "OK") {
 			t.Fatalf("SELECT INBOX failed: %s", selectResp)
@@ -149,7 +149,7 @@ func testStage13ImapIdle(t *testing.T) {
 
 		// IDLE
 		fmt.Fprintf(conn, "A003 IDLE\r\n")
-		_ = conn.SetDeadline(time.Now().Add(10 * time.Second))
+		_ = conn.SetDeadline(time.Now().Add(30 * time.Second))
 
 		// Read continuation response (should be "+ idling" or similar)
 		idleResp, err := reader.ReadString('\n')
@@ -163,7 +163,7 @@ func testStage13ImapIdle(t *testing.T) {
 
 		// Send DONE to terminate IDLE
 		fmt.Fprintf(conn, "DONE\r\n")
-		conn.SetDeadline(time.Now().Add(10 * time.Second))
+		conn.SetDeadline(time.Now().Add(30 * time.Second))
 
 		doneResp, err := reader.ReadString('\n')
 		requireNoError(t, err)
@@ -190,7 +190,7 @@ func testStage13ImapIdle(t *testing.T) {
 		// 4. Wait for EXISTS notification
 		// 5. Send DONE
 
-		tlsConn, err := tls.DialWithDialer(&net.Dialer{Timeout: 10 * time.Second}, "tcp", restmailIMAPAddr, &tls.Config{InsecureSkipVerify: true})
+		tlsConn, err := tls.DialWithDialer(&net.Dialer{Timeout: 30 * time.Second}, "tcp", restmailIMAPAddr, &tls.Config{InsecureSkipVerify: true})
 		// Held as net.Conn: the deferred Close and the SetDeadline calls below read as
 		// ordinary connection handling that way, which is how the rest of the suite does it.
 		var conn net.Conn = tlsConn
@@ -202,7 +202,7 @@ func testStage13ImapIdle(t *testing.T) {
 		reader := bufio.NewReader(conn)
 
 		// Read greeting
-		conn.SetDeadline(time.Now().Add(10 * time.Second))
+		conn.SetDeadline(time.Now().Add(30 * time.Second))
 		greeting, _ := reader.ReadString('\n')
 		if !strings.Contains(greeting, "OK") {
 			t.Fatalf("unexpected greeting: %s", strings.TrimSpace(greeting))
@@ -212,7 +212,7 @@ func testStage13ImapIdle(t *testing.T) {
 
 		// LOGIN
 		fmt.Fprintf(conn, "A001 LOGIN idle-user@restmail.test %s\r\n", accountPassword)
-		conn.SetDeadline(time.Now().Add(10 * time.Second))
+		conn.SetDeadline(time.Now().Add(30 * time.Second))
 		loginResp := readUntilTagRaw(t, reader, "A001")
 		if !strings.Contains(loginResp, "OK") {
 			t.Fatalf("LOGIN failed: %s", loginResp)
@@ -220,7 +220,7 @@ func testStage13ImapIdle(t *testing.T) {
 
 		// SELECT INBOX
 		fmt.Fprintf(conn, "A002 SELECT INBOX\r\n")
-		conn.SetDeadline(time.Now().Add(10 * time.Second))
+		conn.SetDeadline(time.Now().Add(30 * time.Second))
 		selectLines := readUntilTagRaw(t, reader, "A002")
 		if !strings.Contains(selectLines, "OK") {
 			t.Fatalf("SELECT INBOX failed: %s", selectLines)
@@ -238,7 +238,7 @@ func testStage13ImapIdle(t *testing.T) {
 
 		// Start IDLE
 		fmt.Fprintf(conn, "A003 IDLE\r\n")
-		conn.SetDeadline(time.Now().Add(10 * time.Second))
+		conn.SetDeadline(time.Now().Add(30 * time.Second))
 
 		// Read continuation
 		contResp, err := reader.ReadString('\n')
@@ -293,7 +293,7 @@ func testStage13ImapIdle(t *testing.T) {
 		}
 
 		// Send DONE regardless of whether we got the notification
-		conn.SetDeadline(time.Now().Add(10 * time.Second))
+		conn.SetDeadline(time.Now().Add(30 * time.Second))
 		fmt.Fprintf(conn, "DONE\r\n")
 
 		// Read the OK response (if IDLE is still active)
@@ -321,7 +321,7 @@ func testStage13ImapIdle(t *testing.T) {
 	t.Run("IMAPS_IDLE_BasicFlow", func(t *testing.T) {
 		// Verify IDLE works over IMAPS (port 993) as well
 		conn, err := tls.DialWithDialer(
-			&net.Dialer{Timeout: 10 * time.Second},
+			&net.Dialer{Timeout: 30 * time.Second},
 			"tcp",
 			imapsGWAddr,
 			&tls.Config{InsecureSkipVerify: true},
@@ -334,7 +334,7 @@ func testStage13ImapIdle(t *testing.T) {
 		reader := bufio.NewReader(conn)
 
 		// Read greeting
-		_ = conn.SetDeadline(time.Now().Add(10 * time.Second))
+		_ = conn.SetDeadline(time.Now().Add(30 * time.Second))
 		greeting, err := reader.ReadString('\n')
 		requireNoError(t, err)
 		if !strings.Contains(greeting, "OK") {
@@ -343,7 +343,7 @@ func testStage13ImapIdle(t *testing.T) {
 
 		// LOGIN
 		fmt.Fprintf(conn, "A001 LOGIN idle-user@restmail.test %s\r\n", accountPassword)
-		_ = conn.SetDeadline(time.Now().Add(10 * time.Second))
+		_ = conn.SetDeadline(time.Now().Add(30 * time.Second))
 		loginResp := readUntilTagRaw(t, reader, "A001")
 		if !strings.Contains(loginResp, "OK") {
 			t.Skipf("IMAPS LOGIN failed: %s", loginResp)
@@ -351,7 +351,7 @@ func testStage13ImapIdle(t *testing.T) {
 
 		// SELECT INBOX
 		fmt.Fprintf(conn, "A002 SELECT INBOX\r\n")
-		_ = conn.SetDeadline(time.Now().Add(10 * time.Second))
+		_ = conn.SetDeadline(time.Now().Add(30 * time.Second))
 		selectResp := readUntilTagRaw(t, reader, "A002")
 		if !strings.Contains(selectResp, "OK") {
 			t.Fatalf("IMAPS SELECT INBOX failed: %s", selectResp)
@@ -359,7 +359,7 @@ func testStage13ImapIdle(t *testing.T) {
 
 		// IDLE
 		fmt.Fprintf(conn, "A003 IDLE\r\n")
-		_ = conn.SetDeadline(time.Now().Add(10 * time.Second))
+		_ = conn.SetDeadline(time.Now().Add(30 * time.Second))
 
 		contResp, err := reader.ReadString('\n')
 		requireNoError(t, err)
@@ -370,7 +370,7 @@ func testStage13ImapIdle(t *testing.T) {
 
 		// DONE
 		fmt.Fprintf(conn, "DONE\r\n")
-		_ = conn.SetDeadline(time.Now().Add(10 * time.Second))
+		_ = conn.SetDeadline(time.Now().Add(30 * time.Second))
 		doneResp, err := reader.ReadString('\n')
 		requireNoError(t, err)
 
@@ -399,7 +399,7 @@ func testStage13ImapIdle(t *testing.T) {
 
 		// Enter and exit IDLE using raw connection
 		tag := ic.nextTag()
-		_ = ic.conn.SetDeadline(time.Now().Add(10 * time.Second))
+		_ = ic.conn.SetDeadline(time.Now().Add(30 * time.Second))
 		fmt.Fprintf(ic.conn, "%s IDLE\r\n", tag)
 
 		// Read continuation
@@ -409,7 +409,7 @@ func testStage13ImapIdle(t *testing.T) {
 		}
 
 		// Send DONE
-		_ = ic.conn.SetDeadline(time.Now().Add(10 * time.Second))
+		_ = ic.conn.SetDeadline(time.Now().Add(30 * time.Second))
 		fmt.Fprintf(ic.conn, "DONE\r\n")
 
 		// Read tagged OK

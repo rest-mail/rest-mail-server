@@ -132,7 +132,7 @@ func TestInternalMTLS_ListenerEndToEnd(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ClientTLSConfig: %v", err)
 		}
-		c := &http.Client{Transport: &http.Transport{TLSClientConfig: clientCfg}, Timeout: 5 * time.Second}
+		c := &http.Client{Transport: &http.Transport{TLSClientConfig: clientCfg}, Timeout: 30 * time.Second}
 		resp, err := c.Get(ts.URL + "/api/mailboxes?address=a@b.test")
 		if err != nil {
 			t.Fatalf("request with valid cert failed: %v", err)

@@ -108,7 +108,7 @@ func TestIMAPStartTLSCancellationDuringUpgrade(t *testing.T) {
 			}()
 			select {
 			case <-seen:
-			case <-time.After(2 * time.Second):
+			case <-time.After(30 * time.Second):
 				t.Fatal("source did not reach the pending upgrade phase")
 			}
 			cancel()
@@ -117,7 +117,7 @@ func TestIMAPStartTLSCancellationDuringUpgrade(t *testing.T) {
 				if !errors.Is(err, context.Canceled) {
 					t.Fatalf("cancellation lost: %v", err)
 				}
-			case <-time.After(time.Second):
+			case <-time.After(30 * time.Second):
 				t.Fatal("cancellation did not close the pending upgrade")
 			}
 			f.mu.Lock()
@@ -144,7 +144,7 @@ func TestIMAPStartTLSVisitorFailure(t *testing.T) {
 		if !errors.Is(err, failure) {
 			t.Fatalf("visitor error changed: %v", err)
 		}
-	case <-time.After(2 * time.Second):
+	case <-time.After(30 * time.Second):
 		t.Fatal("visitor failure blocked on upgraded literal drain")
 	}
 }

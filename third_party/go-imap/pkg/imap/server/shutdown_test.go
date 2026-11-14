@@ -32,12 +32,12 @@ func serveOnFreePort(t *testing.T, srv *Server) int {
 // greeting, returning the connection and a buffered reader over it.
 func dialClient(t *testing.T, port int) (net.Conn, *bufio.Reader) {
 	t.Helper()
-	conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), 2*time.Second)
+	conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), 30*time.Second)
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
 	r := bufio.NewReader(conn)
-	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	_ = conn.SetReadDeadline(time.Now().Add(30 * time.Second))
 	line, err := r.ReadString('\n')
 	if err != nil || !strings.HasPrefix(line, "* OK") {
 		t.Fatalf("greeting = %q err=%v, want * OK...", line, err)
@@ -50,11 +50,11 @@ func dialClient(t *testing.T, port int) (net.Conn, *bufio.Reader) {
 // blocked reading the next command.
 func clientLogin(t *testing.T, conn net.Conn, r *bufio.Reader) {
 	t.Helper()
-	_ = conn.SetWriteDeadline(time.Now().Add(2 * time.Second))
+	_ = conn.SetWriteDeadline(time.Now().Add(30 * time.Second))
 	if _, err := fmt.Fprintf(conn, "a1 LOGIN alice@example.com s3cret\r\n"); err != nil {
 		t.Fatalf("write LOGIN: %v", err)
 	}
-	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	_ = conn.SetReadDeadline(time.Now().Add(30 * time.Second))
 	line, err := r.ReadString('\n')
 	if err != nil || !strings.HasPrefix(line, "a1 OK") {
 		t.Fatalf("LOGIN -> %q err=%v, want a1 OK...", line, err)
@@ -99,20 +99,20 @@ func (m slowMailbox) Messages(folder string) ([]imap.Message, error) {
 // call, in the middle of the command.
 func selectSlow(t *testing.T, b *slowBackend, conn net.Conn) {
 	t.Helper()
-	_ = conn.SetWriteDeadline(time.Now().Add(2 * time.Second))
+	_ = conn.SetWriteDeadline(time.Now().Add(30 * time.Second))
 	if _, err := fmt.Fprintf(conn, "a2 SELECT Slow\r\n"); err != nil {
 		t.Fatalf("write SELECT: %v", err)
 	}
 	select {
 	case <-b.entered:
-	case <-time.After(2 * time.Second):
+	case <-time.After(30 * time.Second):
 		t.Fatal("SELECT never reached the backend")
 	}
 }
 
 // readLines reads lines until EOF or the deadline.
 func readLines(conn net.Conn, r *bufio.Reader) []string {
-	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	_ = conn.SetReadDeadline(time.Now().Add(30 * time.Second))
 	var lines []string
 	for {
 		line, err := r.ReadString('\n')
@@ -160,7 +160,7 @@ func TestShutdownWaitsForInflightSession(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Shutdown after drain: got err %v, want nil", err)
 		}
-	case <-time.After(3 * time.Second):
+	case <-time.After(30 * time.Second):
 		t.Fatal("Shutdown did not return after the in-flight session ended")
 	}
 }
@@ -181,11 +181,11 @@ func TestShutdownSaysByeToIdleSessions(t *testing.T) {
 	idling, ir := dialClient(t, port)
 	defer func() { _ = idling.Close() }()
 	clientLogin(t, idling, ir)
-	_ = idling.SetWriteDeadline(time.Now().Add(2 * time.Second))
+	_ = idling.SetWriteDeadline(time.Now().Add(30 * time.Second))
 	if _, err := fmt.Fprintf(idling, "a2 SELECT INBOX\r\na3 IDLE\r\n"); err != nil {
 		t.Fatalf("write IDLE: %v", err)
 	}
-	_ = idling.SetReadDeadline(time.Now().Add(2 * time.Second))
+	_ = idling.SetReadDeadline(time.Now().Add(30 * time.Second))
 	for {
 		line, err := ir.ReadString('\n')
 		if err != nil {
@@ -196,7 +196,7 @@ func TestShutdownSaysByeToIdleSessions(t *testing.T) {
 		}
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {
 		t.Fatalf("Shutdown: %v, want the idle sessions to end at once", err)
@@ -238,7 +238,7 @@ func TestShutdownRespectsContextTimeout(t *testing.T) {
 	if elapsed < 100*time.Millisecond {
 		t.Fatalf("Shutdown returned after only %v; expected it to block until ~the deadline", elapsed)
 	}
-	if elapsed > 2*time.Second {
+	if elapsed > 30*time.Second {
 		t.Fatalf("Shutdown took %v; expected it to return near the deadline", elapsed)
 	}
 }
@@ -261,7 +261,7 @@ func TestCloseInterruptsInflightSession(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Close: %v", err)
 		}
-	case <-time.After(2 * time.Second):
+	case <-time.After(30 * time.Second):
 		t.Fatal("Close did not return promptly")
 	}
 

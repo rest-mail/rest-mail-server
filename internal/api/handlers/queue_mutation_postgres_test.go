@@ -178,7 +178,7 @@ func TestQueueMutationPostgresLockDeadline(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { _ = db.Delete(&models.OutboundQueue{}, item.ID).Error })
-			lockCtx, cancelLock := context.WithTimeout(t.Context(), 5*time.Second)
+			lockCtx, cancelLock := context.WithTimeout(t.Context(), 30*time.Second)
 			defer cancelLock()
 			lock := db.WithContext(lockCtx).Begin()
 			if lock.Error != nil {

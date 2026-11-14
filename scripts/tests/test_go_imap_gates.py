@@ -46,7 +46,7 @@ class CoverageGateRuns(unittest.TestCase):
 
     def test_race_coverage_includes_external_wire_proofs(self):
         run = step(self.test, "Test the local IMAP compatibility module with coverage")
-        self.assertIn("run: go test -race -count=1 -timeout=10m -covermode=atomic "
+        self.assertIn("run: go test -race -count=1 -timeout=2h -covermode=atomic "
                       "-coverpkg=./... -coverprofile=coverage.out ./...\n", run)
         self.assertLess(self.test.index("-coverprofile=coverage.out"), self.test.index("go tool cover -func=coverage.out"))
         # Only the proof steps: an upload after them may not fail its job (#1896).

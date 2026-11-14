@@ -132,8 +132,9 @@ surface:
 
 # The chosen-password rule (bootstrap.ChosenPasswordProblem) refuses the generator's
 # xxxxxxxxxxxx, and no schema can say so. These hold a password the rule accepts in
-# the valid requests a generating phase draws for these two operations, which are
-# the ones with such requests on this topology. Their invalid requests still vary,
+# the valid requests a generating phase draws for these three operations, which are
+# the ones with such requests on this topology. acceptInvitation's valid probes
+# redeem an invitation the hook makes for their drawn token (redeem_a_fresh_invitation). Their invalid requests still vary,
 # so the 11-character refusal is sent, and no other operation's password is touched.
 # A held password is in every valid body, and createAccount refuses one sent with a
 # password_hash, so that is held at the empty string the schema permits, which means
@@ -147,6 +148,8 @@ fuzz:
       password: &probe-password "ochre-walnut-tundra-sextant-61"
       password_hash: ""
     updateMailbox:
+      password: *probe-password
+    acceptInvitation:
       password: *probe-password
 
 # The HAR records the traffic for the secret scan (tests/contract/secret_scan.py, #673).

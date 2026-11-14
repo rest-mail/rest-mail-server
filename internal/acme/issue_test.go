@@ -269,7 +269,7 @@ func TestIssue_FailsWhenChallengeIsNotServed(t *testing.T) {
 	responder := NewHTTP01Responder()
 	ca := newFakeCA(t, http.NotFoundHandler())
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	certPEM, keyPEM, err := Issue(ctx, IssueConfig{Directory: ca.url("/directory"), Domains: []string{"mail.example.test"}}, responder)
 	if err == nil || certPEM != "" || keyPEM != "" {

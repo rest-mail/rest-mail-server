@@ -57,7 +57,7 @@ func TestTestResetWaitsForClaimedDeliverySideEffects(t *testing.T) {
 	go func() { worker.processOne(0); close(delivered) }()
 	select {
 	case <-resolver.claimed:
-	case <-time.After(5 * time.Second):
+	case <-time.After(30 * time.Second):
 		t.Fatal("worker did not claim the real queue row")
 	}
 	var claimed models.OutboundQueue
@@ -66,7 +66,7 @@ func TestTestResetWaitsForClaimedDeliverySideEffects(t *testing.T) {
 	}
 	resetDone := make(chan error, 1)
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		resetDone <- testreset.Reset(ctx, db, func(conn *gorm.DB) error {
 			var suppressions int64
@@ -87,7 +87,7 @@ func TestTestResetWaitsForClaimedDeliverySideEffects(t *testing.T) {
 	finish.Do(func() { close(resolver.release) })
 	select {
 	case <-delivered:
-	case <-time.After(5 * time.Second):
+	case <-time.After(30 * time.Second):
 		t.Fatal("worker failed to complete")
 	}
 	if err := <-resetDone; err != nil {

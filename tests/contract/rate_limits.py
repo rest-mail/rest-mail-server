@@ -77,6 +77,16 @@ def pace(seconds):
         time.sleep(seconds)
 
 
+# The default outbound pipeline's rate_limit filter (internal/pipeline/templates.go)
+# holds a sender's mail past 20 a minute: the send answers 202, held. No raised
+# setting changes a pipeline's filter, so this spacing applies in every run.
+SEND_SPACING = 3.5
+
+
+def pace_sends():
+    time.sleep(SEND_SPACING)
+
+
 def docker_flags():
     return " ".join(
         f"-e {name}={value}" for name, value in settings().items()

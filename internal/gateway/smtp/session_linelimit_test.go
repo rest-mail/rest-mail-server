@@ -25,7 +25,7 @@ func TestSMTP_OverlongPreAuthCommandLine_Rejected(t *testing.T) {
 	// moment the limit trips, so the client must be free to read that reply
 	// instead of still blocking on the rest of the write.
 	go func() {
-		_ = h.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		_ = h.conn.SetWriteDeadline(time.Now().Add(30 * time.Second))
 		long := "NOOP " + strings.Repeat("x", 70<<10) + "\r\n"
 		_, _ = h.cw.WriteString(long)
 		_ = h.cw.Flush()

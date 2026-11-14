@@ -73,7 +73,7 @@ func TestProbeRESTMAILHasIODeadline(t *testing.T) {
 		if probed {
 			t.Fatal("a silent MX must not be reported as a completed probe")
 		}
-	case <-time.After(3 * time.Second):
+	case <-time.After(30 * time.Second):
 		t.Fatal("probe did not return: capability probe has no I/O deadline (#169) — a silent MX wedges the worker")
 	}
 }

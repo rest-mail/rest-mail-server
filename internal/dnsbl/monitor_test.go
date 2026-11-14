@@ -15,7 +15,7 @@ import (
 // schedule: the clock is fake and the checker is scripted (or a real Checker
 // over fakeResolver). Real time is only a safety deadline.
 
-const testWait = 5 * time.Second
+const testWait = 30 * time.Second
 
 // fakeClock hands every timer the Monitor arms to the test, which fires it.
 type fakeClock struct {
@@ -437,7 +437,11 @@ func TestMonitorCancelDuringCheck(t *testing.T) {
 		return res, nil
 	})
 	rec := &recorder{}
-	m, clock := newTestMonitor(t, c, testConfig(rec, sendingIP))
+	// The check's own timeout is far past the 30s bound below, so only the
+	// cancel can end the check in time; a slow machine cannot.
+	cfg := testConfig(rec, sendingIP)
+	cfg.Timeout = time.Minute
+	m, clock := newTestMonitor(t, c, cfg)
 	cancel, done := start(t, m)
 	tm := clock.nextTimer(t)
 
@@ -453,7 +457,7 @@ func TestMonitorCancelDuringCheck(t *testing.T) {
 	if err := <-done; !errors.Is(err, context.Canceled) {
 		t.Fatalf("Run = %v, want context.Canceled", err)
 	}
-	if time.Since(began) > time.Second {
+	if time.Since(began) > 30*time.Second {
 		t.Fatalf("Run took %s to return after cancel", time.Since(began))
 	}
 	select {

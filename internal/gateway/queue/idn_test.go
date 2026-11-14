@@ -73,7 +73,7 @@ func TestDeliverIDNMXLookup(t *testing.T) {
 		if name != "xn--r8jz45g.jp." {
 			t.Fatalf("DNS queried %q, want ASCII domain", name)
 		}
-	case <-time.After(time.Second):
+	case <-time.After(30 * time.Second):
 		t.Fatal("no MX query received")
 	}
 	if item.Domain != "例え.jp" || item.Recipient != "user@例え.jp" {

@@ -110,7 +110,7 @@ func dialConfigured(t *testing.T, box imap.Mailbox, wrap func(net.Conn) net.Conn
 		defer close(done)
 		sess.Handle()
 	}()
-	if err := clientConn.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
+	if err := clientConn.SetDeadline(time.Now().Add(30 * time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	c := &client{t: t, conn: clientConn, r: bufio.NewReader(clientConn), backend: b, done: done}

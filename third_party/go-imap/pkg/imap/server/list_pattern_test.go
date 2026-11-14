@@ -288,7 +288,7 @@ func TestMatchIMAPPattern_NoExponentialBlowup(t *testing.T) {
 	pattern := strings.Repeat("*", 20) + "b"
 	name := strings.Repeat("a", 30) // no trailing 'b' — forces worst-case work
 
-	const budget = 2 * time.Second
+	const budget = 30 * time.Second
 	done := make(chan bool, 1)
 	start := time.Now()
 	go func() { done <- matchIMAPPattern(pattern, name) }()

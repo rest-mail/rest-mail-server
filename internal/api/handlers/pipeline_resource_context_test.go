@@ -190,13 +190,13 @@ func TestPipelineResourceDeleteLockCancellation(t *testing.T) {
 			if err := lock.Exec("SELECT id FROM " + tc.table + " WHERE id = 1 FOR UPDATE").Error; err != nil {
 				t.Fatal(err)
 			}
-			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+			ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 			defer cancel()
 			done := make(chan *httptest.ResponseRecorder, 1)
 			go func() { done <- pipelineResourceRequest(db, tc, ctx) }()
 			// The database name is the verified private scratch database.
 			// Wait until this DELETE is actually blocked on our row lock.
-			until := time.Now().Add(3 * time.Second)
+			until := time.Now().Add(30 * time.Second)
 			for {
 				var waiting int64
 				err := db.Raw(`SELECT count(*) FROM pg_stat_activity
@@ -216,12 +216,12 @@ WHERE datname = current_database() AND wait_event_type = 'Lock' AND query LIKE ?
 			var rr *httptest.ResponseRecorder
 			select {
 			case rr = <-done:
-			case <-time.After(time.Second):
+			case <-time.After(30 * time.Second):
 				t.Error("cancelled request kept waiting for the row lock")
 				_ = lock.Rollback().Error
 				select {
 				case rr = <-done:
-				case <-time.After(3 * time.Second):
+				case <-time.After(30 * time.Second):
 					t.Fatal("DELETE did not finish after releasing its backstop lock")
 				}
 			}

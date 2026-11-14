@@ -98,7 +98,7 @@ func TestGrantRoutesCarryTheRequestContext(t *testing.T) {
 				endpoint.Routes{Router: router, Registry: endpoint.NewRegistry()},
 				GrantRouteChecks{At: func(string) endpoint.Middleware { return noop }, SessionOnly: noop, AuthThrottle: noop})
 
-			ctx, cancel := context.WithTimeout(context.WithValue(t.Context(), grantContextKey{}, true), 4*time.Second)
+			ctx, cancel := context.WithTimeout(context.WithValue(t.Context(), grantContextKey{}, true), 30*time.Second)
 			defer cancel()
 			r := httptest.NewRequest(route.method, route.path, bytes.NewBufferString(route.body)).WithContext(ctx)
 			r.Header.Set("Content-Type", "application/json")

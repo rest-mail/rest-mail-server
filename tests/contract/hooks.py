@@ -45,6 +45,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import mfa_admin  # noqa: E402
 import rate_limits
 import owner_key  # noqa: E402
+from probe_refusals import send_refusal_probe, tls_report_refusal  # noqa: E402
 import reset_seed
 from identities import address_key, domain_key
 from api_keys_live import totp  # noqa: E402
@@ -1409,6 +1410,9 @@ def send_as_the_two_factor_admin(transaction):
     # disableTwoFactor's refusals stay refusals.
     # Confirming its authenticator again is refused (409): it is already on,
     # and the fixture admin's sign-in requirements are left alone.
+    if transaction.get("operationId") == "createAppPassword" and a_later_request_of_the_coverage_process(transaction):
+        an_api_key_probe_as_the_probe_admin(transaction)
+        return
     as_the_two_factor_admin(transaction)
 
 
@@ -2014,10 +2018,9 @@ def a_well_formed_app_password_request(transaction, body):
     must reach the handler as drawn: its refusal is what it tests, and Vertrag
     would end it if the password were added.
 
-    One that breaks none still gets the password, and is ended, because the
-    description lets it leave the password out (required: [name]) while the
-    handler answers 403 reauth_required, which Vertrag would call a disagreement.
-    gate.py counts each of those (lost-probes-baseline.txt)."""
+    The published schema now requires a nonempty password. Generated requests
+    using the probe administrator keep their original body, including its
+    password; only documented examples still need their fixture password."""
     path = transaction.get("fullPath", "").partition("?")[0].split("/")
     return (
         len(path) > 4
@@ -2033,6 +2036,8 @@ def confirm_with_the_admin_password(transaction):
     body = hooks.get_json(transaction)
     # The body_array refusal sends a JSON array, which has no password to set.
     if not isinstance(body, dict):
+        return
+    if in_the_coverage_process() and session_address(transaction) == mfa_admin.PROBE_ADDRESS:
         return
     if in_the_coverage_process() and not a_well_formed_app_password_request(transaction, body):
         return
@@ -2099,7 +2104,8 @@ def link_a_seeded_account(transaction):
     # password that no account has; the fixture's credentials make it the link
     # it is named for. Missing, null and empty credentials stay as sent.
     if (
-        " > 201 > " in transaction.get("name", "")
+        not in_the_coverage_process()
+        and " > 201 > " in transaction.get("name", "")
         and all(
             isinstance(body.get(field), str) and body[field]
             for field in ("address", "password")
@@ -4079,6 +4085,20 @@ def wait_for_the_trace(transaction):
     time.sleep(1)
 
 
+@hooks.before("sendMessage")
+@hooks.before("sendDraft")
+@hooks.before("forwardMessage")
+def pace_the_coverage_sends(transaction):
+    # Every valid probe of these is a real send by the fixture admin, and the
+    # coverage process sends them back to back. The default outbound pipeline's
+    # rate_limit filter holds a sender's mail past 20 a minute (202, held), so
+    # forward's success example, sent after the send and draft probes, was held
+    # and its valid probes skipped. Spacing the sends keeps them under it; the
+    # other processes send few enough.
+    if in_the_coverage_process():
+        rate_limits.pace_sends()
+
+
 @hooks.before("receiveTlsReport")
 def pace_the_tls_reports(transaction):
     # The route is rate-limited per client IP, 1 a second after a burst of 10
@@ -4094,6 +4114,9 @@ def host_the_reported_policy_domains(transaction):
     # The 422 is the report that names no hosted domain: leave it unhosted.
     if " > 422 > " in transaction["name"]:
         return
+    sends = hooks.stash.setdefault("tls_report_sends", {})
+    name = transaction.get("name", "")
+    sends[name] = sends.get(name, 0) + 1
     body = hooks.get_json(transaction)
     policies = body.get("policies") if isinstance(body, dict) else None
     if not isinstance(policies, list):
@@ -4106,6 +4129,10 @@ def host_the_reported_policy_domains(transaction):
         if isinstance(entry, dict) and isinstance(entry.get("policy"), dict)
     ]
     if policies and isinstance(policies[0], dict) and not any(named):
+        if in_the_coverage_process():
+            if sends[name] > DOCUMENTED_SENDS:
+                tls_report_refusal(transaction)
+                return
         policies[0]["policy"] = {"policy-domain": "restmail.test"}
         hooks.set_json(transaction, body)
     origin = "{}//{}:{}".format(
@@ -5731,7 +5758,13 @@ def invite_an_account_without_credentials(transaction):
     # probe runs under its transaction's own name (the "coverage:" prefix is
     # added to the report later), so the id is what tells it from the example.
     if placeholder == "1" and " > 201 > " in name and " as " not in name:
-        transaction["skip"] = True
+        if in_the_coverage_process():
+            send_refusal_probe(
+                transaction, 409, "account_not_invitable",
+                "The minimum id names the credentialed fixture administrator; no schema can express database eligibility.",
+            )
+        else:
+            transaction["skip"] = True
         return
     if placeholder != "12":
         return
@@ -5760,6 +5793,28 @@ def redeem_a_fresh_invitation(transaction):
     if asked_for_a_clean_start():
         start_clean(transaction)
     body = hooks.get_json(transaction)
+    if a_later_request_of_the_coverage_process(transaction) and " > 200 > " in transaction.get("name", ""):
+        if (
+            isinstance(body, dict)
+            and isinstance(body.get("token"), str) and body["token"].strip()
+            and isinstance(body.get("password"), str) and 12 <= len(body["password"]) and len(body["password"].encode()) <= 72
+            and body.get("client", "native") == "native"
+            and set(body) <= {"token", "password", "client"}
+        ):
+            # chore gives a task's commands no standard input, so the request
+            # goes in the environment and the task pipes it to the fixture.
+            # No time limit: a slow machine is not a failed fixture.
+            made = subprocess.run(
+                ["chore", "test:contract-invitation-fixture"],
+                env=dict(os.environ, CONTRACT_INVITATION_REQUEST=json.dumps({"token": body["token"]})),
+                capture_output=True,
+            )
+            if made.returncode != 0:
+                raise RuntimeError(
+                    "the invitation fixture failed: "
+                    + made.stderr.decode(errors="replace").strip()[-500:]
+                )
+        return
     # The accepted example and every coverage probe of its 200 need an unspent
     # invitation: coverage runs no after hooks, and a schema-valid body with an
     # unknown token is a 401. The named refusals (invalid_token, invalid_field,

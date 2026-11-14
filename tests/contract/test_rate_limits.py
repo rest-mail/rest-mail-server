@@ -19,6 +19,20 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class ContractRateLimits(unittest.TestCase):
+    def test_coverage_sends_stay_under_the_outbound_pipelines_rate(self):
+        # The default outbound rate_limit filter allows 20 a minute; the spacing
+        # holds whether or not the API's own limits are raised.
+        templates = (ROOT / "internal/pipeline/templates.go").read_text()
+        per_minute = re.search(r'"max_per_minute": *(\d+)', templates)
+        self.assertIsNotNone(per_minute)
+        self.assertGreater(rate_limits.SEND_SPACING * int(per_minute.group(1)), 60)
+        for setting in ("", "true"):
+            with self.subTest(raised=setting), patch.dict(
+                os.environ, {"RESTMAIL_CONTRACT_LIMITS_RAISED": setting}
+            ), patch.object(rate_limits.time, "sleep") as sleep:
+                rate_limits.pace_sends()
+                sleep.assert_called_once_with(rate_limits.SEND_SPACING)
+
     def test_pacing_only_disappears_for_the_explicit_raised_setting(self):
         for setting in ("", "false", "TRUE", "true"):
             with self.subTest(setting=setting), patch.dict(
@@ -201,9 +215,9 @@ class ContractRateLimits(unittest.TestCase):
         self.assertIn("docker inspect", commands[2])
         self.assertIn("--assert-defaults", commands[2])
         self.assertIn("^TestLimits$", commands[3])
-        teardown = tasks["test:contract-own-data"]["cmds"][0]
-        self.assertIn("api:up", teardown)
-        self.assertNotIn("RESTMAIL_CONTRACT_LIMITS_RAISED=false", teardown)
+        own_data = tasks["test:contract-own-data"]["cmds"][0]
+        self.assertIn("api:up", own_data)
+        self.assertNotIn("RESTMAIL_CONTRACT_LIMITS_RAISED=false", own_data)
 
 
 class ContainerRateLimitChecks(unittest.TestCase):

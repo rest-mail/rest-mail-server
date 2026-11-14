@@ -68,7 +68,7 @@ class RaceShardConfiguration(unittest.TestCase):
                 shards.call_args_list, ("internal/api", "internal/api/handlers")
             ):
                 self.assertEqual(call.args[0], ["TestA", "TestB"])
-                self.assertEqual(call.args[3:], (2, "20m", directory))
+                self.assertEqual(call.args[3:], (2, "2h", directory))
             self.assertEqual(output.getvalue().count("across 2 race shards"), 2)
 
     def test_custom_shards_still_refuse_an_unexecuted_test(self):
