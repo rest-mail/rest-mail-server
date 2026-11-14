@@ -1043,7 +1043,8 @@ tasks:
   test:contract-invitation-fixture:
     desc: Prepare a fresh disposable account for an unchanged generated invitation token
     env:
-      CONTRACT_FIXTURE_CONFIG: '{{.CONFIG}}'
+      # As test:contract-fixtures: a private topology's config is the restmail.test fixture.
+      CONTRACT_FIXTURE_CONFIG: '{{if and .TOPOLOGY_CONFIG (eq .CONFIG .TOPOLOGY_CONFIG)}}restmail.test{{else}}{{.CONFIG}}{{end}}'
       CONTRACT_FIXTURE_PROJECT: '{{.RESTMAIL_PROJECT}}'
     cmds:
       - |

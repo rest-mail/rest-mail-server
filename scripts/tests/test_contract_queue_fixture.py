@@ -48,6 +48,16 @@ class ContractQueueFixtureTests(unittest.TestCase):
             with self.subTest(task=name):
                 self.check_fixture_task(tasks[name]["cmds"][0], flags)
 
+    def test_fixture_tasks_accept_a_private_topology_config(self):
+        # A private topology's config is the restmail.test fixture on the run's own
+        # names (scripts/topology_plan.py): every fixture task must read it so.
+        tasks = yaml.safe_load((ROOT / "chores.yml").read_text())["tasks"]
+        mapped = tasks["test:contract-fixtures"]["env"]["CONTRACT_FIXTURE_CONFIG"]
+        self.assertIn(".TOPOLOGY_CONFIG", mapped)
+        for name in ("test:contract-invitation-fixture",):
+            with self.subTest(task=name):
+                self.assertEqual(tasks[name]["env"]["CONTRACT_FIXTURE_CONFIG"], mapped)
+
     def check_fixture_task(self, script, flags):
         with tempfile.TemporaryDirectory() as directory:
             work = Path(directory)
