@@ -4085,6 +4085,20 @@ def wait_for_the_trace(transaction):
     time.sleep(1)
 
 
+@hooks.before("sendMessage")
+@hooks.before("sendDraft")
+@hooks.before("forwardMessage")
+def pace_the_coverage_sends(transaction):
+    # Every valid probe of these is a real send by the fixture admin, and the
+    # coverage process sends them back to back. The default outbound pipeline's
+    # rate_limit filter holds a sender's mail past 20 a minute (202, held), so
+    # forward's success example, sent after the send and draft probes, was held
+    # and its valid probes skipped. Spacing the sends keeps them under it; the
+    # other processes send few enough.
+    if in_the_coverage_process():
+        rate_limits.pace_sends()
+
+
 @hooks.before("receiveTlsReport")
 def pace_the_tls_reports(transaction):
     # The route is rate-limited per client IP, 1 a second after a burst of 10
