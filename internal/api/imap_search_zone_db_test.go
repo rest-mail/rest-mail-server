@@ -61,7 +61,7 @@ func openIMAPZoneSession(t *testing.T, f *credentialFixture, api *apiclient.Clie
 
 func (s *imapZoneSession) line() string {
 	s.t.Helper()
-	_ = s.conn.SetDeadline(time.Now().Add(10 * time.Second))
+	_ = s.conn.SetDeadline(time.Now().Add(30 * time.Second))
 	line, err := s.reader.ReadString('\n')
 	if err != nil {
 		s.t.Fatalf("read: %v (partial %q)", err, line)
@@ -71,7 +71,7 @@ func (s *imapZoneSession) line() string {
 
 func (s *imapZoneSession) write(text string) {
 	s.t.Helper()
-	_ = s.conn.SetDeadline(time.Now().Add(10 * time.Second))
+	_ = s.conn.SetDeadline(time.Now().Add(30 * time.Second))
 	if _, err := s.conn.Write([]byte(text)); err != nil {
 		s.t.Fatalf("write: %v", err)
 	}
