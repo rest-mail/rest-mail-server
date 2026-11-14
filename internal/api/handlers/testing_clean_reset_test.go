@@ -118,6 +118,25 @@ func TestCleanResetStableIdentitiesAndJWT(t *testing.T) {
 	}
 }
 
+func TestCleanResetClearsMessageTriggerHistory(t *testing.T) {
+	database, _, admin := cleanResetFixture(t)
+	for cycle := 0; cycle < 3; cycle++ {
+		message := models.Message{MailboxID: admin.ID, Folder: "INBOX"}
+		if err := database.Create(&message).Error; err != nil {
+			t.Fatal(err)
+		}
+		if err := database.Transaction(cleanResetData); err != nil {
+			t.Fatal(err)
+		}
+		for _, table := range []string{"messages", "folder_mod_seqs", "folder_vanished_uids"} {
+			var count int64
+			if err := database.Table(table).Count(&count).Error; err != nil || count != 0 {
+				t.Errorf("cycle %d: reset left %d rows in %s: %v", cycle, count, table, err)
+			}
+		}
+	}
+}
+
 func TestCleanResetEveryTable(t *testing.T) {
 	db, handler, admin := cleanResetFixture(t)
 	resetFixture(t, handler)

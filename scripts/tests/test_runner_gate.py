@@ -66,6 +66,7 @@ KEPT_HOSTED = {
     ("contract-fuzz.yml", "finding-issues"): "its workflow has no early job to pick in",
     ("bump-vertrag.yml", "bump"): "the workflow's only job: no earlier job to pick in",
     ("ci-labels.yml", "rerun-contract-gate"): "the workflow's only job: no earlier job to pick in",
+    ("ci-retarget.yml", "dispatch-required-checks"): "the workflow's only job: no earlier job to pick in",
     ("helm.yml", "publish"): "the workflow's only job: no earlier job to pick in",
     ("load.yml", "load"): "the workflow's only job: no earlier job to pick in",
     ("mail-conformance.yml", "conformance"): "the workflow's only job: no earlier job to pick in",

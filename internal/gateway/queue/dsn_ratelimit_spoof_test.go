@@ -46,8 +46,8 @@ func openDSNTestDB(t *testing.T) *gorm.DB {
 		testdb.Unreachable(t, "DSN rate-limit test skipped: no database reachable (%v)", err)
 	}
 	testdb.ReuseConnections(t, gdb)
-	if err := gdb.AutoMigrate(&models.Message{}); err != nil {
-		t.Skipf("DSN rate-limit test skipped: migrate failed (%v)", err)
+	if err := gdb.AutoMigrate(&models.Domain{}, &models.Mailbox{}, &models.Message{}); err != nil {
+		t.Fatalf("migrate DSN rate-limit fixture: %v", err)
 	}
 	return gdb
 }
@@ -66,9 +66,21 @@ func openDSNTestDB(t *testing.T) *gorm.DB {
 func TestRecentDSNCount_IgnoresSpoofedInboundMail(t *testing.T) {
 	gdb := openDSNTestDB(t)
 
+	gdb = gdb.Begin()
+	if gdb.Error != nil {
+		t.Fatal(gdb.Error)
+	}
+	t.Cleanup(func() { gdb.Rollback() })
 	const hostname = "mail.spooftest.invalid"
-	// A mailbox id unlikely to collide with other rows in a shared test DB.
-	mailboxID := uint(900000000 + time.Now().UnixNano()%100000000)
+	domain := models.Domain{Name: hostname}
+	if err := gdb.Create(&domain).Error; err != nil {
+		t.Fatal(err)
+	}
+	mailbox := models.Mailbox{DomainID: domain.ID, LocalPart: "victim", Address: "victim@" + hostname}
+	if err := gdb.Create(&mailbox).Error; err != nil {
+		t.Fatal(err)
+	}
+	mailboxID := mailbox.ID
 	now := time.Now()
 
 	insert := func(isDSN bool) {

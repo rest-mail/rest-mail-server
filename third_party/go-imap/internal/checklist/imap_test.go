@@ -36,7 +36,7 @@ func TestIMAPChecklist(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		original[filepath.Base(path)] = string(src)
+		original[filepath.Base(path)] = declarationOnlySource(t, string(src))
 	}
 	items, err := parseChecklist(filepath.Join(root, "CHECKLIST.md"), func(string, ...any) {})
 	if err != nil {
@@ -44,6 +44,13 @@ func TestIMAPChecklist(t *testing.T) {
 	}
 	if len(items) == 0 {
 		t.Fatal("real checklist has no items")
+	}
+	directory := t.TempDir()
+	checklistPath := filepath.Join(directory, "CHECKLIST.md")
+	for name, source := range original {
+		if err := os.WriteFile(filepath.Join(directory, name), []byte(source), 0o644); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	for id, it := range items {
@@ -75,26 +82,44 @@ func TestIMAPChecklist(t *testing.T) {
 			{"empty-mapping", strings.Replace(checklist, row, emptied, 1), source, id + " names no test"},
 		} {
 			t.Run(id+"/"+mutation.name, func(t *testing.T) {
-				dir := t.TempDir()
-				path := filepath.Join(dir, "CHECKLIST.md")
-				if err := os.WriteFile(path, []byte(mutation.checklist), 0o644); err != nil {
+				if err := os.WriteFile(checklistPath, []byte(mutation.checklist), 0o644); err != nil {
 					t.Fatal(err)
 				}
-				for name, content := range original {
-					if name == file {
-						content = mutation.source
+				sourcePath := filepath.Join(directory, file)
+				t.Cleanup(func() {
+					if err := os.WriteFile(sourcePath, []byte(source), 0o644); err != nil {
+						t.Error(err)
 					}
-					if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
-						t.Fatal(err)
-					}
+				})
+				if err := os.WriteFile(sourcePath, []byte(mutation.source), 0o644); err != nil {
+					t.Fatal(err)
 				}
 				var out bytes.Buffer
-				if code := run([]string{"-file", path, dir}, &out, &out); code != 1 || !strings.Contains(out.String(), mutation.want) {
+				if code := run([]string{"-file", checklistPath, directory}, &out, &out); code != 1 || !strings.Contains(out.String(), mutation.want) {
 					t.Fatalf("exit %d, want 1 and %q:\n%s", code, mutation.want, &out)
 				}
 			})
 		}
 	}
+}
+
+func declarationOnlySource(t *testing.T, source string) string {
+	t.Helper()
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "proof_test.go", source, parser.ParseComments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index := len(file.Decls) - 1; index >= 0; index-- {
+		function, ok := file.Decls[index].(*ast.FuncDecl)
+		if !ok || function.Body == nil {
+			continue
+		}
+		start := fset.Position(function.Body.Lbrace).Offset + 1
+		end := fset.Position(function.Body.Rbrace).Offset
+		source = source[:start] + source[end:]
+	}
+	return source
 }
 
 // unname removes exactly id from every checklist line in test's doc group.

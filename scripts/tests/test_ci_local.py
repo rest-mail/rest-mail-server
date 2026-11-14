@@ -717,7 +717,7 @@ class VertragShards(unittest.TestCase):
                 self.assertIn("NOT REQUIRED", local.fixtures())
             commands.assert_not_called()
 
-    def test_imap_module_keeps_a_local_limit_longer_than_its_slowest_test(self):
+    def test_imap_module_uses_the_same_timeout_as_ci(self):
         with tempfile.TemporaryDirectory() as temporary:
             local = gate.Gate(ROOT, Path(temporary), Path(temporary), True)
             with (
@@ -730,7 +730,7 @@ class VertragShards(unittest.TestCase):
             test = next(
                 call for call in commands.call_args_list if "-race" in call.args[0]
             )
-            self.assertIn("-timeout=30m", test.args[0])
+            self.assertIn("-timeout=10m", test.args[0])
             self.assertEqual(test.kwargs["root"], ROOT / "third_party/go-imap")
 
     def test_the_imap_step_runs_each_gate_ci_runs_on_the_module(self):
@@ -806,9 +806,12 @@ class VertragShards(unittest.TestCase):
                     }
                 }
             }
-            with patch.object(local, "run", return_value="go1.26.10\n"):
+            with patch.object(local, "run", side_effect=["go1.26.10\n", '{"CC":"clang","CGO_ENABLED":"1"}']) as commands:
                 local.go_toolchain()
             self.assertEqual(local.env["GOTOOLCHAIN"], "go1.26.10")
+            self.assertEqual(local.env["CC"], "clang")
+            self.assertEqual(local.env["CGO_ENABLED"], "1")
+            self.assertEqual(commands.call_args.args[0][1], "scripts/ci/install_cgo.py")
 
     def test_fixture_packages_run_once_in_their_own_step(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -1953,6 +1956,9 @@ case "$1" in
   vet) if [ -f vet-breaks ]; then echo "vet-breaks:1: does not compile"; exit 1; fi ;;
 esac
 """
+FAKE_CGO = """import json
+print(json.dumps({"CC": "cc", "CGO_ENABLED": "1"}))
+"""
 WORKFLOW = """
 jobs:
   lint:
@@ -1990,6 +1996,7 @@ class Stacks(unittest.TestCase):
         self.git("config", "user.email", "test@example.test")
         self.git("config", "user.name", "Local gate test")
         self.write(".github/workflows/ci.yml", WORKFLOW)
+        self.write("scripts/ci/install_cgo.py", FAKE_CGO)
         self.write("scripts/tests/test_fine.py", PASSING_TEST)
         self.write("tests/contract/test_fine_too.py", PASSING_TEST)
         self.write("shared.txt", "base\n")

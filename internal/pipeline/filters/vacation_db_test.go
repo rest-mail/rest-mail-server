@@ -35,6 +35,9 @@ func TestVacation_ReplyLeavesWithNullSender(t *testing.T) {
 	}
 	tx := gdb.Begin()
 	t.Cleanup(func() { tx.Rollback() })
+	if err := tx.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_vacation_responses_handle ON vacation_responses(mailbox_id, sender, handle)`).Error; err != nil {
+		t.Fatal(err)
+	}
 
 	domain := models.Domain{Name: fmt.Sprintf("vacation-%d.test", time.Now().UnixNano()), Active: true}
 	if err := tx.Create(&domain).Error; err != nil {
@@ -137,7 +140,7 @@ func TestVacation_IntervalRunsFromTheLatestReply(t *testing.T) {
 	tx := gdb.Begin()
 	t.Cleanup(func() { tx.Rollback() })
 	// The index the migration makes (internal/db), which a plain AutoMigrate does not.
-	if err := tx.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_vacation_responses_unique ON vacation_responses(mailbox_id, sender)`).Error; err != nil {
+	if err := tx.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_vacation_responses_handle ON vacation_responses(mailbox_id, sender, handle)`).Error; err != nil {
 		t.Fatal(err)
 	}
 

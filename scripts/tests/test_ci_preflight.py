@@ -36,7 +36,7 @@ class PreflightWorkflows(unittest.TestCase):
             path.name for path in WORKFLOWS.glob("*.yml")
             if "pull_request" in blocks(blocks(path.read_text(), 0).get("on", ""), 2)
         }
-        self.assertEqual(workflows - {"ci-labels.yml"}, HEAVY_WORKFLOWS)
+        self.assertEqual(workflows - {"ci-labels.yml", "ci-retarget.yml"}, HEAVY_WORKFLOWS)
         for name, jobs in self.jobs.items():
             with self.subTest(workflow=name):
                 self.assertEqual(next(iter(jobs)), "preflight")

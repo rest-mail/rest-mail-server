@@ -41,9 +41,10 @@ jobs:
           # run, which reads the labels itself.
           while :; do
             sha=$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json headRefOid --jq .headRefOid)
-            run=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml --event pull_request \
-              --commit "$sha" --limit 100 --json databaseId,status,displayTitle \
-              --jq '[.[] | select(.displayTitle != "CI (ignored edit)")][0] | select(.) | "\(.databaseId) \(.status)"')
+            # Any event: after a retarget the newest run was dispatched by ci-retarget.yml.
+            run=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml \
+              --commit "$sha" --limit 1 --json databaseId,status \
+              --jq '.[0] | select(.) | "\(.databaseId) \(.status)"')
             if [ -z "$run" ]; then
               echo "No CI run for $sha yet; when it starts, it reads the current labels."
               exit 0

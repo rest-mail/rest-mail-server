@@ -155,8 +155,13 @@ func cleanResetData(tx *gorm.DB) error {
 	if err != nil {
 		return err
 	}
+	if containsResetTable(tables, "messages") {
+		if err := tx.Exec("DELETE FROM messages").Error; err != nil {
+			return fmt.Errorf("clear reset messages before their trigger-maintained history: %w", err)
+		}
+	}
 	for _, table := range tables {
-		if _, retained := resetRetainedTables[table]; retained {
+		if _, retained := resetRetainedTables[table]; retained || table == "messages" {
 			continue
 		}
 		if err := tx.Exec("DELETE FROM " + resetIdentifier(table)).Error; err != nil {
