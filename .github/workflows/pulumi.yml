@@ -28,6 +28,8 @@ jobs:
     if: github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != '')
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    outputs:
+      runners: ${{ steps.runners.outputs.runners || '{}' }}
     steps:
       - name: Checkout the pull request head, not GitHub's merge commit
         if: github.event_name == 'pull_request'
@@ -58,11 +60,49 @@ jobs:
           echo "$message" >&2
           exit 1
 
+      - name: Pick runners (antimatter-vps runners while free, else GitHub's)
+        id: runners
+        # runner-gate.antimatter-studios.com answers once per job: an antimatter-vps runner
+        # while one is free and every identity on this run is christhomas, otherwise
+        # ubuntu-24.04, the Ubuntu those runners run; any error is ubuntu-24.04 too.
+        # Its /status page shows the pool.
+        # JOBS has one entry per gated job, and one per matrix leg or reusable-workflow call:
+        # the gate is asked for the job id before any ".", and the whole entry keys the answer.
+        # It is the last step of its job, so it asks only once the run is known to go on.
+        env:
+          ORG: ${{ github.repository_owner }}
+          ACTOR: ${{ github.triggering_actor }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+          SENDER: ${{ github.event.sender.login }}
+          GH_ACTOR: ${{ github.actor }}
+          JOBS: component
+        run: |
+          set -euo pipefail
+          ours=true
+          for who in "$ACTOR" "$GH_ACTOR" "$SENDER" "$AUTHOR"; do
+            [ -z "$who" ] || [ "$who" = christhomas ] || ours=false
+          done
+          pick() {
+            $ours || { echo ubuntu-24.04; return; }
+            r=$(curl -fsS --max-time 10 --get https://runner-gate.antimatter-studios.com/pick \
+                  --data-urlencode "org=$ORG" --data-urlencode prefer=antimatter-vps-linux-x64 \
+                  --data-urlencode fallback=ubuntu-24.04 --data-urlencode "actor=$ACTOR" --data-urlencode "author=$AUTHOR" \
+                  --data-urlencode "run=${{ github.run_id }}" --data-urlencode "attempt=${{ github.run_attempt }}" \
+                  --data-urlencode "job=$1") || r=ubuntu-24.04
+            case "$r" in antimatter-vps-linux-x64|ubuntu-24.04) echo "$r" ;; *) echo ubuntu-24.04 ;; esac
+          }
+          runners='{}'
+          for entry in $JOBS; do
+            runners=$(jq -c --arg j "$entry" --arg r "$(pick "${entry%%.*}")" '. + {($j): $r}' <<<"$runners")
+          done
+          echo "$runners" | jq . | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "runners=$runners" >> "$GITHUB_OUTPUT"
+
   component:
     needs: preflight
     name: Pulumi package and secret boundaries
     if: github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != '')
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.preflight.outputs.runners || '{}')['component'] || 'ubuntu-24.04' }}
     timeout-minutes: 10
     defaults:
       run:
@@ -71,6 +111,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "22"

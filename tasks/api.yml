@@ -114,9 +114,10 @@ tasks:
         # Air executes /app/tmp binaries; Go needs executable build/temp space.
         # Keep GOPATH (including sumdb state) and caches in bounded /tmp. Use
         # the image's preloaded modules as a read-only proxy before the network.
+        # The dev image runs as root, a tmpfs's default owner: podman refuses uid=/gid=.
         if [ "{{.API_MODE}}" = "dev" ]; then
           DEV_FLAGS="--read-only -v $(pwd):/app \
-            --tmpfs /app/tmp:rw,exec,nosuid,nodev,size=128m,mode=0700,uid=0,gid=0 \
+            --tmpfs /app/tmp:rw,exec,nosuid,nodev,size=128m,mode=0700 \
             --tmpfs /tmp:rw,exec,nosuid,nodev,size=1g,mode=1777 \
             -e GOPATH=/tmp/go -e GOMODCACHE=/tmp/go/pkg/mod \
             -e GOCACHE=/tmp/go-build-cache \

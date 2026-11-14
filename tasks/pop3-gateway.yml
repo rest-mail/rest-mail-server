@@ -84,8 +84,9 @@ tasks:
         # Keep GOPATH (including sumdb state) and caches in bounded /tmp. Use
         # the image's preloaded modules as a read-only proxy before the network.
         if [ "{{.POP3_GATEWAY_MODE}}" = "dev" ]; then
+          TMPFS_OWNER=$("{{.TASKFILE_DIR}}/tmpfs-owner.sh" 10001)
           DEV_FLAGS="--read-only -v $(pwd):/app \
-            --tmpfs /app/tmp:rw,exec,nosuid,nodev,size=128m,mode=0700,uid=10001,gid=10001 \
+            --tmpfs /app/tmp:rw,exec,nosuid,nodev,size=128m,mode=0700,$TMPFS_OWNER \
             --tmpfs /tmp:rw,exec,nosuid,nodev,size=1g,mode=1777 \
             -e GOPATH=/tmp/go -e GOMODCACHE=/tmp/go/pkg/mod \
             -e GOCACHE=/tmp/go-build-cache \

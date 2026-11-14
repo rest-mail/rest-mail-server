@@ -644,7 +644,11 @@ class WorkflowCoverage(unittest.TestCase):
                 gate.check_coverage(workflow, self.coverage)
 
     def test_changed_command_is_red_even_with_the_same_name(self):
-        self.workflow["jobs"]["constellation"]["steps"][1]["run"] += "\nfalse"
+        step = next(
+            step for step in self.workflow["jobs"]["constellation"]["steps"]
+            if step.get("name") == "Check constellation inventory"
+        )
+        step["run"] += "\nfalse"
         with self.assertRaisesRegex(RuntimeError, "Check constellation inventory"):
             gate.check_coverage(self.workflow, self.coverage)
 

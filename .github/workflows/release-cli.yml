@@ -38,6 +38,8 @@ jobs:
     if: github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != '')
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    outputs:
+      runners: ${{ steps.runners.outputs.runners || '{}' }}
     steps:
       - name: Checkout the pull request head, not GitHub's merge commit
         if: github.event_name == 'pull_request'
@@ -68,11 +70,51 @@ jobs:
           echo "$message" >&2
           exit 1
 
+      - name: Pick runners (antimatter-vps runners while free, else GitHub's)
+        id: runners
+        # runner-gate.antimatter-studios.com answers once per job: an antimatter-vps runner
+        # while one is free and every identity on this run is christhomas, otherwise
+        # ubuntu-24.04, the Ubuntu those runners run; any error is ubuntu-24.04 too.
+        # Its /status page shows the pool.
+        # JOBS has one entry per gated job, and one per matrix leg or reusable-workflow call:
+        # the gate is asked for the job id before any ".", and the whole entry keys the answer.
+        # It is the last step of its job, so it asks only once the run is known to go on.
+        env:
+          ORG: ${{ github.repository_owner }}
+          ACTOR: ${{ github.triggering_actor }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+          SENDER: ${{ github.event.sender.login }}
+          GH_ACTOR: ${{ github.actor }}
+          JOBS: ${{ github.event_name == 'pull_request' && 'release' || '' }}
+        run: |
+          set -euo pipefail
+          ours=true
+          for who in "$ACTOR" "$GH_ACTOR" "$SENDER" "$AUTHOR"; do
+            [ -z "$who" ] || [ "$who" = christhomas ] || ours=false
+          done
+          pick() {
+            $ours || { echo ubuntu-24.04; return; }
+            r=$(curl -fsS --max-time 10 --get https://runner-gate.antimatter-studios.com/pick \
+                  --data-urlencode "org=$ORG" --data-urlencode prefer=antimatter-vps-linux-x64 \
+                  --data-urlencode fallback=ubuntu-24.04 --data-urlencode "actor=$ACTOR" --data-urlencode "author=$AUTHOR" \
+                  --data-urlencode "run=${{ github.run_id }}" --data-urlencode "attempt=${{ github.run_attempt }}" \
+                  --data-urlencode "job=$1") || r=ubuntu-24.04
+            case "$r" in antimatter-vps-linux-x64|ubuntu-24.04) echo "$r" ;; *) echo ubuntu-24.04 ;; esac
+          }
+          runners='{}'
+          for entry in $JOBS; do
+            runners=$(jq -c --arg j "$entry" --arg r "$(pick "${entry%%.*}")" '. + {($j): $r}' <<<"$runners")
+          done
+          echo "$runners" | jq . | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "runners=$runners" >> "$GITHUB_OUTPUT"
+
   release:
     needs: preflight
     name: Release the restmail CLI
     if: github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != '')
-    runs-on: ubuntu-latest
+    # A pull request's snapshot build may take an antimatter-vps runner. A tag's release
+    # stays on GitHub's, so the provenance it signs names a GitHub-hosted build.
+    runs-on: ${{ github.event_name == 'pull_request' && (fromJSON(needs.preflight.outputs.runners || '{}')['release'] || 'ubuntu-24.04') || 'ubuntu-latest' }}
     permissions:
       contents: write # creates the GitHub Release
       id-token: write # signs the build-provenance attestation
@@ -82,6 +124,9 @@ jobs:
         with:
           # GoReleaser reads tags and history for the version and changelog.
           fetch-depth: 0
+
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:

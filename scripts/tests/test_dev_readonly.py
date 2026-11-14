@@ -106,6 +106,8 @@ elif args[0] == "inspect":
                     dev, dev_stage = self.launch(service, "dev", directory)
                     prod, prod_stage = self.launch(service, "prod", directory)
                 uid = 0 if service == "api" else 10001
+                # Root owns a tmpfs by default, and podman refuses uid=0,gid=0.
+                owner = "" if uid == 0 else f",uid={uid},gid={uid}"
                 # Off unless a run asks: a person's dev containers keep the bounded tmpfs.
                 self.assertNotIn("/tmp/go-build-cache", [arg.split(":", 1)[-1] for arg in dev["args"]])
                 # A CI run keeps the cache in a volume for each user, over that tmpfs (#1896).
@@ -114,7 +116,7 @@ elif args[0] == "inspect":
                 prod_cached, _ = self.launch(service, "prod", directory, RESTMAIL_DEV_GOCACHE_VOLUME="fixture-cache")
                 self.assertEqual(prod_cached["args"], prod["args"])
                 flags = shlex.split(f"""--read-only -v {directory}:/app
-                    --tmpfs /app/tmp:rw,exec,nosuid,nodev,size=128m,mode=0700,uid={uid},gid={uid}
+                    --tmpfs /app/tmp:rw,exec,nosuid,nodev,size=128m,mode=0700{owner}
                     --tmpfs /tmp:rw,exec,nosuid,nodev,size=1g,mode=1777
                     -e GOPATH=/tmp/go -e GOMODCACHE=/tmp/go/pkg/mod
                     -e GOCACHE=/tmp/go-build-cache

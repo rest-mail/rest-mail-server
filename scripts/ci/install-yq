@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+VERSION=4.46.1
+BASE_URL=https://github.com/mikefarah/yq/releases/download
+directory=${1:?usage: install-yq DIRECTORY}
+
+case "$(uname -s)/$(uname -m)" in
+  Linux/x86_64)
+    name=yq_linux_amd64
+    expected=c0eb42f6fbf928f0413422967983dcdf9806cc4dedc9394edc60c0dfb4a98529 ;;
+  Linux/aarch64 | Linux/arm64)
+    name=yq_linux_arm64
+    expected=4ab0b301059348d671fc1833e99903c1fecc7ca287ac131f72dca0eb9a6ba87a ;;
+  Darwin/x86_64)
+    name=yq_darwin_amd64
+    expected=4c290b4ad1da8557be6c030a9cecbef58b7cb8d4cb201b2d69cb1a5e00c22a9a ;;
+  Darwin/arm64)
+    name=yq_darwin_arm64
+    expected=e639937c2718de6771ff62fe38d19486324c19b22a9b9441a4829070d07dfb70 ;;
+  *)
+    echo "yq: no pinned binary for $(uname -s)/$(uname -m)" >&2
+    exit 1 ;;
+esac
+
+expected=${INSTALL_YQ_SHA256:-$expected}
+url="${INSTALL_YQ_BASE_URL:-$BASE_URL}/v$VERSION/$name"
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+binary="$work/$name"
+
+if ! command -v curl >/dev/null 2>&1 || ! curl --fail --silent --show-error --location \
+  --connect-timeout 30 --max-time 120 \
+  --retry 6 --retry-all-errors --retry-delay 2 \
+  --output "$binary" "$url"; then
+  python3 "$(dirname "$0")/github_release.py" "$url" "$binary"
+fi
+
+actual=$(python3 -c 'import hashlib, pathlib, sys; print(hashlib.sha256(pathlib.Path(sys.argv[1]).read_bytes()).hexdigest())' "$binary")
+if [ "$actual" != "$expected" ]; then
+  echo "yq $VERSION: checksum $actual, expected $expected" >&2
+  exit 1
+fi
+
+chmod +x "$binary"
+"$binary" --version
+mkdir -p "$directory"
+cp "$binary" "$directory/yq"
+if [ -n "${GITHUB_PATH:-}" ]; then
+  (cd "$directory" && pwd) >> "$GITHUB_PATH"
+fi

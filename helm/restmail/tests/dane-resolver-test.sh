@@ -2,10 +2,12 @@
 # Container/config smoke test for GitHub's Helm job; no cluster or deployment.
 set -euo pipefail
 CHART_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-tmp="$(mktemp -d)"
+# Under the runner's work directory when there is one: on the antimatter-vps runners Docker
+# is a sidecar that sees that directory, and not the runner's /tmp, so a mount from there is empty.
+tmp="$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/restmail-dane.XXXXXX")"
 chmod 755 "$tmp"
 name="restmail-dane-test-${GITHUB_RUN_ID:-$$}-${GITHUB_RUN_ATTEMPT:-1}"
-trap 'docker rm -f "$name" >/dev/null 2>&1 || true' EXIT
+trap 'docker rm -f "$name" >/dev/null 2>&1 || true; rm -rf "$tmp"' EXIT
 helm template restmail "$CHART_DIR" --set mailserver.hostname=mx.example.com \
   --set mailserver.domain=example.com --set api.bootstrapAdminPassword=dane-test-only-password \
   --set smtp.dane.enabled=true > "$tmp/render.yaml"
