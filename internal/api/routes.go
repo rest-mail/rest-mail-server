@@ -252,6 +252,16 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		credentialRefusals = &middleware.RateLimitConfig{RPS: cfg.AuthRateLimitRPS, Burst: cfg.AuthRateLimitBurst}
 	}
 	sessionPasswords := middleware.NewSessionPasswords(handlers.PasswordVerifier(db), auditor.CredentialRefused, credentialRefusals)
+	// Every way of guessing an account's password waits the same, and the
+	// counts are shared: see middleware.SignInTarpit (#1643).
+	var signInTarpit *middleware.SignInTarpit
+	if cfg.AuthRateLimitEnabled {
+		signInTarpit = middleware.NewSignInTarpit()
+		testH.OnReset(signInTarpit.Reset)
+	}
+	sessionPasswords.SetTarpit(signInTarpit)
+	authH.SetSignInTarpit(signInTarpit)
+	accountH.SetSignInTarpit(signInTarpit)
 	credentialH := handlers.NewCredentialHandler(db)
 	// Protocol gateway connection sessions (#1586): a gateway, identified by its
 	// mTLS client certificate on the internal listener, opens one when a mail

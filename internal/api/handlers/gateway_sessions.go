@@ -62,7 +62,9 @@ func (h *GatewaySessionHandler) Register(rs endpoint.Routes, checks GatewaySessi
 			"this is the only request that takes a mail client's password. A refused one is recorded as auth.credential_refused and " +
 			"refusals are throttled; an account with two-factor authentication needs an app password. The answer's token is sent as Bearer on every call the gateway then " +
 			"makes for that connection, over the internal listener with the same certificate; the session is checked on every " +
-			"request, so revoking the credential or the account's sessions ends it at the next one. protocol must be the one the " +
+			"request, so revoking the credential or the account's sessions ends it at the next one. A wrong password is still " +
+			"answered 401, after the same wait as a failed login: it grows with the address's recent failures, up to 3 seconds " +
+			"from anywhere and up to 5 from the same client. A correct credential is answered without one. protocol must be the one the " +
 			"service serves; a caller without a gateway certificate is 403 gateway_required.",
 		Status:   http.StatusCreated,
 		Security: oapifly.Public, Errors: []int{http.StatusForbidden},

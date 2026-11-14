@@ -148,11 +148,12 @@ func TestSMTP_Submission_NoReceivedTLS(t *testing.T) {
 		t.Fatalf("DATA = %q, want 250", final)
 	}
 
-	req := back.lastDeliverReq()
-	if req == nil {
-		t.Fatal("no DeliverRequest captured")
+	// A submission delivers nothing from here, so it reports no inbound arrival:
+	// its recipient's copy is counted when it comes back in through port 25.
+	if req := back.lastDeliverReq(); req != nil {
+		t.Errorf("delivered directly with ReceivedTLS %v, want the queue", req.ReceivedTLS)
 	}
-	if req.ReceivedTLS != nil {
-		t.Errorf("ReceivedTLS = %v, want nil on submission", *req.ReceivedTLS)
+	if n := len(store.queued()); n != 1 {
+		t.Errorf("queued %d messages, want 1", n)
 	}
 }

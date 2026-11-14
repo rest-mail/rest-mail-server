@@ -3,8 +3,6 @@ package handlers
 import (
 	"bytes"
 	"encoding/base64"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http/httptest"
 	"os"
@@ -155,71 +153,5 @@ func TestForwardAttachmentsPostgresPersistenceQuotaAndRollback(t *testing.T) {
 	var after models.Mailbox
 	if err := db.First(&after, sender.ID).Error; err != nil || after.QuotaUsedBytes != before.QuotaUsedBytes {
 		t.Fatalf("rollback changed quota: %+v %v", after, err)
-	}
-}
-
-// A forward with its own attachment copies delivers to a mailbox on this server
-// inside its transaction. When that recipient's inbound pipeline refuses the
-// message (a DMARC reject of the sender's domain, say), the forward is answered
-// for the message it sent, as a send is: its Sent copy and the remote
-// recipient's queue entry are kept, and the refused recipient gets nothing.
-func TestForwardAttachmentsLocalRefusalKeepsTheForward(t *testing.T) {
-	db := openMsgDeleteTestDB(t)
-	if err := migrateModels(db, &models.QuotaUsage{}, &models.Pipeline{}, &models.SieveScript{}, &models.OutboundQueue{}, &models.Contact{}); err != nil {
-		t.Skipf("forward DB test skipped: migrate failed (%v)", err)
-	}
-	tx := db.Begin()
-	t.Cleanup(func() { tx.Rollback() })
-	fx := seedMsgDeleteFixture(t, tx, 0)
-	if err := tx.Where(models.QuotaUsage{MailboxID: fx.mailbox.ID}).FirstOrCreate(&models.QuotaUsage{MailboxID: fx.mailbox.ID}).Error; err != nil {
-		t.Fatal(err)
-	}
-	filters, err := json.Marshal([]pipeline.FilterConfig{{Name: "refuse_everything", Type: pipeline.FilterTypeAction, Enabled: true}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := tx.Create(&models.Pipeline{DomainID: fx.mailbox.DomainID, Direction: "inbound", Active: true, Filters: filters}).Error; err != nil {
-		t.Fatal(err)
-	}
-	registry := withQuietVacation(pipeline.NewRegistry())
-	registry.Register("refuse_everything", func([]byte) (pipeline.Filter, error) { return refuseEverything{}, nil })
-	h := NewMessageHandler(tx, nil, pipeline.NewEngine(registry, nil), "", nil)
-	h.forwardRoot = t.TempDir()
-	h.SetForwardStorage(8192, nil)
-
-	req := sendMessageRequest{From: fx.mailbox.Address, To: []string{fx.mailbox.Address, "target@remote.test"}, Subject: "Fwd: receipt", BodyText: "forwarded"}
-	sent := &models.Message{MailboxID: fx.mailbox.ID, Folder: "Sent", MsgID: "<refused-forward@delq.test>", Sender: fx.mailbox.Address, Subject: req.Subject, BodyText: req.BodyText, SizeBytes: len(req.Subject) + len(req.BodyText), IsRead: true, ReceivedAt: time.Now()}
-	r := httptest.NewRequest("POST", "/forward", nil)
-	result, err := h.commitForward(r, req, &fx.mailbox, sent, nil, nil, nil)
-	if err != nil || result.Code != 201 {
-		t.Fatalf("forward to a refusing local recipient: result=%+v err=%v", result, err)
-	}
-	var count int64
-	if err := tx.Model(&models.Message{}).Where("mailbox_id = ? AND folder = ?", fx.mailbox.ID, "Sent").Count(&count).Error; err != nil || count != 1 {
-		t.Fatalf("Sent copy: %d %v", count, err)
-	}
-	if err := tx.Model(&models.Message{}).Where("mailbox_id = ? AND folder = ?", fx.mailbox.ID, "INBOX").Count(&count).Error; err != nil || count != 0 {
-		t.Fatalf("the refused recipient got the message: %d %v", count, err)
-	}
-	var queued []models.OutboundQueue
-	if err := tx.Where("message_id = ?", sent.ID).Find(&queued).Error; err != nil || len(queued) != 1 || queued[0].Recipient != "target@remote.test" {
-		t.Fatalf("remote queue entry: %+v %v", queued, err)
-	}
-}
-
-func TestLocalRecipientRefused(t *testing.T) {
-	for _, tc := range []struct {
-		err  error
-		want bool
-	}{
-		{errors.New("rejected: 550 DMARC policy reject for example.com"), true},
-		{errors.New("deferred: greylisted"), true},
-		{errors.New("mailbox_full: over quota"), true},
-		{errors.New("insert message: connection reset"), false},
-		{fmt.Errorf("wrapped: %w", errors.New("rejected: 550")), false},
-	} {
-		if got := localRecipientRefused(tc.err); got != tc.want {
-			t.Errorf("localRecipientRefused(%q) = %v, want %v", tc.err, got, tc.want)
-		}
 	}
 }

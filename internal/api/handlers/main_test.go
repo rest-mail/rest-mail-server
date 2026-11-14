@@ -23,6 +23,7 @@ func TestMain(m *testing.M) {
 	// tests hash and check took the package past go test's timeout. Nothing a
 	// test here checks depends on the cost, so they hash at the lowest.
 	auth.UseMinimumHashCostInTests()
+	auth.LowerPasswordCostForTests(bcrypt.MinCost)
 	hashPassword = minCostHashPassword
 	hashRecoveryCode = func(code string) (string, error) {
 		return minCostHashPassword(auth.NormalizeRecoveryCode(code))

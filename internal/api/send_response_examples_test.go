@@ -80,12 +80,15 @@ func TestSendMessageResponseExamplesUseProductionRouter(t *testing.T) {
 				if err := f.db.Where("message_id = ?", sent.ID).Order("id").Find(&queued).Error; err != nil {
 					t.Fatal(err)
 				}
-				if len(queued) != 1 || queued[0].Recipient != "someone@imap.restmail.test" || queued[0].RawMessage != sent.RawMessage {
+				// The example's two recipients, the one on this server too, wait on
+				// the queue with the bytes that were sent (#1564).
+				if len(queued) != 2 || queued[0].Recipient != "admin@restmail.test" || queued[1].Recipient != "someone@imap.restmail.test" || queued[0].RawMessage != sent.RawMessage || queued[1].RawMessage != sent.RawMessage {
 					t.Fatalf("unexpected queued work: %d entries", len(queued))
 				}
-				var delivered models.Message
-				if err := f.db.Where("mailbox_id = ? AND folder = ?", f.mailboxID, "INBOX").First(&delivered).Error; err != nil || delivered.MsgID != sent.MsgID || delivered.BodyText != sent.BodyText || string(delivered.RecipientsTo) != string(sent.RecipientsTo) {
-					t.Fatal("local recipient identity/content differs from the sent message")
+				var delivered int64
+				f.db.Model(&models.Message{}).Where("mailbox_id = ? AND folder = ?", f.mailboxID, "INBOX").Count(&delivered)
+				if delivered != 0 {
+					t.Fatalf("the send itself delivered %d local copies", delivered)
 				}
 				for _, field := range []string{"received_at", "created_at", "updated_at"} {
 					stamp, err := time.Parse(time.RFC3339Nano, data[field].(string))
@@ -107,7 +110,7 @@ func TestSendMessageResponseExamplesUseProductionRouter(t *testing.T) {
 			var sentCount, queueCount int64
 			f.db.Model(&models.Message{}).Where("mailbox_id = ? AND folder = ?", f.mailboxID, "Sent").Count(&sentCount)
 			f.db.Model(&models.OutboundQueue{}).Count(&queueCount)
-			if sentCount != 1 || queueCount != 1 {
+			if sentCount != 1 || queueCount != 2 {
 				t.Fatal("a refusal added outbound work")
 			}
 		})

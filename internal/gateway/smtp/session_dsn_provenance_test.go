@@ -51,11 +51,11 @@ func TestSMTP_DSNProvenance_RemoteSubmissionLinksMessage(t *testing.T) {
 	}
 }
 
-// TestSMTP_DSNProvenance_LocalOnlyDoesNotPersist confirms the reference is
+// TestSMTP_DSNProvenance_LocalOnlyPersists confirms the reference is
 // persisted only when there is outbound mail to bounce: a submission whose every
 // recipient is local delivers via the API and enqueues nothing, so no reference
 // is created.
-func TestSMTP_DSNProvenance_LocalOnlyDoesNotPersist(t *testing.T) {
+func TestSMTP_DSNProvenance_LocalOnlyPersists(t *testing.T) {
 	back := newMockBackend()
 	back.local["bob@local.test"] = true
 	store := newMockStore()
@@ -78,10 +78,16 @@ func TestSMTP_DSNProvenance_LocalOnlyDoesNotPersist(t *testing.T) {
 		t.Fatalf("DATA = %q", final)
 	}
 
-	if n := len(store.persistedSubmissions()); n != 0 {
-		t.Errorf("persisted submissions = %d, want 0 (local-only submission has no outbound to bounce)", n)
+	// A local recipient goes through the queue too (#1564), so a later refusal
+	// has a sent message to bounce against.
+	if n := len(store.persistedSubmissions()); n != 1 {
+		t.Errorf("persisted submissions = %d, want 1", n)
 	}
-	if n := len(store.queued()); n != 0 {
-		t.Errorf("enqueued = %d, want 0", n)
+	queued := store.queued()
+	if len(queued) != 1 {
+		t.Fatalf("enqueued = %d, want 1", len(queued))
+	}
+	if queued[0].MessageID == nil {
+		t.Error("queue row names no submitted message, so its bounce has no provenance")
 	}
 }

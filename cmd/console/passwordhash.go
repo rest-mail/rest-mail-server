@@ -31,7 +31,7 @@ Exit status: 0 ok, 2 usage.
 // passwords at (internal/bootstrap, internal/auth).
 const (
 	minBootstrapPassword = 16
-	passwordHashCost     = 10
+	passwordHashCost     = 12
 )
 
 func runPasswordHash(args []string, stdin io.Reader, stdout, stderr io.Writer) int {

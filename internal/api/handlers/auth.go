@@ -154,6 +154,9 @@ type AuthHandler struct {
 	// recoverFailures is the budget of refused recoveries per address (#124),
 	// on top of the per-IP auth throttle. Nil leaves it unlimited.
 	recoverFailures *middleware.FailureBudget
+	// signInTarpit slows a failed sign-in once the password has been checked
+	// (#1643). Nil does nothing.
+	signInTarpit *middleware.SignInTarpit
 }
 
 // sessionDevices is what a logout needs of the push device store: to delete
@@ -166,6 +169,12 @@ type sessionDevices interface {
 // before the router serves traffic.
 func (h *AuthHandler) SetRecoverFailures(budget *middleware.FailureBudget) {
 	h.recoverFailures = budget
+}
+
+// SetSignInTarpit makes a failed sign-in wait. Call before the router serves
+// traffic.
+func (h *AuthHandler) SetSignInTarpit(tarpit *middleware.SignInTarpit) {
+	h.signInTarpit = tarpit
 }
 
 // SetPushDevices makes a logout delete the push devices of the session it
@@ -411,6 +420,7 @@ func (h *AuthHandler) login(r *http.Request, req loginRequest) (endpoint.Headed[
 		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to verify the password")
 	}
 	if lookupErr != nil || cred == nil {
+		h.signInTarpit.Failed(r, req.Email)
 		return zero, endpoint.Refuse(http.StatusUnauthorized, "unauthorized", "Invalid email or password")
 	}
 
@@ -429,6 +439,12 @@ func (h *AuthHandler) login(r *http.Request, req loginRequest) (endpoint.Headed[
 	// challenge never leaks account existence. No-op for accounts without 2FA.
 	verified, err := h.enforce2FA(account.ID, req)
 	if err != nil {
+		// A wrong code is a guess too. Being asked for a code (totp_required)
+		// is not a failure, and a failure to check one is the server's.
+		var refused *endpoint.Error
+		if errors.As(err, &refused) && refused.Code == "unauthorized" {
+			h.signInTarpit.Failed(r, req.Email)
+		}
 		return zero, err
 	}
 	held, err := grants.Load(h.db, account.ID, now)
@@ -655,6 +671,9 @@ func (h *AuthHandler) RegisterSignIn(rs endpoint.Routes, checks SessionRouteChec
 	tags := []string{"Auth"}
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/auth/login",
 		OperationID: "login", Summary: "Sign an account in with its address and password", Tags: tags,
+		Description: "A wrong password or second-factor code is still answered 401, after a wait that grows with the " +
+			"address's recent failures: up to 3 seconds from anywhere, and up to 5 for failures from the same client. " +
+			"The wait never becomes a refusal, and a correct password is answered without one.",
 		Security: oapifly.Public, Headers: sessionCookies, Errors: []int{http.StatusUnauthorized, http.StatusForbidden},
 		Middleware: []endpoint.Middleware{checks.Throttle, checks.Audit("auth.sign_in", middleware.AuditSignIn())}}, h.login)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/auth/logout",

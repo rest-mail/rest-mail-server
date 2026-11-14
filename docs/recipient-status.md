@@ -15,16 +15,17 @@ Each recipient in `data.recipients` has:
 | Field | Meaning |
 | --- | --- |
 | `address` | The recipient. |
-| `delivery` | `remote` (sent to another server through the outbound queue) or `local` (a mailbox on this server). |
+| `delivery` | `remote` (a recipient on another server) or `local` (a mailbox on this server). Either goes through the outbound queue. |
 | `state` | `queued`, `retrying`, `delivered`, `failed` or `unknown`. |
 | `reason` | Why it is retrying, failed or unknown, in a sentence derived from the failure category. |
 | `category` | The failure category of the last attempt (#142), when one failed. |
-| `attempts` | Delivery attempts made so far; 0 for a local recipient. |
+| `attempts` | Delivery attempts made so far; 0 for a recipient with no queue row. |
 | `last_attempt_at` | When the last attempt was made. |
 
 ## Where the state comes from
 
-A remote recipient is read from its outbound queue row:
+Every send puts every recipient on the outbound queue, on this server or
+elsewhere (#1564), so a recipient is read from its queue row:
 
 | Queue status | `state` |
 | --- | --- |
@@ -33,14 +34,13 @@ A remote recipient is read from its outbound queue row:
 | `delivered` | `delivered` |
 | `bounced`, `expired` | `failed` |
 
-A local recipient has no queue row. It is `delivered` when the copy the send put
-into that mailbox is still there, and `unknown` otherwise (the copy was deleted
-for good, or local delivery refused it; a refusal is not recorded). Only a copy
-from the account's own address counts, so a message made to look sent, such as
-an import, cannot be used to ask whether another mailbox holds a message.
+A To or Cc recipient with no queue row and a mailbox on this server is `delivered`
+when a copy from the sender is in that mailbox, and `unknown` otherwise. Only a
+copy from the account's own address counts, so a message made to look sent, such
+as an import, cannot be used to ask whether another mailbox holds a message.
 
-A Bcc recipient is not in the Sent copy's headers. A remote one is listed from
-its queue row; a local one is not listed.
+A Bcc recipient is not in the Sent copy's headers. It is listed from its queue
+row.
 
 ## What is withheld
 

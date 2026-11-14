@@ -26,7 +26,7 @@ func (h *MessageHandler) sendDraft(r *http.Request, in sendDraftRequest) (endpoi
 	effects := &draftSendEffects{handler: h}
 	err := h.db.WithContext(r.Context()).Transaction(func(tx *gorm.DB) error {
 		sender := *h
-		sender.db, sender.draftSend = tx, effects
+		sender.db = tx
 		if h.broker != nil {
 			sender.broker = effects
 		}

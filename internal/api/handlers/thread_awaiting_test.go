@@ -335,6 +335,11 @@ func TestAwaitingConversationThroughTheSendPath(t *testing.T) {
 		if response.Code >= 300 {
 			t.Fatalf("send: %d %s", response.Code, response.Body)
 		}
+		var sent models.Message
+		if err := f.tx.Where("mailbox_id = ? AND folder = ?", from.ID, "Sent").Order("id DESC").First(&sent).Error; err != nil {
+			t.Fatal(err)
+		}
+		deliverQueued(t, f.handler, f.tx, sent)
 		// A delivered row takes the database's now(), which this test's one transaction
 		// freezes at its start. Outside a test it is the time of the delivery.
 		if err := f.tx.Exec("UPDATE messages SET received_at = clock_timestamp() WHERE received_at = now()").Error; err != nil {

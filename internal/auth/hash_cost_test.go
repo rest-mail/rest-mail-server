@@ -39,8 +39,9 @@ func TestShardWork_ABinaryNotBuiltByGoTestHashesAtTheProductionCost(t *testing.T
 	if !report.LoweringPanics {
 		t.Error("UseMinimumHashCostInTests did not panic outside a test binary")
 	}
-	if report.PasswordCost != 10 || report.RecoveryCodeCost != 10 {
-		t.Errorf("password cost %d and recovery code cost %d, want 10 and 10", report.PasswordCost, report.RecoveryCodeCost)
+	// Passwords hash at 12 (#1642); recovery codes stay at 10 (recoveryCodeHashCost).
+	if report.PasswordCost != 12 || report.RecoveryCodeCost != 10 {
+		t.Errorf("password cost %d and recovery code cost %d, want 12 and 10", report.PasswordCost, report.RecoveryCodeCost)
 	}
 }
 
@@ -48,15 +49,15 @@ func TestShardWork_ABinaryNotBuiltByGoTestHashesAtTheProductionCost(t *testing.T
 // restores it: they see what production sees.
 func TestShardWork_TheCostIsTheProductionOneUntilATestLowersIt(t *testing.T) {
 	password, err := HashPassword("password")
-	if got := storedCost(t, password, err); got != 10 {
-		t.Errorf("password cost = %d, want 10", got)
+	if got := storedCost(t, password, err); got != 12 {
+		t.Errorf("password cost = %d, want 12", got)
 	}
 	code, err := HashRecoveryCode("abcd-efgh")
 	if got := storedCost(t, code, err); got != 10 {
 		t.Errorf("recovery code cost = %d, want 10", got)
 	}
-	if got := storedCost(t, DummyPasswordHash, nil); got != 10 {
-		t.Errorf("DummyPasswordHash cost = %d, want the cost of a real hash, 10", got)
+	if got := storedCost(t, DummyPasswordHash, nil); got != 12 {
+		t.Errorf("DummyPasswordHash cost = %d, want the cost of a real password hash, 12", got)
 	}
 
 	UseMinimumHashCostInTests()

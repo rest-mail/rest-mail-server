@@ -122,11 +122,15 @@ func NormalizeRecoveryCode(s string) string {
 	return s
 }
 
-// HashRecoveryCode returns the bcrypt hash of a recovery code (normalized
-// first), reusing the same {BLF-CRYPT} password-hash helper the rest of the
-// auth layer uses, so recovery codes are stored hashed exactly like passwords.
+// recoveryCodeHashCost stays below PasswordHashCost. A recovery code is random,
+// not chosen by a person, so the extra cost protects nothing, and a wrong code
+// is compared against every unused code of the account.
+const recoveryCodeHashCost = 10
+
+// HashRecoveryCode returns the {BLF-CRYPT} bcrypt hash of a recovery code
+// (normalized first), in the format passwords are stored in.
 func HashRecoveryCode(code string) (string, error) {
-	return HashPassword(NormalizeRecoveryCode(code))
+	return hashAtCost(NormalizeRecoveryCode(code), min(recoveryCodeHashCost, passwordHashCost()))
 }
 
 // CheckRecoveryCode reports whether a submitted recovery code matches a stored

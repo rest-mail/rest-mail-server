@@ -51,9 +51,10 @@ refused at import: that account needs a new password.
 
 The account can use its old password in the app or through IMAP/SMTP/POP3,
 subject to the ordinary account and two-factor rules. After a matching
-password proof, SHA-crypt or Argon2 is replaced with REST Mail's bcrypt hash, preserving
-the credential's identity and sessions. A concurrent password reset or
-revocation wins over that replacement. A wrong password never upgrades a hash.
+password proof, SHA-crypt, Argon2 or bcrypt cheaper than cost 12 is replaced with
+REST Mail's bcrypt hash at cost 12, preserving the credential's identity and
+sessions. Imported bcrypt at cost 12 or more is kept as it is. A concurrent password
+reset or revocation wins over that replacement. A wrong password never upgrades a hash.
 
 bcrypt can represent at most 72 password bytes. Longer imported passwords
 keep their imported hash until the user chooses a shorter password; they
