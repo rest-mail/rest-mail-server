@@ -229,7 +229,7 @@ func (c *apiClient) rawLogin(email, password string) error {
 // ── Cached auth (rate-limit aware) ───────────────────────────────────
 //
 // The API enforces a per-client-IP token-bucket rate limit on
-// /api/v1/auth/login (burst 15 @ 1 rps, on by default). This suite runs all 14
+// /api/v1/auth/login (burst 15 @ 1 rps, on by default). This suite runs all 15
 // stages from a SINGLE IP (the golang test container on the mailnet) and many
 // stages authenticate the same principals (the seeded admin, testuser, eve, …)
 // over and over. A fresh login every time drains the bucket and trips 429
@@ -550,6 +550,7 @@ func TestStages(t *testing.T) {
 	t.Run("Stage12_BounceDSN", testStage12BounceDSN)
 	t.Run("Stage13_ImapIdle", testStage13ImapIdle)
 	t.Run("Stage14_AppPasswords", testStage14AppPasswords)
+	t.Run("Stage15_ReceiverVerdict", testStage15ReceiverVerdict)
 }
 
 // e2eInboundFilters mirrors pipeline.DefaultInboundPipeline, minus greylist:

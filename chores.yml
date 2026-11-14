@@ -1239,6 +1239,7 @@ tasks:
   e2e:mail2:
     desc: Start and wait for the second reference instance
     cmds:
+      - cp tests/e2e/testdata/rspamd-verdict/*.conf .workspace/reference-mailserver/configs/{{.TOPOLOGY_REF2 | default "mail2"}}/rspamd-overlay/
       - >-
         {{.REFERENCE_PATH}}"${CHORE_BIN:-chore}" -C .workspace/reference-mailserver up CONFIG={{.TOPOLOGY_REF2 | default "mail2"}}
         {{.REFERENCE_PLACEMENT}}
