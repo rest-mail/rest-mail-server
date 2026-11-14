@@ -70,7 +70,17 @@ class DevReadonlyTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         calls = [json.loads(line) for line in capture.read_text().splitlines()]
         command = ["create", "--name"] if service == "api" else ["run", "-d"]
-        launch = [call for call in calls if call["args"][:2] == command]
+        # The smtp-gateway also starts the MX host's HTTPS front, in the gateway's
+        # network namespace, as its user and with no capabilities.
+        front = [call["args"] for call in calls if call["args"][:2] == command and any(arg.endswith("-https") for arg in call["args"])]
+        if service == "smtp-gateway":
+            self.assertEqual(len(front), 1)
+            self.assertTrue(any(arg.startswith("container:") for arg in front[0]))
+            for flag in ("--read-only", "--cap-drop", "no-new-privileges:true", "10001:10001"):
+                self.assertIn(flag, front[0])
+        else:
+            self.assertEqual(front, [])
+        launch = [call for call in calls if call["args"][:2] == command and not any(arg.endswith("-https") for arg in call["args"])]
         self.assertEqual(len(launch), 1)
         stage = [call["args"] for call in calls if call["args"][:2] == ["run", "--rm"]]
         self.assertEqual(len(stage), 1)

@@ -523,14 +523,14 @@ func TestLocalSendTemporaryRefusalRetries(t *testing.T) {
 			startMailRoute(t, f.db, f.router, f.gatewayRouter())
 
 			row := queueRow(t, f.db, "recipient@example.test", "deferred", "delivered", "bounced")
-			if row.Status != "deferred" || row.LastErrorCode != 451 || !row.NextAttempt.After(time.Now()) {
-				t.Fatalf("queue row after a 451: %s %d, next attempt %s: %s", row.Status, row.LastErrorCode, row.NextAttempt, row.LastError)
+			if row.Status != "deferred" || row.LastErrorCode != 450 || !row.NextAttempt.After(time.Now()) {
+				t.Fatalf("queue row after a 450: %s %d, next attempt %s: %s", row.Status, row.LastErrorCode, row.NextAttempt, row.LastError)
 			}
 			var copies, dsns int64
 			f.db.Model(&models.Message{}).Where("mailbox_id = ?", f.recipientID).Count(&copies)
 			f.db.Model(&models.Message{}).Where("mailbox_id = ? AND is_dsn = ?", f.mailboxID, true).Count(&dsns)
 			if copies != 0 || dsns != 0 {
-				t.Errorf("after a 451: %d copies, %d bounces, want neither", copies, dsns)
+				t.Errorf("after a 450: %d copies, %d bounces, want neither", copies, dsns)
 			}
 
 			// The delay has passed, and the retry falls due.

@@ -134,7 +134,7 @@ func (f *rateLimitFilter) Execute(ctx context.Context, email *pipeline.EmailJSON
 			return &pipeline.FilterResult{
 				Type:      pipeline.FilterTypeAction,
 				Action:    pipeline.ActionDefer,
-				RejectMsg: "452 Too many messages, try again later",
+				RejectMsg: "450 Too many messages, try again later",
 				Log: pipeline.FilterLog{
 					Filter: "rate_limit",
 					Result: "defer",
@@ -154,7 +154,7 @@ func (f *rateLimitFilter) Execute(ctx context.Context, email *pipeline.EmailJSON
 			return &pipeline.FilterResult{
 				Type:      pipeline.FilterTypeAction,
 				Action:    pipeline.ActionDefer,
-				RejectMsg: "452 Hourly sending limit exceeded",
+				RejectMsg: "450 Hourly sending limit exceeded",
 				Log: pipeline.FilterLog{
 					Filter: "rate_limit",
 					Result: "defer",

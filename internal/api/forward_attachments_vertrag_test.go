@@ -65,7 +65,9 @@ func TestForwardAttachmentsExamplesWithVertrag(t *testing.T) {
 			for _, value := range op["parameters"].([]any) {
 				parameter := value.(map[string]any)
 				delete(parameter, "examples")
-				parameter["example"] = 7
+				if parameter["in"] == "path" {
+					parameter["example"] = 7
+				}
 			}
 			dir := t.TempDir()
 			data, err := marshalPairDescription(doc)
