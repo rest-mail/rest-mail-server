@@ -16,6 +16,27 @@ type failedRead struct{}
 
 func (failedRead) Read([]byte) (int, error) { return 0, errors.New("failed read") }
 
+func TestSingleEncodedWordNamesAllocateOnce(t *testing.T) {
+	const count = 1024
+	field := strings.Repeat("=?utf-8?q?Display?= <a@b>, ", count) + "last@b"
+	decoder := &mime.WordDecoder{}
+	allocated := testing.AllocsPerRun(5, func() {
+		visited := 0
+		err := Each(field, decoder, nil, func(name, address string) {
+			if visited < count && (name != "Display" || address != "a@b") {
+				t.Fatalf("address %d: %q <%s>", visited, name, address)
+			}
+			visited++
+		})
+		if err != nil || visited != count+1 {
+			t.Fatalf("visited %d addresses: %v", visited, err)
+		}
+	})
+	if allocated > count+16 {
+		t.Fatalf("reading %d encoded names allocated %.0f times", count, allocated)
+	}
+}
+
 // A word reads here as mime.WordDecoder reads it, with whatever reader the caller has, for a name that
 // is wanted and for one that only has to exist. The list of what can go wrong is mime's, and the random
 // words are for what that list doesn't think of.

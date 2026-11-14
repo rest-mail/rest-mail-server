@@ -304,6 +304,7 @@ func (p *parser) consumePhrase() (phrase string, err error) {
 		// Only a name of more than one word is built.
 		first, joined strings.Builder
 		view          string
+		encodedView   string
 		// pending is how much of a run of encoded-words hasn't gone in yet.
 		pending, words int
 	)
@@ -324,8 +325,13 @@ func (p *parser) consumePhrase() (phrase string, err error) {
 		words++
 	}
 	flush := func() {
-		add(first.String())
+		if first.Len() > 0 {
+			add(first.String())
+		} else {
+			add(encodedView)
+		}
 		first.Reset()
+		encodedView = ""
 		pending = 0
 	}
 	for {
@@ -360,10 +366,17 @@ func (p *parser) consumePhrase() (phrase string, err error) {
 		}
 		switch {
 		case isEncoded:
-			pending += len(word)
 			if p.building() {
-				first.WriteString(word)
+				if pending == 0 {
+					encodedView = word
+				} else {
+					if first.Len() == 0 {
+						first.WriteString(encodedView)
+					}
+					first.WriteString(word)
+				}
 			}
+			pending += len(word)
 		case pending > 0:
 			flush()
 			add(word)
