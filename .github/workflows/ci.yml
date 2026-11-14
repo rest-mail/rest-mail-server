@@ -47,7 +47,7 @@ jobs:
   preflight:
     name: 'Preflight: branch is up to date'
     if: github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != '')
-    runs-on: antimatter-vps-linux-x64
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
       runners: ${{ steps.runners.outputs.runners || '{}' }}
@@ -98,7 +98,7 @@ jobs:
           GH_ACTOR: ${{ github.actor }}
           JOBS: >-
             ${{ github.event_name == 'push' && 'seed-caches' || '' }}
-            ${{ github.event_name == 'pull_request' && 'contract-diff' || '' }}
+            ${{ (github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.pull-request != '')) && 'contract-diff' || '' }}
             test-api.1 test-api.2 test-api.3 test-api.4
             test-handlers.1 test-handlers.2 test-handlers.3 test-handlers.4
             test test-contract lint js-filter first-start
@@ -235,7 +235,7 @@ jobs:
   contract-diff:
     needs: preflight
     name: API contract changes
-    if: github.event_name == 'pull_request' && (github.event.action != 'edited' || github.event.changes.base.ref.from != '')
+    if: (github.event_name == 'pull_request' && (github.event.action != 'edited' || github.event.changes.base.ref.from != '')) || (github.event_name == 'workflow_dispatch' && inputs.pull-request != '')
     runs-on: ${{ fromJSON(needs.preflight.outputs.runners || '{}')['contract-diff'] || 'ubuntu-24.04' }}
     timeout-minutes: 15
     permissions:
@@ -249,9 +249,6 @@ jobs:
           # The history that says where this PR branched from its base.
           fetch-depth: 0
           persist-credentials: false
-
-      - name: Set up Python
-        uses: ./.github/actions/setup-python
 
       - name: Set up the GitHub CLI
         uses: ./.github/actions/setup-gh
@@ -1277,9 +1274,6 @@ jobs:
         with:
           fetch-depth: 2
 
-      - name: Set up Python
-        uses: ./.github/actions/setup-python
-
       # helm.yml refuses a version already published, which is too late to say so.
       - name: Set up Python
         uses: ./.github/actions/setup-python
@@ -1321,11 +1315,6 @@ jobs:
           # resolved from the repository root does not exist, which took down builds
           # that had already passed. Installing two small apps is cheap.
           node-version-file: webmail/package.json
-
-      - name: Enable pnpm
-        run: |
-          npm install --global corepack@0.34.7
-          corepack enable pnpm
 
       - name: Enable pnpm
         run: |
@@ -1380,11 +1369,6 @@ jobs:
           # resolved from the repository root does not exist, which took down builds
           # that had already passed. Installing two small apps is cheap.
           node-version-file: admin/package.json
-
-      - name: Enable pnpm
-        run: |
-          npm install --global corepack@0.34.7
-          corepack enable pnpm
 
       - name: Enable pnpm
         run: |
@@ -1698,7 +1682,7 @@ jobs:
     name: ${{ github.event_name == 'pull_request' && github.event.action == 'edited' && github.event.changes.base.ref.from == '' && 'CI (ignored edit)' || 'CI' }}
     needs: [preflight, seed-caches, contract-diff, lint, constellation, contract-tooling, test, test-api, test-handlers, test-contract, test-imap, test-report, attachments-s3, build, helm, webmail, admin, js-filter, first-start, webapp-images, guide]
     if: always() && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
-    runs-on: antimatter-vps-linux-x64
+    runs-on: ubuntu-latest
     steps:
       - name: Verdict
         env:

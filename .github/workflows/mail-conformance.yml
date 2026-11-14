@@ -32,7 +32,7 @@ permissions:
 jobs:
   conformance:
     name: instantmailcheck against restmail.test
-    runs-on: antimatter-vps-linux-x64
+    runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
       GH_TOKEN: ${{ github.token }}

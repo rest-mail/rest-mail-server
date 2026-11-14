@@ -24,7 +24,7 @@ env:
 jobs:
   build-and-push:
     name: Build & Push
-    runs-on: antimatter-vps-linux-x64
+    runs-on: ubuntu-latest
     # The slowest job in the last 29 successful runs took 12.6 minutes. Without a
     # bound a hung build holds a runner from the merge queue for six hours (#1847).
     timeout-minutes: 30

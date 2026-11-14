@@ -20,7 +20,6 @@ permissions:
 jobs:
   newest-main:
     name: API compatibility with newest main
-    # This job invokes gh, which the private runner does not provide.
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

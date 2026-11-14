@@ -39,7 +39,6 @@ jobs:
     name: Finding issues
     needs: fuzz
     if: always()
-    # This job invokes gh, which the private runner does not provide.
     runs-on: ubuntu-latest
     timeout-minutes: 15
     # One at a time across refs, so two runs cannot both open the same finding.

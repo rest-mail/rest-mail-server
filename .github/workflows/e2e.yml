@@ -55,7 +55,7 @@ jobs:
   preflight:
     name: 'Preflight: branch is up to date'
     if: github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != '')
-    runs-on: antimatter-vps-linux-x64
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Checkout the pull request head, not GitHub's merge commit
@@ -91,7 +91,7 @@ jobs:
     needs: preflight
     name: Classify changed paths
     if: github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != '')
-    runs-on: antimatter-vps-linux-x64
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
       runners: ${{ steps.runners.outputs.runners || '{}' }}
@@ -316,7 +316,7 @@ jobs:
     name: ${{ github.event_name == 'pull_request' && github.event.action == 'edited' && github.event.changes.base.ref.from == '' && 'E2E (ignored edit)' || 'E2E (full topology)' }}
     needs: [preflight, changes, e2e-run, e2e-contract-pairs, e2e-proofs]
     if: always() && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
-    runs-on: antimatter-vps-linux-x64
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Verify e2e outcome

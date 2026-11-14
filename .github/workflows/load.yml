@@ -50,7 +50,7 @@ permissions:
 jobs:
   load:
     name: Load run
-    runs-on: antimatter-vps-linux-x64
+    runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
       - name: Checkout

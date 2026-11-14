@@ -1,152 +1,17 @@
-"""Use the private pool only for jobs its rootless runners can execute."""
+"""Jobs bring the Python and Node they need: the antimatter-vps runners have neither.
+
+Where each job runs is test_runner_gate.py's concern."""
 
 from pathlib import Path
-import ast
-import re
-import tempfile
 import unittest
 
 import yaml
 
 
 ROOT = Path(__file__).resolve().parents[2]
-RUNNER_POOL = "antimatter-vps-linux-x64"
-DOCKER_COMMAND = re.compile(r"(?m)(?:^\s*(?:(?:if|then|exec|!)\s+)?|[;&|]\s*|\$\()(?:sudo\s+)?(?:docker(?:-compose)?|podman|kind|minikube|k3d)(?:\s|$)")
-CONTAINER_TASK = re.compile(r"\bchore\s+(?:e2e:(?:up|down)|testbed:up|test:load)\b")
-SCRIPT_PATH = re.compile(r"(?:\./)?(?:scripts|\.github/scripts|helm/restmail/tests)/[\w./-]+")
-
-
-def requires_docker(job, root=ROOT, seen=None):
-    seen = set() if seen is None else seen
-    if job.get("services") or job.get("container"):
-        return True
-    for step in job.get("steps", []):
-        action = step.get("uses", "")
-        if action.startswith(("docker/", "docker://")) or any(
-            name in action for name in ("kind-action@", "setup-kind@", "setup-minikube@", "setup-k3d@")
-        ):
-            return True
-        if action.startswith("./") and action not in seen:
-            seen.add(action)
-            for filename in ("action.yml", "action.yaml"):
-                path = root / action / filename
-                if path.is_file():
-                    runs = yaml.safe_load(path.read_text())["runs"]
-                    if runs.get("using") == "docker" or requires_docker(runs, root, seen):
-                        return True
-        command = step.get("run", "")
-        if DOCKER_COMMAND.search(command) or CONTAINER_TASK.search(command):
-            return True
-        for filename in SCRIPT_PATH.findall(command):
-            path = root / filename
-            if path.is_file() and filename not in seen:
-                seen.add(filename)
-                source = path.read_text()
-                if path.suffix == ".py":
-                    commands = {"docker", "docker-compose", "podman", "kind", "minikube", "k3d"}
-                    for call in ast.walk(ast.parse(source)):
-                        if not isinstance(call, ast.Call) or not call.args:
-                            continue
-                        arguments = call.args[0]
-                        if isinstance(arguments, (ast.List, ast.Tuple)) and arguments.elts:
-                            first = arguments.elts[0]
-                            if isinstance(first, ast.Constant) and first.value in commands:
-                                return True
-                elif requires_docker({"steps": [{"run": source}]}, root, seen):
-                    return True
-    return False
-
-
-def requires_github_cli(job, root=ROOT, seen=None):
-    seen = set() if seen is None else seen
-    for step in job.get("steps", []):
-        action = step.get("uses", "")
-        if action.startswith("./") and action not in seen:
-            seen.add(action)
-            for filename in ("action.yml", "action.yaml"):
-                path = root / action / filename
-                if path.is_file() and requires_github_cli(yaml.safe_load(path.read_text())["runs"], root, seen):
-                    return True
-        command = step.get("run", "")
-        if re.search(r"(?m)(?:^\s*(?:(?:if|then|exec|!)\s+)?|[;&|]\s*|[<$]\()gh(?:\s|$)", command):
-            return True
-        for filename in SCRIPT_PATH.findall(command):
-            path = root / filename
-            if not path.is_file() or filename in seen:
-                continue
-            seen.add(filename)
-            source = path.read_text()
-            if path.suffix == ".py":
-                for call in ast.walk(ast.parse(source)):
-                    if isinstance(call, ast.Call) and call.args:
-                        arguments = call.args[0]
-                        if isinstance(arguments, (ast.List, ast.Tuple)) and arguments.elts:
-                            first = arguments.elts[0]
-                            if isinstance(first, ast.Constant) and first.value == "gh":
-                                return True
-            elif requires_github_cli({"steps": [{"run": source}]}, root, seen):
-                return True
-    return False
-
-
-def requires_hosted_runner(job):
-    return not requires_docker(job) and (
-        requires_github_cli(job) or any(
-            step.get("uses", "").startswith("actions/setup-node@")
-            and "node-version-file" in step.get("with", {})
-            for step in job.get("steps", [])
-        )
-    )
 
 
 class PrivateRunnerRouting(unittest.TestCase):
-    def test_every_executable_job_uses_a_capable_runner(self):
-        executable_jobs = 0
-        for workflow in sorted((ROOT / ".github/workflows").glob("*.yml")):
-            document = yaml.safe_load(workflow.read_text())
-            for name, job in document["jobs"].items():
-                with self.subTest(workflow=workflow.name, job=name):
-                    if "uses" in job:
-                        self.assertNotIn("runs-on", job)
-                    else:
-                        executable_jobs += 1
-                        expected = "ubuntu-latest" if requires_hosted_runner(job) else RUNNER_POOL
-                        self.assertEqual(job.get("runs-on"), expected)
-        self.assertGreater(executable_jobs, 0)
-
-    def test_github_cli_consumers_require_a_runner_that_provides_it(self):
-        commands = (
-            "gh pr view 1", "labels=$(gh pr view 1)",
-            "while read -r label; do true; done < <(gh pr view 1)",
-            "python3 scripts/contract_compat.py base.json head.json",
-        )
-        for command in commands:
-            with self.subTest(command=command):
-                job = {"steps": [{"run": command}]}
-                self.assertTrue(requires_github_cli(job))
-                self.assertTrue(requires_hosted_runner(job))
-        self.assertFalse(requires_github_cli({"steps": [{"run": "echo github"}]}))
-
-    def test_package_selected_node_requires_the_hosted_runtime(self):
-        job = {"steps": [{"uses": "actions/setup-node@pinned", "with": {"node-version-file": "webmail/package.json"}}]}
-        self.assertFalse(requires_docker(job))
-        self.assertTrue(requires_hosted_runner(job))
-        self.assertFalse(requires_hosted_runner({"steps": [{"run": "go build ./..."}]}))
-
-    def test_local_actions_carry_their_docker_requirement_to_the_job(self):
-        for runs in (
-            {"using": "docker", "image": "Dockerfile"},
-            {"using": "composite", "steps": [{"run": "if docker info; then echo ready; fi"}]},
-            {"using": "composite", "steps": [{"uses": "docker/setup-buildx-action@pinned"}]},
-        ):
-            with self.subTest(runs=runs), tempfile.TemporaryDirectory() as directory:
-                root = Path(directory)
-                action = root / ".github/actions/fixture/action.yml"
-                action.parent.mkdir(parents=True)
-                action.write_text(yaml.safe_dump({"runs": runs}))
-                job = {"steps": [{"uses": "./.github/actions/fixture"}]}
-                self.assertTrue(requires_docker(job, root))
-
     def test_node_versions_come_from_the_package(self):
         for filename in ("ci.yml", "email-explained.yml", "scheduled.yml"):
             document = yaml.safe_load((ROOT / ".github/workflows" / filename).read_text())

@@ -77,11 +77,6 @@ jobs:
         with:
           node-version-file: ${{ matrix.app }}/package.json
 
-      - name: Enable pnpm
-        run: |
-          npm install --global corepack@0.34.7
-          corepack enable pnpm
-
       # What the images and CI install is pnpm-lock.yaml, so that is what is audited.
       - name: Enable pnpm
         run: |
