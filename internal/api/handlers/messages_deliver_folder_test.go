@@ -15,38 +15,41 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 )
 
-// TestDeliverMessage_HonorsFolderFlagsAndInternalDate is the DB-backed red-green
-// regression for issue #190. The IMAP gateway's COPY/APPEND now deliver a message
-// directly into its destination folder carrying its flags and INTERNALDATE, in a
-// single call. The delivery endpoint must honor those: create the row in the given
-// folder, with the given flags, stamped with the supplied received_at — not
-// default it to INBOX / unread / now(). The pre-fix handler had no folder/flag/
-// received_at fields, so the JSON keys were silently dropped.
-func TestDeliverMessage_HonorsFolderFlagsAndInternalDate(t *testing.T) {
+func TestDeliverMessage_IgnoresImportFields(t *testing.T) {
 	db := openMsgDeleteTestDB(t)
 	// The delivery path also bumps quota_usage; migrate it so the transaction's
 	// quota update matches a real table (0 rows for a fresh mailbox is not an error).
 	if err := migrateModels(db, &models.QuotaUsage{}); err != nil {
-		t.Skipf("deliver DB test skipped: migrate quota_usage failed (%v)", err)
+		t.Fatal(err)
+	}
+	var before time.Time
+	if err := db.Raw("SELECT clock_timestamp()").Scan(&before).Error; err != nil {
+		t.Fatal(err)
 	}
 	tx := db.Begin()
 	t.Cleanup(func() { tx.Rollback() })
 
 	fx := seedMsgDeleteFixture(t, tx, 0)
+	other := models.Mailbox{DomainID: fx.mailbox.DomainID, LocalPart: "other", Address: "other@delq.test", Active: true}
+	if err := tx.Create(&other).Error; err != nil {
+		t.Fatal(err)
+	}
+	seedReceiveFixture(t, tx, other)
 
-	// A deliberately-past internal date so a now() default is unmistakably wrong.
-	want := time.Date(2021, 1, 2, 3, 4, 5, 0, time.UTC)
 	body := fmt.Sprintf(`{
+		"address": %q,
 		"mailbox_id": %d,
 		"sender": "someone@remote.test",
-		"subject": "Copied message",
+		"subject": "Arriving message",
 		"body_text": "hello",
 		"folder": "Archive",
+		"is_answered": true,
 		"is_read": true,
 		"is_flagged": true,
 		"is_starred": true,
+		"is_draft": true,
 		"received_at": "2021-01-02T03:04:05Z"
-	}`, fx.mailbox.ID)
+	}`, fx.mailbox.Address, other.ID)
 
 	h := NewMessageHandler(tx, nil, nil, "", nil)
 	rr := httptest.NewRecorder()
@@ -58,26 +61,27 @@ func TestDeliverMessage_HonorsFolderFlagsAndInternalDate(t *testing.T) {
 	}
 
 	var msg models.Message
-	if err := tx.Where("mailbox_id = ? AND subject = ?", fx.mailbox.ID, "Copied message").
+	if err := tx.Where("subject = ?", "Arriving message").
 		First(&msg).Error; err != nil {
 		t.Fatalf("reload delivered message: %v", err)
 	}
 
-	if msg.Folder != "Archive" {
-		t.Errorf("message created in folder %q, want Archive (folder was dropped)", msg.Folder)
+	if msg.MailboxID != fx.mailbox.ID {
+		t.Errorf("mailbox = %d, want address's mailbox %d", msg.MailboxID, fx.mailbox.ID)
 	}
-	if !msg.IsRead {
-		t.Error("delivered message lost the \\Seen flag (is_read=false)")
+	if msg.Folder != "INBOX" {
+		t.Errorf("folder = %q, want INBOX", msg.Folder)
 	}
-	if !msg.IsFlagged {
-		t.Error("delivered message lost the \\Flagged flag (is_flagged=false)")
+	if msg.IsAnswered || msg.IsRead || msg.IsFlagged || msg.IsStarred || msg.IsDraft {
+		t.Errorf("delivery honored import flags: answered=%t read=%t flagged=%t starred=%t draft=%t",
+			msg.IsAnswered, msg.IsRead, msg.IsFlagged, msg.IsStarred, msg.IsDraft)
 	}
-	if !msg.IsStarred {
-		t.Error("delivered message lost the mirrored star (is_starred=false)")
+	var after time.Time
+	if err := tx.Raw("SELECT clock_timestamp()").Scan(&after).Error; err != nil {
+		t.Fatal(err)
 	}
-	if msg.ReceivedAt.Unix() != want.Unix() {
-		t.Errorf("delivered message INTERNALDATE = %v, want %v (received_at was dropped, defaulted to now())",
-			msg.ReceivedAt.UTC(), want)
+	if msg.ReceivedAt.Before(before) || msg.ReceivedAt.After(after) {
+		t.Errorf("received_at = %v, want server time after %v", msg.ReceivedAt.UTC(), before)
 	}
 }
 
@@ -97,8 +101,8 @@ func TestDeliverMessage_StripsOurAuthResults(t *testing.T) {
 	raw := "Authentication-Results: restmail; spf=pass smtp.mailfrom=victim.example; dkim=pass header.d=victim.example; dmarc=pass\r\n" +
 		"Authentication-Results: mx.example.net; spf=pass smtp.mailfrom=victim.example\r\n" +
 		"From: ceo@victim.example\r\nTo: user@local.test\r\nSubject: Forged results\r\n\r\nhello\r\n"
-	body := fmt.Sprintf(`{"mailbox_id": %d, "sender": "ceo@victim.example", "subject": "Forged results", "raw_message": %q}`,
-		fx.mailbox.ID, base64.StdEncoding.EncodeToString([]byte(raw)))
+	body := fmt.Sprintf(`{"address": %q, "sender": "ceo@victim.example", "subject": "Forged results", "raw_message": %q}`,
+		fx.mailbox.Address, base64.StdEncoding.EncodeToString([]byte(raw)))
 
 	h := NewMessageHandler(tx, nil, nil, "", nil)
 	rr := httptest.NewRecorder()
@@ -117,35 +121,6 @@ func TestDeliverMessage_StripsOurAuthResults(t *testing.T) {
 	}
 	if !strings.Contains(msg.RawMessage, "Authentication-Results: mx.example.net;") {
 		t.Errorf("stored message lost another server's Authentication-Results:\n%s", msg.RawMessage)
-	}
-}
-
-// A gateway delivering into "inbox" delivers into INBOX: the folder follows the folder rule,
-// so the message is not filed in a second inbox spelled another way (#759).
-func TestDeliverMessage_InboxInAnyCaseIsInbox(t *testing.T) {
-	db := openMsgDeleteTestDB(t)
-	if err := migrateModels(db, &models.QuotaUsage{}); err != nil {
-		t.Skipf("deliver DB test skipped: migrate quota_usage failed (%v)", err)
-	}
-	tx := db.Begin()
-	t.Cleanup(func() { tx.Rollback() })
-
-	fx := seedMsgDeleteFixture(t, tx, 0)
-	body := fmt.Sprintf(`{"mailbox_id": %d, "sender": "someone@remote.test", "subject": "Lower case inbox", "body_text": "hello", "folder": "inbox"}`,
-		fx.mailbox.ID)
-
-	h := NewMessageHandler(tx, nil, nil, "", nil)
-	rr := httptest.NewRecorder()
-	deliveryRoute(h)(rr, httptest.NewRequest(http.MethodPost, "/api/v1/messages/deliver", strings.NewReader(body)))
-	if rr.Code != http.StatusCreated {
-		t.Fatalf("deliver: expected 201, got %d (%s)", rr.Code, rr.Body.String())
-	}
-	var msg models.Message
-	if err := tx.Where("mailbox_id = ? AND subject = ?", fx.mailbox.ID, "Lower case inbox").First(&msg).Error; err != nil {
-		t.Fatalf("reload delivered message: %v", err)
-	}
-	if msg.Folder != "INBOX" {
-		t.Errorf("message delivered into folder %q, want INBOX", msg.Folder)
 	}
 }
 

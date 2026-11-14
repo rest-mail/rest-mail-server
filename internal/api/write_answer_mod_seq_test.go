@@ -103,8 +103,8 @@ func TestWriteAnswersCarryStoredModSeq(t *testing.T) {
 	t.Run("deliverMessage", func(t *testing.T) {
 		raw := "From: someone@example.test\r\nTo: " + f.address + "\r\nDate: Tue, 03 Nov 2026 12:00:00 +0000\r\n" +
 			"Message-ID: <delivered@example.test>\r\nSubject: Delivered\r\n\r\nHello.\r\n"
-		body := fmt.Sprintf(`{"mailbox_id":%d,"sender":"someone@example.test","recipients_to":[%q],"subject":"Delivered","body_text":"Hello.","raw_message":%q}`,
-			f.mailboxID, f.address, base64.StdEncoding.EncodeToString([]byte(raw)))
+		body := fmt.Sprintf(`{"address":%q,"sender":"someone@example.test","recipients_to":[%q],"subject":"Delivered","body_text":"Hello.","raw_message":%q}`,
+			f.address, f.address, base64.StdEncoding.EncodeToString([]byte(raw)))
 		rr := f.do(http.MethodPost, "/api/v1/messages/deliver", "", body)
 		if rr.Code == http.StatusOK && strings.Contains(rr.Body.String(), `"processed"`) {
 			t.Fatalf("the pipeline kept the delivery: %s", rr.Body.String())

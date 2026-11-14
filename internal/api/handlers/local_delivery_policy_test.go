@@ -46,7 +46,7 @@ func TestGatewayInboundPolicyFailuresDeferBeforeSideEffects(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			d := &deliveryReadDB{steps: append([]deliveryReadStep{deliveryMailboxStep("one@example.test")}, tc.steps...)}
 			rr := httptest.NewRecorder()
-			gatewayPolicyRoutes(t, d, nil).ServeHTTP(rr, deliveryRequest(t, `{"mailbox_id":2,"subject":"policy"}`, "/api/v1/messages/deliver"))
+			gatewayPolicyRoutes(t, d, nil).ServeHTTP(rr, deliveryRequest(t, `{"address":"one@example.test","subject":"policy"}`, "/api/v1/messages/deliver"))
 			assertDeliveryReadRefusal(t, d, rr, http.StatusServiceUnavailable, "deferred")
 			if !strings.Contains(rr.Body.String(), `"message":"Try again later"`) {
 				t.Fatalf("temporary refusal changed: %s", rr.Body)
@@ -144,7 +144,7 @@ func TestGatewayInboundPolicyExecutesConfiguredFilters(t *testing.T) {
 	d := &deliveryReadDB{steps: []deliveryReadStep{deliveryMailboxStep("one@example.test"), deliveryPipelineStep(`[{"name":"gateway_policy_reject","type":"action","enabled":true}]`), missingGatewayScript()}}
 	f := &gatewayPolicyReject{}
 	rr := httptest.NewRecorder()
-	gatewayPolicyRoutes(t, d, f).ServeHTTP(rr, deliveryRequest(t, `{"mailbox_id":2}`, "/api/v1/messages/deliver"))
+	gatewayPolicyRoutes(t, d, f).ServeHTTP(rr, deliveryRequest(t, `{"address":"one@example.test"}`, "/api/v1/messages/deliver"))
 	assertDeliveryReadRefusal(t, d, rr, http.StatusForbidden, "rejected")
 	if f.calls != 1 || f.lostContext || !strings.Contains(rr.Body.String(), "configured policy rejection") {
 		t.Fatalf("calls=%d lost context=%v body=%s", f.calls, f.lostContext, rr.Body)
@@ -165,7 +165,7 @@ func TestGatewayInboundPolicyFaultsCannotSelectDefaults(t *testing.T) {
 			d := &deliveryReadDB{steps: []deliveryReadStep{deliveryMailboxStep("one@example.test"), step, missingGatewayScript()}}
 			f := &gatewayPolicyReject{}
 			rr := httptest.NewRecorder()
-			gatewayPolicyRoutes(t, d, f).ServeHTTP(rr, deliveryRequest(t, `{"mailbox_id":2}`, "/api/v1/messages/deliver"))
+			gatewayPolicyRoutes(t, d, f).ServeHTTP(rr, deliveryRequest(t, `{"address":"one@example.test"}`, "/api/v1/messages/deliver"))
 			if rr.Code != http.StatusServiceUnavailable || !strings.Contains(rr.Body.String(), `"code":"deferred"`) || strings.Contains(rr.Body.String(), "private") || f.calls != 0 || d.reads != 2 || d.writes != 0 || d.lostContext != 0 {
 				t.Fatalf("status=%d body=%s default executions=%d reads=%d writes=%d lost contexts=%d", rr.Code, rr.Body, f.calls, d.reads, d.writes, d.lostContext)
 			}

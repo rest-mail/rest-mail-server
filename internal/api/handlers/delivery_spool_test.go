@@ -218,7 +218,8 @@ func TestDeliveryRefusalsDoNotHoldTheMessage(t *testing.T) {
 	}{
 		{"no such mailbox", map[string]any{"address": "no@spool.test", "body_text": large}, 404},
 		{"a mailbox that can't receive", map[string]any{"address": "silent@spool.test", "body_html": large}, 404},
-		{"a bad folder", map[string]any{"folder": " x", "body_text": large}, 422},
+		// Delivery names its recipient by address alone (#1474): none is refused like any bad field.
+		{"no address", map[string]any{"address": "", "body_text": large}, 422},
 		{"a field no one declared", map[string]any{"x": 1}, 422},
 		{"NUL in the body text", map[string]any{"body_text": large + "\x00"}, 422},
 	} {

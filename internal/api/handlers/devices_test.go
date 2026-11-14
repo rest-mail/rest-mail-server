@@ -608,9 +608,6 @@ func TestPushDeliveryCarriesNoMessageContent(t *testing.T) {
 	}
 }
 
-// TestDeliveryTellsThePushOfNewInboxMail: delivering a message into the
-// INBOX tells the notifier its mailbox; a message delivered elsewhere, or
-// already read, does not.
 func TestDeliveryTellsThePushOfNewInboxMail(t *testing.T) {
 	db := openMsgDeleteTestDB(t)
 	if err := migrateModels(db, &models.QuotaUsage{}); err != nil {
@@ -627,7 +624,7 @@ func TestDeliveryTellsThePushOfNewInboxMail(t *testing.T) {
 		t.Helper()
 		rr := httptest.NewRecorder()
 		deliveryRoute(h)(rr, httptest.NewRequest(http.MethodPost, "/api/v1/messages/deliver", strings.NewReader(fmt.Sprintf(
-			`{"mailbox_id":%d,"sender":"someone@remote.test","subject":"hi","body_text":"hello"%s}`, fx.mailbox.ID, extra))))
+			`{"address":%q,"sender":"someone@remote.test","subject":"hi","body_text":"hello"%s}`, fx.mailbox.Address, extra))))
 		if rr.Code != http.StatusCreated {
 			t.Fatalf("deliver: %d %s", rr.Code, rr.Body.String())
 		}
@@ -635,8 +632,8 @@ func TestDeliveryTellsThePushOfNewInboxMail(t *testing.T) {
 	deliver("")
 	deliver(`,"folder":"Archive"`)
 	deliver(`,"folder":"INBOX","is_read":true`)
-	if len(notified.mailboxes) != 1 || notified.mailboxes[0] != fx.mailbox.ID {
-		t.Fatalf("notified of %v, want only the INBOX delivery to mailbox %d", notified.mailboxes, fx.mailbox.ID)
+	if !reflect.DeepEqual(notified.mailboxes, []uint{fx.mailbox.ID, fx.mailbox.ID, fx.mailbox.ID}) {
+		t.Fatalf("notified of %v, want all three arriving messages for mailbox %d", notified.mailboxes, fx.mailbox.ID)
 	}
 }
 

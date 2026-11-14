@@ -584,30 +584,24 @@ phases can reach them with nothing stored, and they now answer 404 without it.
 
 ### A delivery's recipient in the fuzz phase
 
-Fuzz draws a `mailbox_id` or an `address` that names nothing, and Vertrag holds a
-valid body's 404 against the description (its exception covers path parameters
-only). Every generated delivery stopped at the lookup, so the shrunk finding was
-always `{"mailbox_id":1000}` or `{"address":"a"}` and the rest of delivery was never
-reached. A hook cannot supply the recipient, for the reason above.
+Fuzz draws an `address` that names nothing, and Vertrag holds a valid body's
+404 against the description (its exception covers path parameters only). The
+rest of delivery is never reached. A hook cannot supply the recipient, for the
+reason above.
 
-`probes.py` pins `mailbox_id` in the fuzz run to the mailbox `run.sh` makes first
+`probes.py` pins `address` in the fuzz run to the mailbox `run.sh` makes first
 (`chore test:contract-delivery-recipient`, declared in `fixtureplan/defaults.json`).
-Mail goes to it, not to the fixture admin. Its domain stores an inbound pipeline with
-no filters, because a generated body has no Date or Message-ID and the default
-pipeline rightly answers 550 to that. A pipeline with filters is proven by the
-`rejected` and `processed` examples, not here. Its rows name their ids, so no
-sequence moves.
+Mail goes to it, not to the fixture admin. Its domain stores an inbound pipeline
+with no filters, because a generated body has no Date or Message-ID and the
+default pipeline rightly refuses that. A pipeline with filters is proven by the
+`rejected` and `processed` examples, not here.
 
-The coverage run is not pinned and does not need the recipient. `deliverMessage`
-has no valid boundary probe, only 28 that a schema refuses before any lookup, so
-coverage makes no extra mail and no literal id in an example moves. A pin there
-would only stop its two `mailbox_id` type probes. The fuzz run makes its mail in a
-report that blocks nothing, and later fuzz operations see message ids moved by it.
-
-The pin takes away the refusals fuzz drew by varying the recipient. The named
-examples prove those in the gated examples phase: `address_empty`,
-`mailbox_id_zero`, `recipient_missing` and `no_mailbox_by_id`. `no_mailbox` already
-holds the 404 by address.
+The coverage run is not pinned, so address validation probes remain enabled.
+The fuzz run makes its mail in a report that blocks nothing, and later fuzz
+operations see message ids moved by it. The named `address_empty`,
+`recipient_missing` and `no_mailbox` examples prove recipient refusals in the
+gated examples phase. Delivery resolves only an address; import selects its
+mailbox through the authenticated account route.
 
 ### Message ids in examples
 

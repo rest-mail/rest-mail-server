@@ -1108,8 +1108,8 @@ func isDeliveryRefusal(err error) bool {
 }
 
 // aliasRoutingRefusal recognises the API's permanent refusal of a reserved alias that
-// cannot route, which this gateway turns into SMTP 550. GET /api/mailboxes answers it 403
-// and deliverMessage with its documented 550, both as rejected with the fixed sentence.
+// cannot route, which this gateway turns into SMTP 550. GET /api/mailboxes and deliverMessage
+// both answer it 403 rejected with the fixed sentence.
 // Any other answer says nothing about the recipient: a 403 from anywhere else stays the
 // temporary failure it was, so a fault here never bounces a sender's mail.
 func aliasRoutingRefusal(err error) (string, bool) {

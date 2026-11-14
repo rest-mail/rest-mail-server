@@ -130,7 +130,7 @@ func bindDeliveryBody(t *testing.T, route, contentType string, body []byte) (ref
 	var boundText, boundHTML string
 	if route == "gateway" {
 		var req deliverMessageBody
-		spool, err = spoolDelivery(r, &req, spooledBodySpec{declared: deliveryDeclaredFields}, func() []byte { return req.RawMessage })
+		spool, err = spoolDelivery(r, &req, spooledBodySpec{declared: deliveryDeclaredFields, ignored: deliveryImportOnlyFields}, func() []byte { return req.RawMessage })
 		boundText, boundHTML = req.BodyText, req.BodyHTML
 	} else {
 		var in restmailDeliverInput
@@ -201,8 +201,10 @@ func TestDeliveryStandInAnswersAsTheWholeBodyDoes(t *testing.T) {
 			r.Header.Set("Content-Type", contentType)
 		}
 		if route == "gateway" {
+			// The delivery route takes no notice of the import-only fields older callers still
+			// send (#1474), so the whole body it is held to is the one without them.
 			var req deliverMessageBody
-			if err := endpoint.BindRequest(r, &req, []byte(body)); err != nil {
+			if err := endpoint.BindRequest(r, &req, withoutFields([]byte(body), deliveryImportOnlyFields)); err != nil {
 				return refusalText(err), "", "", ""
 			}
 			return "", string(req.RawMessage), req.BodyText, req.BodyHTML
