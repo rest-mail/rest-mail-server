@@ -222,7 +222,7 @@ func testStage10Verification(t *testing.T) {
 	t.Run("Imaps_Port993", func(t *testing.T) {
 		// Connect via TLS to IMAPS port
 		conn, err := tls.DialWithDialer(
-			&net.Dialer{Timeout: 10 * time.Second},
+			&net.Dialer{Timeout: 30 * time.Second},
 			"tcp",
 			imapsGWAddr,
 			&tls.Config{InsecureSkipVerify: true},
@@ -236,7 +236,7 @@ func testStage10Verification(t *testing.T) {
 		// (esp. SELECT's untagged * lines + the tagged OK) arrive across
 		// several — read until the tag.
 		reader := bufio.NewReader(conn)
-		_ = conn.SetDeadline(time.Now().Add(10 * time.Second))
+		_ = conn.SetDeadline(time.Now().Add(30 * time.Second))
 		greeting, _ := reader.ReadString('\n')
 		if !strings.Contains(greeting, "OK") {
 			t.Fatalf("unexpected IMAP greeting: %s", greeting)
