@@ -395,12 +395,12 @@ There are three ways to keep a probe:
 - **`fuzz.pin-valid`** holds a value on one operation's valid requests, for a rule
   no schema can say, and the probe is still sent, judged and reported. The
   chosen-password rule refuses the generator's `xxxxxxxxxxxx`, so `vertrag.yml` holds
-  a strong `password` on `createAccount` and `updateMailbox`. Invalid requests are
-  left alone, so the 11-character refusal is still sent, and a `fuzz.pin` on the same
-  field would win; none names `password`. The other operations the rule guards send
-  no valid generated password on this topology: their success examples need state
-  the run does not have, and `acceptInvitation`'s probes end in the token its hook
-  makes for each one. `TestContractValidPinsPassTheRule` holds the value to the rule.
+  a strong `password` on `createAccount`, `updateMailbox` and `acceptInvitation`
+  (whose valid probes redeem an invitation the hook makes for their drawn token).
+  Invalid requests are left alone, so the 11-character refusal is still sent, and a
+  `fuzz.pin` on the same field would win; none names `password`. The other
+  operations the rule guards send no valid generated password on this topology:
+  their success examples need state the run does not have. `TestContractValidPinsPassTheRule` holds the value to the rule.
   This setting also puts the password in bodies that had none. On `updateMailbox`,
   `a_new_password_only_on_the_created_account` sends those to the run's own account.
   On `createAccount`, a password with a `password_hash` is refused, so `password_hash`

@@ -93,12 +93,13 @@ func TestContractValidPinsPassTheRule(t *testing.T) {
 	if err := yaml.Unmarshal(raw, &config); err != nil {
 		t.Fatal(err)
 	}
-	for _, operation := range []string{"createAccount", "updateMailbox"} {
+	for _, operation := range []string{"createAccount", "updateMailbox", "acceptInvitation"} {
 		password, ok := config.Fuzz.PinValid[operation]["password"].(string)
 		if !ok {
 			t.Fatalf("vertrag.yml holds no password for %s", operation)
 		}
-		for _, address := range []string{"someone@example.com", "new-account@restmail.test"} {
+		// The invitation fixture's accounts are contract-invitation-<n>@restmail.test.
+		for _, address := range []string{"someone@example.com", "new-account@restmail.test", "contract-invitation-1@restmail.test"} {
 			if problem := ChosenPasswordProblem(password, address); problem != "" {
 				t.Errorf("%s for %s: the password %s", operation, address, problem)
 			}
