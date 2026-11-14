@@ -1052,7 +1052,11 @@ tasks:
           echo "contract fixtures require the disposable restmail.test config" >&2
           exit 1
         fi
-        docker exec -i -- "${CONTRACT_FIXTURE_PROJECT}-api" go run ./tests/contract/fixtures --test-domain=restmail.test --invitation-probe
+        # chore passes a task's commands no standard input: the hook's request
+        # comes in CONTRACT_INVITATION_REQUEST, and the fixture reads it on stdin.
+        [ -n "${CONTRACT_INVITATION_REQUEST:-}" ] || { echo "CONTRACT_INVITATION_REQUEST names no token" >&2; exit 1; }
+        printf '%s' "$CONTRACT_INVITATION_REQUEST" |
+          docker exec -i -- "${CONTRACT_FIXTURE_PROJECT}-api" go run ./tests/contract/fixtures --test-domain=restmail.test --invitation-probe
 
   test:e2e:
     desc: 'Run e2e tests against an already-running topology (use `chore e2e` to also bring it up + tear down)'

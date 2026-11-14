@@ -5787,11 +5787,19 @@ def redeem_a_fresh_invitation(transaction):
             and body.get("client", "native") == "native"
             and set(body) <= {"token", "password", "client"}
         ):
-            subprocess.run(
+            # chore gives a task's commands no standard input, so the request
+            # goes in the environment and the task pipes it to the fixture.
+            # No time limit: a slow machine is not a failed fixture.
+            made = subprocess.run(
                 ["chore", "test:contract-invitation-fixture"],
-                input=json.dumps({"token": body["token"]}).encode(),
-                check=True, capture_output=True, timeout=30,
+                env=dict(os.environ, CONTRACT_INVITATION_REQUEST=json.dumps({"token": body["token"]})),
+                capture_output=True,
             )
+            if made.returncode != 0:
+                raise RuntimeError(
+                    "the invitation fixture failed: "
+                    + made.stderr.decode(errors="replace").strip()[-500:]
+                )
         return
     # The accepted example and every coverage probe of its 200 need an unspent
     # invitation: coverage runs no after hooks, and a schema-valid body with an

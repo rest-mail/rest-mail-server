@@ -58,6 +58,33 @@ class ContractQueueFixtureTests(unittest.TestCase):
             with self.subTest(task=name):
                 self.assertEqual(tasks[name]["env"]["CONTRACT_FIXTURE_CONFIG"], mapped)
 
+    def test_the_invitation_fixture_reads_its_request_from_the_environment(self):
+        # chore gives a task's commands no standard input: the request must
+        # reach the fixture's stdin from CONTRACT_INVITATION_REQUEST.
+        script = yaml.safe_load((ROOT / "chores.yml").read_text())["tasks"]["test:contract-invitation-fixture"]["cmds"][0]
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            capture = work / "docker.json"
+            docker = work / "docker"
+            docker.write_text("#!/usr/bin/env python3\nimport json, os, sys\n"
+                              "open(os.environ['CAPTURE'], 'w').write(json.dumps([sys.argv[1:], sys.stdin.read()]))\n")
+            docker.chmod(0o755)
+            request = json.dumps({"token": "drawn $(token) 'x'"})
+            env = dict(os.environ, PATH=str(work) + os.pathsep + os.environ["PATH"], CAPTURE=str(capture),
+                       CONTRACT_FIXTURE_CONFIG="restmail.test", CONTRACT_FIXTURE_PROJECT="custom-test-project",
+                       CONTRACT_INVITATION_REQUEST=request)
+            result = subprocess.run(["sh", "-eu"], input=script, text=True, env=env, capture_output=True)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            argv, stdin = json.loads(capture.read_text())
+            self.assertEqual(argv, ["exec", "-i", "--", "custom-test-project-api", "go", "run",
+                                    "./tests/contract/fixtures", "--test-domain=restmail.test", "--invitation-probe"])
+            self.assertEqual(stdin, request)
+            capture.unlink()
+            del env["CONTRACT_INVITATION_REQUEST"]
+            result = subprocess.run(["sh", "-eu"], input=script, text=True, env=env, capture_output=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertFalse(capture.exists())
+
     def check_fixture_task(self, script, flags):
         with tempfile.TemporaryDirectory() as directory:
             work = Path(directory)
