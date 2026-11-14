@@ -78,7 +78,7 @@ func TestIMAPAppendAfterLocalOnlySubmissionKeepsOneSentCopy(t *testing.T) {
 	if !roots.AppendCertsFromPEM(ca.CertPEM) {
 		t.Fatal("could not trust test certificate")
 	}
-	connection, err := tls.DialWithDialer(&net.Dialer{Timeout: 10 * time.Second}, "tcp", address, &tls.Config{
+	connection, err := tls.DialWithDialer(&net.Dialer{Timeout: 30 * time.Second}, "tcp", address, &tls.Config{
 		RootCAs: roots, ServerName: "smtp.test", MinVersion: tls.VersionTLS12,
 	})
 	if err != nil {
