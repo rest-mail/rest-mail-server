@@ -1,0 +1,32 @@
+name: Set up the GitHub CLI
+description: >-
+  Install gh from GitHub's own package repository where the runner has none: the
+  antimatter-vps runners ship without it, and Ubuntu's own gh is too old for
+  `gh attestation`. GitHub's hosted runners already have it, so this does nothing there.
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: |
+        set -euo pipefail
+        if command -v gh >/dev/null; then
+          gh --version | head -1
+          exit 0
+        fi
+        keyring=/etc/apt/keyrings/githubcli-archive-keyring.gpg
+        sudo install -d -m 0755 /etc/apt/keyrings
+        curl -fsSL --retry 5 --retry-all-errors https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+          | sudo tee "$keyring" >/dev/null
+        sudo chmod go+r "$keyring"
+        echo "deb [arch=$(dpkg --print-architecture) signed-by=$keyring] https://cli.github.com/packages stable main" \
+          | sudo tee /etc/apt/sources.list.d/github-cli.list >/dev/null
+        for attempt in 1 2 3; do
+          if sudo apt-get update -qq && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends gh; then
+            gh --version | head -1
+            exit 0
+          fi
+          echo "::warning::installing gh failed (attempt $attempt of 3)"
+          sleep $((attempt * 5))
+        done
+        echo "::error::could not install gh" >&2
+        exit 1

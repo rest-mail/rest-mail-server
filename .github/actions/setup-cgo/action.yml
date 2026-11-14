@@ -1,0 +1,16 @@
+name: Set up cgo
+description: Probe the host compiler or install a checksum-pinned rootless compiler for race tests
+runs:
+  using: composite
+  steps:
+    - name: Cache the pinned compiler archive
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      continue-on-error: true
+      with:
+        path: ${{ runner.temp }}/cgo-downloads
+        key: cgo-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/ci/install_cgo.py') }}
+    - name: Provision and verify a C compiler
+      shell: bash
+      env:
+        CGO_DOWNLOAD_CACHE: ${{ runner.temp }}/cgo-downloads
+      run: python3 scripts/ci/install_cgo.py "$RUNNER_TEMP/cgo"

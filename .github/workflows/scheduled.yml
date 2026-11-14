@@ -12,8 +12,9 @@ permissions:
 
 jobs:
   tidy-check:
+    needs: dependency-review
     name: go mod tidy Check
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.dependency-review.outputs.runners)['tidy-check'] || 'ubuntu-latest' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -35,8 +36,9 @@ jobs:
           echo "go.mod and go.sum are tidy."
 
   security-audit:
+    needs: dependency-review
     name: Security Audit
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.dependency-review.outputs.runners)['security-audit'] || 'ubuntu-latest' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -58,8 +60,9 @@ jobs:
         run: govulncheck ./...
 
   frontend-audit:
+    needs: dependency-review
     name: Frontend Dependency Audit
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.dependency-review.outputs.runners)[format('frontend-audit.{0}', matrix.app)] || 'ubuntu-latest' }}
     strategy:
       # Report both frontends every run; one failing app must not mask the other.
       fail-fast: false
@@ -69,14 +72,16 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      # What the images and CI install is pnpm-lock.yaml, so that is what is audited.
-      - name: Enable pnpm
-        run: corepack enable pnpm
-
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: ${{ matrix.app }}/package.json
+
+      # What the images and CI install is pnpm-lock.yaml, so that is what is audited.
+      - name: Enable pnpm
+        run: |
+          npm install --global corepack@0.34.7
+          corepack enable pnpm
 
       - name: Audit ${{ matrix.app }} dependencies
         working-directory: ${{ matrix.app }}
@@ -86,7 +91,10 @@ jobs:
 
   dependency-review:
     name: Dependency Review
+    # Picks the runners for the other jobs, so it runs on GitHub's (bootstrap).
     runs-on: ubuntu-latest
+    outputs:
+      runners: ${{ steps.runners.outputs.runners || '{}' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -102,13 +110,54 @@ jobs:
           echo "=== Direct dependencies ==="
           go list -m -u all 2>/dev/null | grep '\[' || echo "All dependencies are up to date."
 
+      - name: Pick runners (antimatter-vps runners while free, else GitHub's)
+        id: runners
+        # runner-gate.antimatter-studios.com answers once per job: an antimatter-vps runner
+        # while one is free and every identity on this run is christhomas, otherwise
+        # ubuntu-latest; any error is ubuntu-latest too. Its /status page shows the pool.
+        # JOBS has one entry per gated job, and one per matrix leg or reusable-workflow call:
+        # the gate is asked for the job id before any ".", and the whole entry keys the answer.
+        # It is the last step of its job, so it asks only once the run is known to go on.
+        # Dependency Review is the cheapest job here and cannot fail, so it picks for the rest.
+        env:
+          ORG: ${{ github.repository_owner }}
+          ACTOR: ${{ github.triggering_actor }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+          SENDER: ${{ github.event.sender.login }}
+          GH_ACTOR: ${{ github.actor }}
+          JOBS: >-
+            tidy-check security-audit frontend-audit.webmail frontend-audit.admin
+            go-imap-fuzz guide-links
+        run: |
+          set -euo pipefail
+          ours=true
+          for who in "$ACTOR" "$GH_ACTOR" "$SENDER" "$AUTHOR"; do
+            [ -z "$who" ] || [ "$who" = christhomas ] || ours=false
+          done
+          pick() {
+            $ours || { echo ubuntu-latest; return; }
+            r=$(curl -fsS --max-time 10 --get https://runner-gate.antimatter-studios.com/pick \
+                  --data-urlencode "org=$ORG" --data-urlencode prefer=antimatter-vps-linux-x64 \
+                  --data-urlencode fallback=ubuntu-latest --data-urlencode "actor=$ACTOR" --data-urlencode "author=$AUTHOR" \
+                  --data-urlencode "run=${{ github.run_id }}" --data-urlencode "attempt=${{ github.run_attempt }}" \
+                  --data-urlencode "job=$1") || r=ubuntu-latest
+            case "$r" in antimatter-vps-linux-x64|ubuntu-latest) echo "$r" ;; *) echo ubuntu-latest ;; esac
+          }
+          runners='{}'
+          for entry in $JOBS; do
+            runners=$(jq -c --arg j "$entry" --arg r "$(pick "${entry%%.*}")" '. + {($j): $r}' <<<"$runners")
+          done
+          echo "$runners" | jq . | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "runners=$runners" >> "$GITHUB_OUTPUT"
+
   go-imap-fuzz:
+    needs: dependency-review
     name: Vendored go-imap fuzzing
     # Every fuzz target in third_party/go-imap (#1925); go test on a pull request runs
     # only their seed inputs. A failure opens an issue (or updates the one that is
     # open) and keeps the failing inputs as an artifact; the issue closes itself once
     # a whole run passes. Nine targets, at most ten minutes each.
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.dependency-review.outputs.runners)['go-imap-fuzz'] || 'ubuntu-latest' }}
     timeout-minutes: 100
     env:
       GH_TOKEN: ${{ github.token }}
@@ -117,6 +166,9 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up the GitHub CLI
+        uses: ./.github/actions/setup-gh
 
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -180,17 +232,21 @@ jobs:
           fi
 
   guide-links:
+    needs: dependency-review
     name: Email, explained outside links
     # Every outside link in docs/email-explained, and every anchor in one, still
     # answers. A broken one opens an issue listing them (or updates the one that
     # is open), and the issue closes itself once they all answer again.
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.dependency-review.outputs.runners)['guide-links'] || 'ubuntu-latest' }}
     env:
       GH_TOKEN: ${{ github.token }}
       TITLE: "Email, explained: outside links that no longer answer"
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up the GitHub CLI
+        uses: ./.github/actions/setup-gh
 
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0

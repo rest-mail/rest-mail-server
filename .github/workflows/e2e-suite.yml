@@ -10,7 +10,15 @@ on:
   workflow_call:
     inputs:
       runner:
-        description: The runner label for the suite job (the caller asks runner-gate.antimatter-studios.com).
+        description: >-
+          The runner label for the topology job (`suite`). The caller asks
+          runner-gate.antimatter-studios.com with job=suite, the id GitHub names this job by.
+        type: string
+        default: ubuntu-latest
+      isolation-runner:
+        description: >-
+          The runner label for the JS filter isolation job (`js-filter-isolation`), which
+          runs only with contract-phases "gate". The caller asks the gate with job=js-filter-isolation.
         type: string
         default: ubuntu-latest
       contract-phases:
@@ -35,7 +43,7 @@ permissions:
 jobs:
   suite:
     name: topology
-    runs-on: ${{ inputs.runner }}
+    runs-on: ${{ inputs.runner || 'ubuntu-latest' }}
     # The suite took 52 minutes before the live proofs, which may take up to 25.
     timeout-minutes: 85
     env:
@@ -54,6 +62,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
+
       - name: Retry transient image pull failures
         run: echo "$GITHUB_WORKSPACE/scripts/ci/docker-retry" >> "$GITHUB_PATH"
 
@@ -63,8 +74,8 @@ jobs:
           go-version: "1.26.10"
           cache: true
 
-      - name: Install gh where the runner has none (antimatter-vps runners)
-        run: command -v gh >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq gh >/dev/null && gh --version | head -1; }
+      - name: Set up the GitHub CLI
+        uses: ./.github/actions/setup-gh
 
       - name: Install chore (the newest release, attested)
         # The repo is driven by chores.yml, whose tasks declare `args:`. go-task
@@ -195,7 +206,7 @@ jobs:
         run: |
           set -euo pipefail
           selected="$(python3 -B scripts/vertrag_pin.py ensure .cache/bin)"
-          echo "$(dirname "$selected")" >> "$GITHUB_PATH"
+          dirname "$selected" >> "$GITHUB_PATH"
           "$selected" version
 
       - name: Prepare stable contract queue state for fuzz
@@ -406,7 +417,7 @@ jobs:
     # topology job does, so the required `E2E (full topology)` check waits for it.
     name: JS filter isolation
     if: inputs.contract-phases == 'gate'
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.isolation-runner || 'ubuntu-latest' }}
     timeout-minutes: 30
     env:
       RESTMAIL_SKIP_FRONTENDS: "true"
@@ -414,6 +425,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
 
       - name: Retry transient image pull failures
         run: echo "$GITHUB_WORKSPACE/scripts/ci/docker-retry" >> "$GITHUB_PATH"
@@ -423,6 +437,9 @@ jobs:
         with:
           go-version: "1.26.10"
           cache: true
+
+      - name: Set up the GitHub CLI
+        uses: ./.github/actions/setup-gh
 
       - name: Install chore (the newest release, attested)
         # The repo is driven by chores.yml, whose tasks declare `args:`. go-task

@@ -177,26 +177,42 @@ jobs:
 
       - name: Pick runners (antimatter-vps runners while free, else GitHub's)
         id: runners
-        # runner-gate.antimatter-studios.com answers per job: our ARC runner while one is free and
-        # the actor may use it, otherwise the fallback. Unreachable gate -> GitHub. /status shows it.
+        # runner-gate.antimatter-studios.com answers once per job: an antimatter-vps runner
+        # while one is free and every identity on this run is christhomas, otherwise
+        # ubuntu-latest; any error is ubuntu-latest too. Its /status page shows the pool.
+        # JOBS has one entry per gated job, and one per matrix leg or reusable-workflow call:
+        # the gate is asked for the job id before any ".", and the whole entry keys the answer.
+        # It is the last step of its job, so it asks only once the run is known to go on.
+        # The suite's jobs are asked for by their ids inside e2e-suite.yml (suite,
+        # js-filter-isolation), which are the GITHUB_JOB names the runner hook sees.
         env:
           ORG: ${{ github.repository_owner }}
           ACTOR: ${{ github.triggering_actor }}
           AUTHOR: ${{ github.event.pull_request.user.login }}
-          JOBS: e2e-run e2e-contract-pairs e2e-reports e2e-live
+          SENDER: ${{ github.event.sender.login }}
+          GH_ACTOR: ${{ github.actor }}
+          JOBS: >-
+            ${{ steps.classify.outputs.run_e2e == 'true' && 'suite.run js-filter-isolation.run suite.pairs suite.reports suite.live' || '' }}
         run: |
           set -euo pipefail
+          ours=true
+          for who in "$ACTOR" "$GH_ACTOR" "$SENDER" "$AUTHOR"; do
+            [ -z "$who" ] || [ "$who" = christhomas ] || ours=false
+          done
           pick() {
-            curl -fsS --max-time 10 --get https://runner-gate.antimatter-studios.com/pick \
-              --data-urlencode "org=$ORG" --data-urlencode prefer=antimatter-vps-linux-x64 \
-              --data-urlencode fallback=ubuntu-latest --data-urlencode "actor=$ACTOR" \
-              --data-urlencode "author=$AUTHOR" || echo ubuntu-latest
+            $ours || { echo ubuntu-latest; return; }
+            r=$(curl -fsS --max-time 10 --get https://runner-gate.antimatter-studios.com/pick \
+                  --data-urlencode "org=$ORG" --data-urlencode prefer=antimatter-vps-linux-x64 \
+                  --data-urlencode fallback=ubuntu-latest --data-urlencode "actor=$ACTOR" --data-urlencode "author=$AUTHOR" \
+                  --data-urlencode "run=${{ github.run_id }}" --data-urlencode "attempt=${{ github.run_attempt }}" \
+                  --data-urlencode "job=$1") || r=ubuntu-latest
+            case "$r" in antimatter-vps-linux-x64|ubuntu-latest) echo "$r" ;; *) echo ubuntu-latest ;; esac
           }
           runners='{}'
-          for job in $JOBS; do
-            runners=$(jq -c --arg j "$job" --arg r "$(pick)" '. + {($j): $r}' <<<"$runners")
+          for entry in $JOBS; do
+            runners=$(jq -c --arg j "$entry" --arg r "$(pick "${entry%%.*}")" '. + {($j): $r}' <<<"$runners")
           done
-          echo "$runners" | jq .
+          echo "$runners" | jq . | tee -a "$GITHUB_STEP_SUMMARY"
           echo "runners=$runners" >> "$GITHUB_OUTPUT"
 
   e2e-run:
@@ -205,7 +221,8 @@ jobs:
     if: needs.changes.outputs.run_e2e == 'true' && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     uses: ./.github/workflows/e2e-suite.yml
     with:
-      runner: ${{ fromJSON(needs.changes.outputs.runners)['e2e-run'] || 'ubuntu-latest' }}
+      runner: ${{ fromJSON(needs.changes.outputs.runners)['suite.run'] || 'ubuntu-latest' }}
+      isolation-runner: ${{ fromJSON(needs.changes.outputs.runners)['js-filter-isolation.run'] || 'ubuntu-latest' }}
       contract-phases: gate
       description-mode: ${{ inputs.description-mode || 'saved' }}
 
@@ -215,7 +232,7 @@ jobs:
     if: needs.changes.outputs.run_e2e == 'true' && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     uses: ./.github/workflows/e2e-suite.yml
     with:
-      runner: ${{ fromJSON(needs.changes.outputs.runners)['e2e-contract-pairs'] || 'ubuntu-latest' }}
+      runner: ${{ fromJSON(needs.changes.outputs.runners)['suite.pairs'] || 'ubuntu-latest' }}
       contract-phases: pairs
       description-mode: ${{ inputs.description-mode || 'saved' }}
 
@@ -225,7 +242,7 @@ jobs:
     if: needs.changes.outputs.run_e2e == 'true' && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     uses: ./.github/workflows/e2e-suite.yml
     with:
-      runner: ${{ fromJSON(needs.changes.outputs.runners)['e2e-reports'] || 'ubuntu-latest' }}
+      runner: ${{ fromJSON(needs.changes.outputs.runners)['suite.reports'] || 'ubuntu-latest' }}
       contract-phases: reports
       description-mode: ${{ inputs.description-mode || 'saved' }}
 
@@ -235,7 +252,7 @@ jobs:
     if: needs.changes.outputs.run_e2e == 'true' && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     uses: ./.github/workflows/e2e-suite.yml
     with:
-      runner: ${{ fromJSON(needs.changes.outputs.runners)['e2e-live'] || 'ubuntu-latest' }}
+      runner: ${{ fromJSON(needs.changes.outputs.runners)['suite.live'] || 'ubuntu-latest' }}
       contract-phases: live
       description-mode: ${{ inputs.description-mode || 'saved' }}
 
@@ -247,6 +264,8 @@ jobs:
     name: E2E (every example is proven)
     needs: [preflight, changes, e2e-run, e2e-contract-pairs, e2e-live]
     if: always() && needs.preflight.result == 'success' && needs.changes.outputs.run_e2e == 'true' && github.event_name != 'workflow_dispatch' && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
+    # Waits for the whole suite: no job before it can pick within the gate's 120 s
+    # reservation, so it stays on GitHub's runners.
     runs-on: ubuntu-latest
     timeout-minutes: 70
     permissions:
@@ -255,6 +274,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
 
       - name: Download the live proofs
         continue-on-error: true
@@ -273,7 +295,6 @@ jobs:
       - name: Every example that needs setup is proven by some runner
         run: |
           set -euo pipefail
-          python3 -m pip install --quiet pyyaml idna==3.11
           mapfile -t proofs < <(find "$RUNNER_TEMP/proofs" -name '*.json' | sort)
           if [ "${#proofs[@]}" -lt 4 ]; then
             echo "::error::expected example proofs from all 4 internal/api shards, found ${#proofs[@]} files" >&2

@@ -1,0 +1,10 @@
+name: Set up Python
+description: Install Python and the dependencies shared by the CI and local gates
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+      with:
+        python-version: "3.13"
+    - shell: bash
+      run: python3 -m pip install --disable-pip-version-check PyYAML==6.0.3 idna==3.11 'jsonschema[format]' requests

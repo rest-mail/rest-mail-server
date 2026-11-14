@@ -74,26 +74,46 @@ jobs:
 
       - name: Pick runners (antimatter-vps runners while free, else GitHub's)
         id: runners
-        # runner-gate.antimatter-studios.com answers per job: our ARC runner while one is free and
-        # the actor may use it, otherwise the fallback. Unreachable gate -> GitHub. /status shows it.
+        # runner-gate.antimatter-studios.com answers once per job: an antimatter-vps runner
+        # while one is free and every identity on this run is christhomas, otherwise
+        # ubuntu-latest; any error is ubuntu-latest too. Its /status page shows the pool.
+        # JOBS has one entry per gated job, and one per matrix leg or reusable-workflow call:
+        # the gate is asked for the job id before any ".", and the whole entry keys the answer.
+        # It is the last step of its job, so it asks only once the run is known to go on.
         env:
           ORG: ${{ github.repository_owner }}
           ACTOR: ${{ github.triggering_actor }}
           AUTHOR: ${{ github.event.pull_request.user.login }}
-          JOBS: test js-filter webapp-images first-start test-contract test-api test-handlers lint test-imap constellation contract-tooling attachments-s3 build helm webmail admin guide test-report seed-caches
+          SENDER: ${{ github.event.sender.login }}
+          GH_ACTOR: ${{ github.actor }}
+          JOBS: >-
+            ${{ github.event_name == 'push' && 'seed-caches' || '' }}
+            ${{ github.event_name == 'pull_request' && 'contract-diff' || '' }}
+            test-api.1 test-api.2 test-api.3 test-api.4
+            test-handlers.1 test-handlers.2 test-handlers.3 test-handlers.4
+            test test-contract lint js-filter first-start
+            webapp-images.webmail webapp-images.admin
+            constellation contract-tooling attachments-s3 helm webmail admin guide
         run: |
           set -euo pipefail
+          ours=true
+          for who in "$ACTOR" "$GH_ACTOR" "$SENDER" "$AUTHOR"; do
+            [ -z "$who" ] || [ "$who" = christhomas ] || ours=false
+          done
           pick() {
-            curl -fsS --max-time 10 --get https://runner-gate.antimatter-studios.com/pick \
-              --data-urlencode "org=$ORG" --data-urlencode prefer=antimatter-vps-linux-x64 \
-              --data-urlencode fallback=ubuntu-latest --data-urlencode "actor=$ACTOR" \
-              --data-urlencode "author=$AUTHOR" || echo ubuntu-latest
+            $ours || { echo ubuntu-latest; return; }
+            r=$(curl -fsS --max-time 10 --get https://runner-gate.antimatter-studios.com/pick \
+                  --data-urlencode "org=$ORG" --data-urlencode prefer=antimatter-vps-linux-x64 \
+                  --data-urlencode fallback=ubuntu-latest --data-urlencode "actor=$ACTOR" --data-urlencode "author=$AUTHOR" \
+                  --data-urlencode "run=${{ github.run_id }}" --data-urlencode "attempt=${{ github.run_attempt }}" \
+                  --data-urlencode "job=$1") || r=ubuntu-latest
+            case "$r" in antimatter-vps-linux-x64|ubuntu-latest) echo "$r" ;; *) echo ubuntu-latest ;; esac
           }
           runners='{}'
-          for job in $JOBS; do
-            runners=$(jq -c --arg j "$job" --arg r "$(pick)" '. + {($j): $r}' <<<"$runners")
+          for entry in $JOBS; do
+            runners=$(jq -c --arg j "$entry" --arg r "$(pick "${entry%%.*}")" '. + {($j): $r}' <<<"$runners")
           done
-          echo "$runners" | jq .
+          echo "$runners" | jq . | tee -a "$GITHUB_STEP_SUMMARY"
           echo "runners=$runners" >> "$GITHUB_OUTPUT"
 
   seed-caches:
@@ -108,6 +128,9 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
+
       - name: Set up Go
         id: go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -121,6 +144,9 @@ jobs:
           set -euo pipefail
           go mod download
           go build ./...
+
+      - name: Set up cgo
+        uses: ./.github/actions/setup-cgo
 
       # The race detector's builds have a cache of their own, because they are large and
       # only Test and the internal/api shards use them. The week in the key refreshes it
@@ -200,7 +226,7 @@ jobs:
     needs: preflight
     name: API contract changes
     if: github.event_name == 'pull_request' && (github.event.action != 'edited' || github.event.changes.base.ref.from != '')
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.preflight.outputs.runners)['contract-diff'] || 'ubuntu-latest' }}
     timeout-minutes: 15
     permissions:
       contents: read
@@ -213,6 +239,12 @@ jobs:
           # The history that says where this PR branched from its base.
           fetch-depth: 0
           persist-credentials: false
+
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
+
+      - name: Set up the GitHub CLI
+        uses: ./.github/actions/setup-gh
 
       # The comparison starts at the merge base, not the base tip: a head that has
       # not seen a newer base commit did not remove what that commit added (#1752).
@@ -375,6 +407,9 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
+
       - name: Check constellation inventory
         run: python3 -m unittest discover -s scripts/tests -p 'test_*.py'
 
@@ -387,9 +422,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
+
       - name: Test contract tooling
         run: |
-          python3 -m pip install --quiet pyyaml idna==3.11
           python3 -m unittest discover -s tests/contract -p 'test_*.py'
 
   lint:
@@ -398,10 +435,14 @@ jobs:
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     runs-on: ${{ fromJSON(needs.preflight.outputs.runners)['lint'] || 'ubuntu-latest' }}
     outputs:
+      runners: ${{ steps.runners.outputs.runners || '{}' }}
       go_imap_changed: ${{ steps.go-imap.outputs.go_imap_changed }}
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
 
       - name: Test load tooling
         run: python3 -m unittest discover -s tests/load -p 'test_*.py'
@@ -471,6 +512,45 @@ jobs:
           args: --timeout=5m --no-config
           verify: false
 
+      - name: Pick runners (antimatter-vps runners while free, else GitHub's)
+        id: runners
+        # runner-gate.antimatter-studios.com answers once per job: an antimatter-vps runner
+        # while one is free and every identity on this run is christhomas, otherwise
+        # ubuntu-latest; any error is ubuntu-latest too. Its /status page shows the pool.
+        # JOBS has one entry per gated job, and one per matrix leg or reusable-workflow call:
+        # the gate is asked for the job id before any ".", and the whole entry keys the answer.
+        # It is the last step of its job, so it asks only once the run is known to go on.
+        # Test IMAP module waits for this job, so it picks here: Preflight's answer would
+        # be minutes old, past the gate's 120 s reservation, by the time that job starts.
+        env:
+          ORG: ${{ github.repository_owner }}
+          ACTOR: ${{ github.triggering_actor }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+          SENDER: ${{ github.event.sender.login }}
+          GH_ACTOR: ${{ github.actor }}
+          JOBS: test-imap
+        run: |
+          set -euo pipefail
+          ours=true
+          for who in "$ACTOR" "$GH_ACTOR" "$SENDER" "$AUTHOR"; do
+            [ -z "$who" ] || [ "$who" = christhomas ] || ours=false
+          done
+          pick() {
+            $ours || { echo ubuntu-latest; return; }
+            r=$(curl -fsS --max-time 10 --get https://runner-gate.antimatter-studios.com/pick \
+                  --data-urlencode "org=$ORG" --data-urlencode prefer=antimatter-vps-linux-x64 \
+                  --data-urlencode fallback=ubuntu-latest --data-urlencode "actor=$ACTOR" --data-urlencode "author=$AUTHOR" \
+                  --data-urlencode "run=${{ github.run_id }}" --data-urlencode "attempt=${{ github.run_attempt }}" \
+                  --data-urlencode "job=$1") || r=ubuntu-latest
+            case "$r" in antimatter-vps-linux-x64|ubuntu-latest) echo "$r" ;; *) echo ubuntu-latest ;; esac
+          }
+          runners='{}'
+          for entry in $JOBS; do
+            runners=$(jq -c --arg j "$entry" --arg r "$(pick "${entry%%.*}")" '. + {($j): $r}' <<<"$runners")
+          done
+          echo "$runners" | jq . | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "runners=$runners" >> "$GITHUB_OUTPUT"
+
   test:
     needs: preflight
     name: Test
@@ -494,11 +574,17 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
+
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: "1.26.10"
           cache: true
+
+      - name: Set up cgo
+        uses: ./.github/actions/setup-cgo
 
       # The race jobs share their build cache. Set it after setup-go,
       # so that its own cache keeps its own path. seed-caches writes this one, on main.
@@ -634,11 +720,17 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
+
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: "1.26.10"
           cache: true
+
+      - name: Set up cgo
+        uses: ./.github/actions/setup-cgo
 
       # The race jobs share their build cache. Set it after setup-go,
       # so that its own cache keeps its own path. seed-caches writes this one, on main.
@@ -676,7 +768,6 @@ jobs:
       - name: Test the contract fault switch
         run: |
           set -euo pipefail
-          python3 -m pip install --quiet pyyaml
           tags="$(python3 -B tests/contract/faults.py tags)"
           go vet -tags "$tags" ./cmd/api ./internal/faultinject
           go test -race -count=1 -tags "$tags" ./internal/faultinject
@@ -684,17 +775,23 @@ jobs:
   test-imap:
     name: Test IMAP module
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
-    runs-on: ${{ fromJSON(needs.preflight.outputs.runners)['test-imap'] || 'ubuntu-latest' }}
+    runs-on: ${{ fromJSON(needs.lint.outputs.runners)['test-imap'] || 'ubuntu-latest' }}
     needs: [preflight, lint]
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
 
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: "1.26.10"
           cache: true
+
+      - name: Set up cgo
+        uses: ./.github/actions/setup-cgo
 
       # The race jobs share their build cache. Set it after setup-go,
       # so that its own cache keeps its own path. seed-caches writes this one, on main.
@@ -763,7 +860,7 @@ jobs:
     needs: preflight
     name: Test internal/api/handlers (${{ matrix.shard }} of 4)
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
-    runs-on: ${{ fromJSON(needs.preflight.outputs.runners)['test-handlers'] || 'ubuntu-latest' }}
+    runs-on: ${{ fromJSON(needs.preflight.outputs.runners)[format('test-handlers.{0}', matrix.shard)] || 'ubuntu-latest' }}
     strategy:
       fail-fast: false
       matrix:
@@ -786,11 +883,17 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
+
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: "1.26.10"
           cache: true
+
+      - name: Set up cgo
+        uses: ./.github/actions/setup-cgo
 
       # The race jobs share their build cache. Set it after setup-go,
       # so that its own cache keeps its own path. seed-caches writes this one, on main.
@@ -891,7 +994,7 @@ jobs:
     # detector, most of it in PostgreSQL fixtures, against a 20 minute limit per
     # package (#1307). Each shard runs every fourth of its top-level tests, by
     # name, against a database of its own, beside the Test job.
-    runs-on: ${{ fromJSON(needs.preflight.outputs.runners)['test-api'] || 'ubuntu-latest' }}
+    runs-on: ${{ fromJSON(needs.preflight.outputs.runners)[format('test-api.{0}', matrix.shard)] || 'ubuntu-latest' }}
     strategy:
       fail-fast: false
       matrix:
@@ -914,11 +1017,17 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
+
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: "1.26.10"
           cache: true
+
+      - name: Set up cgo
+        uses: ./.github/actions/setup-cgo
 
       # The race jobs share their build cache. Set it after setup-go,
       # so that its own cache keeps its own path. seed-caches writes this one, on main.
@@ -1017,11 +1126,16 @@ jobs:
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     # Joins what Test and both API matrices wrote: the example
     # proofs, judged as one set, and the coverage, as one profile.
-    runs-on: ${{ fromJSON(needs.preflight.outputs.runners)['test-report'] || 'ubuntu-latest' }}
+    # Waits for every test job, which end minutes apart: no job before it can pick
+    # within the gate's 120 s reservation, so it stays on GitHub's runners.
+    runs-on: ubuntu-latest
     needs: [preflight, test, test-api, test-handlers, test-contract, test-imap]
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
 
       - name: Download example proofs
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -1091,6 +1205,10 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
+
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: "1.26.10"
@@ -1101,7 +1219,9 @@ jobs:
   build:
     name: Build
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
-    runs-on: ${{ fromJSON(needs.preflight.outputs.runners)['build'] || 'ubuntu-latest' }}
+    # Waits for every test job, which end minutes apart: no job before it can pick
+    # within the gate's 120 s reservation, so it stays on GitHub's runners.
+    runs-on: ubuntu-latest
     needs: [preflight, test, test-api, test-handlers, test-contract, test-imap]
     steps:
       - name: Checkout code
@@ -1142,6 +1262,9 @@ jobs:
         with:
           fetch-depth: 2
 
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
+
       # helm.yml refuses a version already published, which is too late to say so.
       - name: Refuse a chart change without a new version
         if: github.event_name != 'push'
@@ -1151,6 +1274,9 @@ jobs:
         uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         with:
           version: v3.16.2
+
+      - name: Set up yq
+        run: bash scripts/ci/install-yq "$RUNNER_TEMP/bin"
 
       - name: Lint and render (render-test.sh)
         run: helm/restmail/tests/render-test.sh
@@ -1170,24 +1296,18 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      # corepack ships with the runner's preinstalled Node and activates the
-      # pnpm version pinned in package.json, so no extra action needs pinning.
-      # It must run BEFORE setup-node, which needs pnpm on PATH to resolve its
-      # dependency cache.
-      - name: Enable pnpm
-        run: corepack enable pnpm
-
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          # The supported range lives in the app's package.json (engines.node);
-          # setup-node reads it, so CI cannot drift from what the app declares.
-          # engine-strict in .npmrc then fails the install if it ever does.
-          #
           # No `cache: pnpm`: its post-job save fails the job when the store path it
           # resolved from the repository root does not exist, which took down builds
           # that had already passed. Installing two small apps is cheap.
           node-version-file: webmail/package.json
+
+      - name: Enable pnpm
+        run: |
+          npm install --global corepack@0.34.7
+          corepack enable pnpm
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -1230,24 +1350,18 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      # corepack ships with the runner's preinstalled Node and activates the
-      # pnpm version pinned in package.json, so no extra action needs pinning.
-      # It must run BEFORE setup-node, which needs pnpm on PATH to resolve its
-      # dependency cache.
-      - name: Enable pnpm
-        run: corepack enable pnpm
-
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          # The supported range lives in the app's package.json (engines.node);
-          # setup-node reads it, so CI cannot drift from what the app declares.
-          # engine-strict in .npmrc then fails the install if it ever does.
-          #
           # No `cache: pnpm`: its post-job save fails the job when the store path it
           # resolved from the repository root does not exist, which took down builds
           # that had already passed. Installing two small apps is cheap.
           node-version-file: admin/package.json
+
+      - name: Enable pnpm
+        run: |
+          npm install --global corepack@0.34.7
+          corepack enable pnpm
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -1304,6 +1418,9 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
 
       - name: Retry transient image pull failures
         run: echo "$GITHUB_WORKSPACE/scripts/ci/docker-retry" >> "$GITHUB_PATH"
@@ -1396,6 +1513,9 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
+
       - name: Retry transient image pull failures
         run: echo "$GITHUB_WORKSPACE/scripts/ci/docker-retry" >> "$GITHUB_PATH"
 
@@ -1406,7 +1526,7 @@ jobs:
           cache: true
 
       - name: Tools
-        run: sudo apt-get install -y --no-install-recommends oathtool
+        run: python3 scripts/ci/install_oathtool.py "$RUNNER_TEMP/oathtool"
 
       - name: Build the CLI and the API image
         run: |
@@ -1426,7 +1546,7 @@ jobs:
     needs: preflight
     name: Web app image (${{ matrix.app }})
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
-    runs-on: ${{ fromJSON(needs.preflight.outputs.runners)['webapp-images'] || 'ubuntu-latest' }}
+    runs-on: ${{ fromJSON(needs.preflight.outputs.runners)[format('webapp-images.{0}', matrix.app)] || 'ubuntu-latest' }}
     strategy:
       fail-fast: false
       matrix:

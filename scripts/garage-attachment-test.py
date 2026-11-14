@@ -16,7 +16,9 @@ def main():
     token = secrets.token_hex(32)
     access = "GK" + secrets.token_hex(12)
     secret = secrets.token_hex(32)
-    with tempfile.TemporaryDirectory(prefix="restmail-garage-") as directory:
+    # Under the runner's work directory when there is one: on the antimatter-vps runners Docker
+    # is a sidecar that sees that directory, and not the runner's /tmp, so a mount from there is empty.
+    with tempfile.TemporaryDirectory(prefix="restmail-garage-", dir=os.environ.get("RUNNER_TEMP") or None) as directory:
         config = Path(directory) / "garage.toml"
         config.write_text('metadata_dir = "/data/meta"\ndata_dir = "/data/objects"\n'
                           'db_engine = "lmdb"\nreplication_factor = 1\n'
