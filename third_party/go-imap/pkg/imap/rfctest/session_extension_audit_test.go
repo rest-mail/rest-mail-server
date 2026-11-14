@@ -27,7 +27,10 @@ func (b *acceptingCredentials) Authenticate(user, pass string) (imap.Mailbox, er
 
 // RFC4616 section2 requires exactly two NUL delimiters, nonempty authcid and
 // password, and well-formed UTF-8. Both SASL-IR and continuation exchanges must
-// refuse malformed fields without invoking even a permissive backend.
+// refuse malformed fields without invoking even a permissive backend. Each
+// payload here is valid base64, so the refusal is an authentication failure
+// (NO), not the protocol error RFC9051 section6.2.2 reserves BAD for: that is
+// a response that does not decode (TestPlainBase64Alphabet).
 // checklist: IMAP-PLAIN-01 IMAP-PLAIN-02
 func TestPlainMalformedPayloads(t *testing.T) {
 	for _, initial := range []bool{false, true} {
@@ -170,7 +173,9 @@ func TestLiteralLoginRFC7888Example(t *testing.T) {
 
 // RFC4959 section3 requires the base64 alphabet, with padding only at the
 // end. Go's general base64 decoder tolerates CR/LF; SASL wire tokens cannot.
-// checklist: IMAP-SASLIR-06
+// RFC9051 section6.2.2: a response that does not decode MUST get a tagged BAD,
+// in the continuation and the initial-response form alike.
+// checklist: IMAP-SASLIR-06 IMAP2-CMD-52 IMAP2-CMD-54
 func TestPlainBase64Alphabet(t *testing.T) {
 	valid := plainResponse("alice", "secret")
 	for _, initial := range []bool{false, true} {
@@ -186,12 +191,7 @@ func TestPlainBase64Alphabet(t *testing.T) {
 				} else {
 					tagged = c.authenticate("A1", "PLAIN", encoded)
 				}
-				want := "A1 NO "
-				if initial && strings.Contains(encoded, "\r") {
-					// A CR on the command line itself is a syntax error (RFC 3501 §2.2).
-					want = "A1 BAD "
-				}
-				if !strings.HasPrefix(tagged, want) || b.calls != 0 {
+				if !strings.HasPrefix(tagged, "A1 BAD ") || b.calls != 0 {
 					t.Fatalf("invalid base64: reply=%q backend calls=%d", tagged, b.calls)
 				}
 				_, retry := c.command("A2", "AUTHENTICATE PLAIN %s", valid)

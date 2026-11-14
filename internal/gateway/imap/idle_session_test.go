@@ -67,6 +67,10 @@ func TestServer_IdleSeesImportFromAnotherClient(t *testing.T) {
 			if notification := idle.readLine(); notification != "* 2 EXISTS" {
 				t.Fatalf("IDLE after %s = %q, want * 2 EXISTS within thirty seconds", operation, notification)
 			}
+			// The arrival is recent to the idling session, the first told of it.
+			if notification := idle.readLine(); notification != "* 2 RECENT" {
+				t.Fatalf("IDLE after %s = %q, want * 2 RECENT", operation, notification)
+			}
 			idle.send("DONE")
 			if lines, status := idle.readResponse("i3"); len(lines) != 0 || !strings.HasPrefix(status, "i3 OK ") {
 				t.Fatalf("IDLE completion: %q, %q", lines, status)

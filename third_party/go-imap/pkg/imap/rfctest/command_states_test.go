@@ -79,7 +79,8 @@ func (c *client) authenticate(tag, mech, resp string) string {
 
 // TestAuthenticateCommand covers RFC 3501 §6.2.2: AUTHENTICATE PLAIN is
 // implemented and advertised, a continuation carries the exchange, success
-// enters the authenticated state, a "*" cancel is BAD, rejected credentials and
+// enters the authenticated state, a "*" cancel is BAD, a response that is not
+// valid base64 is BAD (RFC 9051 §6.2.2), rejected credentials and
 // unsupported mechanisms are NO, and a missing mechanism is BAD. Success
 // carries a CAPABILITY response code. (An initial response on the command
 // line is RFC 4959's, TestSASLIR.) Failures leave the session not authenticated and able to
@@ -110,6 +111,11 @@ func TestAuthenticateCommand(t *testing.T) {
 		t.Errorf("cancelled AUTHENTICATE: %q, want tagged BAD", got)
 	}
 	selectRefused("s1")
+
+	if got := c.authenticate("a8", "PLAIN", "AAA=BBB"); !strings.HasPrefix(got, "a8 BAD") {
+		t.Errorf("invalid base64 response: %q, want tagged BAD", got)
+	}
+	selectRefused("s5")
 
 	if got := c.authenticate("a2", "PLAIN", plainResponse(testUser, "wrong")); !strings.HasPrefix(got, "a2 NO") {
 		t.Errorf("wrong credentials: %q, want tagged NO", got)

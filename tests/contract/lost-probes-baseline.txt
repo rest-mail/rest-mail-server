@@ -21,6 +21,9 @@ openGatewaySession 14
 # no-hosted-domain refusal (422 validation_failed on policies) to a schema-valid
 # body. External reports stay lenient.
 receiveTlsReport 32
+# The account-time-zone hook replaces the generator placeholder with UTC.
+# Measured by the source PR's narrowed account-time-zone coverage run.
+setAccountTimeZone 3
 # pipeline_id must name a pipeline.
 testPipeline 3
 # Sent unchanged and verified as 409 account_not_invitable by probe_refusals.py;

@@ -350,14 +350,21 @@ func (s *Session) applyDeleted(uid uint32, mode storeMode, listed bool) {
 }
 
 // flagString renders msg's flags for a FETCH response, adding the session-local
-// \Deleted state that buildFlags (which sees only the Message) cannot know.
+// \Deleted and \Recent state that buildFlags (which sees only the Message)
+// cannot know. \Recent is a system flag a FETCH reports (RFC 3501 §2.3.2).
 func (s *Session) flagString(msg imap.Message) string {
 	flags := buildFlags(msg)
-	if s.deleted[msg.UID] {
-		if flags == "" {
-			return `\Deleted`
+	for _, local := range []struct {
+		set  bool
+		name string
+	}{{s.deleted[msg.UID], `\Deleted`}, {s.recent[msg.UID], `\Recent`}} {
+		if !local.set {
+			continue
 		}
-		return flags + ` \Deleted`
+		if flags != "" {
+			flags += " "
+		}
+		flags += local.name
 	}
 	return flags
 }

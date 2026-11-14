@@ -115,7 +115,7 @@ func TestMessageSearchUpdateStoredExamples(t *testing.T) {
 			seed := models.Message{ID: 1, MailboxID: f.mailboxID, Folder: "INBOX", MsgID: "<message@example.net>",
 				Sender: "sender@example.net", SenderName: "Sender", RecipientsTo: models.JSONB(`["recipient@example.com"]`),
 				RecipientsCc: models.JSONB(`[]`), Subject: "Subject", Headers: models.JSONB(`{"Subject":["Subject"]}`),
-				SizeBytes: 80, RawSize: 137, DowngradedSize: 137, ReceivedAt: stamp, DateHeader: &stamp, CreatedAt: stamp, UpdatedAt: stamp}
+				SizeBytes: 80, RawSize: 137, DowngradedSize: 137, POP3UTF8Size: 137, IMAPSize: 137, IMAPUTF8Size: 137, ReceivedAt: stamp, DateHeader: &stamp, CreatedAt: stamp, UpdatedAt: stamp}
 			if err := f.db.Create(&seed).Error; err != nil {
 				t.Fatal(err)
 			}

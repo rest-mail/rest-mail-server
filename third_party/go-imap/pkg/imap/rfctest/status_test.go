@@ -76,8 +76,8 @@ func TestStatusExample(t *testing.T) {
 }
 
 // TestStatusRequestedItems checks exact item membership, values, order and case
-// independently of the currently selected mailbox. RECENT is intentionally not
-// asserted: the backend has no independent Recent field.
+// independently of the currently selected mailbox. RECENT is proved by
+// TestRecentClaimedByFirstSelect.
 //
 // checklist: IMAP-STATUS-01 IMAP-STATUS-02
 // checklist: IMAP2-SEC-227

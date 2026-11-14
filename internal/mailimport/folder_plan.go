@@ -44,20 +44,20 @@ func planFolders(claims []folderClaim, renamed func(FolderRename)) map[string]st
 	taken := make(map[string]bool, len(ordered))
 	var losers []folderClaim
 	for _, claim := range ordered {
-		if taken[claim.name] {
+		if taken[rmail.CanonicalFolder(claim.name)] {
 			losers = append(losers, claim)
 			continue
 		}
-		taken[claim.name] = true
+		taken[rmail.CanonicalFolder(claim.name)] = true
 		plan[claim.source] = claim.name
 		if claim.reason != "" && renamed != nil {
 			renamed(FolderRename{Source: claim.source, Folder: claim.name, Reason: claim.reason})
 		}
 	}
 	for _, claim := range losers {
-		name := claim.name
+		name := rmail.CanonicalFolder(claim.name)
 		for n := 2; taken[name]; n++ {
-			name = numberedFolder(claim.name, n)
+			name = numberedFolder(rmail.CanonicalFolder(claim.name), n)
 		}
 		taken[name] = true
 		plan[claim.source] = name

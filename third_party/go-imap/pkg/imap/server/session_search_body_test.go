@@ -9,11 +9,10 @@ import (
 	"github.com/rest-mail/go-imap/pkg/imap"
 )
 
-// SEARCH BODY, TEXT and RECENT are known RFC 3501 §6.4.4 keys that must match a
-// real subset, not every message. BODY <s> matches a case-insensitive substring
-// in the message body (text); TEXT <s> matches header OR body; RECENT matches the
-// \Recent messages — which this engine models as the unseen set, exactly as the
-// RECENT count reported by SELECT/EXAMINE and STATUS does.
+// SEARCH BODY and TEXT are known RFC 3501 §6.4.4 keys that must match a real
+// subset, not every message. BODY <s> matches a case-insensitive substring in
+// the message body (text); TEXT <s> matches header OR body. RECENT is proved in
+// rfctest (TestSearchRecentNewOld).
 //
 // Each corpus message carries a distinct header-only term (the Subject) and a
 // distinct body-only term, so a match can be attributed to the header or the body
@@ -99,25 +98,6 @@ func TestIMAP_Search_Text(t *testing.T) {
 		if !reflect.DeepEqual(seqs, tc.want) {
 			t.Errorf("SEARCH %s = %v, want %v", tc.query, seqs, tc.want)
 		}
-	}
-}
-
-// RECENT matches only the \Recent (here: unseen) messages, not ALL. seq1 is
-// \Seen, so RECENT is seq2,seq3.
-func TestIMAP_Search_Recent(t *testing.T) {
-	h := newBodySearchHarness(t)
-	untagged, status := h.command("r1", "SEARCH RECENT")
-	if !strings.Contains(status, " OK") {
-		t.Fatalf("SEARCH RECENT status = %q, want OK", status)
-	}
-	if seqs, _ := searchSeqs(untagged); !reflect.DeepEqual(seqs, []int{2, 3}) {
-		t.Errorf("SEARCH RECENT = %v, want [2 3] (unseen), not ALL", seqs)
-	}
-
-	// AND with another key: RECENT SEEN is empty, since RECENT excludes \Seen.
-	untagged, _ = h.command("r2", "SEARCH RECENT SEEN")
-	if seqs, _ := searchSeqs(untagged); len(seqs) != 0 {
-		t.Errorf("SEARCH RECENT SEEN = %v, want none (RECENT excludes \\Seen)", seqs)
 	}
 }
 

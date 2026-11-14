@@ -64,7 +64,7 @@ Keywords are preserved case-insensitively (first spelling retained), with at mos
 without a backslash. Invalid metadata is refused clearly, never silently dropped.
 
 Source hierarchy delimiters are mapped to `/`. Every folder is named before
-any import, and a folder name never stops the import or leaves mail behind: see
+any import, and a folder name never stops the import or leaves mail behind. Names are saved in Unicode Normalization Form C (NFC). Source folders matching after normalization stay separate, with a numbered suffix. A decomposed name that matches an existing destination folder also receives a numbered suffix unless that folder already contains the same message. See
 [Folder names that collide or are invalid](#folder-names-that-collide-or-are-invalid). Non-selectable parents are
 skipped; their selectable children are still copied. Empty source folders cannot
 be created by this message-import operation. The same Message-ID in different
@@ -213,7 +213,12 @@ before retiring the old server.
 `POST /api/v1/accounts/{id}/messages/import` accepts `raw_message` as base64,
 `folder` (default INBOX), supported IMAP `flags`, and required RFC3339
 `internal_date`. Its 200 response contains `data.id`, `data.message_id`,
-`data.folder` and `data.imported`; `false` identifies an existing copy.
+`data.folder` and `data.imported`; `false` identifies an existing copy. A
+`folder` that is not in NFC is converted. If a folder with the converted name
+already exists and does not hold this message, the message goes to `Name (2)`, or
+the next free number, and `data.folder` says which. Send the rest of that source
+folder to the folder in the first answer, as the commands above do, so that it
+stays in one place.
 
 Imports preserve original octets and attachment contents without running spam,
 Sieve, forwarding, vacation, notification or other delivery behavior. Successful

@@ -54,8 +54,9 @@ func TestCondstoreThroughTheAPI(t *testing.T) {
 
 	lines, status = c.command("f1", "FETCH 1:* (FLAGS) (CHANGEDSINCE 3)")
 	if !strings.HasPrefix(status, "f1 OK") || !slices.Equal(lines, []string{
-		"* 4 FETCH (UID 4 FLAGS () MODSEQ (4))",
-		"* 5 FETCH (UID 5 FLAGS () MODSEQ (5))",
+		// This session selected INBOX first, so every message is \Recent to it.
+		`* 4 FETCH (UID 4 FLAGS (\Recent) MODSEQ (4))`,
+		`* 5 FETCH (UID 5 FLAGS (\Recent) MODSEQ (5))`,
 	}) {
 		t.Fatalf("FETCH CHANGEDSINCE 3: %v %s", lines, status)
 	}

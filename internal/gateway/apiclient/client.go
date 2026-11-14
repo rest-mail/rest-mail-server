@@ -674,6 +674,20 @@ func (c *Client) GetQuota(token string, accountID uint) (*QuotaResponse, error) 
 	return &resp, nil
 }
 
+// ── Account time zone ─────────────────────────────────────────────────
+
+type AccountTimeZoneResponse = endpoint.Data[apitypes.AccountTimeZone]
+
+// GetAccountTimeZone returns the account's time zone setting. Its TimeZone is nil
+// when the account has none.
+func (c *Client) GetAccountTimeZone(token string, accountID uint) (*AccountTimeZoneResponse, error) {
+	var resp AccountTimeZoneResponse
+	if err := c.getAuth(fmt.Sprintf("/api/v1/accounts/%d/time-zone", accountID), token, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
 // ── Search ────────────────────────────────────────────────────────────
 
 // Search performs full-text search across messages.

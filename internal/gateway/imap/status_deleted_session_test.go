@@ -48,7 +48,7 @@ func TestStatusDeletedThroughTheSession(t *testing.T) {
 			if deleted[id] && !withDeleted {
 				continue
 			}
-			items = append(items, fmt.Sprintf(`{"id":%d,"is_read":true,"imap_deleted":%t,"raw_size":10}`, id, deleted[id]))
+			items = append(items, fmt.Sprintf(`{"id":%d,"is_read":true,"imap_deleted":%t,"raw_size":10,"imap_size":10}`, id, deleted[id]))
 		}
 		reply(w, `{"data":[`+strings.Join(items, ",")+`]}`)
 	})

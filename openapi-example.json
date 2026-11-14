@@ -12502,6 +12502,9 @@
             "size_bytes": 80,
             "raw_size": 137,
             "downgraded_size": 137,
+            "pop3_utf8_size": 137,
+            "imap_size": 137,
+            "imap_utf8_size": 137,
             "has_attachments": false,
             "is_read": false,
             "is_dsn": false,
@@ -15065,6 +15068,184 @@
       }
     }
   },
+  "getAccountTimeZone": {
+    "internal_error": {
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "path": {
+          "id": 3
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_id": {
+      "request": {
+        "path": {
+          "id": 0
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "request": {
+        "path": {
+          "id": 2147483647
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Account not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "not_set": {
+      "summary": "None is set by default, and IMAP uses UTC",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "time_zone": null
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "without_capability": {
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
   "getAlias": {
     "destination_mailbox_scope": {
       "summary": "An individual destination mailbox grant cannot administer aliases",
@@ -17579,6 +17760,8 @@
             "created_at": "2026-10-20T00:00:00Z",
             "date_header": null,
             "downgraded_size": 0,
+            "imap_size": 0,
+            "imap_utf8_size": 0,
             "folder": "INBOX",
             "has_attachments": true,
             "headers": {
@@ -17610,7 +17793,8 @@
             "subject": "Subject café",
             "thread_id": "",
             "tls_version": "TLS1.3",
-            "updated_at": "2026-10-20T00:00:00Z"
+            "updated_at": "2026-10-20T00:00:00Z",
+            "pop3_utf8_size": 0
           }
         },
         "mediaType": "application/json"
@@ -17633,6 +17817,8 @@
             "created_at": "2026-10-20T00:00:00Z",
             "date_header": null,
             "downgraded_size": 0,
+            "imap_size": 0,
+            "imap_utf8_size": 0,
             "folder": "INBOX",
             "has_attachments": true,
             "headers": {
@@ -17664,7 +17850,8 @@
             "subject": "Subject café",
             "thread_id": "",
             "tls_version": "TLS1.3",
-            "updated_at": "2026-10-20T00:00:00Z"
+            "updated_at": "2026-10-20T00:00:00Z",
+            "pop3_utf8_size": 0
           }
         },
         "mediaType": "application/json"
@@ -17687,6 +17874,8 @@
             "created_at": "2026-10-20T00:00:00Z",
             "date_header": null,
             "downgraded_size": 0,
+            "imap_size": 0,
+            "imap_utf8_size": 0,
             "folder": "INBOX",
             "has_attachments": true,
             "headers": {
@@ -17718,7 +17907,8 @@
             "subject": "Subject café",
             "thread_id": "",
             "tls_version": "TLS1.3",
-            "updated_at": "2026-10-20T00:00:00Z"
+            "updated_at": "2026-10-20T00:00:00Z",
+            "pop3_utf8_size": 0
           }
         },
         "mediaType": "application/json"
@@ -17741,6 +17931,8 @@
             "created_at": "2026-10-20T00:00:00Z",
             "date_header": null,
             "downgraded_size": 0,
+            "imap_size": 0,
+            "imap_utf8_size": 0,
             "folder": "INBOX",
             "has_attachments": true,
             "id": 104,
@@ -17767,7 +17959,8 @@
             "subject": "Subject café",
             "thread_id": "",
             "tls_version": "TLS1.3",
-            "updated_at": "2026-10-20T00:00:00Z"
+            "updated_at": "2026-10-20T00:00:00Z",
+            "pop3_utf8_size": 0
           }
         },
         "mediaType": "application/json"
@@ -17810,6 +18003,8 @@
             "size_bytes": 80,
             "raw_size": 137,
             "downgraded_size": 0,
+            "imap_size": 0,
+            "imap_utf8_size": 0,
             "received_tls": true,
             "tls_version": "TLS1.3",
             "has_attachments": true,
@@ -17822,7 +18017,8 @@
             "received_at": "2026-10-20T00:00:00Z",
             "date_header": null,
             "created_at": "2026-10-20T00:00:00Z",
-            "updated_at": "2026-10-20T00:00:00Z"
+            "updated_at": "2026-10-20T00:00:00Z",
+            "pop3_utf8_size": 0
           }
         },
         "mediaType": "application/json"
@@ -20404,6 +20600,8 @@
               "size_bytes": 80,
               "raw_size": 128,
               "downgraded_size": 0,
+              "imap_size": 0,
+              "imap_utf8_size": 0,
               "has_attachments": false,
               "is_read": true,
               "is_dsn": true,
@@ -20416,7 +20614,8 @@
               "created_at": "2026-10-20T00:00:00Z",
               "updated_at": "2026-10-20T00:00:00Z",
               "body_text": "Plain delivery",
-              "received_tls": false
+              "received_tls": false,
+              "pop3_utf8_size": 0
             },
             {
               "id": 53,
@@ -20435,6 +20634,8 @@
               "size_bytes": 80,
               "raw_size": 128,
               "downgraded_size": 0,
+              "imap_size": 0,
+              "imap_utf8_size": 0,
               "has_attachments": false,
               "is_read": false,
               "is_dsn": false,
@@ -20445,7 +20646,8 @@
               "received_at": "2026-10-20T01:00:00Z",
               "date_header": null,
               "created_at": "2026-10-20T00:00:00Z",
-              "updated_at": "2026-10-20T00:00:00Z"
+              "updated_at": "2026-10-20T00:00:00Z",
+              "pop3_utf8_size": 0
             },
             {
               "id": 51,
@@ -20468,6 +20670,8 @@
               "size_bytes": 80,
               "raw_size": 128,
               "downgraded_size": 0,
+              "imap_size": 0,
+              "imap_utf8_size": 0,
               "has_attachments": true,
               "is_read": false,
               "is_dsn": false,
@@ -20496,7 +20700,8 @@
                 }
               ],
               "received_tls": true,
-              "tls_version": "TLS1.3"
+              "tls_version": "TLS1.3",
+              "pop3_utf8_size": 0
             }
           ]
         },
@@ -27715,6 +27920,8 @@
               "size_bytes": 80,
               "raw_size": 128,
               "downgraded_size": 0,
+              "imap_size": 0,
+              "imap_utf8_size": 0,
               "has_attachments": true,
               "is_read": false,
               "is_dsn": false,
@@ -27743,7 +27950,8 @@
                 }
               ],
               "received_tls": true,
-              "tls_version": "TLS1.3"
+              "tls_version": "TLS1.3",
+              "pop3_utf8_size": 0
             },
             {
               "id": 53,
@@ -27762,6 +27970,8 @@
               "size_bytes": 80,
               "raw_size": 128,
               "downgraded_size": 0,
+              "imap_size": 0,
+              "imap_utf8_size": 0,
               "has_attachments": false,
               "is_read": false,
               "is_dsn": false,
@@ -27772,7 +27982,8 @@
               "received_at": "2026-10-20T01:00:00Z",
               "date_header": null,
               "created_at": "2026-10-20T00:00:00Z",
-              "updated_at": "2026-10-20T00:00:00Z"
+              "updated_at": "2026-10-20T00:00:00Z",
+              "pop3_utf8_size": 0
             },
             {
               "id": 52,
@@ -27791,6 +28002,8 @@
               "size_bytes": 80,
               "raw_size": 128,
               "downgraded_size": 0,
+              "imap_size": 0,
+              "imap_utf8_size": 0,
               "has_attachments": false,
               "is_read": true,
               "is_dsn": true,
@@ -27803,7 +28016,8 @@
               "created_at": "2026-10-20T00:00:00Z",
               "updated_at": "2026-10-20T00:00:00Z",
               "body_text": "Plain delivery",
-              "received_tls": false
+              "received_tls": false,
+              "pop3_utf8_size": 0
             }
           ],
           "pagination": {
@@ -29867,6 +30081,9 @@
                 "size_bytes": 18,
                 "raw_size": 0,
                 "downgraded_size": 0,
+                "pop3_utf8_size": 0,
+                "imap_size": 0,
+                "imap_utf8_size": 0,
                 "has_attachments": false,
                 "is_read": true,
                 "is_dsn": false,
@@ -29928,6 +30145,9 @@
                 "size_bytes": 18,
                 "raw_size": 0,
                 "downgraded_size": 0,
+                "pop3_utf8_size": 0,
+                "imap_size": 0,
+                "imap_utf8_size": 0,
                 "has_attachments": false,
                 "is_read": true,
                 "is_dsn": false,
@@ -29965,6 +30185,9 @@
                 "size_bytes": 18,
                 "raw_size": 0,
                 "downgraded_size": 0,
+                "pop3_utf8_size": 0,
+                "imap_size": 0,
+                "imap_utf8_size": 0,
                 "has_attachments": false,
                 "is_read": true,
                 "is_dsn": false,
@@ -30076,6 +30299,9 @@
                 "size_bytes": 18,
                 "raw_size": 0,
                 "downgraded_size": 0,
+                "pop3_utf8_size": 0,
+                "imap_size": 0,
+                "imap_utf8_size": 0,
                 "has_attachments": false,
                 "is_read": true,
                 "is_dsn": false,
@@ -38766,6 +38992,9 @@
             "size_bytes": 0,
             "raw_size": 0,
             "downgraded_size": 0,
+            "pop3_utf8_size": 0,
+            "imap_size": 0,
+            "imap_utf8_size": 0,
             "has_attachments": false,
             "is_read": true,
             "is_dsn": false,
@@ -39011,6 +39240,9 @@
               "created_at": "2026-10-20T00:00:00Z",
               "date_header": "2026-10-20T00:00:00Z",
               "downgraded_size": 137,
+              "pop3_utf8_size": 137,
+              "imap_size": 137,
+              "imap_utf8_size": 137,
               "folder": "INBOX",
               "has_attachments": false,
               "headers": {
@@ -39594,6 +39826,9 @@
             "created_at": "2026-10-27T07:00:00Z",
             "date_header": null,
             "downgraded_size": 200,
+            "pop3_utf8_size": 200,
+            "imap_size": 200,
+            "imap_utf8_size": 200,
             "folder": "Sent",
             "has_attachments": false,
             "id": 13,
@@ -40105,6 +40340,9 @@
             "created_at": "2026-10-21T12:00:00Z",
             "date_header": null,
             "downgraded_size": 297,
+            "pop3_utf8_size": 297,
+            "imap_size": 297,
+            "imap_utf8_size": 297,
             "folder": "Sent",
             "has_attachments": false,
             "id": 1,
@@ -40161,6 +40399,9 @@
             "created_at": "2026-10-21T12:00:00Z",
             "date_header": null,
             "downgraded_size": 297,
+            "pop3_utf8_size": 297,
+            "imap_size": 297,
+            "imap_utf8_size": 297,
             "folder": "Sent",
             "has_attachments": false,
             "id": 1,
@@ -40299,6 +40540,9 @@
             "created_at": "2026-10-21T12:00:00Z",
             "date_header": null,
             "downgraded_size": 297,
+            "pop3_utf8_size": 297,
+            "imap_size": 297,
+            "imap_utf8_size": 297,
             "folder": "Sent",
             "has_attachments": false,
             "id": 1,
@@ -40842,6 +41086,330 @@
           "error": {
             "code": "two_factor_required",
             "message": "Sign in as a person with two-factor authentication"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
+  "setAccountTimeZone": {
+    "cleared": {
+      "summary": "Null clears the zone, and IMAP uses UTC",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "time_zone": null
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "time_zone": null
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "internal_error": {
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "path": {
+          "id": 3
+        },
+        "body": {
+          "time_zone": "Europe/Berlin"
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_id": {
+      "request": {
+        "path": {
+          "id": 0
+        },
+        "body": {
+          "time_zone": "Europe/Berlin"
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_zone": {
+      "summary": "A name that is not an IANA time zone",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "time_zone": "Mars/Olympus"
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "time_zone": "must be an IANA time zone name"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "malformed_json": {
+      "description": "The wire body is the raw truncated JSON byte {, with application/json content type. The route and Vertrag transport hook send those exact bytes rather than JSON-quoting them.",
+      "requires": {
+        "body": "malformed"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": "{",
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "request": {
+        "path": {
+          "id": 2147483647
+        },
+        "body": {
+          "time_zone": "Europe/Berlin"
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Account not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "time_zone": "Europe/Berlin"
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "time_zone": "Europe/Berlin"
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "time_zone": "Europe/Berlin"
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "set": {
+      "summary": "IMAP SEARCH uses this zone's calendar days",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "time_zone": "Europe/Berlin"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "time_zone": "Europe/Berlin"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "time_zone_missing": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {},
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "time_zone": "required"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "time_zone_wrong_type": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "time_zone": 42
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "time_zone": "must be a string"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "time_zone": "Europe/Berlin"
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "without_capability": {
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "time_zone": "Europe/Berlin"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
           }
         },
         "mediaType": "application/json"
@@ -43442,6 +44010,9 @@
                 "size_bytes": 123,
                 "raw_size": 0,
                 "downgraded_size": 0,
+                "pop3_utf8_size": 0,
+                "imap_size": 0,
+                "imap_utf8_size": 0,
                 "has_attachments": false,
                 "is_read": false,
                 "is_dsn": false,
@@ -46861,6 +47432,9 @@
             "created_at": "2026-10-21T12:00:00Z",
             "date_header": null,
             "downgraded_size": 297,
+            "pop3_utf8_size": 297,
+            "imap_size": 297,
+            "imap_utf8_size": 297,
             "folder": "Sent",
             "has_attachments": false,
             "id": 1,
@@ -49272,6 +49846,9 @@
             "size_bytes": 18,
             "raw_size": 0,
             "downgraded_size": 0,
+            "pop3_utf8_size": 0,
+            "imap_size": 0,
+            "imap_utf8_size": 0,
             "has_attachments": false,
             "is_read": true,
             "is_dsn": false,
@@ -50026,6 +50603,9 @@
             "created_at": "2026-10-20T00:00:00Z",
             "date_header": "2026-10-20T00:00:00Z",
             "downgraded_size": 137,
+            "pop3_utf8_size": 137,
+            "imap_size": 137,
+            "imap_utf8_size": 137,
             "folder": "INBOX",
             "has_attachments": false,
             "headers": {

@@ -18,6 +18,8 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/db/repositories"
 	"github.com/rest-mail/rest-mail-server/internal/grants"
 	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
+	rmime "github.com/rest-mail/rest-mail-server/internal/mime"
+	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 	"github.com/rest-mail/rest-mail-server/internal/testreset"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -78,10 +80,22 @@ func (h *TestHandler) sendTestEmail(r *http.Request, req sendTestEmailRequest) (
 			return fmt.Errorf("look up test recipient: %w", err)
 		}
 		messageID := rmail.GenerateMessageID(rmail.DomainFromAddress(req.From))
+		now := time.Now()
+		raw, err := rmime.RenderGenerated(rmime.Generated{
+			From:      pipeline.Address{Name: sender.DisplayName, Address: req.From},
+			To:        []pipeline.Address{{Address: req.To}},
+			Subject:   req.Subject,
+			BodyText:  req.Body,
+			MessageID: messageID,
+			Date:      now,
+		})
+		if err != nil {
+			return fmt.Errorf("render test message: %w", err)
+		}
 		msg = models.Message{
 			MailboxID: recipient.ID, Folder: "INBOX", MsgID: messageID, ThreadID: messageID,
 			Sender: req.From, SenderName: sender.DisplayName, RecipientsTo: models.JSONB(mustJSON([]string{req.To})),
-			Subject: req.Subject, BodyText: req.Body, SizeBytes: len(req.Body), ReceivedAt: time.Now(),
+			Subject: req.Subject, BodyText: req.Body, RawMessage: raw, RawSize: len(raw), SizeBytes: len(raw), ReceivedAt: now,
 		}
 		// Prepare both copies before GORM assigns an ID to either one.
 		sent := msg

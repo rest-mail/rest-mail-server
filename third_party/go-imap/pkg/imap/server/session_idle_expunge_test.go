@@ -158,6 +158,10 @@ func TestIMAP_Idle_TaggedOKAfterActivity(t *testing.T) {
 	if got := h.readLine(); got != "* 2 EXISTS" {
 		t.Fatalf("new-message report = %q, want %q", got, "* 2 EXISTS")
 	}
+	// The mock keeps no \Recent state, so both messages are recent.
+	if got := h.readLine(); got != "* 2 RECENT" {
+		t.Fatalf("recent report = %q, want %q", got, "* 2 RECENT")
+	}
 
 	// DONE after that activity: the tagged completion must arrive intact.
 	h.send("DONE")
@@ -186,8 +190,8 @@ func TestIMAP_Idle_ReportsExternalFlagChange(t *testing.T) {
 	// Flag the second message (UID 9, seq 2) out-of-band.
 	m.mbox.setFlagged("INBOX", 9, true)
 
-	if got := h.readLine(); got != `* 2 FETCH (UID 9 FLAGS (\Flagged))` {
-		t.Fatalf("flag-change report = %q, want %q", got, `* 2 FETCH (UID 9 FLAGS (\Flagged))`)
+	if got := h.readLine(); got != `* 2 FETCH (UID 9 FLAGS (\Flagged \Recent))` {
+		t.Fatalf("flag-change report = %q, want %q", got, `* 2 FETCH (UID 9 FLAGS (\Flagged \Recent))`)
 	}
 
 	h.send("DONE")

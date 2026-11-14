@@ -8,12 +8,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- MIME parameters keep the first repeated name, segments after gaps, and literal stars in names that are not RFC 2231 continuations. Incomplete multipart boundaries remain unusable. Parameter conversion uses a single field scan and sorted comment positions.
+
 - This copy's gates run from the server's root workflows: its own `ci.yml` could
   not run there and is removed. Fuzz targets run nightly instead of on each push.
 
 ### Added
 
 - `Server.Serve` starts the server on listeners the caller has already opened.
+- Real `\Recent` state (RFC 3501 §2.3.2): a Mailbox that implements the new
+  optional `imap.RecentMailbox` interface keeps a per-folder mark, the highest
+  UID a read-write session has claimed. The first read-write SELECT after a
+  message arrives, or the first read-write session told of an arrival, claims
+  it; EXAMINE, a read-only SELECT and STATUS report it without claiming.
+  `* n RECENT`, STATUS RECENT, FETCH FLAGS `\Recent` and SEARCH RECENT, NEW
+  and OLD use that state. Breaking: they no longer report the unseen set. A
+  Mailbox without the interface has every message `\Recent` to every session,
+  as §2.3.2 asks when the server cannot tell which session saw it first.
 - CONDSTORE and QRESYNC (RFC 7162): a Mailbox that implements the new optional
   `imap.ModSeqMailbox` interface reports HIGHESTMODSEQ and each message's
   `Message.ModSeq`, and stores flags through `StoreModSeq`, which applies
@@ -40,6 +51,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   (RFC 9051 §7.1). A STORE or APPEND over that limit, or over
   `imap.MaxKeywords` (100) keywords on one message, is answered `NO [LIMIT]`
   (RFC 5530 §3).
+- Mailbox name normalization (RFC 9051 §§5.1, 6.3.9.7): a Mailbox that implements
+  the new optional `imap.NameNormalizer` interface has every mailbox name a command
+  carries, and each LIST pattern, converted to its normal form. SELECT, EXAMINE,
+  CREATE, DELETE, RENAME and APPEND report a name that changed with an untagged
+  LIST holding `OLDNAME`. A Mailbox without it sees no change.
 - Folder management (RFC 9051 §§6.3.4-6.3.6): a Mailbox that implements the new
   optional `imap.FolderMailbox` interface (`CreateFolder`, `DeleteFolder`,
   `RenameFolder`) keeps folders apart from their messages. CREATE then answers
@@ -89,6 +105,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   answered `\Subscribed \NonExistent`, and LSUB answers an unsubscribed level
   above a subscribed name `\Noselect`. A Mailbox without it keeps every
   existing folder subscribed, as before.
+- `SearchZoneMailbox`, an optional `Mailbox` interface that names the zone whose
+  calendar days SEARCH BEFORE, ON and SINCE compare. A zone the store cannot give
+  answers NO `[UNAVAILABLE]`. A mailbox without it sees no change.
 
 ### Fixed
 
@@ -103,8 +122,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   nothing, so the new message stayed out of sight until the next SELECT. EXISTS
   now goes out only when the size changed. `TestMoveNames` required the old
   behaviour for a move into INBOX and now requires this one.
+- AUTHENTICATE answers a client response that is not valid base64 (a
+  character outside the alphabet, a non-terminal `=`, a quoted initial
+  response) with a tagged BAD, as RFC 9051 §6.2.2 requires, in both the
+  continuation and the SASL-IR initial-response form. It used to answer
+  `NO Invalid base64`. Valid base64 with wrong credentials, or that decodes
+  to malformed PLAIN data (missing or extra NULs, an empty authcid or
+  password, invalid UTF-8), is still NO: that is an authentication failure,
+  not a protocol error (`TestPlainMalformedPayloads`). `TestSASLIR` and
+  `TestPlainBase64Alphabet` required the old behaviour and now require this
+  one.
 - DELETE of a name that is not a mailbox but has inferior mailboxes is refused
   `NO [HASCHILDREN]` (RFC 9051 §6.3.5, RFC 5530 §3) instead of answering OK.
+- Converting a header for FETCH takes time in proportion to its size. A run of
+  `\"` in an 8-bit field, or a field folded many times, used to take quadratic
+  time, 16.6 s for a 156 KB Subject. The output doesn't change.
+- FETCH converts a message as it is sent, as RFC 3501 §7.4.2 requires, and what
+  the mailbox returned does not change. HEADER and MIME sections and the header
+  of an encapsulated message are 7-bit. Non-textual data goes out BASE64 and text
+  naming no charset QUOTED-PRINTABLE, while text naming a charset keeps its 8-bit
+  data. BODYSTRUCTURE describes the converted octets, and partial offsets count
+  them. A message already 7-bit goes out byte for byte, and BINARY still sends
+  the stored octets. `Message.Size` must now be the converted length, which the
+  new `wireform` package measures.
+- Binary data holding a NUL can be fetched: BODY sends it BASE64 and BINARY as a
+  literal8. A NUL in a header or in text is still refused.
 - A SELECT or EXAMINE refused with BAD keeps the mailbox already selected, with
   its read-only mode and deletion marks: a rejected command never changes state
   (RFC 3501 §6). Only a well-formed selection attempt that fails with NO
@@ -126,6 +168,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - STATUS and LIST no longer echo an unknown item, and STORE no longer sends the
   host's error text, so neither a literal nor a host error can break response
   text (RFC 3501 §9).
+- ENVELOPE keeps a source route. An address such as `<@a.example:joe@c.example>`
+  used to make the whole header NIL, and now gives addr-adl its route (RFC 3501
+  §9). A quoted local part holding `@` stays in addr-mailbox: `"a@b"@example.com`
+  used to report mailbox `a` at host `b@example.com`.
 
 ## [0.13.2] - 2026-10-27
 

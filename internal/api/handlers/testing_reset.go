@@ -67,6 +67,7 @@ var resetMailboxSettings = map[string]string{
 	"quiet_hours_time_zone":      "DEFAULT",
 	"quota_bytes":                "DEFAULT",
 	"quota_used_bytes":           "DEFAULT",
+	"time_zone":                  "DEFAULT",
 }
 
 // resetMailboxKept are the account columns the reset leaves as they are, and

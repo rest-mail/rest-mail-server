@@ -11,14 +11,16 @@ import (
 // advertises SASL-IR beside AUTH=PLAIN. A PLAIN response on the command line
 // signs in with no continuation, as in the RFC's first example, and the RFC
 // 3501 exchange without one still works, as it MUST. "=" is a zero-length
-// response, which PLAIN cannot use. A response that is not base64 ("=AAA",
-// "AAA=BBB", a quoted string, which it "MUST be transmitted outside of") is
-// handled as any client response that does not decode: NO. An empty one or
-// one with a space is no argument at all: BAD. None is answered with a
-// continuation, and a refusal leaves the session not authenticated.
+// response, which PLAIN cannot use: NO. A response that is not base64
+// ("=AAA", "AAA=BBB", a quoted string, which it "MUST be transmitted outside
+// of") is handled as any client response that does not decode, which RFC
+// 9051 §6.2.2 says MUST get a tagged BAD. Valid base64 carrying wrong
+// credentials is NO. An empty one or one with a space is no argument at all:
+// BAD. None is answered with a continuation, and a refusal leaves the session
+// not authenticated.
 //
 // checklist: IMAP-SASLIR-01 IMAP-SASLIR-02 IMAP-SASLIR-03 IMAP-SASLIR-04 IMAP-AUTHENTICATE-07
-// checklist: IMAP2-CMD-52 IMAP2-CMD-53 IMAP2-CMD-54 IMAP2-CMD-56 IMAP2-CMD-59
+// checklist: IMAP2-CMD-53 IMAP2-CMD-54 IMAP2-CMD-56 IMAP2-CMD-59
 func TestSASLIR(t *testing.T) {
 	c := dial(t)
 	c.line()
@@ -27,9 +29,9 @@ func TestSASLIR(t *testing.T) {
 
 	for _, tc := range []struct{ initial, want string }{
 		{"=", "A1 NO "},
-		{"=AAA", "A1 NO "},
-		{"AAA=BBB", "A1 NO "},
-		{`"` + plainResponse(testUser, testPass) + `"`, "A1 NO "},
+		{"=AAA", "A1 BAD "},
+		{"AAA=BBB", "A1 BAD "},
+		{`"` + plainResponse(testUser, testPass) + `"`, "A1 BAD "},
 		{plainResponse(testUser, "wrong"), "A1 NO "},
 		{"", "A1 BAD "},
 		{plainResponse(testUser, testPass) + " x", "A1 BAD "},

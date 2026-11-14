@@ -10,6 +10,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/api/middleware"
 	"github.com/rest-mail/rest-mail-server/internal/api/respond"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
 	"gorm.io/gorm"
 )
 
@@ -70,7 +71,7 @@ func (h *SearchHandler) search(r *http.Request, in searchRequest) (endpoint.List
 
 	// Folder filter
 	if in.Folder != "" {
-		query = query.Where("folder = ?", in.Folder)
+		query = query.Where("folder = ?", rmail.CanonicalFolder(in.Folder))
 	}
 
 	// From filter (LIKE metacharacters escaped so they match literally)

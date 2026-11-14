@@ -68,7 +68,7 @@ func TestBodyStructureExtensionStrings(t *testing.T) {
 		literals          []string
 	}{
 		{"quoted", "a\"b\\c", `"a\"b\\c"`, nil},
-		{"literal", "café", `{5}`, []string{"café", "café"}},
+		{"converted to 7-bit", "café", `"=?UTF-8?Q?caf=C3=A9?="`, nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			structureResponse(t, "Content-MD5: "+tc.value+"\r\nContent-Location: "+tc.value+"\r\n\r\nx",
@@ -125,5 +125,5 @@ func TestBodyStructureNestedLanguage(t *testing.T) {
 func TestBodyStructureLanguageStrings(t *testing.T) {
 	const base = `("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 1 1`
 	structureResponse(t, "Content-Language: a\"b\\c, x\r\n\r\nx", base+")", base+` NIL NIL ("a\"b\\c" "x") NIL)`)
-	structureResponse(t, "Content-Language: café\r\n\r\nx", base+")", base+" NIL NIL {5} NIL)", "café")
+	structureResponse(t, "Content-Language: café\r\n\r\nx", base+")", base+` NIL NIL "=?UTF-8?Q?caf=C3=A9?=" NIL)`)
 }

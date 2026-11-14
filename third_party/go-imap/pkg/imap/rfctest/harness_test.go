@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"strings"
 	"testing"
@@ -57,6 +58,13 @@ func (mailbox) Delete(uint32) error                          { return nil }
 func (mailbox) Copy(uint32, string) error                    { return nil }
 func (mailbox) Append(string, imap.FlagUpdate, []byte) error { return nil }
 func (mailbox) Quota() (used, limit int64, err error)        { return 0, 0, nil }
+
+// RecentMark and ClaimRecent make mailbox an [imap.RecentMailbox] whose every
+// message was claimed by an earlier session, so no message is \Recent and the
+// transcripts here show only the flags their messages carry. The \Recent rows
+// use recentMailbox instead (recent_test.go).
+func (mailbox) RecentMark(string) (uint32, error)          { return math.MaxUint32, nil }
+func (mailbox) ClaimRecent(string, uint32) (uint32, error) { return math.MaxUint32, nil }
 
 // client is the test's end of one session.
 type client struct {

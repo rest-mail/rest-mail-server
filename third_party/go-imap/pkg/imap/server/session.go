@@ -43,6 +43,9 @@ type Session struct {
 	messages     []imap.Message // cached message list for current selection
 	keywordNames map[string]string
 	deleted      map[uint32]bool // UIDs flagged \Deleted in this session
+	// recent holds the UIDs of the selected mailbox's messages that are
+	// \Recent to this session (RFC 3501 §2.3.2); see recentOf.
+	recent map[uint32]bool
 	// saved is the search result variable SEARCH RETURN (SAVE) sets and "$"
 	// names (RFC 5182 §2.1), as UIDs, so an expunge cannot shift it; a UID no
 	// longer in the view matches nothing.
@@ -74,9 +77,8 @@ type authState struct {
 }
 
 type selectedMailbox struct {
-	name   string
-	total  int64
-	unread int64
+	name  string
+	total int64
 }
 
 // MaxCommandLineLength bounds a single protocol line read from the client —
@@ -645,6 +647,7 @@ func (s *Session) Handle() {
 			s.messages = nil
 			s.saved = nil
 			s.deleted = make(map[uint32]bool)
+			s.recent = nil
 			s.tagged(tag, "OK", "CLOSE completed")
 		case "EXPUNGE":
 			s.handleExpunge(tag)
