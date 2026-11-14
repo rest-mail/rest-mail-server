@@ -156,7 +156,7 @@ func storedServerCeiling(db *gorm.DB, now time.Time) (Held, error) {
 		Where("g.holder_kind = ? AND g.holder_id = ? AND g.scope = ?", models.GrantHolderServer, models.ServerHolderID, All).
 		Where("g.mode = ? AND (g.expires_at IS NULL OR g.expires_at > ?)", models.GrantActive, now).
 		Where("c.name <> ?", Wildcard).
-		Scan(&entries).Error
+		Find(&entries).Error
 	if err != nil {
 		return Held{}, err
 	}

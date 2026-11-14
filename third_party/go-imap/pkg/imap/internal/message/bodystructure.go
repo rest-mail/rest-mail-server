@@ -47,6 +47,13 @@ func parseContentType(value string) (string, map[string]string, error) {
 	if err != nil {
 		return "", nil, err
 	}
+	mt, params, err := parseUncommented(uncommented)
+	return mt, restoreNames(value, params), err
+}
+
+// parseUncommented is parseMediaType of a field whose comments are gone, with white space
+// around the slash of its type gone too.
+func parseUncommented(uncommented string) (string, map[string]string, error) {
 	base, parameters, hasParameters := strings.Cut(uncommented, ";")
 	if typ, subtype, ok := strings.Cut(base, "/"); ok {
 		base = strings.TrimSpace(typ) + "/" + strings.TrimSpace(subtype)
@@ -54,8 +61,7 @@ func parseContentType(value string) (string, map[string]string, error) {
 	if hasParameters {
 		base += ";" + parameters
 	}
-	mt, params, err := parseMediaType(base)
-	return mt, restoreNames(value, params), err
+	return parseMediaType(base)
 }
 
 // uncommentMIME replaces each RFC 822 §3.4.3 comment in a MIME header value
@@ -68,6 +74,22 @@ func parseContentType(value string) (string, map[string]string, error) {
 func uncommentMIME(value string) (string, error) {
 	if has8bit(value) {
 		return readableField(value), nil
+	}
+	if strings.IndexByte(value, '(') < 0 && strings.IndexByte(value, ')') < 0 {
+		// With no comment in it nothing would change, unless a quoted-string never closes.
+		quoted := false
+		for i := 0; i < len(value); i++ {
+			switch c := value[i]; {
+			case quoted && c == '\\':
+				i++
+			case c == '"':
+				quoted = !quoted
+			}
+		}
+		if quoted {
+			return "", mime.ErrInvalidMediaParameter
+		}
+		return value, nil
 	}
 	text, _, err := splitComments(value)
 	return text, err
@@ -96,10 +118,10 @@ func splitComments(value string) (string, []string, error) {
 				}
 			}
 		case quoted:
-			b.WriteByte(c)
+			_ = b.WriteByte(c)
 			if c == '\\' && i+1 < len(value) {
 				i++
-				b.WriteByte(value[i])
+				_ = b.WriteByte(value[i])
 			} else if c == '"' {
 				quoted = false
 			}
@@ -110,7 +132,7 @@ func splitComments(value string) (string, []string, error) {
 		case c == ')':
 			return "", nil, mime.ErrInvalidMediaParameter
 		default:
-			b.WriteByte(c)
+			_ = b.WriteByte(c)
 			quoted = c == '"'
 		}
 	}
@@ -118,6 +140,43 @@ func splitComments(value string) (string, []string, error) {
 		return "", nil, mime.ErrInvalidMediaParameter
 	}
 	return b.String(), comments, nil
+}
+
+// uncommentInto writes value to b as uncommentMIME reads it, or says it can't be read.
+func uncommentInto(b io.ByteWriter, value string) bool {
+	depth := 0
+	quoted := false
+	for i := 0; i < len(value); i++ {
+		c := value[i]
+		switch {
+		case depth > 0:
+			switch c {
+			case '\\':
+				i++
+			case '(':
+				depth++
+			case ')':
+				depth--
+			}
+		case quoted:
+			_ = b.WriteByte(c)
+			if c == '\\' && i+1 < len(value) {
+				i++
+				_ = b.WriteByte(value[i])
+			} else if c == '"' {
+				quoted = false
+			}
+		case c == '(':
+			depth = 1
+			_ = b.WriteByte(' ')
+		case c == ')':
+			return false
+		default:
+			_ = b.WriteByte(c)
+			quoted = c == '"'
+		}
+	}
+	return depth == 0 && !quoted
 }
 
 // partStructure builds the body structure for one MIME entity given its header
@@ -235,7 +294,7 @@ func singlePartStructure(maintype, subtype string, params map[string]string, hea
 	b.WriteString(paramList(params, sessionUTF8))
 	fmt.Fprintf(&b, " %s %s %s %d",
 		wire.NilOrQuote(header.Get("Content-Id")),
-		wire.NilOrQuote(header.Get("Content-Description")),
+		wire.NilOrQuote(SpaceWordNUL(header.Get("Content-Description"))),
 		wire.EncodeMailboxName(encoding),
 		len(body))
 	switch {
@@ -340,7 +399,8 @@ func stripComments(s string) string {
 // names and values are strings, not nstrings: an empty value is "", never NIL.
 // Reuse the astring encoder so decoded RFC 2231 values containing CR/LF use counted
 // literals, including in disposition parameters. A value decoded to 8-bit text
-// follows metadataText.
+// follows metadataText. Encoded words follow SpaceWordNUL, but for a boundary's: its
+// delimiter lines hold those octets, and nothing decodes them.
 func paramList(params map[string]string, sessionUTF8 bool) string {
 	if len(params) == 0 {
 		return "NIL"
@@ -358,7 +418,11 @@ func paramList(params map[string]string, sessionUTF8 bool) string {
 		}
 		b.WriteString(wire.EncodeMailboxName(metadataText(upperASCII(k), sessionUTF8)))
 		b.WriteByte(' ')
-		b.WriteString(wire.EncodeMailboxName(metadataText(params[k], sessionUTF8)))
+		value := params[k]
+		if k != "boundary" {
+			value = SpaceWordNUL(value)
+		}
+		b.WriteString(wire.EncodeMailboxName(metadataText(value, sessionUTF8)))
 	}
 	b.WriteByte(')')
 	return b.String()

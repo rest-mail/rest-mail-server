@@ -230,7 +230,7 @@ func loadBounded(db *gorm.DB, accountID uint, now time.Time, visited map[uint]bo
 		Where("g.mode = ? OR (g.mode = ? AND a.id IS NOT NULL)", models.GrantActive, models.GrantEligible).
 		Where("g.expires_at IS NULL OR g.expires_at > ?", now).
 		Order("g.scope, c.name").
-		Scan(&rows).Error
+		Find(&rows).Error
 	if err != nil {
 		return Held{}, time.Time{}, err
 	}
@@ -239,7 +239,7 @@ func loadBounded(db *gorm.DB, accountID uint, now time.Time, visited map[uint]bo
 		Address string
 		OwnerID *uint
 	}
-	if err := db.Model(&models.Mailbox{}).Select("address", "owner_id").Where("id = ? AND active", accountID).Scan(&own).Error; err != nil {
+	if err := db.Model(&models.Mailbox{}).Select("address", "owner_id").Where("id = ? AND active", accountID).Find(&own).Error; err != nil {
 		return Held{}, time.Time{}, err
 	}
 	if len(own) == 1 {
@@ -313,14 +313,14 @@ func ownedBelow(db *gorm.DB, address string, capabilities []string, now time.Tim
 	visited[address] = true
 	defer delete(visited, address)
 	var owner []struct{ ID uint }
-	if err := db.Model(&models.Mailbox{}).Select("id").Where("address = ? AND active", address).Scan(&owner).Error; err != nil {
+	if err := db.Model(&models.Mailbox{}).Select("id").Where("address = ? AND active", address).Find(&owner).Error; err != nil {
 		return nil, time.Time{}, err
 	}
 	if len(owner) != 1 {
 		return nil, time.Time{}, nil
 	}
 	var children []struct{ Address string }
-	if err := db.Model(&models.Mailbox{}).Select("address").Where("owner_id = ? AND active", owner[0].ID).Order("address").Scan(&children).Error; err != nil {
+	if err := db.Model(&models.Mailbox{}).Select("address").Where("owner_id = ? AND active", owner[0].ID).Order("address").Find(&children).Error; err != nil {
 		return nil, time.Time{}, err
 	}
 	var out []Entry
@@ -341,7 +341,7 @@ func ownedBelow(db *gorm.DB, address string, capabilities []string, now time.Tim
 			Where("g.holder_kind = ? AND g.holder_id = ? AND g.scope = ? AND r.name = ?", models.GrantHolderAccount, owner[0].ID, scope, models.RoleOwner).
 			Where("g.mode = ? OR (g.mode = ? AND a.id IS NOT NULL)", models.GrantActive, models.GrantEligible).
 			Where("g.expires_at IS NULL OR g.expires_at > ?", now).
-			Scan(&rows).Error
+			Find(&rows).Error
 		if err != nil {
 			return nil, time.Time{}, err
 		}

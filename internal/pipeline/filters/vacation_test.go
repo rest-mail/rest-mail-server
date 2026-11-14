@@ -127,7 +127,7 @@ func TestVacation_NullEnvelopeSenderGetsNoReply(t *testing.T) {
 	for _, mailFrom := range []string{"", "<>", "  "} {
 		email := &pipeline.EmailJSON{
 			Envelope: pipeline.Envelope{MailFrom: mailFrom, RcptTo: []string{"dana@hosted.test"}},
-			Headers:  pipeline.Headers{From: []pipeline.Address{{Address: "postmaster@example.org"}}},
+			Headers:  pipeline.Headers{From: pipeline.Addresses([]pipeline.Address{{Address: "postmaster@example.org"}}...)},
 		}
 		res, err := vacFilter().Execute(context.Background(), email)
 		if err != nil {

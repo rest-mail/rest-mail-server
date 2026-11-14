@@ -23,8 +23,8 @@ func unitEmail() *pipeline.EmailJSON {
 			Direction: "inbound",
 		},
 		Headers: pipeline.Headers{
-			From:      []pipeline.Address{{Name: "Alice", Address: "alice@example.com"}},
-			To:        []pipeline.Address{{Address: "bob@example.com"}},
+			From:      pipeline.Addresses([]pipeline.Address{{Name: "Alice", Address: "alice@example.com"}}...),
+			To:        pipeline.Addresses([]pipeline.Address{{Address: "bob@example.com"}}...),
 			Date:      "Tue, 18 Feb 2026 09:00:00 +0000",
 			MessageID: "<unit-test-1@example.com>",
 			Subject:   "Unit test message",
@@ -183,8 +183,8 @@ func TestUnitSizeCheck_ExactlyAtLimitPasses(t *testing.T) {
 	// Build an email where the estimated size equals the limit exactly.
 	email := &pipeline.EmailJSON{
 		Headers: pipeline.Headers{
-			From:    []pipeline.Address{{Address: "a@b.c"}}, // len("a@b.c")+0+20 = 25
-			Subject: "",                                     // 0+20 = 20
+			From:    pipeline.Addresses([]pipeline.Address{{Address: "a@b.c"}}...), // len("a@b.c")+0+20 = 25
+			Subject: "",                                                            // 0+20 = 20
 		},
 		Body: pipeline.Body{Content: ""},
 	}
@@ -277,7 +277,7 @@ func TestUnitHeaderValidate_MissingFromRejects(t *testing.T) {
 	}
 
 	email := unitEmail()
-	email.Headers.From = nil
+	email.Headers.From = pipeline.AddressList{}
 
 	result, err := f.Execute(context.Background(), email)
 	if err != nil {
@@ -426,7 +426,7 @@ func TestUnitHeaderValidate_MultipleIssues(t *testing.T) {
 	}
 
 	email := unitEmail()
-	email.Headers.From = nil
+	email.Headers.From = pipeline.AddressList{}
 	email.Headers.Date = ""
 	email.Headers.MessageID = ""
 
@@ -608,8 +608,8 @@ func TestUnitHeaderCleanup_PreservesOtherFields(t *testing.T) {
 	if msg.Headers.MessageID != email.Headers.MessageID {
 		t.Errorf("MessageID changed: %q -> %q", email.Headers.MessageID, msg.Headers.MessageID)
 	}
-	if len(msg.Headers.From) != len(email.Headers.From) {
-		t.Errorf("From length changed: %d -> %d", len(email.Headers.From), len(msg.Headers.From))
+	if msg.Headers.From.Len() != email.Headers.From.Len() {
+		t.Errorf("From length changed: %d -> %d", email.Headers.From.Len(), msg.Headers.From.Len())
 	}
 }
 
@@ -755,7 +755,7 @@ func TestUnitDomainAllowlist_NoSender_Continues(t *testing.T) {
 
 	email := unitEmail()
 	email.Envelope.MailFrom = ""
-	email.Headers.From = nil
+	email.Headers.From = pipeline.AddressList{}
 
 	result, err := f.Execute(context.Background(), email)
 	if err != nil {

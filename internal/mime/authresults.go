@@ -15,6 +15,7 @@ import "strings"
 // verifies or stores it, so a stored message carries only the
 // Authentication-Results this server wrote.
 func StripAuthResults(raw, authservID string) string {
+	// Nothing is built until a field is removed, which almost no message has.
 	var out strings.Builder
 	rest := raw
 	removed := false
@@ -25,10 +26,16 @@ func StripAuthResults(raw, authservID string) string {
 		field := rest[:end]
 		rest = rest[end:]
 		if claimsAuthServID(field, authservID) {
-			removed = true
+			if !removed {
+				removed = true
+				out.Grow(len(raw) - len(field))
+				out.WriteString(raw[:len(raw)-len(rest)-len(field)])
+			}
 			continue
 		}
-		out.WriteString(field)
+		if removed {
+			out.WriteString(field)
+		}
 	}
 	if !removed {
 		return raw

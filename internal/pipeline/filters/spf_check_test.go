@@ -309,7 +309,7 @@ func TestSPFCheck_NoIdentity(t *testing.T) {
 	useSPFDNS(t, dns)
 	email := &pipeline.EmailJSON{
 		Envelope: pipeline.Envelope{ClientIP: "192.0.2.1"},
-		Headers:  pipeline.Headers{From: []pipeline.Address{{Address: "user@example.com"}}},
+		Headers:  pipeline.Headers{From: pipeline.Addresses([]pipeline.Address{{Address: "user@example.com"}}...)},
 	}
 	f, _ := NewSPFCheck(nil)
 	ctx := authCtx()

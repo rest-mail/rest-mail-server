@@ -70,7 +70,7 @@ func TestCustomFilterTestingExamples(t *testing.T) {
 				_ = json.Unmarshal(pair.Request.Body, &request)
 				email := request["email"]
 				if email == nil {
-					raw, _ := json.Marshal(pipeline.EmailJSON{Envelope: pipeline.Envelope{MailFrom: "test@example.com", RcptTo: []string{"user@example.com"}, Direction: "inbound"}, Headers: pipeline.Headers{From: []pipeline.Address{{Address: "test@example.com"}}, To: []pipeline.Address{{Address: "user@example.com"}}, Subject: "Test email"}, Body: pipeline.Body{ContentType: "text/plain", Content: "This is a test email for filter testing."}})
+					raw, _ := json.Marshal(pipeline.EmailJSON{Envelope: pipeline.Envelope{MailFrom: "test@example.com", RcptTo: []string{"user@example.com"}, Direction: "inbound"}, Headers: pipeline.Headers{From: pipeline.Addresses([]pipeline.Address{{Address: "test@example.com"}}...), To: pipeline.Addresses([]pipeline.Address{{Address: "user@example.com"}}...), Subject: "Test email"}, Body: pipeline.Body{ContentType: "text/plain", Content: "This is a test email for filter testing."}})
 					_ = json.Unmarshal(raw, &email)
 				}
 				id := int64(1)

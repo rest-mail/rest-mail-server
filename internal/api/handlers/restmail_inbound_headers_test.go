@@ -86,10 +86,10 @@ func TestBuildInboundEmail_FallsBackWhenNoRaw(t *testing.T) {
 		"",
 		"203.0.113.9",
 	)
-	if len(email.Headers.From) == 0 || email.Headers.From[0].Address != "sender@remote.test" {
+	if email.Headers.From.Len() == 0 || email.Headers.From.All()[0].Address != "sender@remote.test" {
 		t.Errorf("From not populated from structured fields: %+v", email.Headers.From)
 	}
-	if len(email.Headers.To) == 0 || email.Headers.To[0].Address != "user@local.test" {
+	if email.Headers.To.Len() == 0 || email.Headers.To.All()[0].Address != "user@local.test" {
 		t.Errorf("To not populated from structured fields: %+v", email.Headers.To)
 	}
 	if email.Headers.Subject != "Hi" {
@@ -135,7 +135,7 @@ func TestBuildInboundEmail_NullEnvelopeSenderStaysNull(t *testing.T) {
 	if email.Envelope.MailFrom != "" {
 		t.Errorf("Envelope.MailFrom = %q, want the null reverse path", email.Envelope.MailFrom)
 	}
-	if len(email.Headers.From) == 0 || email.Headers.From[0].Address != "postmaster@remote.test" {
+	if email.Headers.From.Len() == 0 || email.Headers.From.All()[0].Address != "postmaster@remote.test" {
 		t.Errorf("From: = %+v, want the message's own header", email.Headers.From)
 	}
 }

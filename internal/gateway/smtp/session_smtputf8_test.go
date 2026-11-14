@@ -85,11 +85,15 @@ func TestSMTP_SMTPUTF8InboundDelivery(t *testing.T) {
 			if req == nil {
 				t.Fatal("no local delivery")
 			}
-			if req.Address != recipient || req.Sender != "用户@例え.jp" || req.Subject != "Grüße aus München" || req.SenderName != "用户" || !strings.Contains(req.BodyText, "こんにちは") {
+			if req.Address != recipient || req.Sender != "用户@例え.jp" || req.Subject != "Grüße aus München" || req.SenderName != "用户" {
 				t.Errorf("EAI fields not preserved: %+v", req)
 			}
 			if string(req.RecipientsTo) != `["受信者@例え.jp"]` || string(req.RecipientsCc) != `["zoë@example.test"]` {
 				t.Errorf("EAI header addresses = %s / %s", req.RecipientsTo, req.RecipientsCc)
+			}
+			// The server reads the text from the source, so the request carries it once.
+			if req.BodyText != "" || req.BodyHTML != "" {
+				t.Errorf("text sent beside the source: %q / %q", req.BodyText, req.BodyHTML)
 			}
 			if !strings.Contains(string(req.RawMessage), internationalBody) {
 				t.Errorf("original message bytes changed: %q", req.RawMessage)

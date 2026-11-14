@@ -66,7 +66,8 @@ func (s *S3) PutReader(ctx context.Context, source io.ReadSeeker, size int64) (r
 	if size < 0 {
 		return "", "", fmt.Errorf("invalid attachment size")
 	}
-	n, err := io.Copy(hash, source)
+	// Only as a reader: a file writing itself to a hash allocates a buffer each time.
+	n, err := Copy(hash, struct{ io.Reader }{source})
 	if err != nil || n != size {
 		return "", "", fmt.Errorf("attachment source size changed or could not be read")
 	}

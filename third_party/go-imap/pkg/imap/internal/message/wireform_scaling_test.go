@@ -25,11 +25,14 @@ func assertLinear(t *testing.T, input func(size int) string, work func(string)) 
 }
 
 // bytesAllocated is what one run allocates, the least of a few runs so that anything
-// else the process allocates in between doesn't count, and neither does filling a pool.
+// else the process allocates in between does not count. Each sample includes filling cold read caches.
 func bytesAllocated(input string, work func(string)) uint64 {
 	var before, after runtime.MemStats
 	best := ^uint64(0)
 	for range 3 {
+		ReleaseReadCaches()
+		runtime.GC()
+		runtime.GC()
 		runtime.ReadMemStats(&before)
 		work(input)
 		runtime.ReadMemStats(&after)
@@ -425,5 +428,28 @@ func TestNULReplacement_IsLinear(t *testing.T) {
 			assertLinear(t, input, func(raw string) { WireForm(raw, false) })
 			assertLinear(t, input, func(raw string) { SpaceNUL(raw) })
 		})
+	}
+}
+
+// A word nothing here reads is kept as it was sent, which is no reason for it to cost a copy buffer: at
+// 32 KiB a word, 1 MiB of them cost more than 500 MiB for each ENVELOPE (rest-mail-server#1915).
+func TestEnvelopeKeepsWordsWithNoBufferEach(t *testing.T) {
+	const words = 1000
+	var list strings.Builder
+	list.WriteString("to@example.test")
+	for i := range words {
+		list.WriteString(", =?windows-1252?q?N")
+		list.WriteString(strconv.Itoa(i))
+		list.WriteString("?= <a@example.test>")
+	}
+	var built string
+	allocated := bytesAllocated(list.String(), func(value string) { built = buildAddressList(value, false) })
+	if !strings.Contains(built, `"=?windows-1252?q?N999?="`) {
+		t.Fatalf("the word wasn't kept in %.200s", built)
+	}
+	each := allocated / words
+	t.Logf("each word allocated %d bytes", each)
+	if each > 8<<10 {
+		t.Fatalf("each word allocated %d bytes", each)
 	}
 }

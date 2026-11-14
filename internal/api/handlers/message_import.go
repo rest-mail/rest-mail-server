@@ -104,6 +104,10 @@ const (
 	submittedCopyWindow = 5 * time.Minute
 )
 
+func errImportStructure() error {
+	return endpoint.Invalid(map[string]string{"raw_message": "MIME structure over limit: nested too deep or too many parts"})
+}
+
 var errImportQuota = endpoint.Refuse(http.StatusConflict, "mailbox_full", "The destination account has insufficient quota")
 
 var errImportSessionNotFound = endpoint.Refuse(http.StatusNotFound, "import_session_not_found",
@@ -203,7 +207,7 @@ func (h *MessageImportHandler) storeImportedMessage(r *http.Request, accountID u
 	if err != nil {
 		return result, err
 	}
-	headers, err := rmime.ParseHeaders(reader)
+	headers, err := rmime.ParseSizedHeaders(reader, source.size)
 	if err != nil {
 		return result, endpoint.Invalid(map[string]string{"raw_message": "must be a parseable RFC 5322 message"})
 	}
@@ -220,20 +224,11 @@ func (h *MessageImportHandler) storeImportedMessage(r *http.Request, accountID u
 	msg.Subject = importedText(headers.Subject)
 	msg.InReplyTo = importedText(rmail.CanonicalID(headers.InReplyTo))
 	msg.References = importedText(strings.Join(headers.References, " "))
-	if len(headers.From) != 0 {
-		msg.Sender, msg.SenderName = importedText(headers.From[0].Address), importedText(headers.From[0].Name)
+	if from, ok := headers.From.First(); ok {
+		msg.Sender, msg.SenderName = importedText(from.Address), importedText(from.Name)
 	}
-	addresses := func(items []pipeline.Address) models.JSONB {
-		list := make([]string, 0, len(items))
-		for _, item := range items {
-			list = append(list, item.Address)
-		}
-		encoded, _ := json.Marshal(list)
-		return models.JSONB(encoded)
-	}
-	msg.RecipientsTo, msg.RecipientsCc = addresses(headers.To), addresses(headers.Cc)
-	encodedHeaders, _ := json.Marshal(headers.Raw)
-	msg.Headers = models.JSONB(encodedHeaders)
+	msg.RecipientsTo, msg.RecipientsCc = models.JSONB(rmime.AddressesJSON(headers.To)), models.JSONB(rmime.AddressesJSON(headers.Cc))
+	msg.Headers = models.JSONB(decodedHeadersColumn(headers.Raw))
 	if date, err := mail.ParseDate(headers.Date); err == nil {
 		msg.DateHeader = &date
 	}
@@ -288,13 +283,22 @@ func (h *MessageImportHandler) storeImportedMessage(r *http.Request, accountID u
 			if err != nil {
 				return err
 			}
+			// Imported mail is held to the same MIME limits as arriving mail (#1641). Its
+			// Received: fields are not counted: old mail may carry any number, and storing
+			// it in the account is not a hop that could loop (#1647). A message with too many parts
+			// is refused here, before its first part is stored only to be left behind.
+			if err := rmime.CheckSource(reader, source.size); errors.Is(err, rmime.ErrStructureLimit) {
+				return errImportStructure()
+			}
+			if reader, err = source.reader(); err != nil {
+				return err
+			}
 			// The text columns keep a part's whole text, so no part is cut short here.
-			parsed, err := rmime.ParseStream(ctx, reader, rmime.StreamOptions{Store: h.storeAttachmentPart, MaxText: math.MaxInt64})
+			parts := &importParts{handler: h}
+			defer parts.close()
+			parsed, err := rmime.ParseStream(ctx, reader, rmime.StreamOptions{Store: parts.store, MaxText: math.MaxInt64, SourceSize: source.size, HeadersRead: true})
 			if errors.Is(err, rmime.ErrStructureLimit) {
-				// Imported mail is held to the same MIME limits as arriving mail (#1641). Its
-				// Received: fields are not counted: old mail may carry any number, and storing
-				// it in the account is not a hop that could loop (#1647).
-				return endpoint.Invalid(map[string]string{"raw_message": "MIME structure over limit: nested too deep or too many parts"})
+				return errImportStructure()
 			}
 			if err != nil {
 				return fmt.Errorf("store imported attachment: %w", err)
@@ -306,7 +310,7 @@ func (h *MessageImportHandler) storeImportedMessage(r *http.Request, accountID u
 				data, _ := json.Marshal(parsed.CalendarEvents)
 				msg.CalendarEventsRaw = models.JSONB(data)
 			}
-			var rows []models.Attachment
+			rows := make([]models.Attachment, 0, len(parsed.Attachments)+len(parsed.Inline))
 			var attachmentBytes int64
 			for _, group := range [][]pipeline.Attachment{parsed.Attachments, parsed.Inline} {
 				for _, att := range group {
@@ -327,7 +331,7 @@ func (h *MessageImportHandler) storeImportedMessage(r *http.Request, accountID u
 			if msg.RawMessage, msg.RawOctets, err = source.columns(); err != nil {
 				return err
 			}
-			if err := tx.Create(&msg).Error; err != nil {
+			if err := createDeliveredMessage(tx, &msg); err != nil {
 				return err
 			}
 			msg.RawMessage, msg.RawOctets = "", nil // stored, so no longer held
@@ -335,7 +339,7 @@ func (h *MessageImportHandler) storeImportedMessage(r *http.Request, accountID u
 				rows[i].MessageID = msg.ID
 			}
 			if len(rows) != 0 {
-				if err := tx.Create(&rows).Error; err != nil {
+				if err := createAttachmentRows(tx, rows); err != nil {
 					return err
 				}
 			}
@@ -434,11 +438,31 @@ func importedText(value string) string {
 	return models.ReadableText(value)
 }
 
-// storeAttachmentPart stores one decoded part as it is read. The object store has to be told a
-// size and a checksum before the upload, so a part bound for it goes through a file first.
-func (h *MessageImportHandler) storeAttachmentPart(ctx context.Context, part io.Reader) (rmime.StoredPart, error) {
+// importParts stores the parts of one message.
+type importParts struct {
+	handler *MessageImportHandler
+	objects *attachmentstore.FilesystemObjects
+}
+
+func (p *importParts) close() {
+	if p.objects != nil {
+		p.objects.Close()
+	}
+}
+
+// store stores one decoded part as it is read. The object store has to be told a size and a checksum
+// before the upload, so a part bound for it goes through a file first.
+func (p *importParts) store(ctx context.Context, part io.Reader) (rmime.StoredPart, error) {
+	h := p.handler
 	if h.store == nil {
-		ref, checksum, size, err := attachmentstore.PutFilesystemReader(ctx, h.directory, part)
+		if p.objects == nil {
+			objects, err := attachmentstore.OpenFilesystemImports(h.directory)
+			if err != nil {
+				return rmime.StoredPart{}, err
+			}
+			p.objects = objects
+		}
+		ref, checksum, size, err := p.objects.Put(ctx, part)
 		return rmime.StoredPart{Storage: "filesystem", Ref: ref, Checksum: checksum, Size: size}, err
 	}
 	file, done, err := newImportSpool()
@@ -446,7 +470,7 @@ func (h *MessageImportHandler) storeAttachmentPart(ctx context.Context, part io.
 		return rmime.StoredPart{}, err
 	}
 	defer done()
-	size, err := io.Copy(file, part)
+	size, err := attachmentstore.Copy(file, part)
 	if err != nil {
 		return rmime.StoredPart{}, err
 	}
@@ -455,6 +479,37 @@ func (h *MessageImportHandler) storeAttachmentPart(ctx context.Context, part io.
 	}
 	ref, checksum, err := h.store.PutReader(ctx, file, size)
 	return rmime.StoredPart{Storage: "s3", Ref: ref, Checksum: checksum, Size: size}, err
+}
+
+// attachmentRowColumns are every column of models.Attachment but its id, each under the name its JSON
+// field has (TestAttachmentRowColumnsAreTheModels).
+const attachmentRowColumns = "message_id, filename, content_type, size_bytes, storage_type, storage_ref, checksum, created_at"
+
+// createAttachmentRows stores a message's attachment rows as one parameter. A message can have a
+// thousand, and through gorm each is nine parameters, each encoded and copied on its own: about 6 KiB
+// a row, the largest part of what a message of small attachments still cost once it stopped allocating
+// a buffer for each. The rows store the same as gorm's would, without their ids, which no caller reads.
+func createAttachmentRows(tx *gorm.DB, rows []models.Attachment) error {
+	now := time.Now()
+	// One encoder reuses its row buffer without making a temporary JSON copy per attachment.
+	encoded := bytes.NewBuffer(make([]byte, 0, 512*len(rows)))
+	encoded.WriteByte('[')
+	encoder := json.NewEncoder(encoded)
+	for i := range rows {
+		rows[i].CreatedAt = now
+		if err := rows[i].BeforeCreate(tx); err != nil {
+			return err
+		}
+		if i != 0 {
+			encoded.WriteByte(',')
+		}
+		if err := encoder.Encode(&rows[i]); err != nil {
+			return err
+		}
+	}
+	encoded.WriteByte(']')
+	return tx.Exec("INSERT INTO attachments ("+attachmentRowColumns+") SELECT "+attachmentRowColumns+
+		" FROM jsonb_populate_recordset(NULL::attachments, ?::jsonb)", encoded.Bytes()).Error
 }
 
 // storedImportSource is a stored message with what identifies its source, which the database

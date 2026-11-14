@@ -24,6 +24,7 @@ import (
 
 	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
 	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
+	"github.com/rest-mail/rest-mail-server/internal/attachmentstore"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 )
 
@@ -105,7 +106,7 @@ func readSpooledBody(r *http.Request, spec *spooledBodySpec) (importBodyScan, er
 	}
 	defer removeRequest()
 	if r.Body != nil {
-		if _, err := io.Copy(request, r.Body); err != nil {
+		if _, err := attachmentstore.Copy(request, r.Body); err != nil {
 			return importBodyScan{}, importSpoolFailure(err)
 		}
 		if _, err := request.Seek(0, io.SeekStart); err != nil {
@@ -286,7 +287,7 @@ func (s *importSource) replace(data []byte) error {
 }
 
 // reader reads the message from its start, and stops being good when reader is called again.
-func (s *importSource) reader() (io.Reader, error) {
+func (s *importSource) reader() (*os.File, error) {
 	if _, err := s.file.Seek(0, io.SeekStart); err != nil {
 		return nil, err
 	}
@@ -313,7 +314,7 @@ func (s *importSource) text() (string, error) {
 	}
 	var whole strings.Builder
 	whole.Grow(int(s.size))
-	if _, err := io.Copy(&whole, io.LimitReader(reader, s.limit)); err != nil {
+	if _, err := attachmentstore.Copy(&whole, io.LimitReader(reader, s.limit)); err != nil {
 		return "", fmt.Errorf("read a spooled message: %w", err)
 	}
 	return whole.String(), nil
@@ -920,7 +921,8 @@ const jsonTextChunk = 32 << 10
 // on its text in pieces, as encoding/json would decode it: an escape that isn't half of a pair of
 // surrogates is its character, and anything else that isn't UTF-8 is U+FFFD.
 func (s *jsonScanner) textRest(write func([]byte) error) error {
-	out := make([]byte, 0, jsonTextChunk+utf8.UTFMax)
+	// Room for one chunk less a byte, a run just short of a chunk, and a character.
+	out := make([]byte, 0, 2*jsonTextChunk+utf8.UTFMax)
 	// bytewise is how far the input is to be read a byte at a time, for text that isn't UTF-8.
 	var bytewise int64
 	for {
@@ -937,7 +939,14 @@ func (s *jsonScanner) textRest(write func([]byte) error) error {
 			}
 			switch {
 			case len(run) == 0:
-			case utf8.Valid(run):
+			case !utf8.Valid(run):
+				bytewise = s.read + int64(len(run))
+			case len(run) < jsonTextChunk:
+				// An ordinary message has an escape on every line, so its runs are short, and
+				// one write each would be a system call for every line.
+				out = append(out, run...)
+				s.takeRun(run)
+			default:
 				if err := write(out); err != nil {
 					return err
 				}
@@ -946,8 +955,6 @@ func (s *jsonScanner) textRest(write func([]byte) error) error {
 					return err
 				}
 				s.takeRun(run)
-			default:
-				bytewise = s.read + int64(len(run))
 			}
 		}
 		char, err := s.next()

@@ -27,25 +27,25 @@ func TestParse_SimplePlainText(t *testing.T) {
 	}
 
 	// From
-	if len(email.Headers.From) != 1 {
-		t.Fatalf("expected 1 From address, got %d", len(email.Headers.From))
+	if email.Headers.From.Len() != 1 {
+		t.Fatalf("expected 1 From address, got %d", email.Headers.From.Len())
 	}
-	if email.Headers.From[0].Address != "alice@example.com" {
-		t.Errorf("From address = %q, want %q", email.Headers.From[0].Address, "alice@example.com")
+	if email.Headers.From.All()[0].Address != "alice@example.com" {
+		t.Errorf("From address = %q, want %q", email.Headers.From.All()[0].Address, "alice@example.com")
 	}
-	if email.Headers.From[0].Name != "Alice" {
-		t.Errorf("From name = %q, want %q", email.Headers.From[0].Name, "Alice")
+	if email.Headers.From.All()[0].Name != "Alice" {
+		t.Errorf("From name = %q, want %q", email.Headers.From.All()[0].Name, "Alice")
 	}
 
 	// To
-	if len(email.Headers.To) != 1 {
-		t.Fatalf("expected 1 To address, got %d", len(email.Headers.To))
+	if email.Headers.To.Len() != 1 {
+		t.Fatalf("expected 1 To address, got %d", email.Headers.To.Len())
 	}
-	if email.Headers.To[0].Address != "bob@example.com" {
-		t.Errorf("To address = %q, want %q", email.Headers.To[0].Address, "bob@example.com")
+	if email.Headers.To.All()[0].Address != "bob@example.com" {
+		t.Errorf("To address = %q, want %q", email.Headers.To.All()[0].Address, "bob@example.com")
 	}
-	if email.Headers.To[0].Name != "Bob" {
-		t.Errorf("To name = %q, want %q", email.Headers.To[0].Name, "Bob")
+	if email.Headers.To.All()[0].Name != "Bob" {
+		t.Errorf("To name = %q, want %q", email.Headers.To.All()[0].Name, "Bob")
 	}
 
 	// Subject
@@ -319,14 +319,14 @@ func TestParse_AddressNameCRLFStripped(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Parse returned error: %v", err)
 	}
-	if len(email.Headers.From) != 1 {
-		t.Fatalf("expected 1 From address, got %d", len(email.Headers.From))
+	if email.Headers.From.Len() != 1 {
+		t.Fatalf("expected 1 From address, got %d", email.Headers.From.Len())
 	}
-	if strings.ContainsAny(email.Headers.From[0].Name, "\r\n") {
-		t.Fatalf("decoded From name still contains CR/LF: %q", email.Headers.From[0].Name)
+	if strings.ContainsAny(email.Headers.From.All()[0].Name, "\r\n") {
+		t.Fatalf("decoded From name still contains CR/LF: %q", email.Headers.From.All()[0].Name)
 	}
-	if email.Headers.From[0].Address != "sender@example.com" {
-		t.Errorf("From address = %q, want sender@example.com", email.Headers.From[0].Address)
+	if email.Headers.From.All()[0].Address != "sender@example.com" {
+		t.Errorf("From address = %q, want sender@example.com", email.Headers.From.All()[0].Address)
 	}
 
 	// Re-serializing must keep everything on the From line (no injected header).
@@ -378,8 +378,8 @@ func TestParse_AttachmentFilenameCRLFStripped(t *testing.T) {
 func TestSerialize_SimplePlainText(t *testing.T) {
 	email := &pipeline.EmailJSON{
 		Headers: pipeline.Headers{
-			From:      []pipeline.Address{{Name: "Alice", Address: "alice@example.com"}},
-			To:        []pipeline.Address{{Name: "Bob", Address: "bob@example.com"}},
+			From:      pipeline.Addresses([]pipeline.Address{{Name: "Alice", Address: "alice@example.com"}}...),
+			To:        pipeline.Addresses([]pipeline.Address{{Name: "Bob", Address: "bob@example.com"}}...),
 			Subject:   "Test Subject",
 			Date:      "Mon, 01 Jan 2024 12:00:00 +0000",
 			MessageID: "<serialize001@example.com>",
@@ -442,8 +442,8 @@ func TestSerialize_WithAttachments(t *testing.T) {
 
 	email := &pipeline.EmailJSON{
 		Headers: pipeline.Headers{
-			From:      []pipeline.Address{{Address: "sender@example.com"}},
-			To:        []pipeline.Address{{Address: "recipient@example.com"}},
+			From:      pipeline.Addresses([]pipeline.Address{{Address: "sender@example.com"}}...),
+			To:        pipeline.Addresses([]pipeline.Address{{Address: "recipient@example.com"}}...),
 			Subject:   "With Attachment",
 			Date:      "Fri, 05 Jan 2024 09:00:00 +0000",
 			MessageID: "<serialize002@example.com>",
@@ -508,16 +508,16 @@ func TestSerialize_WithAttachments(t *testing.T) {
 func TestEnvelopeFromEmail(t *testing.T) {
 	email := &pipeline.EmailJSON{
 		Headers: pipeline.Headers{
-			From: []pipeline.Address{
+			From: pipeline.Addresses([]pipeline.Address{
 				{Name: "Sender", Address: "sender@example.com"},
-			},
-			To: []pipeline.Address{
+			}...),
+			To: pipeline.Addresses([]pipeline.Address{
 				{Name: "Recipient One", Address: "one@example.com"},
 				{Name: "Recipient Two", Address: "two@example.com"},
-			},
-			Cc: []pipeline.Address{
+			}...),
+			Cc: pipeline.Addresses([]pipeline.Address{
 				{Name: "CC User", Address: "cc@example.com"},
-			},
+			}...),
 		},
 	}
 
@@ -548,12 +548,12 @@ func TestEnvelopeFromEmail_PreservesExistingEnvelope(t *testing.T) {
 			RcptTo:   []string{"already@example.com"},
 		},
 		Headers: pipeline.Headers{
-			From: []pipeline.Address{
+			From: pipeline.Addresses([]pipeline.Address{
 				{Address: "header-from@example.com"},
-			},
-			To: []pipeline.Address{
+			}...),
+			To: pipeline.Addresses([]pipeline.Address{
 				{Address: "header-to@example.com"},
-			},
+			}...),
 		},
 	}
 
@@ -574,9 +574,9 @@ func TestEstimateSize(t *testing.T) {
 
 	email := &pipeline.EmailJSON{
 		Headers: pipeline.Headers{
-			From: []pipeline.Address{
+			From: pipeline.Addresses([]pipeline.Address{
 				{Name: "Test Sender", Address: "sender@example.com"},
-			},
+			}...),
 			Subject: "Size Estimation Test",
 		},
 		Body: pipeline.Body{
@@ -614,7 +614,7 @@ func TestEstimateSize(t *testing.T) {
 func TestEstimateSize_WithParts(t *testing.T) {
 	email := &pipeline.EmailJSON{
 		Headers: pipeline.Headers{
-			From:    []pipeline.Address{{Address: "a@b.com"}},
+			From:    pipeline.Addresses([]pipeline.Address{{Address: "a@b.com"}}...),
 			Subject: "Sub",
 		},
 		Body: pipeline.Body{
@@ -639,7 +639,7 @@ func TestEstimateSize_AttachmentFallbackToSizeField(t *testing.T) {
 	// When attachment Content is empty, EstimateSize should fall back to the Size field.
 	email := &pipeline.EmailJSON{
 		Headers: pipeline.Headers{
-			From:    []pipeline.Address{{Address: "a@b.com"}},
+			From:    pipeline.Addresses([]pipeline.Address{{Address: "a@b.com"}}...),
 			Subject: "Sub",
 		},
 		Body: pipeline.Body{

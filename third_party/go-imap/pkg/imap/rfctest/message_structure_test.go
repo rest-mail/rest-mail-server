@@ -11,7 +11,12 @@ import (
 // lines is independently specified by each fixture, not derived by a MIME parser.
 func messageStructureResponse(t *testing.T, inner, envelope, body, extended string, lines int, literals ...string) {
 	t.Helper()
-	base := fmt.Sprintf(`("MESSAGE" "RFC822" NIL NIL NIL "7BIT" %d %s `, len(inner), envelope)
+	messageStructureSizedResponse(t, inner, envelope, body, extended, lines, len(inner), literals...)
+}
+
+func messageStructureSizedResponse(t *testing.T, inner, envelope, body, extended string, lines, octets int, literals ...string) {
+	t.Helper()
+	base := fmt.Sprintf(`("MESSAGE" "RFC822" NIL NIL NIL "7BIT" %d %s `, octets, envelope)
 	wantBody := fmt.Sprintf("%s%s %d)", base, body, lines)
 	wantExtended := fmt.Sprintf(`%s%s %d NIL ("ATTACHMENT" ("FILENAME" "forward.eml")) NIL NIL)`, base, extended, lines)
 	headers := "Content-Type: message/rfc822\r\nContent-Disposition: attachment; filename=forward.eml\r\n\r\n"

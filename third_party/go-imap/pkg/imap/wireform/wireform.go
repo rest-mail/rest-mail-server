@@ -28,10 +28,22 @@ func SpaceNUL(raw string) []byte {
 	return message.SpaceNUL(raw)
 }
 
+// SpaceWordNUL is text with a space for each NUL one of its encoded words spells, as
+// ENVELOPE and BODYSTRUCTURE send it, so a host reading a Subject or a part's name reads
+// what a client decodes. See [Convert] for a NUL anywhere else.
+func SpaceWordNUL(text string) string {
+	return message.SpaceWordNUL(text)
+}
+
 // Size is len(Convert(raw, utf8)): the same conversion, counted rather than built, so
 // measuring a message at store time holds nothing that grows with its data.
 func Size(raw string, utf8 bool) int {
 	return message.WireFormSize(raw, utf8)
+}
+
+// Sizes is Size with and without UTF-8, from one reading of what the two share.
+func Sizes(raw string) (sevenBit, utf8 int) {
+	return message.WireFormSizes(raw)
 }
 
 // JoinedSize is Size(block+body, utf8) without joining them, for a host that rewrites
@@ -47,6 +59,35 @@ func JoinedSize(block, body string, utf8 bool) int {
 // as it is. It doesn't make the rest of the header 7-bit.
 func SevenBitBoundary(raw string) string {
 	return message.SevenBitBoundary(raw)
+}
+
+// WithoutRepeats is a Content-Type or Content-Disposition value with only the first
+// parameter of each name, which is how BODYSTRUCTURE reads a repeated name. repeated is
+// false when no name repeats, or a later value doesn't read, which leaves the field to
+// RFC 2045 §5.2's default. It says what a host reading such a field has to answer.
+func WithoutRepeats(value string) (first string, repeated bool) {
+	return message.WithoutRepeats(value)
+}
+
+// ReadContentType reads a Content-Type as BODYSTRUCTURE and sections read it, so a host can't
+// be told of different parts from those a client is. It keeps only boundary, charset, filename and
+// name, and holds nothing for any other parameter, however long the field. usable is false when the
+// field gives the entity no type, so RFC 2045 §5.2's default stands: it can't be read, it names no
+// subtype, or it's a multipart with no boundary. Its answers may be views of value.
+func ReadContentType(value string) (mediaType string, params map[string]string, usable bool) {
+	return message.ReadContentType(value)
+}
+
+// ReadDisposition is [ReadContentType] of a Content-Disposition. usable is false where BODYSTRUCTURE
+// reports none.
+func ReadDisposition(value string) (disposition string, params map[string]string, usable bool) {
+	return message.ReadDisposition(value)
+}
+
+// BodyStructure is the BODYSTRUCTURE of a stored message as a session reading UTF-8 is sent it, so
+// a host can prove what it reads of a message against what a client is told.
+func BodyStructure(raw string) string {
+	return message.BuildBodyStructure(raw, true, true)
 }
 
 // EncodeWords renders text as RFC 2047 encoded words: charset UTF-8 when it is
@@ -71,3 +112,32 @@ func WriteEncodedWords(w interface {
 func ParameterField(name, value string) (field string, ok bool) {
 	return message.ParameterField(name, value)
 }
+
+// WriteParameterField is [ParameterField] into w, holding one parameter at a time. It
+// writes nothing when ok would be false.
+func WriteParameterField(w interface {
+	io.Writer
+	io.StringWriter
+}, name, value string) (ok bool) {
+	return message.WriteParameterField(w, name, value)
+}
+
+// WriteFoldedParameterField is [WriteParameterField] of value with its line breaks taken out, when that
+// doesn't change how any piece of it reads, so nothing is built to take them out. read is false when
+// they'd have to be, and nothing is written.
+func WriteFoldedParameterField(w interface {
+	io.Writer
+	io.StringWriter
+}, name, value string) (ok, read bool) {
+	return message.WriteFoldedParameterField(w, name, value)
+}
+
+// FieldScratch is memory for what reading one field builds and then drops, which a host that reads a
+// long field more than once uses again. See [TakeFieldScratch].
+type FieldScratch = message.FieldScratch
+
+// TakeFieldScratch is an empty [FieldScratch] with room for size without growing. What its String and
+// Unfolded answer is good only until its Release.
+func TakeFieldScratch(size int) *FieldScratch { return message.TakeFieldScratch(size) }
+
+func ReleaseReadCaches() { message.ReleaseReadCaches() }

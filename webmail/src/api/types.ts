@@ -2912,7 +2912,7 @@ export interface paths {
         put?: never;
         /**
          * Deliver a message into a mailbox (protocol gateways)
-         * @description Machine to machine: no user token. The inbound pipeline decides: 201 with the message made, 200 processed when it quarantined or discarded it, 403 rejected, 503 deferred (greylisted or rate_limited when the greylist or rate_limit step held it back), 422 mailbox_full over quota. These are REST statuses for every caller; the SMTP gateway rewrites them into its SMTP reply (#1664). A missing mailbox is 404; a failed mailbox lookup is 500, never a missing recipient. Stored text must not contain NUL (U+0000), including strings and object keys anywhere in recipients_to or recipients_cc; a refusal is 422 validation_failed naming the field, before any write. raw_message is a standard padded base64 string (format: byte), not unencoded message text, and may hold any octets: they are stored exactly. An arrival (received_tls set) past the hop limit and a reserved alias that cannot route are 403 rejected before the pipeline runs. The recipient is resolved from address. Arriving mail uses server time and default Inbox/flags, subject to inbound rules. Import-only fields sent by older callers are ignored.
+         * @description Machine to machine: no user token. The inbound pipeline decides: 201 naming the message made, 200 processed when it quarantined or discarded it, 403 rejected, 503 deferred (greylisted or rate_limited when the greylist or rate_limit step held it back), 422 mailbox_full over quota. These are REST statuses for every caller; the SMTP gateway rewrites them into its SMTP reply (#1664). A missing mailbox is 404; a failed mailbox lookup is 500, never a missing recipient. Stored text must not contain NUL (U+0000), including strings and object keys anywhere in recipients_to or recipients_cc; a refusal is 422 validation_failed naming the field, before any write. raw_message is a standard padded base64 string (format: byte), not unencoded message text, and may hold any octets: they are stored exactly. With raw_message and neither body_text nor body_html, the stored text is read from raw_message; when it can't be parsed, the text is whatever follows its first blank line. An arrival (received_tls set) past the hop limit and a reserved alias that cannot route are 403 rejected before the pipeline runs. The recipient is resolved from address. Arriving mail uses server time and default Inbox/flags, subject to inbound rules. Import-only fields sent by older callers are ignored.
          */
         post: operations["deliverMessage"];
         delete?: never;
@@ -3443,6 +3443,7 @@ export interface components {
             exists: boolean;
             mailbox_id?: number;
         };
+        AddressList: Record<string, never>;
         Alias: {
             active: boolean;
             /** Format: date-time */
@@ -3802,6 +3803,9 @@ export interface components {
         "Data-DashboardStats": {
             data: components["schemas"]["DashboardStats"];
         };
+        "Data-DeliveredMessage": {
+            data: components["schemas"]["DeliveredMessage"];
+        };
         "Data-DeliveryProcessed": {
             data: components["schemas"]["DeliveryProcessed"];
         };
@@ -4048,6 +4052,11 @@ export interface components {
         "Data-vacationSetting": {
             data: components["schemas"]["vacationSetting"];
         };
+        DeliveredMessage: {
+            folder: string;
+            id: number;
+            message_id: string;
+        };
         DeliveryLogEntry: {
             attempts: number;
             body_type: string;
@@ -4204,12 +4213,12 @@ export interface components {
         };
         Headers: {
             bcc?: components["schemas"]["Address"][];
-            cc?: components["schemas"]["Address"][];
+            cc?: Record<string, never>[];
             date: string;
             extra?: {
                 [key: string]: string;
             };
-            from: components["schemas"]["Address"][];
+            from: Record<string, never>[];
             "in-reply-to"?: string;
             "message-id": string;
             raw?: {
@@ -4217,7 +4226,7 @@ export interface components {
             };
             references?: string[];
             subject: string;
-            to: components["schemas"]["Address"][];
+            to: Record<string, never>[];
         };
         Health: {
             cert_warnings?: components["schemas"]["CertWarning"][];
@@ -42688,7 +42697,7 @@ export interface operations {
                     "application/json": components["schemas"]["Data-DeliveryProcessed"];
                 };
             };
-            /** @description Delivered; the message made */
+            /** @description Delivered; which message was made */
             201: {
                 headers: {
                     /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
@@ -42704,7 +42713,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Data-Message"];
+                    "application/json": components["schemas"]["Data-DeliveredMessage"];
                 };
             };
             /** @description Bad Request */

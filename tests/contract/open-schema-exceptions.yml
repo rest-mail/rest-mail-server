@@ -9,6 +9,12 @@
   of caller and filter supplied string values.
 '#/components/schemas/ErrorBody/properties/details': 'Error details vary by error
   code; the code registry and conventions are tracked in #656.'
+'#/components/schemas/Headers/properties/cc/items': An address list writes its own
+  JSON, an array of address objects; the generator can state only the item type.
+'#/components/schemas/Headers/properties/from/items': An address list writes its own
+  JSON, an array of address objects; the generator can state only the item type.
+'#/components/schemas/Headers/properties/to/items': An address list writes its own
+  JSON, an array of address objects; the generator can state only the item type.
 '#/components/schemas/Headers/properties/extra': Mail header names are supplied by
   messages, with string values or lists of strings.
 '#/components/schemas/Headers/properties/raw': Mail header names are supplied by messages,

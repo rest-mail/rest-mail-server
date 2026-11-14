@@ -41,8 +41,8 @@ func captureDMARC(ctx context.Context, email *pipeline.EmailJSON, ev dmarcEvalua
 		return
 	}
 	headerFrom := ""
-	if len(email.Headers.From) > 0 {
-		headerFrom = email.Headers.From[0].Address
+	if email.Headers.From.Len() > 0 {
+		headerFrom = email.Headers.From.FirstAddress()
 	}
 	row := models.DMARCAggregateRecord{
 		Domain:      ev.domain,
@@ -121,7 +121,7 @@ func (f *dmarcCheckFilter) Type() pipeline.FilterType { return pipeline.FilterTy
 
 func (f *dmarcCheckFilter) Execute(ctx context.Context, email *pipeline.EmailJSON) (*pipeline.FilterResult, error) {
 	// Get the From domain
-	if len(email.Headers.From) == 0 {
+	if email.Headers.From.Len() == 0 {
 		return &pipeline.FilterResult{
 			Type:   pipeline.FilterTypeAction,
 			Action: pipeline.ActionContinue,
@@ -133,7 +133,7 @@ func (f *dmarcCheckFilter) Execute(ctx context.Context, email *pipeline.EmailJSO
 		}, nil
 	}
 
-	fromAddr := email.Headers.From[0].Address
+	fromAddr := email.Headers.From.FirstAddress()
 	// A quoted local part can contain @; the domain follows the last one.
 	at := strings.LastIndexByte(fromAddr, '@')
 	if at <= 0 {

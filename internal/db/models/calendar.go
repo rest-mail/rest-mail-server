@@ -32,10 +32,13 @@ type CalendarEventVersion struct {
 	// plain indexed FK column to messages.id.
 }
 
-// BeforeCreate keeps what was read from the event readable: it may be in any charset.
+// BeforeCreate keeps what was read from the event readable, since it may be in any charset, and
+// fits the row to its columns: the row is written in the message's transaction, so one it
+// can't hold would refuse the mail (#1915).
 func (v *CalendarEventVersion) BeforeCreate(*gorm.DB) error {
 	for _, text := range []*string{&v.UID, &v.Method, &v.Status, &v.Summary, &v.Organizer} {
 		*text = ReadableText(*text)
 	}
+	v.fitColumns()
 	return nil
 }

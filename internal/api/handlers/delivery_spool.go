@@ -32,6 +32,13 @@ type deliverySpool struct {
 	texts map[string]*importSource
 	// whole says the binder read the whole request, so the bound text fields are the real ones.
 	whole bool
+	// section is the header section once it's been read, and sectionSize how long it is in the file,
+	// which is more than section when a field was removed from it.
+	section     string
+	sectionSize int64
+	sectionRead bool
+	// parsed is the section as readHeaders parsed it, nil if it didn't.
+	parsed *rmime.HeaderSection
 }
 
 // spoolDelivery reads the request's body to files and binds dst, the route's request type, with
@@ -103,38 +110,74 @@ func (s *deliverySpool) message() (string, error) {
 
 // headerSection reads the message up to and including the empty line that ends its header section,
 // without the Authentication-Results claiming to be this server's, for what can be decided from
-// that alone.
+// that alone. It is read once, however often it's asked for.
 func (s *deliverySpool) headerSection() (string, error) {
-	section, _, err := s.splitHeaders()
-	return section, err
-}
-
-// checkStructure answers an error wrapping rmime.ErrStructureLimit when the message is one the
-// parser will refuse. It reads what the parser will be given, from the file, and keeps none of it.
-func (s *deliverySpool) checkStructure() error {
-	section, rest, err := s.splitHeaders()
-	if err != nil {
-		return err
+	if s.sectionRead {
+		return s.section, nil
 	}
-	return rmime.CheckStructure(io.MultiReader(strings.NewReader(section), rest))
-}
-
-// splitHeaders answers the header section, and a reader of what comes after it.
-func (s *deliverySpool) splitHeaders() (string, io.Reader, error) {
 	file, err := s.raw.reader()
 	if err != nil {
-		return "", nil, err
+		return "", err
 	}
-	reader := bufio.NewReader(file)
+	size, err := headerSectionSize(file)
+	if err != nil {
+		return "", err
+	}
+	file, err = s.raw.reader()
+	if err != nil {
+		return "", err
+	}
 	var section strings.Builder
-	for {
-		line, err := reader.ReadString('\n')
-		section.WriteString(line)
-		if errors.Is(err, io.EOF) || line == "\n" || line == "\r\n" {
-			return rmime.StripAuthResults(section.String(), pipeline.AuthServID), reader, nil
-		}
-		if err != nil {
-			return "", nil, err
-		}
+	section.Grow(int(size))
+	if _, err := io.CopyN(&section, file, size); err != nil {
+		return "", err
 	}
+	s.section, s.sectionSize, s.sectionRead = rmime.StripAuthResults(section.String(), pipeline.AuthServID), size, true
+	return s.section, nil
+}
+
+// headerSectionSize passes over a header section and answers how long it is, with the empty line
+// that ends it. Knowing that first is what lets a sender's long section cost its own size to hold,
+// where growing a buffer as it's read costs several times that.
+func headerSectionSize(source io.Reader) (int64, error) {
+	reader := bufio.NewReader(source)
+	var size int64
+	wholeLine := true
+	for {
+		line, err := reader.ReadSlice('\n')
+		size += int64(len(line))
+		if errors.Is(err, io.EOF) || (wholeLine && (string(line) == "\n" || string(line) == "\r\n")) {
+			return size, nil
+		}
+		if err != nil && !errors.Is(err, bufio.ErrBufferFull) {
+			return 0, err
+		}
+		wholeLine = err == nil
+	}
+}
+
+// readHeaders parses the header section once. It answers an error wrapping
+// rmime.ErrStructureLimit when the message is one the parser will refuse, which it finds from the
+// file, keeping none of it. readErr says the section didn't parse, for which there's nothing to check.
+func (s *deliverySpool) readHeaders() (parsed *rmime.HeaderSection, parseErr, readErr error) {
+	section, err := s.headerSection()
+	if err != nil {
+		return nil, nil, err
+	}
+	parsed, parseErr = rmime.ReadHeaderSection(section)
+	if parseErr != nil {
+		return nil, parseErr, nil
+	}
+	file, err := s.raw.reader()
+	if err != nil {
+		return nil, nil, err
+	}
+	if _, err := file.Seek(s.sectionSize, io.SeekStart); err != nil {
+		return nil, nil, err
+	}
+	if err := parsed.CheckStructure(file, s.raw.size-s.sectionSize); err != nil {
+		return nil, nil, err
+	}
+	s.parsed = parsed
+	return parsed, nil, nil
 }
