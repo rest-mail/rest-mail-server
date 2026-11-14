@@ -32,19 +32,27 @@ def validator(schema):
     )
 
 
+# The refusal of a well-formed report that names no hosted policy domain
+# (internal/api/handlers/tlsrpt.go): 422 validation_failed, failing field policies.
+NO_HOSTED_DOMAIN = {"policies": "None of the policy domains in the report match a known domain"}
+
+
 def tls_report_refusal(transaction):
     document = description(os.environ["CONTRACT_SPEC"])
     operation = document["paths"]["/.well-known/smtp-tlsrpt"]["post"]
     schema = operation["requestBody"]["content"]["application/tlsrpt+json"]["schema"]
     body = json.loads(transaction["request"]["body"])
-    code = "no_matching_domains" if validator(schema).is_valid(body) else "validation_failed"
+    # Both refusals are 422 validation_failed. A report the published schema
+    # accepts must be refused only for naming no hosted domain.
+    fields = NO_HOSTED_DOMAIN if validator(schema).is_valid(body) else None
     send_refusal_probe(
-        transaction, 422, code,
-        "External reports may omit policy and policy-domain. An unchanged report with no hosted domain is refused, not rewritten; malformed reports still require validation_failed.",
+        transaction, 422, "validation_failed",
+        "External reports may omit policy and policy-domain. An unchanged report with no hosted domain is refused on policies, not rewritten; malformed reports still require validation_failed.",
+        fields=fields,
     )
 
 
-def send_refusal_probe(transaction, status, code, reason):
+def send_refusal_probe(transaction, status, code, reason, fields=None):
     evidence = Path(os.environ["CONTRACT_PROBE_REPLAYS"])
     document = description(os.environ["CONTRACT_SPEC"])
     operation = next(
@@ -69,6 +77,9 @@ def send_refusal_probe(transaction, status, code, reason):
     actual_code = answer.get("error", {}).get("code")
     if actual_status != status or actual_code != code:
         raise RuntimeError(f"unchanged {transaction['operationId']} probe expected {status} {code}, got {actual_status} {actual_code}")
+    actual_fields = (answer.get("error", {}).get("details") or {}).get("fields")
+    if fields is not None and actual_fields != fields:
+        raise RuntimeError(f"unchanged {transaction['operationId']} probe expected {status} {code} on {fields}, got {actual_fields}")
     validator(schema).validate(answer)
     with evidence.open("a") as output:
         output.write(json.dumps({
@@ -81,7 +92,7 @@ def send_refusal_probe(transaction, status, code, reason):
 
 def check_replays(lost_path, evidence_path):
     allowed = {
-        "receiveTlsReport": {(422, "no_matching_domains"), (422, "validation_failed")},
+        "receiveTlsReport": {(422, "validation_failed")},
         "inviteAccount": {(409, "account_not_invitable")},
     }
     ended = Counter(name for name in Path(lost_path).read_text().splitlines() if name in allowed)

@@ -518,8 +518,9 @@ id 1 to 2 would merely hide the credentialed fixture administrator.
 `policy-domain`. Vertrag 0.42 treats a legitimate business refusal of a valid
 shape as a finding. `probe_refusals.py` therefore sends those unchanged generated
 requests directly, rather than inventing a hosted policy. The published request
-schema, including date-time formats, decides the expected code: a valid report
-with no hosted domain must answer 422 `no_matching_domains`; an invalid report
+schema, including date-time formats, decides the expected refusal: a valid
+report with no hosted domain must answer 422 `validation_failed` whose only
+failing field is `policies` (no policy domain is hosted); an invalid report
 must answer 422 `validation_failed`. The exact status, code and published
 response schema must all match. The minimum-id invitation probe is sent the
 same way, requiring 409 `account_not_invitable`. Any mismatch fails the hook

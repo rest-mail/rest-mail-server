@@ -67,7 +67,10 @@ class RefusalProbes(unittest.TestCase):
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), RefusalServer)
         self.server.received = []
         self.server.status = 422
-        self.server.answer = {"error": {"code": "no_matching_domains", "message": "No policy domain is hosted"}}
+        self.server.answer = {"error": {
+            "code": "validation_failed", "message": "Request body failed validation",
+            "details": {"fields": {"policies": "None of the policy domains in the report match a known domain"}},
+        }}
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
         self.addCleanup(self.server.server_close)
         self.addCleanup(self.server.shutdown)
@@ -88,25 +91,41 @@ class RefusalProbes(unittest.TestCase):
         self.assertEqual(transaction["request"]["body"], body)
         self.assertTrue(transaction["skip"])
         evidence = json.loads(self.evidence.read_text())
-        self.assertEqual((evidence["status"], evidence["code"]), (422, "no_matching_domains"))
+        self.assertEqual((evidence["status"], evidence["code"]), (422, "validation_failed"))
         self.assertIn("External reports", evidence["reason"])
 
-    def test_invalid_shape_requires_validation_failed_not_a_business_refusal(self):
+    def test_invalid_shape_requires_validation_failed_on_any_field(self):
         transaction = self.transaction('{"policies": [{}]}')
+        self.server.answer = {"error": {"code": "not_a_refusal", "message": "wrong"}}
         with self.assertRaises(RuntimeError):
             probe_refusals.tls_report_refusal(transaction)
         self.assertNotIn("skip", transaction)
         self.assertFalse(self.evidence.exists())
-        self.server.answer["error"]["code"] = "validation_failed"
+        self.server.answer = {"error": {"code": "validation_failed", "message": "Request body failed validation",
+                                        "details": {"fields": {"organization-name": "Required field"}}}}
         probe_refusals.tls_report_refusal(transaction)
         self.assertTrue(transaction["skip"])
+
+    def test_a_valid_report_must_be_refused_only_for_its_policy_domains(self):
+        for fields in ({"organization-name": "Required field"}, None,
+                       {"policies": "None of the policy domains in the report match a known domain", "report-id": "Required field"}):
+            with self.subTest(fields=fields):
+                self.server.answer = {"error": {"code": "validation_failed", "message": "Request body failed validation"}}
+                if fields is not None:
+                    self.server.answer["error"]["details"] = {"fields": fields}
+                transaction = self.transaction('{"organization-name":"reporter","policies":[{}]}')
+                with self.assertRaises(RuntimeError):
+                    probe_refusals.tls_report_refusal(transaction)
+                self.assertNotIn("skip", transaction)
+                self.assertFalse(self.evidence.exists())
 
     def test_wrong_status_code_or_response_schema_never_becomes_an_exception(self):
         for status, answer in (
             (201, {"data": {"token": "token-that-must-not-be-logged"}}),
             (500, {"error": {"code": "internal_error", "message": "failed"}}),
             (422, {"error": {"code": "validation_failed", "message": "wrong refusal"}}),
-            (422, {"error": {"code": "no_matching_domains"}}),
+            (422, {"error": {"code": "no_matching_domains", "message": "not the API's code"}}),
+            (422, {"error": {"code": "validation_failed", "details": {"fields": {"policies": "None of the policy domains in the report match a known domain"}}}}),
         ):
             with self.subTest(status=status, answer=answer):
                 self.server.status, self.server.answer = status, answer

@@ -18,7 +18,8 @@ openGatewaySession 14
 # These 32 are sent unchanged by probe_refusals.py, checked against the published
 # response schema and exact refusal code, and recorded in replayed-probes.jsonl.
 # Their engine send ends afterwards: Vertrag 0.42 cannot attribute a legitimate
-# no_matching_domains refusal to a schema-valid body. External reports stay lenient.
+# no-hosted-domain refusal (422 validation_failed on policies) to a schema-valid
+# body. External reports stay lenient.
 receiveTlsReport 32
 # pipeline_id must name a pipeline.
 testPipeline 3
