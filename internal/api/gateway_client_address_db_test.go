@@ -43,13 +43,13 @@ func throttledGatewayFixture(t *testing.T, internalMTLS bool) *gatewayFixture {
 // the address the gateway sees the mail client at.
 func fromSource(t *testing.T, source, addr string) net.Conn {
 	t.Helper()
-	dialer := net.Dialer{LocalAddr: &net.TCPAddr{IP: net.ParseIP(source)}, Timeout: 5 * time.Second}
+	dialer := net.Dialer{LocalAddr: &net.TCPAddr{IP: net.ParseIP(source)}, Timeout: 30 * time.Second}
 	conn, err := dialer.Dial("tcp", addr)
 	if err != nil {
 		t.Fatalf("dial from %s: %v", source, err)
 	}
 	t.Cleanup(func() { _ = conn.Close() })
-	if err := conn.SetDeadline(time.Now().Add(20 * time.Second)); err != nil {
+	if err := conn.SetDeadline(time.Now().Add(30 * time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	return conn

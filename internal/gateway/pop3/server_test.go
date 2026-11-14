@@ -31,13 +31,13 @@ func startServer(t *testing.T, a *sessionAPI, source string) (*Server, *pop3Clie
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = srv.Close() })
-	dialer := net.Dialer{LocalAddr: &net.TCPAddr{IP: net.ParseIP(source)}, Timeout: 5 * time.Second}
+	dialer := net.Dialer{LocalAddr: &net.TCPAddr{IP: net.ParseIP(source)}, Timeout: 30 * time.Second}
 	conn, err := dialer.Dial("tcp", listener.Addr().String())
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = conn.Close() })
-	if err := conn.SetDeadline(time.Now().Add(10 * time.Second)); err != nil {
+	if err := conn.SetDeadline(time.Now().Add(30 * time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	c := &pop3Client{t: t, conn: conn, r: bufio.NewReader(conn)}

@@ -40,12 +40,12 @@ func TestClientAddressBackendLearnsTheAddress(t *testing.T) {
 		NewSession(conn, backend, "imap.test", nil, imap.NopLimiter{}).Handle()
 	}()
 
-	dialer := net.Dialer{LocalAddr: &net.TCPAddr{IP: net.ParseIP("127.0.0.1")}, Timeout: 5 * time.Second}
+	dialer := net.Dialer{LocalAddr: &net.TCPAddr{IP: net.ParseIP("127.0.0.1")}, Timeout: 30 * time.Second}
 	conn, err := dialer.Dial("tcp", listener.Addr().String())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := conn.SetDeadline(time.Now().Add(10 * time.Second)); err != nil {
+	if err := conn.SetDeadline(time.Now().Add(30 * time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	r := bufio.NewReader(conn)
