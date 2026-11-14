@@ -23,17 +23,24 @@ ROOT = Path(__file__).resolve().parents[2]
 WORKFLOWS = ROOT / ".github/workflows"
 POOL = "antimatter-vps-linux-x64"
 HOSTED = "ubuntu-latest"
+# What a gated job falls back to: the Ubuntu the pool runs (24.04), not whatever
+# ubuntu-latest has become, so a job behaves the same wherever it lands.
+FALLBACK = "ubuntu-24.04"
 PICK_STEP = "Pick runners (antimatter-vps runners while free, else GitHub's)"
 PICKER_OUTPUT = "${{ steps.runners.outputs.runners || '{}' }}"
-GATED = re.compile(
-    r"^\$\{\{ (?:(?P<guard>github\.event_name == 'pull_request') && )?"
+PICKED = (
     r"fromJSON\(needs\.(?P<picker>[\w-]+)\.outputs\.runners\)"
     r"\[(?:'(?P<key>[\w.-]+)'|format\('(?P<format>[\w-]+)\.\{0\}', matrix\.(?P<axis>\w+)\))\]"
-    r" \|\| 'ubuntu-latest' \}\}$"
+    r" \|\| 'ubuntu-24\.04'"
 )
-REUSABLE_INPUT = re.compile(r"^\$\{\{ inputs\.(?P<input>[\w-]+) \|\| 'ubuntu-latest' \}\}$")
+GATED = re.compile(
+    # A tag's release stays on GitHub's own runners; only a pull request's build is picked.
+    r"^\$\{\{ (?:(?P<guard>github\.event_name == 'pull_request') && \()?" + PICKED
+    + r"(?(guard)\) \|\| 'ubuntu-latest') \}\}$"
+)
+REUSABLE_INPUT = re.compile(r"^\$\{\{ inputs\.(?P<input>[\w-]+) \|\| 'ubuntu-24\.04' \}\}$")
 CALLER_RUNNER = re.compile(
-    r"^\$\{\{ fromJSON\(needs\.(?P<picker>[\w-]+)\.outputs\.runners\)\['(?P<key>[\w.-]+)'\] \|\| 'ubuntu-latest' \}\}$"
+    r"^\$\{\{ fromJSON\(needs\.(?P<picker>[\w-]+)\.outputs\.runners\)\['(?P<key>[\w.-]+)'\] \|\| 'ubuntu-24\.04' \}\}$"
 )
 
 # Jobs that stay on GitHub's runners, and why. A job missing from here must be gated, so a
@@ -135,8 +142,9 @@ class RunnerGate(unittest.TestCase):
                         continue
                     if "workflow_call" in document[True]:
                         match = REUSABLE_INPUT.match(runs_on)
-                        self.assertIsNotNone(match, f"{runs_on!r} must come from an input, else ubuntu-latest")
+                        self.assertIsNotNone(match, f"{runs_on!r} must come from an input, else ubuntu-24.04")
                         self.assertIn(match["input"], document[True]["workflow_call"]["inputs"])
+                        self.assertEqual(document[True]["workflow_call"]["inputs"][match["input"]]["default"], FALLBACK)
                         continue
                     match = GATED.match(runs_on)
                     self.assertIsNotNone(match, f"{runs_on!r} is neither gated nor listed in KEPT_HOSTED")
@@ -227,13 +235,13 @@ class RunnerGate(unittest.TestCase):
                     for fragment in (
                         'for who in "$ACTOR" "$GH_ACTOR" "$SENDER" "$AUTHOR"; do',
                         '[ -z "$who" ] || [ "$who" = christhomas ] || ours=false',
-                        "$ours || { echo ubuntu-latest; return; }",
+                        "$ours || { echo ubuntu-24.04; return; }",
                         "curl -fsS --max-time 10 --get https://runner-gate.antimatter-studios.com/pick",
-                        "--data-urlencode fallback=ubuntu-latest",
+                        "--data-urlencode fallback=ubuntu-24.04",
                         '--data-urlencode "run=${{ github.run_id }}"',
                         '--data-urlencode "attempt=${{ github.run_attempt }}"',
-                        '--data-urlencode "job=$1") || r=ubuntu-latest',
-                        'case "$r" in antimatter-vps-linux-x64|ubuntu-latest) echo "$r" ;; *) echo ubuntu-latest ;; esac',
+                        '--data-urlencode "job=$1") || r=ubuntu-24.04',
+                        'case "$r" in antimatter-vps-linux-x64|ubuntu-24.04) echo "$r" ;; *) echo ubuntu-24.04 ;; esac',
                         'pick "${entry%%.*}"',
                         'echo "runners=$runners" >> "$GITHUB_OUTPUT"',
                     ):
@@ -386,21 +394,21 @@ class PickStepBehaviour(unittest.TestCase):
         self.assertNotIn("job=test-api.1", calls[1])
         for call in calls:
             for part in ("run=42", "attempt=1", "org=rest-mail", "actor=christhomas", "author=christhomas",
-                         f"prefer={POOL}", "fallback=ubuntu-latest", "--max-time 10"):
+                         f"prefer={POOL}", "fallback=ubuntu-24.04", "--max-time 10"):
                 self.assertIn(part, call)
 
     def test_an_unexpected_answer_or_a_failure_falls_back(self):
-        for answer in ("echo self-hosted", "echo '<html>'", "exit 22", "exit 28"):
+        for answer in ("echo self-hosted", "echo '<html>'", "echo ubuntu-latest", "exit 22", "exit 28"):
             with self.subTest(answer=answer):
                 runners, _ = self.run_step(answer, self.OURS)
-                self.assertEqual(set(runners.values()), {HOSTED})
+                self.assertEqual(set(runners.values()), {FALLBACK})
 
     def test_anyone_else_on_the_run_never_asks_the_gate(self):
         for who in ("ACTOR", "GH_ACTOR", "SENDER", "AUTHOR"):
             for other in ("github-merge-queue[bot]", "someone-else"):
                 with self.subTest(identity=who, value=other):
                     runners, calls = self.run_step("echo antimatter-vps-linux-x64", {**self.OURS, who: other})
-                    self.assertEqual(set(runners.values()), {HOSTED})
+                    self.assertEqual(set(runners.values()), {FALLBACK})
                     self.assertEqual(calls, [])
 
     def test_a_missing_identity_does_not_count_against_the_run(self):

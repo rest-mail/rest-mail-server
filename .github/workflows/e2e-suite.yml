@@ -14,13 +14,13 @@ on:
           The runner label for the topology job (`suite`). The caller asks
           runner-gate.antimatter-studios.com with job=suite, the id GitHub names this job by.
         type: string
-        default: ubuntu-latest
+        default: ubuntu-24.04
       isolation-runner:
         description: >-
           The runner label for the JS filter isolation job (`js-filter-isolation`), which
           runs only with contract-phases "gate". The caller asks the gate with job=js-filter-isolation.
         type: string
-        default: ubuntu-latest
+        default: ubuntu-24.04
       contract-phases:
         description: >-
           "gate" runs the examples and coverage gates; "pairs" runs the independent
@@ -43,7 +43,7 @@ permissions:
 jobs:
   suite:
     name: topology
-    runs-on: ${{ inputs.runner || 'ubuntu-latest' }}
+    runs-on: ${{ inputs.runner || 'ubuntu-24.04' }}
     # The suite took 52 minutes before the live proofs, which may take up to 25.
     timeout-minutes: 85
     env:
@@ -417,7 +417,7 @@ jobs:
     # topology job does, so the required `E2E (full topology)` check waits for it.
     name: JS filter isolation
     if: inputs.contract-phases == 'gate'
-    runs-on: ${{ inputs.isolation-runner || 'ubuntu-latest' }}
+    runs-on: ${{ inputs.isolation-runner || 'ubuntu-24.04' }}
     timeout-minutes: 30
     env:
       RESTMAIL_SKIP_FRONTENDS: "true"

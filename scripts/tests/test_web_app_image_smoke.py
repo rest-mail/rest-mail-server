@@ -108,7 +108,7 @@ class WebAppImageStep(unittest.TestCase):
             esac
         """)
         self.stub("sleep", "exit 0")
-        env = dict(os.environ, APP="webmail", RUNNER_TEMP=str(self.scratch),
+        env = dict(os.environ, APP="webmail", RUNNER_TEMP=str(self.scratch), GITHUB_WORKSPACE=str(ROOT),
                    PATH=f"{self.bin}{os.pathsep}{os.environ['PATH']}")
         return subprocess.run(["bash", "-c", web_app_step()], cwd=self.scratch, env=env,
                               capture_output=True, text=True, timeout=600)

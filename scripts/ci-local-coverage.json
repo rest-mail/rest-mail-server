@@ -49,7 +49,7 @@
       "local": "IMAP module"
     },
     "Pick runners (antimatter-vps runners while free, else GitHub's)": {
-      "sha256": "da07c5b5978aa24e04a5e49a03d52b5060ca1d78f8ea003624caa5320922d082",
+      "sha256": "ff4b38514588d6288ee07f499af2a8b28dc24367bac373aa1d25023f99dc1cc1",
       "exception": "Asks the runner gate where CI's next job runs; a local gate runs every job here."
     }
   },

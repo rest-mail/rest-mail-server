@@ -74,7 +74,8 @@ jobs:
         id: runners
         # runner-gate.antimatter-studios.com answers once per job: an antimatter-vps runner
         # while one is free and every identity on this run is christhomas, otherwise
-        # ubuntu-latest; any error is ubuntu-latest too. Its /status page shows the pool.
+        # ubuntu-24.04, the Ubuntu those runners run; any error is ubuntu-24.04 too.
+        # Its /status page shows the pool.
         # JOBS has one entry per gated job, and one per matrix leg or reusable-workflow call:
         # the gate is asked for the job id before any ".", and the whole entry keys the answer.
         # It is the last step of its job, so it asks only once the run is known to go on.
@@ -92,13 +93,13 @@ jobs:
             [ -z "$who" ] || [ "$who" = christhomas ] || ours=false
           done
           pick() {
-            $ours || { echo ubuntu-latest; return; }
+            $ours || { echo ubuntu-24.04; return; }
             r=$(curl -fsS --max-time 10 --get https://runner-gate.antimatter-studios.com/pick \
                   --data-urlencode "org=$ORG" --data-urlencode prefer=antimatter-vps-linux-x64 \
-                  --data-urlencode fallback=ubuntu-latest --data-urlencode "actor=$ACTOR" --data-urlencode "author=$AUTHOR" \
+                  --data-urlencode fallback=ubuntu-24.04 --data-urlencode "actor=$ACTOR" --data-urlencode "author=$AUTHOR" \
                   --data-urlencode "run=${{ github.run_id }}" --data-urlencode "attempt=${{ github.run_attempt }}" \
-                  --data-urlencode "job=$1") || r=ubuntu-latest
-            case "$r" in antimatter-vps-linux-x64|ubuntu-latest) echo "$r" ;; *) echo ubuntu-latest ;; esac
+                  --data-urlencode "job=$1") || r=ubuntu-24.04
+            case "$r" in antimatter-vps-linux-x64|ubuntu-24.04) echo "$r" ;; *) echo ubuntu-24.04 ;; esac
           }
           runners='{}'
           for entry in $JOBS; do
@@ -113,7 +114,7 @@ jobs:
     if: github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != '')
     # A pull request's snapshot build may take an antimatter-vps runner. A tag's release
     # stays on GitHub's, so the provenance it signs names a GitHub-hosted build.
-    runs-on: ${{ github.event_name == 'pull_request' && fromJSON(needs.preflight.outputs.runners)['release'] || 'ubuntu-latest' }}
+    runs-on: ${{ github.event_name == 'pull_request' && (fromJSON(needs.preflight.outputs.runners)['release'] || 'ubuntu-24.04') || 'ubuntu-latest' }}
     permissions:
       contents: write # creates the GitHub Release
       id-token: write # signs the build-provenance attestation
