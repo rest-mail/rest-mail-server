@@ -60,7 +60,7 @@ KEPT_HOSTED = {
     ("email-explained.yml", "preflight"): "the only other job uses docker buildx, so nothing to pick for",
     ("email-explained.yml", "publish"): "docker/build-push-action and buildx, which the pool cannot run",
     ("docker.yml", "build-and-push"): "docker/build-push-action and buildx, which the pool cannot run",
-    ("cluster-e2e.yml", "install"): "kind needs a privileged Docker the pool's podman sidecar does not give",
+    ("cluster-e2e.yml", "install"): "kind needs a privileged Docker the pool's podman sidecar does not give; it picks for the rest",
     ("contract-compat.yml", "newest-main"): "the workflow's only job: no earlier job to pick in",
     ("contract-faults.yml", "finding-issues"): "its workflow has no early job to pick in",
     ("contract-fuzz.yml", "finding-issues"): "its workflow has no early job to pick in",
@@ -248,7 +248,7 @@ class RunnerGate(unittest.TestCase):
                     ):
                         self.assertIn(fragment, script)
                     self.assertEqual(len(entries(step)), len(set(entries(step))), "each entry picks once")
-        self.assertEqual(pickers, 6)
+        self.assertEqual(pickers, 7)
 
     def test_every_entry_picks_for_a_job_that_reads_it(self):
         for name, document in workflows():

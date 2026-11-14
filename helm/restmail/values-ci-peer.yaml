@@ -1,0 +1,21 @@
+# The second install of the cluster install check (#1750 stage 3), layered on
+# values-ci.yaml: the same chart and images, in a namespace of its own, with a
+# mail domain, mail host and TLS Secret of its own. The first install delivers
+# to it over RESTMAIL.
+#
+#   helm install restmail helm/restmail -n restmail-peer \
+#     -f helm/restmail/values-ci.yaml -f helm/restmail/values-ci-peer.yaml \
+#     --set api.bootstrapAdminPassword="$(openssl rand -base64 24)"
+
+mailserver:
+  hostname: mail.restmail-ci2.test
+  domain: restmail-ci2.test
+
+tls:
+  secretName: restmail-ci2-tls
+
+api:
+  ingress:
+    host: mail.restmail-ci2.test
+    tls:
+      secretName: restmail-ci2-tls
