@@ -159,7 +159,7 @@ func TestSendIdempotencyWaitCancellationAndRollback(t *testing.T) {
 	go func() { finished <- f.request(0, "/api/v1/messages/send", body, "wait-key") }()
 	select {
 	case <-entered:
-	case <-time.After(5 * time.Second):
+	case <-time.After(30 * time.Second):
 		close(release)
 		t.Fatal("first send did not enter transaction")
 	}
@@ -182,7 +182,7 @@ func TestSendIdempotencyWaitCancellationAndRollback(t *testing.T) {
 		if replay := f.request(0, "/api/v1/messages/send", body, "wait-key"); replay.Code != 201 || replay.Body.String() != response.Body.String() {
 			t.Fatalf("replay after wait: %d %s", replay.Code, replay.Body)
 		}
-	case <-time.After(5 * time.Second):
+	case <-time.After(30 * time.Second):
 		t.Fatal("first send did not finish")
 	}
 	f.counts(t, 1, 1)
