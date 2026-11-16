@@ -302,7 +302,7 @@ func startRealSidecar(t *testing.T) string {
 	select {
 	case p := <-port:
 		return "http://127.0.0.1:" + p
-	case <-time.After(15 * time.Second):
+	case <-time.After(30 * time.Second):
 		t.Fatal("the sidecar did not start")
 		return ""
 	}

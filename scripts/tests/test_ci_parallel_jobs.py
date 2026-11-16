@@ -40,7 +40,7 @@ class ParallelGates(unittest.TestCase):
                                     capture_output=True, text=True, timeout=600)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout.splitlines(), packages[2:])
-        for required in ("go test -race -count=1 -timeout=20m", '-exec "$RUNNER_TEMP/testdb-exec"',
+        for required in ("go test -race -count=1 -timeout=2h", '-exec "$RUNNER_TEMP/testdb-exec"',
                          "-coverprofile=coverage-rest.out", "$packages ./cmd/... ./tests/contract/browser_sessions"):
             self.assertIn(required, script)
 
@@ -71,7 +71,7 @@ class ParallelGates(unittest.TestCase):
         self.assertIn("image: postgres:16-alpine", source)
         self.assertIn('RESTMAIL_IMPORT_LONG_PROOF: "1"', source)
         self.assertIn('DB_HOST: localhost', source)
-        self.assertIn('go test -race -count=1 -timeout=20m -coverprofile=coverage-handlers-${{ matrix.shard }}.out -run "$RUN_PATTERN" ./internal/api/handlers/', source)
+        self.assertIn('go test -race -count=1 -timeout=2h -coverprofile=coverage-handlers-${{ matrix.shard }}.out -run "$RUN_PATTERN" ./internal/api/handlers/', source)
 
     def test_missing_any_coverage_profile_fails_before_merging(self):
         profiles = ["rest"] + [f"{package}-{shard}" for package in ("api", "handlers") for shard in range(1, 5)]

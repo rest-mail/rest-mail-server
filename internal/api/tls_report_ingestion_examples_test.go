@@ -186,7 +186,7 @@ func assertTLSIngestionSQL(t *testing.T, s bulkQueueExampleScenario, name string
 	// database/sql rolls a cancelled transaction back from its own goroutine,
 	// which can finish after the handler has answered: wait for that ROLLBACK.
 	if strings.HasPrefix(name, "cancelled") {
-		for deadline := time.Now().Add(2 * time.Second); !tlsIngestionRolledBack(calls) && time.Now().Before(deadline); {
+		for deadline := time.Now().Add(30 * time.Second); !tlsIngestionRolledBack(calls) && time.Now().Before(deadline); {
 			time.Sleep(5 * time.Millisecond)
 			calls = s.store.snapshot()
 		}

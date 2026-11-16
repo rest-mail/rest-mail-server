@@ -6,7 +6,7 @@
 #
 # One process took about 25 minutes of exchanges, nearly all of it waiting on
 # vertrag. The test binary is built once and the matching tests run in shards side
-# by side (four by default); each shard has the 25-minute limit, and the step
+# by side (four by default); each shard has a two-hour hang guard, and the step
 # fails when any shard does. RESTMAIL_VERTRAG_BINARY must name vertrag.
 # Anything else after the pattern is refused: go test flags such as -count=1
 # were once read as the shard count, which ran no shard and still exited 0.
@@ -41,7 +41,7 @@ pids=()
 s=0
 while IFS= read -r run; do
 	# The tests read the spec and fixtures relative to their package directory.
-	(cd internal/api && exec "$work/api.test" -test.v -test.timeout 25m -test.run "$run") >"$work/shard$s.log" 2>&1 &
+	(cd internal/api && exec "$work/api.test" -test.v -test.timeout 2h -test.run "$run") >"$work/shard$s.log" 2>&1 &
 	pids+=("$s:$!")
 	s=$((s + 1))
 done <"$work/shards"

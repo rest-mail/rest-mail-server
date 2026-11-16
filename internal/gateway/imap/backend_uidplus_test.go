@@ -750,7 +750,7 @@ func newTranscript(t *testing.T, backend goimap.Backend, configure ...func(*imap
 
 func (h *transcript) readLine() string {
 	h.t.Helper()
-	_ = h.conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	_ = h.conn.SetReadDeadline(time.Now().Add(30 * time.Second))
 	line, err := h.cr.ReadString('\n')
 	if err != nil {
 		h.t.Fatalf("readLine: %v (partial %q)", err, line)
@@ -760,7 +760,7 @@ func (h *transcript) readLine() string {
 
 func (h *transcript) writeLine(s string) {
 	h.t.Helper()
-	_ = h.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	_ = h.conn.SetWriteDeadline(time.Now().Add(30 * time.Second))
 	_, _ = h.cw.WriteString(s)
 	if err := h.cw.Flush(); err != nil {
 		h.t.Fatalf("write: %v", err)

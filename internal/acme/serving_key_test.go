@@ -48,7 +48,7 @@ func TestIssue_PreservesServingKeyAndTLSA(t *testing.T) {
 			responder := NewHTTP01Responder()
 			ca := newFakeCA(t, responder)
 			cfg := IssueConfig{Directory: ca.url("/directory"), Domains: []string{domain}, AccountKey: newECKey(t), CertificateKey: storedKey}
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
 			for i := 0; i < 2; i++ {
 				cert, encoded, err := Issue(ctx, cfg, responder)
@@ -131,7 +131,7 @@ func TestRenewCertificate_PreservesEncryptedServingKey(t *testing.T) {
 	}
 	var ca *fakeCA
 	c := newAccountTestClient(t, tx, &ca)
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	old, err := c.ObtainCertificate(ctx, domain)
 	if err != nil {

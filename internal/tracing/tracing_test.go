@@ -94,7 +94,7 @@ func TestSetup_ExportsToTheConfiguredEndpoint(t *testing.T) {
 		t.Fatal("span not recorded with tracing on")
 	}
 	span.End()
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if err := shutdown(ctx); err != nil {
 		t.Fatal(err)

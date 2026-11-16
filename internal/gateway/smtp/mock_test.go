@@ -491,7 +491,7 @@ func (h *smtpHarness) upgradeTLS(raw net.Conn) {
 
 func (h *smtpHarness) readLine() string {
 	h.t.Helper()
-	_ = h.conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	_ = h.conn.SetReadDeadline(time.Now().Add(30 * time.Second))
 	line, err := h.cr.ReadString('\n')
 	if err != nil {
 		h.t.Fatalf("readLine: %v (partial %q)", err, line)
@@ -515,7 +515,7 @@ func (h *smtpHarness) readReply() (lines []string, final string) {
 
 func (h *smtpHarness) send(format string, args ...interface{}) {
 	h.t.Helper()
-	_ = h.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	_ = h.conn.SetWriteDeadline(time.Now().Add(30 * time.Second))
 	fmt.Fprintf(h.cw, format+"\r\n", args...)
 	if err := h.cw.Flush(); err != nil {
 		h.t.Fatalf("send: %v", err)

@@ -218,6 +218,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	testH := handlers.NewTestHandler(db, cfg)
 	testH.ResetRuntime(broker, sessions, authH, recoveryEmailH)
 	testH.OnReset(grantCache.Invalidate)
+	testH.OnReset(filters.ResetRateLimit)
 	rateLimit := func(settings middleware.RateLimitConfig) func(http.Handler) http.Handler {
 		throttle, reset := middleware.ResettableRateLimit(settings)
 		testH.OnReset(reset)

@@ -76,7 +76,7 @@ func TestMessageReadRoutesCarryTheRequestContext(t *testing.T) {
 			h.RegisterFolders(rs)
 			h.RegisterCompose(rs)
 
-			ctx, cancel := context.WithTimeout(context.WithValue(t.Context(), messageReadsKey{}, true), 4*time.Second)
+			ctx, cancel := context.WithTimeout(context.WithValue(t.Context(), messageReadsKey{}, true), 30*time.Second)
 			defer cancel()
 			r := withClaims(httptest.NewRequest(http.MethodGet, route.path, nil).WithContext(ctx),
 				&auth.Claims{AccountID: 7, Address: "owner@example.test", CredentialID: 3, CredentialKind: "app_password"})

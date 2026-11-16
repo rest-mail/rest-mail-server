@@ -25,7 +25,7 @@ func TestRestmailDKIMLookupUsesAbsoluteName(test *testing.T) {
 	test.Cleanup(func() { net.DefaultResolver = previous })
 	for _, name := range []string{"broken._domainkey.restmail.test", "broken._domainkey.restmail.test."} {
 		test.Run(name, func(test *testing.T) {
-			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
 			_, err := lookupRestmailDKIMTXT(ctx, name)
 			var dnsError *net.DNSError

@@ -28,7 +28,7 @@ func writeFile(t *testing.T, dir, name string, data []byte) string {
 func doGet(url string, clientTLS *tls.Config) (int, error) {
 	c := &http.Client{
 		Transport: &http.Transport{TLSClientConfig: clientTLS},
-		Timeout:   5 * time.Second,
+		Timeout:   30 * time.Second,
 	}
 	resp, err := c.Get(url)
 	if err != nil {

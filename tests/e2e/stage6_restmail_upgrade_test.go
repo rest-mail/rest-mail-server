@@ -88,7 +88,7 @@ func testStage6RestmailUpgrade(t *testing.T) {
 
 		// Verify delivery
 		otherClient, otherClientAcct := restmailInbox(t, "other@restmail.test", accountPassword)
-		msgID := waitForMessage(t, otherClient, otherClientAcct, "INBOX", subject, 15*time.Second)
+		msgID := waitForMessage(t, otherClient, otherClientAcct, "INBOX", subject, 30*time.Second)
 		t.Logf("RESTMAIL direct delivery verified: id=%d", msgID)
 	})
 
@@ -112,7 +112,7 @@ func testStage6RestmailUpgrade(t *testing.T) {
 		resp.Body.Close()
 
 		otherClient, otherClientAcct := restmailInbox(t, "other@restmail.test", accountPassword)
-		msgID := waitForMessage(t, otherClient, otherClientAcct, "INBOX", subject, 15*time.Second)
+		msgID := waitForMessage(t, otherClient, otherClientAcct, "INBOX", subject, 30*time.Second)
 		t.Logf("Mail3→Mail3 delivery (upgrade path): id=%d", msgID)
 	})
 

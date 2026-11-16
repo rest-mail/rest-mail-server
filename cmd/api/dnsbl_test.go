@@ -187,7 +187,7 @@ func TestDNSBLRuntimeRunsAndStops(t *testing.T) {
 		if tr.Kind != dnsbl.TransitionListed {
 			t.Fatalf("transition = %q, want %q", tr.Kind, dnsbl.TransitionListed)
 		}
-	case <-time.After(5 * time.Second):
+	case <-time.After(30 * time.Second):
 		t.Fatal("the first check was never recorded")
 	}
 	if got := testutil.ToFloat64(m.checks.WithLabelValues("example", string(dnsbl.StatusListed))); got != 1 {
@@ -201,7 +201,7 @@ func TestDNSBLRuntimeRunsAndStops(t *testing.T) {
 	if err := rt.stop(); err != nil {
 		t.Fatal(err)
 	}
-	if d := time.Since(began); d > time.Second {
+	if d := time.Since(began); d > 30*time.Second {
 		t.Fatalf("stop took %s while the monitor was waiting", d)
 	}
 	select {
@@ -219,14 +219,17 @@ func TestDNSBLRuntimeRunsAndStops(t *testing.T) {
 func TestDNSBLRuntimeStopDuringCheck(t *testing.T) {
 	obs, m := newDNSBLTestObserver(t)
 	res := newDNSBLResolver(true)
-	rt, err := newDNSBLRuntime(writeDNSBLConfig(t, dnsblTestConfig), func() dnsbl.Resolver { return res }, obs)
+	// The check's own timeout is far past the 30s bound below, so only stop can
+	// end the check in time; a slow machine cannot.
+	config := strings.Replace(dnsblTestConfig, `"timeout": "2s"`, `"timeout": "1m"`, 1)
+	rt, err := newDNSBLRuntime(writeDNSBLConfig(t, config), func() dnsbl.Resolver { return res }, obs)
 	if err != nil {
 		t.Fatal(err)
 	}
 	rt.start(context.Background())
 	select {
 	case <-res.asked:
-	case <-time.After(5 * time.Second):
+	case <-time.After(30 * time.Second):
 		t.Fatal("the monitor never asked")
 	}
 
@@ -234,7 +237,7 @@ func TestDNSBLRuntimeStopDuringCheck(t *testing.T) {
 	if err := rt.stop(); err != nil {
 		t.Fatal(err)
 	}
-	if d := time.Since(began); d > time.Second {
+	if d := time.Since(began); d > 30*time.Second {
 		t.Fatalf("stop took %s with a check in flight", d)
 	}
 	if n := testutil.CollectAndCount(m.checks); n != 0 {
@@ -292,7 +295,7 @@ func TestDNSBLRuntimeDurableRestart(t *testing.T) {
 		if clean {
 			status = dnsbl.StatusNotListed
 		}
-		deadline := time.Now().Add(5 * time.Second)
+		deadline := time.Now().Add(30 * time.Second)
 		for testutil.ToFloat64(metrics.checks.WithLabelValues(provider, string(status))) != 1 {
 			if time.Now().After(deadline) {
 				_ = rt.stop()

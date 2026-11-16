@@ -150,11 +150,11 @@ func TestTracing_GatewayToAPIToPipelineIsOneTrace(t *testing.T) {
 	}
 }
 
-// waitForSpan returns the first ended span match accepts, waiting up to five
+// waitForSpan returns the first ended span match accepts, waiting up to thirty
 // seconds for it.
 func waitForSpan(t *testing.T, rec *tracetest.SpanRecorder, match func(sdktrace.ReadOnlySpan) bool) sdktrace.ReadOnlySpan {
 	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(30 * time.Second)
 	for {
 		for _, s := range rec.Ended() {
 			if match(s) {

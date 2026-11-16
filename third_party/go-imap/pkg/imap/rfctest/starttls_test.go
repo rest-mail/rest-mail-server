@@ -273,7 +273,7 @@ func TestStartTLSFailedNegotiation(t *testing.T) {
 	}
 	select {
 	case <-c.done:
-	case <-time.After(5 * time.Second):
+	case <-time.After(30 * time.Second):
 		t.Fatal("session still running after failed negotiation")
 	}
 }

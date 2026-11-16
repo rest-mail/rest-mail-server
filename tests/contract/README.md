@@ -22,8 +22,8 @@ remain enabled with 10,000 requests/second and a burst of 10,000. Only the
 corresponding hook pacing sleeps are skipped. Trace flushing and send-budget
 waits are unchanged. The Limits suite recreates the API with the contract and
 load overrides off, checks the actual container environment against the real
-defaults, and then spends those default limits. Teardown recreates the API
-with the job's contract setting again. The coverage report is collected before
+defaults, and then spends those default limits. The own-data run recreates the
+API with the job's contract setting again. The coverage report is collected before
 either recreation; no coverage report or fixture is transferred between jobs.
 
 The additional [live requirement proofs](#live-requirement-proofs-1237) exercise
@@ -366,8 +366,10 @@ operation. A new operation or a larger count fails. A probe whose body a hook
 changes, or that a hook skips, is a line in `lost-probes.txt`, and a passing gate
 prints how many there were. The first two requests of each transaction are the
 documented ones, which a hook may rewrite: only a generated body is compared. The
-file says why each operation is there. A counted probe was not sent, so it proves
-nothing: the count is a limit, not a pass.
+file says why each operation is there. Normally a counted probe was not sent,
+so the count is a limit, not a pass. The explicit business-rule replays below
+are different: their original request is sent and verified before their duplicate
+engine send is ended, and each has a receipt in `replayed-probes.jsonl`.
 
 There are three ways to keep a probe:
 
@@ -393,12 +395,12 @@ There are three ways to keep a probe:
 - **`fuzz.pin-valid`** holds a value on one operation's valid requests, for a rule
   no schema can say, and the probe is still sent, judged and reported. The
   chosen-password rule refuses the generator's `xxxxxxxxxxxx`, so `vertrag.yml` holds
-  a strong `password` on `createAccount` and `updateMailbox`. Invalid requests are
-  left alone, so the 11-character refusal is still sent, and a `fuzz.pin` on the same
-  field would win; none names `password`. The other operations the rule guards send
-  no valid generated password on this topology: their success examples need state
-  the run does not have, and `acceptInvitation`'s probes end in the token its hook
-  makes for each one. `TestContractValidPinsPassTheRule` holds the value to the rule.
+  a strong `password` on `createAccount`, `updateMailbox` and `acceptInvitation`
+  (whose valid probes redeem an invitation the hook makes for their drawn token).
+  Invalid requests are left alone, so the 11-character refusal is still sent, and a
+  `fuzz.pin` on the same field would win; none names `password`. The other
+  operations the rule guards send no valid generated password on this topology:
+  their success examples need state the run does not have. `TestContractValidPinsPassTheRule` holds the value to the rule.
   This setting also puts the password in bodies that had none. On `updateMailbox`,
   `a_new_password_only_on_the_created_account` sends those to the run's own account.
   On `createAccount`, a password with a `password_hash` is refused, so `password_hash`
@@ -486,11 +488,56 @@ can leave probe certificates on its disposable database without affecting gatewa
 hook removes what earlier probes put at `example.com`, and the first hook after its
 probes hosts that domain again through the fixture, so what follows finds it live.
 
-`createAppPassword` cannot be held this way. Its description lets a request leave
-out `password`, and the handler answers that with the documented 403
-`reauth_required`, which Vertrag calls a disagreement. So its probes the schema
-forbids reach the handler as drawn, and its well-formed ones are still given the
-password, and counted, until that disagreement is decided.
+### The owner-decided schema and business-state probes
+
+The 2026-11-03 decision on #1443 tightens the published descriptions, not binding.
+`linkAccount` declares an email address. `acceptInvitation` requires a nonblank
+token and a password of at least 12 characters, with the 72 UTF-8 byte ceiling
+stated explicitly (a character ceiling alone cannot enforce that byte ceiling).
+`createAppPassword` requires a nonempty current password and a nonblank name.
+Their `DescribedRequest` types are separate from the types the handlers bind:
+missing invitation tokens still answer 401, missing app-password proofs still
+answer 403, and malformed link proofs keep their existing refusals.
+
+`linkAccount` now draws the existing `someone@example.com` fixture. App-password
+probes use the already enrolled probe administrator, whose password is the drawn
+`x`, without a global password pin or a body rewrite. Invitation probes use
+`chore test:contract-invitation-fixture`: the guarded disposable fixture hashes
+the drawn token and attaches it to a fresh credential-free account before each
+valid request. Repeated token values never reuse a redeemed account. No token
+is logged or sent on the command line, and the real handler still consumes it
+once and installs the drawn password.
+
+`inviteAccount`'s positive-id schema remains honest: any positive id could name
+an eligible account. Its description now spells out the actual database rule:
+the account is active, has credential epoch zero, has no last password change,
+and has no credential. A schema cannot encode that state, so changing minimum
+id 1 to 2 would merely hide the credentialed fixture administrator.
+
+`receiveTlsReport` remains lenient, including optional `policy` and
+`policy-domain`. Vertrag 0.42 treats a legitimate business refusal of a valid
+shape as a finding. `probe_refusals.py` therefore sends those unchanged generated
+requests directly, rather than inventing a hosted policy. The published request
+schema, including date-time formats, decides the expected refusal: a valid
+report with no hosted domain must answer 422 `validation_failed` whose only
+failing field is `policies` (no policy domain is hosted); an invalid report
+must answer 422 `validation_failed`. The exact status, code and published
+response schema must all match. The minimum-id invitation probe is sent the
+same way, requiring 409 `account_not_invitable`. Any mismatch fails the hook
+before it may end the engine send; no status is globally excused.
+
+In the narrowed local gate, hook-ended counts are 56 before and 33 after:
+`linkAccount` 10→0, `acceptInvitation` 8→0, `createAppPassword` 5→0,
+`receiveTlsReport` 32→32, `inviteAccount` 1→1. All remaining 33 were sent by the
+alternate sender: 23 invalid TLS reports, nine schema-valid domainless TLS
+reports, and the credentialed invitation target. Each receipt records the
+transaction, original body SHA-256, status, error code and explanation.
+The gate clears old receipts before coverage and checks that verified sends
+exactly match those operations' hook endings. Missing or extra receipts fail
+the run. CI retains both the receipts and hook-ending list as artifacts.
+They remain in the hook-ended counter because the engine's duplicate send is
+skipped after verification; none is an unsent probe. No baseline is raised.
+The narrowed gate passes with zero findings and zero skipped valid probes.
 
 ### Coverage keeps restmail.test unchanged
 
@@ -1559,7 +1606,10 @@ ordinary fixtures are deliberately removed, so later hooks must recreate them.
 
 Reset refills all API token buckets and recovery budgets, invalidates authorization
 and session caches, closes old SSE subscriptions and clears stream caps, counters
-and replay. The non-production delivery worker holds a cross-process database
+and replay. A successful reset also empties the registered outbound `rate_limit`
+filter's minute and hour counters without changing its clock or configured limits.
+A failed reset and production requests leave those counters untouched. The
+non-production delivery worker holds a cross-process database
 barrier from before claiming mail through all delivery/DSN/suppression effects.
 Reset waits for that barrier with a **30-second bound**, excludes new claims while
 cleaning, and fails rather than reporting success when the drain times out. A

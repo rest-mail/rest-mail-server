@@ -44,6 +44,10 @@ fi
 out=.cache/contract
 logs=${CONTRACT_LOGS:-$out}
 mkdir -p "$out" "$logs"
+if [ "$phase" = gate ]; then
+  export CONTRACT_PROBE_REPLAYS="$PWD/$out/replayed-probes.jsonl"
+  : >"$CONTRACT_PROBE_REPLAYS"
+fi
 # Every phase consumes the exact description served by this server. The saved
 # bytes are also the coverage/security inventory, even when Vertrag reads its URL.
 served="$PWD/$out/openapi.json"
@@ -89,7 +93,7 @@ export RESTMAIL_VERTRAG_BINARY="$CONTRACT_VERTRAG"
 PATH="$(dirname "$CONTRACT_VERTRAG"):$PATH"
 export PATH
 "$CONTRACT_VERTRAG" version
-python3 -B -c 'import yaml, idna' 2>/dev/null || pip install --quiet pyyaml idna==3.11
+python3 -B -c 'import yaml, idna, jsonschema, rfc3339_validator' 2>/dev/null || pip install --quiet pyyaml idna==3.11 'jsonschema[format]'
 if [ ! -s "$served" ] || { [ "$phase" != authorization ] && [ "$phase" != ownership ]; }; then
   python3 -B tests/contract/description.py vertrag.yml "$served"
 fi
@@ -139,15 +143,18 @@ gate)
   # a failure, not a count. Vertrag's exit 2 now means that or a failed probe.
   export CONTRACT_LOST_PROBES="$PWD/$out/lost-probes.txt"
   : >"$CONTRACT_LOST_PROBES"
+  : >"$CONTRACT_PROBE_REPLAYS"
   CONTRACT_COVERAGE=1 "$CONTRACT_VERTRAG" run --config "$out/vertrag-probes.yml" --sequence --phases coverage --fail-on-skipped-probes "${select[@]}" \
     2>&1 | tee "$logs/contract.log" || code=$?
   if drop_unmatched_pin "$logs/contract.log" "$out/coverage"; then
     code=0
     : >"$CONTRACT_LOST_PROBES"
+    : >"$CONTRACT_PROBE_REPLAYS"
     CONTRACT_COVERAGE=1 "$CONTRACT_VERTRAG" run --config "$out/vertrag-probes.yml" --sequence --phases coverage --fail-on-skipped-probes "${select[@]}" \
       2>&1 | tee "$logs/contract.log" || code=$?
   fi
   echo "vertrag exited $code"
+  python3 -B tests/contract/probe_refusals.py "$CONTRACT_LOST_PROBES" "$CONTRACT_PROBE_REPLAYS" || code=1
   if [ "$code" -ne 0 ] && [ "$code" -ne 2 ]; then exit "$code"; fi
   if [ ${#select[@]} -eq 0 ]; then
     # What Vertrag cannot see: the configuration, and the probes a hook ended.

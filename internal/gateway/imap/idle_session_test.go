@@ -65,7 +65,7 @@ func TestServer_IdleSeesImportFromAnotherClient(t *testing.T) {
 			}
 
 			if notification := idle.readLine(); notification != "* 2 EXISTS" {
-				t.Fatalf("IDLE after %s = %q, want * 2 EXISTS within five seconds", operation, notification)
+				t.Fatalf("IDLE after %s = %q, want * 2 EXISTS within thirty seconds", operation, notification)
 			}
 			idle.send("DONE")
 			if lines, status := idle.readResponse("i3"); len(lines) != 0 || !strings.HasPrefix(status, "i3 OK ") {

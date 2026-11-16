@@ -148,7 +148,7 @@ func serveMessage(t *testing.T, d *messageStorageDB, method, path, body string) 
 	h.RegisterMessages(rs)
 	h.RegisterCompose(rs)
 
-	ctx, cancel := context.WithTimeout(context.WithValue(t.Context(), messageStorageKey{}, true), 4*time.Second)
+	ctx, cancel := context.WithTimeout(context.WithValue(t.Context(), messageStorageKey{}, true), 30*time.Second)
 	t.Cleanup(cancel)
 	r := httptest.NewRequest(method, path, bytes.NewBufferString(body)).WithContext(ctx)
 	r.Header.Set("Content-Type", "application/json")

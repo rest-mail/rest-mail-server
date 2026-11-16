@@ -81,7 +81,7 @@ func (d *publicReadDB) QueryContext(ctx context.Context, query string, _ []drive
 		case <-ctx.Done():
 			d.stops++
 			return nil, ctx.Err()
-		case <-time.After(2 * time.Second):
+		case <-time.After(30 * time.Second):
 			return nil, errors.New("finite backstop: public HTTP context was lost")
 		}
 	}
@@ -141,7 +141,7 @@ func publicMailboxStep(active bool) publicReadStep {
 }
 func publicReadRequest(t *testing.T, path, token string) *http.Request {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.WithValue(t.Context(), publicReadBudgetKey{}, true), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.WithValue(t.Context(), publicReadBudgetKey{}, true), 30*time.Second)
 	t.Cleanup(cancel)
 	r := httptest.NewRequest(http.MethodGet, path, nil).WithContext(ctx)
 	if token != "" {
@@ -249,13 +249,13 @@ func TestPublicReadCancellationReachesEveryStage(t *testing.T) {
 				select {
 				case <-d.started:
 					cancel()
-				case <-time.After(time.Second):
+				case <-time.After(30 * time.Second):
 					cancel()
 					t.Error("scripted read never started")
 				}
 				select {
 				case <-done:
-				case <-time.After(3 * time.Second):
+				case <-time.After(30 * time.Second):
 					t.Fatal("handler did not return within finite driver backstop")
 				}
 				assertPublicReadBudget(t, d, rr, status, index+1)

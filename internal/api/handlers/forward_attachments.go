@@ -9,8 +9,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
 	"github.com/rest-mail/rest-mail-server/internal/attachmentstore"
@@ -198,14 +200,27 @@ func (h *MessageHandler) commitForward(r *http.Request, req sendMessageRequest, 
 			var box models.Mailbox
 			err := repositories.FindActiveMailboxByAddress(tx, rcpt, &box)
 			if err == nil {
-				local := *h
-				local.db = tx
-				local.broker = nil
-				local.newMail = nil
-				local.recorder = &traces
-				msg, err := local.deliverToLocal(r.Context(), localDeliveryParams{Mailbox: box, Sender: req.From, SenderName: sender.DisplayName, RecipientsTo: toJSON, RecipientsCc: ccJSON, Subject: req.Subject, BodyText: req.BodyText, BodyHTML: req.BodyHTML, MessageID: sent.MsgID, InReplyTo: req.InReplyTo, References: sent.References, RawMessage: raw, RequireTLS: req.RequireTLS, IndependentAttachments: true})
-				if err != nil {
+				// Each local delivery runs in a savepoint: a recipient whose
+				// inbound pipeline refuses the message (a DMARC reject, say)
+				// leaves nothing behind, and the forward goes on as a send
+				// does. Any other failure still refuses the whole forward.
+				var msg *models.Message
+				err := tx.Transaction(func(savepoint *gorm.DB) error {
+					local := *h
+					local.db = savepoint
+					local.broker = nil
+					local.newMail = nil
+					local.recorder = &traces
+					var err error
+					msg, err = local.deliverToLocal(r.Context(), localDeliveryParams{Mailbox: box, Sender: req.From, SenderName: sender.DisplayName, RecipientsTo: toJSON, RecipientsCc: ccJSON, Subject: req.Subject, BodyText: req.BodyText, BodyHTML: req.BodyHTML, MessageID: sent.MsgID, InReplyTo: req.InReplyTo, References: sent.References, RawMessage: raw, RequireTLS: req.RequireTLS, IndependentAttachments: true})
 					return err
+				})
+				if err != nil {
+					if !localRecipientRefused(err) {
+						return err
+					}
+					slog.WarnContext(r.Context(), "local delivery failed for recipient", "recipient", rcpt, "error", err)
+					continue
 				}
 				if msg != nil {
 					delivered = append(delivered, *msg)
@@ -338,4 +353,17 @@ func (h *MessageHandler) forwardPartBytes(ctx context.Context, part pipeline.Att
 		return nil, errForwardAttachment
 	}
 	return data, nil
+}
+
+// localRecipientRefused reports a local delivery the recipient's side refused:
+// its inbound pipeline rejected or deferred the message, or its mailbox is
+// full. A send logs these and answers for the message it sent; so does a forward.
+func localRecipientRefused(err error) bool {
+	message := err.Error()
+	for _, prefix := range []string{"rejected:", "deferred:", "mailbox_full:"} {
+		if strings.HasPrefix(message, prefix) {
+			return true
+		}
+	}
+	return false
 }

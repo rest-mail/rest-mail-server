@@ -80,7 +80,7 @@ func TestObtainCertificate_UnreachableChallengeStoresNothing(t *testing.T) {
 	ca := newFakeCA(t, http.NotFoundHandler())
 	c := NewClient(ClientConfig{DB: tx, MasterKey: testMasterKey, Directory: ca.url("/directory")})
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if _, err := c.ObtainCertificate(ctx, domain); err == nil {
 		t.Fatal("ObtainCertificate succeeded though the CA could not fetch the challenge")

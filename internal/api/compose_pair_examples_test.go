@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"strconv"
@@ -67,17 +68,27 @@ func TestComposeNamedExamples(t *testing.T) {
 				}
 				path := composeExampleRoute(operation)
 				var seeded uint
-				if _, named := pair.Request.Path["id"]; !named {
-					// The pair names no message: the live run forwards one of its seed, so
-					// this forwards one seeded here.
+				messageID, named := pair.Request.Path["id"]
+				if !named || operation == "forwardMessage" && pair.Response.Status == http.StatusCreated {
+					// Seed the source a success names; an unnamed pair gets its own
+					// message, as it does when the live run follows a seed's link.
 					source := models.Message{MailboxID: f.mailboxID, Folder: "INBOX", Sender: "organizer@remote.test",
 						RecipientsTo: models.JSONB(`["admin@restmail.test"]`), RecipientsCc: models.JSONB(`[]`),
 						Subject: "Planning", BodyText: "Shall we meet?", SizeBytes: len("Planning") + len("Shall we meet?")}
+					if named {
+						id, err := strconv.ParseUint(fmt.Sprint(messageID), 10, 32)
+						if err != nil || id == 0 {
+							t.Fatalf("forward success names an invalid message id %v: %v", messageID, err)
+						}
+						source.ID = uint(id)
+					}
 					if err := f.db.Create(&source).Error; err != nil {
 						t.Fatal(err)
 					}
 					seeded = source.ID
-					path = strings.ReplaceAll(path, "{id}", strconv.FormatUint(uint64(seeded), 10))
+					if !named {
+						path = strings.ReplaceAll(path, "{id}", strconv.FormatUint(uint64(seeded), 10))
+					}
 				}
 				body := string(pair.Request.Body)
 				if name == "malformed_json" {

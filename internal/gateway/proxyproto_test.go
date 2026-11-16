@@ -158,7 +158,7 @@ func TestWrapWithProxyProtocol_TrustedCIDR_PropagatatesRealIP(t *testing.T) {
 
 	// Connect from localhost (which is trusted) and send a PROXY v1 header
 	// claiming the real client is 203.0.113.50:44123.
-	conn, err := net.DialTimeout("tcp", base.Addr().String(), 2*time.Second)
+	conn, err := net.DialTimeout("tcp", base.Addr().String(), 30*time.Second)
 	if err != nil {
 		t.Fatalf("failed to dial: %v", err)
 	}
@@ -186,7 +186,7 @@ func TestWrapWithProxyProtocol_TrustedCIDR_PropagatatesRealIP(t *testing.T) {
 		if !strings.Contains(result, "EHLO test.example.com") {
 			t.Fatalf("expected server to receive application data, got: %s", result)
 		}
-	case <-time.After(5 * time.Second):
+	case <-time.After(30 * time.Second):
 		t.Fatal("timeout waiting for server response")
 	}
 }
@@ -209,7 +209,7 @@ func TestWrapWithProxyProtocol_UntrustedCIDR_IgnoresHeader(t *testing.T) {
 	go echoServer(wrapped, done)
 
 	// Connect from localhost (which is NOT trusted) and attempt to send a PROXY header.
-	conn, err := net.DialTimeout("tcp", base.Addr().String(), 2*time.Second)
+	conn, err := net.DialTimeout("tcp", base.Addr().String(), 30*time.Second)
 	if err != nil {
 		t.Fatalf("failed to dial: %v", err)
 	}
@@ -238,7 +238,7 @@ func TestWrapWithProxyProtocol_UntrustedCIDR_IgnoresHeader(t *testing.T) {
 		if strings.Contains(result, "203.0.113.50") {
 			t.Fatalf("server should NOT see spoofed IP 203.0.113.50, got: %s", result)
 		}
-	case <-time.After(5 * time.Second):
+	case <-time.After(30 * time.Second):
 		t.Fatal("timeout waiting for server response")
 	}
 }
@@ -263,7 +263,7 @@ func TestWrapWithProxyProtocol_NoHeader_StillWorks(t *testing.T) {
 	go echoServer(wrapped, done)
 
 	// Connect and send data directly without any PROXY header.
-	conn, err := net.DialTimeout("tcp", base.Addr().String(), 2*time.Second)
+	conn, err := net.DialTimeout("tcp", base.Addr().String(), 30*time.Second)
 	if err != nil {
 		t.Fatalf("failed to dial: %v", err)
 	}
@@ -283,7 +283,7 @@ func TestWrapWithProxyProtocol_NoHeader_StillWorks(t *testing.T) {
 		if !strings.Contains(result, "EHLO direct.example.com") {
 			t.Fatalf("expected application data in result, got: %s", result)
 		}
-	case <-time.After(5 * time.Second):
+	case <-time.After(30 * time.Second):
 		t.Fatal("timeout waiting for server response")
 	}
 }
@@ -303,7 +303,7 @@ func TestWrapWithProxyProtocol_IPv6Header(t *testing.T) {
 	done := make(chan string, 1)
 	go echoServer(wrapped, done)
 
-	conn, err := net.DialTimeout("tcp", base.Addr().String(), 2*time.Second)
+	conn, err := net.DialTimeout("tcp", base.Addr().String(), 30*time.Second)
 	if err != nil {
 		t.Fatalf("failed to dial: %v", err)
 	}
@@ -328,7 +328,7 @@ func TestWrapWithProxyProtocol_IPv6Header(t *testing.T) {
 		if !strings.Contains(result, "EHLO ipv6.example.com") {
 			t.Fatalf("expected application data, got: %s", result)
 		}
-	case <-time.After(5 * time.Second):
+	case <-time.After(30 * time.Second):
 		t.Fatal("timeout waiting for server response")
 	}
 }
@@ -348,7 +348,7 @@ func TestWrapWithProxyProtocol_V2Binary(t *testing.T) {
 	done := make(chan string, 1)
 	go echoServer(wrapped, done)
 
-	conn, err := net.DialTimeout("tcp", base.Addr().String(), 2*time.Second)
+	conn, err := net.DialTimeout("tcp", base.Addr().String(), 30*time.Second)
 	if err != nil {
 		t.Fatalf("failed to dial: %v", err)
 	}
@@ -380,7 +380,7 @@ func TestWrapWithProxyProtocol_V2Binary(t *testing.T) {
 		if !strings.Contains(result, "EHLO v2test.example.com") {
 			t.Fatalf("expected application data, got: %s", result)
 		}
-	case <-time.After(5 * time.Second):
+	case <-time.After(30 * time.Second):
 		t.Fatal("timeout waiting for server response")
 	}
 }
@@ -435,7 +435,7 @@ func TestWrapWithProxyProtocol_EmptyCIDRs(t *testing.T) {
 	done := make(chan string, 1)
 	go echoServer(wrapped, done)
 
-	conn, err := net.DialTimeout("tcp", base.Addr().String(), 2*time.Second)
+	conn, err := net.DialTimeout("tcp", base.Addr().String(), 30*time.Second)
 	if err != nil {
 		t.Fatalf("failed to dial: %v", err)
 	}
@@ -454,7 +454,7 @@ func TestWrapWithProxyProtocol_EmptyCIDRs(t *testing.T) {
 		if !strings.Contains(result, "EHLO no-proxy.example.com") {
 			t.Fatalf("expected data in result, got: %s", result)
 		}
-	case <-time.After(5 * time.Second):
+	case <-time.After(30 * time.Second):
 		t.Fatal("timeout waiting for server response")
 	}
 }

@@ -42,6 +42,7 @@ class SelectedGate(unittest.TestCase):
                 "summary.py",
                 "reports.py",
                 "probes.py",
+                "probe_refusals.py",
             ):
                 shutil.copy2(ROOT / "tests/contract" / name, helpers / name)
             (helpers / "fixtures").mkdir()

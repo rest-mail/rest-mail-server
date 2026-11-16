@@ -37,6 +37,12 @@ func newRateLimitStore() *rateLimitStore {
 // registry, the one every pipeline the server runs uses.
 var registeredRateLimit = newRateLimitStore()
 
+func ResetRateLimit() {
+	registeredRateLimit.mu.Lock()
+	defer registeredRateLimit.mu.Unlock()
+	clear(registeredRateLimit.buckets)
+}
+
 // SetRateLimitClock makes the registered rate_limit filter read the time from
 // now, with its counters emptied, so a test can move through the minute and
 // hour windows instead of waiting for them. The returned func puts the wall

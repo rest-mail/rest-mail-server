@@ -98,7 +98,7 @@ func TestRESTMAILRecipientStorageRollsBackAndRetries(t *testing.T) {
 	for _, point := range []string{"message insert", "mailbox quota", "quota breakdown", "commit", "cancel after insert", "cancel after quota"} {
 		t.Run(point, func(t *testing.T) {
 			db, mailbox := restmailStorageFixture(t)
-			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+			ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 			defer cancel()
 			var remove func() error
 			const callback = "restmail_storage_failure"
@@ -179,7 +179,7 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION fail_restmail_storag
 
 func TestRESTMAILRecipientStorageRetainsRequestContext(t *testing.T) {
 	db, mailbox := restmailStorageFixture(t)
-	ctx, cancel := context.WithTimeout(context.WithValue(t.Context(), restmailStorageContextKey{}, true), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.WithValue(t.Context(), restmailStorageContextKey{}, true), 30*time.Second)
 	defer cancel()
 	seen := map[string]int{}
 	check := func(tx *gorm.DB) {

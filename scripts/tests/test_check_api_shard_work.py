@@ -113,7 +113,7 @@ class ShardRunTests(unittest.TestCase):
         with patch.object(CHECK.subprocess, "run", side_effect=results) as run, patch("builtins.print"):
             result = CHECK.run_shard(Path("."), 1, 1, "testdb-exec", 0.05)
         command = run.call_args_list[1].args[0]
-        for flag in ["-race", "-count=1", "-timeout=20m", "-exec", "testdb-exec"]:
+        for flag in ["-race", "-count=1", "-timeout=2h", "-exec", "testdb-exec"]:
             self.assertIn(flag, command)
         self.assertTrue(any(flag.startswith("-coverprofile=") for flag in command))
         return result

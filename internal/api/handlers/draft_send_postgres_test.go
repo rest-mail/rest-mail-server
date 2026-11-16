@@ -107,7 +107,7 @@ func TestSendDraftPostgresRollbackNotificationsAndConcurrentSend(t *testing.T) {
 			observer := &draftSendObserver{check: func() { assertState(t, draft, true) }}
 			h := NewMessageHandler(db, nil, engine, "", observer)
 			h.broker, h.newMail = observer, observer
-			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+			ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 			defer cancel()
 			if stage == "delete" || stage == "delete_once" || stage == "queue" || stage == "local" {
 				table, operation, condition, returned := "messages", "DELETE", fmt.Sprintf("OLD.id = %d", draft.ID), "OLD"
@@ -159,7 +159,7 @@ func TestSendDraftPostgresRollbackNotificationsAndConcurrentSend(t *testing.T) {
 	t.Run("concurrent", func(t *testing.T) {
 		draft := seed(t, "concurrent")
 		h := NewMessageHandler(db, nil, engine, "", nil)
-		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 		defer cancel()
 		start, results := make(chan struct{}), make(chan *httptest.ResponseRecorder, 2)
 		for range 2 {

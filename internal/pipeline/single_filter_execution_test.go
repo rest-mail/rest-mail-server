@@ -45,7 +45,7 @@ func TestSingleFilterExecutionBoundary(t *testing.T) {
 				close(release)
 				select {
 				case <-finished:
-				case <-time.After(time.Second):
+				case <-time.After(30 * time.Second):
 					t.Error("filter goroutine did not finish after release")
 				}
 			}()

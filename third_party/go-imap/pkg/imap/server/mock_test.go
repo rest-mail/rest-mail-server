@@ -302,7 +302,7 @@ func newIMAPHarnessSession(t *testing.T, backend imap.Backend, user, pass string
 
 func (h *imapHarness) readLine() string {
 	h.t.Helper()
-	_ = h.conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	_ = h.conn.SetReadDeadline(time.Now().Add(30 * time.Second))
 	line, err := h.cr.ReadString('\n')
 	if err != nil {
 		h.t.Fatalf("readLine: %v (partial %q)", err, line)
@@ -312,7 +312,7 @@ func (h *imapHarness) readLine() string {
 
 func (h *imapHarness) readN(n int) string {
 	h.t.Helper()
-	_ = h.conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	_ = h.conn.SetReadDeadline(time.Now().Add(30 * time.Second))
 	buf := make([]byte, n)
 	if _, err := io.ReadFull(h.cr, buf); err != nil {
 		h.t.Fatalf("readN(%d): %v", n, err)
@@ -322,7 +322,7 @@ func (h *imapHarness) readN(n int) string {
 
 func (h *imapHarness) send(format string, args ...interface{}) {
 	h.t.Helper()
-	_ = h.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	_ = h.conn.SetWriteDeadline(time.Now().Add(30 * time.Second))
 	_, _ = fmt.Fprintf(h.cw, format+"\r\n", args...)
 	if err := h.cw.Flush(); err != nil {
 		h.t.Fatalf("send: %v", err)

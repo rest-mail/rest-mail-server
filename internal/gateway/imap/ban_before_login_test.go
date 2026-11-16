@@ -113,7 +113,7 @@ func pipeSession(t *testing.T, api *apiclient.Client, lim *connlimiter.Limiter) 
 		_ = client.Close()
 		<-done
 	})
-	if err := client.SetDeadline(time.Now().Add(10 * time.Second)); err != nil {
+	if err := client.SetDeadline(time.Now().Add(30 * time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	c := &banClient{t: t, conn: client, r: bufio.NewReader(client)}
@@ -166,7 +166,7 @@ func TestBannedAddressRefusedAtConnect(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = conn.Close() })
-	if err := conn.SetDeadline(time.Now().Add(10 * time.Second)); err != nil {
+	if err := conn.SetDeadline(time.Now().Add(30 * time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	c := &banClient{t: t, conn: conn, r: bufio.NewReader(conn)}

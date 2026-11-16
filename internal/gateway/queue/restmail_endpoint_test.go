@@ -37,7 +37,7 @@ func fakeRESTMAILMX(t *testing.T, restmailLine string) string {
 			}
 			go func(c net.Conn) {
 				defer c.Close()
-				_ = c.SetDeadline(time.Now().Add(5 * time.Second))
+				_ = c.SetDeadline(time.Now().Add(30 * time.Second))
 				r := bufio.NewReader(c)
 				fmt.Fprint(c, "220 mx.test ESMTP\r\n")
 				for {

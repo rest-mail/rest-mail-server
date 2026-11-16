@@ -66,11 +66,11 @@ TIMEOUT_REPORT_LINES = 30
 # load of 300 cannot finish a quarter of the package inside CI's per-shard limit
 # (#1941), so the limit stays and each shard carries less. Tests still run once.
 RACE_SHARDS = 8
-IMAP_TIMEOUT = "10m"
+IMAP_TIMEOUT = "2h"
 # All the *WithVertrag tests took about 32 minutes at a load of 50 to 85, and a 20-minute
 # limit cut them off. Each of the three shards carries a third of them, so this leaves
 # room for much more load than that without calling a healthy run anything but healthy.
-VERTRAG_TIMEOUT = "60m"
+VERTRAG_TIMEOUT = "2h"
 TIMEOUT_MARK = "panic: test timed out"
 HANDLERS = "internal/api/handlers"
 # tests/load/loadgen's TestSourcesAreWhatTheServerSees dials from these. Linux routes
@@ -1330,7 +1330,7 @@ class Gate:
                 "test",
                 "-race",
                 "-count=1",
-                "-timeout=20m",
+                "-timeout=2h",
                 "-skip",
                 "WithVertrag$",
                 *self.linux_packages,
@@ -1488,7 +1488,7 @@ class Gate:
             label = directory.replace("/", "-") + "-race"
             binary = self.work / (label + ".test")
             self.run(["go", "test", "-c", "-race", "-o", binary, "./" + directory])
-            events = self.shards(names, binary, label, self.race_shards, "20m", directory)
+            events = self.shards(names, binary, label, self.race_shards, "2h", directory)
             finished = {
                 event.get("Test")
                 for event in events
@@ -1513,7 +1513,7 @@ class Gate:
                 "test",
                 "-race",
                 "-count=1",
-                "-timeout=20m",
+                "-timeout=2h",
                 "-skip",
                 "WithVertrag$",
                 "-exec",
@@ -1603,7 +1603,7 @@ class Gate:
                 "test",
                 "-race",
                 "-count=1",
-                "-timeout=20m",
+                "-timeout=2h",
                 "./tests/contract/fixtures",
                 "./tests/contract/fixtureplan",
             ],

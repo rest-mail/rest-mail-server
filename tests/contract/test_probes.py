@@ -207,13 +207,14 @@ class ProbeConfig(unittest.TestCase):
                     status.startswith("4"),
                 )
 
-    def test_the_password_is_held_only_on_valid_requests_of_two_operations(self):
+    def test_the_password_is_held_only_on_valid_requests_of_three_operations(self):
         valid = self.config["fuzz"]["pin-valid"]
-        self.assertEqual(valid.keys(), {"createAccount", "updateMailbox", "createCertificate"})
+        self.assertEqual(valid.keys(), {"createAccount", "updateMailbox", "acceptInvitation", "createCertificate"})
         self.assertEqual(valid["createAccount"]["password_hash"], "")
         self.assertEqual(
             valid["createAccount"]["password"], valid["updateMailbox"]["password"]
         )
+        self.assertEqual(valid["acceptInvitation"], {"password": valid["createAccount"]["password"]})
         # A fuzz.pin on the same field would win, and hold the invalid requests too.
         pinned = self.config["fuzz"]["pin"]
         self.assertNotIn("password", pinned)

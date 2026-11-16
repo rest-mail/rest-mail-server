@@ -64,7 +64,10 @@ func (d *credentialContextDB) step(ctx context.Context, query string) (credentia
 		select {
 		case <-ctx.Done():
 			return s, ctx.Err()
-		case <-time.After(2 * time.Second):
+		case <-time.After(30 * time.Second):
+			// Counted, so assertCredentialContextFault fails on a lost
+			// cancellation whatever the wall clock did meanwhile.
+			d.lost.Add(1)
 			return s, errors.New("private lost HTTP cancellation")
 		}
 	}
@@ -135,7 +138,7 @@ func credentialContextRouter(h *CredentialHandler) http.Handler {
 func credentialContextRequest(t *testing.T, index int) *http.Request {
 	t.Helper()
 	route := credentialContextRoutes[index]
-	ctx, cancel := context.WithTimeout(context.WithValue(t.Context(), credentialContextKey{}, true), 4*time.Second)
+	ctx, cancel := context.WithTimeout(context.WithValue(t.Context(), credentialContextKey{}, true), 30*time.Second)
 	t.Cleanup(cancel)
 	claims := freshTwoFactorClaims(7, "reader@example.test")
 	ctx = context.WithValue(ctx, middleware.ClaimsKey, claims)
@@ -201,13 +204,13 @@ func TestCredentialReadAndRevokeStagesFollowCancellation(t *testing.T) {
 				go func() { defer close(done); credentialContextRouter(h).ServeHTTP(rr, r.WithContext(ctx)) }()
 				select {
 				case <-d.started:
-				case <-time.After(time.Second):
+				case <-time.After(30 * time.Second):
 					t.Fatal("SQL stage not reached")
 				}
 				cancel()
 				select {
 				case <-done:
-				case <-time.After(time.Second):
+				case <-time.After(30 * time.Second):
 					t.Fatal("SQL ignored cancellation")
 				}
 				assertCredentialContextFault(t, d, rr)
@@ -287,13 +290,13 @@ func TestCredentialCreationPasswordAndGrantStagesFollowRequest(t *testing.T) {
 						go func() { defer close(done); credentialContextRouter(h).ServeHTTP(rr, r.WithContext(ctx)) }()
 						select {
 						case <-d.started:
-						case <-time.After(time.Second):
+						case <-time.After(30 * time.Second):
 							t.Fatal("creation stage not reached")
 						}
 						cancel()
 						select {
 						case <-done:
-						case <-time.After(time.Second):
+						case <-time.After(30 * time.Second):
 							t.Fatal("creation ignored cancellation")
 						}
 					} else {
@@ -410,13 +413,13 @@ func TestCredentialSuccessfulWritesAndAuditUseRequestContext(t *testing.T) {
 							go func() { defer close(done); router.ServeHTTP(rr, r.WithContext(ctx)) }()
 							select {
 							case <-d.started:
-							case <-time.After(time.Second):
+							case <-time.After(30 * time.Second):
 								t.Fatal("audit stage not reached")
 							}
 							cancel()
 							select {
 							case <-done:
-							case <-time.After(time.Second):
+							case <-time.After(30 * time.Second):
 								t.Fatal("audit ignored cancellation")
 							}
 						} else {

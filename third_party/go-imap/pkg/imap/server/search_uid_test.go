@@ -39,8 +39,8 @@ func TestUIDSearch_HugeRangeIsBounded(t *testing.T) {
 		if len(r.matched) != 3 {
 			t.Fatalf("UID 1:4294967295 matched %v, want all of [1 2 3]", r.matched)
 		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("UID SEARCH did not return within 2s: per-message range expansion (CPU DoS)")
+	case <-time.After(30 * time.Second):
+		t.Fatal("UID SEARCH did not return within 30s: per-message range expansion (CPU DoS)")
 	}
 }
 

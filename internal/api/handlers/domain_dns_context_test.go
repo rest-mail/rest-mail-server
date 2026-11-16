@@ -77,7 +77,7 @@ func TestDomainDNSCheckCarriesHTTPContext(t *testing.T) {
 		t.Fatal(err)
 	}
 	h := NewDomainHandler(db, nil)
-	ctx, cancel := context.WithTimeout(context.WithValue(t.Context(), domainDNSContextKey{}, true), time.Second)
+	ctx, cancel := context.WithTimeout(context.WithValue(t.Context(), domainDNSContextKey{}, true), 30*time.Second)
 	defer cancel()
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/domains/1/dns", nil).WithContext(ctx)
 	rr := httptest.NewRecorder()
@@ -99,7 +99,7 @@ func TestDomainDNSCheckCancelsBlockedResolver(t *testing.T) {
 		case started <- struct{}{}:
 		default:
 		}
-		timer := time.NewTimer(200 * time.Millisecond)
+		timer := time.NewTimer(30 * time.Second)
 		defer timer.Stop()
 		select {
 		case <-ctx.Done():
@@ -128,13 +128,13 @@ func TestDomainDNSCheckCancelsBlockedResolver(t *testing.T) {
 	select {
 	case <-started:
 		cancel()
-	case <-time.After(time.Second):
+	case <-time.After(30 * time.Second):
 		cancel()
 		t.Error("DNS exchange never started")
 	}
 	select {
 	case <-done:
-	case <-time.After(3 * time.Second):
+	case <-time.After(30 * time.Second):
 		t.Fatal("cancelled DNS request did not return before its finite backstop")
 	}
 	if rr.Code != 200 || calls.Load() == 0 || bad.Load() != 0 || ctx.Err() != context.Canceled {

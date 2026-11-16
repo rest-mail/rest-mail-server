@@ -116,7 +116,7 @@ func restmailDKIMDNS(t *testing.T) func() int {
 	}()
 	previous := net.DefaultResolver
 	net.DefaultResolver = &net.Resolver{PreferGo: true, Dial: func(ctx context.Context, _, _ string) (net.Conn, error) {
-		return (&net.Dialer{Timeout: time.Second}).DialContext(ctx, "udp", conn.LocalAddr().String())
+		return (&net.Dialer{Timeout: 30 * time.Second}).DialContext(ctx, "udp", conn.LocalAddr().String())
 	}}
 	t.Cleanup(func() {
 		net.DefaultResolver = previous

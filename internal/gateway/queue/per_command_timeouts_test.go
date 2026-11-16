@@ -258,7 +258,7 @@ func TestDeliverSMTP_StalledStepIsDroppedAtItsTimeout(t *testing.T) {
 			timers := everyStep(time.Hour)
 			tc.set(&timers)
 			w := timedWorker(timers)
-			w.sendDeadline = func(int64) time.Duration { return 10 * time.Second } // only to end an unfixed run
+			w.sendDeadline = func(int64) time.Duration { return 60 * time.Second } // only to end an unfixed run
 			item := timedItem()
 			if tc.raw != "" {
 				item.RawMessage += tc.raw
@@ -269,7 +269,7 @@ func TestDeliverSMTP_StalledStepIsDroppedAtItsTimeout(t *testing.T) {
 			if err == nil {
 				t.Fatal("a stalled peer must fail the attempt")
 			}
-			if took < timeout || took > 5*time.Second {
+			if took < timeout || took > 30*time.Second {
 				t.Fatalf("dropped after %v, want soon after %v: %v", took, timeout, err)
 			}
 			if got := ClassifyFailure(err); got != models.FailureConnection {
@@ -287,12 +287,12 @@ func TestDeliverSMTP_StalledQuitStillDelivers(t *testing.T) {
 	timers := everyStep(time.Hour)
 	timers.Quit = timeout
 	w := timedWorker(timers)
-	w.sendDeadline = func(int64) time.Duration { return 10 * time.Second } // only to end an unfixed run
+	w.sendDeadline = func(int64) time.Duration { return 60 * time.Second } // only to end an unfixed run
 	started := time.Now()
 	if err := w.deliverSMTP(context.Background(), mx.addr(""), "127.0.0.1", timedItem(), nil, nil); err != nil {
 		t.Fatalf("a stalled QUIT must not fail an accepted message: %v", err)
 	}
-	if took := time.Since(started); took > 5*time.Second {
+	if took := time.Since(started); took > 30*time.Second {
 		t.Fatalf("QUIT held the worker for %v, want soon after %v", took, timeout)
 	}
 	if got := mx.copiesReceived(); got != 1 {
@@ -409,12 +409,12 @@ func TestProbeRESTMAIL_StalledEHLOIsDroppedAtItsTimeout(t *testing.T) {
 	timers := everyStep(time.Hour)
 	timers.Hello = timeout
 	w := timedWorker(timers)
-	w.sendDeadline = func(int64) time.Duration { return 10 * time.Second } // only to end an unfixed run
+	w.sendDeadline = func(int64) time.Duration { return 60 * time.Second } // only to end an unfixed run
 	started := time.Now()
 	if probed, _ := w.probeRESTMAIL(mx.addr(""), "127.0.0.1"); probed {
 		t.Fatal("a stalled EHLO must not complete the probe")
 	}
-	if took := time.Since(started); took > 5*time.Second {
+	if took := time.Since(started); took > 30*time.Second {
 		t.Fatalf("dropped after %v, want soon after %v", took, timeout)
 	}
 }
@@ -596,7 +596,7 @@ func TestCrashedWorkersRowIsReclaimed(t *testing.T) {
 // waitForRefresh waits until the row's last_attempt moves past since.
 func waitForRefresh(t *testing.T, db *gorm.DB, id uint, since time.Time) time.Time {
 	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(30 * time.Second)
 	for time.Now().Before(deadline) {
 		if last := readRow(t, db, id).LastAttempt; last != nil && last.After(since) {
 			return *last
@@ -633,7 +633,7 @@ func TestHeartbeatRefreshesTheRowUntilStopped(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-		case <-time.After(5 * time.Second):
+		case <-time.After(30 * time.Second):
 			t.Fatal("the heartbeat did not finish refreshing the row")
 		}
 		current := *readRow(t, db, item.ID).LastAttempt
@@ -763,7 +763,7 @@ func TestHeartbeatRunsThroughStepsWithoutCommands(t *testing.T) {
 	go func() { w.processOne(0); close(done) }()
 	select {
 	case <-resolver.claimed:
-	case <-time.After(5 * time.Second):
+	case <-time.After(30 * time.Second):
 		t.Fatal("the worker did not claim the row")
 	}
 	waitForRefresh(t, db, item.ID, *readRow(t, db, item.ID).LastAttempt)

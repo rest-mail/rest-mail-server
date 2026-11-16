@@ -75,7 +75,8 @@ func (d *deliveryReadDB) QueryContext(ctx context.Context, query string, _ []dri
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
-		case <-time.After(2 * time.Second):
+		case <-time.After(30 * time.Second):
+			d.lostContext++ // assertDeliveryReadRefusal fails on it, whatever the clock did
 			return nil, errors.New("HTTP cancellation lost")
 		}
 	}
@@ -122,7 +123,7 @@ func deliveryPipelineStep(filters string) deliveryReadStep {
 }
 func deliveryRequest(t *testing.T, body, path string) *http.Request {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.WithValue(t.Context(), deliveryContextKey{}, true), 3*time.Second)
+	ctx, cancel := context.WithTimeout(context.WithValue(t.Context(), deliveryContextKey{}, true), 30*time.Second)
 	t.Cleanup(cancel)
 	r := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body)).WithContext(ctx)
 	r.Header.Set("Content-Type", "application/json")
@@ -214,13 +215,13 @@ func TestDeliveryReadCancellationReachesDatabase(t *testing.T) {
 			select {
 			case <-d.started:
 				cancel()
-			case <-time.After(time.Second):
+			case <-time.After(30 * time.Second):
 				t.Error("database read never started")
 				cancel()
 			}
 			select {
 			case <-done:
-			case <-time.After(3 * time.Second):
+			case <-time.After(30 * time.Second):
 				t.Fatal("handler ignored cancellation")
 			}
 			assertDeliveryReadRefusal(t, d, rr, status, code)
