@@ -98,6 +98,60 @@ class ParallelTopology(unittest.TestCase):
             self.assertIn("sleep 1", probe)
 
 
+class ApiHealthWait(unittest.TestCase):
+    def setUp(self):
+        self.task = yaml.safe_load((ROOT / "chores.yml").read_text())["tasks"]["health:wait"]
+
+    def run_probe(self, wait_seconds, ready_after):
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            helpers = {
+                "docker": '#!/bin/sh\nwhile [ "$1" != sh ]; do shift; done\nexec "$@"\n',
+                "wget": (
+                    '#!/bin/sh\n'
+                    'attempt=0\n'
+                    '[ ! -f "$ATTEMPTS" ] || read -r attempt < "$ATTEMPTS"\n'
+                    'attempt=$((attempt + 1))\n'
+                    'echo "$attempt" > "$ATTEMPTS"\n'
+                    '[ "$attempt" -ge "$READY_AFTER" ]\n'
+                ),
+                "sleep": '#!/bin/sh\nexit 0\n',
+            }
+            for name, content in helpers.items():
+                helper = work / name
+                helper.write_text(content)
+                helper.chmod(0o755)
+            command = self.task["cmds"][0]
+            for name, value in {
+                "WAIT_SECONDS": str(wait_seconds),
+                "RESTMAIL_API_IP": "10.99.0.20",
+                "RESTMAIL_API_PORT": "8080",
+                "RESTMAIL_NETWORK": "testbed_mailnet",
+            }.items():
+                command = command.replace("{{." + name + "}}", value)
+            attempts = work / "attempts"
+            result = subprocess.run(
+                ["sh", "-c", command],
+                env={**os.environ, "PATH": directory + os.pathsep + os.environ["PATH"],
+                     "ATTEMPTS": str(attempts), "READY_AFTER": str(ready_after)},
+                capture_output=True, text=True, timeout=600, check=False,
+            )
+            return result, int(attempts.read_text())
+
+    def test_cold_build_can_outlast_the_old_three_minute_guard(self):
+        self.assertEqual(self.task["vars"]["WAIT_SECONDS"], '{{.WAIT_SECONDS | default "7200"}}')
+        result, attempts = self.run_probe(7200, 181)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(attempts, 181)
+        self.assertIn("api healthy", result.stdout)
+
+    def test_a_never_healthy_api_still_fails_at_the_configured_guard(self):
+        result, attempts = self.run_probe(3, 4)
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertEqual(attempts, 3)
+        self.assertIn("api did not become healthy within 3s", result.stderr)
+
+
 class IndependentReports(unittest.TestCase):
     def setUp(self):
         workflows = ROOT / ".github/workflows"

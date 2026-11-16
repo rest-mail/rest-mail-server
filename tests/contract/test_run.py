@@ -623,6 +623,7 @@ class ExamplePairsCommand(unittest.TestCase):
                 "    pattern = re.compile(sys.argv[2])\n"
                 "    print('\\n'.join(name for name in names if pattern.search(name)))\n"
                 "else:\n"
+                "    assert sys.argv[sys.argv.index('-test.timeout') + 1] == '2h'\n"
                 "    pattern = re.compile(sys.argv[sys.argv.index('-test.run') + 1])\n"
                 "    selected = [name for name in names if pattern.search(name)]\n"
                 "    with open(os.environ['CALLS'], 'a') as calls:\n"
