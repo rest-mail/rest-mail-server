@@ -361,6 +361,10 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput, spoo
 	if parsed, err = spool.readRestmailMessage(&req); err != nil {
 		return RestmailDelivery{}, restmailReadRefusal(r.Context(), "spooled message")
 	}
+	var rawCalendar []pipeline.CalendarEvent
+	if parsed != nil {
+		rawCalendar = parsed.CalendarEvents
+	}
 
 	// Only receive-capable identities reach filters. In a mixed delivery a
 	// discard or redirect must not turn refused recipients into acceptances.
@@ -662,6 +666,34 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput, spoo
 			}
 		}
 		msg.HasAttachments = len(attachmentRows) > 0
+		var calendarVersions []models.CalendarEventVersion
+		if len(rawCalendar) > 0 {
+			calendarJSON, err := json.Marshal(rawCalendar)
+			if err != nil {
+				failed = append(failed, rcpt)
+				continue
+			}
+			msg.CalendarEventsRaw = models.JSONB(calendarJSON)
+			for _, event := range rawCalendar {
+				if event.UID == "" {
+					continue
+				}
+				var start, end *time.Time
+				if !event.DTStart.IsZero() {
+					value := event.DTStart
+					start = &value
+				}
+				if !event.DTEnd.IsZero() {
+					value := event.DTEnd
+					end = &value
+				}
+				calendarVersions = append(calendarVersions, models.CalendarEventVersion{
+					MailboxID: mailbox.ID, UID: event.UID, Sequence: event.Sequence,
+					Method: event.Method, Status: event.Status, Summary: event.Summary,
+					DTStart: start, DTEnd: end, Organizer: event.Organizer.Address,
+				})
+			}
+		}
 
 		// A recipient is accepted only after its message and both quota
 		// charges commit together. A failed charge must not leave an inbox
@@ -673,6 +705,15 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput, spoo
 			}
 			if err := tx.Create(&msg).Error; err != nil {
 				return err
+			}
+			if len(calendarVersions) > 0 {
+				for index := range calendarVersions {
+					id := msg.ID
+					calendarVersions[index].MessageID = &id
+				}
+				if err := tx.Create(&calendarVersions).Error; err != nil {
+					return err
+				}
 			}
 			for _, attachment := range attachmentRows {
 				attachment.MessageID = msg.ID
