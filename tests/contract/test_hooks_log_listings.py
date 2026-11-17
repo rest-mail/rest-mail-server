@@ -64,12 +64,22 @@ class LogListings(unittest.TestCase):
         self.start_clean = Mock()
         names["start_clean"] = self.start_clean
         self.made = []
+        self.deliveries = [["delivered"]]
+        self.waits = []
 
         def fixture_call(transaction, method, path, body=None, expect=(200, 201, 204)):
+            if method == "GET" and path == "/api/v1/messages/9/recipients":
+                self.waits.append(path)
+                states = self.deliveries.pop(0) if len(self.deliveries) > 1 else self.deliveries[0]
+                return {"message_id": 9, "recipients": [
+                    {"address": self.globals["ADMIN"], "state": state} for state in states]}
             self.made.append((method, path, body))
             return {"id": 9, "message_id": "<made@restmail.test>"}
 
         names["fixture_call"] = fixture_call
+        self.pipelines = []
+        names["an_inbound_pipeline_without_greylisting"] = Mock(
+            side_effect=lambda transaction: self.pipelines.append(len(self.made)))
         sleep = patch.object(self.globals["time"], "sleep")
         self.sleep = sleep.start()
         self.addCleanup(sleep.stop)
@@ -112,6 +122,8 @@ class LogListings(unittest.TestCase):
         self.before("getDeliveryLogs", sent)
         self.start_clean.assert_called_once_with(sent)
         recipient = self.the_send()
+        self.assertEqual(self.pipelines, [])
+        self.assertEqual(self.waits, [])
         # A remote recipient of its own, so the send is queued.
         self.assertTrue(recipient.startswith("contract-log-"))
         self.assertTrue(recipient.endswith("@" + self.globals["OWN_LOG_DOMAIN"]))
@@ -148,6 +160,8 @@ class LogListings(unittest.TestCase):
         self.before("listPipelineLogs", sent)
         self.start_clean.assert_called_once_with(sent)
         self.assertEqual(self.the_send(), self.globals["ADMIN"])
+        self.assertEqual(self.pipelines, [0])
+        self.assertEqual(self.waits, ["/api/v1/messages/9/recipients"])
         self.sleep.assert_called_once_with(1)
         rows = [
             {"direction": "outbound", "rfc_message_id": "<made@restmail.test>"},
@@ -170,6 +184,24 @@ class LogListings(unittest.TestCase):
             sent["fail"],
         )
         self.assertIn("it answered 2 other rows", sent["fail"])
+
+    def test_the_pipeline_log_waits_for_the_queue_worker(self):
+        self.deliveries = [["queued"], ["queued"], ["delivered"]]
+        self.before("listPipelineLogs", transaction(PIPELINE, 200))
+        self.assertEqual(self.waits, ["/api/v1/messages/9/recipients"] * 3)
+        self.assertEqual(self.sleep.call_count, 3)
+
+    def test_a_pipeline_log_send_that_bounced_is_an_error(self):
+        self.deliveries = [["failed"]]
+        with self.assertRaisesRegex(RuntimeError, "was not delivered: .*failed"):
+            self.before("listPipelineLogs", transaction(PIPELINE, 200))
+        self.sleep.assert_not_called()
+
+    def test_the_delivery_log_does_not_wait(self):
+        self.before("getDeliveryLogs", transaction(DELIVERY, 200))
+        self.assertEqual(self.waits, [])
+        self.assertEqual(self.pipelines, [])
+        self.sleep.assert_not_called()
 
     def test_a_send_without_a_message_id_is_an_error(self):
         self.globals["fixture_call"] = lambda *a, **k: {"id": 9}

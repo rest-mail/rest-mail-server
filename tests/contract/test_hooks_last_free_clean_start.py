@@ -45,16 +45,29 @@ class CleanStart(unittest.TestCase):
         self.start_clean = Mock()
         names["start_clean"] = self.start_clean
         self.made = []
+        self.deliveries = [["delivered"]]
 
         self.invitations = [{"uid": self.globals["OWN_INVITATION_UID"], "message_id": 31}]
 
         def fixture_call(transaction, method, path, body=None, expect=(200, 201, 204)):
             self.made.append((method, path, body))
+            if method == "GET" and path.endswith("/recipients"):
+                states = self.deliveries.pop(0) if len(self.deliveries) > 1 else self.deliveries[0]
+                return {"message_id": 7, "recipients": [
+                    {"address": self.globals["ADMIN"] if index == 0 else f"other-{index}@restmail.test",
+                     "state": state}
+                    for index, state in enumerate(states)]}
             if method == "GET" and path.endswith("/calendar-events"):
                 return self.invitations
             return {"id": 7}
 
         names["fixture_call"] = fixture_call
+        self.pipelines = []
+        names["an_inbound_pipeline_without_greylisting"] = Mock(
+            side_effect=lambda transaction: self.pipelines.append(len(self.made)))
+        sleep = patch.object(self.globals["time"], "sleep")
+        self.sleep = sleep.start()
+        self.addCleanup(sleep.stop)
         names["mailbox_id"] = Mock(return_value=4)
         self.stash = self.globals["hooks"].stash
         self.stash.clear()
@@ -127,8 +140,10 @@ class CleanStart(unittest.TestCase):
         sent = transaction("/api/v1/accounts/1/calendar-events", name)
         self.hook(sent)
         self.assertEqual(sent["fullPath"], "/api/v1/accounts/4/calendar-events")
-        [(method, path, body)] = self.made
+        [(method, path, body), (read, waited, _)] = self.made
         self.assertEqual((method, path), ("POST", "/api/v1/messages/send"))
+        self.assertEqual((read, waited), ("GET", "/api/v1/messages/7/recipients"))
+        self.assertEqual(self.pipelines, [0])
         self.assertEqual(body["to"], [body["from"]])
         self.assertEqual(body["calendar_event"]["method"], "REQUEST")
         uid = body["calendar_event"]["uid"]
@@ -159,11 +174,13 @@ class CleanStart(unittest.TestCase):
                 self.start_clean.assert_called_with(sent)
                 self.assertEqual(sent["fullPath"], "/api/v1/messages/31/calendar-reply")
                 self.assertEqual(json.loads(sent["request"]["body"]), body)
-                [(method, path, made), (read, listing, _)] = self.made
+                [(method, path, made), (wait, waited, _), (read, listing, _)] = self.made
                 self.assertEqual((method, path), ("POST", "/api/v1/messages/send"))
+                self.assertEqual((wait, waited), ("GET", "/api/v1/messages/7/recipients"))
                 self.assertEqual(made["to"], [made["from"]])
                 self.assertEqual(made["calendar_event"]["method"], "REQUEST")
                 self.assertEqual((read, listing), ("GET", "/api/v1/accounts/4/calendar-events"))
+                self.assertEqual(self.pipelines[-1], 0)
 
     def test_a_reply_with_no_invitation_delivered_is_not_sent(self):
         self.invitations = [{"uid": "someone-elses@restmail.test", "message_id": 9}]
@@ -171,6 +188,79 @@ class CleanStart(unittest.TestCase):
         sent = transaction("/api/v1/messages/1/calendar-reply", name, {"from": "admin@restmail.test"})
         with self.assertRaisesRegex(RuntimeError, "was not delivered"):
             self.hook(sent)
+
+    def test_the_invitation_is_read_only_once_the_queue_worker_delivered_it(self):
+        for name, path in (
+            ("/api/v1/accounts/{id}/calendar-events > x > 200 > application/json",
+             "/api/v1/accounts/1/calendar-events"),
+            ("/api/v1/messages/{id}/calendar-reply > x > 200 > application/json",
+             "/api/v1/messages/1/calendar-reply"),
+        ):
+            with self.subTest(name=name):
+                self.made.clear()
+                self.sleep.reset_mock()
+                self.deliveries = [["queued"], ["retrying"], ["delivered"]]
+                self.hook(transaction(path, name, {"from": "admin@restmail.test"}))
+                reads = [path for method, path, _ in self.made if method == "GET"]
+                self.assertEqual(reads[:3], ["/api/v1/messages/7/recipients"] * 3)
+                self.sleep.assert_has_calls([unittest.mock.call(1)] * 2)
+                self.assertEqual(self.sleep.call_count, 2)
+
+    def test_an_invitation_that_bounced_is_an_error(self):
+        self.deliveries = [["queued"], ["failed"]]
+        name = "/api/v1/messages/{id}/calendar-reply > x > 200 > application/json"
+        sent = transaction("/api/v1/messages/1/calendar-reply", name, {"from": "admin@restmail.test"})
+        with self.assertRaisesRegex(RuntimeError, "was not delivered: .*failed"):
+            self.hook(sent)
+        self.assertFalse(any(path.endswith("/calendar-events") for _, path, _ in self.made))
+
+    def test_an_invitation_never_delivered_is_an_error_after_the_wait(self):
+        self.deliveries = [["queued"]]
+        clock = iter(range(0, 10_000, 30))
+        name = "/api/v1/accounts/{id}/calendar-events > x > 200 > application/json"
+        sent = transaction("/api/v1/accounts/1/calendar-events", name)
+        with (
+            patch.object(self.globals["time"], "monotonic", lambda: next(clock)),
+            self.assertRaisesRegex(RuntimeError, "not delivered within 60 seconds: .*queued"),
+        ):
+            self.hook(sent)
+
+    def test_a_missing_sent_message_fails_before_network_calls(self):
+        for sent in (None, [], {}, {"id": 0}):
+            with self.subTest(sent=sent), self.assertRaisesRegex(RuntimeError, "fixture send returned no message"):
+                self.globals["delivered_here"]({}, sent)
+        self.assertEqual(self.made, [])
+
+    def test_every_recipient_must_be_delivered(self):
+        self.deliveries = [["delivered", "queued"], ["delivered", "delivered"]]
+        sent = {"id": 7}
+        self.assertIs(self.globals["delivered_here"]({}, sent), sent)
+        self.assertEqual(len(self.made), 2)
+        self.sleep.assert_called_once_with(1)
+
+    def test_an_empty_recipient_list_does_not_mean_delivered(self):
+        self.deliveries = [[], ["delivered"]]
+        self.globals["delivered_here"]({}, {"id": 7})
+        self.assertEqual(len(self.made), 2)
+        self.sleep.assert_called_once_with(1)
+
+    def test_a_timeout_without_recipients_names_the_missing_status(self):
+        self.deliveries = [[]]
+        clock = iter(range(0, 10_000, 30))
+        with (
+            patch.object(self.globals["time"], "monotonic", lambda: next(clock)),
+            self.assertRaisesRegex(RuntimeError, "within 60 seconds: no recipients listed"),
+        ):
+            self.globals["delivered_here"]({}, {"id": 7})
+
+    def test_an_empty_status_response_does_not_mean_delivered(self):
+        for empty in (None, {}):
+            with self.subTest(empty=empty):
+                self.sleep.reset_mock()
+                self.globals["fixture_call"] = Mock(side_effect=[
+                    empty, {"recipients": [{"address": "admin@restmail.test", "state": "delivered"}]}])
+                self.globals["delivered_here"]({}, {"id": 7})
+                self.sleep.assert_called_once_with(1)
 
     def test_the_stream_is_not_given_events(self):
         # Its example is a literal stream the live server never sends, so the
