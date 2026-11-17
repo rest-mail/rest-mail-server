@@ -2,7 +2,7 @@ name: E2E
 
 # Full end-to-end suite: stands up the whole simulated-internet topology
 # (testbed dnsmasq + certs, reference mail1/mail2, the restmail.test product
-# stack) and runs the 14 staged tests in tests/e2e/ from a golang container on
+# stack) and runs the 15 staged tests in tests/e2e/ from a golang container on
 # the mailnet. Heavy (~20 min), so it lives in its own workflow rather than
 # bloating ci.yml.
 #
