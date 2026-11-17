@@ -42,11 +42,12 @@ import (
 )
 
 type MessageHandler struct {
-	db        *gorm.DB
-	broker    messageEventPublisher
-	engine    *pipeline.Engine
-	masterKey string
-	recorder  traceRecorder
+	db          *gorm.DB
+	broker      messageEventPublisher
+	engine      *pipeline.Engine
+	masterKey   string
+	recorder    traceRecorder
+	sendReceipt *models.SendIdempotency
 
 	// Send-path abuse limits (#184), configured from config in routes.go. A single
 	// compromised webmail credential must not be able to fan out unlimited bulk
@@ -601,7 +602,9 @@ type sendMessageRequest = apitypes.SendMessageRequest
 
 // SendMessage composes and sends a message from an authenticated user.
 func (h *MessageHandler) sendMessage(r *http.Request, req sendMessageRequest) (endpoint.Status[any], error) {
-	return h.sendMessageWithParts(r, req, nil)
+	return h.withSendIdempotency(r, req, func(sender *MessageHandler) (endpoint.Status[any], error) {
+		return sender.sendMessageWithParts(r, req, nil)
+	})
 }
 
 func (h *MessageHandler) sendMessageWithParts(r *http.Request, req sendMessageRequest, parts []pipeline.Attachment) (endpoint.Status[any], error) {
@@ -701,6 +704,9 @@ func (h *MessageHandler) sendComposedMessage(r *http.Request, req sendMessageReq
 	}
 	senderMailbox := *sender
 	req.From = senderMailbox.Address
+	if h.sendReceipt != nil {
+		h.sendReceipt.From, h.sendReceipt.OnBehalf = req.From, req.OnBehalf
+	}
 	if req.OnBehalf {
 		var actor models.Mailbox
 		if err := h.db.WithContext(r.Context()).First(&actor, claims.AccountID).Error; err != nil {
@@ -1166,8 +1172,8 @@ func (h *MessageHandler) RegisterDelivery(rs endpoint.Routes, bodyLimit endpoint
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/messages/deliver",
 		OperationID: "deliverMessage", Summary: "Deliver a message into a mailbox (protocol gateways)", Tags: []string{"Messages"},
 		Description: "Machine to machine: no user token. The inbound pipeline decides: 201 with the message made, " +
-			"200 processed when it quarantined or discarded it, 403 rejected, 503 deferred, 422 mailbox_full " +
-			"over quota. These are REST statuses for every caller; the SMTP gateway rewrites them into its SMTP reply (#1664). A missing mailbox is 404; a failed mailbox lookup is 500, never a missing recipient. " +
+			"200 processed when it quarantined or discarded it, 403 rejected, 503 deferred (greylisted or rate_limited when the " +
+			"greylist or rate_limit step held it back), 422 mailbox_full over quota. These are REST statuses for every caller; the SMTP gateway rewrites them into its SMTP reply (#1664). A missing mailbox is 404; a failed mailbox lookup is 500, never a missing recipient. " +
 			"Stored text must not contain NUL (U+0000), including strings and object keys anywhere in recipients_to or recipients_cc " +
 			"and the decoded raw_message octets; a refusal is 422 validation_failed naming the field, before any write. " +
 			"raw_message is a standard padded base64 string (format: byte), not unencoded message text. " +
@@ -1333,6 +1339,10 @@ func (h *MessageHandler) deliverMessage(r *http.Request, req deliverMessageBody,
 		switch {
 		case strings.HasPrefix(errStr, "rejected:"):
 			return zero, endpoint.Refuse(http.StatusForbidden, "rejected", strings.TrimPrefix(errStr, "rejected: "))
+		case errors.Is(err, errGreylisted):
+			return zero, endpoint.Refuse(http.StatusServiceUnavailable, rmail.GreylistedRefusal, "Greylisted, try again later")
+		case errors.Is(err, errRateLimited):
+			return zero, endpoint.Refuse(http.StatusServiceUnavailable, rmail.RateLimitedRefusal, "Too many messages, try again later")
 		case strings.HasPrefix(errStr, "deferred:"):
 			return zero, endpoint.Refuse(http.StatusServiceUnavailable, "deferred", "Try again later")
 		case strings.HasPrefix(errStr, "mailbox_full:"):
@@ -1964,8 +1974,9 @@ func (h *MessageHandler) updateDraft(r *http.Request, in updateDraftRequest) (Me
 // hold: the unsubscribe details a bulk domain's mail needs (#144). Without a body the draft
 // is sent as it is.
 type sendDraftRequest struct {
-	ID   uint32         `path:"id" minimum:"1" example:"1"`
-	Body *sendDraftBody `body:""`
+	IdempotencyKey string         `header:"Idempotency-Key" maxLength:"255" json:"-" description:"Optional account-scoped retry key, retained for 24 hours after success. Reuse only for the same route, resource and body."`
+	ID             uint32         `path:"id" minimum:"1" example:"1"`
+	Body           *sendDraftBody `body:""`
 }
 
 type sendDraftBody struct {
@@ -1987,6 +1998,9 @@ func (h *MessageHandler) sendDraftInTransaction(r *http.Request, in sendDraftReq
 	}
 	if err := h.draftAccess(r, &draft); err != nil {
 		return zero, err
+	}
+	if h.sendReceipt != nil {
+		h.sendReceipt.SourceMailboxID, h.sendReceipt.SourceCapability = draft.MailboxID, models.CapMailWrite
 	}
 
 	var toList []string
@@ -2107,8 +2121,9 @@ func (h *MessageHandler) getRawMessage(r *http.Request, in messagePath) (endpoin
 // forwardRequest forwards message {id}. from and to are checked in the handler, as they always
 // were: both are required.
 type forwardRequest struct {
-	ID   uint32      `path:"id" minimum:"1" example:"1"`
-	Body forwardBody `body:""`
+	IdempotencyKey string      `header:"Idempotency-Key" maxLength:"255" json:"-" description:"Optional account-scoped retry key, retained for 24 hours after success. Reuse only for the same route, resource and body."`
+	ID             uint32      `path:"id" minimum:"1" example:"1"`
+	Body           forwardBody `body:""`
 }
 
 type forwardBody struct {
@@ -2124,10 +2139,19 @@ type forwardBody struct {
 // forwardMessage forwards an existing message to new recipients, through sendMessage.
 // POST /api/v1/messages/{id}/forward
 func (h *MessageHandler) forwardMessage(r *http.Request, in forwardRequest) (endpoint.Status[any], error) {
+	return h.withSendIdempotency(r, in, func(sender *MessageHandler) (endpoint.Status[any], error) {
+		return sender.forwardWithoutIdempotency(r, in)
+	})
+}
+
+func (h *MessageHandler) forwardWithoutIdempotency(r *http.Request, in forwardRequest) (endpoint.Status[any], error) {
 	var zero endpoint.Status[any]
 	original, err := h.ownedMessage(r, in.ID, models.CapMailRead)
 	if err != nil {
 		return zero, err
+	}
+	if h.sendReceipt != nil {
+		h.sendReceipt.SourceMailboxID, h.sendReceipt.SourceCapability = original.MailboxID, models.CapMailRead
 	}
 	req := in.Body
 	if req.From == "" || len(req.To) == 0 {
@@ -2657,7 +2681,7 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 		case pipeline.ActionDefer:
 			traceBase.Outcome = outcomeDeferred
 			h.recordTrace(ctx, buildTrace(traceBase))
-			return nil, fmt.Errorf("deferred: try again later")
+			return nil, deferredError(pipelineResult, "try again later")
 		case pipeline.ActionContinue:
 			// The required checks passed: the message is accepted, and the rest of
 			// delivery is the content stage's. The trace is recorded there, at the end.

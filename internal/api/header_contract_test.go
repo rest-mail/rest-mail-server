@@ -36,7 +36,7 @@ func TestBrowserCORSContract(t *testing.T) {
 				req.Header.Set("Origin", origin)
 				if target.method == http.MethodOptions {
 					req.Header.Set("Access-Control-Request-Method", http.MethodPost)
-					req.Header.Set("Access-Control-Request-Headers", "Content-Type, X-CSRF-Token")
+					req.Header.Set("Access-Control-Request-Headers", "Content-Type, X-CSRF-Token, Idempotency-Key")
 				}
 				rr := httptest.NewRecorder()
 				routers.Public.ServeHTTP(rr, req)
@@ -52,6 +52,9 @@ func TestBrowserCORSContract(t *testing.T) {
 				}
 				if target.method == http.MethodOptions && !strings.Contains(strings.ToLower(h.Get("Access-Control-Allow-Headers")), "x-csrf-token") {
 					t.Fatalf("preflight does not allow the CSRF header: %v", h)
+				}
+				if target.method == http.MethodOptions && !strings.Contains(strings.ToLower(h.Get("Access-Control-Allow-Headers")), "idempotency-key") {
+					t.Fatalf("preflight does not allow the idempotency header: %v", h)
 				}
 			})
 		}
