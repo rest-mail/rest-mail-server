@@ -92,7 +92,7 @@ type forwardMessageDescription struct {
 // sendOutcomes are the answers a send gives, each with its own status: the sent message (201),
 // the message scheduled for later (202), or the pipeline's discard (200).
 var sendOutcomes = []oapifly.EndpointResponse{
-	{Status: http.StatusCreated, Description: "Sent; the copy kept in Sent", Type: oapifly.TypeOf[endpoint.Data[Message]]()},
+	{Status: http.StatusCreated, Description: "Queued for every recipient; the copy kept in Sent", Type: oapifly.TypeOf[endpoint.Data[Message]]()},
 	{Status: http.StatusAccepted, Description: "Retained: scheduled for later, or held by a send limit until human release", Type: oapifly.TypeOf[endpoint.Data[ScheduledMessage]]()},
 	{Status: http.StatusOK, Description: "Discarded by the outbound pipeline", Type: oapifly.TypeOf[endpoint.Data[SendDiscarded]]()},
 }
@@ -221,28 +221,28 @@ func (h *MessageHandler) RegisterCompose(rs endpoint.Routes, audit ...func(strin
 		Status:      http.StatusNoContent, Errors: []int{http.StatusUnauthorized, http.StatusNotFound}, Security: sends}, h.cancelScheduledSend)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/messages/{id}/calendar-reply",
 		OperationID: "respondToCalendar", Summary: "Reply to a calendar invitation", Tags: []string{"Calendar"},
-		Description: "The invitation's message is read with mail:read; the reply is sent from an address the session may send as (mail:send).",
+		Description: "The invitation's message is read with mail:read; the reply is sent from an address the session may send as (mail:send). The 200 means the reply is durably queued for the organizer, on this server or elsewhere, not that it has arrived: a later permanent refusal bounces to the sender as a DSN.",
 		Errors:      []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound, http.StatusServiceUnavailable},
 		Security:    readAndSend}, h.respondToCalendar)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/messages/send",
 		OperationID: "sendMessage", Summary: "Send a message", Tags: []string{"Messages"},
 		DescribedRequest: sendMessageDescription{},
-		Description: "Sent at once (201), or with scheduled_at stored and sent then (202); the outbound pipeline may " +
+		Description: "Queued at once (201), or with scheduled_at stored and queued then (202); the outbound pipeline may " +
 			"discard it (200). to needs at least one address. from, to, cc and bcc are described as bare addresses, " +
 			"internationalized or not; the handler also accepts an RFC 5322 display name around one. scheduled_at must be at least a minute " +
-			"ahead and within a year; null or omitted sends at once. " + delegatedSendingDescription,
+			"ahead and within a year; null or omitted sends at once. " + queuedDeliveryDescription + delegatedSendingDescription,
 		Status: http.StatusCreated, SuccessStatuses: []int{http.StatusOK, http.StatusAccepted},
 		Responses: append(append([]oapifly.EndpointResponse{}, sendOutcomes...), oapifly.EndpointResponse{Status: http.StatusUnprocessableEntity, Description: "validation_failed with details.fields for binding, sender policy or scheduling rules", Type: oapifly.TypeOf[respond.ValidationErrorResponse]()}),
 		Errors:    sendRefusals, Security: delegatedSendSecurity(), Middleware: sendAudit("mail.send")}, h.sendMessage)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/messages/draft/{id}/send",
 		OperationID: "sendDraft", Summary: "Send a draft", Tags: []string{"Drafts"},
-		Description: "The draft (mail:write) is sent as sendMessage sends, and deleted once it is; a refused send keeps it. Draft lookup/access dependency failures return 500 and follow request cancellation. " + delegatedSendingDescription,
+		Description: "The draft (mail:write) is sent as sendMessage sends, and deleted once it is; a refused send keeps it. Draft lookup/access dependency failures return 500 and follow request cancellation. " + queuedDeliveryDescription + delegatedSendingDescription,
 		Status:      http.StatusCreated, SuccessStatuses: []int{http.StatusOK, http.StatusAccepted}, Responses: sentOrDiscarded,
 		Errors: append([]int{http.StatusNotFound}, sendRefusals...), Security: delegatedSendSecurity(models.CapMailWrite), Middleware: sendAudit("mail.send_draft")}, h.sendDraft)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/messages/{id}/forward",
 		OperationID: "forwardMessage", Summary: "Forward a message", Tags: []string{"Messages"},
 		DescribedRequest: forwardMessageDescription{},
-		Description:      "The message (mail:read) is forwarded through the normal sender authorization, rate limit and outbound policy, with Fwd: and the note above its original header. Stored attachments, including empty and inline parts, are re-attached; the Sent copy owns independent attachment objects. The final signed MIME message is bounded by SMTP_MAX_MESSAGE_SIZE, and sender quota includes the copied parts. Sent, attachment references, quota and recipient work commit together. Unavailable or changed source objects fail the forward instead of dropping parts. " + delegatedSendingDescription,
+		Description:      "The message (mail:read) is forwarded through the normal sender authorization, rate limit and outbound policy, with Fwd: and the note above its original header. Stored attachments, including empty and inline parts, are re-attached; the Sent copy owns independent attachment objects. The final signed MIME message is bounded by SMTP_MAX_MESSAGE_SIZE, and sender quota includes the copied parts. Sent, attachment references, quota and queue entries commit together. Unavailable or changed source objects fail the forward instead of dropping parts. " + queuedDeliveryDescription + delegatedSendingDescription,
 		Status:           http.StatusCreated, SuccessStatuses: []int{http.StatusOK, http.StatusAccepted}, Responses: append(append([]oapifly.EndpointResponse{}, sentOrDiscarded...), oapifly.EndpointResponse{Status: http.StatusUnprocessableEntity, Description: "Binding validation, sender policy or sender quota refusal", Type: oapifly.TypeOf[ForwardRefusalResponse]()}),
 		Errors: append([]int{http.StatusNotFound}, sendRefusals...), Security: delegatedSendSecurity(models.CapMailRead), Middleware: sendAudit("mail.forward")}, h.forwardMessage)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/messages/{id}/unsubscribe",

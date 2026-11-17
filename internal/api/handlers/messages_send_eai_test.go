@@ -18,8 +18,9 @@ import (
 )
 
 // An API send to a hosted recipient spelled with a Unicode domain or another
-// normalization form is delivered locally to the account it resolves to, not
-// queued to the outside world. The message keeps the addresses as submitted.
+// normalization form is queued with its spelling as submitted, and the inbound
+// route delivers it to the account that spelling resolves to. The message keeps
+// the addresses as submitted.
 func TestSendMessageLocalRecipientsEAI(t *testing.T) {
 	db := openPlusAddrTestDB(t)
 	if err := migrateModels(db, &models.OutboundQueue{}, &models.Contact{}, &models.CalendarEventVersion{}); err != nil {
@@ -63,6 +64,12 @@ func TestSendMessageLocalRecipientsEAI(t *testing.T) {
 		t.Fatalf("send: %d %s", rr.Code, rr.Body.String())
 	}
 
+	var sent models.Message
+	if err := tx.Where("mailbox_id = ? AND folder = ?", sender.ID, "Sent").First(&sent).Error; err != nil {
+		t.Fatal(err)
+	}
+	deliverQueued(t, h, tx, sent)
+
 	for _, want := range []models.Mailbox{mailbox, legacy} {
 		var msg models.Message
 		if err := tx.Where("mailbox_id = ? AND folder = ?", want.ID, "INBOX").First(&msg).Error; err != nil {
@@ -73,14 +80,14 @@ func TestSendMessageLocalRecipientsEAI(t *testing.T) {
 		}
 	}
 
-	// Only the inactive exact identity leaves through the queue; it is never
-	// redirected to its active NFC twin, and the hosted spellings stay local.
+	// Only the inactive exact identity is still waiting: it is never redirected
+	// to its active NFC twin, and the hosted spellings have been delivered.
 	var queued []models.OutboundQueue
-	if err := tx.Where("sender = ?", sender.Address).Find(&queued).Error; err != nil {
+	if err := tx.Where("sender = ? AND status = ?", sender.Address, "pending").Find(&queued).Error; err != nil {
 		t.Fatal(err)
 	}
 	if len(queued) != 1 || queued[0].Recipient != inactive.Address {
-		t.Fatalf("queued = %+v; want only %s", queued, inactive.Address)
+		t.Fatalf("still queued = %+v; want only %s", queued, inactive.Address)
 	}
 	var twinCount int64
 	tx.Model(&models.Message{}).Where("mailbox_id <> ? AND mailbox_id IN (?)", sender.ID,
@@ -89,7 +96,7 @@ func TestSendMessageLocalRecipientsEAI(t *testing.T) {
 		t.Fatal("inactive exact identity was redirected to its NFC twin")
 	}
 
-	// A calendar reply to a hosted organizer spelled another way is local too.
+	// A calendar reply to a hosted organizer spelled another way reaches them too.
 	events, err := json.Marshal([]pipeline.CalendarEvent{{Method: "REQUEST", UID: "eai-1", Summary: "Treffen", Organizer: pipeline.CalendarAddress{Address: to}}})
 	if err != nil {
 		t.Fatal(err)
@@ -109,15 +116,20 @@ func TestSendMessageLocalRecipientsEAI(t *testing.T) {
 	if rr.Code != http.StatusOK && rr.Code != http.StatusCreated {
 		t.Fatalf("calendar reply: %d %s", rr.Code, rr.Body.String())
 	}
+	var reply models.Message
+	if err := tx.Where("mailbox_id = ? AND folder = ? AND subject LIKE ?", sender.ID, "Sent", "Accepted%").First(&reply).Error; err != nil {
+		t.Fatal(err)
+	}
+	deliverQueued(t, h, tx, reply)
 	var replies int64
 	tx.Model(&models.Message{}).Where("mailbox_id = ? AND subject LIKE ?", mailbox.ID, "Accepted%").Count(&replies)
 	if replies != 1 {
-		t.Fatalf("calendar reply delivered locally %d times; want 1", replies)
+		t.Fatalf("calendar reply delivered %d times; want 1", replies)
 	}
-	if err := tx.Where("sender = ?", sender.Address).Find(&queued).Error; err != nil {
+	if err := tx.Where("sender = ? AND status = ?", sender.Address, "pending").Find(&queued).Error; err != nil {
 		t.Fatal(err)
 	}
 	if len(queued) != 1 {
-		t.Fatalf("calendar reply to a hosted organizer was queued: %+v", queued)
+		t.Fatalf("calendar reply to a hosted organizer still waits on the queue: %+v", queued)
 	}
 }

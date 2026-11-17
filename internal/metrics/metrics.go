@@ -212,6 +212,28 @@ var (
 		[]string{"mechanism", "result"},
 	)
 
+	// SignInAccountsUnderAttack counts each time one address reaches many recent
+	// sign-in failures. It counts once per episode, and has no address label:
+	// addresses are attacker-chosen. The log line of the same moment names it.
+	SignInAccountsUnderAttack = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "restmail_signin_accounts_under_attack_total",
+		Help: "Times one address reached many recent sign-in failures",
+	})
+
+	// SignInFailuresWaiting is how many failed sign-ins are waiting out their
+	// delay now.
+	SignInFailuresWaiting = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "restmail_signin_failures_waiting",
+		Help: "Failed sign-ins waiting out their delay",
+	})
+
+	// SignInFailuresUnslowed counts failed sign-ins answered at once, because
+	// as many as may wait were already waiting.
+	SignInFailuresUnslowed = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "restmail_signin_failures_unslowed_total",
+		Help: "Failed sign-ins answered without their delay because the waiting bound was reached",
+	})
+
 	// AuthFailures counts authentication failures by protocol.
 	AuthFailures = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
@@ -328,6 +350,9 @@ func init() {
 		PipelineRejectReason,
 		AuthVerdict,
 		AuthFailures,
+		SignInAccountsUnderAttack,
+		SignInFailuresWaiting,
+		SignInFailuresUnslowed,
 		TraceDropped,
 		TLSCertMissing,
 		DomainsOutOfService,

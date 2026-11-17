@@ -30,6 +30,7 @@ class DevReadonlyTests(unittest.TestCase):
             "TASKFILE_DIR": str(ROOT / "tasks"),
             prefix + "_MODE": mode,
             prefix + "_INTERNAL_MTLS": "true",
+            prefix + "_API_BASE_URL": "http://192.0.2.20:8080/restmail",
             # Only the contract fault run builds with tags, and only in dev.
             "API_BUILD_TAGS": "",
             prefix + "_DB_PASS": "fixture-password",
@@ -70,12 +71,53 @@ class DevReadonlyTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         calls = [json.loads(line) for line in capture.read_text().splitlines()]
         command = ["create", "--name"] if service == "api" else ["run", "-d"]
-        launch = [call for call in calls if call["args"][:2] == command]
+        front = [call["args"] for call in calls if call["args"][:2] == command and any(arg.endswith("-https") for arg in call["args"])]
+        if service == "smtp-gateway":
+            self.assertEqual(len(front), 1)
+            self.assertIn("container:fixture-smtp_gateway_container_name", front[0])
+            self.assertIn("fixture-smtp_gateway_own_certs_volume:/certs:ro", front[0])
+            for flag in ("--read-only", "--cap-drop", "ALL", "no-new-privileges:true", "10001:10001"):
+                self.assertIn(flag, front[0])
+            for setting in ("listen 443 ssl", "ssl_certificate fixture-smtp_gateway_tls_cert_path", "ssl_certificate_key fixture-smtp_gateway_tls_key_path", "proxy_pass 192.0.2.20:8080;"):
+                self.assertIn(setting, front[0][-1])
+        else:
+            self.assertEqual(front, [])
+        launch = [call for call in calls if call["args"][:2] == command and not any(arg.endswith("-https") for arg in call["args"])]
         self.assertEqual(len(launch), 1)
         stage = [call["args"] for call in calls if call["args"][:2] == ["run", "--rm"]]
         self.assertEqual(len(stage), 1)
         self.assertFalse(list((directory / ".cache").glob("*.secrets.env")))
         return launch[0], stage[0]
+
+    def test_smtp_https_front_stops_before_gateway(self):
+        source = (ROOT / "tasks/smtp-gateway.yml").read_text()
+        down = source.split("\n  down:\n", 1)[1].split("\n  restart:\n", 1)[0]
+        script = textwrap.dedent(down.split("      - |\n", 1)[1])
+        script = script.replace("{{.SMTP_GATEWAY_CONTAINER_NAME}}", "fixture-smtp-gateway")
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            capture = directory / "docker.jsonl"
+            docker = directory / "docker"
+            docker.write_text('''#!/usr/bin/env python3
+import json, os, sys
+with open(os.environ["CAPTURE"], "a") as output:
+    output.write(json.dumps(sys.argv[1:]) + "\\n")
+if sys.argv[1] == "ps":
+    print("fixture-container-id")
+''')
+            docker.chmod(0o755)
+            subprocess.run(
+                ["sh", "-eu"], input=script, text=True, check=True,
+                capture_output=True,
+                env={**os.environ, "PATH": str(directory) + os.pathsep + os.environ["PATH"],
+                     "CAPTURE": str(capture), "OUTPUT": "/dev/null"},
+            )
+            calls = [json.loads(line) for line in capture.read_text().splitlines()]
+            removals = [args for args in calls if args[:2] == ["rm", "-f"]]
+            self.assertEqual(removals, [
+                ["rm", "-f", "fixture-smtp-gateway-https"],
+                ["rm", "-f", "fixture-smtp-gateway"],
+            ])
 
     def test_dev_mounts_and_production_boundary(self):
         for service in SERVICES:

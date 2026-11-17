@@ -393,7 +393,7 @@ func TestEnsureFirstAdmin_NewPasswordRearmsAnUnfinishedAdmin(t *testing.T) {
 func TestEnsureFirstAdminWith_AHash(t *testing.T) {
 	gdb := openBootstrapTestDB(t)
 	mustRBAC(t, gdb)
-	hash := hashOf(t, strongPassword, 10)
+	hash := hashOf(t, strongPassword, auth.PasswordHashCost)
 	credential, err := BootstrapPasswordHash(hash)
 	if err != nil {
 		t.Fatal(err)
@@ -416,7 +416,7 @@ func TestEnsureFirstAdminWith_AHash(t *testing.T) {
 		t.Errorf("restart: outcome=%v err=%v, want unchanged", outcome, err)
 	}
 	// A new deployment's hash re-arms it, as a new password does.
-	next, _ := BootstrapPasswordHash(hashOf(t, "a-different-password-entirely", 10))
+	next, _ := BootstrapPasswordHash(hashOf(t, "a-different-password-entirely", auth.PasswordHashCost))
 	if outcome, err := EnsureFirstAdminWith(gdb, adminAddr, next, true, t0.Add(100*time.Hour)); err != nil || outcome != FirstAdminRearmed {
 		t.Fatalf("new hash: outcome=%v err=%v, want rearmed", outcome, err)
 	}

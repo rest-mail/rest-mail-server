@@ -338,10 +338,10 @@ func TestForwardAttachmentsLocalAndLegacyEmptyPartsRemainReadable(t *testing.T) 
 			if w.Code != 201 {
 				t.Fatalf("forward: %d %s; queries=%v", w.Code, w.Body, f.c.queries)
 			}
+			// Every mode has one Sent copy and one queue row. A recipient on this
+			// server gets its copy, with objects of its own, through the inbound
+			// route (#1564).
 			wantMessages, wantParts, wantQueue := 1, 3, 1
-			if strings.HasPrefix(mode, "local") {
-				wantMessages, wantParts, wantQueue = 2, 6, 0
-			}
 			if len(f.c.state.messages) != wantMessages || len(f.c.attachments) != wantParts || len(f.c.queue) != wantQueue {
 				t.Fatalf("partial local/legacy forward: sent=%d parts=%d queue=%d", len(f.c.state.messages), len(f.c.attachments), len(f.c.queue))
 			}

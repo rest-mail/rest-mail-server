@@ -92,13 +92,16 @@ func TestSendDraftPostgresRollbackNotificationsAndConcurrentSend(t *testing.T) {
 		if n := count(t, &models.Message{}, "id = ? AND is_draft = ?", draft.ID, true); n != wantDraft {
 			t.Fatalf("draft count=%d want=%d", n, wantDraft)
 		}
-		for _, folder := range []string{"Sent", "INBOX"} {
-			if n := count(t, &models.Message{}, "subject = ? AND folder = ?", draft.Subject, folder); n != wantSent {
-				t.Fatalf("%s copies=%d want=%d", folder, n, wantSent)
-			}
+		if n := count(t, &models.Message{}, "subject = ? AND folder = ?", draft.Subject, "Sent"); n != wantSent {
+			t.Fatalf("Sent copies=%d want=%d", n, wantSent)
 		}
-		if n := count(t, &models.OutboundQueue{}, "raw_message LIKE ?", "%Subject: "+draft.Subject+"\r\n%"); n != wantSent {
-			t.Fatalf("queued copies=%d want=%d", n, wantSent)
+		// Nobody receives anything from the send itself: both recipients, the one on
+		// this server too, wait on the queue (#1564).
+		if n := count(t, &models.Message{}, "subject = ? AND folder = ?", draft.Subject, "INBOX"); n != 0 {
+			t.Fatalf("INBOX copies=%d want=0", n)
+		}
+		if n := count(t, &models.OutboundQueue{}, "raw_message LIKE ?", "%Subject: "+draft.Subject+"\r\n%"); n != 2*wantSent {
+			t.Fatalf("queued copies=%d want=%d", n, 2*wantSent)
 		}
 	}
 	for _, stage := range []string{"delete", "queue", "local", "cancel", "delete_once", "success"} {
@@ -137,7 +140,9 @@ func TestSendDraftPostgresRollbackNotificationsAndConcurrentSend(t *testing.T) {
 				defer func() { must(t, db.Callback().Delete().Remove("cancel_draft_send")) }()
 			}
 			rr := send(ctx, h, draft.ID)
-			if stage != "success" && stage != "delete_once" {
+			// A store that refuses a local copy no longer stops a send: the send
+			// stores none. The inbound route meets that failure, and the queue retries.
+			if stage != "success" && stage != "delete_once" && stage != "local" {
 				if rr.Code < 500 || strings.Contains(rr.Body.String(), "private") {
 					t.Fatalf("failure status=%d body=%s", rr.Code, rr.Body)
 				}
@@ -151,7 +156,9 @@ func TestSendDraftPostgresRollbackNotificationsAndConcurrentSend(t *testing.T) {
 				t.Fatalf("send status=%d body=%s", rr.Code, rr.Body)
 			}
 			assertState(t, draft, true)
-			if observer.events != 3 || observer.pushes != 1 || observer.traces != 2 {
+			// Only the sender's own event and the queued trace: the recipient's copy,
+			// and the notice of it, come when the worker delivers.
+			if observer.events != 1 || observer.pushes != 0 || observer.traces != 1 {
 				t.Fatalf("committed send notifications: %+v", observer)
 			}
 		})

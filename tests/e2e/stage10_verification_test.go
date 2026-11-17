@@ -155,7 +155,8 @@ func testStage10Verification(t *testing.T) {
 			t.Fatal("could not find the account verify-rm2@restmail.test")
 		}
 
-		// RESTMAIL path should be near-instant for same-server
+		// A same-server send takes the outbound queue and the MX like any other
+		// (#1564): the worker's poll interval and one delivery, not an instant.
 		msgID := waitForMessage(t, recvClient, accountID, "INBOX", subject, 30*time.Second)
 		if msgID == 0 {
 			t.Fatal("restmail fast delivery failed")
@@ -165,7 +166,7 @@ func testStage10Verification(t *testing.T) {
 
 	t.Run("SmtpAuth_Port587", func(t *testing.T) {
 		// Connect to submission port with STARTTLS
-		conn, err := net.DialTimeout("tcp", mail1SubmitAddr, 30*time.Second)
+		conn, err := net.DialTimeout("tcp", mail1SubmitAddr, 10*time.Second)
 		if err != nil {
 			t.Skipf("Cannot connect to submission port %s: %v", mail1SubmitAddr, err)
 		}

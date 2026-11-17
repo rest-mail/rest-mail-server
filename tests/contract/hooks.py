@@ -382,6 +382,37 @@ OWN_INVITATION = {
 }
 
 
+LOCAL_DELIVERY_WAIT = 60
+
+
+def delivered_here(transaction, sent):
+    """Wait for all locally addressed fixture recipients to be delivered."""
+    if not isinstance(sent, dict) or not sent.get("id"):
+        raise RuntimeError("the fixture send returned no message")
+    deadline = time.monotonic() + LOCAL_DELIVERY_WAIT
+    while True:
+        status = fixture_call(transaction, "GET", f"/api/v1/messages/{sent['id']:d}/recipients") or {}
+        recipients = status.get("recipients") or []
+        states = {row.get("address"): row.get("state") for row in recipients}
+        if recipients and all(state == "delivered" for state in states.values()):
+            return sent
+        failed = {address: state for address, state in states.items() if state == "failed"}
+        if failed:
+            raise RuntimeError(f"the message sent to a mailbox on this server was not delivered: {failed}")
+        if time.monotonic() >= deadline:
+            raise RuntimeError(
+                f"the message sent to a mailbox on this server was not delivered within "
+                f"{LOCAL_DELIVERY_WAIT:d} seconds: {states or 'no recipients listed'}"
+            )
+        time.sleep(1)
+
+
+def an_invitation_delivered(transaction):
+    """Prepare the fixture pipeline and wait for its invitation to arrive."""
+    an_inbound_pipeline_without_greylisting(transaction)
+    delivered_here(transaction, fixture_call(transaction, "POST", "/api/v1/messages/send", OWN_INVITATION))
+
+
 @hooks.before("getAccount")
 @hooks.before("listCalendarEvents")
 @hooks.before("accountEvents")
@@ -419,7 +450,7 @@ def the_last_free_operations_after_a_reset(transaction):
     if path.startswith("/api/v1/accounts/"):
         to_the_seeded_account(transaction)
     if path.endswith("/calendar-events"):
-        fixture_call(transaction, "POST", "/api/v1/messages/send", OWN_INVITATION)
+        an_invitation_delivered(transaction)
         made_for_the_listing(transaction, "invitation", {"uid": OWN_INVITATION_UID})
 
 
@@ -743,11 +774,11 @@ def to_the_invitation_made_for_it(transaction):
     """respondToCalendar's accepted (200) and foreign_sender (403) need a
     received invitation (x-requires state calendar_invitation, which the
     own-data run provides): the seeded admin@restmail.test sends itself one
-    after the reset, and the reply goes to the message it was delivered in.
+    after the reset, waits for delivery, and replies to the message it arrived in.
     Only the message id in the path changes; foreign_sender's from stays an
     address the session cannot send as, so it is refused after the invitation
     is found."""
-    fixture_call(transaction, "POST", "/api/v1/messages/send", OWN_INVITATION)
+    an_invitation_delivered(transaction)
     account = mailbox_id(origin_of(transaction), ADMIN)
     rows = fixture_call(transaction, "GET", f"/api/v1/accounts/{account:d}/calendar-events") or []
     found = [row.get("message_id") for row in rows if row.get("uid") == OWN_INVITATION_UID]
@@ -2474,7 +2505,8 @@ def the_pipeline_log_holds_a_send(transaction):
     # with no reset changes nothing here.
     if not asked_for_a_clean_start() or " > 200" not in transaction.get("name", ""):
         return
-    sent = a_message_for_the_logs(transaction, ADMIN)
+    an_inbound_pipeline_without_greylisting(transaction)
+    sent = delivered_here(transaction, a_message_for_the_logs(transaction, ADMIN))
     # Traces are written in the background, a batch every 500 ms
     # (internal/trace/recorder.go).
     time.sleep(1)

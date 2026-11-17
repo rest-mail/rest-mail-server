@@ -45,8 +45,10 @@ func TestLayeredSubmissionTempfailsBeforeAnyLocalOrRemoteDelivery(t *testing.T) 
 			t.Fatalf("submission %d: %s", i, reply)
 		}
 	}
-	if len(store.queued()) != 1 || len(back.delivered) != 1 {
-		t.Fatalf("limited mail delivered: remote=%d local=%d", len(store.queued()), len(back.delivered))
+	// Both recipients of the one allowed message are queued; the limited one
+	// reaches neither the queue nor a mailbox.
+	if len(store.queued()) != 2 || len(back.delivered) != 0 {
+		t.Fatalf("limited mail delivered: queued=%d direct=%d", len(store.queued()), len(back.delivered))
 	}
 	if len(store.attempts) != 2 {
 		t.Fatalf("budget attempts=%d", len(store.attempts))

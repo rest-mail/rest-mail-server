@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/rest-mail/rest-mail-server/internal/auth"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -25,8 +26,8 @@ func TestPasswordHash_ThePasswordChecksAgainstIt(t *testing.T) {
 	if bcrypt.CompareHashAndPassword([]byte(hash), []byte(signInPassword)) != nil {
 		t.Errorf("%q does not check against the password", hash)
 	}
-	if cost, _ := bcrypt.Cost([]byte(hash)); cost != passwordHashCost {
-		t.Errorf("cost %d, want %d", cost, passwordHashCost)
+	if cost, _ := bcrypt.Cost([]byte(hash)); cost != auth.PasswordHashCost {
+		t.Errorf("cost %d, want the server's %d", cost, auth.PasswordHashCost)
 	}
 	if strings.Contains(out, signInPassword) {
 		t.Error("the password itself was printed")

@@ -111,9 +111,11 @@ func TestSendKeepsRecipientAndQueueFailures(t *testing.T) {
 		t.Fatalf("a remote send: %d %s, %d queued", code, body, ok.queued)
 	}
 
+	// Nothing looks a recipient up any more: wherever they are, they are queued, so
+	// a store that would have failed that lookup does not matter (#1564).
 	lookup := &sendQueueDB{failLookup: true}
-	if code, body := sendWith(t, lookup); code != http.StatusInternalServerError || lookup.queued != 0 {
-		t.Errorf("a failed recipient lookup: %d %s, %d queued; want 500 and nothing queued", code, body, lookup.queued)
+	if code, body := sendWith(t, lookup); code != http.StatusCreated || lookup.queued != 1 {
+		t.Errorf("a failed recipient lookup: %d %s, %d queued; want 201 and one queued", code, body, lookup.queued)
 	}
 
 	queue := &sendQueueDB{failQueue: true}
