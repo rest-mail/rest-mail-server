@@ -7,8 +7,6 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/antimatter-studios/go-oapifly"
-
 	"github.com/rest-mail/rest-mail-server/internal/grants"
 	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 )
@@ -86,8 +84,7 @@ type sendMessageRequest struct {
 }
 
 type deliverMessageBody struct {
-	MailboxID    uint            `json:"mailbox_id,omitempty"`
-	Address      string          `json:"address,omitempty" pattern:"^[^\\x00]*$" message:"must not contain a NUL byte"`
+	Address      string          `json:"address" minLength:"1" minLengthMessage:"required" missing:"required" pattern:"^[^\\x00]*$" message:"must not contain a NUL byte"`
 	Sender       string          `json:"sender,omitempty" pattern:"^[^\\x00]*$" message:"must not contain a NUL byte"`
 	SenderName   string          `json:"sender_name,omitempty" pattern:"^[^\\x00]*$" message:"must not contain a NUL byte"`
 	RecipientsTo json.RawMessage `json:"recipients_to,omitempty"`
@@ -104,21 +101,6 @@ type deliverMessageBody struct {
 	RawMessage []byte `json:"raw_message,omitempty"`
 	ClientIP   string `json:"client_ip,omitempty" pattern:"^[^\\x00]*$" message:"must not contain a NUL byte"`
 	HeloName   string `json:"helo_name,omitempty" pattern:"^[^\\x00]*$" message:"must not contain a NUL byte"`
-	// Folder is the destination folder the message must be created in (empty =
-	// INBOX). Set by the IMAP gateway's COPY/APPEND so the message is created
-	// directly in its destination in one atomic delivery, rather than delivered
-	// to INBOX and then moved. Flags and ReceivedAt (INTERNALDATE) let COPY
-	// preserve the source message's flags/internal date and APPEND apply the
-	// client-supplied flags at creation time. A nil flag pointer / nil (or zero)
-	// ReceivedAt keeps the delivery default, so ordinary inbound mail is
-	// unaffected.
-	Folder     string     `json:"folder,omitempty" maxLength:"255" maxLengthMessage:"must be at most 255 bytes" pattern:"^$|[^\\x09-\\x0d \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]" patternMessage:"required" pattern2:"^$|^[^\\x09-\\x0d \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]([\\s\\S]*[^\\x09-\\x0d \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000])?$" pattern2Message:"must not begin or end with a space" pattern3:"^[^\\x00-\\x1f\\x7f-\\x9f]*$" pattern3Message:"must not contain a control character" pattern4:"^([^.]|\\.[^.])*(\\.)?$" pattern4Message:"must not contain \"..\""`
-	IsAnswered *bool      `json:"is_answered,omitempty"`
-	IsRead     *bool      `json:"is_read,omitempty"`
-	IsFlagged  *bool      `json:"is_flagged,omitempty"`
-	IsStarred  *bool      `json:"is_starred,omitempty"`
-	IsDraft    *bool      `json:"is_draft,omitempty"`
-	ReceivedAt *time.Time `json:"received_at,omitempty"`
 	// Inbound transport-security metrics (always-on, inbound-MX only). A nil
 	// ReceivedTLS means the caller is not an inbound-MX delivery, persisted as
 	// NULL. TLSCipher is accepted for wire completeness but only the version is
@@ -449,20 +431,6 @@ type GatewaySessionOpenRequest = gatewaySessionOpenRequest
 
 // SendMessageRequest is the sendMessageRequest wire type used by the endpoint registration.
 type SendMessageRequest = sendMessageRequest
-
-// AnyOf states what no one field can: a delivery names its mailbox by a nonzero
-// mailbox_id or a nonempty address. The binder refuses a body naming neither
-// with the handler's own words, as its description says.
-func (deliverMessageBody) AnyOf() oapifly.AnyOfRule {
-	return oapifly.AnyOfRule{
-		Alternatives: []oapifly.Alternative{
-			{Required: []string{"mailbox_id"}, Fields: map[string]string{"mailbox_id": `minimum:"1"`}},
-			{Required: []string{"address"}, Fields: map[string]string{"address": `minLength:"1"`}},
-		},
-		Field:   "address",
-		Message: "mailbox_id or address required",
-	}
-}
 
 // DeliverMessageBody is the deliverMessageBody wire type used by the endpoint registration.
 type DeliverMessageBody = deliverMessageBody
