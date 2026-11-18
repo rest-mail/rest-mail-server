@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -135,8 +136,8 @@ func TestRESTMAILDeliveryRefusesInvalidMsgIDs(t *testing.T) {
 	t.Run("raw_message identifiers keep the parser path", func(t *testing.T) {
 		body := map[string]any{
 			"from": "sender@external.test", "to": []string{mailbox.Address},
-			"raw_message": "From: sender@external.test\r\nTo: " + mailbox.Address + "\r\nSubject: raw\r\n" +
-				"Date: Sat, 17 Oct 2026 12:00:00 +0000\r\nMessage-ID: raw-not-bracketed@external.test\r\n\r\nhello",
+			"raw_message": base64.StdEncoding.EncodeToString([]byte("From: sender@external.test\r\nTo: " + mailbox.Address + "\r\nSubject: raw\r\n" +
+				"Date: Sat, 17 Oct 2026 12:00:00 +0000\r\nMessage-ID: raw-not-bracketed@external.test\r\n\r\nhello")),
 		}
 		rr := restmailMsgIDDelivery(t, db, body)
 		if rr.Code != http.StatusCreated {

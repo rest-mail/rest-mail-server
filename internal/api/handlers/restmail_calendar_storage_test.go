@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -21,7 +22,7 @@ import (
 
 func restmailCalendarRequest(t *testing.T, db *gorm.DB, ctx context.Context, raw string, recipients ...string) *httptest.ResponseRecorder {
 	t.Helper()
-	body, err := json.Marshal(map[string]any{"from": "organizer@remote.example", "to": recipients, "raw_message": raw})
+	body, err := json.Marshal(map[string]any{"from": "organizer@remote.example", "to": recipients, "raw_message": base64.StdEncoding.EncodeToString([]byte(raw))})
 	if err != nil {
 		t.Fatal(err)
 	}

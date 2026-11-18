@@ -298,7 +298,7 @@ func TestAddressForms(t *testing.T) {
 		{"quoted name", `"Doe, Alice" <a@example.com>`, `(("Doe, Alice" NIL "a" "example.com"))`},
 		{"quoted-pair in name", `"A \"B\" \\C" <a@example.com>`, `(("A \"B\" \\C" NIL "a" "example.com"))`},
 		{"comment name", "a@example.com (Alice)", `(("Alice" NIL "a" "example.com"))`},
-		{"encoded name", "=?UTF-8?Q?caf=C3=A9?= <a@example.com>", fmt.Sprintf(`((%q NIL "a" "example.com"))`, "caf\xc3\xa9")},
+		{"encoded name", "=?UTF-8?Q?caf=C3=A9?= <a@example.com>", `(("=?UTF-8?Q?caf=C3=A9?=" NIL "a" "example.com"))`},
 		{"quoted local part", `"a b"@example.com`, `((NIL NIL "a b" "example.com"))`},
 		{"quoted-pair in local part", `"a\"b"@example.com`, `((NIL NIL "a\"b" "example.com"))`},
 		{"at sign in local part", `"a@b"@example.com`, `((NIL NIL "a@b" "example.com"))`},
@@ -404,19 +404,15 @@ func TestEnvelopeFields(t *testing.T) {
 		{"no From to default to", "Sender:\r\nReply-To:\r\n\r\nx", `(NIL NIL NIL NIL NIL NIL NIL NIL NIL NIL)`},
 		{"defaults reach only Sender and Reply-To", "From: f@example.com\r\nTo:\r\nCc:\r\nBcc:\r\n\r\nx", "(NIL NIL " + from + " " + from + " " + from + " NIL NIL NIL NIL NIL)"},
 		{"empty group is a list", "To: Team:;\r\n\r\nx", `(NIL NIL NIL NIL NIL ((NIL NIL "Team" NIL)(NIL NIL NIL NIL)) NIL NIL NIL NIL)`},
-		{"literal scalars", "Subject: caf\xc3\xa9\r\nMessage-ID: <\xc3\xa9@x>\r\n\r\nx", fmt.Sprintf("(NIL %q NIL NIL NIL NIL NIL NIL NIL %q)", "caf\xc3\xa9", "<\xc3\xa9@x>")},
+		{"literal scalars", "Subject: caf\xc3\xa9\r\nMessage-ID: <\xc3\xa9@x>\r\n\r\nx", `(NIL "=?UTF-8?Q?caf=C3=A9?=" NIL NIL NIL NIL NIL NIL NIL "<=?UTF-8?Q?=C3=A9=40x?=>")`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := fetchEnvelope(t, tc.raw).String(); got != tc.want {
 				t.Fatalf("\n got %s\nwant %s", got, tc.want)
 			}
 			structure, _ := fetchBoth(t, "Content-Type: message/rfc822\r\n\r\n"+tc.raw)
-			wantNested := tc.want
-			if tc.name == "literal scalars" {
-				wantNested = `(NIL "=?UTF-8?Q?caf=C3=A9?=" NIL NIL NIL NIL NIL NIL NIL "<=?UTF-8?Q?=C3=A9=40x?=>")`
-			}
-			if got := structure.envelope.String(); got != wantNested {
-				t.Fatalf("encapsulated:\n got %s\nwant %s", got, wantNested)
+			if got := structure.envelope.String(); got != tc.want {
+				t.Fatalf("encapsulated:\n got %s\nwant %s", got, tc.want)
 			}
 		})
 	}

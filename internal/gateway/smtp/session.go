@@ -1027,6 +1027,10 @@ func (s *session) Data(r io.Reader) (err error) {
 					failCode, failEnhanced, failMsg = 550, gosmtp.EnhancedCode{5, 1, 1}, "No such user"
 				case apiErr.StatusCode == 403:
 					failCode, failEnhanced, failMsg = 550, gosmtp.EnhancedCode{5, 7, 1}, "Rejected by policy"
+				case apiErr.StatusCode == 422 && !strings.Contains(apiErr.Body, `"mailbox_full"`):
+					// The API can't take what this gateway sent. Retrying won't change that, so
+					// it is not a reason to have the sender try again for days.
+					failCode, failEnhanced, failMsg = 554, gosmtp.EnhancedCode{5, 6, 0}, "Message refused"
 				case apiErr.StatusCode == 422:
 					// Recipient mailbox is over quota (the API answers HTTP 422
 					// mailbox_full). Map to the RFC 3463 §3.2 mailbox-full status so

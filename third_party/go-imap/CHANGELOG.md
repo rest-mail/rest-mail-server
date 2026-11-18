@@ -108,6 +108,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `SearchZoneMailbox`, an optional `Mailbox` interface that names the zone whose
   calendar days SEARCH BEFORE, ON and SINCE compare. A zone the store cannot give
   answers NO `[UNAVAILABLE]`. A mailbox without it sees no change.
+- `wireform.SevenBitBoundary`, for a host that downgrades only the top-level header
+  and sends the body as stored, as POP3 does. A top-level multipart's 8-bit boundary
+  takes the spelling FETCH gives it, in Content-Type and on its delimiter lines, and
+  nothing else changes. FETCH doesn't use it.
 
 ### Fixed
 
@@ -134,6 +138,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   one.
 - DELETE of a name that is not a mailbox but has inferior mailboxes is refused
   `NO [HASCHILDREN]` (RFC 9051 §6.3.5, RFC 5530 §3) instead of answering OK.
+- BODY and BODYSTRUCTURE keep a continued parameter with no first segment.
+  `name*1=x; other=keep` used to read as `("OTHER" "keep")`, and now reads as
+  `("NAME" "x" "OTHER" "keep")`, in segment order and naming no charset. A plain value
+  of the same name stands instead. A multipart with only part of a boundary still reads
+  as having none. `charset*1=x` now reads as `("CHARSET" "x")`, so 8-bit text under it
+  counts as naming a charset and keeps its 8-bit data.
 - Converting a header for FETCH takes time in proportion to its size. A run of
   `\"` in an 8-bit field, or a field folded many times, used to take quadratic
   time, 16.6 s for a 156 KB Subject. The output doesn't change.
@@ -145,8 +155,54 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   them. A message already 7-bit goes out byte for byte, and BINARY still sends
   the stored octets. `Message.Size` must now be the converted length, which the
   new `wireform` package measures.
+- ENVELOPE and BODYSTRUCTURE strings carry no 8-bit text in a session without
+  UTF8=ACCEPT (RFC 3501 §4.3.1). A personal or group name decoded from an encoded
+  word and a parameter decoded from RFC 2231 go out as encoded words, and ENVELOPE
+  reads the converted header, so an 8-bit mailbox is left out of its address field,
+  which reads NIL when none remains. A mailbox sent spelled like an encoded word,
+  against the `@` or `.` beside it, is legal atext and is still read.
+  After ENABLE UTF8=ACCEPT, valid UTF-8 still goes out as a literal.
+- An ENVELOPE address list no longer reads NIL because a name is an encoded word
+  in a charset go-imap can't decode, such as `windows-1252` or `ISO-8859-2`, in a
+  top-level or an encapsulated message. The name stays the encoded word it was sent
+  as, in either session, so it still names its charset and no byte is guessed.
+  `latin1`, `iso8859-1` and `l1` now decode as ISO-8859-1 here too.
+- BODY and BODYSTRUCTURE no longer lose an RFC 2231 parameter in a charset other
+  than UTF-8 or US-ASCII, such as a filename in `windows-1252`, or keep only the
+  later segments of a continued one. A charset go-imap can't decode stays named: the
+  value goes out as one encoded word in it, in either session. `ISO-8859-1` and its
+  aliases decode, and a value naming no charset or missing its quotes keeps its text.
+- Converting a Content-Type or Content-Disposition field changes only the parameter
+  that holds an 8-bit octet. The others stay as sent, in their order, including RFC
+  2231 text and comments, and an 8-bit comment becomes encoded words instead of going
+  missing.
+- A Content-Type or Content-Disposition holding an unquoted 8-bit value, such as
+  `name=Jörg.pdf`, no longer fails to parse. The value reads as if it were quoted,
+  so the entity keeps its real type and its other parameters in BODY, BODYSTRUCTURE
+  and sections, at every part level, instead of reading as `text/plain` with a NIL
+  disposition. Its 8-bit data is converted for that real type.
+- A Content-Type or Content-Disposition holding an 8-bit octet no longer fails to
+  parse over any other malformed spelling either, so the entity keeps its real type
+  and every parameter's text. `name=Jörg (1).pdf` keeps `(1)` in the value, an
+  unbalanced `"` or `(` is text, and `näme=x` goes out as `n%C3%A4me=x`. A field with
+  no 8-bit octet is unchanged, and still takes the default if it is malformed.
+- An 8-bit boundary splits after FETCH converts it. The header and every delimiter
+  line now spell it the same 7-bit way in the octets sent, as in `boundary="J=C3=B6"`
+  and `--J=C3=B6`, at every level of a message, so parts keep their real type and
+  size in BODYSTRUCTURE. If that spelling, or a 7-bit boundary, would match another
+  line of the converted body, the boundary takes a suffix so the parts stay where the
+  stored message has them. After `ENABLE UTF8=ACCEPT`, valid UTF-8 stays as stored.
+- SEARCH decodes a header one encoded word at a time. A word in a charset it can't
+  decode is compared as stored, and neither that nor a stray `=?` stops it decoding
+  the words around it, in TEXT, HEADER, SUBJECT, TO, FROM or an encapsulated message.
 - Binary data holding a NUL can be fetched: BODY sends it BASE64 and BINARY as a
-  literal8. A NUL in a header or in text is still refused.
+  literal8. So can text holding one in a charset with NUL octets, such as UTF-16.
+- FETCH no longer refuses a message for a NUL in a header or in text, or one decoded
+  into an ENVELOPE or MIME string, so one message can't stop a fetch of a range. It
+  sends a space for each, one octet for one. BINARY sends the exact octets and the
+  stored message doesn't change. `wireform.SpaceNUL` does the same for a host whose
+  protocol has no BINARY, leaving data as it is. A boundary holding a NUL takes the
+  same 7-bit spelling as an 8-bit one, in the field and on its delimiter lines.
 - A SELECT or EXAMINE refused with BAD keeps the mailbox already selected, with
   its read-only mode and deletion marks: a rejected command never changes state
   (RFC 3501 §6). Only a well-formed selection attempt that fails with NO

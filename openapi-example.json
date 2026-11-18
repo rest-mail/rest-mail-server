@@ -12732,30 +12732,6 @@
         "mediaType": "application/json"
       }
     },
-    "raw_message_nul": {
-      "summary": "Raw message nul is refused before storage",
-      "request": {
-        "body": {
-          "raw_message": "U3ViamVjdDogSGVsbG8NCg0KYmVmb3JlAGFmdGVy",
-          "address": "fuzz-recipient@contract-recipient.test"
-        }
-      },
-      "response": {
-        "status": 422,
-        "body": {
-          "error": {
-            "code": "validation_failed",
-            "message": "Request body failed validation",
-            "details": {
-              "fields": {
-                "raw_message": "must not contain a NUL byte"
-              }
-            }
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
     "recipient_missing": {
       "summary": "The body names no mailbox",
       "description": "Neither mailbox_id nor address is there.",
@@ -17760,8 +17736,8 @@
             "created_at": "2026-10-20T00:00:00Z",
             "date_header": null,
             "downgraded_size": 0,
-            "imap_size": 0,
-            "imap_utf8_size": 0,
+            "imap_size": 202,
+            "imap_utf8_size": 137,
             "folder": "INBOX",
             "has_attachments": true,
             "headers": {
@@ -17817,8 +17793,8 @@
             "created_at": "2026-10-20T00:00:00Z",
             "date_header": null,
             "downgraded_size": 0,
-            "imap_size": 0,
-            "imap_utf8_size": 0,
+            "imap_size": 202,
+            "imap_utf8_size": 137,
             "folder": "INBOX",
             "has_attachments": true,
             "headers": {
@@ -17874,8 +17850,8 @@
             "created_at": "2026-10-20T00:00:00Z",
             "date_header": null,
             "downgraded_size": 0,
-            "imap_size": 0,
-            "imap_utf8_size": 0,
+            "imap_size": 202,
+            "imap_utf8_size": 137,
             "folder": "INBOX",
             "has_attachments": true,
             "headers": {
@@ -17931,8 +17907,8 @@
             "created_at": "2026-10-20T00:00:00Z",
             "date_header": null,
             "downgraded_size": 0,
-            "imap_size": 0,
-            "imap_utf8_size": 0,
+            "imap_size": 127,
+            "imap_utf8_size": 78,
             "folder": "INBOX",
             "has_attachments": true,
             "id": 104,
@@ -18003,8 +17979,8 @@
             "size_bytes": 80,
             "raw_size": 137,
             "downgraded_size": 0,
-            "imap_size": 0,
-            "imap_utf8_size": 0,
+            "imap_size": 202,
+            "imap_utf8_size": 137,
             "received_tls": true,
             "tls_version": "TLS1.3",
             "has_attachments": true,
@@ -20600,8 +20576,8 @@
               "size_bytes": 80,
               "raw_size": 128,
               "downgraded_size": 0,
-              "imap_size": 0,
-              "imap_utf8_size": 0,
+              "imap_size": 128,
+              "imap_utf8_size": 128,
               "has_attachments": false,
               "is_read": true,
               "is_dsn": true,
@@ -20634,8 +20610,8 @@
               "size_bytes": 80,
               "raw_size": 128,
               "downgraded_size": 0,
-              "imap_size": 0,
-              "imap_utf8_size": 0,
+              "imap_size": 128,
+              "imap_utf8_size": 128,
               "has_attachments": false,
               "is_read": false,
               "is_dsn": false,
@@ -20670,8 +20646,8 @@
               "size_bytes": 80,
               "raw_size": 128,
               "downgraded_size": 0,
-              "imap_size": 0,
-              "imap_utf8_size": 0,
+              "imap_size": 128,
+              "imap_utf8_size": 128,
               "has_attachments": true,
               "is_read": false,
               "is_dsn": false,
@@ -27920,8 +27896,8 @@
               "size_bytes": 80,
               "raw_size": 128,
               "downgraded_size": 0,
-              "imap_size": 0,
-              "imap_utf8_size": 0,
+              "imap_size": 128,
+              "imap_utf8_size": 128,
               "has_attachments": true,
               "is_read": false,
               "is_dsn": false,
@@ -27970,8 +27946,8 @@
               "size_bytes": 80,
               "raw_size": 128,
               "downgraded_size": 0,
-              "imap_size": 0,
-              "imap_utf8_size": 0,
+              "imap_size": 128,
+              "imap_utf8_size": 128,
               "has_attachments": false,
               "is_read": false,
               "is_dsn": false,
@@ -28002,8 +27978,8 @@
               "size_bytes": 80,
               "raw_size": 128,
               "downgraded_size": 0,
-              "imap_size": 0,
-              "imap_utf8_size": 0,
+              "imap_size": 128,
+              "imap_utf8_size": 128,
               "has_attachments": false,
               "is_read": true,
               "is_dsn": true,
@@ -47438,6 +47414,8 @@
             "folder": "Sent",
             "has_attachments": false,
             "id": 1,
+            "imap_size": 297,
+            "imap_utf8_size": 297,
             "in_reply_to": "",
             "is_deleted": false,
             "is_draft": false,

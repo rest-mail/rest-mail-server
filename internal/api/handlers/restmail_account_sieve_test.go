@@ -114,7 +114,7 @@ func TestRESTMAILDeliver_RunsEachRecipientsSieveScript(t *testing.T) {
 	t.Run("a drifted script defers the whole message", func(t *testing.T) {
 		h, boxes := setup(t, []pipeline.FilterConfig{sieveStep("")}, map[string]string{"drifted": files, "plain": ""}, filters.HashSieveScript(`keep;`))
 		body, _ := json.Marshal(map[string]any{"from": "alice@remote.test", "to": []string{boxes["plain"].Address, boxes["drifted"].Address},
-			"subject": "Hi", "body_text": "hello body", "raw_message": raw})
+			"subject": "Hi", "body_text": "hello body", "raw_message": []byte(raw)})
 		req := httptest.NewRequest(http.MethodPost, "/restmail/messages", bytes.NewReader(body))
 		req.RemoteAddr = "203.0.113.9:5000"
 		rr := httptest.NewRecorder()

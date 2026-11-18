@@ -129,6 +129,24 @@ func TestBuildRedirectForwards_LoopSuppressed_SelfRecipient(t *testing.T) {
 	}
 }
 
+// A first line starting with a space stays its own field under the stamp, where the outbound strip
+// finds it, and every other message keeps its bytes.
+func TestStampDeliveredTo(t *testing.T) {
+	const stamp = "Delivered-To: t@x.test\r\n"
+	for raw, want := range map[string]string{
+		"A: 1\r\n\r\nbody":            "A: 1\r\n\r\nbody",
+		" Bcc: s\r\nA: 1\r\n\r\nb":    "Bcc: s\r\nA: 1\r\n\r\nb",
+		"\t Resent-Bcc: s\nA: 1\n\nb": "Resent-Bcc: s\nA: 1\n\nb",
+		" \r\nA: 1\r\n\r\nbody":       " \r\nA: 1\r\n\r\nbody",
+		"\t\nA: 1\n\nbody":            "\t\nA: 1\n\nbody",
+		" ":                           " ",
+	} {
+		if got := stampDeliveredTo(raw, "t@x.test"); got != stamp+want {
+			t.Errorf("stampDeliveredTo(%q) = %q, want %q", raw, got, stamp+want)
+		}
+	}
+}
+
 // TestBuildRedirectForwards_NoMetadata: no redirect metadata yields no forwards.
 func TestBuildRedirectForwards_NoMetadata(t *testing.T) {
 	if f := buildRedirectForwards(context.Background(), &pipeline.EmailJSON{}, "raw", "a@b.test", nil, "local.test", nil); len(f) != 0 {
