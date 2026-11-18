@@ -14,6 +14,11 @@ import (
 
 // Connect opens a GORM connection to PostgreSQL using the provided config.
 func Connect(cfg *config.Config) (*gorm.DB, error) {
+	return connect(cfg, func() time.Time { return time.Now().Local() })
+}
+
+// connect opens the connection with clock as the source of the timestamps GORM writes.
+func connect(cfg *config.Config, clock func() time.Time) (*gorm.DB, error) {
 	logLevel := logger.Warn
 	if cfg.Environment == "development" {
 		logLevel = logger.Info
@@ -22,9 +27,13 @@ func Connect(cfg *config.Config) (*gorm.DB, error) {
 	db, err := gorm.Open(postgres.Open(cfg.DSN()), &gorm.Config{
 		Logger:                                   logger.Default.LogMode(logLevel),
 		DisableForeignKeyConstraintWhenMigrating: true,
+		NowFunc:                                  StoredClock(clock),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
+	}
+	if err := keepStoredTimes(db); err != nil {
+		return nil, fmt.Errorf("failed to register stored timestamps: %w", err)
 	}
 
 	sqlDB, err := db.DB()

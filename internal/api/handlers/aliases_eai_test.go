@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/pipeline"
@@ -51,8 +50,6 @@ func TestAliasCreate_EAIIdentity(t *testing.T) {
 			if alias.SourceAddress != "münchen+shop@"+domain.Name || alias.DomainID != domain.ID || alias.DestinationAddress != destination {
 				t.Fatalf("stored alias: %+v", alias)
 			}
-			// Create returns the in-memory timestamp; pgx stores only microseconds.
-			response.Data.CreatedAt = response.Data.CreatedAt.Truncate(time.Microsecond)
 			if !sameAlias(alias, response.Data) {
 				t.Fatalf("response differs from stored alias: %s", rr.Body)
 			}
