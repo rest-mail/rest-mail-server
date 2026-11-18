@@ -35,7 +35,7 @@ var allEnvKeys = []string{
 	"IMAP_PORT", "IMAP_TLS_PORT",
 	"POP3_PORT", "POP3_TLS_PORT",
 	"SMTP_METRICS_PORT", "IMAP_METRICS_PORT", "POP3_METRICS_PORT",
-	"QUEUE_WORKERS", "QUEUE_POLL_INTERVAL",
+	"QUEUE_WORKERS", "QUEUE_POLL_INTERVAL", "QUEUE_MAX_PER_DESTINATION",
 	"QUEUE_SMTP_GREETING_TIMEOUT", "QUEUE_SMTP_MAIL_TIMEOUT", "QUEUE_SMTP_RCPT_TIMEOUT",
 	"QUEUE_SMTP_DATA_TIMEOUT", "QUEUE_SMTP_DATA_BLOCK_TIMEOUT", "QUEUE_SMTP_FINAL_REPLY_TIMEOUT",
 	"INTERNAL_MTLS_ENABLED", "INTERNAL_MTLS_PORT",
@@ -173,6 +173,9 @@ func TestLoad_DevelopmentDefaults(t *testing.T) {
 	}
 	if cfg.QueuePollInterval != 5*time.Second {
 		t.Errorf("QueuePollInterval = %v, want %v", cfg.QueuePollInterval, 5*time.Second)
+	}
+	if cfg.QueueMaxPerDestination != 2 {
+		t.Errorf("QueueMaxPerDestination = %d, want %d", cfg.QueueMaxPerDestination, 2)
 	}
 	if cfg.SMTPMaxMessageSize != DefaultSMTPMaxMessageSize {
 		t.Errorf("SMTPMaxMessageSize = %d, want default %d", cfg.SMTPMaxMessageSize, int64(DefaultSMTPMaxMessageSize))

@@ -264,6 +264,9 @@ type Config struct {
 
 	QueueWorkers      int
 	QueuePollInterval time.Duration
+	// QueueMaxPerDestination caps the messages in flight to one recipient domain,
+	// across all workers on the database (#1966); zero or less is no cap.
+	QueueMaxPerDestination int
 	// QueueSMTPTimeouts bounds each step of an outbound SMTP conversation
 	// (RFC 5321 §4.5.3.2), #714.
 	QueueSMTPTimeouts OutboundSMTPTimeouts
@@ -572,8 +575,12 @@ func Load() (*Config, error) {
 		POP3MetricsPort:       getEnvInt("POP3_METRICS_PORT", DefaultGatewayMetricsPort),
 		QueueWorkers:          getEnvInt("QUEUE_WORKERS", 4),
 		QueuePollInterval:     getEnvDuration("QUEUE_POLL_INTERVAL", 5*time.Second),
-		MTASTSEnforce:         getEnvBool("MTASTS_ENFORCE", true),
-		DANEResolver:          getEnv("DANE_RESOLVER", ""),
+
+		// Half of the default QUEUE_WORKERS: see the queue package's default.
+		QueueMaxPerDestination: getEnvInt("QUEUE_MAX_PER_DESTINATION", 2),
+
+		MTASTSEnforce: getEnvBool("MTASTS_ENFORCE", true),
+		DANEResolver:  getEnv("DANE_RESOLVER", ""),
 
 		OutboundAllowPrivateDestinations: getEnvBool("OUTBOUND_ALLOW_PRIVATE_DESTINATIONS", false),
 

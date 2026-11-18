@@ -254,6 +254,11 @@ func autoMigrate(db *gorm.DB) error {
 	if err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_outbound_queue_due ON outbound_queue(next_attempt) WHERE status IN ('pending', 'deferred', 'delivering')`).Error; err != nil {
 		slog.Warn("failed to create outbound queue due index", "error", err)
 	}
+	// What each claim counts to keep a destination within its limit (#1966): the
+	// messages in flight, a handful however long the queue is.
+	if err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_outbound_queue_delivering ON outbound_queue(lower(domain)) WHERE status = 'delivering'`).Error; err != nil {
+		slog.Warn("failed to create outbound queue delivering index", "error", err)
+	}
 
 	// Pipeline indexes
 	db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_contacts_mailbox_email ON contacts(mailbox_id, email)`)

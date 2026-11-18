@@ -76,12 +76,13 @@ A `451` for any other reason counts the same; `raw/db-report.log` has the reason
 
 ### Limits the load cannot pass
 
-A run sets out to find how much an install carries, and three limits meant for
-abuse would stop it first. No production default changes for any of them.
+A run sets out to find how much an install carries, and these limits would stop
+it or hold it back first. No production default changes for any of them.
 
 | Limit | Why it stops a run | What the run does |
 |---|---|---|
 | Sends per account: 20 a minute, 100 an hour (`API_SEND_RATE_LIMIT_*`, `SEND_LIMIT_*`) | one account submits all the outbound load | `RESTMAIL_LOAD_LIMITS_OFF=true` at bring-up sets them to 0 on the testbed gateway |
+| Messages in flight per destination: 2 (`QUEUE_MAX_PER_DESTINATION`) | all the outbound load goes to one domain, `loadgen.test` | the same switch sets it to 0 on the testbed gateway |
 | Sign-ins per client address: 1 a second, burst 15 (`AUTH_RATE_LIMIT_*`) | every SMTP and IMAP sign-in reaches the API from the gateway's one address | the same switch turns it off on the testbed API |
 | Connections per client IP: 20 (`MaxPerIP`, in each gateway's `main.go`) | a generator is one container | each generator adds addresses to its own container and connects from them in turn |
 

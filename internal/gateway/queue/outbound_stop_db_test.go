@@ -19,6 +19,8 @@ func TestStoppedDomainOutboundMailIsHeldUntilRestart(t *testing.T) {
 		t.Skipf("outbound stop DB test skipped: migrate failed (%v)", err)
 	}
 	w := NewWorker(gdb, "mail.local.test", 1, time.Second)
+	// All three rows go to one destination and stay claimed: its limit is not the subject.
+	w.SetDestinationLimit(0)
 	now := time.Now()
 	name := fmt.Sprintf("stopped-%d.test", now.UnixNano())
 	domain := models.Domain{Name: name}

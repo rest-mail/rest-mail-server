@@ -331,6 +331,9 @@ class Limits(unittest.TestCase):
         for name in ("MESSAGES_PER_DAY", "RECIPIENTS_PER_HOUR", "RECIPIENTS_PER_DAY"):
             self.assertIn(f'"{name}"', config)
             self.assertIn(f"-e SEND_LIMIT_{name}=0", gateway)
+        # All the outbound load goes to one domain, which this would hold to two at once.
+        self.assertIn('"QUEUE_MAX_PER_DESTINATION"', config)
+        self.assertIn("-e QUEUE_MAX_PER_DESTINATION=0", gateway)
         self.assertIn('"AUTH_RATE_LIMIT_ENABLED"', config)
         self.assertIn("AUTH_RATE_LIMIT_ENABLED=false", (root / "tasks/api.yml").read_text())
 

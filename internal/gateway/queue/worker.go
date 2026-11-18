@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"net"
 	"net/http"
 	"net/smtp"
@@ -244,6 +245,11 @@ type Worker struct {
 	// bounces (#141). See suppression.go.
 	suppressionTTL time.Duration
 
+	// maxPerDestination caps how many messages may be in flight to one recipient
+	// domain at once, across every worker on this database (#1966); zero or less
+	// is no cap. See claim.
+	maxPerDestination int
+
 	// sendDeadline maps a message's byte size to the maximum time one HTTPS
 	// request of the RESTMAIL hop may take (OSI-7), so a large-but-permitted
 	// message is not cut off by a fixed short deadline. reclaim is how long a row
@@ -286,6 +292,16 @@ const (
 	defaultBounceMaxPerRecipient = 20
 	// defaultBounceWindow is the sliding window over which bounceMax is counted.
 	defaultBounceWindow = time.Hour
+	// defaultMaxPerDestination is how many messages may be in flight to one
+	// recipient domain (#1966). Two is half of the default four queue workers: a
+	// domain that stops answering, with step timeouts of up to 10 minutes, ties up
+	// no more than half of them, while a healthy one still gets parallel delivery.
+	// config.Config.QueueMaxPerDestination defaults to the same number.
+	defaultMaxPerDestination = 2
+	// destinationClaimLock is the first key of the advisory lock a claim takes on
+	// a destination, the second being a hash of its name ("dest" in ASCII). A hash
+	// collision only makes one claim pass over a destination until the next.
+	destinationClaimLock int32 = 0x64657374
 )
 
 // NewWorker creates a new queue worker.
@@ -303,6 +319,8 @@ func NewWorker(db *gorm.DB, hostname string, numWorkers int, pollInterval time.D
 		sendDeadline:   defaultSendDeadline,
 		suppressionTTL: DefaultSuppressionTTL,
 		reclaim:        staleDeliveringTimeout,
+
+		maxPerDestination: defaultMaxPerDestination,
 	}
 	// MTA-STS resolver: real DNS lookups, HTTPS policy fetch whose certificate
 	// verification tracks the worker's tlsInsecure flag at call time.
@@ -455,6 +473,13 @@ func (w *Worker) SetBounceRateLimit(max int, window time.Duration) {
 		window = defaultBounceWindow
 	}
 	w.bounceWindow = window
+}
+
+// SetDestinationLimit caps how many messages may be in flight to one recipient
+// domain at once (#1966). The count is taken from the queue, so it covers every
+// worker of every gateway on the database. A max <= 0 removes the cap.
+func (w *Worker) SetDestinationLimit(max int) {
+	w.maxPerDestination = max
 }
 
 // SetDeliveryDeadline configures the size-aware budget of the RESTMAIL hop's HTTPS
@@ -617,7 +642,8 @@ func (w *Worker) processOne(workerID int) bool {
 			restmailRoots: w.restmailRoots, smtpRoots: w.smtpRoots,
 			txtResolver: w.txtResolver, tlsReportClient: w.tlsReportClient,
 			bounceMax: w.bounceMax, bounceWindow: w.bounceWindow, suppressionTTL: w.suppressionTTL,
-			sendDeadline: w.sendDeadline, reclaim: w.reclaim, allowPrivateDest: w.allowPrivateDest,
+			maxPerDestination: w.maxPerDestination,
+			sendDeadline:      w.sendDeadline, reclaim: w.reclaim, allowPrivateDest: w.allowPrivateDest,
 			smtpTimeouts: w.smtpTimeouts, heartbeatEvery: w.heartbeatEvery, smtpAddr: w.smtpAddr,
 			restmailDiscoveryURL: w.restmailDiscoveryURL,
 			// The heartbeat stays on the pool: conn is pinned to this delivery and
@@ -667,12 +693,24 @@ func (w *Worker) processNext(workerID int) bool {
 	return true
 }
 
+// destinationsAtLimitSQL lists the recipient domains with as many messages in
+// flight as they may have: its parameters are the time before which a delivering
+// row is stale, and the limit. A stale row is not counted, so a crashed worker
+// holds no place once its heartbeat has aged out, and nothing has to release it.
+// idx_outbound_queue_delivering (internal/db/db.go) keeps this to the rows in flight.
+const destinationsAtLimitSQL = `SELECT lower(domain) FROM outbound_queue
+	 WHERE status = 'delivering' AND last_attempt >= ?
+	 GROUP BY lower(domain)
+	 HAVING count(*) >= ?`
+
 // claimSQL finds the next message due: its parameters are now, the time before
-// which a delivering row is stale, and now again. Delivered and bounced rows stay
-// in the table, and their next_attempt is the oldest there is, so
-// idx_outbound_queue_due (internal/db/db.go) covers only the rows it can return.
-// The first status test repeats what the rest says because Postgres does not work
-// that out from the OR, and would not use that index without it.
+// which a delivering row is stale, now again, that stale time and the destination
+// limit for destinationsAtLimitSQL, and a JSON array of the destinations this claim
+// has already passed over. Delivered and bounced rows stay in the table, and their
+// next_attempt is the oldest there is, so idx_outbound_queue_due
+// (internal/db/db.go) covers only the rows it can return. The first status test
+// repeats what the rest says because Postgres does not work that out from the OR,
+// and would not use that index without it.
 const claimSQL = `SELECT * FROM outbound_queue
 	 WHERE status IN ('pending', 'deferred', 'delivering')
 	 AND (
@@ -680,12 +718,21 @@ const claimSQL = `SELECT * FROM outbound_queue
 	     OR (status = 'delivering' AND last_attempt < ?)
 	 ) AND expires_at > ?
 	 AND NOT ` + models.OutboundQueueHeldSQL + `
+	 AND lower(domain) NOT IN (` + destinationsAtLimitSQL + `)
+	 AND lower(domain) NOT IN (SELECT jsonb_array_elements_text(?::jsonb))
 	 ORDER BY next_attempt ASC
 	 LIMIT 1
 	 FOR UPDATE SKIP LOCKED`
 
 // claim takes the next message due for an attempt and marks it delivering, using
 // FOR UPDATE SKIP LOCKED so workers never claim the same row.
+//
+// A message whose destination has its limit in flight is passed over (#1966), so a
+// slow domain leaves workers free for the others. Passing over changes nothing on
+// the row: it stays due, with no attempt counted and no retry delay. The
+// destination is the row's recipient domain, the unit the queue already groups by
+// and all a claim knows: the MX is looked up later, during delivery. Each row is
+// one connection at a time, so rows in flight are connections in flight.
 func (w *Worker) claim(now time.Time) (models.OutboundQueue, error) {
 	var item models.OutboundQueue
 	// Rows that have gone longer than w.reclaim without a heartbeat were orphaned
@@ -696,14 +743,37 @@ func (w *Worker) claim(now time.Time) (models.OutboundQueue, error) {
 	// mail stopped is held: never claimed, so it stays queued until the stop is
 	// lifted (#1590).
 	staleDelivering := now.Add(-w.reclaim)
+	limit := w.maxPerDestination
+	if limit <= 0 {
+		limit = math.MaxInt32 // no count reaches it
+	}
 	err := w.db.Transaction(func(tx *gorm.DB) error {
-		result := tx.Raw(claimSQL, now, staleDelivering, now).Scan(&item)
-
-		if result.Error != nil {
-			return result.Error
-		}
-		if result.RowsAffected == 0 {
-			return gorm.ErrRecordNotFound
+		passedOver := []string{}
+		for {
+			skip, err := json.Marshal(passedOver)
+			if err != nil {
+				return err
+			}
+			item = models.OutboundQueue{}
+			result := tx.Raw(claimSQL, now, staleDelivering, now, staleDelivering, limit, string(skip)).Scan(&item)
+			if result.Error != nil {
+				return result.Error
+			}
+			if result.RowsAffected == 0 {
+				return gorm.ErrRecordNotFound
+			}
+			if w.maxPerDestination <= 0 {
+				break
+			}
+			destination, free, err := reserveDestination(tx, item.ID, staleDelivering, limit)
+			if err != nil {
+				return err
+			}
+			if free {
+				break
+			}
+			// Every pass adds a destination the query then leaves out, so this ends.
+			passedOver = append(passedOver, destination)
 		}
 		item.JoinSource()
 
@@ -715,6 +785,36 @@ func (w *Worker) claim(now time.Time) (models.OutboundQueue, error) {
 		}).Error
 	})
 	return item, err
+}
+
+// reserveDestination reports whether the row's destination has room for one more
+// message, and its name as the claim compares it. claimSQL's count can be out of
+// date by the time the row is locked, and two workers can each see the last place
+// free, so the count that decides is taken again under a lock on the destination,
+// which is held until the claim commits and its row counts. The lock is only tried:
+// a destination another worker is claiming for is passed over, which cannot
+// deadlock, and is looked at again on the next claim.
+func reserveDestination(tx *gorm.DB, id uint, staleDelivering time.Time, limit int) (string, bool, error) {
+	var destination struct {
+		Name   string
+		Locked bool
+	}
+	err := tx.Raw(`SELECT lower(domain) AS name, pg_try_advisory_xact_lock(?, hashtext(lower(domain))) AS locked
+		 FROM outbound_queue WHERE id = ?`, destinationClaimLock, id).Scan(&destination).Error
+	if err != nil {
+		return "", false, err
+	}
+	if !destination.Locked {
+		return destination.Name, false, nil
+	}
+	var inFlight int64
+	err = tx.Raw(`SELECT count(*) FROM outbound_queue
+		 WHERE status = 'delivering' AND last_attempt >= ? AND lower(domain) = ?`,
+		staleDelivering, destination.Name).Scan(&inFlight).Error
+	if err != nil {
+		return "", false, err
+	}
+	return destination.Name, inFlight < int64(limit), nil
 }
 
 // process sends a claimed message and records how that went.
