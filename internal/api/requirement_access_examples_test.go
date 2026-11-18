@@ -129,7 +129,7 @@ func gatewaySessionRefusalLimited(t *testing.T) http.Handler {
 	t.Cleanup(r.Close)
 	internal := asGateway("rest-mail-imap-gateway", r.Internal)
 	prime := httptest.NewRequest(http.MethodPost, "/api/v1/gateway-sessions",
-		strings.NewReader(`{"protocol":"imap","address":"nobody@restmail.test","password":"not the password"}`))
+		strings.NewReader(openBody("imap", "nobody@restmail.test", "not the password")))
 	prime.Header.Set("Content-Type", "application/json")
 	prime.RemoteAddr = "127.0.0.1:12345" // as requirementRequest sends the pair
 	refused := httptest.NewRecorder()

@@ -373,3 +373,13 @@ charsets do not allocate a 32 KiB copy buffer per word. Encoded NUL in display
 strings becomes a space, while boundaries, addr-specs, identifiers and stored
 octets retain their spelling. `TestFetchSpacesNULInEncodedWord` and field-scratch
 tests retain the corresponding semantic and allocation controls.
+
+## The Backend can learn the client's address
+
+`Backend.Authenticate` takes a user and password, and nothing says where they
+came from. A store that signs clients in on their behalf has to tell the
+client's address from its own, or it throttles and records everyone as one
+client (rest-mail/rest-mail-server#1957). A `Backend` that also implements the
+optional `ClientAddressBackend` is asked, at each LOGIN or AUTHENTICATE, for the
+`Backend` to use for the client's IP address, the one the `Limiter` already goes
+by. A `Backend` without it is called as before.

@@ -70,10 +70,17 @@ const (
 	deliveryCN   = "rest-mail-smtp-delivery"
 )
 
-// openBody is a session-open body: the protocol, and the mail client's
-// address and password, which go nowhere else (#1586: no HTTP Basic).
+// testClientIP is the mail client's address in a session-open body.
+const testClientIP = "198.51.100.7"
+
+// openBody is a session-open body: the protocol, the mail client's address and
+// password, which go nowhere else (#1586: no HTTP Basic), and where it connected from.
 func openBody(protocol, address, password string) string {
-	return fmt.Sprintf(`{"protocol":%q,"address":%q,"password":%q}`, protocol, address, password)
+	return openBodyFrom(protocol, address, password, testClientIP)
+}
+
+func openBodyFrom(protocol, address, password, clientIP string) string {
+	return fmt.Sprintf(`{"protocol":%q,"address":%q,"password":%q,"client_ip":%q}`, protocol, address, password, clientIP)
 }
 
 func (g *gatewayFixture) open(cn, protocol string) string {

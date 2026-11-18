@@ -1,9 +1,13 @@
 """Authorization cells get disposable targets without changing their principal."""
 
+import base64
 import copy
 import io
 import json
 import os
+from pathlib import Path
+import runpy
+import sys
 import unittest
 from unittest.mock import patch
 
@@ -156,6 +160,137 @@ class AuthorizationCellHooks(unittest.TestCase):
                 before = copy.deepcopy(request)
                 hook(request)
                 self.assertEqual(request, before)
+
+
+class GatewaySignInAuthorizationHooks(unittest.TestCase):
+    def setUp(self):
+        self.module, self.stub, self.registered = load_hooks()
+        self.app = {"address": "ordinary@restmail.test", "secret": "app:fixture"}
+
+    def request(self, credential, status):
+        request = transaction(
+            "/api/v1/gateway-sessions",
+            credential,
+            json.dumps({201: {"protocol": "imap"}, 400: [], 422: {}}[status]),
+        )
+        request["expected"] = {"statusCode": str(status)}
+        request["name"] = (
+            f"/api/v1/gateway-sessions > Sign a mail client in (protocol gateways) > {status} > application/json"
+        )
+        return request
+
+    def test_registered_for_success_and_refusal_examples(self):
+        for status in (201, 422):
+            pattern = f"/api/v1/gateway-sessions > * > {status} > application/json"
+            self.assertIn("sign_in_a_mail_client", self.registered[pattern])
+        self.assertNotIn("/api/v1/auth/protocol-sign-in > * > 200 > application/json", self.registered)
+
+    def test_authorization_cells_keep_every_principals_own_credential(self):
+        credentials = {
+            "none": None,
+            "admin": session(self.module.ADMIN),
+            "two-factor-admin": session(self.module.mfa_admin.ADDRESS),
+            "ordinary": session(self.app["address"]),
+            "app-password": "Basic " + base64.b64encode(f"{self.app['address']}:{self.app['secret']}".encode()).decode(),
+        }
+        with (
+            patch.dict(os.environ, {"CONTRACT_AUTHORIZATION": "1"}),
+            patch.object(self.module, "principals", return_value={"app_password": self.app}) as fixture,
+        ):
+            for principal, credential in credentials.items():
+                for status in (201, 400, 422):
+                    with self.subTest(principal=principal, status=status):
+                        request = self.request(credential, status)
+                        before = copy.deepcopy(request)
+                        self.module.sign_in_a_mail_client(request)
+                        self.assertEqual(request, before)
+            fixture.assert_not_called()
+
+    def test_authorization_example_replays_get_body_credentials_without_changing_the_contract(self):
+        examples = [self.request(None, status) for status in (201, 400, 422)]
+        examples.append(self.request(None, 422))
+        examples[-1]["request"]["body"] = "[]"
+        untouched = self.request(None, 201)
+        untouched["name"] = "/api/v1/other > Other > 200 > application/json"
+        examples.append(untouched)
+        before = copy.deepcopy(examples)
+        with (
+            patch.dict(os.environ, {"CONTRACT_AUTHORIZATION": "1"}),
+            patch.object(self.module, "principals", return_value={"app_password": self.app}),
+        ):
+            self.module.authenticate_gateway_sign_in_examples(examples)
+            for request in examples[:-1]:
+                self.module.sign_in_a_mail_client(request)
+        for request in before[:-1]:
+            body = json.loads(request["request"]["body"])
+            if isinstance(body, dict) and request["expected"]["statusCode"] in ("201", "422"):
+                body.update(address=self.app["address"], password=self.app["secret"], client_ip=self.module.CONTRACT_MAIL_CLIENT_IP)
+                request["request"]["body"] = json.dumps(body)
+        self.assertEqual(examples, before)
+
+    def test_example_setup_leaves_unauthenticated_and_other_phase_examples_alone(self):
+        for marker in ("1", "", "0"):
+            statuses = (401, 403) if marker == "1" else (201, 400, 422)
+            examples = [self.request(None, 201) for _ in statuses]
+            for request, status in zip(examples, statuses):
+                request["expected"]["statusCode"] = str(status)
+                request["name"] = request["name"].replace("201", str(status))
+            before = copy.deepcopy(examples)
+            with (
+                patch.dict(os.environ, {"CONTRACT_AUTHORIZATION": marker}),
+                patch.object(self.module, "principals") as fixture,
+            ):
+                self.module.authenticate_gateway_sign_in_examples(examples)
+            self.assertEqual(examples, before)
+            fixture.assert_not_called()
+
+    def test_real_authorization_entrypoint_registers_examples_only_lifecycle(self):
+        callbacks = []
+        self.stub.before_all = lambda function: callbacks.append(function) or function
+        with (
+            patch.dict(os.environ, {"CONTRACT_AUTHORIZATION": "1"}),
+            patch.dict(sys.modules, {"vertrag_hooks": self.stub}),
+        ):
+            runpy.run_path(str(Path(__file__).with_name("entrypoint.py")))
+        self.assertEqual(
+            [callback.__name__ for callback in callbacks],
+            ["authenticate_gateway_sign_in_examples"],
+        )
+        replay = self.request(None, 201)
+        with patch.dict(callbacks[0].__globals__, {"principals": lambda: {"app_password": self.app}}):
+            with patch.dict(os.environ, {"CONTRACT_AUTHORIZATION": "1"}):
+                callbacks[0]([replay])
+        self.assertEqual(json.loads(replay["request"]["body"]), {
+            "protocol": "imap", "address": self.app["address"], "password": self.app["secret"],
+            "client_ip": self.module.CONTRACT_MAIL_CLIENT_IP,
+        })
+        self.assertNotIn("Authorization", replay["request"]["headers"])
+
+    def test_other_phases_still_use_the_app_password(self):
+        phases = (
+            {},
+            {"CONTRACT_COVERAGE": "1"},
+            {"CONTRACT_OWNERSHIP": "1"},
+            {"CONTRACT_RESET_SEED": "1"},
+            {"CONTRACT_AUTHORIZATION": ""},
+            {"CONTRACT_AUTHORIZATION": "0"},
+        )
+        for phase in phases:
+            with (
+                self.subTest(phase=phase),
+                patch.dict(os.environ, phase, clear=True),
+                patch.object(self.module, "principals", return_value={"app_password": self.app}),
+            ):
+                for credential in (None, session(self.module.ADMIN)):
+                    for status in (201, 400, 422):
+                        request = self.request(credential, status)
+                        expected = copy.deepcopy(request)
+                        body = json.loads(expected["request"]["body"])
+                        if isinstance(body, dict) and phase.get("CONTRACT_RESET_SEED") != "1":
+                            body.update(address=self.app["address"], password=self.app["secret"], client_ip=self.module.CONTRACT_MAIL_CLIENT_IP)
+                            expected["request"]["body"] = json.dumps(body)
+                        self.module.sign_in_a_mail_client(request)
+                        self.assertEqual(request, expected)
 
 
 if __name__ == "__main__":

@@ -46,7 +46,7 @@ func newGeneratedMailSessions(t *testing.T) *generatedMailSessions {
 func (s *generatedMailSessions) pop3Sizes(t *testing.T, utf8 bool) (stat, listed, listedAll, status int, sent []byte) {
 	t.Helper()
 	client, server := net.Pipe()
-	session := pop3server.NewSession(server, pop3gw.NewBackend(s.api, nil), nil, nil)
+	session := pop3server.NewSession(server, pop3gw.NewBackend(s.api, nil).ForClient(testClientIP), nil, nil)
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
@@ -117,7 +117,7 @@ func (s *generatedMailSessions) pop3Sizes(t *testing.T, utf8 bool) (stat, listed
 func (s *generatedMailSessions) imapSizes(t *testing.T, utf8 bool) (size int, sent []byte) {
 	t.Helper()
 	client, server := net.Pipe()
-	session := imapserver.NewSession(server, imapgw.NewBackend(s.imapAPI, nil), "imap.test", nil, goimap.NopLimiter{})
+	session := imapserver.NewSession(clientAtAddress{Conn: server}, imapgw.NewBackend(s.imapAPI, nil), "imap.test", nil, goimap.NopLimiter{})
 	done := make(chan struct{})
 	go func() {
 		defer close(done)

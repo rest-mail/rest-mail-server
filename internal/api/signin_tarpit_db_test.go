@@ -43,7 +43,7 @@ func TestSignInFailuresWaitThroughTheRouter(t *testing.T) {
 	}
 	protocolSignIn := func(ip, password string) (int, time.Duration) {
 		t.Helper()
-		return attempt(ip, "/api/v1/gateway-sessions", fmt.Sprintf(`{"protocol":"imap","address":%q,"password":%q}`, f.address, password), true)
+		return attempt(ip, "/api/v1/gateway-sessions", fmt.Sprintf(`{"protocol":"imap","address":%q,"password":%q,"client_ip":%q}`, f.address, password, ip), true)
 	}
 
 	// Five free failures, half of them over the gateway, each from its own address.
