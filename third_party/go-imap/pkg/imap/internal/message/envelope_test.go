@@ -9,13 +9,13 @@ import (
 )
 
 func TestBuildAddress_EmptyEmail(t *testing.T) {
-	if result := buildAddress("John", ""); result != "NIL" {
+	if result := buildAddress("John", "", false); result != "NIL" {
 		t.Errorf("got %q, want %q", result, "NIL")
 	}
 }
 
 func TestBuildAddress_FullAddress(t *testing.T) {
-	result := buildAddress("John Doe", "john@example.com")
+	result := buildAddress("John Doe", "john@example.com", false)
 	if !strings.Contains(result, `"John Doe"`) {
 		t.Errorf("result %q missing name", result)
 	}
@@ -31,7 +31,7 @@ func TestBuildAddress_FullAddress(t *testing.T) {
 }
 
 func TestBuildAddress_NoAtSign(t *testing.T) {
-	result := buildAddress("Local", "localonly")
+	result := buildAddress("Local", "localonly", false)
 	if !strings.Contains(result, `"localonly"`) {
 		t.Errorf("result %q missing user part", result)
 	}
@@ -41,7 +41,7 @@ func TestBuildAddress_NoAtSign(t *testing.T) {
 }
 
 func TestBuildAddress_EmptyName(t *testing.T) {
-	result := buildAddress("", "user@host.com")
+	result := buildAddress("", "user@host.com", false)
 	if !strings.Contains(result, "NIL NIL") {
 		t.Errorf("result %q should have NIL for empty name", result)
 	}
@@ -54,7 +54,7 @@ func TestBuildEnvelope_Basic(t *testing.T) {
 		From:    imap.Address{Name: "Alice", Email: "alice@example.com"},
 		Date:    fixedTime,
 	}
-	result := BuildEnvelope(msg, "", false)
+	result := BuildEnvelope(msg, "", false, false)
 
 	if !strings.HasPrefix(result, "(") || !strings.HasSuffix(result, ")") {
 		t.Errorf("envelope should be wrapped in parens: %s", result)
@@ -83,7 +83,7 @@ func TestBuildEnvelope_EmptySubject(t *testing.T) {
 		From:    imap.Address{Name: "Bob", Email: "bob@test.com"},
 		Date:    fixedTime,
 	}
-	result := BuildEnvelope(msg, "", false)
+	result := BuildEnvelope(msg, "", false, false)
 	if !strings.Contains(result, " NIL ") {
 		t.Errorf("envelope should have NIL for empty subject: %s", result)
 	}
@@ -98,7 +98,7 @@ func TestBuildEnvelope_FromHeaders(t *testing.T) {
 		From:    imap.Address{Name: "Seed", Email: "seed@example.com"},
 		Date:    time.Date(2025, 3, 15, 10, 0, 0, 0, time.UTC),
 	}
-	env := BuildEnvelope(msg, envelopeRaw, true)
+	env := BuildEnvelope(msg, envelopeRaw, true, false)
 
 	if !parensBalanced(env) {
 		t.Fatalf("envelope has unbalanced parens: %s", env)
@@ -133,7 +133,7 @@ func TestBuildEnvelope_NoRawFallsBackToModel(t *testing.T) {
 		To:      "Bob <bob@example.org>",
 		Date:    time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC),
 	}
-	env := BuildEnvelope(msg, "", false)
+	env := BuildEnvelope(msg, "", false, false)
 	if !strings.Contains(env, `"bob" "example.org"`) {
 		t.Errorf("To should come from Message.To: %s", env)
 	}
@@ -155,7 +155,7 @@ func TestBuildEnvelope_ToAddress(t *testing.T) {
 		To:      "Bob <bob@example.org>",
 		Date:    time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC),
 	}
-	result := BuildEnvelope(msg, "", false)
+	result := BuildEnvelope(msg, "", false, false)
 
 	if !parensBalanced(result) {
 		t.Fatalf("envelope has unbalanced parens: %s", result)
@@ -178,15 +178,15 @@ func TestBuildEnvelope_ToAddress(t *testing.T) {
 // buildAddressList must render every address in a multi-recipient header as its
 // own address structure within a single outer list.
 func TestBuildAddressList_Multiple(t *testing.T) {
-	got := buildAddressList("Bob <bob@example.org>, carol@example.com")
+	got := buildAddressList("Bob <bob@example.org>, carol@example.com", false)
 	want := `(("Bob" NIL "bob" "example.org")(NIL NIL "carol" "example.com"))`
 	if got != want {
 		t.Errorf("buildAddressList = %q, want %q", got, want)
 	}
-	if buildAddressList("") != "NIL" {
+	if buildAddressList("", false) != "NIL" {
 		t.Errorf("empty address list must be NIL")
 	}
-	if buildAddressList("not a valid @@ address") != "NIL" {
+	if buildAddressList("not a valid @@ address", false) != "NIL" {
 		t.Errorf("unparseable address list must be NIL")
 	}
 }

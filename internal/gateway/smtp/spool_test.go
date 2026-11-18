@@ -15,6 +15,7 @@ import (
 
 	gosmtp "github.com/rest-mail/go-smtp/pkg/smtp"
 
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 	rmime "github.com/rest-mail/rest-mail-server/internal/mime"
 )
@@ -83,7 +84,7 @@ func parseWhole(data []byte) (subject, bodyText, bodyHTML, messageID, senderName
 	if err != nil || email == nil {
 		for _, sep := range []string{"\r\n\r\n", "\n\n"} {
 			if _, body, found := strings.Cut(string(data), sep); found {
-				bodyText = body
+				bodyText = models.ReadableText(body)
 				return
 			}
 		}
@@ -101,6 +102,15 @@ func parseWhole(data []byte) (subject, bodyText, bodyHTML, messageID, senderName
 	toList = bareAddresses(h.To)
 	ccList = bareAddresses(h.Cc)
 	bodyText, bodyHTML = rmime.TextAndHTML(email.Body)
+	// These go in the API's text fields, and a message may hold any octets. Its source keeps them.
+	for _, text := range []*string{&subject, &bodyText, &bodyHTML, &messageID, &senderName, &inReplyTo, &references, &fromAddr} {
+		*text = models.ReadableText(*text)
+	}
+	for _, list := range [][]string{toList, ccList} {
+		for i := range list {
+			list[i] = models.ReadableText(list[i])
+		}
+	}
 	return
 }
 

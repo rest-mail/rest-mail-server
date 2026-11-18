@@ -147,8 +147,8 @@ func TestMessage_BeforeCreate_MeasuresIMAPSizes(t *testing.T) {
 		if m.IMAPSize != rmail.IMAPWireSize(raw, false) || m.IMAPUTF8Size != rmail.IMAPWireSize(raw, true) {
 			t.Fatalf("imap_size = %d, imap_utf8_size = %d for %q", m.IMAPSize, m.IMAPUTF8Size, raw)
 		}
-		if m.RawMessage != raw {
-			t.Fatalf("stored raw changed: %q", m.RawMessage)
+		if got := string(m.Source()); got != raw {
+			t.Fatalf("stored raw changed: %q", got)
 		}
 	}
 	m := Message{RawMessage: ascii, RawSize: len(ascii)}

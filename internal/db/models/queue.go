@@ -17,7 +17,11 @@ type OutboundQueue struct {
 	// 5230 §5.1), yet is signed as, routed for and suppressed by the replying
 	// mailbox's domain. Empty means the envelope sender's domain.
 	SendingDomain string `gorm:"size:255" json:"-"`
-	RawMessage    string `gorm:"type:text" json:"-"` // RFC 2822 formatted message
+	// RawMessage is the RFC 5322 message in memory, whatever its octets. A row holds it in
+	// raw_message, or in raw_octets when text can't represent it (8-bit mail), so creating
+	// and finding a row need do nothing; a raw query's Scan calls JoinSource itself.
+	RawMessage string `gorm:"type:text" json:"-"`
+	RawOctets  []byte `gorm:"type:bytea" json:"-"`
 	// BodyType is the SMTP BODY= parameter declared for this message at submission
 	// (7BIT, 8BITMIME, or BINARYMIME; empty when the client declared none). The
 	// outbound worker consults it so it never relays 8-bit content to a next hop
@@ -186,5 +190,27 @@ func (q *OutboundQueue) BeforeCreate(*gorm.DB) error {
 	if q.MaxRetries == 0 {
 		q.MaxRetries = DefaultMaxRetries
 	}
+	// The column that can hold the message. A queued message is never rewritten: what the
+	// worker prepares to send stays in memory.
+	q.RawMessage, q.RawOctets = SourceColumns(q.RawMessage)
 	return nil
+}
+
+// AfterCreate gives the caller back the message it stored.
+func (q *OutboundQueue) AfterCreate(*gorm.DB) error {
+	q.JoinSource()
+	return nil
+}
+
+// AfterFind reads the message from the column that holds it.
+func (q *OutboundQueue) AfterFind(*gorm.DB) error {
+	q.JoinSource()
+	return nil
+}
+
+// JoinSource moves a message read from raw_octets into RawMessage.
+func (q *OutboundQueue) JoinSource() {
+	if q.RawOctets != nil {
+		q.RawMessage, q.RawOctets = string(q.RawOctets), nil
+	}
 }

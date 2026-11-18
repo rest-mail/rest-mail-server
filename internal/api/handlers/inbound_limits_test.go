@@ -96,7 +96,7 @@ func TestRestmailDeliverInboundLimits(t *testing.T) {
 		"nested": nestedRaw(limits.MaxNestingDepth+1, "eve@limits.test"),
 	} {
 		t.Run(name, func(t *testing.T) {
-			encoded, _ := json.Marshal(map[string]any{"from": "sender@external.test", "raw_message": raw})
+			encoded, _ := json.Marshal(map[string]any{"from": "sender@external.test", "raw_message": []byte(raw)})
 			rr := httptest.NewRecorder()
 			restmailRoutes(h).ServeHTTP(rr, httptest.NewRequest(http.MethodPost, restmailMessagesPath, bytes.NewReader(encoded)))
 			if rr.Code != http.StatusForbidden || !strings.Contains(rr.Body.String(), `"rejected"`) {
@@ -125,7 +125,7 @@ func TestRestmailDeliverAtHopLimit(t *testing.T) {
 	seedReceiveFixture(t, tx, mailbox)
 	h := NewRestmailHandler(tx, nil, nil, RestmailTarpitConfig{}, RestmailDeliverAuthConfig{TrustedCIDRs: []string{"203.0.113.0/24"}})
 	raw := receivedMessage(rmime.CurrentLimits().MaxReceived, mailbox.Address)
-	encoded, _ := json.Marshal(map[string]any{"from": "sender@external.test", "raw_message": raw})
+	encoded, _ := json.Marshal(map[string]any{"from": "sender@external.test", "raw_message": []byte(raw)})
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, restmailMessagesPath, bytes.NewReader(encoded))
 	req.RemoteAddr = "203.0.113.9:5000"

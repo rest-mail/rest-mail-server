@@ -2,10 +2,12 @@ package handlers
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strconv"
 	"testing"
 
 	"github.com/rest-mail/rest-mail-server"
@@ -47,7 +49,7 @@ func TestRestmailDeliver_RecipientSchema(t *testing.T) {
 	want := []rule{
 		{Required: []string{"to"}, Properties: map[string]property{"to": {MinItems: 1}}},
 		{Required: []string{"recipients"}, Properties: map[string]property{"recipients": {MinItems: 1}}},
-		{Required: []string{"raw_message"}, Properties: map[string]property{"raw_message": {MinLength: 1}}},
+		{Required: []string{"raw_message"}, Properties: map[string]property{"raw_message": {MinLength: 16}}},
 	}
 	if !reflect.DeepEqual(schema.AnyOf, want) {
 		t.Errorf("recipient alternatives = %+v, want %+v", schema.AnyOf, want)
@@ -66,7 +68,9 @@ func TestRestmailDeliver_EmptyRecipientSources(t *testing.T) {
 	for _, body := range []string{
 		`{}`, `{"to":[]}`, `{"recipients":[]}`, `{"to":null,"recipients":null}`,
 		`{"to":[],"recipients":[],"raw_message":""}`,
-		`{"raw_message":"From: sender@external.test\r\nSubject: No recipients\r\n\r\nhello"}`,
+		`{"raw_message":"RnJvbTogc2VuZGVyQGV4dGVybmFsLnRlc3QNClN1YmplY3Q6IE5vIHJlY2lwaWVudHMNCg0KaGVsbG8="}`,
+		// What the contract run draws for the field: base64 of "vertrag".
+		`{"raw_message":"dmVydHJhZw=="}`,
 	} {
 		t.Run(body, func(t *testing.T) {
 			rr := httptest.NewRecorder()
@@ -76,6 +80,77 @@ func TestRestmailDeliver_EmptyRecipientSources(t *testing.T) {
 				t.Fatalf("got %d %s, want recipient validation 422", rr.Code, rr.Body)
 			}
 		})
+	}
+}
+
+// The description's minimum for a raw_message that names the recipients itself is the shortest
+// RFC 5322 message that can: one that long is delivered. The parser also reads a field with a bare
+// LF or no line ending, which the description doesn't offer and a peer doesn't send.
+func TestRestmailDeliver_ShortestAddressedMessage(t *testing.T) {
+	db := openPlusAddrTestDB(t)
+	tx := db.Begin()
+	if tx.Error != nil {
+		t.Fatal(tx.Error)
+	}
+	t.Cleanup(func() { tx.Rollback() })
+	domain := models.Domain{Name: "b.c", Active: true}
+	if err := tx.Create(&domain).Error; err != nil {
+		t.Fatal(err)
+	}
+	mailbox := models.Mailbox{DomainID: domain.ID, LocalPart: "a", Address: "a@b.c", Active: true}
+	if err := tx.Create(&mailbox).Error; err != nil {
+		t.Fatal(err)
+	}
+	seedReceiveFixture(t, tx, mailbox)
+	h := NewRestmailHandler(tx, nil, nil, RestmailTarpitConfig{}, RestmailDeliverAuthConfig{TrustedCIDRs: []string{"203.0.113.0/24"}})
+
+	var rule string
+	for _, alternative := range (restmailDeliverBody{}).AnyOf().Alternatives {
+		if tag, ok := alternative.Fields["raw_message"]; ok {
+			rule = reflect.StructTag(tag).Get("minLength")
+		}
+	}
+	shortest := base64.StdEncoding.EncodeToString([]byte("To:a@b.c\r\n"))
+	if want := strconv.Itoa(len(shortest)); rule != want {
+		t.Errorf("the description's minimum is %q, and the shortest message that names a recipient is %s", rule, want)
+	}
+
+	for _, tc := range []struct {
+		raw    string
+		status int
+	}{
+		{"To:a@b.c\r\n", http.StatusCreated},
+		{"To:a@b.c\n", http.StatusCreated},
+		{"To:a@b.c", http.StatusCreated},
+		// A domain with no dot in it can't be hosted (validateDomainName), so nobody is there.
+		{"To:a@b\r\n", http.StatusUnprocessableEntity},
+		{"vertrag", http.StatusUnprocessableEntity},
+	} {
+		t.Run(tc.raw, func(t *testing.T) {
+			body, err := json.Marshal(map[string]any{"raw_message": []byte(tc.raw)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			r := httptest.NewRequest(http.MethodPost, restmailMessagesPath, bytes.NewReader(body))
+			r.Header.Set("Content-Type", "application/json")
+			r.RemoteAddr = "203.0.113.9:25"
+			rr := httptest.NewRecorder()
+			restmailRoutes(h).ServeHTTP(rr, r)
+			if rr.Code != tc.status {
+				t.Fatalf("got %d %s, want %d", rr.Code, rr.Body, tc.status)
+			}
+		})
+	}
+}
+
+// Shorter than the description's minimum, this is a probe the contract run sends as invalid.
+func TestRestmailDeliver_RawMessageNotBase64(t *testing.T) {
+	h := NewRestmailHandler(nil, nil, nil, RestmailTarpitConfig{}, RestmailDeliverAuthConfig{})
+	rr := httptest.NewRecorder()
+	restmailRoutes(h).ServeHTTP(rr, httptest.NewRequest(http.MethodPost, restmailMessagesPath, bytes.NewBufferString(`{"raw_message":"not-a-byte"}`)))
+	want := parseShapeJSON(t, `{"error":{"code":"validation_failed","message":"Request body failed validation","details":{"fields":{"raw_message":"must be a base64 string"}}}}`)
+	if rr.Code != http.StatusUnprocessableEntity || !reflect.DeepEqual(parseShapeJSON(t, rr.Body.String()), want) {
+		t.Fatalf("got %d %s, want a raw_message 422", rr.Code, rr.Body)
 	}
 }
 
@@ -105,11 +180,11 @@ func TestRestmailDeliver_RecipientSources(t *testing.T) {
 		{"recipients", map[string]interface{}{"recipients": []string{mailbox.Address}}},
 		{"empty_to", map[string]interface{}{"to": []string{}, "recipients": []string{mailbox.Address}}},
 		{"null_to", map[string]interface{}{"to": nil, "recipients": []string{mailbox.Address}}},
-		{"raw", map[string]interface{}{"raw_message": raw}},
-		{"empty_lists_raw", map[string]interface{}{"to": []string{}, "recipients": []string{}, "raw_message": raw}},
-		{"null_lists_raw", map[string]interface{}{"to": nil, "recipients": nil, "raw_message": raw}},
+		{"raw", map[string]interface{}{"raw_message": []byte(raw)}},
+		{"empty_lists_raw", map[string]interface{}{"to": []string{}, "recipients": []string{}, "raw_message": []byte(raw)}},
+		{"null_lists_raw", map[string]interface{}{"to": nil, "recipients": nil, "raw_message": []byte(raw)}},
 		{"to_precedes_alias", map[string]interface{}{"to": []string{mailbox.Address}, "recipients": []string{"missing@recipient-contract.test"}}},
-		{"alias_precedes_raw", map[string]interface{}{"recipients": []string{mailbox.Address}, "raw_message": "To: missing@recipient-contract.test\r\n\r\nhello"}},
+		{"alias_precedes_raw", map[string]interface{}{"recipients": []string{mailbox.Address}, "raw_message": []byte("To: missing@recipient-contract.test\r\n\r\nhello")}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			body := map[string]interface{}{"from": "sender@external.test", "date": "Sat, 17 Oct 2026 12:00:00 +0000", "subject": "Recipient source"}

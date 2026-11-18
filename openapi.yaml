@@ -12208,9 +12208,10 @@ paths:
         is served ONLY on the dedicated internal listener (verified gateway client
         certificate required) and is absent from the public listener; when disabled
         it is unauthenticated on the public listener. Never accepts a user JWT.
-        Stored text, recipient JSON strings and keys, and decoded raw_message octets
-        must not contain NUL (U+0000); invalid input is 422 validation_failed naming
-        the field before any write. raw_message is standard padded base64 (format: byte).
+        Stored text and recipient JSON strings and keys must not contain NUL (U+0000);
+        invalid input is 422 validation_failed naming the field before any write.
+        raw_message is standard padded base64 (format: byte) and may hold any octets,
+        which are stored exactly.
         The recipient is resolved from address. Arriving mail uses server time and
         default Inbox/flags, subject to inbound rules. Import-only fields sent by
         older callers are ignored. An arrival past the hop limit or a reserved alias
@@ -27624,13 +27625,12 @@ components:
             that has not enabled UTF-8, with headers 7-bit and non-textual data
             transfer-encoded (RFC 3501 section 7.4.2). The stored message does
             not change. Equals raw_size when the message is already 7-bit. 0
-            when not measured; consumers should fall back to downgraded_size.
+            when no raw message is stored.
         imap_utf8_size:
           type: integer
           description: >-
             Octet count of the message as an IMAP FETCH sends it to a session
-            that has enabled UTF-8. 0 when not measured; consumers should fall
-            back to raw_size.
+            that has enabled UTF-8. 0 when no raw message is stored.
         auth_results:
           type: array
           items:
@@ -28348,7 +28348,10 @@ components:
         Recipients come from a non-empty to list, otherwise a non-empty
         recipients list, otherwise the To header parsed from raw_message.
         A raw message must contain a parseable To header when neither list
-        supplies recipients; an empty or missing recipient set is refused.
+        supplies recipients, so it is then at least 16 base64 characters, the
+        length of the shortest RFC 5322 message naming an address on a hosted
+        domain;
+        an empty or missing recipient set is refused.
       anyOf:
         - required: [to]
           properties:
@@ -28361,7 +28364,7 @@ components:
         - required: [raw_message]
           properties:
             raw_message:
-              minLength: 1
+              minLength: 16
       properties:
         from:
           type: string
@@ -28404,7 +28407,8 @@ components:
           description: Raw headers as JSON
         raw_message:
           type: string
-          description: Full RFC 2822 raw message
+          format: byte
+          description: Full RFC 5322 message, base64-encoded so any octets arrive exactly as sent
         sender:
           type: string
           format: email

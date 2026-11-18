@@ -13,11 +13,11 @@ import (
 // language, location) all NIL when the message carries none.
 func TestBuildBodyStructure_TextUTF8Exact(t *testing.T) {
 	raw := "Content-Type: text/plain; charset=utf-8\r\n\r\nHello, world!\r\n"
-	if got, want := BuildBodyStructure(raw, false),
+	if got, want := BuildBodyStructure(raw, false, false),
 		`("TEXT" "PLAIN" ("CHARSET" "utf-8") NIL NIL "7BIT" 15 1)`; got != want {
 		t.Errorf("BODY = %q, want %q", got, want)
 	}
-	if got, want := BuildBodyStructure(raw, true),
+	if got, want := BuildBodyStructure(raw, true, false),
 		`("TEXT" "PLAIN" ("CHARSET" "utf-8") NIL NIL "7BIT" 15 1 NIL NIL NIL NIL)`; got != want {
 		t.Errorf("BODYSTRUCTURE = %q, want %q", got, want)
 	}
@@ -32,12 +32,12 @@ func TestBuildBodyStructure_SinglePartDisposition(t *testing.T) {
 		"Content-Transfer-Encoding: base64\r\n" +
 		"Content-Disposition: attachment; filename=doc.pdf\r\n\r\nAAAA\r\n"
 
-	if got, want := BuildBodyStructure(raw, true),
+	if got, want := BuildBodyStructure(raw, true, false),
 		`("APPLICATION" "PDF" ("NAME" "doc.pdf") NIL NIL "BASE64" 6 NIL ("ATTACHMENT" ("FILENAME" "doc.pdf")) NIL NIL)`; got != want {
 		t.Errorf("BODYSTRUCTURE = %q, want %q", got, want)
 	}
 	// BODY carries no extension data: the disposition must not leak into it.
-	if got, want := BuildBodyStructure(raw, false),
+	if got, want := BuildBodyStructure(raw, false, false),
 		`("APPLICATION" "PDF" ("NAME" "doc.pdf") NIL NIL "BASE64" 6)`; got != want {
 		t.Errorf("BODY = %q, want %q", got, want)
 	}
@@ -49,7 +49,7 @@ func TestBuildBodyStructure_DispositionNoParams(t *testing.T) {
 	raw := "Content-Type: image/png\r\n" +
 		"Content-Transfer-Encoding: base64\r\n" +
 		"Content-Disposition: inline\r\n\r\nAAAA\r\n"
-	got := BuildBodyStructure(raw, true)
+	got := BuildBodyStructure(raw, true, false)
 	if !strings.Contains(got, `NIL ("INLINE" NIL) NIL NIL)`) {
 		t.Errorf("BODYSTRUCTURE disposition = %q, want ...NIL (\"INLINE\" NIL) NIL NIL)", got)
 	}
@@ -82,7 +82,7 @@ func TestBuildBodyStructure_NestedMultipartDisposition(t *testing.T) {
 		`("APPLICATION" "PDF" ("NAME" "report.pdf") NIL NIL "BASE64" 4 NIL ("ATTACHMENT" ("FILENAME" "report.pdf")) NIL NIL)` +
 		` "MIXED" ("BOUNDARY" "MIX") NIL NIL NIL)`
 
-	if got := BuildBodyStructure(raw, true); got != want {
+	if got := BuildBodyStructure(raw, true, false); got != want {
 		t.Errorf("BODYSTRUCTURE =\n  %q\nwant\n  %q", got, want)
 	}
 }
@@ -100,13 +100,13 @@ func TestBuildBodyStructure_MessageRFC822(t *testing.T) {
 	innerBS := `("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 4 1 NIL NIL NIL NIL)`
 
 	wantBS := `("MESSAGE" "RFC822" NIL NIL NIL "7BIT" 37 ` + env + ` ` + innerBS + ` 4 NIL NIL NIL NIL)`
-	if got := BuildBodyStructure(raw, true); got != wantBS {
+	if got := BuildBodyStructure(raw, true, false); got != wantBS {
 		t.Errorf("BODYSTRUCTURE =\n  %q\nwant\n  %q", got, wantBS)
 	}
 
 	innerBody := `("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 4 1)`
 	wantBody := `("MESSAGE" "RFC822" NIL NIL NIL "7BIT" 37 ` + env + ` ` + innerBody + ` 4)`
-	if got := BuildBodyStructure(raw, false); got != wantBody {
+	if got := BuildBodyStructure(raw, false, false); got != wantBody {
 		t.Errorf("BODY =\n  %q\nwant\n  %q", got, wantBody)
 	}
 }
@@ -115,11 +115,11 @@ func TestBuildBodyStructure_MessageRFC822(t *testing.T) {
 // extensible (BODYSTRUCTURE) forms of RFC 3501 §7.4.2.
 func TestBuildBodyStructure_SingleTextExact(t *testing.T) {
 	raw := "Subject: Hi\r\n\r\nbody 5\r\n" // no Content-Type → text/plain; charset US-ASCII
-	if got, want := BuildBodyStructure(raw, false),
+	if got, want := BuildBodyStructure(raw, false, false),
 		`("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 8 1)`; got != want {
 		t.Errorf("BODY = %q, want %q", got, want)
 	}
-	if got, want := BuildBodyStructure(raw, true),
+	if got, want := BuildBodyStructure(raw, true, false),
 		`("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 8 1 NIL NIL NIL NIL)`; got != want {
 		t.Errorf("BODYSTRUCTURE = %q, want %q", got, want)
 	}
@@ -130,7 +130,7 @@ func TestBuildBodyStructure_SingleTextExact(t *testing.T) {
 func TestBuildBodyStructure_NonText(t *testing.T) {
 	raw := "Content-Type: application/pdf; name=doc.pdf\r\n" +
 		"Content-Transfer-Encoding: base64\r\n\r\nAAAA\r\n"
-	got := BuildBodyStructure(raw, false)
+	got := BuildBodyStructure(raw, false, false)
 	want := `("APPLICATION" "PDF" ("NAME" "doc.pdf") NIL NIL "BASE64" 6)`
 	if got != want {
 		t.Errorf("BODY = %q, want %q", got, want)
@@ -144,7 +144,7 @@ func TestBuildBodyStructure_Multipart(t *testing.T) {
 		"--BB\r\nContent-Type: text/plain\r\n\r\nhi\r\n" +
 		"--BB\r\nContent-Type: text/html; charset=utf-8\r\n\r\n<b>hi</b>\r\n" +
 		"--BB--\r\n"
-	got := BuildBodyStructure(raw, true)
+	got := BuildBodyStructure(raw, true, false)
 	if !parensBalanced(got) {
 		t.Fatalf("multipart structure unbalanced: %s", got)
 	}

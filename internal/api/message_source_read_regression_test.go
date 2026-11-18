@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
 )
 
 const messageSourceReadRaw = "From: sender@example.net\r\nTo: recipient@example.com\r\nSubject: café\r\nX-Trace: one\r\nX-Trace: two\r\n\r\nHello café\r\n.No dot unstuffing here\r\n"
@@ -36,7 +38,7 @@ func (c messageSourceReadConnection) QueryContext(ctx context.Context, query str
 	if id == "3" {
 		return nil, errors.New("private message lookup detail")
 	}
-	r := &authReadSnapshotRows{columns: []string{"id", "mailbox_id", "folder", "message_id", "sender", "sender_name", "recipients_to", "recipients_cc", "subject", "body_text", "body_html", "headers", "calendar_events", "size_bytes", "raw_size", "received_tls", "tls_version", "has_attachments", "is_read", "is_draft", "is_deleted", "received_at", "date_header", "created_at", "updated_at", "raw_message", "rule_class"}}
+	r := &authReadSnapshotRows{columns: []string{"id", "mailbox_id", "folder", "message_id", "sender", "sender_name", "recipients_to", "recipients_cc", "subject", "body_text", "body_html", "headers", "calendar_events", "size_bytes", "raw_size", "imap_size", "imap_utf8_size", "received_tls", "tls_version", "has_attachments", "is_read", "is_draft", "is_deleted", "received_at", "date_header", "created_at", "updated_at", "raw_message", "rule_class"}}
 	if id == "2147483647" {
 		return r, nil
 	}
@@ -75,7 +77,7 @@ func (c messageSourceReadConnection) QueryContext(ctx context.Context, query str
 		ruleClass = "receipt"
 		headers = []byte(`{"List-Id":["<shop.example.test>"]}`)
 	}
-	r.rows = [][]driver.Value{{n, mailbox, "INBOX", "<message@example.net>", "sender@example.net", "Sender café", []byte(`["recipient@example.com"]`), nil, "Subject café", "Hello café", "<p>Hello café</p>", headers, nil, int64(80), int64(len(raw)), true, "TLS1.3", true, false, false, id == "7", stamp, nil, stamp, stamp, raw, ruleClass}}
+	r.rows = [][]driver.Value{{n, mailbox, "INBOX", "<message@example.net>", "sender@example.net", "Sender café", []byte(`["recipient@example.com"]`), nil, "Subject café", "Hello café", "<p>Hello café</p>", headers, nil, int64(80), int64(len(raw)), int64(rmail.IMAPWireSize(raw, false)), int64(rmail.IMAPWireSize(raw, true)), true, "TLS1.3", true, false, false, id == "7", stamp, nil, stamp, stamp, raw, ruleClass}}
 	return r, nil
 }
 

@@ -19,7 +19,7 @@ func TestBodyStructureParameterStrings(t *testing.T) {
 		{"empty", `name=""`, `""`, nil},
 		{"quoted", `name="a\"b\\c"`, `"a\"b\\c"`, nil},
 		{"encoded-word-opaque", `name="=?UTF-8?Q?caf=C3=A9?="`, `"=?UTF-8?Q?caf=C3=A9?="`, nil},
-		{"utf8", `name*=utf-8''caf%C3%A9`, `{5}`, []string{"café"}},
+		{"utf8", `name*=utf-8''caf%C3%A9`, `"=?UTF-8?Q?caf=C3=A9?="`, nil},
 		{"line-breaks", `name*=us-ascii''x%0D%0AF1%20OK%20forged`, `{15}`, []string{"x\r\nF1 OK forged"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -70,7 +70,7 @@ func TestBodyStructureDispositionStrings(t *testing.T) {
 	}{
 		{"empty", `filename=""`, `""`, nil},
 		{"quoted", `filename="a\"b\\c"`, `"a\"b\\c"`, nil},
-		{"utf8", `filename*=utf-8''caf%C3%A9`, `{5}`, []string{"café"}},
+		{"utf8", `filename*=utf-8''caf%C3%A9`, `"=?UTF-8?Q?caf=C3=A9?="`, nil},
 		{"line-breaks", `filename*=us-ascii''x%0D%0AF1%20OK%20forged`, `{15}`, []string{"x\r\nF1 OK forged"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -88,12 +88,12 @@ func TestBodyStructureDispositionStrings(t *testing.T) {
 //
 // checklist: IMAP-BS-16
 func TestBodyStructureNestedStrings(t *testing.T) {
-	inner := "Content-Type: application/octet-stream; name*=utf-8''caf%C3%A9\r\nContent-Description: =?UTF-8?Q?caf=C3=A9?=\r\n\r\nx"
-	part := `("APPLICATION" "OCTET-STREAM" ("NAME" {5}) NIL "=?UTF-8?Q?caf=C3=A9?=" "7BIT" 1`
+	inner := "Content-Type: application/octet-stream; name*=us-ascii''a%0D%0Ab\r\nContent-Description: =?UTF-8?Q?caf=C3=A9?=\r\n\r\nx"
+	part := `("APPLICATION" "OCTET-STREAM" ("NAME" {4}) NIL "=?UTF-8?Q?caf=C3=A9?=" "7BIT" 1`
 	body, extended := part+")", part+" NIL NIL NIL NIL)"
 	structureResponse(t, "Content-Type: multipart/mixed; boundary=B\r\n\r\n--B\r\n"+inner+"\r\n--B--\r\n",
-		"("+body+` "MIXED")`, "("+extended+` "MIXED" ("BOUNDARY" "B") NIL NIL NIL)`, "café", "café")
+		"("+body+` "MIXED")`, "("+extended+` "MIXED" ("BOUNDARY" "B") NIL NIL NIL)`, "a\r\nb", "a\r\nb")
 	message := fmt.Sprintf(`("MESSAGE" "RFC822" NIL NIL NIL "7BIT" %d (NIL NIL NIL NIL NIL NIL NIL NIL NIL NIL) `, len(inner))
 	structureResponse(t, "Content-Type: message/rfc822\r\n\r\n"+inner,
-		message+body+" 4)", message+extended+" 4 NIL NIL NIL NIL)", "café", "café")
+		message+body+" 4)", message+extended+" 4 NIL NIL NIL NIL)", "a\r\nb", "a\r\nb")
 }

@@ -228,7 +228,7 @@ func TestTLSReportEmailDeliveryRoutes(t *testing.T) {
 					body, _ := json.Marshal(map[string]any{"address": fixture.mailbox.Address, "sender": "tlsrpt@reporter.test", "raw_message": []byte(raw)})
 					deliveryRoute(messageHandler)(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/messages/deliver", bytes.NewReader(body)))
 				} else {
-					body, _ := json.Marshal(map[string]any{"from": "tlsrpt@reporter.test", "to": []string{fixture.mailbox.Address}, "raw_message": raw})
+					body, _ := json.Marshal(map[string]any{"from": "tlsrpt@reporter.test", "to": []string{fixture.mailbox.Address}, "raw_message": []byte(raw)})
 					restmailRoutes(restmailHandler).ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, restmailMessagesPath, bytes.NewReader(body)))
 				}
 				if recorder.Code < 200 || recorder.Code >= 300 {
