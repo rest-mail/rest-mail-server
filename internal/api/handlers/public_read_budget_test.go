@@ -136,6 +136,11 @@ func publicHealthSteps(scope string) []publicReadStep {
 		publicReadRow("domains", []string{"id", "name"}, int64(1), "example.test"),
 	}
 }
+
+// publicNotRetiredStep is the last read for an absent recipient: its domain was not retired.
+func publicNotRetiredStep() publicReadStep {
+	return publicReadRow("domain_retirements", []string{"count"}, int64(0))
+}
 func publicMailboxStep(active bool) publicReadStep {
 	return publicReadRow("mailboxes", []string{"id", "address", "active"}, int64(7), "reader@example.test", active)
 }
@@ -298,7 +303,7 @@ func TestPublicReadFaultsPreserveAbsenceAndPrivacy(t *testing.T) {
 			}
 			d := &publicReadDB{steps: []publicReadStep{step}}
 			if kind == "absent" {
-				d.steps = append(d.steps, publicReadStep{query: "aliases", columns: []string{"id"}}, publicReadStep{query: "aliases", columns: []string{"id"}})
+				d.steps = append(d.steps, publicReadStep{query: "aliases", columns: []string{"id"}}, publicReadStep{query: "aliases", columns: []string{"id"}}, publicNotRetiredStep())
 			}
 			rr := httptest.NewRecorder()
 			publicMailboxRoutes(publicReadGorm(t, d)).ServeHTTP(rr, publicReadRequest(t, "/restmail/mailboxes?address=reader@example.test", ""))

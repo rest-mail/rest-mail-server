@@ -85,7 +85,8 @@ func TestRestmailRecipientTarpitRegisteredContract(t *testing.T) {
 					if step.rows == nil && step.err == nil {
 						database.steps = append(database.steps,
 							publicReadStep{query: "aliases", columns: []string{"id"}},
-							publicReadStep{query: "aliases", columns: []string{"id"}})
+							publicReadStep{query: "aliases", columns: []string{"id"}},
+							publicNotRetiredStep())
 					}
 					database.reads = 0
 					delays = nil

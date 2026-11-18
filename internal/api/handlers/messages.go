@@ -1257,6 +1257,9 @@ func (h *MessageHandler) deliverMessage(r *http.Request, req deliverMessageBody,
 		slog.WarnContext(r.Context(), "delivery alias refused", "address", req.Address, "error", lookupErr)
 		return zero, endpoint.Refuse(http.StatusForbidden, "rejected", rmail.AliasRoutingRefusal)
 	}
+	if errors.Is(lookupErr, repositories.ErrDomainRetired) {
+		return zero, errRecipientDomainRetired
+	}
 	if errors.Is(lookupErr, gorm.ErrRecordNotFound) {
 		return zero, endpoint.Refuse(http.StatusNotFound, "mailbox_not_found", "Mailbox not found")
 	}

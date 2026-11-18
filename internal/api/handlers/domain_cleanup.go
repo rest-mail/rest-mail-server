@@ -12,7 +12,10 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-const domainDeletionDescription = "A domain containing accounts or aliases is refused with 409 domain_not_empty, except for its automatically provisioned postmaster when it holds no mail and has no credentials. The domain, that postmaster and their live configuration are archived atomically for restoration with their original identities. Grants are removed through the audited grant-change mechanism; cached permissions are invalidated only after commit. Historical reports, message traces and audit entries are retained. A cleanup, archive, audit or cancellation failure rolls the deletion back. Deleting the last postmaster on its own still returns 409 postmaster_required."
+// retiredRecipientDescription is the rule every route that looks a recipient up states.
+const retiredRecipientDescription = "A recipient on a domain deleted through deleteDomain and not restored, at any local part or through an alias, is 503 deferred, so the sender retries."
+
+const domainDeletionDescription = "A domain containing accounts or aliases is refused with 409 domain_not_empty, except for its automatically provisioned postmaster when it holds no mail and has no credentials. The domain, that postmaster and their live configuration are archived atomically for restoration with their original identities. Grants are removed through the audited grant-change mechanism; cached permissions are invalidated only after commit. Historical reports, message traces and audit entries are retained. Until the domain is restored, or a new domain takes its name, mail to it is deferred with a temporary failure. A cleanup, archive, audit or cancellation failure rolls the deletion back. Deleting the last postmaster on its own still returns 409 postmaster_required."
 
 // deleteDomainData removes live state explicitly: migrations deliberately do
 // not create foreign-key cascades. Historical evidence is retained, never

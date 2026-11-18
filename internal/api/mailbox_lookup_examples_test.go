@@ -107,6 +107,8 @@ func (c mailboxLookupConnection) QueryContext(_ context.Context, query string, a
 			r.rows = [][]driver.Value{{numeric, domainID, local, local + "@example.com", "Mailbox café", int64(1048576), int64(321), id != "2", stamp, false, true, int64(17), stamp, stamp, stamp, stamp}}
 		}
 		return r, nil
+	case strings.Contains(query, `FROM "domain_retirements"`):
+		return retiredDomainCount(id), nil
 	case strings.Contains(query, `FROM "domains"`):
 		if id == "2" {
 			return nil, errors.New("sensitive domain preload failure")
@@ -123,6 +125,15 @@ func (c mailboxLookupConnection) QueryContext(_ context.Context, query string, a
 		return r, nil
 	}
 	return nil, fmt.Errorf("unexpected mailbox lookup SQL: %s", query)
+}
+
+// retiredDomainCount answers the retirement lookup: retired.test is the one retired name.
+func retiredDomainCount(name string) driver.Rows {
+	count := int64(0)
+	if name == "retired.test" {
+		count = 1
+	}
+	return &authReadSnapshotRows{columns: []string{"count"}, rows: [][]driver.Value{{count}}}
 }
 
 func mailboxLookupRouters(t *testing.T) (map[string]http.Handler, *auth.JWTService) {
@@ -157,7 +168,7 @@ func mailboxLookupRouters(t *testing.T) (map[string]http.Handler, *auth.JWTServi
 	return map[string]http.Handler{"rate_limited": apiKeyRefusalLimited(t),
 		"found": global, "inactive": global, "quota_present": global, "missing": global, "internal_error": global, "domain_unavailable": global, "quota_unavailable": global,
 		"unauthenticated": unavailable, "session_unavailable": unavailable, "permission_store_unavailable": scoped(grants.Mailbox("user@example.com"), true),
-		"request_too_large": global, "invalid_id": global, "address_empty": global, "address_missing": global, "not_local": global, "invalid_address": global, "address_unavailable": failed, "alias_refused": global,
+		"request_too_large": global, "invalid_id": global, "address_empty": global, "address_missing": global, "not_local": global, "invalid_address": global, "address_unavailable": failed, "alias_refused": global, "retired_domain": global,
 		"mailbox_scope": scoped(grants.Mailbox("user@example.com"), true), "domain_scope": scoped(grants.Domain("example.com"), true), "outside_scope": scoped(grants.Mailbox("other@example.com"), false), "domain_redacted": scoped(grants.Mailbox("user@example.com"), false),
 	}, jwt
 }

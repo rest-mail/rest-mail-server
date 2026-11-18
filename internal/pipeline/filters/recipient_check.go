@@ -59,6 +59,10 @@ func (f *recipientCheckFilter) Execute(ctx context.Context, email *pipeline.Emai
 				RejectMsg: "550 5.1.1 " + rmail.AliasRoutingRefusal,
 				Log:       pipeline.FilterLog{Filter: "recipient_check", Result: "reject", Detail: err.Error()}}, nil
 		}
+		if errors.Is(err, repositories.ErrDomainRetired) {
+			return &pipeline.FilterResult{Type: pipeline.FilterTypeAction, Action: pipeline.ActionDefer,
+				Log: pipeline.FilterLog{Filter: "recipient_check", Result: "defer", Detail: "recipient domain is retired"}}, nil
+		}
 		if errors.Is(err, repositories.ErrMailboxUnavailable) {
 			return f.rejectRecipient(rcpt), nil
 		}

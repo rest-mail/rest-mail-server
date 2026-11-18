@@ -55,6 +55,8 @@ func (c publicDiscoveryConnection) QueryContext(_ context.Context, query string,
 			return nil, errors.New("alias query lost hosted-domain restriction")
 		}
 		return &authReadSnapshotRows{columns: []string{"id"}}, nil
+	case strings.Contains(query, `FROM "domain_retirements"`):
+		return retiredDomainCount(value), nil
 	case strings.Contains(query, `FROM "domains"`):
 		if !strings.Contains(query, "name =") || !strings.Contains(query, "active =") || len(args) < 2 || args[1].Value != true {
 			return nil, errors.New("discovery lost active hosted-domain restriction")

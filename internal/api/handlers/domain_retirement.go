@@ -16,6 +16,10 @@ import (
 
 var errDomainNotEmpty = endpoint.Refuse(http.StatusConflict, "domain_not_empty", "The domain still has accounts or aliases: delete them first")
 
+// errRecipientDomainRetired answers for mail to a retired domain. It is temporary, so the
+// sender keeps the message for as long as the domain may still be restored (#1870).
+var errRecipientDomainRetired = endpoint.Refuse(http.StatusServiceUnavailable, "deferred", "The recipient's domain is out of service, retry later")
+
 var retiredDomainTables = []string{"domains", "mailboxes", "quota_usage", "pipelines", "custom_filters", "domain_sender_rules", "certificates", "dkim_rotation_keys", "mtasts_policies", "domain_relays", "suppressions"}
 
 func archiveDomain(tx *gorm.DB, domain models.Domain, accounts []models.Mailbox, held []models.Grant) error {
