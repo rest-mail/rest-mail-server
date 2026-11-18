@@ -56,9 +56,9 @@ type outboundMessage struct {
 func buildOutboundRaw(m outboundMessage) (string, error) {
 	email := &pipeline.EmailJSON{
 		Headers: pipeline.Headers{
-			From:      []pipeline.Address{{Name: m.FromName, Address: m.From}},
-			To:        bareAddressList(m.To),
-			Cc:        bareAddressList(m.Cc),
+			From:      pipeline.Addresses([]pipeline.Address{{Name: m.FromName, Address: m.From}}...),
+			To:        pipeline.Addresses(bareAddressList(m.To)...),
+			Cc:        pipeline.Addresses(bareAddressList(m.Cc)...),
 			Subject:   m.Subject,
 			Date:      m.Date.Format(time.RFC1123Z),
 			MessageID: m.MessageID,

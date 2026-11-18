@@ -9,31 +9,28 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"unicode/utf8"
 
 	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
 )
 
-// jsonTextChunk is how much of a text field is encoded to JSON at a time.
-const jsonTextChunk = 32 << 10
+// deliverChunk is how much of the request is buffered on its way to the API.
+const deliverChunk = 32 << 10
 
-// DeliverContent says where a delivery's large fields are read from, so that they travel from
-// disk to the API without being held in memory. Each function answers a new reader at the start
-// of the field, because a request can be sent more than once on a connection that has gone stale.
-// A nil function means the field is absent.
+// DeliverContent says where a delivery's source is read from, so that it travels from disk to the
+// API without being held in memory. RawMessage answers a new reader at the start of the source,
+// because a request can be sent more than once on a connection that has gone stale. Nil means
+// there is no source.
 type DeliverContent struct {
 	RawMessage func() io.Reader
-	BodyText   func() io.Reader
-	BodyHTML   func() io.Reader
 }
 
-// DeliverMessageFrom is DeliverMessage for a message read from content: the fields req names
-// there are ignored. The API receives the same JSON fields, with the same values, as
-// DeliverMessage sends for them, in a request of unknown length.
+// DeliverMessageFrom is DeliverMessage for a message read from content: req.RawMessage is ignored.
+// The API receives the same JSON fields, with the same values, as DeliverMessage sends for them,
+// in a request of unknown length.
 func (c *Client) DeliverMessageFrom(req *DeliverRequest, content DeliverContent) (*DeliverResponse, error) {
 	const path = "/api/v1/messages/deliver"
 	small := *req
-	small.BodyText, small.BodyHTML, small.RawMessage = "", "", nil
+	small.RawMessage = nil
 	head, err := json.Marshal(&small)
 	if err != nil {
 		return nil, err
@@ -69,34 +66,19 @@ func (c *Client) DeliverMessageFrom(req *DeliverRequest, content DeliverContent)
 }
 
 // encode writes the request body: head, the JSON object of the request's small fields, with the
-// large fields added to it as they are read.
+// source added to it as it is read.
 func (d DeliverContent) encode(w io.Writer, head []byte) error {
-	out := bufio.NewWriterSize(w, jsonTextChunk)
+	out := bufio.NewWriterSize(w, deliverChunk)
 	_, _ = out.Write(bytes.TrimSuffix(head, []byte("}")))
-	separator := ""
-	if len(head) > len("{}") {
-		separator = ","
-	}
-	field := func(name string, open func() io.Reader, copyValue func(io.Writer, io.Reader) error) error {
-		if open == nil {
-			return nil
+	if d.RawMessage != nil {
+		if len(head) > len("{}") {
+			_ = out.WriteByte(',')
 		}
-		_, _ = out.WriteString(separator + `"` + name + `":"`)
-		separator = ","
-		if err := copyValue(out, open()); err != nil {
+		_, _ = out.WriteString(`"raw_message":"`)
+		if err := copyBase64(out, d.RawMessage()); err != nil {
 			return err
 		}
 		_ = out.WriteByte('"')
-		return nil
-	}
-	if err := field("body_text", d.BodyText, copyJSONText); err != nil {
-		return err
-	}
-	if err := field("body_html", d.BodyHTML, copyJSONText); err != nil {
-		return err
-	}
-	if err := field("raw_message", d.RawMessage, copyBase64); err != nil {
-		return err
 	}
 	_ = out.WriteByte('}')
 	return out.Flush()
@@ -110,50 +92,4 @@ func copyBase64(w io.Writer, src io.Reader) error {
 		return err
 	}
 	return encoder.Close()
-}
-
-// copyJSONText writes src as the inside of a JSON string, as json.Marshal writes that text whole.
-// A chunk is cut only between characters, so an invalid byte is replaced as it would be anyway.
-func copyJSONText(w io.Writer, src io.Reader) error {
-	buffer := make([]byte, jsonTextChunk)
-	pending := 0
-	for {
-		n, readErr := src.Read(buffer[pending:])
-		have := buffer[:pending+n]
-		ready := have
-		if readErr == nil {
-			ready = have[:len(have)-incompleteRune(have)]
-		}
-		if len(ready) > 0 {
-			encoded, err := json.Marshal(string(ready))
-			if err != nil {
-				return err
-			}
-			if _, err := w.Write(encoded[1 : len(encoded)-1]); err != nil {
-				return err
-			}
-		}
-		pending = copy(buffer, have[len(ready):])
-		if readErr == io.EOF {
-			return nil
-		}
-		if readErr != nil {
-			return readErr
-		}
-	}
-}
-
-// incompleteRune says how many bytes at the end of text are the start of a character that the
-// next read may finish.
-func incompleteRune(text []byte) int {
-	for back := 1; back < utf8.UTFMax && back <= len(text); back++ {
-		start := len(text) - back
-		if utf8.RuneStart(text[start]) {
-			if utf8.FullRune(text[start:]) {
-				return 0
-			}
-			return back
-		}
-	}
-	return 0
 }

@@ -980,7 +980,8 @@ func (s *session) Data(r io.Reader) (err error) {
 			continue
 		}
 
-		// Local delivery via API.
+		// Local delivery via API. The server reads the message's text from its source, so the
+		// request doesn't carry it a second time (#1915).
 		deliverReq := &apiclient.DeliverRequest{
 			Address:    rcpt,
 			Sender:     s.mailFrom,
@@ -1008,8 +1009,6 @@ func (s *session) Data(r io.Reader) (err error) {
 
 		if _, err := s.api.DeliverMessageFrom(deliverReq, apiclient.DeliverContent{
 			RawMessage: source.open,
-			BodyText:   parsed.text.opener(),
-			BodyHTML:   parsed.html.opener(),
 		}); err != nil {
 			if reason, refused := aliasRoutingRefusal(err); refused {
 				aliasFailure = reason

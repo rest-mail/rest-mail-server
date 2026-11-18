@@ -6,10 +6,16 @@ import (
 	"encoding/hex"
 	"io"
 	"strings"
+
+	"github.com/rest-mail/rest-mail-server/internal/boundedpool"
 )
 
+var digestBuffers = boundedpool.New(16, func() *[32 << 10]byte { return new([32 << 10]byte) })
+
 func Digest(source io.Reader, fields ...string) (string, error) {
-	buffer := make([]byte, 32*1024)
+	room := digestBuffers.Get()
+	defer digestBuffers.Put(room)
+	buffer := room[:]
 	raw := sha256.New()
 	if _, err := io.CopyBuffer(raw, struct{ io.Reader }{source}, buffer); err != nil {
 		return "", err

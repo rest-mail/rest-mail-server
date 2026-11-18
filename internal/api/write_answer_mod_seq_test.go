@@ -10,10 +10,11 @@ import (
 	"strings"
 	"testing"
 
+	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 )
 
-// Every write that answers with a message answers the mod_seq the trigger stored, not the
+// Every write that answers with a full message answers the mod_seq the trigger stored, not the
 // model's default or the value before the write (#1756). Each folder already holds a
 // message, so a stored mod_seq is above the first one a folder gives out and a default
 // of 1 cannot pass for it.
@@ -109,6 +110,21 @@ func TestWriteAnswersCarryStoredModSeq(t *testing.T) {
 		if rr.Code == http.StatusOK && strings.Contains(rr.Body.String(), `"processed"`) {
 			t.Fatalf("the pipeline kept the delivery: %s", rr.Body.String())
 		}
-		answered(t, rr, http.StatusCreated)
+		if rr.Code != http.StatusCreated {
+			t.Fatalf("got %d %s, want %d", rr.Code, rr.Body.String(), http.StatusCreated)
+		}
+		var reply struct {
+			Data apitypes.DeliveredMessage `json:"data"`
+		}
+		if err := json.Unmarshal(rr.Body.Bytes(), &reply); err != nil {
+			t.Fatal(err)
+		}
+		var stored models.Message
+		if err := f.db.First(&stored, reply.Data.ID).Error; err != nil {
+			t.Fatal(err)
+		}
+		if reply.Data.MessageID != stored.MsgID || reply.Data.Folder != stored.Folder || stored.ModSeq < 3 {
+			t.Errorf("delivery reference %+v does not name the stored message %+v", reply.Data, stored)
+		}
 	})
 }

@@ -32,10 +32,10 @@ func (f *dmarcReportsReceivedFilter) Type() pipeline.FilterType { return pipelin
 
 func (f *dmarcReportsReceivedFilter) Execute(ctx context.Context, email *pipeline.EmailJSON) (*pipeline.FilterResult, error) {
 	result := &pipeline.FilterResult{Type: f.Type(), Action: pipeline.ActionContinue, Log: pipeline.FilterLog{Filter: f.Name(), Result: "skipped"}}
-	if email.Envelope.Direction != "inbound" || len(email.Headers.From) != 1 {
+	if email.Envelope.Direction != "inbound" || email.Headers.From.Len() != 1 {
 		return result, nil
 	}
-	from, err := mail.ParseAddress(email.Headers.From[0].Address)
+	from, err := mail.ParseAddress(email.Headers.From.FirstAddress())
 	if err != nil {
 		return result, nil
 	}

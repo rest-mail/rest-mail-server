@@ -74,7 +74,7 @@ func StorageRemaining(db *gorm.DB, chain []models.Mailbox) (int64, error) {
 			SELECT id, quota_used_bytes FROM mailboxes WHERE id = ?
 			UNION
 			SELECT m.id, m.quota_used_bytes FROM mailboxes m JOIN owned o ON m.owner_id = o.id
-		) SELECT COALESCE(SUM(quota_used_bytes), 0) FROM owned`, mb.ID).Scan(&used).Error; err != nil {
+		) SELECT COALESCE(SUM(quota_used_bytes), 0) FROM owned`, mb.ID).Row().Scan(&used); err != nil {
 			return 0, err
 		}
 		if left := mb.QuotaBytes - used; left < remaining {

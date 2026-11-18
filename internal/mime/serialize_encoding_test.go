@@ -41,8 +41,8 @@ func TestSerialize_EncodesNonASCIISubject(t *testing.T) {
 	want := "Überweisung für Kaffee"
 	email := &pipeline.EmailJSON{
 		Headers: pipeline.Headers{
-			From:    []pipeline.Address{{Address: "alice@example.com"}},
-			To:      []pipeline.Address{{Address: "bob@example.com"}},
+			From:    pipeline.Addresses([]pipeline.Address{{Address: "alice@example.com"}}...),
+			To:      pipeline.Addresses([]pipeline.Address{{Address: "bob@example.com"}}...),
 			Subject: want,
 			Date:    "Mon, 01 Jan 2024 12:00:00 +0000",
 		},
@@ -74,8 +74,8 @@ func TestSerialize_EncodesNonASCIIDisplayName(t *testing.T) {
 	wantName := "Renée Müller"
 	email := &pipeline.EmailJSON{
 		Headers: pipeline.Headers{
-			From:    []pipeline.Address{{Name: wantName, Address: "renee@example.org"}},
-			To:      []pipeline.Address{{Address: "bob@example.com"}},
+			From:    pipeline.Addresses([]pipeline.Address{{Name: wantName, Address: "renee@example.org"}}...),
+			To:      pipeline.Addresses([]pipeline.Address{{Address: "bob@example.com"}}...),
 			Subject: "Hallo",
 			Date:    "Mon, 01 Jan 2024 12:00:00 +0000",
 		},
@@ -107,8 +107,8 @@ func TestSerialize_EncodesNonASCIIDisplayName(t *testing.T) {
 func TestSerialize_FoldsLongHeaders(t *testing.T) {
 	email := &pipeline.EmailJSON{
 		Headers: pipeline.Headers{
-			From:    []pipeline.Address{{Address: "alice@example.com"}},
-			To:      []pipeline.Address{{Address: "bob@example.com"}},
+			From:    pipeline.Addresses([]pipeline.Address{{Address: "alice@example.com"}}...),
+			To:      pipeline.Addresses([]pipeline.Address{{Address: "bob@example.com"}}...),
 			Subject: strings.TrimSpace(strings.Repeat("quarterly figures review ", 60)),
 			Date:    "Mon, 01 Jan 2024 12:00:00 +0000",
 		},
@@ -133,8 +133,8 @@ func TestSerialize_FoldsLongHeaders(t *testing.T) {
 func TestSerialize_ExtraHeaderCannotInjectAHeader(t *testing.T) {
 	email := &pipeline.EmailJSON{
 		Headers: pipeline.Headers{
-			From:    []pipeline.Address{{Address: "alice@example.com"}},
-			To:      []pipeline.Address{{Address: "bob@example.com"}},
+			From:    pipeline.Addresses([]pipeline.Address{{Address: "alice@example.com"}}...),
+			To:      pipeline.Addresses([]pipeline.Address{{Address: "bob@example.com"}}...),
 			Subject: "Hello",
 			Date:    "Mon, 01 Jan 2024 12:00:00 +0000",
 			Extra:   map[string]string{"X-Thing": "ok\r\nBcc: mallory@evil.test"},
@@ -168,7 +168,7 @@ func TestSerialize_SubjectLosesItsLineBreaks(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			raw, err := Serialize(&pipeline.EmailJSON{
 				Headers: pipeline.Headers{
-					From:    []pipeline.Address{{Address: "a@example.com"}},
+					From:    pipeline.Addresses([]pipeline.Address{{Address: "a@example.com"}}...),
 					Subject: subject,
 				},
 				Body: pipeline.Body{ContentType: "text/plain", Content: "hi"},
