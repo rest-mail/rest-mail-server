@@ -10,12 +10,17 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/boundedpool"
 )
 
-var digestBuffers = boundedpool.New(16, func() *[32 << 10]byte { return new([32 << 10]byte) })
+// digestBuffer is a struct, not a bare array: with a pool of *[N]byte, slicing
+// the pooled pointer crashes the Go 1.26.10 compiler under -cover ("bad ptr to
+// array in slice go.shape.*uint8"), and the topology's API is built with -cover.
+type digestBuffer struct{ bytes [32 << 10]byte }
+
+var digestBuffers = boundedpool.New(16, func() *digestBuffer { return new(digestBuffer) })
 
 func Digest(source io.Reader, fields ...string) (string, error) {
 	room := digestBuffers.Get()
 	defer digestBuffers.Put(room)
-	buffer := room[:]
+	buffer := room.bytes[:]
 	raw := sha256.New()
 	if _, err := io.CopyBuffer(raw, struct{ io.Reader }{source}, buffer); err != nil {
 		return "", err
