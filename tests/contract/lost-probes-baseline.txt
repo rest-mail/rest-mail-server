@@ -10,8 +10,10 @@
 # nothing unless replayed-probes.jsonl records its separately verified send (below).
 # The local dependency and skip differences do not prove the gate.
 #
-# domain_id must name the run's domain, which no static pin can hold.
-createCustomFilter 20
+# domain_id must name the run's domain, which no static pin can hold. 21 since #2051
+# described config as the object the handler requires: a typed property draws more
+# generated bodies, and the same domain_id hook ends each one.
+createCustomFilter 21
 createPipeline 12
 # A mail client's address, password and client_ip: the hook signs in the one the fixture
 # holds. 14 measured by a whole-API run, plus client_ip's own 3 (missing, empty, wrong type),

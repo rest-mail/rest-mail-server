@@ -83,10 +83,6 @@
 # Admin pipelines, custom filters, analytics and message traces (#649)
 
 - operation: createCustomFilter
-  difference: "request body application/json.properties.config.type: openapi.yaml \"object\", generated absent"
-  reason: >-
-    Plugin configuration stays raw JSON so arbitrary nested plugin fields survive unchanged. The handler retains its object-shape validator and pinned config error; RawMessage itself has no reflected shape restriction.
-- operation: createCustomFilter
   difference: "request body application/json.properties.enabled.default: openapi.yaml true, generated absent"
   reason: >-
     Reflection does not describe defaults. Omitted or null active/enabled still defaults to true in the create handler, including preserving explicit false.
@@ -382,10 +378,6 @@
   difference: "response 200 application/json.properties.data.required: openapi.yaml [\"duration_ms\",\"final_action\",\"steps\"], generated [\"duration_ms\",\"final_action\",\"final_email\",\"steps\"]"
   reason: >-
     The engine emits its concrete ExecutionResult/FilterResult fields, including the structured log and final email where applicable; the oracle's required set describes a different result shape.
-- operation: updateCustomFilter
-  difference: "request body application/json.properties.config.type: openapi.yaml \"object\", generated absent"
-  reason: >-
-    Plugin configuration stays raw JSON so arbitrary nested plugin fields survive unchanged. The handler retains its object-shape validator and pinned config error; RawMessage itself has no reflected shape restriction.
 - operation: updateCustomFilter
   difference: "request body application/json.properties.description.type: openapi.yaml \"string\", generated [\"null\",\"string\"]"
   reason: >-

@@ -23849,6 +23849,7 @@ paths:
                   type: array
                   items:
                     type: string
+                    pattern: '^(?:[sS][mM][tT][pP](?:_[sS][uU][bB][mM][iI][sS][sS][iI][oO][nN])?|[iI][mM][aA][pP]|[pP][oO][pP]3|[dD][nN][sS]|[dD][bB])$'
                 host:
                   type: string
                 timeout:
@@ -30140,7 +30141,7 @@ components:
           type: string
           maxLength: 255
           pattern: '^[^\x00-\x1f\x7f]*$'
-          description: At most 255 UTF-8 bytes, without ASCII control characters. For relay transport, a username and a password must be set together, or neither. An omitted or null password preserves the stored password.
+          description: "At most 255 UTF-8 bytes, without ASCII control characters. For relay transport, a username and a password must be set together, or neither, counting the stored password: an omitted or null password preserves it. A username with no password sent or stored is refused 422, and so is no username while a password is stored and not cleared with an empty one, even though each body is schema-valid."
         password:
           type: string
           pattern: '^[^\x00-\x1f\x7f]*$'

@@ -38,6 +38,7 @@ const pipeline: components["schemas"]["Pipeline"] = {
   created_at: stamp,
   updated_at: stamp,
 };
+const customConfig = { script: "return true" };
 const custom: components["schemas"]["CustomFilter"] = {
   id: 3,
   domain_id: 1,
@@ -46,7 +47,7 @@ const custom: components["schemas"]["CustomFilter"] = {
   direction: "inbound",
   filter_type: "action",
   enabled: true,
-  config: { script: "return true" },
+  config: customConfig,
   created_at: stamp,
   updated_at: stamp,
 };
@@ -299,7 +300,7 @@ describe("admin callers use the generated wire contract", () => {
       (
         await useCustomFilterStore
           .getState()
-          .createFilter({ name: "custom", config: custom.config })
+          .createFilter({ name: "custom", config: customConfig })
       ).id,
     ).toBe(3);
     const updated = await useCustomFilterStore
