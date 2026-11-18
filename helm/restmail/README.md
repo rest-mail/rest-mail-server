@@ -261,7 +261,7 @@ node-exporter series only the compose stack scrapes:
 
 | Group | Alerts |
 |-------|--------|
-| `restmail-alerts` | `QueueBacklogHigh`, `QueueErrorRateHigh`, `QueueWorkerStalled`, `QueueOldestMessageOld`, `CertificateExpiringSoon`, `DomainCertificateMissing`, `AuthFailureRateHigh`, `HTTPErrorRateHigh`, `APIResponseTimeSlow`, `DatabaseConnectionErrors`, `DatabasePoolSaturated`, `PipelineFilterErrorRateHigh`, `SMTPConnectionsStopped`, `IMAPConnectionsStopped`, `DNSBLSendingIPListed`, `DNSBLProviderNotAnswering`, `DNSBLAnswerStale` |
+| `restmail-alerts` | `QueueBacklogHigh`, `QueueErrorRateHigh`, `QueueWorkerStalled`, `QueueOldestMessageOld`, `CertificateExpiringSoon`, `TLSCertificateFileExpiringSoon`, `DomainCertificateMissing`, `AuthFailureRateHigh`, `HTTPErrorRateHigh`, `APIResponseTimeSlow`, `DatabaseConnectionErrors`, `DatabasePoolSaturated`, `PipelineFilterErrorRateHigh`, `SMTPConnectionsStopped`, `IMAPConnectionsStopped`, `DNSBLSendingIPListed`, `DNSBLProviderNotAnswering`, `DNSBLAnswerStale` |
 | `restmail-disk-pvc` | `PVCSpaceLow`, `PVCSpaceCritical` (kubelet volume stats; Prometheus must scrape kubelet) |
 | `restmail-dkim` | `DKIMKeyOverdue`, `DKIMPublicationStuck` |
 

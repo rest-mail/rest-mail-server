@@ -5,17 +5,93 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/rest-mail/rest-mail-server/internal/metrics"
+	"github.com/rest-mail/rest-mail-server/internal/mtls/mtlstest"
 	"github.com/rest-mail/rest-mail-server/internal/netallow"
+	"github.com/rest-mail/rest-mail-server/internal/tlsfiles"
 )
 
 // loopbackCIDRs is the allowlist used by the real-listener tests, which scrape
 // over 127.0.0.1.
 var loopbackCIDRs = []string{"127.0.0.0/8", "::1/128"}
+
+// scrapeFileCertExpiry reads the file certificate expiry from the gateway's
+// /metrics handler, as Prometheus would.
+func scrapeFileCertExpiry(t *testing.T, url string) int64 {
+	t.Helper()
+	resp, err := http.Get(url)
+	if err != nil {
+		t.Fatalf("GET metrics: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read body: %v", err)
+	}
+	for _, line := range strings.Split(string(body), "\n") {
+		if value, ok := strings.CutPrefix(line, "restmail_tls_cert_expiry_timestamp_seconds "); ok {
+			parsed, err := strconv.ParseFloat(value, 64)
+			if err != nil {
+				t.Fatalf("parse %q: %v", line, err)
+			}
+			return int64(parsed)
+		}
+	}
+	t.Fatalf("no restmail_tls_cert_expiry_timestamp_seconds in /metrics:\n%s", body)
+	return 0
+}
+
+// TestHandlerReportsFileCertificateExpiry: a pair an external certificate
+// manager publishes as files shows its expiry on the gateway's /metrics, and a
+// renewal shows there with no restart and no TLS connection. This is the only
+// test in this package that loads a pair, so it is the soonest in the process.
+func TestHandlerReportsFileCertificateExpiry(t *testing.T) {
+	dir := t.TempDir()
+	certPath, keyPath := filepath.Join(dir, "tls.crt"), filepath.Join(dir, "tls.key")
+	publish := func(notAfter time.Time) {
+		t.Helper()
+		ca, err := mtlstest.NewCA("metrics test CA")
+		if err != nil {
+			t.Fatal(err)
+		}
+		certPEM, keyPEM, err := ca.IssueServer("mail.test", []string{"mail.test"}, nil, time.Now().Add(-time.Hour), notAfter)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for path, data := range map[string][]byte{keyPath: keyPEM, certPath: certPEM} {
+			if err := os.WriteFile(path+".new", data, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Rename(path+".new", path); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+
+	first := time.Now().Add(10 * 24 * time.Hour).Truncate(time.Second)
+	publish(first)
+	if _, err := tlsfiles.New(certPath, keyPath, 0); err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(Handler())
+	defer srv.Close()
+	if got := scrapeFileCertExpiry(t, srv.URL); got != first.Unix() {
+		t.Fatalf("/metrics reports expiry %d, want %d", got, first.Unix())
+	}
+
+	renewed := first.Add(80 * 24 * time.Hour)
+	publish(renewed)
+	if got := scrapeFileCertExpiry(t, srv.URL); got != renewed.Unix() {
+		t.Fatalf("/metrics reports expiry %d after the renewal, want %d", got, renewed.Unix())
+	}
+}
 
 // TestHandlerServesGatewaySeries verifies the gateway /metrics handler serves
 // the process's default registry and that the gateway-side series are present

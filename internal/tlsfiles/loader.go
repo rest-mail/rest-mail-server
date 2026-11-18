@@ -3,6 +3,7 @@ package tlsfiles
 
 import (
 	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"log/slog"
 	"os"
@@ -19,19 +20,25 @@ type Loader struct {
 	certPath, keyPath string
 	mu                sync.Mutex
 	cert              *tls.Certificate
+	notAfter          time.Time
 	certInfo, keyInfo os.FileInfo
 	interval          time.Duration
 	nextCheck         time.Time
 	now               func() time.Time
 	loadErr           error
 	warned            bool
+	expiry            *expiryCollector
 }
 
 // New loads the initial pair. A listener must reject an initial load error.
 // The loader is non-nil even on error so lazy SNI lookups can retry later.
 // A zero interval checks on every call; serving processes use CheckInterval.
 func New(certPath, keyPath string, interval time.Duration) (*Loader, error) {
-	l := &Loader{certPath: certPath, keyPath: keyPath, interval: interval, now: time.Now}
+	return newLoader(certPath, keyPath, interval, servedExpiry)
+}
+
+func newLoader(certPath, keyPath string, interval time.Duration, expiry *expiryCollector) (*Loader, error) {
+	l := &Loader{certPath: certPath, keyPath: keyPath, interval: interval, now: time.Now, expiry: expiry}
 	_, err := l.load()
 	return l, err
 }
@@ -76,6 +83,24 @@ func (l *Loader) load() (*tls.Certificate, error) {
 	return l.cert, l.loadErr
 }
 
+// checkedExpiry returns the expiry of the pair a new handshake would get. It
+// checks the files first, under the same interval as handshakes, because a
+// listener without traffic would otherwise report a certificate that has already
+// been renewed on disk. A failed check changes nothing here: the pair keeps
+// serving, and the next handshake's check logs and counts the failure.
+// Only tracked loaders are called, and those hold a pair.
+func (l *Loader) checkedExpiry() time.Time {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if now := l.now(); !now.Before(l.nextCheck) {
+		l.nextCheck = now.Add(l.interval)
+		if l.reload() == nil {
+			l.loadErr = nil
+		}
+	}
+	return l.notAfter
+}
+
 // reload runs under mu. Failed reads never update the cached pair or metadata.
 func (l *Loader) reload() error {
 	certInfo, err := os.Stat(l.certPath)
@@ -100,7 +125,14 @@ func (l *Loader) reload() error {
 	if certErr != nil || keyErr != nil || !sameFileVersion(certInfo, newCertInfo) || !sameFileVersion(keyInfo, newKeyInfo) {
 		return fmt.Errorf("TLS certificate or key changed during reload")
 	}
-	l.cert, l.certInfo, l.keyInfo = &cert, newCertInfo, newKeyInfo
+	leaf, err := x509.ParseCertificate(cert.Certificate[0])
+	if err != nil {
+		return fmt.Errorf("parse TLS certificate: %w", err)
+	}
+	if l.cert == nil {
+		l.expiry.track(l)
+	}
+	l.cert, l.notAfter, l.certInfo, l.keyInfo = &cert, leaf.NotAfter, newCertInfo, newKeyInfo
 	l.recovered()
 	slog.Info("tls: reloaded certificate", "cert", l.certPath)
 	return nil

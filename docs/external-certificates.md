@@ -80,11 +80,21 @@ path returned by `command -v certbot`). Do not run competing renewal schedulers.
 The deploy-hook directory publishes successfully renewed certificates.
 
 Monitor the renewal job's exit status and `/var/log/letsencrypt/letsencrypt.log`.
-Alert on failed renewals, failed publication hooks, and the expiration date of the
-certificate actually served by every gateway. A hook failure can leave the old
-serving pair in place even when issuance succeeded; renewal success alone does
-not establish that a gateway has the new certificate. See Certbot's
+Alert on failed renewals and failed publication hooks. A hook failure can leave
+the old serving pair in place even when issuance succeeded; renewal success alone
+does not establish that a gateway has the new certificate. See Certbot's
 [renewal and hook behavior](https://eff-certbot.readthedocs.io/en/stable/using.html#renewing-certificates).
+
+Each gateway also reports the expiry of what it holds, so a renewal that never
+arrived is visible from REST Mail's side.
+`restmail_tls_cert_expiry_timestamp_seconds` on `/metrics` is the Unix time the
+soonest-expiring certificate that process loaded from files expires. The
+`TLSCertificateFileExpiringSoon` alert fires when that is less than 14 days away
+for an hour. Certbot normally renews 30 days before expiry, so the alert means
+about two weeks of renewals did not reach the gateway. A certificate issued for
+less than 14 days keeps this alert firing, so such an install needs its own rule.
+`restmail_cert_expiry_days` and `CertificateExpiringSoon` read certificates stored
+in the database and do not cover these files.
 
 ## File reload contract
 
@@ -106,6 +116,11 @@ not establish that a gateway has the new certificate. See Certbot's
   of pairs still serving their previous files because the current files do not
   load; alert while it is above zero. Both update only when a new handshake
   triggers a check, so a listener without traffic reports its last check.
+- `restmail_tls_cert_expiry_timestamp_seconds` covers every pair the process has
+  loaded through this contract, internal mTLS identities included. A scrape checks
+  the files too, under the same five-second limit, so a renewal shows without
+  traffic. While a replacement does not load, the series keeps the expiry of the
+  previous pair, the one still being served. It is absent until a pair has loaded.
 - Existing TLS connections keep their negotiated identity. Resumed TLS sessions
   may reuse their original authentication; verify with a fresh client/session.
 - The API's `INTERNAL_MTLS_SERVER_CERT` / `INTERNAL_MTLS_SERVER_KEY` pair and

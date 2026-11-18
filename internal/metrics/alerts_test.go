@@ -10,14 +10,24 @@ import (
 	"go.yaml.in/yaml/v2"
 )
 
-// definedMetricNames is every restmail_* metric name this package defines,
-// read from its source: the Name of each metric and of each scrape-time Desc.
+// definedMetricNames is every restmail_* metric name this package and
+// internal/tlsfiles define, read from their source: the Name of each metric and
+// of each scrape-time Desc. The TLS file metrics live in internal/tlsfiles
+// because this package's configuration import loads TLS files through it.
 func definedMetricNames(t *testing.T) map[string]bool {
 	t.Helper()
 	files, err := filepath.Glob("*.go")
 	if err != nil {
 		t.Fatal(err)
 	}
+	tlsFiles, err := filepath.Glob("../tlsfiles/*.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tlsFiles) == 0 {
+		t.Fatal("no source files found in ../tlsfiles")
+	}
+	files = append(files, tlsFiles...)
 	name := regexp.MustCompile(`"(restmail_[a-z0-9_]+)"`)
 	names := map[string]bool{}
 	for _, f := range files {
@@ -103,8 +113,9 @@ func exprMetrics(expr string) []string {
 }
 
 // TestAlertRules_ReadExistingMetrics: every metric an alert in
-// helm/restmail/files/alerting-rules.yml reads is one internal/metrics defines (a
-// histogram's _bucket, _sum and _count series included) or one listed in
+// helm/restmail/files/alerting-rules.yml reads is one internal/metrics or
+// internal/tlsfiles defines (a histogram's _bucket, _sum and _count series
+// included) or one listed in
 // externalMetrics, so no alert waits on a series that never exists. The
 // alerts #1579 added are checked by name, and each reads the metric it was
 // written for.
@@ -127,7 +138,7 @@ func TestAlertRules_ReadExistingMetrics(t *testing.T) {
 				}
 			}
 			if !defined[base] {
-				t.Errorf("%s reads %s, which internal/metrics does not define and externalMetrics does not list", alert, m)
+				t.Errorf("%s reads %s, which neither internal/metrics nor internal/tlsfiles defines and externalMetrics does not list", alert, m)
 			}
 		}
 	}
@@ -142,10 +153,12 @@ func TestAlertRules_ReadExistingMetrics(t *testing.T) {
 		"DKIMKeyOverdue":              "restmail_dkim_key_age_seconds",
 		"DKIMPublicationStuck":        "restmail_dkim_rotation_step_started_seconds",
 		"CertificateExpiringSoon":     "restmail_cert_expiry_days < 14",
-		"DiskSpaceLow":                "node_filesystem_avail_bytes",
-		"DiskSpaceCritical":           "node_filesystem_avail_bytes",
-		"PVCSpaceLow":                 "kubelet_volume_stats_available_bytes",
-		"PVCSpaceCritical":            "kubelet_volume_stats_available_bytes",
+		// The same 14 days as CertificateExpiringSoon, for certificates held as files.
+		"TLSCertificateFileExpiringSoon": "restmail_tls_cert_expiry_timestamp_seconds - time() < 14 * 86400",
+		"DiskSpaceLow":                   "node_filesystem_avail_bytes",
+		"DiskSpaceCritical":              "node_filesystem_avail_bytes",
+		"PVCSpaceLow":                    "kubelet_volume_stats_available_bytes",
+		"PVCSpaceCritical":               "kubelet_volume_stats_available_bytes",
 	} {
 		expr, ok := rules[alert]
 		if !ok {

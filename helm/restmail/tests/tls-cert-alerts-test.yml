@@ -1,0 +1,48 @@
+# Time starts at 0 here, so a series' value is also the seconds left at 0h.
+# 1123200 is 13 days and 2592000 is 30 days; 14 days is the alert's limit.
+rule_files:
+  - alert-rules.yml
+evaluation_interval: 1h
+tests:
+  - interval: 1h
+    input_series:
+      # Its renewals never arrive.
+      - series: 'restmail_tls_cert_expiry_timestamp_seconds{job="restmail-smtp",instance="stuck"}'
+        values: '1123200+0x4'
+      # A renewal reaches it at 2h.
+      - series: 'restmail_tls_cert_expiry_timestamp_seconds{job="restmail-imap",instance="renewed"}'
+        values: '1123200 1123200 8000000 8000000 8000000'
+      - series: 'restmail_tls_cert_expiry_timestamp_seconds{job="restmail-pop3",instance="healthy"}'
+        values: '2592000+0x4'
+    alert_rule_test:
+      # Under the limit, but not yet for the hour the alert waits.
+      - eval_time: 0h
+        alertname: TLSCertificateFileExpiringSoon
+        exp_alerts: []
+      - eval_time: 1h
+        alertname: TLSCertificateFileExpiringSoon
+        exp_alerts:
+          - exp_labels:
+              job: restmail-smtp
+              instance: stuck
+              severity: critical
+            exp_annotations:
+              summary: A TLS certificate file on stuck expires in 12d 23h 0m 0s
+              description: &description "The soonest-expiring certificate this process loaded from files expires in less than 14 days (negative: already expired), so no usable renewal has reached it. Check the certificate manager's renewal job and restmail_tls_cert_reload_failing."
+          - exp_labels:
+              job: restmail-imap
+              instance: renewed
+              severity: critical
+            exp_annotations:
+              summary: A TLS certificate file on renewed expires in 12d 23h 0m 0s
+              description: *description
+      - eval_time: 2h
+        alertname: TLSCertificateFileExpiringSoon
+        exp_alerts:
+          - exp_labels:
+              job: restmail-smtp
+              instance: stuck
+              severity: critical
+            exp_annotations:
+              summary: A TLS certificate file on stuck expires in 12d 22h 0m 0s
+              description: *description
