@@ -43,8 +43,18 @@ def context(event="pull_request", action="opened", base="main", changes=None, la
     }
 
 
+class JSONObject(dict):
+    """An object from fromJSON: as in a workflow, a key it lacks reads as empty."""
+
+    def __missing__(self, key):
+        return ""
+
+
 def evaluate(expression, values):
-    """Evaluate the workflows' boolean/string subset, including absent webhook fields."""
+    """Evaluate the workflows' boolean/string subset, including absent webhook fields.
+
+    `values["cancelled"]` says whether the run has been cancelled.
+    """
     expression = expression.removeprefix("${{").removesuffix("}}").strip()
 
     def lookup(match):
@@ -55,10 +65,12 @@ def evaluate(expression, values):
 
     expression = re.sub(r"\b(?:github|needs|inputs)(?:\.[\w-]+)+", lookup, expression)
     expression = expression.replace("&&", " and ").replace("||", " or ")
+    expression = re.sub(r"!(?!=)", " not ", expression)
     return eval(expression, {"__builtins__": {}}, {
         "always": lambda: True,
+        "cancelled": lambda: values.get("cancelled", False),
         "contains": lambda items, item: item in items,
-        "fromJSON": json.loads,
+        "fromJSON": lambda text: json.loads(text, object_hook=JSONObject),
         "format": lambda template, *args: template.format(*args),
     })
 
