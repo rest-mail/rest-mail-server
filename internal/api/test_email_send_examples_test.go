@@ -133,8 +133,12 @@ func testEmailSendNormalized(t *testing.T, s bulkQueueExampleScenario) bulkQueue
 						t.Error("default body lost actual request timestamp")
 					}
 				}
-				if fields["size_bytes"] != int64(len(storedBody)) {
-					t.Error("test message size is not its UTF-8 byte count")
+				source, ok := fields["raw_message"].(string)
+				if !ok || source == "" {
+					t.Fatal("test message stored no raw source")
+				}
+				if fields["size_bytes"] != int64(len(source)) || fields["raw_size"] != int64(len(source)) {
+					t.Error("test message size is not its stored source's octet count")
 				}
 				received, ok := fields["received_at"].(time.Time)
 				if !ok || received.Before(start) || received.After(end) {

@@ -104,3 +104,58 @@ func TestMessage_BeforeCreate_MeasuresDowngradedSize(t *testing.T) {
 		t.Fatalf("message without raw: downgraded_size = %d, err %v", none.DowngradedSize, err)
 	}
 }
+
+// TestMessage_BeforeCreate_MeasuresPOP3Sizes proves a stored raw gets the octet counts RETR
+// sends with and without UTF-8, whatever its line endings, and that neither the stored raw
+// nor raw_size follows them.
+func TestMessage_BeforeCreate_MeasuresPOP3Sizes(t *testing.T) {
+	for _, raw := range []string{
+		"Subject: hi\r\n\r\nbody\r\n",
+		"Subject: hi\n\nbody\n",
+		"Subject: hi\r\n\r\nbody",
+		"Subject: Grüße\n\nbody",
+	} {
+		for _, stored := range []Message{{RawMessage: raw, RawSize: len(raw)}, {RawOctets: []byte(raw), RawSize: len(raw)}} {
+			m := stored
+			if err := m.BeforeCreate(nil); err != nil {
+				t.Fatal(err)
+			}
+			if m.DowngradedSize != rmail.DowngradedSize(raw) || m.POP3UTF8Size != rmail.POP3WireSize(raw) {
+				t.Fatalf("downgraded_size = %d, pop3_utf8_size = %d for %q", m.DowngradedSize, m.POP3UTF8Size, raw)
+			}
+			if string(m.Source()) != raw || m.RawSize != len(raw) {
+				t.Fatalf("stored raw changed: %q, raw_size %d", m.Source(), m.RawSize)
+			}
+		}
+	}
+	none := Message{}
+	if err := none.BeforeCreate(nil); err != nil || none.POP3UTF8Size != 0 {
+		t.Fatalf("message without raw: pop3_utf8_size = %d, err %v", none.POP3UTF8Size, err)
+	}
+}
+
+// TestMessage_BeforeCreate_MeasuresIMAPSizes proves every stored raw gets the
+// octet counts IMAP FETCH sends, and the stored raw itself does not change.
+func TestMessage_BeforeCreate_MeasuresIMAPSizes(t *testing.T) {
+	const ascii = "Subject: plain\r\n\r\nHello.\r\n"
+	const binary = "Subject: Gr\xc3\xbc\xc3\x9fe\r\nContent-Type: image/png\r\nContent-Transfer-Encoding: binary\r\n\r\n\xff\xfe\r\n"
+	for _, raw := range []string{ascii, binary} {
+		m := Message{RawMessage: raw, RawSize: len(raw)}
+		if err := m.BeforeCreate(nil); err != nil {
+			t.Fatal(err)
+		}
+		if m.IMAPSize != rmail.IMAPWireSize(raw, false) || m.IMAPUTF8Size != rmail.IMAPWireSize(raw, true) {
+			t.Fatalf("imap_size = %d, imap_utf8_size = %d for %q", m.IMAPSize, m.IMAPUTF8Size, raw)
+		}
+		if m.RawMessage != raw {
+			t.Fatalf("stored raw changed: %q", m.RawMessage)
+		}
+	}
+	m := Message{RawMessage: ascii, RawSize: len(ascii)}
+	if err := m.BeforeCreate(nil); err != nil {
+		t.Fatal(err)
+	}
+	if m.IMAPSize != len(ascii) || m.IMAPUTF8Size != len(ascii) {
+		t.Fatalf("a 7-bit message measured %d and %d, want %d", m.IMAPSize, m.IMAPUTF8Size, len(ascii))
+	}
+}

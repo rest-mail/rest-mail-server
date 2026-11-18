@@ -90,6 +90,49 @@ found by the RFC 3501 inventory in rest-mail/rest-mail-server#374.
     LIST no longer echo an unknown item, which a literal could fill with CR, LF
     and 8-bit octets, and STORE gives the fixed text UID STORE already did. The
     host's error goes to the log.
+- ENVELOPE addresses, in top-level and encapsulated envelopes alike:
+  - A source route is kept, because addr-adl "Holds route from [RFC-2822]
+    route-addr if non-NIL" (RFC 3501 §9). `net/mail` refuses a route, which made
+    the whole header NIL, so the route is taken out before `net/mail` reads the
+    list and put back by address. Worth sending upstream. It goes no further than
+    routes: other legal obsolete forms that `net/mail` refuses are
+    rest-mail/rest-mail-server#1862.
+  - A local part ends at the last `@`, because addr-mailbox holds the "local-part
+    after removing [RFC-2822] quoting" (§9). `net/mail` removes that quoting, so
+    `"a@b"@example.com` reaches the engine as `a@b@example.com`, which it used to
+    split at the first `@`. Worth sending upstream.
+
+## Search zone
+
+`SearchZoneMailbox` is an optional interface for rest-mail/rest-mail-server#1557.
+RFC 3501 §6.4.4 compares the internal date "disregarding time and timezone", and
+IMAP gives a client no way to say which zone its dates are in, so the store's
+stored instants need a zone to have a calendar day at all. REST Mail stores them
+in UTC and names the account's own zone here. A mailbox without the interface
+keeps upstream behaviour.
+
+- FETCH converts a message as it is sent, for rest-mail/rest-mail-server#1861,
+  because headers "MUST be 7-bit" and "non-textual data such as binary data MUST
+  be transfer encoded" (RFC 3501 §7.4.2). The octets `Mailbox.Fetch` returns are
+  never changed, and BINARY and SEARCH still read them; `RFC822`, `BODY[...]`,
+  partial offsets and `BODYSTRUCTURE` use the converted form, and a host reports
+  its length as `Message.Size`, measured with `wireform.Convert`. Only what breaks
+  the rule is rewritten, so a message already 7-bit goes out byte for byte and a
+  signature over it still verifies from FETCH output. A converted message's
+  signature fails if a client re-verifies it from FETCH output, and still verifies
+  over the store. These are implementation defaults, not owner decisions:
+  - Valid UTF-8 header text becomes RFC 2047 encoded words in charset `UTF-8`;
+    any other 8-bit text uses `UNKNOWN-8BIT`, so no charset is guessed.
+    Content-Type and Content-Disposition parameters become RFC 2231 extended
+    values instead, because an encoded word may not stand in a parameter.
+  - 8-bit text stays when its section names a charset. Text naming none goes out
+    QUOTED-PRINTABLE, and non-textual data BASE64. A body already declared base64
+    or quoted-printable keeps that encoding, so nothing is encoded twice.
+  - After `ENABLE UTF8=ACCEPT`, valid UTF-8 stays in headers and in text naming no
+    charset, whose default there is UTF-8 (RFC 6532 §3).
+  - ENVELOPE reads the unconverted header, as before, because an address with an
+    8-bit mailbox has no 7-bit form. It and BODYSTRUCTURE still send a string
+    decoded from an encoded word or RFC 2231 value as a literal.
 
 ## RFC 9051 additions
 
@@ -141,6 +184,21 @@ so it is corrected.
   `imap.RightsMailbox` interface reports them; a Mailbox without it keeps every
   right, so existing hosts see no change. DELETE of a \Noselect level with
   inferiors answers `NO [HASCHILDREN]` (§6.3.5) for every host.
+- Mailbox name normalization (RFC 9051 §§5.1, 6.3.9.7, go-imap#178,
+  rest-mail/rest-mail-server#1669). Upstream keeps every name as the client
+  spelled it and never sends `OLDNAME`, though §5.1 asks for Net-Unicode, whose
+  form is NFC. This module stays free of dependencies, so the optional
+  `imap.NameNormalizer` interface lets the store supply the form, and the gateway
+  gives it the same NFC the API saves names in. Every name a command carries goes
+  through it, a LIST pattern included, so a client's other spelling reaches the
+  same folder. SELECT, EXAMINE, CREATE, DELETE, RENAME and APPEND send the untagged
+  LIST with `OLDNAME` when a name changed, and only then. That includes an
+  IMAP4rev1 session: RFC 3501 §7 has a client accept any response at any time, and
+  it is drawn only by a client that sent a name in another form. STATUS, COPY, MOVE,
+  SUBSCRIBE and GETQUOTAROOT convert the name without reporting it, because §6.3.9.7
+  does not list them. INBOX in another case is folded as before and not reported;
+  the `select inbox` example in RFC 9051 Appendix B waits on ENABLE IMAP4rev2. A
+  Mailbox without the interface keeps every name as spelled.
 - Folder management (RFC 9051 §§6.3.4-6.3.6, go-imap#160). Upstream's
   folders are implicit, so CREATE answers OK without creating anything and the
   new folder vanishes from the next LIST, though "the server MUST NOT return
@@ -211,3 +269,7 @@ fields and one call after authentication.
   record of expunged UIDs and turns on QRESYNC: ENABLE QRESYNC, SELECT/EXAMINE
   (QRESYNC ...), UID FETCH (CHANGEDSINCE n VANISHED), and VANISHED in place of
   EXPUNGE once enabled. A Mailbox without them advertises neither.
+
+## Consolidated protocol parameter fixes
+
+`parseMediaType` preserves repeated names, discontinuous RFC 2231 values, and non-continuation stars from source PR #1903 (`bb89fac36672623ff761b91e1f86fd950ce54bf3`). The shared parameter scanner is carried from #2111 as a prerequisite; this branch does not import its ENVELOPE or session-aware BODYSTRUCTURE conversion. Parameter tests retain the current counted-literal transport policy while checking the preserved values.

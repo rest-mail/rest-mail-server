@@ -42,7 +42,7 @@ func TestServer_UnsolicitedFetchIncludesUID(t *testing.T) {
 				if lines, status := writer.command("w3", `UID STORE 41 +FLAGS.SILENT (\Deleted)`); len(lines) != 0 || !strings.HasPrefix(status, "w3 OK ") {
 					t.Fatalf("writer STORE: %q, %q", lines, status)
 				}
-				const want = `* 2 FETCH (UID 41 FLAGS (\Deleted))`
+				const want = `* 2 FETCH (UID 41 FLAGS (\Deleted \Recent))`
 				if command == "IDLE" {
 					if got := observer.readLine(); got != want {
 						t.Fatalf("IDLE update = %q, want %q", got, want)

@@ -6,8 +6,10 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/rest-mail/go-imap/pkg/imap/wireform"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/rawmsg"
+	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
 )
 
 // TestFetch_DowngradesUTF8Headers proves FETCH hands a client that has not
@@ -45,7 +47,8 @@ func TestFetch_DowngradesUTF8Headers(t *testing.T) {
 func TestMessages_SizeCountsDowngradedOctets(t *testing.T) {
 	const raw = "From: Jörg <joerg@bücher.example>\r\nSubject: Grüße\r\n\r\nHallo, Jörg.\r\n"
 	downgraded := rawmsg.Downgrade(raw)
-	list := fmt.Sprintf(`{"data":[{"id":7,"raw_size":%d,"downgraded_size":%d}]}`, len(raw), len(downgraded))
+	list := fmt.Sprintf(`{"data":[{"id":7,"raw_size":%d,"downgraded_size":%d,"imap_size":%d,"imap_utf8_size":%d}]}`,
+		len(raw), len(downgraded), rmail.IMAPWireSize(raw, false), rmail.IMAPWireSize(raw, true))
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/accounts/0/folders/INBOX/messages", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -72,8 +75,9 @@ func TestMessages_SizeCountsDowngradedOctets(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Fetch (utf8=%v): %v", utf8, err)
 		}
-		if len(msgs) != 1 || msgs[0].Size != len(got) {
-			t.Fatalf("utf8=%v: RFC822.SIZE %v, FETCH sends %d octets", utf8, msgs, len(got))
+		sent := wireform.Convert(string(got), utf8)
+		if len(msgs) != 1 || msgs[0].Size != len(sent) {
+			t.Fatalf("utf8=%v: RFC822.SIZE %v, FETCH sends %d octets", utf8, msgs, len(sent))
 		}
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 )
@@ -82,5 +83,21 @@ func TestRenderDigestStripsPlaintextNewlines(t *testing.T) {
 	// The sanitized subject stays on a single "Subject:" line.
 	if !strings.Contains(bodyText, "   Subject: real subject  2. From: forged@evil.test     Subject: FORGED ENTRY\n") {
 		t.Errorf("plain-text subject was not collapsed onto one line:\n%s", bodyText)
+	}
+}
+
+// A preview longer than the digest shows is cut at a character: half of one is not text, and a
+// text column refuses it, which would lose the whole digest.
+func TestRenderDigestCutsPreviewAtACharacter(t *testing.T) {
+	received := time.Date(2026, 7, 24, 10, 30, 0, 0, time.UTC)
+	items := []models.Quarantine{{Sender: "a@example.test", Subject: "s", BodyPreview: strings.Repeat("a", 99) + "ü rest", ReceivedAt: received}}
+
+	bodyText, _ := renderDigest("owner@example.com", received, items)
+
+	if !utf8.ValidString(bodyText) {
+		t.Errorf("the digest is not valid text: %q", bodyText)
+	}
+	if want := "Preview: " + strings.Repeat("a", 99) + "...\n"; !strings.Contains(bodyText, want) {
+		t.Errorf("the digest lacks %q:\n%s", want, bodyText)
 	}
 }

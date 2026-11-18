@@ -63,7 +63,7 @@ func requireLine(t *testing.T, lines []string, want string) {
 // and UID metadata from RFC 3501 §§6.3.1/6.3.2. FLAGS/PERMANENTFLAGS are allowed
 // to vary by backend; the test checks this engine's advertised flag lists.
 //
-// checklist: IMAP-SELECT-01 IMAP-SELECT-02 IMAP-SELECT-03 IMAP-SELECT-04 IMAP-SELECT-05 IMAP-EXAMINE-01 IMAP-SELECT-13 IMAP-RESP-08
+// checklist: IMAP-SELECT-01 IMAP-SELECT-02 IMAP-SELECT-03 IMAP-SELECT-04 IMAP-SELECT-05 IMAP-SELECT-08 IMAP-EXAMINE-01 IMAP-SELECT-13 IMAP-RESP-08 IMAP-RESP-15
 // checklist: IMAP2-CMD-75 IMAP2-CMD-78
 func TestSelectionExamples(t *testing.T) {
 	for _, tc := range []struct {
@@ -78,14 +78,14 @@ func TestSelectionExamples(t *testing.T) {
 			for i := range messages {
 				messages[i] = imap.Message{UID: uint32(4000 + i), Seen: true}
 			}
-			// The current engine approximates Recent as unseen. Arrange the fixture
-			// to match the RFC count without claiming independent Recent semantics.
 			messages[tc.unseen-1].Seen = false
-			if tc.recent == 2 {
-				messages[tc.unseen].Seen = false
-			}
 			messages[len(messages)-1].UID = 4391
-			box := &exampleMailbox{&selectionMailbox{folders: map[string][]imap.Message{tc.folder: messages}}}
+			// The newest tc.recent messages arrived after the last read-write
+			// selection, so they are the \Recent ones (RFC 3501 §2.3.2).
+			store := newRecentStore()
+			store.mark[tc.folder] = messages[len(messages)-1-tc.recent].UID
+			before := store.mark[tc.folder]
+			box := &recentExampleMailbox{&exampleMailbox{&selectionMailbox{folders: map[string][]imap.Message{tc.folder: messages}}}, store}
 			c := selectionClient(t, box)
 			lines, tagged := c.command(tc.tag, "%s %s", tc.command, tc.folder)
 			if !strings.HasPrefix(tagged, tc.tag+" OK ["+tc.mode+"] ") {
@@ -108,8 +108,31 @@ func TestSelectionExamples(t *testing.T) {
 			if box.stores+box.deletes+box.moves != 0 {
 				t.Fatal("selection changed permanent state")
 			}
+			// SELECT claims the recent messages; EXAMINE leaves them.
+			want := before
+			if tc.command == "SELECT" {
+				want = 4391
+			}
+			if got := store.markOf(tc.folder); got != want {
+				t.Fatalf("recent mark after %s = %d, want %d", tc.command, got, want)
+			}
 		})
 	}
+}
+
+// recentExampleMailbox is an exampleMailbox whose \Recent state lives in a
+// recentStore.
+type recentExampleMailbox struct {
+	*exampleMailbox
+	store *recentStore
+}
+
+func (m *recentExampleMailbox) RecentMark(folder string) (uint32, error) {
+	return m.store.RecentMark(folder)
+}
+
+func (m *recentExampleMailbox) ClaimRecent(folder string, upTo uint32) (uint32, error) {
+	return m.store.ClaimRecent(folder, upTo)
 }
 
 // TestSelectionUnseen distinguishes a sequence number from an unread count,
