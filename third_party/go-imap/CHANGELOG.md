@@ -115,6 +115,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- `wireform.SpaceWordNUL` no longer builds a new word, or decodes base64 into a new
+  buffer, for each word that spells no NUL. What it answers doesn't change.
+- `wireform.ReadContentType` and `wireform.ReadDisposition` read a kept parameter's long
+  quoted value themselves when nothing in it is escaped, where `mime.ParseMediaType`
+  builds one an octet at a time, at about five times its length. What it reads as doesn't
+  change, and it may now be a view of the field, as their other answers may.
+- A list of encoded words in a charset nothing here reads no longer costs a 32 KiB
+  copy buffer for each word when ENVELOPE is built, which came to more than 500 MiB
+  for 1 MiB of them. What's sent doesn't change: the word stays as it was written.
 - A client address the Limiter has banned can no longer sign in: it is refused
   in the greeting with `* BYE`, and LOGIN or AUTHENTICATE in a session opened
   before the ban get `* BYE` and `NO [UNAVAILABLE]` without calling the
@@ -1372,3 +1381,12 @@ changes — this is a drop-in patch release.
 
 - Initial IMAP4rev1 server engine (RFC 3501) built on a neutral `Backend` seam,
   standard library only, with no external dependencies.
+
+## Shared field reader (#2107, source #1920 / #1971)
+
+The MIME parser shares go-imap’s kept-parameter reader. Long unescaped quoted
+values remain views; encoded words without NUL avoid per-word copies; unknown
+charsets do not allocate a 32 KiB copy buffer per word. Encoded NUL in display
+strings becomes a space, while boundaries, addr-specs, identifiers and stored
+octets retain their spelling. `TestFetchSpacesNULInEncodedWord` and field-scratch
+tests retain the corresponding semantic and allocation controls.

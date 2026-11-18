@@ -216,7 +216,7 @@ func newForwardFixture(t *testing.T, mode string) *forwardFixture {
 	}
 	store := attachmentstore.NewS3(cfg.Attachments)
 	parts := []pipeline.Attachment{{Filename: "invoice.bin", ContentType: "application/octet-stream", Disposition: "attachment", Content: base64.StdEncoding.EncodeToString([]byte("invoice\xff\x00")), Size: 9}, {Filename: "empty.txt", ContentType: "text/plain", Disposition: "attachment", Size: 0}, {Filename: "image.png", ContentType: "image/png", Disposition: "inline", ContentID: "original-image", Content: base64.StdEncoding.EncodeToString([]byte("image")), Size: 5}}
-	email := &pipeline.EmailJSON{Headers: pipeline.Headers{From: []pipeline.Address{{Address: "old@example.test"}}, Subject: "receipt", MessageID: "<original@example.test>"}, Body: pipeline.Body{ContentType: "text/html", Content: `<p>original<img src="cid:original-image"></p>`}, Attachments: parts[:2], Inline: parts[2:]}
+	email := &pipeline.EmailJSON{Headers: pipeline.Headers{From: pipeline.Addresses([]pipeline.Address{{Address: "old@example.test"}}...), Subject: "receipt", MessageID: "<original@example.test>"}, Body: pipeline.Body{ContentType: "text/html", Content: `<p>original<img src="cid:original-image"></p>`}, Attachments: parts[:2], Inline: parts[2:]}
 	raw, err := rmime.Serialize(email)
 	if err != nil {
 		t.Fatal(err)

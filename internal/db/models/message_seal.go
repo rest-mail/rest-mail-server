@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"strings"
+	"unsafe"
 
 	"github.com/rest-mail/rest-mail-server/internal/messageseal"
 )
@@ -24,6 +25,12 @@ func (message Message) SealDigest() (string, error) {
 	for _, field := range []JSONB{message.Headers, message.RecipientsTo, message.RecipientsCc} {
 		if len(field) == 0 {
 			field = JSONB("[]")
+		}
+		// Most rows are being stored and hold what encoding/json wrote, which is what this would
+		// write again. Nothing writes to the field while it's read.
+		if isCanonicalJSON(field) {
+			fields = append(fields, unsafe.String(unsafe.SliceData(field), len(field)))
+			continue
 		}
 		var value any
 		decoder := json.NewDecoder(bytes.NewReader(field))

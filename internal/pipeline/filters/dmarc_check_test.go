@@ -67,7 +67,7 @@ func onlyAt(rec string, domains ...string) func(string) string {
 // fromExampleTest is a message From example.test.
 func fromExampleTest() *pipeline.EmailJSON {
 	return &pipeline.EmailJSON{
-		Headers: pipeline.Headers{From: []pipeline.Address{{Address: "user@example.test"}}},
+		Headers: pipeline.Headers{From: pipeline.Addresses([]pipeline.Address{{Address: "user@example.test"}}...)},
 	}
 }
 

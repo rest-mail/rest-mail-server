@@ -794,3 +794,13 @@ func TestGenerateICS_FoldsLongLines(t *testing.T) {
 		}
 	}
 }
+
+func TestParseCalendarKeepsOnlyWhatCanBeStored(t *testing.T) {
+	events, err := ParseCalendar("BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:a\x00b\r\nSUMMARY:c\xffd\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n")
+	if err != nil || len(events) != 1 {
+		t.Fatalf("events %v (%v)", events, err)
+	}
+	if events[0].UID != "a\uFFFDb" || events[0].Summary != "c\uFFFDd" {
+		t.Fatalf("UID %q, summary %q", events[0].UID, events[0].Summary)
+	}
+}

@@ -43,8 +43,8 @@ func RenderGenerated(m Generated) (string, error) {
 	}
 	raw, err := Serialize(&pipeline.EmailJSON{
 		Headers: pipeline.Headers{
-			From:      []pipeline.Address{m.From},
-			To:        m.To,
+			From:      pipeline.Addresses(m.From),
+			To:        pipeline.Addresses(m.To...),
 			Subject:   m.Subject,
 			Date:      m.Date.Format(time.RFC1123Z),
 			MessageID: m.MessageID,

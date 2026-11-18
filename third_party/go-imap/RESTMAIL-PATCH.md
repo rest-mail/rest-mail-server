@@ -364,3 +364,12 @@ chose on rest-mail/rest-mail-server#1921 to send a space instead:
 `wireform.SpaceNUL` is the same rule for a host whose protocol has neither BINARY nor
 this conversion, so data stays exact there rather than encoded.
 `TestFetchRejectsNUL` became `TestFetchReplacesNUL`.
+
+## Shared field reader (#2107, source #1920 / #1971)
+
+The MIME parser shares go-imap’s kept-parameter reader. Long unescaped quoted
+values remain views; encoded words without NUL avoid per-word copies; unknown
+charsets do not allocate a 32 KiB copy buffer per word. Encoded NUL in display
+strings becomes a space, while boundaries, addr-specs, identifiers and stored
+octets retain their spelling. `TestFetchSpacesNULInEncodedWord` and field-scratch
+tests retain the corresponding semantic and allocation controls.

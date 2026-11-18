@@ -38,14 +38,14 @@ func TestParse_EncodedWordSubjectAndFrom(t *testing.T) {
 	if email.Headers.Subject != "Réunion café ☕" {
 		t.Errorf("Subject = %q, want %q", email.Headers.Subject, "Réunion café ☕")
 	}
-	if len(email.Headers.From) != 1 {
-		t.Fatalf("expected 1 From address, got %d", len(email.Headers.From))
+	if email.Headers.From.Len() != 1 {
+		t.Fatalf("expected 1 From address, got %d", email.Headers.From.Len())
 	}
-	if email.Headers.From[0].Name != "Édouard Léon" {
-		t.Errorf("From name = %q, want %q", email.Headers.From[0].Name, "Édouard Léon")
+	if email.Headers.From.All()[0].Name != "Édouard Léon" {
+		t.Errorf("From name = %q, want %q", email.Headers.From.All()[0].Name, "Édouard Léon")
 	}
-	if email.Headers.From[0].Address != "edouard@example.com" {
-		t.Errorf("From address = %q, want %q", email.Headers.From[0].Address, "edouard@example.com")
+	if email.Headers.From.All()[0].Address != "edouard@example.com" {
+		t.Errorf("From address = %q, want %q", email.Headers.From.All()[0].Address, "edouard@example.com")
 	}
 
 	// The Raw header map must keep the still-encoded value (DKIM/AR logic reads it).

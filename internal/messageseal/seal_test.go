@@ -46,3 +46,22 @@ func TestDigestDoesNotSealAPartialStream(t *testing.T) {
 		t.Fatalf("partial source sealed: %q, %v", got, err)
 	}
 }
+
+func TestDigestReusesItsFixedCopyBuffer(t *testing.T) {
+	for range 3 {
+		if _, err := Digest(strings.NewReader("source"), "field"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	for range 100 {
+		if _, err := Digest(strings.NewReader("source"), "field"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	runtime.ReadMemStats(&after)
+	if allocated := after.TotalAlloc - before.TotalAlloc; allocated > 100*4096 {
+		t.Fatalf("100 short digests allocated %d bytes, retaining a full buffer per call", allocated)
+	}
+}

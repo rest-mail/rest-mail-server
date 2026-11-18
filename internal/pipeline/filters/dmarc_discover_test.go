@@ -15,7 +15,7 @@ import (
 
 // fromAddress is a message From addr.
 func fromAddress(addr string) *pipeline.EmailJSON {
-	return &pipeline.EmailJSON{Headers: pipeline.Headers{From: []pipeline.Address{{Address: addr}}}}
+	return &pipeline.EmailJSON{Headers: pipeline.Headers{From: pipeline.Addresses([]pipeline.Address{{Address: addr}}...)}}
 }
 
 // A subdomain that publishes no record of its own gets its Organizational

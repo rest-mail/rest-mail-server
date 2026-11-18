@@ -31,7 +31,7 @@ func newInternalMTLSServer(t *testing.T) (*httptest.Server, *mtlstest.Paths) {
 		writeJSON(w, `{"data":{"exists":true,"mailbox_id":7,"address":"a@b.test"}}`)
 	})
 	mux.HandleFunc("/api/v1/messages/deliver", func(w http.ResponseWriter, _ *http.Request) {
-		writeJSON(w, `{"data":{"id":9,"mailbox_id":7,"subject":"hi"}}`)
+		writeJSON(w, `{"data":{"id":9,"message_id":"hi@x.test","folder":"INBOX"}}`)
 	})
 	ts := httptest.NewUnstartedServer(mux)
 	ts.TLS = serverCfg
@@ -78,7 +78,7 @@ func TestClient_TwoListeners_PerEndpointRouting(t *testing.T) {
 		writeJSON(w, `{"data":{"exists":true,"mailbox_id":7,"address":"a@b.test"}}`)
 	})
 	internal.HandleFunc("/api/v1/messages/deliver", func(w http.ResponseWriter, _ *http.Request) {
-		writeJSON(w, `{"data":{"id":9,"mailbox_id":7,"subject":"hi"}}`)
+		writeJSON(w, `{"data":{"id":9,"message_id":"hi@x.test","folder":"INBOX"}}`)
 	})
 	serverCfg, err := mtls.ServerTLSConfig(p.CACert, p.ServerCert, p.ServerKey)
 	if err != nil {
