@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"mime"
 	"net/http"
 	"net/mail"
 	"regexp"
@@ -67,7 +68,8 @@ func contactsOf(rows []models.Contact) []Contact {
 // contacts.
 type ContactsImported struct {
 	Imported int `json:"imported"`
-	// Skipped is how many entries named a contact the account already has.
+	// Skipped is how many entries named a contact the account already has, and how many
+	// cards of a vCard file gave no address to add.
 	Skipped int `json:"skipped"`
 }
 
@@ -114,7 +116,7 @@ func (h *ContactHandler) RegisterContacts(rs endpoint.Routes) {
 		Errors: []int{http.StatusForbidden, http.StatusNotFound}, Security: writes}, h.block)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/accounts/{id}/contacts/import",
 		OperationID: "importContacts", Summary: "Bulk import contacts", Tags: tags, DescribedRequest: importContactsRequest{},
-		Description: "As many contacts as fit the server's contact import limit, 10 MiB unless an administrator changes it. Every entry is checked first, and contacts the account already has are skipped.",
+		Description: "As many contacts as fit the server's contact import limit, 10 MiB unless an administrator changes it, as JSON or as a vCard file (text/vcard). Every entry is checked first, nothing is imported if one is refused, and contacts the account already has are skipped and left as they are. On a vCard file, each EMAIL is one contact named by the card's first FN; a card with no EMAIL is counted as skipped; other properties are ignored, except the X-RESTMAIL-TRUST-LEVEL, X-RESTMAIL-SOURCE, X-RESTMAIL-CREATED-AT and X-RESTMAIL-UPDATED-AT that REST Mail's own export writes, which are restored. A name or address in quoted-printable, base64 or a character set other than UTF-8 is refused.",
 		Errors:      []int{http.StatusForbidden, http.StatusNotFound}, Security: writes}, h.importContacts)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/accounts/{id}/contacts/suggest",
 		OperationID: "suggestContacts", Summary: "Autocomplete contacts by query", Tags: tags,
@@ -479,8 +481,9 @@ const (
 )
 
 type importContactsRequest struct {
-	ID   uint32             `path:"id" minimum:"1" example:"1"`
-	Body importContactsBody `body:""`
+	ID    uint32             `path:"id" minimum:"1" example:"1"`
+	Body  importContactsBody `body:""`
+	Cards string             `body:"text/vcard" description:"An address book as vCard 2.1, 3.0 or 4.0 (RFC 6350), in UTF-8. Each EMAIL on a card is one contact, named by the card's first FN."`
 }
 
 type importContactsBody struct {
@@ -525,16 +528,31 @@ func (h *ContactHandler) importContacts(r *http.Request, in contactsPath) (Conta
 	if r.Body != nil {
 		r.Body = http.MaxBytesReader(nil, r.Body, allowed)
 	}
-	file, done, err := endpoint.SpoolBody(r, "application/json")
+	if err := endpoint.CheckBodyMedia(r, &importContactsRequest{}); err != nil {
+		return ContactsImported{}, err
+	}
+	file, done, err := endpoint.SpoolBody(r, "")
 	if err != nil {
 		return ContactsImported{}, err
 	}
 	defer done()
 
+	// Both forms of the file are read the same way, a contact at a time.
+	eachContact := func(each func(models.Contact, map[string]string) error) (int, error) {
+		return eachImportEntry(file, func(_ int, entry importContactEntry, found map[string]string) error {
+			return each(models.Contact{Email: entry.Email, Name: entry.Name, TrustLevel: "auto", Source: "import"}, found)
+		})
+	}
+	if media, _, err := mime.ParseMediaType(r.Header.Get("Content-Type")); err == nil && media == contactVCardMedia {
+		eachContact = func(each func(models.Contact, map[string]string) error) (int, error) {
+			return eachVCardContact(file, each)
+		}
+	}
+
 	// Validate the whole file before writing so a bad entry cannot leave a
 	// partially imported request behind.
 	problems := map[string]string{}
-	total, err := eachImportEntry(file, func(_ int, _ importContactEntry, found map[string]string) error {
+	total, err := eachContact(func(_ models.Contact, found map[string]string) error {
 		for field, problem := range found {
 			if len(problems) < maxImportProblems {
 				problems[field] = problem
@@ -593,8 +611,9 @@ func (h *ContactHandler) importContacts(r *http.Request, in contactsPath) (Conta
 			batch = batch[:0]
 			return nil
 		}
-		if _, err := eachImportEntry(file, func(_ int, entry importContactEntry, _ map[string]string) error {
-			batch = append(batch, models.Contact{MailboxID: mailboxID, Email: entry.Email, Name: entry.Name, TrustLevel: "auto", Source: "import"})
+		if _, err := eachContact(func(contact models.Contact, _ map[string]string) error {
+			contact.MailboxID = mailboxID
+			batch = append(batch, contact)
 			if len(batch) == importBatchSize {
 				return flush()
 			}
@@ -672,8 +691,12 @@ func eachImportEntry(file io.Reader, each func(int, importContactEntry, map[stri
 // readImportEntry holds one entry to the rules the request type states, by the same binder
 // a bound body goes through, and then to the address check.
 func readImportEntry(raw json.RawMessage, index int) (importContactEntry, map[string]string) {
+	return checkImportEntry(raw, fmt.Sprintf("contacts[%d]", index))
+}
+
+// checkImportEntry reads one entry, naming what is wrong with it under prefix.
+func checkImportEntry(raw json.RawMessage, prefix string) (importContactEntry, map[string]string) {
 	var entry importContactEntry
-	prefix := fmt.Sprintf("contacts[%d]", index)
 	var refusal *endpoint.Error
 	if err := endpoint.BindBody(&entry, raw); errors.As(err, &refusal) {
 		problems := map[string]string{}
