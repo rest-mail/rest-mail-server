@@ -229,3 +229,83 @@ func TestContractFuzzFindingsDescribeValidation(t *testing.T) {
 		})
 	}
 }
+
+// fuzzBoardBodies are the bodies of the contract-fuzz board (#2051) that the schema can rule
+// out, keyed by finding. The handlers' side is in handlers/contract_fuzz_shapes_test.go.
+var fuzzBoardBodies = []struct {
+	finding, path, method, body string
+	valid                       bool
+}{
+	{"d0f2e603b092eab9", "/api/v1/admin/custom-filters/{id}", "patch", `{"config":""}`, false},
+	{"d0f2e603b092eab9", "/api/v1/admin/custom-filters/{id}", "patch", `{"config":null}`, false},
+	{"d0f2e603b092eab9", "/api/v1/admin/custom-filters/{id}", "patch", `{"config":[]}`, false},
+	{"d0f2e603b092eab9", "/api/v1/admin/custom-filters/{id}", "patch", `{"config":1}`, false},
+	{"d0f2e603b092eab9", "/api/v1/admin/custom-filters/{id}", "patch", `{"config":{}}`, true},
+	{"d0f2e603b092eab9", "/api/v1/admin/custom-filters/{id}", "patch", `{"config":{"nested":{"a":[1]}}}`, true},
+	{"d0f2e603b092eab9", "/api/v1/admin/custom-filters/{id}", "patch", `{"enabled":false}`, true},
+	{"d0f2e603b092eab9", "/api/v1/admin/custom-filters", "post", `{"config":""}`, false},
+	{"d0f2e603b092eab9", "/api/v1/admin/custom-filters", "post", `{"config":{"a":1}}`, true},
+	{"f697ff90d28a3f37", "/api/v1/admin/test/probe", "post", `{"services":[""]}`, false},
+	{"f697ff90d28a3f37", "/api/v1/admin/test/probe", "post", `{"services":["ftp"]}`, false},
+	{"f697ff90d28a3f37", "/api/v1/admin/test/probe", "post", `{"services":["db "]}`, false},
+	{"f697ff90d28a3f37", "/api/v1/admin/test/probe", "post", `{"services":["db"]}`, true},
+	{"f697ff90d28a3f37", "/api/v1/admin/test/probe", "post", `{"services":["SMTP_SUBMISSION","Pop3"]}`, true},
+	{"f697ff90d28a3f37", "/api/v1/admin/test/probe", "post", `{"services":[]}`, true},
+}
+
+func TestContractFuzzBoardBodiesMatchTheSchema(t *testing.T) {
+	compiler := fuzzFindingCompiler()
+	if err := compiler.AddResource("https://rest-mail.test/fuzz-findings.json", fuzzFindingDocument(t)); err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range fuzzBoardBodies {
+		t.Run(test.finding+"/"+test.method+"/"+test.body, func(t *testing.T) {
+			pointer := fuzzFindingPointer(test.path, test.method) + "/requestBody/content/application~1json/schema"
+			value, err := jsonschema.UnmarshalJSON(strings.NewReader(test.body))
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = fuzzFindingSchema(t, compiler, pointer).Validate(value)
+			if (err == nil) != test.valid {
+				t.Errorf("accepts=%t, want %t: %v", err == nil, test.valid, err)
+			}
+		})
+	}
+}
+
+// A refusal that depends on stored state cannot be a schema rule, so the description has to
+// say that a schema-valid request can still get it.
+func TestContractFuzzBoardStateRefusalsAreDescribed(t *testing.T) {
+	doc := fuzzFindingDocument(t)
+	paths := doc["paths"].(map[string]interface{})
+	schemas := doc["components"].(map[string]interface{})["schemas"].(map[string]interface{})
+	relayBody := schemas["setRelayBody"].(map[string]interface{})
+	username := relayBody["properties"].(map[string]interface{})["username"].(map[string]interface{})
+	for _, test := range []struct {
+		finding, path, method, status string
+		description                   string
+		says                          []string
+	}{
+		{"57ffe4007bc7b8fd", "/api/v1/admin/mailboxes/{id}/invitation", "post", "409", "", []string{"409 account_not_invitable", "schema-valid"}},
+		{"e3900209d733750b", "/api/v1/messages/{id}", "patch", "409", "", []string{"409 message_modified", "unchanged_since"}},
+		{"9b7fd3ab5ec46f4b", "/api/v1/accounts", "post", "409", "", []string{"409 already_exists", "409 owned_account_limit", "schema-valid"}},
+		{"5972296353a77f68", "/restmail/messages", "post", "422", "", []string{"422 undeliverable", "schema-valid"}},
+		{"6389af425b8edcb4", "/api/v1/admin/domains/{id}/relay", "put", "422", username["description"].(string), []string{"refused 422", "stored", "schema-valid"}},
+	} {
+		t.Run(test.finding, func(t *testing.T) {
+			operation := paths[test.path].(map[string]interface{})[test.method].(map[string]interface{})
+			if _, ok := operation["responses"].(map[string]interface{})[test.status]; !ok {
+				t.Errorf("%s is not a documented response", test.status)
+			}
+			description := test.description
+			if description == "" {
+				description, _ = operation["description"].(string)
+			}
+			for _, want := range test.says {
+				if !strings.Contains(description, want) {
+					t.Errorf("description does not say %q: %s", want, description)
+				}
+			}
+		})
+	}
+}

@@ -179,6 +179,10 @@ var probeableServices = map[string]bool{
 	"smtp": true, "smtp_submission": true, "imap": true, "pop3": true, "dns": true, "db": true,
 }
 
+// ProbeServicePattern is what the description says of one probeServices entry: a name in
+// probeableServices, in any ASCII case, because the handler compares names in lower case.
+const ProbeServicePattern = `^(?:[sS][mM][tT][pP](?:_[sS][uU][bB][mM][iI][sS][sS][iI][oO][nN])?|[iI][mM][aA][pP]|[pP][oO][pP]3|[dD][nN][sS]|[dD][bB])$`
+
 // probeServices checks connectivity to SMTP, IMAP, POP3, and DNS services.
 // POST /api/v1/admin/test/probe
 func (h *TestHandler) probeServices(r *http.Request, req probeServicesRequest) (TestProbeResults, error) {

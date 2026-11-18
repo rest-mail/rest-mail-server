@@ -28,7 +28,8 @@ func (h *RestmailHandler) Register(rs endpoint.Routes, deliverBodyLimit endpoint
 			"unauthorized. The inbound pipeline can refuse it 403 rejected or defer it 503, with error code greylisted " +
 			"when its greylist step held the message back, rate_limited when its rate_limit step did, and deferred " +
 			"for any other deferral. The sending queue retries on the schedule for that code. When no " +
-			"recipient takes the message the answer is 422 undeliverable. Failed sender/recipient, DKIM key or inbound-policy " +
+			"recipient takes the message the answer is 422 undeliverable, even for a schema-valid body: the schema " +
+			"cannot say that a recipient names a mailbox here. Failed sender/recipient, DKIM key or inbound-policy " +
 			"lookups and corrupt stored policy defer with 503; recipient lookups finish before delivery side effects.",
 		Status: http.StatusCreated, Errors: []int{http.StatusForbidden, http.StatusServiceUnavailable},
 		Security: oapifly.Public, Middleware: []endpoint.Middleware{deliverBodyLimit}, DescribedRequest: restmailDeliverInput{}}, h.deliverSpooled)

@@ -202,7 +202,10 @@ export interface paths {
         /** List the accounts this one reaches */
         get: operations["listAccounts"];
         put?: never;
-        /** Create an account */
+        /**
+         * Create an account
+         * @description An address that already has an account is refused 409 already_exists, and an owned account beyond the owner's limit 409 owned_account_limit, even for a schema-valid body.
+         */
         post: operations["createAccount"];
         delete?: never;
         options?: never;
@@ -3402,7 +3405,7 @@ export interface paths {
         put?: never;
         /**
          * Deliver a message via RESTMAIL protocol
-         * @description Server-to-server delivery. Unauthenticated at the HTTP layer: a delivery must come from a trusted peer network or carry a DKIM signature aligned with its From domain, or it is refused 403 unauthorized. The inbound pipeline can refuse it 403 rejected or defer it 503, with error code greylisted when its greylist step held the message back, rate_limited when its rate_limit step did, and deferred for any other deferral. The sending queue retries on the schedule for that code. When no recipient takes the message the answer is 422 undeliverable. Failed sender/recipient, DKIM key or inbound-policy lookups and corrupt stored policy defer with 503; recipient lookups finish before delivery side effects.
+         * @description Server-to-server delivery. Unauthenticated at the HTTP layer: a delivery must come from a trusted peer network or carry a DKIM signature aligned with its From domain, or it is refused 403 unauthorized. The inbound pipeline can refuse it 403 rejected or defer it 503, with error code greylisted when its greylist step held the message back, rate_limited when its rate_limit step did, and deferred for any other deferral. The sending queue retries on the schedule for that code. When no recipient takes the message the answer is 422 undeliverable, even for a schema-valid body: the schema cannot say that a recipient names a mailbox here. Failed sender/recipient, DKIM key or inbound-policy lookups and corrupt stored policy defer with 503; recipient lookups finish before delivery side effects.
          */
         post: operations["restmailDeliver"];
         delete?: never;
@@ -5686,7 +5689,9 @@ export interface components {
             trust_level?: "auto" | "trusted" | "blocked" | null;
         };
         createCustomFilterRequestBody: {
-            config?: unknown;
+            config?: {
+                [key: string]: unknown;
+            };
             description?: string;
             /** @enum {string} */
             direction?: "inbound" | "outbound" | "both";
@@ -6218,7 +6223,7 @@ export interface components {
             tls_mode?: "starttls" | "implicit" | null;
             /** @enum {string} */
             transport: "direct" | "relay";
-            /** @description At most 255 UTF-8 bytes, without ASCII control characters. For relay transport, a username and a password must be set together, or neither. An omitted or null password preserves the stored password. */
+            /** @description At most 255 UTF-8 bytes, without ASCII control characters. For relay transport, a username and a password must be set together, or neither, counting the stored password: an omitted or null password preserves it. A username with no password sent or stored is refused 422, and so is no username while a password is stored and not cleared with an empty one, even though each body is schema-valid. */
             username?: string;
         } | {
             /** @enum {unknown} */
@@ -6284,7 +6289,9 @@ export interface components {
             trust_level?: "auto" | "trusted" | "blocked" | null;
         };
         updateCustomFilterRequestBody: {
-            config?: unknown;
+            config?: {
+                [key: string]: unknown;
+            };
             description?: string | null;
             /** @enum {string|null} */
             direction?: "inbound" | "outbound" | "both" | null;

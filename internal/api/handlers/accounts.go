@@ -101,6 +101,8 @@ func (h *AccountHandler) RegisterReads(rs endpoint.Routes) {
 func (h *AccountHandler) RegisterCreate(rs endpoint.Routes, audit endpoint.Middleware) {
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/accounts",
 		OperationID: "createAccount", Summary: "Create an account", Tags: []string{"Accounts"},
+		Description: "An address that already has an account is refused 409 already_exists, and an owned account " +
+			"beyond the owner's limit 409 owned_account_limit, even for a schema-valid body.",
 		Status: http.StatusCreated, Errors: []int{http.StatusForbidden, http.StatusConflict, http.StatusServiceUnavailable},
 		Security:   handlerChecked(middleware.CapAccountsWrite, "CookieAuth", "BearerAuth", "APIKeyAuth"),
 		Middleware: []endpoint.Middleware{audit}}, h.create)

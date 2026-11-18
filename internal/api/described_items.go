@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	oapifly "github.com/antimatter-studios/go-oapifly"
+	"github.com/rest-mail/rest-mail-server/internal/api/handlers"
 )
 
 // itemFormats are the formats of list items in a request body, by operation and list property.
@@ -81,8 +82,17 @@ func withRequestConstraints(doc map[string]interface{}) {
 				for _, refinement := range folder["allOf"].([]interface{}) {
 					refinement.(map[string]interface{})["type"] = []string{"string", "null"}
 				}
+			case "createCustomFilter", "updateCustomFilter":
+				// The field stays raw JSON, so the handler keeps its own refusal and its
+				// place in the order of refusals; this says what that refusal requires.
+				config := properties["config"].(map[string]interface{})
+				config["type"] = "object"
+				config["additionalProperties"] = map[string]interface{}{}
+			case "probeServices":
+				services := properties["services"].(map[string]interface{})
+				services["items"].(map[string]interface{})["pattern"] = handlers.ProbeServicePattern
 			case "setDomainRelay":
-				properties["username"].(map[string]interface{})["description"] = "At most 255 UTF-8 bytes, without ASCII control characters. For relay transport, a username and a password must be set together, or neither. An omitted or null password preserves the stored password."
+				properties["username"].(map[string]interface{})["description"] = "At most 255 UTF-8 bytes, without ASCII control characters. For relay transport, a username and a password must be set together, or neither, counting the stored password: an omitted or null password preserves it. A username with no password sent or stored is refused 422, and so is no username while a password is stored and not cleared with an empty one, even though each body is schema-valid."
 				alternatives := schema["anyOf"].([]interface{})
 				relay := alternatives[1].(map[string]interface{})["properties"].(map[string]interface{})
 				relay["port"] = map[string]interface{}{"type": "integer"}
