@@ -123,7 +123,7 @@ func TestWriteAnswersCarryStoredModSeq(t *testing.T) {
 		if err := f.db.First(&stored, reply.Data.ID).Error; err != nil {
 			t.Fatal(err)
 		}
-		if reply.Data.MessageID != stored.MsgID || reply.Data.Folder != stored.Folder || stored.ModSeq < 3 {
+		if reply.Data.MailboxID == 0 || reply.Data.MailboxID != stored.MailboxID || reply.Data.MessageID != stored.MsgID || reply.Data.Folder != stored.Folder || stored.ModSeq < 3 {
 			t.Errorf("delivery reference %+v does not name the stored message %+v", reply.Data, stored)
 		}
 	})

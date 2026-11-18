@@ -524,6 +524,7 @@ type RestmailDiscovery struct {
 // DeliveredMessage names the message a delivery made.
 type DeliveredMessage struct {
 	ID        uint   `json:"id"`
+	MailboxID uint   `json:"mailbox_id"`
 	MessageID string `json:"message_id"`
 	Folder    string `json:"folder"`
 }

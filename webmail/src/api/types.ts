@@ -4055,6 +4055,7 @@ export interface components {
         DeliveredMessage: {
             folder: string;
             id: number;
+            mailbox_id: number;
             message_id: string;
         };
         DeliveryLogEntry: {

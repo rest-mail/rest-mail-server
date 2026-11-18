@@ -1337,7 +1337,7 @@ func (h *MessageHandler) deliverMessage(r *http.Request, req deliverMessageBody,
 		return endpoint.Status[any]{Code: http.StatusOK, Value: DeliveryProcessed{Status: "processed"}}, nil
 	}
 
-	return endpoint.Status[any]{Code: http.StatusCreated, Value: DeliveredMessage{ID: msg.ID, MessageID: msg.MsgID, Folder: msg.Folder}}, nil
+	return endpoint.Status[any]{Code: http.StatusCreated, Value: DeliveredMessage{ID: msg.ID, MailboxID: msg.MailboxID, MessageID: msg.MsgID, Folder: msg.Folder}}, nil
 }
 
 // FolderSummary is a folder of an account, with how many messages it holds, how many of

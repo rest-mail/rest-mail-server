@@ -28264,9 +28264,11 @@ components:
 
     DeliveredMessage:
       type: object
-      required: [id, message_id, folder]
+      required: [id, mailbox_id, message_id, folder]
       properties:
         id:
+          type: integer
+        mailbox_id:
           type: integer
         message_id:
           type: string
