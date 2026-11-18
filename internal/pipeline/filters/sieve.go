@@ -7,12 +7,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"mime"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/rest-mail/go-sieve/pkg/sieve"
+	"github.com/rest-mail/rest-mail-server/internal/mailaddr"
 	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 )
 
@@ -295,10 +297,7 @@ func sieveMessage(email *pipeline.EmailJSON) *sieve.Message {
 	msg := &sieve.Message{
 		Headers: sieve.Headers{
 			Subject:    email.Headers.Subject,
-			From:       sieveAddressList(email.Headers.From),
-			To:         sieveAddressList(email.Headers.To),
-			Cc:         sieveAddressList(email.Headers.Cc),
-			Bcc:        sieveAddresses(email.Headers.Bcc),
+			Lists:      newSieveLists(email),
 			MessageID:  email.Headers.MessageID,
 			InReplyTo:  email.Headers.InReplyTo,
 			Date:       email.Headers.Date,
@@ -325,6 +324,87 @@ func sieveMessage(email *pipeline.EmailJSON) *sieve.Message {
 	return msg
 }
 
+// sieveRawDecoder reads a raw address field as net/mail does with no decoder of its own: it reads the
+// charsets the standard library knows, and a word in any other stops the field reading as a list.
+var sieveRawDecoder = &mime.WordDecoder{}
+
+// sieveLists reads a message's address fields when a script's test asks, so that a list no test reads
+// costs nothing and an address test holds one address at a time (#1915). The lists are the ones the
+// message had when evaluation began.
+type sieveLists struct {
+	from, to, cc, bcc pipeline.AddressList
+	// built keeps what All made, so a script of many header or size tests builds each list once.
+	built map[string][]sieve.Address
+}
+
+func newSieveLists(email *pipeline.EmailJSON) *sieveLists {
+	return &sieveLists{
+		from: email.Headers.From,
+		to:   email.Headers.To,
+		cc:   email.Headers.Cc,
+		bcc:  pipeline.Addresses(email.Headers.Bcc...),
+	}
+}
+
+func (l *sieveLists) field(name string) pipeline.AddressList {
+	switch name {
+	case "from":
+		return l.from
+	case "to":
+		return l.to
+	case "cc":
+		return l.cc
+	case "bcc":
+		return l.bcc
+	}
+	return pipeline.AddressList{}
+}
+
+// All is every address of a field, for a test that reads the whole of it.
+func (l *sieveLists) All(name string) []sieve.Address {
+	if all, done := l.built[name]; done {
+		return all
+	}
+	all := sieveAddressList(l.field(name))
+	if l.built == nil {
+		l.built = make(map[string][]sieve.Address, 4)
+	}
+	l.built[name] = all
+	return all
+}
+
+// Specs visits each address of a field until visit answers false. A field that doesn't read as a list
+// has no addresses, however far it reads, so Len is asked first.
+func (l *sieveLists) Specs(name string, visit func(spec string) bool) {
+	list := l.field(name)
+	if list.Len() == 0 {
+		return
+	}
+	visitUntil(visit, list.VisitAddresses)
+}
+
+// RawSpecs visits each address of a raw value as net/mail reads it: all of them, or none when any of
+// the value doesn't read.
+func (l *sieveLists) RawSpecs(raw string, visit func(spec string) bool) {
+	if _, ok := mailaddr.Valid(raw, sieveRawDecoder, nil); !ok {
+		return
+	}
+	visitUntil(visit, func(each func(string)) bool {
+		return mailaddr.EachAddress(raw, sieveRawDecoder, nil, each) == nil
+	})
+}
+
+// visitUntil stops calling visit once it answers false. The reader goes on to the end of its field,
+// which holds nothing for each address.
+func visitUntil(visit func(spec string) bool, read func(func(string)) bool) {
+	done := false
+	read(func(spec string) {
+		if !done {
+			done = !visit(spec)
+		}
+	})
+}
+
 // sieveAddressList is sieveAddresses of the list's All, holding only the one slice the library takes.
 func sieveAddressList(list pipeline.AddressList) []sieve.Address {
 	count := list.Len()
@@ -336,17 +416,6 @@ func sieveAddressList(list pipeline.AddressList) []sieve.Address {
 		out = append(out, sieve.Address{Name: a.Name, Address: a.Address})
 	}) {
 		return nil
-	}
-	return out
-}
-
-func sieveAddresses(addrs []pipeline.Address) []sieve.Address {
-	if len(addrs) == 0 {
-		return nil
-	}
-	out := make([]sieve.Address, len(addrs))
-	for i, a := range addrs {
-		out[i] = sieve.Address{Name: a.Name, Address: a.Address}
 	}
 	return out
 }

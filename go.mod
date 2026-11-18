@@ -33,7 +33,7 @@ require (
 	github.com/rest-mail/go-imap v0.13.2
 	github.com/rest-mail/go-mtasts v0.5.0
 	github.com/rest-mail/go-pop3 v0.4.0
-	github.com/rest-mail/go-sieve v0.7.0
+	github.com/rest-mail/go-sieve v0.8.0
 	github.com/rest-mail/go-smtp v0.32.0
 	github.com/rest-mail/go-spf v0.2.0
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
