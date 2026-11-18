@@ -68,6 +68,21 @@ wait_healthy() { for _ in $(seq 60); do curl -fsS http://127.0.0.1:58080/api/hea
 # reports that as a failed check — a flake that depends on how much the server
 # had left to write.
 server_output() { docker logs e2e-api >"$LOG" 2>&1; }
+# server_says PATTERN: the server's output has a line matching PATTERN, within
+# 30 seconds. Health can answer before the container engine has written the
+# server's earlier lines to its log: some engines copy a burst of output (the
+# migrations, in development) to the log behind the process, so one read right
+# after health may not have it yet.
+server_says() {
+  for _ in $(seq 30); do
+    server_output
+    grep -q -- "$1" "$LOG" && return 0
+    sleep 1
+  done
+  printf '   the server said, last 20 lines:\n' >&2
+  tail -n 20 "$LOG" >&2
+  return 1
+}
 # login ADDRESS PASSWORD [TOTP] -> the response body; fails on anything but 200.
 login() {
   curl -fsS "$API/auth/login" -H 'Content-Type: application/json' \
@@ -83,8 +98,7 @@ login_status() {
 step "no admin and no bootstrap password: nobody could sign in, and it says so"
 api
 wait_healthy
-server_output
-grep -q 'RESTMAIL_BOOTSTRAP_ADMIN_PASSWORD' "$LOG" || die "the server did not say it has no way in"
+server_says 'RESTMAIL_BOOTSTRAP_ADMIN_PASSWORD' || die "the server did not say it has no way in"
 if grep -q -i -E 'setup code|claim this server|▀' "$LOG"; then die "the server printed a setup code"; fi
 ok "development says so and starts (it seeds admins into the running API); production refuses to start"
 ok "no setup code, no QR code, no link in its output"
