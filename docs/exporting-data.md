@@ -41,12 +41,15 @@ beside the destination is synced and closed before publication, with mode 0600.
 A failed export does not replace an existing destination. An empty address book
 produces an empty file.
 
-REST Mail currently imports contacts through its JSON `contacts/import` route,
-not a vCard importer. Converting `EMAIL` and `FN` to that route's `email` and
-`name` fields restores those two fields; that importer sets trust to `auto` and
-source to `import`. Native vCard import and full metadata restoration remain
-part of #1570, not functionality provided by this command. CardDAV is unrelated
-to exporting the format and remains an owner question on that issue.
+`POST /api/v1/accounts/{id}/contacts/import` takes this file with
+`Content-Type: text/vcard`, on this server or another, and restores every field
+above, including the extension properties, for addresses the account does not
+already have. A contact it already has is skipped and left unchanged. The same
+route reads vCard 2.1, 3.0 and 4.0 files from other address books: each `EMAIL`
+becomes a contact named by the card's first `FN`, and a card with no `EMAIL` is
+counted as skipped. A name or address in quoted-printable, base64 or a character
+set other than UTF-8 is refused, and nothing from that file is imported. CardDAV
+is unrelated to the file format and remains an owner question on #1570.
 
 ## Calendar invitations
 

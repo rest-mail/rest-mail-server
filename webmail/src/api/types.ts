@@ -435,7 +435,7 @@ export interface paths {
         put?: never;
         /**
          * Bulk import contacts
-         * @description As many contacts as fit the server's contact import limit, 10 MiB unless an administrator changes it. Every entry is checked first, and contacts the account already has are skipped.
+         * @description As many contacts as fit the server's contact import limit, 10 MiB unless an administrator changes it, as JSON or as a vCard file (text/vcard). Every entry is checked first, nothing is imported if one is refused, and contacts the account already has are skipped and left as they are. On a vCard file, each EMAIL is one contact named by the card's first FN; a card with no EMAIL is counted as skipped; other properties are ignored, except the X-RESTMAIL-TRUST-LEVEL, X-RESTMAIL-SOURCE, X-RESTMAIL-CREATED-AT and X-RESTMAIL-UPDATED-AT that REST Mail's own export writes, which are restored. A name or address in quoted-printable, base64 or a character set other than UTF-8 is refused.
          */
         post: operations["importContacts"];
         delete?: never;
@@ -10846,6 +10846,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["importContactsBody"];
+                "text/vcard": string;
             };
         };
         responses: {

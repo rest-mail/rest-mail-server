@@ -67,6 +67,13 @@ func SpoolBody(r *http.Request, media string) (*os.File, func(), error) {
 	return nil, nil, Refuse(http.StatusBadRequest, "bad_request", "Invalid request body")
 }
 
+// CheckBodyMedia is the refusal a bound body gets for a declared media type none of request's
+// forms takes, for a route that reads its own body. request points at the type declaring the
+// forms.
+func CheckBodyMedia(r *http.Request, request any) error {
+	return checkBodyMedia(r, reflect.TypeOf(request).Elem())
+}
+
 // CheckSpooled holds a spooled body to what a bound body is held to before its content is
 // read, with the same refusals, in the same order: a body with content must be in a media
 // type one of request's forms takes, and a request with several forms must have a body that
