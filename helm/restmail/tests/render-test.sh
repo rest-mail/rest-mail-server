@@ -66,13 +66,14 @@ assert_contains "DKIM overdue alert" "$tmp/metrics-on.yaml" 'alert: DKIMKeyOverd
 assert_contains "DKIM publication alert" "$tmp/metrics-on.yaml" 'alert: DKIMPublicationStuck'
 assert_contains "PVC disk alert" "$tmp/metrics-on.yaml" 'alert: PVCSpaceCritical'
 assert_contains "queue alert" "$tmp/metrics-on.yaml" 'alert: QueueOldestMessageOld'
+assert_contains "file certificate expiry alert" "$tmp/metrics-on.yaml" 'alert: TLSCertificateFileExpiringSoon'
 assert_absent "compose-only disk alert" "$tmp/metrics-on.yaml" 'alert: DiskSpaceCritical'
 python3 -B "$CHART_DIR/tests/alerting-rules-test.py" "$tmp/metrics-on.yaml"
 if command -v promtool >/dev/null 2>&1; then
-  yq -N e 'select(.kind == "PrometheusRule") | {"groups": .spec.groups}' "$tmp/metrics-on.yaml" > "$tmp/dkim-alerts-rules.yml"
-  cp "$CHART_DIR/tests/dkim-alerts-test.yml" "$tmp/dkim-alerts-test.yml"
-  promtool check rules "$tmp/dkim-alerts-rules.yml"
-  promtool test rules "$tmp/dkim-alerts-test.yml"
+  yq -N e 'select(.kind == "PrometheusRule") | {"groups": .spec.groups}' "$tmp/metrics-on.yaml" > "$tmp/alert-rules.yml"
+  cp "$CHART_DIR/tests/dkim-alerts-test.yml" "$CHART_DIR/tests/tls-cert-alerts-test.yml" "$tmp/"
+  promtool check rules "$tmp/alert-rules.yml"
+  promtool test rules "$tmp/dkim-alerts-test.yml" "$tmp/tls-cert-alerts-test.yml"
 fi
 
 echo "== render development overlay =="
