@@ -592,6 +592,16 @@ func (s *session) Rcpt(to string, _ *gosmtp.RcptOptions) error {
 			s.tarpitReject()
 			return &gosmtp.SMTPError{Code: 550, EnhancedCode: gosmtp.EnhancedCode{5, 1, 1}, Message: reason}
 		}
+		if recipientDeferred(err) {
+			// A retired domain's mail waits. A signed-in sender's message still goes
+			// to the outbound queue, which retries it like any other.
+			if s.isSubmission && s.authenticated {
+				s.rcptTo = append(s.rcptTo, to)
+				return nil
+			}
+			s.log.Info("smtp: recipient deferred", "address", to)
+			return &gosmtp.SMTPError{Code: 451, EnhancedCode: gosmtp.EnhancedCode{4, 3, 0}, Message: "Try again later"}
+		}
 		// If the API is unreachable, temp fail.
 		s.log.Error("smtp: API error checking mailbox", "address", to, "error", err)
 		return &gosmtp.SMTPError{
@@ -864,6 +874,9 @@ func (s *session) Data(r io.Reader) (err error) {
 		lookups[rcpt] = recipientLookup{check: check, err: err}
 	}
 	var aliasFailure string
+	// A recipient told to wait keeps the transaction's reply temporary, even when
+	// another recipient was refused for good: a 5xx would bounce its mail too.
+	recipientWaits := false
 
 	for _, rcpt := range s.rcptTo {
 		// A bounce to a valid SRS address goes on to the sender it carries.
@@ -891,6 +904,12 @@ func (s *session) Data(r io.Reader) (err error) {
 		if !submitted {
 			// Inbound mail is for a local recipient, or for nobody.
 			check, err := lookups[rcpt].check, lookups[rcpt].err
+			if recipientDeferred(err) {
+				s.log.Info("smtp: recipient deferred at DATA time", "from", s.mailFrom, "to", rcpt)
+				recipientWaits = true
+				failed++
+				continue
+			}
 			if err != nil {
 				// Classification failed: we cannot tell whether this recipient
 				// exists. Tempfail (451) so the sender retries once the API
@@ -1071,6 +1090,9 @@ func (s *session) Data(r io.Reader) (err error) {
 		return &gosmtp.SMTPError{Code: 550, EnhancedCode: gosmtp.EnhancedCode{5, 1, 1}, Message: aliasFailure}
 	}
 	// Single transaction reply: fail only if NOTHING was committed.
+	if accepted == 0 && recipientWaits {
+		return &gosmtp.SMTPError{Code: 451, EnhancedCode: gosmtp.EnhancedCode{4, 3, 0}, Message: "Try again later"}
+	}
 	if accepted == 0 {
 		return &gosmtp.SMTPError{Code: failCode, EnhancedCode: failEnhanced, Message: failMsg}
 	}
@@ -1147,6 +1169,14 @@ func deferralReason(apiError *apiclient.APIError) string {
 		return ""
 	}
 	return refusal.Error.Code
+}
+
+// recipientDeferred reports the API's answer that a recipient's mail must wait: the
+// address check's 503 deferred, for a recipient on a retired domain. Any other failure
+// of the check stays an unexpected one.
+func recipientDeferred(err error) bool {
+	var apiError *apiclient.APIError
+	return errors.As(err, &apiError) && deferralReason(apiError) == "deferred"
 }
 
 // Reset discards the current transaction (RSET, or implicitly after DATA).

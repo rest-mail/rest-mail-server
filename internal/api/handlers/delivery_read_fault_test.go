@@ -14,6 +14,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
+	"github.com/rest-mail/rest-mail-server/internal/db/repositories"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -115,6 +116,11 @@ func deliveryReadGorm(t *testing.T, d *deliveryReadDB) *gorm.DB {
 func deliveryDomainStep() deliveryReadStep {
 	return deliveryReadStep{table: "domains", columns: []string{"id", "name", "active"}, values: []driver.Value{int64(1), "example.test", true}}
 }
+
+// deliveryNotRetiredStep is the last read for an absent recipient: its domain was not retired.
+func deliveryNotRetiredStep() deliveryReadStep {
+	return deliveryReadStep{table: "domain_retirements", columns: []string{"count"}, values: []driver.Value{int64(0)}}
+}
 func deliveryMailboxStep(address string) deliveryReadStep {
 	return deliveryReadStep{table: "mailboxes", columns: []string{"id", "domain_id", "address", "active"}, values: []driver.Value{int64(2), int64(1), address, true}}
 }
@@ -179,7 +185,7 @@ func TestGatewayDeliveryMissingRecipientKeepsNotFound(t *testing.T) {
 		t.Run(body, func(t *testing.T) {
 			d := &deliveryReadDB{steps: []deliveryReadStep{{table: "mailboxes", columns: []string{"id"}}}}
 			if strings.Contains(body, `"address"`) {
-				d.steps = append(d.steps, deliveryReadStep{table: "aliases", columns: []string{"id"}}, deliveryReadStep{table: "aliases", columns: []string{"id"}})
+				d.steps = append(d.steps, deliveryReadStep{table: "aliases", columns: []string{"id"}}, deliveryReadStep{table: "aliases", columns: []string{"id"}}, deliveryNotRetiredStep())
 			}
 			rr := httptest.NewRecorder()
 			gatewayFaultRoutes(deliveryReadGorm(t, d)).ServeHTTP(rr, deliveryRequest(t, body, "/api/v1/messages/deliver"))
@@ -259,7 +265,9 @@ func TestRESTMAILRecipientResolutionRetainsErrorsAndIdentity(t *testing.T) {
 		{"alias lookup fault", []deliveryReadStep{missing, {table: "aliases", err: fault}}, fault, "", ""},
 		{"legacy alias lookup fault", []deliveryReadStep{missing, aliasesMissing, {table: "aliases", err: fault}}, fault, "", ""},
 		{"base lookup fault", []deliveryReadStep{missing, aliasesMissing, aliasesMissing, {table: "mailboxes", err: fault}}, fault, "", ""},
-		{"base absent", []deliveryReadStep{missing, aliasesMissing, aliasesMissing, missing}, gorm.ErrRecordNotFound, "", ""},
+		{"base absent", []deliveryReadStep{missing, aliasesMissing, aliasesMissing, missing, deliveryNotRetiredStep()}, gorm.ErrRecordNotFound, "", ""},
+		{"retirement lookup fault", []deliveryReadStep{missing, aliasesMissing, aliasesMissing, missing, {table: "domain_retirements", err: fault}}, fault, "", ""},
+		{"retired domain", []deliveryReadStep{missing, aliasesMissing, aliasesMissing, missing, {table: "domain_retirements", columns: []string{"count"}, values: []driver.Value{int64(1)}}}, repositories.ErrDomainRetired, "", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			d := &deliveryReadDB{steps: tc.steps}

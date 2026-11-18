@@ -19,8 +19,8 @@ func (h *RestmailHandler) Register(rs endpoint.Routes, deliverBodyLimit endpoint
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/restmail/mailboxes",
 		OperationID: "restmailCheckMailbox", Summary: "Check if a recipient mailbox exists", Tags: []string{"RESTMAIL"},
 		Description: "It applies the rule delivery applies: an address that is not a mailbox here, or is one that " +
-			"may not receive, or is on a domain that is not live, is 200 with exists false.",
-		Security: oapifly.Public}, h.checkMailbox)
+			"may not receive, or is on a domain that is not live, is 200 with exists false. " + retiredRecipientDescription,
+		Errors: []int{http.StatusServiceUnavailable}, Security: oapifly.Public}, h.checkMailbox)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/restmail/messages",
 		OperationID: "restmailDeliver", Summary: "Deliver a message via RESTMAIL protocol", Tags: []string{"RESTMAIL"},
 		Description: "Server-to-server delivery. Unauthenticated at the HTTP layer: a delivery must come from a " +

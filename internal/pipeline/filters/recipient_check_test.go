@@ -129,3 +129,25 @@ func TestRecipientCheck_Subaddressing(t *testing.T) {
 		})
 	}
 }
+
+// A local forward into a retired domain waits with it: the filter defers, where a
+// recipient that is simply absent is refused for good (#1870).
+func TestRecipientCheck_RetiredDomainDefers(t *testing.T) {
+	db := openRecipientCheckTestDB(t)
+	stamp := time.Now().UnixNano()
+	name := fmt.Sprintf("retired-%d.test", stamp)
+	retired := models.DomainRetirement{DomainID: uint(stamp%1_000_000_000) + 1_000_000_000, Name: name, State: models.JSONB(`{}`)}
+	if err := db.Create(&retired).Error; err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Delete(&retired) })
+
+	result := runRecipientCheck(t, db, "someone@"+name)
+	if result.Action != pipeline.ActionDefer || result.RejectMsg != "" {
+		t.Fatalf("retired domain: action %v, reject %q; want a deferral", result.Action, result.RejectMsg)
+	}
+	result = runRecipientCheck(t, db, fmt.Sprintf("someone@never-%d.test", stamp))
+	if result.Action != pipeline.ActionReject {
+		t.Fatalf("unknown domain: action %v, want a rejection", result.Action)
+	}
+}

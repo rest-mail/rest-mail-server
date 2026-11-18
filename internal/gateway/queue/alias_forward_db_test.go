@@ -40,7 +40,7 @@ func TestAliasForwardDeliveryAndSigning(t *testing.T) {
 		for _, senderKind := range []string{"external", "hosted", "null", "already signed"} {
 			t.Run(route+"/"+senderKind, func(t *testing.T) {
 				worker, database, domain := srsForwardWorker(t)
-				if err := database.AutoMigrate(&models.Mailbox{}, &models.Alias{}, &models.Pipeline{}, &models.OutboundQueue{}); err != nil {
+				if err := database.AutoMigrate(&models.Mailbox{}, &models.Alias{}, &models.Pipeline{}, &models.OutboundQueue{}, &models.DomainRetirement{}); err != nil {
 					t.Fatal(err)
 				}
 				if err := database.Model(&models.Domain{}).Where("name = ?", domain).Update("active", true).Error; err != nil {

@@ -91,6 +91,11 @@ type restmailMailboxQuery struct {
 // checkMailbox verifies a recipient mailbox exists.
 func (h *RestmailHandler) checkMailbox(r *http.Request, in restmailMailboxQuery) (RestmailMailboxCheck, error) {
 	recipient, err := repositories.ResolveRecipient(h.db.WithContext(r.Context()), in.Address, false)
+	if errors.Is(err, repositories.ErrDomainRetired) {
+		// Every local part of the domain gets this answer, so it says nothing about
+		// which exist and has no enumeration to slow down.
+		return RestmailMailboxCheck{}, errRecipientDomainRetired
+	}
 	if err != nil {
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
 			return RestmailMailboxCheck{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to look up mailbox")
@@ -352,6 +357,11 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput, spoo
 		if errors.Is(err, repositories.ErrAliasRouting) {
 			slog.WarnContext(r.Context(), "restmail alias refused", "address", rcpt, "error", err)
 			return RestmailDelivery{}, endpoint.Refuse(http.StatusUnprocessableEntity, "undeliverable", rmail.AliasRoutingRefusal)
+		}
+		if errors.Is(err, repositories.ErrDomainRetired) {
+			// failed would read as a permanent answer for this recipient, so the
+			// whole delivery is retried, as for a failed lookup just below.
+			return RestmailDelivery{}, errRecipientDomainRetired
 		}
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			refused = append(refused, rcpt)

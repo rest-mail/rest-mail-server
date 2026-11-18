@@ -12127,6 +12127,9 @@ paths:
         A failed mailbox lookup is 500, never a missing recipient.
         A reserved alias that cannot route is 403 rejected, never an outbound recipient;
         the gateway answers its SMTP peer 550.
+        A recipient on a domain deleted through deleteDomain and not restored, at any local
+        part or through an alias, is 503 deferred, so the sender retries. The gateway answers
+        its SMTP peer 451, or on authenticated submission queues the message outbound.
       security: []
       x-internal-mtls: true
       parameters:
@@ -12207,6 +12210,23 @@ paths:
               "$ref": "#/components/headers/X-Content-Type-Options"
             "X-Frame-Options":
               "$ref": "#/components/headers/X-Frame-Options"
+        "503":
+          description: The recipient's domain was retired, so the sender retries (deferred)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          "headers":
+            "Content-Security-Policy":
+              "$ref": "#/components/headers/Content-Security-Policy"
+            "Referrer-Policy":
+              "$ref": "#/components/headers/Referrer-Policy"
+            "Strict-Transport-Security":
+              "$ref": "#/components/headers/Strict-Transport-Security"
+            "X-Content-Type-Options":
+              "$ref": "#/components/headers/X-Content-Type-Options"
+            "X-Frame-Options":
+              "$ref": "#/components/headers/X-Frame-Options"
   /api/v1/messages/deliver:
     post:
       operationId: deliverMessage
@@ -12227,7 +12247,9 @@ paths:
         The recipient is resolved from address. Arriving mail uses server time and
         default Inbox/flags, subject to inbound rules. Import-only fields sent by
         older callers are ignored. An arrival past the hop limit or a reserved alias
-        that cannot route is 403 rejected before the pipeline runs.
+        that cannot route is 403 rejected before the pipeline runs. A recipient on a domain
+        deleted through deleteDomain and not restored, at any local part or through an alias,
+        is 503 deferred, so the sender retries.
       security: []
       x-internal-mtls: true
       requestBody:
@@ -12486,6 +12508,8 @@ paths:
       description: >-
         It applies the rule delivery applies: an address that is not a mailbox here, or is one
         that may not receive, or is on a domain that is not live, is 200 with exists false.
+        A recipient on a domain deleted through deleteDomain and not restored, at any local
+        part or through an alias, is 503 deferred, so the sender retries.
       security: []
       parameters:
         - name: address
@@ -12517,6 +12541,23 @@ paths:
               "$ref": "#/components/headers/X-Content-Type-Options"
             "X-Frame-Options":
               "$ref": "#/components/headers/X-Frame-Options"
+        "503":
+          description: The recipient's domain was retired, so the sender retries (deferred)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          "headers":
+            "Content-Security-Policy":
+              "$ref": "#/components/headers/Content-Security-Policy"
+            "Referrer-Policy":
+              "$ref": "#/components/headers/Referrer-Policy"
+            "Strict-Transport-Security":
+              "$ref": "#/components/headers/Strict-Transport-Security"
+            "X-Content-Type-Options":
+              "$ref": "#/components/headers/X-Content-Type-Options"
+            "X-Frame-Options":
+              "$ref": "#/components/headers/X-Frame-Options"
 
   /restmail/messages:
     post:
@@ -12532,7 +12573,10 @@ paths:
         The inbound pipeline's deferral is also 503, with error code greylisted when
         its greylist step held the message back, rate_limited when its rate_limit step
         did, and deferred otherwise. Recipient lookups finish before delivery side
-        effects. A genuine absent recipient remains a permanent failure.
+        effects. A genuine absent recipient remains a permanent failure. A recipient on a
+        domain deleted through deleteDomain and not restored, at any local part or through
+        an alias, is 503 deferred, so the sender retries; one such recipient defers the whole
+        delivery, with nothing stored for the others.
       security: []
       requestBody:
         required: true
@@ -13232,7 +13276,7 @@ paths:
         - BearerAuth: [domains:delete]
         - APIKeyAuth: [domains:delete]
       summary: Delete a domain
-      description: "A domain containing accounts or aliases is refused with 409 domain_not_empty, except for its automatically provisioned postmaster when it holds no mail and has no credentials. The domain, that postmaster and their live configuration are archived atomically for restoration with their original identities. Grants are removed through the audited grant-change mechanism; cached permissions are invalidated only after commit. Historical reports, message traces and audit entries are retained. A cleanup, archive, audit or cancellation failure rolls the deletion back. Deleting the last postmaster on its own still returns 409 postmaster_required."
+      description: "A domain containing accounts or aliases is refused with 409 domain_not_empty, except for its automatically provisioned postmaster when it holds no mail and has no credentials. The domain, that postmaster and their live configuration are archived atomically for restoration with their original identities. Grants are removed through the audited grant-change mechanism; cached permissions are invalidated only after commit. Historical reports, message traces and audit entries are retained. Until the domain is restored, or a new domain takes its name, mail to it is deferred with a temporary failure. A cleanup, archive, audit or cancellation failure rolls the deletion back. Deleting the last postmaster on its own still returns 409 postmaster_required."
       description: >
         Only a domain with no accounts and no aliases can be deleted: delete
         those first.

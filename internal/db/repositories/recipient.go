@@ -15,6 +15,11 @@ const MaxAliasHops = 8
 
 var ErrAliasRouting = errors.New("alias routing refused")
 
+// ErrDomainRetired is a recipient on a domain deleted through the API and not restored.
+// It is not gorm.ErrRecordNotFound: the owner's decision on #1870 is that this mail waits
+// (4xx), so that it arrives if the domain comes back, where an absent recipient is refused.
+var ErrDomainRetired = errors.New("recipient domain is retired")
+
 type Recipient struct {
 	Mailbox          models.Mailbox
 	Address          string
@@ -63,6 +68,38 @@ func findRecipientAlias(db *gorm.DB, address string, liveDomainOnly bool) (model
 	return candidates[0], nil
 }
 
+// IsRetiredDomain reports whether the domain was deleted through the API and can still
+// be restored. A live domain that has since taken the name answers for it instead, and
+// a name that is not a domain is simply not retired.
+func IsRetiredDomain(db *gorm.DB, domain string) (bool, error) {
+	ascii, err := rmail.DomainASCII(domain)
+	if err != nil {
+		return false, nil
+	}
+	var n int64
+	err = db.Model(&models.DomainRetirement{}).
+		Where("name = ? AND NOT EXISTS (SELECT 1 FROM domains WHERE domains.name = domain_retirements.name)", ascii).
+		Count(&n).Error
+	return n > 0, err
+}
+
+// absentRecipientError is why an address no mailbox or alias answers for has no
+// recipient: its domain is retired, or it is simply not here. Setting up a live domain
+// asks only about that domain's own route, so it is never told to wait.
+func absentRecipientError(db *gorm.DB, domain string, setupDomainID uint) error {
+	if setupDomainID != 0 {
+		return gorm.ErrRecordNotFound
+	}
+	retired, err := IsRetiredDomain(db, domain)
+	if err != nil {
+		return err
+	}
+	if retired {
+		return ErrDomainRetired
+	}
+	return gorm.ErrRecordNotFound
+}
+
 func ResolveRecipient(db *gorm.DB, address string, liveDomainOnly bool) (Recipient, error) {
 	return resolveRecipient(db, address, liveDomainOnly, 0)
 }
@@ -90,6 +127,11 @@ func resolveRecipient(db *gorm.DB, address string, liveDomainOnly bool, setupDom
 				return Recipient{}, err
 			}
 			if !hosted {
+				// An alias into a retired domain waits with it: sent outbound, the
+				// message would leave for wherever that name's MX now points.
+				if err := absentRecipientError(db, rmail.DomainFromAddress(parsed.Address), setupDomainID); !errors.Is(err, gorm.ErrRecordNotFound) {
+					return Recipient{}, err
+				}
 				return resolved, nil
 			}
 		}
@@ -151,6 +193,6 @@ func resolveRecipient(db *gorm.DB, address string, liveDomainOnly bool, setupDom
 		if resolved.Alias {
 			return Recipient{}, aliasRoutingError("alias destination is not a receiving mailbox")
 		}
-		return Recipient{}, gorm.ErrRecordNotFound
+		return Recipient{}, absentRecipientError(db, rmail.DomainFromAddress(canonical), setupDomainID)
 	}
 }

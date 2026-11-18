@@ -230,7 +230,7 @@ var exampleRequirements = map[string][]string{
 		// What the live run's seeded data cannot be in (#1334): a record the
 		// request meets or misses that the run's own fixtures make otherwise.
 		"concurrent_change", "deleted_account", "existing_contact", "existing_domain", "existing_draft", "existing_folder",
-		"last_superadmin", "missing_recipient", "no_authenticator", "no_master_key", "uncertified_domain", "unhosted_domain",
+		"last_superadmin", "missing_recipient", "no_authenticator", "no_master_key", "retired_domain", "uncertified_domain", "unhosted_domain",
 		"acme_enabled", "acme_issued_token", "expunged_messages", "disposable_data",
 		// The live run's accounts stay active: others sign in as them.
 		"inactive_account",
