@@ -16,10 +16,13 @@ only one for a given name.
 - The admin webmail's Certificates page (`/settings/certificates`) shows a
   banner: certificates expiring in the next 30 days.
 - The gateway logs `tls: certificate reload failed`.
-
-The `CertificateExpiringSoon` alert depends on `restmail_cert_expiry_days`,
-which nothing sets today, so it does not fire (#1630). Check expiry by the
-steps below until that is fixed.
+- The `CertificateExpiringSoon` alert fires: a certificate stored in the
+  database (`restmail_cert_expiry_days`) expires within 14 days.
+- The `TLSCertificateFileExpiringSoon` alert fires: a certificate a process
+  loaded from files (`restmail_tls_cert_expiry_timestamp_seconds`) expires
+  within 14 days. This is the alert for cert-manager and Certbot, whose
+  certificates are not in the database. The alert's `instance` label says which
+  process.
 
 ## Confirm
 
@@ -44,6 +47,12 @@ steps below until that is fixed.
    Repeat for 143 (`-starttls imap`), 110 (`-starttls pop3`) and 995 if you
    offer them.
 3. **Whether reloads are failing.** Each gateway's `/metrics`:
+   - `restmail_tls_cert_expiry_timestamp_seconds`: the Unix time the soonest
+     certificate that gateway loaded from files expires
+     (`date -d @<value>` on Linux). A renewal on disk shows here within one
+     scrape, without any connection. If it is still the old date while
+     `restmail_tls_cert_reload_failing` is 0, no new files have arrived, so
+     look at the renewal job.
    - `restmail_tls_cert_reload_failing` above 0: a renewed pair was rejected
      and the old one is still being served.
    - `restmail_tls_cert_reload_failures_total` rising: the same, counted.
@@ -94,6 +103,8 @@ If it does not:
 
 - The `openssl s_client` checks above show the new `notAfter` on every port.
 - `restmail_tls_cert_reload_failing` is back to 0 on each gateway.
+- `restmail_tls_cert_expiry_timestamp_seconds` on each gateway shows the new
+  expiry, and `TLSCertificateFileExpiringSoon` has cleared.
 - `/settings/certificates` shows the new expiry.
 - `chore server:verify` reports "certificate valid" for the public address.
 

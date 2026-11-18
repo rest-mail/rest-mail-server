@@ -27,7 +27,20 @@ groups:
           severity: critical
         annotations:
           summary: "A certificate expires in {{ $value | humanize }} days"
-          description: "The soonest-expiring certificate this server serves expires in less than 14 days (negative: already expired). The admin health endpoint names its domain. Renew now."
+          description: "The soonest-expiring certificate in the database expires in less than 14 days (negative: already expired). The admin health endpoint names its domain. Renew now."
+
+      # The same deadline for certificates a manager such as Certbot or
+      # cert-manager publishes as files, which the database does not hold. A
+      # renewal that fails before publishing changes no file, so this is what
+      # shows it. Each process reports its own soonest certificate.
+      - alert: TLSCertificateFileExpiringSoon
+        expr: restmail_tls_cert_expiry_timestamp_seconds - time() < 14 * 86400
+        for: 1h
+        labels:
+          severity: critical
+        annotations:
+          summary: "A TLS certificate file on {{ $labels.instance }} expires in {{ $value | humanizeDuration }}"
+          description: "The soonest-expiring certificate this process loaded from files expires in less than 14 days (negative: already expired), so no usable renewal has reached it. Check the certificate manager's renewal job and restmail_tls_cert_reload_failing."
 
       # A domain served here has no usable certificate, so its handshakes are
       # refused. Mail for that domain is not being accepted.
