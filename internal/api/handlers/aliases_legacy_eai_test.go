@@ -4,7 +4,6 @@ import (
 	"context"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/db/repositories"
@@ -91,7 +90,6 @@ func TestLegacyAliasEAIClaims(t *testing.T) {
 			if email.Envelope.RcptTo[0] != tc.recipient {
 				t.Fatal("alias lookup rewrote envelope")
 			}
-			alias.CreatedAt = alias.CreatedAt.Truncate(time.Microsecond)
 			if stored := storedAlias(t, tx, alias.ID); !sameAlias(stored, alias) {
 				t.Fatalf("lookup rewrote legacy alias: %+v", stored)
 			}
