@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"mime"
@@ -110,7 +111,7 @@ func newSieveFilter(config []byte, policy SieveRedirectPolicy) (pipeline.Filter,
 		}
 	}
 
-	script, err := sieve.Parse(cfg.Script)
+	script, err := parseEnabledSieve(cfg.Script)
 	if err != nil {
 		// A previously-validated script that no longer parses is also drift worth
 		// surfacing (a require was stripped, the parser tightened, …). Fail closed
@@ -767,20 +768,96 @@ func missingRequireCap(err error) string {
 	return ""
 }
 
+// enabledSieveCapabilities is what REST Mail accepts in a Sieve `require`. Sieve is
+// a compatibility interface here, so the owner chose a list (#1468, carried by
+// #2108) and go-sieve stays a general library: anything it parses that is missing
+// from this map is refused by parseEnabledSieve, including the non-standard `regex`
+// and `notify`. `mailbox` and `copy` are the requires behind `fileinto :create` and
+// `:copy`. `encoded-character` and the two built-in comparators belong to RFC 5228
+// itself. `variables`, `relational` and `subaddress` are on the owner's list, and
+// join this map when go-sieve implements them.
+var enabledSieveCapabilities = map[string]bool{
+	"fileinto":                   true,
+	"mailbox":                    true,
+	"copy":                       true,
+	"envelope":                   true,
+	"body":                       true,
+	"imap4flags":                 true,
+	"vacation":                   true,
+	"reject":                     true,
+	"ereject":                    true,
+	"encoded-character":          true,
+	"comparator-i;octet":         true,
+	"comparator-i;ascii-casemap": true,
+}
+
+// unsupportedRequireRe extracts the capability from go-sieve's refusal of a
+// `require` it does not implement. The name is printed with %q, so it may hold
+// escapes.
+var unsupportedRequireRe = regexp.MustCompile(`require of unsupported extension ("(?:[^"\\]|\\.)*")`)
+
+// sieveCapabilityError says a script needs a capability this server does not enable.
+type sieveCapabilityError struct{ capability string }
+
+func (e *sieveCapabilityError) Error() string {
+	return fmt.Sprintf("the Sieve extension %q is not enabled on this server", e.capability)
+}
+
+// refusedSieveCapability returns the capability a go-sieve parse error shows the
+// script needs when this server does not enable it, or "". A missing `require` of
+// an enabled capability is not one: adding the `require` fixes that script.
+func refusedSieveCapability(err error) string {
+	if m := unsupportedRequireRe.FindStringSubmatch(err.Error()); len(m) == 2 {
+		if name, unquoteErr := strconv.Unquote(m[1]); unquoteErr == nil {
+			return name
+		}
+	}
+	if name := missingRequireCap(err); name != "" && !enabledSieveCapabilities[name] {
+		return name
+	}
+	return ""
+}
+
+// parseEnabledSieve parses a script and refuses one that needs a capability outside
+// enabledSieveCapabilities, whether or not any path through it reaches the feature.
+// Upload and the delivery filter both parse through here, so a script written around
+// the API cannot run what an upload would refuse.
+func parseEnabledSieve(src string) (*sieve.Script, error) {
+	script, err := sieve.Parse(src)
+	if err != nil {
+		if name := refusedSieveCapability(err); name != "" {
+			return nil, &sieveCapabilityError{capability: name}
+		}
+		return nil, err
+	}
+	for _, name := range script.Requires() {
+		if !enabledSieveCapabilities[name] {
+			return nil, &sieveCapabilityError{capability: name}
+		}
+	}
+	return script, nil
+}
+
 // SieveInstallError is a structured install-time validation failure. Stage is
-// "parse" (syntax / undeclared extension) or "dryrun" (a runtime error surfaced
-// by evaluating the script against a synthetic message). MissingRequire names the
-// extension lacking a `require` when the parser could determine it. Error()
-// renders an actionable message the API returns verbatim (HTTP 400).
+// "parse" (syntax / undeclared extension), "capability" (the script needs an
+// extension this server does not enable, named by Capability) or "dryrun" (a
+// runtime error surfaced by evaluating the script against a synthetic message).
+// MissingRequire names the extension lacking a `require` when the parser could
+// determine it and adding that `require` would help. Error() renders an actionable
+// message the API returns verbatim (HTTP 422).
 type SieveInstallError struct {
 	Stage          string
 	MissingRequire string
+	Capability     string
 	Err            error
 }
 
 func (e *SieveInstallError) Error() string {
 	if e.Stage == "dryrun" {
 		return fmt.Sprintf("sieve script failed a safe dry-run: %v", e.Err)
+	}
+	if e.Stage == "capability" {
+		return e.Err.Error()
 	}
 	if e.MissingRequire != "" {
 		return fmt.Sprintf("sieve parse error: %v (the script uses an extension it does not declare — add: require \"%s\";)", e.Err, e.MissingRequire)
@@ -790,8 +867,9 @@ func (e *SieveInstallError) Error() string {
 
 func (e *SieveInstallError) Unwrap() error { return e.Err }
 
-// ValidateSieveForInstall is the install-time gate: it parses the script and then
-// runs it in a safe, side-effect-free dry-run against a synthetic message, so
+// ValidateSieveForInstall is the install-time gate: it parses the script, refuses
+// any extension this server does not enable, and then runs it in a safe,
+// side-effect-free dry-run against a synthetic message, so
 // both syntax errors AND runtime errors are caught at install (returned to the
 // user immediately) instead of at delivery (where a bad script fails closed and
 // silently defers the mailbox's mail). It returns a *SieveInstallError on
@@ -802,8 +880,12 @@ func ValidateSieveForInstall(script string) error {
 	if strings.TrimSpace(script) == "" {
 		return nil
 	}
-	parsed, err := sieve.Parse(script)
+	parsed, err := parseEnabledSieve(script)
 	if err != nil {
+		var refused *sieveCapabilityError
+		if errors.As(err, &refused) {
+			return &SieveInstallError{Stage: "capability", Capability: refused.capability, Err: err}
+		}
 		return &SieveInstallError{Stage: "parse", MissingRequire: missingRequireCap(err), Err: err}
 	}
 	if err := dryRunSieve(parsed); err != nil {
@@ -903,9 +985,9 @@ func (e *recordingExecutor) Vacation(v sieve.Vacation) {
 
 func (e *recordingExecutor) Notify(method, message string) {
 	e.actions = append(e.actions, "notify:"+method)
-	// `notify` (RFC 5435) has no delivery consumer either. The parser already
-	// rejects the enotify/notify extensions, so this is belt-and-suspenders for a
-	// future parser that accepts them (issue #201).
+	// `notify` has no delivery consumer either. parseEnabledSieve refuses the
+	// extension before a dry run starts, so this is belt-and-suspenders in case it
+	// is ever enabled (issue #201).
 	if e.err == nil {
 		e.err = fmt.Errorf("the Sieve 'notify' action is not supported by this server")
 	}

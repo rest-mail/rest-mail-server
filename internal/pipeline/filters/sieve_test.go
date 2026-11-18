@@ -337,10 +337,19 @@ func TestValidateSieve_V040Rules(t *testing.T) {
 // ── Notify metadata mapping ──────────────────────────────────────────
 
 func TestSieve_Notify_Basic(t *testing.T) {
-	script := `require "notify";
-notify :method "mailto:admin@example.com" :message "New mail received";`
-	email := sieveEmail()
-	result := runSieve(t, script, email)
+	// `notify` is not an extension REST Mail enables, so NewSieve refuses this script
+	// (TestSieveFilterDoesNotBuildACapabilityOffTheList). The executor's mapping is
+	// still what go-sieve calls, so this parses with the library directly.
+	parsed, err := sieve.Parse(`require "notify";
+notify :method "mailto:admin@example.com" :message "New mail received";`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	filter := &sieveFilter{script: parsed}
+	result, err := filter.Execute(context.Background(), sieveEmail())
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if result.Action != pipeline.ActionContinue {
 		t.Fatalf("expected ActionContinue, got %q", result.Action)

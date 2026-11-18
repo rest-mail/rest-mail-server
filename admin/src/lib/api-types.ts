@@ -869,7 +869,7 @@ export interface paths {
         get: operations["getSieveScript"];
         /**
          * Create or replace the Sieve filter script
-         * @description 201 when it creates the script, 200 when it replaces it. A script that does not parse, or fails its dry run, is 422 validation_failed with the parser's message in fields.script, and is not stored.
+         * @description 201 when it creates the script, 200 when it replaces it. A script that does not parse, needs a Sieve extension this server does not enable, or fails its dry run, is 422 validation_failed with the reason in fields.script, and is not stored. The reason names an extension that is not enabled.
          */
         put: operations["putSieveScript"];
         post?: never;
