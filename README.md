@@ -556,6 +556,7 @@ For standalone issuance and automated renewal, follow the
 | `POP3_TLS_PORT`               | `995`              | POP3 implicit TLS port        |
 | `QUEUE_WORKERS`               | `4`                | Number of outbound queue workers |
 | `QUEUE_POLL_INTERVAL`         | `5s`               | How long an idle queue worker waits before looking again. A worker with mail due goes on to the next message at once |
+| `QUEUE_MAX_PER_DESTINATION`   | `2`                | Most messages in flight to one recipient domain at once, across every queue worker on the database. Mail over the limit waits, still due, with no attempt counted. `0` removes the limit. With `QUEUE_WORKERS` at or below this number, one unresponsive domain can still occupy every worker |
 | `QUEUE_SMTP_GREETING_TIMEOUT` | `5m`               | Outbound SMTP: wait for the 220 greeting (RFC 5321 §4.5.3.2) |
 | `QUEUE_SMTP_MAIL_TIMEOUT`     | `5m`               | Outbound SMTP: wait for the reply to MAIL |
 | `QUEUE_SMTP_RCPT_TIMEOUT`     | `5m`               | Outbound SMTP: wait for the reply to RCPT |

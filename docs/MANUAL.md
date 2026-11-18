@@ -1002,6 +1002,7 @@ gateways: run the instance task before restarting a gateway with a broken pair.
 | `SRS_PREVIOUS_SECRET` | *(empty)* | The SRS secret before the last rotation, still accepted when checking an address. |
 | `QUEUE_WORKERS` | `4` | |
 | `QUEUE_POLL_INTERVAL` | `5s` | How long an idle queue worker waits before looking again. A worker with mail due goes on to the next message at once |
+| `QUEUE_MAX_PER_DESTINATION` | `2` | Most messages in flight to one recipient domain at once, across every queue worker on the database. Mail over the limit waits, still due, with no attempt counted. `0` removes the limit. With `QUEUE_WORKERS` at or below this number, one unresponsive domain can still occupy every worker |
 | `QUEUE_SMTP_GREETING_TIMEOUT` | `5m` | Outbound SMTP: how long to wait for the 220 greeting (RFC 5321 §4.5.3.2). Go duration, like the five below; a malformed or non-positive value is a startup error |
 | `QUEUE_SMTP_MAIL_TIMEOUT` | `5m` | Outbound SMTP: the reply to MAIL |
 | `QUEUE_SMTP_RCPT_TIMEOUT` | `5m` | Outbound SMTP: the reply to RCPT |

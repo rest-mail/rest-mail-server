@@ -154,7 +154,7 @@ func TestClaimDoesNotWalkPastMailThatHasLeft(t *testing.T) {
 	}
 
 	var plan []string
-	if err := db.Raw("EXPLAIN (ANALYZE) "+claimSQL, now, now.Add(-time.Minute), now).Scan(&plan).Error; err != nil {
+	if err := db.Raw("EXPLAIN (ANALYZE) "+claimSQL, now, now.Add(-time.Minute), now, now.Add(-time.Minute), defaultMaxPerDestination, "[]").Scan(&plan).Error; err != nil {
 		t.Fatal(err)
 	}
 	for _, line := range plan {

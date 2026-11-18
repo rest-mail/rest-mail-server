@@ -48,9 +48,14 @@ type timedMX struct {
 	ln      net.Listener
 	opts    timedMXOptions
 	release chan struct{}
+	// releaseOnce lets a test end the stall before its cleanup does.
+	releaseOnce sync.Once
 
 	mu     sync.Mutex
 	copies int
+	// stalled counts the sessions that reached the stall. None leaves it before
+	// the release, so until then this is how many the peer is holding at once.
+	stalled int
 }
 
 type timedMXOptions struct {
@@ -89,7 +94,7 @@ func newTimedMX(t *testing.T, opts timedMXOptions) *timedMX {
 		}
 	}()
 	t.Cleanup(func() {
-		close(mx.release)
+		mx.releaseStalled()
 		_ = ln.Close()
 		conns.Wait()
 	})
@@ -97,6 +102,17 @@ func newTimedMX(t *testing.T, opts timedMXOptions) *timedMX {
 }
 
 func (mx *timedMX) addr(string) string { return mx.ln.Addr().String() }
+
+// releaseStalled ends every session the peer is holding, and any it would hold.
+func (mx *timedMX) releaseStalled() {
+	mx.releaseOnce.Do(func() { close(mx.release) })
+}
+
+func (mx *timedMX) stalledSessions() int {
+	mx.mu.Lock()
+	defer mx.mu.Unlock()
+	return mx.stalled
+}
 
 func (mx *timedMX) copiesReceived() int {
 	mx.mu.Lock()
@@ -108,6 +124,9 @@ func (mx *timedMX) copiesReceived() int {
 // stall, and reports whether to go on.
 func (mx *timedMX) answerAt(step string) bool {
 	if mx.opts.stall == step {
+		mx.mu.Lock()
+		mx.stalled++
+		mx.mu.Unlock()
 		<-mx.release
 		return false
 	}
