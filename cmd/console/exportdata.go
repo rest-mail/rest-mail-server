@@ -219,12 +219,13 @@ func exportCalendarDirectory(exporter *mailExporter, path string, count *int) er
 	}
 	defer func() { _ = os.RemoveAll(directory) }()
 	prefix := "/api/v1/accounts/" + strconv.FormatUint(exporter.account, 10)
-	_, _, err = exportDataList(exporter, prefix+"/folders", false, func(folder exportedFolder) error {
+	folders, _, err := exportDataList(exporter, prefix+"/folders", false, func(folder exportedFolder) error {
 		if folder.Name == "" {
 			return errors.New("the server returned an unnamed folder")
 		}
 		route := prefix + "/folders/" + url.PathEscape(folder.Name) + "/messages?limit=100&include_imap_deleted=true&include_snoozed=true"
 		cursor := ""
+		cursors := pageCursors{}
 		for {
 			next := route + "&cursor=" + url.QueryEscape(cursor)
 			page, rows, err := exportDataList(exporter, next, true, func(message struct {
@@ -246,14 +247,16 @@ func exportCalendarDirectory(exporter *mailExporter, path string, count *int) er
 			if !page.HasMore {
 				return nil
 			}
-			if rows == 0 || page.Cursor == "" || page.Cursor == cursor {
-				return errors.New("the server returned a calendar message page without an advancing cursor")
+			if cursor, err = cursors.next(page, rows); err != nil {
+				return err
 			}
-			cursor = page.Cursor
 		}
 	})
 	if err != nil {
 		return err
+	}
+	if folders.HasMore {
+		return errUnlistedFolders
 	}
 	if _, err := os.Lstat(path); !errors.Is(err, os.ErrNotExist) {
 		return errors.New("the calendar destination appeared during export; it was not replaced")

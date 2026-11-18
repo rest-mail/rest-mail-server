@@ -162,11 +162,15 @@ func maildirFolder(name string) (string, error) {
 
 func (e *mailExporter) run(root string) (int, error) {
 	var folders []exportedFolder
-	if _, err := listOf(e, "/api/v1/accounts/"+strconv.FormatUint(e.account, 10)+"/folders", func(f exportedFolder) error {
+	page, _, err := listOf(e, "/api/v1/accounts/"+strconv.FormatUint(e.account, 10)+"/folders", false, func(f exportedFolder) error {
 		folders = append(folders, f)
 		return nil
-	}); err != nil {
+	})
+	if err != nil {
 		return 0, fmt.Errorf("list folders: %w", err)
+	}
+	if page.HasMore {
+		return 0, errUnlistedFolders
 	}
 	// Every folder is checked before anything is written.
 	dirs := make(map[string]string, len(folders))
@@ -205,6 +209,7 @@ func (e *mailExporter) exportFolder(dir, folder string) error {
 		return err
 	}
 	seen := map[uint]bool{}
+	cursors := pageCursors{}
 	path := "/api/v1/accounts/" + strconv.FormatUint(e.account, 10) + "/folders/" + url.PathEscape(folder) + "/messages?limit=100&include_imap_deleted=true&include_snoozed=true"
 	cursor := ""
 	for {
@@ -215,7 +220,7 @@ func (e *mailExporter) exportFolder(dir, folder string) error {
 		if cursor != "" {
 			next += "&cursor=" + url.QueryEscape(cursor)
 		}
-		pagination, err := listOf(e, next, func(m exportedMessage) error {
+		pagination, rows, err := listOf(e, next, true, func(m exportedMessage) error {
 			page = append(page, m)
 			return nil
 		})
@@ -231,11 +236,32 @@ func (e *mailExporter) exportFolder(dir, folder string) error {
 				return fmt.Errorf("message %d: %w", message.ID, err)
 			}
 		}
-		if !pagination.HasMore || pagination.Cursor == "" || pagination.Cursor == cursor {
+		if !pagination.HasMore {
 			return nil
 		}
-		cursor = pagination.Cursor
+		if cursor, err = cursors.next(pagination, rows); err != nil {
+			return fmt.Errorf("list messages: %w", err)
+		}
 	}
+}
+
+// errUnlistedFolders refuses a folder list that says it is not all there: the
+// folder route has no next page to ask for.
+var errUnlistedFolders = errors.New("the server listed only some of the folders")
+
+// pageCursors holds the cursors a folder's listing has given. An export ends
+// only on a page that says nothing follows, so a page that says more follows
+// has to lead somewhere new: stopping there would report a partial folder as
+// exported, and following a cursor already used would never stop.
+type pageCursors map[string]bool
+
+// next is the cursor of the page after one holding rows messages.
+func (c pageCursors) next(page respond.Pagination, rows int) (string, error) {
+	if rows == 0 || page.Cursor == "" || c[page.Cursor] {
+		return "", errors.New("the server said more messages follow but gave no new page to read them from")
+	}
+	c[page.Cursor] = true
+	return page.Cursor, nil
 }
 
 // keywordMap gives each keyword of a folder its dovecot-keywords letter.
@@ -408,59 +434,64 @@ func (e *mailExporter) get(path string) (*http.Response, error) {
 }
 
 // listOf reads one list response, decoding its data one element at a time so
-// a page is never held whole.
-func listOf[T any](e *mailExporter, path string, each func(T) error) (respond.Pagination, error) {
+// a page is never held whole, and answers its pagination and how many elements
+// it held. A paginated list must say whether more follows: without that, its
+// end cannot be told from a cut-off answer.
+func listOf[T any](e *mailExporter, path string, paginated bool, each func(T) error) (respond.Pagination, int, error) {
 	var page respond.Pagination
 	resp, err := e.get(path)
 	if err != nil {
-		return page, err
+		return page, 0, err
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		return page, fmt.Errorf("the server refused (HTTP %d); check the account and that the key holds mail:read", resp.StatusCode)
+		return page, 0, fmt.Errorf("the server refused (HTTP %d); check the account and that the key holds mail:read", resp.StatusCode)
 	}
 	invalid := errors.New("the server returned an invalid list")
 	dec := json.NewDecoder(resp.Body)
 	if tok, err := dec.Token(); err != nil || tok != json.Delim('{') {
-		return page, invalid
+		return page, 0, invalid
 	}
-	seenData := false
+	seenData, seenPage, rows := false, false, 0
 	for dec.More() {
 		tok, err := dec.Token()
 		if err != nil {
-			return page, invalid
+			return page, rows, invalid
 		}
 		switch tok {
 		case "data":
 			if tok, err := dec.Token(); err != nil || tok != json.Delim('[') {
-				return page, invalid
+				return page, rows, invalid
 			}
 			seenData = true
 			for dec.More() {
 				var item T
 				if err := dec.Decode(&item); err != nil {
-					return page, invalid
+					return page, rows, invalid
 				}
 				if err := each(item); err != nil {
-					return page, err
+					return page, rows, err
 				}
+				rows++
 			}
 			if tok, err := dec.Token(); err != nil || tok != json.Delim(']') {
-				return page, invalid
+				return page, rows, invalid
 			}
 		case "pagination":
-			if err := dec.Decode(&page); err != nil {
-				return page, invalid
+			var metadata *respond.Pagination
+			if err := dec.Decode(&metadata); err != nil || metadata == nil {
+				return page, rows, invalid
 			}
+			page, seenPage = *metadata, true
 		default:
 			var skip json.RawMessage
 			if err := dec.Decode(&skip); err != nil {
-				return page, invalid
+				return page, rows, invalid
 			}
 		}
 	}
-	if tok, err := dec.Token(); err != nil || tok != json.Delim('}') || !seenData {
-		return page, invalid
+	if tok, err := dec.Token(); err != nil || tok != json.Delim('}') || !seenData || (paginated && !seenPage) {
+		return page, rows, invalid
 	}
-	return page, nil
+	return page, rows, nil
 }

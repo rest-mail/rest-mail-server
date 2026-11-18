@@ -48,8 +48,10 @@ audit:
   that is not set is `null`.
 - `folders` are names only, as the API lists them, the standard folders
   included. Their messages are `export-maildir`'s.
-- `sieve` is the stored script exactly, and whether it is active. An account
-  without a script has an empty `script`.
+- `sieve` is the stored script exactly, and whether it is active. The Sieve
+  route answers 404 `not_found` for an account without a script, and the export
+  then writes an empty `script` and `active: false`. Any other refusal of that
+  read, a 404 without that API error included, fails the export.
 
 Every section is always present, with the server's defaults when the account
 never set it.
@@ -66,19 +68,21 @@ are server state, not settings, and are left out too.
 
 The file is written beside `--path` and renamed into place when complete,
 readable only by its owner (mode 0600). An existing file is refused unless
-`--overwrite` is given. A refused or failed read writes nothing. `--json` writes
+`--overwrite` is given. A refused or failed read, or an answer whose `data` is
+`null`, writes nothing and leaves an existing file as it was. `--json` writes
 one summary (`path`, `format`, `folders`) or one error; the API key is never
 printed.
 
 ## Not in the export yet
 
-The public API has no read route for these, so they are not exported
+These are not in the file
 ([#1611](https://github.com/rest-mail/rest-mail-server/issues/1611)):
 
-- the roles (special use) of folders, which the IMAP gateway gives the standard
-  folders by name;
-- the aliases and sending identities that deliver to or send as the account,
-  which only the administrators' alias list shows;
+- the roles (special use) of folders, which `GET /api/v1/accounts/{id}/folders`
+  reports and this command does not copy yet;
+- the addresses that deliver to the account and that it may send as, which
+  `GET /api/v1/accounts/{id}/addresses` reports and this command does not read
+  yet;
 - a signature, which REST Mail does not store.
 
 Contacts ([#1570](https://github.com/rest-mail/rest-mail-server/issues/1570))
