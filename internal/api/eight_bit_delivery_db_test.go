@@ -283,7 +283,7 @@ func (s *eightBitServer) imapFetch(password string, utf8, binary bool) ([]byte, 
 	s.t.Helper()
 	client, server := net.Pipe()
 	defer client.Close()
-	session := imapserver.NewSession(server, imapgw.NewBackend(s.imapAPI, nil), "imap.test", nil, goimap.NopLimiter{})
+	session := imapserver.NewSession(clientAtAddress{Conn: server}, imapgw.NewBackend(s.imapAPI, nil), "imap.test", nil, goimap.NopLimiter{})
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
@@ -353,7 +353,7 @@ func (s *eightBitServer) pop3Retr(password string) ([]byte, int) {
 	s.t.Helper()
 	client, server := net.Pipe()
 	defer client.Close()
-	session := pop3server.NewSession(server, pop3gw.NewBackend(s.pop3API, nil), nil, nil)
+	session := pop3server.NewSession(server, pop3gw.NewBackend(s.pop3API, nil).ForClient(testClientIP), nil, nil)
 	done := make(chan struct{})
 	go func() {
 		defer close(done)

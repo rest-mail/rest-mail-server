@@ -13,8 +13,10 @@
 # domain_id must name the run's domain, which no static pin can hold.
 createCustomFilter 20
 createPipeline 12
-# Also an address with no format, and a mail client's password only the fixture holds.
-openGatewaySession 14
+# A mail client's address, password and client_ip: the hook signs in the one the fixture
+# holds. 14 measured by a whole-API run, plus client_ip's own 3 (missing, empty, wrong type),
+# measured by running this operation's coverage alone, which reproduced the 14 first.
+openGatewaySession 17
 # These 32 are sent unchanged by probe_refusals.py, checked against the published
 # response schema and exact refusal code, and recorded in replayed-probes.jsonl.
 # Their engine send ends afterwards: Vertrag 0.42 cannot attribute a legitimate

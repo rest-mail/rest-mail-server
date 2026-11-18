@@ -1390,3 +1390,7 @@ charsets do not allocate a 32 KiB copy buffer per word. Encoded NUL in display
 strings becomes a space, while boundaries, addr-specs, identifiers and stored
 octets retain their spelling. `TestFetchSpacesNULInEncodedWord` and field-scratch
 tests retain the corresponding semantic and allocation controls.
+
+## Mail-client address propagation (#1957)
+
+A backend may implement ClientAddressBackend to receive each LOGIN/AUTHENTICATE client IP without changing backends that do not need it.

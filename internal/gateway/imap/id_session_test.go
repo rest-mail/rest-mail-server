@@ -26,6 +26,10 @@ func (k keepMailbox) Authenticate(user, pass string) (goimap.Mailbox, error) {
 	return m, err
 }
 
+func (keeper keepMailbox) ForClient(clientIP string) goimap.Backend {
+	return keepMailbox{keeper.Backend.ForClient(clientIP).(*Backend), keeper.got}
+}
+
 func dialID(t *testing.T) (*imapClient, chan *mailbox) {
 	t.Helper()
 	client, server := net.Pipe()
