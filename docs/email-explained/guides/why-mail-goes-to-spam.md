@@ -40,8 +40,8 @@ check it
 ### 3. Is your address on a blocklist?
 
 Blocklists are lists of addresses that have sent spam, or that should not be sending
-mail at all. Look up your server's address at
-[Spamhaus](https://check.spamhaus.org/). Addresses given to home internet connections
+mail at all. Look up your server's address with the lookup that
+[Spamhaus's IP reputation page](https://www.spamhaus.org/ip-reputation/) links to. Addresses given to home internet connections
 are often listed just for being what they are
 ([Spamhaus PBL](https://www.spamhaus.org/blocklists/policy-blocklist/)).
 
@@ -146,7 +146,7 @@ their records.
   [Trace an email with its full headers](https://support.google.com/mail/answer/29436),
   [Postmaster Tools](https://postmaster.google.com/).
 - Microsoft: [Smart Network Data Services](https://sendersupport.olc.protection.outlook.com/snds/).
-- Spamhaus: [Reputation Checker](https://check.spamhaus.org/),
+- Spamhaus: [IP reputation](https://www.spamhaus.org/ip-reputation/) (links to its lookup),
   [Policy Blocklist](https://www.spamhaus.org/blocklists/policy-blocklist/).
 - [Deliverability](../how-it-goes-wrong/deliverability.md) and [Spam
   defences](../security/spam-defences.md), with their sources.
