@@ -353,8 +353,9 @@ type updateDomainBody struct {
 	DefaultQuotaBytes *int64  `json:"default_quota_bytes,omitempty" minimum:"0" message:"must not be negative"`
 	SendingPolicy     *string `json:"sending_policy,omitempty" enums:",transactional,bulk" message:"must be 'transactional', 'bulk' or empty"`
 	DMARCPolicy       *string `json:"dmarc_policy,omitempty" enums:"none,quarantine,reject" message:"must be 'none', 'quarantine' or 'reject'"`
-	// AutomationLocked true locks the domain against automation, false lifts the
-	// lock (#2012). Lifting needs a person's session with a fresh second factor.
+	// AutomationLocked true locks the domain, so nobody can delete it, and false
+	// lifts the lock (#2012, #2098). Lifting needs a person's session with a
+	// fresh second factor.
 	AutomationLocked *bool `json:"automation_locked,omitempty"`
 }
 

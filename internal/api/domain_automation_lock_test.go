@@ -17,11 +17,12 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/examplepairs"
 )
 
-// A domain locked against automation (#2012, decided on #1870): an API key may
-// lock it, but cannot delete it or lift the lock; a person's session without a
-// fresh second factor cannot lift it either; a person with one can. Every case
-// goes through the production router to real PostgreSQL, and what is stored is
-// read back, not taken from the answer.
+// A locked domain (#2012, decided on #1870; made absolute on #2098): an API key
+// may lock it; nobody may delete it while it is locked, a person with a fresh
+// second factor included; an API key or a person's session without a fresh
+// second factor cannot lift the lock; a person with one can, and may then
+// delete the domain. Every case goes through the production router to real
+// PostgreSQL, and what is stored is read back, not taken from the answer.
 func TestDomainAutomationLock(t *testing.T) {
 	fixture := newGrantsFixture(t)
 	owner := fixture.admins["owner"].user
@@ -119,12 +120,34 @@ func TestDomainAutomationLock(t *testing.T) {
 		}
 	})
 
-	t.Run("an API key cannot delete a locked domain", func(t *testing.T) {
+	t.Run("nobody can delete a locked domain, a person with a fresh second factor included", func(t *testing.T) {
 		d := newDomain(t, "locked-delete.test")
 		lock(t, ownerSession, d)
-		refused(t, doRequest(fixture.router, http.MethodDelete, path(d), key, ""), http.StatusForbidden, "automation_locked")
-		if retired(t, d) || stored(t, d).AutomationLockedAt == nil {
-			t.Fatal("a refused delete changed the domain")
+		for _, tc := range []struct{ who, token string }{
+			{"API key", key},
+			{"password-only session", passwordOnly},
+			{"stale two-factor session", stale},
+			{"fresh two-factor session", ownerSession},
+		} {
+			refused(t, doRequest(fixture.router, http.MethodDelete, path(d), tc.token, ""), http.StatusForbidden, "automation_locked")
+			if retired(t, d) || stored(t, d).AutomationLockedAt == nil {
+				t.Fatalf("%s: a refused delete changed the domain", tc.who)
+			}
+		}
+	})
+
+	t.Run("a person lifts the lock and then deletes the domain", func(t *testing.T) {
+		d := newDomain(t, "locked-lift-then-delete.test")
+		lock(t, key, d)
+		refused(t, doRequest(fixture.router, http.MethodDelete, path(d), ownerSession, ""), http.StatusForbidden, "automation_locked")
+		if rr := doRequest(fixture.router, http.MethodPatch, path(d), ownerSession, `{"automation_locked":false}`); rr.Code != http.StatusOK {
+			t.Fatalf("lift: %d %s", rr.Code, rr.Body)
+		}
+		if rr := doRequest(fixture.router, http.MethodDelete, path(d), ownerSession, ""); rr.Code != http.StatusNoContent {
+			t.Fatalf("person's delete after lifting the lock: %d %s", rr.Code, rr.Body)
+		}
+		if !retired(t, d) {
+			t.Fatal("deleted domain was not retired")
 		}
 	})
 
@@ -188,24 +211,25 @@ func TestDomainAutomationLock(t *testing.T) {
 		}
 	})
 
-	t.Run("the lock is against automation: a person may still delete", func(t *testing.T) {
-		d := newDomain(t, "locked-human-delete.test")
-		lock(t, key, d)
+	t.Run("restoring a domain brings back the lock it was archived with", func(t *testing.T) {
+		// A locked domain can no longer be deleted, so the archive is given the
+		// lock directly: what is proved is that restore keeps the column.
+		d := newDomain(t, "restored-lock.test")
 		if rr := doRequest(fixture.router, http.MethodDelete, path(d), ownerSession, ""); rr.Code != http.StatusNoContent {
-			t.Fatalf("person's delete of a locked domain: %d %s", rr.Code, rr.Body)
+			t.Fatalf("delete: %d %s", rr.Code, rr.Body)
 		}
-		if !retired(t, d) {
-			t.Fatal("deleted domain was not retired")
+		if err := fixture.db.Exec(`UPDATE domain_retirements SET state = jsonb_set(jsonb_set(state,
+			'{domains,0,automation_locked_at}', to_jsonb(now())), '{domains,0,automation_locked_by}', to_jsonb(?::text))
+			WHERE domain_id = ?`, owner.Address, d.ID).Error; err != nil {
+			t.Fatal(err)
 		}
-
-		// Restoring brings the lock back with the domain.
 		if rr := doRequest(fixture.router, http.MethodPost, path(d)+"/restore", ownerSession, ""); rr.Code != http.StatusOK {
 			t.Fatalf("restore: %d %s", rr.Code, rr.Body)
 		}
 		if row := stored(t, d); row.AutomationLockedAt == nil || row.AutomationLockedBy != owner.Address {
 			t.Fatalf("restored domain lost its lock: %v by %q", row.AutomationLockedAt, row.AutomationLockedBy)
 		}
-		refused(t, doRequest(fixture.router, http.MethodDelete, path(d), key, ""), http.StatusForbidden, "automation_locked")
+		refused(t, doRequest(fixture.router, http.MethodDelete, path(d), ownerSession, ""), http.StatusForbidden, "automation_locked")
 	})
 }
 
@@ -274,13 +298,29 @@ func TestDomainAutomationLockExamples(t *testing.T) {
 				t.Fatalf("got %d %q %s, want %d %q", rr.Code, rr.Header().Get("Content-Type"), rr.Body, pair.Response.Status, pair.Response.MediaType)
 			}
 			actual := rr.Body.Bytes()
-			if rr.Code == http.StatusOK {
-				actual = atStamp(t, actual, stamp)
+			switch {
+			case rr.Code == http.StatusNoContent:
+				if len(actual) != 0 || len(pair.Response.Body) != 0 {
+					t.Fatalf("204 with body %q, pair body %s", actual, pair.Response.Body)
+				}
+			case rr.Code == http.StatusOK:
+				assertPublicExampleBody(t, pair.Response.Body, atStamp(t, actual, stamp))
+			default:
+				assertPublicExampleBody(t, pair.Response.Body, actual)
 			}
-			assertPublicExampleBody(t, pair.Response.Body, actual)
+			var retirements int64
+			if err := fixture.db.Model(&models.DomainRetirement{}).Where("domain_id = ?", 65010).Count(&retirements).Error; err != nil {
+				t.Fatal(err)
+			}
+			if step.deletes {
+				if retirements != 1 {
+					t.Fatalf("after %s the domain is not archived", step.name)
+				}
+				return
+			}
 			var row models.Domain
-			if err := fixture.db.First(&row, 65010).Error; err != nil {
-				t.Fatalf("the domain is gone: %v", err)
+			if err := fixture.db.First(&row, 65010).Error; err != nil || retirements != 0 {
+				t.Fatalf("the domain is gone (%d archived): %v", retirements, err)
 			}
 			if wantLocked := step.name != "automation_unlock"; (row.AutomationLockedAt != nil) != wantLocked {
 				t.Fatalf("after %s the stored lock is %v, want locked=%v", step.name, row.AutomationLockedAt, wantLocked)
@@ -294,12 +334,17 @@ func TestDomainAutomationLockExamples(t *testing.T) {
 // the next pair needs it. The fake-driver harnesses of TestDomainMutationExamples
 // and TestDomainRemovalExamples prove every other pair of these operations and
 // leave these to it: they need real row locks, the audit chain and a stored lock.
-var automationLockSteps = []struct{ op, name, method, sender string }{
-	{"updateDomain", "automation_lock", http.MethodPatch, "key"},
-	{"deleteDomain", "automation_locked", http.MethodDelete, "key"},
-	{"updateDomain", "automation_unlock_key", http.MethodPatch, "key"},
-	{"updateDomain", "automation_unlock_stale", http.MethodPatch, "stale"},
-	{"updateDomain", "automation_unlock", http.MethodPatch, "person"},
+var automationLockSteps = []struct {
+	op, name, method, sender string
+	deletes                  bool
+}{
+	{"updateDomain", "automation_lock", http.MethodPatch, "key", false},
+	{"deleteDomain", "automation_locked", http.MethodDelete, "key", false},
+	{"deleteDomain", "automation_locked_person", http.MethodDelete, "person", false},
+	{"updateDomain", "automation_unlock_key", http.MethodPatch, "key", false},
+	{"updateDomain", "automation_unlock_stale", http.MethodPatch, "stale", false},
+	{"updateDomain", "automation_unlock", http.MethodPatch, "person", false},
+	{"deleteDomain", "automation_unlocked", http.MethodDelete, "person", true},
 }
 
 // provenByAutomationLockExamples reports whether TestDomainAutomationLockExamples

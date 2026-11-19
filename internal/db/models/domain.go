@@ -38,10 +38,10 @@ type Domain struct {
 	// did (the account's address at the time). Both are empty while not stopped.
 	OutboundStopReason string `gorm:"type:text;not null;default:''" json:"-"`
 	OutboundStoppedBy  string `gorm:"type:text;not null;default:''" json:"-"`
-	// AutomationLockedAt is set while the domain is locked against automation
-	// (#2012, decided on #1870): no API key or other machine credential may
-	// delete it, and only a person's session with a fresh second factor may lift
-	// the lock. AutomationLockedBy is who locked it (the account's address at the
+	// AutomationLockedAt is set while the domain is locked (#2012, decided on
+	// #1870; made absolute on #2098): nobody may delete it, a person's session
+	// included, until the lock is lifted, and only a person's session with a
+	// fresh second factor may lift the lock. AutomationLockedBy is who locked it (the account's address at the
 	// time), empty while unlocked. Nil: not locked.
 	AutomationLockedAt *time.Time `json:"-"`
 	AutomationLockedBy string     `gorm:"type:text;not null;default:''" json:"-"`

@@ -316,7 +316,7 @@ func TestCleanResetEveryDomainColumn(t *testing.T) {
 		t.Errorf("the retained domain kept its outbound stop across the reset: %+v", domain)
 	}
 	if domain.AutomationLockedAt != nil || domain.AutomationLockedBy != "" {
-		t.Errorf("the retained domain kept its lock against automation across the reset: %+v", domain)
+		t.Errorf("the retained domain kept its lock across the reset: %+v", domain)
 	}
 	var columns []string
 	if err := db.Raw(`SELECT column_name FROM information_schema.columns

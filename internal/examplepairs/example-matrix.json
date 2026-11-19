@@ -9876,7 +9876,7 @@
       }
     },
     "automation_locked": {
-      "summary": "An API key cannot delete a domain locked against automation",
+      "summary": "An API key cannot delete a locked domain",
       "description": "The key holds domains:delete at the installation scope. The domain is neither deleted nor archived.",
       "request": {
         "path": {
@@ -9888,10 +9888,41 @@
         "body": {
           "error": {
             "code": "automation_locked",
-            "message": "This domain is locked against automation: an API key cannot delete it. A person signed in can, or can lift the lock with a fresh second factor."
+            "message": "This domain is locked and cannot be deleted: lift the lock first, which needs a person signed in with a fresh second factor."
           }
         },
         "mediaType": "application/json"
+      }
+    },
+    "automation_locked_person": {
+      "summary": "A person with a fresh second factor cannot delete a locked domain either",
+      "description": "The lock is absolute while it is set: the person must lift it through updateDomain first. The domain is neither deleted nor archived.",
+      "request": {
+        "path": {
+          "id": 65010
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "automation_locked",
+            "message": "This domain is locked and cannot be deleted: lift the lock first, which needs a person signed in with a fresh second factor."
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "automation_unlocked": {
+      "summary": "Once the lock is lifted, the domain can be deleted",
+      "description": "The person who lifted the lock deletes the domain; it is archived for restoration.",
+      "request": {
+        "path": {
+          "id": 65010
+        }
+      },
+      "response": {
+        "status": 204
       }
     },
     "cancelled_after_lookup": {
