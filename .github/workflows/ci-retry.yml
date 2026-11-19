@@ -20,8 +20,18 @@ name: CI retry
 #   RUNNER_GATE_URL  The runner gate's status page.
 #                    Default https://runner-gate.antimatter-studios.com/status.
 #                    Ready runners are workers of this repository owner's pool whose
-#                    phase is Running and that are not busy. With none, or when the gate
-#                    cannot be read, nothing is re-run: a retry could not start.
+#                    phase is Running and that are not busy. The pool check applies only
+#                    when a failed job ran on the self-hosted pool (its runner name or
+#                    labels contain "antimatter"): then, with no ready runner or a gate
+#                    that cannot be read, nothing is re-run, since the retry could not
+#                    start. A job that ran on GitHub's runners (ubuntu-*) skips the check:
+#                    the pool cannot affect it. A job whose runner the jobs API does not
+#                    report counts as GitHub-hosted, and the comment says so.
+#
+# The rules, first match wins: CI_RETRY off; this attempt already retried; a failed job
+# ran self-hosted and the pool has no ready runner; a `never` line; infra mode and no
+# `retryable` match; the attempt budget (CI_RETRY_MAX) used up; else re-run. For a
+# self-hosted job the pool check comes before the budget, so a dead pool stops at once.
 #
 # workflow_run runs this file from the default branch with a token that can write, so it
 # checks out the default branch only and never runs code from the pull request.
@@ -112,14 +122,18 @@ jobs:
             --current-status "$current_status" --comments-file "$work/comments.json")
           echo "Run $RUN_ID is at attempt $current_attempt ($current_status); already retried: $retried."
 
-          # The failed jobs of this attempt: their logs and annotations are the failure text.
+          # The failed jobs of this attempt and where each ran (runner_name, labels): their
+          # logs and annotations are the failure text, their runners decide the pool check.
           gh api --paginate "repos/$GH_REPO/actions/runs/$RUN_ID/attempts/$RUN_ATTEMPT/jobs" \
-            --jq '.jobs[] | select(.conclusion == "failure" or .conclusion == "timed_out") | "\(.id)\t\(.name)"' \
-            > "$work/failed-jobs.tsv"
+            --jq '[.jobs[] | select(.conclusion == "failure" or .conclusion == "timed_out")
+                   | {id, name, runner_name, labels}]' \
+            | jq -s 'add // []' > "$work/failed-jobs.json"
+          jq -r '.[] | "\(.id)\t\(.name)\t\(.runner_name // "")"' "$work/failed-jobs.json" > "$work/failed-jobs.tsv"
           if [ ! -s "$work/failed-jobs.tsv" ]; then
             echo "No failed job in attempt $RUN_ATTEMPT (the run failed before any job started)."
           fi
-          while IFS=$'\t' read -r id name; do
+          while IFS=$'\t' read -r id name runner; do
+            echo "Job $id ($name) ran on: ${runner:-a runner the jobs API did not report}."
             if gh api "repos/$GH_REPO/actions/jobs/$id/logs" > "$work/logs/$id.log" 2> "$work/logs-error.txt"; then
               echo "Job $id ($name): $(wc -l < "$work/logs/$id.log") log lines."
             else
@@ -150,7 +164,7 @@ jobs:
             --policy .github/ci-retry.yml \
             --mode "$CI_RETRY" --attempt "$RUN_ATTEMPT" --max-attempts "$CI_RETRY_MAX" \
             --ready-runners "$READY" ${flags[@]+"${flags[@]}"} \
-            --failure-text "$work/logs" \
+            --failure-text "$work/logs" --failed-jobs "$work/failed-jobs.json" \
             --workflow "$WORKFLOW" --run-id "$RUN_ID" --run-url "$RUN_URL" --head-sha "$HEAD_SHA" \
             --comment-out "$work/comment.md" --github-output "$GITHUB_OUTPUT" \
             | tee "$work/decision.json"

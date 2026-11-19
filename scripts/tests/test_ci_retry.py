@@ -25,12 +25,18 @@ ARC = "Error: the job was cancelled after its runner reservation ran out"
 EGRESS = "Failed to upload artifact: 503 Egress is over the account limit"
 DNS = "dial tcp: lookup proxy.golang.org on 127.0.0.53:53: server misbehaving"
 RESET = "read tcp 10.0.0.4:5432: connection reset by peer"
+SELF_HOSTED_JOB = {"id": 501, "name": "Test", "runner_name": "antimatter-vps-linux-x64-runner-4zjsp",
+                   "labels": ["antimatter-vps-linux-x64"]}
+HOSTED_JOB = {"id": 501, "name": "Test", "runner_name": "GitHub Actions 1000000123",
+              "labels": ["ubuntu-24.04"]}
+UNREPORTED_JOB = {"id": 501, "name": "Test", "runner_name": None, "labels": []}
 
 
 def decide(failure_text=ARC, mode="infra", attempt=1, max_attempts=5, ready_runners=2,
-           already_retried_head=False):
+           already_retried_head=False, failed_on_self_hosted=True):
     return ci_retry.decide(POLICY, mode, attempt, max_attempts, failure_text, ready_runners,
-                           already_retried_head=already_retried_head)
+                           already_retried_head=already_retried_head,
+                           failed_on_self_hosted=failed_on_self_hosted)
 
 
 class PolicyFileTests(unittest.TestCase):
@@ -186,6 +192,85 @@ class RuleTests(unittest.TestCase):
         self.assertEqual(decision.reason, "attempt 3 of 3 exhausted")
 
 
+class WhereTheJobRanTests(unittest.TestCase):
+    """Rule 3 applies only when a failed job ran on the self-hosted pool."""
+
+    def test_self_hosted_with_no_ready_runner_is_refused(self):
+        decision = decide(failed_on_self_hosted=True, ready_runners=0)
+        self.assertFalse(decision.retry)
+        self.assertEqual(decision.rule, "no-runners")
+        self.assertEqual(decision.reason, "no runner is running; retrying cannot help")
+        self.assertEqual(decision.runner, "self-hosted")
+
+    def test_self_hosted_with_a_ready_runner_goes_on_to_the_signatures(self):
+        decision = decide(failed_on_self_hosted=True, ready_runners=1)
+        self.assertTrue(decision.retry)
+        self.assertEqual(decision.retryable_signature, "after its runner reservation ran out")
+        unmatched = decide(failure_text="exit code 2", failed_on_self_hosted=True, ready_runners=1)
+        self.assertEqual(unmatched.rule, "unmatched")
+
+    def test_hosted_with_no_ready_runner_goes_on_and_a_retryable_signature_is_retried(self):
+        for line, signature in [(ARC, "after its runner reservation ran out"),
+                                (EGRESS, "Egress is over the account limit"),
+                                (DNS, "dial tcp: lookup"),
+                                (RESET, "connection reset by peer")]:
+            with self.subTest(signature=signature):
+                decision = decide(failure_text=line, failed_on_self_hosted=False, ready_runners=0)
+                self.assertTrue(decision.retry)
+                self.assertEqual(decision.retryable_signature, signature)
+                self.assertEqual(decision.runner, "hosted")
+
+    def test_hosted_with_a_never_line_is_refused_by_the_pattern_not_the_pool(self):
+        text = "--- FAIL: TestRelay (1.2s)\n" + DNS
+        decision = decide(failure_text=text, failed_on_self_hosted=False, ready_runners=0)
+        self.assertFalse(decision.retry)
+        self.assertEqual(decision.rule, "never")
+        self.assertTrue(decision.needs_human)
+        self.assertIn('"--- FAIL:"', decision.reason)
+
+    def test_self_hosted_still_checks_the_pool_before_the_budget(self):
+        decision = decide(failed_on_self_hosted=True, ready_runners=0, attempt=5, max_attempts=5)
+        self.assertEqual(decision.rule, "no-runners")
+        self.assertFalse(decision.needs_human)
+
+    def test_hosted_skips_the_pool_and_reaches_the_budget(self):
+        decision = decide(failed_on_self_hosted=False, ready_runners=0, attempt=5, max_attempts=5)
+        self.assertEqual(decision.rule, "budget")
+        self.assertTrue(decision.needs_human)
+
+    def test_hosted_keeps_the_earlier_rules(self):
+        self.assertEqual(decide(mode="off", failed_on_self_hosted=False).rule, "off")
+        self.assertEqual(decide(already_retried_head=True, failed_on_self_hosted=False).rule,
+                         "already-retried")
+        self.assertEqual(decide(failure_text="exit code 2", failed_on_self_hosted=False,
+                                ready_runners=0).rule, "unmatched")
+
+
+class RunnerOfTests(unittest.TestCase):
+    def test_the_pool_is_self_hosted_by_runner_name_or_label(self):
+        self.assertEqual(ci_retry.runner_of(SELF_HOSTED_JOB), "self-hosted")
+        self.assertEqual(ci_retry.runner_of({"runner_name": "antimatter-vps-linux-x64-runner-x"}),
+                         "self-hosted")
+        # A job that never got its runner still carries the label it asked for.
+        self.assertEqual(ci_retry.runner_of({"runner_name": "", "labels": ["antimatter-vps-linux-x64"]}),
+                         "self-hosted")
+
+    def test_github_runners_are_hosted(self):
+        self.assertEqual(ci_retry.runner_of(HOSTED_JOB), "hosted")
+        self.assertEqual(ci_retry.runner_of({"runner_name": None, "labels": ["ubuntu-latest"]}), "hosted")
+
+    def test_a_job_with_no_runner_reported_is_unknown(self):
+        self.assertIsNone(ci_retry.runner_of(UNREPORTED_JOB))
+        self.assertIsNone(ci_retry.runner_of({"id": 1}))
+
+    def test_one_self_hosted_job_makes_the_run_self_hosted(self):
+        self.assertEqual(ci_retry.failed_runners([HOSTED_JOB, dict(SELF_HOSTED_JOB, id=502)]), (True, []))
+
+    def test_unreported_jobs_count_as_hosted_and_are_named(self):
+        self.assertEqual(ci_retry.failed_runners([UNREPORTED_JOB, HOSTED_JOB]), (False, ["Test"]))
+        self.assertEqual(ci_retry.failed_runners([]), (False, []))
+
+
 class RunnerGateTests(unittest.TestCase):
     STATUS = [
         {"org": "antimatter-studios", "workers": [
@@ -243,15 +328,18 @@ class AlreadyRetriedTests(unittest.TestCase):
 
 
 class CommandTests(unittest.TestCase):
-    def run_decide(self, log, *extra):
+    def run_decide(self, log, *extra, jobs=(SELF_HOSTED_JOB,)):
         with tempfile.TemporaryDirectory() as directory:
             work = Path(directory)
             logs = work / "logs"
             logs.mkdir()
             (logs / "123.log").write_text(log)
+            failed_jobs = work / "failed-jobs.json"
+            failed_jobs.write_text(json.dumps(list(jobs)))
+            extra = ("--failed-jobs", str(failed_jobs), *extra)
             output = work / "output"
             comment = work / "comment.md"
-            with contextlib.redirect_stdout(io.StringIO()):
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
                 ci_retry.main(["decide", "--policy", str(POLICY_FILE), "--failure-text", str(logs),
                                "--workflow", "CI", "--run-id", "99",
                                "--run-url", "https://github.com/o/r/actions/runs/99",
@@ -291,6 +379,30 @@ class CommandTests(unittest.TestCase):
         self.assertEqual(outputs["needs-human"], "false")
         self.assertEqual(outputs["comment"], "false")
         self.assertIsNone(comment)
+
+    def test_a_self_hosted_comment_names_the_pool(self):
+        outputs, comment = self.run_decide(ARC, "--ready-runners", "1")
+        self.assertEqual(outputs["runner"], "self-hosted")
+        self.assertIn("Runner: the self-hosted pool.", comment)
+
+    def test_a_hosted_job_is_retried_with_no_ready_runner(self):
+        outputs, comment = self.run_decide(DNS, "--ready-runners", "0", jobs=[HOSTED_JOB])
+        self.assertEqual(outputs["retry"], "true")
+        self.assertEqual(outputs["runner"], "hosted")
+        self.assertIn("Runner: GitHub-hosted, so the pool check was skipped.", comment)
+        self.assertNotIn("not reported", comment)
+
+    def test_an_unreported_runner_is_treated_as_hosted_and_said_so(self):
+        for jobs, named in [([UNREPORTED_JOB], "Test"), ([], "the failed jobs")]:
+            with self.subTest(jobs=jobs):
+                outputs, comment = self.run_decide(DNS, "--ready-runners", "0", jobs=jobs)
+                self.assertEqual(outputs["retry"], "true")
+                self.assertIn(f"The runner of {named} was not reported; treated as GitHub-hosted.", comment)
+
+    def test_an_unreported_runner_is_said_in_the_needs_human_comment_too(self):
+        _, comment = self.run_decide("--- FAIL: TestX", "--ready-runners", "0", jobs=[UNREPORTED_JOB])
+        self.assertIn("The runner of Test was not reported; treated as GitHub-hosted.", comment)
+        self.assertIn("ci:needs-human", comment)
 
     def test_empty_vars_fall_back_to_the_defaults(self):
         outputs, _ = self.run_decide(DNS, "--mode", "", "--max-attempts", "", "--ready-runners", "1")
@@ -395,15 +507,16 @@ class WorkflowStepTests(unittest.TestCase):
 
     def run_workflow(self, *, prs=None, gate="up", ready=1, logs=None, annotations=None,
                      attempt=1, run_attempt=None, comments=(), labels=(), mode="infra",
-                     max_attempts="5"):
+                     max_attempts="5", runner=SELF_HOSTED_JOB):
         workflow = yaml.safe_load(WORKFLOW_FILE.read_text())
         job = workflow["jobs"]["retry"]
         steps = {step["name"]: step for step in job["steps"]}
         state = {
             "prs": [{"number": 41, "headRefOid": HEAD}] if prs is None else prs,
             "run": {"run_attempt": run_attempt or attempt, "status": "completed"},
-            "jobs": [{"id": 501, "name": "Test", "conclusion": "failure"},
-                     {"id": 502, "name": "Lint", "conclusion": "success"}],
+            "jobs": [dict(runner, conclusion="failure"),
+                     {"id": 502, "name": "Lint", "conclusion": "success",
+                      "runner_name": "antimatter-vps-linux-x64-runner-zz", "labels": []}],
             "logs": {} if logs is None else logs,
             "annotations": annotations or {},
             "comments": list(comments), "labels": list(labels), "pr_labels": [],
@@ -490,6 +603,19 @@ class WorkflowStepTests(unittest.TestCase):
         state, _, _ = self.run_workflow(logs={"501": RESET}, attempt=5, labels=["ci:needs-human"])
         self.assertEqual(state["pr_labels"], ["ci:needs-human"])
         self.assertIn("attempt 5 of 5 exhausted", state["posted"][0])
+
+    def test_a_hosted_job_is_retried_while_the_gate_is_down(self):
+        state, outputs, log = self.run_workflow(gate="down", logs={"501": DNS}, runner=HOSTED_JOB)
+        self.assertIn("Job 501 (Test) ran on: GitHub Actions 1000000123.", log)
+        self.assertEqual(outputs["decide"]["runner"], "hosted")
+        self.assertEqual(state["reruns"], 1)
+        self.assertIn("Runner: GitHub-hosted, so the pool check was skipped.", state["posted"][0])
+
+    def test_a_job_with_no_runner_name_is_treated_as_hosted_and_said_so(self):
+        state, outputs, log = self.run_workflow(gate="down", logs={"501": RESET}, runner=UNREPORTED_JOB)
+        self.assertIn("Job 501 (Test) ran on: a runner the jobs API did not report.", log)
+        self.assertEqual(outputs["decide"]["retry"], "true")
+        self.assertIn("The runner of Test was not reported; treated as GitHub-hosted.", state["posted"][0])
 
     def test_no_pull_request_skips_everything(self):
         stacked = [{"number": 42, "headRefOid": "f" * 40}]
