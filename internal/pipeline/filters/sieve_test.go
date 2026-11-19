@@ -339,9 +339,10 @@ func TestValidateSieve_V040Rules(t *testing.T) {
 func TestSieve_Notify_Basic(t *testing.T) {
 	// `notify` is not an extension REST Mail enables, so NewSieve refuses this script
 	// (TestSieveFilterDoesNotBuildACapabilityOffTheList). The executor's mapping is
-	// still what go-sieve calls, so this parses with the library directly.
-	parsed, err := sieve.Parse(`require "notify";
-notify :method "mailto:admin@example.com" :message "New mail received";`)
+	// still what go-sieve calls, so this parses with the library directly, after the
+	// LF to CRLF conversion every server parse makes.
+	parsed, err := sieve.Parse(sieveSource(`require "notify";
+notify :method "mailto:admin@example.com" :message "New mail received";`))
 	if err != nil {
 		t.Fatal(err)
 	}

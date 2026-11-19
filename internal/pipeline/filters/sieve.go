@@ -628,8 +628,8 @@ func (e *metadataExecutor) Vacation(v sieve.Vacation) {
 	replyTo := v.ReplyTo
 
 	// Dedup key: hash of the sender address and the :handle, the RFC 5230 §4.2
-	// tracking identity. The downstream vacation filter or delivery agent
-	// enforces the actual time window.
+	// tracking identity; go-sieve never expands the :handle. The downstream vacation
+	// filter or delivery agent enforces the actual time window.
 	dedupKey := vacationDedupKey(replyTo, v.Handle)
 	lastSentKey := "vacation_last_sent_" + dedupKey
 	if _, alreadySent := e.email.Metadata[lastSentKey]; alreadySent {
@@ -651,10 +651,15 @@ func (e *metadataExecutor) Vacation(v sieve.Vacation) {
 	// The vacation filter sends the reply (#748): at most once per sender and handle within
 	// the interval, which go-sieve gives exactly (RFC 5230 :days, RFC 6131 :seconds, zero
 	// among them). Without a :handle, one is made from what the reply says, as RFC 5230 §4.2
-	// suggests, so two different vacation actions are tracked apart.
+	// suggests, so two different vacation actions are tracked apart. It is made from
+	// v.Tracking, the :subject, :from and reason as the script wrote them: §4.2 says the
+	// arguments used for tracking MUST NOT have undergone variable expansion (RFC 5229).
+	// The expanded v.Subject, v.From and v.Body would track one action as several
+	// replies when a variable changes between messages, and track a "${s}" subject
+	// together with a literal subject that happens to expand to the same text.
 	handle := v.Handle
 	if !v.HandleSet {
-		handle = "derived\x00" + v.Subject + "\x00" + v.From + "\x00" + strconv.FormatBool(v.MIME) + "\x00" + v.Body
+		handle = "derived\x00" + v.Tracking.Subject + "\x00" + v.Tracking.From + "\x00" + strconv.FormatBool(v.MIME) + "\x00" + v.Tracking.Body
 	}
 	sum := sha256.Sum256([]byte(handle))
 	e.email.Metadata["vacation_handle"] = fmt.Sprintf("%x", sum[:16])
@@ -728,9 +733,35 @@ func vacationDedupKey(sender, handle string) string {
 
 // ── Validation ───────────────────────────────────────────────────────
 
-// ValidateSieve checks if a Sieve script is syntactically valid.
+// ValidateSieve checks if a Sieve script is syntactically valid, after turning
+// each bare LF into CRLF as sieveSource does.
 func ValidateSieve(script string) error {
-	return sieve.Validate(script)
+	return sieve.Validate(sieveSource(script))
+}
+
+// sieveSource returns src with every bare LF turned into CRLF. RFC 5228 §2 ends
+// every line of a script in CRLF, and go-sieve v0.9.0 refuses a bare LF anywhere
+// in the source. Scripts reach this server in JSON bodies and stored rows that
+// usually carry Unix line endings. go-sieve's changelog tells a host to convert them;
+// this server converts them before each parse, at upload and at delivery alike,
+// rather than rewriting what it stores: the stored script keeps the bytes the owner
+// sent, and its hash is taken over those bytes. Only a
+// LF that no CR precedes changes: a bare CR and NUL are still refused by the
+// parser, and a `text:` value or quoted string spanning lines now ends each of
+// its lines in CRLF.
+func sieveSource(src string) string {
+	if !strings.Contains(src, "\n") {
+		return src
+	}
+	var b strings.Builder
+	b.Grow(len(src) + strings.Count(src, "\n"))
+	for i := 0; i < len(src); i++ {
+		if src[i] == '\n' && (i == 0 || src[i-1] != '\r') {
+			b.WriteByte('\r')
+		}
+		b.WriteByte(src[i])
+	}
+	return b.String()
 }
 
 // HashSieveScript returns the lowercase sha256 hex of the exact script bytes.
@@ -771,11 +802,15 @@ func missingRequireCap(err error) string {
 // enabledSieveCapabilities is what REST Mail accepts in a Sieve `require`. Sieve is
 // a compatibility interface here, so the owner chose a list (#1468, carried by
 // #2108) and go-sieve stays a general library: anything it parses that is missing
-// from this map is refused by parseEnabledSieve, including the non-standard `regex`
-// and `notify`. `mailbox` and `copy` are the requires behind `fileinto :create` and
-// `:copy`. `encoded-character` and the two built-in comparators belong to RFC 5228
-// itself. `variables`, `relational` and `subaddress` are on the owner's list, and
-// join this map when go-sieve implements them.
+// from this map is refused by parseEnabledSieve, including the non-standard `regex`,
+// `notify` and `vacation-seconds`. `mailbox` and `copy` are the requires behind
+// `fileinto :create` and `:copy`; `mailbox` also lets a script use go-sieve's
+// `mailboxexists` test, which this server's delivery executor cannot answer, so it is
+// a runtime error there and the message is kept.
+// `encoded-character` and the two built-in comparators belong to RFC 5228 itself.
+// `variables` (RFC 5229), `relational` (RFC 5231) and `subaddress` (RFC 5233) joined
+// with go-sieve v0.9.0, which runs them, together with `comparator-i;ascii-numeric`
+// (RFC 4790), the comparator relational's numeric `:value` and `:count` tests need.
 var enabledSieveCapabilities = map[string]bool{
 	"fileinto":                   true,
 	"mailbox":                    true,
@@ -789,7 +824,16 @@ var enabledSieveCapabilities = map[string]bool{
 	"encoded-character":          true,
 	"comparator-i;octet":         true,
 	"comparator-i;ascii-casemap": true,
+	"variables":                  true,
+	"relational":                 true,
+	"subaddress":                 true,
+	"comparator-i;ascii-numeric": true,
 }
+
+// sieveSubaddress is the RFC 5233 encoding the :user and :detail address parts
+// apply. It is the one delivery routes by (mail.StripSubaddress): the detail follows
+// the first "+", so "user+a+b@example.com" has user "user" and detail "a+b".
+var sieveSubaddress = sieve.Subaddress{Separator: "+"}
 
 // unsupportedRequireRe extracts the capability from go-sieve's refusal of a
 // `require` it does not implement. The name is printed with %q, so it may hold
@@ -821,9 +865,10 @@ func refusedSieveCapability(err error) string {
 // parseEnabledSieve parses a script and refuses one that needs a capability outside
 // enabledSieveCapabilities, whether or not any path through it reaches the feature.
 // Upload and the delivery filter both parse through here, so a script written around
-// the API cannot run what an upload would refuse.
+// the API cannot run what an upload would refuse. Bare LFs become CRLF first
+// (sieveSource).
 func parseEnabledSieve(src string) (*sieve.Script, error) {
-	script, err := sieve.Parse(src)
+	script, err := sieve.Parse(sieveSource(src), sieve.WithSubaddress(sieveSubaddress))
 	if err != nil {
 		if name := refusedSieveCapability(err); name != "" {
 			return nil, &sieveCapabilityError{capability: name}

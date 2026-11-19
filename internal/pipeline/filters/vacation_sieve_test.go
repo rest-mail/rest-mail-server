@@ -2,6 +2,7 @@ package filters
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
@@ -129,5 +130,131 @@ func TestVacation_SieveReply(t *testing.T) {
 	}
 	if strings.Contains(first.RawMessage, "From the settings.") {
 		t.Error("the settings' reply went too")
+	}
+}
+
+// RFC 5230 §4.2: the arguments a vacation response is tracked by MUST NOT have undergone
+// variable expansion (RFC 5229). Without a :handle the server tracks a response by its
+// :subject, :from and reason as the script wrote them (go-sieve's Vacation.Tracking), so a
+// subject built from a variable is one response whatever it expands to, and is never the
+// same response as a literal subject that happens to expand to the same text. The reply
+// itself carries the expanded subject. Each message runs the real sieve filter and then the
+// real vacation filter that queues the reply.
+func TestVacation_SieveTracksTheScriptsWordsNotTheirExpansion(t *testing.T) {
+	cfg := &config.Config{
+		DBHost: fcEnvOr("DB_HOST", "localhost"),
+		DBPort: fcEnvIntOr("DB_PORT", 5432),
+		DBName: fcEnvOr("DB_NAME", "restmail"),
+		DBUser: fcEnvOr("DB_USER", "restmail"),
+		DBPass: fcEnvOr("DB_PASS", "restmail"),
+	}
+	gdb, err := rmdb.Connect(cfg)
+	if err != nil {
+		testdb.Unreachable(t, "vacation DB test skipped: no database reachable (%v)", err)
+	}
+	testdb.ReuseConnections(t, gdb)
+	if err := gdb.AutoMigrate(&models.Domain{}, &models.Mailbox{}, &models.VacationConfig{},
+		&models.VacationResponse{}, &models.OutboundQueue{}); err != nil {
+		t.Skipf("vacation DB test skipped: migrate failed (%v)", err)
+	}
+	tx := gdb.Begin()
+	t.Cleanup(func() { tx.Rollback() })
+	if err := tx.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_vacation_responses_handle ON vacation_responses(mailbox_id, sender, handle)`).Error; err != nil {
+		t.Fatal(err)
+	}
+	domain := models.Domain{Name: fmt.Sprintf("sieve-tracking-%d.test", time.Now().UnixNano()), Active: true}
+	if err := tx.Create(&domain).Error; err != nil {
+		t.Fatal(err)
+	}
+	box := models.Mailbox{DomainID: domain.ID, LocalPart: "dana", Address: "dana@" + domain.Name, Active: true}
+	if err := tx.Create(&box).Error; err != nil {
+		t.Fatal(err)
+	}
+	vacation, err := NewVacation(tx)(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const (
+		expanded = "require [\"vacation\", \"variables\"];\n" +
+			"set \"s\" \"Away\";\n" +
+			"vacation :subject \"${s}\" \"Back on Monday.\";\n"
+		literal = "require \"vacation\";\n" +
+			"vacation :subject \"Away\" \"Back on Monday.\";\n"
+		fromTheMessage = "require [\"vacation\", \"variables\"];\n" +
+			"if header :matches \"Subject\" \"*\" { set \"s\" \"Away: ${1}\"; }\n" +
+			"vacation :subject \"${s}\" \"Back on Monday.\";\n"
+	)
+	// arrive runs script on a message from sender with subject, then the vacation filter,
+	// and returns the subject the sieve filter asked the reply to carry and whether a
+	// reply was queued.
+	arrive := func(t *testing.T, script, sender, subject string) (string, bool) {
+		t.Helper()
+		raw, _ := json.Marshal(sieveConfig{Script: script})
+		filter, err := NewSieve(raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		email := &pipeline.EmailJSON{
+			Envelope: pipeline.Envelope{MailFrom: sender, RcptTo: []string{box.Address}},
+			Headers: pipeline.Headers{
+				From:      pipeline.Addresses(pipeline.Address{Address: sender}),
+				To:        pipeline.Addresses(pipeline.Address{Address: box.Address}),
+				Subject:   subject,
+				MessageID: fmt.Sprintf("<%d@elsewhere.test>", time.Now().UnixNano()),
+			},
+			Body: pipeline.Body{ContentType: "text/plain", Content: "Hello."},
+		}
+		sieved, err := filter.Execute(context.Background(), email)
+		if err != nil {
+			t.Fatal(err)
+		}
+		replySubject := sieved.Message.Metadata["vacation_reply_subject"]
+		res, err := vacation.Execute(context.Background(), sieved.Message)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return replySubject, res.Log.Result == "queued"
+	}
+
+	t.Run("a variable subject and a literal one that expands alike are two responses", func(t *testing.T) {
+		const sender = "one@elsewhere.test"
+		subject, queued := arrive(t, expanded, sender, "Lunch?")
+		if subject != "Away" || !queued {
+			t.Fatalf("the expanded script: subject %q queued %v, want \"Away\" queued", subject, queued)
+		}
+		subject, queued = arrive(t, literal, sender, "Lunch?")
+		if subject != "Away" || !queued {
+			t.Fatalf("the literal script was tracked as the expanded one: subject %q queued %v, want \"Away\" queued", subject, queued)
+		}
+		if again, queued := arrive(t, expanded, sender, "Lunch?"); queued {
+			t.Fatalf("the expanded script answered twice within its interval (subject %q)", again)
+		}
+	})
+
+	t.Run("one variable subject is one response whatever it expands to", func(t *testing.T) {
+		const sender = "two@elsewhere.test"
+		subject, queued := arrive(t, fromTheMessage, sender, "Lunch?")
+		if subject != "Away: Lunch?" || !queued {
+			t.Fatalf("first message: subject %q queued %v", subject, queued)
+		}
+		subject, queued = arrive(t, fromTheMessage, sender, "Dinner?")
+		if subject != "Away: Dinner?" {
+			t.Fatalf("the subject was not expanded for the second message: %q", subject)
+		}
+		if queued {
+			t.Fatal("a second message within the interval was answered again because its subject expanded differently")
+		}
+	})
+
+	var replies []models.OutboundQueue
+	tx.Where("sending_domain = ?", domain.Name).Order("id").Find(&replies)
+	if len(replies) != 3 {
+		t.Fatalf("%d replies queued, want 3", len(replies))
+	}
+	for i, want := range []string{"Subject: Away\r\n", "Subject: Away\r\n", "Subject: Away: Lunch?\r\n"} {
+		if !strings.Contains(replies[i].RawMessage, want) {
+			t.Errorf("reply %d lacks %q:\n%s", i, want, replies[i].RawMessage)
+		}
 	}
 }
