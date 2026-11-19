@@ -1,7 +1,9 @@
 """Every example of an operation the live run never sends is proven in process
 (#1334), as every example that needs setup is (#1237)."""
 
+import contextlib
 import importlib.util
+import io
 import json
 import os
 import re
@@ -100,6 +102,70 @@ class ExampleProofs(unittest.TestCase):
         examples = {"neverSent": {"found": {}, "gone": {}}, "live": {"found": {}}}
         self.assertEqual(example_proofs.unproven(examples, {"neverSent": ["found"]}, unsent),
                          [("neverSent", "gone", {"sent": "never"})])
+
+    def judge_with_unsent(self, examples, proofs, *flags):
+        """main() against a vertrag.yml that never sends neverSent: its printed lines and exit."""
+        root = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, root)
+        (root / "vertrag.yml").write_text("exclude-operation-id:\n  - neverSent\n")
+        (root / "examples.json").write_text(json.dumps(examples))
+        (root / "proofs.json").write_text(json.dumps(proofs))
+        saved, example_proofs.ROOT = example_proofs.ROOT, root
+        self.addCleanup(setattr, example_proofs, "ROOT", saved)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = example_proofs.main([*flags, str(root / "examples.json"), str(root / "proofs.json")])
+        return code, out.getvalue().splitlines()
+
+    def test_the_summary_counts_each_judged_pair_exactly_once(self):
+        # #2099 AC06: the summary is the record of what was proven. A pair of an operation the
+        # live run never sends, with no setup, is judged here too, but it used to come off the
+        # count of pairs that need setup, so one proven setup pair was reported as 0 of 1.
+        examples = {
+            "neverSent": {"found": {}, "gone": {}, "refused": {"requires": {"fault": "database"}}},
+            "sent": {"found": {}, "limited": {"requires": {"limit": "rate"}}},
+        }
+        code, lines = self.judge_with_unsent(
+            examples, {"neverSent": ["found", "refused"], "sent": ["limited"]})
+        self.assertEqual(code, 1)
+        self.assertEqual(lines, [
+            "neverSent/gone: the live run never sends neverSent, and no in-process test proved it",
+            "2 of 2 examples that need setup are proven in process",
+            "1 of 2 examples with no setup, of operations the live run never sends, are proven in process",
+        ])
+
+        code, lines = self.judge_with_unsent(
+            examples, {"neverSent": ["found", "gone", "refused"], "sent": ["limited"]})
+        self.assertEqual(code, 0)
+        self.assertEqual(lines[-2:], [
+            "2 of 2 examples that need setup are proven in process",
+            "2 of 2 examples with no setup, of operations the live run never sends, are proven in process",
+        ])
+
+    def test_a_pair_left_to_the_live_proofs_is_judged_but_not_proven(self):
+        examples = {"sent": {"refused": {"requires": {"principal": "anonymous"}},
+                             "limited": {"requires": {"limit": "rate"}}}}
+        code, lines = self.judge_with_unsent(examples, {"sent": ["limited"]}, "--defer-live")
+        self.assertEqual(code, 0)
+        self.assertEqual(lines, [
+            "sent/refused: no in-process test proved it; left to the live proofs in the E2E job",
+            "1 of 2 examples that need setup are proven in process",
+        ])
+
+    def test_coverage_counts_what_only_a_live_runner_proved(self):
+        examples = {
+            "neverSent": {"found": {}, "gone": {}},
+            "sent": {"refused": {"requires": {"principal": "anonymous"}}, "found": {}},
+        }
+        missing, deferred, counts = example_proofs.coverage(
+            examples, {"neverSent": ["found"]}, {"sent": ["refused"], "neverSent": ["gone"]},
+            frozenset({"neverSent"}))
+        self.assertEqual((missing, deferred), ([], []))
+        self.assertEqual(counts, {"setup": [1, 1, 1], "unsent": [2, 2, 1]})
+        self.assertEqual(example_proofs.coverage_lines(counts, True), [
+            "1 of 1 examples that need setup are proven, 1 of them only live",
+            "2 of 2 examples with no setup, of operations the live run never sends, are proven, 1 of them only live",
+        ])
 
 
 ANONYMOUS = {"principal": "anonymous"}
