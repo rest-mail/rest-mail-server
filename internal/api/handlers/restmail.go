@@ -423,117 +423,114 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput, spoo
 			return RestmailDelivery{Delivered: delivered, Failed: failed}, nil
 		}
 	}
-	// The inbound pipeline's verdicts (spf/dkim/arc/dmarc), prepended onto the
-	// stored raw message as Authentication-Results so they are visible — the
-	// same surfacing the SMTP delivery path does.
-	var authResults []pipeline.AuthResult
-
-	// Build the pipeline EmailJSON for inbound filtering. The parsed raw message
-	// (with its real headers, including Headers.Raw) seeds the message so
-	// header-dependent filters see the actual headers, mirroring the SMTP inbound
-	// path; the structured request fields fill any gaps.
-	emailJSON := buildInboundEmail(parsed, envelopeFrom, req.From, to, req.Subject, req.Date, req.MessageID, req.BodyText, req.BodyHTML, source, restmailClientIP(r))
-
-	// Look up inbound pipeline for the recipient domain
-	var domainName string
-	if len(to) > 0 {
-		// Use the same identity policy as delivery, including whitespace, so an
-		// equivalent spelling cannot bypass the hosted inbound pipeline.
-		if canonical, err := rmail.CanonicalMailboxAddress(to[0]); err == nil {
-			_, domainName, _ = strings.Cut(canonical, "@")
+	// Each recipient domain's own inbound pipeline judges that domain's recipients, and only
+	// them: a pipeline's envelope names its own domain's recipients, and its verdict reaches no
+	// other domain's. So the order a sender lists recipients in cannot choose a weaker policy
+	// for a recipient on another domain (#2100). Every pipeline runs before any recipient's
+	// copy is stored or forwarded, so a deferral from any of them defers the whole message and
+	// the peer's retry gives no recipient a second copy.
+	//
+	// Each pipeline starts from the parsed raw message, with its real headers, including
+	// Headers.Raw, so header-dependent filters see the actual headers, mirroring the SMTP
+	// inbound path; the structured request fields fill any gaps. Its verdicts
+	// (spf/dkim/arc/dmarc) are prepended onto the stored raw message as
+	// Authentication-Results, the same surfacing the SMTP delivery path does.
+	domains, byDomain := recipientDomains(to, recipients)
+	copies, err := separateCopies(parsed, len(domains))
+	if err != nil {
+		return RestmailDelivery{}, fmt.Errorf("copy the message for each recipient domain: %w", err)
+	}
+	verdicts := make([]*domainVerdict, 0, len(domains))
+	verdictOf := make(map[string]*domainVerdict, len(to))
+	var deferral error
+	for i, domainName := range domains {
+		domainTo := byDomain[domainName]
+		email := buildInboundEmail(copies[i], envelopeFrom, req.From, domainTo, req.Subject, req.Date, req.MessageID, req.BodyText, req.BodyHTML, source, restmailClientIP(r))
+		pipelineCfg, err := h.inboundPipeline(r.Context(), domainName)
+		if err != nil {
+			return RestmailDelivery{}, restmailReadRefusal(r.Context(), "inbound pipeline")
+		}
+		verdict := &domainVerdict{domain: domainName, to: domainTo, cfg: pipelineCfg, email: email}
+		if pipelineCfg != nil && h.engine != nil {
+			// Use the request context so a client disconnect / server shutdown cancels
+			// the pipeline. Combined with the engine's per-filter timeout backstop, a
+			// hung filter on this path is bounded even though there is no outer
+			// delivery deadline here.
+			result, err := h.engine.Execute(pipeline.WithDB(r.Context(), h.db), pipelineCfg, email)
+			if err != nil {
+				// Fail-CLOSED on a pipeline error (OSI-18): temp-fail so the peer
+				// retries rather than delivering mail that skipped inbound filtering.
+				slog.ErrorContext(r.Context(), "restmail: pipeline error, deferring delivery", "domain", domainName, "error", err)
+				return RestmailDelivery{}, endpoint.Refuse(http.StatusServiceUnavailable, "deferred", "Message deferred, retry later")
+			}
+			// A RESTMAIL delivery has no TLS/IP envelope, so transport stays "".
+			verdict.result = result
+			verdict.trace = traceInputs{PipelineID: pipelineCfg.ID, Direction: "inbound", Result: result,
+				Envelope: email.Envelope, RFCMessageID: req.MessageID}
+			if result.FinalEmail != nil {
+				verdict.email = result.FinalEmail
+			}
+		}
+		// Fail-closed temp-fail (OSI-18): a deferred pipeline outcome (incl. a filter
+		// that failed to instantiate/execute) must not be delivered — the peer
+		// retries. The other domains' pipelines still run, so a greylist on each of
+		// them is met on the same attempt rather than one retry at a time.
+		if verdict.action() == pipeline.ActionDefer {
+			verdict.recordAs(r.Context(), h, outcomeDeferred)
+			if deferral == nil {
+				deferral = deferredError(verdict.result, "pipeline deferred delivery")
+			}
+		}
+		verdicts = append(verdicts, verdict)
+		for _, rcpt := range domainTo {
+			verdictOf[rcpt] = verdict
 		}
 	}
-
-	pipelineCfg, err := h.inboundPipeline(r.Context(), domainName)
-	if err != nil {
-		return RestmailDelivery{}, restmailReadRefusal(r.Context(), "inbound pipeline")
+	if deferral != nil {
+		return RestmailDelivery{}, restmailDeferral(deferral)
+	}
+	// A refusal from every domain refuses the delivery. One from some of them fails
+	// those domains' recipients alone.
+	everyRejected := true
+	for _, verdict := range verdicts {
+		everyRejected = everyRejected && verdict.action() == pipeline.ActionReject
+	}
+	if everyRejected {
+		for _, verdict := range verdicts {
+			verdict.recordAs(r.Context(), h, outcomeRejected)
+		}
+		return RestmailDelivery{}, endpoint.Refuse(http.StatusForbidden, "rejected", "Message rejected by policy")
 	}
 
-	// Run the inbound pipeline.
-	// deliveredTrace, set when the pipeline permits delivery, is recorded after
-	// the delivery loop so its message_id points at the first delivered row. A
-	// RESTMAIL delivery has no TLS/IP envelope, so transport stays "".
-	var deliveredTrace *traceInputs
-	// suppressLocalKeep is set when a bare Sieve `redirect` forwarded the message
-	// and cancelled the implicit keep (RFC 5228 §4.2): the message is forwarded but
-	// NOT also stored to a local mailbox.
-	suppressLocalKeep := false
-	// sharedEmail is the message as the domain's pipeline left it, which each recipient's own
-	// Sieve script starts from (#787).
-	sharedEmail := emailJSON
-	if pipelineCfg != nil && h.engine != nil {
-		// Use the request context so a client disconnect / server shutdown cancels
-		// the pipeline. Combined with the engine's per-filter timeout backstop, a
-		// hung filter on this path is bounded even though there is no outer
-		// delivery deadline here.
-		result, err := h.engine.Execute(pipeline.WithDB(r.Context(), h.db), pipelineCfg, emailJSON)
-		if err != nil {
-			// Fail-CLOSED on a pipeline error (OSI-18): temp-fail so the peer
-			// retries rather than delivering mail that skipped inbound filtering.
-			slog.ErrorContext(r.Context(), "restmail: pipeline error, deferring delivery", "error", err)
-			return RestmailDelivery{}, endpoint.Refuse(http.StatusServiceUnavailable, "deferred", "Message deferred, retry later")
-		} else {
-			rmTrace := traceInputs{
-				PipelineID:   pipelineCfg.ID,
-				Direction:    "inbound",
-				Result:       result,
-				Envelope:     emailJSON.Envelope,
-				RFCMessageID: req.MessageID,
-			}
-
-			switch result.FinalAction {
-			case pipeline.ActionReject:
-				rmTrace.Outcome = outcomeRejected
-				h.recordTrace(r.Context(), buildTrace(rmTrace))
-				return RestmailDelivery{}, endpoint.Refuse(http.StatusForbidden, "rejected", "Message rejected by policy")
-			case pipeline.ActionDefer:
-				// Fail-closed temp-fail (OSI-18): a deferred pipeline outcome (incl. a
-				// filter that failed to instantiate/execute) must not be delivered —
-				// the peer retries.
-				rmTrace.Outcome = outcomeDeferred
-				h.recordTrace(r.Context(), buildTrace(rmTrace))
-				return RestmailDelivery{}, restmailDeferral(deferredError(result, "pipeline deferred delivery"))
-			case pipeline.ActionDiscard:
-				rmTrace.Outcome = outcomeDiscarded
-				h.recordTrace(r.Context(), buildTrace(rmTrace))
-				return RestmailDelivery{Delivered: append(delivered, to...), Failed: failed}, nil
-			case pipeline.ActionQuarantine:
-				var holds []models.Quarantine
-				for _, rcpt := range to {
-					if recipient, ok := recipients[rcpt]; ok {
-						holds = append(holds, quarantineHold(recipient.mailbox.ID, recipient.deliveredTo, req.From, req.Subject, req.BodyText, source, result))
-						delivered = append(delivered, rcpt)
-					} else {
-						failed = append(failed, rcpt)
-					}
+	// The domains whose pipelines let the message through forward it as their Sieve
+	// `redirect` asked: the ORIGINAL message onward to each recorded target via the
+	// outbound queue (the same path SMTP submission and vacation replies use). A bare
+	// redirect that cancelled the implicit keep (RFC 5228 §4.2) also suppresses that
+	// domain's local copies — but only when a forward was actually enqueued, so a
+	// redirect that cannot be honoured never loses the message.
+	var holds []models.Quarantine
+	sieved := map[string]*pipeline.ExecutionResult{}
+	for _, verdict := range verdicts {
+		switch verdict.action() {
+		case pipeline.ActionQuarantine:
+			for _, rcpt := range verdict.to {
+				if recipient, ok := recipients[rcpt]; ok {
+					holds = append(holds, quarantineHold(recipient.mailbox.ID, recipient.deliveredTo, req.From, req.Subject, req.BodyText, source, verdict.result))
 				}
-				if err := h.storeHolds(r.Context(), holds); err != nil {
-					slog.ErrorContext(r.Context(), "restmail: could not hold the message in quarantine, deferring delivery", "error", err)
-					return RestmailDelivery{}, endpoint.Refuse(http.StatusServiceUnavailable, "deferred", "Message deferred, retry later")
-				}
-				rmTrace.Outcome = outcomeQuarantined
-				h.recordTrace(r.Context(), buildTrace(rmTrace))
-				return RestmailDelivery{Delivered: delivered, Failed: failed}, nil
 			}
-			// Fall-through (continue / any non-terminal action): the message will
-			// be delivered — stash the trace to record post-loop with message_id.
-			base := rmTrace
-			deliveredTrace = &base
+			continue
+		case pipeline.ActionContinue:
+		default:
+			continue
+		}
+		if verdict.result != nil {
 			// Carry the pipeline's verdicts forward so the message stored below
 			// records them (they are otherwise computed and thrown away).
-			authResults = result.Auth
-			if result.FinalEmail != nil {
-				sharedEmail = result.FinalEmail
-			}
-
-			// Sieve `redirect`: forward the ORIGINAL message onward to each recorded
-			// target via the outbound queue (the same path SMTP submission and
-			// vacation replies use). A bare redirect that cancelled the implicit keep
-			// also suppresses the local copy below — but only when a forward was
-			// actually enqueued, so a redirect that cannot be honoured never loses
-			// the message.
+			verdict.auth = verdict.result.Auth
+			base := verdict.trace
+			verdict.delivered = &base
 			forwarded := 0
-			for _, fwd := range buildRedirectForwards(r.Context(), result.FinalEmail, source, req.From, to, domainName, authResults) {
+			for _, fwd := range buildRedirectForwards(r.Context(), verdict.result.FinalEmail, source, req.From, verdict.to, verdict.domain, verdict.auth) {
 				row := fwd
 				if err := h.db.WithContext(r.Context()).Create(&row).Error; err != nil {
 					slog.ErrorContext(r.Context(), "restmail: failed to enqueue sieve redirect",
@@ -543,45 +540,38 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput, spoo
 				forwarded++
 				slog.InfoContext(r.Context(), "restmail: sieve redirect queued", "recipient", row.Recipient)
 			}
-			suppressLocalKeep = forwarded > 0 && redirectSuppressesKeep(result.FinalEmail)
+			verdict.suppressKeep = forwarded > 0 && redirectSuppressesKeep(verdict.result.FinalEmail)
+		}
+		if verdict.suppressKeep {
+			continue
+		}
+		// Store the original raw message (with the pipeline's Authentication-Results
+		// prepended). Previously the stored message had no raw form at all, so
+		// RESTMAIL-delivered mail lost its full MIME (attachments, headers) over
+		// IMAP/POP3 and couldn't be re-verified.
+		verdict.rawMessage = source
+		if verdict.rawMessage != "" {
+			verdict.rawMessage = pipeline.AuthResultsHeader(verdict.auth) + verdict.rawMessage
+		}
+		if verdict.storedAuth, err = json.Marshal(verdict.auth); err != nil {
+			return RestmailDelivery{}, fmt.Errorf("encode authentication verdicts: %w", err)
+		}
+		// Each recipient's own Sieve script runs on its own copy of the message, after its
+		// domain's pipeline ran once for all of that domain's recipients (#787). Every script
+		// runs before anything is stored, so one that cannot run defers the whole message, as a
+		// failed domain pipeline does, and no recipient gets the message twice when the peer
+		// retries.
+		own, err := h.runRecipientScripts(r.Context(), verdict.cfg, verdict.email, verdict.to, recipients)
+		if err != nil {
+			slog.ErrorContext(r.Context(), "restmail: a recipient's Sieve script could not run, deferring delivery", "error", err)
+			return RestmailDelivery{}, endpoint.Refuse(http.StatusServiceUnavailable, "deferred", "Message deferred, retry later")
+		}
+		for rcpt, result := range own {
+			sieved[rcpt] = result
 		}
 	}
-
-	// A bare redirect forwarded the message with no local copy (RFC 5228 §4.2):
-	// record the delivered trace and respond without storing it to any mailbox.
-	if suppressLocalKeep {
-		if deliveredTrace != nil {
-			deliveredTrace.Outcome = outcomeDelivered
-			h.recordTrace(r.Context(), buildTrace(*deliveredTrace))
-		}
-		return RestmailDelivery{Delivered: append(delivered, to...), Failed: failed}, nil
-	}
-
-	// Store the original raw message (with the pipeline's Authentication-Results
-	// prepended). Previously the stored message had no raw form at all, so
-	// RESTMAIL-delivered mail lost its full MIME (attachments, headers) over
-	// IMAP/POP3 and couldn't be re-verified.
-	rawMessage := source
-	if rawMessage != "" {
-		rawMessage = pipeline.AuthResultsHeader(authResults) + rawMessage
-	}
-	storedAuthResults, err := json.Marshal(authResults)
-	if err != nil {
-		return RestmailDelivery{}, fmt.Errorf("encode authentication verdicts: %w", err)
-	}
-
-	// Each recipient's own Sieve script runs on its own copy of the message, after the domain's
-	// pipeline ran once for all of them (#787). Every script runs before anything is stored,
-	// so one that cannot run defers the whole message, as a failed domain pipeline does, and
-	// no recipient gets the message twice when the peer retries.
-	sieved, err := h.runRecipientScripts(r.Context(), pipelineCfg, sharedEmail, to, recipients)
-	if err != nil {
-		slog.ErrorContext(r.Context(), "restmail: a recipient's Sieve script could not run, deferring delivery", "error", err)
-		return RestmailDelivery{}, endpoint.Refuse(http.StatusServiceUnavailable, "deferred", "Message deferred, retry later")
-	}
-	// The holds the recipients' scripts ask for are stored before anything is
-	// delivered, for the reason storeHolds gives.
-	var holds []models.Quarantine
+	// The holds the domains' pipelines and the recipients' scripts ask for are stored
+	// together before anything is delivered, for the reason storeHolds gives.
 	for _, rcpt := range to {
 		recipient, ok := recipients[rcpt]
 		own, ran := sieved[rcpt]
@@ -593,11 +583,36 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput, spoo
 		slog.ErrorContext(r.Context(), "restmail: could not hold the message in quarantine, deferring delivery", "error", err)
 		return RestmailDelivery{}, endpoint.Refuse(http.StatusServiceUnavailable, "deferred", "Message deferred, retry later")
 	}
+	for _, verdict := range verdicts {
+		switch verdict.action() {
+		case pipeline.ActionReject:
+			verdict.recordAs(r.Context(), h, outcomeRejected)
+		case pipeline.ActionDiscard:
+			verdict.recordAs(r.Context(), h, outcomeDiscarded)
+		case pipeline.ActionQuarantine:
+			verdict.recordAs(r.Context(), h, outcomeQuarantined)
+		}
+	}
 
 	for _, rcpt := range to {
 		recipient, ok := recipients[rcpt]
-		if !ok {
+		verdict := verdictOf[rcpt]
+		if !ok || verdict == nil {
 			failed = append(failed, rcpt)
+			continue
+		}
+		switch verdict.action() {
+		case pipeline.ActionReject:
+			failed = append(failed, rcpt)
+			continue
+		case pipeline.ActionDiscard, pipeline.ActionQuarantine:
+			// Dropped, or held before this loop.
+			delivered = append(delivered, rcpt)
+			continue
+		}
+		// A bare redirect forwarded the message with no local copy (RFC 5228 §4.2).
+		if verdict.suppressKeep {
+			delivered = append(delivered, rcpt)
 			continue
 		}
 
@@ -606,7 +621,7 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput, spoo
 		// The recipient's own script decides for this recipient alone: refused, dropped,
 		// held, forwarded instead, or kept, with its folder and flags. Without one, the
 		// domain pipeline's folder and flags apply.
-		final := sharedEmail
+		final := verdict.email
 		if own, ran := sieved[rcpt]; ran {
 			final = own.FinalEmail
 			switch own.FinalAction {
@@ -622,7 +637,7 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput, spoo
 				continue
 			}
 			forwarded := 0
-			for _, fwd := range buildRedirectForwards(r.Context(), final, source, req.From, []string{rcpt}, domainName, authResults) {
+			for _, fwd := range buildRedirectForwards(r.Context(), final, source, req.From, []string{rcpt}, verdict.domain, verdict.auth) {
 				row := fwd
 				if err := h.db.WithContext(r.Context()).Create(&row).Error; err != nil {
 					slog.ErrorContext(r.Context(), "restmail: failed to enqueue sieve redirect", "recipient", row.Recipient, "error", err)
@@ -640,7 +655,7 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput, spoo
 		// RFC 5233: when the recipient was resolved by stripping a "+detail" tag
 		// down to the base mailbox, record the original recipient in a
 		// Delivered-To header so downstream Sieve rules can still match the tag.
-		rcptRaw := rawMessage
+		rcptRaw := verdict.rawMessage
 		if deliveredTo != "" && rcptRaw != "" {
 			rcptRaw = "Delivered-To: " + deliveredTo + "\r\n" + rcptRaw
 		}
@@ -673,7 +688,7 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput, spoo
 			BodyHTML:     req.BodyHTML,
 			Headers:      models.JSONB(headers),
 			RawMessage:   rcptRaw,
-			AuthResults:  models.JSONB(storedAuthResults),
+			AuthResults:  models.JSONB(verdict.storedAuth),
 			SizeBytes:    sizeBytes,
 			RawSize:      len(rcptRaw), // exact stored-raw octet count for IMAP/POP3 size reporting
 		}
@@ -762,20 +777,23 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput, spoo
 
 		// The trace links to the first delivered recipient row (one trace per
 		// pipeline run; a RESTMAIL delivery may fan out to several mailboxes).
-		if deliveredTrace != nil && deliveredTrace.MessageID == nil {
+		if verdict.delivered != nil && verdict.delivered.MessageID == nil {
 			mid := msg.ID
-			deliveredTrace.MessageID = &mid
+			verdict.delivered.MessageID = &mid
 		}
 
 		delivered = append(delivered, rcpt)
 	}
 
-	// Record the delivered trace once, after the fan-out loop. message_id points
-	// at the first delivered row (nil if every recipient failed); the outcome is
-	// delivered because the pipeline permitted delivery.
-	if deliveredTrace != nil {
-		deliveredTrace.Outcome = outcomeDelivered
-		h.recordTrace(r.Context(), buildTrace(*deliveredTrace))
+	// Record each delivered trace once, after the fan-out loop. message_id points
+	// at the domain's first delivered row (nil if every one of its recipients
+	// failed, or a bare redirect kept no copy); the outcome is delivered because
+	// the pipeline permitted delivery.
+	for _, verdict := range verdicts {
+		if verdict.delivered != nil {
+			verdict.delivered.Outcome = outcomeDelivered
+			h.recordTrace(r.Context(), buildTrace(*verdict.delivered))
+		}
 	}
 
 	if len(delivered) == 0 {

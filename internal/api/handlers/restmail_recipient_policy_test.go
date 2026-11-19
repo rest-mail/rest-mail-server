@@ -14,7 +14,9 @@ import (
 	"time"
 
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
 	"github.com/rest-mail/rest-mail-server/internal/pipeline"
+	"github.com/rest-mail/rest-mail-server/internal/pipeline/filters"
 	"gorm.io/gorm"
 )
 
@@ -73,7 +75,7 @@ func newRecipientPolicyFixture(t *testing.T, firstAction, secondAction pipeline.
 	t.Helper()
 	db := openRedirectTestDB(t)
 	if err := migrateModels(db, &models.Quarantine{}, &models.TLSReport{}, &models.Attachment{},
-		&models.VacationConfig{}, &models.VacationResponse{}); err != nil {
+		&models.VacationConfig{}, &models.VacationResponse{}, &models.GreylistEntry{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	fixture := &recipientPolicyFixture{db: db, runs: &policyRuns{}}
@@ -82,6 +84,7 @@ func newRecipientPolicyFixture(t *testing.T, firstAction, secondAction pipeline.
 		step := &policyStep{runs: fixture.runs}
 		return step, json.Unmarshal(config, step)
 	})
+	registry.Register("greylist", filters.NewGreylist(db))
 	engine := pipeline.NewEngine(registry, slog.Default())
 	fixture.handler = NewRestmailHandler(db, engine, nil, RestmailTarpitConfig{}, RestmailDeliverAuthConfig{})
 	fixture.handler.SetLocalDelivery(NewMessageHandler(db, nil, engine, "", nil))
@@ -110,6 +113,7 @@ func newRecipientPolicyFixture(t *testing.T, firstAction, secondAction pipeline.
 		domains := []uint{fixture.first.ID, fixture.second.ID}
 		mailboxes := []uint{fixture.ann.ID, fixture.bob.ID}
 		db.Where("mailbox_id IN ?", mailboxes).Delete(&models.Message{})
+		db.Where("recipient IN ?", []string{fixture.ann.Address, fixture.bob.Address}).Delete(&models.GreylistEntry{})
 		db.Where("mailbox_id IN ?", mailboxes).Delete(&models.Quarantine{})
 		db.Where("domain_id IN ?", domains).Delete(&models.TLSReport{})
 		db.Where("domain_id IN ?", domains).Delete(&models.Alias{})
@@ -188,11 +192,12 @@ func wantPolicyRuns(t *testing.T, got []policyRun, want ...policyRun) {
 
 const policyMessage = "From: sender@remote.test\r\nSubject: Hi\r\nMessage-ID: <policy@remote.test>\r\n\r\nhello\r\n"
 
-// A RESTMAIL delivery to several domains runs one inbound pipeline, the one of the first
-// recipient's domain, and that pipeline's verdict is every recipient's. These scenarios pin
-// the behaviour #1161 asked to have checked explicitly, without changing it. Each asserts the
-// pipelines that really ran and the rows that were really stored.
-func TestRESTMAILDeliver_FirstRecipientDomainChoosesThePipeline(t *testing.T) {
+// A RESTMAIL delivery to several domains runs each domain's own inbound pipeline over that
+// domain's recipients alone, and each verdict is its own recipients' only (#2100 AC05b). Every
+// scenario runs in both recipient orders, because the order is what a sender controls: the
+// answer, the pipelines that ran and the rows stored must not depend on it. Each asserts the
+// pipelines that really ran, with the envelope each was given, and the rows really stored.
+func TestRESTMAILDeliver_RecipientOrderCannotChooseAWeakerPolicy(t *testing.T) {
 	const (
 		cont       = pipeline.ActionContinue
 		reject     = pipeline.ActionReject
@@ -200,66 +205,124 @@ func TestRESTMAILDeliver_FirstRecipientDomainChoosesThePipeline(t *testing.T) {
 		quarantine = pipeline.ActionQuarantine
 		discard    = pipeline.ActionDiscard
 	)
+	// orders delivers to ann and bob first in one order and then in the other, each on a fresh
+	// fixture, and hands check the fixture, the answer and the pipeline runs in run order.
+	orders := func(t *testing.T, annAction, bobAction pipeline.Action, check func(t *testing.T, f *recipientPolicyFixture, got policyAnswer, runs []policyRun)) {
+		t.Helper()
+		for _, annFirst := range []bool{true, false} {
+			name := "ann first"
+			if !annFirst {
+				name = "bob first"
+			}
+			t.Run(name, func(t *testing.T) {
+				f := newRecipientPolicyFixture(t, annAction, bobAction)
+				to := []string{f.ann.Address, f.bob.Address}
+				if !annFirst {
+					to = []string{f.bob.Address, f.ann.Address}
+				}
+				got := f.deliver(t, policyMessage, to...)
+				runs := f.runs.take()
+				// Each domain's pipeline runs once, over its own recipient only, in the order the
+				// domains first appear.
+				first, second := policyRun{"first", []string{f.ann.Address}}, policyRun{"second", []string{f.bob.Address}}
+				if annFirst {
+					wantPolicyRuns(t, runs, first, second)
+				} else {
+					wantPolicyRuns(t, runs, second, first)
+				}
+				check(t, f, got, runs)
+			})
+		}
+	}
 
-	t.Run("the first domain's pipeline accepts for the second domain, whose own would refuse", func(t *testing.T) {
+	t.Run("another domain's rejection is not bypassed by listing a lax domain first", func(t *testing.T) {
+		orders(t, cont, reject, func(t *testing.T, f *recipientPolicyFixture, got policyAnswer, _ []policyRun) {
+			if got.status != http.StatusCreated || !slices.Equal(got.delivered, []string{f.ann.Address}) || !slices.Equal(got.failed, []string{f.bob.Address}) {
+				t.Fatalf("answer = %+v, want 201 with ann delivered and bob failed", got)
+			}
+			f.wantStored(t, 1, 0, 0, 0)
+		})
+	})
+
+	t.Run("another domain's quarantine is not bypassed by listing a lax domain first", func(t *testing.T) {
+		orders(t, cont, quarantine, func(t *testing.T, f *recipientPolicyFixture, got policyAnswer, _ []policyRun) {
+			if got.status != http.StatusCreated || len(got.delivered) != 2 || len(got.failed) != 0 {
+				t.Fatalf("answer = %+v, want 201 with both delivered", got)
+			}
+			// Ann's copy is in her mailbox; bob's is held, not delivered.
+			f.wantStored(t, 1, 0, 0, 1)
+		})
+	})
+
+	t.Run("another domain's deferral is not bypassed by listing a lax domain first", func(t *testing.T) {
+		orders(t, cont, deferred, func(t *testing.T, f *recipientPolicyFixture, got policyAnswer, _ []policyRun) {
+			if got.status != http.StatusServiceUnavailable || got.code != "deferred" {
+				t.Fatalf("answer = %+v, want 503 deferred", got)
+			}
+			// Nothing is stored for either, so the peer's retry gives no one a second copy.
+			f.wantStored(t, 0, 0, 0, 0)
+		})
+	})
+
+	t.Run("a domain's quarantine holds its own recipient's copy only", func(t *testing.T) {
+		orders(t, quarantine, cont, func(t *testing.T, f *recipientPolicyFixture, got policyAnswer, _ []policyRun) {
+			if got.status != http.StatusCreated || len(got.delivered) != 2 {
+				t.Fatalf("answer = %+v, want 201 with both delivered", got)
+			}
+			f.wantStored(t, 0, 1, 1, 0)
+		})
+	})
+
+	t.Run("a domain's discard drops its own recipient's copy only", func(t *testing.T) {
+		orders(t, discard, cont, func(t *testing.T, f *recipientPolicyFixture, got policyAnswer, _ []policyRun) {
+			if got.status != http.StatusCreated || len(got.delivered) != 2 {
+				t.Fatalf("answer = %+v, want 201 with both delivered", got)
+			}
+			f.wantStored(t, 0, 1, 0, 0)
+		})
+	})
+
+	t.Run("a rejection from every domain refuses the delivery", func(t *testing.T) {
+		orders(t, reject, reject, func(t *testing.T, f *recipientPolicyFixture, got policyAnswer, _ []policyRun) {
+			if got.status != http.StatusForbidden || got.code != "rejected" {
+				t.Fatalf("answer = %+v, want 403 rejected", got)
+			}
+			f.wantStored(t, 0, 0, 0, 0)
+		})
+	})
+
+	t.Run("a deferral and a rejection defer the delivery", func(t *testing.T) {
+		orders(t, deferred, reject, func(t *testing.T, f *recipientPolicyFixture, got policyAnswer, _ []policyRun) {
+			if got.status != http.StatusServiceUnavailable || got.code != "deferred" {
+				t.Fatalf("answer = %+v, want 503 deferred", got)
+			}
+			f.wantStored(t, 0, 0, 0, 0)
+		})
+	})
+
+	t.Run("recipients on one domain share its one pipeline run", func(t *testing.T) {
 		f := newRecipientPolicyFixture(t, cont, reject)
-		got := f.deliver(t, policyMessage, f.ann.Address, f.bob.Address)
-		if got.status != http.StatusCreated || !slices.Equal(got.delivered, []string{f.ann.Address, f.bob.Address}) || len(got.failed) != 0 {
-			t.Fatalf("answer = %+v, want 201 with both delivered", got)
+		cat := models.Mailbox{DomainID: f.first.ID, LocalPart: "cat", Address: "cat@" + f.first.Name, Active: true, QuotaBytes: 1 << 30}
+		if err := f.db.Create(&cat).Error; err != nil {
+			t.Fatal(err)
 		}
-		wantPolicyRuns(t, f.runs.take(), policyRun{"first", []string{f.ann.Address, f.bob.Address}})
-		f.wantStored(t, 1, 1, 0, 0)
+		seedReceiveFixture(t, f.db, cat)
+		t.Cleanup(func() {
+			f.db.Where("mailbox_id = ?", cat.ID).Delete(&models.Message{})
+			f.db.Delete(&cat)
+		})
+		got := f.deliver(t, policyMessage, f.ann.Address, f.bob.Address, cat.Address)
+		if got.status != http.StatusCreated || !slices.Equal(got.delivered, []string{f.ann.Address, cat.Address}) || !slices.Equal(got.failed, []string{f.bob.Address}) {
+			t.Fatalf("answer = %+v, want 201 with ann and cat delivered and bob failed", got)
+		}
+		wantPolicyRuns(t, f.runs.take(), policyRun{"first", []string{f.ann.Address, cat.Address}}, policyRun{"second", []string{f.bob.Address}})
+		if got := f.count(t, &models.Message{}, "mailbox_id", cat.ID); got != 1 {
+			t.Errorf("cat's messages = %d, want 1", got)
+		}
+		f.wantStored(t, 1, 0, 0, 0)
 	})
 
-	t.Run("the same recipients in the other order are refused by the other domain", func(t *testing.T) {
-		f := newRecipientPolicyFixture(t, cont, reject)
-		got := f.deliver(t, policyMessage, f.bob.Address, f.ann.Address)
-		if got.status != http.StatusForbidden || got.code != "rejected" {
-			t.Fatalf("answer = %+v, want 403 rejected", got)
-		}
-		wantPolicyRuns(t, f.runs.take(), policyRun{"second", []string{f.bob.Address, f.ann.Address}})
-		f.wantStored(t, 0, 0, 0, 0)
-	})
-
-	t.Run("the first domain's deferral holds back every recipient", func(t *testing.T) {
-		f := newRecipientPolicyFixture(t, deferred, cont)
-		got := f.deliver(t, policyMessage, f.ann.Address, f.bob.Address)
-		if got.status != http.StatusServiceUnavailable || got.code != "deferred" {
-			t.Fatalf("answer = %+v, want 503 deferred", got)
-		}
-		wantPolicyRuns(t, f.runs.take(), policyRun{"first", []string{f.ann.Address, f.bob.Address}})
-		f.wantStored(t, 0, 0, 0, 0)
-	})
-
-	t.Run("a later domain's deferral is never asked", func(t *testing.T) {
-		f := newRecipientPolicyFixture(t, cont, deferred)
-		got := f.deliver(t, policyMessage, f.ann.Address, f.bob.Address)
-		if got.status != http.StatusCreated || len(got.delivered) != 2 {
-			t.Fatalf("answer = %+v, want 201 with both delivered", got)
-		}
-		wantPolicyRuns(t, f.runs.take(), policyRun{"first", []string{f.ann.Address, f.bob.Address}})
-		f.wantStored(t, 1, 1, 0, 0)
-	})
-
-	t.Run("the first domain's quarantine holds every recipient's copy", func(t *testing.T) {
-		f := newRecipientPolicyFixture(t, quarantine, cont)
-		got := f.deliver(t, policyMessage, f.ann.Address, f.bob.Address)
-		if got.status != http.StatusCreated || len(got.delivered) != 2 {
-			t.Fatalf("answer = %+v, want 201 with both delivered", got)
-		}
-		f.wantStored(t, 0, 0, 1, 1)
-	})
-
-	t.Run("the first domain's discard drops every recipient's copy", func(t *testing.T) {
-		f := newRecipientPolicyFixture(t, discard, cont)
-		got := f.deliver(t, policyMessage, f.ann.Address, f.bob.Address)
-		if got.status != http.StatusCreated || len(got.delivered) != 2 {
-			t.Fatalf("answer = %+v, want 201 with both delivered", got)
-		}
-		f.wantStored(t, 0, 0, 0, 0)
-	})
-
-	t.Run("an unknown address does not choose the pipeline", func(t *testing.T) {
+	t.Run("an unknown address does not choose a pipeline", func(t *testing.T) {
 		f := newRecipientPolicyFixture(t, cont, reject)
 		unknown := "nobody@" + f.second.Name
 		got := f.deliver(t, policyMessage, unknown, f.ann.Address)
@@ -283,6 +346,52 @@ func TestRESTMAILDeliver_FirstRecipientDomainChoosesThePipeline(t *testing.T) {
 		wantPolicyRuns(t, f.runs.take(), policyRun{"first", []string{alias}}, policyRun{"second", []string{f.bob.Address}})
 		f.wantStored(t, 1, 0, 0, 0)
 	})
+}
+
+// The real greylist step on the second domain is met whichever order the sender lists the
+// recipients in: the delivery is deferred as greylisted and nothing is stored, and the triple
+// the step records is the second domain's own recipient. A delivery to the first domain alone
+// is the control: its pipeline does not greylist.
+func TestRESTMAILDeliver_RecipientOrderCannotSkipAnotherDomainsGreylist(t *testing.T) {
+	for _, annFirst := range []bool{true, false} {
+		name := "ann first"
+		if !annFirst {
+			name = "bob first"
+		}
+		t.Run(name, func(t *testing.T) {
+			f := newRecipientPolicyFixture(t, pipeline.ActionContinue, pipeline.ActionContinue)
+			steps, _ := json.Marshal([]pipeline.FilterConfig{{Name: "greylist", Type: pipeline.FilterTypeAction, Enabled: true,
+				Config: json.RawMessage(`{"delay_minutes":5}`)}})
+			if err := f.db.Model(&models.Pipeline{}).Where("domain_id = ?", f.second.ID).Update("filters", steps).Error; err != nil {
+				t.Fatal(err)
+			}
+
+			control := f.deliver(t, policyMessage, f.ann.Address)
+			if control.status != http.StatusCreated || !slices.Equal(control.delivered, []string{f.ann.Address}) {
+				t.Fatalf("control: answer = %+v, want 201 with ann delivered", control)
+			}
+			f.runs.take()
+
+			to := []string{f.ann.Address, f.bob.Address}
+			if !annFirst {
+				to = []string{f.bob.Address, f.ann.Address}
+			}
+			got := f.deliver(t, policyMessage, to...)
+			if got.status != http.StatusServiceUnavailable || got.code != rmail.GreylistedRefusal {
+				t.Fatalf("answer = %+v, want 503 %s", got, rmail.GreylistedRefusal)
+			}
+			wantPolicyRuns(t, f.runs.take(), policyRun{"first", []string{f.ann.Address}})
+			var triples []models.GreylistEntry
+			if err := f.db.Where("sender = ?", "sender@remote.test").Where("recipient IN ?", []string{f.ann.Address, f.bob.Address}).Find(&triples).Error; err != nil {
+				t.Fatal(err)
+			}
+			if len(triples) != 1 || triples[0].Recipient != f.bob.Address {
+				t.Errorf("greylist triples = %+v, want one, for bob", triples)
+			}
+			// Only the control's copy is stored; the deferred delivery stored nothing.
+			f.wantStored(t, 1, 0, 0, 0)
+		})
+	}
 }
 
 // A delivery that names the TLS report mailbox and ordinary recipients is two things at once.
