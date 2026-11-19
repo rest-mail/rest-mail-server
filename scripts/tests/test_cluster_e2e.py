@@ -88,15 +88,34 @@ class ArgumentTests(unittest.TestCase):
 
 
 class ReceiptTests(unittest.TestCase):
-    def test_receipt_line_names_commit_images_step_and_result(self):
-        self.assertEqual(cluster_e2e.receipt("abc123", "api:ci,js-filter:ci", "health", "pass", "200"),
-                         "cluster-e2e receipt commit=abc123 images=api:ci,js-filter:ci step=health result=pass detail=200")
+    def test_receipt_line_names_commit_images_digests_step_result_run_and_time(self):
+        digests = "api@sha256:" + "a" * 64
+        self.assertEqual(cluster_e2e.receipt("abc123", "api:ci,js-filter:ci", "health", "pass", "200",
+                                             digests=digests, run="r1", at="2026-11-19T05:00:00Z"),
+                         "cluster-e2e receipt commit=abc123 images=api:ci,js-filter:ci digests=" + digests +
+                         " step=health result=pass run=r1 at=2026-11-19T05:00:00Z detail=200")
 
     def test_receipt_keeps_one_token_per_field(self):
         line = cluster_e2e.receipt("", "x", "smtp-rcpt", "fail", "RCPT answered 451  try\nlater")
-        self.assertEqual(line, "cluster-e2e receipt commit=- images=x step=smtp-rcpt result=fail "
-                               "detail=RCPT_answered_451_try_later")
+        self.assertEqual(line, "cluster-e2e receipt commit=- images=x digests=unknown step=smtp-rcpt result=fail "
+                               "run=- at=- detail=RCPT_answered_451_try_later")
         self.assertNotIn("detail=", cluster_e2e.receipt("c", "i", "s", "pass"))
+
+    def test_digest_summary_records_the_digest_each_container_runs(self):
+        a, b = "sha256:" + "a" * 64, "sha256:" + "b" * 64
+        self.assertEqual(cluster_e2e.digest_summary([
+            ("ghcr.io/rest-mail/api:1.2.3", "ghcr.io/rest-mail/api@" + a),
+            ("ghcr.io/rest-mail/api:1.2.3", "ghcr.io/rest-mail/api@" + a),
+            ("ghcr.io/rest-mail/smtp-gateway@" + b, b),
+            ("ghcr.io/rest-mail/admin:ci", ""),
+            ("", a),
+        ]), f"admin@unknown,api@{a},smtp-gateway@{b}")
+        self.assertEqual(cluster_e2e.digest_summary([]), "unknown")
+
+    def test_digest_summary_keeps_two_digests_for_one_name(self):
+        a, b = "sha256:" + "a" * 64, "sha256:" + "b" * 64
+        self.assertEqual(cluster_e2e.digest_summary([("x/api:1", "x/api@" + a), ("x/api:1", "x/api@" + b)]),
+                         f"api@{a},api@{b}")
 
     def test_image_summary_is_name_and_tag_sorted_and_unique(self):
         self.assertEqual(cluster_e2e.image_summary([
@@ -135,7 +154,10 @@ FAKE_KUBECTL = textwrap.dedent('''\
     if "port-forward" in args:
         sys.stderr.write("error: services \\"restmail-api\\" not found\\n")
         sys.exit(1)
-    if args[2:4] == ["get", "pods"]:
+    if args[2:4] == ["get", "pods"] and "containerStatuses" in args[-1]:
+        print("ghcr.io/rest-mail/api:ci\tghcr.io/rest-mail/api@sha256:" + "a" * 64)
+        print("ghcr.io/rest-mail/js-filter:ci\tsha256:" + "b" * 64)
+    elif args[2:4] == ["get", "pods"]:
         print("ghcr.io/rest-mail/api:ci ghcr.io/rest-mail/js-filter:ci")
 ''')
 
@@ -156,10 +178,14 @@ class MainTests(unittest.TestCase):
             self.assertEqual(code, 1)
             lines = out.getvalue().splitlines()
             self.assertEqual(len(lines), 2)
+            digests = f"digests=api@sha256:{'a' * 64},js-filter@sha256:{'b' * 64}"
             self.assertTrue(lines[0].startswith(
-                "cluster-e2e receipt commit=c0ffee images=api:ci,js-filter:ci step=health result=fail detail="))
-            self.assertEqual(lines[1], "cluster-e2e receipt commit=c0ffee images=api:ci,js-filter:ci "
-                                       "step=description result=skipped detail=an_earlier_step_failed")
+                f"cluster-e2e receipt commit=c0ffee images=api:ci,js-filter:ci {digests} step=health result=fail run="))
+            self.assertRegex(lines[1], "^cluster-e2e receipt commit=c0ffee images=api:ci,js-filter:ci "
+                                       + re.escape(digests) + " step=description result=skipped "
+                                       r"run=\S+ at=\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ detail=an_earlier_step_failed$")
+            runs = {re.search(r" run=(\S+) ", line).group(1) for line in lines}
+            self.assertEqual(len(runs), 1, "one invocation is one run")
             self.assertEqual((report / "receipts.txt").read_text().splitlines(), lines)
             self.assertIn("::error::health:", err.getvalue())
             calls = (work / "calls").read_text().splitlines()
