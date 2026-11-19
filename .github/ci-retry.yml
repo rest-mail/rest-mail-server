@@ -1,0 +1,17 @@
+# Which failed CI and E2E runs the retry bot (.github/workflows/ci-retry.yml) re-runs (#2113).
+#
+# Each entry is a plain substring, not a regular expression, matched against each line
+# of the failed jobs' logs and annotations. scripts/ci_retry.py reads this file; its
+# tests (scripts/tests/test_ci_retry.py) parse this copy, so a malformed edit fails them.
+#
+# retryable: in CI_RETRY=infra mode, a failure is re-run only when one of these matches.
+# never:     a line matching one of these is a real failure; it is never re-run, in any
+#            mode, even when a retryable entry matches too.
+retryable:
+  - "after its runner reservation ran out"     # ARC hook
+  - "Egress is over the account limit"          # artifact storage 503
+  - "dial tcp: lookup"                          # transient DNS
+  - "connection reset by peer"
+never:
+  - "--- FAIL:"
+  - "FAIL:"

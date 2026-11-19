@@ -1,0 +1,197 @@
+name: CI retry
+
+# Re-runs the failed jobs of a CI or E2E run when the failure is an infrastructure fault,
+# and asks for a person when it is not worth re-running (#2113). It reacts to those runs'
+# results; it changes no required check, and it never cancels a job.
+#
+# scripts/ci_retry.py decides, from the policy in .github/ci-retry.yml; its rules and their
+# order are pinned by scripts/tests/test_ci_retry.py. This file only gathers the facts.
+#
+# Repository variables (Settings > Secrets and variables > Actions > Variables):
+#   CI_RETRY         off | infra | all. Default infra.
+#                    off:   never re-run anything.
+#                    infra: re-run only when a failed job's log or annotations match a
+#                           `retryable` signature in .github/ci-retry.yml.
+#                    all:   re-run any failure.
+#                    In every mode a line matching a `never` pattern (a test failure) is
+#                    not re-run: the PR gets a comment and the ci:needs-human label.
+#   CI_RETRY_MAX     The last run attempt the bot re-runs from. Default 5: attempts 1 to 4
+#                    are re-run, and a failed attempt 5 gets a comment and ci:needs-human.
+#   RUNNER_GATE_URL  The runner gate's status page.
+#                    Default https://runner-gate.antimatter-studios.com/status.
+#                    Ready runners are workers of this repository owner's pool whose
+#                    phase is Running and that are not busy. With none, or when the gate
+#                    cannot be read, nothing is re-run: a retry could not start.
+#
+# workflow_run runs this file from the default branch with a token that can write, so it
+# checks out the default branch only and never runs code from the pull request.
+on:
+  workflow_run:
+    workflows: ["CI", "E2E"]
+    types: [completed]
+
+permissions:
+  actions: write
+  pull-requests: write
+  contents: read
+
+jobs:
+  retry:
+    name: Re-run infrastructure failures
+    # Not a required check. Successes, cancellations and skips need nothing from here.
+    if: github.event.workflow_run.conclusion == 'failure'
+    # GitHub's runner, so the bot still answers when the self-hosted pool is down
+    # (listed in KEPT_HOSTED, scripts/tests/test_runner_gate.py).
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      ORG: ${{ github.repository_owner }}
+      CI_RETRY: ${{ vars.CI_RETRY || 'infra' }}
+      CI_RETRY_MAX: ${{ vars.CI_RETRY_MAX || '5' }}
+      RUNNER_GATE_URL: ${{ vars.RUNNER_GATE_URL || 'https://runner-gate.antimatter-studios.com/status' }}
+      RUN_ID: ${{ github.event.workflow_run.id }}
+      RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+      RUN_URL: ${{ github.event.workflow_run.html_url }}
+      HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+      WORKFLOW: ${{ github.event.workflow_run.name }}
+    steps:
+      - name: Checkout the default branch (the policy and the decision script)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
+
+      - name: Find the open pull request whose head failed
+        id: pr
+        run: |
+          set -euo pipefail
+          # Search matches every PR containing the commit, so a stack's upper layers match
+          # too; only the PR whose head is this commit counts.
+          number=$(gh pr list --repo "$GH_REPO" --state open --search "$HEAD_SHA" \
+            --json number,headRefOid \
+            --jq "[.[] | select(.headRefOid == \"$HEAD_SHA\") | .number] | .[0] // empty")
+          if [ -z "$number" ]; then
+            echo "No open pull request has head $HEAD_SHA (a push, a merge group, or a head that moved on); nothing to retry."
+          else
+            echo "$WORKFLOW run $RUN_ID attempt $RUN_ATTEMPT failed on #$number at $HEAD_SHA."
+          fi
+          echo "number=$number" >> "$GITHUB_OUTPUT"
+
+      - name: Gather the facts
+        id: facts
+        if: steps.pr.outputs.number != ''
+        env:
+          PR: ${{ steps.pr.outputs.number }}
+        run: |
+          set -euo pipefail
+          work="$RUNNER_TEMP/ci-retry"
+          mkdir -p "$work/logs"
+
+          # Ready runners. A gate that does not answer counts as none.
+          if curl -fsS --max-time 15 "$RUNNER_GATE_URL" -o "$work/gate-status.json"; then
+            ready=$(python3 scripts/ci_retry.py ready-runners --status-file "$work/gate-status.json" --org "$ORG")
+            echo "Runner gate: $ready ready runner(s) for $ORG."
+          else
+            echo "::warning::The runner gate at $RUNNER_GATE_URL did not answer; counting 0 ready runners, so nothing is re-run."
+            ready=0
+          fi
+
+          # Already retried: the run moved on to a newer attempt or is running again, or
+          # this bot already commented a retry of this attempt.
+          read -r current_attempt current_status < <(gh api "repos/$GH_REPO/actions/runs/$RUN_ID" \
+            --jq '"\(.run_attempt) \(.status)"')
+          gh api --paginate "repos/$GH_REPO/issues/$PR/comments" \
+            --jq '[.[] | select(.user.login == "github-actions[bot]") | .body]' \
+            | jq -s 'add // []' > "$work/comments.json"
+          retried=$(python3 scripts/ci_retry.py already-retried --run-id "$RUN_ID" \
+            --event-attempt "$RUN_ATTEMPT" --current-attempt "$current_attempt" \
+            --current-status "$current_status" --comments-file "$work/comments.json")
+          echo "Run $RUN_ID is at attempt $current_attempt ($current_status); already retried: $retried."
+
+          # The failed jobs of this attempt: their logs and annotations are the failure text.
+          gh api --paginate "repos/$GH_REPO/actions/runs/$RUN_ID/attempts/$RUN_ATTEMPT/jobs" \
+            --jq '.jobs[] | select(.conclusion == "failure" or .conclusion == "timed_out") | "\(.id)\t\(.name)"' \
+            > "$work/failed-jobs.tsv"
+          if [ ! -s "$work/failed-jobs.tsv" ]; then
+            echo "No failed job in attempt $RUN_ATTEMPT (the run failed before any job started)."
+          fi
+          while IFS=$'\t' read -r id name; do
+            if gh api "repos/$GH_REPO/actions/jobs/$id/logs" > "$work/logs/$id.log" 2> "$work/logs-error.txt"; then
+              echo "Job $id ($name): $(wc -l < "$work/logs/$id.log") log lines."
+            else
+              echo "Job $id ($name) has no log: $(head -c 300 "$work/logs-error.txt")"
+              : > "$work/logs/$id.log"
+            fi
+            gh api "repos/$GH_REPO/check-runs/$id/annotations" --jq '.[].message' \
+              > "$work/logs/$id.annotations" 2>/dev/null || : > "$work/logs/$id.annotations"
+          done < "$work/failed-jobs.tsv"
+
+          {
+            echo "ready=$ready"
+            echo "retried=$retried"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Decide
+        id: decide
+        if: steps.pr.outputs.number != ''
+        env:
+          READY: ${{ steps.facts.outputs.ready }}
+          RETRIED: ${{ steps.facts.outputs.retried }}
+        run: |
+          set -euo pipefail
+          work="$RUNNER_TEMP/ci-retry"
+          flags=()
+          [ "$RETRIED" = true ] && flags+=(--already-retried)
+          python3 scripts/ci_retry.py decide \
+            --policy .github/ci-retry.yml \
+            --mode "$CI_RETRY" --attempt "$RUN_ATTEMPT" --max-attempts "$CI_RETRY_MAX" \
+            --ready-runners "$READY" ${flags[@]+"${flags[@]}"} \
+            --failure-text "$work/logs" \
+            --workflow "$WORKFLOW" --run-id "$RUN_ID" --run-url "$RUN_URL" --head-sha "$HEAD_SHA" \
+            --comment-out "$work/comment.md" --github-output "$GITHUB_OUTPUT" \
+            | tee "$work/decision.json"
+          {
+            echo "### $WORKFLOW run $RUN_ID, attempt $RUN_ATTEMPT"
+            echo '```json'
+            cat "$work/decision.json"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Re-run the failed jobs and say so on the pull request
+        if: steps.decide.outputs.retry == 'true'
+        env:
+          PR: ${{ steps.pr.outputs.number }}
+        run: |
+          set -euo pipefail
+          # Never re-run an attempt someone else already moved on from, and never a run
+          # past the cap: check again right before the re-run.
+          current=$(gh api "repos/$GH_REPO/actions/runs/$RUN_ID" --jq '"\(.run_attempt) \(.status)"')
+          if [ "$current" != "$RUN_ATTEMPT completed" ]; then
+            echo "Run $RUN_ID is now at '$current', not '$RUN_ATTEMPT completed'; leaving it alone."
+            exit 0
+          fi
+          if [ "$RUN_ATTEMPT" -ge "$CI_RETRY_MAX" ]; then
+            echo "::error::Attempt $RUN_ATTEMPT is not below the cap $CI_RETRY_MAX; refusing to re-run."
+            exit 1
+          fi
+          gh api -X POST "repos/$GH_REPO/actions/runs/$RUN_ID/rerun-failed-jobs"
+          echo "Re-ran the failed jobs of $WORKFLOW run $RUN_ID (attempt $RUN_ATTEMPT failed)."
+          gh api "repos/$GH_REPO/issues/$PR/comments" -F "body=@$RUNNER_TEMP/ci-retry/comment.md" --jq .html_url
+
+      - name: Ask a person to look
+        if: steps.decide.outputs.needs-human == 'true'
+        env:
+          PR: ${{ steps.pr.outputs.number }}
+        run: |
+          set -euo pipefail
+          # --force creates the label, or updates it when it exists, so a missing label
+          # never fails this step.
+          gh label create ci:needs-human --force --repo "$GH_REPO" \
+            --description "The CI retry bot will not re-run this failure; a person needs to look" \
+            --color B60205
+          gh api -X POST "repos/$GH_REPO/issues/$PR/labels" -f "labels[]=ci:needs-human" --jq '.[].name'
+          gh api "repos/$GH_REPO/issues/$PR/comments" -F "body=@$RUNNER_TEMP/ci-retry/comment.md" --jq .html_url
