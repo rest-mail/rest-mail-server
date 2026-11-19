@@ -1077,6 +1077,56 @@
       ],
       "title": "Volume Space Used",
       "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 93
+      },
+      "id": 109,
+      "title": "Outbound Delivery",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 94
+      },
+      "id": 26,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": ["lastNotNull"]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (ip_version, result) (rate(restmail_outbound_smtp_attempts_total[5m]))",
+          "legendFormat": "IPv{{ip_version}} {{result}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Direct SMTP Attempts by IP Version",
+      "type": "timeseries"
     }
   ],
   "schemaVersion": 39,

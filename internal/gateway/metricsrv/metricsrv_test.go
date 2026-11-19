@@ -101,6 +101,7 @@ func TestHandlerServesGatewaySeries(t *testing.T) {
 	// Increment the counters/gauges a gateway process touches so their series
 	// materialize in the exposition output.
 	metrics.MessagesSent.Inc()
+	metrics.OutboundSMTPAttempts.WithLabelValues("6", "rejected").Inc()
 	metrics.PipelineTerminal.WithLabelValues("outbound", "delivered").Inc()
 	metrics.ActiveConnections.WithLabelValues("smtp").Inc()
 	metrics.AuthFailures.WithLabelValues("smtp").Inc()
@@ -125,6 +126,7 @@ func TestHandlerServesGatewaySeries(t *testing.T) {
 
 	wantNames := []string{
 		"restmail_messages_sent_total",
+		`restmail_outbound_smtp_attempts_total{ip_version="6",result="rejected"}`,
 		"restmail_pipeline_terminal_total",
 		"restmail_active_connections",
 		"restmail_auth_failures_total",
