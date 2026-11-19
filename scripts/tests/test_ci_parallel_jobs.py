@@ -3,16 +3,95 @@
 from collections import Counter
 import os
 from pathlib import Path
+import re
 import subprocess
 import tempfile
 import unittest
 
-from test_stacked_pr_workflows import blocks, field, shell_of
+from test_go_imap_gates import step
+from test_stacked_pr_workflows import blocks, context, evaluate, field, shell_of
 
 
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = (ROOT / ".github/workflows/ci.yml").read_text()
 JOBS = blocks(blocks(SOURCE, 0)["jobs"], 2)
+STATUS_CHECK = re.compile(r"\b(?:always|cancelled|failure|success)\(\)")
+POOL = "antimatter-vps-linux-x64"
+FALLBACK = "ubuntu-24.04"
+IMAP_GATES = (
+    "Check the IMAP module's 32-bit sequence dispatch",
+    "Validate the IMAP module's RFC checklist",
+    "Test the local IMAP compatibility module with coverage",
+    "Require at least 95% statement coverage",
+    "Upload IMAP coverage evidence",
+)
+
+
+def needs_of(name):
+    return field(JOBS[name], "needs", 4).strip("[]").split(", ")
+
+
+def starts(name, results=None, cancelled=False, **event):
+    """Whether GitHub starts the job, given the results of the jobs it needs."""
+    condition = field(JOBS[name], "if", 4)
+    values = context(**event)
+    values["cancelled"] = cancelled
+    values["needs"] = {need: {"result": (results or {}).get(need, "success")} for need in needs_of(name)}
+    # GitHub puts success() in front of a condition with no status check of its own.
+    if not STATUS_CHECK.search(condition):
+        if cancelled or any(need["result"] != "success" for need in values["needs"].values()):
+            return False
+    return bool(evaluate(condition, values))
+
+
+def after_failed_lint(outputs):
+    values = context()
+    values["needs"] = {"preflight": {"result": "success"}, "lint": {"result": "failure", "outputs": outputs}}
+    return values
+
+
+class FailedLintHidesNoOtherFailure(unittest.TestCase):
+    """One run reports a lint failure and the IMAP module's failures together (#2153)."""
+
+    def test_the_imap_tests_start_whatever_lint_concluded(self):
+        for result in ("success", "failure", "cancelled"):
+            with self.subTest(lint=result):
+                self.assertTrue(starts("test-imap", {"lint": result}))
+
+    def test_a_failed_lint_still_lets_the_jobs_after_the_imap_tests_report(self):
+        imap = "success" if starts("test-imap", {"lint": "failure"}) else "skipped"
+        for name in ("build", "test-report"):
+            with self.subTest(job=name):
+                self.assertTrue(starts(name, {"test-imap": imap}))
+
+    def test_a_branch_that_failed_preflight_still_starts_no_imap_tests(self):
+        for preflight in ("failure", "cancelled", "skipped"):
+            for lint in ("success", "failure", "skipped"):
+                with self.subTest(preflight=preflight, lint=lint):
+                    self.assertFalse(starts("test-imap", {"preflight": preflight, "lint": lint}))
+
+    def test_a_cancelled_run_starts_no_imap_tests(self):
+        self.assertFalse(starts("test-imap", {"lint": "failure"}, cancelled=True))
+        self.assertFalse(starts("test-imap", cancelled=True))
+
+    def test_events_that_run_no_ci_jobs_still_start_no_imap_tests(self):
+        for event in ({"event": "push", "actor": "github-merge-queue[bot]"}, {"action": "edited"}):
+            with self.subTest(event=event):
+                self.assertFalse(starts("test-imap", {"lint": "failure"}, **event))
+
+    def test_a_lint_that_stopped_before_answering_runs_every_gate_on_the_fallback(self):
+        values = after_failed_lint({})
+        self.assertEqual(evaluate(field(JOBS["test-imap"], "runs-on", 4), values), FALLBACK)
+        for name in IMAP_GATES:
+            with self.subTest(step=name):
+                self.assertTrue(evaluate(field(step(JOBS["test-imap"], name), "if", 8), values))
+
+    def test_answers_lint_gave_before_failing_still_decide(self):
+        values = after_failed_lint({"go_imap_changed": "false", "runners": '{"test-imap": "%s"}' % POOL})
+        self.assertEqual(evaluate(field(JOBS["test-imap"], "runs-on", 4), values), POOL)
+        for name in IMAP_GATES:
+            with self.subTest(step=name):
+                self.assertFalse(evaluate(field(step(JOBS["test-imap"], name), "if", 8), values))
 
 
 class ParallelGates(unittest.TestCase):

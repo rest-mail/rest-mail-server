@@ -790,7 +790,11 @@ jobs:
 
   test-imap:
     name: Test IMAP module
-    if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
+    # Waits for Lint, which picks this job's runner and says whether the module's gates
+    # run, but a failed Lint does not skip it: one run reports both failures (#2153), and
+    # Build and Test report, which need this job, still run. A Lint that stopped before
+    # answering leaves both answers empty, so the gates run, on ubuntu-24.04.
+    if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != '')) && !cancelled() && needs.preflight.result == 'success'
     runs-on: ${{ fromJSON(needs.lint.outputs.runners || '{}')['test-imap'] || 'ubuntu-24.04' }}
     needs: [preflight, lint]
     steps:

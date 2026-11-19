@@ -59,7 +59,9 @@ class PreflightWorkflows(unittest.TestCase):
                     needs = field(job, "needs", 4).strip("[]").split(", ")
                     self.assertIn("preflight", needs)
                     condition = field(job, "if", 4)
-                    if "always()" in condition:
+                    # A status check replaces GitHub's implicit success(), so the
+                    # condition itself has to stop the job after a failed preflight.
+                    if "always()" in condition or "cancelled()" in condition:
                         values = context()
                         values["needs"]["preflight"]["result"] = "failure"
                         self.assertEqual(bool(evaluate(condition, values)), job_name in {"ci", "e2e"})
