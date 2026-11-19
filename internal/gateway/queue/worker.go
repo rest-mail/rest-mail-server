@@ -322,6 +322,7 @@ func NewWorker(db *gorm.DB, hostname string, numWorkers int, pollInterval time.D
 
 		maxPerDestination: defaultMaxPerDestination,
 	}
+	initSMTPAttemptSeries()
 	// MTA-STS resolver: real DNS lookups, HTTPS policy fetch whose certificate
 	// verification tracks the worker's tlsInsecure flag at call time.
 	w.sts = mtasts.NewResolver()
@@ -2115,9 +2116,27 @@ func (w *Worker) deliverSMTPWith(ctx context.Context, addr, host string, item mo
 		return err
 	}
 
+	// From here every outcome is the MX's, so it counts against the IP version
+	// the MX was reached over (#1579).
+	err = sendOverSMTPLink(link, timeouts, host, sender, recipient, item.RawMessage, requireTLS)
+	countSMTPAttempt(link.remoteIP, err)
+	if err != nil {
+		return err
+	}
+	// What protected it, never more than it was (RFC 7435 §3): a certificate
+	// that did not verify is encryption, not authentication.
+	metrics.OutboundTransport.WithLabelValues(link.security).Inc()
+	slog.InfoContext(ctx, "queue: delivered over SMTP", "host", host, "domain", item.Domain, "transport", link.security)
+	return nil
+}
+
+// sendOverSMTPLink runs the mail transaction on an open link and says QUIT. Each
+// error it returns comes from the MX or the connection to it.
+func sendOverSMTPLink(link *smtpLink, timeouts config.OutboundSMTPTimeouts, host, sender, recipient, raw string, requireTLS bool) error {
+	client := link.client
 	// Set sender, with REQUIRETLS when the message requires it (RFC 8689 §4.2.1).
 	armStep(link.conn, timeouts.Mail)
-	if err := mailFrom(client, sender, smtpUTF8Status(sender, recipient, item.RawMessage) != "", requireTLS); err != nil {
+	if err := mailFrom(client, sender, smtpUTF8Status(sender, recipient, raw) != "", requireTLS); err != nil {
 		se := parseSMTPError(err)
 		se.RemoteMTA = host
 		return se
@@ -2137,7 +2156,7 @@ func (w *Worker) deliverSMTPWith(ctx context.Context, addr, host string, item mo
 	if err != nil {
 		return fmt.Errorf("DATA to %s: %w", host, err)
 	}
-	err = writeDataBlocks(wc, client.Text.W.Flush, item.RawMessage, func() { armStep(link.conn, timeouts.DataBlock) })
+	err = writeDataBlocks(wc, client.Text.W.Flush, raw, func() { armStep(link.conn, timeouts.DataBlock) })
 	if err != nil {
 		wc.Close()
 		return fmt.Errorf("write message to %s: %w", host, err)
@@ -2152,10 +2171,6 @@ func (w *Worker) deliverSMTPWith(ctx context.Context, addr, host string, item mo
 	// Quit. The message is delivered already, so a stalled QUIT costs only its timer.
 	armStep(link.conn, timeouts.Quit)
 	_ = client.Quit()
-	// What protected it, never more than it was (RFC 7435 §3): a certificate
-	// that did not verify is encryption, not authentication.
-	metrics.OutboundTransport.WithLabelValues(link.security).Inc()
-	slog.InfoContext(ctx, "queue: delivered over SMTP", "host", host, "domain", item.Domain, "transport", link.security)
 	return nil
 }
 
@@ -2206,11 +2221,13 @@ func (w *Worker) openSMTP(addr, host string, tryTLS, requireVerified bool, recor
 	armStep(conn, timeouts.Greeting)
 	client, err := smtp.NewClient(conn, host)
 	if err != nil {
+		countSMTPAttempt(addrIP(conn.RemoteAddr()), err)
 		conn.Close()
 		return nil, fmt.Errorf("SMTP client for %s: %w", addr, err)
 	}
 	armStep(conn, timeouts.Hello)
 	if err := client.Hello(w.hostname); err != nil {
+		countSMTPAttempt(addrIP(conn.RemoteAddr()), err)
 		_ = client.Close()
 		return nil, fmt.Errorf("EHLO to %s: %w", host, err)
 	}

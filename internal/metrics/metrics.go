@@ -149,6 +149,21 @@ var (
 		[]string{"security"},
 	)
 
+	// OutboundSMTPAttempts counts attempts to deliver directly to an MX, by the
+	// IP version of the connection and what came of it: delivered, deferred (the
+	// MX answered 4xx), rejected (5xx) or failed (the connection broke, or the
+	// reply was no verdict). Some receivers treat IPv6 mail more harshly, and
+	// this shows it (#1579). An attempt that never connected has no IP version
+	// and is not counted, nor is one REST Mail itself refused to send. Both
+	// labels are closed sets: 8 series.
+	OutboundSMTPAttempts = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "restmail_outbound_smtp_attempts_total",
+			Help: "Direct SMTP delivery attempts that reached an MX, by IP version and result",
+		},
+		[]string{"ip_version", "result"},
+	)
+
 	// MessagesSent counts total outbound messages sent.
 	MessagesSent = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "restmail_messages_sent_total",
@@ -344,6 +359,7 @@ func init() {
 		MessagesReceived,
 		MessagesSent,
 		OutboundTransport,
+		OutboundSMTPAttempts,
 		PipelineFilterDuration,
 		PipelineStageDecisions,
 		PipelineTerminal,
