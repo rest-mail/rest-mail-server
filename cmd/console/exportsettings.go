@@ -178,17 +178,27 @@ func (r settingsReader) read(account string, at time.Time) (settingsExport, erro
 	prefix := "/api/v1/accounts/" + account
 	var folders []settingsFolder
 	for _, part := range []struct {
-		name, path string
-		into       any
+		name, path  string
+		into        any
+		mayBeAbsent bool
 	}{
-		{"the account", prefix, &export.Account},
-		{"folders", prefix + "/folders", &folders},
-		{"the Sieve script", prefix + "/sieve", &export.Sieve},
-		{"the vacation reply", prefix + "/vacation", &export.Vacation},
-		{"quiet hours", prefix + "/quiet-hours", &export.QuietHours},
-		{"the contact reply-time setting", prefix + "/contact-reply-time", &export.ContactReplyTime},
+		{name: "the account", path: prefix, into: &export.Account},
+		{name: "folders", path: prefix + "/folders", into: &folders},
+		// The Sieve route answers 404 not_found for an account with no script.
+		// That is the same answer as for an account the key cannot read, which
+		// is why the account is read first and the vacation route, under the
+		// same check, after it: losing access still fails the export.
+		{name: "the Sieve script", path: prefix + "/sieve", into: &export.Sieve, mayBeAbsent: true},
+		{name: "the vacation reply", path: prefix + "/vacation", into: &export.Vacation},
+		{name: "quiet hours", path: prefix + "/quiet-hours", into: &export.QuietHours},
+		{name: "the contact reply-time setting", path: prefix + "/contact-reply-time", into: &export.ContactReplyTime},
 	} {
-		if err := r.get(part.path, part.into); err != nil {
+		err := r.get(part.path, part.into)
+		var refused settingsRefusal
+		if part.mayBeAbsent && errors.As(err, &refused) && refused.notStored() {
+			continue
+		}
+		if err != nil {
 			return settingsExport{}, fmt.Errorf("read %s: %w", part.name, err)
 		}
 	}
@@ -208,7 +218,24 @@ func (r settingsReader) read(account string, at time.Time) (settingsExport, erro
 	return export, nil
 }
 
-// get reads one {"data": ...} response into into.
+// settingsRefusal is a read the server answered with something other than 200.
+type settingsRefusal struct {
+	status int
+	code   string
+}
+
+func (e settingsRefusal) Error() string {
+	return fmt.Sprintf("the server refused (HTTP %d); check the account and that the key holds mail:read", e.status)
+}
+
+// notStored reports the API's own 404 for something not there, which a proxy's
+// or a missing route's 404 is not.
+func (e settingsRefusal) notStored() bool {
+	return e.status == http.StatusNotFound && e.code == "not_found"
+}
+
+// get reads one {"data": ...} response into into. A null is not settings: taken
+// as an answer it would write the defaults over what the account really has.
 func (r settingsReader) get(path string, into any) error {
 	if err := r.ctx.Err(); err != nil {
 		return err
@@ -224,12 +251,18 @@ func (r settingsReader) get(path string, into any) error {
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("the server refused (HTTP %d); check the account and that the key holds mail:read", resp.StatusCode)
+		var refusal struct {
+			Error struct {
+				Code string `json:"code"`
+			} `json:"error"`
+		}
+		_ = json.NewDecoder(io.LimitReader(resp.Body, settingsMaxResponse)).Decode(&refusal)
+		return settingsRefusal{status: resp.StatusCode, code: refusal.Error.Code}
 	}
 	var envelope struct {
 		Data json.RawMessage `json:"data"`
 	}
-	if err := json.NewDecoder(io.LimitReader(resp.Body, settingsMaxResponse)).Decode(&envelope); err != nil || len(envelope.Data) == 0 {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, settingsMaxResponse)).Decode(&envelope); err != nil || len(envelope.Data) == 0 || string(envelope.Data) == "null" {
 		return errors.New("the server returned an invalid response")
 	}
 	if err := json.Unmarshal(envelope.Data, into); err != nil {

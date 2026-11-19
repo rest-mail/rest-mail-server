@@ -94,6 +94,9 @@ source mail has been permanently removed. Those are separate scope questions.
 `--json` returns a summary containing `path` and either `contacts` or `calendars`
 (the latter counts MIME calendar parts, not distinct event UIDs). Exit status is
 0 for completion, 2 for usage/destination errors, and 1 for export failures.
+`export-calendar` also fails on a folder list that says it is incomplete, and on
+a message page that says more follows with no messages or without a cursor it
+has not used in that folder.
 Ctrl-C or SIGTERM cancels requests and cleans up staged output. HTTP requests
 have a 30-minute timeout and each list page is capped at 64 MiB. Memory is bounded
 by a single decoded list item/MIME header, not by the number of contacts or

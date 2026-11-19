@@ -276,6 +276,12 @@ reader sees a half-written message and no whole message or folder is held in
 memory. A message the server keeps no source for stops the export rather than
 being written differently. Ctrl-C stops it and removes the unfinished message.
 
+The export finishes a folder only on a page that says nothing follows. A message
+list that does not say, or that says more follows without a cursor not used
+before or with no messages on the page, stops the export with exit status 1, as
+does a folder list that says it is incomplete. A failed export keeps the
+messages already written, so its directory is not a whole account.
+
 The destination is created when missing. One that already holds files is
 refused unless `--allow-non-empty` is given; the export then writes beside them,
 reusing the keyword letters of an existing `dovecot-keywords` file. A message
