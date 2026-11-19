@@ -41,6 +41,8 @@ var resetDomainSettings = map[string]string{
 	"outbound_stopped_at":         "NULL",
 	"outbound_stop_reason":        "DEFAULT",
 	"outbound_stopped_by":         "DEFAULT",
+	"automation_locked_at":        "NULL",
+	"automation_locked_by":        "DEFAULT",
 }
 
 // resetDomainKept are the domain columns the reset leaves as they are, and why.

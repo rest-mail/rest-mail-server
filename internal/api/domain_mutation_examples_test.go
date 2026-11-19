@@ -29,6 +29,9 @@ func TestDomainMutationExamples(t *testing.T) {
 			t.Fatalf("incomplete operation%s", op)
 		}
 		for name, pair := range pairs[op] {
+			if provenByAutomationLockExamples(op, name) {
+				continue
+			}
 			t.Run(op+"/"+name, func(t *testing.T) {
 				examplepairs.Proven(t, op, name)
 				s, ok := f[name]

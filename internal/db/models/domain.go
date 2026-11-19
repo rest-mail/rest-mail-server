@@ -36,10 +36,17 @@ type Domain struct {
 	OutboundStoppedAt *time.Time `json:"-"`
 	// OutboundStopReason is why the operator stopped it, and OutboundStoppedBy who
 	// did (the account's address at the time). Both are empty while not stopped.
-	OutboundStopReason string    `gorm:"type:text;not null;default:''" json:"-"`
-	OutboundStoppedBy  string    `gorm:"type:text;not null;default:''" json:"-"`
-	CreatedAt          time.Time `json:"created_at"`
-	UpdatedAt          time.Time `json:"updated_at"`
+	OutboundStopReason string `gorm:"type:text;not null;default:''" json:"-"`
+	OutboundStoppedBy  string `gorm:"type:text;not null;default:''" json:"-"`
+	// AutomationLockedAt is set while the domain is locked against automation
+	// (#2012, decided on #1870): no API key or other machine credential may
+	// delete it, and only a person's session with a fresh second factor may lift
+	// the lock. AutomationLockedBy is who locked it (the account's address at the
+	// time), empty while unlocked. Nil: not locked.
+	AutomationLockedAt *time.Time `json:"-"`
+	AutomationLockedBy string     `gorm:"type:text;not null;default:''" json:"-"`
+	CreatedAt          time.Time  `json:"created_at"`
+	UpdatedAt          time.Time  `json:"updated_at"`
 
 	// Associations
 	Mailboxes []Mailbox `gorm:"foreignKey:DomainID" json:"mailboxes,omitempty"`

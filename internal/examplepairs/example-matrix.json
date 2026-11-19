@@ -9875,6 +9875,25 @@
         "mediaType": "application/json"
       }
     },
+    "automation_locked": {
+      "summary": "An API key cannot delete a domain locked against automation",
+      "description": "The key holds domains:delete at the installation scope. The domain is neither deleted nor archived.",
+      "request": {
+        "path": {
+          "id": 65010
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "automation_locked",
+            "message": "This domain is locked against automation: an API key cannot delete it. A person signed in can, or can lift the lock with a fresh second factor."
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "cancelled_after_lookup": {
       "request": {
         "path": {
@@ -46931,6 +46950,116 @@
     }
   },
   "updateDomain": {
+    "automation_lock": {
+      "summary": "An API key locks the domain against automation",
+      "description": "Locking only takes power away, so any caller that may update the domain may set it. The lock records who made it and when; the production handler writes it with an audit entry.",
+      "request": {
+        "path": {
+          "id": 65010
+        },
+        "body": {
+          "automation_locked": true
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "id": 65010,
+            "name": "locked.test",
+            "server_type": "restmail",
+            "active": false,
+            "default_quota_bytes": 1073741824,
+            "dkim_selector": "",
+            "sending_policy": "",
+            "dmarc_policy": "none",
+            "automation_lock": {
+              "locked_at": "2026-01-02T03:04:05Z",
+              "locked_by": "owner@access.test"
+            },
+            "created_at": "2026-01-02T03:04:05Z",
+            "updated_at": "2026-01-02T03:04:05Z"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "automation_unlock": {
+      "summary": "A person with a fresh second factor lifts the lock",
+      "request": {
+        "path": {
+          "id": 65010
+        },
+        "body": {
+          "automation_locked": false
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "id": 65010,
+            "name": "locked.test",
+            "server_type": "restmail",
+            "active": false,
+            "default_quota_bytes": 1073741824,
+            "dkim_selector": "",
+            "sending_policy": "",
+            "dmarc_policy": "none",
+            "created_at": "2026-01-02T03:04:05Z",
+            "updated_at": "2026-01-02T03:04:05Z"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "automation_unlock_key": {
+      "summary": "An API key cannot lift the lock",
+      "description": "The key holds domains:write at the installation scope; lifting needs a person's session, so the whole request is refused and the lock stays.",
+      "request": {
+        "path": {
+          "id": 65010
+        },
+        "body": {
+          "automation_locked": false
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "two_factor_required",
+            "message": "This action needs a session signed in with two-factor authentication: sign in again with your code"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "automation_unlock_stale": {
+      "summary": "A second factor older than the fresh window cannot lift the lock",
+      "request": {
+        "path": {
+          "id": 65010
+        },
+        "body": {
+          "automation_locked": false
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "recent_two_factor_required",
+            "message": "Sign in again with two-factor authentication: a recent second factor is required"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "body_array": {
       "request": {
         "path": {

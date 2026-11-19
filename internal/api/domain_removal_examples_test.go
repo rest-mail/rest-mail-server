@@ -22,10 +22,13 @@ func TestDomainRemovalExamples(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(pairs["deleteDomain"]) != 35 {
-		t.Fatalf("domain removal pairs:%d want35", len(pairs["deleteDomain"]))
+	if len(pairs["deleteDomain"]) != 36 {
+		t.Fatalf("domain removal pairs:%d want36", len(pairs["deleteDomain"]))
 	}
 	for name, pair := range pairs["deleteDomain"] {
+		if provenByAutomationLockExamples("deleteDomain", name) {
+			continue
+		}
 		t.Run(name, func(t *testing.T) {
 			examplepairs.Proven(t, "deleteDomain", name)
 			s, ok := f[name]
