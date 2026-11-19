@@ -306,8 +306,18 @@ type Domain struct {
 	// OutboundStop is present while an operator has stopped the domain's outbound
 	// mail (#1590), and left out otherwise.
 	OutboundStop *DomainOutboundStop `json:"outbound_stop,omitempty" description:"Present only while the domain's outbound mail is stopped"`
-	CreatedAt    time.Time           `json:"created_at"`
-	UpdatedAt    time.Time           `json:"updated_at"`
+	// AutomationLock is present while the domain is locked (#2012, #2098), and
+	// left out otherwise.
+	AutomationLock *DomainAutomationLock `json:"automation_lock,omitempty" description:"Present only while the domain is locked: nobody can delete it, a person's session included, until the lock is lifted, and only a person's session with a fresh second factor can lift it"`
+	CreatedAt      time.Time             `json:"created_at"`
+	UpdatedAt      time.Time             `json:"updated_at"`
+}
+
+// DomainAutomationLock is a lock on a domain against deletion: when it was
+// made and by whom (the account's address at the time).
+type DomainAutomationLock struct {
+	LockedAt time.Time `json:"locked_at"`
+	LockedBy string    `json:"locked_by"`
 }
 
 // DomainOutboundStop is an operator's stop on a domain's outbound mail: when it

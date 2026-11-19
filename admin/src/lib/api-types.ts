@@ -1510,14 +1510,14 @@ export interface paths {
         post?: never;
         /**
          * Delete a domain
-         * @description A domain containing accounts or aliases is refused with 409 domain_not_empty, except for its automatically provisioned postmaster when it holds no mail and has no credentials. The domain, that postmaster and their live configuration are archived atomically for restoration with their original identities. Grants are removed through the audited grant-change mechanism; cached permissions are invalidated only after commit. Historical reports, message traces and audit entries are retained. Until the domain is restored, or a new domain takes its name, mail to it is deferred with a temporary failure. A cleanup, archive, audit or cancellation failure rolls the deletion back. Deleting the last postmaster on its own still returns 409 postmaster_required.
+         * @description A domain containing accounts or aliases is refused with 409 domain_not_empty, except for its automatically provisioned postmaster when it holds no mail and has no credentials. The domain, that postmaster and their live configuration are archived atomically for restoration with their original identities. Grants are removed through the audited grant-change mechanism; cached permissions are invalidated only after commit. Historical reports, message traces and audit entries are retained. Until the domain is restored, or a new domain takes its name, mail to it is deferred with a temporary failure. A cleanup, archive, audit or cancellation failure rolls the deletion back. Deleting the last postmaster on its own still returns 409 postmaster_required. While the domain is locked (automation_locked) every caller, a person's session with a fresh second factor included, is refused with 403 automation_locked and nothing changes: the lock must be lifted through updateDomain first. A restored domain keeps the lock it was archived with.
          */
         delete: operations["deleteDomain"];
         options?: never;
         head?: never;
         /**
          * Update a domain
-         * @description Activation requires a receiving postmaster account or alias as well as a valid certificate. A domain must retain a receiving postmaster address. A change that removes its last working account or alias, including disabling a destination or removing its receive grant, returns 409 postmaster_required. To replace the account, create a working alias at postmaster@<domain> first, then delete the account; a disabled account still shadows an alias.
+         * @description Activation requires a receiving postmaster account or alias as well as a valid certificate. A domain must retain a receiving postmaster address. A change that removes its last working account or alias, including disabling a destination or removing its receive grant, returns 409 postmaster_required. To replace the account, create a working alias at postmaster@<domain> first, then delete the account; a disabled account still shadows an alias. automation_locked true locks the domain, so that nobody can delete it until the lock is lifted, and records who locked it and when in automation_lock; locking a locked domain keeps the first lock. false lifts the lock, and needs a person's session with a fresh second factor: anything else, an API key included, is refused with 403 two_factor_required or recent_two_factor_required, and nothing in the request is changed. Locking and lifting are written to the audit log; asking for the state the domain is already in writes nothing.
          */
         patch: operations["updateDomain"];
         trace?: never;
@@ -4091,6 +4091,7 @@ export interface components {
         };
         Domain: {
             active: boolean;
+            automation_lock?: components["schemas"]["DomainAutomationLock"] | null;
             /** Format: date-time */
             created_at: string;
             /** Format: int64 */
@@ -4107,6 +4108,11 @@ export interface components {
             server_type: "traditional" | "restmail";
             /** Format: date-time */
             updated_at: string;
+        };
+        DomainAutomationLock: {
+            /** Format: date-time */
+            locked_at: string;
+            locked_by: string;
         };
         DomainDNSCheck: {
             domain: string;
@@ -6303,6 +6309,7 @@ export interface components {
         };
         updateDomainBody: {
             active?: boolean | null;
+            automation_locked?: boolean | null;
             /** Format: int64 */
             default_quota_bytes?: number | null;
             /** @enum {string|null} */

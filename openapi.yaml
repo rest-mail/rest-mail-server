@@ -28563,6 +28563,11 @@ components:
           oneOf:
             - $ref: "#/components/schemas/DomainOutboundStop"
             - type: "null"
+        automation_lock:
+          description: "Present only while the domain is locked: nobody can delete it, a person's session included, until the lock is lifted, and only a person's session with a fresh second factor can lift it"
+          oneOf:
+            - $ref: "#/components/schemas/DomainAutomationLock"
+            - type: "null"
         created_at:
           type: string
           format: date-time
@@ -28733,6 +28738,19 @@ components:
         reason:
           type: string
 
+    DomainAutomationLock:
+      description: A lock on a domain against deletion (#2012, #2098). While it stands nobody can delete the domain, a person's session included, and only a person's session with a fresh second factor can lift it.
+      type: object
+      additionalProperties: false
+      required: [locked_at, locked_by]
+      properties:
+        locked_at:
+          type: string
+          format: date-time
+        locked_by:
+          type: string
+          description: The address of the account that locked it
+
     CreateDomainRequest:
       type: object
       required: [name]
@@ -28785,6 +28803,9 @@ components:
           type: [string, "null"]
           enum: [none, quarantine, reject, null]
           description: The domain's DMARC policy (DomainDMARCPolicy); omitted or null leaves it.
+        automation_locked:
+          type: [boolean, "null"]
+          description: true locks the domain, so nobody can delete it until the lock is lifted; false lifts the lock, which needs a person's session with a fresh second factor. Omitted or null leaves it.
 
     DomainDMARCPolicy:
       type: string

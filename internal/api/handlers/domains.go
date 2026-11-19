@@ -166,6 +166,7 @@ func domainOf(d models.Domain) Domain {
 		SendingPolicy:     d.SendingPolicy,
 		DMARCPolicy:       d.DMARCPolicy,
 		OutboundStop:      outboundStopOf(d),
+		AutomationLock:    automationLockOf(d),
 		CreatedAt:         d.CreatedAt,
 		UpdatedAt:         d.UpdatedAt,
 	}
@@ -199,7 +200,7 @@ func (h *DomainHandler) Register(rs endpoint.Routes, checks DomainRouteChecks) {
 		Middleware: []endpoint.Middleware{checks.OnDomain(middleware.CapDomainsRead)}}, h.get)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPatch, Path: "/api/v1/admin/domains/{id}",
 		OperationID: "updateDomain", Summary: "Update a domain", Tags: tags,
-		Description: "Activation requires a receiving postmaster account or alias as well as a valid certificate. " + postmasterRequiredDescription,
+		Description: "Activation requires a receiving postmaster account or alias as well as a valid certificate. " + postmasterRequiredDescription + " " + automationLockDescription,
 		Errors:      []int{http.StatusNotFound, http.StatusConflict},
 		Middleware:  []endpoint.Middleware{checks.OnDomain(middleware.CapDomainsWrite)}}, h.update)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodDelete, Path: "/api/v1/admin/domains/{id}",
@@ -352,6 +353,10 @@ type updateDomainBody struct {
 	DefaultQuotaBytes *int64  `json:"default_quota_bytes,omitempty" minimum:"0" message:"must not be negative"`
 	SendingPolicy     *string `json:"sending_policy,omitempty" enums:",transactional,bulk" message:"must be 'transactional', 'bulk' or empty"`
 	DMARCPolicy       *string `json:"dmarc_policy,omitempty" enums:"none,quarantine,reject" message:"must be 'none', 'quarantine' or 'reject'"`
+	// AutomationLocked true locks the domain, so nobody can delete it, and false
+	// lifts the lock (#2012, #2098). Lifting needs a person's session with a
+	// fresh second factor.
+	AutomationLocked *bool `json:"automation_locked,omitempty"`
 }
 
 func (h *DomainHandler) update(r *http.Request, in updateDomainRequest) (Domain, error) {
@@ -399,8 +404,18 @@ func (h *DomainHandler) update(r *http.Request, in updateDomainRequest) (Domain,
 		updates["dmarc_policy"] = *req.DMARCPolicy
 	}
 
-	if len(updates) > 0 {
+	if len(updates) > 0 || req.AutomationLocked != nil {
 		err := preservePostmasters(h.db.WithContext(r.Context()), req.Active != nil, func(tx *gorm.DB) error {
+			// The lock is settled first, on the locked row, so a refused lift
+			// refuses the whole request and nothing else in it is changed.
+			if req.AutomationLocked != nil {
+				if err := changeAutomationLock(tx, r, in.ID, *req.AutomationLocked); err != nil {
+					return err
+				}
+			}
+			if len(updates) == 0 {
+				return nil
+			}
 			query := tx.Model(&domain)
 			quotaProof := RequireTwoFactor(r)
 			if req.DefaultQuotaBytes != nil && quotaProof != nil {
