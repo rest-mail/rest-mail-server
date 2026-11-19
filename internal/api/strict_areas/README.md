@@ -7,3 +7,8 @@ are excused there because the test configuration registers and checks them.
 
 The root strict_areas.json is the initial empty configuration. Do not remove an
 enabled area to silence a warning; fix the reported contract gap.
+
+Every operation that production or the test configuration registers must be in
+an area: TestEveryRegisteredOperationIsStrict fails on one that is not, because
+its description warnings would fail no test. A change that registers an operation
+adds it to an area in the same change.

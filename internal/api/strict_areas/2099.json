@@ -1,0 +1,23 @@
+{
+  "2099": [
+    "addInstallationSenderRule",
+    "closeGatewaySession",
+    "getAccountTimeZone",
+    "getReputation",
+    "getUnsubscribeOptions",
+    "listAccountAddresses",
+    "listInstallationSenderRules",
+    "listSlowStatements",
+    "listSubscriptions",
+    "listVanishedUIDs",
+    "openGatewaySession",
+    "removeInstallationSenderRule",
+    "resetSlowStatements",
+    "setAccountTimeZone",
+    "subscribeFolder",
+    "transferMessages",
+    "unsubscribeFolder",
+    "unsubscribeMailto",
+    "unsubscribeOneClick"
+  ]
+}
