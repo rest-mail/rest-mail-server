@@ -2902,6 +2902,14 @@ Give `RESTMAIL_EXAMPLE_PROOFS` a fresh path for each run. The Go writer merges a
 existing file, so reusing one can hide a skipped or failing proof. Then check it
 with `python3 scripts/example_proofs.py openapi-example.json <proofs.json>`.
 
+Its last lines are the record of what it judged, one count per population, and
+each pair is counted in exactly one: `N of M examples that need setup are proven`
+for the pairs with a `requires`, and, when `vertrag.yml` excludes an operation from
+the live run, `N of M examples with no setup, of operations the live run never
+sends, are proven` for that operation's other pairs. With `--live` each adds how
+many only a live runner proved. A pair left to the live proofs (`--defer-live`)
+is judged but not counted as proven.
+
 Run database-backed Go packages through `tools/testdb-exec`, as CI does. Against
 the seeded database a live run uses, tests that expect an empty one fail, such as
 `TestAuthLogin_DocumentedCredentialExamples`, and that says nothing about the code.

@@ -156,6 +156,53 @@ def live_selects(op, name, requires):
     )
 
 
+def coverage(examples, in_process, live, unsent, defer_live=False):
+    """What is unproven, what is left to the live proofs, and the exact count of each
+    population this judges (#2099 AC06): "setup", the pairs with a `requires`, and
+    "unsent", the pairs with none of an operation the live run never sends. Each count
+    is [judged, proven, proven only live]; a pair is counted in one population, by
+    what it is, never by what happened to the others."""
+    combined = {op: in_process.get(op, []) + live.get(op, []) for op in {*in_process, *live}}
+    missing = unproven(examples, combined, unsent)
+    deferred = [item for item in missing if live_selects(*item)] if defer_live else []
+    missing = [item for item in missing if item not in deferred]
+    unsettled = {(op, name) for op, name, _ in missing + deferred}
+    not_in_process = {(op, name) for op, name, _ in unproven(examples, in_process, unsent)}
+    counts = {"setup": [0, 0, 0], "unsent": [0, 0, 0]}
+    for op, pairs in examples.items():
+        for name, pair in pairs.items():
+            if pair.get("requires"):
+                count = counts["setup"]
+            elif op in unsent:
+                count = counts["unsent"]
+            else:
+                continue
+            count[0] += 1
+            if (op, name) not in unsettled:
+                count[1] += 1
+                if (op, name) in not_in_process:
+                    count[2] += 1
+    return missing, deferred, counts
+
+
+def coverage_lines(counts, with_live):
+    """The summary of coverage: the pairs that need setup always, and the pairs of an
+    operation the live run never sends when there are any."""
+    lines = []
+    for population, what in (
+        ("setup", "examples that need setup"),
+        ("unsent", "examples with no setup, of operations the live run never sends,"),
+    ):
+        judged, proven, only_live = counts[population]
+        if population == "unsent" and not judged:
+            continue
+        if with_live:
+            lines.append(f"{proven} of {judged} {what} are proven, {only_live} of them only live")
+        else:
+            lines.append(f"{proven} of {judged} {what} are proven in process")
+    return lines
+
+
 def main(argv):
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--live")
@@ -187,16 +234,7 @@ def main(argv):
         live, refused = live_proofs(args.live, examples)
         for reason in refused:
             print(reason)
-    unsent = never_sent(ROOT)
-    missing = unproven(
-        examples,
-        {op: proofs.get(op, []) + live.get(op, []) for op in {*proofs, *live}},
-        unsent,
-    )
-    deferred = []
-    if args.defer_live:
-        deferred = [item for item in missing if live_selects(*item)]
-        missing = [item for item in missing if item not in deferred]
+    missing, deferred, counts = coverage(examples, proofs, live, never_sent(ROOT), args.defer_live)
     who = "no runner" if args.live else "no in-process test"
     for op, name, requires in missing:
         if requires == {"sent": "never"}:
@@ -208,18 +246,8 @@ def main(argv):
         print(
             f"{op}/{name}: no in-process test proved it; left to the live proofs in the E2E job"
         )
-    needing = sum(
-        1 for pairs in examples.values() for p in pairs.values() if p.get("requires")
-    )
-    proven = needing - len(missing) - len(deferred)
-    if args.live:
-        only_live = len(unproven(examples, proofs, unsent)) - len(missing)
-        print(
-            f"{proven} of {needing} examples that need setup are proven, "
-            f"{only_live} of them only live"
-        )
-    else:
-        print(f"{proven} of {needing} examples that need setup are proven in process")
+    for line in coverage_lines(counts, bool(args.live)):
+        print(line)
     return 1 if missing else 0
 
 

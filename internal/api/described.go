@@ -177,6 +177,12 @@ func describe(registry *endpoint.Registry, version string) *oapifly.Generator {
 
 // describeWith is describe with its example pairs read from examples.
 func describeWith(registry *endpoint.Registry, version string, examples fs.FS) *oapifly.Generator {
+	return describeWithScope(registry, version, examples, strictAreaScope())
+}
+
+// describeWithScope is describeWith with the operations whose warnings Check fails on
+// given, so a test can show what the strict areas catch.
+func describeWithScope(registry *endpoint.Registry, version string, examples fs.FS, strict oapifly.StrictScope) *oapifly.Generator {
 	g := oapifly.New(oapifly.Config{
 		Title:           "REST Mail API",
 		Description:     "Human sessions that prove a second factor carry auth_time: the original sign-in time, preserved across refresh. Refresh changes iat but never reopens the sudo window. Machine credentials never carry this proof. Sensitive actions require 2FA; administrative/read/sending grants, credential creation, password/2FA changes and audit access additionally require proof within 15 minutes. FRESH_TWO_FACTOR_WINDOW may shorten that window; invalid, non-positive or longer values refuse startup. Missing or stale proof returns 403 recent_two_factor_required so clients can sign in again. Initial authenticator enrollment and forced password setup before any factor exists remain available; once a factor is enrolled, sign in with it before changing the password.",
@@ -185,7 +191,7 @@ func describeWith(registry *endpoint.Registry, version string, examples fs.FS) *
 		Security:        defaultSecurity,
 		Examples:        examples,
 		ExamplesFile:    "openapi-example.json",
-		Strict:          strictAreaScope(),
+		Strict:          strict,
 
 		ExampleRequirements: exampleRequirements,
 	})
