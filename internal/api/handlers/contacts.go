@@ -116,13 +116,18 @@ func (h *ContactHandler) RegisterContacts(rs endpoint.Routes) {
 		Errors: []int{http.StatusForbidden, http.StatusNotFound}, Security: writes}, h.block)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/accounts/{id}/contacts/import",
 		OperationID: "importContacts", Summary: "Bulk import contacts", Tags: tags, DescribedRequest: importContactsRequest{},
-		Description: "As many contacts as fit the server's contact import limit, 10 MiB unless an administrator changes it, as JSON or as a vCard file (text/vcard). Every entry is checked first, nothing is imported if one is refused, and contacts the account already has are skipped and left as they are. On a vCard file, each EMAIL is one contact named by the card's first FN; a card with no EMAIL is counted as skipped; other properties are ignored, except the X-RESTMAIL-TRUST-LEVEL, X-RESTMAIL-SOURCE, X-RESTMAIL-CREATED-AT and X-RESTMAIL-UPDATED-AT that REST Mail's own export writes, which are restored. A name or address in quoted-printable, base64 or a character set other than UTF-8 is refused.",
+		Description: "As many contacts as fit the server's contact import limit, 10 MiB unless an administrator changes it, as JSON or as a vCard file (text/vcard). Every entry is checked first, nothing is imported if one is refused, and contacts the account already has are skipped and left as they are. Every imported contact's trust level is auto unless restore_trust_level is true. On a vCard file, each EMAIL is one contact named by the card's first FN, or by its first N when it has no FN; a card with no EMAIL is counted as skipped; other properties are ignored, except the X-RESTMAIL-SOURCE, X-RESTMAIL-CREATED-AT and X-RESTMAIL-UPDATED-AT that REST Mail's own export writes, which are restored, and its X-RESTMAIL-TRUST-LEVEL, restored only when restore_trust_level is true. A quoted-printable name or address is decoded and must be UTF-8; one in base64 or a character set other than UTF-8 is refused.",
 		Errors:      []int{http.StatusForbidden, http.StatusNotFound}, Security: writes}, h.importContacts)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/accounts/{id}/contacts/suggest",
 		OperationID: "suggestContacts", Summary: "Autocomplete contacts by query", Tags: tags,
 		Description: "At most 10 contacts whose address or name contains q, blocked ones left out; an empty q answers none.",
 		Errors:      []int{http.StatusForbidden, http.StatusNotFound}, Security: reads}, h.suggest)
 }
+
+// contactTrustCapability is what setting a contact's trust level directly takes, through
+// createContact, updateContact or blockSender. An import restores a trust level from a file
+// only for a caller that asks for it and holds this.
+const contactTrustCapability = models.CapMailWrite
 
 var (
 	errContactAccess   = errAccountNotFound
@@ -215,7 +220,7 @@ type createContactBody struct {
 // create adds a new contact to a mailbox.
 // POST /api/v1/accounts/{id}/contacts
 func (h *ContactHandler) create(r *http.Request, in createContactRequest) (Contact, error) {
-	mailboxID, err := h.resolveMailboxID(r, in.ID, models.CapMailWrite)
+	mailboxID, err := h.resolveMailboxID(r, in.ID, contactTrustCapability)
 	if err != nil {
 		return Contact{}, err
 	}
@@ -274,7 +279,7 @@ type updateContactBody struct {
 // update updates an existing contact's fields.
 // PATCH /api/v1/accounts/{id}/contacts/{cid}
 func (h *ContactHandler) update(r *http.Request, in updateContactRequest) (Contact, error) {
-	mailboxID, err := h.resolveMailboxID(r, in.ID, models.CapMailWrite)
+	mailboxID, err := h.resolveMailboxID(r, in.ID, contactTrustCapability)
 	if err != nil {
 		return Contact{}, err
 	}
@@ -362,7 +367,7 @@ type blockSenderBody struct {
 // block creates or updates a contact with trust_level="blocked".
 // POST /api/v1/accounts/{id}/contacts/block
 func (h *ContactHandler) block(r *http.Request, in blockSenderRequest) (endpoint.Status[Contact], error) {
-	mailboxID, err := h.resolveMailboxID(r, in.ID, models.CapMailWrite)
+	mailboxID, err := h.resolveMailboxID(r, in.ID, contactTrustCapability)
 	if err != nil {
 		return endpoint.Status[Contact]{}, err
 	}
@@ -481,9 +486,16 @@ const (
 )
 
 type importContactsRequest struct {
-	ID    uint32             `path:"id" minimum:"1" example:"1"`
-	Body  importContactsBody `body:""`
-	Cards string             `body:"text/vcard" description:"An address book as vCard 2.1, 3.0 or 4.0 (RFC 6350), in UTF-8. Each EMAIL on a card is one contact, named by the card's first FN."`
+	ID                uint32             `path:"id" minimum:"1" example:"1"`
+	RestoreTrustLevel bool               `query:"restore_trust_level" description:"true restores each card's X-RESTMAIL-TRUST-LEVEL, for a caller holding the mail:write that setting a trust level directly takes; otherwise every imported contact is auto. A JSON entry carries no trust level."`
+	Body              importContactsBody `body:""`
+	Cards             string             `body:"text/vcard" description:"An address book as vCard 2.1, 3.0 or 4.0 (RFC 6350), in UTF-8. Each EMAIL on a card is one contact, named by the card's first FN, or by its first N when it has no FN."`
+}
+
+// importContactsQuery is what the import reads from its URL; the body is read by the handler.
+type importContactsQuery struct {
+	ID                uint32 `path:"id" minimum:"1" example:"1"`
+	RestoreTrustLevel bool   `query:"restore_trust_level"`
 }
 
 type importContactsBody struct {
@@ -509,7 +521,7 @@ var contactImportPath = regexp.MustCompile(`^/api/v1/accounts/[^/]+/contacts/imp
 // is read an entry at a time, twice: a check of every entry, then the writes. Its size
 // never sits in memory.
 // POST /api/v1/accounts/{id}/contacts/import
-func (h *ContactHandler) importContacts(r *http.Request, in contactsPath) (ContactsImported, error) {
+func (h *ContactHandler) importContacts(r *http.Request, in importContactsQuery) (ContactsImported, error) {
 	// This route is outside the API's general body limit (ContactImportRoute), so it is held
 	// to its own here, before any of the upload is read. An upload within the default takes
 	// no database read yet: a bad one is refused without one.
@@ -545,7 +557,7 @@ func (h *ContactHandler) importContacts(r *http.Request, in contactsPath) (Conta
 	}
 	if media, _, err := mime.ParseMediaType(r.Header.Get("Content-Type")); err == nil && media == contactVCardMedia {
 		eachContact = func(each func(models.Contact, map[string]string) error) (int, error) {
-			return eachVCardContact(file, each)
+			return eachVCardContact(file, in.RestoreTrustLevel, each)
 		}
 	}
 
@@ -570,7 +582,14 @@ func (h *ContactHandler) importContacts(r *http.Request, in contactsPath) (Conta
 		return ContactsImported{}, endpoint.Invalid(map[string]string{"contacts": "required"})
 	}
 
-	mailboxID, err := h.resolveMailboxID(r, in.ID, models.CapMailWrite)
+	// A file's trust levels are restored only for a caller who could set them directly, so
+	// importing a file can never trust or block a sender beyond what the caller may. Today
+	// that is the mail:write every import takes.
+	capability := models.CapMailWrite
+	if in.RestoreTrustLevel {
+		capability = contactTrustCapability
+	}
+	mailboxID, err := h.resolveMailboxID(r, in.ID, capability)
 	if err != nil {
 		return ContactsImported{}, err
 	}

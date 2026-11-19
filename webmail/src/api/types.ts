@@ -435,7 +435,7 @@ export interface paths {
         put?: never;
         /**
          * Bulk import contacts
-         * @description As many contacts as fit the server's contact import limit, 10 MiB unless an administrator changes it, as JSON or as a vCard file (text/vcard). Every entry is checked first, nothing is imported if one is refused, and contacts the account already has are skipped and left as they are. On a vCard file, each EMAIL is one contact named by the card's first FN; a card with no EMAIL is counted as skipped; other properties are ignored, except the X-RESTMAIL-TRUST-LEVEL, X-RESTMAIL-SOURCE, X-RESTMAIL-CREATED-AT and X-RESTMAIL-UPDATED-AT that REST Mail's own export writes, which are restored. A name or address in quoted-printable, base64 or a character set other than UTF-8 is refused.
+         * @description As many contacts as fit the server's contact import limit, 10 MiB unless an administrator changes it, as JSON or as a vCard file (text/vcard). Every entry is checked first, nothing is imported if one is refused, and contacts the account already has are skipped and left as they are. Every imported contact's trust level is auto unless restore_trust_level is true. On a vCard file, each EMAIL is one contact named by the card's first FN, or by its first N when it has no FN; a card with no EMAIL is counted as skipped; other properties are ignored, except the X-RESTMAIL-SOURCE, X-RESTMAIL-CREATED-AT and X-RESTMAIL-UPDATED-AT that REST Mail's own export writes, which are restored, and its X-RESTMAIL-TRUST-LEVEL, restored only when restore_trust_level is true. A quoted-printable name or address is decoded and must be UTF-8; one in base64 or a character set other than UTF-8 is refused.
          */
         post: operations["importContacts"];
         delete?: never;
@@ -10843,7 +10843,10 @@ export interface operations {
     };
     importContacts: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description true restores each card's X-RESTMAIL-TRUST-LEVEL, for a caller holding the mail:write that setting a trust level directly takes; otherwise every imported contact is auto. A JSON entry carries no trust level. */
+                restore_trust_level?: boolean;
+            };
             header?: never;
             path: {
                 id: number;

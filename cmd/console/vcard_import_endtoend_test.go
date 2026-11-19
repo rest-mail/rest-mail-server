@@ -27,8 +27,9 @@ type roundTripContact struct {
 	UpdatedAt  time.Time `json:"updated_at"`
 }
 
-// A file from export-contacts, imported into another server through the public API, gives
-// back every field REST Mail stores, and exporting again gives the same cards (#1570).
+// A file from export-contacts, imported into another server through the public API with
+// restore_trust_level=true, gives back every field REST Mail stores, and exporting again gives
+// the same cards (#1570, #2101 AC05b).
 func TestExportedContactsImportWithEveryStoredField(t *testing.T) {
 	source := newMigrationServer(t)
 	from := source.newAccount(t, "vcard-from@"+migrationDomain)
@@ -50,7 +51,7 @@ func TestExportedContactsImportWithEveryStoredField(t *testing.T) {
 
 	destination := newMigrationServer(t)
 	to := destination.newAccount(t, "vcard-to@"+migrationDomain)
-	if got := importVCard(t, destination, to, destination.session, exported, http.StatusOK); got != `{"imported":3,"skipped":0}` {
+	if got := importVCard(t, destination, to, destination.session, restoreTrust, exported, http.StatusOK); got != `{"imported":3,"skipped":0}` {
 		t.Fatalf("import: %s", got)
 	}
 	want := listRoundTripContacts(t, source, from)
@@ -70,7 +71,7 @@ func TestExportedContactsImportWithEveryStoredField(t *testing.T) {
 		Update("trust_level", "blocked").Error; err != nil {
 		t.Fatal(err)
 	}
-	if got := importVCard(t, destination, to, destination.session, exported, http.StatusOK); got != `{"imported":0,"skipped":3}` {
+	if got := importVCard(t, destination, to, destination.session, restoreTrust, exported, http.StatusOK); got != `{"imported":0,"skipped":3}` {
 		t.Fatalf("second import: %s", got)
 	}
 	var trust string
@@ -80,8 +81,42 @@ func TestExportedContactsImportWithEveryStoredField(t *testing.T) {
 	}
 }
 
+// The same export imported without asking for trust levels restores every other field, but
+// stores every contact as auto: a file cannot trust or block a sender unless the caller asks
+// for that, through the real router and an owner's write key (#2101 AC05b).
+func TestExportedContactsImportAsAutoUnlessTrustIsAsked(t *testing.T) {
+	source := newMigrationServer(t)
+	from := source.newAccount(t, "vcard-auto-from@"+migrationDomain)
+	for _, contact := range []models.Contact{
+		{Email: "blocked@example.test", Name: "Blocked", TrustLevel: "blocked", Source: "manual"},
+		{Email: "unnamed@example.test", TrustLevel: "auto", Source: "sent"},
+		{Email: "trusted@example.test", Name: "Trusted", TrustLevel: "trusted", Source: "import"},
+	} {
+		contact.MailboxID = from
+		if err := source.db.Create(&contact).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	exported := exportContactsOf(t, source, from)
+
+	destination := newMigrationServer(t)
+	to := destination.newAccount(t, "vcard-auto-to@"+migrationDomain)
+	key := dataExportKey(t, destination, to, "vcard-auto-to@"+migrationDomain, models.CapMailWrite)
+	if got := importVCard(t, destination, to, key, "", exported, http.StatusOK); got != `{"imported":3,"skipped":0}` {
+		t.Fatalf("import: %s", got)
+	}
+	want := listRoundTripContacts(t, source, from)
+	for index := range want {
+		want[index].TrustLevel = "auto"
+	}
+	if got := listRoundTripContacts(t, destination, to); !reflect.DeepEqual(got, want) {
+		t.Fatalf("a default import differs from the export with every trust level auto:\n got %+v\nwant %+v", got, want)
+	}
+}
+
 // The vCard form is held to the access the JSON form is: mail:write on the account named,
-// through the real router and credentials, with nothing stored when refused.
+// through the real router and credentials, with nothing stored when refused. Asking to restore
+// trust levels takes no less (#2101 AC05b).
 func TestVCardImportNeedsWriteAccessToTheAccount(t *testing.T) {
 	server := newMigrationServer(t)
 	owner := server.newAccount(t, "vcard-owner@"+migrationDomain)
@@ -91,14 +126,19 @@ func TestVCardImportNeedsWriteAccessToTheAccount(t *testing.T) {
 	readOnly := dataExportKey(t, server, owner, "vcard-owner@"+migrationDomain, models.CapMailRead)
 	otherWrite := dataExportKey(t, server, other, "vcard-other@"+migrationDomain, models.CapMailWrite)
 	ownerWrite := dataExportKey(t, server, owner, "vcard-owner@"+migrationDomain, models.CapMailWrite)
-	importVCard(t, server, owner, readOnly, card, http.StatusForbidden)
-	// Another account's credential is not told the account exists.
-	importVCard(t, server, owner, otherWrite, card, http.StatusNotFound)
+	trustCard := "BEGIN:VCARD\r\nVERSION:4.0\r\nFN:Refused\r\nEMAIL:refused@example.test\r\nX-RESTMAIL-TRUST-LEVEL:trusted\r\nEND:VCARD\r\n"
+	for _, query := range []string{"", restoreTrust} {
+		importVCard(t, server, owner, readOnly, query, card, http.StatusForbidden)
+		importVCard(t, server, owner, readOnly, query, trustCard, http.StatusForbidden)
+		// Another account's credential is not told the account exists.
+		importVCard(t, server, owner, otherWrite, query, card, http.StatusNotFound)
+		importVCard(t, server, owner, otherWrite, query, trustCard, http.StatusNotFound)
+	}
 	var stored int64
 	if err := server.db.Model(&models.Contact{}).Where("email = ?", "refused@example.test").Count(&stored).Error; err != nil || stored != 0 {
 		t.Fatalf("refused imports stored %d contacts (%v)", stored, err)
 	}
-	if got := importVCard(t, server, owner, ownerWrite, card, http.StatusOK); got != `{"imported":1,"skipped":0}` {
+	if got := importVCard(t, server, owner, ownerWrite, "", card, http.StatusOK); got != `{"imported":1,"skipped":0}` {
 		t.Fatalf("permitted import: %s", got)
 	}
 }
@@ -116,10 +156,14 @@ func exportContactsOf(t *testing.T, server *migrationServer, account uint) strin
 	return string(raw)
 }
 
-// importVCard posts a file and answers the data of a 200, or the body of anything else.
-func importVCard(t *testing.T, server *migrationServer, account uint, token, file string, status int) string {
+// restoreTrust is the query that asks an import to restore each card's trust level.
+const restoreTrust = "?restore_trust_level=true"
+
+// importVCard posts a file, with query after the path, and answers the data of a 200, or the
+// body of anything else.
+func importVCard(t *testing.T, server *migrationServer, account uint, token, query, file string, status int) string {
 	t.Helper()
-	request, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/api/v1/accounts/%d/contacts/import", server.apiURL, account), strings.NewReader(file))
+	request, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/api/v1/accounts/%d/contacts/import%s", server.apiURL, account, query), strings.NewReader(file))
 	if err != nil {
 		t.Fatal(err)
 	}
