@@ -17006,7 +17006,7 @@ paths:
       - $ref: "#/components/parameters/ResourceId"
     post:
       operationId: bounceQueueEntry
-      description: Only a pending, deferred or delivering entry can be bounced, as with the bulk route; any other state is refused with 400 bad_request and the entry is left as it was. Database work follows the HTTP request context, including cancellation and deadlines. The entry is locked in one transaction before eligibility is checked and the update is written; lookup, update or commit failures cannot return success.
+      description: Only a pending, deferred or delivering entry can be bounced, as with the bulk route; any other state is refused with 400 bad_request and the entry is left as it was. Database work follows the HTTP request context, including cancellation and deadlines. The entry is locked in one transaction before eligibility is checked and the update is written; lookup, update or commit failures cannot return success. A delivering entry's attempt already in flight is not stopped. If it delivers, the entry ends delivered, since the receiver has the message; if it fails, the entry stays bounced, and that attempt records no outcome, suppression or delivery status notification of its own.
       tags: ["Admin: Queue"]
       security:
         - CookieAuth: [queue:manage]

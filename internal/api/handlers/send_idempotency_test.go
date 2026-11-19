@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/rest-mail/rest-mail-server/internal/auth"
+	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/sendidempotency"
 	"gorm.io/gorm"
@@ -352,4 +353,65 @@ func TestSendIdempotencyAccountScopeExpiryAndDifferentBody(t *testing.T) {
 		t.Fatalf("expired key: %d %s", response.Code, response.Body)
 	}
 	f.counts(t, 3, 3)
+}
+
+// A retry that reaches a restarted API process, or another replica, after the first
+// send committed replays that send's result and queues nothing (#2105 queue AC01,
+// "across a restart"). The receipt is the database row, not process state: the
+// second handler here shares nothing with the first but the database, which it
+// reaches over a pool of its own.
+func TestSendIdempotencyReplaysAfterARestart(t *testing.T) {
+	for _, operation := range []string{"send", "draft", "forward"} {
+		t.Run(operation, func(t *testing.T) {
+			f := newSendIdempotencyFixture(t)
+			path := "/api/v1/messages/send"
+			body := fmt.Sprintf(`{"from":%q,"to":["far@remote.example"],"subject":"one message","body_text":"hello"}`, f.accounts[0].Address)
+			if operation != "send" {
+				original := models.Message{MailboxID: f.accounts[0].ID, Folder: "Drafts", IsDraft: operation == "draft", Sender: f.accounts[0].Address, Subject: "one message", BodyText: "hello", RecipientsTo: models.JSONB(`["far@remote.example"]`), RecipientsCc: models.JSONB(`[]`)}
+				if err := f.db.Create(&original).Error; err != nil {
+					t.Fatal(err)
+				}
+				if operation == "draft" {
+					path, body = fmt.Sprintf("/api/v1/messages/draft/%d/send", original.ID), ""
+				} else {
+					path = fmt.Sprintf("/api/v1/messages/%d/forward", original.ID)
+					body = fmt.Sprintf(`{"from":%q,"to":["far@remote.example"],"body_text":"hello"}`, f.accounts[0].Address)
+				}
+			}
+			first := f.request(0, path, body, "restart-key")
+			if first.Code != 201 {
+				t.Fatalf("first send: %d %s", first.Code, first.Body)
+			}
+
+			cfg := testDBConfig()
+			cfg.DBName = f.db.Migrator().CurrentDatabase()
+			pool, err := rmdb.Connect(cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() {
+				if sqlDB, err := pool.DB(); err == nil {
+					_ = sqlDB.Close()
+				}
+			})
+			restarted := sendIdempotencyFixture{db: pool, accounts: f.accounts,
+				handler: NewMessageHandler(pool, nil, nil, "", nil)}
+			restarted.route = composeRoute(restarted.handler)
+
+			replay := restarted.request(0, path, body, "restart-key")
+			if replay.Code != 201 || replay.Body.String() != first.Body.String() {
+				t.Fatalf("replay after restart: %d %s, want 201 %s", replay.Code, replay.Body, first.Body)
+			}
+			restarted.counts(t, 1, 1)
+
+			// The same key with another body is still the first send's after a restart.
+			if operation == "send" {
+				conflict := restarted.request(0, path, strings.Replace(body, "one message", "another", 1), "restart-key")
+				if conflict.Code != 409 {
+					t.Fatalf("different body after restart: %d %s, want 409", conflict.Code, conflict.Body)
+				}
+				restarted.counts(t, 1, 1)
+			}
+		})
+	}
 }

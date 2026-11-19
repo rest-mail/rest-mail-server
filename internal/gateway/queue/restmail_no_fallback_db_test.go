@@ -334,7 +334,12 @@ func TestNoSMTPFallback_GreylistDeferredThenAccepted(t *testing.T) {
 			if got := ClassifyFailure(err); got != models.FailureGreylisted {
 				t.Fatalf("greylisted answer classified %s, want %s: %v", got, models.FailureGreylisted, err)
 			}
+			// The claim counts the attempt on the row, and a failed attempt's outcome
+			// is written only while the row still shows that claim (#2105).
 			item.Attempts = 1
+			if err := gdb.Model(&models.OutboundQueue{}).Where("id = ?", item.ID).Update("attempts", item.Attempts).Error; err != nil {
+				t.Fatal(err)
+			}
 			w.recordFailure(context.Background(), item, err, now)
 			row := readRow(t, gdb, item.ID)
 			if row.Status != "deferred" || row.FailureCategory != models.FailureGreylisted {

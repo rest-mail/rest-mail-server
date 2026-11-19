@@ -50,6 +50,9 @@ type timedMX struct {
 	release chan struct{}
 	// releaseOnce lets a test end the stall before its cleanup does.
 	releaseOnce sync.Once
+	// held lets sessions waiting at the hold step answer and go on.
+	held     chan struct{}
+	heldOnce sync.Once
 
 	mu     sync.Mutex
 	copies int
@@ -67,6 +70,12 @@ type timedMXOptions struct {
 	stall string
 	// readPause slows the peer down by this long per MiB of the message it reads.
 	readPause time.Duration
+	// hold is the step at which the peer waits for releaseHold and then answers,
+	// so a test can act while an attempt is in flight. It is counted as stalled.
+	hold string
+	// replies replaces a step's usual answer, such as a refusal at "RCPT". The
+	// session then reads the next command as usual.
+	replies map[string]string
 }
 
 func newTimedMX(t *testing.T, opts timedMXOptions) *timedMX {
@@ -75,7 +84,7 @@ func newTimedMX(t *testing.T, opts timedMXOptions) *timedMX {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mx := &timedMX{t: t, ln: ln, opts: opts, release: make(chan struct{})}
+	mx := &timedMX{t: t, ln: ln, opts: opts, release: make(chan struct{}), held: make(chan struct{})}
 	var conns sync.WaitGroup
 	conns.Add(1)
 	go func() {
@@ -108,6 +117,11 @@ func (mx *timedMX) releaseStalled() {
 	mx.releaseOnce.Do(func() { close(mx.release) })
 }
 
+// releaseHold lets the sessions waiting at the hold step answer and go on.
+func (mx *timedMX) releaseHold() {
+	mx.heldOnce.Do(func() { close(mx.held) })
+}
+
 func (mx *timedMX) stalledSessions() int {
 	mx.mu.Lock()
 	defer mx.mu.Unlock()
@@ -123,6 +137,17 @@ func (mx *timedMX) copiesReceived() int {
 // answerAt waits out the step's delay, or until the test ends when the step is the
 // stall, and reports whether to go on.
 func (mx *timedMX) answerAt(step string) bool {
+	if mx.opts.hold == step {
+		mx.mu.Lock()
+		mx.stalled++
+		mx.mu.Unlock()
+		select {
+		case <-mx.held:
+			return true
+		case <-mx.release:
+			return false
+		}
+	}
 	if mx.opts.stall == step {
 		mx.mu.Lock()
 		mx.stalled++
@@ -155,6 +180,10 @@ func (mx *timedMX) serve(conn net.Conn) {
 		command, _, _ := strings.Cut(strings.TrimSpace(line), " ")
 		if !mx.answerAt(command) {
 			return
+		}
+		if answer, ok := mx.opts.replies[command]; ok {
+			reply(answer)
+			continue
 		}
 		switch command {
 		case "EHLO":
