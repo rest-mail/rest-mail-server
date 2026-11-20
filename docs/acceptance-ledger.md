@@ -1,0 +1,211 @@
+# Acceptance ledger
+
+Every open issue's acceptance criteria, classified by **what it would take to prove it**, so
+the train can be scheduled by "distance to closing" instead of by theme order.
+
+Buckets:
+
+| | Meaning |
+|---|---|
+| **P** | proven by a merged PR; the proof is named |
+| **R** | provable in this repository now: a test, a contract fix or a document |
+| **H** | needs a live/owned topology, but the repository can **ship the harness and receipt**; the block is running one command, not thinking |
+| **D** | needs an owner decision before any code can be correct |
+| **X** | only an external service or third-party client can prove it |
+
+`H` and `X` are not the same claim. `H` belongs in the repo; `X` is why an issue can
+honestly carry `blocked:live-infrastructure` or `blocked:external-service`.
+
+Snapshot: after #2181 merged (`dab81142d`) and before the export/ops cars landed. Rows are
+rolled forward as cars merge.
+
+## Distance to closing
+
+| Issue | ACs | P | R | H | D | X | First car |
+|---|---|---|---|---|---|---|---|
+| #2120 | 5 | 1 | 2 | 2 | 0 | 0 | finish it |
+| #2108 | 6 | 2 | 2 | 1 | 1 | 0 | finish it |
+| #2117 | 5 | 1 | 3 | 1 | 0 | 0 | finish it |
+| #2113 | 9 | 2 | 3 | 3 | 1 | 0 | finish it |
+| #2116 | 11 | 2 | 2 | 4 | 3 | 0 | harness + decisions |
+
+The four smallest issues are finishable with one or two cars each, which is the only path
+that moves the count. The rest need harnesses and decisions first.
+
+## #2120 — published guides, diagrams, readiness inventory
+
+| AC | Bucket | What is missing |
+|---|---|---|
+| AC01 deployed diagrams match approved artifacts | H | diagram sources are repo work; "actual deployed" needs one install to render them |
+| AC02 five guides published, links resolve, each followed end to end | R + H | publishing and the link check are repo work; "followed end to end" needs the disposable install |
+| AC02b outside-link check fails on the four named cases | **P** | #2117/#2120 car: publish + scheduled, never the PR gate |
+| AC03 every retained finding has a verified tracker home | R | mechanical inventory against the tracker |
+| AC04 historical readiness evidence bounded and current | R | claims list + staleness check |
+
+## #2108 — rules and Sieve
+
+| AC | Bucket | What is missing |
+|---|---|---|
+| AC01 one rule identity and lifecycle | R | model + migration work; no infrastructure |
+| AC02 clients attribute and undo rule effects | R | same surface as AC01 |
+| AC03 templates keep installation/domain/account boundaries | R | shared-template semantics |
+| AC04 fixed enabled-extension list, shared with ManageSieve | **P** | v0.9.0 car: extension gate, vacation tracking, `--repair` parity |
+| AC04b reject/ereject answer 250 and tell the sender nothing | D | owner decided 250 on #1468; the disposition policy (spam folder vs discard) is not recorded |
+| AC05 custom filters cannot escape the account sandbox | R + H | sandbox code + resource limits are repo work; hostile-script exhaustion wants a real install |
+
+## #2117 — metrics, diagnostics, operator APIs
+
+| AC | Bucket | What is missing |
+|---|---|---|
+| AC01 required metrics and alerts, promtool-tested in CI | R | the queue alerts are **P**; the remaining missing-metric inventory is repo work |
+| AC02 correlation and optional tracing across boundaries | R | propagation + redaction tests |
+| AC03 public status exposes only approved basic data | R | route + owner's approved field list is on the issue |
+| AC04 queue CLI and slow-query diagnostics via scoped APIs | R | CLI through the API, no direct DB |
+| AC04b saturation distinguishable from backlog | **P** | three gauges, age-based alert, runbook section |
+
+## #2113 — CI and tests
+
+| AC | Bucket | What is missing |
+|---|---|---|
+| AC01 pinned reproducible substrate | R + H | image pinning is repo work; parity proof needs a hosted-vs-pool run |
+| AC02 docker/service dependency order | R | `--oom-score-adj 1000` guard landed; the dependency-order proof is repo work |
+| AC03 cleanup affects only run-owned resources | R | sweep scoping tests |
+| AC04 failures have diagnostics and root-cause regressions | **P** | retry bot, `tsvector` 500, promtool-never-ran |
+| AC05 trusted access restored without bypasses | H | certificate renewal + SSH host key on the real host |
+| AC06 required checks and concurrency enforced mechanically | **P** | retry bot changes no required check, cancels nothing; the full required-check inventory is R |
+| AC07 final integrated validation attributable | H | one full run on the final SHA |
+| AC08 contract-verdict trust and metadata-edit policy | D | policy question |
+| AC09 multi-arch images without emulated exposure | H | needs a native arm64 builder |
+
+## #2116 — data, export, storage immutability
+
+| AC | Bucket | What is missing |
+|---|---|---|
+| AC01 migration preserves real-source data | H | reference Maildir/Dovecot source |
+| AC02 import behaviour and permissions observable | R + H | grant/scoped-credential tests are R; IDLE and audit volume want an install |
+| AC03 export complete, streamed, scoped | **P** | page-limit streaming, `--skip-folder`, bounded-memory measurement |
+| AC03b every export records an attributable audit event | **P** | `mail:export`, sessions, sweeper, per-format tests |
+| AC04 public read access and lifecycle contract | D | retention/erasure/hold decisions |
+| AC05 migration tooling and docs end to end | R + H | runbook is R; the actual source migration is H |
+| AC01 fork/base and upstream relationship reproducible | H | S3 implementation choice |
+| AC02 version and lock APIs with independent clients | X | real S3 client |
+| AC03 retention survives overwrite/delete/lifecycle/crash | H | object store |
+| AC04 audit anchor uses the supported target | H | deployment |
+| AC05 docs and claims match executed semantics | R | after the above |
+
+## #2107 — bytes, streaming, MIME
+
+| AC | Bucket | What is missing |
+|---|---|---|
+| AC01 file-carrying paths inventoried and spooled | R | inventory + streaming work |
+| AC02 hostile shapes bounded per path | R | ceilings and refusal tests |
+| AC03 cross-platform allocation failures explained | R | Darwin + Linux comparator; CI can run both |
+| AC04 boundedness survives semantic and cleanup controls | **P** | exact DATA octets, dot-stuffing, signature survival |
+| AC05 hidden recipients cannot escape either route | **P** | 7 line-end mixes, one head reader |
+| AC06 converted metadata truthful | **P** | FETCH/POP3 sizes vs bytes sent |
+| AC01 one interpretation preserves charset/address/parameters | R | parser work |
+| AC02 malformed parameter policy consistent | R | corpus + linear scanner |
+| AC03 filters and scanners cannot miss content | R | shared parse or documented difference |
+| AC04 wire normalisation cannot smuggle or corrupt | **P** | large-parameter 500 root-caused (`tsvector`) |
+
+## #2105 — transport and queue
+
+| AC | Bucket | What is missing |
+|---|---|---|
+| AC01 retry cannot duplicate durable effects | **P** | replay after restart on three routes |
+| AC02 local and remote mail share truthful outcomes | R + H | worker paths are R; real receiver is H |
+| AC03 slow destination cannot monopolise the queue | R | worker tests with stalled destinations |
+| AC03b in-flight limit configurable and distinguishable | R | chart exposure + docs; the metric is **P** |
+| AC04 receiver backoff policy explicit and isolated | D | domain-vs-MX decision not recorded |
+| AC05 DSN actions and provenance cannot mislead | **P** | delivering-row races fenced |
+| AC01 transport defaults enforced | R | defaults + chart |
+| AC02 real deployment sends and receives authenticated mail | X | live install |
+| AC03 receiving server verifies our authentication | X | third-party receiver |
+| AC04 complaint ingestion attributable and safe | D | ingestion provider decision |
+| AC05 reputation controls isolate a domain | R + H | logic is R; real reputation signal is H |
+
+## #2104 — TLS and releases
+
+| AC | Bucket | What is missing |
+|---|---|---|
+| AC01 integration/ownership model documented and upheld | **P** | uploaded certificate keeps its issuer; renewal selects only its own |
+| AC02 renewed material consumed by every service | H | live reload |
+| AC03 real ACME issuance and deliberate renewal failure | X | ACME staging on rest-mail.com |
+| AC01 Pulumi adoption with no replacement | H | Pulumi preview on the stack |
+| AC02 staging and preview isolation | D + H | isolation contract decision, then a real install |
+| AC03 backup demonstrated by a restore drill | H | RPO/RTO decision, then the drill |
+| AC04 release artifacts have SBOM and fresh-start evidence | H | image build + scan policy |
+| AC05 installed cluster stages one to three run | H | cluster |
+| AC06 promotion gated on fresh matching receipts | **P** | gate + 21 refusal tests; not yet wired to a release workflow |
+
+## #2101 — personal and assistant
+
+| AC | Bucket | What is missing |
+|---|---|---|
+| AC01 mail operations preserve state and truthful outcomes | R | contract surface |
+| AC02 scheduling and due dates explicit and reversible | D + R | 7 due-date decisions, then send-later/undo tests |
+| AC03 preferences and notifications end to end | R + H | time zone is R; real push needs a device |
+| AC04 previews and unsubscribe cannot execute or SSRF | R + D | sandbox tests are R; Office conversion is a decision |
+| AC05 contacts and calendar round-trip and isolation | **P** | vCard trust gate, `N` names, quoted-printable |
+| AC01 ledger and trust enforce accountability | R | endpoint-level tests |
+| AC02 reviewed proposals use draft/send and policy | R | workflow tests |
+| AC03 inbox triage reports traceable, reversible results | R | counts vs persisted state |
+| AC04 meeting workflow uses real calendar facts | R | conflict/availability tests |
+| AC05 foundations and client acceptance proven together | H | final integrated run |
+
+## #2100 — protocols and gateways
+
+| AC | Bucket | What is missing |
+|---|---|---|
+| AC01 HTTPS delivery reachable in supported topology | H | two installs, DNS, test certs |
+| AC02 native relay scope stays a truthful lane | D | approve or defer |
+| AC03 delivery and import contracts separated | R | schema separation |
+| AC04 gateway status translation preserves meanings | **P** | per-domain inbound pipeline + status translation |
+| AC05 every public/gateway operation has an executable proof | H | full surface, live |
+| AC01 requirement inventory complete | R | RFC reconciliation |
+| AC02 rev1/rev2 session and mailbox wire proof | H | real clients |
+| AC03 dates and resynchronisation honour account state | R | zone/DST tests |
+| AC04 gateway security tied to RFC rows | H | listener configuration |
+| AC05 FETCH and POP3 accounting matches client bytes | **P** | metadata vs octets |
+| AC06 new protocol support decided or demonstrated | D | JMAP decision |
+
+## #2099 — contracts and fixtures
+
+| AC | Bucket | What is missing |
+|---|---|---|
+| AC01 typed registration and generated clients cannot drift | R | coverage assertion |
+| AC02 conventions decided and enforced | R | decision matrix + tests |
+| AC03 named pairs, including deliberate schema violations | **P** | strict areas for all 234 operations |
+| AC04 examples depend on the state they claim | R | setup + setup-removed controls |
+| AC05 audit and forward successes survive full compilation | H | needs a real audit chain |
+| AC06 final proof records exact executed coverage | **P** | `coverage()` counts each population |
+| AC01 each exchange isolated prerequisites | H | per-exchange reset on one server |
+| AC02 setup preserves identity, scopes, MFA | H | real sessions |
+| AC03 held-message release is a persisted transition | H | real budget exhaustion |
+| AC04 pacing covers minute/hour and session lifetime | H | deterministic clocks on a live server |
+| AC05 the ordinary contract genuinely executes | H | isolated Linux/mTLS topology |
+
+## #2098 — identity and domains
+
+| AC | Bucket | What is missing |
+|---|---|---|
+| AC01 provisioning and recovery safeguards | R | invitation/recovery tests |
+| AC02 scoped identity and grant ceilings | R | independent accounts + chains |
+| AC03 gateway sessions identify the real caller | H | mTLS gateway sessions |
+| AC04 credential hardening without lockout | R | cost-12 + failed-attempt tests (landed in #1799, re-prove) |
+| AC05 identity descriptions match behaviour | R | named-pair + ownership cases |
+| AC01 domain naming and ownership | R | empty-label + trailing-dot tests |
+| AC02 delegated administrators finish setup | R | domain-scoped admin |
+| AC03 soft delete/restore + mixed retired/live batch | **P** | automation lock and batch refusal |
+| AC04 purge and automation locks human-only | **P** | unlock-before-delete |
+| AC05 mail-policy choices are not accidental | D | greylisting default, catch-all, billing |
+
+## The decisions this ledger needs from the owner
+
+1. #2108 AC04b — when a Sieve `reject` fires, is the message filed to spam or discarded?
+2. #2105 AC04 — receiver backoff keyed on domain or MX?
+3. #2104 AC02' — staging/preview isolation contract.
+4. #2101 AC02 — the seven due-date decisions; AC04 Office conversion.
+5. #2098 AC05 — greylisting default and catch-all precedence.
+6. #2113 AC08 — contract-verdict trust policy.
+7. #2051 — whether the invitation 409 row is `ignored`, since the server is right and the tool cannot express it.
