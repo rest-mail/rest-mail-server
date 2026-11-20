@@ -1,0 +1,7 @@
+newest bundle 1.0.1393, built from f0e2b1ddab7644a37edf38aa27f2650797bacf58
+NOT PUBLISHED guides/setting-up-your-first-domain: the site answers HTTP 404, not 200
+NOT PUBLISHED guides/connecting-your-mail-app: the site answers HTTP 404, not 200
+NOT PUBLISHED guides/troubleshooting-bouncing-mail: the site answers HTTP 404, not 200
+NOT PUBLISHED guides/setting-up-dkim-spf-dmarc: the site answers HTTP 404, not 200
+NOT PUBLISHED guides/why-mail-goes-to-spam: the site answers HTTP 404, not 200
+5 not published

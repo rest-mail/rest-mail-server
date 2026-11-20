@@ -1,0 +1,31 @@
+FAIL open-relay-cost: deployed page b33b306453c30300546be86098ccbc1a64c04b35c0bd116417c23e7fdf7b7977 is not the approved 537ef9e40b9e3942a2bcf1a4639862185da51b4439d242ffca405fbc572d01cf
+FAIL open-relay: deployed page df84593ecabc7eb8c979d867dd84a642a2c4d349990f0bb673ecc261b1d4c3a6 is not the approved 57d7448b677f3cfc296e47730829055fba6d50a337e198ff8c05622da0b6ef1d
+FAIL rest-mail: deployed page b3aabfaa82bead60a5cd438d3610e63a6ea9b9c131aec3b1531f3fc50932ebe2 is not the approved 9fe9a06e0d8c89392b3a0e8e256c1418dfd1b29f504e3b67e2aad5536e8d4f3b
+FAIL spf: deployed page d3b7d58cf2dc53c54aa9767b39f47c009a656ac4f5df17e57d388b5ac226a64b is not the approved 966bee68f737d07e8fa873da4eaaa3d604a8654259ba32b18cde0c008bed2138
+FAIL spf at laptop: smallest title is 8.178px, under the 9.5px floor (#824)
+FAIL rest-mail at laptop: smallest title is 8.354px, under the 9.5px floor (#824)
+FAIL open-relay at laptop: smallest title is 8.360px, under the 9.5px floor (#824)
+FAIL spf at phone: smallest title is 8.189px, under the 9.5px floor (#824)
+FAIL rest-mail at phone: smallest title is 8.278px, under the 9.5px floor (#824)
+FAIL open-relay at phone: smallest title is 8.187px, under the 9.5px floor (#824)
+FAIL open-relay-cost at phone: smallest title is 8.441px, under the 9.5px floor (#824)
+FAIL arc at phone: smallest title is 9.290px, under the 9.5px floor (#824)
+FAIL black-hole at phone: smallest title is 8.172px, under the 9.5px floor (#824)
+FAIL bundle at phone: smallest title is 8.450px, under the 9.5px floor (#824)
+FAIL discovery at phone: smallest title is 8.211px, under the 9.5px floor (#824)
+FAIL dkim at phone: smallest title is 9.290px, under the 9.5px floor (#824)
+FAIL dmarc at phone: smallest title is 8.538px, under the 9.5px floor (#824)
+FAIL dns at phone: smallest title is 8.197px, under the 9.5px floor (#824)
+FAIL journey at phone: smallest title is 8.183px, under the 9.5px floor (#824)
+FAIL migration at phone: smallest title is 8.439px, under the 9.5px floor (#824)
+FAIL mta-sts at phone: smallest title is 8.447px, under the 9.5px floor (#824)
+FAIL reading at phone: smallest title is 8.171px, under the 9.5px floor (#824)
+FAIL reputation at phone: smallest title is 8.544px, under the 9.5px floor (#824)
+FAIL restmail at phone: smallest title is 9.195px, under the 9.5px floor (#824)
+FAIL smtp at phone: smallest title is 9.154px, under the 9.5px floor (#824)
+FAIL spam at phone: smallest title is 8.189px, under the 9.5px floor (#824)
+FAIL standards at phone: smallest title is 8.540px, under the 9.5px floor (#824)
+FAIL starttls at phone: smallest title is 9.195px, under the 9.5px floor (#824)
+FAIL unsubscribe at phone: smallest title is 9.153px, under the 9.5px floor (#824)
+FAIL who-may-send at phone: smallest title is 8.178px, under the 9.5px floor (#824)
+FAIL: 23/27 deployed diagrams are the approved ones, bundle revision 19995f199586, readability measured

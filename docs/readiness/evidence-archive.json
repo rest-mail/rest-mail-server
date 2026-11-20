@@ -1,0 +1,26 @@
+{
+  "format": 1,
+  "about": "Evidence moved out of evidence.json because it went stale or the register was over its limit. Kept whole, with the date and reason it was moved.",
+  "archived": [
+    {
+      "id": "publication-check-2026-10-27",
+      "source": "AC01",
+      "claim": "Live guide serves the redrawn diagrams in same-origin ?embed=1 frames",
+      "state": "pass",
+      "observed_on": "2026-10-27",
+      "head": "48b81639491375056b1ed7efcfad1e479ce66d2a",
+      "tested": "Read-only HTTP checks of the live guide (docs/design/email-explained-website.md, Publication check, 2026-10-27)",
+      "result": "29 chapter pages and 27 diagram documents fetched; frames use embed=1 and frame-ancestors 'self'.",
+      "limits": "Published content and shipped layout code, not a browser measurement. Later runs found the corrected diagrams not deployed.",
+      "receipts": [
+        {
+          "kind": "file",
+          "path": "docs/design/email-explained-website.md",
+          "contains": "## Publication check, 2026-10-27"
+        }
+      ],
+      "archived_on": "2026-11-20",
+      "archived_reason": "observed 24 days before 2026-11-20, over the 21-day limit"
+    }
+  ]
+}

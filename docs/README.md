@@ -41,6 +41,7 @@ of their date only.
 | Path | What it is |
 |------|------------|
 | `review/2026-04-29-deep-review/**` | The 2026-04-29 deep review (architecture assessment, the "ugly side", security and compliance). Its feature gaps, operations gaps, open problems and findings moved to the issue tracker (#1563). [`findings-homes.json`](findings-homes.json) records, finding by finding, where each went, and `python3 scripts/findings_homes.py check` fails naming any without a verified home. |
+| `readiness/` | **Readiness evidence**: [`evidence.json`](readiness/evidence.json) holds the current claims, each with its state (pass, fail, blocked or unknown), commit, result and a receipt that exists, bounded to 21 days and 30 claims. [`evidence-archive.json`](readiness/evidence-archive.json) holds what was moved out, with the reason. `python3 scripts/readiness_register.py check` fails on a claim with no receipt or a stale one. |
 | `security-review/**` | The Instant Mail Check security review. Point-in-time findings; check current code before acting on any item. |
 
 ## Ecosystem
