@@ -40,7 +40,7 @@ of their date only.
 
 | Path | What it is |
 |------|------------|
-| `review/2026-04-29-deep-review/**` | The 2026-04-29 deep review (architecture assessment, the "ugly side", security and compliance). Its feature gaps, operations gaps, open problems and findings moved to the issue tracker (#1563). |
+| `review/2026-04-29-deep-review/**` | The 2026-04-29 deep review (architecture assessment, the "ugly side", security and compliance). Its feature gaps, operations gaps, open problems and findings moved to the issue tracker (#1563). [`findings-homes.json`](findings-homes.json) records, finding by finding, where each went, and `python3 scripts/findings_homes.py check` fails naming any without a verified home. |
 | `security-review/**` | The Instant Mail Check security review. Point-in-time findings; check current code before acting on any item. |
 
 ## Ecosystem
