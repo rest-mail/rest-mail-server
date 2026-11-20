@@ -1,0 +1,96 @@
+# promtool proof that queue saturation and queue backlog read differently from
+# a destination held back by QUEUE_MAX_PER_DESTINATION (#2117, AC04b).
+#
+# Two gateways see the same queue: 1500 rows waiting to leave, 4 in flight.
+#   saturated: every due row is one a worker could take (its destination has a
+#              place free), and none has; the oldest has waited longer each
+#              minute. At 16m the workers catch up and the queue drains to 100.
+#   held:      the same 1500 rows, but 1496 are due to one destination that
+#              already has its QUEUE_MAX_PER_DESTINATION messages in flight.
+# QueueWorkersSaturated and QueueBacklogHigh fire for the first and recover when
+# it drains; neither fires for the second at any point.
+rule_files:
+  - alert-rules.yml
+evaluation_interval: 1m
+tests:
+  - interval: 1m
+    input_series:
+      - series: 'restmail_queue_size{job="smtp-gateway",instance="saturated"}'
+        values: '1500x15 100x14'
+      - series: 'restmail_queue_held_by_destination{job="smtp-gateway",instance="saturated"}'
+        values: '0x30'
+      - series: 'restmail_queue_waiting_for_worker{job="smtp-gateway",instance="saturated"}'
+        values: '1496x15 0x14'
+      - series: 'restmail_queue_waiting_for_worker_oldest_seconds{job="smtp-gateway",instance="saturated"}'
+        values: '0+60x15 0x14'
+      - series: 'restmail_queue_size{job="smtp-gateway",instance="held"}'
+        values: '1500x30'
+      - series: 'restmail_queue_held_by_destination{job="smtp-gateway",instance="held"}'
+        values: '1496x30'
+      - series: 'restmail_queue_waiting_for_worker{job="smtp-gateway",instance="held"}'
+        values: '0x30'
+      - series: 'restmail_queue_waiting_for_worker_oldest_seconds{job="smtp-gateway",instance="held"}'
+        values: '0x30'
+    alert_rule_test:
+      # Saturation: due over 300s from 6m, firing once that has held for 5m.
+      - eval_time: 10m
+        alertname: QueueWorkersSaturated
+        exp_alerts: []
+      - eval_time: 11m
+        alertname: QueueWorkersSaturated
+        exp_alerts:
+          - exp_labels:
+              job: smtp-gateway
+              instance: saturated
+              severity: warning
+            exp_annotations:
+              summary: Queue workers are not keeping up
+              description: Mail a worker could send now has waited 11m 0s for one. Raise QUEUE_WORKERS or add SMTP gateway replicas. Mail held back by QUEUE_MAX_PER_DESTINATION is not counted here.
+      - eval_time: 15m
+        alertname: QueueWorkersSaturated
+        exp_alerts:
+          - exp_labels:
+              job: smtp-gateway
+              instance: saturated
+              severity: warning
+            exp_annotations:
+              summary: Queue workers are not keeping up
+              description: Mail a worker could send now has waited 15m 0s for one. Raise QUEUE_WORKERS or add SMTP gateway replicas. Mail held back by QUEUE_MAX_PER_DESTINATION is not counted here.
+      # Recovered: the workers caught up.
+      - eval_time: 16m
+        alertname: QueueWorkersSaturated
+        exp_alerts: []
+      - eval_time: 30m
+        alertname: QueueWorkersSaturated
+        exp_alerts: []
+      # Backlog: 1500 waiting, none held, from the start; firing at 5m.
+      - eval_time: 4m
+        alertname: QueueBacklogHigh
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: QueueBacklogHigh
+        exp_alerts:
+          - exp_labels:
+              job: smtp-gateway
+              instance: saturated
+              severity: warning
+            exp_annotations:
+              summary: Queue backlog exceeds 1000 messages
+              description: The outbound queue has 1500 messages waiting to leave for more than 5 minutes, not counting those held back by QUEUE_MAX_PER_DESTINATION.
+      - eval_time: 15m
+        alertname: QueueBacklogHigh
+        exp_alerts:
+          - exp_labels:
+              job: smtp-gateway
+              instance: saturated
+              severity: warning
+            exp_annotations:
+              summary: Queue backlog exceeds 1000 messages
+              description: The outbound queue has 1500 messages waiting to leave for more than 5 minutes, not counting those held back by QUEUE_MAX_PER_DESTINATION.
+      # Recovered: the queue drained to 100.
+      - eval_time: 16m
+        alertname: QueueBacklogHigh
+        exp_alerts: []
+      - eval_time: 30m
+        alertname: QueueBacklogHigh
+        exp_alerts: []

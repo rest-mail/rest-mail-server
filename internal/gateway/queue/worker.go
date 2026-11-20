@@ -527,9 +527,9 @@ func (w *Worker) Start() {
 }
 
 // queueSizeInterval is how often the worker recounts the outbound queue for
-// restmail_queue_size and restmail_queue_due: about Prometheus's scrape
-// interval, and a single indexed count, so it costs the database nothing worth
-// noticing.
+// restmail_queue_size, restmail_queue_due and the gauges that split the rows due
+// (refreshQueueSize): about Prometheus's scrape interval, and two indexed counts,
+// so it costs the database nothing worth noticing.
 const queueSizeInterval = 15 * time.Second
 
 // queueSizeLoop keeps restmail_queue_size and restmail_queue_due current until
@@ -539,7 +539,7 @@ func (w *Worker) queueSizeLoop() {
 	ticker := time.NewTicker(queueSizeInterval)
 	defer ticker.Stop()
 	for {
-		if err := refreshQueueSize(w.db, time.Now()); err != nil {
+		if err := refreshQueueSize(w.db, time.Now(), w.reclaim, w.maxPerDestination); err != nil {
 			slog.Warn("queue: counting the outbound queue failed", "error", err)
 		}
 		select {
@@ -550,14 +550,26 @@ func (w *Worker) queueSizeLoop() {
 	}
 }
 
-// refreshQueueSize recounts the outbound queue in one query. It sets
-// restmail_queue_size to the rows still waiting to leave (pending, deferred or
-// delivering; delivered and bounced rows are history), and restmail_queue_due
-// to those a worker should be taking at now: pending or deferred rows whose
-// next attempt has come, plus rows being sent, and restmail_queue_oldest_age_seconds
-// to the age of the oldest pending or deferred row (#1579). On an error it
-// leaves the last values in place.
-func refreshQueueSize(db *gorm.DB, now time.Time) error {
+// refreshQueueSize recounts the outbound queue. It sets restmail_queue_size to
+// the rows still waiting to leave (pending, deferred or delivering; delivered and
+// bounced rows are history), and restmail_queue_due to those a worker should be
+// taking at now: pending or deferred rows whose next attempt has come, plus rows
+// being sent, and restmail_queue_oldest_age_seconds to the age of the oldest
+// pending or deferred row (#1579).
+//
+// It also splits the rows a claim may take (claimableSQL) by what stands between
+// them and a worker (#2117). Up to its free places (maxPerDestination less its
+// rows in flight) a destination's rows wait for a worker: they are
+// restmail_queue_waiting_for_worker, and the longest any has been due is
+// restmail_queue_waiting_for_worker_oldest_seconds. The rest wait for their
+// destination, which has as many messages in flight as QUEUE_MAX_PER_DESTINATION
+// allows: they are restmail_queue_held_by_destination. A saturated set of workers
+// shows in the first two, and a destination the cap holds back only in the third,
+// so an alert reading them cannot take one for the other. reclaim is how long a
+// delivering row may go without a heartbeat before a claim takes it again.
+//
+// On an error it leaves the last values in place.
+func refreshQueueSize(db *gorm.DB, now time.Time, reclaim time.Duration, maxPerDestination int) error {
 	var counts struct {
 		Total  int64
 		Due    int64
@@ -573,9 +585,42 @@ func refreshQueueSize(db *gorm.DB, now time.Time) error {
 	if err != nil {
 		return err
 	}
+	stale := now.Add(-reclaim)
+	var split struct {
+		Claimable     int64
+		Waiting       int64
+		OldestWaiting *time.Time
+	}
+	// A row is due from its next attempt, or, delivering with no heartbeat, from
+	// when it went stale. Per destination, its places free are the limit less
+	// the rows it has in flight, never below none.
+	err = db.Raw(
+		`WITH in_flight AS (
+		     SELECT lower(domain) AS destination, count(*) AS n FROM outbound_queue
+		      WHERE status = 'delivering' AND last_attempt >= ?
+		      GROUP BY lower(domain)
+		 ), claimable AS (
+		     SELECT lower(domain) AS destination, count(*) AS c,
+		            min(CASE WHEN status = 'delivering' THEN last_attempt + ?::interval ELSE next_attempt END) AS due_since
+		       FROM outbound_queue WHERE `+claimableSQL+`
+		      GROUP BY lower(domain)
+		 )
+		 SELECT coalesce(sum(c), 0) AS claimable,
+		        coalesce(sum(least(c, greatest(?::bigint - coalesce(n, 0), 0))), 0) AS waiting,
+		        min(due_since) FILTER (WHERE ?::bigint > coalesce(n, 0)) AS oldest_waiting
+		   FROM claimable LEFT JOIN in_flight USING (destination)`,
+		stale, fmt.Sprintf("%d microseconds", reclaim.Microseconds()), now, stale, now,
+		destinationLimit(maxPerDestination), destinationLimit(maxPerDestination),
+	).Scan(&split).Error
+	if err != nil {
+		return err
+	}
 	metrics.QueueSize.Set(float64(counts.Total))
 	metrics.QueueDue.Set(float64(counts.Due))
 	metrics.QueueOldestAge.Set(oldestAge(counts.Oldest, now))
+	metrics.QueueWaitingForWorker.Set(float64(split.Waiting))
+	metrics.QueueWaitingForWorkerOldest.Set(oldestAge(split.OldestWaiting, now))
+	metrics.QueueHeldByDestination.Set(float64(split.Claimable - split.Waiting))
 	return nil
 }
 
@@ -704,21 +749,28 @@ const destinationsAtLimitSQL = `SELECT lower(domain) FROM outbound_queue
 	 GROUP BY lower(domain)
 	 HAVING count(*) >= ?`
 
-// claimSQL finds the next message due: its parameters are now, the time before
-// which a delivering row is stale, now again, that stale time and the destination
-// limit for destinationsAtLimitSQL, and a JSON array of the destinations this claim
-// has already passed over. Delivered and bounced rows stay in the table, and their
-// next_attempt is the oldest there is, so idx_outbound_queue_due
-// (internal/db/db.go) covers only the rows it can return. The first status test
-// repeats what the rest says because Postgres does not work that out from the OR,
-// and would not use that index without it.
-const claimSQL = `SELECT * FROM outbound_queue
-	 WHERE status IN ('pending', 'deferred', 'delivering')
+// claimableSQL is true, in SQL over an outbound_queue row, for a row a claim may
+// take, whatever its destination's limit: its parameters are now, the time before
+// which a delivering row is stale, and now again. claimSQL and the queue gauges
+// (refreshQueueSize) share it, so the rows the gauges call waiting for a worker
+// are the rows a worker would take. The first status test repeats what the rest
+// says because Postgres does not work that out from the OR, and would not use
+// idx_outbound_queue_due without it.
+const claimableSQL = `status IN ('pending', 'deferred', 'delivering')
 	 AND (
 	     (status IN ('pending', 'deferred') AND next_attempt <= ?)
 	     OR (status = 'delivering' AND last_attempt < ?)
 	 ) AND expires_at > ?
-	 AND NOT ` + models.OutboundQueueHeldSQL + `
+	 AND NOT ` + models.OutboundQueueHeldSQL
+
+// claimSQL finds the next message due: its parameters are claimableSQL's (now,
+// the time before which a delivering row is stale, now again), that stale time
+// and the destination limit for destinationsAtLimitSQL, and a JSON array of the
+// destinations this claim has already passed over. Delivered and bounced rows
+// stay in the table, and their next_attempt is the oldest there is, so
+// idx_outbound_queue_due (internal/db/db.go) covers only the rows it can return.
+const claimSQL = `SELECT * FROM outbound_queue
+	 WHERE ` + claimableSQL + `
 	 AND lower(domain) NOT IN (` + destinationsAtLimitSQL + `)
 	 AND lower(domain) NOT IN (SELECT jsonb_array_elements_text(?::jsonb))
 	 ORDER BY next_attempt ASC
@@ -744,10 +796,7 @@ func (w *Worker) claim(now time.Time) (models.OutboundQueue, error) {
 	// mail stopped is held: never claimed, so it stays queued until the stop is
 	// lifted (#1590).
 	staleDelivering := now.Add(-w.reclaim)
-	limit := w.maxPerDestination
-	if limit <= 0 {
-		limit = math.MaxInt32 // no count reaches it
-	}
+	limit := destinationLimit(w.maxPerDestination)
 	err := w.db.Transaction(func(tx *gorm.DB) error {
 		passedOver := []string{}
 		for {
@@ -786,6 +835,16 @@ func (w *Worker) claim(now time.Time) (models.OutboundQueue, error) {
 		}).Error
 	})
 	return item, err
+}
+
+// destinationLimit is the number of messages in flight that puts a destination
+// at its limit, for SQL that compares a count with it: max itself, or for zero or
+// less (no cap) a number no count reaches.
+func destinationLimit(max int) int {
+	if max <= 0 {
+		return math.MaxInt32
+	}
+	return max
 }
 
 // reserveDestination reports whether the row's destination has room for one more

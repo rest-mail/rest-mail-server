@@ -44,8 +44,12 @@ one set of files becomes both, without the two ever drifting apart.
   matter, a Sources section in every chapter (or `sources: linked` for a page
   sourced in the chapters it links), no orphaned diagram, Archify's validation
   of every source, and a bundle that builds. Outside links and their anchors are
-  checked daily (`scheduled.yml`); a broken one opens an issue that closes
-  itself once it is fixed. Archify is fetched at the commit
+  checked daily (`scheduled.yml`) and when the guide is published
+  (`email-explained.yml`), not on pull requests; a broken one opens an issue
+  that closes itself once it is fixed. A site that refuses to be checked
+  (HTTP 401, 403, 429) passes only through a dated, reasoned exception in
+  `scripts/email-explained/outside-link-exceptions.json`, and an exception
+  past its date fails the check (#2120). Archify is fetched at the commit
   `scripts/email-explained/package.json` pins, the version the diagrams were
   made with. Each static image records the hash of the source it was exported
   from, and CI fails when they differ.

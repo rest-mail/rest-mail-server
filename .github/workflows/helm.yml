@@ -46,6 +46,10 @@ jobs:
           # a change nobody made.
           version: v3.16.4
 
+      # render-test.sh runs promtool's alert tests, and fails without it.
+      - name: Set up promtool
+        run: bash scripts/ci/install-promtool "$RUNNER_TEMP/bin"
+
       - name: Lint, and check the chart still renders
         # The chart's own tests render it with the production defaults and the
         # development overlay and assert the hardening is intact. Publishing a

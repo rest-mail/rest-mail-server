@@ -32,7 +32,9 @@ var (
 	// or deferred rows whose next attempt has come, plus rows being sent.
 	// Rows waiting for a later retry are in QueueSize but not here, so
 	// QueueWorkerStalled does not fire on a queue that is correctly idle
-	// until its retries come due (#1630). No labels.
+	// until its retries come due (#1630). It also counts rows held back by
+	// QUEUE_MAX_PER_DESTINATION, so it is not a backlog measure: see
+	// QueueWaitingForWorker and QueueHeldByDestination (#2117). No labels.
 	QueueDue = prometheus.NewGauge(prometheus.GaugeOpts{
 		Name: "restmail_queue_due",
 		Help: "Outbound queue rows due for an attempt now (pending or deferred with next attempt passed, or delivering)",
@@ -45,6 +47,37 @@ var (
 	QueueOldestAge = prometheus.NewGauge(prometheus.GaugeOpts{
 		Name: "restmail_queue_oldest_age_seconds",
 		Help: "Age in seconds of the oldest pending or deferred outbound queue row (0 when none)",
+	})
+
+	// QueueWaitingForWorker counts the rows a worker could take now and none
+	// has yet: due, and within the places their destination has free under
+	// QUEUE_MAX_PER_DESTINATION. Together with QueueWaitingForWorkerOldest it
+	// is queue saturation, more mail due than the workers keep up with; the
+	// rows the destination cap holds back are QueueHeldByDestination instead,
+	// so a destination held back by policy does not read as saturation or
+	// backlog (#2117). No labels.
+	QueueWaitingForWorker = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "restmail_queue_waiting_for_worker",
+		Help: "Outbound queue rows due now that a worker could take: their destination has a place free under QUEUE_MAX_PER_DESTINATION",
+	})
+
+	// QueueWaitingForWorkerOldest is how long, in seconds, the longest-waiting
+	// of QueueWaitingForWorker's rows has been due, 0 when there is none. Free
+	// workers take a due row within QUEUE_POLL_INTERVAL, so this stays near
+	// zero unless every worker is busy; QueueWorkersSaturated reads it
+	// (#2117). No labels.
+	QueueWaitingForWorkerOldest = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "restmail_queue_waiting_for_worker_oldest_seconds",
+		Help: "Seconds the longest-waiting outbound row a worker could take has been due (0 when none)",
+	})
+
+	// QueueHeldByDestination counts the rows due now that no worker may take
+	// yet because their recipient domain already has QUEUE_MAX_PER_DESTINATION
+	// messages in flight (#1966). Holding them is the policy working, not a
+	// backlog: QueueBacklogHigh leaves them out (#2117). No labels.
+	QueueHeldByDestination = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "restmail_queue_held_by_destination",
+		Help: "Outbound queue rows due now but held back because their destination has QUEUE_MAX_PER_DESTINATION messages in flight",
 	})
 
 	// QueueProcessed counts total messages successfully processed from the queue.
@@ -346,6 +379,9 @@ func init() {
 		QueueSize,
 		QueueDue,
 		QueueOldestAge,
+		QueueWaitingForWorker,
+		QueueWaitingForWorkerOldest,
+		QueueHeldByDestination,
 		QueueProcessed,
 		AttachmentCleanupRemoved,
 		AttachmentCleanupBytes,

@@ -5,15 +5,20 @@
 //   node check.mjs                          the guide's own checks
 //   node check.mjs --archify <archify.mjs>  and every diagram source is valid
 //   node check.mjs --external               and every outside link still answers
+//                  [--exceptions <file>]    (default outside-link-exceptions.json)
 //
 // The guide's own checks need nothing but the repository. Outside links change
-// on other people's schedules, so CI checks those daily, not on every PR.
+// on other people's schedules, so CI checks those daily and when the guide is
+// published (scheduled.yml, email-explained.yml), not on every PR. A site that
+// refuses to be checked (HTTP 401, 403, 429) passes only through a dated,
+// reasoned exception in outside-link-exceptions.json (#2120).
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { get as httpGet } from "node:http";
 import { get as httpsGet } from "node:https";
 import { readdir, readFile, stat } from "node:fs/promises";
-import { join, posix, relative } from "node:path";
+import { dirname, join, posix, relative } from "node:path";
+import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { Marked } from "marked";
 import { anchorer, GUIDE, plain, SKIP, splitFrontMatter, TYPES } from "./bundle.mjs";
@@ -275,6 +280,84 @@ export async function checkOutside(links, { concurrency = 6 } = {}) {
   return { broken, refused, pages: pagesByUrl.size };
 }
 
+// The exceptions file: the outside links that may refuse to be checked, each
+// with why it is sound anyway and the date that stops being true by.
+export const EXCEPTIONS = join(dirname(fileURLToPath(import.meta.url)), "outside-link-exceptions.json");
+const EXCEPTION_KEYS = ["url", "reason", "expires"];
+
+/** Whether value is a real calendar date written YYYY-MM-DD. */
+function isDate(value) {
+  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
+}
+
+/**
+ * Reads the exceptions file's entries on `today` (YYYY-MM-DD, UTC). Returns the
+ * ones that hold, by URL, and a problem for each that does not: one with no
+ * reason, no expiry date or one that is not a date, one that expired before
+ * today, one listed twice, or one that is not an http(s) page. An exception
+ * still holds on the day it expires.
+ */
+export function readExceptions(entries, today) {
+  const valid = new Map();
+  const problems = [];
+  if (entries?.unreadable) return { valid, problems: [`file cannot be read: ${entries.unreadable}`] };
+  if (!Array.isArray(entries)) return { valid, problems: ["file must be a JSON array of exceptions, each with url, reason and expires"] };
+  const seen = new Set();
+  for (const [index, entry] of entries.entries()) {
+    const url = typeof entry?.url === "string" ? entry.url : "";
+    const before = problems.length;
+    const bad = (why) => problems.push(`${url || `entry ${index + 1}`}: ${why}`);
+    if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
+      bad("is not an object with url, reason and expires");
+      continue;
+    }
+    for (const key of Object.keys(entry)) if (!EXCEPTION_KEYS.includes(key)) bad(`has a key ${key}: an exception has only url, reason and expires`);
+    if (!/^https?:\/\/[^\s#]+$/.test(url)) bad("has no url, or one that is not an http(s) page without an anchor");
+    if (seen.has(url)) bad("is listed twice");
+    seen.add(url);
+    if (typeof entry.reason !== "string" || !entry.reason.trim()) bad("has no reason: say why the link is sound although the site refuses to be checked");
+    if (!isDate(entry.expires)) bad("has no expiry date: expires must be a date, YYYY-MM-DD");
+    else if (entry.expires < today) bad(`expired on ${entry.expires}: open the link, and set a new date if it is still sound, or replace it`);
+    if (problems.length === before) valid.set(url, entry);
+  }
+  return { valid, problems };
+}
+
+/**
+ * What the outside links checkOutside found fail the check with: every broken
+ * link, every refusal no exception that holds covers, and every problem with an
+ * exception, as the lines to report. Also the refusals an exception excuses.
+ */
+export function outsideVerdict({ broken, refused }, exceptions) {
+  const failures = exceptions.problems.map((problem) => `exception ${problem}`);
+  const excused = [];
+  for (const { url, status, where } of refused) {
+    const exception = exceptions.valid.get(url);
+    if (exception) excused.push(`excepted until ${exception.expires}, refused to be checked (HTTP ${status}): ${url}: ${exception.reason}  (${where})`);
+    else failures.push(`refused to be checked (HTTP ${status}), with no exception: ${url}  (${where})`);
+  }
+  for (const { href, why, where } of broken) failures.push(`broken: ${href}: ${why}  (${where})`);
+  return { failures, excused };
+}
+
+/**
+ * The outside-link check: asks every link (checkOutside), and judges the answers
+ * against the exceptions file's entries on today. It passes when failures is empty.
+ */
+export async function checkOutsideLinks(links, entries, today, options) {
+  const found = await checkOutside(links, options);
+  return { ...found, ...outsideVerdict(found, readExceptions(entries, today)) };
+}
+
+/** The exceptions file's entries; readExceptions reports a file that cannot be read. */
+async function exceptionEntries(path) {
+  try {
+    return JSON.parse(await readFile(path, "utf8"));
+  } catch (error) {
+    return { unreadable: `${path}: ${error.message}` };
+  }
+}
+
 async function markdownFiles(dir, base = dir) {
   const found = [];
   for (const entry of await readdir(dir, { withFileTypes: true })) {
@@ -286,7 +369,9 @@ async function markdownFiles(dir, base = dir) {
 }
 
 async function main() {
-  const { values } = parseArgs({ options: { archify: { type: "string" }, external: { type: "boolean", default: false } } });
+  const { values } = parseArgs({
+    options: { archify: { type: "string" }, external: { type: "boolean", default: false }, exceptions: { type: "string", default: EXCEPTIONS } },
+  });
   const root = execFileSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf8" }).trim();
   const guide = join(root, GUIDE);
   const pages = new Map();
@@ -328,11 +413,12 @@ async function main() {
   let failed = problems.length > 0;
   if (values.external) {
     const links = outsideLinks(pages);
-    const { broken, refused, pages: asked } = await checkOutside(links);
-    for (const { url, status, where } of refused) console.log(`refused to be checked (HTTP ${status}): ${url}  (${where})`);
-    for (const { href, why, where } of broken) console.log(`broken: ${href}: ${why}  (${where})`);
-    console.log(`${links.size} outside links on ${asked} pages: ${broken.length} broken, ${refused.length} refused to be checked`);
-    failed ||= broken.length > 0;
+    const today = new Date().toISOString().slice(0, 10);
+    const { broken, refused, pages: asked, failures, excused } = await checkOutsideLinks(links, await exceptionEntries(values.exceptions), today);
+    for (const line of excused) console.log(line);
+    for (const line of failures) console.log(line);
+    console.log(`${links.size} outside links on ${asked} pages: ${broken.length} broken, ${refused.length} refused to be checked (${excused.length} by exception, ${relative(root, values.exceptions)}): ${failures.length} failing`);
+    failed ||= failures.length > 0;
   }
   process.exitCode = failed ? 1 : 0;
 }

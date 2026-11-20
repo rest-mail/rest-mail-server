@@ -48,7 +48,7 @@ func addQueued(t *testing.T, tx *gorm.DB, status string, n int, next, now time.T
 // restmail_queue_due.
 func queueGauges(t *testing.T, tx *gorm.DB, now time.Time) (size, due float64) {
 	t.Helper()
-	if err := refreshQueueSize(tx, now); err != nil {
+	if err := refreshQueueSize(tx, now, staleDeliveringTimeout, defaultMaxPerDestination); err != nil {
 		t.Fatal(err)
 	}
 	return testutil.ToFloat64(metrics.QueueSize), testutil.ToFloat64(metrics.QueueDue)
@@ -139,14 +139,19 @@ func alertExpr(t *testing.T, name string) string {
 }
 
 // TestQueueAlerts_ReadTheRightGauge: QueueWorkerStalled reads the rows due
-// now and QueueBacklogHigh the whole queue, as the condition tests below
-// assume.
+// now, QueueBacklogHigh the whole queue less the rows the destination cap holds
+// back, and QueueWorkersSaturated how long mail a worker could take has waited,
+// as the condition tests below assume. That the rules fire and recover on these
+// gauges is proved by promtool (helm/restmail/tests/queue-alerts-test.yml).
 func TestQueueAlerts_ReadTheRightGauge(t *testing.T) {
 	if got, want := alertExpr(t, "QueueWorkerStalled"), "rate(restmail_queue_processed_total[15m]) == 0 and restmail_queue_due > 0"; got != want {
 		t.Errorf("QueueWorkerStalled expr = %q, want %q", got, want)
 	}
-	if got, want := alertExpr(t, "QueueBacklogHigh"), "restmail_queue_size > 1000"; got != want {
+	if got, want := alertExpr(t, "QueueBacklogHigh"), "restmail_queue_size - restmail_queue_held_by_destination > 1000"; got != want {
 		t.Errorf("QueueBacklogHigh expr = %q, want %q", got, want)
+	}
+	if got, want := alertExpr(t, "QueueWorkersSaturated"), "restmail_queue_waiting_for_worker_oldest_seconds > 300"; got != want {
+		t.Errorf("QueueWorkersSaturated expr = %q, want %q", got, want)
 	}
 }
 

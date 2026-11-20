@@ -208,6 +208,16 @@
           "expr": "restmail_queue_due",
           "legendFormat": "Due Now",
           "refId": "B"
+        },
+        {
+          "expr": "restmail_queue_waiting_for_worker",
+          "legendFormat": "Waiting for a Worker",
+          "refId": "C"
+        },
+        {
+          "expr": "restmail_queue_held_by_destination",
+          "legendFormat": "Held by Destination Limit",
+          "refId": "D"
         }
       ],
       "title": "Queue Size",

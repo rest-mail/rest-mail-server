@@ -12,10 +12,62 @@ a schedule chosen by the kind of failure (see
   entries, and few new `delivered` ones.
 - The `QueueErrorRateHigh` alert (`rate(restmail_queue_errors_total[5m]) > 0.1`)
   fires.
+- `QueueBacklogHigh`, `QueueWorkersSaturated`, `QueueWorkerStalled` or
+  `QueueOldestMessageOld` fires. Which one says what kind of wait it is: see
+  [Saturated, held back or a backlog](#saturated-held-back-or-a-backlog).
 
-The `QueueBacklogHigh` and `QueueWorkerStalled` alerts depend on
-`restmail_queue_size`, which nothing sets today, so they do not fire
-(#1630). Do not take their silence as a healthy queue.
+## Saturated, held back or a backlog
+
+Mail can wait in the queue for three different reasons, and each needs a
+different fix. The SMTP gateway's `/metrics` tells them apart. It recounts the
+queue every 15 seconds, splitting the mail that is due now by what stands
+between it and a worker:
+
+| Gauge | What it counts |
+|---|---|
+| `restmail_queue_waiting_for_worker` | Mail due now that a worker could send: its destination has a place free under `QUEUE_MAX_PER_DESTINATION`. |
+| `restmail_queue_waiting_for_worker_oldest_seconds` | How long the longest-waiting of those has been due. |
+| `restmail_queue_held_by_destination` | Mail due now that no worker may send yet, because its recipient domain already has `QUEUE_MAX_PER_DESTINATION` messages in flight. |
+| `restmail_queue_size` | Every message still waiting to leave, including retries not yet due. |
+| `restmail_queue_due` | Mail due now, all of it, held or not, plus the messages in flight. Do not read it as a backlog. |
+
+- **Saturated workers** (`QueueWorkersSaturated`): mail a worker could send has
+  waited more than 5 minutes for one. A free worker takes due mail within
+  `QUEUE_POLL_INTERVAL` (5 seconds by default), so every worker is busy and
+  more mail is due than they get through. `restmail_queue_waiting_for_worker`
+  is high and its oldest keeps growing. Raise `QUEUE_WORKERS`, or run more SMTP
+  gateway replicas, keeping the database's connection limit in mind. If
+  `QueueWorkerStalled` fires as well, nothing is being sent at all: follow
+  [The worker is not running](#the-worker-is-not-running) first.
+- **A destination held back** (no alert of its own): one recipient domain has
+  more mail due than the per-destination limit lets out at once, so most of it
+  waits its turn. `restmail_queue_held_by_destination` is high while
+  `restmail_queue_waiting_for_worker` is near 0 and its oldest stays near 0.
+  This is `QUEUE_MAX_PER_DESTINATION` working as meant: it stops one slow or
+  large receiver from tying up every worker. Adding workers does not help, and
+  `QueueBacklogHigh` does not count this mail. Find the domain:
+  `restmail mail-queue list --server "$API" --status delivering` lists the
+  messages in flight, and the domain most of their recipients share is the one
+  held back. Leave it if it is draining, even slowly. If that domain answers
+  slowly or not at all, go to [One destination fails](#one-destination-fails).
+  Raise `QUEUE_MAX_PER_DESTINATION` only if the receiver accepts more
+  connections from you; many large receivers throttle senders that open more.
+  `QueueOldestMessageOld` still fires if held mail waits more than 6 hours.
+- **A backlog** (`QueueBacklogHigh`): more than 1000 messages are waiting to
+  leave, not counting held mail. Most of a backlog is usually deferred mail
+  waiting for its next retry after failures. Follow [Confirm](#confirm) below
+  to find why the attempts fail.
+
+In Prometheus or Grafana, compare the three over the time the problem started:
+
+```promql
+restmail_queue_waiting_for_worker
+restmail_queue_waiting_for_worker_oldest_seconds
+restmail_queue_held_by_destination
+```
+
+A rise in the first two is saturation. A rise in the third alone is a
+destination held back.
 
 ## Confirm
 
