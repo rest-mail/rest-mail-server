@@ -49,7 +49,64 @@ func withItemFormats(doc map[string]interface{}) {
 	}
 }
 
+// folderNamePatterns are rmail.FolderNameProblem as patterns, the ones updateMessage's folder
+// tags state: something besides spaces, no space at either end, no control character, no "..".
+// The first is the property's own pattern, the rest its allOf refinements.
+var folderNamePatterns = []string{
+	"[^\\x09-\\x0d \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]",
+	"^[^\\x09-\\x0d \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]([\\s\\S]*[^\\x09-\\x0d \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000])?$",
+	"^[^\\x00-\\x1f\\x7f-\\x9f]*$",
+	"^([^.]|\\.[^.])*(\\.)?$",
+}
+
+// folderNameSchema is a folder name as rmail.FolderNameProblem takes it. It goes into the
+// document only: the handlers that take one bind a plain string and make the refusal
+// themselves, so neither the refusal nor its place in the order of refusals changes.
+func folderNameSchema(description string) map[string]interface{} {
+	refinements := make([]interface{}, 0, len(folderNamePatterns)-1)
+	for _, pattern := range folderNamePatterns[1:] {
+		refinements = append(refinements, map[string]interface{}{"type": "string", "pattern": pattern})
+	}
+	schema := map[string]interface{}{
+		"type": "string", "minLength": 1, "maxLength": 255,
+		"pattern": folderNamePatterns[0], "allOf": refinements,
+	}
+	if description != "" {
+		schema["description"] = description
+	}
+	return schema
+}
+
+// folderNameDescription is what a folder name's schema says of it in words.
+const folderNameDescription = "A folder name: valid UTF-8 of at most 255 bytes, neither blank nor beginning or ending " +
+	`with a space, with no control character and no ".."; any other name is refused 422 validation_failed.`
+
+// withPathConstraints states what the handlers refuse in a path parameter. subscribeFolder holds
+// its name to the folder rule; unsubscribeFolder takes any name, so the parameter they share
+// is replaced on subscribeFolder alone rather than changed where both read it.
+func withPathConstraints(doc map[string]interface{}) {
+	paths, _ := doc["paths"].(map[string]map[string]oapifly.PathItem)
+	for _, methods := range paths {
+		for method, operation := range methods {
+			if operation.OperationID != "subscribeFolder" {
+				continue
+			}
+			// A copy, in case the generator built the operations' lists from one array.
+			parameters := append([]oapifly.Parameter(nil), operation.Parameters...)
+			for index := range parameters {
+				if parameters[index].In == "path" && parameters[index].Name == "folder" {
+					parameters[index].Schema = folderNameSchema("")
+					parameters[index].Description = folderNameDescription
+				}
+			}
+			operation.Parameters = parameters
+			methods[method] = operation
+		}
+	}
+}
+
 func withRequestConstraints(doc map[string]interface{}) {
+	withPathConstraints(doc)
 	paths, _ := doc["paths"].(map[string]map[string]oapifly.PathItem)
 	components, _ := doc["components"].(map[string]interface{})
 	schemas, _ := components["schemas"].(map[string]map[string]interface{})
@@ -107,6 +164,9 @@ func withRequestConstraints(doc map[string]interface{}) {
 					map[string]interface{}{"type": from["type"], "enum": empty},
 					map[string]interface{}{"type": "string", "format": "idn-email"},
 				}
+			case "createFolder", "renameFolder":
+				// Both bodies are folderNameBody, so this states the rule once for the two.
+				properties["name"] = folderNameSchema(folderNameDescription)
 			case "setVacation":
 				properties["enabled"].(map[string]interface{})["type"] = "boolean"
 			}
