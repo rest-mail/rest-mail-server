@@ -27,8 +27,11 @@ const exportMailUsage = `restmail export-maildir — export an account's mail as
 
   restmail export-maildir --server https://mail.example.com --account-id 12 --path ./Maildir
 
-RESTMAIL_API_KEY needs mail:read on the account or its domain. Every account holds
-mail:read on its own mailbox. The output is the layout restmail import-maildir
+RESTMAIL_API_KEY needs mail:read and mail:export on the account or its domain.
+Every account holds both on its own mailbox, and an owner on the accounts it
+owns; an administrator's grants to read mail do not include mail:export. The
+server records the export's start before anything is written, and its end,
+completed or aborted, with the messages and bytes written. The output is the layout restmail import-maildir
 reads: INBOX is the root, folder Archive/2020 is the Maildir++ folder
 .Archive.2020 (each level in modified UTF-7, as Dovecot names it), each message is its stored source byte for byte in cur/, its flags
 are the filename's ":2," letters (S Seen, R Answered, F Flagged, D Draft,
@@ -88,6 +91,8 @@ type mailExporter struct {
 	// pageBytes bounds one list response that carries message bodies
 	// (exportListPageBytes); a page over it is asked for again in smaller pages.
 	pageBytes int64
+	// written counts the bytes the calendar export writes.
+	written int64
 }
 
 // exportListPageBytes bounds one list response an export reads. The folder
@@ -189,7 +194,7 @@ func runExportMaildir(ctx context.Context, args []string, token string, client *
 		return o.fail(exitUsage, "bad_flag", err.Error())
 	}
 	if token == "" {
-		return o.fail(exitUsage, "no_api_key", "set RESTMAIL_API_KEY with mail:read on the account")
+		return o.fail(exitUsage, "no_api_key", "set RESTMAIL_API_KEY with mail:read and mail:export on the account")
 	}
 	if err := exportDestination(*path, *allowNonEmpty); err != nil {
 		return o.fail(exitUsage, "bad_destination", err.Error())
@@ -198,7 +203,12 @@ func runExportMaildir(ctx context.Context, args []string, token string, client *
 	noRedirect.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	e := &mailExporter{ctx: ctx, client: &noRedirect, base: base, token: token, account: *account, maxBytes: *limit,
 		skip: skipSet(skip), pageBytes: exportListPageBytes}
+	session, err := openExportSession(ctx, &noRedirect, base, token, *account, "mail", "maildir")
+	if err != nil {
+		return o.fail(exitFailed, "export_failed", err.Error())
+	}
 	folders, err := e.run(*path)
+	err = session.end(err, int64(e.messages), e.bytes, e.skipped)
 	if err != nil {
 		return o.fail(exitFailed, "export_failed", fmt.Sprintf("%s (exported %d messages)", err, e.messages))
 	}

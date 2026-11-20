@@ -56,6 +56,13 @@ const (
 	CapMailSendAs       = "mail:send_as"
 	CapMailSendOnBehalf = "mail:send_on_behalf"
 	CapMailboxManage    = "mailbox:manage"
+	// CapMailExport writes a mailbox's data out as a portable export, audited
+	// as one account.export at its start and one at its end (#2116 AC03b).
+	// The owner role holds it, so an account exports itself and its owner
+	// exports it by default. A grant to read someone else's mail does not
+	// confer it: the admin and readonly roles do not hold it, so an
+	// administrator needs a role that names it, as for any privileged action.
+	CapMailExport = "mail:export"
 )
 
 // The session capabilities (#324). mailbox:session lets a mailbox's own mail
@@ -70,7 +77,7 @@ const (
 )
 
 // OwnerCapabilities are the owner role's: everything on one mailbox.
-var OwnerCapabilities = []string{CapMailRead, CapMailWrite, CapMailImport, CapMailSend, CapMailReceive, CapMailSendAs, CapMailSendOnBehalf, CapMailboxManage, CapMailboxSession}
+var OwnerCapabilities = []string{CapMailRead, CapMailWrite, CapMailImport, CapMailSend, CapMailReceive, CapMailSendAs, CapMailSendOnBehalf, CapMailboxManage, CapMailboxSession, CapMailExport}
 
 // RoleOwner is the role an account holds on a mailbox it created or linked.
 const RoleOwner = "owner"

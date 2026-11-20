@@ -26,8 +26,11 @@ const exportDataUsage = `restmail %s — export account data through the public 
 
   restmail %s --server https://mail.example.com --account-id 12 --path %s
 
-RESTMAIL_API_KEY needs mail:read on the account or its domain. The existing
-public API checks access; this command grants no new administrator authority.
+RESTMAIL_API_KEY needs mail:read and mail:export on the account or its domain.
+Every account holds both on its own mailbox, and an owner on the accounts it
+owns; an administrator's grants to read mail do not include mail:export. The
+server records the export's start before anything is written, and its end,
+completed or aborted, with the items and bytes written.
 
   --server URL           https; http only for localhost
   --account-id ID        the account to export
@@ -46,7 +49,7 @@ is read again in smaller pages, down to one message. A folder that still
 cannot be exported stops the export with its name and the narrower command
 that would succeed: the same export with --skip-folder for that folder. Output is private to its owner; credentials and content are never printed.
 Neither export is a point-in-time snapshot: avoid concurrent account changes.
-These reads do not create an export audit entry. See docs/exporting-data.md.
+See docs/exporting-data.md.
 
 Exit status: 0 complete, 2 usage, 1 export failed.
 `
@@ -95,7 +98,7 @@ func runExportData(ctx context.Context, command string, args []string, token str
 		return result.fail(exitUsage, "bad_flag", err.Error())
 	}
 	if token == "" {
-		return result.fail(exitUsage, "no_api_key", "set RESTMAIL_API_KEY with mail:read on the account")
+		return result.fail(exitUsage, "no_api_key", "set RESTMAIL_API_KEY with mail:read and mail:export on the account")
 	}
 	if err := settingsDestination(*path, *overwrite); err != nil {
 		return result.fail(exitUsage, "bad_destination", err.Error())
@@ -104,12 +107,21 @@ func runExportData(ctx context.Context, command string, args []string, token str
 	noRedirect.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	exporter := &mailExporter{ctx: ctx, client: &noRedirect, base: base, token: token, account: *account, maxBytes: *maxBytes,
 		skip: skipSet(skip), pageBytes: exportListPageBytes}
+	data, format := "calendar", "icalendar"
+	if contacts {
+		data, format = "contacts", "vcard"
+	}
+	session, err := openExportSession(ctx, &noRedirect, base, token, *account, data, format)
+	if err != nil {
+		return result.fail(exitFailed, "export_failed", err.Error())
+	}
 	var count int
 	if contacts {
 		err = exportContactsFile(exporter, *path, *overwrite, &count)
 	} else {
 		err = exportCalendarDirectory(exporter, *path, &count)
 	}
+	err = session.end(err, int64(count), exporter.written, exporter.skipped)
 	if err != nil {
 		return result.fail(exitFailed, "export_failed", err.Error())
 	}
@@ -161,6 +173,9 @@ func exportContactsFile(exporter *mailExporter, path string, overwrite bool, cou
 	}
 	if err := errors.Join(file.Sync(), file.Close()); err != nil {
 		return err
+	}
+	if info, err := os.Stat(file.Name()); err == nil {
+		exporter.written = info.Size()
 	}
 	if overwrite {
 		return os.Rename(file.Name(), path)
@@ -353,10 +368,11 @@ func exportCalendarMessage(exporter *mailExporter, directory string, id uint, co
 		if err != nil {
 			return err
 		}
-		_, copyErr := io.Copy(output, part.Body)
+		n, copyErr := io.Copy(output, part.Body)
 		if err := errors.Join(copyErr, output.Sync(), output.Close()); err != nil {
 			return err
 		}
+		exporter.written += n
 		*count += 1
 		return nil
 	})

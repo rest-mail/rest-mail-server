@@ -8,11 +8,14 @@ the public API. Mail is exported separately, as a Maildir, by `export-maildir`
 restmail export-settings --server https://mail.example.com --account-id 12 --path ./settings.json
 ```
 
-`RESTMAIL_API_KEY` needs `mail:read` on the account or its domain. Every account
-holds `mail:read` on its own mailbox, so an account can export itself with a key
-of its own, and the admin role holds it at its scope. The command only reads,
-through existing routes, each with its usual `mail:read` check and request
-audit:
+`RESTMAIL_API_KEY` needs `mail:read` and `mail:export` on the account or its
+domain (see `docs/exporting-data.md` for who holds `mail:export`). Before it
+reads anything the command opens an audited export, `settings` as `json`, and
+it closes it when the file is written or the export fails, recorded as
+`completed` or `aborted` with the bytes written. Every account holds both on
+its own mailbox, so an account can export itself with a key of its own. Apart
+from opening and closing the export, the command only reads, through existing
+routes, each with its usual `mail:read` check and request audit:
 
 | Section | Route |
 | --- | --- |

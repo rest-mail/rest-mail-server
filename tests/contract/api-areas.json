@@ -227,7 +227,9 @@
     "updateAlias",
     "updateMailbox",
     "createImportSession",
-    "closeImportSession"
+    "closeImportSession",
+    "createExportSession",
+    "closeExportSession"
   ],
   "649": [
     "createCustomFilter",

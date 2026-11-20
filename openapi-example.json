@@ -3803,6 +3803,308 @@
       }
     }
   },
+  "closeExportSession": {
+    "api_key_ceiling": {
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 1,
+          "session": "00112233445566778899aabbccddeeff"
+        },
+        "body": {
+          "result": "completed",
+          "rows": 205,
+          "bytes": 107510800
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "closed": {
+      "description": "The end is recorded as a second account.export audit entry with the result, the rows and bytes written and any folders left out, and the session is gone.",
+      "request": {
+        "path": {
+          "id": 12,
+          "session": "00112233445566778899aabbccddeeff"
+        },
+        "body": {
+          "result": "completed",
+          "rows": 205,
+          "bytes": 107510800
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "id": "00112233445566778899aabbccddeeff",
+            "account_id": 12,
+            "data": "mail",
+            "format": "maildir",
+            "result": "completed",
+            "rows": 205,
+            "bytes": 107510800,
+            "skipped_folders": [],
+            "started_at": "2026-11-03T12:00:00Z",
+            "ended_at": "2026-11-03T12:30:00Z"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_id": {
+      "request": {
+        "path": {
+          "id": 0,
+          "session": "00112233445566778899aabbccddeeff"
+        },
+        "body": {
+          "result": "completed",
+          "rows": 205,
+          "bytes": 107510800
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "malformed_json": {
+      "description": "The wire body is the raw truncated JSON byte {, with application/json content type: it is refused before anything else is read.",
+      "requires": {
+        "body": "malformed"
+      },
+      "request": {
+        "path": {
+          "id": 12,
+          "session": "00112233445566778899aabbccddeeff"
+        },
+        "body": "{",
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "requires": {
+        "state": "deleted_account"
+      },
+      "request": {
+        "path": {
+          "id": 12,
+          "session": "00112233445566778899aabbccddeeff"
+        },
+        "body": {
+          "result": "completed",
+          "rows": 205,
+          "bytes": 107510800
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Account not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 12,
+          "session": "00112233445566778899aabbccddeeff"
+        },
+        "body": {
+          "result": "completed",
+          "rows": 205,
+          "bytes": 107510800
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {
+        "path": {
+          "id": 12,
+          "session": "00112233445566778899aabbccddeeff"
+        },
+        "body": {
+          "result": "completed",
+          "rows": 205,
+          "bytes": 107510800
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_not_found": {
+      "description": "A session that never existed, has closed or was opened by another account.",
+      "request": {
+        "path": {
+          "id": 12,
+          "session": "ffeeddccbbaa99887766554433221100"
+        },
+        "body": {
+          "result": "completed",
+          "rows": 205,
+          "bytes": 107510800
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "export_session_not_found",
+            "message": "The export session does not exist, has closed, or was opened by another account for another mailbox"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "store_failure": {
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "path": {
+          "id": 12,
+          "session": "00112233445566778899aabbccddeeff"
+        },
+        "body": {
+          "result": "completed",
+          "rows": 205,
+          "bytes": 107510800
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {
+        "path": {
+          "id": 12,
+          "session": "00112233445566778899aabbccddeeff"
+        },
+        "body": {
+          "result": "completed",
+          "rows": 205,
+          "bytes": 107510800
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unavailable": {
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {
+        "path": {
+          "id": 12,
+          "session": "00112233445566778899aabbccddeeff"
+        },
+        "body": {
+          "result": "completed",
+          "rows": 205,
+          "bytes": 107510800
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
   "closeGatewaySession": {
     "closed": {
       "summary": "The gateway closes the connection's session at LOGOUT",
@@ -7754,6 +8056,260 @@
           "error": {
             "code": "internal_error",
             "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
+  "createExportSession": {
+    "api_key_ceiling": {
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "data": "mail",
+          "format": "maildir"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_id": {
+      "request": {
+        "path": {
+          "id": 0
+        },
+        "body": {
+          "data": "mail",
+          "format": "maildir"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "malformed_json": {
+      "description": "The wire body is the raw truncated JSON byte {, with application/json content type: it is refused before anything else is read.",
+      "requires": {
+        "body": "malformed"
+      },
+      "request": {
+        "path": {
+          "id": 12
+        },
+        "body": "{",
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "requires": {
+        "state": "deleted_account"
+      },
+      "request": {
+        "path": {
+          "id": 12
+        },
+        "body": {
+          "data": "mail",
+          "format": "maildir"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Account not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "opened": {
+      "description": "Before anything is written. The start is recorded as an account.export audit entry naming the actor, the credential, the account, the data and the format; close the export with closeExportSession.",
+      "request": {
+        "path": {
+          "id": 12
+        },
+        "body": {
+          "data": "mail",
+          "format": "maildir"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "id": "00112233445566778899aabbccddeeff",
+            "account_id": 12,
+            "data": "mail",
+            "format": "maildir",
+            "started_at": "2026-11-03T12:00:00Z",
+            "timeout_seconds": 86400
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 12
+        },
+        "body": {
+          "data": "mail",
+          "format": "maildir"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {
+        "path": {
+          "id": 12
+        },
+        "body": {
+          "data": "mail",
+          "format": "maildir"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "store_failure": {
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "path": {
+          "id": 12
+        },
+        "body": {
+          "data": "mail",
+          "format": "maildir"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {
+        "path": {
+          "id": 12
+        },
+        "body": {
+          "data": "mail",
+          "format": "maildir"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unavailable": {
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {
+        "path": {
+          "id": 12
+        },
+        "body": {
+          "data": "mail",
+          "format": "maildir"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
           }
         },
         "mediaType": "application/json"

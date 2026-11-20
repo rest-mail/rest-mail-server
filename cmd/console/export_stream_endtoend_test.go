@@ -31,6 +31,9 @@ import (
 func seedMaildir(t *testing.T, folders map[string][]string, date time.Time) string {
 	t.Helper()
 	root := t.TempDir()
+	if _, ok := folders[""]; !ok {
+		folders[""] = nil // import-maildir reads INBOX's cur and new
+	}
 	n := 0
 	for folder, messages := range folders {
 		dir := root
@@ -472,7 +475,7 @@ func TestExportsOfAnotherAccountLeakNothingAndClaimNothing(t *testing.T) {
 		map[string]any{"contacts": []map[string]string{{"email": "secret-contact@example.test", "name": "Secret Contact"}}}, http.StatusOK)
 	outsider := "outsider@" + migrationDomain
 	outsiderID := s.newAccount(t, outsider)
-	key := dataExportKey(t, s, outsiderID, outsider, models.CapMailRead)
+	key := dataExportKey(t, s, outsiderID, outsider, models.CapMailRead, models.CapMailExport)
 
 	for _, command := range []string{"export-maildir", "export-settings", "export-contacts", "export-calendar"} {
 		t.Run(command, func(t *testing.T) {

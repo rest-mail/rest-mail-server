@@ -31,7 +31,7 @@ type fakeExportMessage struct {
 // leaves out a message with a snoozed_until unless include_snoozed=true asks.
 func fakeExportServer(t *testing.T, folders []string, messages []fakeExportMessage) *httptest.Server {
 	t.Helper()
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return httptest.NewServer(withExportSessions(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet || r.Header.Get("Authorization") != "Bearer private-test-key" {
 			t.Errorf("wrong request: %s %s", r.Method, r.URL)
 			w.WriteHeader(http.StatusForbidden)

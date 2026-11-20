@@ -249,12 +249,24 @@ restmail export-maildir --server https://mail.example.com --account-id 12 --path
 restmail import-maildir --server https://new.example.com --account-id 7 --path ./Maildir
 ```
 
-`RESTMAIL_API_KEY` needs `mail:read` on the account or its domain. Every account
-holds `mail:read` on its own mailbox, and the admin role holds it at its scope.
-The command reads only existing routes, each with its usual `mail:read` check and
-request audit: `GET /api/v1/accounts/{id}/folders`,
+`RESTMAIL_API_KEY` needs `mail:read` and `mail:export` on the account or its
+domain. Every account holds both on its own mailbox, and the `owner` role holds
+both on the accounts it owns. A grant to read someone else's mail does not
+include `mail:export`, and the admin role does not hold it: an administrator
+exporting another account needs a role that names it (see `docs/MANUAL.md`).
+
+Before it writes anything the command opens the export with
+`POST /api/v1/accounts/{id}/exports`, which the server refuses without
+`mail:export` and records as an `account.export` audit entry: the actor, the
+credential, the account, `mail` as `maildir`. It then reads
+`GET /api/v1/accounts/{id}/folders`,
 `GET /api/v1/accounts/{id}/folders/{folder}/messages?include_imap_deleted=true&include_snoozed=true`
-and `GET /api/v1/messages/{id}/raw`. It adds no audit entry of its own.
+and `GET /api/v1/messages/{id}/raw`, each with its usual `mail:read` check, and
+closes the export with `POST /api/v1/accounts/{id}/exports/{session}/close`,
+recorded as a second entry: `completed` or `aborted`, the messages and bytes
+written, and any folders left out. Ctrl-C records the export as aborted. If the
+server cannot record the end, the command exits 1 even when every message was
+written.
 
 INBOX becomes the Maildir root and every other folder a Maildir++ folder, `/`
 becoming `.` and each level written in modified UTF-7, as Dovecot names them:

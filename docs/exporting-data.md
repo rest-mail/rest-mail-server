@@ -7,11 +7,13 @@ restmail export-contacts --server https://mail.example.com --account-id 12 --pat
 restmail export-calendar --server https://mail.example.com --account-id 12 --path ./calendar
 ```
 
-Both use `RESTMAIL_API_KEY` and only the public API. The account owner can use a
-key with `mail:read` on that account. An administrator needs the same existing
-capability at a scope covering the account; the commands add no authority or
-administrator bypass. A different account's key, or a key without `mail:read`,
-cannot export the data. HTTPS is required except on localhost. Redirects are
+Both use `RESTMAIL_API_KEY` and only the public API. The key needs `mail:read`
+and `mail:export` on the account. Every account holds both on its own mailbox,
+and the `owner` role holds both on the accounts it owns. A grant to read
+someone else's mail does not include `mail:export`, and the admin role does not
+hold it: an administrator exporting another account needs a role that names it
+(see `docs/MANUAL.md`). A different account's key, or a key without `mail:read`
+or `mail:export`, cannot export the data. HTTPS is required except on localhost. Redirects are
 not followed, and credentials and exported content are never printed.
 
 ## Contacts
@@ -133,8 +135,15 @@ Allow disk space for the output plus one message source.
 These commands are not point-in-time snapshots. Avoid modifying contacts or
 mail during export: offset/cursor pagination is not a snapshot transaction.
 
-These commands only read existing public routes and do not write an
-export-specific audit entry. Whole-account migration and audit requirements
-are discussed in #1577; this document describes only these two commands. No
-new server route, audit event, import command or API schema is added by this
-change.
+## Audit
+
+Before anything is written, each command opens the export with
+`POST /api/v1/accounts/{id}/exports`, which the server refuses without
+`mail:export` and records as an `account.export` audit entry naming the actor,
+the credential, the account and the data and format (`contacts` as `vcard`,
+`calendar` as `icalendar`). When the export ends, the command closes it with
+`POST /api/v1/accounts/{id}/exports/{session}/close`, recorded as a second
+entry with `result` `completed` or `aborted`, the rows (contacts, or calendar
+parts) and bytes written, and any folders left out. Ctrl-C records the export
+as aborted; an export never closed is closed as aborted by the server a day
+after it started. If the server cannot record the end, the command exits 1.

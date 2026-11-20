@@ -37,7 +37,7 @@ func settingsWith(t *testing.T, replies map[string]settingsReply) *httptest.Serv
 		t.Fatal(err)
 	}
 	rest := httputil.NewSingleHostReverseProxy(upstream)
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(withExportSessions(func(w http.ResponseWriter, r *http.Request) {
 		if reply, ok := replies[r.URL.Path]; ok {
 			w.WriteHeader(reply.status)
 			_, _ = w.Write([]byte(reply.body))
@@ -125,7 +125,7 @@ func TestExportSettingsRefusesAnAnswerWithoutTheSettings(t *testing.T) {
 func exportListing(t *testing.T, folders string, pages map[string]string) *httptest.Server {
 	t.Helper()
 	var lists atomic.Int32
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(withExportSessions(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == "/api/v1/accounts/12/folders":
 			_, _ = fmt.Fprint(w, folders)
